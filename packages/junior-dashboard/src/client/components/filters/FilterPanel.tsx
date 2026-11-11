@@ -1,8 +1,11 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, X } from "lucide-react";
 
 import { BottomSheet } from "../BottomSheet";
 import { useDetailsPanel } from "../DetailsPanel";
+import { MatchedLabel } from "../MatchedLabel";
+import { quickOpenMatch } from "../quickOpenMatch";
+import { SearchInput } from "../SearchInput";
 import { Button } from "../ui/button";
 import { cn } from "../../styles";
 import { SectionTitle } from "../layout/SectionTitle";
@@ -10,17 +13,20 @@ import { SectionTitle } from "../layout/SectionTitle";
 /** One choice in a `FilterOptions` list. */
 export type FilterOption = { label: string; value: string };
 
-// Long option lists show this many options until expanded.
-const COLLAPSED_OPTIONS = 6;
+// Long option lists show this many options and a search box.
+const SHOWN_OPTIONS = 6;
 
 /**
- * Lay out a list with its open `FilterPanel` on the right. The panel takes
- * room from the list, so the list narrows instead of being covered.
+ * Lay out a search bar and a list with the open `FilterPanel` on the right
+ * of both. The panel takes room from them, so they narrow instead of being
+ * covered.
  */
 export function FilteredList(props: {
   children: ReactNode;
   /** The open `FilterPanel`, or null while filters are closed. */
   filters: ReactNode;
+  /** The `FilterToolbar` above the list. */
+  toolbar: ReactNode;
 }) {
   return (
     <div
@@ -29,7 +35,10 @@ export function FilteredList(props: {
         props.filters ? "xl:grid-cols-[minmax(0,1fr)_16rem]" : undefined,
       )}
     >
-      <div className="grid min-w-0 gap-6">{props.children}</div>
+      <div className="grid min-w-0 gap-6">
+        {props.toolbar}
+        {props.children}
+      </div>
       {props.filters}
     </div>
   );
@@ -48,6 +57,11 @@ export function FilterPanel(props: {
 }) {
   const { onClose } = props;
   const beside = useDetailsPanel();
+  const closeRef = useRef<HTMLButtonElement>(null);
+  // The toggle that opened the panel hides beside it, so focus moves here.
+  useEffect(() => {
+    if (beside) closeRef.current?.focus();
+  }, [beside]);
   const clear = props.onClear ? (
     <Button onClick={props.onClear} variant="quiet">
       Clear all
@@ -83,7 +97,12 @@ export function FilterPanel(props: {
         </h2>
         <div className="flex items-center gap-0.5">
           {clear}
-          <Button aria-label="Close filters" onClick={onClose} size="icon">
+          <Button
+            aria-label="Close filters"
+            onClick={onClose}
+            ref={closeRef}
+            size="icon"
+          >
             <X aria-hidden="true" size={15} />
           </Button>
         </div>
@@ -98,7 +117,8 @@ export function FilterPanel(props: {
 /**
  * One filter as a list of pressable options under a heading, so every
  * choice is visible without a menu. "All" (value `""`) clears it. A long
- * list shows its first options and the selected one until expanded.
+ * list shows its first options and the selected one, and a search box
+ * finds the rest.
  */
 export function FilterOptions(props: {
   label: string;
@@ -106,29 +126,53 @@ export function FilterOptions(props: {
   options: readonly FilterOption[];
   value: string;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [search, setSearch] = useState("");
   // A shared URL can select a value that the loaded options do not list.
   const options =
     props.value && !props.options.some((option) => option.value === props.value)
       ? [...props.options, { label: props.value, value: props.value }]
       : props.options;
-  const shown = expanded
+  const searchable = options.length > SHOWN_OPTIONS;
+  const query = search.trim();
+  // Rank like the other dashboard pickers, best match first.
+  const rows = query
     ? options
-    : options.filter(
-        (option, index) =>
-          index < COLLAPSED_OPTIONS || option.value === props.value,
-      );
-  const hidden = options.length - shown.length;
+        .flatMap((option) => {
+          const match = quickOpenMatch(option.label, query);
+          return match
+            ? [{ option, matches: match.indices, score: match.score }]
+            : [];
+        })
+        .sort((left, right) => right.score - left.score)
+    : options.map((option) => ({ option, matches: undefined }));
+  const top = rows.slice(0, SHOWN_OPTIONS);
+  const selected = options.find((option) => option.value === props.value);
+  const shown =
+    selected && !top.some((row) => row.option === selected)
+      ? [...top, { option: selected, matches: undefined }]
+      : top;
   return (
     <section aria-label={props.label} className="grid gap-1.5 py-4">
       <div className="px-2">
         <SectionTitle>{props.label}</SectionTitle>
       </div>
+      {searchable ? (
+        <SearchInput
+          label={`Search ${props.label.toLowerCase()} options`}
+          onChange={setSearch}
+          placeholder={`Find ${props.label.toLowerCase()}`}
+          value={search}
+        />
+      ) : null}
       <div aria-label={`Filter by ${props.label.toLowerCase()}`} role="group">
-        {[{ label: "All", value: "" }, ...shown].map((option) => (
+        {[
+          { option: { label: "All", value: "" }, matches: undefined },
+          ...shown,
+        ].map(({ option, matches }) => (
           <FilterOptionButton
             key={option.value || "all"}
             label={option.label}
+            matches={matches}
             onClick={() => props.onChange(option.value)}
             selected={option.value === props.value}
             // "All" is the default, so only a chosen option stands out.
@@ -136,14 +180,10 @@ export function FilterOptions(props: {
           />
         ))}
       </div>
-      {expanded || hidden > 0 ? (
-        <button
-          className="w-fit cursor-pointer rounded-md border-0 bg-transparent px-2 py-1 font-sans text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-          onClick={() => setExpanded((open) => !open)}
-          type="button"
-        >
-          {expanded ? "Show fewer" : `Show ${hidden} more`}
-        </button>
+      {query && rows.length === 0 ? (
+        <p className="m-0 px-2 text-xs text-dashboard-text-muted">
+          No matches.
+        </p>
       ) : null}
     </section>
   );
@@ -151,6 +191,7 @@ export function FilterOptions(props: {
 
 function FilterOptionButton(props: {
   label: string;
+  matches?: number[];
   onClick(): void;
   selected: boolean;
   subtle: boolean;
@@ -170,7 +211,9 @@ function FilterOptionButton(props: {
       title={props.label}
       type="button"
     >
-      <span className="min-w-0 truncate">{props.label}</span>
+      <span className="min-w-0 truncate">
+        <MatchedLabel label={props.label} matches={props.matches} />
+      </span>
       {props.selected && !props.subtle ? (
         <Check aria-hidden="true" className="shrink-0" size={14} />
       ) : null}
