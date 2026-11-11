@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { juniorAgentInvocations } from "@/db/schema";
 import { getAgentInvocationIdForResult } from "./ids";
@@ -193,13 +193,15 @@ async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
   }
   const db = getSqlExecutor().db();
   // A `replaced` child result is never sent. A later agent invocation of
-  // that child agent sends its report instead.
+  // that child agent sends its report instead. A completed result is never
+  // sent either: only its `reply` reaches the parent.
   const sent = await db
     .select({ invocationId: juniorAgentInvocations.invocationId })
     .from(juniorAgentInvocations)
     .where(
       and(
         eq(juniorAgentInvocations.parentConversationId, conversationId),
+        ne(juniorAgentInvocations.status, "completed"),
         inArray(juniorAgentInvocations.parentMailboxStatus, [
           "pending",
           "appended",

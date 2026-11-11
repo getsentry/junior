@@ -47,11 +47,13 @@ describe("nested agent invocations", () => {
     const mailbox = async (conversationId: string) =>
       (await getConversationWorkState({ conversationId, state }))?.messages ??
       [];
-    const complete = async (invocationId: string, result: string) =>
+    // A completed agent invocation sends nothing, so each one here ends
+    // blocked, which still reports.
+    const complete = async (invocationId: string, report: string) =>
       (await completeAgentInvocation({
+        errorMessage: report,
         invocationId,
-        result,
-        status: "completed",
+        status: "blocked",
       })) as TerminalAgentInvocation;
     // Production work gives a result to the parent child. That starts a new
     // agent invocation there and runs it.
@@ -115,10 +117,16 @@ describe("nested agent invocations", () => {
         updated_at: expect.any(String),
       });
       await expect(searchAgents(slackParentConversationId)).resolves.toEqual([
-        listedChild(child.childConversationId),
+        {
+          ...listedChild(child.childConversationId),
+          error: "Started a helper.",
+        },
       ]);
       await expect(searchAgents(child.childConversationId)).resolves.toEqual([
-        listedChild(helper.childConversationId),
+        {
+          ...listedChild(helper.childConversationId),
+          error: "Started a helper.",
+        },
       ]);
 
       // The result runs on the helper as the Actor that started the tree,

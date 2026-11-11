@@ -31,6 +31,7 @@ import {
   getAgentInvocationIdForMessage,
   getAgentInvocationIdForResult,
   getAgentInvocationResultMessageId,
+  getAgentReplyMessageId,
 } from "./ids";
 import {
   getAgentInvocation,
@@ -40,6 +41,7 @@ import {
 } from "./store";
 import { isWatchEvent } from "@/chat/conversations/session-stop";
 import { renderUntrustedTag } from "@/chat/input-tags";
+import type { Reply } from "@/chat/turn-answer";
 import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
 import { listUnreportedSiblingAgents } from "./list";
 import {
@@ -63,6 +65,8 @@ const AGENT_INVOCATION_EVENT_NAMESPACE = "junior";
 const AGENT_INVOCATION_RESULT_MAX_LENGTH = 12_000;
 /** Event type of a message that a child agent sends to its parent. */
 const AGENT_MESSAGE_EVENT_TYPE = "agent.message";
+/** Event type of the `reply` that ends a child agent's Turn. */
+const AGENT_REPLY_EVENT_TYPE = "agent.reply";
 
 /**
  * Return the Inbound message author id for results sent by one Actor.
@@ -83,17 +87,18 @@ function resultAuthorId(actor: Actor): string {
   }
 }
 
+/** A terminal agent invocation that sends a result: every status but `completed`. */
+type UnansweredResult = Exclude<
+  TerminalAgentInvocation,
+  { status: "completed" }
+>;
+
 /**
  * Error messages can contain text from tools or providers, so the trusted
  * summary in the mailbox metadata has only the status.
  */
-function trustedSummary(
-  invocation: TerminalAgentInvocation,
-  agent: string,
-): string {
+function trustedSummary(invocation: UnansweredResult, agent: string): string {
   switch (invocation.status) {
-    case "completed":
-      return `${agent} finished its task.`;
     case "blocked":
       return `${agent} is blocked.`;
     case "failed":
@@ -104,30 +109,27 @@ function trustedSummary(
 }
 
 /**
- * Render the parent agent input for one terminal agent invocation as one
+ * Render the parent agent input for one child agent result as one
  * `<agent-result>`. A child agent wrote the output, so it is escaped data.
  * `status` and `waiting_on` are runtime facts. The system prompt says what to
  * do for each status, so the input repeats no guidance.
  */
 function renderResultInput(
-  invocation: TerminalAgentInvocation,
+  sender: AgentInvocation,
+  result: { output: string; status: TerminalAgentInvocation["status"] },
   openSiblings: readonly ChildAgent[],
 ): string {
-  const output = (
-    invocation.status === "completed"
-      ? invocation.result
-      : invocation.errorMessage
-  )
+  const output = result.output
     .trim()
     .slice(0, AGENT_INVOCATION_RESULT_MAX_LENGTH);
   return renderUntrustedTag(
     "agent-result",
     {
-      conversation_id: invocation.childConversationId,
-      name: invocation.agentName,
+      conversation_id: sender.childConversationId,
+      name: sender.agentName,
       source: "child_agent",
-      status: invocation.status,
-      title: invocation.title,
+      status: result.status,
+      title: sender.title,
       // Fan-out: one Turn per result would post partial findings. Name the
       // open siblings so the parent can wait for them.
       waiting_on: openSiblings.length
@@ -145,7 +147,7 @@ function siblingLabel(sibling: ChildAgent): string {
 
 /** Build the parent Inbound message for one terminal agent invocation. */
 function buildResultInboundMessage(
-  invocation: TerminalAgentInvocation,
+  invocation: UnansweredResult,
   nowMs: number,
   openSiblings: readonly ChildAgent[],
 ): InboundMessage {
@@ -172,7 +174,11 @@ function buildResultInboundMessage(
       // An agent wrote the result, so the system Identity is its author.
       authorIdentityId: SYSTEM_IDENTITY_ID,
       metadata,
-      text: renderResultInput(invocation, openSiblings),
+      text: renderResultInput(
+        invocation,
+        { output: invocation.errorMessage, status: invocation.status },
+        openSiblings,
+      ),
     },
     receivedAtMs: nowMs,
     source: "event",
@@ -200,6 +206,15 @@ export async function enqueueAgentInvocationResult(
     return;
   }
   const nowMs = options.nowMs ?? Date.now();
+  // A child's final response stays in its Conversation. Only its `reply`
+  // reaches the parent, so a completed agent invocation sends nothing.
+  if (invocation.status === "completed") {
+    await markAgentInvocationParentMailboxAppended(
+      invocation.invocationId,
+      nowMs,
+    );
+    return;
+  }
   const openSiblings = await listUnreportedSiblingAgents(
     invocation.parentConversationId,
     invocation.childConversationId,
@@ -285,6 +300,63 @@ export async function enqueueAgentMessageToParent(args: {
   });
 }
 
+/**
+ * Append the `reply` of one child agent Turn to its parent mailbox and wake
+ * the parent. The parent reads it as a completed `<agent-result>`. `sender`
+ * is the agent invocation of the Turn, open or not. The reply's tool call id
+ * keys the message, so a repeat call is safe.
+ */
+export async function enqueueAgentReplyToParent(args: {
+  nowMs?: number;
+  queue: ConversationWorkQueue;
+  reply: Reply;
+  sender: AgentInvocation;
+  state?: StateAdapter;
+}): Promise<void> {
+  const nowMs = args.nowMs ?? Date.now();
+  const inboundMessageId = getAgentReplyMessageId(
+    args.sender.childConversationId,
+    args.reply.toolCallId,
+  );
+  const openSiblings = await listUnreportedSiblingAgents(
+    args.sender.parentConversationId,
+    args.sender.childConversationId,
+  );
+  const metadata: EventMailboxMetadata = {
+    kind: "event",
+    event: {
+      eventKey: inboundMessageId,
+      eventType: AGENT_REPLY_EVENT_TYPE,
+      identifier: args.sender.invocationId,
+      namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
+      trustedSummary: `${childAgentLabel(args.sender)} replied.`,
+    },
+  };
+  await appendAndEnqueueInboundMessage({
+    message: {
+      conversationId: args.sender.parentConversationId,
+      createdAtMs: nowMs,
+      delivery: "defer",
+      inboundMessageId,
+      input: {
+        authorId: resultAuthorId(args.sender.actor),
+        authorIdentityId: SYSTEM_IDENTITY_ID,
+        metadata,
+        text: renderResultInput(
+          args.sender,
+          { output: args.reply.text, status: "completed" },
+          openSiblings,
+        ),
+      },
+      receivedAtMs: nowMs,
+      source: "event",
+    },
+    queue: args.queue,
+    queueDelayMs: EVENT_WAIT_MS,
+    state: args.state,
+  });
+}
+
 type ChildAgentInput = { invocationId: string; kind: "message" | "result" };
 
 /**
@@ -299,7 +371,12 @@ function childAgentInput(message: InboundMessage): ChildAgentInput | undefined {
   ) {
     return undefined;
   }
-  if (metadata.event.eventType === AGENT_MESSAGE_EVENT_TYPE) {
+  // A reply, like a message, can arrive before its sender's agent invocation
+  // ends.
+  if (
+    metadata.event.eventType === AGENT_MESSAGE_EVENT_TYPE ||
+    metadata.event.eventType === AGENT_REPLY_EVENT_TYPE
+  ) {
     return { invocationId: metadata.event.identifier, kind: "message" };
   }
   return isAgentInvocationResultEventType(metadata.event.eventType)
@@ -457,7 +534,16 @@ export function createChildConversationWorker(
     state?: StateAdapter;
   },
 ) {
-  const invocationWorker = createAgentInvocationWorker(agentRunner, options);
+  const invocationWorker = createAgentInvocationWorker(agentRunner, {
+    ...options,
+    sendReply: async (sender, reply) =>
+      await enqueueAgentReplyToParent({
+        queue: options.queue,
+        reply,
+        sender,
+        state: options.state,
+      }),
+  });
   return async (
     context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {

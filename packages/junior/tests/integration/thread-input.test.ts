@@ -295,12 +295,13 @@ describe("Thread input", () => {
         destination: slackDestination,
         kind: "thread",
       });
-      // Only the Agent invocation reports to the parent.
+      // A person's Turn sends nothing to the parent, and a completed Agent
+      // invocation without a `reply` sends nothing either.
       const parentWork = await getConversationWorkState({
         conversationId: slackParentConversationId,
         state: harness.state,
       });
-      expect(parentWork?.messages).toHaveLength(1);
+      expect(parentWork?.messages ?? []).toEqual([]);
     } finally {
       await harness.close();
     }

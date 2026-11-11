@@ -59,7 +59,7 @@ attributes. Nested logs and spans inherit them.
 | Queued but late, repeated, or no-op  | `conversation.queue.*`, `conversation.work.*`, spans `queue.publish`, `queue.process`                | `chat/task-execution/`                                          |
 | No final Slack reply                 | `agent.turn.*`, `slack.thread.post.failed`, `slack.action.*`, spans `chat.turn`, `chat.reply`        | `chat/providers/slack/`                                         |
 | Timeout, empty answer, bad reasoning | `agent.turn.*`, spans `gen_ai.invoke_agent`, `gen_ai.chat`, `agent.step.prepare`                     | `chat/agent/`                                                   |
-| Automation run posted nothing        | `app.turn.answer` on `agent.message.generated`, `agent.turn.answer.*`                                | `chat/services/turn-result.ts`                                  |
+| Gated Turn sent nothing              | `app.turn.answer` on `agent.message.generated`, `agent.turn.answer.*`                                | `chat/services/turn-result.ts`                                  |
 | Slow or wrong action review          | `guardian.action_review.*`, span `guardian.action_review`, `app.guardian.*` on `gen_ai.execute_tool` | `chat/guardian/gate.ts`                                         |
 | Tool, MCP, or sandbox failure        | `agent.tool_call.failed`, `mcp.*`, `sandbox.*`, spans `gen_ai.execute_tool`, `sandbox.*`, `bash`     | `chat/tool-support/`, `chat/sandbox/`                           |
 | Code Mode script slow or failed      | `app.codemode.*` on `gen_ai.execute_tool` (`codemode`), nested `gen_ai.execute_tool` spans           | `chat/codemode/telemetry.ts`                                    |

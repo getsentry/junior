@@ -205,7 +205,8 @@ describe("agent invocation worker", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-              text: "Partial result",
+              reply: { text: "Partial result", toolCallId: "call-reply" },
+              text: "",
             },
           };
         },
@@ -319,7 +320,8 @@ describe("agent invocation worker", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-              text: "Checked both paths.",
+              reply: { text: "Checked both paths.", toolCallId: "call-reply" },
+              text: "",
             },
           };
         },

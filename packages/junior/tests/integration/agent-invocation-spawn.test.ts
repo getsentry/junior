@@ -11,7 +11,10 @@ import {
   completeAgentInvocation,
   getAgentInvocation,
 } from "@/chat/agent-invocations/store";
-import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
+import {
+  enqueueAgentInvocationResult,
+  enqueueAgentReplyToParent,
+} from "@/chat/agent-invocations/result";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
@@ -532,20 +535,18 @@ describe("agent invocation spawn and result delivery", () => {
         },
         2_500,
       );
-      // Both children finish before either result reaches the parent.
-      const result = await completeAgentInvocation({
-        invocationId: first.invocationId,
-        result: "First finding.",
-        status: "completed",
-      });
+      // The sibling finishes before the first child's reply reaches the
+      // parent.
       await completeAgentInvocation({
         invocationId: sibling.invocationId,
         result: "Second finding.",
         status: "completed",
       });
 
-      await enqueueAgentInvocationResult(result as TerminalAgentInvocation, {
+      await enqueueAgentReplyToParent({
         queue,
+        reply: { text: "First finding.", toolCallId: "call-reply" },
+        sender: first,
         state,
       });
 

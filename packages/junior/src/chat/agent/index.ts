@@ -80,10 +80,8 @@ import {
 } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
-import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
-import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import {
-  REPLY_TOOL_NAME,
+  isAnswerToolName,
   readTurnAnswer,
   remindMissingAnswer,
 } from "@/chat/turn-answer";
@@ -113,6 +111,7 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import {
+  GATED_TURN_LIMIT_WRAP_UP_MESSAGE,
   TURN_LIMIT_WRAP_UP_MESSAGE,
   TurnBudgetExceededError,
   TurnToolCallLimitExceededError,
@@ -1057,6 +1056,10 @@ async function executeAgentRunInPrivacyContext(
             reason: `${exclusiveTool} must be the only tool call in its assistant message; reissue it alone`,
           };
         }
+        // A gated Turn must answer, so its answer tool runs past a limit.
+        if (behavior.gated && isAnswerToolName(toolCall.name)) {
+          return undefined;
+        }
         // Past a limit, the first step is blocked so the model replies with
         // its progress. A later tool call ends the turn: Pi turns exceptions
         // into tool errors, so block + terminate and rethrow after the step.
@@ -1085,7 +1088,12 @@ async function executeAgentRunInPrivacyContext(
             "app.ai.cost.total_usd": turnCostUsd,
             "app.ai.tool_call_count": toolCallCount,
           });
-          return { block: true, reason: TURN_LIMIT_WRAP_UP_MESSAGE };
+          return {
+            block: true,
+            reason: behavior.gated
+              ? GATED_TURN_LIMIT_WRAP_UP_MESSAGE
+              : TURN_LIMIT_WRAP_UP_MESSAGE,
+          };
         }
         // The tool-call total only grows, so a stop under it came from spend.
         const limitError =
@@ -1118,13 +1126,7 @@ async function executeAgentRunInPrivacyContext(
             ? projectedResult
             : undefined;
         // A reply, blocked report, or no-reply is the last step of the run.
-        if (
-          (toolCall.name === REPLY_TOOL_NAME ||
-            toolCall.name === REPORT_BLOCKED_TOOL_NAME ||
-            toolCall.name === NO_REPLY_TOOL_NAME) &&
-          !isError &&
-          !override
-        ) {
+        if (isAnswerToolName(toolCall.name) && !isError && !override) {
           return { terminate: true };
         }
         return override;
@@ -1137,6 +1139,10 @@ async function executeAgentRunInPrivacyContext(
           if (hookSignal?.aborted) {
             return undefined;
           }
+          // A stop of this Conversation ends the Turn at the next step, also
+          // when no stop request reached this worker.
+          await durability.checkStop?.();
+          signal?.throwIfAborted();
           // Pi waits for this hook before each later model call. The span
           // shows that wait between `gen_ai.chat` spans.
           const stepUpdate = await withSpan(
@@ -1660,7 +1666,11 @@ async function executeAgentRunInPrivacyContext(
       ...(behavior.gated
         ? {
             answer: readTurnAnswer(turnMessages()) ?? "missing",
-            missingAnswerFails: Boolean(run.dispatch),
+            // The dispatch Turn of an Automation run fails without an
+            // answer, so the run history shows it.
+            missingAnswerError: run.dispatch
+              ? "Automation run ended without an answer."
+              : behavior.missingAnswerError,
           }
         : undefined),
     });

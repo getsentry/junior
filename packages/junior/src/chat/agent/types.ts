@@ -228,6 +228,11 @@ export type AgentDurability = {
    * Lease. The run checks it before each saved step and each reply.
    */
   checkIn?: () => Promise<boolean>;
+  /**
+   * Read the stored stop of the Conversation and abort the Run's signal when
+   * it stopped. The run calls it before each later model step.
+   */
+  checkStop?: () => Promise<void>;
   drainSteeringMessages?: (
     accept: (messages: AgentSteeringMessage[]) => Promise<void>,
   ) => Promise<AgentSteeringMessage[]>;

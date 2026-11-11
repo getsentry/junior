@@ -76,6 +76,14 @@ export function getAgentInvocationMessageId(invocationId: string): string {
   return `agent-invocation:${invocationId}:input`;
 }
 
+/** Return the parent mailbox identity of one child agent `reply` call. */
+export function getAgentReplyMessageId(
+  childConversationId: string,
+  toolCallId: string,
+): string {
+  return `agent-reply:${childConversationId}:${toolCallId}`;
+}
+
 const RESULT_MESSAGE_PREFIX = "agent-invocation:";
 const RESULT_MESSAGE_SUFFIX = ":result";
 
