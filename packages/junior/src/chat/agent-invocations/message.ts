@@ -47,7 +47,7 @@ export function bindMessageAgent(
     const queue =
       typeof options.queue === "function" ? options.queue() : options.queue;
     if (input.to === PARENT_AGENT_TARGET) {
-      // A Turn on the shared Conversation worker has no open agent
+      // A Turn on the Conversation loop has no open agent
       // invocation. Its newest one names the child for the parent.
       const sender =
         (await getActiveAgentInvocationForConversation(run.conversationId)) ??

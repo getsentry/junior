@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 /** Run a mailbox Turn and store its assistant Messages. */
 import { blockRunAutomation } from "@/chat/automations/block-run";
 import {
@@ -89,6 +90,7 @@ import {
   getEventBatchDelayMs,
   sourceFromTurnInput,
   turnInputFactsFromConversationMessage,
+  type MailboxTurnInput,
   type MailboxTurnWork,
   type TurnInputFacts,
 } from "@/chat/task-execution/mailbox-turn";
@@ -156,6 +158,21 @@ function resumedTimerWatchCredentialSubject(
     : undefined;
 }
 
+// The delegated subject that every input of a batch carries, if any.
+function sharedDelegatedSubject(
+  batch: readonly MailboxTurnInput[],
+): CredentialSubject | undefined {
+  const subjects = batch.map((entry) =>
+    entry.credentialContext && "subject" in entry.credentialContext
+      ? entry.credentialContext.subject
+      : undefined,
+  );
+  const first = subjects[0];
+  return first && subjects.every((subject) => isDeepStrictEqual(subject, first))
+    ? first
+    : undefined;
+}
+
 function hasLostTurnInputCommit(error: unknown): boolean {
   const cause = getConversationTurnBoundaryError(error)?.cause ?? error;
   return isTurnInputCommitLostError(error) || isTurnInputCommitLostError(cause);
@@ -174,18 +191,21 @@ function sharedAuthorIdentityId(
   return ids.size === 1 ? [...ids][0] : undefined;
 }
 
-/** The answer or failure of one child agent Turn, for its parent agent. */
-export type ParentAnswer =
+/**
+ * What one child agent Turn sends its parent agent: its `reply`, or a
+ * blocked or failed result.
+ */
+export type ParentResult =
   | { kind: "reply"; reply: Reply }
   | { kind: "blocked" | "failed"; text: string };
 
 /**
- * Send one child agent Turn's answer to the parent agent. `actor` is the
- * Actor of the Turn. Repeat calls for one answer are safe.
+ * Send one child agent Turn's result to the parent agent. `actor` is the
+ * Actor of the Turn. Repeat calls for one result are safe.
  */
 export type DeliverToParent = (args: {
   actor: Actor;
-  answer: ParentAnswer;
+  result: ParentResult;
   conversationId: string;
   turnId: string;
 }) => Promise<void>;
@@ -193,7 +213,7 @@ export type DeliverToParent = (args: {
 /**
  * Create the shared mailbox worker for web and event Turns of every
  * Conversation kind. `deliverMessage` posts to a Location, and
- * `deliverToParent` sends a child agent's answers to its parent.
+ * `deliverToParent` sends a child agent's results to its parent.
  */
 export function createConversationTurnWorker(
   agentRunner: AgentRunner,
@@ -340,15 +360,20 @@ export function createConversationTurnWorker(
     const { actor, author } = turnInputFacts;
     const instructionInputs = instructionForInputs(inputs);
     const { text } = instructionInputs;
-    // A timer Turn stays system-acted but may use its creator's grants.
+    // A timer Turn stays system-acted but may use its creator's grants. So
+    // does the result of a child agent that a timer Turn spawned.
     let credentialSubject: CredentialSubject | undefined;
     if (actor.platform === "system") {
       credentialSubject =
         resolved.kind === "mailbox"
-          ? timerWatchCredentialSubject(
+          ? (timerWatchCredentialSubject(
               context.conversationId,
               resolved.batch.map((entry) => entry.message),
-            )
+            ) ??
+            resumedTimerWatchCredentialSubject(
+              context.conversationId,
+              sharedDelegatedSubject(resolved.batch),
+            ))
           : resumedTimerWatchCredentialSubject(
               context.conversationId,
               savedTurn?.credentialSubject,
@@ -382,7 +407,7 @@ export function createConversationTurnWorker(
       : ["interactive-auth"];
     const deliverToProvider =
       postsToProvider && behavior.delivery === "location";
-    const sendToParent = async (answer: ParentAnswer): Promise<void> => {
+    const sendToParent = async (result: ParentResult): Promise<void> => {
       if (!deliverToParent) {
         throw new Error(
           `Conversation ${context.conversationId} cannot reach its parent agent`,
@@ -390,7 +415,7 @@ export function createConversationTurnWorker(
       }
       await deliverToParent({
         actor,
-        answer,
+        result,
         conversationId: context.conversationId,
         turnId,
       });

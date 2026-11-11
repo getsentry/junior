@@ -55,7 +55,7 @@ import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orches
 import { isTurnExecutionLimitExceededError } from "@/chat/services/turn-limit";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { SandboxRef } from "@/chat/sandbox/ref";
-import { supersedeOpenPersonTurn } from "./thread-turn";
+import { supersedeOpenMailboxTurn } from "./thread-turn";
 import {
   agentTypeInstructions,
   agentTypeStartsWithParentHistory,
@@ -776,7 +776,7 @@ export function createAgentInvocationWorker(
           "This task was not resumed. Newer work for this child agent started, so this task ended without a result.",
         exceptInvocationId: invocation.invocationId,
       });
-      await supersedeOpenPersonTurn(invocation.childConversationId);
+      await supersedeOpenMailboxTurn(invocation.childConversationId);
       invocation =
         (await markAgentInvocationRunning(invocation.invocationId)) ??
         invocation;

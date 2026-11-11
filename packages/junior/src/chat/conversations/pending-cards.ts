@@ -87,22 +87,19 @@ async function selectChildResultCards(
       ? await getAgentInvocation(invocationId)
       : undefined;
     if (!invocation) continue;
-    // A `reply` comes from the child's newest Turn, which can run after the
-    // agent invocation that names the child ended. Its cards are the newest.
-    if (replyInvocationId) {
-      await selectTurnCards(invocation.childConversationId, selection);
-      continue;
-    }
+    const turnId = getAgentInvocationTurnId(invocation.invocationId);
     // The child records its terminal Turn event before it reports the result.
     const terminal = await events.loadByIdempotencyKey(
       invocation.childConversationId,
-      `turn:${getAgentInvocationTurnId(invocation.invocationId)}:terminal`,
+      `turn:${turnId}:terminal`,
     );
-    if (!terminal) continue;
+    // A `reply` ends the child's Turn, but it can reach the parent before the
+    // child records that end. Then its cards are the newest ones.
+    if (!terminal && !replyInvocationId) continue;
     await selectTurnCards(
       invocation.childConversationId,
       selection,
-      terminal.seq,
+      terminal?.seq,
     );
   }
 }

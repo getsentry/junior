@@ -9,7 +9,7 @@ import {
   getAgentInvocationTurnId,
   getAgentReplyMessageId,
 } from "@/chat/agent-invocations/ids";
-import { enqueueAgentAnswerToParent } from "@/chat/agent-invocations/result";
+import { enqueueChildResultToParent } from "@/chat/agent-invocations/result";
 import {
   completeAgentInvocation,
   getActiveAgentInvocationForConversation,
@@ -89,8 +89,8 @@ describe("agent invocation left over from earlier work", () => {
         const orphanTurnId = getAgentInvocationTurnId(orphan.invocationId);
         const reply = { text: "Orphan found it", toolCallId: "call-reply" };
         if (sentReply) {
-          await enqueueAgentAnswerToParent({
-            answer: { kind: "reply", reply },
+          await enqueueChildResultToParent({
+            result: { kind: "reply", reply },
             messageKey: reply.toolCallId,
             queue,
             sender: orphan,

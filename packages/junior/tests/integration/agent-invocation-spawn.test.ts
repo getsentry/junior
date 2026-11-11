@@ -15,7 +15,7 @@ import {
 } from "@/chat/agent-invocations/store";
 import {
   enqueueAgentInvocationResult,
-  enqueueAgentAnswerToParent,
+  enqueueChildResultToParent,
 } from "@/chat/agent-invocations/result";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -477,9 +477,9 @@ describe("agent invocation spawn and result delivery", () => {
         },
       ]);
       // The `reply` can reach the parent before the child's Turn ends.
-      await enqueueAgentAnswerToParent({
+      await enqueueChildResultToParent({
         queue,
-        answer: {
+        result: {
           kind: "reply",
           reply: {
             text: "Opened getsentry/junior#1.",
@@ -544,9 +544,9 @@ describe("agent invocation spawn and result delivery", () => {
         status: "blocked",
       });
 
-      await enqueueAgentAnswerToParent({
+      await enqueueChildResultToParent({
         queue,
-        answer: {
+        result: {
           kind: "reply",
           reply: { text: "First finding.", toolCallId: "call-reply" },
         },
@@ -586,9 +586,9 @@ describe("agent invocation spawn and result delivery", () => {
         2_500,
       );
       await markAgentInvocationRunning(replied.invocationId);
-      await enqueueAgentAnswerToParent({
+      await enqueueChildResultToParent({
         queue,
-        answer: {
+        result: {
           kind: "reply",
           reply: { text: "First finding.", toolCallId: "call-reply" },
         },
@@ -647,9 +647,9 @@ describe("agent invocation spawn and result delivery", () => {
       // Both replies start before either reaches the parent's mailbox.
       await Promise.all(
         siblings.map((sender) =>
-          enqueueAgentAnswerToParent({
+          enqueueChildResultToParent({
             queue,
-            answer: {
+            result: {
               kind: "reply",
               reply: { text: "Finding.", toolCallId: "call-reply" },
             },

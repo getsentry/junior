@@ -310,7 +310,7 @@ describe("messageAgent", () => {
   });
 
   // A child with an open agent invocation still runs input on the agent
-  // invocation worker, not on its shared Conversation loop.
+  // invocation worker, not on its Conversation loop.
   it("starts a new agent invocation when a grandchild messages a child with open work, even after a stop", async () => {
     const { fixture } = await prepareSlackParentConversation();
     const runner = readRunsAgentRunner();

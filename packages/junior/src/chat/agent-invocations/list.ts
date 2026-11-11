@@ -11,6 +11,8 @@ import {
   juniorAgentInvocations,
   juniorConversations,
 } from "@/db/schema";
+import { listActiveMailboxTurns } from "@/chat/task-execution/mailbox-turn";
+import { getConversationWorkState } from "@/chat/task-execution/store";
 import { getAgentInvocationIdForResult, isAgentReplyMessageId } from "./ids";
 import {
   invocationFromRow,
@@ -46,6 +48,8 @@ export function isChildAgentSessionStopped(
 /** Stored facts of a child Conversation that its listing shows. */
 type ChildConversationFacts = Pick<ChildAgent, "archivedAtMs" | "kind"> & {
   stoppedAtMs?: number;
+  /** The child's work runs on the Conversation loop. */
+  onConversationLoop?: boolean;
 };
 
 /** Return the child state that one child's agent invocations show. */
@@ -109,13 +113,17 @@ function childAgentFromInvocations(
     // A `replaced` result means open child work starts a later agent
     // invocation on this child, so the child has not finished. Only a stop
     // skips a result.
+    // A Turn on the Conversation loop has no agent invocation, so its
+    // work shows that the child still runs.
     status: isChildAgentSessionStopped(latest, stoppedAtMs)
       ? "stopped"
-      : terminal?.parentMailboxStatus === "replaced"
-        ? "pending"
-        : terminal?.parentMailboxStatus === "skipped"
-          ? "stopped"
-          : current.status,
+      : terminal && facts.onConversationLoop
+        ? "running"
+        : terminal?.parentMailboxStatus === "replaced"
+          ? "pending"
+          : terminal?.parentMailboxStatus === "skipped"
+            ? "stopped"
+            : current.status,
     task: task.input,
     ...(task.title ? { title: task.title } : undefined),
     updatedAtMs: Math.max(
@@ -163,12 +171,30 @@ export async function listChildAgents(
     .select({
       archivedAt: juniorConversations.archivedAt,
       conversationId: juniorConversations.conversationId,
+      executionStatus: juniorConversations.executionStatus,
       kind: juniorConversations.kind,
       parentConversationId: juniorConversations.parentConversationId,
       stoppedAt: juniorConversations.stoppedAt,
     })
     .from(juniorConversations)
     .where(inArray(juniorConversations.conversationId, [...byChild.keys()]));
+  const onConversationLoop = new Set(
+    (
+      await Promise.all(
+        conversations
+          .filter(
+            (row) =>
+              row.executionStatus === "running" ||
+              row.executionStatus === "paused",
+          )
+          .map(async (row) =>
+            (await runsOnConversationLoop(row.conversationId))
+              ? row.conversationId
+              : undefined,
+          ),
+      )
+    ).filter((id) => id !== undefined),
+  );
   const factsByChild = new Map(
     conversations.map((row): [string, ChildConversationFacts] => [
       row.conversationId,
@@ -180,6 +206,7 @@ export async function listChildAgents(
         ...(row.stoppedAt
           ? { stoppedAtMs: row.stoppedAt.getTime() }
           : undefined),
+        onConversationLoop: onConversationLoop.has(row.conversationId),
       },
     ]),
   );
@@ -193,6 +220,23 @@ export async function listChildAgents(
       ),
     )
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs);
+}
+
+/**
+ * Return whether a child's work runs on the Conversation loop. That Turn
+ * holds its input in the mailbox until it commits it, and then keeps an open
+ * mailbox Turn. Agent invocation input and Turns are not such work.
+ */
+async function runsOnConversationLoop(conversationId: string) {
+  const work = await getConversationWorkState({ conversationId });
+  if (
+    work?.execution.pendingMessages.some(
+      (message) => message.input.metadata?.kind !== "agent_invocation",
+    )
+  ) {
+    return true;
+  }
+  return (await listActiveMailboxTurns(conversationId)).length > 0;
 }
 
 /**

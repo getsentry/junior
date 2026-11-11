@@ -5,7 +5,7 @@ import {
   createAgentInvocation,
   createAgentInvocationForMessage,
 } from "@/chat/agent-invocations/create";
-import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
+import { enqueueChildResultToParent } from "@/chat/agent-invocations/result";
 import {
   completeAgentInvocation,
   getAgentInvocation,
@@ -17,10 +17,7 @@ import {
   enqueueAgentInvocation,
   createAndEnqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
-import type {
-  CreateAgentInvocationInput,
-  TerminalAgentInvocation,
-} from "@/chat/agent-invocations/types";
+import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
@@ -465,7 +462,7 @@ describe("agent invocation identity and concurrency", () => {
       clock.mockReturnValue(clock() + 120_000);
       await harness.drainQueuedWork();
 
-      // The timer runs on the child's shared Conversation loop, with no agent
+      // The timer runs on the child's Conversation loop, with no agent
       // invocation, as the event Actor, with an event Source and the grants
       // of the person who set it.
       const requests = harness.requests();
@@ -601,16 +598,33 @@ describe("agent invocation identity and concurrency", () => {
   });
 
   // A child with no open agent invocation, such as after a Watch Event Turn
-  // that spawned a helper, gets the helper's result on its shared
-  // Conversation loop. That Turn answers the parent itself, and a Task that
-  // ends without an answer after the re-ask tells the parent. It runs as the
-  // web user who started it, but cannot wait for that person to sign in.
+  // that spawned a helper, gets the helper's `reply` on its Conversation
+  // loop. That Turn answers the parent itself. After the re-ask, a Task that
+  // ends without an answer tells the parent, and a Thread stays quiet. It
+  // runs as the web user who started it, but cannot wait for that person to
+  // sign in.
   it.each([
-    { name: "a reply", finding: "Helper fact: 42.", expected: "Helper fact" },
-    { name: "no answer", finding: NO_ANSWER, expected: "No reply was sent." },
-  ])(
-    "runs a grandchild result on the child's Conversation loop with $name",
-    async ({ finding, expected }) => {
+    {
+      name: "a Task reply",
+      kind: "task",
+      finding: "Helper fact: 42.",
+      expected: ["Helper fact"],
+    },
+    {
+      name: "a Task with no answer",
+      kind: "task",
+      finding: NO_ANSWER,
+      expected: ["No reply was sent."],
+    },
+    {
+      name: "a Thread with no answer",
+      kind: "thread",
+      finding: NO_ANSWER,
+      expected: [],
+    },
+  ] as const)(
+    "runs a grandchild reply on the child's Conversation loop for $name",
+    async ({ expected, finding, kind }) => {
       const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
       const harness = await createHarness(taskModel);
       try {
@@ -624,6 +638,7 @@ describe("agent invocation identity and concurrency", () => {
           ...baseInput,
           actor,
           idempotencyKey: "loop-child",
+          kind,
         });
         await completeAgentInvocation({
           invocationId: child.invocationId,
@@ -636,13 +651,15 @@ describe("agent invocation identity and concurrency", () => {
           idempotencyKey: "loop-helper",
           parentConversationId: child.childConversationId,
         });
-        const helperResult = (await completeAgentInvocation({
-          errorMessage: finding,
-          invocationId: helper.invocationId,
-          status: "blocked",
-        })) as TerminalAgentInvocation;
-        await enqueueAgentInvocationResult(helperResult, {
+        await enqueueChildResultToParent({
+          actor,
+          messageKey: "helper-reply",
           queue: harness.queue,
+          result: {
+            kind: "reply",
+            reply: { text: finding, toolCallId: "helper-reply" },
+          },
+          sender: helper,
           state: harness.state,
         });
         // The child Turn runs after the Event burst window, as on a root.
@@ -672,10 +689,8 @@ describe("agent invocation identity and concurrency", () => {
           state: harness.state,
         });
         expect(
-          parentWork?.messages.filter((message) =>
-            message.input.text.includes(expected),
-          ),
-        ).toHaveLength(1);
+          (parentWork?.messages ?? []).map((message) => message.input.text),
+        ).toEqual(expected.map((text) => expect.stringContaining(text)));
       } finally {
         clock.mockRestore();
         await harness.close();

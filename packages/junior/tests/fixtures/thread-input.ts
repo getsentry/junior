@@ -103,7 +103,7 @@ export async function createHarness() {
     onInvocationRun: (fn: () => Promise<never>) => {
       onInvocationRun = fn;
     },
-    /** Run `fn` in each later run on the shared Conversation loop. */
+    /** Run `fn` in each later run on the Conversation loop. */
     onPersonRun: (fn: (run: AgentRun) => Promise<never>) => {
       onPersonRun = fn;
     },
@@ -136,21 +136,24 @@ export async function finishInvocation(
   });
 }
 
-/** Start a named child agent as a Thread. */
+/** Start a named child agent, a Thread unless `kind` says otherwise. */
 export async function startThread(
   harness: Harness,
   idempotencyKey: string,
   input: Partial<
-    Pick<CreateAgentInvocationInput, "destination" | "parentConversationId">
+    Pick<
+      CreateAgentInvocationInput,
+      "destination" | "kind" | "parentConversationId"
+    >
   > = {},
 ) {
   const created = await createAndEnqueueAgentInvocation(
     {
       ...slackInvocationInput,
+      kind: "thread",
       ...input,
       agentName: harness.agentName,
       idempotencyKey,
-      kind: "thread",
     },
     {
       conversationStore: harness.conversationStore,

@@ -10,7 +10,7 @@ import {
 } from "@/chat/agent-invocations/store";
 import {
   enqueueAgentInvocationResult,
-  enqueueAgentAnswerToParent,
+  enqueueChildResultToParent,
 } from "@/chat/agent-invocations/result";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import type { AgentRun } from "@/chat/agent/types";
@@ -238,8 +238,8 @@ describe("nested agent invocations", () => {
         invocationId: busy.invocationId,
         status: "blocked",
       });
-      await enqueueAgentAnswerToParent({
-        answer: {
+      await enqueueChildResultToParent({
+        result: {
           kind: "reply",
           reply: { text: "Sibling finding.", toolCallId: "call-reply" },
         },

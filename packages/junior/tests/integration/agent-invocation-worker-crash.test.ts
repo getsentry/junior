@@ -3,9 +3,16 @@ import type { AgentRun } from "@/chat/agent/types";
 import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
-import { createAgentInvocationForMessage } from "@/chat/agent-invocations/create";
+import {
+  createAgentInvocation,
+  createAgentInvocationForMessage,
+} from "@/chat/agent-invocations/create";
 import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
-import { getAgentInvocation } from "@/chat/agent-invocations/store";
+import {
+  completeAgentInvocation,
+  getAgentInvocation,
+} from "@/chat/agent-invocations/store";
+import { enqueueChildResultToParent } from "@/chat/agent-invocations/result";
 import {
   buildAgentInvocationInboundMessage,
   createAndEnqueueAgentInvocation,
@@ -159,6 +166,78 @@ describe("agent invocation worker crash", () => {
       await fixture.close();
     }
   });
+
+  // A child Turn on the Conversation loop has no agent invocation to fail.
+  // When every try is killed, a Task's parent learns it, and a Thread keeps
+  // the stored failure.
+  it.each([
+    { kind: "task" as const, notices: 1 },
+    { kind: "thread" as const, notices: 0 },
+  ])(
+    "tells only a Task's parent when every try of its Conversation loop Turn is killed ($kind)",
+    async ({ kind, notices }) => {
+      vi.useFakeTimers({
+        now: 1_800_000_000_000,
+        toFake: ["Date", "setInterval", "clearInterval"],
+      });
+      const { conversationStore, fixture } = await prepareParentConversation();
+      const { killWorker, queue, state } = await createConversationWorkHarness(
+        neverRunAgentRunner(),
+      );
+      try {
+        const child = await createAgentInvocation({
+          ...invocationInput,
+          idempotencyKey: `loop-crash-${kind}`,
+          kind,
+        });
+        await completeAgentInvocation({
+          invocationId: child.invocationId,
+          result: "Watching.",
+          status: "completed",
+        });
+        const helper = await createAgentInvocation({
+          ...invocationInput,
+          idempotencyKey: `loop-crash-helper-${kind}`,
+          parentConversationId: child.childConversationId,
+        });
+        // The helper's `reply` wakes the child on the Conversation loop.
+        await enqueueChildResultToParent({
+          messageKey: "helper-reply",
+          queue,
+          result: {
+            kind: "reply",
+            reply: { text: "Helper fact.", toolCallId: "helper-reply" },
+          },
+          sender: helper,
+          state,
+        });
+        vi.setSystemTime(Date.now() + 60_000);
+        for (let tries = 1; tries <= CONVERSATION_WORK_MAX_RETRIES; tries++) {
+          // Injected fault: the worker of this try is killed mid-run.
+          await killWorker(queue.takeMessageFor(child.childConversationId));
+          await runHeartbeatAfterLeasesExpire(queue);
+        }
+
+        const parent = await getConversationWorkState({
+          conversationId: parentConversationId,
+        });
+        expect(
+          parent?.messages
+            .map((message) => message.input.text)
+            .filter((text) => text.includes("worker failed repeatedly")),
+        ).toEqual(
+          Array.from({ length: notices }, () =>
+            expect.stringMatching(/status="failed"/),
+          ),
+        );
+        await expect(
+          conversationStore.get({ conversationId: child.childConversationId }),
+        ).resolves.toMatchObject({ execution: { status: "failed" } });
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
 
   it("resumes a killed child from its last save", async () => {
     vi.useFakeTimers({

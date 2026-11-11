@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   enqueueAgentInvocationResult,
-  enqueueAgentAnswerToParent,
+  enqueueChildResultToParent,
 } from "@/chat/agent-invocations/result";
 import {
   createAgentInvocation,
@@ -348,9 +348,9 @@ describe("stopping child agents", () => {
         queue: harness.queue,
         state: harness.state,
       });
-      await enqueueAgentAnswerToParent({
+      await enqueueChildResultToParent({
         queue: harness.queue,
-        answer: {
+        result: {
           kind: "reply",
           reply: { text: "Open helper finding.", toolCallId: "call-reply" },
         },

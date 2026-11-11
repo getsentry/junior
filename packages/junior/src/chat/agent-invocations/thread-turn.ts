@@ -1,5 +1,5 @@
 /**
- * A person's Turn in a Thread runs on the shared Conversation worker. A
+ * A person's Turn in a Thread runs on the Conversation loop. A
  * person's Turn and an Agent invocation Turn are never open at the same time.
  */
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
@@ -16,7 +16,7 @@ import { supersedeOpenMailboxTurns } from "@/chat/task-execution/supersede-turns
  * new input does on a root. Only a Turn that waits for sign-in or lost its
  * worker can be open here: a yielded Turn resumes before new input.
  */
-export async function supersedeOpenPersonTurn(
+export async function supersedeOpenMailboxTurn(
   conversationId: string,
 ): Promise<void> {
   if ((await listActiveMailboxTurns(conversationId)).length === 0) {

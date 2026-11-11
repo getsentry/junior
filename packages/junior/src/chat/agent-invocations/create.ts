@@ -102,7 +102,7 @@ function sameCreateInput(
 
 /**
  * A stopped child agent cannot start or give work to child agents until its
- * parent gives it new work. A Turn on the child's shared Conversation worker
+ * parent gives it new work. A Turn on the child's Conversation loop
  * has no open agent invocation, but it can. A root Conversation has no agent
  * invocation, so it always passes. `open` is the parent's open work from
  * `listOpenAgentInvocations`.
@@ -257,8 +257,9 @@ export async function createAgentInvocationFromLatest(
     input: string;
     invocationId: string;
     latest: AgentInvocation;
-    /** Actor, credentials, and Source for watch events. */
-    runAs?: Pick<AgentInvocation, "actor" | "credentialContext" | "source">;
+    /** Actor, credentials, and Source for watch events and results. */
+    runAs?: Pick<AgentInvocation, "actor" | "credentialContext"> &
+      Partial<Pick<AgentInvocation, "source">>;
   },
   nowMs = Date.now(),
 ): Promise<AgentInvocation> {
