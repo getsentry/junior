@@ -701,6 +701,13 @@
       "when": 1794351117170,
       "tag": "0099_conversation_last_message_at",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1794360831303,
+      "tag": "0100_automation_task_kind_repair",
+      "breakpoints": true
     }
   ]
 }
