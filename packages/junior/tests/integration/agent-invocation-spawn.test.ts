@@ -7,6 +7,7 @@ import {
   getAgentInvocationResultMessageId,
   getAgentInvocationTurnId,
   getAgentReplyMessageId,
+  getTurnReplyKey,
 } from "@/chat/agent-invocations/ids";
 import {
   completeAgentInvocation,
@@ -14,9 +15,12 @@ import {
   markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
 import {
+  createDeliverToParent,
   enqueueAgentInvocationResult,
   enqueueChildResultToParent,
 } from "@/chat/agent-invocations/result";
+import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
@@ -30,6 +34,7 @@ import {
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import {
   createLocalSource,
+  createWebSource,
   type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
@@ -567,61 +572,116 @@ describe("agent invocation spawn and result delivery", () => {
     }
   });
 
-  it("does not wait for a running sibling that already replied", async () => {
-    const { fixture } = await prepareSlackParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    try {
-      const replied = await createAgentInvocation(
-        {
-          ...slackInvocationInput,
-          agentName: "analyst",
-          idempotencyKey: "fan-out-replied",
-        },
-        2_000,
-      );
-      const other = await createAgentInvocation(
-        { ...slackInvocationInput, idempotencyKey: "fan-out-other" },
-        2_500,
-      );
-      await markAgentInvocationRunning(replied.invocationId);
-      await enqueueChildResultToParent({
-        queue,
-        result: {
-          kind: "reply",
-          reply: { text: "First finding.", toolCallId: "call-reply" },
-        },
-        messageKey: "call-reply",
-        sender: replied,
-        state,
-      });
-      // The other child finishes while the replied child's row still runs.
-      const terminal = await completeAgentInvocation({
-        invocationId: other.invocationId,
-        errorMessage: "model unavailable",
-        status: "failed",
-      });
-      await enqueueAgentInvocationResult(terminal as TerminalAgentInvocation, {
-        queue,
-        state,
-      });
+  // A running sibling on an agent invocation, or on its Conversation loop
+  // with no open agent invocation, has answered once its reply for that work
+  // is in the parent's mailbox.
+  it.each(["agent invocation", "Conversation loop"] as const)(
+    "does not wait for a running sibling that already replied on its %s",
+    async (runsOn) => {
+      const { fixture } = await prepareSlackParentConversation();
+      const queue = createConversationWorkQueueTestAdapter();
+      const state = getStateAdapter();
+      await state.connect();
+      try {
+        const replied = await createAgentInvocation(
+          {
+            ...slackInvocationInput,
+            agentName: "analyst",
+            idempotencyKey: "fan-out-replied",
+          },
+          2_000,
+        );
+        const other = await createAgentInvocation(
+          { ...slackInvocationInput, idempotencyKey: "fan-out-other" },
+          2_500,
+        );
+        const reply = { text: "First finding.", toolCallId: "call-reply" };
+        let replyId = getAgentReplyMessageId(
+          replied.invocationId,
+          "call-reply",
+        );
+        if (runsOn === "agent invocation") {
+          await markAgentInvocationRunning(replied.invocationId);
+          await enqueueChildResultToParent({
+            queue,
+            result: { kind: "reply", reply },
+            messageKey: "call-reply",
+            sender: replied,
+            state,
+          });
+        } else {
+          // The spawn ended. A Watch Event Turn on the child's Conversation
+          // loop replied and is still open.
+          await completeAgentInvocation({
+            invocationId: replied.invocationId,
+            result: "Watching.",
+            status: "completed",
+          });
+          await getDb()
+            .update(juniorConversations)
+            .set({ executionStatus: "running" })
+            .where(
+              eq(
+                juniorConversations.conversationId,
+                replied.childConversationId,
+              ),
+            );
+          const turnId = "turn_watch-event";
+          await saveTurnCheckpoint({
+            actor: EVENT_SYSTEM_ACTOR,
+            conversationId: replied.childConversationId,
+            destination: slackInvocationInput.destination,
+            messages: [
+              {
+                role: "user",
+                content: [{ type: "text", text: "Deploy failed." }],
+                timestamp: 3_000,
+              },
+            ],
+            mode: "running",
+            sliceId: 1,
+            source: createWebSource(replied.childConversationId, "public"),
+            surface: "api",
+            turnId,
+          });
+          await createDeliverToParent({ queue, state })({
+            actor: EVENT_SYSTEM_ACTOR,
+            conversationId: replied.childConversationId,
+            result: { kind: "reply", reply },
+            turnId,
+          });
+          replyId = getAgentReplyMessageId(
+            replied.invocationId,
+            getTurnReplyKey(turnId, "call-reply"),
+          );
+        }
+        // The other child finishes while the replied child still runs.
+        const terminal = await completeAgentInvocation({
+          invocationId: other.invocationId,
+          errorMessage: "model unavailable",
+          status: "failed",
+        });
+        await enqueueAgentInvocationResult(
+          terminal as TerminalAgentInvocation,
+          { queue, state },
+        );
 
-      const parentWork = await getConversationWorkState({
-        conversationId: slackParentConversationId,
-        state,
-      });
-      expect(
-        parentWork?.messages.map((message) => message.inboundMessageId),
-      ).toEqual([
-        getAgentReplyMessageId(replied.invocationId, "call-reply"),
-        getAgentInvocationResultMessageId(other.invocationId),
-      ]);
-      expect(parentWork?.messages[1]?.input.text).not.toContain("waiting_on");
-    } finally {
-      await fixture.close();
-    }
-  });
+        const parentWork = await getConversationWorkState({
+          conversationId: slackParentConversationId,
+          state,
+        });
+        expect(
+          parentWork?.messages.map((message) => message.inboundMessageId),
+        ).toEqual([
+          replyId,
+          getAgentInvocationResultMessageId(other.invocationId),
+        ]);
+        expect(parentWork?.messages[1]?.input.text).not.toContain("waiting_on");
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
 
   it("names a sibling that replies at the same moment in only one reply", async () => {
     const { fixture } = await prepareSlackParentConversation();

@@ -45,6 +45,7 @@ import {
   getAgentInvocationIdForResult,
   getAgentInvocationResultMessageId,
   getAgentReplyMessageId,
+  getTurnReplyKey,
   isAgentReplyMessageId,
 } from "./ids";
 import {
@@ -466,7 +467,10 @@ export function createDeliverToParent(options: {
     await enqueueChildResultToParent({
       actor,
       result,
-      messageKey: result.kind === "reply" ? result.reply.toolCallId : turnId,
+      messageKey:
+        result.kind === "reply"
+          ? getTurnReplyKey(turnId, result.reply.toolCallId)
+          : turnId,
       queue: options.queue,
       sender,
       state: options.state,

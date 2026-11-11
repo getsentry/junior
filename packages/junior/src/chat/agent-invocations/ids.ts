@@ -86,6 +86,25 @@ export function getAgentReplyMessageId(
   return `${REPLY_MESSAGE_PREFIX}${invocationId}:${toolCallId}`;
 }
 
+/**
+ * Return the key of the `reply` of one Turn on a child's Conversation loop.
+ * It starts with the Turn id, so the parent can tell that the Turn replied.
+ */
+export function getTurnReplyKey(turnId: string, toolCallId: string): string {
+  return `${turnId}:${toolCallId}`;
+}
+
+/** Return whether one parent mailbox identity is the `reply` of one Turn. */
+export function isTurnReplyMessageId(
+  messageId: string,
+  invocationId: string,
+  turnId: string,
+): boolean {
+  return messageId.startsWith(
+    `${REPLY_MESSAGE_PREFIX}${invocationId}:${turnId}:`,
+  );
+}
+
 // Agent invocation ids come from `stableId`.
 const REPLY_MESSAGE_ID = /^agent-reply:(agent-invocation:[0-9a-f]{32}):/;
 

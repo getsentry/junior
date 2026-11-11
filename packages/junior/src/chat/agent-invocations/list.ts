@@ -13,7 +13,12 @@ import {
 } from "@/db/schema";
 import { listActiveMailboxTurns } from "@/chat/task-execution/mailbox-turn";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import { getAgentInvocationIdForResult, isAgentReplyMessageId } from "./ids";
+import {
+  getAgentInvocationIdForResult,
+  isAgentReplyMessageId,
+  isTurnReplyMessageId,
+  parseAgentReplyMessageId,
+} from "./ids";
 import {
   invocationFromRow,
   isTerminalAgentInvocation,
@@ -239,6 +244,57 @@ async function runsOnConversationLoop(conversationId: string) {
   return (await listActiveMailboxTurns(conversationId)).length > 0;
 }
 
+// The children whose open Conversation loop Turn has a reply in the parent's
+// mailbox.
+async function listAnsweredLoopChildren(
+  children: readonly ChildAgent[],
+  parentInboundMessageIds: readonly string[],
+): Promise<string[]> {
+  const replies = parentInboundMessageIds.flatMap((messageId) => {
+    const invocationId = parseAgentReplyMessageId(messageId);
+    return invocationId ? [{ invocationId, messageId }] : [];
+  });
+  if (children.length === 0 || replies.length === 0) {
+    return [];
+  }
+  const senders = await getSqlExecutor()
+    .db()
+    .select({
+      childConversationId: juniorAgentInvocations.childConversationId,
+      invocationId: juniorAgentInvocations.invocationId,
+    })
+    .from(juniorAgentInvocations)
+    .where(
+      inArray(
+        juniorAgentInvocations.invocationId,
+        replies.map((reply) => reply.invocationId),
+      ),
+    );
+  const answered = await Promise.all(
+    children.map(async ({ childConversationId }) => {
+      const turns = await listActiveMailboxTurns(childConversationId);
+      return replies.some(
+        (reply) =>
+          senders.some(
+            (sender) =>
+              sender.invocationId === reply.invocationId &&
+              sender.childConversationId === childConversationId,
+          ) &&
+          turns.some((turn) =>
+            isTurnReplyMessageId(
+              reply.messageId,
+              reply.invocationId,
+              turn.turnId,
+            ),
+          ),
+      )
+        ? childConversationId
+        : undefined;
+    }),
+  );
+  return answered.filter((id) => id !== undefined);
+}
+
 /**
  * List the other child agents of one parent whose results have not reached
  * the parent yet. A child counts while it runs and after it finishes until its
@@ -304,6 +360,20 @@ export async function listUnreportedSiblingAgents(
       .map((row) => row.childConversationId)
       .filter((child) => !unanswered.has(child)),
   );
+  // A Turn on the Conversation loop has no open agent invocation. Its reply
+  // is keyed by its Turn id, so a child whose open Turn replied has answered.
+  for (const child of await listAnsweredLoopChildren(
+    children.filter(
+      (child) =>
+        child.status === "running" &&
+        !openInvocations.some(
+          (row) => row.childConversationId === child.childConversationId,
+        ),
+    ),
+    parentInboundMessageIds,
+  )) {
+    answered.add(child);
+  }
   return children.filter(
     (child) =>
       child.childConversationId !== childConversationId &&
