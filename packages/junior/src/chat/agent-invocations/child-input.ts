@@ -18,6 +18,7 @@ import {
   isTerminalAgentInvocation,
 } from "./store";
 import type { AgentInvocation } from "./types";
+import { isAgentInvocationInput } from "./work";
 
 /** One result, reply, or message that a child agent sent to its parent. */
 export type ChildAgentInput = {
@@ -65,8 +66,8 @@ export function childAgentInput(
  * Route one input to a Conversation. Routing, the stop skips, and the child
  * agent status all read this, so they agree on which input starts work.
  *
- * `latest` is the Conversation's newest agent invocation; a root has none.
- * With an open one, a Watch Event and input from a child agent go to an agent
+ * A parent task or message goes to its agent invocation. `latest` is the
+ * Conversation's newest agent invocation; a root has none. With an open one, a Watch Event and input from a child agent go to an agent
  * invocation, and so do a result, and input to a child that waits for its own
  * child agents (`replaced`). A stopped child drops input from its own child
  * agents, also input sent before the stop. A session stop at `stoppedAtMs`
@@ -82,6 +83,9 @@ export async function routeChildInput(
 ): Promise<ChildInputRoute> {
   if (isPersonInput(message.source)) {
     return "Conversation loop";
+  }
+  if (isAgentInvocationInput(message)) {
+    return "agent invocation";
   }
   const open = latest !== undefined && !isTerminalAgentInvocation(latest);
   const input = childAgentInput(message);

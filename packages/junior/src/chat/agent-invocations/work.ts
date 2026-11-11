@@ -198,6 +198,12 @@ export async function createAndEnqueueAgentInvocation(
 }
 
 /** Require one invocation metadata reference for one leased mailbox attempt. */
+/** Return whether one mailbox input is a parent task or message for an agent invocation. */
+export function isAgentInvocationInput(message: InboundMessage): boolean {
+  return agentInvocationMailboxMetadataSchema.safeParse(message.input.metadata)
+    .success;
+}
+
 function invocationIdFromMessages(
   messages: readonly InboundMessage[],
 ): string | undefined {
