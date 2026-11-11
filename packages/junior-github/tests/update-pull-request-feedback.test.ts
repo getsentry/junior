@@ -12,7 +12,7 @@ function response(body: unknown, status = 200) {
   });
 }
 
-/** GitHub replies that show the comment is on a PR that `authorId` opened. */
+/** GitHub replies that show PR 7 is by `authorId` and the comment is on it. */
 function pullRequestLookup(
   commentKind: "conversation" | "review",
   authorId = BOT_USER_ID,
@@ -24,7 +24,7 @@ function pullRequestLookup(
           pull_request_url:
             "https://api.github.com/repos/getsentry/junior/pulls/7",
         };
-  return [response(parentUrl), response({ user: { id: authorId } })];
+  return [response({ user: { id: authorId } }), response(parentUrl)];
 }
 
 function toolContext(responses: Response[]) {
@@ -61,6 +61,7 @@ describe("updatePullRequestFeedback", () => {
           repo: "getsentry/junior",
           comment_kind: "conversation",
           comment_id: 55,
+          pull_request: 7,
           status: "addressed",
         },
         { toolCallId: "mark-addressed" },
@@ -74,12 +75,12 @@ describe("updatePullRequestFeedback", () => {
     });
 
     expect(fetch).toHaveBeenCalledTimes(4);
-    const commentRequest = fetch.mock.calls[0]?.[0]?.request as Request;
+    const pullRequest = fetch.mock.calls[0]?.[0]?.request as Request;
+    expect(pullRequest.url).toContain("/repos/getsentry/junior/pulls/7");
+    const commentRequest = fetch.mock.calls[1]?.[0]?.request as Request;
     expect(commentRequest.url).toContain(
       "/repos/getsentry/junior/issues/comments/55",
     );
-    const pullRequest = fetch.mock.calls[1]?.[0]?.request as Request;
-    expect(pullRequest.url).toContain("/repos/getsentry/junior/pulls/7");
     expect(fetch.mock.calls[2]?.[0]).toMatchObject({
       operation: "github.pull.comment-reaction.list",
     });
@@ -108,12 +109,13 @@ describe("updatePullRequestFeedback", () => {
         repo: "getsentry/junior",
         comment_kind: "review",
         comment_id: 77,
+        pull_request: 7,
         status: "declined",
       },
       { toolCallId: "mark-declined" },
     );
 
-    const commentRequest = fetch.mock.calls[0]?.[0]?.request as Request;
+    const commentRequest = fetch.mock.calls[1]?.[0]?.request as Request;
     expect(commentRequest.url).toContain(
       "/repos/getsentry/junior/pulls/comments/77",
     );
@@ -123,44 +125,72 @@ describe("updatePullRequestFeedback", () => {
     );
   });
 
-  // The model supplies the comment, so both cases come from untrusted input.
+  // The model supplies the target, so every case comes from untrusted input.
+  // Each comment kind gets the same checks.
   it.each([
     {
-      name: "a pull request that the bot did not author",
-      commentKind: "review" as const,
-      responses: pullRequestLookup("review", HUMAN_USER_ID),
+      name: "a review comment on a pull request that the bot did not author",
+      input: { comment_kind: "review" },
+      responses: pullRequestLookup("review", HUMAN_USER_ID).slice(0, 1),
+      error:
+        "only set feedback status on comments on pull requests it authored",
+      calls: 1,
+    },
+    {
+      name: "a review body on a pull request that the bot did not author",
+      input: { comment_kind: "review_body" },
+      responses: [response({ user: { id: HUMAN_USER_ID } })],
+      error:
+        "only set feedback status on comments on pull requests it authored",
+      calls: 1,
     },
     {
       name: "a plain issue",
-      commentKind: "conversation" as const,
+      input: { comment_kind: "conversation" },
+      responses: [response({ message: "Not Found" }, 404)],
+      error:
+        "only set feedback status on comments on pull requests it authored",
+      calls: 1,
+    },
+    {
+      name: "a comment on another pull request",
+      input: { comment_kind: "conversation" },
       responses: [
+        response({ user: { id: BOT_USER_ID } }),
         response({
           issue_url: "https://api.github.com/repos/getsentry/junior/issues/8",
         }),
-        response({ message: "Not Found" }, 404),
       ],
+      error: "GitHub comment 77 is not on pull request 7",
+      calls: 2,
+    },
+    {
+      name: "a missing pull request number",
+      input: { comment_kind: "review_body", pull_request: undefined },
+      responses: [],
+      error: "Invalid GitHub updatePullRequestFeedback input",
+      calls: 0,
     },
   ])(
-    "refuses feedback on a comment on $name",
-    async ({ commentKind, responses }) => {
+    "refuses feedback on $name",
+    async ({ calls, error, input, responses }) => {
       const { fetch, tool } = toolContext(responses);
 
       await expect(
         tool.execute?.(
           {
             repo: "getsentry/junior",
-            comment_kind: commentKind,
             comment_id: 77,
+            pull_request: 7,
             status: "addressed",
+            ...input,
           },
-          { toolCallId: "not-owned" },
+          { toolCallId: "refused" },
         ),
-      ).rejects.toThrow(
-        "only set feedback status on comments on pull requests it authored",
-      );
+      ).rejects.toThrow(error);
 
-      // Only the two ownership reads ran. No reaction was listed or written.
-      expect(fetch).toHaveBeenCalledTimes(2);
+      // No reaction was listed or written.
+      expect(fetch).toHaveBeenCalledTimes(calls);
     },
   );
 
@@ -181,6 +211,7 @@ describe("updatePullRequestFeedback", () => {
           repo: "getsentry/junior",
           comment_kind: "conversation",
           comment_id: 55,
+          pull_request: 7,
           status: "addressed",
         },
         { toolCallId: "mark-addressed" },
@@ -212,6 +243,7 @@ describe("updatePullRequestFeedback", () => {
           repo: "getsentry/junior",
           comment_kind: "conversation",
           comment_id: 55,
+          pull_request: 7,
           status: "addressed",
         },
         { toolCallId: "missing-eyes" },
@@ -233,6 +265,7 @@ describe("updatePullRequestFeedback", () => {
           repo: "getsentry/junior",
           comment_kind: "conversation",
           comment_id: 55,
+          pull_request: 7,
           status: "addressed",
         },
         { toolCallId: "already-addressed" },
@@ -307,44 +340,6 @@ describe("updatePullRequestFeedback", () => {
     });
   });
 
-  it.each([
-    {
-      name: "without a pull request number",
-      input: {},
-      responses: [],
-      error: "pull_request is required",
-      calls: 0,
-    },
-    {
-      name: "on a pull request that the bot did not author",
-      input: { pull_request: 7 },
-      responses: [response({ user: { id: HUMAN_USER_ID } })],
-      error:
-        "only set feedback status on comments on pull requests it authored",
-      calls: 1,
-    },
-  ])(
-    "refuses review body feedback $name",
-    async ({ calls, error, input, responses }) => {
-      const { fetch, tool } = toolContext(responses);
-
-      await expect(
-        tool.execute?.(
-          {
-            repo: "getsentry/junior",
-            comment_kind: "review_body",
-            comment_id: 303,
-            status: "declined",
-            ...input,
-          },
-          { toolCallId: "review-body-refused" },
-        ),
-      ).rejects.toThrow(error);
-
-      expect(fetch).toHaveBeenCalledTimes(calls);
-    },
-  );
-
   it("does not expose the webhook-owned reviewing state", async () => {
     const { fetch, tool } = toolContext([]);
 
@@ -354,6 +349,7 @@ describe("updatePullRequestFeedback", () => {
           repo: "getsentry/junior",
           comment_kind: "conversation",
           comment_id: 55,
+          pull_request: 7,
           status: "reviewing",
         },
         { toolCallId: "mark-reviewing" },

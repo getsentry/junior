@@ -60,8 +60,7 @@ const inputSchema = z
       .number()
       .int()
       .positive()
-      .optional()
-      .describe('Pull request number. Required for "review_body".'),
+      .describe("Pull request number that the comment is on."),
     status: z
       .enum(["addressed", "declined"])
       .describe(
@@ -165,12 +164,12 @@ async function assertBotAuthoredPullRequest(
   input: {
     botUserId: number;
     name: string;
-    number: number | string;
+    number: number;
     owner: string;
   },
 ): Promise<void> {
   const { number } = input;
-  // GitHub returns 404 here when the conversation comment is on an issue.
+  // GitHub returns 404 here when the number is a plain issue.
   const pullResponse = await githubApi(egress, {
     operation: "github.pull.get",
     path: `${repoPath(input)}/pulls/${number}`,
@@ -360,7 +359,7 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       readOnlyHint: false,
     },
     description:
-      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Use the comment_id and comment_kind from the event after acting on the feedback, and pull_request for a review_body. Replaces only your prior status reaction on that comment. Only works on pull requests the bot authored.",
+      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Use the pull_request, comment_id, and comment_kind from the event after acting on the feedback. Replaces only your prior status reaction on that comment. Only works on pull requests the bot authored.",
     exposure: "direct",
     inputSchema,
     outputSchema,
@@ -383,18 +382,13 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       if (botUserId === undefined) {
         throw new Error("GitHub App bot identity is not configured.");
       }
+      await assertBotAuthoredPullRequest(ctx.egress, {
+        owner: repo.owner,
+        name: repo.name,
+        number: pullRequest,
+        botUserId,
+      });
       if (commentKind === "review_body") {
-        if (pullRequest === undefined) {
-          throw new PluginToolInputError(
-            'pull_request is required when comment_kind is "review_body".',
-          );
-        }
-        await assertBotAuthoredPullRequest(ctx.egress, {
-          owner: repo.owner,
-          name: repo.name,
-          number: pullRequest,
-          botUserId,
-        });
         const reactionId = await setReviewBodyFeedback(ctx.egress, {
           owner: repo.owner,
           name: repo.name,
@@ -412,17 +406,17 @@ export function createGitHubUpdatePullRequestFeedbackTool(
             : undefined),
         };
       }
-      await assertBotAuthoredPullRequest(ctx.egress, {
+      const parentNumber = await commentParentNumber(ctx.egress, {
         owner: repo.owner,
         name: repo.name,
-        number: await commentParentNumber(ctx.egress, {
-          owner: repo.owner,
-          name: repo.name,
-          commentKind,
-          commentId,
-        }),
-        botUserId,
+        commentKind,
+        commentId,
       });
+      if (parentNumber !== String(pullRequest)) {
+        throw new PluginToolInputError(
+          `GitHub comment ${commentId} is not on pull request ${pullRequest}.`,
+        );
+      }
       const targetContent = pullRequestFeedbackReactionContent(status);
       const reactionsPath = pullRequestCommentReactionsPath({
         owner: repo.owner,
