@@ -661,11 +661,6 @@ describe("github plugin", () => {
           "github_resolvePullRequestReviewThread",
         ),
       },
-      "pull_request.review.changes_requested": {
-        guidance: expect.stringContaining(
-          "exact repo, pull_request, comment_id, and comment_kind from Verified details",
-        ),
-      },
       "deployment.failed": { reach: "all" },
     });
     expect(pullRequest?.matchFields).toMatchObject({

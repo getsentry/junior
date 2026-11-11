@@ -8,6 +8,7 @@ import {
 import * as z from "zod";
 import { botUserIdFromEmail } from "../webhooks/ownership.js";
 import {
+  type GitHubApiResponse,
   githubApi,
   githubErrorMessage,
   parseRepo,
@@ -29,17 +30,21 @@ const FEEDBACK_REACTION_CONTENTS = new Set<string>(
 );
 type FeedbackStatus = keyof typeof STATUS_TO_REACTION_CONTENT;
 type FeedbackOutcome = Exclude<FeedbackStatus, "reviewing">;
-type PullRequestCommentKind = "conversation" | "review" | "review_body";
+type PullRequestCommentKind = "conversation" | "review";
 
-/**
- * GitHub has no REST reactions endpoint for a review body, so review bodies
- * use the GraphQL reaction names.
- */
-const STATUS_TO_GRAPHQL_REACTION = {
-  reviewing: "EYES",
-  addressed: "THUMBS_UP",
-  declined: "THUMBS_DOWN",
-} as const;
+// A review body has no REST reactions endpoint, so it uses GraphQL, which
+// names the same reactions differently.
+const GRAPHQL_REACTION_CONTENT: Record<string, string> = {
+  eyes: "EYES",
+  "+1": "THUMBS_UP",
+  "-1": "THUMBS_DOWN",
+};
+const REST_REACTION_CONTENT = new Map(
+  Object.entries(GRAPHQL_REACTION_CONTENT).map(([rest, graphql]) => [
+    graphql,
+    rest,
+  ]),
+);
 
 const inputSchema = z
   .object({
@@ -74,20 +79,18 @@ const outputSchema = pluginToolOutputSchema.extend({
   repo: z.string(),
   comment_id: z.number(),
   status: z.enum(["addressed", "declined"]),
-  reaction_id: z.number().optional(),
 });
 interface Result extends PluginToolOutput {
   target: "updatePullRequestFeedback";
   repo: string;
   comment_id: number;
   status: FeedbackOutcome;
-  reaction_id?: number;
 }
 
 interface PullRequestCommentRef {
   owner: string;
   name: string;
-  commentKind: Exclude<PullRequestCommentKind, "review_body">;
+  commentKind: PullRequestCommentKind;
   commentId: number;
 }
 
@@ -204,83 +207,119 @@ export function pullRequestReviewPath(input: {
   return `${repoPath(input)}/pulls/${input.pullRequest}/reviews/${input.reviewId}`;
 }
 
+/** Return the GraphQL name of one REST reaction content. */
+export function graphqlReactionContent(content: string): string {
+  return GRAPHQL_REACTION_CONTENT[content] ?? content;
+}
+
 /** The GraphQL mutation that adds one reaction to a review body. */
 export const ADD_REVIEW_REACTION_MUTATION = `mutation AddReviewReaction($subjectId: ID!, $content: ReactionContent!) {
   addReaction(input: {subjectId: $subjectId, content: $content}) {
-    reaction { databaseId }
+    reaction { content }
   }
 }`;
 
-/** Return the GraphQL reaction for one feedback state. */
-export function pullRequestReviewReactionContent(
-  status: FeedbackStatus,
-): (typeof STATUS_TO_GRAPHQL_REACTION)[FeedbackStatus] {
-  return STATUS_TO_GRAPHQL_REACTION[status];
-}
+const REMOVE_REVIEW_REACTION_MUTATION = `mutation RemoveReviewReaction($subjectId: ID!, $content: ReactionContent!) {
+  removeReaction(input: {subjectId: $subjectId, content: $content}) {
+    reaction { content }
+  }
+}`;
 
-const reviewSchema = z.object({ node_id: z.string().min(1) });
+const REVIEW_REACTIONS_QUERY = `query ReviewReactions($subjectId: ID!) {
+  node(id: $subjectId) {
+    ... on PullRequestReview {
+      reactionGroups {
+        content
+        reactors(first: 100) { nodes { ... on Bot { databaseId } } }
+      }
+    }
+  }
+}`;
 
 const reviewReactionsSchema = z.object({
   data: z.object({
     node: z.object({
       reactionGroups: z.array(
-        z.object({ content: z.string(), viewerHasReacted: z.boolean() }),
+        z.object({
+          content: z.string(),
+          reactors: z.object({
+            nodes: z.array(z.object({ databaseId: z.number().optional() })),
+          }),
+        }),
       ),
     }),
   }),
 });
 
-const addReviewReactionSchema = z.object({
-  data: z.object({
-    addReaction: z.object({
-      reaction: z.object({ databaseId: z.number() }),
-    }),
-  }),
-});
-
-/** Send one GraphQL request and fail on HTTP or GraphQL errors. */
-async function githubGraphql(
-  egress: PluginEgress,
-  input: {
-    operation: string;
-    operationName: string;
-    query: string;
-    variables: Record<string, unknown>;
-  },
-): Promise<unknown> {
-  const response = await githubApi(egress, {
-    operation: input.operation,
-    method: "POST",
-    path: "/graphql",
-    body: {
-      operationName: input.operationName,
-      query: input.query,
-      variables: input.variables,
-    },
-  });
-  const errors = (response.body as { errors?: unknown } | undefined)?.errors;
-  if (!response.ok || (Array.isArray(errors) && errors.length > 0)) {
-    throw new Error(
-      `GitHub ${input.operationName} failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`,
-    );
-  }
-  return response.body;
+/** One reaction by the bot. REST reactions have an id; GraphQL ones do not. */
+interface BotReaction {
+  content: string;
+  id?: number;
 }
 
 /**
- * Set Junior's feedback reaction on a review body. The viewer is the App
- * bot, so `viewerHasReacted` finds the state reactions that Junior owns.
+ * The reactions on one pull request comment or review body. Each kind has its
+ * own GitHub API, but the feedback rules are the same for both.
  */
-async function setReviewBodyFeedback(
+interface FeedbackReactions {
+  list(): Promise<GitHubApiResponse>;
+  botReactions(body: unknown): BotReaction[];
+  remove(reaction: BotReaction): Promise<GitHubApiResponse>;
+  add(content: string): Promise<GitHubApiResponse>;
+}
+
+/** Return the REST reactions of a comment that is on `pullRequest`. */
+async function commentReactions(
+  egress: PluginEgress,
+  input: PullRequestCommentRef & { botUserId: number; pullRequest: number },
+): Promise<FeedbackReactions> {
+  const parentNumber = await commentParentNumber(egress, input);
+  if (parentNumber !== String(input.pullRequest)) {
+    throw new PluginToolInputError(
+      `GitHub comment ${input.commentId} is not on pull request ${input.pullRequest}.`,
+    );
+  }
+  const path = pullRequestCommentReactionsPath(input);
+  return {
+    list: () =>
+      githubApi(egress, {
+        operation: "github.pull.comment-reaction.list",
+        path: `${path}?per_page=100`,
+      }),
+    botReactions: (body) =>
+      z
+        .array(reactionSchema)
+        .parse(body)
+        .filter((reaction) => reaction.user?.id === input.botUserId),
+    remove: (reaction) =>
+      githubApi(egress, {
+        operation: "github.pull.comment-reaction.delete",
+        method: "DELETE",
+        path: `${path}/${reaction.id}`,
+      }),
+    add: (content) =>
+      githubApi(egress, {
+        operation: "github.pull.comment-reaction.create",
+        method: "POST",
+        path,
+        body: { content },
+      }),
+  };
+}
+
+/** Return the GraphQL reactions of a review on `pullRequest`. */
+async function reviewBodyReactions(
   egress: PluginEgress,
   input: {
-    owner: string;
+    botUserId: number;
     name: string;
+    owner: string;
     pullRequest: number;
     reviewId: number;
-    status: FeedbackOutcome;
   },
-): Promise<number | undefined> {
+): Promise<FeedbackReactions> {
+  // The path names the pull request, so GitHub returns 404 for a review on
+  // another pull request.
   const reviewResponse = await githubApi(egress, {
     operation: "github.pull.review.get",
     path: pullRequestReviewPath(input),
@@ -290,54 +329,60 @@ async function setReviewBodyFeedback(
     if (reviewResponse.status === 404) throw new PluginToolInputError(message);
     throw new Error(message);
   }
-  const subjectId = reviewSchema.parse(reviewResponse.body).node_id;
-  const repository = `${input.owner}/${input.name}`.toLowerCase();
-  const target = pullRequestReviewReactionContent(input.status);
-  const owned = new Set<string>(Object.values(STATUS_TO_GRAPHQL_REACTION));
-
-  const reactions = reviewReactionsSchema.parse(
-    await githubGraphql(egress, {
-      operation: "github.pull.review-reaction.list",
-      operationName: "ReviewReactions",
-      query: `query ReviewReactions($subjectId: ID!) {
-        node(id: $subjectId) {
-          ... on PullRequestReview { reactionGroups { content viewerHasReacted } }
-        }
-      }`,
-      variables: { subjectId },
-    }),
-  ).data.node.reactionGroups;
-  for (const group of reactions) {
-    if (!group.viewerHasReacted || group.content === target) continue;
-    // Leave reactions that are not feedback states, such as a heart.
-    if (!owned.has(group.content)) continue;
-    await githubGraphql(egress, {
-      operation: `github.pull.review-reaction.update:${repository}`,
-      operationName: "RemoveReviewReaction",
-      query: `mutation RemoveReviewReaction($subjectId: ID!, $content: ReactionContent!) {
-        removeReaction(input: {subjectId: $subjectId, content: $content}) {
-          reaction { content }
-        }
-      }`,
-      variables: { subjectId, content: group.content },
+  const subjectId = z
+    .object({ node_id: z.string().min(1) })
+    .parse(reviewResponse.body).node_id;
+  const graphql = (
+    operation: string,
+    operationName: string,
+    query: string,
+    variables: Record<string, string>,
+  ) =>
+    githubApi(egress, {
+      operation,
+      method: "POST",
+      path: "/graphql",
+      body: { operationName, query, variables },
     });
-  }
-  if (
-    reactions.some(
-      (group) => group.content === target && group.viewerHasReacted,
-    )
-  ) {
-    return undefined;
-  }
-  const added = addReviewReactionSchema.parse(
-    await githubGraphql(egress, {
-      operation: `github.pull.review-reaction.update:${repository}`,
-      operationName: "AddReviewReaction",
-      query: ADD_REVIEW_REACTION_MUTATION,
-      variables: { subjectId, content: target },
-    }),
-  );
-  return added.data.addReaction.reaction.databaseId;
+  const update =
+    `github.pull.review-reaction.update:${input.owner}/${input.name}`.toLowerCase();
+  return {
+    list: () =>
+      graphql(
+        "github.pull.review-reaction.list",
+        "ReviewReactions",
+        REVIEW_REACTIONS_QUERY,
+        { subjectId },
+      ),
+    botReactions: (body) =>
+      reviewReactionsSchema
+        .parse(body)
+        .data.node.reactionGroups.filter((group) =>
+          group.reactors.nodes.some(
+            (reactor) => reactor.databaseId === input.botUserId,
+          ),
+        )
+        .map((group) => ({
+          content: REST_REACTION_CONTENT.get(group.content) ?? group.content,
+        })),
+    remove: (reaction) =>
+      graphql(update, "RemoveReviewReaction", REMOVE_REVIEW_REACTION_MUTATION, {
+        subjectId,
+        content: graphqlReactionContent(reaction.content),
+      }),
+    add: (content) =>
+      graphql(update, "AddReviewReaction", ADD_REVIEW_REACTION_MUTATION, {
+        subjectId,
+        content: graphqlReactionContent(content),
+      }),
+  };
+}
+
+// GraphQL reports errors with HTTP 200, so a failed reply can be `ok`.
+function failed(response: GitHubApiResponse): boolean {
+  const errors = (response.body as { errors?: unknown } | null | undefined)
+    ?.errors;
+  return !response.ok || (Array.isArray(errors) && errors.length > 0);
 }
 
 /**
@@ -388,108 +433,62 @@ export function createGitHubUpdatePullRequestFeedbackTool(
         number: pullRequest,
         botUserId,
       });
-      if (commentKind === "review_body") {
-        const reactionId = await setReviewBodyFeedback(ctx.egress, {
-          owner: repo.owner,
-          name: repo.name,
-          pullRequest,
-          reviewId: commentId,
-          status,
-        });
-        return {
-          target: "updatePullRequestFeedback",
-          repo: repo.ref,
-          comment_id: commentId,
-          status,
-          ...(reactionId !== undefined
-            ? { reaction_id: reactionId }
-            : undefined),
-        };
-      }
-      const parentNumber = await commentParentNumber(ctx.egress, {
-        owner: repo.owner,
-        name: repo.name,
-        commentKind,
-        commentId,
-      });
-      if (parentNumber !== String(pullRequest)) {
-        throw new PluginToolInputError(
-          `GitHub comment ${commentId} is not on pull request ${pullRequest}.`,
-        );
-      }
+      const reactions =
+        commentKind === "review_body"
+          ? await reviewBodyReactions(ctx.egress, {
+              owner: repo.owner,
+              name: repo.name,
+              pullRequest,
+              reviewId: commentId,
+              botUserId,
+            })
+          : await commentReactions(ctx.egress, {
+              owner: repo.owner,
+              name: repo.name,
+              commentKind,
+              commentId,
+              pullRequest,
+              botUserId,
+            });
       const targetContent = pullRequestFeedbackReactionContent(status);
-      const reactionsPath = pullRequestCommentReactionsPath({
-        owner: repo.owner,
-        name: repo.name,
-        commentKind,
-        commentId,
-      });
 
-      const listResponse = await githubApi(ctx.egress, {
-        operation: "github.pull.comment-reaction.list",
-        path: `${reactionsPath}?per_page=100`,
-      });
+      const listResponse = await reactions.list();
       const listPayload = listResponse.body;
-      if (!listResponse.ok) {
+      if (failed(listResponse)) {
         throw new Error(
           `GitHub reaction lookup failed with HTTP ${listResponse.status}: ${githubErrorMessage(listPayload)}`,
         );
       }
-      const botReactions = z
-        .array(reactionSchema)
-        .parse(listPayload)
-        .filter(
-          (reaction) =>
-            reaction.user?.id === botUserId &&
-            FEEDBACK_REACTION_CONTENTS.has(reaction.content),
-        );
-      const existing = botReactions.find(
-        (reaction) => reaction.content === targetContent,
-      );
+      const botReactions = reactions
+        .botReactions(listPayload)
+        .filter((reaction) => FEEDBACK_REACTION_CONTENTS.has(reaction.content));
 
       for (const stale of botReactions) {
         if (stale.content === targetContent) continue;
-        const deleteResponse = await githubApi(ctx.egress, {
-          operation: "github.pull.comment-reaction.delete",
-          method: "DELETE",
-          path: `${reactionsPath}/${stale.id}`,
-        });
-        if (!deleteResponse.ok && deleteResponse.status !== 404) {
+        const deleteResponse = await reactions.remove(stale);
+        if (failed(deleteResponse) && deleteResponse.status !== 404) {
           throw new Error(
             `GitHub reaction removal failed with HTTP ${deleteResponse.status}: ${githubErrorMessage(deleteResponse.body)}`,
           );
         }
       }
 
-      if (existing) {
-        return {
-          target: "updatePullRequestFeedback",
-          repo: repo.ref,
-          comment_id: commentId,
-          status,
-          reaction_id: existing.id,
-        };
+      if (
+        !botReactions.some((reaction) => reaction.content === targetContent)
+      ) {
+        const createResponse = await reactions.add(targetContent);
+        const createPayload = createResponse.body;
+        if (failed(createResponse)) {
+          throw new Error(
+            `GitHub reaction creation failed with HTTP ${createResponse.status}: ${githubErrorMessage(createPayload)}`,
+          );
+        }
       }
-
-      const createResponse = await githubApi(ctx.egress, {
-        operation: "github.pull.comment-reaction.create",
-        method: "POST",
-        path: reactionsPath,
-        body: { content: targetContent },
-      });
-      const createPayload = createResponse.body;
-      if (!createResponse.ok) {
-        throw new Error(
-          `GitHub reaction creation failed with HTTP ${createResponse.status}: ${githubErrorMessage(createPayload)}`,
-        );
-      }
-      const created = reactionSchema.parse(createPayload);
       return {
         target: "updatePullRequestFeedback",
         repo: repo.ref,
         comment_id: commentId,
         status,
-        reaction_id: created.id,
       };
     },
   });
