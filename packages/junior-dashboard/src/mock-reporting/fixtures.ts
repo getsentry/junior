@@ -3558,8 +3558,11 @@ export function readMockPeopleCode(
     repository: string,
     title: string,
     days: number,
+    idleHours?: number,
   ) => ({
     id: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
+    lastActivityAt:
+      idleHours === undefined ? undefined : daysAgo(idleHours / 24),
     number,
     openedAt: daysAgo(days),
     provider: "github",
@@ -3581,23 +3584,30 @@ export function readMockPeopleCode(
       : { closedAt: daysAgo(done.closed), state: "closed" as const }),
   });
   const openChanges = [
-    openChange(2440, "getsentry/junior", "Show your week on the home page", 0),
-    openChange(42, "getsentry/payments", "Reduce checkout latency", 3),
+    openChange(
+      2440,
+      "getsentry/junior",
+      "Show your week on the home page",
+      0,
+      1,
+    ),
+    openChange(42, "getsentry/payments", "Reduce checkout latency", 3, 20),
     openChange(
       2391,
       "getsentry/junior",
       "Retry Slack uploads after a rate limit",
       6,
+      144,
     ),
-    openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12),
-    openChange(2402, "getsentry/junior", "Cache plugin manifests", 1),
-    openChange(512, "getsentry/sentry-docs", "Document Review desk", 1),
-    openChange(2419, "getsentry/junior", "Trim Slack thread context", 2),
-    openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4),
-    openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5),
-    openChange(61, "getsentry/payments", "Drop legacy refund path", 8),
-    openChange(523, "getsentry/sentry-docs", "Fix broken SDK links", 10),
-    openChange(2350, "getsentry/junior", "Migrate memory schema", 15),
+    openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12, 288),
+    openChange(2402, "getsentry/junior", "Cache plugin manifests", 1, 0.3),
+    openChange(512, "getsentry/sentry-docs", "Document Review desk", 1, 26),
+    openChange(2419, "getsentry/junior", "Trim Slack thread context", 2, 48),
+    openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4, 3),
+    openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5, 120),
+    openChange(61, "getsentry/payments", "Drop legacy refund path", 8, 30),
+    openChange(523, "getsentry/sentry-docs", "Fix broken SDK links", 10, 216),
+    openChange(2350, "getsentry/junior", "Migrate memory schema", 320, 2),
   ];
   // Merges land on the days that `merges` counts in the last 7 days.
   const doneThisWeek = [

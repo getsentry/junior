@@ -47,6 +47,11 @@ export const codeChangeSummaryReportSchema = z
   .object({
     closedAt: z.string().optional(),
     id: z.string().uuid(),
+    /**
+     * Latest push, review, or comment by a person. Preview only: no code
+     * plugin records it yet, so readers fall back to `openedAt`.
+     */
+    lastActivityAt: z.string().optional(),
     mergedAt: z.string().optional(),
     number: z.number().int().positive(),
     openedAt: z.string(),

@@ -11,6 +11,11 @@ import { Card } from "../components/layout/Card";
 import { Skeleton } from "../components/ui/skeleton";
 import { useReviewItemCountData } from "../review-desk/queries";
 import { cn } from "../styles";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { SidebarAnnotationIcon } from "./ConversationMeta";
 import { HomeDayStrip } from "./HomeDayStrip";
 
@@ -46,11 +51,13 @@ export function HomeSummary() {
 
   const nowMs = Date.parse(code.data.generatedAt);
   const merges = weeklyMerges(code.data.activityDays);
-  // Oldest first: the newest change is still on the viewer's mind.
+  // Longest idle first: a PR that nobody touched needs a nudge, however old.
   const open = code.data.changes
     .filter((change) => change.state === "open")
-    .sort((a, b) => a.openedAt.localeCompare(b.openedAt));
-  const oldest = open[0];
+    .sort((a, b) => lastActivity(a).localeCompare(lastActivity(b)));
+  const idleCount = open.filter(
+    (change) => idleDays(nowMs, change) > IDLE_RED_DAYS,
+  ).length;
   const needsViewer = reviewCount.data?.needsViewer ?? 0;
   if (
     merges.thisWeek + merges.lastWeek === 0 &&
@@ -76,11 +83,14 @@ export function HomeSummary() {
         />
         <SummaryCard
           detail={
-            oldest ? (
+            open.length === 0 ? null : idleCount > 0 ? (
               <>
-                oldest <AgeText nowMs={nowMs} openedAt={oldest.openedAt} />
+                <span className="font-medium text-rose-300">{idleCount}</span>{" "}
+                idle {IDLE_RED_DAYS}d+
               </>
-            ) : null
+            ) : (
+              "all moving"
+            )
           }
           label="Open"
           value={open.length}
@@ -161,11 +171,11 @@ function OpenChangeList(props: {
   changes: CodeChangeSummaryReport[];
   nowMs: number;
 }) {
-  const [newestFirst, setNewestFirst] = useState(false);
+  const [recentFirst, setRecentFirst] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const sorted = newestFirst ? [...props.changes].reverse() : props.changes;
+  const sorted = recentFirst ? [...props.changes].reverse() : props.changes;
   const hidden = sorted.length - OPEN_LIMIT;
-  const SortIcon = newestFirst ? ArrowUp : ArrowDown;
+  const SortIcon = recentFirst ? ArrowUp : ArrowDown;
   return (
     <div className="grid gap-2">
       <div className="flex h-4 items-center justify-between gap-4">
@@ -174,12 +184,14 @@ function OpenChangeList(props: {
         </h3>
         {sorted.length < 2 ? null : (
           <button
-            aria-label={newestFirst ? "Newest first" : "Oldest first"}
+            aria-label={
+              recentFirst ? "Recent activity first" : "Longest idle first"
+            }
             className={quietButtonClass}
-            onClick={() => setNewestFirst(!newestFirst)}
+            onClick={() => setRecentFirst(!recentFirst)}
             type="button"
           >
-            {newestFirst ? "Newest" : "Oldest"}
+            {recentFirst ? "Recent" : "Idle"}
             <SortIcon aria-hidden="true" className="size-3" />
           </button>
         )}
@@ -241,26 +253,62 @@ function OpenChangeRow(props: {
           {change.repository} #{change.number}
         </span>
         <span className="w-10 text-right">
-          <AgeText nowMs={props.nowMs} openedAt={change.openedAt} />
+          <IdleText change={change} nowMs={props.nowMs} />
         </span>
       </div>
     </li>
   );
 }
 
-/** Age of an open code change: plain up to 3 days, amber to 7, red after. */
-function AgeText(props: { nowMs: number; openedAt: string }) {
-  const days = Math.floor((props.nowMs - Date.parse(props.openedAt)) / DAY_MS);
+/** Idle days past this turn red. 4 days up to this turn amber. */
+const IDLE_RED_DAYS = 7;
+
+// Until a code plugin records activity, opening is the last known activity.
+function lastActivity(change: CodeChangeSummaryReport): string {
+  return change.lastActivityAt ?? change.openedAt;
+}
+
+function idleDays(nowMs: number, change: CodeChangeSummaryReport): number {
+  return Math.floor((nowMs - Date.parse(lastActivity(change))) / DAY_MS);
+}
+
+/**
+ * Time since the last push, review, or comment, colored by how long the PR
+ * sat. Hover adds when it was opened, which no longer drives the color.
+ */
+function IdleText(props: { change: CodeChangeSummaryReport; nowMs: number }) {
+  const days = idleDays(props.nowMs, props.change);
+  const idle = formatSince(props.nowMs, lastActivity(props.change));
+  const opened = formatSince(props.nowMs, props.change.openedAt);
   return (
-    <span
-      className={cn(
-        days > 7 && "font-medium text-rose-300",
-        days >= 4 && days <= 7 && "font-medium text-amber-300",
-      )}
-    >
-      {days < 1 ? "today" : `${days}d`}
-    </span>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            className={cn(
+              days > IDLE_RED_DAYS && "font-medium text-rose-300",
+              days >= 4 &&
+                days <= IDLE_RED_DAYS &&
+                "font-medium text-amber-300",
+            )}
+          />
+        }
+      >
+        {idle}
+      </TooltipTrigger>
+      <TooltipContent size="compact">
+        Last activity {idle} ago · opened {opened} ago
+      </TooltipContent>
+    </Tooltip>
   );
+}
+
+function formatSince(nowMs: number, at: string): string {
+  const minutes = Math.max(1, Math.floor((nowMs - Date.parse(at)) / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}h`;
+  const days = Math.floor(minutes / (24 * 60));
+  return days < 365 ? `${days}d` : `${Math.floor(days / 365)}y`;
 }
 
 /** Same frame and row heights as the loaded summary with three open rows. */
