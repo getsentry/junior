@@ -1,11 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
-import { walkthroughVersionSchema } from "@sentry/junior/api/schema";
+import {
+  walkthroughAnswerSchema,
+  walkthroughAnswersSchema,
+  walkthroughVersionSchema,
+} from "@sentry/junior/api/schema";
 
 import { useDashboardCoreData } from "../api";
 import { useToastManager } from "../components/ui/toast";
-import { fetchDashboardJson, post } from "../http";
-import type { WalkthroughTarget } from "./walkthroughModel";
+import { fetchDashboardJson, post, put } from "../http";
+import type { DecisionAnswer } from "./WalkthroughDecision";
+import type { AnswerMap, WalkthroughTarget } from "./walkthroughModel";
 
 const GENERATING_POLL_MS = 3_000;
 
@@ -27,6 +32,58 @@ export function useWalkthroughData(id: string | undefined) {
     refetchInterval: (query) =>
       query.state.data?.status === "generating" ? GENERATING_POLL_MS : false,
     retry: false,
+  });
+}
+
+function answersQueryKey(id: string) {
+  return ["dashboard", "walkthrough", id, "answers"] as const;
+}
+
+/** The viewer's answers on one version, by decision id. */
+export function useWalkthroughAnswers(id: string): AnswerMap {
+  const query = useQuery({
+    queryKey: answersQueryKey(id),
+    queryFn: async ({ signal }) => {
+      const { answers } = await fetchDashboardJson(
+        walkthroughAnswersSchema,
+        `/api/walkthroughs/${encodeURIComponent(id)}/answers`,
+        signal,
+      );
+      return Object.fromEntries(answers.map((a) => [a.decisionId, a]));
+    },
+  });
+  return query.data ?? {};
+}
+
+/**
+ * Save one answer. The page shows it at once and rolls back with a toast
+ * when the save fails.
+ */
+export function useSaveWalkthroughAnswer(id: string) {
+  const queryClient = useQueryClient();
+  const toasts = useToastManager();
+  const key = answersQueryKey(id);
+  return useMutation({
+    mutationFn: ({ decisionId, ...body }: DecisionAnswer) =>
+      put(
+        walkthroughAnswerSchema,
+        `/api/walkthroughs/${encodeURIComponent(id)}/answers/${encodeURIComponent(decisionId)}`,
+        body,
+      ),
+    onMutate: async (answer) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<AnswerMap>(key);
+      queryClient.setQueryData<AnswerMap>(key, {
+        ...previous,
+        [answer.decisionId]: { ...answer, updatedAt: new Date().toISOString() },
+      });
+      return { previous };
+    },
+    onError: (_error, _answer, context) => {
+      queryClient.setQueryData(key, context?.previous);
+      toasts.add({ title: "Could not save your answer", type: "error" });
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
   });
 }
 

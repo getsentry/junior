@@ -25,6 +25,7 @@ import {
 } from "@/chat/walkthroughs/store";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { closeConversationFixture } from "../fixtures/conversation";
+import { restoreSuiteExperimentalFeatures } from "../fixtures/experimental-setup";
 
 const OWNER_EMAIL = "owner@example.com";
 const codeChanges = [3087, 3088].map((number, index) => ({
@@ -189,6 +190,68 @@ describe("Walkthrough versions", () => {
     expect(listed).toContain(ordinary);
     expect(listed).not.toContain(generation);
   });
+
+  it("keeps each reviewer's answers on a ready version to themselves", async () => {
+    await createApp({ experimental: { walkthroughs: true } });
+    try {
+      const generation = await publicConversation("local:web:walkthrough-ans");
+      const { version } = await startWalkthroughVersion({
+        provider: "github",
+        repository: "getsentry/junior",
+        codeChanges,
+        generationConversationId: generation,
+      });
+      const api = async (email: string) => {
+        const viewer = await resolveViewerUser(email);
+        if (!viewer) throw new Error("Missing test viewer");
+        const app = new Hono<JuniorApiEnv>();
+        app.use("*", async (context, next) => {
+          context.set("viewer", viewer);
+          await next();
+        });
+        app.route("/", createJuniorApi());
+        const base = `/api/walkthroughs/${version.id}/answers`;
+        return {
+          put: (decisionId: string, body: unknown) =>
+            app.request(`${base}/${decisionId}`, {
+              method: "PUT",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(body),
+            }),
+          answers: async () =>
+            ((await (await app.request(base)).json()) as { answers: unknown[] })
+              .answers,
+        };
+      };
+      const owner = await api(OWNER_EMAIL);
+
+      // A generating version has nothing to answer yet.
+      expect((await owner.put("retry-delay", { value: "agree" })).status).toBe(
+        409,
+      );
+
+      await completeWalkthroughVersion(createMemoryAttachmentStorage(), {
+        id: version.id,
+        document: document(version.id),
+      });
+      expect((await owner.put("retry-delay", { value: "agree" })).status).toBe(
+        200,
+      );
+      // A second answer replaces the first.
+      await owner.put("retry-delay", { value: "change", note: " Use 5s. " });
+      expect(await owner.answers()).toEqual([
+        expect.objectContaining({
+          decisionId: "retry-delay",
+          value: "change",
+          note: "Use 5s.",
+        }),
+      ]);
+
+      expect(await (await api("other@example.com")).answers()).toEqual([]);
+    } finally {
+      restoreSuiteExperimentalFeatures();
+    }
+  });
 });
 
 const RETRY_PATCH = [
@@ -228,6 +291,9 @@ function codePlugin() {
           return path === "src/caller.ts"
             ? "import { delayMs } from './retry';\nwait(delayMs);\n"
             : undefined;
+        },
+        lineUrl({ sha, path, line }) {
+          return `https://code.test/${sha}/${path}#L${line}`;
         },
       },
     },
@@ -367,9 +433,18 @@ describe("submitWalkthrough", () => {
         text: "Make retries wait a bit longer, see https://sentry.io/issues/1/",
       },
     ]);
-    expect(stored?.excerpts.map((excerpt) => excerpt.id)).toEqual([
-      "3087:head:src/retry.ts#2-3",
-      "3087:head:src/caller.ts#2-2",
+    // Each excerpt links to its first line at the cited commit.
+    expect(
+      stored?.excerpts.map((excerpt) => [excerpt.id, excerpt.url]),
+    ).toEqual([
+      [
+        "3087:head:src/retry.ts#2-3",
+        `https://code.test/${"b".repeat(40)}/src/retry.ts#L2`,
+      ],
+      [
+        "3087:head:src/caller.ts#2-2",
+        `https://code.test/${"b".repeat(40)}/src/caller.ts#L2`,
+      ],
     ]);
   });
 });

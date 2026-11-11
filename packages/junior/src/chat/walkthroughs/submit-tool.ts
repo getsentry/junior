@@ -8,6 +8,7 @@ import * as z from "zod";
 import { assertCanReadConversationEvents } from "@/chat/conversations/event-access";
 import { getConversationEventStore } from "@/chat/db";
 import {
+  codeLineUrl,
   readPluginCodeChangeDiff,
   readPluginCodeFile,
 } from "@/chat/plugins/code-change-hooks";
@@ -151,7 +152,23 @@ export function createSubmitWalkthroughTool(
       if (!context.attachmentStorage) {
         throw new Error("Walkthrough generation needs attachment storage");
       }
-      const excerpts = buildWalkthroughExcerpts(codeRefs, files, contextFiles);
+      const excerpts = buildWalkthroughExcerpts(
+        codeRefs,
+        files,
+        contextFiles,
+      ).map((excerpt) => {
+        const layer = generation.layers.find((l) => l.number === excerpt.pr);
+        const url =
+          layer &&
+          codeLineUrl({
+            provider: generation.provider,
+            repository: generation.repository,
+            sha: excerpt.side === "head" ? layer.headSha : layer.baseSha,
+            path: excerpt.path,
+            line: excerpt.start,
+          });
+        return url ? { ...excerpt, url } : excerpt;
+      });
       const document: WalkthroughDocument = {
         schemaVersion: WALKTHROUGH_SCHEMA_VERSION,
         versionId: generation.versionId,

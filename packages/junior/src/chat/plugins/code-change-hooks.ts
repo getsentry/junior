@@ -95,6 +95,22 @@ export async function readPluginCodeFile(input: {
   return text;
 }
 
+/**
+ * The provider's link to one line at a commit, or `undefined` when the
+ * plugin has no line links or returns something that is not a URL.
+ */
+export function codeLineUrl(input: {
+  provider: string;
+  repository: string;
+  sha: string;
+  path: string;
+  line: number;
+}): string | undefined {
+  const { provider, ...line } = input;
+  const url = codeChangeHooks(provider).hooks.lineUrl?.(line);
+  return url !== undefined && URL.canParse(url) ? url : undefined;
+}
+
 function parseSchema<T>(
   schema: {
     safeParse(value: unknown): { success: true; data: T } | { success: false };

@@ -90,8 +90,8 @@ export type CodeChangeDiff = z.output<typeof codeChangeDiffSchema>;
 
 /**
  * Read-only access to code changes for host features such as Walkthroughs.
- * A plugin implements all three or none. Return `undefined` when the code
- * change or file does not exist; throw for every other failure.
+ * A plugin implements all three reads or none. Return `undefined` when the
+ * code change or file does not exist; throw for every other failure.
  */
 export interface CodeChangeHooks {
   /** Read the stack that contains one code change. */
@@ -114,4 +114,14 @@ export interface CodeChangeHooks {
       path: string;
     },
   ): Promise<string | undefined>;
+  /**
+   * Link to one line of a file at a commit, such as for review text. Without
+   * it, Junior shows the path and line with no link.
+   */
+  lineUrl?(input: {
+    repository: string;
+    sha: string;
+    path: string;
+    line: number;
+  }): string;
 }

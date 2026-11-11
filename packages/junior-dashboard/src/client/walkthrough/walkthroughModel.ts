@@ -1,5 +1,6 @@
 import {
   codeExcerptId,
+  type WalkthroughAnswerResponse,
   type WalkthroughChapter,
   type WalkthroughDocument,
   type WalkthroughEvidence,
@@ -122,4 +123,106 @@ export function versionTarget(
         number: top.number,
       }
     : undefined;
+}
+
+/** The viewer's answers, by decision id. */
+export type AnswerMap = Readonly<Record<string, WalkthroughAnswerResponse>>;
+
+/** One decision a reviewer answers, with the chapter that asks it. */
+export type ReviewDecision = {
+  id: string;
+  question: string;
+  chapterIndex: number;
+  /** Layers this decision is about. */
+  prs: number[];
+  /** Where feedback lands in the code: the full path and line. */
+  location?: { label: string; url?: string };
+};
+
+/** Every decision in reading order. */
+export function reviewDecisions(
+  document: WalkthroughDocument,
+): ReviewDecision[] {
+  const excerpts = new Map(document.excerpts.map((e) => [e.id, e]));
+  const allPrs = document.layers.map((layer) => layer.pr);
+  return document.content.chapters.flatMap((chapter, chapterIndex) =>
+    chapter.decisions.map((decision) => {
+      const own =
+        decision.evidence === undefined
+          ? undefined
+          : chapter.evidence[decision.evidence];
+      // A decision about prose is about the chapter's first code, and one
+      // with no code at all is about every layer.
+      const code =
+        own?.kind === "code"
+          ? own
+          : chapter.evidence.find((e) => e.kind === "code");
+      const prs = own ? evidencePrs([own]) : evidencePrs(chapter.evidence);
+      return {
+        id: decision.id,
+        question: decision.question,
+        chapterIndex,
+        prs: prs.length ? prs : allPrs,
+        ...(code?.kind === "code"
+          ? {
+              location: {
+                label: `${code.path}:${code.start}`,
+                url: excerpts.get(codeExcerptId(code))?.url,
+              },
+            }
+          : undefined),
+      };
+    }),
+  );
+}
+
+/** Decisions the viewer has not answered yet. */
+export function openDecisionCount(
+  decisions: readonly ReviewDecision[],
+  answers: AnswerMap,
+): number {
+  return decisions.filter((d) => !answers[d.id]).length;
+}
+
+/**
+ * One layer's review as GitHub Markdown. It pastes into the PR's review box
+ * as is: code locations link to the cited line at the reviewed commit.
+ */
+export function reviewMarkdown(args: {
+  answers: AnswerMap;
+  comment: string;
+  decisions: readonly ReviewDecision[];
+  pr: number;
+}): string {
+  const mine = args.decisions.filter((d) => d.prs.includes(args.pr));
+  const changes = mine.filter((d) => args.answers[d.id]?.value === "change");
+  const agreed = mine.filter((d) => args.answers[d.id]?.value === "agree");
+  const sections: string[] = [];
+  if (args.comment.trim()) sections.push(args.comment.trim());
+  if (changes.length) {
+    sections.push(
+      [
+        "**Changes requested**",
+        ...changes.map((d, index) => {
+          const note = args.answers[d.id]?.note;
+          const where = d.location ? ` (${markdownLocation(d.location)})` : "";
+          return note
+            ? `${index + 1}. ${note}${where}\n   > ${d.question}`
+            : `${index + 1}. ${d.question}${where}`;
+        }),
+      ].join("\n\n"),
+    );
+  }
+  if (agreed.length) {
+    sections.push(
+      ["**Agreed**", ...agreed.map((d) => `- ${d.question}`)].join("\n"),
+    );
+  }
+  return sections.join("\n\n");
+}
+
+function markdownLocation(location: { label: string; url?: string }): string {
+  return location.url
+    ? `[\`${location.label}\`](${location.url})`
+    : `\`${location.label}\``;
 }

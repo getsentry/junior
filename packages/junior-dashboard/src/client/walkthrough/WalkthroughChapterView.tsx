@@ -5,6 +5,10 @@ import type {
 
 import { DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
+import {
+  WalkthroughDecision,
+  type DecisionAnswer,
+} from "./WalkthroughDecision";
 import { WalkthroughDiagram } from "./WalkthroughDiagram";
 import {
   CitedProse,
@@ -12,16 +16,26 @@ import {
   ProofCard,
   ReferenceList,
 } from "./WalkthroughEvidence";
-import { chapterTitle, citedEvidence, evidencePrs } from "./walkthroughModel";
+import {
+  chapterTitle,
+  citedEvidence,
+  evidencePrs,
+  type AnswerMap,
+  type ReviewDecision,
+} from "./walkthroughModel";
 
 /**
  * Render the chapter the reader stands on. The heading names the chapter,
- * prose tells the story, and code and checks follow as evidence.
+ * prose tells the story, decisions follow it, and code and checks follow as
+ * evidence.
  */
 export function WalkthroughChapterView(props: {
+  answers: AnswerMap;
   chapter: WalkthroughChapter;
+  decisions: readonly ReviewDecision[];
   document: WalkthroughDocument;
   index: number;
+  onAnswer(answer: DecisionAnswer): void;
   total: number;
 }) {
   const { chapter, document } = props;
@@ -80,6 +94,20 @@ export function WalkthroughChapterView(props: {
           />
         ) : null}
       </div>
+
+      {/* Decisions sit under the story, so they are seen before long code. */}
+      {props.decisions.length ? (
+        <section aria-label="Decisions" className="grid max-w-3xl gap-2">
+          {props.decisions.map((decision) => (
+            <WalkthroughDecision
+              answer={props.answers[decision.id]}
+              decision={decision}
+              key={decision.id}
+              onAnswer={props.onAnswer}
+            />
+          ))}
+        </section>
+      ) : null}
 
       {/* In the proof chapter the checks are the point, so they lead. */}
       {chapter.slot === "proof" ? (

@@ -240,3 +240,18 @@ describe("readFile", () => {
     await expect(hooks.readFile(args)).resolves.toBeUndefined();
   });
 });
+
+describe("lineUrl", () => {
+  it("links to the line at the commit and escapes the path", () => {
+    expect(
+      hooks.lineUrl({
+        repository: "getsentry/junior",
+        sha: "a".repeat(40),
+        path: "src/a b#c.ts",
+        line: 12,
+      }),
+    ).toBe(
+      `https://github.com/getsentry/junior/blob/${"a".repeat(40)}/src/a%20b%23c.ts#L12`,
+    );
+  });
+});

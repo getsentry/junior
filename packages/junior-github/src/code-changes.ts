@@ -284,9 +284,21 @@ async function listOpenPulls(
   return pullListSchema.parse(response.body);
 }
 
+function lineUrl(input: {
+  repository: string;
+  sha: string;
+  path: string;
+  line: number;
+}): string {
+  assertPathParts({ repository: input.repository, shas: [input.sha] });
+  const path = input.path.split("/").map(encodeURIComponent).join("/");
+  return `https://github.com/${input.repository}/blob/${input.sha}/${path}#L${input.line}`;
+}
+
 /** Code change reads backed by the GitHub REST API. */
 export const githubCodeChangeHooks = {
   readStack,
   readDiff,
   readFile,
+  lineUrl,
 } satisfies CodeChangeHooks;

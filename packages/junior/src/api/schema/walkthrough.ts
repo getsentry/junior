@@ -43,3 +43,27 @@ export const walkthroughVersionSchema = z
 export type WalkthroughVersionResponse = z.output<
   typeof walkthroughVersionSchema
 >;
+
+export const walkthroughAnswerParamsSchema = z
+  .object({ id: z.uuid(), decisionId: z.string().min(1).max(48) })
+  .strict();
+
+/** A reviewer's answer to one decision. */
+export const walkthroughAnswerBodySchema = z
+  .object({
+    value: z.enum(["agree", "change"]),
+    note: z.string().max(2000).optional(),
+  })
+  .strict();
+
+export const walkthroughAnswerSchema = walkthroughAnswerBodySchema
+  .extend({ decisionId: z.string(), updatedAt: z.string() })
+  .strict();
+export type WalkthroughAnswerResponse = z.output<
+  typeof walkthroughAnswerSchema
+>;
+
+/** The viewer's answers on one version. */
+export const walkthroughAnswersSchema = z
+  .object({ answers: z.array(walkthroughAnswerSchema) })
+  .strict();

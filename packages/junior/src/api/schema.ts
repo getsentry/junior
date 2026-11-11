@@ -30,8 +30,15 @@ export {
 export type { MessageCard } from "../chat/conversations/cards";
 export { boardReportSchema } from "./schema/board";
 export type { BoardCard, BoardColumn, BoardReport } from "./schema/board";
-export { walkthroughVersionSchema } from "./schema/walkthrough";
-export type { WalkthroughVersionResponse } from "./schema/walkthrough";
+export {
+  walkthroughAnswerSchema,
+  walkthroughAnswersSchema,
+  walkthroughVersionSchema,
+} from "./schema/walkthrough";
+export type {
+  WalkthroughAnswerResponse,
+  WalkthroughVersionResponse,
+} from "./schema/walkthrough";
 export { codeExcerptId } from "../chat/walkthroughs/schema";
 export type {
   WalkthroughChapter,

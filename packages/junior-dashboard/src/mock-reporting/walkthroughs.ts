@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import { jsonResponse, type JuniorApiVariables } from "@sentry/junior/api";
 import {
+  walkthroughAnswerSchema,
+  walkthroughAnswersSchema,
   walkthroughVersionSchema,
+  type WalkthroughAnswerResponse,
   type WalkthroughVersionResponse,
 } from "@sentry/junior/api/schema";
 
@@ -27,15 +30,27 @@ function readyVersion(run: unknown): WalkthroughVersionResponse {
     ...walkthroughVersionSchema.parse(run),
     provider: "github",
   };
-  return version.document
-    ? {
-        ...version,
-        document: {
-          ...version.document,
-          sourceConversationId: ACTIVE_CONVERSATION_ID,
-        },
-      }
-    : version;
+  const document = version.document;
+  if (!document) return version;
+  // The cost runs predate line links. Add the links the GitHub plugin makes,
+  // so review text shows them.
+  const excerpts = document.excerpts.map((excerpt) => {
+    const layer = document.layers.find((l) => l.pr === excerpt.pr);
+    if (!layer) return excerpt;
+    const sha = excerpt.side === "head" ? layer.headSha : layer.baseSha;
+    return {
+      ...excerpt,
+      url: `https://github.com/${document.repository}/blob/${sha}/${excerpt.path}#L${excerpt.start}`,
+    };
+  });
+  return {
+    ...version,
+    document: {
+      ...document,
+      excerpts,
+      sourceConversationId: ACTIVE_CONVERSATION_ID,
+    },
+  };
 }
 
 function pendingVersion(
@@ -67,6 +82,8 @@ export function createMockWalkthroughRoutes(): Hono<{
   const stack = readyVersion(stackRun);
   const ready = new Map([single, stack].map((v) => [v.id, v]));
   const startedAtMs = new Map<string, number>();
+  // Answers live until the dev server restarts, like a fresh reviewer.
+  const answers = new Map<string, Map<string, WalkthroughAnswerResponse>>();
 
   app.post("/", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as {
@@ -108,6 +125,30 @@ export function createMockWalkthroughRoutes(): Hono<{
         ? pendingVersion(version, id, "generating")
         : version,
     );
+  });
+
+  app.get("/:id/answers", (c) =>
+    jsonResponse(walkthroughAnswersSchema, {
+      answers: [...(answers.get(c.req.param("id"))?.values() ?? [])],
+    }),
+  );
+
+  app.put("/:id/answers/:decisionId", async (c) => {
+    const id = c.req.param("id");
+    if (!ready.has(id)) return c.json({ error: "Walkthrough not found." }, 404);
+    const body = (await c.req.json()) as {
+      value: "agree" | "change";
+      note?: string;
+    };
+    const answer = walkthroughAnswerSchema.parse({
+      ...body,
+      decisionId: c.req.param("decisionId"),
+      updatedAt: new Date().toISOString(),
+    });
+    const mine = answers.get(id) ?? new Map();
+    mine.set(answer.decisionId, answer);
+    answers.set(id, mine);
+    return jsonResponse(walkthroughAnswerSchema, answer);
   });
 
   return app;

@@ -4,6 +4,11 @@ import { getAttachmentStorage } from "@/chat/attachments/storage";
 import { getDb } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import {
+  readWalkthroughAnswers,
+  saveWalkthroughAnswer,
+  type WalkthroughAnswer,
+} from "@/chat/walkthroughs/answers";
 import { startWalkthrough } from "@/chat/walkthroughs/generation";
 import {
   getWalkthroughVersion,
@@ -16,8 +21,13 @@ import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
   startWalkthroughBodySchema,
+  walkthroughAnswerBodySchema,
+  walkthroughAnswerParamsSchema,
+  walkthroughAnswerSchema,
+  walkthroughAnswersSchema,
   walkthroughParamsSchema,
   walkthroughVersionSchema,
+  type WalkthroughAnswerResponse,
   type WalkthroughVersionResponse,
 } from "../schema/walkthrough";
 import { validateRequest } from "../validation";
@@ -73,6 +83,27 @@ async function canReadSource(
   );
 }
 
+/** Read a version the viewer may see, or fail with 404. */
+async function readableVersion(
+  id: string,
+  viewer: User,
+): Promise<WalkthroughVersion> {
+  const version = await getWalkthroughVersion(id);
+  if (!version || !(await canReadSource(version, viewer))) {
+    throwApiError(404, "Walkthrough not found.");
+  }
+  return version;
+}
+
+function answerResponse(answer: WalkthroughAnswer): WalkthroughAnswerResponse {
+  return {
+    decisionId: answer.decisionId,
+    value: answer.value,
+    ...(answer.note ? { note: answer.note } : undefined),
+    updatedAt: answer.updatedAt.toISOString(),
+  };
+}
+
 /**
  * Create routes that start and read Walkthroughs. They return 404 unless the
  * app enables the `walkthroughs` experiment, and a Walkthrough generates only
@@ -126,16 +157,72 @@ export function createWalkthroughRoutes(options: {
       "Invalid route parameters.",
     ),
     async (context) => {
-      const version = await getWalkthroughVersion(
+      const version = await readableVersion(
         context.req.valid("param").id,
+        context.get("viewer"),
       );
-      if (!version || !(await canReadSource(version, context.get("viewer")))) {
-        throwApiError(404, "Walkthrough not found.");
-      }
       return jsonResponse(
         walkthroughVersionSchema,
         await walkthroughResponse(version),
       );
+    },
+  );
+
+  // Answers belong to the viewer. Nobody reads another reviewer's answers.
+  app.get(
+    "/:id/answers",
+    requireViewer,
+    validateRequest(
+      "param",
+      walkthroughParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const version = await readableVersion(
+        context.req.valid("param").id,
+        viewer,
+      );
+      const answers = await readWalkthroughAnswers({
+        versionId: version.id,
+        userId: viewer.id,
+      });
+      return jsonResponse(walkthroughAnswersSchema, {
+        answers: answers.map(answerResponse),
+      });
+    },
+  );
+
+  app.put(
+    "/:id/answers/:decisionId",
+    requireViewer,
+    validateRequest(
+      "param",
+      walkthroughAnswerParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      walkthroughAnswerBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const { id, decisionId } = context.req.valid("param");
+      const version = await readableVersion(id, viewer);
+      // Only a ready version has decisions. An unknown decision id stays
+      // with its reviewer and never renders, so it is not checked against
+      // the stored document.
+      if (version.status !== "ready") {
+        throwApiError(409, "Walkthrough is not ready.");
+      }
+      const answer = await saveWalkthroughAnswer({
+        ...context.req.valid("json"),
+        versionId: version.id,
+        userId: viewer.id,
+        decisionId,
+      });
+      return jsonResponse(walkthroughAnswerSchema, answerResponse(answer));
     },
   );
 

@@ -1,8 +1,10 @@
 import { sql } from "drizzle-orm";
 import {
+  foreignKey,
   index,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   uniqueIndex,
   uuid,
@@ -72,5 +74,36 @@ export const juniorWalkthroughVersions = pgTable(
       table.generationConversationId,
     ),
     index("junior_walkthrough_versions_parent_idx").on(table.parentVersionId),
+  ],
+);
+
+/** How a reviewer answered one decision. */
+export type WalkthroughAnswerValue = "agree" | "change";
+
+/**
+ * One reviewer's answer to one decision in one version. Answers are not
+ * copied to later versions.
+ */
+export const juniorWalkthroughAnswers = pgTable(
+  "junior_walkthrough_answers",
+  {
+    versionId: uuid("version_id").notNull(),
+    /** Decision id in the document. Ids stay the same across versions. */
+    decisionId: text("decision_id").notNull(),
+    userId: text("user_id").notNull(),
+    value: text("value").$type<WalkthroughAnswerValue>().notNull(),
+    note: text("note"),
+    updatedAt: timestamptz("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      name: "junior_walkthrough_answers_pk",
+      columns: [table.versionId, table.userId, table.decisionId],
+    }),
+    foreignKey({
+      name: "junior_walkthrough_answers_version_id_fk",
+      columns: [table.versionId],
+      foreignColumns: [juniorWalkthroughVersions.id],
+    }).onDelete("cascade"),
   ],
 );

@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useParams } from "react-router";
 import type {
@@ -6,6 +13,7 @@ import type {
   WalkthroughVersionResponse,
 } from "@sentry/junior/api/schema";
 
+import { hasPanelSpace } from "../components/DetailsPanel";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { PageRouteLoading } from "../components/PageRouteLoading";
 import { ShimmerText } from "../components/ShimmerText";
@@ -20,10 +28,26 @@ import {
 import { useDocumentTitle } from "../documentTitle";
 import { DisplayText } from "../display-text/DisplayText";
 import { WalkthroughChapterView } from "./WalkthroughChapterView";
-import { WalkthroughQuestions } from "./WalkthroughQuestions";
 import { WalkthroughRail } from "./WalkthroughRail";
-import { useStartWalkthrough, useWalkthroughData } from "./walkthroughApi";
-import { versionTarget } from "./walkthroughModel";
+import { WalkthroughReview } from "./WalkthroughReview";
+import {
+  CountBadge,
+  WalkthroughQuestionsPanel,
+  WalkthroughSidePanel,
+  type WalkthroughSideTab,
+} from "./WalkthroughSidePanel";
+import {
+  useSaveWalkthroughAnswer,
+  useStartWalkthrough,
+  useWalkthroughAnswers,
+  useWalkthroughData,
+} from "./walkthroughApi";
+import {
+  chapterTitle,
+  openDecisionCount,
+  reviewDecisions,
+  versionTarget,
+} from "./walkthroughModel";
 
 /** Read one Walkthrough: a story with code as evidence. */
 export function WalkthroughPage() {
@@ -57,47 +81,102 @@ function ReadyWalkthrough(props: {
   document: WalkthroughDocument;
   version: WalkthroughVersionResponse;
 }) {
-  const { document } = props;
+  const { document, version } = props;
   const chapters = document.content.chapters;
   const [index, setIndex] = useState(0);
   const mainRef = useRef<HTMLElement>(null);
   const chapter = chapters[index] ?? chapters[0];
+  const decisions = useMemo(() => reviewDecisions(document), [document]);
+  const answers = useWalkthroughAnswers(version.id);
+  const save = useSaveWalkthroughAnswer(version.id);
+  const open = openDecisionCount(decisions, answers);
+  const asksHere = (at: number) => decisions.some((d) => d.chapterIndex === at);
+  const [tab, setTab] = useState<WalkthroughSideTab>(() =>
+    asksHere(0) ? "review" : "questions",
+  );
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   // Each pane scrolls on its own, so a new chapter starts at the top.
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0 });
   }, [index]);
 
+  // A chapter that asks for decisions opens the review beside it. Other
+  // chapters show questions. The reviewer can still switch tabs.
+  function openChapter(next: number) {
+    setIndex(next);
+    setTab(asksHere(next) ? "review" : "questions");
+  }
+
   useDocumentTitle(`Walkthrough · ${document.content.title}`);
   if (!chapter) return null;
 
   return (
     <WalkthroughFrame
+      action={
+        <Button
+          onClick={() => {
+            setTab("review");
+            if (!hasPanelSpace()) setSheetOpen(true);
+          }}
+          type="button"
+        >
+          Review
+          {open ? (
+            <CountBadge count={open} label={`${open} to answer`} />
+          ) : null}
+        </Button>
+      }
       intent={<DisplayText inline text={document.content.intent} />}
       mainRef={mainRef}
       rail={
         <WalkthroughRail
           activeIndex={index}
           chapters={chapters}
-          onSelect={setIndex}
+          onSelect={openChapter}
           sourceConversationId={document.sourceConversationId}
-          version={props.version}
+          version={version}
+        />
+      }
+      side={
+        <WalkthroughSidePanel
+          onSheetClose={() => setSheetOpen(false)}
+          onTabChange={setTab}
+          openCount={open}
+          review={
+            <WalkthroughReview
+              activeChapter={index}
+              answers={answers}
+              chapterTitles={chapters.map(chapterTitle)}
+              decisions={decisions}
+              document={document}
+              onOpenChapter={(next) => {
+                openChapter(next);
+                setSheetOpen(false);
+              }}
+            />
+          }
+          sheetOpen={sheetOpen}
+          tab={tab}
         />
       }
       title={document.content.title}
-      version={props.version}
+      version={version}
     >
       <div className="grid max-w-5xl content-start gap-6 px-6 py-6 sm:px-8">
         <WalkthroughChapterView
+          answers={answers}
           chapter={chapter}
+          decisions={decisions.filter((d) => d.chapterIndex === index)}
           document={document}
           index={index}
+          onAnswer={(answer) => save.mutate(answer)}
           total={chapters.length}
         />
         <div className="flex items-center justify-between border-t border-dashboard-border-subtle pt-4">
           <Button
             disabled={index === 0}
-            onClick={() => setIndex(index - 1)}
+            onClick={() => openChapter(index - 1)}
             type="button"
             variant="quiet"
           >
@@ -106,7 +185,7 @@ function ReadyWalkthrough(props: {
           </Button>
           <Button
             disabled={index === chapters.length - 1}
-            onClick={() => setIndex(index + 1)}
+            onClick={() => openChapter(index + 1)}
             type="button"
           >
             Next
@@ -131,6 +210,7 @@ function PendingWalkthrough(props: { version: WalkthroughVersionResponse }) {
   return (
     <WalkthroughFrame
       rail={<WalkthroughRail chapters={[]} version={version} />}
+      side={<WalkthroughQuestionsPanel />}
       title={title}
       version={version}
     >
@@ -180,10 +260,12 @@ function PendingWalkthrough(props: { version: WalkthroughVersionResponse }) {
  * The page itself does not scroll.
  */
 function WalkthroughFrame(props: {
+  action?: ReactNode;
   children: ReactNode;
   intent?: ReactNode;
   mainRef?: Ref<HTMLElement>;
   rail: ReactNode;
+  side: ReactNode;
   title: string;
   version: WalkthroughVersionResponse;
 }) {
@@ -203,22 +285,26 @@ function WalkthroughFrame(props: {
               </p>
             ) : null}
           </div>
-          {cost !== undefined ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span className="inline-flex h-9 shrink-0 items-center rounded-md border border-dashboard-border-emphasis px-3 text-sm font-medium tabular-nums text-dashboard-text-muted">
-                    ${cost.toFixed(2)}
-                  </span>
-                }
-              />
-              <TooltipContent>
-                {props.version.status === "generating"
-                  ? "What this Walkthrough has cost so far"
-                  : "What it cost to make this Walkthrough"}
-              </TooltipContent>
-            </Tooltip>
-          ) : null}
+          <div className="flex shrink-0 items-center gap-2">
+            {cost !== undefined ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    // Same box as the buttons beside it, without a hover.
+                    <span className="inline-flex h-9 items-center rounded-md border border-dashboard-border-emphasis bg-dashboard-surface-raised px-3 text-sm font-medium leading-none tabular-nums text-dashboard-text-muted">
+                      ${cost.toFixed(2)}
+                    </span>
+                  }
+                />
+                <TooltipContent>
+                  {props.version.status === "generating"
+                    ? "What this Walkthrough has cost so far"
+                    : "What it cost to make this Walkthrough"}
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
+            {props.action}
+          </div>
         </header>
         {/* The side panel starts at the header rule, so its border meets it. */}
         <div className="grid min-h-0 min-w-0 xl:grid-cols-[minmax(0,1fr)_24rem]">
@@ -228,7 +314,7 @@ function WalkthroughFrame(props: {
           >
             {props.children}
           </main>
-          <WalkthroughQuestions />
+          {props.side}
         </div>
       </div>
     </div>
