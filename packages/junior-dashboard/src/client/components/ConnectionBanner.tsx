@@ -7,11 +7,7 @@ export function ConnectionBanner() {
   if (online) return null;
 
   return (
-    <Alert
-      aria-live="polite"
-      className="block rounded-none border-0 border-t border-amber-300/15 bg-amber-300/[0.07] px-3 py-1.5 text-center font-sans text-xs text-amber-100/80"
-      role="status"
-    >
+    <Alert aria-live="polite" layout="banner" role="status" variant="warning">
       You’re offline. Drafts stay on this device.
     </Alert>
   );
