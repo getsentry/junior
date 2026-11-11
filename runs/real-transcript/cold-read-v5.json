@@ -1,0 +1,68 @@
+[
+ {
+  "file": "runs/real-transcript/v5-small-3071.json",
+  "type": "refactor",
+  "score": "6/6",
+  "scores": [
+   2,
+   2,
+   2
+  ],
+  "unclearTerms": "Keep as fork, Pi SDK",
+  "unclearCount": 2,
+  "costUsd": 0.0102,
+  "answers": [
+   {
+    "q": "What stays the same, and why is the refactor worth it?",
+    "a": "What stays the same: the two-condition filter (no parent, no unkept Quick question timestamp) that five queries copied by hand. Why it's worth it: the upcoming Walkthrough work needs to hide a third kind of Conversation, and with five copies one would be missed; moving the rule into one predicate ensures all sites hide it together. The refactor also keeps behavior identical while preparing for a later `kind` column that will replace the predicate body without touching callers.",
+    "score": 2,
+    "note": "Correctly identifies what stays the same (the two-condition filter), why it's worth it (upcoming Walkthrough work + single point of change), and the preparation for future `kind` column. All specific and accurate."
+   },
+   {
+    "q": "How do we know behavior does not change, and what are the exceptions?",
+    "a": "We know behavior does not change because: (1) the Quick question test now reads the feed change token and confirms it does not change while the fork is unkept and does change after Keep as fork\u2014this test passes on main and fails if the token query drops the Quick question check; (2) the logged SQL was compared before and after for the Board and both searches and matched apart from brackets and condition order; (3) CI passed before merge. Exceptions: Retention and stats keep their own root-only check (not the listing predicate) so unkept Quick questions still get purged and stats numbers do not move. Location pages are left alone for the same reason.",
+    "score": 2,
+    "note": "Accurately describes all three verification methods: the extended fork test with feed token checks, SQL comparison across four call sites, and CI passing. Correctly names the exceptions (purge, stats, location) and explains why they stay separate. Specific and complete."
+   },
+   {
+    "q": "What should a reviewer worry about most?",
+    "a": "A reviewer should worry most about: (1) confirming each of the five call sites lost exactly the two conditions (no parent, no Quick question timestamp) and nothing else; (2) verifying that each site kept its own access, scope, and other filters intact around the predicate call; (3) checking that the predicate is not used in structural 'is this a root' checks where it does not belong; (4) ensuring Retention and stats still use their own root-only check and were not accidentally changed to use the listing predicate.",
+    "score": 2,
+    "note": "Names all four key reviewer concerns in order of importance: (1) verifying each call site lost exactly the two conditions, (2) confirming other filters stayed intact, (3) checking predicate not misused in structural checks, (4) ensuring retention/stats kept their own root-only check. All directly supported by the diff and PR description."
+   }
+  ]
+ },
+ {
+  "file": "runs/real-transcript/v5-stack-3087-3133.json",
+  "type": "feature",
+  "score": "5/6",
+  "scores": [
+   2,
+   2,
+   1
+  ],
+  "unclearTerms": "Stacks API, base branches, Pi SDK, code Mode, searchTools, executeTool, spawnAgent, messageAgent, tool catalog, model, skill, PR bodies, footer marker, head commit, head-side citations, lockfiles, pure renames, mechanical files, hunk, diff hunk, provider diff, system actor, auth handler, SHAs, partial unique index, subquery, tool input error, turn behavior, review desk, subscriptions, user customization, hidden public Conversation, experiment gate, Turn worker, generating row, model calls, tool calls, generation Turn limits, cost_usd metrics",
+  "unclearCount": 39,
+  "costUsd": 0.0319,
+  "answers": [
+   {
+    "q": "What problem does this solve?",
+    "a": "Reviewing agent-written code stacks is a bottleneck because agents produce more code than people can review. Walkthroughs solve this by generating a short guided story about a code change with cited code as evidence, so reviewers can follow the work without reading every line.",
+    "score": 2,
+    "note": "Correctly identifies the core problem: reviewers can't keep up with agent-generated code, and Walkthroughs solve this by providing a guided story with cited evidence instead of requiring full code review."
+   },
+   {
+    "q": "How does it work, in 3-5 sentences?",
+    "a": "A Walkthrough is a generated story of a code change where the model fills fixed slots for each change type (like cause and fix for a bug) and cites code by PR, path, and line range. Junior validates every citation against the real diff, adds layers and excerpts, and stores one version per stack snapshot. A hidden public Conversation runs the generation Turn, which uses a submitWalkthrough tool to validate and store the final document.",
+    "score": 2,
+    "note": "Accurate and specific: describes the fixed slots per change type, citation validation against real diffs, version deduplication by snapshot, and the hidden generation Conversation with submitWalkthrough tool."
+   },
+   {
+    "q": "What should a reviewer worry about most?",
+    "a": "A reviewer should worry most about access control: who can read what Walkthroughs, and whether the source Conversation visibility check is enforced consistently. The second concern is recovery: whether a dead run properly fails its version row and allows retry, and whether stale generating rows time out correctly. Third is the citation validator: whether it correctly rejects uncovered hunks and unresolved citations.",
+    "score": 1,
+    "note": "Identifies real risks (access control, recovery, citation validation) but misses the most critical one: the citation validator's correctness is important, but the bigger risk is that generation Turns have separate limits ($5, 80 calls) that could be exhausted or abused, and the snapshot deduplication could cause stale versions to be reused if commits are force-pushed. Access control is also less critical here since source Conversations are checked at read time, not just generation time."
+   }
+  ]
+ }
+]

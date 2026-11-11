@@ -1,0 +1,64 @@
+{
+ "source": "local:web:fcc152fff2a26ebf9879e3ed (seeded: 305 message events, visibility public \u2014 real visibility unconfirmed)",
+ "runs": [
+  {
+   "case": "#3071",
+   "v4": {
+    "cost": 0.47,
+    "min": 1.8,
+    "chapters": 5,
+    "rejections": 0,
+    "messageCitations": 0,
+    "coldRead": "6/6",
+    "unclear": 0
+   },
+   "v5": {
+    "cost": 0.58,
+    "min": 2.4,
+    "chapters": 5,
+    "rejections": 0,
+    "messageCitations": 5,
+    "messageSeqs": [
+     80,
+     84,
+     86,
+     88,
+     94
+    ],
+    "coldRead": "6/6",
+    "unclear": 2,
+    "transcriptReads": "1 search (newest 50) + keyword scan of all 305 in codemode + 5 full reads",
+    "sourceConversationId": "local:web:fcc152fff2a26ebf9879e3ed"
+   }
+  },
+  {
+   "case": "stack #3087-#3133",
+   "v4": {
+    "cost": 2.16,
+    "min": 6.9,
+    "chapters": 10,
+    "rejections": 0,
+    "messageCitations": 0,
+    "coldRead": "5/6",
+    "unclear": 14
+   },
+   "v5": {
+    "cost": 1.64,
+    "min": 5.6,
+    "chapters": 10,
+    "rejections": 0,
+    "messageCitations": 5,
+    "messageSeqs": [
+     1,
+     5,
+     12,
+     261
+    ],
+    "coldRead": "5/6",
+    "unclear": 39,
+    "transcriptReads": "2 searches (newest 50, oldest 12), 0 full reads; 62 of 305 messages, large ones as previews only",
+    "sourceConversationId": "local:web:fcc152fff2a26ebf9879e3ed"
+   }
+  }
+ ]
+}

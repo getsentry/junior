@@ -1002,3 +1002,28 @@ Before this stack, a reviewer of a PR stack read every diff with nothing to say 
   dropped "check evidence can't pass yet", which iteration 1 had as a
   claim.
 - No eval covers this. The cold read is a journal script.
+
+### 2026-11-11 — real transcript runs (option A, on #3174)
+
+Setup: #3174 head `0a360b501`, fresh local DB, Docker sandbox, local
+`github` plugin (cost-run-setup, renamed so provider `github` resolves),
+opus via gateway. Seeded the root thread `local:web:fcc152fff2a26ebf9879e3ed`
+through `recordActivity` and the event append path: its 305 `message`
+events, in order, renumbered seq 0–304. Marked public (real visibility
+unconfirmed). Linked #3071 and #3087–#3133 to it with `recordCodeChange`.
+Both versions got the root as `sourceConversationId`. #3059 skipped.
+
+Docs (message text stripped): `runs/real-transcript/`.
+
+| Case | Cost v4 → v5 | Chapters | Rejections | Message citations | Transcript read | Cold read | Unclear terms |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| #3071 | $0.47 → $0.58 | 5 → 5 | 0 → 0 | 0 → 5 | keyword scan of all 305, 5 read in full | 6/6 → 6/6 | 0 → 2 |
+| stack | $2.16 → $1.64 | 10 → 10 | 0 → 0 | 0 → 5 | newest 50 + oldest 12 previews, 0 in full | 5/6 → 5/6 | 14 → 39 |
+
+- #3071's "why" now comes from the thread (the Walkthrough work needed one
+  place to hide generation Conversations), and its proof chapter uses the
+  thread's evidence (fails without the check, SQL compared).
+- The stack read the thread shallowly. Its opening cites the original ask,
+  but two claims use hindsight from messages after the stack was opened
+  (#3164, #3174), because the source thread kept going.
+- Cold-read scores did not move; the unclear-term count is noisy.
