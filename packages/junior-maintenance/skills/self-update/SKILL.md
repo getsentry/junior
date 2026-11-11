@@ -132,10 +132,6 @@ Open the PR ready for review, not as a draft. If an existing update PR is a draf
 
 When PR creation returns a subscribable resource hint, watch the PR for suggested review and CI events. After merge, if deployment follow-up is needed, use `github_getDeployment` for the merged commit and watch the suggested deployment events.
 
-## Automatic updates from GitHub releases
-
-When asked to keep an app current whenever Junior publishes a release, resolve `getsentry/junior` with `github_getRelease` (no tag) and create a durable event automation on `release.published`. The task instruction should load this skill and run the update against the published tag from the event's untrusted text / release payload. Prefer an event automation for ongoing automation; use a temporary watch only when following one manually initiated update.
-
 ## Stop conditions
 
 - Any Junior package still lacks the target version or tarball after the bounded availability checks in step 2.
