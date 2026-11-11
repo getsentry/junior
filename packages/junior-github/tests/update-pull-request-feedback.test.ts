@@ -71,7 +71,6 @@ describe("updatePullRequestFeedback", () => {
       repo: "getsentry/junior",
       comment_id: 55,
       status: "addressed",
-      reaction_id: 91,
     });
 
     expect(fetch).toHaveBeenCalledTimes(4);
@@ -216,7 +215,7 @@ describe("updatePullRequestFeedback", () => {
         },
         { toolCallId: "mark-addressed" },
       ),
-    ).resolves.toMatchObject({ status: "addressed", reaction_id: 3 });
+    ).resolves.toMatchObject({ status: "addressed" });
 
     expect(fetch).toHaveBeenCalledTimes(5);
     const deleteRequest = fetch.mock.calls[3]?.[0]?.request as Request;
@@ -248,7 +247,7 @@ describe("updatePullRequestFeedback", () => {
         },
         { toolCallId: "missing-eyes" },
       ),
-    ).resolves.toMatchObject({ status: "addressed", reaction_id: 3 });
+    ).resolves.toMatchObject({ status: "addressed" });
 
     expect(fetch).toHaveBeenCalledTimes(5);
   });
@@ -270,22 +269,24 @@ describe("updatePullRequestFeedback", () => {
         },
         { toolCallId: "already-addressed" },
       ),
-    ).resolves.toMatchObject({ status: "addressed", reaction_id: 9 });
+    ).resolves.toMatchObject({ status: "addressed" });
 
     expect(fetch).toHaveBeenCalledTimes(3);
   });
 
   it("replaces Junior's prior status reaction on a review body through GraphQL", async () => {
+    const bot = { databaseId: BOT_USER_ID };
     const { fetch, tool } = toolContext([
       response({ user: { id: BOT_USER_ID } }),
       response({ id: 303, node_id: "PRR_303" }),
       response({
         data: {
           node: {
+            // A human reactor is not a Bot, so it has no databaseId here.
             reactionGroups: [
-              { content: "EYES", viewerHasReacted: true },
-              { content: "HEART", viewerHasReacted: true },
-              { content: "THUMBS_UP", viewerHasReacted: false },
+              { content: "EYES", reactors: { nodes: [bot] } },
+              { content: "HEART", reactors: { nodes: [bot] } },
+              { content: "THUMBS_UP", reactors: { nodes: [{}] } },
             ],
           },
         },
@@ -294,7 +295,7 @@ describe("updatePullRequestFeedback", () => {
         data: { removeReaction: { reaction: { content: "EYES" } } },
       }),
       response({
-        data: { addReaction: { reaction: { databaseId: 404 } } },
+        data: { addReaction: { reaction: { content: "THUMBS_UP" } } },
       }),
     ]);
 
@@ -314,7 +315,6 @@ describe("updatePullRequestFeedback", () => {
       repo: "getsentry/junior",
       comment_id: 303,
       status: "addressed",
-      reaction_id: 404,
     });
 
     expect(fetch).toHaveBeenCalledTimes(5);
