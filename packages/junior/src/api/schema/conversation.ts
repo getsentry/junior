@@ -803,10 +803,15 @@ export const conversationAgentTreeNodeSchema = z
     kind: conversationKindSchema,
     label: z.string().min(1),
     /**
-     * Agent type of a child, such as `fork`. Absent for a root, a child
+     * Agent type of a child, such as `explore`. Absent for a root, a child
      * without a type, or a viewer who cannot see private content.
      */
     agentType: agentTypeSchema.optional(),
+    /**
+     * The child started with its parent's history. Absent like `agentType`,
+     * or when the child started fresh.
+     */
+    fork: z.literal(true).optional(),
   })
   .strict();
 

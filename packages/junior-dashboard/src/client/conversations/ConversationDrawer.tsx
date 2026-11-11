@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { CircleAlert, ExternalLink } from "lucide-react";
 import { Link } from "react-router";
 
-import { AgentTypeTag } from "./AgentTypeTag";
+import { ChildAgentTags } from "./ChildAgentTags";
 import { useConversationData } from "./queries";
 import { conversationPath } from "./conversationRoutes";
 import {
@@ -185,7 +185,7 @@ function ConversationDrawerContent(
                 {status}
               </StatusChip>
             ) : null}
-            <AgentTypeTag agentType={detail?.agentTree?.at(-1)?.agentType} />
+            <ChildAgentTags node={detail?.agentTree?.at(-1)} />
             {startedAtIso && startedAt !== undefined ? (
               <time
                 className="tabular-nums"
