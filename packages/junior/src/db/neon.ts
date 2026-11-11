@@ -14,7 +14,7 @@ import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
 import { forwardInfoMessages } from "./info-messages";
 import { applyMigrations, waitForMigrationLock } from "./migrate";
 import { juniorSqlSchema } from "./schema";
-import { logException } from "@/chat/logging";
+import { logException, logWarn } from "@/chat/logging";
 import * as Sentry from "@/chat/sentry";
 
 type QueryClient = Pool | PoolClient | Client;
@@ -28,9 +28,9 @@ type PlainQuery = {
 
 const POOL_MAX = 10;
 
-// The WebSocket reports a failed connect as an `ErrorEvent`, which is not an
+// The WebSocket reports a failure as an `ErrorEvent`, which is not an
 // `Error`. Its `message` is often empty, and the reason is in `error`.
-function toConnectError(error: unknown): Error {
+function toWebSocketError(error: unknown, failure: string): Error {
   if (error instanceof Error) {
     return error;
   }
@@ -45,7 +45,7 @@ function toConnectError(error: unknown): Error {
     (typeof event.type === "string" && event.type) ||
     String(error);
   return new Error(
-    `WebSocket connect failed: ${reason}`,
+    `WebSocket ${failure}: ${reason}`,
     event.error === undefined ? undefined : { cause: event.error },
   );
 }
@@ -163,9 +163,13 @@ class OverflowPool extends Pool {
         client.release();
         return;
       }
-      logException(toConnectError(error), "db.pool.client.connect_failed", {
-        "app.db.driver": "neon",
-      });
+      logException(
+        toWebSocketError(error, "connect failed"),
+        "db.pool.client.connect_failed",
+        {
+          "app.db.driver": "neon",
+        },
+      );
     });
   }
 
@@ -394,9 +398,14 @@ export function createNeonJuniorSqlExecutor(args: {
   const dispatcher = new Agent({ allowH2: true });
   const pool = new OverflowPool({ ...poolArgs, dispatcher });
   // An idle client can fail when the server closes it. The pool replaces the
-  // client, so report the error instead of crashing the process.
-  pool.on("error", (error: Error) => {
-    logException(error, "db.pool.client.failed", { "app.db.driver": "neon" });
+  // client, so this is a warning and not a crash or an exception.
+  pool.on("error", (error: unknown) => {
+    const failure = toWebSocketError(error, "idle client failed");
+    logWarn("db.pool.client.failed", {
+      "app.db.driver": "neon",
+      "error.type": failure.name,
+      "exception.message": failure.message,
+    });
   });
   // Messages from SQL-over-HTTP queries do not arrive. Migrations run in a
   // transaction on a WebSocket client, so their messages do.

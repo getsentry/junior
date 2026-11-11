@@ -167,16 +167,32 @@ export async function enqueueAgentDispatch(
   if (!claimedDispatch) {
     return;
   }
-  await (options.conversationStore ?? getConversationStore()).recordActivity({
+  const conversationStore = options.conversationStore ?? getConversationStore();
+  const conversationId = getDispatchConversationId(claimedDispatch);
+  const destination = claimedDispatch.destination;
+  await conversationStore.recordActivity({
     activityAtMs: claimedDispatch.createdAtMs,
-    conversationId: getDispatchConversationId(claimedDispatch),
-    destination: claimedDispatch.destination,
+    conversationId,
+    destination,
     kind: isAutomationRun(claimedDispatch) ? "automation" : "root",
     nowMs,
     source: "plugin",
     sessionSource: claimedDispatch.source,
     ...(claimedDispatch.title ? { title: claimedDispatch.title } : undefined),
   });
+  // A run that starts in a thread owns it, so a person's reply there joins
+  // the run before its first reply. A thread that another Conversation
+  // started in stays with that Conversation.
+  if (destination.platform === "slack" && destination.threadTs) {
+    await conversationStore.claimProviderConversation({
+      atMs: nowMs,
+      conversationId,
+      provider: "slack",
+      providerDestinationId: destination.channelId,
+      providerTenantId: destination.teamId,
+      providerConversationId: destination.threadTs,
+    });
+  }
   await appendAndEnqueueInboundMessage({
     message: buildAgentDispatchInboundMessage(
       claimedDispatch,
