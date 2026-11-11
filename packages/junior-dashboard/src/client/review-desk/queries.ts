@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import {
   keepPreviousData,
   useInfiniteQuery,
@@ -15,6 +15,7 @@ import {
   reviewItemSchema,
   reviewItemWaitingConversationsSchema,
   type ReviewItemActionBody,
+  type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
 import { conversationDetailTitle } from "../format";
@@ -76,10 +77,17 @@ export function useReviewItemsData(filters: ReviewItemListFilters) {
   return { items, moreArchived: Boolean(pages?.[0]?.moreArchived), query };
 }
 
-/** Read one Review item, for a link to an item outside the current list. */
-export function useReviewItemData(id: string | undefined) {
+/**
+ * Read one Review item, for a link to an item outside the current list.
+ * `placeholder` shows until the read finishes.
+ */
+export function useReviewItemData(
+  id: string | undefined,
+  placeholder?: ReviewItemPayload,
+) {
   return useQuery({
     enabled: Boolean(id),
+    placeholderData: placeholder,
     queryKey: [...REVIEW_ITEMS_QUERY_KEY, "detail", id],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
@@ -103,9 +111,16 @@ export function useConversationReviewItemData(
 ) {
   const { items, query } = useReviewItemsData({ conversationId });
   const listed = items.find((item) => item.id === id);
+  // An item that closes leaves the list. Its row keeps the listed item
+  // until its own read finishes, so the row does not blank.
+  const lastListed = useRef(listed);
+  if (listed) lastListed.current = listed;
   // Wait for this Conversation's list before reading the item by itself.
   const waiting = query.isPending || query.isPlaceholderData;
-  const direct = useReviewItemData(listed || waiting ? undefined : id);
+  const direct = useReviewItemData(
+    listed || waiting ? undefined : id,
+    lastListed.current,
+  );
   return listed
     ? { data: listed, isError: false }
     : { data: direct.data, isError: direct.isError };
@@ -180,6 +195,13 @@ export function useReviewItemAction() {
         reviewItemSchema,
         `/api/review-items/${encodeURIComponent(args.id)}/actions`,
         args.body,
+      ),
+    // The row of an item that this closes reads it by itself, so it starts
+    // from the answer.
+    onSuccess: (item) =>
+      queryClient.setQueryData(
+        [...REVIEW_ITEMS_QUERY_KEY, "detail", item.id],
+        item,
       ),
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY }),
