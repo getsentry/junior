@@ -255,6 +255,15 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
                       <AutomationRunRow
                         key={`${run.kind}:${run.executionId}`}
                         onSelect={() => {
+                          // With filters open, the selected run is hidden, so
+                          // its click shows it again instead of closing it.
+                          if (
+                            filtersOpen &&
+                            selection.runId === run.executionId
+                          ) {
+                            setFiltersOpen(false);
+                            return;
+                          }
                           setFiltersOpen(false);
                           selection.toggle(run.executionId);
                         }}

@@ -566,6 +566,12 @@ test("lists runs across automations", async ({ page, dashboard }) => {
   // Filters take the panel from run details and keep the selected run.
   await page.getByRole("button", { name: /^Filters/ }).click();
   await expect(details).toHaveCount(0);
+  // Clicking the selected run shows it again instead of closing it.
+  await firstRun.click();
+  await expect(details).toBeVisible();
+  await expect(page).toHaveURL(/[?&]run=/);
+  await page.getByRole("button", { name: /^Filters/ }).click();
+  await expect(details).toHaveCount(0);
   await filterOption(page, "status", "Failed").click();
   await expect(page).toHaveURL(/status=failed/);
   await expect(page).toHaveURL(/[?&]run=/);
