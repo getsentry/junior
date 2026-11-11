@@ -40,7 +40,7 @@ export function createReplaceGoogleDocContentTool(ctx: GoogleToolContext) {
       return `Delete all of the body of Google Doc ${input.document} and replace it with ${input.content.length} characters of new content.`;
     },
     description:
-      "Replace the whole body of a Google Doc with Markdown content, as your own Google account. Everything in the body is deleted, including tables, images, and text other people wrote; headers, footers, comments, and version history stay. Works only when that account and the requester can both edit the Doc. Confirm with the requester first unless they asked to replace the whole Doc.",
+      "Replace the whole body of a Google Doc with Markdown content, as your own Google account. Everything in the body is deleted, including tables, images, and text other people wrote; headers, footers, comments, and version history stay. Works only when that account and the requester can both edit the Doc. Anyone who can talk to you can read a Doc your account can edit, if they give you its link. Confirm with the requester first unless they asked to replace the whole Doc.",
     inputSchema,
     outputSchema,
     async execute(input) {

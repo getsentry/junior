@@ -29,7 +29,8 @@ Anyone who can talk to Junior can read what the Junior account can see. Share
 calendars and files with that account only when that is acceptable. Junior
 edits a Doc only for a requester who can edit it through their own email,
 their domain, or an editable link. Access through a Google group is not
-checked. Junior makes the requester the owner of a Doc it creates, then
+checked. Anyone who can talk to Junior can read a Doc that Junior edits, if
+they give Junior its link. Junior makes the requester the owner of a Doc it creates, then
 removes its own access. Google emails the requester about the new ownership.
 Junior cannot read or edit that Doc again unless the requester shares it back.
 This only works for requesters in the same Workspace organization as Junior's

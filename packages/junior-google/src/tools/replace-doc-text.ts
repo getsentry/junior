@@ -65,7 +65,7 @@ export function createReplaceGoogleDocTextTool(ctx: GoogleToolContext) {
       return `In Google Doc ${input.document}, replace every "${input.find}" with "${input.replace}".`;
     },
     description:
-      "Replace every match of a text in a Google Doc, as your own Google account. Matches keep their formatting. Works only when that account and the requester can both edit the Doc.",
+      "Replace every match of a text in a Google Doc, as your own Google account. Matches keep their formatting. Works only when that account and the requester can both edit the Doc. Anyone who can talk to you can read a Doc your account can edit, if they give you its link.",
     inputSchema,
     outputSchema,
     async execute(input) {
