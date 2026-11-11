@@ -207,6 +207,7 @@ attributes. Nested logs and spans inherit them.
 | Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`            |
 | Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                                  |
 | Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.callback.resume.*`, `agent.continue.*`, `mcp.oauth_callback.failed`    |
+| Workload identity mint failed        | span `credential.workload_identity.mint`, `sandbox.egress.credential.unavailable`                            |
 | Vercel firewall challenged egress    | `sandbox.egress.challenged`, span `bash`                                                                     |
 | Tool calls ran one at a time         | `app.tool_batch.*` on span `gen_ai.invoke_agent`, `app.sandbox.bash.wait_ms` on span `bash`                  |
 | Auth signal missed by a command      | `sandbox.egress.auth_signal.missing`, span `bash`                                                            |

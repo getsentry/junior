@@ -8,6 +8,7 @@ prerequisites:
 related:
   - /concepts/skills-and-plugins/
   - /concepts/credentials-and-oauth/
+  - /extend/workload-identity/
   - /cli/check/
 ---
 
@@ -80,6 +81,11 @@ mcp:
 This lets Junior validate and load the provider surface before a turn starts.
 Bundled skills are discovered from the package `skills/` directory; they are
 not listed inside `plugin.yaml`.
+
+To reach a service behind Google Cloud or Azure identity, such as Identity-Aware
+Proxy, declare a `workload-identity` credential instead. Junior mints a
+short-lived token from its Vercel OIDC token. See
+[Workload Identity Credentials](/extend/workload-identity/).
 
 ### Pre-registered MCP OAuth clients
 

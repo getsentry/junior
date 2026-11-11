@@ -6,6 +6,7 @@ import { logInfo, logWarn, setSpanAttributes } from "@/chat/logging";
 import { parseInlinePluginManifest, parsePluginManifest } from "./manifest";
 import { createOAuthBearerBroker } from "./auth/oauth-bearer-broker";
 import { createApiHeadersBroker } from "./auth/api-headers-broker";
+import { createWorkloadIdentityBroker } from "./auth/workload-identity-broker";
 import {
   discoverInstalledPluginPackageContent,
   type InstalledPluginPackageContent,
@@ -605,6 +606,8 @@ export function createPluginCatalogRuntime(): PluginCatalogRuntime {
 
       if (!credentials) {
         broker = createApiHeadersBroker(plugin.manifest);
+      } else if (credentials.type === "workload-identity") {
+        broker = createWorkloadIdentityBroker(plugin.manifest, credentials);
       } else {
         broker = createOAuthBearerBroker(plugin.manifest, credentials, deps);
       }

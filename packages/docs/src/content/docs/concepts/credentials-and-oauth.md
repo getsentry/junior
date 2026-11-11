@@ -22,6 +22,8 @@ When sandbox traffic reaches a domain registered by a plugin, Junior fetches a s
 - Junior matches the request domain instead of guessing from command text.
 - Missing identity or credential context blocks the request.
 
+A plugin can also use a bot credential that no person owns. With a [workload identity credential](/extend/workload-identity/), Junior trades its deployment OIDC token for a short-lived Google Cloud or Azure token on the host.
+
 ## User and Automation Access
 
 The current user is the default credential owner. Their account can be used only within the active turn and provider scope.

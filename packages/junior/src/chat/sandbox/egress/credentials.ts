@@ -2,7 +2,10 @@ import {
   createUserTokenStore,
   issueProviderCredentialLease,
 } from "@/chat/capabilities/factory";
-import { CredentialUnavailableError } from "@/chat/credentials/broker";
+import {
+  CredentialMintError,
+  CredentialUnavailableError,
+} from "@/chat/credentials/broker";
 import type {
   PluginAuthorization,
   PluginGrant,
@@ -33,6 +36,11 @@ import {
 // raw provider credentials inside the sandbox.
 
 const HTTP_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+// A workload identity token is one deployment-wide bot credential, not a
+// per-actor one. The `installation-` prefix makes egress share its lease
+// across sandboxes until shortly before it expires, so each request does not
+// mint a new token.
+const WORKLOAD_IDENTITY_GRANT_NAME = "installation-workload-identity";
 
 /** Describes whether grant selection came from plugin hooks or the broker default. */
 export type SandboxEgressGrantSelection =
@@ -84,10 +92,15 @@ function defaultGrantForProvider(input: {
   )
     ? "read"
     : "write";
+  const credentials = pluginCatalogRuntime.getDefinition(input.provider)
+    ?.manifest.credentials;
   return {
     source: "broker",
     grant: {
-      name: "default",
+      name:
+        credentials?.type === "workload-identity"
+          ? WORKLOAD_IDENTITY_GRANT_NAME
+          : "default",
       access,
       reason: `sandbox-egress:${input.provider}:${access}`,
     },
@@ -263,6 +276,14 @@ export async function sandboxEgressCredentialLease(
         reason: grant.reason ?? `sandbox-egress:${provider}:default`,
       });
     } catch (error) {
+      if (error instanceof CredentialMintError) {
+        throw new SandboxEgressCredentialError({
+          provider,
+          grant,
+          kind: "unavailable",
+          message: error.message,
+        });
+      }
       if (error instanceof CredentialUnavailableError) {
         throw new SandboxEgressCredentialError({
           provider,

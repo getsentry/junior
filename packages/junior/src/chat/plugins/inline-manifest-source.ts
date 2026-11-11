@@ -2,6 +2,7 @@ import type {
   PluginAccountsConfig,
   PluginManifest,
   PluginMcpConfig,
+  WorkloadIdentityCredentials,
 } from "./types";
 
 type ManifestSource = Record<string, unknown>;
@@ -38,13 +39,48 @@ function inlineTokenListSource(name: unknown, values: unknown): unknown {
   return values.map((value) => unqualifyManifestToken(name, value));
 }
 
+function workloadIdentitySource(
+  credentials: WorkloadIdentityCredentials,
+): ManifestSource {
+  const { azure, gcp } = credentials;
+  const result: ManifestSource = {};
+  setDefined(result, "type", credentials.type);
+  setDefined(result, "domains", credentials.domains);
+  setDefined(result, "header", credentials.header);
+  if (gcp) {
+    result.gcp = {
+      "workload-identity-provider": gcp.workloadIdentityProvider,
+      "service-account": gcp.serviceAccount,
+      token: gcp.token,
+      ...(gcp.token === "access-token"
+        ? { scopes: gcp.scopes }
+        : { audience: gcp.audience }),
+    };
+  }
+  if (azure) {
+    result.azure = {
+      "tenant-id": azure.tenantId,
+      "client-id": azure.clientId,
+      scope: azure.scope,
+    };
+  }
+  return result;
+}
+
 function inlineCredentialsSource(
   credentials: PluginManifest["credentials"],
 ): unknown {
-  if (credentials === undefined || !isRecord(credentials)) {
+  if (
+    typeof credentials !== "object" ||
+    credentials === null ||
+    Array.isArray(credentials)
+  ) {
     return credentials;
   }
 
+  if (credentials.type === "workload-identity") {
+    return workloadIdentitySource(credentials);
+  }
   const result: ManifestSource = {};
   setDefined(result, "type", credentials.type);
   setDefined(result, "domains", credentials.domains);
