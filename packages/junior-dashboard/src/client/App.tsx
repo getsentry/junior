@@ -89,7 +89,9 @@ import {
   inboxViewOfPath,
   parseInboxView,
 } from "./review-desk/inboxModel";
-import { useReviewItemCountData } from "./review-desk/queries";
+import { useInboxTodoCount } from "./review-desk/queries";
+import { useInboxTabIcon } from "./review-desk/inboxTabIcon";
+import { DocumentTitleProvider, useDocumentTitleCount } from "./documentTitle";
 import { cn } from "./styles";
 import { useVersionsPoll } from "./versions";
 import type { DashboardCoreData } from "./types";
@@ -195,7 +197,9 @@ export function DashboardShell() {
   // the phone header's Back returns to it.
   return (
     <InboxListProvider>
-      <Shell />
+      <DocumentTitleProvider>
+        <Shell />
+      </DocumentTitleProvider>
     </InboxListProvider>
   );
 }
@@ -275,13 +279,11 @@ function Shell() {
     ? (conversationDetailTitle(conversationDetail.data) ??
       conversationDisplayTitle(mobileConversation))
     : undefined;
-  // To do counts the asks and the Automations that wait on the viewer, as
-  // the server counts them, so the tab badge matches To do.
-  const inboxCount = useReviewItemCountData(loggedIn).data;
+  const inboxCount = useInboxTodoCount(loggedIn);
+  useDocumentTitleCount(inboxCount);
+  useInboxTabIcon(inboxCount);
   const primaryNavItems = buildPrimaryNavItems({
-    inboxCount: inboxCount
-      ? inboxCount.needsViewer + inboxCount.automations
-      : undefined,
+    inboxCount,
     loading,
     loggedIn,
     pathname: location.pathname,

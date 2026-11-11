@@ -160,6 +160,16 @@ export function useLinkedConversationTitles(
 }
 
 /**
+ * Count To do: the asks and the Automations that wait on the viewer, as the
+ * server counts them. The Inbox tab badge, the browser tab and To do read
+ * this one hook, so they always match.
+ */
+export function useInboxTodoCount(enabled: boolean): number | undefined {
+  const count = useReviewItemCountData(enabled).data;
+  return count ? count.needsViewer + count.automations : undefined;
+}
+
+/**
  * Count the open action items assigned to the viewer, for the nav. The
  * versions poll refreshes it when it changes.
  */

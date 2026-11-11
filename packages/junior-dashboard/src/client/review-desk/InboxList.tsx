@@ -10,6 +10,7 @@ import {
 import { Navigate, useNavigate, useSearchParams } from "react-router";
 import type { AutomationSummary } from "@sentry/junior/api/schema";
 
+import { useDocumentTitle } from "../documentTitle";
 import { InlineError } from "../components/InlineError";
 import { PaneCollapsedControls } from "../components/layout/PaneNav";
 import { Button } from "../components/ui/button";
@@ -135,6 +136,7 @@ export function InboxList(props: {
   const ready = data.itemsLoaded && !props.loading;
   const state = useInboxListState(ready);
   const { view } = state;
+  useDocumentTitle(INBOX_VIEW_LABELS[view]);
   const action = useReviewItemAction();
   const { nowMs, snoozes, sweeper, titleOf } = data;
   const done = useReviewItemsData({

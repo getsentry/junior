@@ -15,7 +15,7 @@ import { useInboxSnoozes } from "./inboxSnooze";
 import {
   useAutomationAttentionData,
   useLinkedConversationTitles,
-  useReviewItemCountData,
+  useInboxTodoCount,
   useReviewItemData,
   useReviewItemsData,
   scrollPages,
@@ -81,7 +81,7 @@ function useBuildInboxData(input: {
   const attention = useAutomationAttentionData(signedIn);
   // The server counts what waits on the viewer, so the tab badge and To do
   // read the same number.
-  const count = useReviewItemCountData(signedIn);
+  const todoCount = useInboxTodoCount(signedIn) ?? 0;
   const automations = attention.data?.automations ?? [];
   const nowMs = Date.now();
   const snoozes = useInboxSnoozes(nowMs);
@@ -163,9 +163,6 @@ function useBuildInboxData(input: {
     ...pinnedFirst(pinned),
   ];
 
-  const todoCount = count.data
-    ? count.data.needsViewer + count.data.automations
-    : 0;
   // Done has no count: it would need every closed item.
   const counts: Partial<Record<InboxView, number>> = {
     automations: automations.length,

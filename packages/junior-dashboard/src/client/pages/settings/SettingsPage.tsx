@@ -25,6 +25,7 @@ import {
   type ConversationStartPosition,
 } from "../../conversations/transcriptReadPosition";
 import { useComposerAutocorrect } from "../../conversations/composerAutocorrect";
+import { useInboxTabIconCount } from "../../review-desk/inboxTabIcon";
 import { InlineError } from "../../components/InlineError";
 import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { Card } from "../../components/layout/Card";
@@ -139,6 +140,7 @@ function GeneralSettings({ identity }: SettingsPageProps) {
       </form>
       <ConversationStartSetting />
       <ComposerAutocorrectSetting />
+      <InboxTabIconSetting />
       <AutoArchiveSettings identity={identity} />
       <NotificationSettingsCard />
       <CustomizationForm />
@@ -227,6 +229,37 @@ function ComposerAutocorrectSetting() {
           <FieldDescription id="composer-autocorrect-help">
             Let your keyboard correct spelling and capitalize sentences as you
             type. This can change ids, paths, and code. This choice applies to
+            this browser.
+          </FieldDescription>
+        </FieldContent>
+      </Field>
+    </Card>
+  );
+}
+
+/** Let the user hide the Inbox count on this browser's tab icon. */
+function InboxTabIconSetting() {
+  const [showCount, setShowCount] = useInboxTabIconCount();
+  return (
+    <Card className="mt-6 mb-0" padding="md" variant="raised">
+      <AnchorHeading
+        anchor="browser-tab"
+        className="m-0 text-lg font-bold"
+        title="Browser tab"
+      />
+      <Field className="mt-4" orientation="horizontal">
+        <Checkbox
+          aria-describedby="inbox-tab-icon-count-help"
+          checked={showCount}
+          id="inbox-tab-icon-count"
+          onCheckedChange={setShowCount}
+        />
+        <FieldContent>
+          <FieldLabel htmlFor="inbox-tab-icon-count">
+            Show Inbox count on the tab icon
+          </FieldLabel>
+          <FieldDescription id="inbox-tab-icon-count-help">
+            The tab title shows the count either way. This choice applies to
             this browser.
           </FieldDescription>
         </FieldContent>

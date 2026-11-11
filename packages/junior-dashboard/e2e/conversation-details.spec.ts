@@ -11,7 +11,7 @@ test("opens conversation details beside the chat", async ({
   await page.goto(`${dashboard.baseURL}/?view=conversations`);
 
   await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
-  await expect(page).toHaveTitle("Junior");
+  await expect(page).toHaveTitle(/^\(\d+\) Conversations - Junior$/);
   const list = page.getByRole("region", {
     exact: true,
     name: "Conversations",
@@ -44,7 +44,7 @@ test("opens conversation details beside the chat", async ({
   await expect(
     page.getByRole("heading", { name: "Checkout latency triage" }),
   ).toBeVisible();
-  await expect(page).toHaveTitle("Checkout latency triage - Junior");
+  await expect(page).toHaveTitle(/^\(\d+\) Checkout latency triage - Junior$/);
   await expect(page.getByRole("note")).toHaveCount(0);
 
   const detailsButton = page.getByRole("button", {
