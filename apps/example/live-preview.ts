@@ -1,7 +1,7 @@
 /**
  * Live data for a dashboard Preview.
  *
- * Only this example app loads this file, and only when
+ * Only this example app uses this file, and it changes nothing unless
  * `JUNIOR_DASHBOARD_LIVE_ORIGIN` is set. The Junior packages and the
  * production app do not know about it.
  *
@@ -15,6 +15,7 @@
  * data is read-only.
  */
 import { JUNIOR_VERSION } from "@sentry/junior/version";
+import { exampleDashboardAuthRequired } from "./dashboard";
 
 /** An app that serves requests, such as the Hono app from `createApp()`. */
 export interface FetchApp<Rest extends unknown[]> {
@@ -217,4 +218,21 @@ export function withLivePreview<Rest extends unknown[]>(
         : response;
     },
   };
+}
+
+/**
+ * Wrap the app when `JUNIOR_DASHBOARD_LIVE_ORIGIN` is set. Without it, return
+ * the app as it is.
+ */
+export function withExampleLivePreview<Rest extends unknown[]>(
+  app: FetchApp<Rest>,
+): FetchApp<Rest> {
+  const liveOrigin = process.env.JUNIOR_DASHBOARD_LIVE_ORIGIN?.trim();
+  if (!liveOrigin) return app;
+  if (exampleDashboardAuthRequired()) {
+    throw new Error(
+      "JUNIOR_DASHBOARD_LIVE_ORIGIN requires dashboard auth to be off",
+    );
+  }
+  return withLivePreview(app, liveOrigin);
 }

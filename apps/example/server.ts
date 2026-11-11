@@ -6,10 +6,12 @@ const [
   { createApp },
   { exampleDashboardAuthRequired, exampleDashboardMockConversations },
   { plugins },
+  { withExampleLivePreview },
 ] = await Promise.all([
   import("@sentry/junior"),
   import("./dashboard.ts"),
   import("./plugins.ts"),
+  import("./live-preview.ts"),
 ]);
 
 const app = await createApp({
@@ -25,15 +27,4 @@ const app = await createApp({
   },
 });
 
-// A Preview of a frontend change can show live data. Production apps do not
-// load this entry point.
-const liveOrigin = process.env.JUNIOR_DASHBOARD_LIVE_ORIGIN?.trim();
-if (liveOrigin && exampleDashboardAuthRequired()) {
-  throw new Error(
-    "JUNIOR_DASHBOARD_LIVE_ORIGIN requires dashboard auth to be off",
-  );
-}
-
-export default liveOrigin
-  ? (await import("./live-preview.ts")).withLivePreview(app, liveOrigin)
-  : app;
+export default withExampleLivePreview(app);
