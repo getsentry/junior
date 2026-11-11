@@ -14,6 +14,7 @@ test("updates the signed-in user's display name", async ({
   await page.getByRole("button", { name: /Open profile menu/ }).click();
   await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(page.locator("#profile-popover")).toHaveCount(0);
   await expect(page.getByLabel("Display name")).toHaveValue("Dashboard User");
   await screenshot(page, "settings", { view: "desktop" });
 

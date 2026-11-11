@@ -21,9 +21,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuLinkItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -162,8 +160,9 @@ export function ProfileMenu({
     ? formatCostSummary({ total: spend.thirtyDaysUsd })
     : "—";
 
+  // Plain content, not a group label: it names no menu items.
   const identityBlock = (
-    <DropdownMenuLabel className="px-2 py-1.5 font-normal">
+    <div className="px-2 py-1.5">
       <div className="flex min-w-0 items-center gap-2.5">
         <ProfileAvatar className="size-8" user={identity.user} />
         <div className="min-w-0">
@@ -195,7 +194,7 @@ export function ProfileMenu({
           </span>
         </span>
       </div>
-    </DropdownMenuLabel>
+    </div>
   );
 
   const menuLinks = (
@@ -409,7 +408,7 @@ export function ProfileMenu({
         className="w-64"
         id="profile-popover"
       >
-        <DropdownMenuGroup>{identityBlock}</DropdownMenuGroup>
+        {identityBlock}
         <DropdownMenuSeparator />
         <div className="grid gap-1 px-2 py-1.5">
           <ThemeSwitcher />

@@ -46,32 +46,6 @@ function DropdownMenuContent({
   );
 }
 
-/** Group related menu items. */
-function DropdownMenuGroup({ ...props }: MenuPrimitive.Group.Props) {
-  return <MenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />;
-}
-
-/** Name a group of menu items. */
-function DropdownMenuLabel({
-  className,
-  inset,
-  ...props
-}: MenuPrimitive.GroupLabel.Props & {
-  inset?: boolean;
-}) {
-  return (
-    <MenuPrimitive.GroupLabel
-      data-slot="dropdown-menu-label"
-      data-inset={inset}
-      className={cn(
-        "px-1.5 py-1 text-xs font-medium text-muted-foreground data-inset:pl-7",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
 // Same row as `ui/context-menu`, so the `⋯` menu and the sidebar row menu,
 // which show the same rows, look the same.
 const DROPDOWN_MENU_ITEM_CLASS =
@@ -98,15 +72,20 @@ function DropdownMenuItem({
   );
 }
 
-/** Open one link from the menu. Pass `render={<Link />}` for app routes. */
+/**
+ * Open one link from the menu. Pass `render={<Link />}` for app routes. The
+ * menu closes on click, like other items; Base UI keeps it open by default.
+ */
 function DropdownMenuLinkItem({
   className,
+  closeOnClick = true,
   ...props
 }: MenuPrimitive.LinkItem.Props) {
   return (
     <MenuPrimitive.LinkItem
       data-slot="dropdown-menu-item"
       className={cn(DROPDOWN_MENU_ITEM_CLASS, className)}
+      closeOnClick={closeOnClick}
       {...props}
     />
   );
@@ -130,8 +109,6 @@ export {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
   DropdownMenuItem,
   DropdownMenuLinkItem,
   DropdownMenuSeparator,
