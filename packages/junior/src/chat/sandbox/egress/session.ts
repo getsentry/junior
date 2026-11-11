@@ -12,6 +12,7 @@ import {
   type SandboxEgressPermissionDeniedSignal,
 } from "@/chat/sandbox/egress/schemas";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { readJuniorSecret } from "@/chat/secrets";
 
 // Module overview: store the short-lived state that connects a sandbox command
 // to host egress.
@@ -140,7 +141,7 @@ function parseLease(value: unknown): SandboxEgressCredentialLease | undefined {
 }
 
 function getSandboxEgressSecret(): string {
-  const secret = process.env.JUNIOR_SECRET?.trim();
+  const secret = readJuniorSecret();
   if (secret) {
     return secret;
   }
