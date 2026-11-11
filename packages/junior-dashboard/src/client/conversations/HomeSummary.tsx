@@ -25,21 +25,21 @@ const WEEK_DAYS = 7;
 const OPEN_LIMIT = 3;
 
 // Sums the last 7 UTC day buckets and the 7 before them.
-function weeklyMerges(days: CodeActivityDay[]) {
+function rollingMerges(days: CodeActivityDay[]) {
   const recent = days.slice(-2 * WEEK_DAYS);
   const sum = (values: CodeActivityDay[]) =>
     values.reduce((total, day) => total + day.merged, 0);
   return {
     days: recent.slice(-WEEK_DAYS),
-    lastWeek: sum(recent.slice(0, -WEEK_DAYS)),
-    thisWeek: sum(recent.slice(-WEEK_DAYS)),
+    previous7Days: sum(recent.slice(0, -WEEK_DAYS)),
+    last7Days: sum(recent.slice(-WEEK_DAYS)),
   };
 }
 
 /**
- * Show the viewer's week under the home composer: merges, open code changes,
- * and Review items that wait on them. Counts only code changes that Junior
- * opened in Conversations that the viewer started.
+ * Show the viewer's last 7 days under the home composer: merges, open code
+ * changes, and Review items that wait on them. Counts only code changes that
+ * Junior opened in Conversations that the viewer started.
  */
 export function HomeSummary() {
   const email = useDashboardCoreData().data?.me.user.email;
@@ -51,7 +51,7 @@ export function HomeSummary() {
   if (!code.data) return null;
 
   const nowMs = Date.parse(code.data.generatedAt);
-  const merges = weeklyMerges(code.data.activityDays);
+  const merges = rollingMerges(code.data.activityDays);
   // Longest idle first: a PR that nobody touched needs a nudge, however old.
   const open = code.data.changes
     .filter((change) => change.state === "open")
@@ -61,7 +61,7 @@ export function HomeSummary() {
   ).length;
   const needsViewer = reviewCount.data?.needsViewer ?? 0;
   if (
-    merges.thisWeek + merges.lastWeek === 0 &&
+    merges.last7Days + merges.previous7Days === 0 &&
     open.length === 0 &&
     needsViewer === 0
   ) {
@@ -81,8 +81,8 @@ export function HomeSummary() {
             />
           }
           detail={<MergeDelta {...merges} />}
-          label="Merged this week"
-          value={merges.thisWeek}
+          label="Merged, last 7 days"
+          value={merges.last7Days}
         />
         <SummaryCard
           detail={
@@ -165,9 +165,9 @@ function StatusText(props: { children: ReactNode; tone: string }) {
   );
 }
 
-function MergeDelta(props: { lastWeek: number; thisWeek: number }) {
-  const delta = props.thisWeek - props.lastWeek;
-  if (delta === 0) return <>same as last week</>;
+function MergeDelta(props: { previous7Days: number; last7Days: number }) {
+  const delta = props.last7Days - props.previous7Days;
+  if (delta === 0) return <>same as the 7 days before</>;
   return (
     <>
       <span
@@ -178,7 +178,7 @@ function MergeDelta(props: { lastWeek: number; thisWeek: number }) {
       >
         {delta > 0 ? `+${delta}` : `−${-delta}`}
       </span>{" "}
-      vs last week
+      vs the 7 days before
     </>
   );
 }
