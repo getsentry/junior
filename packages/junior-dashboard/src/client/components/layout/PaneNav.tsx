@@ -42,6 +42,7 @@ import {
   COMMAND_PALETTE_SHORTCUT,
 } from "../CommandPalette";
 import { JuniorLogo } from "../JuniorLogo";
+import { toolbarControlBoxClass } from "../ui/button";
 import type { DashboardHeaderNavItem } from "./DashboardHeader";
 import { navItemIcon } from "./navIcons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
@@ -720,13 +721,17 @@ function PaneNavHeader(props: { newAction: PaneNewAction }) {
   const name = getDashboardAgentName();
   return (
     <div className={cn("max-md:hidden", PANE_EDGE_CLASS)}>
-      {/* Same height and rule as the page headers. The logo sits on the
-          icon axis; the toggle ends on the right content edge, 24px in,
-          like row dates and counts. */}
+      {/* Same height and rule as the page headers. The logo fills one
+          control box, like the buttons, and starts at the list's inset;
+          the toggle ends on the right content edge, 24px in, like row
+          dates and counts. */}
       <div className="box-content flex h-header items-center gap-1.5 border-b border-b-dashboard-border pr-4 pl-3">
         <Link
           aria-label={`${name} home`}
-          className="grid size-8 shrink-0 place-items-center rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
+          className={cn(
+            toolbarControlBoxClass,
+            "block shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+          )}
           to="/"
         >
           <JuniorLogo size="sm" />
@@ -762,7 +767,7 @@ function PaneSearchBar() {
         strokeWidth={1.9}
       />
       <span className="min-w-0 flex-1 truncate">Search</span>
-      <kbd className="rounded border border-dashboard-border px-1.5 py-0.5 font-sans text-2xs text-dashboard-text-faint">
+      <kbd className="shrink-0 whitespace-nowrap rounded border border-dashboard-border px-1.5 py-0.5 font-sans text-2xs text-dashboard-text-faint">
         {COMMAND_PALETTE_SHORTCUT}
       </kbd>
     </button>

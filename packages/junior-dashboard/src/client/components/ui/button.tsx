@@ -2,6 +2,13 @@ import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@dashboard/lib/utils";
 
+/**
+ * The box of one toolbar control: 32px, rounded like sidebar rows. Icon
+ * buttons use it, and so does anything that sits in a row beside them,
+ * such as the pane's logo, so their edges line up.
+ */
+export const toolbarControlBoxClass = "size-8 rounded-lg";
+
 const commandButtonClass =
   "inline-flex h-9 max-w-full items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium leading-none focus-visible:outline-2 focus-visible:outline-offset-2";
 
@@ -24,8 +31,10 @@ const buttonVariants = cva(
       },
       size: {
         default: "",
-        // One toolbar control: 32px, rounded like sidebar rows.
-        icon: "grid size-8 place-items-center rounded-lg border-0 bg-transparent p-0 text-dashboard-text-muted focus-visible:outline-2 focus-visible:outline-offset-1 data-disabled:hover:!bg-transparent data-disabled:hover:!text-dashboard-text-muted",
+        icon: cn(
+          toolbarControlBoxClass,
+          "grid place-items-center border-0 bg-transparent p-0 text-dashboard-text-muted focus-visible:outline-2 focus-visible:outline-offset-1 data-disabled:hover:!bg-transparent data-disabled:hover:!text-dashboard-text-muted",
+        ),
         // Body weight keeps menu rows below headings; icons stay muted until the row is active.
         menu: "flex w-full items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-normal text-dashboard-text hover:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-strong focus-visible:outline-none data-disabled:hover:bg-transparent [&_svg]:text-dashboard-text-muted hover:[&_svg]:text-dashboard-text focus-visible:[&_svg]:text-dashboard-text data-disabled:hover:[&_svg]:text-dashboard-text-muted",
       },
