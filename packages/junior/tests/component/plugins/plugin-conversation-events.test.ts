@@ -240,6 +240,38 @@ describe("plugin conversation events", () => {
       date: new Date().toISOString().slice(0, 10),
       events: 1,
     });
+
+    // Past days come from the cache, and the current day is read again.
+    const { getConversationEventStore } = await import("@/chat/db");
+    const costEvent = (createdAtMs: number) => ({
+      createdAtMs,
+      data: {
+        type: "structured_event" as const,
+        namespace: "event-cost-demo",
+        name: "session_processed",
+        version: 1,
+        content: { costUsd: 0.001 },
+      },
+    });
+    const threeDaysAgoMs = Date.now() - 3 * 24 * 60 * 60 * 1_000;
+    await getConversationEventStore().append(
+      conversationId,
+      [costEvent(threeDaysAgoMs), costEvent(Date.now())],
+      { activity: "preserve" },
+    );
+
+    await getPluginOperationalReports(Date.now());
+
+    expect(observedDays?.at(-4)).toEqual({
+      costUsd: 0,
+      date: new Date(threeDaysAgoMs).toISOString().slice(0, 10),
+      events: 0,
+    });
+    expect(observedDays?.at(-1)).toEqual({
+      costUsd: 0.0052,
+      date: new Date().toISOString().slice(0, 10),
+      events: 2,
+    });
   });
 
   it("deduplicates task events across schema versions without refreshing activity", async () => {
