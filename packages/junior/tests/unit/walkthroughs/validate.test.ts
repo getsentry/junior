@@ -36,10 +36,20 @@ function causeChapter(evidence: unknown[], body = "Every run fails [1].") {
     id: "cause",
     label: "Root cause",
     caption: "Each deployment takes its own lock.",
+    role: "opening",
     body,
     evidence,
   };
 }
+
+const proofChapter = {
+  id: "proof",
+  label: "One run per tick",
+  caption: "A test runs two deployments against one lock.",
+  role: "proof",
+  body: "The lock now holds across deployments [1].",
+  evidence: [{ kind: "code", pr: 3150, path: lockFile, start: 21, end: 23 }],
+};
 
 function output(overrides: Record<string, unknown> = {}) {
   return walkthroughOutputSchema.parse({
@@ -56,15 +66,19 @@ function output(overrides: Record<string, unknown> = {}) {
         edges: [{ id: "s-l", from: "scheduler", to: "lock" }],
       },
     ],
-    chapters: [
-      causeChapter([
-        { kind: "code", pr: 3150, path: lockFile, start: 21, end: 23 },
-      ]),
-    ],
     also_changed: [
       { reason: "Retry count only.", files: [{ pr: 3150, path: retryFile }] },
     ],
     ...overrides,
+    // Every story needs a proof chapter, so each test's chapters get one.
+    chapters: [
+      ...((overrides.chapters as unknown[] | undefined) ?? [
+        causeChapter([
+          { kind: "code", pr: 3150, path: lockFile, start: 21, end: 23 },
+        ]),
+      ]),
+      proofChapter,
+    ],
   });
 }
 
@@ -73,9 +87,47 @@ describe("validateWalkthrough", () => {
     expect(validateWalkthrough(output(), refs)).toEqual([]);
   });
 
-  it("reports hunks that the story skips without saying so", () => {
+  it("reports files that the story skips without saying so", () => {
     expect(validateWalkthrough(output({ also_changed: [] }), refs)).toEqual([
-      "src/retry.ts lines 1-3 (head) in PR #3150 are not cited, and the file is not in also_changed.",
+      "src/retry.ts in PR #3150 is not cited, and the file is not in also_changed.",
+    ]);
+  });
+
+  it("lets only an opening orient without evidence, and needs it first with a proof chapter", () => {
+    expect(
+      validateWalkthrough(
+        output({ chapters: [causeChapter([], "Runs doubled in deploys.")] }),
+        refs,
+      ),
+    ).toEqual([]);
+
+    const story = output();
+    const [cause, proof] = [story.chapters[0]!, story.chapters[1]!];
+    story.chapters = [
+      { ...proof, role: "other" },
+      { ...cause, evidence: [], body: "Runs doubled." },
+    ];
+    story.chapters[1]!.role = "other";
+    expect(validateWalkthrough(story, refs)).toContain(
+      "Chapter cause cites no evidence.",
+    );
+  });
+
+  it("caps a chapter at 4 evidence items", () => {
+    const item = { kind: "code", pr: 3150, path: lockFile, start: 21, end: 23 };
+    const problems = validateWalkthrough(
+      output({
+        chapters: [
+          causeChapter(
+            Array.from({ length: 5 }, () => item),
+            "Every run fails [1] [2] [3] [4] [5].",
+          ),
+        ],
+      }),
+      refs,
+    );
+    expect(problems).toEqual([
+      "Chapter cause has 5 evidence items. Use 4 or fewer: cite what backs the point, and list the other files in also_changed.",
     ]);
   });
 
@@ -270,7 +322,8 @@ describe("validateWalkthrough", () => {
     const evidence = [
       { kind: "code", pr: 3150, path: lockFile, start: 21, end: 23 },
     ];
-    const chapters = Array.from({ length: 9 }, (_, n) => ({
+    // With the proof chapter that output() adds, this is 9.
+    const chapters = Array.from({ length: 8 }, (_, n) => ({
       ...causeChapter(evidence),
       id: `part-${n}`,
       label: `Part ${n}`,

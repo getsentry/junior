@@ -172,16 +172,27 @@ const decisionSchema = z
  */
 const bodySchema = z.string().trim().min(1).max(600);
 
-/** One chapter of the story. It cites at least one piece of evidence. */
+/**
+ * What a chapter is for. The type of change picks what the opening says, so
+ * this names only the purposes every Walkthrough needs: an opening first,
+ * and a chapter on how we know it works. Older documents have none.
+ */
+const chapterRoleSchema = z.enum(["opening", "proof", "other"]);
+
+/**
+ * One chapter of the story. An opening may cite nothing; `validateWalkthrough`
+ * checks that every other chapter cites evidence.
+ */
 export const walkthroughChapterSchema = z
   .object({
     id: idSchema,
     /** The chapter title: a few words, such as "Root cause" or "The fix". */
     label: sentence(40),
     caption,
+    role: chapterRoleSchema.default("other"),
     body: bodySchema,
     view: diagramViewSchema.optional(),
-    evidence: z.array(evidenceSchema).min(1).max(6),
+    evidence: z.array(evidenceSchema).max(6),
     decisions: z.array(decisionSchema).max(3).default([]),
     /** Questions a reader is likely to ask here. */
     asks: z.array(sentence(80)).max(3).default([]),

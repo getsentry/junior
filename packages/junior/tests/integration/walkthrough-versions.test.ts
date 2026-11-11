@@ -338,11 +338,22 @@ function submitOutput(seq: number) {
         id: "change",
         label: "The change",
         caption: "The delay grows and jitter is on.",
+        role: "opening",
         body: "The delay goes from 2 to 3 [1] and the caller waits on it [2], as asked [3].",
         evidence: [
           { kind: "code", path: "src/retry.ts", pr: 3087, start: 2, end: 3 },
           { kind: "code", path: "src/caller.ts", pr: 3087, start: 2, end: 2 },
           { kind: "message", seq },
+        ],
+      },
+      {
+        id: "proof",
+        label: "How we know",
+        caption: "The caller now waits on the longer delay.",
+        role: "proof",
+        body: "The caller passes the new delay on [1].",
+        evidence: [
+          { kind: "code", path: "src/caller.ts", pr: 3087, start: 2, end: 2 },
         ],
       },
     ],

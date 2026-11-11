@@ -34,19 +34,39 @@ generation. Say that Walkthroughs start from the dashboard, and stop.
 
 ## Chapters
 
-Each type suggests chapters. Skip, merge, reorder, or add chapters when the
-change needs it, and draw on more than one type for a mixed change.
+The type sets the structure. Use its opening and its checks, then skip,
+merge, reorder, or add chapters when the change needs it. A mixed change
+draws on each of its types.
 
-- Bug fix: root cause, and proof that it is the root cause; the fix; proof
-  that the fix works; side effects; what to watch after it ships.
-- Feature: the problem; how it works; what it touches; how it is tested;
-  what to watch after it ships.
-- Migration: why; what changes in the data; safe to run; rollback.
-- Refactor: what stays the same; proof that behavior does not change;
-  exceptions.
-- Performance: the hot path; the change; the numbers.
-- Dependency: what changed upstream; blast radius; rollback.
-- UI: before and after; states and edge cases.
+| Type        | Opening                                               | What a reviewer must check                             |
+| ----------- | ----------------------------------------------------- | ------------------------------------------------------ |
+| Bug fix     | What broke, and the root cause                        | Is it really the root cause; what else the fix affects |
+| Feature     | The problem, and what changes for the user            | The gap it fills; how it is tested                     |
+| Refactor    | What stays the same, and why the refactor is worth it | Proof that behavior does not change; the exceptions    |
+| Migration   | Why it is needed                                      | Safe to run; rollback                                  |
+| Performance | The hot path, and the numbers                         | Are the numbers real                                   |
+| Dependency  | What changed upstream                                 | Blast radius                                           |
+| UI          | Before and after                                      | States and edge cases                                  |
+
+Every Walkthrough has two chapters:
+
+- **The opening** comes first, with `role: "opening"`. Write the type's
+  opening in the reader's terms: what was wrong, missing, or hard before
+  this change, then what changes. Do not open on mechanics. For a stack or
+  a mixed change, add a short map that names each part by what it does,
+  and show the diagram. Say where the review risk is. For a small PR, this
+  can be a short paragraph.
+- **How we know it works**, with `role: "proof"`: the tests, checks, or
+  runs that show the change does what it says.
+
+Give every other chapter `role: "other"`. Spend chapters on the checks in
+the table: risky or decision-heavy parts get room. A part that is
+boilerplate gets one line in another chapter, or goes in `also_changed`.
+Never write a chapter that only lists files or tests.
+
+When the change has runtime effects, end with what to watch after it ships.
+Name the concrete signal, such as a log, a metric, or a row status, and the
+value that means trouble.
 
 Use 8 chapters or fewer for one PR, and 10 or fewer for a stack.
 
@@ -76,19 +96,29 @@ write the story again.
 
 ## Writing
 
-- `intent` says what kind of change this is first: "This PR fixes a bug
-  where…", "This stack adds…".
-- Each chapter `label` is its title: a few words, such as "Root cause".
-  The `caption` is one sentence that says what the chapter shows. Make each
-  label and each caption unique.
-- Each chapter `body` is one short paragraph for a reader with no context.
-  Cite each evidence item by its 1-based index, such as `[2]`, and cite
-  every item. A chapter can cite code from several PRs.
+Write for a reader who knows the repository and the words in
+TERMINOLOGY.md, but not this change.
+
+- `intent` says what kind of change this is first, then the problem it
+  solves: "This PR fixes a bug where…", "This stack adds… so that…".
+- Define each new term where it first appears, such as a new kind of row or
+  a feature name that a reader outside that feature would not know. Say what
+  a thing does before you name it, then give the identifier in code format:
+  "a second click joins the running version (`claimWalkthroughVersion`)".
+  Never start a sentence with an identifier. Name one only when the reader
+  needs it; the citation already points at the code.
+- One idea per chapter. Each `label` is its title, a few words, such as
+  "Root cause". The `caption` is one sentence that says what the chapter
+  shows. Make each label and each caption unique.
+- Each `body` is one short paragraph. The prose explains; citations support
+  it. Cite evidence by its 1-based index, such as `[2]`, where it backs a
+  point, not on every sentence. Cite every item you add. Use one to three
+  items, and at most four. An opening can cite little or nothing.
 - Show evidence for a root cause, such as code or a check. Do not claim that
   the cause is proven.
-- Add a decision only for something the reader must judge: an assumption that
-  nobody confirmed, a behavior change, a missing signal, or a question that
-  nobody asked.
+- Add a decision only for something a reviewer must decide, and state the
+  tradeoff: an assumption that nobody confirmed, a behavior change, a missing
+  signal, or a question that nobody asked. Never for trivia such as a rename.
 - A decision `claim` is a statement that the reader agrees with or asks to
   change, such as "Three retries are enough to recover a lost lock." Never
   write it as a question. Put what could make the claim wrong in `concern`.

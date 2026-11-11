@@ -184,6 +184,7 @@ export function mockUpdateDocument(
             label: "Reading it in the dashboard",
             caption:
               "The dashboard opens a Walkthrough and waits while it is written.",
+            role: "other",
             body: "A ready version renders its story, and any other version shows the writing or failed state [1].",
             evidence: [code(PAGE)],
             decisions: [],

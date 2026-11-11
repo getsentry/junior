@@ -1,7 +1,8 @@
 /**
  * Checks that schema parsing cannot do. Every reference must resolve, and the
- * story must not skip changed code without saying so. The story's structure
- * is the model's choice, so nothing here checks it.
+ * story must not skip changed files without saying so. The story's structure
+ * is the model's choice, except that it opens with a chapter for its type of
+ * change and has one on how we know it works.
  */
 import {
   type WalkthroughChapter,
@@ -42,6 +43,9 @@ export function contextFileKey(pr: number, path: string): string {
  * a stack gets a little more room than one PR.
  */
 const MAX_CHAPTERS = { single: 8, stack: 10 } as const;
+
+/** Most evidence items in one new chapter, so prose carries the story. */
+const MAX_CHAPTER_EVIDENCE = 4;
 
 /** Changed files that the story leaves out, as `also_changed` lists them. */
 type AlsoChanged = readonly {
@@ -115,6 +119,7 @@ export function validateWalkthrough(
     problems.push(...chapterProblems(chapter, refs, diagrams));
   }
   problems.push(
+    ...roleProblems(output.chapters),
     ...repeatedViewProblems(output.chapters),
     ...coverageProblems(
       refs,
@@ -247,6 +252,34 @@ function claimProblems(decision: WalkthroughDecision): string[] {
     : [];
 }
 
+/**
+ * The story opens with the chapter its type of change calls for, such as the
+ * root cause of a bug, and says how we know the change works. Which chapters
+ * those are is the model's call, so only their order and presence are checked.
+ */
+function roleProblems(chapters: readonly WalkthroughChapter[]): string[] {
+  const problems: string[] = [];
+  if (chapters[0]?.role !== "opening") {
+    problems.push(
+      `The first chapter must open the story for its type of change, with role "opening".`,
+    );
+  }
+  const started = chapters.findIndex((c) => c.role !== "opening");
+  for (const chapter of started < 0 ? [] : chapters.slice(started)) {
+    if (chapter.role === "opening") {
+      problems.push(
+        `Chapter ${chapter.id} is an opening after the story started. Move it to the start, or give it role "other".`,
+      );
+    }
+  }
+  if (!chapters.some((c) => c.role === "proof")) {
+    problems.push(
+      `No chapter says how we know the change works. Add one with role "proof".`,
+    );
+  }
+  return problems;
+}
+
 function chapterProblems(
   chapter: WalkthroughChapter,
   refs: WalkthroughInputRefs,
@@ -256,6 +289,16 @@ function chapterProblems(
     ...chapter.evidence.flatMap((e) => evidenceProblems(e, refs)),
     ...citationProblems(chapter.id, chapter.body, chapter.evidence.length),
   ];
+  // Only an opening may orient without evidence. Few items keep the prose in
+  // charge. Stored documents may hold up to the schema's 6.
+  if (chapter.evidence.length === 0 && chapter.role !== "opening") {
+    problems.push(`Chapter ${chapter.id} cites no evidence.`);
+  }
+  if (chapter.evidence.length > MAX_CHAPTER_EVIDENCE) {
+    problems.push(
+      `Chapter ${chapter.id} has ${chapter.evidence.length} evidence items. Use ${MAX_CHAPTER_EVIDENCE} or fewer: cite what backs the point, and list the other files in also_changed.`,
+    );
+  }
   for (const decision of chapter.decisions) {
     problems.push(...claimProblems(decision));
     if (
@@ -387,43 +430,30 @@ function codeProblems(
 }
 
 /**
- * Every hunk sent to the model overlaps a code citation, or its file is in
- * `also_changed`. Listing a file is always enough, so coverage never forces
- * a chapter.
+ * Every changed file sent to the model has a code citation, or is in
+ * `also_changed`. A cited file counts as told, so the prose need not cite
+ * each hunk. Listing a file is always enough, so coverage never forces a
+ * chapter.
  */
 function coverageProblems(
   refs: WalkthroughInputRefs,
   evidence: readonly WalkthroughEvidence[],
   alsoChanged: AlsoChanged,
 ): string[] {
-  const listed = new Set(
-    alsoChanged.flatMap((group) =>
+  const told = new Set([
+    ...alsoChanged.flatMap((group) =>
       group.files.map((file) => contextFileKey(file.pr, file.path)),
     ),
-  );
-  const excused = (file: WalkthroughDiffFile) =>
-    listed.has(contextFileKey(file.pr, file.path));
-  const cited = evidence.filter((e) => e.kind === "code");
-  const problems: string[] = [];
-  for (const file of refs.files) {
-    if (excused(file)) continue;
-    const citations = cited.filter(
-      (e) => e.pr === file.pr && e.path === file.path,
+    ...evidence.flatMap((e) =>
+      e.kind === "code" ? [contextFileKey(e.pr, e.path)] : [],
+    ),
+  ]);
+  return refs.files
+    .filter((file) => !told.has(contextFileKey(file.pr, file.path)))
+    .map(
+      (file) =>
+        `${file.path} in PR #${file.pr} is not cited, and the file is not in also_changed.`,
     );
-    for (const hunk of file.hunks) {
-      const covered = citations.some((e) => {
-        const range = hunk[e.side];
-        return range && e.start <= range.end && e.end >= range.start;
-      });
-      const side = hunk.head ? "head" : "base";
-      const range = hunk[side];
-      if (covered || !range) continue;
-      problems.push(
-        `${file.path} lines ${range.start}-${range.end} (${side}) in PR #${file.pr} are not cited, and the file is not in also_changed.`,
-      );
-    }
-  }
-  return problems;
 }
 
 /** Chapters whose label or caption repeats, ignoring case. */
