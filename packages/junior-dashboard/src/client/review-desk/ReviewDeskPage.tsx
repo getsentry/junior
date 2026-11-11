@@ -707,7 +707,8 @@ export function ReviewDeskPage() {
           ) : !loaded ||
             (showsAutomations &&
               attention.isPending &&
-              navigable.length === 0) ? (
+              navigable.length === 0 &&
+              snoozedRows.length === 0) ? (
             <BundleRowsLoading />
           ) : q ? (
             <ul aria-label="Search results" className="m-0 grid gap-2 p-0">
