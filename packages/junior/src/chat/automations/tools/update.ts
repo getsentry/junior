@@ -10,12 +10,9 @@ import {
   automationInstructionToolSchema,
   automationTitleSchema,
 } from "@/chat/automations/edit-schema";
-import {
-  automationTaskText,
-  type AutomationTask,
-} from "@/chat/automations/task";
+import type { AutomationTask } from "@/chat/automations/task";
 import type { TaskCandidate } from "@/chat/automations/read";
-import { requireInstructionReferences } from "@/chat/automations/instruction-references";
+import { requireAutomationTaskText } from "@/chat/automations/instruction-references";
 import { automationRevision } from "@/chat/automations/revision";
 import {
   requireToolAutomation,
@@ -419,14 +416,11 @@ export function createUpdateAutomationTool(
       }
       const editor = automationEditor(caller.viewer, current);
       const editedTask = editedAutomationTask(current.task.task, input);
-      const previousText = automationTaskText(current.task.task);
-      const text = editedTask && automationTaskText(editedTask);
-      if (text !== undefined && text !== previousText) {
-        requireInstructionReferences(text, {
+      if (editedTask) {
+        requireAutomationTaskText(editedTask, {
           creator: current.task.createdBy,
-          destinationChannelId: current.task.destination.channelId,
           requester: editor,
-          previousInstruction: previousText ?? "",
+          current: current.task.task,
         });
       }
       let saved = current;

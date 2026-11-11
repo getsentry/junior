@@ -5,7 +5,7 @@
  * each request needs. Junior-owned issue, pull request, review, and push
  * writes never fall back to user OAuth. Merge, fork, branch deletion, REST ref
  * writes, and administration stay unsupported; unknown REST writes and
- * GraphQL mutations are denied.
+ * GraphQL mutations are denied. Git pushes never touch the default branch.
  */
 import {
   EgressPolicyDenied,
@@ -15,6 +15,8 @@ import {
   type PluginGrantAccess,
 } from "@sentry/junior-plugin-api";
 import { assertGitHubPullRequestApprovalDenied } from "./pull-request-review-policy.js";
+import { assertGitHubPushAllowed } from "./receive-pack-policy.js";
+import type { GitHubInstallationEnv } from "./webhooks/installation-requests.js";
 import {
   CREATE_TOOL_ROUTING_GUIDANCE,
   GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
@@ -24,6 +26,7 @@ import {
   isRecord,
   type GitHubGrant,
   type GitHubGrantName,
+  type GitHubRepository,
   type GitHubGrantReason,
 } from "./credential-support.js";
 
@@ -520,6 +523,17 @@ const HOST_GRAPHQL_MUTATIONS = [
     operationName: "ConvertPullRequestToDraft",
     operationPrefix: "github.pull.draft.update:",
   },
+  // Feedback-status reactions on review bodies, which have no REST endpoint.
+  {
+    field: "addReaction",
+    operationName: "AddReviewReaction",
+    operationPrefix: "github.pull.review-reaction.update:",
+  },
+  {
+    field: "removeReaction",
+    operationName: "RemoveReviewReaction",
+    operationPrefix: "github.pull.review-reaction.update:",
+  },
 ] as const;
 
 function hostGraphqlMutationRepository(
@@ -638,20 +652,44 @@ function grantForAccess(
   };
 }
 
-function requireRepositoryTarget(upstreamUrl: URL): void {
-  if (githubRepositoryFromUrl(upstreamUrl)) {
-    return;
+function requireRepositoryTarget(upstreamUrl: URL): GitHubRepository {
+  const repository = githubRepositoryFromUrl(upstreamUrl);
+  if (repository) {
+    return repository;
   }
   throw new EgressPolicyDenied(
     "GitHub write request has no repository in its URL. Use a /repos/{owner}/{repo}/... URL or a GitHub tool for the operation.",
   );
 }
 
+/**
+ * Select the GitHub grant for one egress request, and name its repository
+ * for the write audit event.
+ */
 export async function githubGrantForEgress(
   ctx: EgressHookContext,
+  env: GitHubInstallationEnv,
+): Promise<GitHubGrant> {
+  const upstreamUrl = new URL(ctx.request.url);
+  const grant = await selectGitHubGrant(ctx, env, upstreamUrl);
+  const repository = githubRepositoryFromUrl(upstreamUrl);
+  return repository
+    ? {
+        ...grant,
+        auditAttributes: {
+          ...grant.auditAttributes,
+          "app.github.repository": `${repository.owner}/${repository.name}`,
+        },
+      }
+    : grant;
+}
+
+async function selectGitHubGrant(
+  ctx: EgressHookContext,
+  env: GitHubInstallationEnv,
+  upstreamUrl: URL,
 ): Promise<GitHubGrant> {
   const method = ctx.request.method.toUpperCase();
-  const upstreamUrl = new URL(ctx.request.url);
   applyGitHubEgressPolicy({
     ...(ctx.request.bodyText !== undefined
       ? { bodyText: ctx.request.bodyText }
@@ -669,12 +707,27 @@ export async function githubGrantForEgress(
   const smartHttpAccess = githubSmartHttpAccess(upstreamUrl);
   if (smartHttpAccess) {
     if (smartHttpAccess === "write") {
-      requireRepositoryTarget(upstreamUrl);
-      return grantForAccess(
+      const repository = requireRepositoryTarget(upstreamUrl);
+      const grant = grantForAccess(
         "write",
         "github.installation-write",
         "installation-write",
       );
+      if (
+        method !== "POST" ||
+        !upstreamUrl.pathname.toLowerCase().endsWith("/git-receive-pack")
+      ) {
+        return grant;
+      }
+      return {
+        ...grant,
+        auditAttributes: await assertGitHubPushAllowed({
+          cache: ctx.cache,
+          env,
+          gitPush: ctx.request.gitPush,
+          repository,
+        }),
+      };
     }
     return grantForAccess(
       smartHttpAccess,
@@ -709,11 +762,15 @@ export async function githubGrantForEgress(
     ctx.request.bodyText,
   );
   if (hostMutationRepository) {
-    return grantForAccess(
-      "write",
-      "github.installation-write",
-      "installation-write",
-    );
+    return {
+      ...grantForAccess(
+        "write",
+        "github.installation-write",
+        "installation-write",
+      ),
+      // GraphQL URLs name no repository; the host operation does.
+      auditAttributes: { "app.github.repository": hostMutationRepository },
+    };
   }
 
   const graphqlAccess = githubGraphqlAccess(

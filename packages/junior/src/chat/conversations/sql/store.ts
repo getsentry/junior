@@ -309,6 +309,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
 function emptyConversation(args: {
   conversationId: string;
   destination?: Destination;
+  kind?: "root" | "automation";
   nowMs: number;
   source?: ConversationSource;
   sessionSource?: SessionSource;
@@ -317,7 +318,7 @@ function emptyConversation(args: {
     schemaVersion: 1,
     conversationId: args.conversationId,
     createdAtMs: args.nowMs,
-    kind: "root",
+    kind: args.kind ?? "root",
     lastActivityAtMs: args.nowMs,
     updatedAtMs: args.nowMs,
     ...(args.destination ? { destination: args.destination } : undefined),
@@ -450,6 +451,7 @@ export class SqlStore implements ConversationStore {
     sessionSource?: Source;
     title?: string;
     visibility?: ConversationPrivacy;
+    kind?: "root" | "automation";
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
     const activityAtMs = args.activityAtMs ?? nowMs;
@@ -470,6 +472,7 @@ export class SqlStore implements ConversationStore {
         emptyConversation({
           conversationId: args.conversationId,
           destination: args.destination,
+          kind: args.kind,
           nowMs,
           source: args.source,
           ...(sessionSource ? { sessionSource } : undefined),

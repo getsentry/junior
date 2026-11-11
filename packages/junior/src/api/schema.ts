@@ -65,7 +65,6 @@ export {
   conversationEventHistorySchema,
   conversationEventsQuerySchema,
   conversationFeedQuerySchema,
-  conversationFeedSchema,
   conversationParamsSchema,
   conversationActivityPreviewSchema,
   conversationReportEventDataSchema,
@@ -88,6 +87,11 @@ export {
   conversationDetailWithMailboxReportSchema,
   conversationUnchangedDetailWithMailboxSchema,
 } from "./schema/conversation-pending-messages";
+export { conversationFeedSchema } from "./schema/conversation-feed";
+export type {
+  ConversationFeed,
+  ConversationFeedItem,
+} from "./schema/conversation-feed";
 export {
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
@@ -193,8 +197,6 @@ export type {
   ConversationDetailReport,
   ConversationEventPage,
   ConversationEventHistory,
-  ConversationFeed,
-  ConversationFeedItem,
   ConversationReportEvent,
   ConversationReportEventData,
   ConversationReportMessageEvent,
@@ -378,6 +380,7 @@ export {
   pluginSchema,
   pluginsSchema,
   runtimeInfoReportSchema,
+  skillDetailReportSchema,
   skillReportSchema,
   skillReportsSchema,
 } from "../reporting-schema";
@@ -390,6 +393,7 @@ export type {
   Plugin,
   Plugins,
   RuntimeInfoReport,
+  SkillDetailReport,
   SkillReport,
   SkillReports,
 } from "../reporting-schema";

@@ -5,17 +5,14 @@ import {
   type EventInput,
   type EventMatch,
 } from "@sentry/junior-plugin-api";
-import { createLocalPgliteFixture } from "@sentry/junior-testing/pglite";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  githubSqlSchema,
   type GitHubPullRequestCommitComposition,
   juniorGitHubIssues,
   juniorGitHubPullRequestRequesters,
   juniorGitHubPullRequests,
 } from "../src/db/schema";
-import type { GitHubDb } from "../src/db/database";
 import { githubPlugin } from "../src/index";
 import {
   listGitHubAssignedWork,
@@ -78,11 +75,7 @@ function checkSuitePullRequest(
   };
 }
 
-import {
-  createGitHubFixture,
-  type GitHubFixture,
-  migrationSql,
-} from "./github-db";
+import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 
 it("combines open, merged, and closed pull requests into conversation work", async () => {
@@ -1925,59 +1918,6 @@ describe("GitHub-owned issue outcomes", () => {
 });
 
 describe("GitHub-owned pull request outcomes", () => {
-  it("upgrades existing pull requests with nullable composition and empty conversations", async () => {
-    const fixture = await createLocalPgliteFixture<GitHubDb>(githubSqlSchema);
-    try {
-      await fixture.execute(
-        await migrationSql("0000_pull_request_outcomes.sql"),
-      );
-      await fixture.execute(`
-        INSERT INTO junior_github_pull_requests (
-          pull_request_id,
-          repository_id,
-          repository_full_name,
-          number,
-          state,
-          opened_at,
-          updated_at
-        ) VALUES (
-          'legacy-pr',
-          '2001',
-          'getsentry/junior',
-          900,
-          'open',
-          '2026-06-01T12:00:00.000Z',
-          '2026-06-01T12:00:00.000Z'
-        )
-      `);
-      for (const migration of [
-        "0001_issue_outcomes.sql",
-        "0002_pull_request_commit_composition.sql",
-        "0003_pull_request_conversations.sql",
-        "0004_marvelous_toad_men.sql",
-        "0005_github_cost_associations.sql",
-        "0006_fat_korvac.sql",
-        "0007_shallow_millenium_guard.sql",
-        "0009_nostalgic_thing.sql",
-        "0010_sleepy_slayback.sql",
-      ]) {
-        await fixture.execute(await migrationSql(migration));
-      }
-
-      await expect(
-        fixture.db().select().from(juniorGitHubPullRequests),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          commitComposition: null,
-          conversationIds: [],
-          pullRequestId: "legacy-pr",
-        }),
-      ]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
   it("does not mark pull request comments without an event consumer", async () => {
     const fixture = await createGitHubFixture();
     const published: EventInput[] = [];
@@ -2012,12 +1952,83 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("marks pull request comments before publishing their events", async () => {
+  it.each([
+    {
+      name: "a conversation comment",
+      eventName: "issue_comment",
+      body: {
+        action: "created",
+        repository: { full_name: "getsentry/junior" },
+        issue: {
+          number: 946,
+          pull_request: { url: "https://api.github.com/pulls/946" },
+        },
+        comment: {
+          body: "please revise",
+          id: 101,
+          user: { login: "reviewer" },
+        },
+      },
+      target: { commentId: 101, commentKind: "conversation" },
+      publishedCount: 2,
+    },
+    {
+      // An approval with a body is also sent as review.commented, but the
+      // review body gets one reaction.
+      name: "an approval with a body",
+      eventName: "pull_request_review",
+      body: {
+        action: "submitted",
+        repository: { full_name: "getsentry/junior" },
+        pull_request: { number: 946 },
+        review: {
+          body: "fine, but dedupe the tests",
+          id: 303,
+          state: "APPROVED",
+          user: { login: "reviewer" },
+        },
+      },
+      target: { commentId: 303, commentKind: "review_body" },
+      publishedCount: 4,
+    },
+  ])(
+    "marks $name before publishing its events",
+    async ({ body, eventName, publishedCount, target }) => {
+      const fixture = await createGitHubFixture();
+      const published: EventInput[] = [];
+      const markFeedbackReviewing = vi.fn(async () => {
+        expect(published).toEqual([]);
+      });
+      try {
+        const route = webhookRoute(
+          fixture,
+          published,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          markFeedbackReviewing,
+        );
+        const response = await route.handler(signedRequest(body, eventName));
+
+        expect(response.status).toBe(202);
+        expect(markFeedbackReviewing).toHaveBeenCalledTimes(1);
+        expect(markFeedbackReviewing).toHaveBeenCalledWith({
+          ...target,
+          pullRequest: 946,
+          repo: "getsentry/junior",
+        });
+        expect(published).toHaveLength(publishedCount);
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
+  it("does not mark a review without a body", async () => {
     const fixture = await createGitHubFixture();
     const published: EventInput[] = [];
-    const markFeedbackReviewing = vi.fn(async () => {
-      expect(published).toEqual([]);
-    });
+    const markFeedbackReviewing = vi.fn(async () => {});
     try {
       const route = webhookRoute(
         fixture,
@@ -2031,28 +2042,22 @@ describe("GitHub-owned pull request outcomes", () => {
       const response = await route.handler(
         signedRequest(
           {
-            action: "created",
+            action: "submitted",
             repository: { full_name: "getsentry/junior" },
-            issue: {
-              number: 946,
-              pull_request: { url: "https://api.github.com/pulls/946" },
-            },
-            comment: {
-              body: "please revise",
-              id: 101,
+            pull_request: { number: 946 },
+            review: {
+              body: "",
+              id: 304,
+              state: "APPROVED",
               user: { login: "reviewer" },
             },
           },
-          "issue_comment",
+          "pull_request_review",
         ),
       );
 
       expect(response.status).toBe(202);
-      expect(markFeedbackReviewing).toHaveBeenCalledWith({
-        commentId: 101,
-        commentKind: "conversation",
-        repo: "getsentry/junior",
-      });
+      expect(markFeedbackReviewing).not.toHaveBeenCalled();
       expect(published).toHaveLength(2);
     } finally {
       await fixture.close();

@@ -653,7 +653,7 @@ describe("github plugin", () => {
       },
       "pull_request.comment.created": {
         guidance: expect.stringContaining(
-          "exact repo, comment_id, and comment_kind from Verified details",
+          "exact repo, pull_request, comment_id, and comment_kind from Verified details",
         ),
       },
       "pull_request.review_comment.created": {
@@ -2454,6 +2454,7 @@ Conversation: \`local:test:old-conversation\`
       name: "installation-write",
       access: "write",
       reason: "github.installation-write",
+      auditAttributes: { "app.github.repository": "getsentry/junior" },
     });
     await expect(
       grantForEgress({
@@ -2477,11 +2478,25 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it.each([
-    ["MarkPullRequestReadyForReview", "markPullRequestReadyForReview"],
-    ["ConvertPullRequestToDraft", "convertPullRequestToDraft"],
+    [
+      "MarkPullRequestReadyForReview",
+      "markPullRequestReadyForReview",
+      "github.pull.draft.update:",
+    ],
+    [
+      "ConvertPullRequestToDraft",
+      "convertPullRequestToDraft",
+      "github.pull.draft.update:",
+    ],
+    ["AddReviewReaction", "addReaction", "github.pull.review-reaction.update:"],
+    [
+      "RemoveReviewReaction",
+      "removeReaction",
+      "github.pull.review-reaction.update:",
+    ],
   ])(
     "allows only the typed %s mutation with repository scope",
-    async (operationName, field) => {
+    async (operationName, field, operationPrefix) => {
       const bodyText = JSON.stringify({
         operationName,
         query: `mutation ${operationName}($id: ID!) { ${field}(input: {pullRequestId: $id}) { pullRequest { isDraft } } }`,
@@ -2490,7 +2505,7 @@ Conversation: \`local:test:old-conversation\`
       await expect(
         grantForEgress({
           method: "POST",
-          operation: "github.pull.draft.update:getsentry/junior",
+          operation: `${operationPrefix}getsentry/junior`,
           url: "https://api.github.com/graphql",
           bodyText,
         }),

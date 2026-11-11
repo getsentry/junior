@@ -10,9 +10,13 @@ import {
   githubRequest,
   issueInstallationToken,
 } from "../credential-support.js";
+import { githubErrorMessage } from "../tool-support/github-api.js";
 import {
+  ADD_REVIEW_REACTION_MUTATION,
+  graphqlReactionContent,
   pullRequestCommentReactionsPath,
   pullRequestFeedbackReactionContent,
+  pullRequestReviewPath,
 } from "../tools/update-pull-request-feedback.js";
 
 /** Environment variable names for the GitHub App installation. */
@@ -104,12 +108,13 @@ export async function searchOpenPullRequestMergeability(
   });
 }
 
-/** Add the "reviewing" reaction to one pull request feedback comment. */
+/** Add the "reviewing" reaction to one pull request comment or review body. */
 export async function markPullRequestFeedbackReviewing(
   env: GitHubInstallationEnv,
   target: {
     commentId: number;
-    commentKind: "conversation" | "review";
+    commentKind: "conversation" | "review" | "review_body";
+    pullRequest: number;
     repo: string;
   },
 ): Promise<void> {
@@ -118,6 +123,43 @@ export async function markPullRequestFeedbackReviewing(
     ...env,
     repositories: [name],
   });
+  const content = pullRequestFeedbackReactionContent("reviewing");
+  if (target.commentKind === "review_body") {
+    // A review body has no REST reactions endpoint, so react to its node.
+    const review = z.object({ node_id: z.string().min(1) }).parse(
+      await githubRequest(
+        "https://api.github.com",
+        pullRequestReviewPath({
+          owner,
+          name,
+          pullRequest: target.pullRequest,
+          reviewId: target.commentId,
+        }),
+        { token: token.token },
+      ),
+    );
+    // GraphQL reports errors with HTTP 200.
+    const result = z.object({ errors: z.array(z.unknown()).optional() }).parse(
+      await githubRequest("https://api.github.com", "/graphql", {
+        body: {
+          operationName: "AddReviewReaction",
+          query: ADD_REVIEW_REACTION_MUTATION,
+          variables: {
+            content: graphqlReactionContent(content),
+            subjectId: review.node_id,
+          },
+        },
+        method: "POST",
+        token: token.token,
+      }),
+    );
+    if (result.errors?.length) {
+      throw new Error(
+        `GitHub review reaction failed: ${githubErrorMessage(result)}`,
+      );
+    }
+    return;
+  }
   await githubRequest(
     "https://api.github.com",
     pullRequestCommentReactionsPath({
@@ -127,7 +169,7 @@ export async function markPullRequestFeedbackReviewing(
       commentId: target.commentId,
     }),
     {
-      body: { content: pullRequestFeedbackReactionContent("reviewing") },
+      body: { content },
       method: "POST",
       token: token.token,
     },

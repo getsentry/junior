@@ -19,6 +19,7 @@ import { ActorAvatar } from "../../components/ActorAvatar";
 import { ClampedPreview } from "../../components/ClampedPreview";
 import { Fact, FactList, FactSection } from "../../components/FactSection";
 import { InlineError } from "../../components/InlineError";
+import { SkillLink } from "../../components/SkillLink";
 import { StatusDot } from "../../components/StatusDot";
 import { Card } from "../../components/layout/Card";
 import { Button } from "../../components/ui/button";
@@ -298,9 +299,8 @@ function AutomationInstruction(props: { automation: AutomationSummary }) {
         </h3>
         {task.kind === "skill" ? (
           <p className="m-0 text-sm text-dashboard-text-muted">
-            Runs the{" "}
-            <span className="font-mono text-dashboard-text">{task.skill}</span>{" "}
-            skill{task.context ? " with this context:" : "."}
+            Runs <SkillLink name={task.skill} />
+            {task.context ? " with this context:" : "."}
           </p>
         ) : null}
         {written ? (

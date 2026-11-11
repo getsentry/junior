@@ -43,6 +43,8 @@ describe("turnBehavior", () => {
   it.each([
     { kind: "root", personInput: true, expected: rootTurn },
     { kind: "root", personInput: false, expected: rootTurn },
+    // A person's reply in the run's thread, and an Event Turn.
+    { kind: "automation", personInput: true, expected: rootTurn },
     { kind: "automation", personInput: false, expected: rootTurn },
     { kind: "thread", personInput: true, expected: personInThreadTurn },
     { kind: "thread", personInput: false, expected: childAgentTurn },
@@ -62,20 +64,24 @@ describe("turnBehavior", () => {
     ).toThrow("A task Conversation cannot have a person's input");
   });
 
-  it("makes an Automation run end with its declared result", () => {
-    expect(
-      turnBehavior({ kind: "root", personInput: false, automationRun: true }),
-    ).toEqual({
-      delivery: "conversation",
-      promptMode: "automation",
-      gated: true,
-      tools: {
-        ...rootTurn.tools,
-        noReply: false,
-        finishAutomationRun: true,
-      },
-    });
-  });
+  // `root` is a run that started before kind `automation` was stored.
+  it.each(["automation", "root"] as const)(
+    "makes an Automation run on a $0 Conversation end with its declared result",
+    (kind) => {
+      expect(
+        turnBehavior({ kind, personInput: false, automationRun: true }),
+      ).toEqual({
+        delivery: "conversation",
+        promptMode: "automation",
+        gated: true,
+        tools: {
+          ...rootTurn.tools,
+          noReply: false,
+          finishAutomationRun: true,
+        },
+      });
+    },
+  );
 
   it("counts only Slack and web input as a person's", () => {
     expect(

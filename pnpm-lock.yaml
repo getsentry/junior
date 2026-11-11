@@ -615,7 +615,7 @@ importers:
         version: 0.34.49
       drizzle-orm:
         specifier: 'catalog:'
-        version: 0.45.2
+        version: 0.45.2(@types/pg@8.15.6)(pg@8.21.0)
       marked:
         specifier: ^18.1.2
         version: 18.1.2
@@ -632,6 +632,9 @@ importers:
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1
+      '@types/pg':
+        specifier: ^8.15.6
+        version: 8.15.6
       drizzle-kit:
         specifier: 'catalog:'
         version: 0.31.10
@@ -641,6 +644,9 @@ importers:
       oxlint:
         specifier: ^1.79.0
         version: 1.79.0
+      pg:
+        specifier: ^8.16.3
+        version: 8.21.0
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(tsx@4.22.3)(typescript@7.0.2)
@@ -16309,6 +16315,11 @@ snapshots:
   drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(pg@8.21.0):
     optionalDependencies:
       '@neondatabase/serverless': 1.1.0
+      pg: 8.21.0
+
+  drizzle-orm@0.45.2(@types/pg@8.15.6)(pg@8.21.0):
+    optionalDependencies:
+      '@types/pg': 8.15.6
       pg: 8.21.0
 
   dset@3.1.4: {}

@@ -189,6 +189,11 @@ export interface ConversationStore {
     sessionSource?: Source;
     title?: string;
     /**
+     * Kind of a new Conversation. Default `root`. An existing Conversation
+     * keeps its kind.
+     */
+    kind?: "root" | "automation";
+    /**
      * Current visibility from its owner, such as a Slack event channel type. It
      * replaces the visibility of the shared Destination row. Omit it for saved
      * values, such as visibility captured when an Automation was created.

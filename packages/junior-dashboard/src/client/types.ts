@@ -11,6 +11,7 @@ import type {
 import type {
   ActorIdentity,
   ConversationReportMessageEvent,
+  ConversationFeedItem,
   ConversationStatsReport,
   ReplyTimeSegmentsReport,
   ConversationSummaryReport,
@@ -167,6 +168,8 @@ export type ConversationTranscript = ConversationDetailReport;
 
 export type Conversation = {
   activityPreview?: ConversationSummaryReport["activityPreview"];
+  /** The latest Brief's status, summary, and intent, when visible. */
+  brief?: ConversationFeedItem["brief"];
   annotations?: ConversationSummaryReport["annotations"];
   sidebarAnnotations?: ConversationSummaryReport["sidebarAnnotations"];
   archivedAt?: string | null;

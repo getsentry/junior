@@ -28,6 +28,7 @@ import { Button } from "../../components/ui/button";
 import { FormNotice } from "../../components/FormNotice";
 import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
+import { SkillLink } from "../../components/SkillLink";
 import { StatusChip } from "../../components/StatusChip";
 import { Card } from "../../components/layout/Card";
 import { DisplayText } from "../../display-text/DisplayText";
@@ -367,11 +368,7 @@ function fieldValue(
     case "title":
       return definition.title ?? "First line of the instruction";
     case "skill":
-      return task.skill ? (
-        <span className="font-mono">{task.skill}</span>
-      ) : (
-        "No skill"
-      );
+      return task.skill ? <SkillLink name={task.skill} /> : "No skill";
     case "instruction":
       if (!task.instruction) return "No context";
       return (

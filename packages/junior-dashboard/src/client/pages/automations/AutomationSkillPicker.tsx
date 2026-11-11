@@ -14,7 +14,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "../../components/ui/popover";
+import { MatchedLabel } from "../../components/MatchedLabel";
+import { skillLabel } from "../../components/SkillLink";
 import { cn } from "../../styles";
+import { searchSkills, type SkillSearchRow } from "./skillSearch";
 
 /**
  * Choose the skill an Automation runs. A saved skill that is no longer
@@ -29,6 +32,7 @@ export function AutomationSkillPicker(props: {
   onChange(skill: string): void;
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const selected = props.skills.find((skill) => skill.name === props.value);
   const missing = Boolean(props.value) && !selected;
   const groups = [
@@ -41,8 +45,20 @@ export function AutomationSkillPicker(props: {
       skills: props.skills.filter((skill) => skill.pluginProvider),
     },
   ].filter((group) => group.skills.length > 0);
+  // Names show as `$skill-name`, so a pasted label still searches by name.
+  const search = query.trim().replace(/^\$/, "");
+  const choose = (skill: string) => {
+    props.onChange(skill);
+    setOpen(false);
+  };
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setQuery("");
+      }}
+    >
       <PopoverTrigger
         id={props.id}
         aria-invalid={props.invalid || missing || undefined}
@@ -61,7 +77,7 @@ export function AutomationSkillPicker(props: {
                       "text-dashboard-text-muted line-through decoration-dashboard-text-muted/60",
                   )}
                 >
-                  {props.value}
+                  {skillLabel(props.value)}
                 </span>
                 {missing ? (
                   <SkillBadge tone="danger">Not found</SkillBadge>
@@ -90,42 +106,70 @@ export function AutomationSkillPicker(props: {
         align="start"
         className="w-(--anchor-width) max-w-[calc(100vw-2rem)] min-w-80 overflow-hidden p-0"
       >
-        <Command label="Skills">
-          <CommandInput placeholder="Search by name or description" />
+        {/* Ranked here so a name match beats a description match. */}
+        <Command label="Skills" shouldFilter={false}>
+          <CommandInput
+            placeholder="Search by name or description"
+            value={query}
+            onValueChange={setQuery}
+          />
           <CommandList>
             <CommandEmpty>No skills match.</CommandEmpty>
-            {groups.map((group) => (
-              <CommandGroup heading={group.heading} key={group.heading}>
-                {group.skills.map((skill) => (
-                  <CommandItem
-                    key={skill.name}
-                    value={skill.name}
-                    keywords={[skill.description]}
-                    onSelect={() => {
-                      props.onChange(skill.name);
-                      setOpen(false);
-                    }}
-                    className="items-start"
-                  >
-                    <span className="grid min-w-0 flex-1 gap-0.5">
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span className="truncate font-mono">{skill.name}</span>
-                        {skill.disableModelInvocation ? (
-                          <SkillBadge>Manual only</SkillBadge>
-                        ) : null}
-                      </span>
-                      <span className="truncate text-xs text-dashboard-text-muted">
-                        {skill.description}
-                      </span>
-                    </span>
-                  </CommandItem>
+            {search
+              ? searchSkills(props.skills, search).map((row) => (
+                  <SkillOption
+                    key={row.skill.name}
+                    row={row}
+                    onSelect={choose}
+                  />
+                ))
+              : groups.map((group) => (
+                  <CommandGroup heading={group.heading} key={group.heading}>
+                    {group.skills.map((skill) => (
+                      <SkillOption
+                        key={skill.name}
+                        row={{ skill }}
+                        onSelect={choose}
+                      />
+                    ))}
+                  </CommandGroup>
                 ))}
-              </CommandGroup>
-            ))}
           </CommandList>
         </Command>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function SkillOption(props: {
+  row: SkillSearchRow;
+  onSelect(skill: string): void;
+}) {
+  const { skill } = props.row;
+  return (
+    <CommandItem
+      value={skill.name}
+      onSelect={() => props.onSelect(skill.name)}
+      className="items-start"
+    >
+      <span className="grid min-w-0 flex-1 gap-0.5">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate font-mono">
+            $
+            <MatchedLabel label={skill.name} matches={props.row.nameMatches} />
+          </span>
+          {skill.disableModelInvocation ? (
+            <SkillBadge>Manual only</SkillBadge>
+          ) : null}
+        </span>
+        <span className="truncate text-xs text-dashboard-text-muted">
+          <MatchedLabel
+            label={skill.description}
+            matches={props.row.descriptionMatches}
+          />
+        </span>
+      </span>
+    </CommandItem>
   );
 }
 

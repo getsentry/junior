@@ -5,6 +5,7 @@ import {
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import type {
   PluginAuthorization,
+  PluginGitPush,
   PluginGrant,
 } from "@sentry/junior-plugin-api";
 import {
@@ -143,6 +144,7 @@ function assertLeaseTransformsOwnedByProvider(
  */
 export async function selectSandboxEgressGrant(input: {
   bodyText?: string;
+  gitPush?: PluginGitPush;
   method: string;
   operation?: string;
   provider: string;
@@ -156,6 +158,7 @@ export async function selectSandboxEgressGrant(input: {
     ...(input.bodyText !== undefined
       ? { bodyText: input.bodyText }
       : undefined),
+    ...(input.gitPush ? { gitPush: input.gitPush } : undefined),
     ...(input.operation ? { operation: input.operation } : undefined),
     provider: input.provider,
     method: input.method,
