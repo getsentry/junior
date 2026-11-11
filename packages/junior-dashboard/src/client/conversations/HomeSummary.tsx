@@ -294,10 +294,7 @@ function idleDays(nowMs: number, change: CodeChangeSummaryReport): number {
   return Math.floor((nowMs - Date.parse(lastActivity(change))) / DAY_MS);
 }
 
-/**
- * Time since the last push, review, or comment, colored by how long the PR
- * sat. Hover adds when it was opened, which no longer drives the color.
- */
+/** Time since the last push, review, or comment, colored by idle days. */
 function IdleText(props: { change: CodeChangeSummaryReport; nowMs: number }) {
   const days = idleDays(props.nowMs, props.change);
   const idle = formatSince(props.nowMs, lastActivity(props.change));
@@ -322,9 +319,10 @@ function IdleText(props: { change: CodeChangeSummaryReport; nowMs: number }) {
         {idle}
       </TooltipTrigger>
       <TooltipContent size="compact">
+        {/* PRs opened before tracking started can have untracked activity. */}
         {touched
           ? `Last activity ${idle} ago · opened ${opened} ago`
-          : `Opened ${opened} ago · no activity since`}
+          : `Opened ${opened} ago`}
       </TooltipContent>
     </Tooltip>
   );
