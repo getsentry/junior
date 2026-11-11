@@ -1695,7 +1695,7 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).not.toContain(">metrics<");
     expect(systemHtml).not.toContain(">datasets<");
     expect(systemHtml).not.toContain(">1 loaded<");
-    expect(systemHtml).not.toContain(">triage<");
+    expect(systemHtml).not.toContain(">$triage<");
 
     const pluginsHtml = renderToStaticMarkup(
       <MemoryRouter initialEntries={["/system/plugins"]}>
@@ -1705,7 +1705,7 @@ describe("dashboard canonical-event components", () => {
     expect(pluginsHtml).toContain(">Plugins<");
     expect(pluginsHtml).toContain(">Skills<");
     expect(pluginsHtml).toContain(">GitHub<");
-    expect(pluginsHtml).toContain(">triage<");
+    expect(pluginsHtml).toContain(">$triage<");
     expect(pluginsHtml).not.toContain("Usage over time");
     expect(pluginsHtml).not.toContain('aria-label="Reporting period"');
 
@@ -1715,7 +1715,7 @@ describe("dashboard canonical-event components", () => {
       </MemoryRouter>,
     );
     expect(skillsHtml).toContain(">github<");
-    expect(skillsHtml).toContain(">triage<");
+    expect(skillsHtml).toContain(">$triage<");
   });
 
   it("renders each plugin as a dedicated System route", () => {
@@ -1753,7 +1753,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain('href="/system/plugins/scheduler"');
     expect(html).toContain(">Scheduler<");
     expect(html).toContain(">active tasks<");
-    expect(html).toContain(">scheduled-automations<");
+    expect(html).toContain(">$scheduled-automations<");
     expect(html).not.toContain(">1 reporting<");
     expect(html).not.toContain("Usage over time");
   });

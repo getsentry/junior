@@ -380,6 +380,7 @@ export {
   pluginSchema,
   pluginsSchema,
   runtimeInfoReportSchema,
+  skillDetailReportSchema,
   skillReportSchema,
   skillReportsSchema,
 } from "../reporting-schema";
@@ -392,6 +393,7 @@ export type {
   Plugin,
   Plugins,
   RuntimeInfoReport,
+  SkillDetailReport,
   SkillReport,
   SkillReports,
 } from "../reporting-schema";
