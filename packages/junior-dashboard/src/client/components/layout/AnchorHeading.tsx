@@ -36,6 +36,11 @@ export function useCurrentAnchor(
     const target = hash.slice(1);
     let frame = 0;
     let waits = 0;
+    // Until the reader or the heading's own scroll moves the page, the
+    // hash's section stays marked while it shows: `scrollIntoView` runs
+    // after the first frames, and fires no scroll when the heading is
+    // already on screen.
+    let followed = list.includes(target);
     const update = () => {
       frame = 0;
       const margin = anchorScrollMargin();
@@ -46,6 +51,19 @@ export function useCurrentAnchor(
         page !== null &&
         page.scrollHeight > window.innerHeight &&
         window.scrollY + window.innerHeight >= page.scrollHeight - 2;
+      if (followed) {
+        const top = document
+          .getElementById(target)
+          ?.getBoundingClientRect().top;
+        if (top === undefined) {
+          if (++waits < 60) schedule();
+          return;
+        }
+        if (top >= chromeBottom && top < window.innerHeight) {
+          setCurrent(target);
+          return;
+        }
+      }
       let next: string | undefined;
       for (const id of list) {
         const top = document.getElementById(id)?.getBoundingClientRect().top;
@@ -69,15 +87,19 @@ export function useCurrentAnchor(
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(update);
     };
+    const onScroll = () => {
+      followed = false;
+      schedule();
+    };
     // A new page drops the old page's section; the hash's section shows
     // at once, else the first one.
     setCurrent(list.includes(target) ? target : undefined);
     schedule();
-    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", schedule);
     return () => {
       cancelAnimationFrame(frame);
-      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", schedule);
     };
   }, [hash, ids]);
