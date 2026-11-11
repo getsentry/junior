@@ -70,11 +70,6 @@ const RepositoryPage = lazy(() =>
     default: module.RepositoryPage,
   })),
 );
-const BoardPage = lazy(() =>
-  import("./pages/board/BoardPage").then((module) => ({
-    default: module.BoardPage,
-  })),
-);
 const CodePage = lazy(() =>
   import("./pages/code/CodePage").then((module) => ({
     default: module.CodePage,
@@ -554,8 +549,6 @@ export function DashboardShell() {
               }
               path="/review"
             />
-            {/* The Board is an experiment, so no navigation links to it. */}
-            <Route element={<BoardPage />} path="/board" />
             <Route element={<CodePage />} path="/code" />
             {codeRepositoryTabs.map((tab) => (
               <Route
