@@ -59,10 +59,12 @@ class OverflowPool extends Pool {
       // conversation list alone can hold three connections for seconds. With
       // a smaller pool, the other requests wait for a free connection.
       max: POOL_MAX,
-      // The pg default closes a client after 10s idle, which is also the
-      // dashboard poll interval, so most polls and page loads opened new
-      // WebSockets. Idle clients to the Neon pooler hold no Postgres backend.
-      idleTimeoutMillis: 60_000,
+      // Keeps clients that a burst opened warm for the next burst. Idle
+      // clients to the Neon pooler hold no Postgres backend, and neither
+      // Neon's proxy nor its PgBouncer closes them on a timer. The driver
+      // sends no keepalive, so stay under common NAT idle limits (about
+      // 350 s), which drop a silent connection without closing it.
+      idleTimeoutMillis: 300_000,
       // Keeps the client that `reconnectWhenEmpty()` opens. Alone, `min` does
       // not keep a client open after a burst.
       min: 1,
