@@ -223,29 +223,29 @@ attributes. Nested logs and spans inherit them.
 
 ## Domains
 
-| Symptom                              | Events and spans                                                                                                         |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| Webhook not routed                   | `webhook.*`, `slack.event.*`, span `slack.message.ingress`                                                               |
-| Queued but late, repeated, or no-op  | `conversation.queue.*`, `conversation.work.*`, spans `queue.publish`, `queue.process`                                    |
-| No final Slack reply                 | `agent.turn.*`, `slack.thread.post.failed`, `slack.action.*`, spans `chat.turn`, `chat.reply`                            |
-| Timeout, empty answer, bad reasoning | `agent.turn.*`, `guardian.action_review.*`, spans `gen_ai.invoke_agent`, `gen_ai.chat`, `agent.step.prepare`             |
-| Slow or wrong action review          | `guardian.action_review.*`, span `guardian.action_review`, `app.guardian.*` on `gen_ai.execute_tool`                     |
-| Tool, MCP, or sandbox failure        | `agent.tool_call.failed`, `mcp.*`, `sandbox.*`, spans `gen_ai.execute_tool`, `sandbox.*`, `bash`                         |
-| Code Mode script slow or failed      | `app.codemode.*` on span `gen_ai.execute_tool` (`codemode`), nested `gen_ai.execute_tool` spans                          |
-| Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`, `agent.turn.answer.*` |
-| Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                                              |
-| Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.callback.resume.*`, `agent.continue.*`, `mcp.oauth_callback.failed`                |
-| Vercel firewall challenged egress    | `sandbox.egress.challenged`, span `bash`                                                                                 |
-| Tool calls ran one at a time         | `app.tool_batch.*` on span `gen_ai.invoke_agent`, `app.sandbox.bash.wait_ms` on span `bash`                              |
-| Auth signal missed by a command      | `sandbox.egress.auth_signal.missing`, span `bash`                                                                        |
-| Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                                                 |
-| Memory recall slow, empty, or noisy  | `app.memory.recall.*` on span `plugin.hook` (`userPrompt`), span `gen_ai.rerank`, `plugin.log.warn`                      |
-| Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `web.search.failed`                                        |
-| Model request slow before gateway    | `app.ai.http.*`, `app.ai.event_loop.utilization` on span `gen_ai.chat`                                                   |
-| Prompt cache reset between calls     | `app.ai.request.*` hashes, `gen_ai.usage.cache_*` on span `gen_ai.chat`                                                  |
-| Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`                        |
-| Slow or failing SQL                  | automatic `db` spans; group by `db.query.text` or `db.query.summary`; `app.db.transport`                                 |
-| Push notification missing or late    | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                                          |
+| Symptom                              | Events and spans                                                                                             |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| Webhook not routed                   | `webhook.*`, `slack.event.*`, span `slack.message.ingress`                                                   |
+| Queued but late, repeated, or no-op  | `conversation.queue.*`, `conversation.work.*`, spans `queue.publish`, `queue.process`                        |
+| No final Slack reply                 | `agent.turn.*`, `slack.thread.post.failed`, `slack.action.*`, spans `chat.turn`, `chat.reply`                |
+| Timeout, empty answer, bad reasoning | `agent.turn.*`, `guardian.action_review.*`, spans `gen_ai.invoke_agent`, `gen_ai.chat`, `agent.step.prepare` |
+| Slow or wrong action review          | `guardian.action_review.*`, span `guardian.action_review`, `app.guardian.*` on `gen_ai.execute_tool`         |
+| Tool, MCP, or sandbox failure        | `agent.tool_call.failed`, `mcp.*`, `sandbox.*`, spans `gen_ai.execute_tool`, `sandbox.*`, `bash`             |
+| Code Mode script slow or failed      | `app.codemode.*` on span `gen_ai.execute_tool` (`codemode`), nested `gen_ai.execute_tool` spans              |
+| Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`            |
+| Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                                  |
+| Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.callback.resume.*`, `agent.continue.*`, `mcp.oauth_callback.failed`    |
+| Vercel firewall challenged egress    | `sandbox.egress.challenged`, span `bash`                                                                     |
+| Tool calls ran one at a time         | `app.tool_batch.*` on span `gen_ai.invoke_agent`, `app.sandbox.bash.wait_ms` on span `bash`                  |
+| Auth signal missed by a command      | `sandbox.egress.auth_signal.missing`, span `bash`                                                            |
+| Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                                     |
+| Memory recall slow, empty, or noisy  | `app.memory.recall.*` on span `plugin.hook` (`userPrompt`), span `gen_ai.rerank`, `plugin.log.warn`          |
+| Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `web.search.failed`                            |
+| Model request slow before gateway    | `app.ai.http.*`, `app.ai.event_loop.utilization` on span `gen_ai.chat`                                       |
+| Prompt cache reset between calls     | `app.ai.request.*` hashes, `gen_ai.usage.cache_*` on span `gen_ai.chat`                                      |
+| Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`            |
+| Slow or failing SQL                  | automatic `db` spans; group by `db.query.text` or `db.query.summary`; `app.db.transport`                     |
+| Push notification missing or late    | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                              |
 
 ## Code Mode
 
