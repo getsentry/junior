@@ -6,6 +6,7 @@ import {
 
 import { useToastManager } from "../../components/ui/toast";
 import { fetchDashboardJson, post } from "../../http";
+import { invalidateAutomationReads } from "../../review-desk/queries";
 
 /**
  * Pause or resume one Automation, then refresh every Automation list. It
@@ -36,9 +37,7 @@ export function useAutomationLifecycle(
       });
     },
     onSuccess: async (updated) => {
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard", "automations"],
-      });
+      await invalidateAutomationReads(queryClient);
       toast.add({
         title:
           updated.status === "blocked"

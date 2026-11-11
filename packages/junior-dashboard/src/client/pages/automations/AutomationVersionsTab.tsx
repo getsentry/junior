@@ -38,6 +38,7 @@ import { cn } from "../../styles";
 import { formatAutomationRunTime } from "./automationFormat";
 import { automationOutcomeLabel } from "./automationOutcomes";
 import { TriggerFilters } from "./TriggerFilters";
+import { invalidateAutomationReads } from "../../review-desk/queries";
 
 /** Search param that selects the version to compare. */
 export const AUTOMATION_VERSION_PARAM = "version";
@@ -111,9 +112,7 @@ function AutomationVersionsView(props: {
     onMutate: () => setActivated(undefined),
     onSuccess: async (_, version) => {
       setActivated(version);
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard", "automations"],
-      });
+      await invalidateAutomationReads(queryClient);
     },
   });
   if (!selected) {

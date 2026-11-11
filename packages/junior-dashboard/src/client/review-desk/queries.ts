@@ -6,6 +6,7 @@ import {
   useQueries,
   useQuery,
   useQueryClient,
+  type QueryClient,
 } from "@tanstack/react-query";
 import {
   automationListSchema,
@@ -23,6 +24,8 @@ import { fetchDashboardJson, post } from "../http";
 
 /** Prefix of every Review item read, for refreshes after a change. */
 export const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
+
+const REVIEW_ITEM_COUNT_QUERY_KEY = [...REVIEW_ITEMS_QUERY_KEY, "count"];
 
 type ReviewItemListFilters = {
   /** Lists the done and dismissed items instead, newest closed first. */
@@ -163,7 +166,7 @@ export function useLinkedConversationTitles(
 export function useReviewItemCountData(enabled: boolean) {
   return useQuery({
     enabled,
-    queryKey: [...REVIEW_ITEMS_QUERY_KEY, "count"],
+    queryKey: REVIEW_ITEM_COUNT_QUERY_KEY,
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         reviewItemCountSchema,
@@ -172,6 +175,35 @@ export function useReviewItemCountData(enabled: boolean) {
       ),
     retry: false,
   });
+}
+
+/**
+ * Refresh the Automation reads after an Automation changes. The Inbox count
+ * refreshes too, because it counts the Automations that need attention.
+ */
+export function invalidateAutomationReads(queryClient: QueryClient) {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["dashboard", "automations"] }),
+    queryClient.invalidateQueries({ queryKey: REVIEW_ITEM_COUNT_QUERY_KEY }),
+  ]);
+}
+
+/**
+ * Turn an infinite query into the pages a list loads as it scrolls: whether
+ * there is a next page, and a way to load it.
+ */
+export function scrollPages(query: {
+  fetchNextPage(): void;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+}) {
+  return {
+    hasMore: query.hasNextPage,
+    loadingMore: query.isFetchingNextPage,
+    loadMore: () => {
+      if (query.hasNextPage && !query.isFetchingNextPage) query.fetchNextPage();
+    },
+  };
 }
 
 /**

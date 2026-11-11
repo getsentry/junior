@@ -17,6 +17,7 @@ import {
   useReviewItemCountData,
   useReviewItemData,
   useReviewItemsData,
+  scrollPages,
 } from "./queries";
 import { inboxBundles, type InboxBundle } from "./reviewItemFormat";
 import { useInboxSweep } from "./useInboxSweep";
@@ -39,8 +40,8 @@ type InboxData = ReturnType<typeof useBuildInboxData>;
 
 const InboxDataContext = createContext<InboxData | null>(null);
 
-/** The feed pages after the loaded ones, for infinite scroll. */
-type InboxFeedPages = {
+/** The pages after the loaded ones, for infinite scroll. */
+export type InboxFeedPages = {
   hasMore: boolean;
   loadingMore: boolean;
   loadMore(): void;
@@ -177,6 +178,8 @@ function useBuildInboxData(input: {
     inFlight: inFlight.slice(0, IN_FLIGHT_LIMIT),
     inFlightCount: inFlight.length,
     isPinned,
+    // The open asks load a page at a time too, as the list scrolls.
+    itemPages: scrollPages(itemsQuery),
     itemsError: Boolean(itemsQuery.error && !itemsQuery.data),
     // Signed out, there are no asks to wait for.
     itemsLoaded: !signedIn || Boolean(itemsQuery.data),

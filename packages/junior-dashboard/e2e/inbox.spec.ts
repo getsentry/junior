@@ -297,17 +297,25 @@ test("an Automations row expands in place, and only its buttons leave", async ({
     }),
   );
   await mockReviewItems(page, {
-    automations: mockAutomationCollection(
-      report,
-      new URLSearchParams({ owner: "me", scope: "attention" }),
-    ).total,
+    automations: () =>
+      mockAutomationCollection(
+        report,
+        new URLSearchParams({ owner: "me", scope: "attention" }),
+      ).total,
     open: [license],
   });
   const lifecycle: unknown[] = [];
   await page.route("**/api/automations/scheduled-1/lifecycle", (route) => {
     lifecycle.push(route.request().postDataJSON());
+    Object.assign(
+      report.automations.find((automation) => automation.id === "scheduled-1")!,
+      { lastRunStatus: "completed", status: "active", statusReason: null },
+    );
     return route.fulfill({ json: { ...editor.value, status: "active" } });
   });
+  const badge = page
+    .getByRole("navigation", { name: "Primary" })
+    .getByRole("link", { name: /^Inbox, \d+ waiting$/ });
 
   await page.goto(`${dashboard.baseURL}/?view=automations`);
   const blocked = page.getByRole("region", { name: "Blocked" });
@@ -317,12 +325,53 @@ test("an Automations row expands in place, and only its buttons leave", async ({
     name: "Weekly project summary: attention",
   });
   await expect(details).toContainText("Blocked: GitHub access expired.");
+  const waiting = Number(
+    (await badge.getAttribute("aria-label"))!.replace(/\D/g, ""),
+  );
+  await details.getByRole("link", { name: "Open editor" }).click();
+  await expect(page).toHaveURL(/\/automations\/scheduled-1\/edit$/);
+  await page.goBack();
   await details.getByRole("button", { name: "Resume" }).click();
   await expect
     .poll(() => lifecycle)
     .toEqual([{ action: "resume", revision: editor.value.revision }]);
-  await details.getByRole("link", { name: "Open editor" }).click();
-  await expect(page).toHaveURL(/\/automations\/scheduled-1\/edit$/);
+  // A resumed Automation leaves the count, so the badge drops at once.
+  await expect(badge).toHaveAccessibleName(`Inbox, ${waiting - 1} waiting`);
+  await expect(details).toHaveCount(0);
+});
+
+test("the asks and Done load their next pages at the end of the list", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page, {
+    open: [prReview, prMerge, prReady],
+    pageSize: 1,
+  });
+  const cursors: string[] = [];
+  page.on("request", (request) => {
+    const cursor = new URL(request.url()).searchParams.get("cursor");
+    if (request.url().includes("/api/review-items?") && cursor)
+      cursors.push(cursor);
+  });
+  await page.goto(`${dashboard.baseURL}/?view=prs`);
+  // Each PR is on its own page; the list loads the next as its end shows.
+  await expect(
+    page.locator("section[aria-label] section[aria-label]"),
+  ).toHaveText([/^Review requested/, /^Ready to merge/, /^Other/]);
+  await expect(page.getByText("Loading more…")).toHaveCount(0);
+
+  await page
+    .getByRole("navigation", { name: "Inbox" })
+    .getByRole("link", { name: "Done", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: /Digest skipped/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /initech license entry/ }),
+  ).toBeVisible();
+  expect(cursors).toEqual(expect.arrayContaining(["1", "2"]));
 });
 
 test("Done lists closed items, and a row expands in place", async ({
@@ -381,7 +430,7 @@ test("a failed Automations read does not look like nothing waits", async ({
   dashboard,
   page,
 }) => {
-  await mockReviewItems(page, { automations: 0, open: [] });
+  await mockReviewItems(page, { automations: () => 0, open: [] });
   await page.route(/\/api\/automations\?scope=attention/, (route) =>
     route.fulfill({ json: { error: "Failed" }, status: 500 }),
   );

@@ -1,6 +1,12 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { CheckCheck } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router";
 import type {
   AutomationSummary,
@@ -21,7 +27,11 @@ import { useReorderPinnedConversations } from "../conversations/useReorderPinned
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { InboxAutomationRow } from "./InboxAutomationRow";
-import { useInboxData, type ConversationRow } from "./inboxData";
+import {
+  useInboxData,
+  type ConversationRow,
+  type InboxFeedPages,
+} from "./inboxData";
 import { InboxDoneView } from "./InboxDoneView";
 import { useInboxListState } from "./inboxListState";
 import {
@@ -41,6 +51,7 @@ import {
   useReviewItemAction,
   useReviewItemData,
   useReviewItemsData,
+  scrollPages,
 } from "./queries";
 import type { InboxBundle } from "./reviewItemFormat";
 
@@ -135,6 +146,7 @@ export function InboxList(props: {
     enabled: data.signedIn && view === "done",
     forViewer: true,
   });
+  const donePages = scrollPages(done.query);
   const reorderPins = useReorderPinnedConversations();
   const { showActionError } = useConversationActionToasts();
 
@@ -340,24 +352,56 @@ export function InboxList(props: {
     );
   };
 
-  // Infinite scroll: rows render a page at a time as the end comes into
-  // view, and the next feed page loads when every loaded row shows.
+  // Infinite scroll: stream rows render a page at a time as the end comes
+  // into view. When every loaded row shows, the next page of what the list
+  // reads loads: the feed, the open asks, or Done.
   const sentinel = useRef<HTMLDivElement>(null);
   const hidden = Math.max(0, streamRows.length - state.loaded);
-  const more = hidden > 0 || data.feed.hasMore;
-  const { showMore } = state;
-  const { loadMore } = data.feed;
+  const pages: InboxFeedPages[] =
+    view === "inbox"
+      ? [data.feed, data.itemPages]
+      : view === "conversations"
+        ? [data.feed]
+        : view === "prs" || view === "decisions"
+          ? [data.itemPages]
+          : view === "done"
+            ? [donePages]
+            : [];
+  const more = hidden > 0 || pages.some((source) => source.hasMore);
+  const loadingMore = pages.some((source) => source.loadingMore);
+  const loadNext = useEffectEvent(() => {
+    if (hidden > 0) state.showMore();
+    else for (const source of pages) source.loadMore();
+  });
+  // A new observer reports at once, so the list keeps loading while its
+  // end shows: it starts again when the list is ready, and whenever more
+  // rows arrive or show.
+  const progress = [
+    state.loaded,
+    streamRows.length,
+    data.awake.length,
+    doneItems.length,
+    ...pages.map((source) => source.loadingMore),
+  ].join();
   useEffect(() => {
     const node = sentinel.current;
     if (!node || !more) return;
     const observer = new IntersectionObserver((entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return;
-      if (hidden > 0) showMore();
-      else loadMore();
+      if (entries.some((entry) => entry.isIntersecting)) loadNext();
     });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [hidden, loadMore, more, showMore]);
+  }, [more, progress, ready, view]);
+  const listEnd =
+    ready && more ? (
+      <div
+        className="py-3 text-center font-sans text-xs text-dashboard-text-muted"
+        ref={sentinel}
+        role="status"
+      >
+        {hidden > 0 || loadingMore ? "Loading more…" : null}
+      </div>
+    ) : null;
 
   const stream = () => {
     const shown = streamRows.slice(0, state.loaded);
@@ -408,15 +452,6 @@ export function InboxList(props: {
             {section.rows.map((row) => conversationRow(row))}
           </InboxSection>
         ))}
-        {more ? (
-          <div
-            className="py-3 text-center font-sans text-xs text-dashboard-text-muted"
-            ref={sentinel}
-            role="status"
-          >
-            {hidden > 0 || data.feed.loadingMore ? "Loading more…" : null}
-          </div>
-        ) : null}
       </>
     );
   };
@@ -589,6 +624,7 @@ export function InboxList(props: {
             </InlineError>
           ) : null}
           {body}
+          {data.itemsError ? null : listEnd}
           {props.error ? (
             <InlineError className="py-2">{props.error}</InlineError>
           ) : null}
