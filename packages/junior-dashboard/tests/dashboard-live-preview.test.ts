@@ -1,8 +1,11 @@
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { JUNIOR_VERSION } from "@sentry/junior/version";
 import { createDashboardApp } from "../src/app";
-import { withLivePreview } from "../src/live-preview";
+// The wrapper belongs to the example app, so no Junior package ships it.
+// It runs here, against the real dashboard app.
+import { withLivePreview } from "../../../apps/example/live-preview";
 
 const TOKEN = "jr_live_token";
 
@@ -55,13 +58,6 @@ function basic(token: string): HeadersInit {
   };
 }
 
-function embeddedPreview(html: string): unknown {
-  const match = /window\.__JUNIOR_DASHBOARD_PREVIEW__ = (.*?);<\/script>/.exec(
-    html,
-  );
-  return match ? JSON.parse(match[1]!) : undefined;
-}
-
 describe("dashboard live preview", () => {
   it("serves mock data without credentials", async () => {
     const app = dashboard();
@@ -72,7 +68,8 @@ describe("dashboard live preview", () => {
 
     expect(api.status).toBe(200);
     expect(liveRequests).toEqual([]);
-    expect(embeddedPreview(html)).toEqual({ live: false, liveOrigin });
+    expect(html).toContain("Demo data.");
+    expect(html).not.toContain("delete window.__JUNIOR_DASHBOARD_BOOTSTRAP__");
   });
 
   it("asks for a personal token until the live deployment accepts one", async () => {
@@ -108,9 +105,11 @@ describe("dashboard live preview", () => {
 
     expect(await api.json()).toEqual({ url: "/api/conversations?q=deploy" });
     expect(api.headers.get("set-cookie")).toBeNull();
+    expect(api.headers.get("x-junior-version")).toBe(JUNIOR_VERSION);
     expect(liveRequests[0]?.headers.authorization).toBe(`Bearer ${TOKEN}`);
     expect(liveRequests[0]?.headers.cookie).toBeUndefined();
-    expect(embeddedPreview(html)).toEqual({ live: true, liveOrigin });
+    expect(html).toContain("You are seeing a preview of");
+    expect(html).toContain("delete window.__JUNIOR_DASHBOARD_BOOTSTRAP__");
   });
 
   it("keeps live data read-only", async () => {

@@ -67,7 +67,7 @@ To check a frontend change against live data, also set the origin of a live depl
 JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true JUNIOR_DASHBOARD_LIVE_ORIGIN=https://junior.example.com pnpm dev
 ```
 
-The dashboard shows mock data and a **Use live data** link. The link asks for a personal token from the live deployment as the Basic auth password. The user name is not used. The browser then sends the token with each request, and the dev server forwards dashboard API reads to the live deployment. The server does not store the token. Live data is read-only, because the live deployment accepts personal tokens only for `GET` and `HEAD`. API changes in your branch do not apply to live data. The example app wraps itself with `withLivePreview` from `@sentry/junior-dashboard/live-preview` only when this variable is set, and refuses to start when dashboard auth is also on.
+The dashboard shows mock data and a banner with a **Use live data** link. The link asks for a personal token from the live deployment as the Basic auth password. The user name is not used. The browser then sends the token with each request, and the dev server forwards dashboard API reads to the live deployment. The server does not store the token. Live data is read-only, because the live deployment accepts personal tokens only for `GET` and `HEAD`. API changes in your branch do not apply to live data. Only the example app knows about live data: `apps/example/live-preview.ts` wraps the app when this variable is set. The app refuses to start when dashboard auth is also on.
 
 ## Run sandboxes in local Docker
 

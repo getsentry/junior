@@ -1,8 +1,9 @@
 /**
  * Live data for a dashboard Preview.
  *
- * This is a separate entry point. Only a Preview app wraps itself with it, so
- * a production app does not load it or run its checks.
+ * Only this example app loads this file, and only when
+ * `JUNIOR_DASHBOARD_LIVE_ORIGIN` is set. The Junior packages and the
+ * production app do not know about it.
  *
  * A Preview shows mock data by default. A viewer can enter a personal token
  * from the live deployment as the Basic auth password. The browser then sends
@@ -13,14 +14,16 @@
  * The live deployment accepts personal tokens only for GET and HEAD, so live
  * data is read-only.
  */
-import { LIVE_PREVIEW_PARAM, type DashboardPreview } from "./api/schema";
+import { JUNIOR_VERSION } from "@sentry/junior/version";
 
 /** An app that serves requests, such as the Hono app from `createApp()`. */
 export interface FetchApp<Rest extends unknown[]> {
   fetch(request: Request, ...rest: Rest): Response | Promise<Response>;
 }
 
+const LIVE_PARAM = "live";
 const AUTH_PATH = "/api/auth";
+const VERSION_HEADER = "x-junior-version";
 // Response headers that describe the upstream transfer, not the body that
 // this server sends. `fetch` already decoded the body.
 const DROPPED_RESPONSE_HEADERS = [
@@ -88,7 +91,17 @@ async function proxyRequest(
   }
   const responseHeaders = new Headers(upstream.headers);
   for (const name of DROPPED_RESPONSE_HEADERS) responseHeaders.delete(name);
-  return new Response(upstream.body, {
+  // The client shows a "dashboard changed" banner when the server version is
+  // not its own. The live deployment runs a different version on purpose.
+  responseHeaders.set(VERSION_HEADER, JUNIOR_VERSION);
+  let body: BodyInit | null = upstream.body;
+  if (url.pathname === "/api/config" && upstream.ok) {
+    body = JSON.stringify({
+      ...(await upstream.json()),
+      version: JUNIOR_VERSION,
+    });
+  }
+  return new Response(body, {
     headers: responseHeaders,
     status: upstream.status,
     statusText: upstream.statusText,
@@ -100,8 +113,7 @@ async function proxyRequest(
  * accepts the token that the browser sent.
  *
  * The browser keeps Basic credentials for the directory of the URL that asked
- * for them. The client asks on a path one level deep, so the credentials
- * apply to every path.
+ * for them. The banner asks on `/`, so the credentials apply to every path.
  */
 async function startLivePreview(
   request: Request,
@@ -114,7 +126,7 @@ async function startLivePreview(
       headers: { authorization: `Bearer ${token}` },
       redirect: "manual",
     });
-    if (me.ok) return Response.redirect(new URL(url.pathname, url), 302);
+    if (me.ok) return Response.redirect(new URL("/", url), 302);
   }
   const host = escapeHtml(new URL(origin).host);
   const tokensUrl = escapeHtml(new URL("/settings/api-tokens", origin).href);
@@ -125,7 +137,7 @@ async function startLivePreview(
 <body style="font-family: system-ui, sans-serif; max-width: 36rem; margin: 4rem auto; padding: 0 1rem;">
   <h1>Live data from ${host}</h1>
   <p>Enter any user name and a <a href="${tokensUrl}">personal token from ${host}</a> as the password. Live data is read-only.</p>
-  <p><a href="${escapeHtml(url.pathname)}">Use demo data</a></p>
+  <p><a href="/">Use demo data</a></p>
 </body>
 </html>`,
     {
@@ -139,15 +151,31 @@ async function startLivePreview(
   );
 }
 
-/** Tell the page shell which data it shows, so the client shows the banner. */
-async function withPreviewScript(
+/**
+ * Add a banner that says which data the page shows. In live mode, also drop
+ * the identity and config that the local server put in the page, so the
+ * client reads them from the live deployment.
+ */
+async function withPreviewBanner(
   response: Response,
-  preview: DashboardPreview,
+  origin: string,
+  live: boolean,
 ): Promise<Response> {
-  const json = JSON.stringify(preview).replace(/</g, "\\u003c");
+  const host = escapeHtml(new URL(origin).host);
+  // Same-page link to the live deployment. The path changes without a page
+  // load, so the link reads it when clicked.
+  const liveLink = `<a href="${escapeHtml(origin)}" onclick="this.href=${escapeHtml(JSON.stringify(origin))}+location.pathname+location.search" style="color:inherit;text-decoration:underline">${host}</a>`;
+  const text = live
+    ? `You are seeing a preview of ${liveLink}. Read-only.`
+    : `Demo data. <a href="/?${LIVE_PARAM}" style="color:inherit;text-decoration:underline">Use live data from ${host}</a>`;
+  const banner = `<div role="status" style="position:fixed;z-index:2147483647;left:0.75rem;bottom:calc(0.75rem + env(safe-area-inset-bottom));display:flex;gap:0.5rem;align-items:center;padding:0.375rem 0.75rem;border-radius:9999px;background:#6c5fc7;color:#fff;font:600 12px/1.4 system-ui,sans-serif;box-shadow:0 2px 8px rgb(0 0 0 / 0.3)"><span>${text}</span><button type="button" aria-label="Hide" onclick="this.parentElement.remove()" style="all:unset;cursor:pointer;font-size:14px;line-height:1">×</button></div>`;
+  // Classic scripts run before the deferred client module.
+  const script = live
+    ? "<script>delete window.__JUNIOR_DASHBOARD_BOOTSTRAP__;</script>"
+    : "";
   const html = (await response.text()).replace(
-    "</head>",
-    `<script>window.__JUNIOR_DASHBOARD_PREVIEW__ = ${json};</script></head>`,
+    "</body>",
+    `${banner}${script}</body>`,
   );
   const headers = new Headers(response.headers);
   headers.delete("content-length");
@@ -159,8 +187,8 @@ async function withPreviewScript(
 }
 
 /**
- * Wrap a Junior app so its dashboard can also show data from `liveOrigin`.
- * Use it only in a Preview app with dashboard auth off.
+ * Wrap the app so its dashboard can also show data from `liveOrigin`. Use it
+ * only with dashboard auth off.
  */
 export function withLivePreview<Rest extends unknown[]>(
   app: FetchApp<Rest>,
@@ -170,10 +198,7 @@ export function withLivePreview<Rest extends unknown[]>(
   return {
     async fetch(request, ...rest) {
       const url = new URL(request.url);
-      if (
-        url.searchParams.has(LIVE_PREVIEW_PARAM) &&
-        url.pathname.lastIndexOf("/") === 0
-      ) {
+      if (url.pathname === "/" && url.searchParams.has(LIVE_PARAM)) {
         return startLivePreview(request, origin);
       }
       const token = livePreviewToken(request);
@@ -188,10 +213,7 @@ export function withLivePreview<Rest extends unknown[]>(
       const response = await app.fetch(request, ...rest);
       return request.method === "GET" &&
         response.headers.get("content-type")?.startsWith("text/html")
-        ? withPreviewScript(response, {
-            live: Boolean(token),
-            liveOrigin: origin,
-          })
+        ? withPreviewBanner(response, origin, Boolean(token))
         : response;
     },
   };

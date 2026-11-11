@@ -33,8 +33,6 @@ import {
 import { useDesktopTopBar } from "./navLayout";
 import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { useDashboardServerVersion } from "./dashboard-version";
-import { PreviewBanner } from "./components/PreviewBanner";
-import { readDashboardPreview } from "./preview";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
 import { useConversationData } from "./conversations/queries";
@@ -167,9 +165,6 @@ const AdminPage = lazy(() =>
     default: module.AdminPage,
   })),
 );
-
-// The page shell sets this once. It does not change while the page is open.
-const preview = readDashboardPreview();
 
 const dashboardNoise = {
   backgroundImage:
@@ -346,11 +341,7 @@ export function DashboardShell() {
             desktopTopBar={desktopTopBar}
             banner={
               <>
-                {preview ? (
-                  <PreviewBanner preview={preview} />
-                ) : (
-                  <VersionDriftBanner serverVersion={serverVersion} />
-                )}
+                <VersionDriftBanner serverVersion={serverVersion} />
                 <ConnectionBanner />
               </>
             }

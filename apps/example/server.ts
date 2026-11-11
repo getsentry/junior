@@ -35,8 +35,5 @@ if (liveOrigin && exampleDashboardAuthRequired()) {
 }
 
 export default liveOrigin
-  ? (await import("@sentry/junior-dashboard/live-preview")).withLivePreview(
-      app,
-      liveOrigin,
-    )
+  ? (await import("./live-preview.ts")).withLivePreview(app, liveOrigin)
   : app;
