@@ -94,7 +94,7 @@ export function InboxAutomationRow(props: {
           id={regionId}
           role="region"
         >
-          <dl className="m-0 grid gap-1.5 border-t border-dashboard-border pt-3">
+          <dl className="m-0 grid gap-1.5">
             <div className="flex min-w-0 gap-2">
               <dt className="w-20 shrink-0 text-dashboard-text-muted">Why</dt>
               <dd className="m-0 min-w-0 text-dashboard-text">
