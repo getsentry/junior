@@ -269,6 +269,24 @@ export async function recordGitHubPullRequestConversations(
   return updated.length > 0;
 }
 
+/** Find the id of a Junior-owned PR by repository and number. */
+export async function readGitHubPullRequestId(
+  db: GitHubDb,
+  input: { number: number; repositoryId: string },
+): Promise<string | undefined> {
+  const [row] = await db
+    .select({ pullRequestId: juniorGitHubPullRequests.pullRequestId })
+    .from(juniorGitHubPullRequests)
+    .where(
+      and(
+        eq(juniorGitHubPullRequests.repositoryId, input.repositoryId),
+        eq(juniorGitHubPullRequests.number, input.number),
+      ),
+    )
+    .limit(1);
+  return row?.pullRequestId;
+}
+
 /** Link an existing Junior-owned PR to tracked issues across repositories. */
 export async function recordGitHubPullRequestLinkedIssues(
   db: GitHubDb,

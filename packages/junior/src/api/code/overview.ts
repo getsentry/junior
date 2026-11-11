@@ -353,6 +353,7 @@ export async function readCodeWindows(args: {
 export const codeChangeReportColumns = {
   closedAt: juniorCodeChanges.closedAt,
   id: juniorCodeChanges.id,
+  lastActivityAt: juniorCodeChanges.lastActivityAt,
   mergedAt: juniorCodeChanges.mergedAt,
   number: juniorCodeChanges.number,
   openedAt: juniorCodeChanges.openedAt,
@@ -367,6 +368,7 @@ export const codeChangeReportColumns = {
 export function codeChangeReport(change: {
   closedAt: Date | null;
   id: string;
+  lastActivityAt: Date | null;
   mergedAt: Date | null;
   number: number;
   openedAt: Date;
@@ -379,6 +381,7 @@ export function codeChangeReport(change: {
   return {
     ...change,
     closedAt: change.closedAt?.toISOString(),
+    lastActivityAt: change.lastActivityAt?.toISOString(),
     mergedAt: change.mergedAt?.toISOString(),
     openedAt: change.openedAt.toISOString(),
     title: change.title ?? undefined,

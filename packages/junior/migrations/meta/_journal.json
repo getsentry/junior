@@ -708,6 +708,13 @@
       "when": 1794360831303,
       "tag": "0100_automation_task_kind_repair",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1794394080252,
+      "tag": "0101_code_change_last_activity",
+      "breakpoints": true
     }
   ]
 }
