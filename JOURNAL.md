@@ -380,3 +380,46 @@ Draft PR #3149 (`walkthrough/6-answers`, 474330e88), stacked on #3147.
   file-length and test-architecture pass.
 - `gh stack push`: every PR in the stack reports MERGEABLE (blocked only as a
   draft).
+
+### 2026-11-11 — slice 7: questions (#3150)
+
+- One private Conversation per reviewer per version. A new table,
+  `junior_walkthrough_questions` (`0103`), has the key (version, user) and a
+  unique `conversation_id`. Its rows are deleted with their version. It is
+  not a fork: a fork would copy the whole generation run. The questions and
+  answers are saved there, so they come back when the page opens again.
+- Lists hide it: `listedConversation()` adds a NOT EXISTS on that table.
+- API:
+  - `GET /:id/questions` returns `{conversationId?}`.
+  - `POST /:id/questions` takes `{idempotencyKey, message}` and returns 409
+    until the version is ready.
+  - Both use the same read rule as `GET /:id`.
+- Turn:
+  - `readWalkthroughRun` now also returns `questions`.
+  - `turnBehavior({walkthroughQuestions})` gives a reply to the
+    Conversation, no agents, review desk, subscriptions or customization,
+    and a cap of 20 tool calls and $1.
+  - Every question runs the `walkthrough-questions` skill.
+  - `createTools` adds `readWalkthrough` and `readWalkthroughCode`. It
+    disables the rest, except `readConversationEvent`,
+    `searchConversationEvents`, `reportProgress` and `systemTime`.
+  - `readWalkthroughCode` reads only the PRs in the version, at the commits
+    the version describes.
+- Chapter scope is in the message text, not the API. A scoped question
+  starts with `> **<title>** · <caption>`. The skill reads that line, and
+  the transcript shows it as "About <title>".
+- Panel:
+  - It uses the Quick question chat parts.
+  - The chapter's `asks` show as chips in the panel.
+  - A composer chip, "About: <chapter>", is on by default and can be
+    removed.
+  - "Only you see your questions."
+- Mock: the question routes create an unlisted, private mock Conversation,
+  which gets the usual fixed mock reply.
+- Open:
+  - A real model has not answered a question yet. No eval covers it, and
+    the cost per question is not measured.
+  - When retention deletes a questions Conversation, its row stays. The
+    next question recreates the Conversation with the same id. Generation
+    versions behave the same way.
+- Screenshots: `screenshots/slice-7/` on this branch.
