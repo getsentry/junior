@@ -63,7 +63,7 @@ export function createGitHubReactToIssueTool(egress: PluginEgress) {
       readOnlyHint: false,
     },
     description:
-      "Add your reaction to a GitHub issue or pull request itself, not to one of its comments. Use it to show that you started work on the issue. Adding the same reaction again changes nothing.",
+      "React with an emoji to a GitHub issue or pull request itself, for example to show that you started work on it. Reacting again with the same content changes nothing.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
