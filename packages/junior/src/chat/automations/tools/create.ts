@@ -290,7 +290,6 @@ export function createAutomationTool(
       await requireAutomationSkill(task, undefined);
       requireAutomationTaskText(task, {
         creator: createdBy,
-        destinationChannelId: destination.channelId,
       });
       const eventTrigger =
         input.trigger.type === "event"

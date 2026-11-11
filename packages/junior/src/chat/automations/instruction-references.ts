@@ -40,18 +40,16 @@ function taskTextProblem(
   text: string,
   references: {
     creator: InstructionPerson;
-    destinationChannelId: string;
     requester?: InstructionPerson;
     previousText: string;
     /** "instruction" or "context". */
     label: string;
   },
 ): string | undefined {
-  const { creator, destinationChannelId, requester, previousText, label } =
-    references;
+  const { creator, requester, previousText, label } = references;
   const conversationReference = CONVERSATION_REFERENCE.exec(text)?.[0];
   if (conversationReference && !CONVERSATION_REFERENCE.test(previousText)) {
-    return `The run does not see this conversation, and its outcomes already set where it posts. Do not say where to post. Where the run reads or acts on that channel, write <#${destinationChannelId}> instead of "${conversationReference}".`;
+    return `The run does not see this conversation, and its outcomes already set where it posts. Remove "${conversationReference}" and do not say where to post. Where the run reads or changes a channel, name it with a channel mention.`;
   }
   const marker = findLegacyNoReplyMarker(text);
   if (marker && !previousText.includes(marker)) {
@@ -81,7 +79,6 @@ export function requireAutomationTaskText(
   task: AutomationTask,
   references: {
     creator: InstructionPerson;
-    destinationChannelId: string;
     /** The person who edits the task, when it is not a new Automation. */
     requester?: InstructionPerson;
     /** The task before this edit. Unset for a new Automation. */

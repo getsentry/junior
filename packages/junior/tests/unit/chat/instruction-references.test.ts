@@ -4,7 +4,6 @@ import type { AutomationTask } from "@/chat/automations/task";
 
 const creator = { slackUserId: "UALICE", fullName: "Alice Park" };
 const requester = { slackUserId: "U0TEST", fullName: "Sam Lee" };
-const destinationChannelId = "C123";
 
 function instruction(text: string): AutomationTask {
   return { kind: "instruction", instruction: text };
@@ -19,7 +18,6 @@ describe("requireAutomationTaskText", () => {
       expect(() =>
         requireAutomationTaskText(instruction(text), {
           creator,
-          destinationChannelId,
           requester,
         }),
       ).toThrow(
@@ -32,10 +30,10 @@ describe("requireAutomationTaskText", () => {
     expect(() =>
       requireAutomationTaskText(
         instruction("Post the digest in this channel."),
-        { creator, destinationChannelId },
+        { creator },
       ),
     ).toThrow(
-      'The run does not see this conversation, and its outcomes already set where it posts. Do not say where to post. Where the run reads or acts on that channel, write <#C123> instead of "this channel".',
+      'The run does not see this conversation, and its outcomes already set where it posts. Remove "this channel" and do not say where to post. Where the run reads or changes a channel, name it with a channel mention.',
     );
   });
 
@@ -48,7 +46,7 @@ describe("requireAutomationTaskText", () => {
           context:
             "Repo getsentry/warden. When nothing is pending, reply [[NO_REPLY]].",
         },
-        { creator, destinationChannelId },
+        { creator },
       ),
     ).toThrow(
       'Remove "[[NO_REPLY]]". Say when the run posts nothing; it then ends without a message.',
@@ -59,7 +57,7 @@ describe("requireAutomationTaskText", () => {
     expect(() =>
       requireAutomationTaskText(
         instruction("Remind sam lee to submit the timesheet."),
-        { creator, destinationChannelId, requester },
+        { creator, requester },
       ),
     ).toThrow(
       "The instruction names Sam Lee without a Slack mention. Write <@U0TEST> for this person.",
@@ -99,7 +97,6 @@ describe("requireAutomationTaskText", () => {
       expect(() =>
         requireAutomationTaskText(task, {
           creator,
-          destinationChannelId,
           requester,
           current,
         }),

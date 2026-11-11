@@ -419,7 +419,6 @@ export function createUpdateAutomationTool(
       if (editedTask) {
         requireAutomationTaskText(editedTask, {
           creator: current.task.createdBy,
-          destinationChannelId: current.task.destination.channelId,
           requester: editor,
           current: current.task.task,
         });

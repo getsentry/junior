@@ -144,7 +144,6 @@ export async function updateViewerAutomation(
   if (input.task) {
     requireAutomationTaskText(input.task, {
       creator: current.task.createdBy,
-      destinationChannelId: current.task.destination.channelId,
       requester: automationEditor(user, current),
       current: current.task.task,
     });
