@@ -34,4 +34,13 @@ export interface CodeChangePublisher {
     providerId: string;
   }): Promise<void>;
   record(input: CodeChangeInput): Promise<void>;
+  /**
+   * Record a push, review, or comment by a person on a code change. Junior
+   * ignores activity on code changes that it did not record.
+   */
+  recordActivity(input: {
+    at: Date;
+    number: number;
+    repositoryProviderId: string;
+  }): Promise<void>;
 }

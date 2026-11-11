@@ -110,6 +110,7 @@ function route(fixture: GitHubFixture, calls: ReviewItemCall[]): PluginRoute {
     },
     codeChanges: {
       async associateConversations() {},
+      async recordActivity() {},
       async record() {},
     },
     db: fixture.db(),

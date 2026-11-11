@@ -1,5 +1,5 @@
 {
-  "id": "ec811ebe-41f8-408e-81eb-8169b703b39d",
+  "id": "85ad8e1f-cd2f-4260-9974-caee2444d632",
   "prevId": "5e5f7b3c-8638-4817-a7a0-c62a5814eb20",
   "version": "7",
   "dialect": "postgresql",
@@ -150,13 +150,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "fork": {
-          "name": "fork",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         },
         "reasoning_level": {
           "name": "reasoning_level",
@@ -1293,6 +1286,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "ARRAY[]::text[]"
+        },
+        "last_activity_at": {
+          "name": "last_activity_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "merged_at": {
           "name": "merged_at",
