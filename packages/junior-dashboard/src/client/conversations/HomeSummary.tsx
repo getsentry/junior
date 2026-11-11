@@ -202,13 +202,13 @@ function OpenChangeList(props: {
         {sorted.length < 2 ? null : (
           <button
             aria-label={
-              recentFirst ? "Recent activity first" : "Longest idle first"
+              recentFirst ? "Newest activity first" : "Oldest activity first"
             }
             className={quietButtonClass}
             onClick={() => setRecentFirst(!recentFirst)}
             type="button"
           >
-            {recentFirst ? "Recent" : "Idle"}
+            {recentFirst ? "Newest" : "Oldest"}
             <SortIcon aria-hidden="true" className="size-3" />
           </button>
         )}
