@@ -35,6 +35,7 @@ import {
 } from "../conversations/conversationDensity";
 import { ConversationSidebarAnnotations } from "../conversations/ConversationMeta";
 import { usePrefetchConversation } from "../conversations/conversationPrefetch";
+import { useConversationActionToasts } from "../conversations/conversationActionToasts";
 import { conversationPath } from "../conversations/conversationRoutes";
 import {
   ConversationSidebarThreadRow,
@@ -245,6 +246,7 @@ function ConversationInboxRow(
     onRowAction: props.onRowAction,
     selected: props.selected,
   });
+  const { showArchiveError, showArchived } = useConversationActionToasts();
   const prefetch = usePrefetchConversation(conversation.id);
   const [threadsExpanded, setThreadsExpanded] = useState(false);
   const threads = props.showThreads
@@ -330,6 +332,9 @@ function ConversationInboxRow(
               conversation={thread.conversation}
               depth={thread.depth}
               key={thread.conversation.id}
+              onArchiveError={showArchiveError}
+              onArchived={showArchived}
+              onRowAction={props.onRowAction}
               selected={props.selected}
               waiting={false}
             />
