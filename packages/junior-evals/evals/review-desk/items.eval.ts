@@ -158,7 +158,7 @@ describe("Review desk", () => {
 
     // The answers and the typed message arrive before the Turn starts, so
     // one Turn handles them all, and the agent does not ask again. The
-    // dismiss starts no Turn: the agent sees it only in the thread history.
+    // dismiss is not a decision, so the agent never sees it.
     expect(conversation.turns).toHaveLength(1);
     expect(toolCallsOf("addReviewItem", conversation)).toEqual([]);
     expect(conversation.replies.map((entry) => entry.text).join("\n")).toMatch(

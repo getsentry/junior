@@ -106,7 +106,7 @@ const CONTEXT_TRUST_RULES = [
  * gets the answers to its own items, so it needs the same meaning.
  */
 const REVIEW_ITEM_TRUST_RULE =
-  "- A `<review-item-answer id>` is the person's answer to the review item with that id. Continue the work that asked for it, as the answer says. When thread context shows that a person dismissed a review item, they declined it: do not do what it asked about.";
+  "- A `<review-item-answer id>` is the person's answer to the review item with that id. Continue the work that asked for it, as the answer says.";
 
 /** Block 3 lines that only apply when a person sends the input. */
 const CONVERSATION_TRUST_RULES = [

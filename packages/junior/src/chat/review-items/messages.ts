@@ -132,10 +132,9 @@ function recordedMessageId(item: ReviewItem, change: RecordedChange): string {
 
 /**
  * Save a take or a dismiss as a handled Message in one Conversation. Neither
- * starts a Turn: after a take, the agent has nothing to do until the person
- * answers, and a dismiss means that the person does not want the work. The
- * dashboard shows the Message from its record. A retry is safe, because the
- * Message id is the change key.
+ * starts a Turn or reaches the model: neither is a decision. The dashboard
+ * shows the Message from its record. A retry is safe, because the Message id
+ * is the change key.
  */
 async function recordReviewItemChange(args: {
   change: RecordedChange;
