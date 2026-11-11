@@ -240,7 +240,7 @@ describe("decideWarmup", () => {
       decideWarmup({
         ...input,
         globalGapsMs: [6 * MINUTE],
-        parentGapsMs: gaps(100, 7 * MINUTE),
+        priorGapsMs: [gaps(100, 7 * MINUTE)],
       }),
     ).toMatchObject({ warm: true, reason: "warm", parentPrior: true });
     // A thin parent does not make enough gaps either.
@@ -248,14 +248,14 @@ describe("decideWarmup", () => {
       decideWarmup({
         ...input,
         globalGapsMs: [6 * MINUTE],
-        parentGapsMs: gaps(5, 7 * MINUTE),
+        priorGapsMs: [gaps(5, 7 * MINUTE)],
       }),
     ).toMatchObject({ warm: false, reason: "few_gaps", parentPrior: true });
     // A full segment decides alone.
     const full = { ...input, globalGapsMs: gaps(20, 3 * 60 * MINUTE) };
     const withParent = decideWarmup({
       ...full,
-      parentGapsMs: gaps(100, 7 * MINUTE),
+      priorGapsMs: [gaps(100, 7 * MINUTE)],
     });
     expect(withParent).toMatchObject({
       warm: false,
@@ -263,6 +263,33 @@ describe("decideWarmup", () => {
       parentPrior: false,
     });
     expect(withParent).toEqual(decideWarmup(full));
+  });
+  it("warms for a timer until its Turn reads the cache, and never warms less", () => {
+    const timerDueIdleMs = 80 * MINUTE;
+    const gapLists = [
+      [],
+      gaps(20, 7 * MINUTE),
+      gaps(100, 3 * 60 * MINUTE),
+      [...gaps(50, 7 * MINUTE), ...gaps(50, NO_REPLY_GAP_MS)],
+    ];
+    for (const globalGapsMs of gapLists) {
+      for (let idleMs = 4 * MINUTE; idleMs < 90 * MINUTE; idleMs += MINUTE) {
+        const input = {
+          ...prices,
+          conversationGapsMs: [],
+          globalGapsMs,
+          idleMs,
+          prefixTokens: 200_000,
+        };
+        const withTimer = decideWarmup({ ...input, timerDueIdleMs });
+        // The cache expires a minute after the decision. The timer's Turn
+        // starts up to 2 minutes after the timer is due.
+        const expiresBeforeTurn = idleMs + MINUTE < timerDueIdleMs + 2 * MINUTE;
+        expect(withTimer.warm).toBe(
+          decideWarmup(input).warm || expiresBeforeTurn,
+        );
+      }
+    }
   });
 });
 
