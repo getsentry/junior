@@ -9,6 +9,7 @@ import type {
   ConversationDetailReport,
   ConversationReportEvent,
 } from "@sentry/junior/api/schema";
+import { isMockGenerationConversation } from "./walkthrough-generations";
 
 /** Time before the reply shows, so the working state can be seen. */
 const MOCK_REPLY_DELAY_MS = 2_000;
@@ -143,10 +144,11 @@ export function keepMockQuickQuestion(conversationId: string): boolean {
 }
 
 /**
- * Return whether lists hide this Conversation: an unkept Quick question, or
- * one created unlisted.
+ * Return whether lists hide this Conversation: an unkept Quick question, a
+ * Walkthrough generation, or one created unlisted.
  */
 export function isUnlistedMockConversation(conversationId: string): boolean {
+  if (isMockGenerationConversation(conversationId)) return true;
   const created = createdConversations.get(conversationId);
   if (created?.unlisted) return true;
   return (

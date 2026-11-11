@@ -67,6 +67,9 @@ async function walkthroughResponse(
       createdAt: entry.createdAt.toISOString(),
     })),
     ...(costUsd !== undefined ? { costUsd } : undefined),
+    ...(version.generationConversationId
+      ? { generationConversationId: version.generationConversationId }
+      : undefined),
     ...(version.failureReason
       ? { failureReason: version.failureReason }
       : undefined),

@@ -349,8 +349,15 @@ describe("Walkthrough generation", () => {
     // versions are listed.
     const listed = (await (
       await app.request(`/api/walkthroughs/${update.id}`)
-    ).json()) as { status: string; versions: Array<{ id: string }> };
+    ).json()) as {
+      generationConversationId?: string;
+      status: string;
+      versions: Array<{ id: string }>;
+    };
     expect(listed.status).toBe("ready");
+    expect(listed.generationConversationId).toBe(
+      (await getWalkthroughVersion(update.id))!.generationConversationId,
+    );
     expect(listed.versions.map((v) => v.id)).toEqual([first.id, update.id]);
     const stored = await readWalkthroughDocument(
       storage,

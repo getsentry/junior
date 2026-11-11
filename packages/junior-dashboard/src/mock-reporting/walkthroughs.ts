@@ -18,6 +18,7 @@ import {
   MOCK_UPDATE_IDS,
 } from "./walkthrough-update";
 import { createMockConversation } from "./sends";
+import { MOCK_GENERATION_CONVERSATION_IDS } from "./walkthrough-generations";
 // Real documents from the first Walkthrough cost runs: one PR, and a stack.
 import singleRun from "./walkthroughs/pr3071.json";
 import stackRun from "./walkthroughs/stack3089.json";
@@ -31,13 +32,17 @@ const MOCK_WALKTHROUGH_IDS = {
   failed: "6b0e8f1e-0000-4000-8000-000000000002",
 } as const;
 
-function readyVersion(run: unknown): WalkthroughVersionResponse {
+function readyVersion(
+  run: unknown,
+  generationConversationId: string,
+): WalkthroughVersionResponse {
   // The cost runs read GitHub through a local plugin and had no readable
   // source Conversation. Use the real plugin and link a Conversation, so the
-  // "Made in Conversation" link shows.
+  // "Made in Conversation" link shows. The cost links to a mock generation.
   const version = {
     ...walkthroughVersionSchema.parse(run),
     provider: "github",
+    generationConversationId,
   };
   const document = version.document;
   if (!document) return version;
@@ -94,7 +99,12 @@ function updateLineage(
     completedAt: "2026-11-11T06:00:00.000Z",
     document: updateDocument,
   };
-  const { costUsd: _costUsd, ...withoutCost } = update;
+  // The update's own generation has no mock Conversation.
+  const {
+    costUsd: _costUsd,
+    generationConversationId: _generationConversationId,
+    ...withoutCost
+  } = update;
   const versions = mockLineage([base, withoutCost]);
   return [
     { ...base, versions },
@@ -135,8 +145,11 @@ export function createMockWalkthroughRoutes(options: { send: MockSend }): Hono<{
   Variables: JuniorApiVariables;
 }> {
   const app = new Hono<{ Variables: JuniorApiVariables }>();
-  const single = readyVersion(singleRun);
-  const stack = readyVersion(stackRun);
+  const single = readyVersion(
+    singleRun,
+    MOCK_GENERATION_CONVERSATION_IDS.single,
+  );
+  const stack = readyVersion(stackRun, MOCK_GENERATION_CONVERSATION_IDS.stack);
   const [base, update] = updateLineage(stack);
   const ready = new Map([single, stack, base, update].map((v) => [v.id, v]));
   const parents = new Map([[update.id, base.id]]);

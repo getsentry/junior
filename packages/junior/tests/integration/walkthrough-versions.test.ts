@@ -50,8 +50,8 @@ async function publicConversation(conversationId: string) {
   return conversationId;
 }
 
-async function listedIds(): Promise<string[]> {
-  const viewer = await resolveViewerUser(OWNER_EMAIL);
+async function viewerApi(email: string) {
+  const viewer = await resolveViewerUser(email);
   if (!viewer) throw new Error("Missing test viewer");
   const app = new Hono<JuniorApiEnv>();
   app.use("*", async (context, next) => {
@@ -59,6 +59,11 @@ async function listedIds(): Promise<string[]> {
     await next();
   });
   app.route("/", createJuniorApi());
+  return app;
+}
+
+async function listedIds(): Promise<string[]> {
+  const app = await viewerApi(OWNER_EMAIL);
   const feed = (await (await app.request("/api/conversations")).json()) as {
     conversations: Array<{ conversationId: string }>;
   };
@@ -192,6 +197,16 @@ describe("Walkthrough versions", () => {
     const listed = await listedIds();
     expect(listed).toContain(ordinary);
     expect(listed).not.toContain(generation);
+    // Hiding affects lists only. Any signed-in viewer can open the
+    // generation from the Walkthrough page.
+    const other = await viewerApi("other@example.com");
+    expect(
+      (
+        await other.request(
+          `/api/conversations/${encodeURIComponent(generation)}`,
+        )
+      ).status,
+    ).toBe(200);
   });
 
   it("keeps each reviewer's answers on a ready version to themselves", async () => {

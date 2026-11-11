@@ -34,6 +34,8 @@ export const walkthroughVersionSchema = z
     ),
     /** What the generation has cost so far. */
     costUsd: z.number().nonnegative().optional(),
+    /** The hidden Conversation that ran the generation: its transcript and usage. */
+    generationConversationId: z.string().optional(),
     failureReason: z.string().optional(),
     createdAt: z.string(),
     completedAt: z.string().optional(),

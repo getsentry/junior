@@ -23,7 +23,8 @@ const linkClass =
 
 /**
  * One quiet line about the Walkthrough: its pull requests, the Conversation
- * that made them, and what it cost. The chapters get the attention.
+ * that made them, and what it cost. The cost opens the generation
+ * Conversation. The chapters get the attention.
  */
 export function WalkthroughMeta(props: {
   /** The Conversation that made the PR, when the viewer may read it. */
@@ -51,21 +52,34 @@ export function WalkthroughMeta(props: {
     });
   }
   if (version.costUsd !== undefined) {
+    const cost = `$${version.costUsd.toFixed(2)}`;
     items.push({
       key: "cost",
       node: (
         <Tooltip>
           <TooltipTrigger
             render={
-              <span className="tabular-nums">
-                ${version.costUsd.toFixed(2)}
-              </span>
+              // The generation Conversation holds the transcript and the
+              // usage breakdown behind this number.
+              version.generationConversationId ? (
+                <Link
+                  className={cn(linkClass, "tabular-nums")}
+                  to={conversationPath(version.generationConversationId)}
+                >
+                  {cost}
+                </Link>
+              ) : (
+                <span className="tabular-nums">{cost}</span>
+              )
             }
           />
           <TooltipContent>
             {version.status === "generating"
               ? "What this Walkthrough has cost so far"
               : "What it cost to make this Walkthrough"}
+            {version.generationConversationId
+              ? ". Open the generation transcript and usage."
+              : null}
           </TooltipContent>
         </Tooltip>
       ),
