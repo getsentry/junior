@@ -409,6 +409,7 @@ describe("dashboard canonical-event components", () => {
           searchMatch={{
             count: 0,
             index: 0,
+            reset: () => {},
             setMatches: () => {},
             step: () => {},
           }}

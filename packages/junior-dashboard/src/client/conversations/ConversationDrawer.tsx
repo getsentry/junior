@@ -77,6 +77,7 @@ function ConversationDrawerContent(
     setView("rich");
     setSearch("");
     setSearchOpen(false);
+    searchMatch.reset();
   }
 
   const detail = query.data;
