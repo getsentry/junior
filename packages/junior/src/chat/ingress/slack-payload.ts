@@ -5,6 +5,7 @@ import type {
   GenericMessageEvent,
 } from "@slack/types";
 import * as z from "zod";
+import { slackTeamIdSchema } from "@/chat/slack/ids";
 import { slackMessageTsSchema } from "@/chat/slack/timestamp";
 
 // Message dates must also fit JavaScript's Date range.
@@ -123,6 +124,8 @@ export const slackEventEnvelopeSchema = z.object({
   // Retain diagnostic fields without making them requirements for ingress.
   event_id: z.unknown().optional(),
   is_ext_shared_channel: z.unknown().optional(),
+  context_enterprise_id: z.unknown().optional(),
+  context_team_id: z.unknown().optional(),
   enterprise_id: z.string().optional(),
   event: slackEventSchema.optional(),
   is_enterprise_install: z.boolean().optional(),
@@ -133,6 +136,30 @@ export const slackEventEnvelopeSchema = z.object({
 
 export type SlackEventEnvelope = z.output<typeof slackEventEnvelopeSchema>;
 export type SlackInboundEvent = z.output<typeof slackEventSchema>;
+
+/**
+ * Where an event happened, from the signed envelope. `external` is a channel
+ * shared with another organization. `workspace` is a channel that only the
+ * receiving workspace can post in. Other envelopes are `unknown`.
+ */
+export type SlackChannelScope = "workspace" | "external" | "unknown";
+
+// https://docs.slack.dev/apis/events-api#callback-field
+const workspaceChannelSchema = z.object({
+  context_enterprise_id: z.null().optional(),
+  context_team_id: slackTeamIdSchema,
+  is_ext_shared_channel: z.literal(false),
+  team_id: slackTeamIdSchema,
+});
+
+/** Read the channel scope of an event from its envelope. */
+export function slackChannelScope(body: SlackEventEnvelope): SlackChannelScope {
+  if (body.is_ext_shared_channel === true) return "external";
+  const parsed = workspaceChannelSchema.safeParse(body);
+  return parsed.success && parsed.data.context_team_id === parsed.data.team_id
+    ? "workspace"
+    : "unknown";
+}
 
 // Keep these fields loose. Each handler validates the fields it needs, so
 // one unusual payload shape does not reject unrelated interactions.

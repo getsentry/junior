@@ -28,7 +28,10 @@ import {
 import { slackMessageTsSchema } from "@/chat/slack/timestamp";
 import { checkSlackChannelReadAccess } from "@/chat/slack/tool-support/channel-access";
 import { resolveSlackActingUser } from "./slack-acting-user";
-import type { SlackInteractivePayload } from "./slack-payload";
+import type {
+  SlackChannelScope,
+  SlackInteractivePayload,
+} from "./slack-payload";
 
 /** Action id of the "Continue here" button on a dashboard link preview. */
 export const SLACK_CONTINUE_HERE_ACTION_ID = "junior_continue_here";
@@ -160,7 +163,7 @@ async function isPublicChannel(
  */
 export async function unfurlDashboardConversationLinks(args: {
   event: unknown;
-  isExtSharedChannel: boolean;
+  channelScope: SlackChannelScope;
   state: StateAdapter;
   teamId: string | undefined;
 }): Promise<void> {
@@ -172,7 +175,7 @@ export async function unfurlDashboardConversationLinks(args: {
     !parsed.success ||
     !teamId ||
     parsed.data.source === "composer" ||
-    args.isExtSharedChannel ||
+    args.channelScope === "external" ||
     !(await isSlackWorkspaceMember(args.event, args.state))
   ) {
     return;

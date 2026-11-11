@@ -26,7 +26,12 @@ import {
   createConfiguredJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../../fixtures/sql";
-import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
+import { botsInfoOk, usersInfoOk } from "../../fixtures/slack/factories/api";
+import {
+  getCapturedSlackApiCalls,
+  queueSlackApiResponse,
+  resetSlackApiMockState,
+} from "../../msw/handlers/slack-api";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -49,11 +54,19 @@ function trigger(match?: Record<string, string | string[]>) {
   };
 }
 
+// Envelope fields of a channel that only workspace T123 can post in.
+const WORKSPACE_CHANNEL = {
+  context_enterprise_id: null,
+  context_team_id: TEAM_ID,
+  is_ext_shared_channel: false,
+};
+
 async function postChannelMessage(input: {
   blocks?: unknown[];
   botId?: string;
+  botProfile?: Record<string, unknown>;
   channel?: string;
-  isExtSharedChannel?: boolean;
+  envelope?: Record<string, unknown>;
   /** Post as an app integration: a `bot_message` with a `bot_id` and no `user`. */
   noUser?: boolean;
   text?: string;
@@ -64,7 +77,14 @@ async function postChannelMessage(input: {
   const state = getStateAdapter();
   await state.connect();
   const slackAdapter = createSlackAdapterFixture();
-  const { blocks, botId, isExtSharedChannel, noUser, ...message } = input;
+  const {
+    blocks,
+    botId,
+    botProfile,
+    envelope: fields,
+    noUser,
+    ...message
+  } = input;
   const envelope = slackEnvelope({
     eventType: "message",
     text: "How do I connect the Jira integration?",
@@ -72,13 +92,12 @@ async function postChannelMessage(input: {
   });
   if (botId) Object.assign(envelope.event, { bot_id: botId });
   if (blocks) Object.assign(envelope.event, { blocks });
+  if (botProfile) Object.assign(envelope.event, { bot_profile: botProfile });
   if (noUser) {
     Reflect.deleteProperty(envelope.event, "user");
     Object.assign(envelope.event, { subtype: "bot_message" });
   }
-  if (isExtSharedChannel !== undefined) {
-    Object.assign(envelope, { is_ext_shared_channel: isExtSharedChannel });
-  }
+  if (fields) Object.assign(envelope, fields);
   return await handleSlackWebhookAndFlush({
     request: slackWebhookRequest(envelope),
     services: {
@@ -271,55 +290,58 @@ describe("Slack channel-message automations", () => {
       },
     )) as { automation: { id: string } };
 
-    // Another bot, a channel shared with another organization, a payload
-    // without the shared-channel flag, and a mention of Junior in the text or
-    // in a section block run nothing.
-    await postChannelMessage({
-      botId: "B888",
-      isExtSharedChannel: false,
-      noUser: true,
-      ts: "1712348.0001",
-    });
-    await postChannelMessage({
-      botId: "B777",
-      isExtSharedChannel: true,
-      noUser: true,
-      ts: "1712348.0002",
-    });
-    await postChannelMessage({
-      botId: "B777",
-      noUser: true,
-      ts: "1712348.0003",
-    });
-    await postChannelMessage({
-      botId: "B777",
-      isExtSharedChannel: false,
-      noUser: true,
-      text: `<@${SLACK_BOT_USER_ID}> summarize this`,
-      ts: "1712348.0004",
-    });
-    await postChannelMessage({
-      blocks: [
-        {
-          type: "section",
-          text: { type: "mrkdwn", text: `<@${SLACK_BOT_USER_ID}> summarize` },
-        },
-      ],
-      botId: "B777",
-      isExtSharedChannel: false,
-      noUser: true,
-      text: "New report",
-      ts: "1712348.0006",
-    });
+    // Another bot, a channel shared with another organization, an envelope
+    // without the workspace fields, another workspace or enterprise context,
+    // and a mention of Junior in the text or in a section block run nothing.
+    const rejected = [
+      { botId: "B888", envelope: WORKSPACE_CHANNEL },
+      {
+        botId: "B777",
+        envelope: { ...WORKSPACE_CHANNEL, is_ext_shared_channel: true },
+      },
+      { botId: "B777" },
+      {
+        botId: "B777",
+        envelope: { ...WORKSPACE_CHANNEL, context_team_id: "T999" },
+      },
+      {
+        botId: "B777",
+        envelope: { ...WORKSPACE_CHANNEL, context_enterprise_id: "E123" },
+      },
+      {
+        botId: "B777",
+        envelope: WORKSPACE_CHANNEL,
+        text: `<@${SLACK_BOT_USER_ID}> summarize this`,
+      },
+      {
+        blocks: [
+          {
+            type: "section",
+            text: { type: "mrkdwn", text: `<@${SLACK_BOT_USER_ID}> summarize` },
+          },
+        ],
+        botId: "B777",
+        envelope: WORKSPACE_CHANNEL,
+        text: "New report",
+      },
+    ];
+    for (const [index, post] of rejected.entries()) {
+      await postChannelMessage({
+        ...post,
+        noUser: true,
+        ts: `1712348.000${index + 1}`,
+      });
+    }
     expect(queue.sentRecords()).toEqual([]);
 
     // A post from the named bot in a workspace-only channel runs it once and
-    // replies in its thread, with system credentials.
+    // replies in its thread, with system credentials. This bot has no bot
+    // user, so bots.info is its only lookup.
     await postChannelMessage({
       botId: "B777",
-      isExtSharedChannel: false,
+      envelope: WORKSPACE_CHANNEL,
       noUser: true,
-      ts: "1712348.0005",
+      ts: "1712348.0009",
     });
     const sent = queue.sentRecords();
     expect(sent).toHaveLength(1);
@@ -327,10 +349,90 @@ describe("Slack channel-message automations", () => {
       sent[0]!.conversationId.replace(/^agent-dispatch:/, ""),
     );
     expect(dispatch).toMatchObject({
-      destination: { channelId: "C123", threadTs: "1712348.0005" },
+      destination: { channelId: "C123", threadTs: "1712348.0009" },
       metadata: { eventAutomationId: automation.id },
     });
     expect(dispatch?.credentialSubject).toBeUndefined();
+    expect(getCapturedSlackApiCalls("bots.info").at(-1)?.params).toMatchObject({
+      bot: "B777",
+    });
+    expect(getCapturedSlackApiCalls("users.info")).toEqual([]);
+  });
+
+  it("runs for app integration posts only when Slack places the bot in this workspace", async () => {
+    const channelContext = context(
+      "U123",
+      "C123",
+      "public",
+      undefined,
+      TEAM_ID,
+    );
+    await execute(
+      createAutomationTool(
+        automationToolContext(channelContext),
+        getEventCatalog(),
+      ),
+      {
+        instruction: "Review each new report.",
+        title: "Review reports",
+        outcomes: [
+          { action: "send_message", destination: "current_conversation" },
+        ],
+        trigger: trigger({
+          user_id: ["B701", "B702", "B703", "B704", "B705", "B706"],
+        }),
+      },
+    );
+    const post = (
+      botId: string,
+      ts: string,
+      botProfile?: { deleted: boolean; team_id: string },
+    ) =>
+      postChannelMessage({
+        botId,
+        ...(botProfile
+          ? { botProfile: { id: botId, app_id: "A123", ...botProfile } }
+          : undefined),
+        envelope: WORKSPACE_CHANNEL,
+        noUser: true,
+        ts,
+      });
+
+    // A bot_profile from another workspace, a deleted bot_profile, a deleted
+    // bot, and a bot user from another workspace run nothing.
+    await post("B701", "1712349.0001", { team_id: "T999", deleted: false });
+    await post("B702", "1712349.0002", { team_id: TEAM_ID, deleted: true });
+    queueSlackApiResponse("bots.info", {
+      body: botsInfoOk({ botId: "B703", deleted: true }),
+    });
+    await post("B703", "1712349.0003");
+    queueSlackApiResponse("bots.info", {
+      body: botsInfoOk({ botId: "B704", userId: "U704" }),
+    });
+    const external = usersInfoOk({ userId: "U704", isBot: true });
+    queueSlackApiResponse("users.info", {
+      body: { ...external, user: { ...external.user, team_id: "TEXTERNAL" } },
+    });
+    await post("B704", "1712349.0004");
+    expect(queue.sentRecords()).toEqual([]);
+
+    // A bot_profile from this workspace needs no lookup. A bot user from this
+    // workspace is checked through bots.info and users.info.
+    await post("B705", "1712349.0005", { team_id: TEAM_ID, deleted: false });
+    queueSlackApiResponse("bots.info", {
+      body: botsInfoOk({ botId: "B706", userId: "U706" }),
+    });
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ userId: "U706", isBot: true }),
+    });
+    await post("B706", "1712349.0006");
+    expect(queue.sentRecords()).toHaveLength(2);
+    expect(
+      getCapturedSlackApiCalls("bots.info").map((call) => call.params.bot),
+    ).toEqual(["B703", "B704", "B706"]);
+    expect(
+      getCapturedSlackApiCalls("users.info").map((call) => call.params.user),
+    ).toEqual(["U704", "U706"]);
   });
 
   it("runs for thread replies only when its match names the thread location", async () => {

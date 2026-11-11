@@ -1,8 +1,19 @@
-import type { AppMentionEvent } from "@slack/types";
+import type { AppMentionEvent, GenericMessageEvent } from "@slack/types";
 import type { StateAdapter } from "chat";
 import * as z from "zod";
+import type { SlackChannelScope } from "@/chat/ingress/slack-payload";
+import {
+  getSlackClient,
+  SlackActionError,
+  withSlackRetries,
+} from "@/chat/slack/client";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
-import { parseSlackTeamId, parseSlackUserId } from "@/chat/slack/ids";
+import {
+  parseSlackTeamId,
+  parseSlackUserId,
+  slackBotIdSchema,
+  type SlackBotId,
+} from "@/chat/slack/ids";
 import { lookupSlackUserProfile } from "@/chat/slack/users";
 import { createCache } from "@/chat/state/cache";
 export { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
@@ -74,4 +85,95 @@ export async function isSlackWorkspaceMember(
       ttlMs: member ? MEMBER_TTL_MS : NON_MEMBER_TTL_MS,
     };
   });
+}
+
+type BotProfile = NonNullable<GenericMessageEvent["bot_profile"]>;
+
+// A post with a bot ID and no user. Posts from current Slack apps carry
+// bot_profile; posts from classic integrations do not.
+// https://docs.slack.dev/reference/events/message/bot_message
+const botPostSchema = z.object({
+  bot_id: slackBotIdSchema,
+  bot_profile: z
+    .object({
+      deleted: z.boolean(),
+      id: z.string(),
+      team_id: z.string(),
+    })
+    .optional() satisfies z.ZodType<
+    Pick<BotProfile, "deleted" | "id" | "team_id"> | undefined
+  >,
+  user: z.undefined().optional(),
+});
+
+/**
+ * Return the bot ID of a post from an app in this workspace that has a bot ID
+ * and no user, or nothing. The channel must be one that only this workspace
+ * can post in. When Slack names the bot's workspace, in `bot_profile` or
+ * through the bot user of `bots.info`, it must be this workspace.
+ */
+export async function slackWorkspaceBotId(
+  raw: unknown,
+  channelScope: SlackChannelScope,
+  state: StateAdapter,
+): Promise<SlackBotId | undefined> {
+  const workspaceTeamId = getWorkspaceTeamId();
+  if (!workspaceTeamId || channelScope !== "workspace") return undefined;
+  const parsed = botPostSchema.safeParse(raw);
+  if (!parsed.success) return undefined;
+  const botId = parsed.data.bot_id;
+  const profile = parsed.data.bot_profile;
+  if (profile) {
+    return profile.id === botId &&
+      profile.team_id === workspaceTeamId &&
+      !profile.deleted
+      ? botId
+      : undefined;
+  }
+  const cache = createCache(state, "core");
+  const verified = await cache.getOrLoad(
+    `slack:workspace-bot:${workspaceTeamId}:${botId}`,
+    async () => {
+      const bot = await lookupSlackBot(botId);
+      if (!bot) return { value: false, ttlMs: NON_MEMBER_TTL_MS };
+      // Do not cache incomplete responses.
+      if (bot.id !== botId) return { value: false };
+      let member = !bot.deleted;
+      // A classic integration has no bot user. Its post is accepted on the
+      // channel scope alone.
+      if (member && bot.user_id !== undefined) {
+        const userId = parseSlackUserId(bot.user_id);
+        if (!userId) return { value: false };
+        const user = await lookupSlackUserProfile(userId);
+        const authorTeam = parseSlackTeamId(user.team_id);
+        if (user.id !== userId || !authorTeam) return { value: false };
+        member =
+          user.is_bot && authorTeam === workspaceTeamId && !user.is_deleted;
+      }
+      return {
+        value: member,
+        ttlMs: member ? MEMBER_TTL_MS : NON_MEMBER_TTL_MS,
+      };
+    },
+  );
+  return verified ? botId : undefined;
+}
+
+async function lookupSlackBot(botId: string) {
+  try {
+    const result = await withSlackRetries(
+      () => getSlackClient().bots.info({ bot: botId }),
+      3,
+      { action: "bots.info" },
+    );
+    return result.bot;
+  } catch (error) {
+    if (
+      error instanceof SlackActionError &&
+      error.apiError === "bot_not_found"
+    ) {
+      return undefined;
+    }
+    throw error;
+  }
 }

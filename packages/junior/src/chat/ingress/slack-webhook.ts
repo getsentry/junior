@@ -2,6 +2,7 @@ import { presentSlackAnnotationDetails } from "@/chat/slack/annotation-details";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import {
   slackAssistantThreadSchema,
+  slackChannelScope,
   slackEventEnvelopeSchema,
   type SlackEventEnvelope,
   type SlackInboundEvent,
@@ -46,7 +47,7 @@ import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import {
   SLACK_EVENT_NAMESPACE,
   slackChannelMessageEvent,
-  slackWorkspaceBotPostId,
+  type SlackChannelMessageAuthor,
 } from "@/chat/slack/channel-message-events";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { botConfig } from "@/chat/config";
@@ -60,7 +61,10 @@ import {
   normalizeIncomingSlackThreadId,
   withNormalizedThreadId,
 } from "@/chat/ingress/message-router";
-import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
+import {
+  isSlackWorkspaceMember,
+  slackWorkspaceBotId,
+} from "@/chat/ingress/workspace-membership";
 import { isSlackAuthorDomainAllowed } from "@/chat/ingress/slack-allowed-domain";
 import { slackMessageAttributes } from "./slack-message-telemetry";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
@@ -396,28 +400,12 @@ async function routeParsedMessage(args: {
         ? "subscribed"
         : undefined;
   if (!route) {
-    // A new channel message or thread reply can run Event automations for
-    // this channel.
-    // Use only `message`: Slack also sends `app_mention` for a mention in code.
-    const channelMessage =
-      args.event.type === "message" && args.event.channel && args.event.ts
-        ? slackChannelMessageEvent({
-            botId: args.event.bot_id,
-            channelId: args.event.channel,
-            subtype: args.event.subtype,
-            text: args.event.text,
-            threadTs: args.event.thread_ts,
-            ts: args.event.ts,
-            userId: message.author.userId,
-          })
-        : undefined;
-    const teamId = args.installation.teamId;
-    if (channelMessage && teamId) {
-      await ingestEventAutomations(
-        { ...channelMessage, namespace: SLACK_EVENT_NAMESPACE },
-        { queue: args.queue, teamId },
-      );
-    }
+    await ingestChannelMessage({
+      author: { kind: "user", userId: message.author.userId },
+      event: args.event,
+      queue: args.queue,
+      teamId: args.installation.teamId,
+    });
     return;
   }
 
@@ -551,29 +539,28 @@ async function routeParsedMessage(args: {
 }
 
 /**
- * Run channel-message automations for a workspace bot post that has no Slack
- * user. It never starts a Turn. A post that mentions Junior runs nothing, the
- * same as a mention from a person.
+ * Run the channel-message automations of the channel for a new message or
+ * thread reply.
  */
-async function ingestWorkspaceBotPost(args: {
-  botPostId: string;
-  botUserId?: string;
-  channelId: string;
+async function ingestChannelMessage(args: {
+  author: SlackChannelMessageAuthor;
   event: SlackInboundEvent;
   queue: ConversationWorkQueue;
   teamId?: string;
-  ts: string;
 }): Promise<void> {
-  if (!args.teamId) return;
-  if (eventMentionsBot(args.event, args.botUserId)) return;
+  // Use only `message`: Slack also sends `app_mention` for a mention in code.
+  const { event } = args;
+  if (event.type !== "message" || !event.channel || !event.ts || !args.teamId) {
+    return;
+  }
   const channelMessage = slackChannelMessageEvent({
-    botId: args.botPostId,
-    channelId: args.channelId,
-    subtype: args.event.subtype,
-    text: args.event.text,
-    threadTs: args.event.thread_ts,
-    ts: args.ts,
-    userId: args.botPostId,
+    author: args.author,
+    botId: event.bot_id,
+    channelId: event.channel,
+    subtype: event.subtype,
+    text: event.text,
+    threadTs: event.thread_ts,
+    ts: event.ts,
   });
   if (!channelMessage) return;
   await ingestEventAutomations(
@@ -595,6 +582,7 @@ async function handleSlackEvent(args: {
   const state = args.services.state ?? getStateAdapter();
   await state.connect();
   const installation = installationFromEnvelope(args.body);
+  const channelScope = slackChannelScope(args.body);
   const receivedAtMs = Date.now();
 
   async function publishAppHomeViewBestEffort(userId: string): Promise<void> {
@@ -663,7 +651,7 @@ async function handleSlackEvent(args: {
         if (event.type === "link_shared") {
           await unfurlDashboardConversationLinks({
             event,
-            isExtSharedChannel: args.body.is_ext_shared_channel === true,
+            channelScope,
             state,
             teamId: installation.teamId,
           });
@@ -725,23 +713,21 @@ async function handleSlackEvent(args: {
           event.channel &&
           event.ts
         ) {
-          const botPostId =
-            event.type === "message"
-              ? slackWorkspaceBotPostId({
-                  botId: event.bot_id,
-                  isExtSharedChannel: args.body.is_ext_shared_channel,
-                  user: event.user,
-                })
-              : undefined;
-          if (botPostId) {
-            await ingestWorkspaceBotPost({
-              botPostId,
-              botUserId: adapter.botUserId,
-              channelId: event.channel,
+          // A post with a bot ID and no user, such as from an app
+          // integration, runs only channel-message automations that name the
+          // bot. It never starts a Turn. A post that mentions Junior runs
+          // nothing, the same as a mention from a person.
+          if (event.user === undefined && event.bot_id !== undefined) {
+            const botId = await slackWorkspaceBotId(event, channelScope, state);
+            setSpanAttributes({
+              "app.slack.membership": botId ? "verified" : "unverified",
+            });
+            if (!botId || eventMentionsBot(event, adapter.botUserId)) return;
+            await ingestChannelMessage({
+              author: { kind: "bot", botId },
               event,
               queue: args.services.queue,
               teamId: installation.teamId,
-              ts: event.ts,
             });
             return;
           }
