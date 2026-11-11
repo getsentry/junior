@@ -47,17 +47,21 @@ async function recordActivity(conversationId: string, nowMs: number) {
 
 let nextMessage = 0;
 
-/** Append one Message. A user Message comes from `authorIdentityId`. */
+/**
+ * Append one Message and return its time. A user Message comes from
+ * `authorIdentityId`.
+ */
 async function appendMessage(
   conversationId: string,
   message:
     | { authorIdentityId: string }
-    | { quiet?: boolean; role: "assistant" },
-) {
+    | { progress?: boolean; quiet?: boolean; role: "assistant" },
+): Promise<string> {
   const index = nextMessage++;
+  const createdAtMs = 10_000 + index;
   await getConversationEventStore().append(conversationId, [
     {
-      createdAtMs: 10_000 + index,
+      createdAtMs,
       data: {
         messageId: `message-${index}`,
         text: `Message ${index}`,
@@ -67,10 +71,12 @@ async function appendMessage(
           : {
               role: "assistant",
               ...(message.quiet ? { meta: { quiet: true } } : undefined),
+              ...(message.progress ? { meta: { progress: true } } : undefined),
             }),
       },
     },
   ]);
+  return new Date(createdAtMs).toISOString();
 }
 
 function setUnread(
@@ -157,7 +163,7 @@ describe("conversation unread API", () => {
         })),
       );
     await appendMessage(conversationId, { authorIdentityId: identity!.id }); // 0
-    await appendMessage(conversationId, { role: "assistant" }); // 1
+    const replyAt = await appendMessage(conversationId, { role: "assistant" }); // 1
 
     // Without a read position, the reply after the viewer's own message is
     // new. The release backfills a position for each existing root.
@@ -171,12 +177,21 @@ describe("conversation unread API", () => {
     });
     await expect(unread(viewer, conversationId)).resolves.toBe(false);
 
-    // A quiet reply folds into activity, so it is not new.
+    // A quiet reply folds into activity, so it is not new, and it does not
+    // move the row's last Message.
     await appendMessage(conversationId, { quiet: true, role: "assistant" }); // 2
     await expect(unread(viewer, conversationId)).resolves.toBe(false);
+    await expect(feedSummary(viewer, conversationId)).resolves.toMatchObject({
+      lastMessageAt: replyAt,
+    });
 
-    await appendMessage(conversationId, { role: "assistant" }); // 3
+    const nextReplyAt = await appendMessage(conversationId, {
+      role: "assistant",
+    }); // 3
     await expect(unread(viewer, conversationId)).resolves.toBe(true);
+    await expect(feedSummary(viewer, conversationId)).resolves.toMatchObject({
+      lastMessageAt: nextReplyAt,
+    });
     // Opening the conversation does not move the read position.
     const detail = await app.request(
       `http://localhost/api/conversations/${conversationId}`,
@@ -250,6 +265,56 @@ describe("conversation unread API", () => {
     // unread.
     expect((await setUnread(app, conversationId, true)).status).toBe(409);
     await expect(unread(viewer, conversationId)).resolves.toBe(false);
+  });
+
+  it("does not move the last Message for a progress ack", async () => {
+    const conversationId = "local:test:last-message-progress";
+    await recordActivity(conversationId, 1_000);
+    const { viewer } = await authenticatedApi("progress-reader@example.com");
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date(1_000),
+        rootConversationId: conversationId,
+        userId: viewer.id,
+      });
+    const replyAt = await appendMessage(conversationId, { role: "assistant" });
+
+    // A progress ack only says that work continues.
+    await appendMessage(conversationId, { progress: true, role: "assistant" });
+    await expect(feedSummary(viewer, conversationId)).resolves.toMatchObject({
+      lastMessageAt: replyAt,
+    });
+  });
+
+  it("stores the last Message and reads events when a row has none", async () => {
+    const conversationId = "local:test:last-message-unstored";
+    await recordActivity(conversationId, 1_000);
+    const { viewer } = await authenticatedApi("unstored-reader@example.com");
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date(1_000),
+        rootConversationId: conversationId,
+        userId: viewer.id,
+      });
+    const replyAt = await appendMessage(conversationId, { role: "assistant" });
+    // The append stores the time, so the feed reads no events for it.
+    const [stored] = await getDb()
+      .select({ lastMessageAt: juniorConversations.lastMessageAt })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, conversationId));
+    expect(stored?.lastMessageAt?.toISOString()).toBe(replyAt);
+
+    // Rows written before the stored time have none.
+    await getDb()
+      .update(juniorConversations)
+      .set({ lastMessageAt: null })
+      .where(eq(juniorConversations.conversationId, conversationId));
+
+    await expect(feedSummary(viewer, conversationId)).resolves.toMatchObject({
+      lastMessageAt: replyAt,
+    });
   });
 
   it("marks a reply at the first event unread", async () => {

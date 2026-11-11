@@ -188,6 +188,8 @@ export type Conversation = {
   id: string;
   /** The viewer takes part, so they can pin, archive, rename, and mark it. */
   isParticipant: boolean;
+  /** Newest true user Message or shown Junior reply. Feed rows only. */
+  lastMessageAt?: string;
   lastProgressAt: string;
   lastSeenAt: string;
   locationId?: string;
@@ -204,7 +206,6 @@ export type Conversation = {
   parentConversationId?: string;
   /** Visible Threads under this row, newest first. */
   threads?: Conversation[];
-  unfinishedWork?: boolean;
   /** A Turn waits on a person to finish an authorization. Server-owned. */
   awaitingAuthorization?: boolean;
   visibility?: ConversationSummaryReport["visibility"];

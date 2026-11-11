@@ -87,7 +87,9 @@ const context: ToolRuntimeContext = {
       return new Response("ok");
     },
   },
-  // Guardian evals never run a tool, so no tool touches the sandbox.
+  // Guardian evals never run a tool, so no tool touches the sandbox or
+  // storage. Storage is set so the agent's attachment tools exist.
+  attachmentStorage: {} as ToolRuntimeContext["attachmentStorage"],
   workspace: {} as ToolRuntimeContext["workspace"],
   // A root Run can start and message child agents.
   messageAgent: unavailable,

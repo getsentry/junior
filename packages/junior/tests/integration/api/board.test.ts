@@ -192,7 +192,7 @@ describe("board API", () => {
       state: "open",
     });
 
-    // Only a plugin notice makes a change ready. An agent's item about the
+    // Only a plugin item makes a change ready. An agent's item about the
     // same change does not, but it needs the viewer.
     await createPluginReviewItems({
       conversationId: ROOT,
@@ -207,7 +207,8 @@ describe("board API", () => {
         title: "getsentry/junior#2",
         url: "https://github.com/getsentry/junior/pull/2",
       },
-      title: "Ready to merge: getsentry/junior#2",
+      title: "Ready to merge · #2",
+      waitsOnAssignees: true,
     });
     await insertReviewItem(getDb(), {
       addedByConversationId: THREAD,

@@ -6,7 +6,7 @@ import {
   type NoReply,
 } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
-import { createProviderError } from "@/chat/services/provider-error";
+import { createAssistantProviderError } from "@/chat/services/provider-error";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type { AgentTurnUsage } from "@/chat/usage";
 import type { SandboxRef } from "@/chat/sandbox/ref";
@@ -215,6 +215,9 @@ function buildDiagnostics(
   },
 ): AgentTurnDiagnostics {
   const { outcome, errorMessage, lastAssistant } = result;
+  const assistant = isAssistantMessage(lastAssistant)
+    ? lastAssistant
+    : undefined;
   const toolResults = input.newMessages.filter(isToolResultMessage);
   return {
     outcome,
@@ -232,12 +235,15 @@ function buildDiagnostics(
     errorMessage,
     providerError:
       outcome === "provider_error" && errorMessage
-        ? createProviderError(errorMessage, {
-            modelId: input.modelId,
-            retryable:
-              isAssistantMessage(lastAssistant) &&
-              isRetryableAssistantError(lastAssistant),
-          })
+        ? createAssistantProviderError(
+            { errorMessage, rawStopReason: assistant?.rawStopReason },
+            {
+              modelId: input.modelId,
+              retryable: assistant
+                ? isRetryableAssistantError(assistant)
+                : false,
+            },
+          )
         : undefined,
   };
 }

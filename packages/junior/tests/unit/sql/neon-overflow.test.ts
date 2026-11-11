@@ -42,6 +42,9 @@ vi.mock("@neondatabase/serverless", async (importOriginal) => {
       const config = typeof input === "string" ? { text: input } : input;
       wire.websocketQueries.push(config.text);
       await new Promise((resolve) => setImmediate(resolve));
+      if (config.text.includes("pg_try_advisory_lock")) {
+        return { command: "SELECT", rowCount: 1, rows: [{ locked: true }] };
+      }
       return {
         command: "SELECT",
         rowCount: 1,
@@ -300,7 +303,7 @@ describe("Neon pool overflow", () => {
 
     expect(wire.clientsOpened).toBe(2);
     expect(wire.websocketQueries).toEqual([
-      "SELECT pg_advisory_lock(hashtext($1))",
+      "SELECT pg_try_advisory_lock(hashtext($1)) AS locked",
       "CREATE INDEX CONCURRENTLY example ON t (c)",
     ]);
     expect(wire.httpQueries).toEqual([]);

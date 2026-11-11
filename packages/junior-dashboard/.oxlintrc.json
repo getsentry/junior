@@ -94,6 +94,15 @@
               "!**/display-text/plainText"
             ],
             "message": "Import only DisplayText or displayPlainText from client/display-text."
+          },
+          {
+            "group": ["**/conversationSections"],
+            "importNames": ["buildConversationSections"],
+            "message": "Render a conversation list through ConversationSectionList, so every list groups, sorts, and holds its rows the same way."
+          },
+          {
+            "group": ["**/heldListOrder"],
+            "message": "Render a conversation list through ConversationSectionList, so every list groups, sorts, and holds its rows the same way."
           }
         ]
       }
@@ -110,6 +119,12 @@
       "files": ["src/client/display-text/**"],
       "rules": {
         "display-text/no-raw-display-text": "off",
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["src/client/conversations/ConversationSectionList.tsx"],
+      "rules": {
         "no-restricted-imports": "off"
       }
     }

@@ -12,20 +12,7 @@ import {
 const PLUGIN_NAME = "concurrent-index-test";
 const INDEX_NAME = "concurrent_index_items_group_idx";
 const CREATE_ITEMS = `CREATE TABLE "concurrent_index_items" ("id" integer PRIMARY KEY, "group_id" integer NOT NULL);`;
-/** The same guarded shape that core index migrations use. */
-function createMarkedIndex(name: string, definition: string): string {
-  return `DO $$
-BEGIN
-  IF to_regclass('${name}') IS NULL THEN
-    -- junior:concurrent-index
-    CREATE INDEX "${name}" ON "concurrent_index_items" ${definition};
-  END IF;
-END $$;`;
-}
-const CREATE_GROUP_INDEX = createMarkedIndex(
-  INDEX_NAME,
-  `USING btree ("group_id")`,
-);
+const CREATE_GROUP_INDEX = `CREATE INDEX CONCURRENTLY IF NOT EXISTS "${INDEX_NAME}" ON "concurrent_index_items" USING btree ("group_id");`;
 
 async function writeMigrations(
   dir: string,
@@ -135,77 +122,57 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())(
       }
     });
 
-    it("builds marked indexes on columns that pending migrations add", async () => {
+    it("builds an index on a column that an earlier pending migration adds", async () => {
       const noteIndex = "concurrent_index_items_note_idx";
-      const noteGroupIndex = "concurrent_index_items_note_group_idx";
       const fixture = await createEmptyJuniorPostgresFixture();
-      const execute = vi.spyOn(fixture.sql, "execute");
       const pending = await createItemsWithPendingMigration(fixture.sql, [
         {
-          sql: `ALTER TABLE "concurrent_index_items" ADD COLUMN "note" text;--> statement-breakpoint
-${createMarkedIndex(noteIndex, `USING btree ("note")`)}`,
-          tag: "0001_items_note_index",
+          sql: `ALTER TABLE "concurrent_index_items" ADD COLUMN "note" text;`,
+          tag: "0001_items_note",
         },
         {
-          sql: createMarkedIndex(
-            noteGroupIndex,
-            `USING btree ("note","group_id")`,
-          ),
-          tag: "0002_items_note_group_index",
+          sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS "${noteIndex}" ON "concurrent_index_items" USING btree ("note");`,
+          tag: "0002_items_note_index",
         },
       ]);
 
       try {
-        // Only a table that has stored a row gets a concurrent build.
         await fixture.sql.execute(
           `INSERT INTO "concurrent_index_items" VALUES (1, 1)`,
         );
         await expect(pending.migrate()).resolves.toMatchObject({
           migrated: 2,
         });
-        const indexes = await fixture.sql.query<{
-          name: string;
-          usable: boolean;
-        }>(
-          `SELECT indexrelid::regclass::text AS name,
-                  indisvalid AND indisready AS usable
+        const [index] = await fixture.sql.query<{ usable: boolean }>(
+          `SELECT indisvalid AND indisready AS usable
            FROM pg_index
-           WHERE indexrelid IN (to_regclass($1), to_regclass($2))
-           ORDER BY 1`,
-          [noteGroupIndex, noteIndex],
+           WHERE indexrelid = to_regclass($1)`,
+          [noteIndex],
         );
-        expect(indexes).toEqual([
-          { name: noteGroupIndex, usable: true },
-          { name: noteIndex, usable: true },
-        ]);
-        // The column exists once the earlier migration commits, so only the
-        // index in the later migration can be built concurrently.
-        const concurrentBuilds = execute.mock.calls
-          .map(([statement]) => statement)
-          .filter((statement) =>
-            statement.startsWith("CREATE INDEX CONCURRENTLY"),
-          );
-        expect(concurrentBuilds).toEqual([
-          expect.stringContaining(`"${noteGroupIndex}"`),
-        ]);
+        expect(index?.usable).toBe(true);
       } finally {
         await fixture.close();
         await rm(pending.dir, { force: true, recursive: true });
       }
     });
 
-    it("rebuilds an interrupted build and rejects an index that differs", async () => {
+    it("rejects a mixed migration and rebuilds an interrupted build", async () => {
       const fixture = await createEmptyJuniorPostgresFixture();
-      const pending = await createItemsWithPendingMigration(fixture.sql);
+      const pending = await createItemsWithPendingMigration(fixture.sql, [
+        {
+          sql: `ALTER TABLE "concurrent_index_items" ADD COLUMN "note" text;--> statement-breakpoint\n${CREATE_GROUP_INDEX}`,
+          tag: "0001_items_group_index",
+        },
+      ]);
 
       try {
-        await fixture.sql.execute(
-          `CREATE INDEX "${INDEX_NAME}" ON "concurrent_index_items" ("id")`,
-        );
         await expect(pending.migrate()).rejects.toThrow(
-          `Index ${INDEX_NAME} does not match its migration`,
+          "must contain only CREATE [UNIQUE] INDEX CONCURRENTLY IF NOT EXISTS",
         );
-        await fixture.sql.execute(`DROP INDEX "${INDEX_NAME}"`);
+        await writeMigrations(pending.dir, [
+          { sql: CREATE_ITEMS, tag: "0000_items" },
+          { sql: CREATE_GROUP_INDEX, tag: "0001_items_group_index" },
+        ]);
 
         // A failed concurrent build leaves an invalid index with the name.
         await fixture.sql.execute(

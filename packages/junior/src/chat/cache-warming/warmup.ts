@@ -29,10 +29,16 @@ import {
   type AssistantMessage,
   type Context,
 } from "@earendil-works/pi-ai/compat";
+import type { Platform } from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
 import { logInfo, logWarn, withSpan } from "@/chat/logging";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import type { ThinkingLevel } from "@/chat/pi/sdk";
+import {
+  buildDeploymentSystemPrompt,
+  systemPromptHash,
+} from "@/chat/system-prompt";
+import type { PromptMode } from "@/chat/system-prompt-rules";
 import {
   decideWarmup,
   gapSegment,
@@ -86,6 +92,11 @@ interface WarmState {
   segment: string;
   /** The `parentGapSegment` that a thin `segment` leans on. */
   parentSegment?: string;
+  /**
+   * The system prompt of the snapshot. Unset in snapshots from before it was
+   * stored; those warm without the check.
+   */
+  systemPrompt?: SystemPromptKey & { hash: string };
   workState: WorkState;
   archived: boolean;
   modelId: string;
@@ -209,6 +220,7 @@ async function startIdlePeriod(
   request: ModelRequest,
   message: AssistantMessage,
   turn: Pick<GapSegmentInput, "userActor" | "endedTurns">,
+  systemPrompt: SystemPromptKey,
 ): Promise<IdlePeriod> {
   const idle: IdlePeriod = {
     generation: randomUUID(),
@@ -248,6 +260,14 @@ async function startIdlePeriod(
     warm: {
       segment: gapSegment(segmentInput),
       ...(parentSegment ? { parentSegment } : undefined),
+      ...(request.context.systemPrompt !== undefined
+        ? {
+            systemPrompt: {
+              ...systemPrompt,
+              hash: systemPromptHash(request.context.systemPrompt),
+            },
+          }
+        : undefined),
       ...segmentState,
       modelId: request.model.id,
       prefixTokens,
@@ -260,6 +280,7 @@ async function startIdlePeriod(
 async function recordModelCall(
   conversationId: string,
   userActor: boolean,
+  systemPrompt: SystemPromptKey,
   request: ModelRequest,
   message: AssistantMessage,
 ): Promise<void> {
@@ -296,10 +317,14 @@ async function recordModelCall(
     message.stopReason === "stop"
       ? {
           endedTurns: endedTurns + 1,
-          idle: await startIdlePeriod(state, conversationId, request, message, {
-            userActor,
-            endedTurns,
-          }),
+          idle: await startIdlePeriod(
+            state,
+            conversationId,
+            request,
+            message,
+            { userActor, endedTurns },
+            systemPrompt,
+          ),
         }
       : { endedTurns };
   if (!idle && !next.idle) {
@@ -363,6 +388,15 @@ export interface CacheWarmingRecorder {
 }
 
 /**
+ * Platform and Prompt mode of a run's system prompt. With the deployment,
+ * they set the system prompt text.
+ */
+export interface SystemPromptKey {
+  platform: Platform;
+  mode: PromptMode;
+}
+
+/**
  * Create a recorder for one agent run. `userActor` is true when a person
  * started the Turn. A failure to record only loses cache warming, so it is
  * logged and does not stop the run.
@@ -370,6 +404,7 @@ export interface CacheWarmingRecorder {
 export function createCacheWarmingRecorder(
   conversationId: string,
   userActor: boolean,
+  systemPrompt: SystemPromptKey,
 ): CacheWarmingRecorder {
   let lastRequest: ModelRequest | undefined;
   // After the first call of the run ends the idle period, the next mid-turn
@@ -430,7 +465,13 @@ export function createCacheWarmingRecorder(
       }
       idleEnded = message.stopReason !== "stop";
       try {
-        await recordModelCall(conversationId, userActor, request, message);
+        await recordModelCall(
+          conversationId,
+          userActor,
+          systemPrompt,
+          request,
+          message,
+        );
       } catch (error) {
         logWarn("cache_warming.model_call.record_failed", {
           "exception.message":
@@ -523,6 +564,24 @@ export async function runCacheWarmup(
       }
       if (await breakerOpen(state, warm.modelId)) {
         await skip("breaker_open");
+        return;
+      }
+      // A deploy can change the system prompt. The next Turn then writes a
+      // new prefix, so warming the old one buys nothing. Tool definitions can
+      // change too, but the tool set differs per Conversation, so this does
+      // not check them. Tool wait warming needs no check: it runs in the
+      // process of the run, which sends the next request with this prompt.
+      if (
+        warm.systemPrompt &&
+        warm.systemPrompt.hash !==
+          systemPromptHash(
+            await buildDeploymentSystemPrompt(
+              warm.systemPrompt.platform,
+              warm.systemPrompt.mode,
+            ),
+          )
+      ) {
+        await skip("prompt_changed");
         return;
       }
 

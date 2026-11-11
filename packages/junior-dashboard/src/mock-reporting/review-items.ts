@@ -267,8 +267,12 @@ export function readMockWaitingConversations(nowMs: number) {
   return {
     conversations: [...byConversation].map(([conversationId, items]) => ({
       conversationId,
-      count: items.length,
-      title: items.at(-1)!.title,
+      items: [...items].reverse().map(({ title }) => ({ title })),
+      waitingSince: items
+        .map((item) => item.createdAt)
+        .reduce((oldest, createdAt) =>
+          createdAt < oldest ? createdAt : oldest,
+        ),
     })),
     needsViewer: open.length,
   };

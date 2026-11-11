@@ -155,47 +155,54 @@ export function useReviewItemAction() {
   });
 }
 
-/** Newest open Review item title and item count for one waiting Conversation. */
-export type WaitingConversation = { count: number; title: string };
+/**
+ * Open Review items, newest first, that one Conversation waits on the viewer
+ * for, and when the wait began (the oldest item).
+ */
+export type WaitingConversation = {
+  items: Array<{ plugin?: string; title: string }>;
+  waitingSince: string;
+};
 
 const NO_WAITING: ReadonlyMap<string, WaitingConversation> = new Map();
 
+const waitingConversationsQuery = {
+  queryKey: [...REVIEW_ITEMS_QUERY_KEY, "waiting-conversations"],
+  queryFn: ({ signal }: { signal: AbortSignal }) =>
+    fetchDashboardJson(
+      reviewItemWaitingConversationsSchema,
+      "/api/review-items/waiting-conversations",
+      signal,
+    ),
+  retry: false,
+};
+
+/** Whether the first read of the waiting Conversations has finished. */
+export function useWaitingConversationsSettled(): boolean {
+  return !useQuery(waitingConversationsQuery).isPending;
+}
+
 /**
- * Return the Conversations that wait on the viewer, by Conversation id. Today
- * only the review desk sets this: a linked open action item assigned to the
- * viewer.
+ * Return the Conversations that wait on the viewer, by Conversation id: each
+ * has a linked open action item assigned to the viewer. An agent's action
+ * asks a question; a plugin's action asks for a step such as a merge.
  */
 export function useWaitingConversations(): ReadonlyMap<
   string,
   WaitingConversation
 > {
-  const query = useQuery({
-    queryKey: [...REVIEW_ITEMS_QUERY_KEY, "waiting-conversations"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        reviewItemWaitingConversationsSchema,
-        "/api/review-items/waiting-conversations",
-        signal,
-      ),
-    retry: false,
-  });
+  const query = useQuery(waitingConversationsQuery);
   const conversations = query.data?.conversations;
   return useMemo(
     () =>
       conversations
         ? new Map(
-            conversations.map(({ conversationId, count, title }) => [
+            conversations.map(({ conversationId, items, waitingSince }) => [
               conversationId,
-              { count, title },
+              { items, waitingSince },
             ]),
           )
         : NO_WAITING,
     [conversations],
   );
-}
-
-/** Return the ids of the Conversations that wait on the viewer. */
-export function useWaitingConversationIds(): ReadonlySet<string> {
-  const waiting = useWaitingConversations();
-  return useMemo(() => new Set(waiting.keys()), [waiting]);
 }

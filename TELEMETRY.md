@@ -326,6 +326,11 @@ compare the phases:
 - The same `service.instance.id` on more than one slow call: they shared one
   process.
 
+When the main model refuses a Turn and `AI_REFUSAL_FALLBACK_MODEL` is set,
+`agent.turn.refusal_fallback` logs the main model as `gen_ai.request.model`
+and the fallback model as `app.ai.refusal_fallback.model`. The next
+`gen_ai.chat` span uses the fallback model.
+
 ### Cache Prefix
 
 The provider caches a request prefix in the order tools, system prompt,
@@ -430,25 +435,28 @@ these spans for warmup and backfill outcomes in production.
 
 Attributes on the `cache_warming.warmup` span:
 
-| Attribute                              | Type    | Meaning                                                   |
-| -------------------------------------- | ------- | --------------------------------------------------------- |
-| `app.cache_warming.trigger`            | string  | `idle` or `tool_wait`                                     |
-| `app.cache_warming.outcome`            | string  | `completed`, `skipped`, `missed`, or `failed`             |
-| `app.cache_warming.skip_reason`        | string  | `cache_expired`, `breaker_open`, `stopped`, or a decision |
-| `app.cache_warming.cycle`              | int     | warmup number in the idle period or tool wait             |
-| `app.cache_warming.prefix_tokens`      | int     | cached prefix tokens that the warmup keeps                |
-| `app.cache_warming.cache_ttl_left_ms`  | int     | idle only: time left before the cache expires             |
-| `app.cache_warming.work_state`         | string  | idle only: `open`, `done`, or `none`                      |
-| `app.cache_warming.archived`           | boolean | idle only: the Conversation or its root was archived      |
-| `app.cache_warming.return_probability` | double  | chance of a return in the next TTL                        |
-| `app.cache_warming.returns_per_warmup` | double  | best expected returns per warmup                          |
-| `app.cache_warming.threshold`          | double  | returns per warmup that make a warmup pay                 |
-| `app.cache_warming.parent_prior`       | boolean | idle only: a thin segment used its parent segment's gaps  |
-| `app.cost.total_usd`                   | double  | cost of the warmup call                                   |
-| `gen_ai.usage.cache_read.input_tokens` | int     | cached tokens that the warmup call read                   |
+| Attribute                              | Type    | Meaning                                                                     |
+| -------------------------------------- | ------- | --------------------------------------------------------------------------- |
+| `app.cache_warming.trigger`            | string  | `idle` or `tool_wait`                                                       |
+| `app.cache_warming.outcome`            | string  | `completed`, `skipped`, `missed`, or `failed`                               |
+| `app.cache_warming.skip_reason`        | string  | `cache_expired`, `breaker_open`, `prompt_changed`, `stopped`, or a decision |
+| `app.cache_warming.cycle`              | int     | warmup number in the idle period or tool wait                               |
+| `app.cache_warming.prefix_tokens`      | int     | cached prefix tokens that the warmup keeps                                  |
+| `app.cache_warming.cache_ttl_left_ms`  | int     | idle only: time left before the cache expires                               |
+| `app.cache_warming.work_state`         | string  | idle only: `open`, `done`, or `none`                                        |
+| `app.cache_warming.archived`           | boolean | idle only: the Conversation or its root was archived                        |
+| `app.cache_warming.return_probability` | double  | chance of a return in the next TTL                                          |
+| `app.cache_warming.returns_per_warmup` | double  | best expected returns per warmup                                            |
+| `app.cache_warming.threshold`          | double  | returns per warmup that make a warmup pay                                   |
+| `app.cache_warming.parent_prior`       | boolean | idle only: a thin segment used its parent segment's gaps                    |
+| `app.cost.total_usd`                   | double  | cost of the warmup call                                                     |
+| `gen_ai.usage.cache_read.input_tokens` | int     | cached tokens that the warmup call read                                     |
 
 - A decision `skip_reason` is a `decideWarmup` reason, such as `few_gaps`
   or `unlikely_return`.
+- `prompt_changed`: idle only. The system prompt of this deployment differs
+  from the prompt of the cached request, such as after a deploy. The idle
+  period stops warming.
 - `work_state` and `archived` are read when the idle period starts. They
   pick its gap segment: `user|system:1|2-3|4+:open|done|none`, or
   `archived:open|done|none`. The `cache_warming.warmup.*` and
@@ -672,7 +680,8 @@ previous Turn when agent history exists.
 - Server spans and errors keep no URL query strings, fragments, request
   bodies, or credential headers. Sandbox egress paths show `<token>`.
 - A mention turn calls `reactions.add` two times and gets `already_reacted`.
-  #2318 tracks it.
+  #2318 tracks it. `already_reacted` on `reactions.add` and `no_reaction` on
+  `reactions.remove` are success, so they do not log `slack.action.failed`.
 
 ## Plugin Tasks and Notifications
 
@@ -776,10 +785,21 @@ fields=server.address,app.notification.push.outcome,count(),p50(span.duration),p
   `activity` (the minute of last activity), `messages` (the newest Message
   of each role), `unread`, `threads`, and `annotations`. A Conversation that
   joins or leaves the first page moves `order` and the inputs of its row.
+- A pin change tags its request span with `app.conversation.pin.action`
+  (`pin`, `unpin`, or `reorder`) and `app.conversation.pin.count`, the
+  viewer's pins after the change. Pins stay manual; use these to see how many
+  people use them, and how many pins they keep.
 - `http.server` spans have the route pattern of the app that served the
   request, also when the core app passes the request to the dashboard or a
   plugin app. Plugin API routes are `/api/plugins/<plugin>/*`. Sandbox egress
   is `/api/internal/sandbox-egress/<token>`.
+
+Pin use by action, with the pins each viewer keeps.
+
+```text
+dataset=spans query='has:app.conversation.pin.action'
+fields=app.conversation.pin.action,count(),count_unique(user.id),p50(app.conversation.pin.count),p95(app.conversation.pin.count)
+```
 
 Conversation open time, by the transcript render.
 

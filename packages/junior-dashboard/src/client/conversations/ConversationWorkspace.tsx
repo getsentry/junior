@@ -51,10 +51,7 @@ import {
   FOCUS_REPLY_STATE,
   NEW_CONVERSATION_PATH,
 } from "./conversationRoutes";
-import {
-  attentionConversationIds,
-  pinnedAndAttentionFirst,
-} from "./conversationSections";
+import { pinnedAndWaitingFirst } from "./conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
 import { usePushNotificationsTip } from "../notifications/pushNotificationsTip";
@@ -63,10 +60,7 @@ import type { Conversation } from "../types";
 import { ConversationPage } from "./ConversationPage";
 import { useAutoLoadHistoryPage } from "./transcriptBottomPinning";
 import { FeedThreads, feedThreadsById } from "./feedThreads";
-import {
-  useWaitingConversationIds,
-  useWaitingConversations,
-} from "../review-desk/queries";
+import { useWaitingConversations } from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
 import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
 import {
@@ -146,17 +140,12 @@ export function ConversationWorkspace(props: {
     [conversations],
   );
   const waitingConversations = useWaitingConversations();
-  const waitingConversationIds = useWaitingConversationIds();
 
   // The feed holds every row. The home list shows them a batch at a time
   // and shows the next batch when the reader scrolls near its end.
   const orderedConversations = useMemo(
-    () =>
-      pinnedAndAttentionFirst(
-        conversations,
-        attentionConversationIds(conversations, waitingConversationIds),
-      ),
-    [conversations, waitingConversationIds],
+    () => pinnedAndWaitingFirst(conversations, waitingConversations),
+    [conversations, waitingConversations],
   );
   const visibleConversations = useMemo(
     () => orderedConversations.slice(0, visibleCount),
@@ -328,7 +317,7 @@ export function ConversationWorkspace(props: {
                   : reorderPins
               }
               timeZone={getDashboardTimeZone()}
-              waitingConversationIds={waitingConversationIds}
+              waitingConversations={waitingConversations}
             />
             {hiddenCount > 0 ? (
               <div

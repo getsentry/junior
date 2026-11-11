@@ -896,6 +896,7 @@ export function buildConversations(
       displayTitle: summary.displayTitle,
       id: summary.conversationId,
       isParticipant: summary.isParticipant,
+      lastMessageAt: summary.lastMessageAt,
       lastProgressAt: summary.lastProgressAt,
       lastSeenAt: summary.lastSeenAt,
       locationId: summary.locationId,
@@ -911,7 +912,6 @@ export function buildConversations(
       kind: summary.kind,
       parentConversationId: summary.parentConversationId,
       threads: summary.threads && buildConversations(summary.threads),
-      unfinishedWork: summary.unfinishedWork,
       awaitingAuthorization: summary.awaitingAuthorization,
       visibility: summary.visibility,
     }))

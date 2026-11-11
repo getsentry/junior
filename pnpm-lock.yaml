@@ -84,9 +84,6 @@ importers:
       oxlint:
         specifier: 1.79.0
         version: 1.79.0
-      p-limit:
-        specifier: 7.3.1
-        version: 7.3.1
       prettier:
         specifier: ^3.8.3
         version: 3.8.3
@@ -99,6 +96,9 @@ importers:
       simple-git-hooks:
         specifier: ^2.13.1
         version: 2.13.1
+      squawk-cli:
+        specifier: 2.72.0
+        version: 2.72.0
       tsx:
         specifier: ^4.22.3
         version: 4.22.3
@@ -4596,6 +4596,45 @@ packages:
   '@smithy/util-utf8@2.3.0':
     resolution: {integrity: sha512-R8Rdn8Hy72KKcebgLiv8jQcQkXoLMOGGv5uI1/k0l+snqkOzQ1R0ChUBCxWMlBsFMekWjq0wRudIweFs7sKT5A==}
     engines: {node: '>=14.0.0'}
+
+  '@squawk-cli/darwin-arm64@2.72.0':
+    resolution: {integrity: sha512-x9GbT+MpokUApC0hTO3aiZGXIk9NQRHIgilENX3078OVWtYQZ8K+nvZ8Fx3Hs2L3tDMVpK+G3ZO8eF7+vm+uIw==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@squawk-cli/darwin-x64@2.72.0':
+    resolution: {integrity: sha512-U49fefGycKA6/ClFvG1N2XsVubKCKXXAWya2fizDi64wmKc+9khNEkniHwLb12Xr/0gd9cJTLF7pXCPhba4TDg==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@squawk-cli/linux-arm64-musl@2.72.0':
+    resolution: {integrity: sha512-unIaLzFKyDaSyOIXXKBBsXgHehr9/DqQvTNKKKMjVlNMOOsHlCHASwPQDmlfjnlRgcL0dGPGZ9j+jJqUhNbCYQ==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@squawk-cli/linux-arm64@2.72.0':
+    resolution: {integrity: sha512-Nb1SKgcrwnM+PWDFEn6Q1I0jYWdATicvbpkryiJcSGnr1SwwRKKEcM23qPNzjyxJvjQeE8GoAQ4O22J23ULWwQ==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@squawk-cli/linux-x64-musl@2.72.0':
+    resolution: {integrity: sha512-VS5Lste4yQyrwrXJ1TuRO40BZlq898MZtRTb49X9KDQl0yj6ZrQ8KD8K00bZUzH2m/iv9QQtSNLynyMt533Xbw==}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@squawk-cli/linux-x64@2.72.0':
+    resolution: {integrity: sha512-7M2tL5E8EhI9aCAFiUQe5jfMcdSBk3aSboep1U16ZqRQo6fXLUVfvpATdEXj0c4J8e9AcavTAMXSc2rQnNBRVA==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@squawk-cli/win32-x64@2.72.0':
+    resolution: {integrity: sha512-PeSXhOZIlB7n4eMApujqDF1jGrTPDBnMAYohL95RZ5IoYvr9TSDqoH23rpdguj+TBDxfA9GA3KSO2fXB5NwwBw==}
+    cpu: [x64]
+    os: [win32]
 
   '@stablelib/base64@1.0.1':
     resolution: {integrity: sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==}
@@ -9262,6 +9301,10 @@ packages:
 
   sql.js@1.14.1:
     resolution: {integrity: sha512-gcj8zBWU5cFsi9WUP+4bFNXAyF1iRpA3LLyS/DP5xlrNzGmPIizUeBggKa8DbDwdqaKwUcTEnChtd2grWo/x/A==}
+
+  squawk-cli@2.72.0:
+    resolution: {integrity: sha512-4vKiq4quUG8lMBZvzh19NBsqPgoB5CFNAhZwFLFk3exFLJD58viyKR9Jd8jyvRdJ6Y4GBGp23upirSPRMI5WlQ==}
+    hasBin: true
 
   srvx@0.11.16:
     resolution: {integrity: sha512-bp07zRuycfTY43IjAvvTFnmnJi8ikW0VFiHwOhhYcVW/L4xQ1XY4PAd4Nuum1rsA17C39zL7x+CDhrn5AL32Rw==}
@@ -14321,6 +14364,27 @@ snapshots:
     dependencies:
       '@smithy/util-buffer-from': 2.2.0
       tslib: 2.8.1
+
+  '@squawk-cli/darwin-arm64@2.72.0':
+    optional: true
+
+  '@squawk-cli/darwin-x64@2.72.0':
+    optional: true
+
+  '@squawk-cli/linux-arm64-musl@2.72.0':
+    optional: true
+
+  '@squawk-cli/linux-arm64@2.72.0':
+    optional: true
+
+  '@squawk-cli/linux-x64-musl@2.72.0':
+    optional: true
+
+  '@squawk-cli/linux-x64@2.72.0':
+    optional: true
+
+  '@squawk-cli/win32-x64@2.72.0':
+    optional: true
 
   '@stablelib/base64@1.0.1': {}
 
@@ -20199,6 +20263,16 @@ snapshots:
   sprintf-js@1.1.3: {}
 
   sql.js@1.14.1: {}
+
+  squawk-cli@2.72.0:
+    optionalDependencies:
+      '@squawk-cli/darwin-arm64': 2.72.0
+      '@squawk-cli/darwin-x64': 2.72.0
+      '@squawk-cli/linux-arm64': 2.72.0
+      '@squawk-cli/linux-arm64-musl': 2.72.0
+      '@squawk-cli/linux-x64': 2.72.0
+      '@squawk-cli/linux-x64-musl': 2.72.0
+      '@squawk-cli/win32-x64': 2.72.0
 
   srvx@0.11.16: {}
 

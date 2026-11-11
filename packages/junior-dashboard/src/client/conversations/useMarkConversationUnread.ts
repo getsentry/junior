@@ -16,8 +16,8 @@ type DetailCache = ConversationDetailReport & { detailEtag?: string };
 
 /**
  * Mark one conversation read or unread for the viewer. The feed and detail
- * caches change at once, so the row moves to or from Needs attention before
- * the request returns. A failed request puts the old caches back.
+ * caches change at once, so the row's unread marker changes before the
+ * request returns. A failed request puts the old caches back.
  */
 export function useMarkConversationUnread(
   conversationId: string,

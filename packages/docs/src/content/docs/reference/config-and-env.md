@@ -34,6 +34,7 @@ related:
 | `AI_RERANKING_MODEL`                        | No          | Reranking model that scores plugin retrieval candidates, such as memory recall. Defaults to `voyage/rerank-2.5-lite`.                                                       |
 | `AI_VISION_MODEL`                           | No          | Image summary model for thread history and a text-only `AI_MODEL`. Defaults to `openai/gpt-5.6-sol` when absent; an explicitly empty value disables it.                     |
 | `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to `openai/gpt-6-luna`; does not fall through to `AI_MODEL`.                                                              |
+| `AI_REFUSAL_FALLBACK_MODEL`                 | No          | Model that continues an agent Turn when `AI_MODEL` refuses it, for example after a provider safety block. Unset by default: a refusal ends the Turn.                        |
 | `SANDBOX_VCPUS`                             | No          | Legacy fallback for sandbox vCPUs and the build-time snapshot command. Prefer `createApp({ sandbox: { vcpus } })` for runtime sandboxes. Each vCPU provides 2 GB of memory. |
 | `VERCEL_SANDBOX_KEEPALIVE_MS`               | No          | Extends an active sandbox by this duration on each tool acquire. Disabled when unset or `0`; `900000` (15 minutes) is recommended for production Vercel deployments.        |
 | `JUNIOR_BASE_URL`                           | No          | Main base URL for callback and authorization URLs.                                                                                                                          |
@@ -346,10 +347,11 @@ likely to cost less than that write.
   and for the first, second to third, and later Turns of a Conversation. This
   applies to the gaps of each Conversation too. Until Junior has recorded 20
   gaps for a group, it sends no warmups for that group.
-- On the first heartbeat with warming on, Junior fills each empty group once
+- On the first heartbeat with warming on, Junior fills each empty group
   from the stored Turns of the last 30 days. It uses the same rules as the
   gaps that it records after a turn. It reads the newest Conversations first
-  for up to 60 seconds, and keeps the gaps that it found in that time.
+  for up to 60 seconds, and keeps the gaps that it found in that time. After
+  30 days, it does this again for each group that is empty.
 - While a tool runs, the running agent warms the cache with the same cost
   model. The chance comes from recorded tool waits: the time from a model
   request that ended with tool calls to the next request. Junior records only

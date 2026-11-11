@@ -133,6 +133,18 @@ describe("chat config", () => {
     expect(botConfig.webSearchModelId).toBe("anthropic/claude-sonnet-4.6");
   });
 
+  it("leaves the refusal fallback model unset by default", async () => {
+    const { botConfig } = await loadConfig();
+    expect(botConfig.refusalFallbackModelId).toBeUndefined();
+  });
+
+  it("uses AI_REFUSAL_FALLBACK_MODEL when configured", async () => {
+    process.env.AI_REFUSAL_FALLBACK_MODEL = " openai/gpt-6-astra ";
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.refusalFallbackModelId).toBe("openai/gpt-6-astra");
+  });
+
   it("throws when AI_WEB_SEARCH_MODEL is not a registered gateway model id", async () => {
     process.env.AI_WEB_SEARCH_MODEL = "openai/search-model-not-real";
 

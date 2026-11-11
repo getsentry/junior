@@ -1,10 +1,7 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
 import {
   Archive,
   ArchiveRestore,
-  ChevronRight,
-  Inbox,
-  LockKeyhole,
   Pin,
   SquarePen,
 } from "lucide-react";
@@ -22,7 +19,6 @@ import { useConversationSubscription } from "./useConversationSubscription";
 import { ContinueInSlackDialog } from "./ContinueInSlackDialog";
 import { ConversationRowMenu } from "./ConversationRowMenu";
 import {
-  PinnedConversationOrder,
   usePinnedRowDrag,
   type PinnedRowDrag,
 } from "./PinnedConversationOrder";
@@ -37,11 +33,10 @@ import { formatCompactAge } from "./conversationAge";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { AnimatedList } from "./AnimatedList";
-import {
-  attentionConversationIds,
-  buildConversationSections,
-  type ConversationSection,
-} from "./conversationSections";
+import { WaitingChip } from "./WaitingChip";
+import type { ConversationSection } from "./conversationSections";
+import { ConversationSectionList } from "./ConversationSectionList";
+import { ConversationStatusText } from "./ConversationListStatusIcon";
 import { ConversationSectionHeading } from "./ConversationSectionHeading";
 import {
   ConversationSidebarThreadRow,
@@ -145,40 +140,6 @@ export function ConversationSidebar(props: {
       return next;
     });
   }, []);
-  // Rebuild section rows only when their inputs change. Avoid fresh Date.now()
-  // arrays on unrelated parent renders while the reader is scrolling.
-  const entries = useMemo(
-    () =>
-      conversationSidebarEntries(
-        buildConversationSections(props.conversations, {
-          attentionIds: attentionConversationIds(
-            props.conversations,
-            props.waitingConversations.keys(),
-          ),
-          nowMs: Date.now(),
-          timeZone: props.timeZone,
-        }),
-        collapsedKeys,
-        { expandedThreadRoots, selectedId: props.selectedId },
-      ),
-    [
-      collapsedKeys,
-      expandedThreadRoots,
-      props.selectedId,
-      props.conversations,
-      props.timeZone,
-      props.waitingConversations,
-    ],
-  );
-  const pinnedConversations = useMemo(
-    () =>
-      entries.flatMap((entry) =>
-        entry.kind === "conversation" && entry.conversation.pinnedAt
-          ? [entry.conversation]
-          : [],
-      ),
-    [entries],
-  );
   const handleReorderError = useCallback(
     (conversation: Conversation) =>
       showActionError(conversation, "Could not reorder"),
@@ -203,79 +164,120 @@ export function ConversationSidebar(props: {
           New conversation
         </Button>
       </div>
-      <ScrollArea viewportClassName="px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        {props.error ? (
-          <div className="p-2">
-            <EmptyTelemetry>{props.error}</EmptyTelemetry>
-          </div>
-        ) : props.loading && entries.length === 0 ? (
-          <ConversationRowsLoading />
-        ) : (
-          <PinnedConversationOrder
-            conversations={pinnedConversations}
-            onError={handleReorderError}
-            reorder={props.onReorderPins}
+      {/* The list wraps the always-shown scroll area, so a pointer that
+          rests on it through the first load, or on its padding or
+          scrollbar, still holds the order. */}
+      <ConversationSectionList
+        className="relative min-h-0"
+        conversations={props.conversations}
+        loading={props.loading}
+        onReorderError={handleReorderError}
+        onReorderPins={props.onReorderPins}
+        timeZone={props.timeZone}
+        waitingConversations={props.waitingConversations}
+      >
+        {({ releaseHold, sections }) => (
+          <ScrollArea
+            className="h-full"
+            viewportClassName="px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
           >
-            <AnimatedList
-              ariaLabel="Your conversations"
-              className="grid gap-0.5"
-              empty={
-                !props.loading ? (
-                  <div className="p-2">
-                    <EmptyTelemetry>
-                      No conversations match this view.
-                    </EmptyTelemetry>
-                  </div>
-                ) : undefined
-              }
-              getKey={conversationEntryKey}
-              items={entries}
-              renderItem={(entry) =>
-                entry.kind === "section" ? (
-                  <ConversationSectionHeading
-                    className={cn("px-3 pb-1", entry.first ? "pt-1" : "pt-3")}
-                    collapsed={entry.collapsed}
-                    count={entry.count}
-                    label={entry.label}
-                    onToggle={() => toggleSection(entry.sectionKey)}
-                  />
-                ) : entry.kind === "thread-toggle" ? (
-                  <ConversationSidebarThreadToggle
-                    expanded={entry.expanded}
-                    hiddenCount={entry.hiddenCount}
-                    onToggle={() => toggleThreads(entry.rootId)}
-                  />
-                ) : entry.kind === "thread" ? (
-                  <ConversationSidebarThreadRow
-                    conversation={entry.conversation}
-                    depth={entry.depth}
-                    selected={entry.conversation.id === props.selectedId}
-                    waiting={props.waitingConversations.has(
-                      entry.conversation.id,
-                    )}
-                  />
-                ) : (
-                  <ConversationSidebarEntryRow
-                    conversation={entry.conversation}
-                    onArchiveError={showArchiveError}
-                    onArchived={showArchived}
-                    onPinError={handlePinError}
-                    onPinned={clearActionError}
-                    onUnreadError={handleUnreadError}
-                    onActionError={showActionError}
-                    selected={entry.conversation.id === props.selectedId}
-                    waiting={props.waitingConversations.get(
-                      entry.conversation.id,
-                    )}
-                  />
-                )
-              }
-              role="navigation"
-            />
-          </PinnedConversationOrder>
+            {props.error ? (
+              <div className="p-2">
+                <EmptyTelemetry>{props.error}</EmptyTelemetry>
+              </div>
+            ) : props.loading && props.conversations.length === 0 ? (
+              <ConversationRowsLoading />
+            ) : (
+              <ConversationSidebarEntries
+                collapsedKeys={collapsedKeys}
+                expandedThreadRoots={expandedThreadRoots}
+                loading={props.loading}
+                sections={sections}
+                selectedId={props.selectedId}
+                renderItem={(entry) =>
+                  entry.kind === "section" ? (
+                    <ConversationSectionHeading
+                      className={cn("px-3 pb-1", entry.first ? "pt-1" : "pt-3")}
+                      collapsed={entry.collapsed}
+                      count={entry.count}
+                      label={entry.label}
+                      onToggle={() => toggleSection(entry.sectionKey)}
+                    />
+                  ) : entry.kind === "thread-toggle" ? (
+                    <ConversationSidebarThreadToggle
+                      expanded={entry.expanded}
+                      hiddenCount={entry.hiddenCount}
+                      onToggle={() => toggleThreads(entry.rootId)}
+                    />
+                  ) : entry.kind === "thread" ? (
+                    <ConversationSidebarThreadRow
+                      conversation={entry.conversation}
+                      depth={entry.depth}
+                      selected={entry.conversation.id === props.selectedId}
+                      waiting={props.waitingConversations.has(
+                        entry.conversation.id,
+                      )}
+                    />
+                  ) : (
+                    <ConversationSidebarEntryRow
+                      conversation={entry.conversation}
+                      onArchiveError={showArchiveError}
+                      onArchived={showArchived}
+                      onPinError={handlePinError}
+                      onPinned={clearActionError}
+                      onUnreadError={handleUnreadError}
+                      onActionError={showActionError}
+                      onRowAction={releaseHold}
+                      selected={entry.conversation.id === props.selectedId}
+                      waiting={props.waitingConversations.get(
+                        entry.conversation.id,
+                      )}
+                    />
+                  )
+                }
+              />
+            )}
+          </ScrollArea>
         )}
-      </ScrollArea>
+      </ConversationSectionList>
     </aside>
+  );
+}
+
+/** Show the sidebar rows of the held sections, with their motion. */
+function ConversationSidebarEntries(props: {
+  collapsedKeys: ReadonlySet<string>;
+  expandedThreadRoots: ReadonlySet<string>;
+  loading: boolean;
+  renderItem(entry: ConversationSidebarEntry): ReactNode;
+  sections: ConversationSection[];
+  selectedId?: string;
+}) {
+  const { collapsedKeys, expandedThreadRoots, sections, selectedId } = props;
+  const entries = useMemo(
+    () =>
+      conversationSidebarEntries(sections, collapsedKeys, {
+        expandedThreadRoots,
+        selectedId,
+      }),
+    [collapsedKeys, expandedThreadRoots, sections, selectedId],
+  );
+  return (
+    <AnimatedList
+      ariaLabel="Your conversations"
+      className="grid gap-0.5"
+      empty={
+        !props.loading ? (
+          <div className="p-2">
+            <EmptyTelemetry>No conversations match this view.</EmptyTelemetry>
+          </div>
+        ) : undefined
+      }
+      getKey={conversationEntryKey}
+      items={entries}
+      renderItem={props.renderItem}
+      role="navigation"
+    />
   );
 }
 
@@ -379,6 +381,8 @@ type ConversationSidebarRowProps = {
   onPinned(conversation: Conversation): void;
   onUnreadError(conversation: Conversation, wasMarkingUnread: boolean): void;
   onActionError(conversation: Conversation, title: string): void;
+  /** Runs before a row action that can move rows, so its result shows. */
+  onRowAction(): void;
   selected: boolean;
   waiting?: WaitingConversation;
 };
@@ -454,12 +458,22 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   const participant = props.conversation.isParticipant;
   const canToggleRead =
     participant && !props.waiting && (unread || canMarkUnread);
-  const togglePin = () => pin.mutate(!pinned);
-  const toggleArchive = () =>
+  const setPinned = (next: boolean) => {
+    props.onRowAction();
+    pin.mutate(next);
+  };
+  const togglePin = () => setPinned(!pinned);
+  const setUnread = (next: boolean) => {
+    props.onRowAction();
+    markUnread.mutate(next);
+  };
+  const toggleArchive = () => {
+    props.onRowAction();
     archive.mutate({
       archived: !archived,
       lastSeenAt: props.conversation.lastSeenAt,
     });
+  };
   return (
     <ContextMenu
       // The menu shows rows from the detail, so read it as a hover does.
@@ -503,11 +517,6 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
                 className="size-1.5 shrink-0 rounded-full bg-dashboard-accent"
                 role="img"
               />
-            ) : props.conversation.visibility === "private" ? (
-              <LockKeyhole
-                aria-label="Private conversation"
-                className="size-3 shrink-0 text-dashboard-text-faint"
-              />
             ) : null}
           </span>
           <span
@@ -524,7 +533,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
             {title}
           </span>
           <ConversationRowState
-            lastSeenAt={props.conversation.lastSeenAt}
+            conversation={props.conversation}
             status={status}
           />
         </Link>
@@ -536,7 +545,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
                   aria-label={`Mark ${title} as ${unread ? "read" : "unread"}`}
                   className="group/read absolute top-1 left-[0.4375rem] z-10 grid size-6 cursor-pointer place-items-center rounded-md transition hover:bg-dashboard-surface-active focus-visible:bg-dashboard-surface-active focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed"
                   disabled={markUnread.isPending}
-                  onClick={() => markUnread.mutate(!unread)}
+                  onClick={() => setUnread(!unread)}
                   type="button"
                 >
                   {/* On hover, preview the state that a click sets. */}
@@ -558,28 +567,10 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
           </Tooltip>
         ) : null}
         {props.waiting ? (
-          <Link
-            className="mb-1.5 ml-[2.125rem] mr-3 flex min-w-0 items-center gap-1.5 rounded-md border border-dashboard-border-strong bg-dashboard-surface-raised px-2 py-1 font-sans text-xs text-dashboard-text no-underline transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
-            to={conversationPath(props.conversation.id, { reviewItems: true })}
-          >
-            <Inbox
-              aria-hidden="true"
-              className="size-3 shrink-0 text-dashboard-text-muted"
-            />
-            <span className="min-w-0 truncate">{props.waiting.title}</span>
-            {props.waiting.count > 1 ? (
-              <span className="ml-auto shrink-0 text-dashboard-text-faint">
-                +{props.waiting.count - 1} more
-              </span>
-            ) : null}
-            <ChevronRight
-              aria-hidden="true"
-              className={cn(
-                "size-3 shrink-0 text-dashboard-text-muted",
-                props.waiting.count > 1 ? undefined : "ml-auto",
-              )}
-            />
-          </Link>
+          <WaitingChip
+            conversationId={props.conversation.id}
+            waiting={props.waiting}
+          />
         ) : null}
         {/* Mobile rows pin from the conversation menu, so only the archive
           button takes row space there. Archived rows restore before they pin. */}
@@ -649,8 +640,8 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
                 replace: props.selected,
                 state: OPEN_EVENT_LOG_STATE,
               }),
-            pin: (next) => pin.mutate(next),
-            read: (next) => markUnread.mutate(next),
+            pin: setPinned,
+            read: setUnread,
             rename: () => setRenaming(true),
             subscription: (subscribed) => subscription.mutate(subscribed),
           }}
@@ -682,32 +673,31 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   );
 });
 
-/** Show the row age, or the status when the conversation runs, failed, or stopped. */
+/**
+ * Show the row's secondary text: a lock when private, then the status when
+ * the conversation runs, failed, or stopped, or else the age of its last
+ * Message.
+ */
 function ConversationRowState(props: {
-  lastSeenAt: string;
+  conversation: Conversation;
   status: ReturnType<typeof visualStatusForConversation>;
 }) {
-  if (props.status === "active") {
-    return (
-      <Spinner
-        aria-label="Running"
-        className="size-3.5 text-dashboard-text-muted"
-      />
-    );
-  }
-  if (props.status === "failed") {
-    return <span className="font-sans text-xs text-rose-400">Failed</span>;
-  }
-  if (props.status === "stopped") {
-    return (
-      <span className="font-sans text-xs text-dashboard-text-muted">
-        Stopped
-      </span>
-    );
-  }
+  const isPrivate = props.conversation.visibility === "private";
   return (
-    <span className="font-sans text-xs tabular-nums text-dashboard-text-faint">
-      {formatCompactAge(props.lastSeenAt)}
+    <span className="flex items-center gap-1">
+      <ConversationStatusText isPrivate={isPrivate} status={props.status} />
+      {props.status === "active" ? (
+        <Spinner
+          aria-label="Running"
+          className="size-3.5 text-dashboard-text-muted"
+        />
+      ) : props.status === "failed" || props.status === "stopped" ? null : (
+        <span className="font-sans text-xs tabular-nums text-dashboard-text-faint">
+          {formatCompactAge(
+            props.conversation.lastMessageAt ?? props.conversation.lastSeenAt,
+          )}
+        </span>
+      )}
     </span>
   );
 }
