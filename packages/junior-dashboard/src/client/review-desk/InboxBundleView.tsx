@@ -76,8 +76,17 @@ export function inboxRowButtonClass(
   return cn(
     "grid w-full min-w-0 cursor-pointer grid-cols-[0.875rem_minmax(0,1fr)_auto] items-start gap-x-3 rounded-xl border-0 bg-transparent px-4 py-3 text-left font-sans text-inherit transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
     active && !expanded && "bg-dashboard-fill-soft",
+    // Open, the header ends flat on the detail's rule, inside the card.
+    expanded && "rounded-b-none",
   );
 }
+
+/**
+ * The detail of an open inbox row. It starts below the header's rule, with
+ * the card's padding.
+ */
+export const INBOX_ROW_DETAIL_CLASS =
+  "grid min-w-0 border-t border-dashboard-border px-4 pt-4 pb-4 md:px-6";
 
 /**
  * One inbox bundle: the Review items of one Conversation. Collapsed, it
@@ -183,7 +192,7 @@ export function InboxBundleView(props: {
       </button>
       {props.expanded ? (
         <div
-          className="grid min-w-0 gap-4 px-4 pb-4 md:px-6"
+          className={cn(INBOX_ROW_DETAIL_CLASS, "gap-4")}
           data-inbox-answer={bundle.key}
           id={regionId}
           role="region"

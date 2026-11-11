@@ -5,7 +5,12 @@ import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 import { conversationPath } from "../conversations/conversationRoutes";
 import { DisplayText } from "../display-text/DisplayText";
 import { formatRelativeTime } from "../format";
-import { inboxCardClass, inboxRowButtonClass } from "./InboxBundleView";
+import { cn } from "../styles";
+import {
+  INBOX_ROW_DETAIL_CLASS,
+  inboxCardClass,
+  inboxRowButtonClass,
+} from "./InboxBundleView";
 import { InboxSection } from "./InboxSection";
 import { doneSections } from "./inboxModel";
 import { ReviewItemActions } from "./ReviewItemActions";
@@ -78,7 +83,7 @@ function DoneRow(props: {
       {props.expanded ? (
         <div
           aria-label={`${item.title}: how it closed`}
-          className="grid min-w-0 gap-4 px-4 pb-4 font-sans text-sm md:px-6"
+          className={cn(INBOX_ROW_DETAIL_CLASS, "gap-4 font-sans text-sm")}
           id={regionId}
           role="region"
         >

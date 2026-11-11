@@ -201,27 +201,26 @@ export function ReviewDeskPage() {
   const awake = live.filter((item) => !asleep(item));
   const sleeping = live.filter(asleep);
 
-  const link = (target: InboxView, label: string) => {
-    const inView = itemsInView(awake, target);
+  // Counts include snoozed items, as the Inbox tab badge does, so All's
+  // main number matches the badge. Automations have their own bundle.
+  const link = (target: InboxView, label: string): InboxBundleLink => {
+    const inView = itemsInView(live, target);
     return {
-      count: inView.length,
-      label,
       asks: inView.filter(itemNeedsViewer).length,
+      fyi: inView.filter(
+        (item) => item.kind === "notice" && item.status === "open",
+      ).length,
+      label,
       view: target,
     };
   };
-  const allLink = link("all", VIEW_LABELS.all);
   const bundleLinks: InboxBundleLink[] = [
-    {
-      ...allLink,
-      count: allLink.count + attentionAll.length,
-      asks: allLink.asks + attentionAll.length,
-    },
+    link("all", VIEW_LABELS.all),
     link("prs", VIEW_LABELS.prs),
     link("decisions", VIEW_LABELS.decisions),
     {
-      count: attentionAll.length,
       asks: attentionAll.length,
+      fyi: 0,
       label: VIEW_LABELS.automations,
       view: "automations",
     },
