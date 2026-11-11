@@ -11,6 +11,10 @@ import {
   type SandboxEgressCredentialLease,
   type SandboxEgressPermissionDeniedSignal,
 } from "@/chat/sandbox/egress/schemas";
+import {
+  createEncryptedState,
+  readEncryptedState,
+} from "@/chat/encryption/state";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 // Module overview: store the short-lived state that connects a sandbox command
@@ -232,7 +236,11 @@ export async function setSandboxEgressCredentialLease(
   const ttlMs = Math.max(1, leaseExpiresAtMs - Date.now());
   const state = getStateAdapter();
   await state.connect();
-  await state.set(leaseKey(lease.provider, lease.grant), lease, ttlMs);
+  await createEncryptedState(state).set(
+    leaseKey(lease.provider, lease.grant),
+    lease,
+    ttlMs,
+  );
 }
 
 /** Load remembered auth headers for a shared installation grant. */
@@ -246,7 +254,10 @@ export async function getSandboxEgressCredentialLease(
   }
   const state = getStateAdapter();
   await state.connect();
-  return parseLease(await state.get(leaseKey(provider, grant)));
+  // A stale lease is a cache miss. The next issue saves it with the active
+  // key.
+  const stored = await readEncryptedState(state, leaseKey(provider, grant));
+  return stored?.stale ? undefined : parseLease(stored?.value);
 }
 
 /** Drop remembered installation headers after the upstream rejects them. */
