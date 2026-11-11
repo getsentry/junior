@@ -8,6 +8,7 @@ import {
   isNull,
   lte,
   notExists,
+  or,
   sql,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -31,6 +32,9 @@ const changes = juniorCodeChanges;
 const linked = alias(juniorConversations, "linked");
 // A code change lists every Conversation that worked on it.
 const linksChange = sql`${linked.conversationId} = any(${changes.conversationIds})`;
+// Roots normally reference themselves. A root without the reference is its
+// own root.
+const linkedRoot = sql<string>`coalesce(${linked.rootConversationId}, ${linked.conversationId})`;
 
 /**
  * Count outcomes per UTC day or hour, with the conversation cost that
@@ -119,7 +123,7 @@ async function readWindowMerges(
     .selectDistinct({
       changeId: changes.id,
       mergedAt: changes.mergedAt,
-      rootId: linked.rootConversationId,
+      rootId: linkedRoot,
     })
     .from(changes)
     .innerJoin(linked, linksChange)
@@ -170,7 +174,7 @@ async function readBriefOutcomeRoots(
             .select({ id: changes.id })
             .from(changes)
             .innerJoin(linked, linksChange)
-            .where(eq(linked.rootConversationId, roots.conversationId)),
+            .where(eq(linkedRoot, roots.conversationId)),
         ),
       ),
     );
@@ -185,17 +189,12 @@ async function readRootMergeCounts(
   const rows = await db
     .select({
       merged: countDistinct(changes.id),
-      rootId: linked.rootConversationId,
+      rootId: linkedRoot,
     })
     .from(changes)
     .innerJoin(linked, linksChange)
-    .where(
-      and(
-        eq(changes.state, "merged"),
-        inArray(linked.rootConversationId, [...rootIds]),
-      ),
-    )
-    .groupBy(linked.rootConversationId);
+    .where(and(eq(changes.state, "merged"), inArray(linkedRoot, [...rootIds])))
+    .groupBy(linkedRoot);
   return new Map(
     rows.flatMap((row) => (row.rootId ? [[row.rootId, row.merged]] : [])),
   );
@@ -207,15 +206,23 @@ async function readTreeCosts(
 ): Promise<Map<string, number>> {
   if (!rootIds.length) return new Map();
   const conversations = juniorConversations;
+  const ids = [...new Set(rootIds)];
+  const treeRoot = sql<string>`coalesce(${conversations.rootConversationId}, ${conversations.conversationId})`;
   const rows = await db
     .select({
       costUsd: sql<number>`coalesce(sum(${conversationUsageCostExpr(conversations.usage)}), 0)::double precision`,
-      rootId: conversations.rootConversationId,
+      rootId: treeRoot,
     })
     .from(conversations)
-    // Roots reference themselves, so the root index finds each tree.
-    .where(inArray(conversations.rootConversationId, [...new Set(rootIds)]))
-    .groupBy(conversations.rootConversationId);
+    // The root index finds each tree. The id match adds a root without the
+    // reference.
+    .where(
+      or(
+        inArray(conversations.rootConversationId, ids),
+        inArray(conversations.conversationId, ids),
+      ),
+    )
+    .groupBy(treeRoot);
   return new Map(
     rows.flatMap((row) => (row.rootId ? [[row.rootId, row.costUsd]] : [])),
   );
