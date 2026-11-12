@@ -147,6 +147,13 @@ export async function getConversationWorkState(args: {
   return await workState.getConversationWorkState(args);
 }
 
+/** Return the persisted work records of several Conversations in one read. */
+export async function getConversationWorkStates(
+  conversationIds: readonly string[],
+) {
+  return await workState.getConversationWorkStates(conversationIds);
+}
+
 /** Count one failed conversation execution and persist its terminal retry state. */
 export async function recordConversationRetry(args: {
   conversationId: string;

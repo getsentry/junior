@@ -2,6 +2,7 @@ import type {
   PluginToolDefinition,
   ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
+import { createGitHubReactToIssueTool } from "./tools/react-to-issue.js";
 import { createGitHubCloneRepositoryTool } from "./tools/clone-repository.js";
 import { createGitHubCommentOnIssueTool } from "./tools/comment-on-issue.js";
 import { createGitHubCommentOnPullRequestTool } from "./tools/comment-on-pull-request.js";
@@ -15,6 +16,7 @@ import { createGitHubGetReleaseTool } from "./tools/get-release.js";
 import { createGitHubGetRepositoryTool } from "./tools/get-repository.js";
 import { createGitHubGetStatusTool } from "./tools/get-status.js";
 import { createGitHubUpdateIssueTool } from "./tools/update-issue.js";
+import { createGitHubUpdateIssueCommentTool } from "./tools/update-issue-comment.js";
 import { createGitHubUpdatePullRequestTool } from "./tools/update-pull-request.js";
 import { createGitHubUpdatePullRequestFeedbackTool } from "./tools/update-pull-request-feedback.js";
 import { createGitHubResolvePullRequestReviewThreadTool } from "./tools/resolve-pull-request-review-thread.js";
@@ -41,6 +43,7 @@ export function createGitHubTools(
     ? ctx.decider
     : undefined;
   return {
+    reactToIssue: createGitHubReactToIssueTool(ctx.egress),
     cloneRepository: createGitHubCloneRepositoryTool(ctx),
     commentOnIssue: createGitHubCommentOnIssueTool(ctx.egress),
     commentOnPullRequest: createGitHubCommentOnPullRequestTool(ctx.egress),
@@ -62,6 +65,10 @@ export function createGitHubTools(
       ctx.egress,
     ),
     updateIssue: createGitHubUpdateIssueTool(ctx),
+    updateIssueComment: createGitHubUpdateIssueCommentTool(
+      ctx.egress,
+      botEmail,
+    ),
     updatePullRequest: createGitHubUpdatePullRequestTool(
       ctx,
       descriptionDecider,

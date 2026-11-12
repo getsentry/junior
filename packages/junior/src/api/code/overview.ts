@@ -262,6 +262,7 @@ export async function readCodeWindows(args: {
 /** Columns read for one code change report row. */
 export const codeChangeReportColumns = {
   closedAt: juniorCodeChanges.closedAt,
+  draft: juniorCodeChanges.draft,
   id: juniorCodeChanges.id,
   lastActivityAt: juniorCodeChanges.lastActivityAt,
   mergedAt: juniorCodeChanges.mergedAt,
@@ -277,6 +278,7 @@ export const codeChangeReportColumns = {
 /** Convert one code change row to its report shape. */
 export function codeChangeReport(change: {
   closedAt: Date | null;
+  draft: boolean;
   id: string;
   lastActivityAt: Date | null;
   mergedAt: Date | null;
@@ -417,8 +419,14 @@ export async function readPersonCodeOverview(args: {
         eq(juniorCodeChanges.repositoryId, juniorCodeRepositories.id),
       )
       .where(changeScopeFilter({ userId: args.userId }))
+      // Open changes first, longest idle first, so the limit drops the
+      // freshest open changes and the idle count stays right. Then the
+      // latest completed changes.
       .orderBy(
         desc(sql`${juniorCodeChanges.state} = 'open'`),
+        asc(
+          sql`CASE WHEN ${juniorCodeChanges.state} = 'open' THEN coalesce(${juniorCodeChanges.lastActivityAt}, ${juniorCodeChanges.openedAt}) END`,
+        ),
         desc(juniorCodeChanges.updatedAt),
       )
       .limit(PERSON_CHANGE_LIMIT),

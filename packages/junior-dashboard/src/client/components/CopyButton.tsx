@@ -65,6 +65,7 @@ export function CopyButton(props: {
       <TooltipTrigger
         render={
           <Button
+            variant="ghost"
             focusableWhenDisabled
             aria-label={label}
             disabled={disabled}

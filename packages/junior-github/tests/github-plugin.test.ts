@@ -1656,6 +1656,38 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
+  it("gives the Watch of a draft its passing checks", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const subscribe = vi.fn(async ({ events }) => ({
+      events,
+      id: "subscription-1",
+    }));
+    const ctx = githubToolsContext({ subscribe });
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "feature",
+        base: "main",
+        draft: true,
+      },
+      { toolCallId: "call-create-draft-pull-request-watch" },
+    );
+    // Junior marks its draft ready when the required checks pass.
+    expect(subscribe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        events: expect.arrayContaining(["pull_request.checks.recovered"]),
+        guidance: expect.objectContaining({
+          "pull_request.checks.recovered": expect.stringContaining(
+            "mark it ready with github_updatePullRequest and draft false",
+          ),
+        }),
+      }),
+    );
+  });
+
   it("subscribes the default maintenance Watch when the app configures none", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const subscribe = vi.fn(async ({ events }) => ({
@@ -1791,6 +1823,7 @@ Conversation: \`local:test:old-conversation\`
       { toolCallId: "call-create-identity-pull-request" },
     );
 
+    // A draft gets no review request until it is ready for review.
     expect(ctx.egressRequests()).toHaveLength(2);
     const assignment = ctx.egressRequests()[1];
     expect(assignment).toMatchObject({
@@ -1808,6 +1841,87 @@ Conversation: \`local:test:old-conversation\`
     await expect(request?.request.json()).resolves.toMatchObject({
       body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer_sentry.\n<!-- junior-request-attribution:end -->",
     });
+  });
+
+  it("asks the named reviewers and keeps the requester as the assignee", async () => {
+    const ctx = githubToolsContext({
+      actor: { platform: "slack", teamId: "T1", userId: "U1" },
+      resolveActor: async () => ({
+        identity: {
+          id: "slack-id",
+          provider: "slack",
+          providerSubjectId: "U1",
+        },
+        user: {
+          id: "user-1",
+          identities: [
+            {
+              id: "github-id",
+              provider: "github",
+              providerSubjectId: "1473041",
+              handle: "dcramer",
+            },
+          ],
+        },
+      }),
+      egressFetch: async ({ operation }) =>
+        operation === "github.pull.create"
+          ? Response.json(
+              {
+                number: 693,
+                html_url: "https://github.com/getsentry/junior/pull/693",
+              },
+              { status: 201 },
+            )
+          : Response.json({}),
+    });
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "feature",
+        base: "main",
+        reviewers: ["@octocat", "jane"],
+      },
+      { toolCallId: "call-create-pull-request-reviewers" },
+    );
+
+    expect(ctx.egressRequests().map(({ operation }) => operation)).toEqual([
+      "github.pull.create",
+      "github.pull.assign",
+      "github.pull.request_reviewers",
+    ]);
+    await expect(ctx.egressRequests()[1].request.json()).resolves.toEqual({
+      assignees: ["dcramer"],
+    });
+    const reviewRequest = ctx.egressRequests()[2].request;
+    expect(reviewRequest.url).toBe(
+      "https://api.github.com/repos/getsentry/junior/pulls/693/requested_reviewers",
+    );
+    await expect(reviewRequest.json()).resolves.toEqual({
+      reviewers: ["octocat", "jane"],
+    });
+  });
+
+  it("rejects an invalid reviewer before it opens the pull request", async () => {
+    const ctx = githubToolsContext();
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Typed PR",
+          head: "feature",
+          base: "main",
+          reviewers: ["not a login"],
+        },
+        { toolCallId: "call-create-pull-request-bad-reviewer" },
+      ),
+    ).rejects.toThrow("Invalid GitHub reviewer login: not a login");
+    expect(ctx.egressRequests()).toEqual([]);
   });
 
   it.each([
@@ -2145,7 +2259,7 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it.each(["rejected", "ignored", "network", "auth"])(
-    "returns and replays the created pull request after %s assignment",
+    "returns and replays the created pull request after %s assignment and review request",
     async (failure) => {
       process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
       let handle = "dcramer";
@@ -2171,7 +2285,10 @@ Conversation: \`local:test:old-conversation\`
           },
         }),
         egressFetch: async ({ operation }) => {
-          if (operation === "github.pull.assign") {
+          if (
+            operation === "github.pull.assign" ||
+            operation === "github.pull.request_reviewers"
+          ) {
             if (failure === "network") throw new Error("network unavailable");
             if (failure === "auth")
               throw new EgressAuthRequired("GitHub authorization required.", {
@@ -2227,7 +2344,8 @@ Conversation: \`local:test:old-conversation\`
         },
         url: "https://github.com/getsentry/junior/pull/691",
       });
-      // A replay must not try assignment again, even if the requester changes.
+      // A replay must not try assignment or the review request again, even if
+      // the requester changes.
       handle = "someone-else";
       await expect(
         tool?.execute?.(
@@ -2256,10 +2374,10 @@ Conversation: \`local:test:old-conversation\`
         url: "https://github.com/getsentry/junior/pull/691",
       });
 
-      expect(ctx.egressRequests()).toHaveLength(2);
       expect(ctx.egressRequests().map(({ operation }) => operation)).toEqual([
         "github.pull.create",
         "github.pull.assign",
+        "github.pull.request_reviewers",
       ]);
       const assignment = ctx.egressRequests()[1].request;
       expect(assignment.url).toBe(
@@ -2267,6 +2385,13 @@ Conversation: \`local:test:old-conversation\`
       );
       await expect(assignment.json()).resolves.toEqual({
         assignees: ["dcramer"],
+      });
+      const reviewRequest = ctx.egressRequests()[2].request;
+      expect(reviewRequest.url).toBe(
+        "https://api.github.com/repos/getsentry/junior/pulls/691/requested_reviewers",
+      );
+      await expect(reviewRequest.json()).resolves.toEqual({
+        reviewers: ["dcramer"],
       });
     },
   );
@@ -2483,6 +2608,42 @@ Conversation: \`local:test:old-conversation\`
       name: "installation-write",
       access: "write",
     });
+  });
+
+  it("routes issue comment edits and issue reactions to typed tools", async () => {
+    await expect(
+      grantForEgress({
+        method: "PATCH",
+        url: "https://api.github.com/repos/getsentry/junior/issues/comments/99",
+      }),
+    ).rejects.toThrow("must use the github_updateIssueComment tool");
+    await expect(
+      grantForEgress({
+        method: "PATCH",
+        operation: "github.issue.comment.update",
+        url: "https://api.github.com/repos/getsentry/junior/issues/comments/99",
+      }),
+    ).resolves.toMatchObject({ name: "installation-write", access: "write" });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/issues/3037/reactions",
+      }),
+    ).rejects.toThrow("must use the github_reactToIssue tool");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        operation: "github.issue.reaction.create",
+        url: "https://api.github.com/repos/getsentry/junior/issues/3037/reactions",
+      }),
+    ).resolves.toMatchObject({ name: "installation-write", access: "write" });
+    await expect(
+      grantForEgress({
+        method: "DELETE",
+        operation: "github.issue.comment.update",
+        url: "https://api.github.com/repos/getsentry/junior/issues/comments/99",
+      }),
+    ).rejects.toThrow("This GitHub write request is not supported.");
   });
 
   it("denies raw issue and pull request metadata updates", async () => {

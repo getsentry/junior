@@ -153,7 +153,12 @@ async function syncOne(
             assigneeIdentityIds: [opener.identityId],
             body: `**${state.title}** is approved, and GitHub says that it can merge: ${state.url}`,
             dedupeKey,
-            subject: { id: state.url, title: name, url: state.url },
+            // The number stays visible where a view shows only the subject.
+            subject: {
+              id: state.url,
+              title: `${state.title} (#${target.number})`,
+              url: state.url,
+            },
             title: `Ready to merge · #${target.number}`,
             waitsOnAssignees: true,
           });

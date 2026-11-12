@@ -29,6 +29,7 @@ import { logInfo, logWarn, withSpan } from "@/chat/logging";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { metrics } from "@/chat/sentry";
+import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import type { ThinkingLevel } from "@/chat/pi/sdk";
 import {
   buildDeploymentSystemPrompt,
@@ -67,7 +68,7 @@ import {
 } from "./request";
 import { loadSnapshot, saveSnapshot, type SnapshotSize } from "./snapshot";
 import { createToolWaitWarmer } from "./tool-wait";
-import { readTimerDueIdleMs, readWaitingOn } from "./waiting";
+import { earliestTimerDueIdleMs, readPendingWork } from "./waiting";
 import { readSegmentState } from "./work-state";
 
 /** Gaps kept in each segment list. */
@@ -79,9 +80,11 @@ const CONVERSATION_GAPS_MAX = 50;
 export const CONVERSATION_STATE_TTL_MS = 7 * 24 * 60 * MINUTE_MS;
 /** How the Turn before an idle period ended. */
 type TurnEnding = "reply" | "no_reply" | "blocked";
-// Answer tools that end the run without a final response. People often answer
-// a Turn that posted nothing or that ended blocked, so it warms like a reply.
+// Answer tools that end the run without a final response. A child agent
+// answers its parent with `reply`. People often answer a Turn that posted
+// nothing or that ended blocked, so it warms like a reply.
 const ANSWER_TOOL_ENDINGS: Partial<Record<string, TurnEnding>> = {
+  [REPLY_TOOL_NAME]: "reply",
   [NO_REPLY_TOOL_NAME]: "no_reply",
   [REPORT_BLOCKED_TOOL_NAME]: "blocked",
 };
@@ -234,6 +237,8 @@ async function recordGap(
   );
 }
 
+// Start the idle period of a Turn that ended. Return none for an ending that
+// starts no idle period.
 async function startIdlePeriod(
   state: ConnectedState,
   conversationId: string,
@@ -242,7 +247,18 @@ async function startIdlePeriod(
   turn: Pick<GapSegmentInput, "userActor" | "endedTurns">,
   systemPrompt: SystemPromptKey,
   turnEnding: TurnEnding,
-): Promise<IdlePeriod> {
+): Promise<IdlePeriod | undefined> {
+  const automation = systemPrompt.mode === "automation";
+  // Read once here, not on each model call.
+  const { watches, waitingOn } = await readPendingWork(
+    conversationId,
+    request.context.messages,
+    message,
+    automation,
+  );
+  // An Automation run almost never gets an answer. Its ending starts an idle
+  // period only while a child agent or a Watch can start its next Turn.
+  if (automation && !waitingOn) return undefined;
   const idle: IdlePeriod = {
     generation: randomUUID(),
     sinceMs: request.startedAtMs,
@@ -252,8 +268,8 @@ async function startIdlePeriod(
   if (ttlMs === undefined || prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
     return idle;
   }
-  const timerDueIdleMs = await readTimerDueIdleMs(
-    conversationId,
+  const timerDueIdleMs = earliestTimerDueIdleMs(
+    watches,
     idle.sinceMs,
     timerFloorMaxDueIdleMs({
       cacheReadPrice: request.model.cost.cacheRead,
@@ -299,10 +315,7 @@ async function startIdlePeriod(
   }
   // Read here, not on each model call: only a period that Junior can warm
   // records a gap.
-  const [segmentState, waitingOn] = await Promise.all([
-    readSegmentState(conversationId, Date.now()),
-    readWaitingOn(conversationId, request.context.messages, message),
-  ]);
+  const segmentState = await readSegmentState(conversationId, Date.now());
   const segmentInput = { ...turn, ...segmentState };
   const parentSegment = parentGapSegment(segmentInput);
   return {
@@ -368,19 +381,19 @@ async function recordModelCall(
   // Mid-turn calls arrive seconds apart. Only the call that ends a turn
   // starts an idle period.
   const endedTurns = previous?.endedTurns ?? 0;
-  const next: ConversationCacheState = turnEnding
-    ? {
-        endedTurns: endedTurns + 1,
-        idle: await startIdlePeriod(
-          state,
-          conversationId,
-          request,
-          message,
-          { userActor, endedTurns },
-          systemPrompt,
-          turnEnding,
-        ),
-      }
+  const nextIdle = turnEnding
+    ? await startIdlePeriod(
+        state,
+        conversationId,
+        request,
+        message,
+        { userActor, endedTurns },
+        systemPrompt,
+        turnEnding,
+      )
+    : undefined;
+  const next: ConversationCacheState = nextIdle
+    ? { endedTurns: endedTurns + 1, idle: nextIdle }
     : { endedTurns };
   if (!idle && !next.idle) {
     return;
@@ -440,10 +453,8 @@ export interface CacheWarmingRecorder {
   toolsReturned(): void;
   /**
    * Mark that an answer tool call of the last request ended the run. After
-   * `noReply` or `reportBlocked`, `stop` starts the idle period from that
-   * request, as a final response would. An Automation run (Prompt mode
-   * `automation`) starts none, because it almost never gets an answer. A
-   * child agent's Turn does: its parent or a person can return to it.
+   * `reply`, `noReply` or `reportBlocked`, `stop` starts the idle period from
+   * that request, as a final response would.
    */
   answerToolEnded(toolName: string): void;
   /** Stop the warmups of this run. Call it when the run ends. */
@@ -550,10 +561,7 @@ export function createCacheWarmingRecorder(
     },
     toolsReturned: toolWait.toolsReturned,
     answerToolEnded: (toolName) => {
-      answerToolEnding =
-        systemPrompt.mode === "automation"
-          ? undefined
-          : ANSWER_TOOL_ENDINGS[toolName];
+      answerToolEnding = ANSWER_TOOL_ENDINGS[toolName];
     },
     stop: async () => {
       try {
@@ -616,11 +624,12 @@ export function createCacheWarmingRecorder(
  *
  * `work_state` and `archived` are read when the idle period starts and pick
  * its `gapSegment`. `turn_ending` is how the Turn before the idle period
- * ended: `reply` (a final response), `no_reply` (`noReply`), or `blocked`
- * (`reportBlocked`). `waiting_on` is `child` (a child agent still ran) or
- * `review` (the Turn asked a Review item) when the idle period starts, and
- * picks the segment's `waitingGapSegment` child. `timer_due_ms` is the idle
- * time at which a timer is due, when it is due within
+ * ended: `reply` (a final response or `reply`), `no_reply` (`noReply`), or
+ * `blocked` (`reportBlocked`). `waiting_on` is `child` (a child agent still
+ * ran), `review` (the Turn asked a Review item), or `watch` (an Automation
+ * run had an active Watch and no child agent) when the idle period starts,
+ * and picks the segment's `waitingGapSegment` child. `timer_due_ms`
+ * is the idle time at which a timer is due, when it is due within
  * `timerFloorMaxDueIdleMs`. The `conversation.returned` log has the same
  * five. Decision attributes are absent when the warmup skipped before the
  * decision. Of them, `timer_floor` is true for a warmup that only the timer

@@ -11,14 +11,24 @@ import type {
 } from "../pull-request-outcomes/store.js";
 import { botLoginFromEmail, isBotLogin } from "./ownership.js";
 
+// `ready_for_review` and `converted_to_draft` change only the draft state.
+const pullRequestLifecycleActionsSchema = z.enum([
+  "opened",
+  "closed",
+  "reopened",
+  "ready_for_review",
+  "converted_to_draft",
+]);
+
 const canonicalPullRequestOutcomeSchema = z
   .object({
-    action: z.enum(["opened", "closed", "reopened"]),
+    action: pullRequestLifecycleActionsSchema,
     pull_request: z
       .object({
         body: z.string().nullable().optional(),
         closed_at: z.string().nullable().optional(),
         created_at: z.string(),
+        draft: z.boolean().optional(),
         id: z.number().int().positive(),
         merged: z.boolean(),
         merged_at: z.string().nullable().optional(),
@@ -39,12 +49,13 @@ const canonicalPullRequestOutcomeSchema = z
 
 const pullRequestOutcomeSchema = z
   .object({
-    action: z.enum(["opened", "closed", "reopened"]),
+    action: pullRequestLifecycleActionsSchema,
     pull_request: z
       .object({
         body: z.string().nullable().optional(),
         closed_at: z.string().nullable().optional(),
         created_at: z.string(),
+        draft: z.boolean().optional(),
         id: z.number().int().positive(),
         merged: z.boolean(),
         merged_at: z.string().nullable().optional(),
@@ -69,6 +80,7 @@ const pullRequestOutcomeSchema = z
         body: provider.pull_request.body,
         closed_at: provider.pull_request.closed_at,
         created_at: provider.pull_request.created_at,
+        draft: provider.pull_request.draft,
         id: provider.pull_request.id,
         merged: provider.pull_request.merged,
         merged_at: provider.pull_request.merged_at,
@@ -141,7 +153,7 @@ export function normalizeGitHubPullRequestOutcome(args: {
   const lifecycle = pullRequestLifecycleActionSchema.safeParse(args.body);
   if (
     !lifecycle.success ||
-    !["opened", "closed", "reopened"].includes(lifecycle.data.action)
+    !pullRequestLifecycleActionsSchema.safeParse(lifecycle.data.action).success
   ) {
     return undefined;
   }
@@ -181,6 +193,8 @@ export function normalizeGitHubPullRequestOutcome(args: {
   return {
     candidateOwned,
     closedAt,
+    // A close keeps the stored draft state.
+    draft: closed ? undefined : pullRequest.draft,
     mergedAt,
     number: pullRequest.number,
     openedAt,

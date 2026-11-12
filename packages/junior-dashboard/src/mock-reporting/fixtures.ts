@@ -58,6 +58,7 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
     activityDays,
     changes: [
       {
+        draft: false,
         id: "00000000-0000-4000-8000-000000000001",
         number: 42,
         openedAt: new Date(nowMs - 2 * 86_400_000).toISOString(),
@@ -68,6 +69,7 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
         url: "https://github.com/getsentry/payments/pull/42",
       },
       {
+        draft: false,
         id: "00000000-0000-4000-8000-000000000002",
         mergedAt: new Date(nowMs - 4 * 86_400_000).toISOString(),
         number: 781,
@@ -122,6 +124,8 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
 }
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+// Mock text links to dashboard pages on this origin.
+const MOCK_DASHBOARD_ORIGIN = "https://junior.example.com";
 const INCIDENT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 const PRIVATE_CONVERSATION_ID = "slack:DQA123:1770007200.000300";
 const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
@@ -1368,7 +1372,17 @@ function longConversation(nowMs: number): ConversationDetailReport {
       type: "message",
       messageId: "release-assistant",
       role: "assistant",
-      text: "Released the package.\nOpened the update pull request.\nDeployment is ready.",
+      // Links to the Annotations below show as a chip, a hover card, and a
+      // full card.
+      text: [
+        "Released the package.",
+        "Opened the update pull request https://github.com/getsentry/junior/pull/2201. The [relay fix](https://github.com/getsentry/relay/pull/44) is merged.",
+        "",
+        "https://github.com/getsentry/payments/pull/91",
+        "",
+        // No Annotations: the API resolves these dashboard links.
+        `Deployment is ready. Next, ${MOCK_DASHBOARD_ORIGIN}/people/dev%40example.com picks up ${MOCK_DASHBOARD_ORIGIN}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}.`,
+      ].join("\n"),
     }),
   );
   return detail(nowMs, {
@@ -1720,6 +1734,43 @@ function simpleConversation(
   });
 }
 
+const HISTORY_TOPICS = [
+  "Release notes draft",
+  "Flaky test triage",
+  "Quota alert follow-up",
+  "Onboarding doc review",
+  "Dependency bump",
+  "Billing export check",
+  "Incident timeline",
+  "SDK changelog summary",
+];
+
+/**
+ * Older finished conversations from the last 80 days. They fill more than one
+ * feed page, so the conversation list loads pages as the reader scrolls.
+ */
+function historyConversations(nowMs: number): ConversationDetailReport[] {
+  return Array.from({ length: 64 }, (_, index) => {
+    const conversationId = `internal:history-${index + 1}`;
+    const startedAt = iso(nowMs, -(2 + index * 1.2) * 24 * 60 * 60_000);
+    return detail(nowMs, {
+      conversationId,
+      displayTitle: `${HISTORY_TOPICS[index % HISTORY_TOPICS.length]} ${index + 1}`,
+      actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+      cumulativeDurationMs: 8_000,
+      startedAt,
+      events: [
+        reportEvent(0, startedAt, {
+          type: "message",
+          messageId: `${conversationId}:message`,
+          role: "assistant",
+          text: "Done.",
+        }),
+      ],
+    });
+  });
+}
+
 const MOCK_MENTION_MORGAN: ActorIdentity = {
   email: "dev@example.com",
   fullName: "Morgan Lee",
@@ -1943,6 +1994,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       displayTitle: "Archived restore target",
       surface: "internal",
     }),
+    ...historyConversations(nowMs),
   ];
 }
 
@@ -2768,6 +2820,15 @@ export function readMockConversationChildAgents(
   };
 }
 
+/** Agent types and forks of mock children. Other children start fresh. */
+const MOCK_CHILD_AGENTS: Readonly<
+  Record<string, { agentType?: string; fork?: true }>
+> = {
+  [DASHBOARD_QA_PLAN_ID]: { agentType: "reviewer", fork: true },
+  [DASHBOARD_QA_REVIEW_ID]: { agentType: "reviewer" },
+  [DASHBOARD_QA_PLAN_CHECK_ID]: { fork: true },
+};
+
 /** Build the agent tree of a mock child Conversation, like the API. */
 function mockAgentTree(
   conversation: MockConversation,
@@ -2802,6 +2863,7 @@ function mockAgentTree(
         agent?.title ??
         agent?.name ??
         (item.kind === "thread" ? "Thread" : "Task"),
+      ...MOCK_CHILD_AGENTS[item.conversationId],
     };
   });
 }
@@ -3571,6 +3633,7 @@ export function readMockPeopleCode(
     days: number,
     idleHours?: number,
   ) => ({
+    draft: false,
     id: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
     lastActivityAt:
       idleHours === undefined ? undefined : daysAgo(idleHours / 24),
@@ -3595,29 +3658,33 @@ export function readMockPeopleCode(
       : { closedAt: daysAgo(done.closed), state: "closed" as const }),
   });
   const openChanges = [
-    openChange(
-      2440,
-      "getsentry/junior",
-      "Show your week on the home page",
-      0,
-      1,
-    ),
+    openChange(2440, "getsentry/junior", "Show your week on the home page", 0),
     openChange(42, "getsentry/payments", "Reduce checkout latency", 3, 20),
     openChange(
       2391,
       "getsentry/junior",
       "Retry Slack uploads after a rate limit",
       6,
-      144,
+      120,
     ),
-    openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12, 288),
+    openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12, 264),
     openChange(2402, "getsentry/junior", "Cache plugin manifests", 1, 0.3),
     openChange(512, "getsentry/sentry-docs", "Document Review desk", 1, 26),
-    openChange(2419, "getsentry/junior", "Trim Slack thread context", 2, 48),
+    openChange(2419, "getsentry/junior", "Trim Slack thread context", 2, 36),
     openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4, 3),
-    openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5, 120),
+    openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5, 96),
     openChange(61, "getsentry/payments", "Drop legacy refund path", 8, 30),
-    openChange(523, "getsentry/sentry-docs", "Fix broken SDK links", 10, 216),
+    // Recorded before code changes stored titles.
+    {
+      ...openChange(
+        523,
+        "getsentry/sentry-docs",
+        "Fix broken SDK links",
+        10,
+        216,
+      ),
+      title: undefined,
+    },
     openChange(2350, "getsentry/junior", "Migrate memory schema", 320, 2),
   ];
   // Merges land on the days that `merges` counts in the last 7 days.

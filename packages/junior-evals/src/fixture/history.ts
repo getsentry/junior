@@ -34,6 +34,7 @@ import {
   webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { instructionActorFor } from "@/chat/agent/prompt";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
@@ -337,7 +338,15 @@ async function historyUserMessage(args: {
       actor,
       agentMessage: {
         role: "user",
-        content: [{ type: "text", text: renderCurrentInstruction(input.text) }],
+        content: [
+          {
+            type: "text",
+            text: renderCurrentInstruction(
+              input.text,
+              instructionActorFor(actor),
+            ),
+          },
+        ],
         timestamp: args.createdAtMs,
       },
       conversationMessage: {

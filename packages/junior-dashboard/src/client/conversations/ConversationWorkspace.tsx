@@ -22,6 +22,10 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { composerDockClass } from "./ComposerDock";
 import { ConversationHomeList } from "./ConversationHomeList";
+import {
+  ConversationFeedLoadMore,
+  type ConversationFeedMorePages,
+} from "./ConversationFeedLoadMore";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { useConversationPageArchiveResult } from "./conversationArchive";
 import {
@@ -58,7 +62,6 @@ import { usePushNotificationsTip } from "../notifications/pushNotificationsTip";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationPage } from "./ConversationPage";
-import { useAutoLoadHistoryPage } from "./transcriptBottomPinning";
 import { FeedThreads, feedThreadsById } from "./feedThreads";
 import { useWaitingConversations } from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
@@ -72,7 +75,6 @@ import {
   useSidebarFits,
 } from "./conversationSidebarLayout";
 
-const CONVERSATION_PAGE_SIZE = 20;
 const SIDEBAR_PANEL_ID = "conversation-list";
 
 /**
@@ -83,7 +85,6 @@ export function ConversationWorkspace(props: {
   /** The selected Conversation's data, from the shell. */
   detail: ConversationData;
 }) {
-  const [visibleCount, setVisibleCount] = useState(CONVERSATION_PAGE_SIZE);
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useConversationSidebarOpen();
   // Home reports an archive that started on a conversation page. Do it here,
@@ -142,30 +143,24 @@ export function ConversationWorkspace(props: {
   );
   const waitingConversations = useWaitingConversations();
 
-  // The feed holds every row. The home list shows them a batch at a time
-  // and shows the next batch when the reader scrolls near its end.
-  const orderedConversations = useMemo(
+  const homeConversations = useMemo(
     () => pinnedAndWaitingFirst(conversations, waitingConversations),
     [conversations, waitingConversations],
   );
-  const visibleConversations = useMemo(
-    () => orderedConversations.slice(0, visibleCount),
-    [orderedConversations, visibleCount],
-  );
-  const hiddenCount = orderedConversations.length - visibleConversations.length;
   const homeList = useRef<HTMLDivElement>(null);
   // A new search starts at the top. Otherwise the shorter list leaves the
-  // loader row in view, and it loads more before the results arrive.
+  // load-more row in view, and it loads a page before the results arrive.
   useEffect(() => {
-    setVisibleCount(CONVERSATION_PAGE_SIZE);
     homeList.current?.scrollTo({ top: 0 });
   }, [search]);
-  const loadMoreRef = useAutoLoadHistoryPage({
-    edge: "bottom",
-    enabled: hiddenCount > 0,
-    historyVersion: String(visibleCount),
-    onLoad: () => setVisibleCount((count) => count + CONVERSATION_PAGE_SIZE),
-  });
+  // A failed next page keeps the loaded rows; the load-more row shows it.
+  const feedError = feed.isFetchNextPageError ? undefined : feed.error?.message;
+  const morePages: ConversationFeedMorePages = {
+    failed: feed.isFetchNextPageError,
+    hasMore: feed.hasNextPage,
+    loading: feed.isFetchingNextPage,
+    onLoadMore: () => void feed.fetchNextPage({ cancelRefetch: false }),
+  };
 
   // Aborts when the reader leaves home, so a late create does not pull them
   // back from the page they went to.
@@ -305,30 +300,21 @@ export function ConversationWorkspace(props: {
               value={query}
             />
             <ConversationHomeList
-              conversations={visibleConversations}
-              emptyLabel={feed.error?.message}
+              conversations={homeConversations}
+              emptyLabel={feedError}
               loading={feed.isPending}
-              // Search, or more pins than the list shows yet, shows only
-              // some pins, so a drop could not place the rest.
-              onReorderPins={
-                search ||
-                conversations.filter((conversation) => conversation.pinnedAt)
-                  .length > visibleCount
-                  ? undefined
-                  : reorderPins
-              }
+              // The first page holds every pin. Search shows only some pins,
+              // so a drop could not place the rest.
+              onReorderPins={search ? undefined : reorderPins}
               timeZone={getDashboardTimeZone()}
               waitingConversations={waitingConversations}
             />
-            {hiddenCount > 0 ? (
-              <div
-                className="py-2 text-center font-sans text-xs text-dashboard-text-muted"
-                ref={loadMoreRef}
-                role="status"
-              >
-                Loading {Math.min(hiddenCount, CONVERSATION_PAGE_SIZE)} more…
-              </div>
-            ) : null}
+            {feedError || conversations.length === 0 ? null : (
+              <ConversationFeedLoadMore
+                {...morePages}
+                loadedCount={conversations.length}
+              />
+            )}
           </section>
         </div>
       )}
@@ -372,8 +358,8 @@ export function ConversationWorkspace(props: {
             defaultSize={sidebarOpen ? readSidebarWidth() : 0}
             groupResizeBehavior="preserve-pixel-size"
             id={SIDEBAR_PANEL_ID}
-            maxSize={SIDEBAR_WIDTH.max}
-            minSize={SIDEBAR_WIDTH.min}
+            maxSize={`${SIDEBAR_WIDTH.max}rem`}
+            minSize={`${SIDEBAR_WIDTH.min}rem`}
             onResize={(size) => {
               // Dragging past the minimum width collapses the list too, so the
               // panel size is the one source for the open state.
@@ -391,8 +377,9 @@ export function ConversationWorkspace(props: {
             >
               <ConversationSidebar
                 conversations={conversations}
-                error={feed.error?.message}
+                error={feedError}
                 loading={feed.isPending}
+                morePages={morePages}
                 onNewConversation={openCreate}
                 onReorderPins={reorderPins}
                 selectedId={selectedId}

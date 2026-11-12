@@ -121,7 +121,7 @@ export function gitHubPullRequestSubscription(
  * pull request's merge state settle both, and read access is enough.
  */
 const MERGE_STATE_CHECK =
-  "Do not guess whether it can merge. Before you say anything about that, run `gh pr view NUMBER --repo OWNER/REPO --json autoMergeRequest,mergeStateStatus,reviewDecision,baseRefName --jq '{autoMerge: (.autoMergeRequest != null), mergeStateStatus, reviewDecision, baseRefName}'` and `gh pr checks NUMBER --repo OWNER/REPO --required`. If it prints \"no required checks reported\", the required checks may not have started on the latest commit yet. It does not mean that none are required. If auto-merge is on and only required checks remain, say only that it merges when they pass. If GitHub blocks it for another reason, run `gh api repos/OWNER/REPO/rules/branches/BASE` and name the rule that blocks it. Do not say that you did not merge it.";
+  "Do not guess whether it can merge. Before you say anything about that, call github_getPullRequest and read its `checks`. If `checks.required` is `not_reported`, the required checks may not have started on the latest commit yet. It does not mean that none are required. If `checks.auto_merge` is true and only required checks remain, say only that it merges when they pass. If `checks.merge_state` shows that GitHub blocks it for another reason, run `gh api repos/OWNER/REPO/rules/branches/BASE` and name the rule that blocks it. Do not say that you did not merge it.";
 
 /**
  * Watch guidance for outcomes that the people involved need to hear about.
@@ -136,9 +136,22 @@ const GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE = {
     "Mention each person in People involved, or the person who asked for the pull request if that line is missing. Say that it merged and link it.",
 } as const satisfies Partial<Record<GitHubPullRequestEvent, string>>;
 
-/** Build the Watch created after Junior creates a pull request. */
+/**
+ * Junior finishes its own drafts. Passing checks start no other step, so the
+ * Watch of a draft also gets them. Marking the pull request ready sends the
+ * review request.
+ */
+const DRAFT_CHECKS_RECOVERED_GUIDANCE =
+  "If the pull request is still a draft, call github_getPullRequest and read its `checks`. When `checks.required` is `passing` and no decision is open, in the pull request body or in an open review item that waits on the person who asked for it, mark it ready with github_updatePullRequest and draft false, and report that in the originating thread. When it is `failing`, fix the failing checks like a failed check. When it is `not_reported`, the required checks may not have started on the latest commit yet. It does not mean that none are required. Otherwise stay silent.";
+
+/**
+ * Build the Watch created after Junior creates a pull request. Only a draft
+ * Watch gets passing checks, so a ready pull request is not woken by each
+ * passing check suite.
+ */
 export function gitHubPullRequestCreateWatch(
   config: GitHubPullRequestSubscriptionConfig,
+  pullRequest: { draft: boolean },
 ): {
   events: GitHubPullRequestEvent[];
   guidance: Partial<Record<GitHubPullRequestEvent, string>>;
@@ -155,9 +168,17 @@ export function gitHubPullRequestCreateWatch(
         // request ready to merge even when the app config omits this event.
         "pull_request.merge_conflict" as const,
         ...outcomeEvents,
+        ...(pullRequest.draft
+          ? ["pull_request.checks.recovered" as const]
+          : []),
       ]),
     ],
-    guidance: GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE,
+    guidance: pullRequest.draft
+      ? {
+          ...GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE,
+          "pull_request.checks.recovered": DRAFT_CHECKS_RECOVERED_GUIDANCE,
+        }
+      : GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE,
     intent: config.intent,
   };
 }
