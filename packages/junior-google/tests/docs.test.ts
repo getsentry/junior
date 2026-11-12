@@ -118,6 +118,14 @@ describe("Google Docs Markdown", () => {
     expect(converted.lists).toEqual([
       { end: at("Three") + 5, ordered: false, start: at("One") },
     ]);
+
+    // Empty blocks at either end add no leading or final newline. Inside the
+    // text, an empty code line stays.
+    expect(
+      convertMarkdown(
+        ["# ", "```", "", "a", "", "b", "", "```", "- "].join("\n"),
+      ).text,
+    ).toBe("a\n\nb");
   });
 });
 

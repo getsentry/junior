@@ -225,9 +225,16 @@ export function convertMarkdown(markdown: string): ConvertedMarkdown {
     text: "",
     textStyles: [],
   };
+  // Empty blocks at either end, such as a blank line before a closing code
+  // fence, would add a leading or final newline. The edit ranges assume
+  // neither.
+  const blocks = parseBlocks(markdown);
+  const hasText = (block: Block) => block.runs.some((run) => run.text);
+  const first = blocks.findIndex(hasText);
+  const last = blocks.length - 1 - [...blocks].reverse().findIndex(hasText);
   let previous: Block | undefined;
-  for (const block of parseBlocks(markdown)) {
-    if (result.text) result.text += "\n";
+  for (const block of first < 0 ? [] : blocks.slice(first, last + 1)) {
+    if (previous) result.text += "\n";
     const start = result.text.length;
     if (block.level !== undefined) {
       result.text += "\t".repeat(block.level);
