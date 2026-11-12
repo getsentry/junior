@@ -6,7 +6,6 @@
  * its own child tags, and the outcome rule is always last.
  */
 import { agentEventKeys, type TaskOutcome } from "@sentry/junior-plugin-api";
-import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import {
   escapeClosingTags,
   renderChildTag,
@@ -14,11 +13,13 @@ import {
   renderUntrustedTag,
   tagJson,
 } from "@/chat/input-tags";
-import { QUIET_MARKER } from "@/chat/no-reply";
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
+import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 
 /**
- * Shared closing lines. Automations pass outcomes and end with a declared
- * result. Watches follow the Conversation's reply rules. A Watch reply goes
+ * Shared closing lines. Automations pass outcomes and end with an answer
+ * tool. Watches follow the Conversation's reply rules. A Watch reply goes
  * only to the Conversation, so a question asked in the provider must also get
  * its answer there. Watch instructions often say to stay silent, so this rule
  * sits in the contract, not in plugin guidance.
@@ -28,10 +29,12 @@ function replyContractLines(outcomes: TaskOutcome[] | undefined): string[] {
     return [
       "When an Event asks you a question, answer it where it was asked, with that provider's tool. Then reply with the answer and a link to it.",
       "When you reply, follow any reply format in the instructions.",
-      `When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly ${QUIET_MARKER}. The reply stays in the Conversation but notifies nobody. Do not use it when the instructions say to notify, mention, or report to a person, when the reply asks a question, when a person must decide or act, or when something failed.`,
+      `When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the Turn with \`${NO_REPLY_TOOL_NAME}\` and put the outcome in its \`note\`. The note stays in the Conversation but notifies nobody. Do not use it when the instructions say to notify, mention, or report to a person, when the reply asks a question, when a person must decide or act, or when something failed.`,
     ];
   }
-  return [`End with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`.`];
+  return [
+    `End with \`${REPLY_TOOL_NAME}\`, \`${NO_REPLY_TOOL_NAME}\`, or \`${REPORT_BLOCKED_TOOL_NAME}\`.`,
+  ];
 }
 
 function oneLine(value: string): string {
@@ -186,8 +189,10 @@ function externalTextTag(
  * The job comes before Event data. Empty optional fields are omitted.
  */
 export function renderTaskInput(args: {
-  /** Stored task instruction, or subscription intent. */
-  instructions: string;
+  /** Stored task instruction or skill context, or subscription intent. */
+  instructions?: string;
+  /** Skill that an Automation in skill mode runs. The run loads it from the dispatch. */
+  skill?: string;
   /** Stored automation outcomes. Watches omit this and reply in the Conversation. */
   outcomes?: TaskOutcome[];
   /** Human label for the matched resource, when present. */
@@ -213,8 +218,8 @@ export function renderTaskInput(args: {
   externalTextMaxLength?: number;
   trustedSummaryMaxLength?: number;
 }): string {
-  const instructions = args.instructions.trim();
-  if (!instructions) {
+  const instructions = args.instructions?.trim() ?? "";
+  if (!instructions && !args.skill) {
     throw new Error("Task instructions are required");
   }
 
@@ -258,14 +263,25 @@ export function renderTaskInput(args: {
             ]
           : [],
       ),
-      renderChildTag(
-        "instructions",
-        escapeClosingTags(
-          creator
-            ? mentionCreator(instructions, oneLine(creator))
-            : instructions,
-        ),
-      ),
+      ...(args.skill
+        ? [
+            instructions
+              ? `Run the ${args.skill} skill. The instructions below add context for this run.`
+              : `Run the ${args.skill} skill.`,
+          ]
+        : []),
+      ...(instructions
+        ? [
+            renderChildTag(
+              "instructions",
+              escapeClosingTags(
+                creator
+                  ? mentionCreator(instructions, oneLine(creator))
+                  : instructions,
+              ),
+            ),
+          ]
+        : []),
       ...(guidance ? [guidanceTag(guidance)] : []),
       ...(trustedSummary
         ? [

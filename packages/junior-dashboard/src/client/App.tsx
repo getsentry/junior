@@ -72,11 +72,6 @@ const RepositoryPage = lazy(() =>
     default: module.RepositoryPage,
   })),
 );
-const BoardPage = lazy(() =>
-  import("./pages/board/BoardPage").then((module) => ({
-    default: module.BoardPage,
-  })),
-);
 const CodePage = lazy(() =>
   import("./pages/code/CodePage").then((module) => ({
     default: module.CodePage,
@@ -235,7 +230,9 @@ export function DashboardShell() {
   const serverVersion = useDashboardServerVersion(data?.config.version);
   const userPages = userPagesQuery.data ?? [];
   const loading = !data && !query.error;
-  const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
+  // With auth off, the server still resolves the local viewer for every API
+  // read, so that viewer counts as signed in.
+  const loggedIn = Boolean(data?.me.user.email);
   const personalSpendQuery = usePersonalSpendData(loggedIn);
   const desktopTopBar = useDesktopTopBar();
   const primaryUserPages = loggedIn
@@ -465,7 +462,6 @@ export function DashboardShell() {
                       description="Newest runs across your automations and automations in public destinations."
                       label="Loading automation runs"
                       title="Runs"
-                      variant="list"
                     />
                   </AutomationsPageLayout>
                 ) : loggedIn ? (
@@ -479,24 +475,7 @@ export function DashboardShell() {
               path="/automations/runs"
             />
             <Route
-              element={
-                loading ? (
-                  <AutomationsPageLayout>
-                    <AutomationsRouteLoading
-                      description="Find and manage automations across your linked workspaces."
-                      label="Loading automations"
-                      title="All automations"
-                      variant="list"
-                    />
-                  </AutomationsPageLayout>
-                ) : loggedIn ? (
-                  <AutomationsPageLayout>
-                    <AutomationsPage enabled={loggedIn} view="list" />
-                  </AutomationsPageLayout>
-                ) : (
-                  <Navigate replace to="/" />
-                )
-              }
+              element={<LegacyAutomationListRedirect />}
               path="/automations/list"
             />
             <Route
@@ -514,15 +493,13 @@ export function DashboardShell() {
                 loading ? (
                   <AutomationsPageLayout>
                     <AutomationsRouteLoading
-                      description="Scheduled and event-driven work created by users."
                       label="Loading automations"
                       title="Automations"
-                      variant="stats"
                     />
                   </AutomationsPageLayout>
                 ) : loggedIn ? (
                   <AutomationsPageLayout>
-                    <AutomationsPage enabled={loggedIn} view="overview" />
+                    <AutomationsPage enabled={loggedIn} />
                   </AutomationsPageLayout>
                 ) : (
                   <Navigate replace to="/" />
@@ -591,8 +568,6 @@ export function DashboardShell() {
               }
               path="/review"
             />
-            {/* The Board is an experiment, so no navigation links to it. */}
-            <Route element={<BoardPage />} path="/board" />
             <Route element={<CodePage />} path="/code" />
             {codeRepositoryTabs.map((tab) => (
               <Route
@@ -836,6 +811,14 @@ function LegacyAutomationsRedirect() {
       replace
       to={`/automations${suffix}${location.search}${location.hash}`}
     />
+  );
+}
+
+/** The list became the Automations landing page. */
+function LegacyAutomationListRedirect() {
+  const location = useLocation();
+  return (
+    <Navigate replace to={`/automations${location.search}${location.hash}`} />
   );
 }
 

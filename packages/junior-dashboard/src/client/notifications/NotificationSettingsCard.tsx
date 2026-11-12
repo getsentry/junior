@@ -5,15 +5,21 @@ import {
   type NotificationSchedule,
   type NotificationSettings,
 } from "@sentry/junior/api/schema";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useLocation } from "react-router";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
-import { Field, FieldDescription, FieldLabel } from "../components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { InlineError } from "../components/InlineError";
+import { AnchorHeading } from "../components/layout/AnchorHeading";
 import { Card } from "../components/layout/Card";
 import { NativeSelect } from "../components/ui/native-select";
 import { Skeleton } from "../components/ui/skeleton";
@@ -65,42 +71,31 @@ function timezoneOptions(): string[] {
 /** Show the device control and notification hours on the Settings page. */
 export function NotificationSettingsCard() {
   const settingsQuery = useQuery(notificationSettingsQuery);
-  // The push notifications tip links here; the card is below the fold.
-  const anchor = useRef<HTMLDivElement>(null);
-  const { hash } = useLocation();
-  useEffect(() => {
-    const card = anchor.current;
-    if (!card || hash !== `#${PUSH_NOTIFICATIONS_ANCHOR}`) return;
-    // The sticky chrome covers the top of the page. Its height changes with
-    // the header, page links, and banner, so measure it.
-    const chrome = document.querySelector("[data-dashboard-chrome]");
-    const chromeHeight = chrome?.getBoundingClientRect().height ?? 0;
-    card.style.scrollMarginTop = `${chromeHeight + 24}px`;
-    card.scrollIntoView();
-  }, [hash]);
 
   return (
-    <div className="mt-6" id={PUSH_NOTIFICATIONS_ANCHOR} ref={anchor}>
-      <Card className="mb-0" padding="md" variant="raised">
-        <h2 className="m-0 text-lg font-bold">Push notifications</h2>
-        <p className="mt-2 mb-0 text-sm text-dashboard-text-muted">
-          Get a notification when Junior replies to a conversation you started
-          here. Slack threads keep using Slack notifications.
-        </p>
-        {settingsQuery.isPending ? (
-          <NotificationSettingsSkeleton />
-        ) : settingsQuery.isError ? (
-          <InlineError className="mt-5">
-            Could not load notification settings. Reload the page to try again.
-          </InlineError>
-        ) : (
-          <>
-            <DeviceSection settings={settingsQuery.data} />
-            <ScheduleForm settings={settingsQuery.data} />
-          </>
-        )}
-      </Card>
-    </div>
+    <Card className="mt-6 mb-0" padding="md" variant="raised">
+      <AnchorHeading
+        anchor={PUSH_NOTIFICATIONS_ANCHOR}
+        className="m-0 text-lg font-bold"
+        title="Push notifications"
+      />
+      <p className="mt-2 mb-0 text-sm text-dashboard-text-muted">
+        Get a notification when Junior replies to a conversation you started
+        here. Slack threads keep using Slack notifications.
+      </p>
+      {settingsQuery.isPending ? (
+        <NotificationSettingsSkeleton />
+      ) : settingsQuery.isError ? (
+        <InlineError className="mt-5">
+          Could not load notification settings. Reload the page to try again.
+        </InlineError>
+      ) : (
+        <>
+          <DeviceSection settings={settingsQuery.data} />
+          <ScheduleForm settings={settingsQuery.data} />
+        </>
+      )}
+    </Card>
   );
 }
 
@@ -190,6 +185,7 @@ function DeviceSection({ settings }: { settings: NotificationSettings }) {
         {subscribed ? (
           <>
             <Button
+              variant="outline"
               disabled={disable.isPending}
               onClick={() => disable.mutate()}
               type="button"
@@ -197,6 +193,7 @@ function DeviceSection({ settings }: { settings: NotificationSettings }) {
               {disable.isPending ? "Turning off…" : "Turn off on this device"}
             </Button>
             <Button
+              variant="outline"
               disabled={test.isPending}
               onClick={() => test.mutate()}
               type="button"
@@ -211,7 +208,7 @@ function DeviceSection({ settings }: { settings: NotificationSettings }) {
             }
             onClick={() => enable.mutate(publicKey)}
             type="button"
-            variant="primary"
+            variant="default"
           >
             {enable.isPending ? "Turning on…" : "Turn on for this device"}
           </Button>
@@ -265,7 +262,11 @@ function ScheduleForm({ settings }: { settings: NotificationSettings }) {
     draft.start !== draft.end &&
     (!draft.workingHoursOnly || draft.days.length > 0);
   const timezone = draft.timezone ?? settings.timezone;
-  const openNow = isWithinNotificationSchedule(draft, timezone, Date.now());
+  const followSlack = draft.followSlack !== false;
+  const followingSlack = followSlack && settings.slackPausedNow !== undefined;
+  const openNow = followingSlack
+    ? !settings.slackPausedNow
+    : isWithinNotificationSchedule(draft, timezone, Date.now());
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -278,20 +279,45 @@ function ScheduleForm({ settings }: { settings: NotificationSettings }) {
       onSubmit={submit}
     >
       <h3 className="m-0 text-base font-bold">Working hours</h3>
-      <label className="mt-4 flex items-center gap-3 text-sm">
+      <Field className="mt-4" orientation="horizontal">
+        <Checkbox
+          checked={followSlack}
+          id="notification-follow-slack"
+          onCheckedChange={(checked) =>
+            update({ followSlack: checked === true })
+          }
+        />
+        <FieldLabel className="font-normal" htmlFor="notification-follow-slack">
+          Follow my Slack notification schedule
+        </FieldLabel>
+      </Field>
+      {followSlack ? (
+        <p className="mt-2 mb-0 text-sm text-dashboard-text-muted">
+          {settings.slackPausedNow === undefined
+            ? "Junior cannot read your Slack notification schedule, so it uses the hours below."
+            : "Junior pauses notifications when Slack does. It uses the hours below only when it cannot read Slack."}
+        </p>
+      ) : null}
+      <Field className="mt-4" orientation="horizontal">
         <Checkbox
           checked={draft.workingHoursOnly}
+          id="notification-working-hours-only"
           onCheckedChange={(checked) =>
             update({ workingHoursOnly: checked === true })
           }
         />
-        Only notify me during working hours
-      </label>
-      <fieldset
-        className="m-0 mt-4 border-0 p-0 disabled:opacity-60"
+        <FieldLabel
+          className="font-normal"
+          htmlFor="notification-working-hours-only"
+        >
+          Only notify me during working hours
+        </FieldLabel>
+      </Field>
+      <FieldSet
+        className="mt-4 gap-0 disabled:opacity-60"
         disabled={!draft.workingHoursOnly}
       >
-        <legend className="mb-2 p-0 text-sm font-medium">Days</legend>
+        <FieldLegend variant="label">Days</FieldLegend>
         <ToggleGroup
           aria-label="Working days"
           className="flex-wrap gap-2"
@@ -336,7 +362,7 @@ function ScheduleForm({ settings }: { settings: NotificationSettings }) {
             />
           </Field>
         </div>
-      </fieldset>
+      </FieldSet>
       <Field className="mt-4 sm:max-w-sm">
         <FieldLabel htmlFor="notification-timezone">Timezone</FieldLabel>
         <NativeSelect
@@ -367,7 +393,11 @@ function ScheduleForm({ settings }: { settings: NotificationSettings }) {
           : "Notifications are paused right now. Replies still show here."}
       </p>
       <div className="mt-5 flex items-center gap-3">
-        <Button disabled={!changed || !valid || save.isPending} type="submit">
+        <Button
+          variant="outline"
+          disabled={!changed || !valid || save.isPending}
+          type="submit"
+        >
           {save.isPending ? "Saving…" : "Save hours"}
         </Button>
         {save.isSuccess ? (

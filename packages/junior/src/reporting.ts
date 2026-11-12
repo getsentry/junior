@@ -1,15 +1,18 @@
 import { readFileSync } from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
 import {
   pluginOperationalReportFeedSchema,
   pluginsSchema,
   runtimeInfoReportSchema,
+  skillDetailReportSchema,
   skillReportsSchema,
 } from "./reporting-schema";
 import type {
   PluginOperationalReportFeed,
   Plugin,
   RuntimeInfoReport,
+  SkillDetailReport,
   SkillReport,
 } from "./reporting-schema";
 
@@ -48,16 +51,43 @@ function readDescriptionText(home: string): string | undefined {
   }
 }
 
-/** Read discovered skill names for authenticated runtime diagnostics. */
+/** Read discovered skills for runtime diagnostics and the Automation editor. */
 export async function readSkillReports(): Promise<SkillReport[]> {
   const { discoverSkills } = await import("@/chat/skills");
   const skills = await discoverSkills();
   return skillReportsSchema.parse(
     skills.map((skill) => ({
       name: skill.name,
+      description: skill.description,
       pluginProvider: skill.pluginProvider,
+      disableModelInvocation: skill.disableModelInvocation,
     })),
   );
+}
+
+/**
+ * Read one discovered skill with the body its author wrote, so people can see
+ * what the skill tells Junior. Returns null when no skill has that name.
+ */
+export async function readSkillDetailReport(
+  name: string,
+): Promise<SkillDetailReport | null> {
+  const { discoverSkills, findSkillByName, parseSkillFile } =
+    await import("@/chat/skills");
+  const skill = findSkillByName(name, await discoverSkills());
+  if (!skill) return null;
+  const raw = await fs.readFile(path.join(skill.skillPath, "SKILL.md"), "utf8");
+  const parsed = parseSkillFile(raw, skill.name);
+  if (!parsed.ok) {
+    throw new Error(`Invalid skill file for ${skill.name}: ${parsed.error}`);
+  }
+  return skillDetailReportSchema.parse({
+    name: skill.name,
+    description: skill.description,
+    pluginProvider: skill.pluginProvider,
+    disableModelInvocation: skill.disableModelInvocation,
+    body: parsed.skill.body,
+  });
 }
 
 /** Read safe configured plugin metadata for authenticated runtime diagnostics. */

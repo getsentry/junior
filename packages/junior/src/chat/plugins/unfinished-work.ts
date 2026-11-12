@@ -18,6 +18,34 @@ export type ConversationWork = {
   unfinishedIds: string[];
 };
 
+export type ConversationDoneInput = {
+  assignedWork?: boolean;
+  finishedWorkAt?: string;
+  lastUserMessageAt?: string;
+  unfinishedWork?: boolean;
+};
+
+/**
+ * Decide whether a conversation's work finished at or before the cutoff,
+ * with no person's message after it finished. Auto-archive passes now minus
+ * the grace period. A conversation without plugin-reported work has nothing
+ * to wait for, so it counts as done here; cache warming needs reported work
+ * and checks `assignedWork` itself.
+ */
+export function isConversationWorkDone(
+  conversation: ConversationDoneInput,
+  cutoffMs: number,
+): boolean {
+  if (conversation.unfinishedWork) return false;
+  if (!conversation.assignedWork) return true;
+  const finishedAt = Date.parse(conversation.finishedWorkAt ?? "");
+  if (!Number.isFinite(finishedAt) || finishedAt > cutoffMs) return false;
+  const lastUserMessageAt = Date.parse(conversation.lastUserMessageAt ?? "");
+  return !(
+    Number.isFinite(lastUserMessageAt) && lastUserMessageAt > finishedAt
+  );
+}
+
 /**
  * Map each candidate and each child of a candidate root to the candidate it
  * counts for. A child agent runs under its own conversation id, so a plugin

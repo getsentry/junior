@@ -274,7 +274,7 @@ export function UsageMeter(props: {
           render={
             <Button
               size={props.variant === "sheet" ? "menu" : "default"}
-              variant="quiet"
+              variant="ghost"
             />
           }
         >

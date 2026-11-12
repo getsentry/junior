@@ -8,6 +8,7 @@ import { getConversationStore } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { getEventAutomation } from "@/chat/event-automations/store";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
+import { getConversationWorkState } from "@/chat/task-execution/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createWatchEventsTool } from "@/chat/tools/watch-events";
 import { juniorAutomations } from "@/db/schema/automations";
@@ -17,6 +18,7 @@ import {
   createNoopSlackWebhookRuntime,
   createSlackAdapterFixture,
   handleSlackWebhookAndFlush,
+  SLACK_BOT_USER_ID,
   slackEnvelope,
   slackWebhookRequest,
   type ConversationWorkQueueTestAdapter,
@@ -25,7 +27,12 @@ import {
   createConfiguredJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../../fixtures/sql";
-import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
+import { botsInfoOk, usersInfoOk } from "../../fixtures/slack/factories/api";
+import {
+  getCapturedSlackApiCalls,
+  queueSlackApiResponse,
+  resetSlackApiMockState,
+} from "../../msw/handlers/slack-api";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -38,7 +45,7 @@ const TEAM_ID = "T123";
 let fixture: LocalJuniorSqlFixture;
 let queue: ConversationWorkQueueTestAdapter;
 
-function trigger(match?: Record<string, string>) {
+function trigger(match?: Record<string, string | string[]>) {
   return {
     type: "event" as const,
     namespace: "slack",
@@ -48,9 +55,29 @@ function trigger(match?: Record<string, string>) {
   };
 }
 
+// Envelope fields of a channel that only workspace T123 can post in.
+const WORKSPACE_CHANNEL = {
+  context_enterprise_id: null,
+  context_team_id: TEAM_ID,
+  is_ext_shared_channel: false,
+};
+
+// Envelope fields of a channel in workspace T123 of Enterprise Grid org E123.
+const ENTERPRISE_CHANNEL = {
+  ...WORKSPACE_CHANNEL,
+  context_enterprise_id: "E123",
+  enterprise_id: "E123",
+};
+
 async function postChannelMessage(input: {
+  blocks?: unknown[];
   botId?: string;
+  botProfile?: Record<string, unknown>;
   channel?: string;
+  envelope?: Record<string, unknown>;
+  /** Post as an app integration: a `bot_message` with a `bot_id` and no `user`. */
+  noUser?: boolean;
+  text?: string;
   threadTs?: string;
   ts: string;
   user?: string;
@@ -58,13 +85,27 @@ async function postChannelMessage(input: {
   const state = getStateAdapter();
   await state.connect();
   const slackAdapter = createSlackAdapterFixture();
-  const { botId, ...message } = input;
+  const {
+    blocks,
+    botId,
+    botProfile,
+    envelope: fields,
+    noUser,
+    ...message
+  } = input;
   const envelope = slackEnvelope({
     eventType: "message",
     text: "How do I connect the Jira integration?",
     ...message,
   });
   if (botId) Object.assign(envelope.event, { bot_id: botId });
+  if (blocks) Object.assign(envelope.event, { blocks });
+  if (botProfile) Object.assign(envelope.event, { bot_profile: botProfile });
+  if (noUser) {
+    Reflect.deleteProperty(envelope.event, "user");
+    Object.assign(envelope.event, { subtype: "bot_message" });
+  }
+  if (fields) Object.assign(envelope, fields);
   return await handleSlackWebhookAndFlush({
     request: slackWebhookRequest(envelope),
     services: {
@@ -174,6 +215,28 @@ describe("Slack channel-message automations", () => {
     expect(dispatch?.credentialSubject).toBeUndefined();
     expect(dispatch?.input).toContain("How do I connect the Jira integration?");
 
+    // A person's mention in the thread before the run replies joins the run.
+    const runConversationId = sent[0]!.conversationId;
+    await postChannelMessage({
+      text: `<@${SLACK_BOT_USER_ID}> any update?`,
+      threadTs: "1712345.0004",
+      ts: "1712345.0006",
+    });
+    expect(
+      queue.sentRecords().map((record) => record.conversationId),
+    ).not.toContain("slack:C123:1712345.0004");
+    const work = await getConversationWorkState({
+      conversationId: runConversationId,
+      state: getStateAdapter(),
+    });
+    expect(work?.execution.pendingMessages).toContainEqual(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          text: expect.stringContaining("any update?"),
+        }),
+      }),
+    );
+
     // Creator credentials cannot be turned on later.
     await execute(
       createUpdateAutomationTool(
@@ -234,6 +297,243 @@ describe("Slack channel-message automations", () => {
       destination: { channelId: "C123", threadTs: "1712346.0002" },
       metadata: { eventAutomationId: automation.id },
     });
+  });
+
+  it("runs for app integration posts that have no user only when its match names the bot ID", async () => {
+    const catalog = getEventCatalog();
+    const channelContext = context(
+      "U123",
+      "C123",
+      "public",
+      undefined,
+      TEAM_ID,
+    );
+    const { automation } = (await execute(
+      createAutomationTool(automationToolContext(channelContext), catalog),
+      {
+        instruction: "Review each new report.",
+        title: "Review reports",
+        outcomes: [
+          { action: "send_message", destination: "current_conversation" },
+        ],
+        trigger: trigger({ user_id: "B777" }),
+      },
+    )) as { automation: { id: string } };
+
+    // Another bot, a channel shared with another organization, an envelope
+    // without the workspace fields, another workspace or enterprise context,
+    // an Enterprise Grid channel for a bot with no bot user, and a mention of
+    // Junior in the text or in a section block run nothing.
+    const rejected = [
+      { botId: "B888", envelope: WORKSPACE_CHANNEL },
+      {
+        botId: "B777",
+        envelope: { ...WORKSPACE_CHANNEL, is_ext_shared_channel: true },
+      },
+      { botId: "B777" },
+      {
+        botId: "B777",
+        envelope: { ...WORKSPACE_CHANNEL, context_team_id: "T999" },
+      },
+      {
+        botId: "B777",
+        envelope: { ...ENTERPRISE_CHANNEL, enterprise_id: "E999" },
+      },
+      { botId: "B777", envelope: ENTERPRISE_CHANNEL },
+      {
+        botId: "B777",
+        envelope: WORKSPACE_CHANNEL,
+        text: `<@${SLACK_BOT_USER_ID}> summarize this`,
+      },
+      {
+        blocks: [
+          {
+            type: "section",
+            text: { type: "mrkdwn", text: `<@${SLACK_BOT_USER_ID}> summarize` },
+          },
+        ],
+        botId: "B777",
+        envelope: WORKSPACE_CHANNEL,
+        text: "New report",
+      },
+    ];
+    for (const [index, post] of rejected.entries()) {
+      await postChannelMessage({
+        ...post,
+        noUser: true,
+        ts: `1712348.000${index + 1}`,
+      });
+    }
+    expect(queue.sentRecords()).toEqual([]);
+
+    // A post from the named bot in a workspace-only channel runs it once and
+    // replies in its thread, with system credentials. This bot has no bot
+    // user, so bots.info is its only lookup.
+    await postChannelMessage({
+      botId: "B777",
+      envelope: WORKSPACE_CHANNEL,
+      noUser: true,
+      ts: "1712348.0009",
+    });
+    const sent = queue.sentRecords();
+    expect(sent).toHaveLength(1);
+    const dispatch = await getDispatchRecord(
+      sent[0]!.conversationId.replace(/^agent-dispatch:/, ""),
+    );
+    expect(dispatch).toMatchObject({
+      destination: { channelId: "C123", threadTs: "1712348.0009" },
+      metadata: { eventAutomationId: automation.id },
+    });
+    expect(dispatch?.credentialSubject).toBeUndefined();
+    expect(getCapturedSlackApiCalls("bots.info").at(-1)?.params).toMatchObject({
+      bot: "B777",
+    });
+    expect(getCapturedSlackApiCalls("users.info")).toEqual([]);
+  });
+
+  it("runs for app integration posts only when Slack places the bot in this workspace", async () => {
+    const channelContext = context(
+      "U123",
+      "C123",
+      "public",
+      undefined,
+      TEAM_ID,
+    );
+    await execute(
+      createAutomationTool(
+        automationToolContext(channelContext),
+        getEventCatalog(),
+      ),
+      {
+        instruction: "Review each new report.",
+        title: "Review reports",
+        outcomes: [
+          { action: "send_message", destination: "current_conversation" },
+        ],
+        trigger: trigger({
+          user_id: ["B701", "B702", "B703", "B704", "B705", "B706", "B707"],
+        }),
+      },
+    );
+    const post = (
+      botId: string,
+      ts: string,
+      botProfile?: { deleted: boolean; team_id: string },
+      envelope: Record<string, unknown> = WORKSPACE_CHANNEL,
+    ) =>
+      postChannelMessage({
+        botId,
+        ...(botProfile
+          ? { botProfile: { id: botId, app_id: "A123", ...botProfile } }
+          : undefined),
+        envelope,
+        noUser: true,
+        ts,
+      });
+
+    // A bot_profile from another workspace, a deleted bot_profile, a deleted
+    // bot, and a bot user from another workspace run nothing.
+    await post("B701", "1712349.0001", { team_id: "T999", deleted: false });
+    await post("B702", "1712349.0002", { team_id: TEAM_ID, deleted: true });
+    queueSlackApiResponse("bots.info", {
+      body: botsInfoOk({ botId: "B703", deleted: true }),
+    });
+    await post("B703", "1712349.0003");
+    queueSlackApiResponse("bots.info", {
+      body: botsInfoOk({ botId: "B704", userId: "U704" }),
+    });
+    const external = usersInfoOk({ userId: "U704", isBot: true });
+    queueSlackApiResponse("users.info", {
+      body: { ...external, user: { ...external.user, team_id: "TEXTERNAL" } },
+    });
+    await post("B704", "1712349.0004");
+    expect(queue.sentRecords()).toEqual([]);
+
+    // A bot_profile from this workspace needs no lookup. A bot user from this
+    // workspace is checked through bots.info and users.info.
+    await post("B705", "1712349.0005", { team_id: TEAM_ID, deleted: false });
+    queueSlackApiResponse("bots.info", {
+      body: botsInfoOk({ botId: "B706", userId: "U706" }),
+    });
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ userId: "U706", isBot: true }),
+    });
+    await post("B706", "1712349.0006");
+    // On Enterprise Grid, a bot_profile from this workspace is enough.
+    await post(
+      "B707",
+      "1712349.0007",
+      { team_id: TEAM_ID, deleted: false },
+      ENTERPRISE_CHANNEL,
+    );
+    expect(queue.sentRecords()).toHaveLength(3);
+    expect(
+      getCapturedSlackApiCalls("bots.info").map((call) => call.params.bot),
+    ).toEqual(["B703", "B704", "B706"]);
+    expect(
+      getCapturedSlackApiCalls("users.info").map((call) => call.params.user),
+    ).toEqual(["U704", "U706"]);
+  });
+
+  it("runs for thread replies only when its match names the thread location", async () => {
+    const catalog = getEventCatalog();
+    const channelContext = context(
+      "U123",
+      "C123",
+      "public",
+      undefined,
+      TEAM_ID,
+    );
+    const create = createAutomationTool(
+      automationToolContext(channelContext),
+      catalog,
+    );
+    await execute(create, {
+      instruction: "Triage each new top-level alert.",
+      title: "Triage top-level alerts",
+      outcomes: [
+        { action: "send_message", destination: "current_conversation" },
+      ],
+      trigger: trigger({ user_id: "U777" }),
+    });
+    const { automation } = (await execute(
+      create,
+      {
+        instruction: "Triage each deploy failure.",
+        title: "Triage deploy failures",
+        outcomes: [
+          { action: "send_message", destination: "current_conversation" },
+        ],
+        trigger: trigger({ user_id: "U777", location: ["channel", "thread"] }),
+      },
+      "thread-automation-call",
+    )) as { automation: { id: string } };
+
+    // A bot reply in a Slack thread runs only the automation that names
+    // the thread location, and Junior replies in that Slack thread.
+    await postChannelMessage({
+      botId: "B777",
+      threadTs: "1712347.0001",
+      ts: "1712347.0002",
+      user: "U777",
+    });
+    const sent = queue.sentRecords();
+    expect(sent).toHaveLength(1);
+    const dispatch = await getDispatchRecord(
+      sent[0]!.conversationId.replace(/^agent-dispatch:/, ""),
+    );
+    expect(dispatch).toMatchObject({
+      destination: { channelId: "C123", threadTs: "1712347.0001" },
+      metadata: { eventAutomationId: automation.id },
+    });
+
+    // A top-level bot post still runs both.
+    await postChannelMessage({
+      botId: "B777",
+      ts: "1712347.0003",
+      user: "U777",
+    });
+    expect(queue.sentRecords()).toHaveLength(3);
   });
 
   it("watches only the channel where the automation posts", async () => {

@@ -16,11 +16,14 @@ export type ConversationSource =
   | "web";
 
 /**
- * Where a Conversation sits in its tree. A root has no parent. A Thread is a
- * child that people can message. A Task is a child that only its parent
- * messages. A Conversation never changes kind.
+ * Where a Conversation sits in its tree. A root and an Automation run have no
+ * parent. A Thread is a child that people can message. A Task is a child that
+ * only its parent messages. A Conversation never changes kind.
  */
-export type ConversationKind = "root" | "thread" | "task";
+export type ConversationKind = "root" | "automation" | "thread" | "task";
+
+/** The kind of a Conversation that has a parent. */
+export type ChildConversationKind = "thread" | "task";
 
 export type ConversationStatus =
   | "paused"
@@ -106,6 +109,8 @@ export interface Conversation {
   transcriptPurgedAtMs?: number;
   /** When a person stopped this Conversation. Unset when it is not stopped. */
   stoppedAtMs?: number;
+  /** Set while a root's Event Turn replies stay out of its Location. */
+  deliveryPausedAtMs?: number;
   /** Confirmed Conversation visibility. Undefined means no confirmation exists. */
   visibility?: ConversationPrivacy;
 }
@@ -118,7 +123,7 @@ export interface ConversationStore {
    */
   createChild(args: {
     childConversationId: string;
-    kind: Exclude<ConversationKind, "root">;
+    kind: ChildConversationKind;
     parentConversationId: string;
     nowMs?: number;
     source?: ConversationSource;
@@ -145,6 +150,18 @@ export interface ConversationStore {
     providerTenantId: string;
     providerConversationId: string;
   }): Promise<void>;
+  /**
+   * Claim one provider conversation for the Conversation that starts in it,
+   * unless another Conversation started there first. Return the owner.
+   */
+  claimProviderConversation(args: {
+    atMs: number;
+    conversationId: string;
+    provider: string;
+    providerDestinationId: string;
+    providerTenantId: string;
+    providerConversationId: string;
+  }): Promise<string>;
   /** Read confirmed public/private visibility for one destination. */
   getDestinationVisibility(args: {
     provider: string;
@@ -184,6 +201,11 @@ export interface ConversationStore {
     sessionSource?: Source;
     title?: string;
     /**
+     * Kind of a new Conversation. Default `root`. An existing Conversation
+     * keeps its kind.
+     */
+    kind?: "root" | "automation";
+    /**
      * Current visibility from its owner, such as a Slack event channel type. It
      * replaces the visibility of the shared Destination row. Omit it for saved
      * values, such as visibility captured when an Automation was created.
@@ -195,6 +217,8 @@ export interface ConversationStore {
    * Conversation metric fields cache totals for existing readers.
    */
   recordExecution(args: {
+    /** Identity of the Turn Actor. Its metric rows record it. */
+    actorIdentityId?: string;
     channelName?: string;
     conversationId: string;
     /** When this Run started. */

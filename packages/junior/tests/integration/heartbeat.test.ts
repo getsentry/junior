@@ -37,12 +37,17 @@ let conversationWorkQueue = createConversationWorkQueueTestAdapter();
 function createTestHeartbeatContext(
   args: Omit<
     Parameters<typeof createHeartbeatContext>[0],
-    "conversationWorkQueue"
+    "conversationWorkQueue" | "events"
   >,
 ) {
   return createHeartbeatContext({
     ...args,
     conversationWorkQueue,
+    events: {
+      async publish() {
+        throw new Error("Dispatch tests do not publish events");
+      },
+    },
   });
 }
 
@@ -401,7 +406,7 @@ describe("plugin heartbeat", () => {
       getConversationStore().get({
         conversationId: getDispatchConversationId({ id: result.id }),
       }),
-    ).resolves.toMatchObject({ title: "Nightly sync" });
+    ).resolves.toMatchObject({ kind: "root", title: "Nightly sync" });
   });
 
   it("keeps plugin state isolated when plugin names and keys contain delimiters", async () => {

@@ -22,6 +22,10 @@ import { createSlackRuntime } from "@/chat/app/factory";
 import { getConversationStore } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { SLACK_STOP_ACK } from "@/chat/ingress/slack-stop";
+import {
+  isConversationDeliveryPaused,
+  pauseConversationDelivery,
+} from "@/chat/conversations/delivery-pause";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { hasConversationStop } from "@/chat/task-execution/state";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -420,6 +424,36 @@ describe("Slack ingress: thread messages", () => {
     expect(stopAcks()).toHaveLength(0);
     await expect(getConversationStoppedAtMs(CONVERSATION_ID)).resolves.toBe(
       stoppedAtMs,
+    );
+  });
+
+  it("attaches a detached Conversation again on the next mention", async () => {
+    const { send } = ingress();
+    await send({
+      eventType: "app_mention",
+      text: `<@${SLACK_BOT_USER_ID}> watch the deploy`,
+      ts: THREAD_TS,
+    });
+    await expect(pauseConversationDelivery(CONVERSATION_ID)).resolves.toBe(
+      true,
+    );
+    // A message that does not mention Junior keeps it detached.
+    await send({
+      eventType: "message",
+      text: "looks fine to me",
+      ts: "1712345.000200",
+    });
+    await expect(isConversationDeliveryPaused(CONVERSATION_ID)).resolves.toBe(
+      true,
+    );
+
+    await send({
+      eventType: "app_mention",
+      text: `<@${SLACK_BOT_USER_ID}> anything new?`,
+      ts: "1712345.000300",
+    });
+    await expect(isConversationDeliveryPaused(CONVERSATION_ID)).resolves.toBe(
+      false,
     );
   });
 });

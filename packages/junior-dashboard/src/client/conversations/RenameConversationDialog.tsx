@@ -48,8 +48,8 @@ export function RenameConversationDialog(props: {
             />
           </Field>
           <DialogFooter>
-            <DialogClose render={<Button>Cancel</Button>} />
-            <Button variant="primary" type="submit" disabled={!changed}>
+            <DialogClose render={<Button variant="outline">Cancel</Button>} />
+            <Button variant="default" type="submit" disabled={!changed}>
               Save
             </Button>
           </DialogFooter>

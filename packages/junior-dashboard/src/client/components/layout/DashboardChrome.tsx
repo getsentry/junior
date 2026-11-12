@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -13,8 +14,12 @@ import { createPortal } from "react-dom";
 
 import { cn } from "../../styles";
 
-/** Replaces the mobile header back link while a page shows a nested view. */
-type MobileHeaderBack = { label: string; onClick(): void };
+/**
+ * Replaces the mobile header back link while a page shows a nested view, or
+ * a Conversation that has no route yet. `title` names it when the route
+ * cannot. Without `onClick`, back shows but waits.
+ */
+type MobileHeaderBack = { label: string; onClick?(): void; title?: string };
 
 type DashboardChromeContextValue = {
   mobileHeaderBack: MobileHeaderBack | null;
@@ -243,21 +248,29 @@ export function useMobileHeaderBack(): MobileHeaderBack | null {
 
 /**
  * Point the mobile header back control at `onClick` while `label` is set,
- * such as from the event log back to its Conversation.
+ * such as from the event log back to its Conversation. `title` names a
+ * Conversation that has no route yet.
  */
 export function useRegisterMobileHeaderBack(
   label: string | undefined,
-  onClick: () => void,
+  onClick: (() => void) | undefined,
+  title?: string,
 ): void {
   const setBack = useContext(DashboardChromeContext)?.setMobileHeaderBack;
   const onClickRef = useRef(onClick);
   onClickRef.current = onClick;
+  const enabled = Boolean(onClick);
 
-  useEffect(() => {
+  // Before paint, so the header never shows a frame of the old chrome.
+  useLayoutEffect(() => {
     if (!setBack || !label) return;
-    setBack({ label, onClick: () => onClickRef.current() });
+    setBack({
+      label,
+      onClick: enabled ? () => onClickRef.current?.() : undefined,
+      title,
+    });
     return () => setBack(null);
-  }, [label, setBack]);
+  }, [enabled, label, setBack, title]);
 }
 
 /** Mount page navigation into the desktop chrome and mobile drawer. */
