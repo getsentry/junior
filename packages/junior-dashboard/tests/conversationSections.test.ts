@@ -72,11 +72,7 @@ describe("conversation activity sections", () => {
   it("puts only conversations that wait on the viewer or a sign-in in Needs you", () => {
     const conversations = [
       conversation("today", "2026-08-03T11:00:00-07:00"),
-      // Unread and an open pull request do not move a row.
-      {
-        ...conversation("today-unread", "2026-08-03T09:00:00-07:00"),
-        unread: true,
-      },
+      conversation("today-earlier", "2026-08-03T09:00:00-07:00"),
       conversation("yesterday", "2026-08-02T12:00:00-07:00"),
       conversation("waiting-old", "2026-07-31T12:00:00-07:00"),
       // Newer activity, but its wait began later.
@@ -104,7 +100,7 @@ describe("conversation activity sections", () => {
         conversations: ["waiting-old", "waiting-new", "connecting"],
         label: "Needs you",
       },
-      { conversations: ["today", "today-unread"], label: "Today" },
+      { conversations: ["today", "today-earlier"], label: "Today" },
       { conversations: ["yesterday"], label: "Yesterday" },
       { conversations: ["saturday"], label: "Previous 7 days" },
     ]);
@@ -202,7 +198,6 @@ describe("conversation activity sections", () => {
       conversation(id, "2026-08-03T12:00:00-07:00"),
     );
     feed[4] = { ...feed[4]!, pinnedAt: "2026-08-03T08:00:00-07:00" };
-    feed[2] = { ...feed[2]!, unread: true };
 
     expect(
       pinnedAndWaitingFirst(feed, waitingSince(["d", "b"])).map(

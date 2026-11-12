@@ -64,6 +64,8 @@ const agentInvocationBaseSchema = z
     parentConversationId: exactStringSchema,
     parentToolCallId: exactStringSchema.optional(),
     agentType: agentTypeSchema.optional(),
+    /** The child starts with its parent's history. */
+    fork: z.literal(true).optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
     source: sourceSchema,
     title: exactStringSchema.optional(),
@@ -101,6 +103,7 @@ export const createAgentInvocationSchema = z
     parentConversationId: exactStringSchema,
     parentToolCallId: exactStringSchema.optional(),
     agentType: agentTypeSchema.optional(),
+    fork: z.literal(true).optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
     title: exactStringSchema.optional(),
   })

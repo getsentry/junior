@@ -45,10 +45,6 @@ import {
   conversationSubscriptionResponseSchema,
 } from "../schema/conversation-subscription";
 import {
-  conversationUnreadSchema,
-  markConversationUnreadBodySchema,
-} from "../schema/conversation-unread";
-import {
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
   archiveDoneConversationsResponseSchema,
@@ -63,10 +59,7 @@ import {
   conversationPendingMessagesReportSchema,
   conversationUnchangedDetailWithMailboxSchema,
 } from "../schema/conversation-pending-messages";
-import {
-  conversationReadPositionSchema,
-  conversationReadReportSchema,
-} from "../schema/conversation-read-position";
+import { conversationReadPositionSchema } from "../schema/conversation-read-position";
 import {
   renameConversationBodySchema,
   renameConversationResponseSchema,
@@ -83,12 +76,12 @@ import { conversationWatchesReportSchema } from "../schema/watch";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { createConversationAccessReader } from "./access";
+import { reportConversationRead } from "./read-position";
 import { archiveConversation } from "./archive";
 import { catchUpOnConversation } from "./catch-up";
 import { pinConversation, reorderPinnedConversations } from "./pin";
 import { setConversationSubscription } from "./subscription";
 import { setConversationDeliveryForViewer } from "./delivery";
-import { markConversationUnread, reportConversationRead } from "./unread";
 import { renameConversation } from "./rename";
 import {
   archiveViewerDoneConversations,
@@ -136,7 +129,7 @@ export function createConversationRoutes(
       "Invalid query parameters.",
     ),
     async (context) => {
-      const { actorEmail, codeRepositoryId, q, status } =
+      const { actorEmail, codeRepositoryId, cursor, q, status } =
         context.req.valid("query");
       const viewer = context.get("viewer");
       return jsonResponse(
@@ -144,6 +137,7 @@ export function createConversationRoutes(
         await readConversationFeed({
           ...(actorEmail ? { actorEmail } : undefined),
           ...(codeRepositoryId ? { codeRepositoryId } : undefined),
+          ...(cursor ? { cursor } : undefined),
           ...(q ? { q } : undefined),
           status,
           ...(viewer ? { viewer } : undefined),
@@ -429,30 +423,6 @@ export function createConversationRoutes(
   );
 
   app.patch(
-    "/:conversationId/unread",
-    requireViewer,
-    validateRequest(
-      "param",
-      conversationParamsSchema,
-      "Invalid route parameters.",
-    ),
-    validateRequest(
-      "json",
-      markConversationUnreadBodySchema,
-      "Invalid request body.",
-    ),
-    async (context) =>
-      jsonResponse(
-        conversationUnreadSchema,
-        await markConversationUnread(
-          context.get("viewer"),
-          context.req.valid("param").conversationId,
-          context.req.valid("json"),
-        ),
-      ),
-  );
-
-  app.patch(
     "/:conversationId/title",
     requireViewer,
     validateRequest(
@@ -494,7 +464,7 @@ export function createConversationRoutes(
       const { conversationId } = context.req.valid("param");
       const body = context.req.valid("json");
       return jsonResponse(
-        conversationReadReportSchema,
+        conversationReadPositionSchema,
         await reportConversationRead(viewer, conversationId, body),
       );
     },

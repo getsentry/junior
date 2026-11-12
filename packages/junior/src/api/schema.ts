@@ -27,10 +27,18 @@ export type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 export type { AutomationCard } from "../chat/automations/card";
 export type { AutomationTask } from "../chat/automations/task";
 export {
+  annotationCard,
   messageCardText,
   resolveMessageCards,
 } from "../chat/conversations/cards";
 export type { MessageCard } from "../chat/conversations/cards";
+export { conversationObjectCard, personObjectCard } from "./objects/cards";
+export {
+  MAX_OBJECT_LINKS,
+  objectLinksQuerySchema,
+  objectLinksReportSchema,
+} from "./schema/object-link";
+export type { ObjectLinksReport } from "./schema/object-link";
 export { dailyConversationActivitySchema } from "./activity";
 export { conversationChildAgentTotalsSchema } from "./schema/child-agent-totals";
 export type { ConversationChildAgentTotals } from "./schema/child-agent-totals";
@@ -130,14 +138,8 @@ export type {
   ContinueConversationInSlackResponse,
 } from "./schema/conversation-continue-in-slack";
 export type { StopConversationTurnResponse } from "./schema/conversation-stop";
-export {
-  conversationReadPositionSchema,
-  conversationReadReportSchema,
-} from "./schema/conversation-read-position";
-export type {
-  ConversationReadPosition,
-  ConversationReadReport,
-} from "./schema/conversation-read-position";
+export { conversationReadPositionSchema } from "./schema/conversation-read-position";
+export type { ConversationReadPosition } from "./schema/conversation-read-position";
 export {
   conversationCatchUpBodySchema,
   conversationCatchUpSchema,
@@ -174,14 +176,6 @@ export type {
   ConversationSubscriptionBody,
   ConversationSubscriptionResponse,
 } from "./schema/conversation-subscription";
-export {
-  conversationUnreadSchema,
-  markConversationUnreadBodySchema,
-} from "./schema/conversation-unread";
-export type {
-  ConversationUnread,
-  MarkConversationUnreadBody,
-} from "./schema/conversation-unread";
 export {
   CONVERSATION_OUTLINE_TEXT_LENGTH,
   conversationOutlineSchema,

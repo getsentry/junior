@@ -77,6 +77,8 @@ export type AgentSteeringMessage = {
 /** Model-safe input for one asynchronously delegated child-agent task. */
 export type SpawnAgentInput = {
   agentType?: AgentType;
+  /** The child starts with the parent's history. */
+  fork?: boolean;
   /** Omitted means a Task. */
   kind?: ChildAgentKind;
   name?: string;

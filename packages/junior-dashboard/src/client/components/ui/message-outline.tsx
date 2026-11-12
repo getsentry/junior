@@ -11,7 +11,10 @@ import {
 } from "react";
 import { cn } from "@dashboard/lib/utils";
 
-/** Height of one item. The pointer maps to items with it. */
+/**
+ * Height of one item. The pointer maps to items with it, so items use this
+ * pixel height, not rem: rem changes with the browser font size.
+ */
 const ITEM_PX = 8;
 /** Bar widths. Bars near the pointer grow from `base` toward `max`. */
 const BAR_PX = { base: 6, active: 14, max: 24 };
@@ -194,7 +197,7 @@ function MessageOutlineItem({
         aria-current={active ? "location" : undefined}
         data-highlighted={!active && index === previewIndex ? "" : undefined}
         className={cn(
-          "group/message-outline-item flex h-2 w-6 cursor-pointer items-center border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-1 focus-visible:outline-dashboard-focus/55",
+          "group/message-outline-item flex h-[8px] w-6 cursor-pointer items-center border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring/55",
           className,
         )}
         onFocus={() => movePointer(index)}
@@ -206,7 +209,7 @@ function MessageOutlineItem({
           data-slot="message-outline-bar"
           className={cn(
             // Scale, not width, so a grow skips layout.
-            "block h-0.5 origin-left rounded-full bg-dashboard-border-emphasis transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-[background-color] group-data-highlighted/message-outline-item:bg-dashboard-border-heavy",
+            "block h-0.5 origin-left rounded-full bg-input transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-[background-color] group-data-highlighted/message-outline-item:bg-dashboard-border-heavy",
             active && "bg-dashboard-text-faint",
           )}
           ref={(bar) => registerBar(index, bar)}
@@ -245,7 +248,7 @@ function MessageOutlinePreview({ className, ...props }: ComponentProps<"div">) {
       data-slot="message-outline-preview"
       // It glides between items, and grows in from the rail when it opens.
       className={cn(
-        "pointer-events-none absolute top-0 left-full ml-2 grid w-72 origin-left gap-1.5 rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-raised px-3.5 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-[translate,scale,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] starting:scale-[0.97] starting:opacity-0 motion-reduce:transition-[opacity] motion-reduce:starting:scale-100",
+        "pointer-events-none absolute top-0 left-full ml-2 grid w-72 origin-left gap-1.5 rounded-xl border border-input bg-secondary px-3.5 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-[translate,scale,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] starting:scale-[0.97] starting:opacity-0 motion-reduce:transition-[opacity] motion-reduce:starting:scale-100",
         className,
       )}
       style={{ translate: `0 ${translate}` }}
@@ -267,7 +270,7 @@ function MessageOutlinePreviewTitle({
     <p
       data-slot="message-outline-preview-title"
       className={cn(
-        "m-0 truncate text-sm font-medium text-dashboard-text",
+        "m-0 truncate text-sm font-medium text-foreground",
         // One title line, the gap, and three description lines.
         "only:min-h-[calc(var(--text-sm)*(var(--text-sm--line-height)+3*var(--leading-relaxed))+--spacing(1.5))] only:line-clamp-4 only:leading-relaxed only:whitespace-normal",
         className,

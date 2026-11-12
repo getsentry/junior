@@ -11,14 +11,24 @@ import type {
 } from "../pull-request-outcomes/store.js";
 import { botLoginFromEmail, isBotLogin } from "./ownership.js";
 
+// `ready_for_review` and `converted_to_draft` change only the draft state.
+const pullRequestLifecycleActionsSchema = z.enum([
+  "opened",
+  "closed",
+  "reopened",
+  "ready_for_review",
+  "converted_to_draft",
+]);
+
 const canonicalPullRequestOutcomeSchema = z
   .object({
-    action: z.enum(["opened", "closed", "reopened"]),
+    action: pullRequestLifecycleActionsSchema,
     pull_request: z
       .object({
         body: z.string().nullable().optional(),
         closed_at: z.string().nullable().optional(),
         created_at: z.string(),
+        draft: z.boolean().optional(),
         id: z.number().int().positive(),
         merged: z.boolean(),
         merged_at: z.string().nullable().optional(),
@@ -39,12 +49,13 @@ const canonicalPullRequestOutcomeSchema = z
 
 const pullRequestOutcomeSchema = z
   .object({
-    action: z.enum(["opened", "closed", "reopened"]),
+    action: pullRequestLifecycleActionsSchema,
     pull_request: z
       .object({
         body: z.string().nullable().optional(),
         closed_at: z.string().nullable().optional(),
         created_at: z.string(),
+        draft: z.boolean().optional(),
         id: z.number().int().positive(),
         merged: z.boolean(),
         merged_at: z.string().nullable().optional(),
@@ -69,6 +80,7 @@ const pullRequestOutcomeSchema = z
         body: provider.pull_request.body,
         closed_at: provider.pull_request.closed_at,
         created_at: provider.pull_request.created_at,
+        draft: provider.pull_request.draft,
         id: provider.pull_request.id,
         merged: provider.pull_request.merged,
         merged_at: provider.pull_request.merged_at,
@@ -126,7 +138,7 @@ const pullRequestConversationSchema = z
     }),
   );
 
-/** Parse a provider timestamp, rejecting missing or invalid lifecycle values. */
+/** Parse a provider timestamp. A missing or invalid value is undefined. */
 function timestamp(value: string | null | undefined): Date | undefined {
   if (!value) return undefined;
   const parsed = new Date(value);
@@ -141,7 +153,7 @@ export function normalizeGitHubPullRequestOutcome(args: {
   const lifecycle = pullRequestLifecycleActionSchema.safeParse(args.body);
   if (
     !lifecycle.success ||
-    !["opened", "closed", "reopened"].includes(lifecycle.data.action)
+    !pullRequestLifecycleActionsSchema.safeParse(lifecycle.data.action).success
   ) {
     return undefined;
   }
@@ -170,17 +182,19 @@ export function normalizeGitHubPullRequestOutcome(args: {
       : pullRequest.merged
         ? "merged"
         : "closed_unmerged";
-  const closedAt = timestamp(pullRequest.closed_at);
-  const mergedAt = timestamp(pullRequest.merged_at);
-  if (
-    parsed.action === "closed" &&
-    (pullRequest.merged ? !mergedAt : !closedAt)
-  ) {
-    throw new Error("GitHub pull request terminal timestamp is invalid");
-  }
+  // A close without a valid terminal time is still a close. Use the update
+  // time, so the pull request does not stay open in Junior.
+  const closed = parsed.action === "closed";
+  const closedAt =
+    timestamp(pullRequest.closed_at) ?? (closed ? updatedAt : undefined);
+  const mergedAt =
+    timestamp(pullRequest.merged_at) ??
+    (closed && pullRequest.merged ? updatedAt : undefined);
   return {
     candidateOwned,
     closedAt,
+    // A close keeps the stored draft state.
+    draft: closed ? undefined : pullRequest.draft,
     mergedAt,
     number: pullRequest.number,
     openedAt,

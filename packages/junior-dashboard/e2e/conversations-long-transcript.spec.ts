@@ -104,7 +104,7 @@ async function mockLongConversation(
     `**/api/conversations/${conversationId}/read-position`,
     async (route) => {
       await route.fulfill({
-        json: { ...route.request().postDataJSON(), unreadReply: false },
+        json: route.request().postDataJSON(),
       });
     },
   );
@@ -408,6 +408,31 @@ test("points at the outline item under a still pointer while the list scrolls", 
   await page.mouse.wheel(0, -400);
   await expect(pointed).not.toHaveAttribute("aria-label", before);
   await expect(title).toHaveText((await pointed.getAttribute("aria-label"))!);
+});
+
+test("points at the outline item under the pointer with a larger font size", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 2560 });
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: true,
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  // A browser font size or a text-only zoom changes rem.
+  await page.addStyleTag({ content: "html { font-size: 20px; }" });
+  const outline = page.getByRole("navigation", {
+    name: "Conversation outline",
+  });
+  await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
+  const item = outline.getByRole("button", {
+    name: "Transcript message 1990 with",
+  });
+  await item.hover();
+  await expect(
+    page.locator('[data-slot="message-outline-preview-title"]'),
+  ).toHaveText((await item.getAttribute("aria-label"))!);
 });
 
 test("holds the top row while earlier pages load above it", async ({

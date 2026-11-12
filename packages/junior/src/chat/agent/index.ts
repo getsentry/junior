@@ -64,7 +64,6 @@ import {
   resolveGatewayModel,
 } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
-import { renderAgentsInstructions } from "@/chat/repository-instructions";
 import { createRepositoryInstructionsContext } from "@/chat/agent/repository-context";
 import {
   extractAssistantText,
@@ -79,7 +78,6 @@ import {
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
-import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { buildTurnResult } from "@/chat/services/turn-result";
 import {
   isAnswerToolName,
@@ -683,6 +681,9 @@ async function executeAgentRunInPrivacyContext(
     // A gated Turn's answer calls past a limit, and how many of them failed.
     const answerCallsPastLimit = new Set<string>();
     let failedAnswerCallsPastLimit = 0;
+    // Tool calls that Junior ended the run with. Pi stops after a batch only
+    // when every call in it is one of these.
+    const terminatingToolCallIds = new Set<string>();
     // Model calls that a retry discarded. They still cost money.
     let discardedRetryUsage: AgentTurnUsage | undefined;
     const turnLimitGate = createTurnLimitGate(runResume.turnLimitWrappedUp);
@@ -786,27 +787,19 @@ async function executeAgentRunInPrivacyContext(
       currentActor: actor,
       availableSkills,
       configurationValues,
-      contextContentParts: [
-        ...(initialRepositoryInstructions
-          ? [
-              {
-                type: "text" as const,
-                text: renderAgentsInstructions(initialRepositoryInstructions),
-              },
-            ]
-          : []),
-        ...contextContentParts,
-      ],
+      contextContentParts,
       conversationPrivacy,
       existingSessionPiMessages: existingSessionRecord?.piMessages,
       existingTurnStartMessageIndex:
         existingSessionRecord?.turnStartMessageIndex,
       explicitSkill,
       priorPiMessages,
+      repositoryInstructions: initialRepositoryInstructions,
       resumedFromSessionRecord,
       run,
       spanContext,
       disabledTools: wiring.disabledTools,
+      scriptTools: wiring.scriptTools,
       toolGuidance: wiring.toolGuidance,
       turnContext: promptTurnContext,
       userContentParts,
@@ -820,9 +813,9 @@ async function executeAgentRunInPrivacyContext(
         await runResume.persistSafeBoundary(messages, [contextProvenance]);
       },
       hasSandbox: () => Boolean(wiring.getSandboxRef()),
-      initialInstructions: initialRepositoryInstructions,
       onTransition: recordAgentsTransition,
       promptContextContentParts,
+      promptHistoryMessages,
       restoredMessages: existingSessionRecord?.piMessages,
       restoredProvenance: existingSessionRecord?.piMessageProvenance,
       setMessages(messages) {
@@ -1109,6 +1102,7 @@ async function executeAgentRunInPrivacyContext(
             ? new TurnToolCallLimitExceededError(botConfig.maxToolCallsPerTurn)
             : new TurnBudgetExceededError(botConfig.maxTurnCostUsd);
         pendingPiHookError ??= limitError;
+        terminatingToolCallIds.add(toolCall.id);
         return {
           block: true,
           reason: limitError.message,
@@ -1135,11 +1129,8 @@ async function executeAgentRunInPrivacyContext(
             : undefined;
         // A reply, blocked report, or no-reply is the last step of the run.
         if (isAnswerToolName(toolCall.name) && !isError && !override) {
-          // People often answer a Turn that posted nothing, so it warms like
-          // a reply. An Automation run that ends almost never gets one.
-          if (toolCall.name === NO_REPLY_TOOL_NAME && !behavior.gated) {
-            cacheWarming.noReplyEnded();
-          }
+          cacheWarming.answerToolEnded(toolCall.name);
+          terminatingToolCallIds.add(toolCall.id);
           return { terminate: true };
         }
         // Past a limit, the second failed answer call ends the run without
@@ -1149,6 +1140,7 @@ async function executeAgentRunInPrivacyContext(
           answerCallsPastLimit.has(toolCall.id) &&
           ++failedAnswerCallsPastLimit >= MAX_FAILED_ANSWER_CALLS_PAST_LIMIT
         ) {
+          terminatingToolCallIds.add(toolCall.id);
           return { ...override, terminate: true };
         }
         return override;
@@ -1179,12 +1171,16 @@ async function executeAgentRunInPrivacyContext(
                   nextTurn.context,
                 );
               const pendingMessages = await drainSteeringMessages();
-              // Pi also runs this hook after the final response. Another model
-              // call follows only after tool results or steering. Compaction
-              // here would drop the delivered reply and start a retry. A
-              // background request does not change history, so it still runs.
+              // Pi also runs this hook after the final response and after a
+              // batch that ended the run, such as a `noReply` call. Another
+              // model call follows only after steering or a tool result that
+              // did not end the run. Compaction here would drop the answer and
+              // start a retry. A background request does not change history,
+              // so it still runs.
               if (
-                nextTurn.toolResults.length === 0 &&
+                nextTurn.toolResults.every((result) =>
+                  terminatingToolCallIds.has(result.toolCallId),
+                ) &&
                 pendingMessages.length === 0
               ) {
                 await requestBackgroundCompactionAfterModelCall();
@@ -1786,13 +1782,16 @@ async function executeAgentRunInPrivacyContext(
     if (durability.onInputCommitted && !resume?.inputCommitted) {
       throw error;
     }
-
-    const providerError = findProviderError(error);
-    logException(
-      error,
-      "assistant.reply.generation.failed",
-      providerError ? getProviderErrorAttributes(providerError) : {},
-    );
+    // The caller aborted the run, such as when a person stops the Turn. The
+    // caller owns that outcome; it is not a reply failure to report.
+    if (!signal?.aborted || error !== signal.reason) {
+      const providerError = findProviderError(error);
+      logException(
+        error,
+        "assistant.reply.generation.failed",
+        providerError ? getProviderErrorAttributes(providerError) : {},
+      );
+    }
 
     // Raw exception text is diagnostics-only; the failure-response service
     // owns the sanitized user-visible fallback for empty provider errors.

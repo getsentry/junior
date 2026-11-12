@@ -1,3 +1,4 @@
+import { Bot } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -27,7 +28,6 @@ import {
 import { usePinConversation } from "./usePinConversation";
 import { useConversationSubscription } from "./useConversationSubscription";
 import { useConversationDelivery } from "./useConversationDelivery";
-import { useMarkConversationUnread } from "./useMarkConversationUnread";
 import { useRenameConversation } from "./useRenameConversation";
 import { RenameConversationDialog } from "./RenameConversationDialog";
 import { conversationIsResponding, isChildConversation } from "./transcript";
@@ -131,9 +131,9 @@ import {
 } from "./transcriptAroundHistory";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import {
-  SubagentTranscriptDrawer,
-  type SubagentTranscriptTarget,
-} from "./SubagentTranscriptDrawer";
+  ConversationDrawer,
+  type ConversationDrawerTarget,
+} from "./ConversationDrawer";
 import type {
   ConversationTranscript,
   TranscriptViewSubagentPart,
@@ -159,7 +159,7 @@ export function ConversationPage(props: {
   const scrollRef = useRef<HTMLDivElement>(null);
   const focusDetailsOnOpen = useRef(false);
   const [subagentTarget, setSubagentTarget] =
-    useState<SubagentTranscriptTarget>();
+    useState<ConversationDrawerTarget>();
   const [searchParams, setSearchParams] = useSearchParams();
   // The URL owns the open event log entry so readers can share that link.
   const selectedEventSeq = parseConversationEventSeq(
@@ -325,7 +325,6 @@ export function ConversationPage(props: {
   const pin = usePinConversation(conversationId);
   const subscription = useConversationSubscription(conversationId);
   const delivery = useConversationDelivery(conversationId);
-  const markUnread = useMarkConversationUnread(conversationId);
   const rename = useRenameConversation(conversationId);
   const [renaming, setRenaming] = useState(false);
   const markRead = useMarkConversationRead(conversationId);
@@ -715,7 +714,6 @@ export function ConversationPage(props: {
                     "Could not update archive state."
                   : "",
                 pin.error ? "Could not update pin." : "",
-                markUnread.error ? "Could not update read state." : "",
                 rename.error ? "Could not rename." : "",
                 subscription.error ? "Could not update subscription." : "",
                 delivery.error ? "Could not change Slack updates." : "",
@@ -762,7 +760,6 @@ export function ConversationPage(props: {
                   delivery: (paused) => delivery.mutate(paused),
                   eventLog: () => onViewChange(view === "raw" ? "rich" : "raw"),
                   pin: (pinned) => pin.mutate(pinned),
-                  read: (next) => markUnread.mutate(next),
                   rename: () => setRenaming(true),
                   subscription: (subscribed) => subscription.mutate(subscribed),
                 },
@@ -781,7 +778,6 @@ export function ConversationPage(props: {
                   archive: archive.isPending,
                   delivery: delivery.isPending,
                   pin: pin.isPending,
-                  read: markUnread.isPending,
                   subscription: subscription.isPending,
                 },
               }}
@@ -931,7 +927,15 @@ export function ConversationPage(props: {
         }
         rootRef={pageRef}
       />
-      <SubagentTranscriptDrawer
+      <ConversationDrawer
+        icon={
+          <Bot
+            aria-hidden="true"
+            className="shrink-0 text-cyan-300"
+            size={16}
+            strokeWidth={2}
+          />
+        }
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />

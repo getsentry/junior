@@ -11,7 +11,6 @@ import {
 import type {
   ConversationDetailReport,
   ConversationEventPage,
-  ConversationFeed,
   ConversationPendingMessagesReport,
 } from "@sentry/junior/api/schema";
 import {
@@ -30,6 +29,11 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { postWebMessage } from "./attachmentUploads";
+import {
+  conversationFeedCacheRows,
+  mapConversationFeedCache,
+  type ConversationFeedCache,
+} from "./conversationFeedCache";
 import { readResponseJson } from "../sentry";
 import {
   DashboardApiError,
@@ -70,17 +74,12 @@ export function conversationDetailQueryKey(conversationId: string | undefined) {
 }
 
 /**
- * Read reports and Mark as unread for one conversation share this scope, so
- * they reach the server one at a time, in order. A forward-only read report
- * that is in flight can then not undo a later Mark as unread.
+ * Read reports for one conversation share this scope, so they reach the
+ * server one at a time, in order. A slow older report then cannot put an
+ * older position in the cache after a newer one.
  */
 export function conversationReadScope(conversationId: string) {
   return { id: `conversation:${conversationId}:read` };
-}
-
-/** Return the mutation key for Mark as read or unread on one conversation. */
-export function conversationUnreadMutationKey(conversationId: string) {
-  return ["conversation", conversationId, "unread"] as const;
 }
 
 // Right after a send, Junior usually reads the message within a few seconds.
@@ -202,16 +201,14 @@ export function conversationDetailQueryOptions(
  * finished must not put an older position back in the cache, nor the unread
  * cursor of that older position. The cache already holds the cursor for the
  * newer position: a read does not change the detail version, so no later poll
- * would bring it back. Mark as unread is the one backward move, on this or
- * another device. The server then reports the Conversation unread, so take
- * its position.
+ * would bring it back.
  */
 function keepLatestReadPosition(
   previous: ConversationSnapshot,
   next: ConversationSnapshot,
 ): ConversationSnapshot {
   const kept = previous.readPosition;
-  if (!kept || next.unread) return next;
+  if (!kept) return next;
   if ((next.readPosition?.lastReadSeq ?? -1) >= kept.lastReadSeq) return next;
   const { unreadCursor: _olderCursor, unreadPage: _olderPage, ...rest } = next;
   return {
@@ -651,22 +648,24 @@ export function useConversationData(
       .getQueryCache()
       .findAll({ queryKey: ["dashboard", "conversations"] });
     for (const query of feeds) {
-      const feed = query.state.data as ConversationFeed | undefined;
+      const feed = query.state.data as ConversationFeedCache | undefined;
       if (!feed || query.state.dataUpdatedAt > detailUpdatedAt) continue;
-      const stale = feed.conversations.some(
+      const stale = conversationFeedCacheRows(feed).some(
         (conversation) =>
           conversation.conversationId === conversationId &&
           conversation.displayTitle !== displayTitle,
       );
       if (!stale) continue;
-      queryClient.setQueryData<ConversationFeed>(query.queryKey, {
-        ...feed,
-        conversations: feed.conversations.map((conversation) =>
-          conversation.conversationId === conversationId
-            ? { ...conversation, displayTitle }
-            : conversation,
+      queryClient.setQueryData<ConversationFeedCache>(
+        query.queryKey,
+        mapConversationFeedCache(feed, (conversations) =>
+          conversations.map((conversation) =>
+            conversation.conversationId === conversationId
+              ? { ...conversation, displayTitle }
+              : conversation,
+          ),
         ),
-      });
+      );
     }
   }, [conversationId, detailUpdatedAt, displayTitle, queryClient]);
   const historyStatus = detailData?.eventHistory.status;

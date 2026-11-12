@@ -1,6 +1,7 @@
 import { ChevronRight } from "lucide-react";
 
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
+import { Badge } from "../components/ui/badge";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { DisplayText } from "../display-text/DisplayText";
 import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
@@ -15,9 +16,12 @@ import { eventMessageSource } from "./transcriptSource";
 
 function EventTypeChip(props: { eventType: string }) {
   return (
-    <span className="break-all rounded-md border border-dashboard-border px-1.5 py-0.5 font-mono text-2xs leading-none text-dashboard-text-muted">
+    <Badge
+      className="break-all py-0.5 font-mono leading-none"
+      variant="outline"
+    >
       <HighlightText text={props.eventType} />
-    </span>
+    </Badge>
   );
 }
 

@@ -74,7 +74,7 @@ export function AutomationDeleteDialog(props: {
             Cancel
           </AlertDialogCancel>
           <AlertDialogAction
-            variant="danger"
+            variant="destructive"
             disabled={deletion.isPending}
             onClick={() => deletion.mutate()}
           >

@@ -36,7 +36,7 @@ import {
   DetailsRow,
   DetailsRowLine,
 } from "./DetailsList";
-import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
+import type { ConversationDrawerTarget } from "./ConversationDrawer";
 
 const statusTones: Partial<Record<string, StatusChipTone>> = {
   active: "info",
@@ -115,7 +115,7 @@ export function ConversationThreads(props: {
  * stays short, and a row opens the Task transcript beside this page.
  */
 export function ConversationTasks(props: {
-  onOpenTask(target: SubagentTranscriptTarget): void;
+  onOpenTask(target: ConversationDrawerTarget): void;
   tasks: readonly ConversationChildAgent[];
 }) {
   const { action, items: tasks } = useShowArchived(props.tasks);
@@ -167,6 +167,7 @@ function useShowArchived(children: readonly ConversationChildAgent[]) {
           className="rounded-md px-1.5 py-0.5 text-xs"
           onClick={() => setShowArchived((value) => !value)}
           variant="ghost"
+          size="bare"
         >
           {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
         </Button>

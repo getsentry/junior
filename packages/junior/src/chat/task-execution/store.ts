@@ -147,6 +147,13 @@ export async function getConversationWorkState(args: {
   return await workState.getConversationWorkState(args);
 }
 
+/** Return the persisted work records of several Conversations in one read. */
+export async function getConversationWorkStates(
+  conversationIds: readonly string[],
+) {
+  return await workState.getConversationWorkStates(conversationIds);
+}
+
 /** Count one failed conversation execution and persist its terminal retry state. */
 export async function recordConversationRetry(args: {
   conversationId: string;
@@ -548,6 +555,21 @@ export async function cancelHumanFacingPendingMessages(args: {
     await recordExecutionMetadata(args);
   }
   return result;
+}
+
+/** Drop pending mailbox rows by id without requiring a worker lease. */
+export async function dropPendingMessages(args: {
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const dropped = await workState.dropPendingMessages(args);
+  if (dropped.length > 0) {
+    await recordExecutionMetadata(args);
+  }
+  return dropped;
 }
 
 /** Mark one author's queued web messages as interrupts. */

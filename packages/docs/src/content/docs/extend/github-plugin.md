@@ -171,7 +171,7 @@ export const plugins = defineJuniorPlugins([
 ```
 
 - **Define:** `githubPlugin({ pullRequestEvents: { ... } })` in `plugins.ts`
-- **Default:** Off. Junior only watches a new pull request when asked, or when a tool result includes a subscribable resource and the model chooses to watch it.
+- **Default:** On when GitHub webhooks are enabled. After it creates a pull request, Junior watches review feedback, failed checks, and an unmerged close. It replies on GitHub to review comments and questions and pushes scoped fixes without asking first. Set `subscribeAfterCreate` to replace that Watch, or to `false` to turn it off.
 - **Required:** No
 - **Environment override:** None
 
@@ -182,6 +182,28 @@ This watch always includes `pull_request.review.approved` and `pull_request.merg
 When the base of a new pull request is the head branch of another open pull request in the same repository, `github_createPullRequest` links it into a GitHub stack. It adds the pull request to the stack of the pull request below, or creates a stack from the chain of base branches down to the trunk. A stack merges as one group, and GitHub rebases it after each merge. The pull request stays unstacked when the repository has no stacked pull requests, the pull request below is not on top of its stack, the head is the default branch, or the chain of base branches loops.
 
 `guidance` adds short app guidance when a matching pull request event reaches the agent. It applies within the watch or event automation instruction. It cannot replace or expand that instruction, grant credentials, or bypass action review. Keep each value short.
+
+</details>
+
+<details class="plugin-config">
+<summary><code>experimental</code></summary>
+
+Turns on GitHub plugin behavior that is still being tested.
+
+```ts title="plugins.ts"
+export const plugins = defineJuniorPlugins([
+  githubPlugin({
+    experimental: { pullRequestDescriptionChecks: true },
+  }),
+]);
+```
+
+- **Define:** `githubPlugin({ experimental: { ... } })` in `plugins.ts`
+- **Default:** Off
+- **Required:** No
+- **Environment override:** None
+
+`pullRequestDescriptionChecks` checks the description before `github_createPullRequest` or `github_updatePullRequest` writes it. The decision model answers a few yes/no questions about it. The tool rejects a description that has check results, a test plan or test coverage notes, a work log, or talk about the request, or that does not say why the change is needed. The agent gets the fixes and sends the description again.
 
 </details>
 
@@ -342,8 +364,9 @@ lowercase. The filter does not check that the creator can see the repository,
 so a broad deployment automation can post private repository names in its
 channel. See [Automations](/concepts/automations/).
 
-To always watch selected events after Junior creates a pull request in this
-app, set `pullRequestEvents.subscribeAfterCreate` in `plugins.ts`. That watch
+Junior watches each pull request that it creates. To change the events or
+the instruction of that watch, set `pullRequestEvents.subscribeAfterCreate` in
+`plugins.ts`, or set it to `false` to turn it off. That watch
 also always gets `pull_request.review.approved`, `pull_request.merged`, and
 `pull_request.merge_conflict`. To add short
 app guidance for one pull request event type, set
@@ -517,14 +540,17 @@ An inline review comment was added. Trusted data includes `senderId`, `senderLog
 <details class="event">
 <summary><code>pull_request.merged</code></summary>
 
-The pull request was merged.
+The pull request was merged. For a pull request that Junior opened, when
+GitHub does not send this webhook, Junior finds the merge within about two
+days and sends this event then. A Watch gets each merge once.
 
 </details>
 
 <details class="event">
 <summary><code>pull_request.closed_unmerged</code></summary>
 
-The pull request closed without merging.
+The pull request closed without merging. Junior finds a missed close the
+same way as a missed merge.
 
 </details>
 

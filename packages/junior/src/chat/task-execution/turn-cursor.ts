@@ -33,7 +33,7 @@ import {
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import type { AgentTurnUsage } from "@/chat/usage";
-import { getStateAdapter } from "@/chat/state/adapter";
+import { getStateAdapter, getStateValues } from "@/chat/state/adapter";
 import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
 import {
   getConversationEventStore,
@@ -534,6 +534,30 @@ async function getStoredTurnRecord(
   await stateAdapter.connect();
   const value = await stateAdapter.get(turnCursorKey(conversationId, turnId));
   return value == null ? undefined : parseTurnRecord(value);
+}
+
+/** The fields of a stored Turn cursor that need no Turn history. */
+export type StoredTurnFields = Pick<
+  StoredTurnRecord,
+  "dispatchId" | "source" | "state" | "surface"
+>;
+
+/**
+ * Read several stored Turn cursors in one state read, without their Turn
+ * history. A missing cursor gives `undefined`.
+ */
+export async function getStoredTurnFields(
+  turns: ReadonlyArray<{ conversationId: string; turnId: string }>,
+): Promise<Array<StoredTurnFields | undefined>> {
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  const values = await getStateValues(
+    stateAdapter,
+    turns.map((turn) => turnCursorKey(turn.conversationId, turn.turnId)),
+  );
+  return values.map((value) =>
+    value == null ? undefined : parseTurnRecord(value),
+  );
 }
 
 /** Read a materialized turn cursor for resume and history loading. */

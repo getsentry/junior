@@ -43,6 +43,7 @@ import {
   validatePlugins,
 } from "@/chat/plugins/agent-hooks";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { readObjectLinkTypes } from "@/api/objects/resolve";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import {
   validatePluginEgressCredentialHooks,
@@ -583,6 +584,8 @@ export async function createApp(
     });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
+      // Fail at load when two link types claim the same URLs.
+      readObjectLinkTypes(plugins);
     }
   } catch (error) {
     restoreRuntimeConfig();

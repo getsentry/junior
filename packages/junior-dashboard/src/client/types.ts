@@ -174,8 +174,6 @@ export type Conversation = {
   archivedAt?: string | null;
   pinnedAt?: string | null;
   pinPosition?: number;
-  /** Idle with activity after the viewer last acted on it. Server-owned. */
-  unread?: boolean;
   auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
   channel?: string;
   channelName?: string;

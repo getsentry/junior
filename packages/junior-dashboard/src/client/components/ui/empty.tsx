@@ -7,7 +7,7 @@ function Empty({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="empty"
       className={cn(
-        "min-w-0 rounded-lg border border-dashboard-border-strong bg-dashboard-bg px-4 py-3",
+        "min-w-0 rounded-lg border border-dashboard-border-strong bg-background px-4 py-3",
         className,
       )}
       {...props}
@@ -36,7 +36,7 @@ function EmptyTitle({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="empty-title"
       className={cn(
-        "font-display text-base font-medium leading-tight text-dashboard-text",
+        "font-display text-base font-medium leading-tight text-foreground",
         className,
       )}
       {...props}
@@ -50,7 +50,7 @@ function EmptyDescription({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="empty-description"
       className={cn(
-        "text-base leading-relaxed text-dashboard-text-muted",
+        "text-base leading-relaxed text-muted-foreground",
         className,
       )}
       {...props}

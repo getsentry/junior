@@ -82,8 +82,9 @@ export function ComposerFiles(props: {
             <TooltipTrigger
               render={
                 <Button
+                  variant="ghost"
                   aria-label={`Remove ${file.name}`}
-                  className="absolute right-0 top-0 size-7 rounded-full border border-dashboard-border bg-dashboard-surface-raised text-dashboard-text data-disabled:hover:!bg-dashboard-surface-raised data-disabled:hover:!text-dashboard-text"
+                  className="absolute right-0 top-0 size-7 rounded-full border border-dashboard-border bg-dashboard-surface-raised text-dashboard-text data-disabled:hover:bg-dashboard-surface-raised data-disabled:hover:text-dashboard-text"
                   disabled={props.disabled}
                   focusableWhenDisabled
                   onClick={() => props.onRemove(index)}

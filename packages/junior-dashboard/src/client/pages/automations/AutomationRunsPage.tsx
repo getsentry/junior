@@ -156,21 +156,23 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
         <PageContentSkeleton label="Loading automation runs" variant="list" />
       ) : (
         <>
-          <FilterToolbar
-            filters={{
-              active: activeFilters,
-              onRemove: removeFilter,
-              onToggle: () => setFiltersOpen((open) => !open),
-              open: filtersOpen,
-            }}
-            search={{
-              label: "Search runs",
-              onChange: setSearchText,
-              placeholder: "Automation, conversation, or status",
-              value: searchText,
-            }}
-          />
           <FilteredList
+            toolbar={
+              <FilterToolbar
+                filters={{
+                  active: activeFilters,
+                  onRemove: removeFilter,
+                  onToggle: () => setFiltersOpen((open) => !open),
+                  open: filtersOpen,
+                }}
+                search={{
+                  label: "Search runs",
+                  onChange: setSearchText,
+                  placeholder: "Automation, conversation, or status",
+                  value: searchText,
+                }}
+              />
+            }
             filters={
               filtersOpen ? (
                 <FilterPanel

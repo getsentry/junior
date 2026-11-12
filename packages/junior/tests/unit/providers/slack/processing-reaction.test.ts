@@ -12,6 +12,12 @@ vi.mock("@/chat/slack/outbound", () => ({
   removeReactionFromMessage,
 }));
 
+vi.mock("@/chat/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/logging")>()),
+  logException: vi.fn(),
+  logWarn: vi.fn(),
+}));
+
 vi.mock("@/chat/config", () => ({
   getChatConfig: () => ({
     slack: {
@@ -21,7 +27,9 @@ vi.mock("@/chat/config", () => ({
   }),
 }));
 
+import { logException, logWarn } from "@/chat/logging";
 import { startProcessingReactionForMessage } from "@/chat/providers/slack/processing-reaction";
+import { SlackActionError } from "@/chat/slack/client";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 
 function slackTs(value: string) {
@@ -38,6 +46,8 @@ describe("Slack processing reaction", () => {
     removeReactionFromMessage.mockReset();
     addReactionToMessage.mockResolvedValue({ ok: true });
     removeReactionFromMessage.mockResolvedValue({ ok: true });
+    vi.mocked(logException).mockClear();
+    vi.mocked(logWarn).mockClear();
   });
 
   it("removes the processing reaction and adds done on complete", async () => {
@@ -103,6 +113,53 @@ describe("Slack processing reaction", () => {
       expect.objectContaining({
         emoji: "eyes",
       }),
+    );
+  });
+
+  it("logs a deleted message or ack timeout as a warning and captures other failures", async () => {
+    addReactionToMessage
+      .mockRejectedValueOnce(
+        new SlackActionError(
+          "An API error occurred: message_not_found",
+          "not_found",
+          { apiError: "message_not_found" },
+        ),
+      )
+      .mockRejectedValueOnce(
+        new SlackActionError(
+          "A request error occurred: timeout of 1000ms exceeded",
+          "internal_error",
+          { networkCode: "ECONNABORTED" },
+        ),
+      )
+      .mockRejectedValueOnce(
+        new SlackActionError(
+          "An API error occurred: invalid_auth",
+          "internal_error",
+          {
+            apiError: "invalid_auth",
+          },
+        ),
+      );
+
+    for (const ts of [
+      "1700007304.000000",
+      "1700007305.000000",
+      "1700007306.000000",
+    ]) {
+      await startProcessingReactionForMessage({
+        channelId: "C0PROCESSING",
+        timestamp: slackTs(ts),
+        timeoutMs: 1_000,
+      });
+    }
+
+    expect(logWarn).toHaveBeenCalledTimes(2);
+    expect(logException).toHaveBeenCalledTimes(1);
+    expect(logException).toHaveBeenCalledWith(
+      expect.objectContaining({ apiError: "invalid_auth" }),
+      "slack.processing.reaction_add.failed",
+      expect.any(Object),
     );
   });
 });

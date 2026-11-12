@@ -128,7 +128,7 @@ function PendingActionButton(props: {
   onClick(): void;
   pending: boolean;
   tooltip: string;
-  variant?: "danger";
+  variant?: "destructive";
 }) {
   const Icon = props.icon;
   return (
@@ -144,7 +144,7 @@ function PendingActionButton(props: {
             onClick={props.onClick}
             size="icon"
             type="button"
-            variant={props.variant}
+            variant={props.variant ?? "ghost"}
           >
             {props.pending ? (
               <Spinner aria-hidden="true" className="size-3.25" />
@@ -231,7 +231,7 @@ function PendingMetaIcons(props: {
               ? "Could not delete. Try again."
               : "Delete from the queue"
           }
-          variant="danger"
+          variant="destructive"
         />
       ) : null}
     </TranscriptHeadingMeta>

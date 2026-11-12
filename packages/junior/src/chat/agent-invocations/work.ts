@@ -55,12 +55,9 @@ import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orches
 import { isTurnExecutionLimitExceededError } from "@/chat/services/turn-limit";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { SandboxRef } from "@/chat/sandbox/ref";
-import { supersedeOpenPersonTurn } from "./thread-turn";
-import {
-  agentTypeInstructions,
-  agentTypeStartsWithParentHistory,
-} from "./agent-types";
-import { loadForkHistory } from "./fork-history";
+import { supersedeOpenMailboxTurn } from "./thread-turn";
+import { agentTypeInstructions } from "./agent-types";
+import { FORK_INSTRUCTIONS, loadForkHistory } from "./fork-history";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import {
   appendAndEnqueueInboundMessage,
@@ -201,6 +198,12 @@ export async function createAndEnqueueAgentInvocation(
 }
 
 /** Require one invocation metadata reference for one leased mailbox attempt. */
+/** Return whether one mailbox input is a parent task or message for an agent invocation. */
+export function isAgentInvocationInput(message: InboundMessage): boolean {
+  return agentInvocationMailboxMetadataSchema.safeParse(message.input.metadata)
+    .success;
+}
+
 function invocationIdFromMessages(
   messages: readonly InboundMessage[],
 ): string | undefined {
@@ -240,14 +243,20 @@ function invocationIdFromMessages(
  * child's own child agents already have their own tag.
  */
 export function agentInvocationInputText(
-  invocation: Pick<AgentInvocation, "agentType" | "input" | "parentToolCallId">,
+  invocation: Pick<
+    AgentInvocation,
+    "agentType" | "fork" | "input" | "parentToolCallId"
+  >,
 ): string {
   if (!invocation.parentToolCallId) {
     return invocation.input;
   }
-  const typeInstructions = agentTypeInstructions(invocation.agentType);
+  const instructions = [
+    invocation.fork ? FORK_INSTRUCTIONS : undefined,
+    agentTypeInstructions(invocation.agentType),
+  ].filter((text) => text !== undefined);
   return renderTag("parent-agent-task", {}, [
-    ...(typeInstructions ? [escapeClosingTags(typeInstructions), ""] : []),
+    ...instructions.flatMap((text) => [escapeClosingTags(text), ""]),
     escapeClosingTags(invocation.input),
   ]);
 }
@@ -264,18 +273,18 @@ function agentInvocationProvenance(
     : contextProvenance;
 }
 
-/** Resolve invocation execution from mailbox input or durable active state. */
+/**
+ * Resolve the agent invocation that owns this work: the one named by its
+ * mailbox input, or for an empty wake the open one. Other work has none.
+ */
 export async function resolveAgentInvocationId(
   context: ConversationWorkerContext,
 ): Promise<string | undefined> {
   const mailboxInvocationId = invocationIdFromMessages(
     context.attempt.messages,
   );
-  if (mailboxInvocationId) {
+  if (mailboxInvocationId || context.attempt.messages.length > 0) {
     return mailboxInvocationId;
-  }
-  if (context.attempt.messages.length > 0) {
-    return undefined;
   }
   const active = await getActiveAgentInvocationForConversation(
     context.conversationId,
@@ -283,15 +292,20 @@ export async function resolveAgentInvocationId(
   if (active) {
     return active.invocationId;
   }
-  // A child Conversation never runs on a root worker. A wake after its last
-  // agent invocation ended, such as a late stop request, goes to that agent
-  // invocation, which only repeats its idempotent finish. A paused Turn of an
-  // ended agent invocation can have an event Source, and a root worker would
-  // try to resume it.
+  // An agent invocation can end, such as by a stop, while its Turn stays
+  // paused. Its wake goes to that agent invocation, which ends the Turn.
   const latest = await getLatestAgentInvocationForConversation(
     context.conversationId,
   );
-  return latest?.invocationId;
+  const turn = latest
+    ? await getTurnRecord(
+        context.conversationId,
+        getAgentInvocationTurnId(latest.invocationId),
+      )
+    : undefined;
+  return turn?.state === "paused" || turn?.state === "running"
+    ? latest?.invocationId
+    : undefined;
 }
 
 /**
@@ -771,7 +785,7 @@ export function createAgentInvocationWorker(
           "This task was not resumed. Newer work for this child agent started, so this task ended without a result.",
         exceptInvocationId: invocation.invocationId,
       });
-      await supersedeOpenPersonTurn(invocation.childConversationId);
+      await supersedeOpenMailboxTurn(invocation.childConversationId);
       invocation =
         (await markAgentInvocationRunning(invocation.invocationId)) ??
         invocation;
@@ -798,11 +812,10 @@ export function createAgentInvocationWorker(
         }),
       ]);
       sandboxRef = getPersistedSandboxState(persisted);
-      // Some types start with the parent's history. Later agent invocations
+      // A fork starts with the parent's history. Later agent invocations
       // read it from the child's own Conversation.
       history =
-        agentTypeStartsWithParentHistory(invocation.agentType) &&
-        projection.messages.length === 0
+        invocation.fork && projection.messages.length === 0
           ? await loadForkHistory(invocation)
           : projection.messages;
       location = child?.location;

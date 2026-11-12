@@ -16,6 +16,7 @@ import {
 } from "../../components/ui/popover";
 import { MatchedLabel } from "../../components/MatchedLabel";
 import { skillLabel } from "../../components/SkillLink";
+import { Badge } from "../../components/ui/badge";
 import { cn } from "../../styles";
 import { searchSkills, type SkillSearchRow } from "./skillSearch";
 
@@ -186,15 +187,11 @@ function SkillTile(props: { plugin: boolean }) {
 
 function SkillBadge(props: { children: string; tone?: "danger" }) {
   return (
-    <span
-      className={cn(
-        "shrink-0 rounded-sm border px-1.5 py-0.5 font-sans text-xs leading-none font-medium",
-        props.tone === "danger"
-          ? "border-rose-300/40 text-rose-300"
-          : "border-dashboard-accent/25 bg-dashboard-accent/[0.075] text-dashboard-accent-text",
-      )}
+    <Badge
+      className="shrink-0 py-0.5 leading-none font-medium"
+      variant={props.tone === "danger" ? "destructive" : "accent"}
     >
       {props.children}
-    </span>
+    </Badge>
   );
 }
