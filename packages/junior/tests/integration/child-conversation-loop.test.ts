@@ -228,6 +228,13 @@ describe("child Turns on the Conversation loop", () => {
     const harness = await createHarness();
     try {
       const childId = await startIdleChild(harness, "task");
+      // A sibling also has input in its mailbox, but a person's message does
+      // not answer the parent.
+      const threadId = await startIdleChild(
+        { ...harness, agentName: `${harness.agentName}-sibling` },
+        "thread",
+      );
+      await sendPersonMessage(harness, threadId, "person-message");
       // The Event is in its debounce window, so no worker has taken it.
       await appendAndEnqueueInboundMessage({
         message: createEventInboundMessage({
@@ -246,13 +253,16 @@ describe("child Turns on the Conversation loop", () => {
         state: harness.state,
       });
 
-      await expect(
-        createSearchAgentsTool({
-          conversationId: slackParentConversationId,
-        }).execute!({}, {}),
-      ).resolves.toEqual({
-        agents: [expect.objectContaining({ status: "running" })],
-      });
+      const { agents } = (await createSearchAgentsTool({
+        conversationId: slackParentConversationId,
+      }).execute!({}, {})) as {
+        agents: Array<{ conversation_id: string; status: string }>;
+      };
+      expect(
+        Object.fromEntries(
+          agents.map((agent) => [agent.conversation_id, agent.status]),
+        ),
+      ).toEqual({ [childId]: "running", [threadId]: "idle" });
       await expect(
         listUnreportedSiblingAgents(
           slackParentConversationId,

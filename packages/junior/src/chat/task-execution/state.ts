@@ -20,6 +20,7 @@ import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record"
 import {
   getDefaultRedisStateAdapterFor,
   getStateAdapter,
+  getStateValues,
 } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { logException } from "@/chat/logging";
@@ -1009,7 +1010,16 @@ async function readConversation(
   state: StateAdapter,
   conversationId: string,
 ): Promise<ConversationExecutionState | undefined> {
-  const raw = await state.get(conversationKey(conversationId));
+  return conversationFromValue(
+    conversationId,
+    await state.get(conversationKey(conversationId)),
+  );
+}
+
+function conversationFromValue(
+  conversationId: string,
+  raw: unknown,
+): ConversationExecutionState | undefined {
   if (raw == null) {
     return undefined;
   }
@@ -1159,6 +1169,28 @@ export async function getConversationWorkState(args: {
 }): Promise<ConversationWorkState | undefined> {
   const conversation = await getConversation(args);
   return conversation ? conversationWorkState(conversation) : undefined;
+}
+
+/**
+ * Return the persisted work records of several Conversations in one state
+ * read. A Conversation with no record has no entry.
+ */
+export async function getConversationWorkStates(
+  conversationIds: readonly string[],
+): Promise<Map<string, ConversationWorkState>> {
+  const state = await getConnectedState();
+  const values = await getStateValues(
+    state,
+    conversationIds.map(conversationKey),
+  );
+  const workStates = new Map<string, ConversationWorkState>();
+  for (const [index, conversationId] of conversationIds.entries()) {
+    const conversation = conversationFromValue(conversationId, values[index]);
+    if (conversation) {
+      workStates.set(conversationId, conversationWorkState(conversation));
+    }
+  }
+  return workStates;
 }
 
 /** Count mailbox messages that have not yet reached the conversation event log. */
