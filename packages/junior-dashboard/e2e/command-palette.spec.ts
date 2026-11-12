@@ -229,3 +229,37 @@ test("jumps to a page from the command palette", async ({
   await expect(page).toHaveURL(/\/code$/);
   await expect(palette).toHaveCount(0);
 });
+
+test("asks Junior to find a conversation from a description", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 800, width: 1280 });
+  await page.goto(dashboard.baseURL);
+
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Go to conversation" });
+  const input = palette.getByRole("combobox");
+  // No title matches a description, so the ask takes Enter.
+  await input.fill("the one where payments needed a rollback approval");
+  const ask = palette.getByRole("group", { name: "Ask Junior" });
+  await expect(ask.getByRole("option", { name: /^Find “/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await input.press("Enter");
+
+  // The best fit takes the highlight, with why it fits.
+  const found = ask.getByRole("option", { name: /Roll out payments-v42/ });
+  await expect(found).toHaveAttribute("aria-selected", "true");
+  await expect(found).toContainText("Mentions payments");
+  await expect(
+    ask.getByRole("option", { name: /Keep looking in a new conversation/ }),
+  ).toBeVisible();
+  await input.press("Enter");
+
+  await expect(palette).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Roll out payments-v42" }),
+  ).toBeVisible();
+});

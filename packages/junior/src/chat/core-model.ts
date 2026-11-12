@@ -47,6 +47,9 @@ export type ConversationModelCost =
 /** The operation of one core model call and where its cost goes. */
 type ModelCallAttribution =
   | { operation: ConversationRecordedOperation; cost: ConversationModelCost }
+  // A dashboard find runs for a person, not in a Conversation. Its cost
+  // stays on the span.
+  | { operation: "conversation_find"; cost: NoConversation }
   | {
       operation: CallerRecordedOperation;
       /** `caller`: the caller stores the returned cost on its own event. */

@@ -1,4 +1,5 @@
 import { mockAutomationCollection } from "./automation-collection";
+import { findMockConversations } from "./find";
 import { Hono } from "hono";
 import { jsonResponse, type JuniorApiVariables } from "@sentry/junior/api";
 import type { User } from "@sentry/junior-plugin-api";
@@ -66,6 +67,8 @@ import {
   automationRunListSchema,
   conversationCatchUpBodySchema,
   conversationCatchUpSchema,
+  conversationFindBodySchema,
+  conversationFindSchema,
   DEFAULT_NOTIFICATION_SCHEDULE,
   notificationScheduleSchema,
   notificationSettingsSchema,
@@ -480,6 +483,18 @@ export function createMockReportingApi(): Hono<{
     return result
       ? jsonResponse(conversationReadPositionSchema, result)
       : errorResponse("Conversation not found.", 404);
+  });
+  app.post("/conversations/find", async (c) => {
+    const body = conversationFindBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    // A model call takes a moment. The pause shows the palette's wait.
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+    return jsonResponse(
+      conversationFindSchema,
+      findMockConversations(body.data.description),
+    );
   });
   app.post("/conversations/:conversationId/catch-up", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());

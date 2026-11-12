@@ -25,6 +25,10 @@ import {
   conversationCatchUpSchema,
 } from "../schema/conversation-catch-up";
 import {
+  conversationFindBodySchema,
+  conversationFindSchema,
+} from "../schema/conversation-find";
+import {
   pinConversationBodySchema,
   pinConversationResponseSchema,
   reorderPinnedConversationsBodySchema,
@@ -73,6 +77,7 @@ import { createConversationAccessReader } from "./access";
 import { reportConversationRead } from "./read-position";
 import { archiveConversation } from "./archive";
 import { catchUpOnConversation } from "./catch-up";
+import { findConversationsForViewer } from "./find";
 import { pinConversation, reorderPinnedConversations } from "./pin";
 import { setConversationSubscription } from "./subscription";
 import { setConversationDeliveryForViewer } from "./delivery";
@@ -159,6 +164,24 @@ export function createConversationRoutes(
         await createConversationForViewer(viewer, body, options),
       );
     },
+  );
+
+  app.post(
+    "/find",
+    requireViewer,
+    validateRequest(
+      "json",
+      conversationFindBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        conversationFindSchema,
+        await findConversationsForViewer(
+          context.get("viewer"),
+          context.req.valid("json").description,
+        ),
+      ),
   );
 
   app.post(

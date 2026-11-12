@@ -29,7 +29,7 @@ export type ConversationFeedItem = ConversationSummaryReport & {
  * A root in the feed, or one of its visible Threads. A Thread nests under
  * its nearest visible Thread ancestor, or under the root. Tasks never show.
  */
-const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
+export const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
   conversationSummaryReportSchema.extend({
     brief: conversationFeedBriefSchema.optional(),
     threads: z.lazy(() => z.array(conversationFeedItemSchema)).optional(),

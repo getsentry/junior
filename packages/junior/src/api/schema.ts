@@ -125,6 +125,14 @@ export type { StopConversationTurnResponse } from "./schema/conversation-stop";
 export { conversationReadPositionSchema } from "./schema/conversation-read-position";
 export type { ConversationReadPosition } from "./schema/conversation-read-position";
 export {
+  conversationFindBodySchema,
+  conversationFindSchema,
+} from "./schema/conversation-find";
+export type {
+  ConversationFind,
+  ConversationFindBody,
+} from "./schema/conversation-find";
+export {
   conversationCatchUpBodySchema,
   conversationCatchUpSchema,
 } from "./schema/conversation-catch-up";
