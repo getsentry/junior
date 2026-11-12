@@ -202,6 +202,18 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     await expect(
       run(tools, "readGoogleDoc", { document: DOC_ID }),
     ).rejects.toThrow("Use readMeetingTranscript");
+
+    // Meet names records in the organizer's language.
+    const localized = docsTools(
+      Response.json({
+        id: DOC_ID,
+        mimeType: "application/vnd.google-apps.document",
+        name: "Weekly triage - 12.10.2026 - Notizen von Gemini",
+      }),
+    );
+    await expect(
+      run(localized.tools, "readGoogleDoc", { document: DOC_ID }),
+    ).rejects.toThrow("Use readMeetingTranscript");
   });
 
   it("shows only company-owned files in search", async () => {

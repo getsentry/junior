@@ -35,9 +35,10 @@ requester by name. Search returns nothing for a requester outside those
 domains.
 
 Google Meet shares transcripts and Gemini notes with every invitee, Junior's
-account too. The file tools refuse files whose titles end in "- Transcript" or
-"- Notes by Gemini". Only `readMeetingTranscript` reads them, and only for
-people invited to the meeting. The title match is a conservative exclusion: it
-misses a renamed record.
+account too, and names them in the organizer's language. The file tools refuse
+any file whose title mentions Gemini or a transcript in a common language. Only
+`readMeetingTranscript` reads Meet records, and only for people invited to the
+meeting. The title match is a conservative exclusion: it also refuses some
+ordinary files, and it misses a record renamed to avoid these words.
 
 Plugin setup: https://junior.sentry.dev/extend/
