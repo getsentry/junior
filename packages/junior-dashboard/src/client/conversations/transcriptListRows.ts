@@ -3,11 +3,26 @@ import {
   quietTurnEntryKeys,
 } from "./TranscriptActivityGroup";
 import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
+import { isMemoryCaptureEvent } from "./conversationMemory";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { entryMatchesSearch } from "./transcriptSearch";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
 
 type SubagentEntry = Extract<RenderedTranscriptEntry, { kind: "subagent" }>;
+type CaptureEntry = Extract<
+  RenderedTranscriptEntry,
+  { kind: "structured_event" }
+>;
+type MessageEntry = Extract<RenderedTranscriptEntry, { kind: "message" }>;
+
+/** What goes under the reply that ends a Turn. */
+export type TranscriptTurnFooter = {
+  /** The memories that the Turn captured. */
+  captures: CaptureEntry[];
+  /** The message that started the Turn. Its recalled memories show here. */
+  prompt?: MessageEntry;
+  tasks: SubagentEntry[];
+};
 
 /** One row of the rich transcript list, in seq order. */
 export type TranscriptListRow =
@@ -17,8 +32,8 @@ export type TranscriptListRow =
       entry: RenderedTranscriptEntry;
       key: string;
       seq?: number;
-      /** The Tasks of the Turn that this reply ends. */
-      tasks?: SubagentEntry[];
+      /** What goes under the reply that ends a Turn. */
+      footer?: TranscriptTurnFooter;
     }
   | {
       kind: "activity";
@@ -101,23 +116,40 @@ export function transcriptListRows(input: {
     asks = [];
   };
   let tasks: SubagentEntry[] = [];
+  let captures: CaptureEntry[] = [];
+  let prompt: MessageEntry | undefined;
   const pushTurnEnd = () => {
     const visible = tasks.filter(matches);
-    if (visible.length > 0) {
-      const rowSeq = lastRowSeq(rows);
-      const taskSeq = lastEntrySeq(tasks);
-      // The row moves after later rows, so it takes the larger seq.
-      const seq =
-        rowSeq === undefined || taskSeq === undefined
-          ? (rowSeq ?? taskSeq)
-          : Math.max(rowSeq, taskSeq);
-      const last = rows.at(-1);
-      if (last?.kind === "entry" && isReplyEntry(last.entry)) {
-        // The Tasks sit under the reply text, before its actions. The reply
-        // goes back through pushRow, so unread Tasks still get the marker.
-        rows.pop();
-        pushRow({ ...last, seq, tasks: visible });
-      } else {
+    const visibleCaptures = captures.filter(matches);
+    const rowSeq = lastRowSeq(rows);
+    const movedSeq = lastEntrySeq([...tasks, ...captures]);
+    // The moved entries go after later rows, so they take the larger seq.
+    const seq =
+      rowSeq === undefined || movedSeq === undefined
+        ? (rowSeq ?? movedSeq)
+        : Math.max(rowSeq, movedSeq);
+    const last = rows.at(-1);
+    if (last?.kind === "entry" && isReplyEntry(last.entry)) {
+      // Captured memories and Tasks sit under the reply text, before its
+      // actions. The reply goes back through pushRow, so unread ones still
+      // get the marker.
+      rows.pop();
+      pushRow({
+        ...last,
+        seq: visible.length + visibleCaptures.length > 0 ? seq : last.seq,
+        footer: { captures: visibleCaptures, prompt, tasks: visible },
+      });
+    } else {
+      // Without a reply, captured memories keep their own rows.
+      for (const capture of visibleCaptures) {
+        pushRow({
+          kind: "entry",
+          entry: capture,
+          key: `${input.keyPrefix}:${capture.key}`,
+          seq: Math.max(lastRowSeq(rows) ?? 0, capture.seq ?? 0),
+        });
+      }
+      if (visible.length > 0) {
         pushRow({
           kind: "tasks",
           entries: visible,
@@ -128,6 +160,8 @@ export function transcriptListRows(input: {
       }
     }
     tasks = [];
+    captures = [];
+    prompt = undefined;
     pushAsks();
   };
 
@@ -143,6 +177,11 @@ export function transcriptListRows(input: {
       index += 1;
       continue;
     }
+    if (isCaptureEntry(entry)) {
+      captures.push(entry);
+      index += 1;
+      continue;
+    }
     // A message from a person starts the next Turn.
     if (
       entry.kind === "message" &&
@@ -150,6 +189,7 @@ export function transcriptListRows(input: {
       !collapsible(entry)
     ) {
       pushTurnEnd();
+      prompt = entry;
     }
     if (collapsible(entry)) {
       const group: RenderedTranscriptEntry[] = [];
@@ -159,6 +199,7 @@ export function transcriptListRows(input: {
         const next = entries[index]!;
         if (isAskEntry(next)) asks.push(next);
         else if (isTaskEntry(next)) tasks.push(next);
+        else if (isCaptureEntry(next)) captures.push(next);
         else if (collapsible(next)) group.push(next);
         else break;
         index += 1;
@@ -249,6 +290,10 @@ function isReplyEntry(entry: RenderedTranscriptEntry): boolean {
 
 function isTaskEntry(entry: RenderedTranscriptEntry): entry is SubagentEntry {
   return entry.kind === "subagent" && entry.part.childKind === "task";
+}
+
+function isCaptureEntry(entry: RenderedTranscriptEntry): entry is CaptureEntry {
+  return entry.kind === "structured_event" && isMemoryCaptureEvent(entry.part);
 }
 
 /**

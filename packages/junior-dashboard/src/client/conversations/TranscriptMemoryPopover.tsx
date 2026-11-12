@@ -1,4 +1,6 @@
-import { Brain } from "lucide-react";
+import { BookmarkPlus, History } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { createContext, useContext } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -20,11 +22,27 @@ import {
   type MemoryAnchor,
 } from "./conversationMemory";
 import { MemoryLinkIcons } from "./MemoryIcons";
+import { chipClass } from "./TranscriptTasksLine";
+import type { TranscriptTurnFooter } from "./transcriptListRows";
 import { memoryRecallContent } from "./turnContext";
 
 function memoryCount(count: number): string {
   return `${count} ${count === 1 ? "memory" : "memories"}`;
 }
+
+// Recalled memories look back; captured ones are newly saved.
+const sourceIcons: Record<MemoryAnchor["source"], LucideIcon> = {
+  captured: BookmarkPlus,
+  recalled: History,
+};
+
+/**
+ * The prompts whose recalled memories show under the reply that ends their
+ * Turn, so the prompt does not show them too.
+ */
+export const RecalledOnReplyContext = createContext<
+  ReadonlySet<TranscriptViewMessage>
+>(new Set());
 
 /**
  * Open one transcript spot's memories in a popover, so the transcript keeps
@@ -93,6 +111,7 @@ export function TranscriptRecalledMemories(props: {
   message: TranscriptViewMessage;
 }) {
   const state = useConversationMemoryState();
+  const onReply = useContext(RecalledOnReplyContext).has(props.message);
   const anchors = [
     ...new Set(
       props.message.contexts
@@ -104,7 +123,7 @@ export function TranscriptRecalledMemories(props: {
     const memories = anchorMemories(state?.list, anchor);
     return memories.length > 0 ? [{ anchor, memories }] : [];
   });
-  if (!state || anchors.length === 0) return null;
+  if (onReply || !state || anchors.length === 0) return null;
   return (
     <div className={cn("flex flex-wrap gap-2", props.className)}>
       {anchors.map(({ anchor, memories }) => {
@@ -122,7 +141,7 @@ export function TranscriptRecalledMemories(props: {
                 size="bare"
                 variant="ghost"
               >
-                <Brain aria-hidden="true" size={13} strokeWidth={1.8} />
+                <History aria-hidden="true" size={13} strokeWidth={1.8} />
                 {label}
               </Button>
             }
@@ -173,5 +192,101 @@ export function TranscriptCapturedMemories(props: {
         </Button>
       }
     />
+  );
+}
+
+type TurnMemoryChip = {
+  anchor?: MemoryAnchor;
+  key: string;
+  label: string;
+  memories: ConversationMemory[];
+};
+
+/**
+ * List the memory chips of the reply that ends a Turn: what its prompt
+ * recalled, then what the Turn captured. Without memory state, such as in a
+ * nested transcript, a capture keeps its event title and opens nothing.
+ */
+export function useTurnMemoryChips(
+  footer: TranscriptTurnFooter,
+): TurnMemoryChip[] {
+  const state = useConversationMemoryState();
+  const recalled = [
+    ...new Set(
+      footer.prompt?.message.contexts
+        ?.filter((context) => memoryRecallContent(context))
+        .map((context) => context.turnId),
+    ),
+  ].flatMap((turnId): TurnMemoryChip[] => {
+    const anchor = { source: "recalled", turnId } as const;
+    const memories = anchorMemories(state?.list, anchor);
+    return memories.length > 0
+      ? [
+          {
+            anchor,
+            key: memoryAnchorKey(anchor),
+            label: `Recalled ${memoryCount(memories.length)}`,
+            memories,
+          },
+        ]
+      : [];
+  });
+  const captured = footer.captures.map((entry): TurnMemoryChip => {
+    const anchor = entry.part.turnId
+      ? ({ source: "captured", turnId: entry.part.turnId } as const)
+      : undefined;
+    const memories = anchor ? anchorMemories(state?.list, anchor) : [];
+    return state && anchor && memories.length > 0
+      ? {
+          anchor,
+          key: entry.key,
+          label: `Captured ${memoryCount(memories.length)}`,
+          memories,
+        }
+      : { key: entry.key, label: entry.part.presentation.title, memories: [] };
+  });
+  return [...recalled, ...captured];
+}
+
+/** Show a Turn's memory chips under its reply. A click opens the memories. */
+export function TranscriptTurnMemories(props: { chips: TurnMemoryChip[] }) {
+  const state = useConversationMemoryState();
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+      {props.chips.map((chip) => {
+        const Icon = sourceIcons[chip.anchor?.source ?? "captured"];
+        const content = (
+          <>
+            <Icon
+              aria-hidden="true"
+              className="size-3.5 shrink-0 text-dashboard-text-faint"
+              strokeWidth={2}
+            />
+            <span className="min-w-0 truncate">{chip.label}</span>
+          </>
+        );
+        if (!state || !chip.anchor) {
+          return (
+            <span className={cn(chipClass, "cursor-default")} key={chip.key}>
+              {content}
+            </span>
+          );
+        }
+        return (
+          <MemoryPopover
+            anchor={chip.anchor}
+            key={chip.key}
+            label={chip.label}
+            memories={chip.memories}
+            state={state}
+            trigger={
+              <Button className={chipClass} size="bare" variant="ghost">
+                {content}
+              </Button>
+            }
+          />
+        );
+      })}
+    </div>
   );
 }
