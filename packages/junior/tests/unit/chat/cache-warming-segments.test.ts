@@ -282,7 +282,7 @@ describe("cache warming gap segments", () => {
               })
             : undefined;
       if (pending === "child") await startChildAgent();
-      const segment = `system:1:none:${pending === "child" ? "child" : "watch"}`;
+      const segment = `system:1:none:${pending === "child" ? "child" : "automation"}`;
       try {
         await endTurn(false, id, context, "automation");
         scheduledWarmup();
