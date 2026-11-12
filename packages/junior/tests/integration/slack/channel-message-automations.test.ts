@@ -8,6 +8,7 @@ import { getConversationStore } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { getEventAutomation } from "@/chat/event-automations/store";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
+import { getConversationWorkState } from "@/chat/task-execution/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createWatchEventsTool } from "@/chat/tools/watch-events";
 import { juniorAutomations } from "@/db/schema/automations";
@@ -206,6 +207,28 @@ describe("Slack channel-message automations", () => {
     });
     expect(dispatch?.credentialSubject).toBeUndefined();
     expect(dispatch?.input).toContain("How do I connect the Jira integration?");
+
+    // A person's mention in the thread before the run replies joins the run.
+    const runConversationId = sent[0]!.conversationId;
+    await postChannelMessage({
+      text: `<@${SLACK_BOT_USER_ID}> any update?`,
+      threadTs: "1712345.0004",
+      ts: "1712345.0006",
+    });
+    expect(
+      queue.sentRecords().map((record) => record.conversationId),
+    ).not.toContain("slack:C123:1712345.0004");
+    const work = await getConversationWorkState({
+      conversationId: runConversationId,
+      state: getStateAdapter(),
+    });
+    expect(work?.execution.pendingMessages).toContainEqual(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          text: expect.stringContaining("any update?"),
+        }),
+      }),
+    );
 
     // Creator credentials cannot be turned on later.
     await execute(

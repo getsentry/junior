@@ -66,7 +66,7 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 - **Issue title format: plain language, no type prefix.** Do not use `fix(x):`, `feat(x):`, `chore:`, `ref(x):`, or any other type-scope prefix — those belong in commit messages and PR titles, not issues.
 - Summary ≤ 3 sentences. Do not restate the title in the body.
 - Prefer flat bullet lists over headed sections for simple issues. Remove empty sections.
-- Generalize session framing — strip channel references, slash commands, Slack thread IDs, user @mentions, and transcript fragments; replace with the underlying technical problem.
+- Generalize session framing — strip channel references, slash commands, Slack thread IDs, Slack user mentions, and transcript fragments; replace with the underlying technical problem.
 - Compress source material. Research notes, hypotheses, or transcripts become a short summary + scoped bullets — never paste raw investigation into the body.
 - Do not add desired outcome, expected behavior, acceptance criteria, fixes, implementation steps, approaches, or options unless the user explicitly asks to preserve a specific proposal.
 - Never infer a solution from research. If a user-provided proposal must be preserved, attribute it as a proposal and keep it separate from verified diagnosis.
@@ -75,7 +75,7 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 **Source attribution:**
 
 - The runtime adds the verified `Requested by` block. Do not add or rewrite requester attribution in model-authored body text.
-- If the person who originally reported or observed the problem differs from the issue creator, capture that with durable body text such as `Reported by Alice.` or `Raised by Alice during incident triage.`
+- If the person who originally reported or observed the problem differs from the issue creator, capture that with durable body text such as `Reported by @alice.` or `Raised by @alice during incident triage.` Use their GitHub `@login` so GitHub notifies them. Get it from `userLookup` (`linked_identities` with provider `github`, else a GitHub link in `profile_fields`). With no login, write the name. Never guess a login.
 - Attach screenshots from the thread when present. For GitHub Markdown, first publish each local image with `publishImage` (the image becomes public to anyone with the URL), then embed the returned URL in the issue body or comment. Do not use private Slack file links or conversation attachment URLs.
 - Include code snippets, related issues, and related PRs only when they materially improve the issue.
 
@@ -84,7 +84,7 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 Before running the `gh` create/edit command, check each gate. If any fails, revise and re-check before executing:
 
 - Title length ≤ 60 characters.
-- No session framing remains (channel refs, slash commands, @mentions, Slack thread IDs).
+- No session framing remains (channel refs, slash commands, Slack user mentions, Slack thread IDs).
 - Body structure matches complexity — no empty sections, no restated title, no raw research dump.
 - No invented or unattributed solution, implementation step, approach, or option appears in the title or body.
 
