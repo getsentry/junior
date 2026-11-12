@@ -928,3 +928,45 @@ test("an expanded question shows the message of the Turn that asked it", async (
   await expect(message.getByText("Roll out when ready.")).toBeInViewport();
   expect(reads).toBe(1);
 });
+
+test("comfortable rows show linked work as cards, and compact rows keep chips", async ({
+  dashboard,
+  page,
+}) => {
+  const density = async (value: "comfortable" | "compact") => {
+    await page.evaluate((next) => {
+      localStorage.setItem("junior:density", next);
+    }, value);
+    await page.reload();
+  };
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
+  await density("comfortable");
+  const release = page
+    .locator("[data-inbox-row]")
+    .filter({ hasText: "Package release and self-update" })
+    .first();
+  const work = release.getByRole("group", { name: "Linked work" });
+  // Newest first, each with its title and status.
+  await expect(work.getByRole("link")).toHaveText([
+    /Update Junior to 0\.288\.0.*getsentry\/junior#2201 · Draft/,
+    /Pin the release train to payments 4\.2.*getsentry\/payments#91 · Open/,
+    /Return 429 before parsing oversized envelopes.*getsentry\/relay#44 · Merged/,
+  ]);
+  await expect(
+    work.getByRole("link", { name: /Pin the release train/ }),
+  ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/91");
+  // Work saved without a title keeps its chip.
+  const qa = page
+    .locator("[data-inbox-row]")
+    .filter({ hasText: "Dashboard QA edge cases" })
+    .first();
+  await expect(qa.getByRole("group", { name: "Linked work" })).toBeAttached();
+  await expect(qa.getByRole("link", { name: /getsentry/ })).toHaveCount(0);
+  await expect(qa.getByLabel(/^Linked work, newest first/)).toBeAttached();
+
+  await density("compact");
+  await expect(release.getByRole("group", { name: "Linked work" })).toHaveCount(
+    0,
+  );
+  await expect(release.getByLabel(/^Linked work, newest first/)).toBeVisible();
+});

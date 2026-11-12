@@ -51,6 +51,10 @@ export function githubSidebarAnnotations(
                 status,
                 key: annotation.key,
                 label,
+                ...(annotation.kind === "object"
+                  ? { title: annotation.title }
+                  : {}),
+                ...(annotation.url ? { url: annotation.url } : {}),
               },
               updatedAt: annotation.updatedAt,
             },

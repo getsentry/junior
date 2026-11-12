@@ -449,8 +449,12 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     sidebarAnnotations: [
       {
         icon: "git-pull-request",
+        objectType: "code_change",
+        status: "open",
         key: "getsentry/payments#42",
         label: "payments",
+        title: "Retry checkout writes after lock timeouts",
+        url: "https://github.com/getsentry/payments/pull/42",
       },
     ],
     annotations: [
@@ -1436,18 +1440,30 @@ function longConversation(nowMs: number): ConversationDetailReport {
     sidebarAnnotations: [
       {
         icon: "circle-dashed",
+        objectType: "code_change",
+        status: "draft",
         key: "getsentry/junior#2201",
         label: "junior",
+        title: "Update Junior to 0.288.0",
+        url: "https://github.com/getsentry/junior/pull/2201",
       },
       {
         icon: "git-pull-request",
+        objectType: "code_change",
+        status: "open",
         key: "getsentry/payments#91",
         label: "payments",
+        title: "Pin the release train to payments 4.2",
+        url: "https://github.com/getsentry/payments/pull/91",
       },
       {
         icon: "git-merge",
+        objectType: "code_change",
+        status: "merged",
         key: "getsentry/relay#44",
         label: "relay",
+        title: "Return 429 before parsing oversized envelopes",
+        url: "https://github.com/getsentry/relay/pull/44",
       },
     ],
     annotations: [

@@ -60,7 +60,7 @@ export function ReviewItemTurnMessage(props: { item: ReviewItemPayload }) {
         Junior's message
       </span>
       <ClampedDisplayText
-        className="leading-6"
+        className="max-w-[80ch] leading-6"
         label="Junior's message"
         lines={6}
         text={text}

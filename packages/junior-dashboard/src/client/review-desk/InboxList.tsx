@@ -803,7 +803,7 @@ export function InboxList(props: {
       >
         <div
           className={cn(
-            "mx-auto w-full max-w-[56rem] pb-16",
+            "mx-auto w-full max-w-6xl pb-16",
             props.phone ? "px-2 pt-1" : "px-6 pt-3",
           )}
         >

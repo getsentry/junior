@@ -59,6 +59,7 @@ import { snoozeChoices, type SnoozeChoice } from "./inboxSnooze";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
+import { InboxLinkedWork } from "./InboxLinkedWork";
 import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
 
@@ -165,7 +166,7 @@ function RowItem(props: {
       <ReviewItemObjects conversationId={item.addedByConversationId}>
         {showBody ? (
           <ClampedDisplayText
-            className="leading-6"
+            className="max-w-[80ch] leading-6"
             label={item.title}
             lines={4}
             text={item.body}
@@ -405,6 +406,34 @@ function ConversationInboxRow(
   );
 }
 
+function RowSummary(props: {
+  comfortable: boolean;
+  expanded: boolean;
+  summary: NonNullable<ReturnType<typeof rowSummary>>;
+}) {
+  return (
+    <span className="flex min-w-0 items-start gap-1.5 text-xs leading-snug text-dashboard-text-muted">
+      {props.summary.status ? (
+        <span className="mt-px">
+          <BriefOutcomeMarker status={props.summary.status} />
+        </span>
+      ) : null}
+      <span
+        className={cn(
+          "min-w-0",
+          props.expanded
+            ? "line-clamp-none"
+            : props.comfortable
+              ? "line-clamp-3"
+              : "line-clamp-1",
+        )}
+      >
+        {props.summary.line}
+      </span>
+    </span>
+  );
+}
+
 function InboxRowBody(
   props: InboxRowProps & {
     linkProps?: { "aria-keyshortcuts"?: string; draggable?: boolean };
@@ -424,12 +453,17 @@ function InboxRowBody(
   const regionId = `inbox-row-${props.rowKey}`;
   const pinned = Boolean(conversation?.pinnedAt);
   const running = conversation?.status === "active";
-  const hasChips = pills.length > 0 || annotations.length > 0;
+  // Comfortable rows show linked work as cards in their own strip.
+  const cards = comfortable && annotations.length > 0;
+  const hasChips = pills.length > 0 || (!cards && annotations.length > 0);
+  // A comfortable row with a summary reads in two columns on wider screens:
+  // the title and people, then the summary beside them.
+  const columns = comfortable && summary !== undefined;
   return (
     <>
       <div
         className={cn(
-          "relative rounded-xl",
+          "relative rounded-xl [--inbox-lead:16rem]",
           props.selected && "bg-dashboard-fill-soft",
           props.expanded && "rounded-b-none",
         )}
@@ -447,10 +481,12 @@ function InboxRowBody(
           aria-expanded={props.expanded}
           className={cn(
             "grid min-w-0 grid-cols-[0.5rem_minmax(0,1fr)_auto] items-start gap-x-2.5 rounded-xl px-3 pt-2.5 font-sans text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+            columns &&
+              "gap-y-1 sm:grid-cols-[0.5rem_var(--inbox-lead)_minmax(0,1fr)_auto]",
             // A long press opens the row menu or drags a pin, not the iOS
             // link callout.
             "[-webkit-touch-callout:none]",
-            hasChips ? "pb-1" : "pb-2.5",
+            hasChips || cards ? "pb-1" : "pb-2.5",
           )}
           // A plain click or Enter expands the row in place. A modified click
           // keeps the link, so Ctrl/⌘-click opens a new tab.
@@ -471,7 +507,8 @@ function InboxRowBody(
           <span
             aria-label={waiting ? "Waiting on you" : undefined}
             className={cn(
-              "mt-[0.45rem] size-2 rounded-full",
+              "col-start-1 row-start-1 mt-[0.45rem] size-2 rounded-full",
+              comfortable && "mt-[0.55rem]",
               waiting
                 ? "bg-dashboard-accent"
                 : openItems.length > 0
@@ -480,8 +517,13 @@ function InboxRowBody(
             )}
             role={waiting ? "img" : undefined}
           />
-          <span className="grid min-w-0 gap-1">
-            <span className="min-w-0 truncate text-sm font-medium leading-snug text-dashboard-text">
+          <span className="col-start-2 row-start-1 grid min-w-0 gap-1">
+            <span
+              className={cn(
+                "min-w-0 truncate font-medium leading-snug text-dashboard-text",
+                comfortable ? "text-base" : "text-sm",
+              )}
+            >
               {props.itemTitle ?? props.title}
             </span>
             {props.itemTitle ? (
@@ -490,34 +532,30 @@ function InboxRowBody(
                   {props.itemSubtitle}
                 </span>
               ) : null
-            ) : summary ? (
-              <span className="flex min-w-0 items-start gap-1.5 text-xs leading-snug text-dashboard-text-muted">
-                {summary.status ? (
-                  <span className="mt-px">
-                    <BriefOutcomeMarker status={summary.status} />
-                  </span>
-                ) : null}
-                <span
-                  className={cn(
-                    "min-w-0",
-                    props.expanded
-                      ? "line-clamp-none"
-                      : comfortable
-                        ? "line-clamp-2"
-                        : "line-clamp-1",
-                  )}
-                >
-                  {summary.line}
-                </span>
-              </span>
+            ) : summary && !columns ? (
+              <RowSummary
+                comfortable={comfortable}
+                expanded={props.expanded}
+                summary={summary}
+              />
             ) : null}
             {comfortable && conversation ? (
               <ConversationCast conversation={conversation} />
             ) : null}
           </span>
+          {columns ? (
+            <span className="col-start-2 row-start-2 min-w-0 sm:col-start-3 sm:row-start-1 sm:pt-0.5">
+              <RowSummary
+                comfortable
+                expanded={props.expanded}
+                summary={summary}
+              />
+            </span>
+          ) : null}
           <span
             className={cn(
-              "flex items-center gap-1 pt-0.5 text-xs tabular-nums text-dashboard-text-faint",
+              "col-start-3 row-start-1 flex items-center gap-1 pt-0.5 text-xs tabular-nums text-dashboard-text-faint",
+              columns && "sm:col-start-4",
               // The row actions take the meta's place on hover or focus.
               conversation &&
                 "sm:group-hover:invisible sm:group-focus-within:invisible",
@@ -563,8 +601,20 @@ function InboxRowBody(
                   +{pills.length - 3}
                 </span>
               ) : null}
-              <ConversationSidebarAnnotations annotations={annotations} />
+              {cards ? null : (
+                <ConversationSidebarAnnotations annotations={annotations} />
+              )}
             </span>
+          </div>
+        ) : null}
+        {cards ? (
+          <div
+            className={cn(
+              "min-w-0 pr-2 pb-2.5 pl-[1.875rem]",
+              columns && "sm:pl-[calc(1.875rem+var(--inbox-lead)+0.625rem)]",
+            )}
+          >
+            <InboxLinkedWork annotations={annotations} />
           </div>
         ) : null}
       </div>
