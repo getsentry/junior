@@ -3,7 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import { recordStartedConversationParticipants } from "@/chat/conversations/sql/participants";
-import { clearCachedEmail, clearCachedUser } from "./user-cache";
+import { clearCachedUser } from "./user-cache";
 import {
   GOOGLE_IDENTITY_PROVIDER,
   normalizeIdentityEmail,
@@ -189,7 +189,6 @@ async function upsertIdentityRecord(
   for (const changedUserId of new Set([existing?.userId, row.userId])) {
     if (changedUserId) await clearCachedUser(changedUserId);
   }
-  if (userEmailNormalized) await clearCachedEmail(userEmailNormalized);
   // Check every write that may have set the User, not only a known existing
   // row: a concurrent first write can create the Identity and its roots
   // between the read above and this upsert.

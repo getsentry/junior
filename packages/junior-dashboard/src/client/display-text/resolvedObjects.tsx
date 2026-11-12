@@ -60,19 +60,31 @@ async function fetchObjects(urls: readonly string[]) {
  */
 export function MessageObjectsProvider(props: { children: ReactNode }) {
   const urls = useRef(new Set<string>());
+  const asked = useRef(false);
   const [requested, setRequested] = useState<readonly string[]>();
-  const register = useCallback((url: string) => {
-    urls.current.add(url);
-  }, []);
-  // A streamed message can add links after the first request. Ask again
-  // with every link, and keep the cards of the last answer meanwhile.
-  const request = useCallback(() => {
+  // The set only grows, so an equal size means the same links.
+  const update = useCallback(() => {
     setRequested((current) =>
       current?.length === urls.current.size
         ? current
         : [...urls.current].sort(),
     );
   }, []);
+  // A link can register after the first request: a streamed message adds
+  // links, and a link can show before its effect runs. Ask again with every
+  // link, and keep the cards of the last answer meanwhile.
+  const register = useCallback(
+    (url: string) => {
+      if (urls.current.has(url)) return;
+      urls.current.add(url);
+      if (asked.current) update();
+    },
+    [update],
+  );
+  const request = useCallback(() => {
+    asked.current = true;
+    update();
+  }, [update]);
   const value = useMemo(
     () => ({ register, request, requested }),
     [register, request, requested],

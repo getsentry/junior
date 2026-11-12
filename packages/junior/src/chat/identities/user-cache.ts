@@ -7,7 +7,7 @@
  * `clearCachedUser`. The other columns of a User, such as the timezone or
  * the customization, are not in the cache.
  */
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { and, asc, eq } from "drizzle-orm";
 import * as z from "zod";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -163,6 +163,7 @@ async function readCachedUser(
 /**
  * Read one User and their user Identities by normalized primary email. A
  * primary email never changes, so the email to User id entry stays valid.
+ * A missing User is not cached: a first sign-in can create it at any time.
  */
 export async function readCachedUserByEmail(
   db: JuniorDatabase,
@@ -177,14 +178,14 @@ export async function readCachedUserByEmail(
         .where(eq(juniorUsers.primaryEmailNormalized, normalizedEmail))
         .limit(1);
       const id = rows[0]?.id ?? null;
-      return { value: id, ttlMs: id ? USER_TTL_MS : MISSING_TTL_MS };
+      return id ? { value: id, ttlMs: USER_TTL_MS } : { value: null };
     },
   );
   return userId ? await readCachedUser(db, userId) : undefined;
 }
 
 function emailKey(normalizedEmail: string): string {
-  return `email:${createHash("sha256").update(normalizedEmail).digest("hex")}`;
+  return `email:${normalizedEmail}`;
 }
 
 /** Clear the cached User after a write to their row or user Identities. */
@@ -193,12 +194,5 @@ export async function clearCachedUser(userId: string): Promise<void> {
     versionKey(userId),
     { token: randomUUID(), writtenAtMs: Date.now() },
     2 * USER_TTL_MS,
-  );
-}
-
-/** Clear a cached missing User after a write creates a User with the email. */
-export async function clearCachedEmail(normalizedEmail: string): Promise<void> {
-  await getStateAdapter().delete(
-    `junior:cache:${CACHE_NAMESPACE}:${emailKey(normalizedEmail)}`,
   );
 }

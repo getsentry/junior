@@ -12,7 +12,6 @@ import { findActorIdentityId } from "@/chat/identities/actor";
 import { readUserAvatarUrls } from "@/chat/identities/avatar";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import {
-  clearCachedEmail,
   clearCachedUser,
   readCachedUserByEmail,
 } from "@/chat/identities/user-cache";
@@ -110,7 +109,6 @@ export async function resolveViewerUserFromSql(
     })
     .onConflictDoNothing({ target: juniorUsers.primaryEmailNormalized })
     .returning();
-  await clearCachedEmail(normalizedEmail);
   const userRow =
     rows[0] ??
     (
