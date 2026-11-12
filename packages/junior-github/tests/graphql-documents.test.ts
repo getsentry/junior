@@ -1,22 +1,11 @@
-import { validate } from "@octokit/graphql-schema";
 import { parse, print } from "@0no-co/graphql.web";
 import { describe, expect, it } from "vitest";
-import * as documents from "../src/graphql-documents.js";
-
-const { pullRequestLifecycles, ...operations } = documents;
+import { pullRequestLifecycles } from "../src/graphql-documents.js";
 
 describe("GitHub GraphQL documents", () => {
-  it.each(Object.entries(operations))(
-    "%s is valid against GitHub's schema",
-    (_, operation) => {
-      expect(validate(operation.query).map(String)).toEqual([]);
-    },
-  );
-
   it("repeats one aliased pull request field for each lifecycle", () => {
     const { operationName, query } = pullRequestLifecycles(2);
 
-    expect(validate(query).map(String)).toEqual([]);
     expect(operationName).toBe("PullRequestLifecycles");
     expect(query).toBe(
       print(

@@ -61,6 +61,7 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
     "@ast-grep/cli": "^0.43.0",
+    "@octokit/graphql-schema": "^15.26.1",
     "@oxlint/plugins": "1.79.0",
     "@playwright/test": "^1.60.0",
     "@primer/octicons": "19.21.1",

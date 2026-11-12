@@ -45,7 +45,6 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@octokit/graphql-schema": "^15.26.1",
     "@oxlint/plugins": "1.79.0",
     "@sentry/junior-testing": "workspace:*",
     "@types/node": "^25.9.1",

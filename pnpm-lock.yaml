@@ -63,6 +63,9 @@ importers:
       '@ast-grep/cli':
         specifier: ^0.43.0
         version: 0.43.0
+      '@octokit/graphql-schema':
+        specifier: ^15.26.1
+        version: 15.26.1
       '@oxlint/plugins':
         specifier: 1.79.0
         version: 1.79.0
@@ -629,9 +632,6 @@ importers:
         specifier: 'catalog:'
         version: 4.5.4
     devDependencies:
-      '@octokit/graphql-schema':
-        specifier: ^15.26.1
-        version: 15.26.1
       '@oxlint/plugins':
         specifier: 1.79.0
         version: 1.79.0

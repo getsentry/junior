@@ -1,10 +1,9 @@
 /**
  * The GitHub GraphQL documents that the plugin sends.
  *
- * Each document is parsed when this module loads, so a syntax error fails at
- * import. `tests/graphql-documents.test.ts` validates every export against
- * GitHub's public schema. Put each new document here, so that test covers it.
- * Response shapes stay with the zod schema at each call site.
+ * The `junior/github-graphql-schema` lint rule validates each
+ * `githubGraphql(...)` document against GitHub's public schema. Response
+ * shapes stay with the zod schema at each call site.
  */
 import {
   Kind,
@@ -130,7 +129,7 @@ export const OPEN_PULL_REQUEST_MERGEABILITY = githubGraphql(`
 
 // The lifecycle query for one pull request. `pullRequestLifecycles` repeats
 // its `pullRequest` field and `$number` variable for each pull request.
-const PULL_REQUEST_LIFECYCLE = parse(`
+const PULL_REQUEST_LIFECYCLE = githubGraphql(`
   query PullRequestLifecycles($owner: String!, $name: String!, $number: Int!) {
     repository(owner: $owner, name: $name) {
       databaseId
@@ -167,7 +166,7 @@ export function pullRequestLifecycles(count: number): GitHubGraphqlOperation {
     name: { kind: Kind.NAME, value: `n${index}` },
   });
   return operation(
-    visit(PULL_REQUEST_LIFECYCLE, {
+    visit(parse(PULL_REQUEST_LIFECYCLE.query), {
       OperationDefinition: (node) => ({
         ...node,
         variableDefinitions: node.variableDefinitions?.flatMap((definition) =>
