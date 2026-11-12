@@ -1,13 +1,14 @@
 /**
  * GitHub check suite events.
  */
-import type { EventInput } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import type { EventInput, PluginLogger } from "@sentry/junior-plugin-api";
+import * as z from "zod";
 import {
   githubRequest,
   isRecord,
   issueInstallationToken,
 } from "../credential-support.js";
+import type { GitHubStatusIncident } from "../github-status.js";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
 import { gitHubRepositoryResource } from "../events/repository.js";
 import {
@@ -19,6 +20,7 @@ import {
   gitHubEventKey,
   pullRequestTargets,
 } from "./event-targets.js";
+import { logFailOpenFailure } from "./fail-open-log.js";
 
 /** Match keys that need a pull request API load on check suite events. */
 const CHECK_SUITE_PULL_REQUEST_MATCH_KEYS = new Set([
@@ -157,6 +159,8 @@ export type GitHubCheckSuitePullRequestFacts = {
 /** Optional values for one check suite event. */
 export type GitHubCheckSuiteFacts = {
   failingChecks?: GitHubFailingCheck[];
+  /** Open or recent githubstatus.com incidents when the suite failed. */
+  githubIncidents?: GitHubStatusIncident[];
   /** Pull request values by number when a match filter needs them. */
   pullRequestFactsByNumber?: Record<number, GitHubCheckSuitePullRequestFacts>;
 };
@@ -233,6 +237,7 @@ export function buildCheckSuiteEvent(args: {
   deliveryId: string;
   eventType: "pull_request.checks.failed" | "pull_request.checks.recovered";
   failingChecks?: GitHubFailingCheck[];
+  githubIncidents?: GitHubStatusIncident[];
   headBranch?: string;
   headSha?: string;
   isDraft?: boolean;
@@ -254,9 +259,17 @@ export function buildCheckSuiteEvent(args: {
   const failingChecks = (args.failingChecks ?? []).slice(0, 12);
   const failingCount = failingChecks.length;
   const branchSuffix = args.headBranch ? ` on ${args.headBranch}` : "";
+  const incidents =
+    args.eventType === "pull_request.checks.failed"
+      ? (args.githubIncidents ?? [])
+      : [];
+  const incidentSuffix =
+    incidents.length > 0
+      ? ` githubstatus.com lists ${incidents.length} open or recent GitHub incident${incidents.length === 1 ? "" : "s"}.`
+      : "";
   const trustedSummary =
     args.eventType === "pull_request.checks.failed"
-      ? `${resource.label} checks failed${failingCount > 0 ? ` (${failingCount})` : ""}${shortSha ? ` for ${shortSha}` : ""}${branchSuffix}.`
+      ? `${resource.label} checks failed${failingCount > 0 ? ` (${failingCount})` : ""}${shortSha ? ` for ${shortSha}` : ""}${branchSuffix}.${incidentSuffix}`
       : `${resource.label} check suite recovered${shortSha ? ` for ${shortSha}` : ""}${branchSuffix}.`;
 
   const data = checkSuiteEventDataSchema.parse(
@@ -302,12 +315,28 @@ export function buildCheckSuiteEvent(args: {
           })
           .filter((part): part is string => part !== undefined)
       : [];
+  const untrustedSections = [
+    ...(untrustedParts.length > 0
+      ? [
+          [`Failed checks:`, ...untrustedParts.map((part) => `- ${part}`)].join(
+            "\n",
+          ),
+        ]
+      : []),
+    ...(incidents.length > 0
+      ? [
+          [
+            "GitHub status incidents:",
+            ...incidents.map(
+              (incident) =>
+                `- ${oneLineLabel(incident.name, 160)} (${incident.status}; ${incident.components.join(", ") || "no components"}; started ${incident.startedAt}${incident.resolvedAt ? `, resolved ${incident.resolvedAt}` : ""}): ${incident.url}`,
+            ),
+          ].join("\n"),
+        ]
+      : []),
+  ];
   const untrustedText =
-    untrustedParts.length > 0
-      ? [`Failed checks:`, ...untrustedParts.map((part) => `- ${part}`)].join(
-          "\n",
-        )
-      : undefined;
+    untrustedSections.length > 0 ? untrustedSections.join("\n\n") : undefined;
 
   return {
     eventKey: gitHubEventKey(
@@ -401,6 +430,10 @@ export function normalizeCheckSuiteEvents(
     failingChecks:
       eventType === "pull_request.checks.failed"
         ? options?.failingChecks
+        : undefined,
+    githubIncidents:
+      eventType === "pull_request.checks.failed"
+        ? options?.githubIncidents
         : undefined,
     headSha,
     latestCheckRunsCount:
@@ -601,8 +634,10 @@ export async function loadCheckSuiteFacts(args: {
   appIdEnv: string;
   body: unknown;
   installationIdEnv: string;
+  /** Open or recent githubstatus.com incidents, shared through a cache. */
+  loadGitHubIncidents?(): Promise<GitHubStatusIncident[]>;
   loadPullRequestFacts?: boolean;
-  log?: { error(message: string, metadata?: Record<string, unknown>): void };
+  log?: Pick<PluginLogger, "error" | "warn">;
   privateKeyEnv: string;
 }): Promise<GitHubCheckSuiteFacts | undefined> {
   const target = parseCheckSuiteFactsTarget(args.body, {
@@ -632,11 +667,20 @@ export async function loadCheckSuiteFacts(args: {
       });
       if (failing.length > 0) facts.failingChecks = failing;
     } catch (error) {
-      args.log?.error("GitHub check suite load failed", {
+      logFailOpenFailure(args.log, "GitHub check suite load failed", error, {
         checkSuiteId: target.checkSuiteId,
-        errorType: error instanceof Error ? error.name : "UnknownError",
         repository: `${target.owner}/${target.repoName}`,
       });
+    }
+  }
+
+  if (target.loadFailingChecks && args.loadGitHubIncidents) {
+    // Fail open: a status page outage must not block the check event.
+    try {
+      const incidents = await args.loadGitHubIncidents();
+      if (incidents.length > 0) facts.githubIncidents = incidents;
+    } catch (error) {
+      logFailOpenFailure(args.log, "GitHub status load failed", error, {});
     }
   }
 
@@ -662,11 +706,15 @@ export async function loadCheckSuiteFacts(args: {
           } catch (error) {
             // 404 is expected when the suite lists a stale PR number.
             if (!isGitHubNotFoundError(error)) {
-              args.log?.error("GitHub pull request data load failed", {
-                errorType: error instanceof Error ? error.name : "UnknownError",
-                pullRequest: number,
-                repository: `${target.owner}/${target.repoName}`,
-              });
+              logFailOpenFailure(
+                args.log,
+                "GitHub pull request data load failed",
+                error,
+                {
+                  pullRequest: number,
+                  repository: `${target.owner}/${target.repoName}`,
+                },
+              );
             }
             return undefined;
           }
@@ -684,11 +732,15 @@ export async function loadCheckSuiteFacts(args: {
         facts.pullRequestFactsByNumber = pullRequestFactsByNumber;
       }
     } catch (error) {
-      args.log?.error("GitHub check suite pull request data load failed", {
-        checkSuiteId: target.checkSuiteId,
-        errorType: error instanceof Error ? error.name : "UnknownError",
-        repository: `${target.owner}/${target.repoName}`,
-      });
+      logFailOpenFailure(
+        args.log,
+        "GitHub check suite pull request data load failed",
+        error,
+        {
+          checkSuiteId: target.checkSuiteId,
+          repository: `${target.owner}/${target.repoName}`,
+        },
+      );
     }
   }
 

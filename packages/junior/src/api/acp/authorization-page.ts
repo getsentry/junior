@@ -50,7 +50,7 @@ function renderResult(
     },
   }[result];
   return renderHtmlPage({
-    bodyHtml: `      <p style="margin:0;color:#b8b8b8;line-height:1.5">${escapeHtml(content.message)}</p>`,
+    bodyHtml: `    <p>${escapeHtml(content.message)}</p>`,
     headers: ACP_PAGE_HEADERS,
     status: content.status,
     title: content.title,
@@ -59,11 +59,12 @@ function renderResult(
 
 function renderConfirmation(agentName: string): Response {
   return renderHtmlPage({
-    bodyHtml: `      <p style="margin:0 0 1rem;color:#b8b8b8;line-height:1.5">Only continue if you started sign-in from your ACP client. Enter the verification code shown by the client.</p>
-      <form method="post">
-        <label style="display:block;margin:0 0 1rem">Verification code<br><input name="code" required autocomplete="one-time-code" inputmode="text" style="box-sizing:border-box;margin-top:.5rem;padding:.625rem;width:100%"></label>
-        <button type="submit" style="border:0;border-radius:.375rem;background:#a78bfa;color:#000;cursor:pointer;font:inherit;font-weight:700;padding:.625rem 1rem">Connect</button>
-      </form>`,
+    bodyHtml: `    <p>Enter the verification code shown by your ACP client.</p>
+    <p class="warning" role="note">Only continue if you started sign-in from your ACP client.</p>
+    <form method="post">
+      <label>Verification code<input name="code" required autocomplete="one-time-code" inputmode="text"></label>
+      <button type="submit" class="primary">Connect</button>
+    </form>`,
     headers: ACP_PAGE_HEADERS,
     status: 200,
     title: `Connect ${agentName}`,

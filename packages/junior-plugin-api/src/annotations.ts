@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { PluginContext } from "./context";
 import { objectAnnotationSchema } from "./object-annotations";
 import { objectTypeSchema } from "./object-presentation";

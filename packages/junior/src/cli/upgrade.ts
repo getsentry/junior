@@ -8,6 +8,7 @@ import { getChatConfig } from "@/chat/config";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createJiti } from "jiti";
 import { loadAppPluginSet } from "@/plugin-module";
+import { readMigrationDatabaseUrl } from "./upgrade/database-url";
 import { migratePluginsToSql } from "./upgrade/migrations/plugin-sql";
 import type {
   MigrationSummary,
@@ -105,8 +106,9 @@ export async function runUpgrade(
 ): Promise<void> {
   const { sql } = getChatConfig();
   const sqlExecutor: JuniorSqlExecutor = createJuniorSqlExecutor({
-    connectionString: sql.databaseUrl,
+    connectionString: readMigrationDatabaseUrl(sql.databaseUrl),
     driver: sql.driver,
+    onInfo: (message) => io.info(`    ${message}`),
     statementTimeoutMs: false,
   });
   try {

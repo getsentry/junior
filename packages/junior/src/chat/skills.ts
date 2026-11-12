@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { z } from "zod";
+import * as z from "zod";
 import { parse as parseYaml } from "yaml";
 import { skillRoots } from "@/chat/discovery";
 import { logWarn } from "@/chat/logging";
@@ -429,7 +429,10 @@ function isCommonEnvironmentVariable(name: string): boolean {
   ].includes(name.toUpperCase());
 }
 
-/** Extract an explicit skill invocation from a user message. */
+/**
+ * Extract an explicit skill invocation from a user message. `$name` is the
+ * canonical form; `/name` still works for older messages and automations.
+ */
 export function parseSkillInvocation(
   messageText: string,
   availableSkills: SkillMetadata[],
@@ -437,17 +440,10 @@ export function parseSkillInvocation(
   const trimmed = messageText.trim();
   const escapePattern = (value: string) =>
     value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const slashMatch = /(?:^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)/i.exec(trimmed);
-  if (slashMatch?.[1]) {
-    const skillName = slashMatch[1].toLowerCase();
-    if (!availableSkills.some((skill) => skill.name === skillName)) {
-      return null;
-    }
-
-    return { skillName };
-  }
-
-  const dollarPattern = /(?:^|\s)\$([a-z0-9]+(?:-[a-z0-9]+)*)/gi;
+  // Any non-word character can come before `$`, so `$name` also matches
+  // after a tag, such as `<instructions>$name` in an Automation run, or in
+  // Slack code. A word before it, such as `US$5`, is not a reference.
+  const dollarPattern = /(?<![\w$])\$([a-z0-9]+(?:-[a-z0-9]+)*)/gi;
   for (const match of trimmed.matchAll(dollarPattern)) {
     const skillName = match[1]?.toLowerCase();
     if (!skillName) {
@@ -457,6 +453,18 @@ export function parseSkillInvocation(
       continue;
     }
     if (availableSkills.some((skill) => skill.name === skillName)) {
+      return { skillName };
+    }
+  }
+
+  // A path such as `/tmp` or `/brief/notes.md` is not a skill reference.
+  const slashPattern = /(?:^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)(?![a-z0-9/-])/gi;
+  for (const match of trimmed.matchAll(slashPattern)) {
+    const skillName = match[1]?.toLowerCase();
+    if (
+      skillName &&
+      availableSkills.some((skill) => skill.name === skillName)
+    ) {
       return { skillName };
     }
   }

@@ -13,6 +13,10 @@
     {
       "name": "anti-slop",
       "specifier": "../../tools/oxlint/anti-slop/index.ts"
+    },
+    {
+      "name": "junior",
+      "specifier": "../../tools/oxlint/junior/index.ts"
     }
   ],
   "ignorePatterns": [
@@ -28,7 +32,8 @@
     ".pi/**",
     ".roo/**",
     ".windsurf/**",
-    "tools/oxlint/anti-slop/**"
+    "tools/oxlint/anti-slop/**",
+    "tools/oxlint/junior/**"
   ],
   "rules": {
     "no-restricted-imports": [
@@ -70,12 +75,27 @@
     "anti-slop/no-unknown-parameters": "off",
     "anti-slop/no-unknown-returns": "off",
     "anti-slop/no-unsafe-dictionary-type": "off",
-    "anti-slop/require-safety-comment-for-type-assertion": "off"
+    "anti-slop/require-safety-comment-for-type-assertion": "off",
+    "junior/zod-namespace-import": "error"
   },
   "overrides": [
     {
+      "files": ["src/**/*.ts"],
+      "rules": {
+        "junior/touch-conversation-detail": "error"
+      }
+    },
+    {
+      "files": ["src/**/*.ts", "**/src/**/*.ts"],
+      "rules": {
+        "junior/no-raw-sql-queries": "error"
+      }
+    },
+    {
       "files": ["**/junior-github/src/**/*.ts"],
       "rules": {
+        "junior/github-graphql-schema": "error",
+        "junior/use-github-api": "error",
         "no-restricted-imports": [
           "error",
           {
@@ -83,7 +103,7 @@
               {
                 "group": ["**/credential-support.js"],
                 "importNames": ["githubRequest", "issueInstallationToken"],
-                "message": "Read and write GitHub through host egress (ctx.egress.fetch), so egress policy, grant selection, the shared credential lease, and egress audit logs apply. Only webhook handling in src/webhooks/ may call GitHub directly."
+                "message": "Read and write GitHub through host egress with githubApi, so egress policy, grant selection, the shared credential lease, and egress audit logs apply. Only webhook handling in src/webhooks/ may call GitHub directly."
               }
             ]
           }
@@ -92,7 +112,7 @@
           "error",
           {
             "name": "fetch",
-            "message": "Read and write GitHub through host egress (ctx.egress.fetch), so egress policy, grant selection, the shared credential lease, and egress audit logs apply. Only src/credential-support.ts may call fetch."
+            "message": "Read and write GitHub through host egress with githubApi, so egress policy, grant selection, the shared credential lease, and egress audit logs apply. Only src/credential-support.ts may call fetch."
           }
         ],
         "no-restricted-properties": [
@@ -100,7 +120,7 @@
           {
             "object": "globalThis",
             "property": "fetch",
-            "message": "Read and write GitHub through host egress (ctx.egress.fetch), so egress policy, grant selection, the shared credential lease, and egress audit logs apply. Only src/credential-support.ts may call fetch."
+            "message": "Read and write GitHub through host egress with githubApi, so egress policy, grant selection, the shared credential lease, and egress audit logs apply. Only src/credential-support.ts may call fetch."
           }
         ]
       }
@@ -108,12 +128,20 @@
     {
       "files": [
         "**/junior-github/src/credential-support.ts",
+        "**/junior-github/src/default-branch.ts",
+        "**/junior-github/src/github-status.ts",
         "**/junior-github/src/webhooks/**/*.ts"
       ],
       "rules": {
         "no-restricted-imports": "off",
         "no-restricted-globals": "off",
         "no-restricted-properties": "off"
+      }
+    },
+    {
+      "files": ["**/junior-github/src/tool-support/github-api.ts"],
+      "rules": {
+        "junior/use-github-api": "off"
       }
     },
     {
@@ -148,7 +176,6 @@
         "tests/component/runtime/agent-run-agent-continue.test.ts",
         "tests/component/runtime/agent-run-error-path.test.ts",
         "tests/component/runtime/agent-run-mcp-progressive-loading.test.ts",
-        "tests/component/runtime/agent-run-model-handoff-fixture.ts",
         "tests/component/runtime/agent-run-provider-retry.test.ts",
         "tests/component/runtime/agent-run-sandbox.test.ts",
         "tests/component/runtime/agent-run-tool-timeout-continuation.test.ts",

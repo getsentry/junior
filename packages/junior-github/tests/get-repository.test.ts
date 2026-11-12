@@ -30,13 +30,13 @@ describe("getRepository", () => {
         { toolCallId: "get-repository" },
       ),
     ).resolves.toMatchObject({
-      defaultBranch: "main",
-      fullName: "GetSentry/Junior",
+      default_branch: "main",
+      full_name: "GetSentry/Junior",
       subscribable: {
         identifier: "getsentry/junior",
         label: "GitHub repository GetSentry/Junior",
         namespace: "github",
-        suggestedEvents: [
+        suggested_events: [
           "issue.opened",
           "pull_request.opened",
           "issue.comment.created",
@@ -52,7 +52,7 @@ describe("getRepository", () => {
           "pull_request.closed_unmerged",
           "pull_request.merge_conflict",
         ],
-        supportedEvents: [
+        supported_events: [
           "deployment.created",
           "deployment.queued",
           "deployment.pending",
@@ -64,6 +64,7 @@ describe("getRepository", () => {
           "issue.opened",
           "issue.closed",
           "issue.reopened",
+          "issue.updated",
           "pull_request.checks.failed",
           "pull_request.checks.recovered",
           "pull_request.comment.created",

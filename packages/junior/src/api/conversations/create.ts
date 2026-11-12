@@ -5,7 +5,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import type { WebActor } from "@/chat/actor";
 import {
   acceptsWebMessages,
-  webActorFromEmail,
+  webActorFromUser,
   appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
 } from "@/chat/conversations/web-input";
@@ -23,7 +23,10 @@ import type {
   CreateConversationBody,
   CreateConversationMessageBody,
 } from "../schema/conversation";
-import { readConversationAccessFromSql } from "./access";
+import {
+  canAddConversationMessages,
+  readConversationAccessFromSql,
+} from "./access";
 
 /** Turn image validation failures into request errors before accepting work. */
 function parseImages(images: InputImage[] | undefined) {
@@ -39,8 +42,7 @@ function parseImages(images: InputImage[] | undefined) {
 
 function actorFromViewer(viewer: User): WebActor {
   const normalized = viewer.email.trim().toLowerCase();
-  return webActorFromEmail(normalized, {
-    ...(viewer.displayName ? { fullName: viewer.displayName } : undefined),
+  return webActorFromUser(viewer, {
     userName: normalized.split("@")[0] || normalized,
   });
 }
@@ -65,6 +67,7 @@ export async function createConversationForViewer(
         idempotencyKey: body.idempotencyKey,
         message: body.message,
         images,
+        ...(body.title ? { title: body.title } : undefined),
         ...(body.visibility ? { visibility: body.visibility } : undefined),
       },
       {
@@ -91,7 +94,7 @@ export async function appendConversationMessageForViewer(
   if (!conversation) {
     throwApiError(404, "Conversation not found.");
   }
-  if (!acceptsWebMessages(conversationId, conversation.destination)) {
+  if (!acceptsWebMessages(conversation)) {
     throwApiError(409, "Conversation does not accept web messages.");
   }
 
@@ -100,8 +103,11 @@ export async function appendConversationMessageForViewer(
     [conversationId],
     viewer,
   );
-  if (!access.get(conversationId)?.isParticipant) {
-    throwApiError(403, "Only conversation participants can add messages.");
+  if (!canAddConversationMessages(access.get(conversationId))) {
+    throwApiError(
+      403,
+      "Only participants can add messages to a private conversation.",
+    );
   }
 
   const images = parseImages(body.images);

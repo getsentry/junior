@@ -8,7 +8,7 @@ import {
   type EventData,
   type EventMatch,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { updateTimerIndex } from "@/chat/events/timer-index";

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import {
   findOwnedWatch,
   listOwnedWatches,
@@ -13,7 +13,7 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 const resultDataSchema = z
   .object({
     watching_status: z.literal("stopped"),
-    stoppedIds: z.array(z.string().min(1)),
+    stopped_ids: z.array(z.string().min(1)),
   })
   .strict();
 
@@ -81,7 +81,7 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
       }
       const details = {
         watching_status: "stopped" as const,
-        stoppedIds,
+        stopped_ids: stoppedIds,
       };
       return {
         ...details,

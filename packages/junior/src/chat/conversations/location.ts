@@ -1,5 +1,5 @@
 import { locationSchema } from "@sentry/junior-plugin-api";
-import type { z } from "zod";
+import type * as z from "zod";
 
 export { locationSchema };
 

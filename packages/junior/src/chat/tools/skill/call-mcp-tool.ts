@@ -3,7 +3,7 @@ import { setSpanAttributes } from "@/chat/logging";
 import { McpToolError } from "@/chat/mcp/errors";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
 import { parseMcpProviderFromToolName } from "@/chat/mcp/tool-name";
-import { z } from "zod";
+import * as z from "zod";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
@@ -107,6 +107,11 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
       };
     },
     outputSchema: z.object({
+      result: z
+        .unknown()
+        .describe(
+          "The MCP tool's structured content, or its text content when it has none.",
+        ),
       objectCards: z.array(ownedObjectAnnotationSchema),
     }),
     execute: async (input, options) => {
@@ -149,9 +154,19 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
             : undefined),
         },
       );
+      // Scripts get `details`, so it carries the MCP result. The result is
+      // nested, so provider data cannot set fields that the runtime reads,
+      // such as `objectCards`.
       return {
         content: result.content,
-        details: { objectCards: result.cards ?? [] },
+        details: {
+          result:
+            result.structuredContent ??
+            result.content
+              .flatMap((part) => (part.type === "text" ? [part.text] : []))
+              .join("\n"),
+          objectCards: result.cards ?? [],
+        },
       };
     },
   });

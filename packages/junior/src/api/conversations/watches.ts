@@ -1,6 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { getConversationStore, getDb } from "@/chat/db";
 import { listOwnedWatches } from "@/chat/events/owned-watches";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { throwApiError } from "../http";
 import {
   conversationWatchesReportSchema,
@@ -27,34 +28,44 @@ export async function requireConversationWatches(
   const canExposePayload =
     accessByConversation.get(conversationId)?.canViewPrivateContent ?? false;
 
-  const watches = owned.map(({ childAgent, watch }) => ({
-    ...(childAgent
-      ? {
-          childAgent: {
-            conversationId: childAgent.conversationId,
-            ...(canExposePayload && childAgent.name
-              ? { name: childAgent.name }
-              : undefined),
-          },
-        }
-      : undefined),
-    createdAt: new Date(watch.createdAtMs).toISOString(),
-    events: watch.events,
-    expiresAt: new Date(watch.expiresAtMs).toISOString(),
-    ...(watch.firesAtMs !== undefined
-      ? { firesAt: new Date(watch.firesAtMs).toISOString() }
-      : undefined),
-    id: watch.id,
-    namespace: watch.namespace,
-    resourceType: watch.resourceType,
-    ...(canExposePayload
-      ? {
-          intent: watch.intent,
-          label: watch.label,
-          ...(watch.match ? { match: watch.match } : undefined),
-        }
-      : { redacted: true as const }),
-  }));
+  const catalog = getEventCatalog();
+  const watches = owned.map(({ childAgent, watch }) => {
+    const url = canExposePayload
+      ? catalog[watch.namespace]?.resourceUrl?.({
+          identifier: watch.identifier,
+          resourceType: watch.resourceType,
+        })
+      : undefined;
+    return {
+      ...(childAgent
+        ? {
+            childAgent: {
+              conversationId: childAgent.conversationId,
+              ...(canExposePayload && childAgent.name
+                ? { name: childAgent.name }
+                : undefined),
+            },
+          }
+        : undefined),
+      createdAt: new Date(watch.createdAtMs).toISOString(),
+      events: watch.events,
+      expiresAt: new Date(watch.expiresAtMs).toISOString(),
+      ...(watch.firesAtMs !== undefined
+        ? { firesAt: new Date(watch.firesAtMs).toISOString() }
+        : undefined),
+      id: watch.id,
+      namespace: watch.namespace,
+      resourceType: watch.resourceType,
+      ...(canExposePayload
+        ? {
+            intent: watch.intent,
+            label: watch.label,
+            ...(watch.match ? { match: watch.match } : undefined),
+            ...(url ? { url } : undefined),
+          }
+        : { redacted: true as const }),
+    };
+  });
 
   return conversationWatchesReportSchema.parse({ conversationId, watches });
 }

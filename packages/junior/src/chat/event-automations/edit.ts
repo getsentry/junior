@@ -3,6 +3,7 @@ import { eventAutomationEditSchema } from "@/chat/automations/edit-schema";
 import { stableEventMatchKey } from "@sentry/junior-plugin-api";
 import {
   AutomationEditError,
+  changesAutomationTask,
   editAutomationFields,
 } from "@/chat/automations/edit-rules";
 import type { EventCatalog } from "@/chat/events/catalog";
@@ -13,7 +14,7 @@ import {
 } from "@/chat/slack/channel-message-events";
 import { requireEventAutomationTrigger } from "./tool-support";
 import type { EventAutomation } from "./types";
-import type { z } from "zod";
+import type * as z from "zod";
 
 function changesEventAutomationTrigger(
   current: EventAutomation["trigger"],
@@ -36,6 +37,7 @@ export async function editEventAutomation(
   input: z.output<typeof eventAutomationEditSchema>,
   isCreator: boolean,
   catalog: EventCatalog,
+  options?: { inputKeys: boolean },
 ): Promise<EventAutomation> {
   let trigger = current.trigger;
   if (input.trigger !== undefined) {
@@ -49,7 +51,7 @@ export async function editEventAutomation(
       current.trigger.resourceType !== inputTrigger.resourceType
     ) {
       try {
-        trigger = requireEventAutomationTrigger(catalog, inputTrigger);
+        trigger = requireEventAutomationTrigger(catalog, inputTrigger, options);
       } catch (error) {
         if (error instanceof ToolInputError)
           throw new AutomationEditError(error.message, "trigger");
@@ -60,8 +62,7 @@ export async function editEventAutomation(
     }
   }
   const changesExecution =
-    (input.instruction !== undefined &&
-      input.instruction !== current.task.text) ||
+    changesAutomationTask(current.task, input) ||
     changesEventAutomationTrigger(current.trigger, trigger);
   const next: EventAutomation = {
     ...current,

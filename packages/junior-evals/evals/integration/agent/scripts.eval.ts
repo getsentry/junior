@@ -45,9 +45,7 @@ describe("Code Mode Scripts", () => {
 
     const results = scriptResults(conversation);
     expect(results).toContainEqual(
-      expect.stringMatching(
-        /The output was cut\. The full text is in \S+\/\.junior\/codemode\/\S+\.txt\./,
-      ),
+      expect.stringMatching(/\[cut: .* full: \/tmp\/jr\/\w+\./),
     );
     expect(conversation.replies).toHaveLength(1);
   });

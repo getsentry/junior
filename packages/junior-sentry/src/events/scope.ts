@@ -2,7 +2,7 @@ import {
   eventMatchFieldsSchema,
   type EventMatchFields,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 
 /**
  * A project slug in event data. It is lowercase, the same form as

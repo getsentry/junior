@@ -41,7 +41,7 @@ describe("Vercel actions", () => {
           project: "other-app",
           team: "another-team",
           ref: "feature/test",
-          commitSha: sha,
+          commit_sha: sha,
           target,
         },
         options,
@@ -74,8 +74,8 @@ describe("Vercel actions", () => {
             },
           },
         ],
-        deploymentId: deployment.id,
-        commitSha: sha,
+        deployment_id: deployment.id,
+        commit_sha: sha,
         url: "https://example.vercel.app",
       });
       expect(JSON.stringify(result)).not.toContain("secret");
@@ -94,17 +94,17 @@ describe("Vercel actions", () => {
         { deployment: deployment.id, team: "team_example" },
         options,
       ),
-    ).resolves.toMatchObject({ state: "READY", deploymentId: deployment.id });
+    ).resolves.toMatchObject({ state: "READY", deployment_id: deployment.id });
     await expect(
       tools.aliasAssign.execute?.(
         {
-          deploymentId: deployment.id,
+          deployment_id: deployment.id,
           alias: "qa.example.com",
           team: "team_example",
         },
         options,
       ),
-    ).resolves.toMatchObject({ matches: false, deploymentId: "dpl_other" });
+    ).resolves.toMatchObject({ matches: false, deployment_id: "dpl_other" });
     const assignment = fetch.mock.calls[1][0].request;
     expect(assignment.url).toBe(
       `https://api.vercel.com/v2/deployments/${deployment.id}/aliases?teamId=team_example`,
@@ -124,13 +124,13 @@ describe("Vercel actions", () => {
     );
     await expect(
       tools.aliasInspect.execute?.({ alias: "www.example.com" }, options),
-    ).resolves.toMatchObject({ redirect: "example.com", deploymentId: null });
+    ).resolves.toMatchObject({ redirect: "example.com", deployment_id: null });
     await expect(
       tools.deploymentDelete.execute?.(
-        { deploymentId: deployment.id, team: "team_other" },
+        { deployment_id: deployment.id, team: "team_other" },
         options,
       ),
-    ).resolves.toMatchObject({ deleted: true, deploymentId: deployment.id });
+    ).resolves.toMatchObject({ deleted: true, deployment_id: deployment.id });
     expect(fetch.mock.calls[1][0].request).toMatchObject({
       method: "DELETE",
       url: `https://api.vercel.com/v13/deployments/${deployment.id}?teamId=team_other`,
@@ -169,7 +169,7 @@ describe("Vercel actions", () => {
     );
     await expect(
       tools.deploymentDelete.execute?.(
-        { deploymentId: deployment.id },
+        { deployment_id: deployment.id },
         options,
       ),
     ).rejects.toThrow("vercel.deployment.delete failed with HTTP 500");

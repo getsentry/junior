@@ -1,16 +1,15 @@
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { MessageAttachment } from "@/chat/attachments/input";
-import {
-  isAgentRunFeatureDisabled,
-  type AgentAttachment,
-  type AgentRun,
-  type MessageAgent,
-  type SpawnAgent,
+import type {
+  AgentAttachment,
+  AgentEnvironment,
+  AgentRun,
 } from "@/chat/agent/types";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import type { BackgroundCompactionQueue } from "@/chat/services/background-compaction-queue";
 
 /** Run one agent-run slice behind runtime-owned orchestration boundaries. */
 export interface AgentRunner {
@@ -22,14 +21,16 @@ export function createAgentRunner(
   execute: (run: AgentRun, streamFn?: StreamFn) => Promise<AgentRunOutcome>,
   options?: {
     attachmentStorage?: AttachmentStorage;
-    bindMessageAgent?: (run: AgentRun) => MessageAgent | undefined;
-    bindSpawnAgent?: (run: AgentRun) => SpawnAgent | undefined;
+    backgroundCompactionQueue?: BackgroundCompactionQueue;
+    bindMessageAgent?: AgentEnvironment["bindMessageAgent"];
+    bindSpawnAgent?: AgentEnvironment["bindSpawnAgent"];
     conversationWorkQueue?: ConversationWorkQueue;
     streamFn?: StreamFn;
     tracePropagation?: SandboxEgressTracePropagationConfig;
   },
 ): AgentRunner {
   const attachmentStorage = options?.attachmentStorage;
+  const backgroundCompactionQueue = options?.backgroundCompactionQueue;
   const conversationWorkQueue = options?.conversationWorkQueue;
   const streamFn = options?.streamFn;
   const tracePropagation = options?.tracePropagation;
@@ -37,39 +38,25 @@ export function createAgentRunner(
   const bindMessageAgent = options?.bindMessageAgent;
   return {
     run: async (run) => {
-      const spawnAgent =
-        bindSpawnAgent &&
-        !isAgentRunFeatureDisabled(run.disabledFeatures, "subagents")
-          ? bindSpawnAgent(run)
-          : undefined;
-      // A child agent can always message its parent, even when it is too deep
-      // to start child agents of its own.
-      const messageAgent =
-        bindMessageAgent &&
-        bindSpawnAgent &&
-        (spawnAgent || run.parentConversationId)
-          ? bindMessageAgent(run)
-          : undefined;
       const nextRun: AgentRun = {
         ...run,
         environment: {
           ...run.environment,
           attachmentStorage:
             run.environment?.attachmentStorage ?? attachmentStorage,
+          backgroundCompactionQueue:
+            run.environment?.backgroundCompactionQueue ??
+            backgroundCompactionQueue,
           conversationWorkQueue:
             run.environment?.conversationWorkQueue ?? conversationWorkQueue,
           sandboxTracePropagation:
             run.environment?.sandboxTracePropagation ?? tracePropagation,
+          // Tool wiring binds agent tools after it reads the Turn's behavior.
+          ...(bindSpawnAgent ? { bindSpawnAgent } : undefined),
+          ...(bindSpawnAgent && bindMessageAgent
+            ? { bindMessageAgent }
+            : undefined),
         },
-        ...(spawnAgent || messageAgent
-          ? {
-              durability: {
-                ...run.durability,
-                ...(spawnAgent ? { spawnAgent } : undefined),
-                ...(messageAgent ? { messageAgent } : undefined),
-              },
-            }
-          : undefined),
       };
       // Image storage loads runtime config. Keep it behind execution so the
       // local CLI can set its defaults before config is first read.

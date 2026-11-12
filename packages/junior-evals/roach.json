@@ -1,0 +1,61 @@
+{
+  "tenant": "getsentry/junior",
+  "allow": [
+    "https://ai-gateway.vercel.sh",
+    "https://vercel.com",
+    "https://api.vercel.com",
+    "https://oidc.vercel.com",
+    "https://docs.slack.dev",
+    "https://dev.mysql.com",
+    "https://sqlite.org",
+    "https://www.postgresql.org",
+    "https://www.sqlite.org"
+  ],
+  "rules": [
+    {
+      "name": "model",
+      "match": {
+        "method": "POST",
+        "url": "https://ai-gateway.vercel.sh/"
+      },
+      "keyHeaders": [
+        "ai-language-model-id",
+        "ai-language-model-streaming",
+        "ai-model-id"
+      ],
+      "values": {
+        "uuid": {
+          "builtin": "uuid"
+        },
+        "time": {
+          "builtin": "isoTime"
+        },
+        "date": {
+          "builtin": "date"
+        },
+        "epoch-ms": {
+          "builtin": "epochMs"
+        },
+        "sha256": {
+          "builtin": "sha256"
+        },
+        "git-commit": {
+          "builtin": "gitCommit"
+        },
+        "local-time": "(?<!(?:^|[^\\\\])[0-9A-Za-z])(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) {1,2}\\d{1,2}(?:, \\d{4}, \\d{1,2}:\\d{2}\\s?[AP]M| \\d{2}:\\d{2})\\b",
+        "event-id": "(?<=event_id=)[0-9a-f]{32}(?![0-9A-Za-z])",
+        "root-section-key": "(?<=root_user_instructions key=\\\\?\")[0-9a-f]{24}(?![0-9A-Za-z])"
+      }
+    },
+    {
+      "name": "web",
+      "match": {
+        "method": "GET",
+        "headers": {
+          "user-agent": "junior-bot/0.1"
+        }
+      }
+    }
+  ],
+  "noProxy": "localhost,127.0.0.1,::1,.trycloudflare.com"
+}

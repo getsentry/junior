@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 const slackTeamIdSchema = z.string().regex(/^T[A-Z0-9]+$/);
 const slackConversationIdSchema = z.string().regex(/^(C|G|D)[A-Z0-9]+$/);
@@ -374,5 +374,7 @@ export const dispatchOptionsSchema = z
     input: nonBlankStringSchema.pipe(z.string().max(32_000)),
     metadata: dispatchMetadataSchema.optional(),
     replyAttribution: replyAttributionSchema.optional(),
+    /** Saved title. Title generation runs only when it is omitted. */
+    title: nonBlankStringSchema.pipe(z.string().max(200)).optional(),
   })
   .strict();

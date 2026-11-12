@@ -1,6 +1,33 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 
 import { cn } from "../styles";
+
+/** Scroll region padding that goes with `TranscriptColumn`. */
+export const transcriptScrollClassName =
+  "thin-scrollbar px-4 pb-4 md:px-7 md:pb-6";
+
+/**
+ * Center a transcript in the `ChatLayout` scroll region. `full` gives the
+ * event log the whole width.
+ */
+export function TranscriptColumn(props: {
+  children: ReactNode;
+  className?: string;
+  full?: boolean;
+}) {
+  return (
+    <section className="min-w-0">
+      <div
+        className={cn(
+          props.full ? "w-full" : "mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7",
+          props.className,
+        )}
+      >
+        {props.children}
+      </div>
+    </section>
+  );
+}
 
 /**
  * Own the conversation chat frame: one scroll region above one dock.
@@ -13,11 +40,17 @@ export function ChatLayout(props: {
   dock?: ReactNode;
   /** Keep conversation chrome outside the scrolling content. */
   header?: ReactNode;
+  /**
+   * Show over the scroll region without scrolling with it. It sits in a
+   * `chat` container, so it can show only when the region is wide enough.
+   */
+  overlay?: ReactNode;
   /** When true, keep a taller minimum scroll region for long transcripts. */
   scrollMinTall?: boolean;
   scroll: ReactNode;
   scrollAriaLabel?: string;
   scrollClassName?: string;
+  scrollRef?: Ref<HTMLDivElement>;
 }) {
   return (
     <div
@@ -29,16 +62,20 @@ export function ChatLayout(props: {
       )}
     >
       <div className="min-w-0">{props.header}</div>
-      <div
-        aria-label={props.scrollAriaLabel}
-        className={cn(
-          "min-h-0 overflow-y-auto overscroll-contain outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-dashboard-focus",
-          props.scrollClassName,
-        )}
-        data-chat-scroll=""
-        tabIndex={props.scrollAriaLabel ? 0 : undefined}
-      >
-        {props.scroll}
+      <div className="@container/chat relative grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)]">
+        <div
+          aria-label={props.scrollAriaLabel}
+          className={cn(
+            "min-h-0 overflow-y-auto overscroll-contain outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-dashboard-focus",
+            props.scrollClassName,
+          )}
+          data-chat-scroll=""
+          ref={props.scrollRef}
+          tabIndex={props.scrollAriaLabel ? 0 : undefined}
+        >
+          {props.scroll}
+        </div>
+        {props.overlay}
       </div>
       {props.dock}
     </div>

@@ -11,6 +11,7 @@ import {
 } from "@/chat/skills";
 import type { SkillMetadata } from "@/chat/skills";
 import { loadableSkills } from "@/chat/agent/skills";
+import { renderTaskInput } from "@/chat/task-input";
 
 async function writeSkillFile(
   rootDir: string,
@@ -147,6 +148,20 @@ describe("skills", () => {
     });
   });
 
+  it("parses $skill inside Automation task input and Slack code", () => {
+    // A scheduled run's text starts with the instruction inside its tag.
+    expect(
+      parseSkillInvocation(
+        renderTaskInput({ instructions: "$weather-lookup San Francisco" }),
+        stubSkills,
+      ),
+    ).toEqual({ skillName: "weather-lookup" });
+    expect(
+      parseSkillInvocation("run `$brief` github: octocat", stubSkills),
+    ).toEqual({ skillName: "brief" });
+    expect(parseSkillInvocation("costs US$brief", stubSkills)).toBeNull();
+  });
+
   it("ignores environment variables and keeps scanning for a skill", () => {
     expect(
       parseSkillInvocation("use $HOME then $brief github: octocat", stubSkills),
@@ -170,6 +185,23 @@ describe("skills", () => {
         { name: "home", description: "Home", skillPath: "/tmp/home" },
       ]),
     ).toBeNull();
+  });
+
+  it("prefers $skill over /skill and scans past paths", () => {
+    expect(parseSkillInvocation("/brief then $sum 1 2", stubSkills)).toEqual({
+      skillName: "sum",
+    });
+    expect(
+      parseSkillInvocation("read /tmp/notes.md then /brief", stubSkills),
+    ).toEqual({
+      skillName: "brief",
+    });
+    expect(
+      parseSkillInvocation("read /tmp/notes.md then $brief", stubSkills),
+    ).toEqual({
+      skillName: "brief",
+    });
+    expect(parseSkillInvocation("read /brief/notes.md", stubSkills)).toBeNull();
   });
 
   it("returns null for an unregistered skill reference", () => {

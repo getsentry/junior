@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { avatarPath } from "../../../fixtures/avatar";
 import { describe, expect, test } from "vitest";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
@@ -6,18 +5,18 @@ import { testViewer } from "../../../fixtures/user";
 import { eq } from "drizzle-orm";
 import { createJuniorApi } from "@/api";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
-import {
-  readConversationFeedFromSql,
-  readConversationRecordFromSql,
-} from "@/api/conversations/list";
+import { readConversationFeedFromSql } from "@/api/conversations/list";
+import { readConversationRecordFromSql } from "@/api/conversations/record";
 import { apiErrorSchema, conversationFeedSchema } from "@/api/schema";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
+import { upsertLinkedIdentity } from "@/chat/identities/sql";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { legacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
 import {
   juniorConversationEvents,
   juniorConversationParticipants,
@@ -28,10 +27,6 @@ import {
 } from "@/db/schema";
 import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
-
-function dashboardAuthorIdFromEmail(email: string): string {
-  return `dashboard:${createHash("sha256").update(email).digest("hex").slice(0, 24)}`;
-}
 
 describe("conversation list API", () => {
   test("serves the route and validates its filters", async () => {
@@ -83,17 +78,26 @@ describe("conversation list API", () => {
         searchText: "hidden marigold launch",
         modelId: "test-model",
       });
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ stoppedAt: new Date() })
+        .where(eq(juniorConversations.conversationId, privateId));
       const viewer = await resolveViewerUser("viewer@example.com");
       expect(viewer).toBeDefined();
       await fixture.sql
         .db()
         .insert(juniorConversationParticipants)
         .values({
-          archivedAt: new Date(2_000),
           lastMessageAt: new Date(1_000),
           rootConversationId: archivedId,
           userId: viewer!.id,
         });
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ archivedAt: new Date(2_000) })
+        .where(eq(juniorConversations.conversationId, archivedId));
       const app = createJuniorApi();
 
       const response = await app.request(
@@ -133,7 +137,12 @@ describe("conversation list API", () => {
       expect(
         conversationFeedSchema.parse(await privateTitleSearchResponse.json())
           .conversations,
-      ).toEqual([expect.objectContaining({ conversationId: privateId })]);
+      ).toEqual([
+        expect.objectContaining({
+          conversationId: privateId,
+          status: "stopped",
+        }),
+      ]);
       const archivedResponse = await app.request(
         "http://localhost/api/conversations?actorEmail=viewer%40example.com&status=archived",
       );
@@ -155,6 +164,10 @@ describe("conversation list API", () => {
       expect(apiErrorSchema.parse(await invalid.json())).toEqual({
         error: "Invalid query parameters.",
       });
+      const invalidCursor = await app.request(
+        "http://localhost/api/conversations?cursor=not-a-cursor",
+      );
+      expect(invalidCursor.status).toBe(400);
     } finally {
       await fixture.close();
     }
@@ -571,16 +584,13 @@ describe("conversation list API", () => {
         .limit(1);
       const linkedUserId = linkedUser[0]?.id;
       expect(linkedUserId).toBeDefined();
-      await fixture.sql
-        .db()
-        .update(juniorIdentities)
-        .set({
-          email: null,
-          emailNormalized: null,
-          emailVerified: false,
-          userId: linkedUserId!,
-        })
-        .where(eq(juniorIdentities.providerSubjectId, "U1B"));
+      // A trusted account link gives the Slack Identity its User later.
+      await upsertLinkedIdentity(fixture.sql, linkedUserId!, {
+        kind: "user",
+        provider: "slack",
+        providerSubjectId: "U1B",
+        providerTenantId: "T1",
+      });
 
       const viewer = {
         ...testViewer("morgan@example.com"),
@@ -911,7 +921,8 @@ describe("conversation list API", () => {
             meta: {
               author: {
                 isBot: false,
-                userId: dashboardAuthorIdFromEmail(
+                // Web authors stored this id before they used the User id.
+                userId: legacyWebActorUserId(
                   "dashboard-participant@example.com",
                 ),
               },

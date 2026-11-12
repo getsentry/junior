@@ -43,7 +43,13 @@ import {
   SANDBOX_COMMAND_PATH,
   SANDBOX_WORKSPACE_ROOT,
 } from "@/chat/sandbox/paths";
-const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
+/**
+ * Size limit on the stdout and stderr that one command keeps, each. It keeps
+ * a runaway command from filling the result and the Conversation history.
+ * The tool pipeline cuts what the model sees to a much smaller size. The
+ * providers still read all output before this limit applies.
+ */
+const MAX_CAPTURED_OUTPUT_CHARS = 1_000_000;
 const DEFAULT_BASH_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
 const SNAPSHOT_BOOT_RETRY_COUNT = 3;
 const SNAPSHOT_BOOT_RETRY_DELAY_MS = 1000;
@@ -51,9 +57,15 @@ const SANDBOX_NAME_PREFIX = "junior-";
 const MAX_KEEPALIVE_INTERVAL_MS = 30_000;
 const MIN_KEEPALIVE_INTERVAL_MS = 1_000;
 
+interface AcquiredSandbox {
+  session: SandboxSession;
+  /** Resumed or created by this acquisition, so preparation just used it. */
+  fresh: boolean;
+}
+
 interface SandboxAcquisition {
   controller: AbortController;
-  promise: Promise<SandboxSession>;
+  promise: Promise<AcquiredSandbox>;
   settled: boolean;
   waiters: number;
 }
@@ -118,13 +130,12 @@ interface SandboxRuntimeOptions {
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }
 
-function truncateOutput(
-  output: string,
-  maxLength: number,
-): { value: string; truncated: boolean } {
-  if (output.length <= maxLength) return { value: output, truncated: false };
+function captureOutput(output: string): { value: string; truncated: boolean } {
+  if (output.length <= MAX_CAPTURED_OUTPUT_CHARS) {
+    return { value: output, truncated: false };
+  }
   return {
-    value: `${output.slice(0, maxLength)}\n\n[output truncated: ${output.length - maxLength} characters removed]`,
+    value: `${output.slice(0, MAX_CAPTURED_OUTPUT_CHARS)}\n\n[output over the ${MAX_CAPTURED_OUTPUT_CHARS} char size limit: ${output.length - MAX_CAPTURED_OUTPUT_CHARS} chars not kept]`,
     truncated: true,
   };
 }
@@ -252,17 +263,20 @@ export function createSandboxRuntime(
     });
   };
 
-  const prepareSandbox = async (
-    targetSandbox: SandboxSession,
-  ): Promise<void> => {
-    await syncSkills(targetSandbox);
-    // Snapshots ship Docker clients; the daemon is per-boot and must start here.
+  // Snapshots ship Docker clients; the daemon is per-boot and must start here.
+  const ensureDocker = async (targetSandbox: SandboxSession): Promise<void> =>
     await withSandboxSpan(
       "sandbox.docker.ensure",
       "sandbox.docker.ensure",
       {},
       async () => await ensureDockerDaemon(targetSandbox),
     );
+
+  const prepareSandbox = async (
+    targetSandbox: SandboxSession,
+  ): Promise<void> => {
+    await syncSkills(targetSandbox);
+    await ensureDocker(targetSandbox);
     await options.onSandboxPrepare?.(targetSandbox);
   };
 
@@ -590,10 +604,29 @@ export function createSandboxRuntime(
       throw new Error("sandbox restore failed", { cause: error });
     }
 
-    let networkPolicyKey: string | undefined;
     try {
-      networkPolicyKey = await applyNetworkPolicy(hintedSandbox);
-      await prepareSandbox(hintedSandbox);
+      // Wait for every step so none keeps running on a sandbox we give up on.
+      const steps = await Promise.allSettled([
+        applyNetworkPolicy(hintedSandbox),
+        syncSkills(hintedSandbox),
+        ensureDocker(hintedSandbox),
+      ]);
+      const failures = steps.flatMap((step) =>
+        step.status === "rejected" ? [step.reason as unknown] : [],
+      );
+      if (failures.length > 0) {
+        throw (
+          failures.find((error) =>
+            getSandboxProvider().errors.isUnavailable(error),
+          ) ?? failures[0]
+        );
+      }
+      const [policy] = steps;
+      const networkPolicyKey =
+        policy.status === "fulfilled" ? policy.value : undefined;
+      // Plugin hooks may need egress, and the old policy holds an expired
+      // credential token, so they start only after the new policy applies.
+      await options.onSandboxPrepare?.(hintedSandbox);
       dependencyProfileHash = ref.profileHash ?? dependencyProfileHash;
       await persistSandboxRef({ ...ref, id: hintedSandbox.sandboxId });
       return rememberSandbox(hintedSandbox, networkPolicyKey);
@@ -608,7 +641,7 @@ export function createSandboxRuntime(
 
   const acquireSandbox = async (
     signal?: AbortSignal,
-  ): Promise<SandboxSession> => {
+  ): Promise<AcquiredSandbox> => {
     return await withSandboxSpan(
       "sandbox.acquire",
       "sandbox.acquire",
@@ -622,7 +655,7 @@ export function createSandboxRuntime(
         const cachedSandbox = await tryReuseCachedSandbox();
         if (cachedSandbox) {
           setSpanAttributes({ "app.sandbox.acquire.outcome": "memory" });
-          return cachedSandbox;
+          return { session: cachedSandbox, fresh: false };
         }
 
         signal?.throwIfAborted();
@@ -630,19 +663,19 @@ export function createSandboxRuntime(
         const hintedSandbox = await tryRestoreHintedSandbox(signal);
         if (hintedSandbox) {
           setSpanAttributes({ "app.sandbox.acquire.outcome": "resumed" });
-          return hintedSandbox;
+          return { session: hintedSandbox, fresh: true };
         }
 
         const createdSandbox = await createFreshSandbox(signal);
         setSpanAttributes({ "app.sandbox.acquire.outcome": "created" });
-        return createdSandbox;
+        return { session: createdSandbox, fresh: true };
       },
     );
   };
 
   const getOrAcquireSandbox = async (
     signal?: AbortSignal,
-  ): Promise<SandboxSession> => {
+  ): Promise<AcquiredSandbox> => {
     for (;;) {
       signal?.throwIfAborted();
       let acquisition = acquiringSandbox;
@@ -696,16 +729,6 @@ export function createSandboxRuntime(
     }
   };
 
-  const getMaxOutputLength = (): number => {
-    const maxOutputLength = Number.parseInt(
-      process.env.SANDBOX_BASH_MAX_OUTPUT_CHARS ?? "",
-      10,
-    );
-    return Number.isFinite(maxOutputLength) && maxOutputLength > 0
-      ? maxOutputLength
-      : DEFAULT_MAX_OUTPUT_LENGTH;
-  };
-
   const readCommandOutput = async (
     commandResult: SandboxCommandResult,
   ): Promise<{
@@ -715,11 +738,8 @@ export function createSandboxRuntime(
     stdoutTruncated: boolean;
     stderrTruncated: boolean;
   }> => {
-    const boundedOutputLength = getMaxOutputLength();
-    const stdoutRaw = commandResult.stdout;
-    const stderrRaw = commandResult.stderr;
-    const stdout = truncateOutput(stdoutRaw, boundedOutputLength);
-    const stderr = truncateOutput(stderrRaw, boundedOutputLength);
+    const stdout = captureOutput(commandResult.stdout);
+    const stderr = captureOutput(commandResult.stderr);
     return {
       stdout: stdout.value,
       stderr: stderr.value,
@@ -857,10 +877,15 @@ export function createSandboxRuntime(
   const ensureReadySandbox = async (
     signal?: AbortSignal,
   ): Promise<SandboxSession> => {
-    const session = await getOrAcquireSandbox(signal);
+    const { session, fresh } = await getOrAcquireSandbox(signal);
     signal?.throwIfAborted();
-    await probeSession(session);
-    signal?.throwIfAborted();
+    // Resume and create just ran preparation commands that write under the
+    // workspace root. Only a cached session needs the probe to prove it is
+    // still live.
+    if (!fresh) {
+      await probeSession(session);
+      signal?.throwIfAborted();
+    }
     await extendKeepAlive(session);
     startKeepAlive(session);
     return session;
@@ -930,7 +955,7 @@ export function createSandboxRuntime(
       await stopSession(previous?.session);
     },
     async acquire(signal) {
-      return await getOrAcquireSandbox(signal);
+      return (await getOrAcquireSandbox(signal)).session;
     },
     async tools(signal) {
       return createToolExecutors(await ensureReadySandbox(signal));

@@ -2,13 +2,14 @@ import { credentialLogContext } from "@/chat/credentials/context";
 import type { LogContext } from "@/chat/log-context";
 import { logWarn, setSentryUser, withSpan } from "@/chat/logging";
 import {
+  egressDecisionAttributes,
   executeCredentialedEgressRequest,
   type CredentialedEgressHttpInterceptor,
 } from "@/chat/egress/credentialed";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
+import { redactSandboxEgressProxyPath } from "@/chat/sandbox/egress/proxy-path";
 import {
   parseSandboxEgressCredentialToken,
-  SANDBOX_EGRESS_PROXY_PATH,
   type SandboxEgressCredentialContext,
 } from "@/chat/sandbox/egress/session";
 import {
@@ -80,14 +81,6 @@ export function sandboxEgressAttributes(input: {
       ? { "http.response.status_code": input.status }
       : undefined),
   };
-}
-
-/** Hide the credential token in a sandbox egress proxy path before logging. */
-export function redactSandboxEgressProxyPath(pathname: string): string {
-  if (pathname.startsWith(`${SANDBOX_EGRESS_PROXY_PATH}/`)) {
-    return `${SANDBOX_EGRESS_PROXY_PATH}/<token>`;
-  }
-  return pathname;
 }
 
 /** Return log attributes for the proxy route and the upstream path. */
@@ -191,6 +184,7 @@ export async function executeSandboxEgressRequest(
         status: 403,
       }),
       ...sandboxEgressRoutingAttributes(request, upstreamUrl),
+      ...egressDecisionAttributes("denied", "no provider owns forwarded host"),
     });
     return jsonError("No provider owns forwarded host", 403);
   }
@@ -212,6 +206,10 @@ export async function executeSandboxEgressRequest(
         status: 403,
       }),
       ...sandboxEgressRoutingAttributes(request, upstreamUrl),
+      ...egressDecisionAttributes(
+        "denied",
+        "credential context is not authorized",
+      ),
     });
     return jsonError(
       "Sandbox egress credential context is not authorized",

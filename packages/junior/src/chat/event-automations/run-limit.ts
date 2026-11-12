@@ -22,7 +22,7 @@
  * still both append, and they count as one run.
  */
 import type { StateAdapter } from "chat";
-import { z } from "zod";
+import * as z from "zod";
 import { botConfig } from "@/chat/config";
 import { getStateAdapter } from "@/chat/state/adapter";
 

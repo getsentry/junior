@@ -512,6 +512,230 @@
       "when": 1793657651066,
       "tag": "0072_conversation_read_positions",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1793782228382,
+      "tag": "0073_conversation_quick_question",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1793803896566,
+      "tag": "0074_conversation_participant_pins",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1793810669602,
+      "tag": "0075_conversation_detail_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1793812855460,
+      "tag": "0076_conversation_auto_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1793840083445,
+      "tag": "0077_drop_agent_invocation_model_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1793853487201,
+      "tag": "0078_plugin_conversation_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1793855917036,
+      "tag": "0079_conversation_event_author_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1793903334195,
+      "tag": "0080_conversation_event_latest_message_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1793927683295,
+      "tag": "0081_conversation_pin_position",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1793958604674,
+      "tag": "0082_push_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1793982460508,
+      "tag": "0083_conversation_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1794010801338,
+      "tag": "0084_read_position_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1794019929847,
+      "tag": "0085_child_archived_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1794023855568,
+      "tag": "0086_shared_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1794088255456,
+      "tag": "0087_child_location",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1794165567814,
+      "tag": "0088_conversation_unsubscribe",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1794190578909,
+      "tag": "0089_conversation_paused_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1794222953219,
+      "tag": "0090_guardian_review_time_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1794245490321,
+      "tag": "0091_conversation_participant_unsubscribed_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1794248406305,
+      "tag": "0092_turn_metric_actor",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1794256116275,
+      "tag": "0093_participant_root_actor_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1794266800377,
+      "tag": "0094_conversation_delivery_paused_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1794312577586,
+      "tag": "0095_web_linked_slack_identity_repair",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1794333504935,
+      "tag": "0096_automation_task_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1794344562301,
+      "tag": "0097_conversation_kind_automation",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1794349592269,
+      "tag": "0098_review_item_plugin_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1794351117170,
+      "tag": "0099_conversation_last_message_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1794360831303,
+      "tag": "0100_automation_task_kind_repair",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1794414686731,
+      "tag": "0101_drop_legacy_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1794416510222,
+      "tag": "0102_code_change_last_activity",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1794424481991,
+      "tag": "0103_agent_invocation_fork",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1794493721940,
+      "tag": "0104_code_change_draft",
+      "breakpoints": true
     }
   ]
 }

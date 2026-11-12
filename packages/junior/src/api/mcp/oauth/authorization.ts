@@ -7,10 +7,11 @@
  * error redirects. A valid request waits for consent on a dashboard page.
  */
 import { randomBytes } from "node:crypto";
-import { z } from "zod";
+import * as z from "zod";
 import { redirectUriMatches, resolveMcpClient } from "./client-metadata";
-import { MCP_SCOPE, type McpUrls } from "./metadata";
+import type { McpUrls } from "./metadata";
 import { renderMcpPage } from "./page";
+import { MCP_ALL_SCOPES, mcpScopeValueSchema, parseMcpScopes } from "./scopes";
 import { mcpStateKey, readRecord, sha256Hex, type McpState } from "./state";
 
 const AUTHORIZATION_TTL_MS = 10 * 60 * 1000;
@@ -27,7 +28,7 @@ const mcpAuthorizationSchema = z
     expiresAtMs: z.number().int().positive(),
     redirectUri: z.string().min(1),
     resource: z.string().min(1),
-    scope: z.literal(MCP_SCOPE),
+    scope: mcpScopeValueSchema,
     state: z.string().max(STATE_MAX_LENGTH).optional(),
   })
   .strict();
@@ -205,9 +206,11 @@ export async function handleMcpAuthorize(args: {
   if (oauthState !== undefined && oauthState.length > STATE_MAX_LENGTH) {
     return fail("invalid_request", "The state parameter is too long.");
   }
-  const scope = params.get("scope")?.trim();
-  if (scope && scope !== MCP_SCOPE) {
-    return fail("invalid_scope", `The only scope is ${MCP_SCOPE}.`);
+  // A request without a scope asks for every scope. Consent lists them.
+  const requestedScope = params.get("scope")?.trim() || MCP_ALL_SCOPES;
+  const scopes = parseMcpScopes(requestedScope);
+  if (!scopes) {
+    return fail("invalid_scope", `Use only these scopes: ${MCP_ALL_SCOPES}.`);
   }
   if (params.get("resource") !== args.urls.resource) {
     return fail(
@@ -224,7 +227,7 @@ export async function handleMcpAuthorize(args: {
     expiresAtMs: Date.now() + AUTHORIZATION_TTL_MS,
     redirectUri,
     resource: args.urls.resource,
-    scope: MCP_SCOPE,
+    scope: scopes.join(" "),
     state: oauthState,
   };
   await args.state.set(

@@ -10,6 +10,8 @@ import {
 export function createJuniorSqlExecutor(args: {
   connectionString: string;
   driver: SqlDriver;
+  /** Receives Postgres `INFO` messages, such as a migration's report. */
+  onInfo?: (message: string) => void;
   statementTimeoutMs?: number | false;
 }): JuniorSqlExecutor {
   const statementTimeoutMs =
@@ -17,11 +19,13 @@ export function createJuniorSqlExecutor(args: {
   if (args.driver === "postgres") {
     return createPostgresJuniorSqlExecutor({
       connectionString: args.connectionString,
+      onInfo: args.onInfo,
       statementTimeoutMs,
     });
   }
   return createNeonJuniorSqlExecutor({
     connectionString: args.connectionString,
+    onInfo: args.onInfo,
     statementTimeoutMs,
   });
 }

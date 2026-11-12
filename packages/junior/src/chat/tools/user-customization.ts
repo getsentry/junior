@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import {
   USER_CUSTOMIZATION_MAX_CHARS,
   userCustomizationTextSchema,
@@ -11,19 +11,26 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRegistry } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
+const USER_CUSTOMIZATION_TOOL_SOURCE = {
+  id: "user-customization",
+  description: "Save how replies change for the current user.",
+} as const;
+
 /**
  * Build the tool that saves the current user's customization when the app
- * enables `user-customization`. Child agents never get it, whatever input
- * started the Turn.
+ * enables `user-customization`. An Agent invocation never gets it, because
+ * an agent wrote its input.
  */
 export function createUserCustomizationTools(
   context: ToolRuntimeContext,
 ): ToolRegistry {
   if (!isExperimentalFeatureEnabled("user-customization")) return {};
-  if (context.parentConversationId) return {};
+  if (!context.turnTools.userCustomization) return {};
 
   return {
     updateUserCustomization: zodTool({
+      exposure: "deferred",
+      source: USER_CUSTOMIZATION_TOOL_SOURCE,
       executionMode: "sequential",
       annotations: {
         destructiveHint: false,

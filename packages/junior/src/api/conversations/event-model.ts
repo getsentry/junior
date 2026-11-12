@@ -11,23 +11,13 @@ export function conversationEventModel(
   current: EventModel,
 ): EventModel {
   if (data.type === "turn_started") return undefined;
-  if (data.type === "turn_routed" || data.type === "handoff") {
-    return {
-      modelId: data.modelId,
-      modelProfile: data.modelProfile,
-      ...(data.reasoningLevel
-        ? { reasoningLevel: data.reasoningLevel }
-        : undefined),
-    };
-  }
   if (data.type === "assistant_message") {
     const model = text(data.model);
     const provider = text(data.provider);
     if (model) {
       const modelId =
         model.includes("/") || !provider ? model : `${provider}/${model}`;
-      // Keep the selected profile settings even when the provider resolves a model alias.
-      return { ...current, modelId };
+      return { modelId };
     }
   }
   return current;

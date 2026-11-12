@@ -11,6 +11,8 @@ export interface StartConversationTurnInput {
   createdAtMs: number;
   inputMessageIds: string[];
   surface: "slack" | "api" | "scheduler" | "internal";
+  /** Highest Message seq known when the Turn built its thread context. */
+  threadContextThroughSeq?: number;
   turnId: string;
 }
 
@@ -59,9 +61,26 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
           turnId: input.turnId,
           inputMessageIds: input.inputMessageIds,
           surface: input.surface,
+          ...(input.threadContextThroughSeq === undefined
+            ? undefined
+            : { threadContextThroughSeq: input.threadContextThroughSeq }),
         },
       },
     ]);
+  }
+
+  /** Return the input message ids that started a Turn, when it started. */
+  async loadInputMessageIds(
+    conversationId: string,
+    turnId: string,
+  ): Promise<string[] | undefined> {
+    const event = await this.events.loadByIdempotencyKey(
+      conversationId,
+      `turn:${turnId}:started`,
+    );
+    return event?.data.type === "turn_started"
+      ? event.data.inputMessageIds
+      : undefined;
   }
 
   /** Record a completion that is not a failure once. */

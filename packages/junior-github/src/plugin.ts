@@ -4,6 +4,7 @@
  * This module composes GitHub hooks, events, and credentials.
  */
 import { linkedGitHubLogin } from "./tool-support/attribution.js";
+import { githubApi, repoPath } from "./tool-support/github-api.js";
 import {
   defineJuniorPlugin,
   mergeEventMatchFields,
@@ -14,12 +15,19 @@ import {
   normalizePermissions,
   readGrantPermissions,
 } from "./permissions.js";
-import { createGitHubTools } from "./tools.js";
+import { createGitHubTools, type GitHubPluginExperiments } from "./tools.js";
+import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
+import { botLoginFromEmail } from "./webhooks/ownership.js";
+import { runGitHubConflictChecks } from "./merge-conflict-checks/heartbeat.js";
+import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
+import { gitHubResourceUrl } from "./events/resource-url.js";
 import {
   loadPullRequest,
+  loadPullRequestLifecycles,
   loadPullRequestCommitPages,
+  searchOpenPullRequestMergeability,
   loadRepositoryRole,
   markPullRequestFeedbackReviewing,
 } from "./webhooks/installation-requests.js";
@@ -41,6 +49,7 @@ import {
   GITHUB_PULL_REQUEST_MATCH_FIELDS,
   GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
   gitHubPullRequestEventGuidance,
+  gitHubPullRequestSubscription,
   type GitHubPullRequestEventOptions,
 } from "./events/pull-request.js";
 import {
@@ -64,11 +73,8 @@ import {
 } from "./pull-request-outcomes/store.js";
 import {
   additionalActorCoauthorTrailers,
-  configureGit,
   gitHooksPath,
-  prepareCommitMsgHook,
-  REPOSITORY_HOOK_NAMES,
-  repositoryHook,
+  prepareSandboxGit,
   setGitHooksPathEnv,
 } from "./git-config.js";
 import { linkifyGitHubReferences } from "./reply-markdown.js";
@@ -94,6 +100,10 @@ import {
   resolveUserAccount,
 } from "./credential-support.js";
 
+// A failed check suite reports incidents that are open or ended in the last
+// hour. Older incidents rarely explain a suite that just finished.
+const CHECK_SUITE_INCIDENT_WINDOW_MS = 60 * 60 * 1000;
+
 /** Configure the built-in GitHub plugin manifest and hooks. */
 export interface GitHubPluginOptions {
   /**
@@ -118,6 +128,9 @@ export interface GitHubPluginOptions {
 
   /** Environment variable containing the GitHub App id. */
   appIdEnv?: string;
+
+  /** Opt-ins for GitHub plugin behavior that is still being tested. */
+  experimental?: GitHubPluginExperiments;
 
   /** Environment variable containing Junior's Git committer email. */
   botEmailEnv?: string;
@@ -208,6 +221,7 @@ export function githubPlugin(
       ),
       isEnabled: () => Boolean(readEnv("GITHUB_WEBHOOK_SECRET")),
       normalizeIdentifier: (identifier) => identifier.toLowerCase(),
+      resourceUrl: gitHubResourceUrl,
     },
     manifest: {
       name: "github",
@@ -277,26 +291,17 @@ export function githubPlugin(
               } as const
             )[reference.kind];
             // Read through host egress so policy, grants, and audit apply.
-            const response = await ctx.egress.fetch({
-              provider: "github",
+            const response = await githubApi(ctx.egress, {
               operation,
-              request: new Request(
-                `https://api.github.com/repos/${encodeURIComponent(reference.owner)}/${encodeURIComponent(reference.name)}/${collection}/${encodeURIComponent(reference.id)}`,
-                {
-                  headers: {
-                    Accept: "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                  },
-                  signal: ctx.signal,
-                },
-              ),
+              path: `${repoPath(reference)}/${collection}/${encodeURIComponent(reference.id)}`,
+              signal: ctx.signal,
             });
             if (!response.ok) {
               throw new Error(
                 `GitHub ${reference.kind} lookup failed with HTTP ${response.status}`,
               );
             }
-            return await response.json();
+            return response.body;
           },
         });
       },
@@ -316,6 +321,41 @@ export function githubPlugin(
       },
       formatMarkdown({ text }) {
         return linkifyGitHubReferences(text);
+      },
+      async heartbeat(ctx) {
+        const db = ctx.db as GitHubDb;
+        const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
+        await runGitHubConflictChecks({
+          db,
+          events: ctx.events,
+          log: ctx.log,
+          now: new Date(ctx.nowMs),
+          search: async (input) => {
+            const login = botLoginFromEmail(requireEnv(botEmailEnv));
+            if (!login) {
+              throw new Error(`${botEmailEnv} is not a GitHub bot address`);
+            }
+            return await searchOpenPullRequestMergeability(installationEnv, {
+              ...input,
+              author: `app/${login.replace(/\[bot\]$/, "")}`,
+            });
+          },
+          state: ctx.state,
+        });
+        await reconcileGitHubPullRequests({
+          annotations: ctx.annotations,
+          botEmail: readEnv(botEmailEnv),
+          codeChanges: ctx.codeChanges,
+          db,
+          events: ctx.events,
+          loadCommitPages: async (target) =>
+            await loadPullRequestCommitPages(installationEnv, target),
+          loadLifecycles: async (input) =>
+            await loadPullRequestLifecycles(installationEnv, input),
+          log: ctx.log,
+          nowMs: ctx.nowMs,
+          state: ctx.state,
+        });
       },
       async unfinishedWork(ctx) {
         const db = ctx.db as GitHubDb;
@@ -356,6 +396,11 @@ export function githubPlugin(
             codeChanges: ctx.codeChanges,
             db: ctx.db as GitHubDb,
             installationId: () => readEnv(installationIdEnv),
+            loadGitHubIncidents: async () =>
+              await loadGitHubStatusIncidents(
+                ctx.cache,
+                CHECK_SUITE_INCIDENT_WINDOW_MS,
+              ),
             installationIdEnv,
             loadRepositoryRole: async (target) =>
               await loadRepositoryRole(installationEnv, ctx.cache, target),
@@ -373,6 +418,7 @@ export function githubPlugin(
             privateKeyEnv,
             events: ctx.events,
             reviewItems: ctx.reviewItems,
+            state: ctx.state,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),
         ];
@@ -381,29 +427,14 @@ export function githubPlugin(
         return createGitHubTools(
           ctx,
           readEnv(botEmailEnv),
-          options.pullRequestEvents?.subscribeAfterCreate,
+          gitHubPullRequestSubscription(
+            options.pullRequestEvents?.subscribeAfterCreate,
+          ),
+          options.experimental,
         );
       },
       workspacePrepare: prepareWorkspace,
-      async sandboxPrepare(ctx) {
-        const hooksPath = gitHooksPath(ctx.sandbox.juniorRoot);
-        await ctx.sandbox.writeFile({
-          path: `${hooksPath}/prepare-commit-msg`,
-          mode: 0o755,
-          content: prepareCommitMsgHook(),
-        });
-        for (const name of REPOSITORY_HOOK_NAMES) {
-          await ctx.sandbox.writeFile({
-            path: `${hooksPath}/${name}`,
-            mode: 0o755,
-            content: repositoryHook(name),
-          });
-        }
-        await configureGit(ctx, "core.hooksPath", hooksPath);
-        await configureGit(ctx, "commit.gpgsign", "false");
-        await configureGit(ctx, "credential.helper", "");
-        await configureGit(ctx, "http.emptyAuth", "true");
-      },
+      sandboxPrepare: prepareSandboxGit,
       async beforeToolExecute(ctx) {
         if (ctx.tool.name !== "bash") {
           return;
@@ -444,7 +475,11 @@ export function githubPlugin(
         );
       },
       grantForEgress(ctx) {
-        return githubGrantForEgress(ctx);
+        return githubGrantForEgress(ctx, {
+          appIdEnv,
+          installationIdEnv,
+          privateKeyEnv,
+        });
       },
       async onEgressResponse(ctx) {
         if (ctx.response.status === 403) {

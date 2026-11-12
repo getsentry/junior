@@ -35,17 +35,9 @@ for (const touch of [false, true]) {
               ).recordShare(data),
           });
         });
-        if (!touch) {
-          await page.getByRole("button", { name: "Conversation menu" }).click();
-        }
-        await page
-          .getByRole("button", { name: "Conversation details", exact: true })
-          .click();
-        const details = page.getByRole("dialog", {
-          name: "Conversation details",
-        });
+        await page.getByRole("button", { name: "Conversation menu" }).click();
         await page.evaluate(() => navigator.clipboard.writeText("unchanged"));
-        const shareButton = details.getByRole("button", {
+        const shareButton = page.getByRole("menuitem", {
           name: "Share",
           exact: true,
         });
@@ -67,7 +59,9 @@ for (const touch of [false, true]) {
           });
           await shareButton.click();
           await expect(shareButton).toBeEnabled();
-          await expect(details.getByRole("status")).toBeEmpty();
+          await expect(
+            page.getByRole("status").filter({ hasText: /share|copy/i }),
+          ).toHaveCount(0);
           expect(
             await page.evaluate(() => navigator.clipboard.readText()),
           ).toBe("unchanged");
@@ -82,7 +76,7 @@ for (const touch of [false, true]) {
           });
           await shareButton.click();
           await expect(
-            details.getByRole("button", { name: "Share failed — retry" }),
+            page.getByRole("menuitem", { name: "Share failed — retry" }),
           ).toBeEnabled();
           expect(
             await page.evaluate(() => navigator.clipboard.readText()),
@@ -95,14 +89,14 @@ for (const touch of [false, true]) {
               value: undefined,
             });
           });
-          await details
-            .getByRole("button", { name: "Share failed — retry" })
+          await page
+            .getByRole("menuitem", { name: "Share failed — retry" })
             .click();
         } else {
           expect(shared).toEqual([]);
         }
         await expect(
-          details.getByRole("button", { name: "Link copied" }),
+          page.getByRole("menuitem", { name: "Link copied" }),
         ).toBeVisible();
         const copied = await page.evaluate(() =>
           navigator.clipboard.readText(),

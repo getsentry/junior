@@ -3,12 +3,14 @@ import { logWarn } from "@/chat/logging";
 import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress/oidc";
 import {
   executeSandboxEgressRequest,
-  redactSandboxEgressProxyPath,
   sandboxEgressAttributes,
   sandboxEgressRoutingAttributes,
   type SandboxEgressProxyDeps,
 } from "@/chat/sandbox/egress/proxy";
-import { SANDBOX_EGRESS_PROXY_PATH } from "@/chat/sandbox/egress/session";
+import {
+  redactSandboxEgressProxyPath,
+  SANDBOX_EGRESS_PROXY_PATH,
+} from "@/chat/sandbox/egress/proxy-path";
 import type { SandboxNetworkPolicy } from "@/chat/sandbox/workspace";
 import type { JWTPayload } from "jose";
 

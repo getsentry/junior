@@ -12,7 +12,7 @@ import { createPluginHookRunner, setPlugins } from "@/chat/plugins/agent-hooks";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { parseInlinePluginManifest } from "@/chat/plugins/manifest";
 import { mswServer } from "../msw/server";
-import { z } from "zod";
+import * as z from "zod";
 
 describe("Linear MCP create annotations", () => {
   let manager: McpToolManager | undefined;

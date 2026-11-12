@@ -1,6 +1,6 @@
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { z } from "zod";
+import * as z from "zod";
 import { getSqlExecutor } from "@/chat/db";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { SlackActionError } from "@/chat/slack/client";
@@ -22,8 +22,9 @@ const linkedSlackIdentity = alias(
   "user_lookup_slack_identity",
 );
 
+type LinkedIdentity = { provider: string; handle: string };
 type UserLookupProfile =
-  | SlackUserProfile
+  | (SlackUserProfile & { linked_identities?: LinkedIdentity[] })
   | Pick<SlackUserProfile, "id" | "name">;
 type UserLookupMatch = UserLookupProfile & { mention: string };
 
@@ -141,6 +142,55 @@ async function storedSlackUserByEmail(
   return identities[0] ? slackProfileFromIdentity(identities[0]) : undefined;
 }
 
+/**
+ * Read the handles of other provider accounts that each Slack user linked to
+ * Junior, so a reply or a GitHub write can mention them on that provider.
+ * Only account-linking flows write these identities, so the handles are
+ * provider-verified. A Slack profile field is not.
+ */
+async function linkedIdentitiesBySlackUser(
+  teamId: SlackTeamId,
+  slackUserIds: string[],
+  providers: string[],
+): Promise<Map<string, LinkedIdentity[]>> {
+  const linked = new Map<string, LinkedIdentity[]>();
+  const otherProviders = providers.filter((provider) => provider !== "slack");
+  if (slackUserIds.length === 0 || otherProviders.length === 0) return linked;
+  const rows = await getSqlExecutor()
+    .db()
+    .select({
+      slackUserId: linkedSlackIdentity.providerSubjectId,
+      provider: juniorIdentities.provider,
+      handle: juniorIdentities.handle,
+    })
+    .from(linkedSlackIdentity)
+    .innerJoin(
+      juniorIdentities,
+      and(
+        eq(juniorIdentities.userId, linkedSlackIdentity.userId),
+        eq(juniorIdentities.kind, "user"),
+        inArray(juniorIdentities.provider, otherProviders),
+        isNotNull(juniorIdentities.handle),
+      ),
+    )
+    .where(
+      and(
+        eq(linkedSlackIdentity.kind, "user"),
+        eq(linkedSlackIdentity.provider, "slack"),
+        eq(linkedSlackIdentity.providerTenantId, teamId),
+        inArray(linkedSlackIdentity.providerSubjectId, slackUserIds),
+      ),
+    )
+    .orderBy(juniorIdentities.provider, juniorIdentities.handle);
+  for (const row of rows) {
+    if (!row.handle) continue;
+    const entries = linked.get(row.slackUserId) ?? [];
+    entries.push({ provider: row.provider, handle: row.handle });
+    linked.set(row.slackUserId, entries);
+  }
+  return linked;
+}
+
 function looksLikeEmail(query: string): boolean {
   // Require local@domain so bare @handles stay name searches.
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(query);
@@ -148,18 +198,35 @@ function looksLikeEmail(query: string): boolean {
 
 async function resolveSlack(
   teamId: SlackTeamId,
+  providers: string[],
   query: string,
 ): Promise<UserLookupResult> {
+  const slackResult = async (
+    users: SlackUserProfile[],
+    search?: UserLookupSearchMeta,
+  ) => {
+    const linked = await linkedIdentitiesBySlackUser(
+      teamId,
+      users.map((user) => user.id),
+      providers,
+    );
+    const profiles = users.map((user) => {
+      const linkedIdentities = linked.get(user.id);
+      if (!linkedIdentities) return user;
+      return { ...user, linked_identities: linkedIdentities };
+    });
+    return lookupResult({ provider: "slack", query, users: profiles, search });
+  };
+
   const userId = parseSlackUserId(query);
   if (userId) {
-    const user = await lookupSlackUserProfile(userId);
-    return lookupResult({ provider: "slack", query, users: [user] });
+    return await slackResult([await lookupSlackUserProfile(userId)]);
   }
 
   if (looksLikeEmail(query)) {
     const stored = await storedSlackUserByEmail(teamId, query);
     if (stored) {
-      return lookupResult({ provider: "slack", query, users: [stored] });
+      return await slackResult([stored]);
     }
     const profile = await lookupSlackUserByEmail(query);
     if (!profile) {
@@ -167,7 +234,7 @@ async function resolveSlack(
         `No Slack user found with email address ${query}.`,
       );
     }
-    return lookupResult({ provider: "slack", query, users: [profile] });
+    return await slackResult([profile]);
   }
 
   const result = await searchSlackUsers({
@@ -176,15 +243,10 @@ async function resolveSlack(
     maxPages: 3,
     includeBots: false,
   });
-  return lookupResult({
-    provider: "slack",
-    query,
-    users: result.users,
-    search: {
-      searched_pages: result.searched_pages,
-      searched_user_count: result.searched_user_count,
-      truncated: result.truncated,
-    },
+  return await slackResult(result.users, {
+    searched_pages: result.searched_pages,
+    searched_user_count: result.searched_user_count,
+    truncated: result.truncated,
   });
 }
 
@@ -230,7 +292,7 @@ export function createUserLookupTool(
 ) {
   return zodTool({
     description:
-      "Look up people by identity provider and query. Pass an enabled `provider` and its provider subject ID or handle. For `slack`, pass the person's Slack user ID (`U…`) whenever the conversation shows one, such as the requester's `author_id`, a participant's `actor_id`, or a `<@U…>` mention. The `slack` provider also accepts email and name searches. Use name search only for people with no known ID, because it can miss people in large workspaces. Returns Slack `mention` values (`<@U…>`) for the current workspace. Use a mention only when one person clearly matches; otherwise ask which person the user means.",
+      "Look up people by identity provider and query. Pass an enabled `provider` and its provider subject ID or handle. For `slack`, pass the person's Slack user ID (`U…`) whenever the conversation shows one, such as the requester's `author_id`, a participant's `actor_id`, or a `<@U…>` mention. The `slack` provider also accepts email and name searches. Use name search only for people with no known ID, because it can miss people in large workspaces. Returns Slack `mention` values (`<@U…>`) for the current workspace. Slack results also list `linked_identities`: verified handles of other accounts the person linked to you, such as `github`. Use a mention or handle only when one person clearly matches; otherwise ask which person the user means.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -255,7 +317,7 @@ export function createUserLookupTool(
     execute: async ({ provider, query }) => {
       try {
         return provider === "slack"
-          ? await resolveSlack(teamId, query)
+          ? await resolveSlack(teamId, providers, query)
           : await resolveStoredProvider(teamId, provider, query);
       } catch (error) {
         if (error instanceof SlackActionError) {

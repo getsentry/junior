@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 // This is the outbound subset Junior uses, not the full Slack schema. The SDK
 // allows arbitrary entity/field types and does not tie fields to their entity.

@@ -10,12 +10,8 @@ vi.mock("@/chat/task-execution/turn-cursor", () => ({
 import {
   abandonReplacedPendingAuth,
   canReusePendingAuthLink,
-  wasPendingAuthStopped,
 } from "@/chat/services/pending-auth";
-import type {
-  ConversationPendingAuthState,
-  ThreadConversationState,
-} from "@/chat/state/conversation";
+import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 
 const NOW = 1_700_000_000_000;
 const REUSE_WINDOW_MS = 10 * 60 * 1000;
@@ -44,20 +40,6 @@ function pendingAuth(
   return kind === "mcp"
     ? { ...value, authSessionId: "auth-session-1", kind }
     : { ...value, kind };
-}
-
-function conversationWithMessages(
-  messages: ThreadConversationState["messages"],
-): ThreadConversationState {
-  return {
-    schemaVersion: 1,
-    messages,
-    compactions: [],
-    processing: {},
-    vision: {
-      byFileId: {},
-    },
-  };
 }
 
 function pendingAuthState(sessionId: string): ConversationPendingAuthState {
@@ -192,74 +174,5 @@ describe("abandonReplacedPendingAuth", () => {
       errorMessage:
         "Abandoned by a newer auth-blocked request in the same conversation.",
     });
-  });
-});
-
-describe("wasPendingAuthStopped", () => {
-  const request = {
-    id: "msg.9",
-    role: "user" as const,
-    text: "list my sentry issues",
-    createdAtMs: NOW,
-  };
-
-  it("keeps the wait when the person sends another message", () => {
-    expect(
-      wasPendingAuthStopped(
-        conversationWithMessages([
-          request,
-          {
-            id: "msg.10",
-            role: "user",
-            text: "thanks, one sec",
-            createdAtMs: NOW + 1,
-            meta: { replied: true },
-          },
-        ]),
-        pendingAuthState("turn_msg_9"),
-      ),
-    ).toBe(false);
-  });
-
-  it("ends the wait when the person tells Junior to stop", () => {
-    expect(
-      wasPendingAuthStopped(
-        conversationWithMessages([
-          request,
-          {
-            id: "msg.stop",
-            role: "user",
-            text: "stop",
-            createdAtMs: NOW + 1,
-            meta: {
-              replied: false,
-              skippedReason: "thread_opt_out:explicit stop",
-            },
-          },
-        ]),
-        pendingAuthState("turn_msg_9"),
-      ),
-    ).toBe(true);
-  });
-
-  it("ignores a stop from before the request", () => {
-    expect(
-      wasPendingAuthStopped(
-        conversationWithMessages([
-          {
-            id: "msg.stop",
-            role: "user",
-            text: "stop",
-            createdAtMs: NOW - 1,
-            meta: {
-              replied: false,
-              skippedReason: "thread_opt_out:explicit stop",
-            },
-          },
-          request,
-        ]),
-        pendingAuthState("turn_msg_9"),
-      ),
-    ).toBe(false);
   });
 });

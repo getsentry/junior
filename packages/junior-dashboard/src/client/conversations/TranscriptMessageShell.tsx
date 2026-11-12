@@ -1,7 +1,14 @@
 import type { ClipboardEventHandler, ReactNode } from "react";
+import { Bot } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
+import { Message, MessageContent } from "../components/ui/message";
 import { transcriptRoleKind } from "../format";
 import { cn } from "../styles";
+import juniorAvatarUrl from "../../assets/junior-avatar.webp";
+import {
+  transcriptAvatarClass,
+  transcriptColumnsClass,
+} from "./TranscriptRows";
 
 /** Align message text and attachments beside their avatars. */
 export function TranscriptMessageShell(props: {
@@ -9,37 +16,47 @@ export function TranscriptMessageShell(props: {
   /** Junior API path of the author photo. Initials show without it. */
   avatarUrl?: string;
   children: ReactNode;
+  /** The parent agent wrote this input, so it shows an agent, not a person. */
+  fromAgent?: boolean;
   onCopy?: ClipboardEventHandler<HTMLElement>;
   role: string;
 }) {
   const kind = transcriptRoleKind(props.role);
   const hasAvatar = kind === "assistant" || kind === "user";
   return (
-    <article
+    <Message
       className={cn(
-        "group/message grid min-w-0 gap-3",
-        hasAvatar && "grid-cols-[2rem_minmax(0,1fr)] text-dashboard-text",
+        hasAvatar && cn(transcriptColumnsClass, "text-dashboard-text"),
         kind === "system" &&
-          "rounded-xl bg-dashboard-surface-panel px-4 py-3 text-dashboard-text",
-        kind === "tool" && "rounded-none px-0 text-dashboard-text-muted",
-        kind === "other" && "bg-dashboard-surface-hover text-dashboard-text",
+          "rounded-xl bg-dashboard-surface-panel px-4 py-3 text-dashboard-text max-md:ml-4",
+        kind === "tool" &&
+          "rounded-none px-0 text-dashboard-text-muted max-md:ml-8",
+        kind === "other" &&
+          "bg-dashboard-surface-hover text-dashboard-text max-md:ml-8",
       )}
       onCopy={props.onCopy}
     >
       {hasAvatar ? (
         <div
           aria-hidden="true"
-          className="flex size-8 shrink-0 items-center justify-center"
+          className={cn(
+            "flex items-center justify-center",
+            transcriptAvatarClass,
+          )}
         >
           {kind === "assistant" ? (
             <img
               alt=""
-              className="size-8 object-contain"
+              className="size-full object-contain"
               draggable={false}
-              src="/_junior/dashboard/avatar.png"
+              src={juniorAvatarUrl}
             />
+          ) : props.fromAgent ? (
+            <span className="grid size-full place-items-center rounded-full bg-dashboard-surface-hover text-cyan-200">
+              <Bot size={15} strokeWidth={2} />
+            </span>
           ) : (
-            <Avatar className="size-8 border-0 bg-violet-300 shadow-none">
+            <Avatar className="size-full border-0 bg-violet-300 shadow-none">
               <AvatarImage
                 alt=""
                 loading="lazy"
@@ -58,9 +75,7 @@ export function TranscriptMessageShell(props: {
           )}
         </div>
       ) : null}
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 py-1">
-        {props.children}
-      </div>
-    </article>
+      <MessageContent className="py-1">{props.children}</MessageContent>
+    </Message>
   );
 }

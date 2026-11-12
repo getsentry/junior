@@ -48,6 +48,30 @@ describe("Conversation Routing", () => {
     expect(conversation.replies).toHaveLength(1);
   });
 
+  test("when a later mention asks about a thread message without a mention, answer from that message", async ({
+    run,
+  }) => {
+    const first = await run(slackMention("Reply with only the word ready."));
+    // The untagged message is not agent history. Only thread context shows it.
+    const second = await first.continue([
+      slackThreadMessage(
+        "The rollback owner for the checkout outage is Priya.",
+        {
+          author: { fullName: "Sam Example", userId: "U0SAM", userName: "sam" },
+        },
+      ),
+      slackMention("In one sentence, who is the rollback owner?"),
+    ]);
+    await expect(second).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: ["The reply says Priya is the rollback owner."],
+      }),
+    );
+
+    expect(second.replies).toHaveLength(1);
+  });
+
   test("when asked to post in another named channel, explain the limitation instead", async ({
     run,
   }) => {

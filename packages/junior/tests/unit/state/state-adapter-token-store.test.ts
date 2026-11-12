@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import { createMemoryState } from "@chat-adapter/state-memory";
 import type { StateAdapter } from "chat";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
+import { readEncryptionKeyring } from "@/chat/encryption/keyring";
+import { encryptSecret } from "@/chat/encryption/secret";
 import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 
 describe("StateAdapterTokenStore", () => {
@@ -34,10 +37,7 @@ describe("StateAdapterTokenStore", () => {
 
     expect(adapter.set).toHaveBeenCalledWith(
       "oauth-token:U123:notion",
-      {
-        accessToken: "access-token",
-        refreshToken: "refresh-token",
-      },
+      expect.stringMatching(/^jenc:v1:/),
       365 * 24 * 60 * 60 * 1000,
     );
   });
@@ -61,12 +61,7 @@ describe("StateAdapterTokenStore", () => {
 
     expect(adapter.set).toHaveBeenCalledWith(
       "oauth-token:U123:github",
-      {
-        accessToken: "access-token",
-        refreshToken: "refresh-token",
-        expiresAt: new Date("2026-06-24T08:00:00Z").getTime(),
-        refreshTokenExpiresAt: new Date("2026-12-21T00:00:00Z").getTime(),
-      },
+      expect.stringMatching(/^jenc:v1:/),
       181 * 24 * 60 * 60 * 1000,
     );
   });
@@ -93,5 +88,57 @@ describe("StateAdapterTokenStore", () => {
     );
     expect(callback).toHaveBeenCalledTimes(1);
     expect(releaseLock).toHaveBeenCalledWith(lock);
+  });
+
+  it("saves tokens encrypted and reads them back", async () => {
+    const state = createMemoryState();
+    await state.connect();
+    const store = new StateAdapterTokenStore(state);
+    const tokens = { accessToken: "access-token", refreshToken: "refresh" };
+
+    await store.set("U123", "notion", tokens);
+
+    const stored = await state.get<string>("oauth-token:U123:notion");
+    expect(stored).toMatch(/^jenc:v1:/);
+    expect(stored).not.toContain("access-token");
+    await expect(store.get("U123", "notion")).resolves.toEqual(tokens);
+  });
+
+  it("encrypts plaintext tokens saved before encryption on read", async () => {
+    const state = createMemoryState();
+    await state.connect();
+    const tokens = { accessToken: "access-token", refreshToken: "refresh" };
+    await state.set("oauth-token:U123:notion", tokens);
+    const store = new StateAdapterTokenStore(state);
+
+    await expect(store.get("U123", "notion")).resolves.toEqual(tokens);
+
+    expect(await state.get("oauth-token:U123:notion")).toMatch(/^jenc:v1:/);
+    await expect(store.get("U123", "notion")).resolves.toEqual(tokens);
+  });
+
+  it("moves tokens from a key that is not active on read", async () => {
+    const state = createMemoryState();
+    await state.connect();
+    const tokens = { accessToken: "access-token", refreshToken: "refresh" };
+    const oldKeyOnly = readEncryptionKeyring({
+      JUNIOR_ENCRYPTION_KEYS: process.env.JUNIOR_ENCRYPTION_KEYS,
+      JUNIOR_ENCRYPTION_KEY_ID: "test-old",
+    });
+    await state.set(
+      "oauth-token:U123:notion",
+      encryptSecret(
+        JSON.stringify(tokens),
+        "oauth-token:U123:notion",
+        oldKeyOnly,
+      ),
+    );
+    const store = new StateAdapterTokenStore(state);
+
+    await expect(store.get("U123", "notion")).resolves.toEqual(tokens);
+
+    expect(await state.get("oauth-token:U123:notion")).toMatch(
+      /^jenc:v1:test:/,
+    );
   });
 });

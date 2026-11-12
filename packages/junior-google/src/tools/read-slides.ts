@@ -3,7 +3,7 @@ import {
   definePluginTool,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   fileOutputFields,
   fileReferenceSchema,
@@ -22,13 +22,13 @@ const inputSchema = z
 
 const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("readGoogleSlides"),
-  modifiedTime: z.string().optional(),
-  presentationId: z.string(),
-  slideCount: z.number().int(),
+  modified_at: z.string().optional(),
+  presentation_id: z.string(),
+  slide_count: z.number().int(),
   slides: z.array(
     z.object({
       notes: z.string().optional().describe("Speaker notes."),
-      slideNumber: z.number().int(),
+      slide_number: z.number().int(),
       text: z.string().describe("Text in the shapes and tables of the slide."),
     }),
   ),
@@ -176,15 +176,15 @@ export function createReadGoogleSlidesTool(ctx: GoogleToolContext) {
         remaining -= size;
         slides.push({
           ...(notes ? { notes } : undefined),
-          slideNumber: index + 1,
+          slide_number: index + 1,
           text,
         });
       }
       return {
         target: "readGoogleSlides" as const,
         ...fileOutputFields(file),
-        presentationId: file.id,
-        slideCount: presentation.slides.length,
+        presentation_id: file.id,
+        slide_count: presentation.slides.length,
         slides,
         title: file.name,
         truncated: slides.length < presentation.slides.length,

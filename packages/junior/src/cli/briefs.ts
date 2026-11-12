@@ -21,8 +21,7 @@ import {
   throughIndexFromSnapshot,
   type ConversationSnapshot,
 } from "@/chat/briefs/snapshot";
-import { defaultModelId } from "@/chat/model-profile";
-import { completeObject } from "@/chat/pi/client";
+import { completeObject } from "@/chat/core-model";
 import { CLI_USAGE } from "./run";
 
 type PullOptions = {
@@ -103,7 +102,7 @@ async function parseRunOptions(argv: string[]): Promise<RunOptions> {
   }
   if (snapshots.length === 0) throw new Error(CLI_USAGE);
   return {
-    model: model ?? (await configuredDefaultModelId()),
+    model: model ?? (await configuredBriefModelId()),
     out,
     promptFile,
     snapshots,
@@ -112,12 +111,13 @@ async function parseRunOptions(argv: string[]): Promise<RunOptions> {
 }
 
 /**
- * Read the app default model only when a run needs it. `chat/config` reads
- * `DATABASE_URL` at import, and `briefs pull` must work with only a token.
+ * Read the production Brief model only when a run needs it. `chat/config`
+ * reads `DATABASE_URL` at import, and `briefs pull` must work with only a
+ * token.
  */
-async function configuredDefaultModelId(): Promise<string> {
+async function configuredBriefModelId(): Promise<string> {
   const { botConfig } = await import("@/chat/config");
-  return defaultModelId(botConfig);
+  return botConfig.fastModelId;
 }
 
 function apiUrl(baseUrl: string, pathname: string): URL {
@@ -237,7 +237,13 @@ async function runSnapshot(
     versions.push(
       await generateBrief({
         completeObject: (request) =>
-          completeObject({ ...request, modelId: options.model }),
+          completeObject({
+            ...request,
+            modelId: options.model,
+            operation: "brief_update",
+            // The CLI report sums the cost of each version.
+            cost: { owner: "caller" },
+          }),
         input: briefInputFromSnapshot(snapshot, throughIndex),
         previous: versions.at(-1)?.brief,
         prompt,

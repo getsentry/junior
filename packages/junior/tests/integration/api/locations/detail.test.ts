@@ -4,7 +4,7 @@ import { readLocationDetailFromSql } from "@/api/locations/query";
 import { apiErrorSchema, locationDetailReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { juniorDestinations } from "@/db/schema";
+import { juniorConversations, juniorDestinations } from "@/db/schema";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 
 describe("location detail API", () => {
@@ -28,6 +28,10 @@ describe("location detail API", () => {
         source: "slack",
         visibility: "public",
       });
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ stoppedAt: new Date("2026-06-15T11:30:00.000Z") });
       const [destination] = await fixture.sql
         .db()
         .select()
@@ -41,6 +45,7 @@ describe("location detail API", () => {
         recentConversations: [
           expect.objectContaining({
             conversationId: "slack:C1:detail",
+            status: "stopped",
           }),
         ],
       });

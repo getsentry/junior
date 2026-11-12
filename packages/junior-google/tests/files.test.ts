@@ -5,13 +5,28 @@ import { ACCOUNT_EMAIL, stubGoogleEnv } from "./fixture";
 
 const DOC_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcd";
 
+const REQUESTER = "alice@example.com";
+
 function docsTools(...responses: Response[]) {
+  return toolsFor(REQUESTER, ...responses);
+}
+
+const SEARCH_DOC = {
+  id: DOC_ID,
+  mimeType: "application/vnd.google-apps.document",
+  modifiedTime: "2026-10-01T10:00:00Z",
+  name: "Q4 plan",
+  owners: [{ emailAddress: "bob@example.com" }],
+  webViewLink: `https://docs.google.com/document/d/${DOC_ID}/edit`,
+};
+
+function toolsFor(email: string | undefined, ...responses: Response[]) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
   const tools = googlePlugin().hooks!.tools!({
     egress: { fetch },
     users: {
-      resolveActor: async () => undefined,
+      resolveActor: async () => (email ? { user: { email } } : undefined),
       resolveTimezone: async () => "America/Los_Angeles",
     },
   } as never);
@@ -44,23 +59,14 @@ describe("Google Docs, Sheets, and Slides tools", () => {
 
   it("finds a Doc, reads it from a shared link, and lists its comments", async () => {
     const { fetch, tools } = docsTools(
-      Response.json({
-        files: [
-          {
-            id: DOC_ID,
-            mimeType: "application/vnd.google-apps.document",
-            modifiedTime: "2026-10-01T10:00:00Z",
-            name: "Q4 plan",
-            webViewLink: `https://docs.google.com/document/d/${DOC_ID}/edit`,
-          },
-        ],
-        nextPageToken: "more",
-      }),
+      Response.json({ files: [SEARCH_DOC], nextPageToken: "more" }),
+      Response.json({ files: [SEARCH_DOC] }),
       Response.json({
         id: DOC_ID,
         mimeType: "application/vnd.google-apps.document",
         name: "Q4 plan",
       }),
+      Response.json({ revisionId: "rev-1" }),
       new Response("# Q4 plan\n\nShip it.", {
         headers: { "content-type": "text/markdown" },
       }),
@@ -95,33 +101,45 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       query: "Bob's plan",
       types: ["document"],
     });
-    const searchUrl = new URL(fetch.mock.calls[0]![0].request.url);
-    expect(searchUrl.pathname).toBe("/drive/v3/files");
-    expect(searchUrl.searchParams.get("q")).toBe(
-      "(mimeType = 'application/vnd.google-apps.document') and trashed = false and fullText contains 'Bob\\'s plan'",
+    const [named, findable] = [0, 1].map(
+      (call) => new URL(fetch.mock.calls[call]![0].request.url),
+    );
+    expect(named!.pathname).toBe("/drive/v3/files");
+    const terms =
+      "(mimeType = 'application/vnd.google-apps.document') and trashed = false and fullText contains 'Bob\\'s plan'";
+    expect(named!.searchParams.get("q")).toBe(
+      `${terms} and ('alice@example.com' in readers or 'alice@example.com' in writers or 'alice@example.com' in owners)`,
+    );
+    expect(findable!.searchParams.get("q")).toBe(
+      `${terms} and (visibility = 'domainCanFind' or visibility = 'anyoneCanFind')`,
     );
     expect(search).toMatchObject({
-      files: [{ fileId: DOC_ID, title: "Q4 plan", type: "document" }],
+      files: [{ file_id: DOC_ID, title: "Q4 plan", type: "document" }],
       truncated: true,
     });
 
     const link = `https://docs.google.com/document/d/${DOC_ID}/edit?resourcekey=0-key`;
     const doc = await run(tools, "readGoogleDoc", { document: link });
-    const [get, exported] = [fetch.mock.calls[1]![0], fetch.mock.calls[2]![0]];
+    const [get, revision, exported] = [2, 3, 4].map(
+      (index) => fetch.mock.calls[index]![0],
+    );
     expect(get.operation).toBe("google.drive.file.get");
+    // The edit tools check this revision before they change the Doc.
+    expect(revision.operation).toBe("google.docs.document.get");
     expect(exported.operation).toBe("google.drive.file.export");
     expect(new URL(exported.request.url).pathname).toBe(
       `/drive/v3/files/${DOC_ID}/export`,
     );
     // Google needs the resource key of an older Doc shared by link.
-    for (const call of [get, exported]) {
+    for (const call of [get, revision, exported]) {
       expect(call.request.headers.get("X-Goog-Drive-Resource-Keys")).toBe(
         `${DOC_ID}/0-key`,
       );
     }
     expect(doc).toMatchObject({
       content: "# Q4 plan\n\nShip it.",
-      documentId: DOC_ID,
+      document_id: DOC_ID,
+      revision_id: "rev-1",
       title: "Q4 plan",
       truncated: false,
     });
@@ -129,7 +147,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     const comments = await run(tools, "listGoogleFileComments", {
       file: DOC_ID,
     });
-    expect(fetch.mock.calls.slice(3).map(([call]) => call.operation)).toEqual([
+    expect(fetch.mock.calls.slice(5).map(([call]) => call.operation)).toEqual([
       "google.drive.file.get",
       "google.drive.comments.list",
     ]);
@@ -138,9 +156,9 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       comments: [
         {
           author: "Bob",
-          commentId: "c1",
+          comment_id: "c1",
           content: "Which quarter?",
-          quotedText: "Ship it.",
+          quoted_text: "Ship it.",
           replies: [
             { author: "Alice", content: "Q4." },
             { action: "resolve", author: "Bob", content: "" },
@@ -148,9 +166,90 @@ describe("Google Docs, Sheets, and Slides tools", () => {
           resolved: true,
         },
       ],
-      fileId: DOC_ID,
-      nextPageToken: "page-2",
+      file_id: DOC_ID,
+      next_page_token: "page-2",
     });
+
+    // Reading needs only Drive. Before an admin enables the Docs API, the
+    // text still comes back, without a revision for the edit tools.
+    const noDocsApi = docsTools(
+      Response.json({
+        id: DOC_ID,
+        mimeType: "application/vnd.google-apps.document",
+        name: "Q4 plan",
+      }),
+      Response.json(
+        {
+          error: {
+            details: [{ reason: "SERVICE_DISABLED" }],
+            message: "Docs API has not been used",
+          },
+        },
+        { status: 403 },
+      ),
+      new Response("# Q4 plan", {
+        headers: { "content-type": "text/markdown" },
+      }),
+    );
+    const unrevised = await run(noDocsApi.tools, "readGoogleDoc", {
+      document: DOC_ID,
+    });
+    expect(unrevised).toMatchObject({ content: "# Q4 plan" });
+    expect(unrevised).not.toHaveProperty("revision_id");
+  });
+
+  it("searches only with the requester's terms", async () => {
+    const unknown = toolsFor(undefined);
+    await expect(
+      run(unknown.tools, "searchGoogleFiles", { query: "plan" }),
+    ).rejects.toThrow("paste a link");
+    // Without the requester's email, Junior never searches.
+    expect(unknown.fetch).not.toHaveBeenCalled();
+    // Domain-findable files are not findable for someone outside the company.
+    const outside = toolsFor("eve@other.com");
+    await expect(
+      run(outside.tools, "searchGoogleFiles", { query: "plan" }),
+    ).rejects.toBeInstanceOf(PluginToolInputError);
+    expect(outside.fetch).not.toHaveBeenCalled();
+
+    const { fetch, tools } = docsTools(
+      Response.json({ error: { message: "Invalid Value" } }, { status: 400 }),
+      Response.json({ files: [] }),
+    );
+    await expect(
+      run(tools, "searchGoogleFiles", { query: "plan" }),
+    ).rejects.toThrow("Google rejected the search.");
+    // A rejected query is not retried without the requester's terms.
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows only company-owned files in search", async () => {
+    const inSharedDrive = { driveId: "drive", owners: undefined };
+    const { tools } = docsTools(
+      Response.json({
+        files: [{ ...SEARCH_DOC, ...inSharedDrive, id: "named-drive-file" }],
+      }),
+      Response.json({
+        files: [
+          { ...SEARCH_DOC, ...inSharedDrive, id: "findable-drive-file" },
+          {
+            ...SEARCH_DOC,
+            id: "external-file",
+            owners: [{ emailAddress: "eve@other.com" }],
+          },
+          { ...SEARCH_DOC, id: "no-owner-file", owners: undefined },
+          SEARCH_DOC,
+        ],
+      }),
+    );
+    // A shared-drive file shows only when it names the requester. A file
+    // owned outside the allowed domains, or without owner data, never shows.
+    const search = await run(tools, "searchGoogleFiles", { query: "plan" });
+    expect(
+      (search as { files: { file_id: string }[] }).files.map(
+        (file) => file.file_id,
+      ),
+    ).toEqual(["named-drive-file", DOC_ID]);
   });
 
   it("explains a file Junior cannot open, a file of the wrong type, and a grant without Drive access", async () => {
@@ -280,7 +379,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
           truncated: false,
         },
       ],
-      spreadsheetId: SHEET_ID,
+      spreadsheet_id: SHEET_ID,
       tabs: ["Q4", "Bob's tab"],
       title: "Budget",
       truncated: false,
@@ -293,11 +392,11 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       "slides.googleapis.com",
     );
     expect(slides).toMatchObject({
-      presentationId: SLIDES_ID,
-      slideCount: 2,
+      presentation_id: SLIDES_ID,
+      slide_count: 2,
       slides: [
-        { notes: "Say hello.", slideNumber: 1, text: "Kickoff\nQ4 | Ship" },
-        { slideNumber: 2, text: "" },
+        { notes: "Say hello.", slide_number: 1, text: "Kickoff\nQ4 | Ship" },
+        { slide_number: 2, text: "" },
       ],
       title: "Kickoff",
       truncated: false,

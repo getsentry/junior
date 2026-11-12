@@ -1,21 +1,20 @@
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import {
+  conversationAnnotationInputSchema,
   eventMatches,
+  type CodeChangeInput,
   type ConversationAnnotationInput,
   type EventInput,
   type EventMatch,
 } from "@sentry/junior-plugin-api";
-import { createLocalPgliteFixture } from "@sentry/junior-testing/pglite";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  githubSqlSchema,
   type GitHubPullRequestCommitComposition,
   juniorGitHubIssues,
   juniorGitHubPullRequestRequesters,
   juniorGitHubPullRequests,
 } from "../src/db/schema";
-import type { GitHubDb } from "../src/db/database";
 import { githubPlugin } from "../src/index";
 import {
   listGitHubAssignedWork,
@@ -78,16 +77,13 @@ function checkSuitePullRequest(
   };
 }
 
-import {
-  createGitHubFixture,
-  type GitHubFixture,
-  migrationSql,
-} from "./github-db";
+import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 
-it("returns only candidate conversations with unmerged pull requests", async () => {
+it("combines open, merged, and closed pull requests into conversation work", async () => {
   const fixture = await createGitHubFixture();
   const at = new Date("2026-07-01T12:00:00.000Z");
+  const closedAt = new Date("2026-07-02T12:00:00.000Z");
   try {
     await fixture
       .db()
@@ -114,12 +110,24 @@ it("returns only candidate conversations with unmerged pull requests", async () 
           mergedAt: at,
           updatedAt: at,
         },
+        {
+          pullRequestId: "closed-pr",
+          repositoryId: "repo-1",
+          repositoryFullName: "getsentry/junior",
+          number: 3,
+          state: "closed_unmerged",
+          conversationIds: ["conversation-closed", "conversation-merged"],
+          openedAt: at,
+          closedAt: closedAt,
+          updatedAt: closedAt,
+        },
       ]);
 
     await expect(
       listGitHubUnfinishedWork(fixture.db(), [
         "conversation-open",
         "conversation-merged",
+        "conversation-closed",
         "conversation-shared",
         "conversation-unrelated",
       ]),
@@ -128,21 +136,25 @@ it("returns only candidate conversations with unmerged pull requests", async () 
       listGitHubFinishedWork(fixture.db(), [
         "conversation-open",
         "conversation-merged",
+        "conversation-closed",
         "conversation-shared",
         "conversation-unrelated",
       ]),
     ).resolves.toEqual({
-      "conversation-merged": "2026-07-01T12:00:00.000Z",
+      "conversation-merged": "2026-07-02T12:00:00.000Z",
+      "conversation-closed": "2026-07-02T12:00:00.000Z",
       "conversation-shared": "2026-07-01T12:00:00.000Z",
     });
     await expect(
       listGitHubAssignedWork(fixture.db(), [
         "conversation-open",
         "conversation-merged",
+        "conversation-closed",
         "conversation-shared",
         "conversation-unrelated",
       ]).then((ids) => [...ids].sort()),
     ).resolves.toEqual([
+      "conversation-closed",
       "conversation-merged",
       "conversation-open",
       "conversation-shared",
@@ -273,6 +285,7 @@ function webhookRoute(
     typeof createGitHubWebhookRoute
   >[0]["markFeedbackReviewing"] = async () => {},
   hasMatch: () => Promise<boolean> = async () => true,
+  codeChanges: CodeChangeInput[] = [],
 ) {
   return createGitHubWebhookRoute({
     annotations: {
@@ -293,7 +306,10 @@ function webhookRoute(
     classifyPullRequestCommits,
     codeChanges: {
       async associateConversations() {},
-      async record() {},
+      async recordActivity() {},
+      async record(input) {
+        codeChanges.push(input);
+      },
     },
     db: fixture.db(),
     installationId: () => "456",
@@ -340,7 +356,7 @@ describe("GitHub webhook events", () => {
 
     expect(events).toEqual([
       {
-        eventKey: "github:delivery-merge:pull_request.merged",
+        eventKey: "github:getsentry/junior#946:pull_request.merged",
         eventType: "pull_request.merged",
         occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
         identifier: "getsentry/junior#946",
@@ -349,7 +365,7 @@ describe("GitHub webhook events", () => {
         data: { repo: "getsentry/junior", pullRequest: 946 },
       },
       {
-        eventKey: "github:delivery-merge:pull_request.merged",
+        eventKey: "github:getsentry/junior#946:pull_request.merged",
         eventType: "pull_request.merged",
         occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
         identifier: "getsentry/junior",
@@ -1145,6 +1161,45 @@ describe("GitHub webhook events", () => {
     ]);
   });
 
+  it("adds GitHub status incidents to failed check suite events", () => {
+    const [event] = normalizeGitHubEvents({
+      body: {
+        action: "completed",
+        repository: checkSuiteRepository("getsentry/junior"),
+        check_suite: {
+          app: { name: "GitHub Actions" },
+          conclusion: "failure",
+          head_sha: "abcdef1234567890",
+          id: 43,
+          pull_requests: [checkSuitePullRequest(692)],
+        },
+      },
+      checkSuiteFacts: {
+        githubIncidents: [
+          {
+            components: ["Actions", "Git Operations"],
+            impact: "major",
+            name: "Incident with Actions",
+            startedAt: "2026-11-04T09:50:00.000Z",
+            status: "investigating",
+            url: "https://stspg.io/open",
+          },
+        ],
+      },
+      deliveryId: "delivery-check-suite-status",
+      eventName: "check_suite",
+    });
+
+    expect(event).toMatchObject({
+      trustedSummary:
+        "GitHub PR getsentry/junior#692 checks failed for abcdef123456. githubstatus.com lists 1 open or recent GitHub incident.",
+      untrustedText: [
+        "GitHub status incidents:",
+        "- Incident with Actions (investigating; Actions, Git Operations; started 2026-11-04T09:50:00.000Z): https://stspg.io/open",
+      ].join("\n"),
+    });
+  });
+
   it("builds the browser suite url from repo, sha, and suite id", () => {
     expect(
       buildCheckSuiteUrl({
@@ -1604,6 +1659,69 @@ describe("GitHub webhook events", () => {
         data: { repo: "getsentry/junior", issue: 946 },
       },
     ]);
+
+    const botEmail = "41898282+junior-test[bot]@users.noreply.github.com";
+    const issueUpdate = (body: Record<string, unknown>) =>
+      normalizeGitHubEvents({
+        body: {
+          repository: { full_name: "getsentry/junior" },
+          issue: {
+            number: 946,
+            title: "Watches fail on issue comments",
+            updated_at: "2026-08-02T12:00:00.000Z",
+          },
+          sender: { id: 1001, login: "jane" },
+          ...body,
+        },
+        botEmail,
+        deliveryId: "delivery-issue-updated",
+        eventName: "issues",
+      });
+
+    expect(
+      issueUpdate({ action: "labeled", label: { name: "Ignore this" } }),
+    ).toEqual(
+      ["getsentry/junior#946", "getsentry/junior"].map((identifier) => ({
+        eventKey: "github:delivery-issue-updated:issue.updated",
+        eventType: "issue.updated",
+        occurredAtMs: Date.parse("2026-08-02T12:00:00.000Z"),
+        identifier,
+        trustedSummary:
+          "GitHub issue getsentry/junior#946 was labeled by jane.",
+        doneBy: { provider: "github", handle: "jane" },
+        data: {
+          repo: "getsentry/junior",
+          issue: 946,
+          change: "labeled",
+          label: "ignore this",
+          senderId: 1001,
+          senderLogin: "jane",
+        },
+        untrustedText:
+          "Label: Ignore this\n\nTitle: Watches fail on issue comments",
+      })),
+    );
+    expect(
+      issueUpdate({
+        action: "edited",
+        changes: { body: { from: "old" }, title: { from: "Old" } },
+      })[0]?.trustedSummary,
+    ).toBe(
+      "GitHub issue getsentry/junior#946 was edited (title, body) by jane.",
+    );
+    expect(
+      issueUpdate({ action: "assigned", assignee: { login: "bob" } })[0]
+        ?.trustedSummary,
+    ).toBe("GitHub issue getsentry/junior#946 was assigned to bob by jane.");
+    // Junior's own issue updates do not wake its Watches.
+    expect(
+      issueUpdate({
+        action: "labeled",
+        label: { name: "bug" },
+        sender: { id: 41898282, login: "junior-test[bot]" },
+      }),
+    ).toEqual([]);
+    expect(issueUpdate({ action: "pinned" })).toEqual([]);
   });
 });
 
@@ -1806,59 +1924,6 @@ describe("GitHub-owned issue outcomes", () => {
 });
 
 describe("GitHub-owned pull request outcomes", () => {
-  it("upgrades existing pull requests with nullable composition and empty conversations", async () => {
-    const fixture = await createLocalPgliteFixture<GitHubDb>(githubSqlSchema);
-    try {
-      await fixture.execute(
-        await migrationSql("0000_pull_request_outcomes.sql"),
-      );
-      await fixture.execute(`
-        INSERT INTO junior_github_pull_requests (
-          pull_request_id,
-          repository_id,
-          repository_full_name,
-          number,
-          state,
-          opened_at,
-          updated_at
-        ) VALUES (
-          'legacy-pr',
-          '2001',
-          'getsentry/junior',
-          900,
-          'open',
-          '2026-06-01T12:00:00.000Z',
-          '2026-06-01T12:00:00.000Z'
-        )
-      `);
-      for (const migration of [
-        "0001_issue_outcomes.sql",
-        "0002_pull_request_commit_composition.sql",
-        "0003_pull_request_conversations.sql",
-        "0004_marvelous_toad_men.sql",
-        "0005_github_cost_associations.sql",
-        "0006_fat_korvac.sql",
-        "0007_shallow_millenium_guard.sql",
-        "0009_nostalgic_thing.sql",
-        "0010_sleepy_slayback.sql",
-      ]) {
-        await fixture.execute(await migrationSql(migration));
-      }
-
-      await expect(
-        fixture.db().select().from(juniorGitHubPullRequests),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          commitComposition: null,
-          conversationIds: [],
-          pullRequestId: "legacy-pr",
-        }),
-      ]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
   it("does not mark pull request comments without an event consumer", async () => {
     const fixture = await createGitHubFixture();
     const published: EventInput[] = [];
@@ -1893,12 +1958,83 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("marks pull request comments before publishing their events", async () => {
+  it.each([
+    {
+      name: "a conversation comment",
+      eventName: "issue_comment",
+      body: {
+        action: "created",
+        repository: { full_name: "getsentry/junior" },
+        issue: {
+          number: 946,
+          pull_request: { url: "https://api.github.com/pulls/946" },
+        },
+        comment: {
+          body: "please revise",
+          id: 101,
+          user: { login: "reviewer" },
+        },
+      },
+      target: { commentId: 101, commentKind: "conversation" },
+      publishedCount: 2,
+    },
+    {
+      // An approval with a body is also sent as review.commented, but the
+      // review body gets one reaction.
+      name: "an approval with a body",
+      eventName: "pull_request_review",
+      body: {
+        action: "submitted",
+        repository: { full_name: "getsentry/junior" },
+        pull_request: { number: 946 },
+        review: {
+          body: "fine, but dedupe the tests",
+          id: 303,
+          state: "APPROVED",
+          user: { login: "reviewer" },
+        },
+      },
+      target: { commentId: 303, commentKind: "review_body" },
+      publishedCount: 4,
+    },
+  ])(
+    "marks $name before publishing its events",
+    async ({ body, eventName, publishedCount, target }) => {
+      const fixture = await createGitHubFixture();
+      const published: EventInput[] = [];
+      const markFeedbackReviewing = vi.fn(async () => {
+        expect(published).toEqual([]);
+      });
+      try {
+        const route = webhookRoute(
+          fixture,
+          published,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          markFeedbackReviewing,
+        );
+        const response = await route.handler(signedRequest(body, eventName));
+
+        expect(response.status).toBe(202);
+        expect(markFeedbackReviewing).toHaveBeenCalledTimes(1);
+        expect(markFeedbackReviewing).toHaveBeenCalledWith({
+          ...target,
+          pullRequest: 946,
+          repo: "getsentry/junior",
+        });
+        expect(published).toHaveLength(publishedCount);
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
+  it("does not mark a review without a body", async () => {
     const fixture = await createGitHubFixture();
     const published: EventInput[] = [];
-    const markFeedbackReviewing = vi.fn(async () => {
-      expect(published).toEqual([]);
-    });
+    const markFeedbackReviewing = vi.fn(async () => {});
     try {
       const route = webhookRoute(
         fixture,
@@ -1912,28 +2048,22 @@ describe("GitHub-owned pull request outcomes", () => {
       const response = await route.handler(
         signedRequest(
           {
-            action: "created",
+            action: "submitted",
             repository: { full_name: "getsentry/junior" },
-            issue: {
-              number: 946,
-              pull_request: { url: "https://api.github.com/pulls/946" },
-            },
-            comment: {
-              body: "please revise",
-              id: 101,
+            pull_request: { number: 946 },
+            review: {
+              body: "",
+              id: 304,
+              state: "APPROVED",
               user: { login: "reviewer" },
             },
           },
-          "issue_comment",
+          "pull_request_review",
         ),
       );
 
       expect(response.status).toBe(202);
-      expect(markFeedbackReviewing).toHaveBeenCalledWith({
-        commentId: 101,
-        commentKind: "conversation",
-        repo: "getsentry/junior",
-      });
+      expect(markFeedbackReviewing).not.toHaveBeenCalled();
       expect(published).toHaveLength(2);
     } finally {
       await fixture.close();
@@ -2103,10 +2233,21 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("rejects malformed terminal outcomes before persistence", async () => {
+  it("records a close without a terminal time at its update time", async () => {
     const fixture = await createGitHubFixture();
     try {
-      const route = webhookRoute(fixture);
+      const annotations: Array<{
+        annotation: ConversationAnnotationInput;
+        conversationId: string;
+      }> = [];
+      const route = webhookRoute(
+        fixture,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        annotations,
+      );
       const missingMergeTime = lifecyclePayload({
         action: "closed",
         closedAt: "2026-07-03T12:00:00.000Z",
@@ -2114,15 +2255,58 @@ describe("GitHub-owned pull request outcomes", () => {
         id: 1001,
         merged: true,
         number: 946,
-        updatedAt: "2026-07-03T12:00:00.000Z",
+        updatedAt: "2026-07-03T12:05:00.000Z",
+      });
+      const missingCloseTime = lifecyclePayload({
+        action: "closed",
+        closedAt: "not a time",
+        createdAt: "2026-07-01T12:00:00.000Z",
+        id: 1002,
+        number: 947,
+        updatedAt: "2026-07-04T12:05:00.000Z",
       });
 
-      await expect(
-        route.handler(signedRequest(missingMergeTime)),
-      ).rejects.toThrow("GitHub pull request terminal timestamp is invalid");
-      await expect(
-        fixture.db().select().from(juniorGitHubPullRequests),
-      ).resolves.toEqual([]);
+      for (const closed of [missingMergeTime, missingCloseTime]) {
+        const opened = {
+          ...closed,
+          action: "opened",
+          pull_request: {
+            ...closed.pull_request,
+            closed_at: null,
+            merged: false,
+            merged_at: null,
+            updated_at: closed.pull_request.created_at,
+          },
+        };
+        expect((await route.handler(signedRequest(opened))).status).toBe(202);
+        expect((await route.handler(signedRequest(closed))).status).toBe(202);
+      }
+      const rows = await fixture
+        .db()
+        .select()
+        .from(juniorGitHubPullRequests)
+        .orderBy(juniorGitHubPullRequests.number);
+      expect(rows).toMatchObject([
+        {
+          closedAt: new Date("2026-07-03T12:00:00.000Z"),
+          mergedAt: new Date("2026-07-03T12:05:00.000Z"),
+          state: "merged",
+        },
+        {
+          closedAt: new Date("2026-07-04T12:05:00.000Z"),
+          mergedAt: null,
+          state: "closed_unmerged",
+        },
+      ]);
+      expect(
+        annotations.map(({ annotation }) => [
+          annotation.key,
+          annotation.status,
+        ]),
+      ).toEqual([
+        ["getsentry/junior#946", "merged"],
+        ["getsentry/junior#947", "closed"],
+      ]);
     } finally {
       await fixture.close();
     }
@@ -2158,6 +2342,7 @@ describe("GitHub-owned pull request outcomes", () => {
         plugin: { name: "github" },
         codeChanges: {
           async associateConversations() {},
+          async recordActivity() {},
           record: codeChangesRecord,
         },
         events: { async publish() {} },
@@ -2182,6 +2367,96 @@ describe("GitHub-owned pull request outcomes", () => {
           state: "open",
         }),
       );
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("records pull request activity by people, not bots", async () => {
+    const fixture = await createGitHubFixture();
+    const recordActivity = vi.fn(async () => {});
+    vi.stubEnv(
+      "GITHUB_APP_BOT_EMAIL",
+      "264270552+sentry-junior[bot]@users.noreply.github.com",
+    );
+    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+    try {
+      const [route] = githubPlugin().hooks!.routes!({
+        annotations: {
+          forConversation() {
+            return {
+              async upsert() {},
+              async remove() {},
+              async list() {
+                return [];
+              },
+            };
+          },
+        },
+        db: fixture.db(),
+        log: { error() {}, info() {}, warn() {} },
+        plugin: { name: "github" },
+        codeChanges: {
+          async associateConversations() {},
+          async record() {},
+          recordActivity,
+        },
+        events: { async publish() {} },
+      });
+      const comment = (input: { number: number; senderType: string }) => ({
+        action: "created",
+        comment: { body: "lgtm", created_at: "2026-07-02T09:30:00Z", id: 7 },
+        issue: {
+          number: input.number,
+          pull_request: { url: "https://api.github.com/pulls/946" },
+        },
+        repository: { full_name: "getsentry/junior", id: 2001 },
+        sender: { login: "octocat", type: input.senderType },
+      });
+
+      await route!.handler(
+        signedRequest(
+          comment({ number: 946, senderType: "Bot" }),
+          "issue_comment",
+        ),
+      );
+      expect(recordActivity).not.toHaveBeenCalled();
+
+      await route!.handler(
+        signedRequest(
+          comment({ number: 946, senderType: "User" }),
+          "issue_comment",
+        ),
+      );
+      await route!.handler(
+        signedRequest(
+          {
+            action: "submitted",
+            pull_request: { number: 946 },
+            repository: { full_name: "getsentry/junior", id: 2001 },
+            review: { id: 8, submitted_at: "2026-07-02T10:00:00Z" },
+            sender: { login: "octocat", type: "User" },
+          },
+          "pull_request_review",
+        ),
+      );
+      expect(recordActivity.mock.calls).toEqual([
+        [
+          {
+            at: new Date("2026-07-02T09:30:00Z"),
+            number: 946,
+            repositoryProviderId: "2001",
+          },
+        ],
+        [
+          {
+            at: new Date("2026-07-02T10:00:00Z"),
+            number: 946,
+            repositoryProviderId: "2001",
+          },
+        ],
+      ]);
     } finally {
       await fixture.close();
     }
@@ -2243,6 +2518,7 @@ describe("GitHub-owned pull request outcomes", () => {
         },
         codeChanges: {
           async associateConversations() {},
+          async recordActivity() {},
           async record() {},
         },
         db: fixture.db(),
@@ -2372,6 +2648,7 @@ describe("GitHub-owned pull request outcomes", () => {
         },
         codeChanges: {
           async associateConversations() {},
+          async recordActivity() {},
           async record() {},
         },
         db: fixture.db(),
@@ -2500,14 +2777,16 @@ describe("GitHub-owned pull request outcomes", () => {
         },
         codeChanges: {
           async associateConversations() {},
+          async recordActivity() {},
           async record() {},
         },
         db: fixture.db(),
         log: { error() {}, info() {}, warn() {} },
         plugin: { name: "github" },
         events: {
-          hasMatch: async (event) =>
-            Boolean(watch) && eventMatches(watch!.match, event.data),
+          hasMatch: async (events) =>
+            Boolean(watch) &&
+            events.some((event) => eventMatches(watch!.match, event.data)),
           neededMatchKeys: async () => Object.keys(watch?.match ?? {}),
           async publish(event) {
             published.push(event);
@@ -2643,6 +2922,7 @@ describe("GitHub-owned pull request outcomes", () => {
       },
       codeChanges: {
         async associateConversations() {},
+        async recordActivity() {},
         async record() {},
       },
       users: {
@@ -3023,6 +3303,173 @@ describe("GitHub-owned pull request outcomes", () => {
           identifier: "getsentry/junior",
         }),
       ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("stores the draft state from opens and draft changes", async () => {
+    const fixture = await createGitHubFixture();
+    const codeChanges: CodeChangeInput[] = [];
+    try {
+      const route = webhookRoute(
+        fixture,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        [],
+        undefined,
+        undefined,
+        codeChanges,
+      );
+      const opened = pullRequestPayload();
+      const deliver = async (action: string, updatedAt: string, draft = {}) =>
+        await route.handler(
+          signedRequest(
+            pullRequestPayload({
+              action,
+              pull_request: {
+                ...(opened.pull_request as Record<string, unknown>),
+                ...draft,
+                updated_at: updatedAt,
+              },
+            }),
+          ),
+        );
+      const storedDraft = async () =>
+        (await fixture.db().select().from(juniorGitHubPullRequests))[0]?.draft;
+
+      await deliver("opened", "2026-07-01T12:00:00.000Z", { draft: true });
+      expect(await storedDraft()).toBe(true);
+      await deliver("ready_for_review", "2026-07-02T12:00:00.000Z", {
+        draft: false,
+      });
+      expect(await storedDraft()).toBe(false);
+      // A late delivery cannot move the draft state back.
+      await deliver("converted_to_draft", "2026-07-01T18:00:00.000Z", {
+        draft: true,
+      });
+      expect(await storedDraft()).toBe(false);
+      await deliver("converted_to_draft", "2026-07-03T12:00:00.000Z", {
+        draft: true,
+      });
+      expect(await storedDraft()).toBe(true);
+      // A close keeps the draft state.
+      await deliver("closed", "2026-07-04T12:00:00.000Z", { draft: false });
+      expect(await storedDraft()).toBe(true);
+
+      expect(codeChanges.map((change) => [change.state, change.draft])).toEqual(
+        [
+          ["open", true],
+          ["open", false],
+          ["open", true],
+          ["closed", undefined],
+        ],
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("updates each chip when one stored chip has facts for another object type", async () => {
+    const fixture = await createGitHubFixture();
+    const key = "getsentry/junior#946";
+    // Like the core store, each conversation validates what it saves.
+    const chips = new Map<string, ConversationAnnotationInput>([
+      [
+        "slack:C123:1712345.0001",
+        {
+          facts: { labels: ["bug"], type: "task" },
+          key,
+          kind: "object",
+          label: key,
+          objectType: "task",
+          title: "Fix the bug",
+          url: "https://github.com/getsentry/junior/pull/946",
+        },
+      ],
+    ]);
+    try {
+      const route = createGitHubWebhookRoute({
+        annotations: {
+          forConversation(conversationId) {
+            return {
+              async upsert(annotation) {
+                chips.set(
+                  conversationId,
+                  conversationAnnotationInputSchema.parse(annotation),
+                );
+              },
+              async remove() {},
+              async list() {
+                const chip = chips.get(conversationId);
+                return chip
+                  ? [
+                      {
+                        ...chip,
+                        createdAt: "2026-07-01T12:00:00.000Z",
+                        plugin: "github",
+                        updatedAt: "2026-07-01T12:00:00.000Z",
+                      },
+                    ]
+                  : [];
+              },
+            };
+          },
+        },
+        appIdEnv: "GITHUB_APP_ID",
+        botEmail: () => "264270552+sentry-junior[bot]@users.noreply.github.com",
+        classifyPullRequestCommits: async () => "mixed",
+        codeChanges: {
+          async associateConversations() {},
+          async recordActivity() {},
+          async record() {},
+        },
+        db: fixture.db(),
+        installationId: () => "456",
+        installationIdEnv: "GITHUB_INSTALLATION_ID",
+        markFeedbackReviewing: async () => {},
+        privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
+        events: { async publish() {} },
+        webhookSecret: () => "test-secret",
+      });
+      const opened = pullRequestPayload({
+        pull_request: {
+          ...(pullRequestPayload().pull_request as Record<string, unknown>),
+          body: "<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC123%3A1712345.0001 -->\n<!-- junior-conversation-id:slack%3AC456%3A1719999.0002 -->\n<!-- junior-session-footer:end -->",
+        },
+      });
+      expect((await route.handler(signedRequest(opened))).status).toBe(202);
+      const merged = pullRequestPayload({
+        action: "closed",
+        pull_request: {
+          ...(opened.pull_request as Record<string, unknown>),
+          closed_at: "2026-07-03T12:00:00.000Z",
+          merged: true,
+          merged_at: "2026-07-03T12:00:00.000Z",
+          updated_at: "2026-07-03T12:00:00.000Z",
+        },
+      });
+      expect((await route.handler(signedRequest(merged))).status).toBe(202);
+
+      expect(Object.fromEntries(chips)).toEqual({
+        "slack:C123:1712345.0001": {
+          key,
+          kind: "object",
+          label: key,
+          objectType: "code_change",
+          status: "merged",
+          title: "Fix the bug",
+          url: "https://github.com/getsentry/junior/pull/946",
+        },
+        "slack:C456:1719999.0002": expect.objectContaining({
+          kind: "resource_link",
+          status: "merged",
+        }),
+      });
+      const [row] = await fixture.db().select().from(juniorGitHubPullRequests);
+      expect(row?.commitComposition).toBe("mixed");
     } finally {
       await fixture.close();
     }

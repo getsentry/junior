@@ -1,14 +1,22 @@
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 
-test("opens a registered plugin page from primary navigation", async ({
+test("opens a registered plugin page from the profile menu", async ({
   page,
   dashboard,
 }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   await page.goto(dashboard.baseURL);
 
-  const memoriesLink = page.getByRole("link", { name: "Memories" });
+  await page
+    .getByRole("button", {
+      name: "Open profile menu for Dashboard User",
+      exact: true,
+    })
+    .click();
+  const memoriesLink = page
+    .locator("#profile-popover")
+    .getByRole("menuitem", { name: "Memories" });
   await expect(memoriesLink).toHaveAttribute("href", "/memories");
   await memoriesLink.click();
 
@@ -73,13 +81,6 @@ test("opens a registered plugin page from primary navigation", async ({
     }),
   ).toBeVisible();
   await screenshot(page, "memories-library");
-  await expect(page.getByText("Private").last()).toBeVisible();
-  const privateTab = page.getByRole("tab", { name: "Private 24" });
-  await privateTab.click();
-  await expect(privateTab).toHaveAttribute("aria-selected", "true");
-  await expect(page).toHaveURL(/filter=private/);
-  const navLinks = await page.locator("header nav a").allTextContents();
-  expect(navLinks.at(-1)?.trim()).toBe("System");
 });
 
 test("opens memory details beside the library", async ({ page, dashboard }) => {
@@ -93,7 +94,7 @@ test("opens memory details beside the library", async ({ page, dashboard }) => {
   await expect(page).toHaveURL(/\/memories\/memory-1/);
   const details = page.getByRole("complementary", { name: "Memory details" });
   await expect(
-    details.getByRole("heading", { name: "Private preference" }),
+    details.getByRole("heading", { name: "Preference" }),
   ).toBeVisible();
   await expect(details.getByText("From a Slack conversation")).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -112,9 +113,7 @@ test("opens memory details beside the library", async ({ page, dashboard }) => {
 
   await page.setViewportSize({ height: 844, width: 390 });
   await memory.click();
-  const mobileDetails = page.getByRole("dialog", {
-    name: "Private preference",
-  });
+  const mobileDetails = page.getByRole("dialog", { name: "Preference" });
   await expect(mobileDetails).toBeVisible();
   await expect(
     mobileDetails.getByRole("button", { name: "Forget this memory" }),
@@ -164,15 +163,6 @@ test("searches, paginates, and forgets plugin page records", async ({
     dashboardRequestCount += 1;
     await route.fallback();
   });
-  const countQueries: string[] = [];
-  await page.route("**/api/plugins/memory/counts*", async (route) => {
-    countQueries.push(new URL(route.request().url()).searchParams.get("q")!);
-    await route.fulfill({
-      json: forgotMemory
-        ? { active: 0, personal: 0, public: 0 }
-        : { active: 3, personal: 1, public: 2 },
-    });
-  });
   await page.route("**/api/user-pages/memory/memories*", async (route) => {
     const url = new URL(route.request().url());
     const query = url.searchParams.get("q");
@@ -187,7 +177,7 @@ test("searches, paginates, and forgets plugin page records", async ({
             {
               actions: [
                 {
-                  confirmation: "Forget this memory?",
+                  confirmation: "Forget this memory for everyone?",
                   href: "/api/plugins/memory/memories/memory-search",
                   label: "Forget",
                   method: "DELETE",
@@ -233,7 +223,6 @@ test("searches, paginates, and forgets plugin page records", async ({
             observedAt: "2026-07-30T12:00:00.000Z",
             origin: "explicit",
             sourcePlatform: "slack",
-            visibility: "private",
           },
         });
         return;
@@ -245,7 +234,13 @@ test("searches, paginates, and forgets plugin page records", async ({
     },
   );
 
-  await page.goto(`${dashboard.baseURL}/memories/library`);
+  // Load the summary first, so the forget must invalidate a cached copy.
+  await page.goto(`${dashboard.baseURL}/memories`);
+  await expect.poll(() => dashboardRequestCount).toBe(1);
+  const memoryNavigation = page.getByRole("navigation", {
+    name: "Memory navigation",
+  });
+  await memoryNavigation.getByRole("link", { name: "Memories" }).click();
   await expect(
     page.getByRole("button", {
       name: /^View memory details: First page memory/,
@@ -253,12 +248,6 @@ test("searches, paginates, and forgets plugin page records", async ({
   ).toBeVisible();
   const searchbox = page.getByRole("searchbox", { name: "Search memories" });
   await searchbox.fill("runbook");
-  await expect(page.getByRole("tab", { name: "All 3" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Public 2" })).toBeVisible();
-  expect(countQueries).toEqual(["runbook"]);
-  const privateTab = page.getByRole("tab", { name: "Private 1" });
-  await privateTab.click();
-  await expect(page).toHaveURL(/filter=private/);
   await expect(page).toHaveURL(/q=runbook/);
   await expect(
     page.getByRole("button", { name: "Load more" }),
@@ -273,8 +262,6 @@ test("searches, paginates, and forgets plugin page records", async ({
 
   await searchbox.fill("");
   await expect(page).not.toHaveURL(/q=/);
-  await page.getByRole("tab", { name: /^All/ }).click();
-  await expect(page).not.toHaveURL(/filter=/);
   await expect(
     page.getByRole("button", {
       name: /^View memory details: First page memory/,
@@ -306,7 +293,7 @@ test("searches, paginates, and forgets plugin page records", async ({
     .getByRole("button", { name: "Forget this memory" })
     .click();
   await page
-    .getByRole("alertdialog", { name: "Forget this memory?" })
+    .getByRole("alertdialog", { name: "Forget this memory for everyone?" })
     .getByRole("button", { name: "Forget" })
     .evaluate((button) => {
       button.click();
@@ -315,11 +302,12 @@ test("searches, paginates, and forgets plugin page records", async ({
   await expect(
     page.getByText("No memories matched your search."),
   ).toBeVisible();
-  await expect(page.getByRole("tab", { name: "All 0" })).toBeVisible();
   expect(forgetRequests).toBe(1);
-  await expect.poll(() => dashboardRequestCount).toBeGreaterThan(1);
 
   await searchbox.fill("");
   await expect(page).not.toHaveURL(/q=/);
   await expect(page.getByText("No memories yet.")).toBeVisible();
+
+  await memoryNavigation.getByRole("link", { name: "Overview" }).click();
+  await expect.poll(() => dashboardRequestCount).toBeGreaterThan(1);
 });

@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarClock, Zap } from "lucide-react";
 import type { AutomationRun } from "@sentry/junior/api/schema";
+import { useSearchParams } from "react-router";
 
 import { useAutomationRunsData } from "../../api";
-import { FilterBar, FilterGroup } from "../../components/FilterBar";
+import {
+  FilteredList,
+  FilterOptions,
+  FilterPanel,
+} from "../../components/filters/FilterPanel";
+import { FilterToolbar } from "../../components/filters/FilterToolbar";
 import { InlineError } from "../../components/InlineError";
+import { ListPanelFrame } from "../../components/layout/ListPanelFrame";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import {
   pageCount,
@@ -13,7 +20,6 @@ import {
 } from "../../components/Pagination";
 import { SelectableRow } from "../../components/SelectableRow";
 import { StatusDot } from "../../components/StatusDot";
-import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import {
@@ -28,7 +34,6 @@ import {
 import { cn } from "../../styles";
 import {
   AutomationRunDetails,
-  AutomationRunsFrame,
   RunConversationLink,
   useAutomationRunSelection,
 } from "./AutomationRunDetails";
@@ -41,6 +46,15 @@ import {
 const RUN_PAGE_SIZE = 25;
 const RUN_KINDS = ["all", "scheduled", "event"] as const;
 const RUN_STATUSES = ["all", "completed", "failed", "blocked"] as const;
+const KIND_OPTIONS = [
+  { label: "Scheduled", value: "scheduled" },
+  { label: "Event", value: "event" },
+];
+const STATUS_OPTIONS = [
+  { label: "Completed", value: "completed" },
+  { label: "Failed", value: "failed" },
+  { label: "Blocked", value: "blocked" },
+];
 const EMPTY_RUNS: AutomationRun[] = [];
 /** Leading label columns flex; metric columns stay equal fixed widths. */
 const RUN_GRID =
@@ -55,6 +69,7 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
   const [kind, setKind] = useSearchParamEnum("type", "all", RUN_KINDS);
   const [status, setStatus] = useSearchParamEnum("status", "all", RUN_STATUSES);
   const [searchText, setSearchText, searchQuery] = useDebouncedSearchParam();
+  const [, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(1);
   const search = searchQuery.toLowerCase();
   const runs = query.data?.runs ?? EMPTY_RUNS;
@@ -99,13 +114,30 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
   const selectedRun = selection.runId
     ? runs.find((run) => run.executionId === selection.runId)
     : undefined;
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activeFilters = [
+    kind !== "all" && {
+      key: "type",
+      label: "Type",
+      valueLabel:
+        KIND_OPTIONS.find((option) => option.value === kind)?.label ?? kind,
+    },
+    status !== "all" && {
+      key: "status",
+      label: "Status",
+      valueLabel:
+        STATUS_OPTIONS.find((option) => option.value === status)?.label ??
+        status,
+    },
+  ].filter((filter) => filter !== false);
+  const removeFilter = (key: string) =>
+    key === "type" ? setKind("all") : setStatus("all");
 
   return (
-    <AutomationRunsFrame
+    <ListPanelFrame
       details={
         selection.runId ? (
           <AutomationRunDetails
-            key={selection.runId}
             loading={loading}
             onClose={selection.close}
             run={selectedRun}
@@ -124,116 +156,131 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
         <PageContentSkeleton label="Loading automation runs" variant="list" />
       ) : (
         <>
-          <FilterBar
-            search={{
-              label: "Search runs",
-              onChange: setSearchText,
-              placeholder: "Automation, conversation, or status",
-              value: searchText,
-            }}
+          <FilteredList
+            toolbar={
+              <FilterToolbar
+                filters={{
+                  active: activeFilters,
+                  onRemove: removeFilter,
+                  onToggle: () => setFiltersOpen((open) => !open),
+                  open: filtersOpen,
+                }}
+                search={{
+                  label: "Search runs",
+                  onChange: setSearchText,
+                  placeholder: "Automation, conversation, or status",
+                  value: searchText,
+                }}
+              />
+            }
+            filters={
+              filtersOpen ? (
+                <FilterPanel
+                  onClear={
+                    activeFilters.length
+                      ? () =>
+                          // One URL update, so the second clear cannot undo the first.
+                          setSearchParams(
+                            (current) => {
+                              const next = new URLSearchParams(current);
+                              next.delete("type");
+                              next.delete("status");
+                              return next;
+                            },
+                            { replace: true },
+                          )
+                      : undefined
+                  }
+                  onClose={() => setFiltersOpen(false)}
+                >
+                  <FilterOptions
+                    label="Type"
+                    onChange={(value) =>
+                      setKind(value ? (value as RunKindFilter) : "all")
+                    }
+                    options={KIND_OPTIONS}
+                    value={kind === "all" ? "" : kind}
+                  />
+                  <FilterOptions
+                    label="Status"
+                    onChange={(value) =>
+                      setStatus(value ? (value as RunStatusFilter) : "all")
+                    }
+                    options={STATUS_OPTIONS}
+                    value={status === "all" ? "" : status}
+                  />
+                </FilterPanel>
+              ) : null
+            }
           >
-            <FilterGroup label="Type">
-              <ToggleGroup
-                className="flex-wrap gap-2"
-                onValueChange={([next]) => {
-                  if (next) setKind(next);
-                }}
-                value={[kind]}
-              >
-                {RUN_KINDS.map((value) => (
-                  <ToggleGroupItem key={value} value={value} variant="pill">
-                    {value}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-            </FilterGroup>
-            <FilterGroup label="Status">
-              <ToggleGroup
-                className="flex-wrap gap-2"
-                onValueChange={([next]) => {
-                  if (next) setStatus(next);
-                }}
-                value={[status]}
-              >
-                {RUN_STATUSES.map((value) => (
-                  <ToggleGroupItem key={value} value={value} variant="pill">
-                    {value}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-            </FilterGroup>
-          </FilterBar>
-          <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-dashboard-border-subtle pb-3">
-            <p className="m-0 text-sm text-dashboard-text-muted">
-              {visibleRuns.length} {visibleRuns.length === 1 ? "run" : "runs"}
-              <span className="text-dashboard-text-muted/70">
-                {" "}
-                · newest first
-              </span>
-            </p>
-          </div>
-          {query.error ? (
-            <Card padding="md">
-              <InlineError>
-                Automation runs could not be loaded. Try again.
-              </InlineError>
-            </Card>
-          ) : visibleRuns.length === 0 ? (
-            <Card padding="md">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-dashboard-border-subtle pb-3">
               <p className="m-0 text-sm text-dashboard-text-muted">
-                {emptyRunsText({ kind, search, status })}
+                {visibleRuns.length} {visibleRuns.length === 1 ? "run" : "runs"}
+                <span className="text-dashboard-text-muted/70">
+                  {" "}
+                  · newest first
+                </span>
               </p>
-            </Card>
-          ) : (
-            <Card>
-              <div className="min-w-0 overflow-x-auto">
-                <div className="min-w-[44rem]">
-                  <div
-                    aria-hidden="true"
-                    className={cn(
-                      "sticky top-0 z-[1] hidden items-center gap-4 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-4 py-2.5 font-sans font-medium text-xs text-dashboard-text-muted md:grid",
-                      RUN_GRID,
-                    )}
-                  >
-                    <div>Run</div>
-                    <div>Automation</div>
-                    <div>Duration</div>
-                    <div>Tokens</div>
-                    <div>Cost</div>
-                  </div>
-                  <div
-                    className="min-w-0"
-                    onKeyDown={selection.onRowsKeyDown}
-                    role="list"
-                  >
-                    {pagedRuns.map((run) => (
-                      <AutomationRunRow
-                        key={`${run.kind}:${run.executionId}`}
-                        onSelect={() => selection.toggle(run.executionId)}
-                        run={run}
-                        selected={selection.runId === run.executionId}
-                      />
-                    ))}
+            </div>
+            {query.error ? (
+              <Card padding="md">
+                <InlineError>
+                  Automation runs could not be loaded. Try again.
+                </InlineError>
+              </Card>
+            ) : visibleRuns.length === 0 ? (
+              <Card padding="md">
+                <p className="m-0 text-sm text-dashboard-text-muted">
+                  {emptyRunsText({ kind, search, status })}
+                </p>
+              </Card>
+            ) : (
+              <Card>
+                <div className="min-w-0 overflow-x-auto">
+                  <div className="min-w-[44rem]">
+                    <div
+                      aria-hidden="true"
+                      className={cn(
+                        "sticky top-0 z-[1] hidden items-center gap-4 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-4 py-2.5 font-sans font-medium text-xs text-dashboard-text-muted md:grid",
+                        RUN_GRID,
+                      )}
+                    >
+                      <div>Run</div>
+                      <div>Automation</div>
+                      <div>Duration</div>
+                      <div>Tokens</div>
+                      <div>Cost</div>
+                    </div>
+                    <div className="min-w-0" role="list">
+                      {pagedRuns.map((run) => (
+                        <AutomationRunRow
+                          key={`${run.kind}:${run.executionId}`}
+                          onSelect={() => selection.toggle(run.executionId)}
+                          run={run}
+                          selected={selection.runId === run.executionId}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </Card>
-          )}
-          <PagePagination
-            onPageChange={setPage}
-            page={page}
-            pageCount={totalPages}
-            pageSize={RUN_PAGE_SIZE}
-            total={visibleRuns.length}
-          />
-          {query.data?.truncated ? (
-            <p className="m-0 text-center text-xs text-dashboard-text-muted">
-              Showing the 100 most recent runs.
-            </p>
-          ) : null}
+              </Card>
+            )}
+            <PagePagination
+              onPageChange={setPage}
+              page={page}
+              pageCount={totalPages}
+              pageSize={RUN_PAGE_SIZE}
+              total={visibleRuns.length}
+            />
+            {query.data?.truncated ? (
+              <p className="m-0 text-center text-xs text-dashboard-text-muted">
+                Showing the 100 most recent runs.
+              </p>
+            ) : null}
+          </FilteredList>
         </>
       )}
-    </AutomationRunsFrame>
+    </ListPanelFrame>
   );
 }
 
