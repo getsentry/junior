@@ -18,8 +18,16 @@ import {
 } from "@/chat/identities/sql";
 import { juniorIdentities } from "@/db/schema";
 import { conversationBriefFixture } from "../../fixtures/conversation-brief";
+import {
+  conversationsInfoOk,
+  conversationsMembersPage,
+  conversationsRepliesPage,
+  slackError,
+  usersInfoOk,
+} from "../../fixtures/slack/factories/api";
 import { linkSlackUser } from "../../fixtures/slack-user";
 import { signedInViewer } from "../../fixtures/user";
+import { queueSlackApiResponse } from "../../msw/handlers/slack-api";
 
 const DASHBOARD = "https://junior.example.com";
 const CONVERSATION_ID = "slack:CPRIVATE:1712345.0001";
@@ -238,5 +246,114 @@ describe("object links API", () => {
       "1001",
     );
     expect(await handle()).not.toHaveProperty("githubHandle");
+  });
+
+  it("resolves a Slack message only where the viewer's Slack account sees it", async () => {
+    await linkSlackUser("alice@example.com", "UALICE");
+    await linkSlackUser("bob@example.com", "UBOB");
+    const alice = await viewerApi("alice@example.com");
+    const bob = await viewerApi("bob@example.com");
+    const publicUrl =
+      "https://example.slack.com/archives/C0PUBLIC/p1712345000000100";
+    const privateUrl =
+      "https://example.slack.com/archives/C0PRIVATE/p1712345000000200?thread_ts=1712345000.000100&cid=C0PRIVATE";
+
+    // Public channel that the bot has not joined: the card has no text.
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({ channelId: "C0PUBLIC", name: "proj-launch" }),
+    });
+    queueSlackApiResponse("conversations.replies", {
+      body: slackError({ error: "not_in_channel" }),
+    });
+    expect((await alice(publicUrl)).objects.get(publicUrl)).toEqual({
+      facts: {
+        channel: "#proj-launch",
+        sentAt: "2024-04-05T19:23:20.000Z",
+        type: "message",
+      },
+      key: "slack:T123:C0PUBLIC:1712345000.000100",
+      kind: "object",
+      label: "#proj-launch",
+      objectType: "message",
+      plugin: "junior",
+      title: "Message in #proj-launch",
+      url: publicUrl,
+    });
+
+    // A private channel resolves for a member, with a short snippet.
+    const privateInfo = {
+      body: conversationsInfoOk({
+        channelId: "C0PRIVATE",
+        isPrivate: true,
+        name: "launch-legal",
+      }),
+    };
+    const members = { body: conversationsMembersPage({ members: ["UALICE"] }) };
+    queueSlackApiResponse("conversations.info", privateInfo);
+    queueSlackApiResponse("conversations.members", members);
+    queueSlackApiResponse("conversations.replies", {
+      body: conversationsRepliesPage({
+        messages: [
+          { text: "Thread root", ts: "1712345000.000100", user: "UAUTHOR" },
+          {
+            text: "Legal signs off Friday <!here>, see <https://example.com/plan|the plan>",
+            thread_ts: "1712345000.000100",
+            ts: "1712345000.000200",
+            user: "UAUTHOR",
+          },
+        ],
+      }),
+    });
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ realName: "Morgan Lee", userId: "UAUTHOR" }),
+    });
+    expect((await alice(privateUrl)).objects.get(privateUrl)).toMatchObject({
+      facts: {
+        author: "Morgan Lee",
+        channel: "#launch-legal",
+        type: "message",
+      },
+      label: "#launch-legal",
+      title: "Legal signs off Friday @here, see the plan",
+    });
+
+    // Not a member: no card, and the response does not show the message.
+    queueSlackApiResponse("conversations.info", privateInfo);
+    queueSlackApiResponse("conversations.members", members);
+    const outsider = await bob(privateUrl);
+    expect(outsider.objects.size).toBe(0);
+    expect(outsider.body).not.toContain("launch-legal");
+
+    // A deleted message: no card.
+    queueSlackApiResponse("conversations.info", privateInfo);
+    queueSlackApiResponse("conversations.members", members);
+    queueSlackApiResponse("conversations.replies", {
+      body: slackError({ error: "thread_not_found" }),
+    });
+    const deletedUrl =
+      "https://example.slack.com/archives/C0PRIVATE/p1712345000000300";
+    expect((await alice(deletedUrl)).objects.size).toBe(0);
+
+    // A thread that does not have the linked reply: no card.
+    queueSlackApiResponse("conversations.info", privateInfo);
+    queueSlackApiResponse("conversations.members", members);
+    queueSlackApiResponse("conversations.replies", {
+      body: conversationsRepliesPage({
+        messages: [
+          { text: "Thread root", ts: "1712345000.000100", user: "UAUTHOR" },
+        ],
+      }),
+    });
+    const missingReplyUrl =
+      "https://example.slack.com/archives/C0PRIVATE/p1712345000000400?thread_ts=1712345000.000100";
+    expect((await alice(missingReplyUrl)).objects.size).toBe(0);
+
+    // No linked Slack account, or a link to another workspace: no card.
+    const unlinked = await (await viewerApi("carol@example.com"))(publicUrl);
+    expect(unlinked.objects.size).toBe(0);
+    const otherWorkspace = (
+      await alice(publicUrl.replace("example.", "other."))
+    ).objects;
+    expect(otherWorkspace.size).toBe(0);
   });
 });

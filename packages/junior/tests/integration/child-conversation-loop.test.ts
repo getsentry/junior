@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import { listUnreportedSiblingAgents } from "@/chat/agent-invocations/list";
+import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
 import {
   createDeliverToParent,
   enqueueAgentInvocationResult,
@@ -74,6 +75,7 @@ async function sendHelperReply(harness: Harness, sender: AgentInvocation) {
       reply: { text: "Helper fact.", toolCallId: "helper-reply" },
     },
     sender,
+    turnId: getAgentInvocationTurnId(sender.invocationId),
     state: harness.state,
   });
   // Event input waits for its burst window, as on a root.
@@ -415,3 +417,6 @@ describe("child Turns on the Conversation loop", () => {
     }
   });
 });
+
+// A spawn can stop writing agent invocations only once every deployed reader
+// works without one, so a rollback stays safe. These children have none.

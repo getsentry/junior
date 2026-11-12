@@ -3,10 +3,10 @@ export {
   INPUT_IMAGE_TYPES,
 } from "../chat/attachments/media";
 export {
-  MAX_INPUT_IMAGES,
-  MAX_INPUT_IMAGE_BYTES,
+  MAX_INPUT_ATTACHMENTS,
+  MAX_INPUT_ATTACHMENT_BYTES,
 } from "../chat/attachments/input";
-export type { InputImage, MessageAttachment } from "../chat/attachments/input";
+export type { InputFile, MessageAttachment } from "../chat/attachments/input";
 export {
   AGENT_REPLY_EVENT_TYPE,
   isAgentInvocationResultEventType,
@@ -32,7 +32,11 @@ export {
   resolveMessageCards,
 } from "../chat/conversations/cards";
 export type { MessageCard } from "../chat/conversations/cards";
-export { conversationObjectCard, personObjectCard } from "./objects/cards";
+export {
+  conversationObjectCard,
+  messageObjectCard,
+  personObjectCard,
+} from "./objects/cards";
 export {
   MAX_OBJECT_LINKS,
   objectLinksQuerySchema,
@@ -84,6 +88,14 @@ export {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export {
+  attachmentUploadSchema,
+  createAttachmentUploadBodySchema,
+} from "./schema/conversation-attachment-upload";
+export type {
+  AttachmentUpload,
+  CreateAttachmentUploadBody,
+} from "./schema/conversation-attachment-upload";
 export {
   cancelConversationPendingMessagesBodySchema,
   cancelConversationPendingMessagesResponseSchema,

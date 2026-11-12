@@ -111,6 +111,7 @@ describe("Google credential issuing", () => {
         account: { id: ACCOUNT_EMAIL },
         headerTransforms: [
           "www.googleapis.com",
+          "docs.googleapis.com",
           "sheets.googleapis.com",
           "slides.googleapis.com",
         ].map((domain) => ({

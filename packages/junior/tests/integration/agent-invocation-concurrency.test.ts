@@ -1,3 +1,4 @@
+import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { AgentRun } from "@/chat/agent/types";
@@ -660,6 +661,7 @@ describe("agent invocation identity and concurrency", () => {
             reply: { text: finding, toolCallId: "helper-reply" },
           },
           sender: helper,
+          turnId: getAgentInvocationTurnId(helper.invocationId),
           state: harness.state,
         });
         // The child Turn runs after the Event burst window, as on a root.

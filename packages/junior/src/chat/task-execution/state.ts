@@ -24,6 +24,11 @@ import {
 } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { logException } from "@/chat/logging";
+import {
+  normalizeMessageSenders,
+  withMessageSenders,
+  type InboundMessageSenders,
+} from "./message-sender";
 
 const CONVERSATION_PREFIX = "junior:conversation:v2";
 const CONVERSATION_SCHEMA_VERSION = 2;
@@ -162,6 +167,8 @@ export interface ConversationStop {
 
 export interface ConversationExecution {
   inboundMessageIds: string[];
+  /** Sender fields of the ids in `inboundMessageIds` that have them. */
+  messageSenders?: InboundMessageSenders;
   lastCheckpointAtMs?: number;
   lastEnqueuedAtMs?: number;
   lastProgressAtMs?: number;
@@ -292,6 +299,10 @@ function conversationKey(conversationId: string): string {
 
 function conversationStopKey(conversationId: string): string {
   return `${CONVERSATION_PREFIX}:stop:${conversationId}`;
+}
+
+function deferredMoveKey(conversationId: string): string {
+  return `${CONVERSATION_PREFIX}:deferred-move:${conversationId}`;
 }
 
 function indexLockKey(indexKey: string): string {
@@ -494,6 +505,10 @@ function normalizeExecution(
           .filter((id): id is string => Boolean(id)),
       )
     : [];
+  const messageSenders = withMessageSenders(
+    normalizeMessageSenders(value.messageSenders),
+    pendingMessages,
+  );
 
   return {
     status,
@@ -501,6 +516,7 @@ function normalizeExecution(
       ...inboundMessageIds,
       ...pendingMessages.map((message) => message.inboundMessageId),
     ]),
+    ...(messageSenders ? { messageSenders } : undefined),
     pendingCount: pendingMessages.length,
     pendingMessages,
     lease: normalizeLease(value.lease),
@@ -648,12 +664,17 @@ function executionWithPendingMessages(
   pending: InboundMessage[],
 ): ConversationExecution {
   const pendingMessages = [...pending].sort(compareMessages);
+  const messageSenders = withMessageSenders(
+    execution.messageSenders,
+    pendingMessages,
+  );
   return {
     ...execution,
     inboundMessageIds: uniqueStrings([
       ...execution.inboundMessageIds,
       ...pendingMessages.map((message) => message.inboundMessageId),
     ]),
+    ...(messageSenders ? { messageSenders } : undefined),
     pendingMessages,
     pendingCount: pendingMessages.length,
   };
@@ -1286,7 +1307,10 @@ async function appendInboundMessageWithAdmission(args: {
         return { status: "active" };
       }
       const text = args.renderText
-        ? await args.renderText(current.execution.inboundMessageIds)
+        ? await args.renderText(
+            current.execution.inboundMessageIds,
+            current.execution.messageSenders ?? {},
+          )
         : args.message.input.text;
       if (text === undefined) {
         // Record the id, so a repeat append of the dropped message is a
@@ -1302,6 +1326,10 @@ async function appendInboundMessageWithAdmission(args: {
                 ...current.execution.inboundMessageIds,
                 args.message.inboundMessageId,
               ],
+              messageSenders: withMessageSenders(
+                current.execution.messageSenders,
+                [args.message],
+              ),
             },
             nowMs,
           ),
@@ -1357,12 +1385,14 @@ async function appendInboundMessageWithAdmission(args: {
 
 /**
  * Render the text of one inbound message from the ids that already reached
- * its mailbox. It runs under the mailbox lock, so two appends that depend on
- * each other see each other. Undefined drops the message for good: its id
- * is recorded and nothing is appended, as for a duplicate.
+ * its mailbox and their sender fields. It runs under the mailbox lock, so two
+ * appends that depend on each other see each other. Undefined drops the
+ * message for good: its id is recorded and nothing is appended, as for a
+ * duplicate.
  */
 export type RenderInboundText = (
   inboundMessageIds: readonly string[],
+  messageSenders: Readonly<InboundMessageSenders>,
 ) => Promise<string | undefined>;
 
 /** Persist one inbound message idempotently in its conversation mailbox. */
@@ -1630,12 +1660,7 @@ export async function moveIdleConversationDestination(args: {
 }): Promise<"busy" | "moved" | "not_moved"> {
   return await withConversationMutation(args, async (state, lock) => {
     const existing = await readConversation(state, args.conversationId);
-    if (
-      existing &&
-      (existing.execution.lease ||
-        existing.execution.status === "running" ||
-        existing.execution.status === "paused")
-    ) {
+    if (existing && isHeldByRun(existing)) {
       return "busy";
     }
     if (!(await args.move())) return "not_moved";
@@ -1652,6 +1677,61 @@ export async function moveIdleConversationDestination(args: {
       });
     }
     return "moved";
+  });
+}
+
+function isHeldByRun(conversation: ConversationExecutionState): boolean {
+  return (
+    conversation.execution.lease !== undefined ||
+    conversation.execution.status === "running" ||
+    conversation.execution.status === "paused"
+  );
+}
+
+/**
+ * Store one Destination move until the Run that holds the Conversation ends.
+ *
+ * The first stored move wins: a later call gets it back. With no Run, this
+ * stores nothing and returns `idle`, so the caller moves now.
+ */
+export async function deferConversationMove(args: {
+  conversationId: string;
+  move: unknown;
+  state?: StateAdapter;
+}): Promise<{ status: "idle" } | { move: unknown; status: "deferred" }> {
+  return await withConversationMutation(args, async (state, lock) => {
+    const existing = await readConversation(state, args.conversationId);
+    if (!existing || !isHeldByRun(existing)) return { status: "idle" };
+    const key = deferredMoveKey(args.conversationId);
+    const stored = await state.get(key);
+    if (stored !== null) return { move: stored, status: "deferred" };
+    await fenceConversationMutation(state, lock, args.conversationId);
+    await state.set(key, args.move, JUNIOR_THREAD_STATE_TTL_MS);
+    return { move: args.move, status: "deferred" };
+  });
+}
+
+/**
+ * Remove and return the deferred move once no Run holds the Conversation.
+ * The caller runs it, and defers it again when a new Run started first.
+ */
+export async function takeDeferredConversationMove(args: {
+  conversationId: string;
+  state?: StateAdapter;
+}): Promise<unknown> {
+  const key = deferredMoveKey(args.conversationId);
+  // Almost every Run ends with no deferred move. Skip the lock for those.
+  if ((await (await getConnectedState(args.state)).get(key)) === null) {
+    return undefined;
+  }
+  return await withConversationMutation(args, async (state, lock) => {
+    const existing = await readConversation(state, args.conversationId);
+    if (existing && isHeldByRun(existing)) return undefined;
+    const stored = await state.get(key);
+    if (stored === null) return undefined;
+    await fenceConversationMutation(state, lock, args.conversationId);
+    await state.delete(key);
+    return stored;
   });
 }
 

@@ -1,3 +1,4 @@
+import type { SlackAdapter } from "@chat-adapter/slack";
 import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
@@ -107,6 +108,8 @@ export interface ConversationWorkProcessResult {
 export interface ProcessConversationWorkOptions {
   checkInIntervalMs?: number;
   conversationStore?: ConversationStore;
+  /** Slack installation lookup for work that runs after the Run ends. */
+  getSlackAdapter?: () => SlackAdapter;
   nowMs?: () => number;
   queue: ConversationWorkQueue;
   run(context: ConversationWorkerContext): Promise<ConversationWorkerResult>;
@@ -842,6 +845,7 @@ async function processConversationWorkInContext(
       // A stop that raced an external pause must reach the paused Turn.
       resumeIfStopped,
       conversationStore: options.conversationStore,
+      getSlackAdapter: options.getSlackAdapter,
       nowMs: now(options),
       state: options.state,
     });
