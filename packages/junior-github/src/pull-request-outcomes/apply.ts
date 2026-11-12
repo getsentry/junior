@@ -23,6 +23,7 @@ function githubCodeChange(
   return {
     closedAt: outcome.closedAt,
     conversationIds,
+    draft: outcome.draft,
     mergedAt: outcome.mergedAt,
     number: outcome.number,
     openedAt: outcome.openedAt,

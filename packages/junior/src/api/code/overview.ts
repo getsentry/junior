@@ -262,6 +262,7 @@ export async function readCodeWindows(args: {
 /** Columns read for one code change report row. */
 export const codeChangeReportColumns = {
   closedAt: juniorCodeChanges.closedAt,
+  draft: juniorCodeChanges.draft,
   id: juniorCodeChanges.id,
   lastActivityAt: juniorCodeChanges.lastActivityAt,
   mergedAt: juniorCodeChanges.mergedAt,
@@ -277,6 +278,7 @@ export const codeChangeReportColumns = {
 /** Convert one code change row to its report shape. */
 export function codeChangeReport(change: {
   closedAt: Date | null;
+  draft: boolean;
   id: string;
   lastActivityAt: Date | null;
   mergedAt: Date | null;

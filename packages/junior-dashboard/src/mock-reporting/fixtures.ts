@@ -58,6 +58,7 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
     activityDays,
     changes: [
       {
+        draft: false,
         id: "00000000-0000-4000-8000-000000000001",
         number: 42,
         openedAt: new Date(nowMs - 2 * 86_400_000).toISOString(),
@@ -68,6 +69,7 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
         url: "https://github.com/getsentry/payments/pull/42",
       },
       {
+        draft: false,
         id: "00000000-0000-4000-8000-000000000002",
         mergedAt: new Date(nowMs - 4 * 86_400_000).toISOString(),
         number: 781,
@@ -3628,6 +3630,7 @@ export function readMockPeopleCode(
     days: number,
     idleHours?: number,
   ) => ({
+    draft: false,
     id: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
     lastActivityAt:
       idleHours === undefined ? undefined : daysAgo(idleHours / 24),
