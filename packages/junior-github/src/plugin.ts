@@ -15,7 +15,7 @@ import {
   normalizePermissions,
   readGrantPermissions,
 } from "./permissions.js";
-import { createGitHubTools } from "./tools.js";
+import { createGitHubTools, type GitHubPluginExperiments } from "./tools.js";
 import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { botLoginFromEmail } from "./webhooks/ownership.js";
@@ -128,6 +128,9 @@ export interface GitHubPluginOptions {
 
   /** Environment variable containing the GitHub App id. */
   appIdEnv?: string;
+
+  /** Opt-ins for GitHub plugin behavior that is still being tested. */
+  experimental?: GitHubPluginExperiments;
 
   /** Environment variable containing Junior's Git committer email. */
   botEmailEnv?: string;
@@ -427,6 +430,7 @@ export function githubPlugin(
           gitHubPullRequestSubscription(
             options.pullRequestEvents?.subscribeAfterCreate,
           ),
+          options.experimental,
         );
       },
       workspacePrepare: prepareWorkspace,

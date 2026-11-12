@@ -61,6 +61,8 @@ export function conversationObjectCard(args: {
 
 /** Build the card of one known person from what the People pages show. */
 export function personObjectCard(args: {
+  /** A verified linked GitHub login, from account linking only. */
+  githubHandle?: string;
   person: ActorIdentity & { email: string };
   url: string;
 }): ObjectAnnotation {
@@ -79,6 +81,7 @@ export function personObjectCard(args: {
       ...(person.slackUserName
         ? { slackHandle: person.slackUserName.slice(0, MAX_FACT_CHARS) }
         : undefined),
+      ...(args.githubHandle ? { githubHandle: args.githubHandle } : undefined),
       ...(person.avatarUrl ? { avatarUrl: person.avatarUrl } : undefined),
     },
   };
