@@ -223,7 +223,9 @@ export function TranscriptActivityGroup(props: {
     ? `Working for ${workingTime}`
     : activityGroupLabel(props.entries);
   const summary = activityGroupSummary(props.entries);
-  const live = props.live || hasLiveActivity(props.entries);
+  // The running Turn's step line is the one thing that shimmers, so its
+  // "Working for" time stays still.
+  const shimmer = !props.live && hasLiveActivity(props.entries);
 
   if (searchActive) {
     return (
@@ -239,7 +241,7 @@ export function TranscriptActivityGroup(props: {
         flush
         className={cn(
           "group/activity-run flex items-center gap-1 text-xs leading-tight text-dashboard-text-muted",
-          live && "text-dashboard-accent-text/80",
+          shimmer && "text-dashboard-accent-text/80",
         )}
       >
         <Tooltip>
@@ -249,7 +251,7 @@ export function TranscriptActivityGroup(props: {
             }
           >
             <span className="min-w-0 truncate">
-              <ShimmerText active={live}>
+              <ShimmerText active={shimmer}>
                 {open && !workingTime ? `Hide ${label}` : label}
               </ShimmerText>
             </span>

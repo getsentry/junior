@@ -73,6 +73,7 @@ import {
 import {
   askRowIndex,
   defaultTranscriptRowSize,
+  liveActivityIndex,
   rowIndexForSeq,
   transcriptListRows,
   transcriptRowSizeClass,
@@ -142,17 +143,13 @@ function renderThreadEntry(entry: TranscriptSubagentEntry): ReactNode {
 
 function renderTaskEntries(
   entries: TranscriptSubagentEntry[],
-  openKey: string,
   onOpenTranscript: (part: TranscriptViewSubagentPart) => void,
 ): ReactNode {
   return (
-    <TranscriptRailEvent kind="tasks">
-      <TranscriptTasksLine
-        entries={entries}
-        onOpenTranscript={onOpenTranscript}
-        openKey={openKey}
-      />
-    </TranscriptRailEvent>
+    <TranscriptTasksLine
+      entries={entries}
+      onOpenTranscript={onOpenTranscript}
+    />
   );
 }
 
@@ -435,8 +432,8 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
         </TranscriptRailEvent>
       )}
       renderThread={renderThreadEntry}
-      renderTasks={(entries, openKey) =>
-        renderTaskEntries(entries, openKey, (part) =>
+      renderTasks={(entries) =>
+        renderTaskEntries(entries, (part) =>
           props.onOpenSubagentTranscript?.({
             part,
             conversation: props.conversation,
@@ -465,10 +462,7 @@ type TranscriptEntryRenderers = {
   renderStructuredEvent: (entry: TranscriptStructuredEventEntry) => ReactNode;
   renderReasoning: (entry: TranscriptReasoningEntry) => ReactNode;
   renderThread: (entry: TranscriptSubagentEntry) => ReactNode;
-  renderTasks: (
-    entries: TranscriptSubagentEntry[],
-    openKey: string,
-  ) => ReactNode;
+  renderTasks: (entries: TranscriptSubagentEntry[]) => ReactNode;
   renderTool: (entry: TranscriptToolEntry) => ReactNode;
 };
 
@@ -667,19 +661,13 @@ function TranscriptEntryList(
     ],
   );
 
-  // The running Turn shows its progress in its trailing activity row, and
-  // a running Task line shows that Junior waits on the Task. Otherwise the
-  // thinking row shows.
-  const lastRow = search.active ? undefined : rows.at(-1);
+  // The running Turn shows its progress in its last activity row. Its Tasks
+  // row comes after it, at the end of the Turn. Otherwise the thinking row
+  // shows.
   const liveIndex =
-    props.responding && lastRow?.kind === "activity"
-      ? rows.length - 1
-      : undefined;
-  const waitingOnTask =
-    lastRow?.kind === "tasks" &&
-    lastRow.entries.some((entry) => entry.part.status === "running");
+    props.responding && !search.active ? liveActivityIndex(rows) : undefined;
   const thinking =
-    props.responding && liveIndex === undefined && !waitingOnTask ? (
+    props.responding && liveIndex === undefined ? (
       <TranscriptThinkingRow />
     ) : null;
 
@@ -769,8 +757,8 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
           />
         </TranscriptRow>
       ) : row.kind === "tasks" ? (
-        <TranscriptRow anchorKey={row.key} seq={row.seq}>
-          {props.renderTasks(row.entries, row.key)}
+        <TranscriptRow anchorKey={row.key} indent seq={row.seq}>
+          {props.renderTasks(row.entries)}
         </TranscriptRow>
       ) : (
         <TranscriptRow anchorKey={row.key} seq={row.seq}>
@@ -869,8 +857,8 @@ function RedactedTranscriptView(
         </TranscriptRailEvent>
       )}
       renderThread={renderThreadEntry}
-      renderTasks={(entries, openKey) =>
-        renderTaskEntries(entries, openKey, (part) =>
+      renderTasks={(entries) =>
+        renderTaskEntries(entries, (part) =>
           props.onOpenSubagentTranscript?.({
             part,
             conversation: props.conversation,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   rowIndexForSeq,
+  liveActivityIndex,
   transcriptListRows,
   type TranscriptListRow,
   UNREAD_MARKER_KEY,
@@ -108,42 +109,40 @@ function rowSummary(rows: TranscriptListRow[]) {
 }
 
 describe("transcriptListRows", () => {
-  it("collapses each run of Tasks to one row and keeps each Thread as its own row", () => {
+  it("moves the Tasks of a Turn under its reply, so its activity stays one row", () => {
     const rows = transcriptListRows({
       entries: [
-        subagentEntry(1),
+        messageEntry(0, "user"),
+        toolEntry(1, "spawnAgent"),
         subagentEntry(2),
-        subagentEntry(3, "thread"),
-        subagentEntry(4),
-        messageEntry(5),
-        subagentEntry(6),
+        toolEntry(3),
+        subagentEntry(4, "thread"),
+        subagentEntry(5),
+        messageEntry(6),
+        messageEntry(7, "user"),
+        subagentEntry(8),
       ],
       keyPrefix: "c",
       knownActivityKeys: new Map(),
     });
 
-    expect(
-      rows.map((row) => ({
-        keys:
-          row.kind === "tasks"
-            ? row.entries.map((entry) => entry.key)
-            : row.kind === "entry"
-              ? [row.entry.key]
-              : undefined,
-        kind: row.kind,
-        seq: "seq" in row ? row.seq : undefined,
-      })),
-    ).toEqual([
+    expect(rowSummary(rows)).toEqual([
+      { keys: ["0:message:0"], kind: "entry", seq: 0 },
+      { keys: ["1:tool:0", "3:tool:0"], kind: "activity", seq: 3 },
+      { keys: ["subagent:child-4"], kind: "entry", seq: 4 },
+      { keys: ["6:message:0"], kind: "entry", seq: 6 },
       {
-        keys: ["subagent:child-1", "subagent:child-2"],
+        keys: ["subagent:child-2", "subagent:child-5"],
         kind: "tasks",
-        seq: 2,
+        seq: 6,
       },
-      { keys: ["subagent:child-3"], kind: "entry", seq: 3 },
-      { keys: ["subagent:child-4"], kind: "tasks", seq: 4 },
-      { keys: ["5:message:0"], kind: "entry", seq: 5 },
-      { keys: ["subagent:child-6"], kind: "tasks", seq: 6 },
+      { keys: ["7:message:0"], kind: "entry", seq: 7 },
+      { keys: ["subagent:child-8"], kind: "tasks", seq: 8 },
     ]);
+    expect(liveActivityIndex(rows)).toBeUndefined();
+    // A running Turn keeps its activity live above its Tasks row.
+    expect(liveActivityIndex(rows.slice(0, 2))).toBe(1);
+    expect(liveActivityIndex([...rows.slice(0, 2), rows.at(-1)!])).toBe(1);
   });
 
   it("moves a question that Junior asked to the end of its Turn", () => {

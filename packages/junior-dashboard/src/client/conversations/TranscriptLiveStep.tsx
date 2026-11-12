@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Globe, Sparkles, SquareTerminal, Wrench } from "lucide-react";
+import { Bot, Globe, Sparkles, SquareTerminal, Wrench } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { ShimmerText } from "../components/ShimmerText";
@@ -36,6 +36,7 @@ const toolActions: Record<string, { icon: LucideIcon; verb: string }> = {
   bash: { icon: SquareTerminal, verb: "Running" },
   executeTool: { icon: Wrench, verb: "Calling" },
   loadSkill: { icon: Sparkles, verb: "Loading" },
+  spawnAgent: { icon: Bot, verb: "Starting" },
   webFetch: { icon: Globe, verb: "Reading" },
   webSearch: { icon: Globe, verb: "Searching" },
 };

@@ -38,10 +38,11 @@ export const UNREAD_MARKER_KEY = "unread-marker";
 
 /**
  * Turn transcript entries into list rows. Runs of collapsible activity
- * become one group row, each run of Tasks becomes one Tasks row, a Thread
- * keeps its own row, search drops rows that do not match, and the "New"
- * marker becomes its own row before the first unread row. A question that
- * Junior asked moves to the end of its Turn, after the final message.
+ * become one group row, a Thread keeps its own row, search drops rows that
+ * do not match, and the "New" marker becomes its own row before the first
+ * unread row. The Tasks of a Turn become one Tasks row at its end, under the
+ * final message, so they do not split its activity. A question that Junior
+ * asked moves after them.
  *
  * `knownActivityKeys` maps entry keys to group keys across calls, so a
  * group keeps its key while events extend either edge.
@@ -97,11 +98,37 @@ export function transcriptListRows(input: {
     }
     asks = [];
   };
+  let tasks: SubagentEntry[] = [];
+  const pushTurnEnd = () => {
+    const visible = tasks.filter(matches);
+    if (visible.length > 0) {
+      const rowSeq = lastRowSeq(rows);
+      const taskSeq = lastEntrySeq(tasks);
+      pushRow({
+        kind: "tasks",
+        entries: visible,
+        // New Tasks join at the end, so the first one keeps the key.
+        key: `${input.keyPrefix}:tasks:${tasks[0]!.key}`,
+        // The row moves after later rows, so it takes the larger seq.
+        seq:
+          rowSeq === undefined || taskSeq === undefined
+            ? (rowSeq ?? taskSeq)
+            : Math.max(rowSeq, taskSeq),
+      });
+    }
+    tasks = [];
+    pushAsks();
+  };
 
   for (let index = 0; index < entries.length; ) {
     const entry = entries[index]!;
     if (isAskEntry(entry)) {
       asks.push(entry);
+      index += 1;
+      continue;
+    }
+    if (isTaskEntry(entry)) {
+      tasks.push(entry);
       index += 1;
       continue;
     }
@@ -111,15 +138,16 @@ export function transcriptListRows(input: {
       entry.message.role === "user" &&
       !collapsible(entry)
     ) {
-      pushAsks();
+      pushTurnEnd();
     }
     if (collapsible(entry)) {
       const group: RenderedTranscriptEntry[] = [];
-      // An ask in the activity moves out, so the activity on both sides of
-      // it stays one row.
+      // An ask or a Task in the activity moves out, so the activity on both
+      // sides of it stays one row.
       while (index < entries.length) {
         const next = entries[index]!;
         if (isAskEntry(next)) asks.push(next);
+        else if (isTaskEntry(next)) tasks.push(next);
         else if (collapsible(next)) group.push(next);
         else break;
         index += 1;
@@ -141,24 +169,6 @@ export function transcriptListRows(input: {
       }
       continue;
     }
-    if (isTaskEntry(entry)) {
-      const group: SubagentEntry[] = [];
-      while (index < entries.length && isTaskEntry(entries[index]!)) {
-        group.push(entries[index] as SubagentEntry);
-        index += 1;
-      }
-      const visible = group.filter(matches);
-      if (visible.length > 0) {
-        pushRow({
-          kind: "tasks",
-          entries: visible,
-          // New Tasks join at the end, so the first one keeps the key.
-          key: `${input.keyPrefix}:tasks:${group[0]!.key}`,
-          seq: lastEntrySeq(group),
-        });
-      }
-      continue;
-    }
     if (matches(entry)) {
       pushRow({
         kind: "entry",
@@ -169,8 +179,20 @@ export function transcriptListRows(input: {
     }
     index += 1;
   }
-  pushAsks();
+  pushTurnEnd();
   return rows;
+}
+
+/**
+ * Find the activity row of the running Turn: the last row, or the row
+ * before the Turn's Tasks row.
+ */
+export function liveActivityIndex(
+  rows: readonly TranscriptListRow[],
+): number | undefined {
+  const last = rows.length - 1;
+  const index = rows[last]?.kind === "tasks" ? last - 1 : last;
+  return rows[index]?.kind === "activity" ? index : undefined;
 }
 
 function askedItemId(entry: RenderedTranscriptEntry): string | undefined {
@@ -202,7 +224,7 @@ function lastRowSeq(rows: readonly TranscriptListRow[]): number | undefined {
   return undefined;
 }
 
-function isTaskEntry(entry: RenderedTranscriptEntry): boolean {
+function isTaskEntry(entry: RenderedTranscriptEntry): entry is SubagentEntry {
   return entry.kind === "subagent" && entry.part.childKind === "task";
 }
 
