@@ -1382,6 +1382,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "",
         // No Annotations: the API resolves these dashboard links.
         `Deployment is ready. Next, ${MOCK_DASHBOARD_ORIGIN}/people/dev%40example.com picks up ${MOCK_DASHBOARD_ORIGIN}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}.`,
+        "Morgan asked to hold the deploy: https://acme.slack.com/archives/CQA456/p1770021700000100",
       ].join("\n"),
     }),
   );
