@@ -52,7 +52,9 @@ export function AutomationVersionsTab(props: {
     return (
       <InlineError>
         Version history could not be loaded.{" "}
-        <Button onClick={() => void versions.refetch()}>Try again</Button>
+        <Button variant="outline" onClick={() => void versions.refetch()}>
+          Try again
+        </Button>
       </InlineError>
     );
   }
@@ -184,6 +186,7 @@ function AutomationVersionsView(props: {
             </div>
             {canActivate && !active ? (
               <Button
+                variant="outline"
                 aria-label={`Make version ${selected.version} active`}
                 disabled={activate.isPending}
                 onClick={() => setConfirmOpen(true)}
@@ -233,7 +236,7 @@ function AutomationVersionsView(props: {
                 activate.mutate(selected.version);
                 setConfirmOpen(false);
               }}
-              variant="primary"
+              variant="default"
             >
               Make active
             </AlertDialogAction>

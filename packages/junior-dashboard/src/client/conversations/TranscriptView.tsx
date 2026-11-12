@@ -295,6 +295,7 @@ function JumpToLatestButton(props: {
     // sits 12px (16px on md) above the composer, centered on the transcript.
     <div className="pointer-events-none sticky -bottom-2.5 z-20 flex h-0 justify-center md:-bottom-5">
       <Button
+        variant="outline"
         aria-label={
           props.hasPendingUpdate ? "Jump to latest update" : "Jump to latest"
         }

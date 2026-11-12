@@ -29,8 +29,8 @@ export function AutomationActions({
 }: {
   automation: AutomationSummary;
   editPath: string;
-  /** Use "default" when a notice on the page owns the main action. */
-  editVariant: "default" | "primary";
+  /** Use "outline" when a notice on the page owns the main action. */
+  editVariant: "default" | "outline";
   onDelete(source: HTMLButtonElement): void;
 }) {
   const completed = automation.status === "completed";
@@ -58,6 +58,7 @@ export function AutomationActions({
         {canPause ? (
           <>
             <Button
+              variant="outline"
               disabled={mutation.isPending}
               onClick={() => mutation.mutate()}
             >
@@ -69,7 +70,13 @@ export function AutomationActions({
             </Button>
             <Popover>
               <PopoverTrigger
-                render={<Button aria-label="About pausing" size="icon" />}
+                render={
+                  <Button
+                    variant="ghost"
+                    aria-label="About pausing"
+                    size="icon"
+                  />
+                }
               >
                 <CircleHelp aria-hidden="true" size={16} />
               </PopoverTrigger>
@@ -97,7 +104,7 @@ export function AutomationActions({
                 focusableWhenDisabled
                 aria-label="Delete automation"
                 size="icon"
-                variant="danger"
+                variant="destructive"
                 onClick={(event) => onDelete(event.currentTarget)}
                 disabled={mutation.isPending}
               >

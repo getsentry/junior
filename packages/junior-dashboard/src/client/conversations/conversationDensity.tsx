@@ -77,13 +77,14 @@ const densityChoices = [
 ] as const satisfies ReadonlyArray<PreferenceChoice<ConversationDensity>>;
 
 /** Choose the dashboard density, next to the theme choice. */
-export function DensitySwitcher(props: { className?: string }) {
+export function DensitySwitcher(props: { className?: string; menu?: boolean }) {
   const [density, setDensity] = useConversationDensity();
   return (
     <PreferenceToggle<ConversationDensity>
       choices={densityChoices}
       className={props.className}
       itemLabel={(item) => `${item.label} density`}
+      menu={props.menu}
       label="Density"
       onChange={setDensity}
       value={density}

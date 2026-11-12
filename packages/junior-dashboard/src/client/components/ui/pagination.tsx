@@ -36,7 +36,7 @@ function PaginationItem({ ...props }: ComponentProps<"li">) {
 /** Go to the previous page. */
 function PaginationPrevious(props: ComponentProps<typeof Button>) {
   return (
-    <Button aria-label="Previous page" size="icon" {...props}>
+    <Button aria-label="Previous page" size="icon" variant="ghost" {...props}>
       <ChevronLeftIcon aria-hidden="true" size={16} />
     </Button>
   );
@@ -45,7 +45,7 @@ function PaginationPrevious(props: ComponentProps<typeof Button>) {
 /** Go to the next page. */
 function PaginationNext(props: ComponentProps<typeof Button>) {
   return (
-    <Button aria-label="Next page" size="icon" {...props}>
+    <Button aria-label="Next page" size="icon" variant="ghost" {...props}>
       <ChevronRightIcon aria-hidden="true" size={16} />
     </Button>
   );

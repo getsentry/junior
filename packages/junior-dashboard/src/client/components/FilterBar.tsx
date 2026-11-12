@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { cn } from "../styles";
+import { Badge } from "./ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 
 /** Render one labeled control group inside a filter bar. */
@@ -47,15 +48,18 @@ export function FilterTabList(props: {
       >
         {props.items.map((item) => (
           <TabsTrigger
-            className="group/tab justify-between sm:shrink-0 sm:justify-start"
+            className="justify-between sm:shrink-0 sm:justify-start"
             key={item.value || "all"}
             value={item.value}
           >
             {item.label}
             {item.count !== undefined ? (
-              <span className="rounded-sm border border-dashboard-border bg-dashboard-fill-soft px-1.5 py-0.5 text-xs text-dashboard-text-muted group-data-active/tab:border-dashboard-accent/20 group-data-active/tab:bg-dashboard-accent/10 group-data-active/tab:text-dashboard-accent-text">
+              <Badge
+                className="py-0.5"
+                variant={item.value === props.value ? "accent" : "muted"}
+              >
                 {item.count.toLocaleString("en-US")}
-              </span>
+              </Badge>
             ) : null}
           </TabsTrigger>
         ))}

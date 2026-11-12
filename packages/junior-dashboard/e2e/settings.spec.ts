@@ -1,5 +1,6 @@
 import { expect, test } from "./test";
 import {
+  DASHBOARD_SERVICE_WORKER_PATH,
   NOTIFICATION_TARGET_CACHE,
   NOTIFICATION_TARGET_KEY,
 } from "../src/service-worker";
@@ -226,6 +227,50 @@ test("opens a tapped notification that the app did not open", async ({
   await expect(page).toHaveURL(`${dashboard.baseURL}/settings`);
 });
 
+test("shows a push notification that has no tag", async ({
+  page,
+  dashboard,
+}) => {
+  // The DevTools Push button sends plain text like this. Chrome rejects
+  // renotify without a tag, so the worker must still show the notification.
+  // The push opens "/", so stay on another page: there the worker alerts.
+  await page.context().grantPermissions(["notifications"]);
+  await page.goto(`${dashboard.baseURL}/settings`);
+  test.skip(
+    (await page.evaluate(() => Notification.permission)) !== "granted",
+    "Chromium headless shell denies notifications. CI runs Chrome.",
+  );
+  const cdp = await page.context().newCDPSession(page);
+  const registrationId = new Promise<string>((resolve) => {
+    cdp.on("ServiceWorker.workerVersionUpdated", ({ versions }) => {
+      const active = versions.find((version) => version.status === "activated");
+      if (active) resolve(active.registrationId);
+    });
+  });
+  await cdp.send("ServiceWorker.enable");
+  await page.evaluate(async (path) => {
+    await navigator.serviceWorker.register(path, { scope: "/" });
+    await navigator.serviceWorker.ready;
+  }, DASHBOARD_SERVICE_WORKER_PATH);
+
+  await cdp.send("ServiceWorker.deliverPushMessage", {
+    data: "Test push message from DevTools.",
+    origin: new URL(dashboard.baseURL).origin,
+    registrationId: await registrationId,
+  });
+
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const registration = await navigator.serviceWorker.ready;
+        return (await registration.getNotifications()).map(
+          (notification) => notification.title,
+        );
+      }),
+    )
+    .toEqual(["Junior"]);
+});
+
 test("follows the system theme until the user picks one", async ({
   page,
   dashboard,
@@ -237,17 +282,26 @@ test("follows the system theme until the user picks one", async ({
 
   await page.getByRole("button", { name: /Open profile menu/ }).click();
   await expect(
-    page.getByRole("button", { name: "System theme" }),
-  ).toHaveAttribute("aria-pressed", "true");
+    page.getByRole("menuitemradio", { name: "System theme" }),
+  ).toHaveAttribute("aria-checked", "true");
   await screenshot(page, "settings-theme-light", { view: "desktop" });
+  // Arrow keys reach the theme choices inside the menu.
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    page.getByRole("menuitemradio", { name: "System theme" }),
+  ).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    page.getByRole("menuitemradio", { name: "Light theme" }),
+  ).toBeFocused();
 
-  await page.getByRole("button", { name: "Dark theme" }).click();
+  await page.getByRole("menuitemradio", { name: "Dark theme" }).click();
   await expect(root).toHaveAttribute("data-theme", "dark");
   await page.reload();
   await expect(root).toHaveAttribute("data-theme", "dark");
 
   await page.getByRole("button", { name: /Open profile menu/ }).click();
-  await page.getByRole("button", { name: "System theme" }).click();
+  await page.getByRole("menuitemradio", { name: "System theme" }).click();
   await expect(root).toHaveAttribute("data-theme", "light");
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(root).toHaveAttribute("data-theme", "dark");

@@ -187,8 +187,12 @@ export function AutomationEditor(props: {
           <FormNotice title="Discard unsaved changes?">
             <p>Your changes have not been saved.</p>
             <div className="flex gap-2">
-              <Button onClick={() => blocker.reset()}>Keep editing</Button>
-              <Button onClick={() => blocker.proceed()}>Discard changes</Button>
+              <Button variant="outline" onClick={() => blocker.reset()}>
+                Keep editing
+              </Button>
+              <Button variant="outline" onClick={() => blocker.proceed()}>
+                Discard changes
+              </Button>
             </div>
           </FormNotice>
         </div>
@@ -213,6 +217,7 @@ export function AutomationEditor(props: {
             </p>
             {conflict ? (
               <Button
+                variant="outline"
                 disabled={review.isPending}
                 onClick={() => review.mutate()}
               >
@@ -260,10 +265,10 @@ export function AutomationEditor(props: {
               </section>
             ))}
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => acceptLatest(true)}>
+              <Button variant="outline" onClick={() => acceptLatest(true)}>
                 Keep my changed fields
               </Button>
-              <Button onClick={() => acceptLatest(false)}>
+              <Button variant="outline" onClick={() => acceptLatest(false)}>
                 Use latest saved version
               </Button>
             </div>
@@ -470,7 +475,7 @@ export function AutomationEditor(props: {
             </Link>
             <Button
               type="submit"
-              variant="primary"
+              variant="default"
               className="min-h-11 sm:min-h-9"
               disabled={!dirty || save.isPending || conflict}
             >

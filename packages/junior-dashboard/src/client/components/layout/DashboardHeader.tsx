@@ -180,6 +180,7 @@ export function DashboardHeader(props: {
               ) : null}
               <nav aria-label="Primary" className="grid gap-1">
                 <Button
+                  variant="ghost"
                   className={cn(sheetLinkClass({ isActive: false }), "gap-2")}
                   data-mobile-nav-dismiss=""
                   onClick={props.onSearch}

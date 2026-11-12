@@ -124,7 +124,7 @@ function GeneralSettings({ identity }: SettingsPageProps) {
             </FieldDescription>
           </Field>
           <div className="mt-5 flex items-center gap-3">
-            <Button disabled={!canSave} type="submit">
+            <Button variant="outline" disabled={!canSave} type="submit">
               {updateProfile.isPending ? "Saving…" : "Save changes"}
             </Button>
             {updateProfile.isSuccess ? (
@@ -345,7 +345,7 @@ function CustomizationForm() {
           </FieldDescription>
         </Field>
         <div className="mt-5 flex items-center gap-3">
-          <Button disabled={!canSave} type="submit">
+          <Button variant="outline" disabled={!canSave} type="submit">
             {save.isPending ? "Saving…" : "Save customization"}
           </Button>
           {save.isSuccess ? (

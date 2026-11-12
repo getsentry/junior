@@ -77,14 +77,42 @@ export function gitHubPullRequestEventGuidance(
 export interface GitHubPullRequestEventOptions {
   /** App guidance applied within the matching subscription or event automation instruction. */
   guidance?: Partial<Record<GitHubPullRequestEvent, string>>;
-  /** Temporary subscription created after Junior creates a pull request. */
-  subscribeAfterCreate?: GitHubPullRequestSubscriptionConfig;
+  /**
+   * Temporary subscription created after Junior creates a pull request.
+   * Defaults to the maintenance Watch below. `false` turns it off.
+   */
+  subscribeAfterCreate?: GitHubPullRequestSubscriptionConfig | false;
 }
 
 /** Temporary subscription created after Junior creates a pull request. */
 export interface GitHubPullRequestSubscriptionConfig {
   events: GitHubPullRequestEvent[];
   intent: string;
+}
+
+/**
+ * Junior maintains the pull requests it creates. The pull request is its own
+ * work, so it answers and fixes review feedback without asking first.
+ */
+const DEFAULT_PULL_REQUEST_SUBSCRIPTION: GitHubPullRequestSubscriptionConfig = {
+  events: [
+    "pull_request.checks.failed",
+    "pull_request.closed_unmerged",
+    "pull_request.comment.created",
+    "pull_request.review.changes_requested",
+    "pull_request.review.commented",
+    "pull_request.review_comment.created",
+  ],
+  intent:
+    "Maintain pull requests Junior creates. For actionable review feedback or failed checks, inspect the evidence, make scoped fixes, verify them, and push, without asking first. Reply on GitHub to review comments and questions, in the thread where they were asked. Report completed work or blockers in the originating thread. Report when the pull request closes unmerged. When a reviewer submits a review, notify the person who asked for the pull request by mentioning them, with the reviewer, the review outcome, and the pull request link. Stay silent on other events that are not feedback.",
+};
+
+/** Resolve the Watch to create after Junior creates a pull request, if any. */
+export function gitHubPullRequestSubscription(
+  config: GitHubPullRequestSubscriptionConfig | false | undefined,
+): GitHubPullRequestSubscriptionConfig | undefined {
+  if (config === false) return undefined;
+  return config ?? DEFAULT_PULL_REQUEST_SUBSCRIPTION;
 }
 
 /**

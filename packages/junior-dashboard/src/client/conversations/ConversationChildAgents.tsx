@@ -167,6 +167,7 @@ function useShowArchived(children: readonly ConversationChildAgent[]) {
           className="rounded-md px-1.5 py-0.5 text-xs"
           onClick={() => setShowArchived((value) => !value)}
           variant="ghost"
+          size="bare"
         >
           {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
         </Button>

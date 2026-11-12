@@ -122,6 +122,7 @@ export function DetailsPanel(props: {
         <div className="flex shrink-0 items-center gap-1">
           {props.actions}
           <Button
+            variant="ghost"
             ref={closeRef}
             aria-label={closeLabel}
             data-slot="details-panel-close"

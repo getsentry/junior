@@ -6,6 +6,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { createActor, type Actor, type WebActor } from "@/chat/actor";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import type { CredentialContext } from "@/chat/credentials/context";
 import type { Location } from "@/chat/conversations/location";
 import type {
   ConversationAuthor,
@@ -33,6 +34,8 @@ import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox
 export type MailboxTurnInput = {
   actor: Actor;
   author: ConversationAuthor;
+  /** Grants of a system Actor that a child agent's input continues. */
+  credentialContext?: CredentialContext;
   message: InboundMessage;
   source: Source;
 };

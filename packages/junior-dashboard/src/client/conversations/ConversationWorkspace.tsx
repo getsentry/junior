@@ -13,12 +13,11 @@ import {
   useSearchParams,
 } from "react-router";
 
-import { useConversationsData, useOlderConversationPages } from "../api";
+import { useConversationsData } from "../api";
 import { InboxDataProvider } from "../review-desk/inboxData";
 import { InboxList } from "../review-desk/InboxList";
 import {
   useInboxReturnPath,
-  useOlderConversationPagesState,
   useShowComposer,
 } from "../review-desk/inboxListState";
 import { INBOX_VIEW_LABELS, inboxViewOfPath } from "../review-desk/inboxModel";
@@ -89,12 +88,9 @@ export function ConversationWorkspace(props: {
   const navigationType = useNavigationType();
   const selectedId = params.conversationId;
   const home = !selectedId;
+  // Older feed pages load only when the list scrolls to its end. The feed
+  // query keeps every loaded page, so Back restores every row.
   const feed = useConversationsData();
-  // Older feed pages load only when the list scrolls to its end.
-  const older = useOlderConversationPages(
-    feed.data?.nextCursor,
-    useOlderConversationPagesState(),
-  );
   const returnPath = useInboxReturnPath();
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const createConversation = useCreateConversation();
@@ -105,26 +101,21 @@ export function ConversationWorkspace(props: {
   if (!home && pendingCreate) setPendingCreate(undefined);
   const queryClient = useQueryClient();
   const createComposer = useRef<ConversationComposerHandle>(null);
-  const conversations = useMemo(() => {
-    const first = feed.data?.conversations ?? [];
-    const firstIds = new Set(first.map((row) => row.conversationId));
-    // A Conversation with new activity moves to the first page, so an
-    // older page can still hold it until it reloads.
-    const rows = [
-      ...first,
-      ...older.conversations.filter((row) => !firstIds.has(row.conversationId)),
-    ];
-    return applyPendingArchiveUpdates(
-      buildConversations(rows),
-      pendingArchiveUpdates,
-    );
-  }, [feed.data?.conversations, older.conversations, pendingArchiveUpdates]);
+  const conversations = useMemo(
+    () =>
+      applyPendingArchiveUpdates(
+        buildConversations(feed.data?.conversations ?? []),
+        pendingArchiveUpdates,
+      ),
+    [feed.data?.conversations, pendingArchiveUpdates],
+  );
+  const loadNextPage = () => void feed.fetchNextPage({ cancelRefetch: false });
   const feedPages = {
-    failed: older.failed,
-    hasMore: older.hasMore,
-    loadingMore: older.loadingMore,
-    loadMore: older.loadMore,
-    retry: older.retry,
+    failed: feed.isFetchNextPageError,
+    hasMore: feed.hasNextPage,
+    loadingMore: feed.isFetchingNextPage,
+    loadMore: loadNextPage,
+    retry: loadNextPage,
   };
   const openCreate = () => {
     createConversation.reset();
@@ -280,7 +271,8 @@ export function ConversationWorkspace(props: {
     ) : (
       <div className="relative h-full min-h-0">
         <InboxList
-          error={feed.error?.message}
+          // A failed next page keeps the loaded rows; its Retry row shows it.
+          error={feed.isFetchNextPageError ? undefined : feed.error?.message}
           loading={feed.isPending}
           phone={!sidebarFits}
         />

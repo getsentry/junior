@@ -554,7 +554,7 @@ function ExpandedActions(props: {
         <Button
           disabled={props.donePending}
           onClick={props.onDone}
-          variant="quiet"
+          variant="ghost"
         >
           <Check aria-hidden="true" size={15} />
           Done
@@ -564,7 +564,7 @@ function ExpandedActions(props: {
         <ExpandedPin conversation={props.conversation} />
       ) : null}
       {props.onWake ? (
-        <Button onClick={props.onWake} variant="quiet">
+        <Button onClick={props.onWake} variant="ghost">
           <AlarmClockOff aria-hidden="true" size={15} />
           Wake
         </Button>
@@ -573,7 +573,7 @@ function ExpandedActions(props: {
         <Popover onOpenChange={props.onSnoozeMenu} open={props.snoozeMenuOpen}>
           <PopoverTrigger
             render={
-              <Button variant="quiet">
+              <Button variant="ghost">
                 <Clock3 aria-hidden="true" size={15} />
                 Snooze
               </Button>
@@ -610,7 +610,7 @@ function ExpandedPin(props: { conversation: Conversation }) {
       aria-pressed={pinned}
       disabled={pin.isPending}
       onClick={() => pin.mutate(!pinned)}
-      variant="quiet"
+      variant="ghost"
     >
       {pinned ? (
         <PinOff aria-hidden="true" size={15} />

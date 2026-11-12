@@ -247,7 +247,7 @@ export function QuickQuestionSelectionButton(props: {
       <Button
         className="h-8 text-dashboard-text"
         onClick={() => take(onAsk)}
-        variant="quiet"
+        variant="ghost"
       >
         Quick question
       </Button>
@@ -259,7 +259,7 @@ export function QuickQuestionSelectionButton(props: {
               onRespond(markdownQuote(selectionMarkdown(range))),
             )
           }
-          variant="quiet"
+          variant="ghost"
         >
           Respond
         </Button>
@@ -498,6 +498,7 @@ export function QuickQuestionPanel(props: {
             <div className="flex flex-wrap gap-2">
               {STARTER_PROMPTS.map((prompt) => (
                 <Button
+                  variant="outline"
                   className="h-7 rounded-full px-2.5 text-xs"
                   key={prompt}
                   // Each click is a new ask. The panel shows the error.
@@ -596,7 +597,7 @@ function KeepAsForkButton(props: { disabled: boolean; forkId?: string }) {
           onSuccess: () => navigate(conversationPath(forkId)),
         })
       }
-      variant="quiet"
+      variant="ghost"
     >
       <GitFork aria-hidden="true" size={13} />
       {keep.isError ? "Retry keep" : "Keep as fork"}

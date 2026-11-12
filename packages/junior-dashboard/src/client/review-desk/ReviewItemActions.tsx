@@ -109,7 +109,7 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
         <Button
           disabled={action.isPending}
           onClick={() => void run({ action: "take" }).catch(() => {})}
-          variant="quiet"
+          variant="ghost"
         >
           Take
         </Button>
@@ -117,7 +117,7 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
       <Button
         disabled={action.isPending}
         onClick={() => void run({ action: "dismiss" }).catch(() => {})}
-        variant="quiet"
+        variant="ghost"
       >
         Dismiss
       </Button>

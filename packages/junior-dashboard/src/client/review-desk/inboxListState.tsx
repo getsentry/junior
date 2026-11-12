@@ -11,7 +11,6 @@ import {
 } from "react";
 import { useLocation } from "react-router";
 
-import type { OlderConversationPages } from "../api";
 import { parseInboxView, type InboxView } from "./inboxModel";
 
 /** How many rows of a stream show before the reader scrolls for more. */
@@ -33,11 +32,6 @@ type InboxListValue = {
   ];
   /** Mark that the composer shows; true the first time this session. */
   showComposer(): boolean;
-  /** The feed pages after the first that the lists have loaded. */
-  olderPages: readonly [
-    OlderConversationPages,
-    (pages: OlderConversationPages) => void,
-  ];
   /** Places by list, so `/` and `/?view=inbox` share the Inbox's. */
   places: Readonly<Partial<Record<InboxView, ListPlace>>>;
   /** The list that Back returns to: the last one shown. */
@@ -64,10 +58,6 @@ export function InboxListProvider(props: { children: ReactNode }) {
   >({});
   const [linkedItems, setLinkedItems] = useState<LinkedItems>({});
   const [returnPath, setReturnPath] = useState("/");
-  const [olderPages, setOlderPages] = useState<OlderConversationPages>({
-    after: undefined,
-    cursors: [],
-  });
   const composerShown = useRef(false);
   const showComposer = useCallback(() => {
     const first = !composerShown.current;
@@ -96,7 +86,6 @@ export function InboxListProvider(props: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       linkedItems: [linkedItems, setLinkedItems] as const,
-      olderPages: [olderPages, setOlderPages] as const,
       places,
       returnPath,
       scroll,
@@ -104,15 +93,7 @@ export function InboxListProvider(props: { children: ReactNode }) {
       setReturnPath,
       showComposer,
     }),
-    [
-      linkedItems,
-      olderPages,
-      places,
-      returnPath,
-      scroll,
-      setPlace,
-      showComposer,
-    ],
+    [linkedItems, places, returnPath, scroll, setPlace, showComposer],
   );
   return (
     <InboxListContext.Provider value={value}>
@@ -184,15 +165,6 @@ export function useInboxListState(ready: boolean) {
 /** The Inbox list that Back returns to: the last one shown, or the Inbox. */
 export function useInboxReturnPath(): string {
   return useInboxListContext().returnPath;
-}
-
-/**
- * The older feed pages that the Inbox lists have loaded, for
- * `useOlderConversationPages`. They last the session, so Back restores
- * every row that was loaded.
- */
-export function useOlderConversationPagesState() {
-  return useInboxListContext().olderPages;
 }
 
 /**

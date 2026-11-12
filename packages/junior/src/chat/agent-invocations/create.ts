@@ -15,6 +15,7 @@ import {
 import {
   getAgentInvocation,
   getLatestAgentInvocationForConversation,
+  isStoppedAgentInvocation,
   listOpenAgentInvocations,
 } from "./store";
 import {
@@ -103,8 +104,9 @@ function sameCreateInput(
 }
 
 /**
- * A child agent can only start or give work to child agents while it has
- * open work. A stopped child has none. A root Conversation has no agent
+ * A stopped child agent cannot start or give work to child agents until its
+ * parent gives it new work. A Turn on the child's Conversation loop
+ * has no open agent invocation, but it can. A root Conversation has no agent
  * invocation, so it always passes. `open` is the parent's open work from
  * `listOpenAgentInvocations`.
  */
@@ -112,12 +114,14 @@ async function assertCanGiveChildWork(
   parentConversationId: string,
   open: readonly AgentInvocation[],
 ): Promise<void> {
-  if (
-    !open.some((row) => row.childConversationId === parentConversationId) &&
-    (await getLatestAgentInvocationForConversation(parentConversationId))
-  ) {
+  if (open.some((row) => row.childConversationId === parentConversationId)) {
+    return;
+  }
+  const latest =
+    await getLatestAgentInvocationForConversation(parentConversationId);
+  if (latest && isStoppedAgentInvocation(latest)) {
     throw new Error(
-      `Agent conversation ${parentConversationId} has no open work and cannot give work to child agents`,
+      `Agent conversation ${parentConversationId} is stopped and cannot give work to child agents`,
     );
   }
 }
@@ -257,8 +261,9 @@ export async function createAgentInvocationFromLatest(
     input: string;
     invocationId: string;
     latest: AgentInvocation;
-    /** Actor, credentials, and Source for watch events. */
-    runAs?: Pick<AgentInvocation, "actor" | "credentialContext" | "source">;
+    /** Actor, credentials, and Source for watch events and results. */
+    runAs?: Pick<AgentInvocation, "actor" | "credentialContext"> &
+      Partial<Pick<AgentInvocation, "source">>;
   },
   nowMs = Date.now(),
 ): Promise<AgentInvocation> {

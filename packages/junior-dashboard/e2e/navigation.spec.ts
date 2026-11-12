@@ -181,7 +181,9 @@ test("keeps the density choice", async ({ page, dashboard }) => {
   await expect(summary).toHaveClass(/line-clamp-1/);
 
   await page.getByRole("button", { name: /Open profile menu/ }).click();
-  await page.getByRole("button", { name: "Comfortable density" }).click();
+  await page
+    .getByRole("menuitemradio", { name: "Comfortable density" })
+    .click();
   await expect(root).toHaveAttribute("data-density", "comfortable");
   await expect(summary).toHaveClass(/line-clamp-2/);
   await page.reload();

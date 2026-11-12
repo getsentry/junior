@@ -4,7 +4,10 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
 import { readConversationDetail } from "@/api/conversations/detail";
-import { readConversationFeed } from "@/api/conversations/list";
+import {
+  readConversationFeed,
+  readConversationFeedFromSql,
+} from "@/api/conversations/list";
 import type { JuniorApiEnv } from "@/api/route";
 import {
   conversationDetailReportSchema,
@@ -198,6 +201,28 @@ describe("conversation pin API", () => {
       { conversationId: older, pinned: true },
       { conversationId: newer, pinned: false },
     ]);
+    // Pins do not use up a page and do not repeat on later pages.
+    const newest = "local:test:pin-newest";
+    await storeConversation({
+      conversationId: newest,
+      nowMs: 3_000,
+      visibility: "private",
+    });
+    await addParticipant(newest, viewer.id);
+    const firstPage = await readConversationFeedFromSql({ limit: 1, viewer });
+    expect(firstPage.conversations.map((row) => row.conversationId)).toEqual([
+      older,
+      newest,
+    ]);
+    const secondPage = await readConversationFeedFromSql({
+      cursor: firstPage.nextCursor,
+      limit: 1,
+      viewer,
+    });
+    expect(secondPage.conversations.map((row) => row.conversationId)).toEqual([
+      newer,
+    ]);
+    expect(secondPage.nextCursor).toBeUndefined();
     // An Automation run has no parent, so it takes its own pin like a root.
     await getDb()
       .update(juniorConversations)

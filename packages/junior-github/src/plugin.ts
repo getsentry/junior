@@ -49,6 +49,7 @@ import {
   GITHUB_PULL_REQUEST_MATCH_FIELDS,
   GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
   gitHubPullRequestEventGuidance,
+  gitHubPullRequestSubscription,
   type GitHubPullRequestEventOptions,
 } from "./events/pull-request.js";
 import {
@@ -423,7 +424,9 @@ export function githubPlugin(
         return createGitHubTools(
           ctx,
           readEnv(botEmailEnv),
-          options.pullRequestEvents?.subscribeAfterCreate,
+          gitHubPullRequestSubscription(
+            options.pullRequestEvents?.subscribeAfterCreate,
+          ),
         );
       },
       workspacePrepare: prepareWorkspace,

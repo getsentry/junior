@@ -173,6 +173,7 @@ describe("Code Mode bridge", () => {
 
     const result = await runCodeModeScript({
       countToolCall: resume.countToolCall,
+      modelOnlyTools: [],
       pipeline: pipelineFor(review),
       source: `
         const customers = await Promise.all(
@@ -221,6 +222,7 @@ describe("Code Mode bridge", () => {
 
     const result = await runCodeModeScript({
       countToolCall: turnCount().countToolCall,
+      modelOnlyTools: [],
       pipeline: pipelineFor(fakeGuardian()),
       source: `
         await Promise.all(["a", "b"].map((path) => tools.edit({ path })));
@@ -247,10 +249,14 @@ describe("Code Mode bridge", () => {
       turnTools: ROOT_TURN_TOOLS,
       workspace: {} as never,
     } as never);
-    const { scriptTools } = planToolExposure(registry);
+    const { directTools, scriptTools } = planToolExposure(registry);
+    const modelOnlyTools = Object.keys(directTools).filter(
+      (name) => !Object.hasOwn(scriptTools, name),
+    );
 
     const result = await runCodeModeScript({
       countToolCall: turnCount().countToolCall,
+      modelOnlyTools,
       pipeline: pipelineFor(fakeGuardian()),
       source: `
         try {
@@ -263,10 +269,82 @@ describe("Code Mode bridge", () => {
       tools: scriptTools,
     });
 
-    expect(result.ok).toBe(true);
-    expect(result.value).toContain("tools.spawnAgent does not exist.");
-    expect(result.calls).toEqual([]);
+    expect(result).toMatchObject({
+      ok: true,
+      value:
+        "spawnAgent does not run in a script. Call it directly, outside the script.",
+      calls: [{ toolName: "spawnAgent", status: "error" }],
+    });
+
+    // A name that no tool has still gets pi's error.
+    const uncaught = await runCodeModeScript({
+      countToolCall: turnCount().countToolCall,
+      modelOnlyTools,
+      pipeline: pipelineFor(fakeGuardian()),
+      source: `await tools.spawnAgents({ task: "Inspect the failing checks." });`,
+      toolCallId: CODEMODE_CALL_ID,
+      tools: scriptTools,
+    });
+
+    expect(uncaught.error?.kind).toBe("missing_tool");
     expect(spawnAgent).not.toHaveBeenCalled();
+  });
+
+  it("redirects a catalog dispatcher call to the call to make instead", async () => {
+    const review = fakeGuardian();
+    const resume = turnCount();
+    const lookup = tool({
+      description: "Look up one customer.",
+      inputSchema: Type.Object({ id: Type.String() }),
+      execute: async ({ id }) => ({ id }),
+    }) as AnyToolDefinition;
+
+    const result = await runCodeModeScript({
+      countToolCall: resume.countToolCall,
+      modelOnlyTools: ["executeTool", "searchTools"],
+      pipeline: pipelineFor(review),
+      // The script hides the failures, so only the call list shows them.
+      source: `
+        const found = await tools
+          .executeTool({ tool_name: "lookup", arguments: { id: "a" } })
+          .catch(() => null);
+        await tools.searchTools({ query: "customers" }).catch(() => null);
+        // Never awaited, so it never starts, but it keeps its error.
+        tools.executeTool({ tool_name: "spawnAgent", arguments: {} });
+        return found;
+      `,
+      toolCallId: CODEMODE_CALL_ID,
+      tools: { lookup },
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: null,
+      calls: [
+        {
+          toolName: "executeTool",
+          status: "error",
+          error:
+            "executeTool does not run in a script. Call tools.lookup(arguments) directly, with only the object from the executeTool arguments field.",
+        },
+        {
+          toolName: "searchTools",
+          status: "error",
+          error: expect.stringContaining(
+            "searchTools does not run in a script. Call it directly before the script",
+          ),
+        },
+        {
+          toolName: "executeTool",
+          status: "not_started",
+          error:
+            "executeTool does not run in a script, and spawnAgent is not a script tool. Call spawnAgent outside the script.",
+        },
+      ],
+    });
+    // Nothing ran, so nothing was reviewed or counted.
+    expect(review).not.toHaveBeenCalled();
+    expect(resume.countToolCall()).toBe(1);
   });
 
   it("gives a script the result of an MCP tool, not only its cards", async () => {
@@ -329,6 +407,7 @@ describe("Code Mode bridge", () => {
 
       const result = await runCodeModeScript({
         countToolCall: turnCount().countToolCall,
+        modelOnlyTools: [],
         pipeline: pipelineFor(fakeGuardian()),
         source: `
           const [pipelines, status] = await Promise.all([
@@ -357,6 +436,7 @@ describe("Code Mode bridge", () => {
 
     const result = await runCodeModeScript({
       countToolCall: turnCount().countToolCall,
+      modelOnlyTools: [],
       pipeline: pipelineFor(review),
       source: `
         const settled = await Promise.allSettled([
@@ -426,6 +506,7 @@ describe("Code Mode bridge", () => {
 
     const result = await runCodeModeScript({
       countToolCall: turnCount().countToolCall,
+      modelOnlyTools: [],
       pipeline: pipelineFor(review),
       source,
       toolCallId: CODEMODE_CALL_ID,
@@ -451,6 +532,7 @@ describe("Code Mode bridge", () => {
 
     const result = await runCodeModeScript({
       countToolCall: turnCount().countToolCall,
+      modelOnlyTools: [],
       pipeline: pipelineFor(review, { onToolCall }),
       source: `
         const settled = await Promise.allSettled(
@@ -492,6 +574,7 @@ describe("Code Mode bridge", () => {
 
     const result = await runCodeModeScript({
       countToolCall: resume.countToolCall,
+      modelOnlyTools: [],
       pipeline: pipelineFor(fakeGuardian()),
       source: `
         for (let n = 0; n < 3; n++) {
@@ -522,6 +605,7 @@ describe("Code Mode bridge", () => {
 
     const run = runCodeModeScript({
       countToolCall: turnCount().countToolCall,
+      modelOnlyTools: [],
       pipeline: pipelineFor(fakeGuardian()),
       source: `await tools.wait({});`,
       toolCallId: CODEMODE_CALL_ID,
@@ -545,6 +629,7 @@ describe("Code Mode bridge", () => {
 
     const run = runCodeModeScript({
       countToolCall: turnCount().countToolCall,
+      modelOnlyTools: [],
       pipeline: pipelineFor(fakeGuardian()),
       signal: controller.signal,
       source: `await Promise.all([tools.first({}), tools.second({})]);`,
@@ -581,6 +666,7 @@ describe("Code Mode bridge", () => {
 
     const run = runCodeModeScript({
       countToolCall: turnCount().countToolCall,
+      modelOnlyTools: [],
       pipeline: pipelineFor(fakeGuardian(), { onToolCall }),
       signal: controller.signal,
       source: `await tools.lookup({});`,

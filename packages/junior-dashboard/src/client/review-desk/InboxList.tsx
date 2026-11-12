@@ -67,7 +67,7 @@ function SweepControl(props: {
       className="h-6 gap-1 px-1.5 text-xs"
       onClick={props.onSweep}
       title="Mark notices and FYI items done. Questions and approvals stay."
-      variant="quiet"
+      variant="ghost"
     >
       <CheckCheck aria-hidden="true" className="size-3.5" />
       Clear {props.clear}
@@ -449,7 +449,7 @@ export function InboxList(props: {
         onClick={() => {
           for (const source of failed) source.retry();
         }}
-        variant="quiet"
+        variant="ghost"
       >
         Try again
       </Button>

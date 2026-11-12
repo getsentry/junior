@@ -102,6 +102,7 @@ export function ConversationDetails(props: {
         title={
           <div className="-ml-2 flex min-w-0 items-center gap-1">
             <Button
+              variant="ghost"
               aria-label="Back to details"
               onClick={() => setMemoriesOpen(false)}
               size="icon"
@@ -251,7 +252,7 @@ function BriefCard(props: { brief: Brief }) {
           className="h-7 gap-1.5 px-2 text-xs"
           disabled
           title="Brief history is coming (getsentry/junior#3103)"
-          variant="quiet"
+          variant="ghost"
         >
           <History aria-hidden="true" className="size-3.5" />
           History

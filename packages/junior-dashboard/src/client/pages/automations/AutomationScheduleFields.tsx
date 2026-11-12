@@ -301,7 +301,10 @@ export function AutomationScheduleFields(props: {
             <>
               <span className="text-rose-300">{issue}</span>
               {preview.error ? (
-                <Button onClick={() => void preview.refetch()}>
+                <Button
+                  variant="outline"
+                  onClick={() => void preview.refetch()}
+                >
                   Try again
                 </Button>
               ) : null}
@@ -327,7 +330,11 @@ export function AutomationScheduleFields(props: {
         </div>
       </div>
       {props.value ? (
-        <Button className="w-fit" onClick={() => props.onChange(undefined)}>
+        <Button
+          variant="outline"
+          className="w-fit"
+          onClick={() => props.onChange(undefined)}
+        >
           Keep saved schedule
         </Button>
       ) : null}

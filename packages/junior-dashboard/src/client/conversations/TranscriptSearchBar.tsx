@@ -63,7 +63,7 @@ export function TranscriptSearchBar(props: {
         onClick={props.onClose}
         className="size-7"
         size="icon"
-        variant="quiet"
+        variant="ghost"
       >
         <X aria-hidden="true" size={14} strokeWidth={2} />
       </Button>

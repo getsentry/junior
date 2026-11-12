@@ -122,6 +122,7 @@ export function InboxAutomationRow(props: {
               <Button
                 disabled={resume.isPending}
                 onClick={() => resume.mutate()}
+                variant="outline"
               >
                 {resume.isPending ? "Resuming…" : "Resume"}
               </Button>

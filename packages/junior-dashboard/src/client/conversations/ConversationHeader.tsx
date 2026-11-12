@@ -15,6 +15,7 @@ import {
   HeaderIconButton,
 } from "./ConversationHeaderActions";
 import type { ConversationMenu } from "./conversationMenuItems";
+import { ChildAgentTags } from "./ChildAgentTags";
 import { ConversationBreadcrumb } from "./ConversationBreadcrumb";
 import {
   BriefOutcomeChip,
@@ -196,10 +197,15 @@ export function ConversationHeader(props: {
         </span>
       </>
     ) : (
-      <h2 className="m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight">
+      <h2
+        aria-current="page"
+        className="m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight"
+      >
         {props.title}
       </h2>
     );
+
+  const childAgentTags = <ChildAgentTags node={props.agentTree?.at(-1)} />;
 
   const showMobileHeader =
     searchOpenVisible ||
@@ -272,6 +278,7 @@ export function ConversationHeader(props: {
                 title
               )}
               {props.status}
+              {childAgentTags}
               {props.privacy ? (
                 <span className="shrink-0">{props.privacy}</span>
               ) : null}
@@ -321,7 +328,10 @@ export function ConversationHeader(props: {
         {props.agentTree ? (
           <div className="flex min-w-0 items-center justify-between gap-2 px-4 py-2 md:hidden">
             <ConversationBreadcrumb nodes={props.agentTree} />
-            {props.status}
+            <div className="flex shrink-0 items-center gap-1.5">
+              {props.status}
+              {childAgentTags}
+            </div>
           </div>
         ) : null}
         {props.forks ? (

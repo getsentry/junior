@@ -1,7 +1,7 @@
 import {
   keepPreviousData,
   queryOptions,
-  useQueries,
+  useInfiniteQuery,
   useQuery,
 } from "@tanstack/react-query";
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
@@ -27,6 +27,7 @@ import {
   automationRunListSchema,
   automationVersionListSchema,
 } from "@sentry/junior/api/schema";
+import { joinConversationFeedPages } from "./conversations/conversationFeedCache";
 import {
   pluginOperationalReportFeedSchema,
   pluginsSchema,
@@ -117,83 +118,29 @@ export function usePluginUserPagesData() {
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
 export function useConversationsData(search = "") {
   const pinOrderSaving = usePinOrderSaving();
-  return useQuery({
+  return useInfiniteQuery({
     // A read that ends during a Pinned order save can hold the old order.
     // The feed keeps its data and refetches when the save ends.
     enabled: !pinOrderSaving,
     queryKey: ["dashboard", "conversations", "viewer", { search }],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
+    queryFn: ({ pageParam, signal }) => {
+      const params = new URLSearchParams();
+      if (search) params.set("q", search);
+      if (pageParam) params.set("cursor", pageParam);
+      const query = params.toString();
+      return fetchDashboardJson(
         conversationFeedSchema,
-        `/api/conversations${search ? `?q=${encodeURIComponent(search)}` : ""}`,
+        `/api/conversations${query ? `?${query}` : ""}`,
         signal,
-      ),
+      );
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.nextCursor,
+    select: joinConversationFeedPages,
     placeholderData: keepPreviousData,
     // The versions poll refreshes the feed when it changes.
     retry: false,
   });
-}
-
-/**
- * The older feed pages a list has asked for: their cursors, and the first
- * page's cursor they follow. A new first page starts them over.
- */
-export type OlderConversationPages = {
-  after: string | undefined;
-  cursors: string[];
-};
-
-/**
- * Read the feed pages after the first, for infinite scroll. The first page
- * stays `useConversationsData`, which the versions poll keeps fresh. Each
- * older page is its own feed query under the feed key, so row actions that
- * patch every cached feed patch these rows too. The pages start from the
- * cursor at the end of the first page; a new first page starts them over.
- * The caller owns which pages are asked for, so they outlive the list.
- */
-export function useOlderConversationPages(
-  firstPageCursor: string | undefined,
-  [requested, setRequested]: readonly [
-    OlderConversationPages,
-    (pages: OlderConversationPages) => void,
-  ],
-) {
-  const cursors = requested.after === firstPageCursor ? requested.cursors : [];
-  const pages = useQueries({
-    queries: cursors.map((cursor) => ({
-      queryKey: ["dashboard", "conversations", "viewer", "older", cursor],
-      queryFn: ({ signal }: { signal: AbortSignal }) =>
-        fetchDashboardJson(
-          conversationFeedSchema,
-          `/api/conversations?cursor=${encodeURIComponent(cursor)}`,
-          signal,
-        ),
-      retry: false,
-    })),
-    // The combined value stays the same object while no page changes.
-    combine: (results) => ({
-      conversations: results.flatMap((page) => page.data?.conversations ?? []),
-      last: results.at(-1),
-      loadingMore: results.some((page) => page.isFetching),
-    }),
-  });
-  const { conversations, last, loadingMore } = pages;
-  const nextCursor = last ? last.data?.nextCursor : firstPageCursor;
-  return {
-    conversations,
-    // A failed page waits for a retry; loadMore finds no cursor past it.
-    failed: Boolean(last?.isError),
-    hasMore: Boolean(nextCursor) || Boolean(last?.isPending),
-    loadingMore,
-    loadMore: () => {
-      if (!nextCursor || loadingMore) return;
-      setRequested({
-        after: firstPageCursor,
-        cursors: [...cursors, nextCursor],
-      });
-    },
-    retry: () => void last?.refetch(),
-  };
 }
 
 /** Fetch repository and code change analytics. */
