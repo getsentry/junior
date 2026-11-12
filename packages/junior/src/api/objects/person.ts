@@ -1,5 +1,5 @@
 import type { ObjectAnnotation } from "@sentry/junior-plugin-api";
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, isNotNull, or } from "drizzle-orm";
 import {
   getDashboardPersonLink,
   parseDashboardPersonLink,
@@ -22,10 +22,31 @@ function linkEmail(url: URL): string | undefined {
   }
 }
 
+// Only account-linking flows write a GitHub Identity on a User, so its
+// handle is verified. This is the same source as `userLookup`.
+async function readLinkedGitHubHandle(
+  userId: string,
+): Promise<string | undefined> {
+  const [row] = await getDb()
+    .select({ handle: juniorIdentities.handle })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.userId, userId),
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, "github"),
+        isNotNull(juniorIdentities.handle),
+      ),
+    )
+    .orderBy(juniorIdentities.handle)
+    .limit(1);
+  return row?.handle ?? undefined;
+}
+
 /**
  * Resolve a dashboard person link or a `mailto:` link to a known person.
- * The card shows only what the People pages show every signed-in viewer:
- * the name, email, Slack handle, and photo.
+ * The card shows what the People pages show every signed-in viewer (the
+ * name, email, Slack handle, and photo) and a verified linked GitHub login.
  */
 export async function resolvePersonLink(
   url: URL,
@@ -68,7 +89,11 @@ export async function resolvePersonLink(
     await readUserAvatarUrls(db, row.userId ? [row.userId] : []),
   );
   const fullName = row.userDisplayName?.trim() || row.displayName?.trim();
+  const githubHandle = row.userId
+    ? await readLinkedGitHubHandle(row.userId)
+    : undefined;
   return personObjectCard({
+    ...(githubHandle ? { githubHandle } : undefined),
     person: {
       email: personEmail,
       ...(avatarUrl ? { avatarUrl } : undefined),

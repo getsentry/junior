@@ -56,6 +56,11 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     type: z.literal("person"),
     email: text.optional(),
     slackHandle: text.optional(),
+    // A verified linked GitHub login. The card links it to its profile.
+    githubHandle: z
+      .string()
+      .regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/)
+      .optional(),
     // A Junior photo path. Browsers never load a provider photo URL.
     avatarUrl: z
       .string()
@@ -66,7 +71,7 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
 ]);
 export type ObjectFacts = z.output<typeof objectFactsSchema>;
 
-type ObjectField = { key: string; label: string; value: string };
+type ObjectField = { href?: string; key: string; label: string; value: string };
 
 /** Show at most four card attributes, in priority order, on every surface. */
 export function objectFactFields(
@@ -78,9 +83,14 @@ export function objectFactFields(
     values?.length
       ? `${values.join(", ")}${values.length === 5 ? " (up to 5 shown)" : ""}`
       : undefined;
-  function add(key: string, label: string, value: string | number | undefined) {
+  function add(
+    key: string,
+    label: string,
+    value: string | number | undefined,
+    href?: string,
+  ) {
     if (value !== undefined && value !== "")
-      fields.push({ key, label, value: String(value) });
+      fields.push({ key, label, value: String(value), ...(href && { href }) });
   }
   switch (facts.type) {
     case "code_change":
@@ -124,6 +134,12 @@ export function objectFactFields(
     case "person":
       add("email", "Email", facts.email);
       add("slackHandle", "Slack", facts.slackHandle && `@${facts.slackHandle}`);
+      add(
+        "githubHandle",
+        "GitHub",
+        facts.githubHandle && `@${facts.githubHandle}`,
+        facts.githubHandle && `https://github.com/${facts.githubHandle}`,
+      );
       break;
   }
   return fields.slice(0, 4);
