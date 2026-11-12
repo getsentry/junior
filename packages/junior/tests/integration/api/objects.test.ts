@@ -5,7 +5,13 @@ import type { JuniorApiEnv } from "@/api/route";
 import { objectLinksReportSchema } from "@/api/schema";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
-import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import {
+  closeDb,
+  getConversationStore,
+  getDb,
+  getSqlExecutor,
+} from "@/chat/db";
+import { upsertLinkedIdentity } from "@/chat/identities/sql";
 import { conversationBriefFixture } from "../../fixtures/conversation-brief";
 import { linkSlackUser } from "../../fixtures/slack-user";
 import { signedInViewer } from "../../fixtures/user";
@@ -27,6 +33,9 @@ async function viewerApi(email: string) {
     const query = new URLSearchParams(urls.map((url) => ["url", url]));
     const response = await app.request(`http://localhost/api/objects?${query}`);
     expect(response.status).toBe(200);
+    // The browser may keep a card as long as the server cache does.
+    expect(response.headers.get("cache-control")).toBe("private, max-age=60");
+    expect(response.headers.get("vary")).toBe("Authorization, Cookie");
     const body = await response.text();
     return {
       body,
@@ -115,8 +124,22 @@ describe("object links API", () => {
   });
 
   it("resolves a person link and a mailto link to a known person", async () => {
-    await linkSlackUser("alice@example.com", "UALICE");
+    const alice = await linkSlackUser("alice@example.com", "UALICE");
+    await upsertLinkedIdentity(getSqlExecutor(), alice.id, {
+      handle: "alice_acme",
+      kind: "user",
+      provider: "github",
+      providerSubjectId: "1001",
+    });
+    await upsertLinkedIdentity(getSqlExecutor(), alice.id, {
+      avatarUrl: "https://lh3.googleusercontent.com/a/alice",
+      kind: "user",
+      provider: "google",
+      providerSubjectId: "g-alice",
+    });
+    await linkSlackUser("carol@example.com", "UCAROL");
     const personUrl = `${DASHBOARD}/people/${encodeURIComponent("alice@example.com")}`;
+    const unlinkedUrl = `${DASHBOARD}/people/${encodeURIComponent("carol@example.com")}`;
 
     const { objects } = await (
       await viewerApi("bob@example.com")
@@ -125,9 +148,15 @@ describe("object links API", () => {
       "mailto:Alice@Example.com",
       "mailto:nobody@example.com",
       "https://example.com/unknown",
+      unlinkedUrl,
     );
     const person = {
-      facts: { email: "alice@example.com", type: "person" },
+      facts: {
+        email: "alice@example.com",
+        avatarUrl: expect.stringMatching(/^\/api\/people\/avatars\//),
+        githubHandle: "alice_acme",
+        type: "person",
+      },
       label: "alice",
       objectType: "person",
       plugin: "junior",
@@ -135,9 +164,14 @@ describe("object links API", () => {
     };
     expect(objects.get(personUrl)).toMatchObject(person);
     expect(objects.get("mailto:Alice@Example.com")).toMatchObject(person);
+    expect(objects.get(unlinkedUrl)?.facts).toEqual({
+      email: "carol@example.com",
+      type: "person",
+    });
     expect([...objects.keys()]).toEqual([
       personUrl,
       "mailto:Alice@Example.com",
+      unlinkedUrl,
     ]);
   });
 });
