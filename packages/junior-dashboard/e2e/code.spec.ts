@@ -68,6 +68,7 @@ test("counts every open code change past the listed ones", async ({
     const state = new URL(route.request().url()).searchParams.get("state");
     const changes = (count: number, changeState: string, title: string) =>
       Array.from({ length: count }, (_, index) => ({
+        draft: false,
         id: `00000000-0000-4000-9000-${String(index).padStart(12, "0")}`,
         number: index + 1,
         openedAt: report.generatedAt,

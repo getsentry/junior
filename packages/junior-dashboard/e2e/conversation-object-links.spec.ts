@@ -14,7 +14,7 @@ test("links to saved objects show as a chip, a hover card, and a card", async ({
   );
   // A bare URL in a sentence is a chip with the label and status.
   const chip = page.getByRole("link", {
-    name: /getsentry\/junior#2201 · Draft/,
+    name: /getsentry\/junior#2201 · Open/,
   });
   await expect(chip).toHaveAttribute(
     "href",

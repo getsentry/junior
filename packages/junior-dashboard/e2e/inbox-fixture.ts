@@ -288,6 +288,7 @@ export async function mockViewerCodeChanges(
       json: {
         ...report,
         changes: changes.map((change) => ({
+          draft: false,
           id: `00000000-0000-4000-9000-${String(change.number).padStart(12, "0")}`,
           lastActivityAt: daysAgo(change.idleDays),
           number: change.number,
