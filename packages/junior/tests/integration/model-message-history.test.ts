@@ -7,6 +7,8 @@ import {
 import { botConfig } from "@/chat/config";
 import { closeConversationFixture } from "../fixtures/conversation";
 import { createAgent } from "../fixtures/agent";
+import { createWorkspace, deleteWorkspace } from "@/chat/workspaces/store";
+import { installTestSkills } from "../fixtures/skill-dirs";
 import { mockTitleModel } from "../fixtures/title-model";
 
 const originalBotConfig = { ...botConfig };
@@ -100,5 +102,63 @@ describe("model message history", () => {
         withoutCacheMarkers(after.messages.slice(0, before.messages.length)),
       ),
     ).toBe(JSON.stringify(withoutCacheMarkers(before.messages)));
+  });
+
+  it("sends a capability section again only when it changed", async () => {
+    mockTitleModel("Conversation title");
+    const agent = await createAgent({
+      responses: ["First.", "Second.", "Third.", "Fourth."],
+    });
+    const newText = (
+      before: { messages: unknown[] },
+      after: { messages: unknown[] },
+    ) => JSON.stringify(after.messages.slice(before.messages.length));
+    const count = (text: string, tag: string) =>
+      text.split(`<${tag}>\\n`).length - 1;
+
+    await agent.run("first");
+    const first = agent.snapshot();
+    expect(count(JSON.stringify(first.messages), "workspaces")).toBe(0);
+    // A deploy adds a skill, and someone creates a Workspace.
+    const removeSkills = await installTestSkills([
+      {
+        name: "release-notes",
+        description: "Write release notes.",
+        body: "Write them.",
+      },
+    ]);
+    const workspace = await createWorkspace({
+      name: "docs",
+      repos: [{ provider: "github", repo: "getsentry/docs" }],
+    });
+    let third: ReturnType<typeof agent.snapshot>;
+    try {
+      await agent.run("second");
+      const second = agent.snapshot();
+      await agent.run("third");
+      third = agent.snapshot();
+
+      // The changed sections go after the cached prefix, once.
+      expect(second.messages.slice(0, first.messages.length)).toEqual(
+        first.messages,
+      );
+      const changed = newText(first, second);
+      expect(changed).toContain("<name>release-notes</name>");
+      expect(changed).toContain("- docs: getsentry/docs");
+      expect(count(changed, "available-skills")).toBe(1);
+      expect(count(changed, "workspaces")).toBe(1);
+      expect(count(newText(second, third), "available-skills")).toBe(0);
+      expect(count(newText(second, third), "workspaces")).toBe(0);
+    } finally {
+      await removeSkills();
+      await deleteWorkspace(workspace.id);
+    }
+
+    // Both changes are undone. An empty section says so.
+    await agent.run("fourth");
+    const undone = newText(third, agent.snapshot());
+    expect(count(undone, "available-skills")).toBe(1);
+    expect(undone).not.toContain("release-notes");
+    expect(undone).toContain("<workspaces>\\nnone\\n</workspaces>");
   });
 });

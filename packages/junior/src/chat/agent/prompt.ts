@@ -44,7 +44,10 @@ import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
-import { SCRIPT_TOOLS_SECTION_TAG } from "@/chat/turn-context-tag";
+import {
+  CAPABILITY_SECTION_TAG,
+  SCRIPT_TOOLS_SECTION_TAG,
+} from "@/chat/turn-context-tag";
 import { escapeXml } from "@/chat/xml";
 import { listWorkspaces } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
@@ -688,39 +691,42 @@ export async function assemblePrompt(args: {
     ) !== buildScriptToolsSection(args.scriptTools)
       ? args.scriptTools
       : undefined;
-  const turnContextPrompt =
-    needsBootstrapContextForPrompt ||
-    scriptTools ||
-    pluginUserPromptContributions.length > 0 ||
-    (conversationNotes?.length ?? 0) > 0 ||
-    disabledTools.length > 0 ||
-    userCustomization
-      ? buildTurnContextPrompt({
-          availableSkills: args.availableSkills,
-          activeMcpCatalogs: args.activeMcpCatalogs,
-          conversationNotes,
-          disabledTools,
-          includeSessionContext: needsBootstrapContextForPrompt,
-          pluginPromptContributions: pluginUserPromptContributions,
-          scriptTools,
-          toolGuidance: args.toolGuidance,
-          userCustomization,
-          workspaces,
-          runtime: {
-            conversationId: args.spanContext.conversationId,
-            slackConversation: args.run.slackConversation,
-          },
-          dispatch: args.run.dispatch
-            ? {
-                ...args.run.dispatch,
-                destination: args.run.destination,
-                source,
-              }
-            : undefined,
-          actor: isUserActor(args.currentActor) ? args.currentActor : undefined,
-          configuration: args.configurationValues,
-        })
-      : null;
+  // It returns nothing when no section has news for this Turn.
+  const turnContextPrompt = loadsTurnContext
+    ? buildTurnContextPrompt({
+        availableSkills: args.availableSkills,
+        activeMcpCatalogs: args.activeMcpCatalogs,
+        conversationNotes,
+        disabledTools,
+        includeSessionContext: needsBootstrapContextForPrompt,
+        // Send a capability section again only when it changed. Context
+        // compaction keeps the latest copy of each.
+        latestCapabilitySections: Object.fromEntries(
+          Object.values(CAPABILITY_SECTION_TAG).map((tag) => [
+            tag,
+            latestTurnContextSection(promptHistoryMessages, tag),
+          ]),
+        ),
+        pluginPromptContributions: pluginUserPromptContributions,
+        scriptTools,
+        toolGuidance: args.toolGuidance,
+        userCustomization,
+        workspaces,
+        runtime: {
+          conversationId: args.spanContext.conversationId,
+          slackConversation: args.run.slackConversation,
+        },
+        dispatch: args.run.dispatch
+          ? {
+              ...args.run.dispatch,
+              destination: args.run.destination,
+              source,
+            }
+          : undefined,
+        actor: isUserActor(args.currentActor) ? args.currentActor : undefined,
+        configuration: args.configurationValues,
+      })
+    : null;
   const turnContextParts: UserContentPart[] = turnContextPrompt
     ? [{ type: "text", text: turnContextPrompt }]
     : [];

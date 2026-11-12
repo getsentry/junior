@@ -231,18 +231,33 @@ describe("context compaction projection reset", () => {
     const { buildScriptToolsSection, buildTurnContextPrompt } =
       await import("@/chat/prompt");
     const conversationId = "conversation-active-split-context";
+    const skill = (name: string) => ({
+      name,
+      description: `Use ${name}.`,
+      skillPath: `/skills/${name}`,
+    });
+    const catalogs = [{ provider: "notion", available_tool_count: 3 }];
+    const section = (text: string, tag: string) =>
+      text.match(new RegExp(`<${tag}>\\n[\\s\\S]*?\\n</${tag}>`))![0];
+    const count = (text: string, tag: string) =>
+      text.split(`<${tag}>\n`).length - 1;
     // An earlier Turn sent session context. A later Turn that no person
-    // started got request context and changed script tools. Neither request
-    // context applies now.
+    // started got request context, changed script tools, and a new skill.
+    // Neither request context applies now.
     const sessionContext = buildTurnContextPrompt({
-      availableSkills: [],
-      activeMcpCatalogs: [],
+      availableSkills: [skill("skill-a")],
+      activeMcpCatalogs: catalogs,
       disabledTools: [{ name: "firstTurnTool", reason: "First Turn only." }],
       runtime: { conversationId },
       scriptTools: "tools.a",
     })!;
     const earlierRequestContext = buildTurnContextPrompt({
-      availableSkills: [],
+      availableSkills: [skill("skill-a"), skill("skill-b")],
+      activeMcpCatalogs: catalogs,
+      latestCapabilitySections: {
+        "available-skills": section(sessionContext, "available-skills"),
+        "active-mcp-catalogs": section(sessionContext, "active-mcp-catalogs"),
+      },
       includeSessionContext: false,
       disabledTools: [
         { name: "createAutomation", reason: "No person started it." },
@@ -353,6 +368,15 @@ describe("context compaction projection reset", () => {
       text.split("<script-tools>").length - 1;
     expect(scriptToolsCount(context)).toBe(1);
     expect(context).toContain(buildScriptToolsSection("tools.b"));
+    // The same holds for each capability section: the newer skills and the
+    // MCP catalogs that did not change.
+    expect(count(earlierRequestContext, "active-mcp-catalogs")).toBe(0);
+    expect(count(context, "available-skills")).toBe(1);
+    expect(context).toContain(
+      section(earlierRequestContext, "available-skills"),
+    );
+    expect(count(context, "active-mcp-catalogs")).toBe(1);
+    expect(context).toContain(section(sessionContext, "active-mcp-catalogs"));
 
     const changed = await compact({
       ...contextMessage,

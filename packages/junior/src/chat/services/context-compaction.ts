@@ -46,6 +46,7 @@ import {
   isCompactionSummaryText,
 } from "@/chat/services/context-compaction-marker";
 import {
+  CAPABILITY_SECTION_TAG,
   REQUEST_CONTEXT_SECTION_TAG,
   SCRIPT_TOOLS_SECTION_TAG,
   SESSION_CONTEXT_SECTION_TAG,
@@ -227,36 +228,48 @@ function withoutRequestContext(text: string): string {
 }
 
 /**
- * Put one copy of the latest `<script-tools>` in the first Turn context part
- * and remove the others. Pass none when kept history already has the latest.
+ * Turn context sections that a Turn sends only when they differ from the
+ * latest copy in history. Compaction keeps exactly that copy, byte for byte.
  */
-function withLatestScriptTools(
-  content: unknown[],
-  scriptTools: string | undefined,
-): unknown[] {
+const LATEST_COPY_SECTION_TAGS: string[] = [
+  ...Object.values(CAPABILITY_SECTION_TAG),
+  SCRIPT_TOOLS_SECTION_TAG,
+];
+
+function latestSections(
+  messages: PiMessage[],
+  tags = LATEST_COPY_SECTION_TAGS,
+): string[] {
+  return tags.flatMap((tag) => latestTurnContextSection(messages, tag) ?? []);
+}
+
+/**
+ * Remove every copy of the latest-copy sections, then put the given copies in
+ * the first Turn context part. Callers leave out a section that kept history
+ * already has.
+ */
+function withLatestSections(content: unknown[], sections: string[]): unknown[] {
   const closingTag = `\n</${TURN_CONTEXT_TAG}>`;
-  let added = !scriptTools;
+  const added = sections.map((section) => `\n\n${section}`).join("");
+  let pending = sections.length > 0;
   const result = content.map((part) => {
     const text = textPart(part);
     if (!text?.startsWith(`<${TURN_CONTEXT_TAG}>`)) {
       return part;
     }
-    let stripped = withoutSections(text, [SCRIPT_TOOLS_SECTION_TAG]);
-    if (!added && stripped.endsWith(closingTag)) {
-      stripped = `${stripped.slice(0, -closingTag.length)}\n\n${scriptTools}${closingTag}`;
-      added = true;
+    let stripped = withoutSections(text, LATEST_COPY_SECTION_TAGS);
+    if (pending && stripped.endsWith(closingTag)) {
+      stripped = `${stripped.slice(0, -closingTag.length)}${added}${closingTag}`;
+      pending = false;
     }
     return { ...(part as object), text: stripped };
   });
-  return added
-    ? result
-    : [
-        {
-          type: "text",
-          text: `<${TURN_CONTEXT_TAG}>\n\n${scriptTools}${closingTag}`,
-        },
+  return pending
+    ? [
+        { type: "text", text: `<${TURN_CONTEXT_TAG}>${added}${closingTag}` },
         ...result,
-      ];
+      ]
+    : result;
 }
 
 /** Find the latest session context and keep only its session sections. */
@@ -292,14 +305,14 @@ function effectiveRuntimeContext(messages: PiMessage[]): {
   return runtimeContextContent(
     effectiveMessages,
     effectiveMessages,
-    latestTurnContextSection(messages, SCRIPT_TOOLS_SECTION_TAG),
+    latestSections(messages),
   );
 }
 
 function runtimeContextContent(
   messages: PiMessage[],
   agentsMessages: PiMessage[],
-  scriptTools: string | undefined,
+  latest: string[],
 ): {
   content: unknown[];
   timestamp: number;
@@ -308,11 +321,11 @@ function runtimeContextContent(
   const firstAgentsIndex = allContent.findIndex(
     (part) => textPart(part)?.startsWith("# AGENTS.md instructions") === true,
   );
-  const content = withLatestScriptTools(
+  const content = withLatestSections(
     allContent.filter(
       (part) => textPart(part)?.startsWith("# AGENTS.md instructions") !== true,
     ),
-    scriptTools,
+    latest,
   );
   const visibleAgents = findVisibleAgentsInstructions(agentsMessages);
   if (visibleAgents?.active === true) {
@@ -365,7 +378,8 @@ function runtimeContextMessage(
  *
  * Request context, such as plugin context and disabled tools, is true only for
  * the Turn that received it. From earlier Turns, keep only the latest session
- * context, `<script-tools>`, and AGENTS.md instructions.
+ * context, the latest copy of each capability section and `<script-tools>`,
+ * and AGENTS.md instructions.
  */
 function turnRuntimeContextMessage(
   messages: PiMessage[],
@@ -390,10 +404,7 @@ function turnRuntimeContextMessage(
     runtimeContextContent(
       sessionContext ? [sessionContext, ...turnContext] : turnContext,
       [...earlierContext, ...turnContext],
-      latestTurnContextSection(
-        [...earlierContext, ...turnContext],
-        SCRIPT_TOOLS_SECTION_TAG,
-      ),
+      latestSections([...earlierContext, ...turnContext]),
     ),
     timestamp,
   );
@@ -401,8 +412,9 @@ function turnRuntimeContextMessage(
 
 /**
  * Build the runtime context of summarized history that the kept history
- * does not carry: the latest session context, `<script-tools>`, and the
- * AGENTS.md instructions. Request context of earlier Turns is left out.
+ * does not carry: the latest session context, the latest copy of each
+ * capability section and `<script-tools>`, and the AGENTS.md instructions.
+ * Request context of earlier Turns is left out.
  */
 export function summarizedRuntimeContextMessage(
   summarized: PiMessage[],
@@ -419,9 +431,12 @@ export function summarizedRuntimeContextMessage(
     runtimeContextContent(
       sessionContext ? [sessionContext] : [],
       findVisibleAgentsInstructions(kept) ? [] : earlierContext,
-      latestTurnContextSection(keptContext, SCRIPT_TOOLS_SECTION_TAG)
-        ? undefined
-        : latestTurnContextSection(earlierContext, SCRIPT_TOOLS_SECTION_TAG),
+      latestSections(
+        earlierContext,
+        LATEST_COPY_SECTION_TAGS.filter(
+          (tag) => !latestTurnContextSection(keptContext, tag),
+        ),
+      ),
     ),
   );
 }
