@@ -8,8 +8,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import * as z from "zod";
 import {
-  GOOGLE_API_SCOPES,
   GOOGLE_IDENTITY_SCOPES,
+  googleApiScopes,
   type GoogleConfig,
 } from "./config";
 import { saveGoogleAccount, type GoogleDb } from "./store";
@@ -80,7 +80,9 @@ export function googleAuthorizationUrl(input: {
     prompt: "consent select_account",
     redirect_uri: input.redirectUri,
     response_type: "code",
-    scope: [...GOOGLE_IDENTITY_SCOPES, ...GOOGLE_API_SCOPES].join(" "),
+    scope: [...GOOGLE_IDENTITY_SCOPES, ...googleApiScopes(input.config)].join(
+      " ",
+    ),
     state: input.request.state,
   }).toString();
   return url.toString();
@@ -149,7 +151,9 @@ function verifyGrant(
     };
   }
   const granted = new Set(grantedScopes(tokens));
-  const missing = GOOGLE_API_SCOPES.filter((scope) => !granted.has(scope));
+  const missing = googleApiScopes(config).filter(
+    (scope) => !granted.has(scope),
+  );
   if (missing.length > 0) {
     return {
       reason: `Google did not grant every requested permission. Start again and allow all requested access. Missing: ${missing.join(", ")}`,
