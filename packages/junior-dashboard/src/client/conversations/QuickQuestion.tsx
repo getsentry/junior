@@ -512,11 +512,17 @@ export function QuickQuestionPanel(props: {
                   key={prompt}
                   // Each click is a new ask. The panel shows the error.
                   onClick={() => {
-                    setSending({ text: prompt, threadId: thread.id });
+                    const send = { text: prompt, threadId: thread.id };
+                    setSending(send);
+                    // A late result must not clear a newer send.
                     void props
                       .onSubmit(prompt, crypto.randomUUID())
                       .catch(() => {})
-                      .finally(() => setSending(undefined));
+                      .finally(() =>
+                        setSending((current) =>
+                          current === send ? undefined : current,
+                        ),
+                      );
                   }}
                 >
                   {prompt}
