@@ -129,7 +129,9 @@ export function AutomationEventFields(props: {
       {catalog.error ? (
         <FormNotice title="Event choices could not be loaded.">
           Saved values are kept.{" "}
-          <Button onClick={() => void catalog.refetch()}>Try again</Button>
+          <Button variant="outline" onClick={() => void catalog.refetch()}>
+            Try again
+          </Button>
         </FormNotice>
       ) : catalog.isPending ? (
         <p role="status">Loading event choices…</p>
@@ -216,7 +218,7 @@ export function AutomationEventFields(props: {
                 if (replacement) props.onChange(replacement);
                 setReplacement(undefined);
               }}
-              variant="primary"
+              variant="default"
             >
               Replace trigger
             </AlertDialogAction>
@@ -331,7 +333,10 @@ export function AutomationEventFields(props: {
                         <span className="break-all">
                           {eventMatchFilterText(key, field, value)}
                         </span>{" "}
-                        <Button onClick={() => setMatch(key, undefined)}>
+                        <Button
+                          variant="outline"
+                          onClick={() => setMatch(key, undefined)}
+                        >
                           Remove filter
                         </Button>
                       </div>
@@ -391,6 +396,7 @@ export function AutomationEventFields(props: {
       ) : null}
       {JSON.stringify(props.value) !== JSON.stringify(props.original) ? (
         <Button
+          variant="outline"
           className="w-fit"
           onClick={() => props.onChange(props.original)}
         >

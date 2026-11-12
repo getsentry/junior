@@ -91,6 +91,7 @@ export function TranscriptTurnContextView(
           closeOnClick
           render={
             <Button
+              variant="ghost"
               aria-haspopup={panel ? undefined : "dialog"}
               aria-expanded={expanded}
               aria-label="View turn context"

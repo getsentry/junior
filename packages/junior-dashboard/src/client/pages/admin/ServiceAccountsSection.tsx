@@ -195,12 +195,13 @@ export function ServiceAccountsSection(props: {
                     connectMutation.reset();
                     disconnectMutation.mutate(account);
                   }}
-                  variant="danger"
+                  variant="destructive"
                 >
                   Disconnect
                 </Button>
               ) : null}
               <Button
+                variant="outline"
                 aria-busy={
                   connectMutation.isPending &&
                   pendingProvider === account.provider

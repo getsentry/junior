@@ -91,6 +91,26 @@ function DropdownMenuLinkItem({
   );
 }
 
+/** Own the one checked value of a set of radio items. */
+function DropdownMenuRadioGroup({ ...props }: MenuPrimitive.RadioGroup.Props) {
+  return (
+    <MenuPrimitive.RadioGroup
+      data-slot="dropdown-menu-radio-group"
+      {...props}
+    />
+  );
+}
+
+/**
+ * Pick one value of a radio group. The caller gives the look, such as an
+ * icon segment. The menu stays open on click, so the choice shows at once.
+ */
+function DropdownMenuRadioItem({ ...props }: MenuPrimitive.RadioItem.Props) {
+  return (
+    <MenuPrimitive.RadioItem data-slot="dropdown-menu-radio-item" {...props} />
+  );
+}
+
 /** Divide groups of menu items. */
 function DropdownMenuSeparator({
   className,
@@ -111,5 +131,7 @@ export {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLinkItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
 };

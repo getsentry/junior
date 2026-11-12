@@ -12,6 +12,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../components/ui/collapsible";
+import { Item, ItemContent, ItemMedia } from "../components/ui/item";
 import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
 
@@ -53,11 +54,11 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
       aria-label={`${type}: ${card.title}`}
       className="my-1 w-full min-w-0 max-w-[37.5rem] overflow-hidden rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel text-sm"
     >
-      <div className="flex items-start gap-3 px-4 pb-3 pt-4 md:px-5">
-        <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted">
+      <Item className="items-start" size="card">
+        <ItemMedia className="text-dashboard-text-muted" variant="icon">
           <ObjectIcon {...card} size={18} />
-        </span>
-        <div className="min-w-0 flex-1">
+        </ItemMedia>
+        <ItemContent className="block">
           <p className="m-0 mb-1 break-words text-xs text-dashboard-text-muted">
             {type} · {card.plugin} · {card.label}
           </p>
@@ -73,8 +74,8 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
               {card.title}
             </strong>
           )}
-        </div>
-      </div>
+        </ItemContent>
+      </Item>
       <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
         {card.status && (
           <StatusChip size="compact" tone={presentation.tone}>

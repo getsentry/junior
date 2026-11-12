@@ -280,17 +280,26 @@ test("follows the system theme until the user picks one", async ({
 
   await page.getByRole("button", { name: /Open profile menu/ }).click();
   await expect(
-    page.getByRole("button", { name: "System theme" }),
-  ).toHaveAttribute("aria-pressed", "true");
+    page.getByRole("menuitemradio", { name: "System theme" }),
+  ).toHaveAttribute("aria-checked", "true");
   await screenshot(page, "settings-theme-light", { view: "desktop" });
+  // Arrow keys reach the theme choices inside the menu.
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    page.getByRole("menuitemradio", { name: "System theme" }),
+  ).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    page.getByRole("menuitemradio", { name: "Light theme" }),
+  ).toBeFocused();
 
-  await page.getByRole("button", { name: "Dark theme" }).click();
+  await page.getByRole("menuitemradio", { name: "Dark theme" }).click();
   await expect(root).toHaveAttribute("data-theme", "dark");
   await page.reload();
   await expect(root).toHaveAttribute("data-theme", "dark");
 
   await page.getByRole("button", { name: /Open profile menu/ }).click();
-  await page.getByRole("button", { name: "System theme" }).click();
+  await page.getByRole("menuitemradio", { name: "System theme" }).click();
   await expect(root).toHaveAttribute("data-theme", "light");
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(root).toHaveAttribute("data-theme", "dark");

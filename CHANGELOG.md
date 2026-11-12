@@ -211,7 +211,7 @@ Legacy Automations recover, creation rules tighten, search and review queues imp
 
 ### Internal Changes 🔧
 
-GitHub tests now share a Postgres harness with worker database copies and reset helpers, and comment reactions use one flow with REST for ordinary comments and GraphQL for review bodies; output no longer includes reaction\_id. CI pins external actions to commit SHAs, requires zizmor 1.32.0 workflow checks, disables checkout credential persistence except the release workflow, and centralizes secret reads. The secret rules cover the encryption keys and Junior signing secrets.
+GitHub tests now share a Postgres harness with worker database copies and reset helpers, and comment reactions use one flow with REST for ordinary comments and GraphQL for review bodies; output no longer includes reaction_id. CI pins external actions to commit SHAs, requires zizmor 1.32.0 workflow checks, disables checkout credential persistence except the release workflow, and centralizes secret reads. The secret rules cover the encryption keys and Junior signing secrets.
 
 #### Github
 
