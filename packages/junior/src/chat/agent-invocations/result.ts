@@ -57,10 +57,17 @@ import {
   getAgentInvocationIdForResult,
   getAgentInvocationResultMessageId,
   getAgentReplyMessageId,
+  getAgentInvocationTurnId,
   getTurnReplyKey,
-  isAgentReplyMessageId,
-  parseTurnReplyMessageId,
 } from "./ids";
+import {
+  childMessageSenderMetadata,
+  hasAgentInvocationReply,
+  listChildMessages,
+  ownAgentInvocation,
+  type ChildMessage,
+} from "./child-message";
+import type { InboundMessageSender } from "@/chat/task-execution/message-sender";
 import {
   getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
@@ -181,14 +188,14 @@ function renderResultUnderLock(
   sender: ChildAgentSender,
   result: { output: string; status: TerminalAgentInvocation["status"] },
 ): RenderInboundText {
-  return async (parentInboundMessageIds) =>
+  return async (parentInboundMessageIds, messageSenders) =>
     renderResultInput(
       sender,
       result,
       await listUnreportedSiblingAgents(
         sender.parentConversationId,
         sender.childConversationId,
-        parentInboundMessageIds,
+        await listChildMessages(parentInboundMessageIds, messageSenders),
       ),
     );
 }
@@ -224,6 +231,11 @@ function buildResultInboundMessage(
       namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
       trustedSummary: summary,
     },
+    ...childMessageSenderMetadata({
+      agentInvocationId: invocation.invocationId,
+      conversationId: invocation.childConversationId,
+      turnId: getAgentInvocationTurnId(invocation.invocationId),
+    }),
   };
   return {
     conversationId: invocation.parentConversationId,
@@ -265,17 +277,18 @@ export async function enqueueAgentInvocationResult(
     return;
   }
   const nowMs = options.nowMs ?? Date.now();
-  const parentInboundMessageIds = await readParentInboundMessageIds(
+  const parentMessages = await readParentChildMessages(
     invocation.parentConversationId,
     options.state,
   );
-  if (!sendsResultToParent(invocation, parentInboundMessageIds)) {
+  if (!sendsResultToParent(invocation, parentMessages)) {
     await markAgentInvocationParentMailboxAppended(
       invocation.invocationId,
       nowMs,
     );
-    const replied = parentInboundMessageIds.some((messageId) =>
-      isAgentReplyMessageId(messageId, invocation.invocationId),
+    const replied = hasAgentInvocationReply(
+      parentMessages,
+      invocation.invocationId,
     );
     // A child that sent its parent nothing starts no later agent invocation
     // there, so a `replaced` result of the parent reports now.
@@ -304,18 +317,21 @@ export async function enqueueAgentInvocationResult(
 }
 
 /**
- * Read the ids of every message that reached the parent's mailbox. A sibling
- * whose `reply` is among them has answered.
+ * Read every child reply and result that reached the parent's mailbox. A
+ * sibling whose `reply` is among them has answered.
  */
-async function readParentInboundMessageIds(
+async function readParentChildMessages(
   parentConversationId: string,
   state: StateAdapter | undefined,
-): Promise<readonly string[]> {
+): Promise<ChildMessage[]> {
   const work = await getConversationWorkState({
     conversationId: parentConversationId,
     state,
   });
-  return work?.execution.inboundMessageIds ?? [];
+  return await listChildMessages(
+    work?.execution.inboundMessageIds ?? [],
+    work?.execution.messageSenders ?? {},
+  );
 }
 
 function childAgentLabel(sender: ChildAgentSender): string {
@@ -428,6 +444,8 @@ export async function enqueueChildResultToParent(args: {
   queue: ConversationWorkQueue;
   sender: ChildAgentSender;
   state?: StateAdapter;
+  /** The child Turn that sent the result. */
+  turnId: string;
 }): Promise<void> {
   const nowMs = args.nowMs ?? Date.now();
   const actor = args.actor ?? args.sender.actor;
@@ -442,13 +460,23 @@ export async function enqueueChildResultToParent(args: {
     args.result.kind === "reply"
       ? { output: args.result.reply.text, status: "completed" as const }
       : { output: args.result.text, status: args.result.kind };
-  const metadata = senderEventMetadata(args.sender, actor, {
-    eventKey: inboundMessageId,
-    eventType: AGENT_REPLY_EVENT_TYPE,
-    identifier: senderId,
-    namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
-    trustedSummary: `${childAgentLabel(args.sender)} ${RESULT_SUMMARIES[args.result.kind]}`,
-  });
+  const sender: InboundMessageSender = {
+    ...(args.sender.invocationId
+      ? { agentInvocationId: args.sender.invocationId }
+      : undefined),
+    conversationId: args.sender.childConversationId,
+    turnId: args.turnId,
+  };
+  const metadata = {
+    ...senderEventMetadata(args.sender, actor, {
+      eventKey: inboundMessageId,
+      eventType: AGENT_REPLY_EVENT_TYPE,
+      identifier: senderId,
+      namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
+      trustedSummary: `${childAgentLabel(args.sender)} ${RESULT_SUMMARIES[args.result.kind]}`,
+    }),
+    ...childMessageSenderMetadata(sender),
+  };
   await appendAndEnqueueInboundMessage({
     message: {
       conversationId: args.sender.parentConversationId,
@@ -464,18 +492,18 @@ export async function enqueueChildResultToParent(args: {
       receivedAtMs: nowMs,
       source: "event",
     },
-    renderText: async (parentInboundMessageIds) =>
+    renderText: async (parentInboundMessageIds, messageSenders) =>
       // A stop drops the unread replies of a Turn on the Conversation loop
       // from the parent's mailbox. One sent before the stop can reach this
       // lock after that drop, so a stopped sender's reply is dropped here.
-      parseTurnReplyMessageId(inboundMessageId) !== undefined &&
+      !ownAgentInvocation(sender) &&
       (await getConversationStoppedAtMs(args.sender.childConversationId)) !==
         undefined
         ? undefined
-        : await renderResultUnderLock(
-            args.sender,
-            rendered,
-          )(parentInboundMessageIds),
+        : await renderResultUnderLock(args.sender, rendered)(
+            parentInboundMessageIds,
+            messageSenders,
+          ),
     queue: args.queue,
     queueDelayMs: EVENT_WAIT_MS,
     state: args.state,
@@ -513,6 +541,7 @@ export function createDeliverToParent(options: {
       queue: options.queue,
       sender,
       state: options.state,
+      turnId,
     });
   };
 }
@@ -565,22 +594,15 @@ export function createEndStoppedChildWork(options: {
       await getLatestAgentInvocationForConversation(conversationId);
     const sender =
       latest ?? (await readChildConversationSender(conversationId));
-    const senderId = latest?.invocationId ?? conversationId;
     if (
       sender &&
       (
-        await readParentInboundMessageIds(
-          sender.parentConversationId,
-          undefined,
-        )
-      ).some((messageId) => {
-        const turnId = parseTurnReplyMessageId(messageId);
-        return (
-          turnId !== undefined &&
-          turnIds.has(turnId) &&
-          isAgentReplyMessageId(messageId, senderId)
-        );
-      })
+        await readParentChildMessages(sender.parentConversationId, undefined)
+      ).some(
+        (message) =>
+          message.sender.conversationId === conversationId &&
+          turnIds.has(message.sender.turnId),
+      )
     ) {
       return;
     }
@@ -763,6 +785,7 @@ export function createChildConversationWorker(
         queue: options.queue,
         sender,
         state: options.state,
+        turnId: getAgentInvocationTurnId(sender.invocationId),
       }),
   });
   return async (

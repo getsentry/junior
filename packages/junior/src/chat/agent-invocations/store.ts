@@ -7,11 +7,13 @@ import {
   type InboundMessage,
 } from "@/chat/task-execution/store";
 import { AGENT_INVOCATION_EVENT_NAMESPACE } from "./result-event-type";
+import { getAgentInvocationResultMessageId } from "./ids";
 import {
-  getAgentInvocationResultMessageId,
-  isAgentReplyMessageId,
-  parseChildReplyMessageId,
-} from "./ids";
+  hasAgentInvocationReply,
+  listChildMessages,
+  readChildMessageSender,
+  type ChildMessage,
+} from "./child-message";
 import { readChildConversationSender } from "./child-input";
 import { listOpenChildAgentsWithoutAgentInvocations } from "./list";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
@@ -216,16 +218,17 @@ export async function listOpenAgentInvocations(
 /**
  * Return whether a terminal agent invocation sends its result to the parent.
  * A child's final response stays in its Conversation, and a `reply` that
- * reached the parent (its id is in `parentInboundMessageIds`) answered for
- * the invocation. A failure after that, such as a lost worker before the
+ * reached the parent (one of `parentMessages`) answered for the Agent
+ * invocation. A failure after that, such as a lost worker before the
  * Turn was saved, is not sent either.
  */
 export function sendsResultToParent(
   invocation: { invocationId: string; result?: string | null; status: string },
-  parentInboundMessageIds: readonly string[],
+  parentMessages: readonly ChildMessage[],
 ): boolean {
-  const replied = parentInboundMessageIds.some((messageId) =>
-    isAgentReplyMessageId(messageId, invocation.invocationId),
+  const replied = hasAgentInvocationReply(
+    parentMessages,
+    invocation.invocationId,
   );
   switch (invocation.status) {
     case "completed":
@@ -257,17 +260,14 @@ async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
   ) {
     return true;
   }
-  // Only a child that no Agent invocation names sends a reply that names
-  // its child Conversation. A reply from a child with a row counts as on
-  // `main`.
+  // An unread reply or result from a child that no Agent invocation names
+  // waits. One from a child with a row counts as on `main`.
   const work = await getConversationWorkState({ conversationId });
-  if (
-    work?.messages.some(
-      (message) =>
-        parseChildReplyMessageId(message.inboundMessageId) !== undefined,
-    )
-  ) {
-    return true;
+  for (const message of work?.messages ?? []) {
+    const sender = await readChildMessageSender(message);
+    if (sender && !sender.agentInvocationId) {
+      return true;
+    }
   }
   // A `replaced` child result is never sent. A later agent invocation of
   // that child agent sends its report instead.
@@ -295,9 +295,13 @@ async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
   const unread = new Set(
     work?.messages.map((message) => message.inboundMessageId),
   );
+  const parentMessages = await listChildMessages(
+    work?.execution.inboundMessageIds ?? [],
+    work?.execution.messageSenders ?? {},
+  );
   return marked.some(
     (row) =>
-      sendsResultToParent(row, work?.execution.inboundMessageIds ?? []) &&
+      sendsResultToParent(row, parentMessages) &&
       (row.parentMailboxStatus === "pending" ||
         unread.has(getAgentInvocationResultMessageId(row.invocationId))),
   );

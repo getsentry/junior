@@ -127,6 +127,7 @@ describe("stopping child agents", () => {
         },
         messageKey: "call-old-reply",
         sender: running,
+        turnId: getAgentInvocationTurnId(running.invocationId),
         state: harness.state,
       });
 
@@ -293,6 +294,7 @@ describe("stopping child agents", () => {
             reply: { text: "Late finding.", toolCallId: "call-late-reply" },
           },
           sender: child,
+          turnId: "turn_watch-event",
           state: harness.state,
         });
       await sendLateReply();
@@ -519,6 +521,7 @@ describe("stopping child agents", () => {
         },
         messageKey: "call-reply",
         sender: openHelper,
+        turnId: getAgentInvocationTurnId(openHelper.invocationId),
         state: harness.state,
       });
       // The child finished its own turn while its helpers still work.

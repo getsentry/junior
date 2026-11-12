@@ -31,13 +31,8 @@ import {
   getConversationWorkStates,
   type InboundMessage,
 } from "@/chat/task-execution/store";
-import {
-  getAgentInvocationIdForResult,
-  isAgentReplyMessageId,
-  parseAgentReplyMessageId,
-  parseChildReplyMessageId,
-  parseTurnReplyMessageId,
-} from "./ids";
+import { getAgentInvocationIdForResult } from "./ids";
+import { hasAgentInvocationReply, type ChildMessage } from "./child-message";
 import {
   invocationFromRow,
   isTerminalAgentInvocation,
@@ -470,46 +465,18 @@ async function listOpenLoopTurnIds(conversationId: string) {
 // mailbox.
 async function listAnsweredLoopChildren(
   children: readonly ChildAgent[],
-  parentInboundMessageIds: readonly string[],
+  parentMessages: readonly ChildMessage[],
 ): Promise<string[]> {
-  // A reply from a child that no agent invocation names names its child
-  // Conversation.
-  const replies = parentInboundMessageIds.flatMap((messageId) => {
-    const invocationId = parseAgentReplyMessageId(messageId);
-    const childConversationId = parseChildReplyMessageId(messageId);
-    return invocationId || childConversationId
-      ? [{ childConversationId, invocationId, messageId }]
-      : [];
-  });
-  if (children.length === 0 || replies.length === 0) {
+  if (children.length === 0 || parentMessages.length === 0) {
     return [];
   }
-  const invocationIds = replies.flatMap((reply) =>
-    reply.invocationId ? [reply.invocationId] : [],
-  );
-  const senders =
-    invocationIds.length === 0
-      ? []
-      : await getSqlExecutor()
-          .db()
-          .select({
-            childConversationId: juniorAgentInvocations.childConversationId,
-            invocationId: juniorAgentInvocations.invocationId,
-          })
-          .from(juniorAgentInvocations)
-          .where(inArray(juniorAgentInvocations.invocationId, invocationIds));
   const answered = await Promise.all(
     children.map(async ({ childConversationId }) => {
       const turnIds = await listOpenLoopTurnIds(childConversationId);
-      return replies.some(
-        (reply) =>
-          (reply.childConversationId === childConversationId ||
-            senders.some(
-              (sender) =>
-                sender.invocationId === reply.invocationId &&
-                sender.childConversationId === childConversationId,
-            )) &&
-          turnIds.includes(parseTurnReplyMessageId(reply.messageId) ?? ""),
+      return parentMessages.some(
+        ({ sender }) =>
+          sender.conversationId === childConversationId &&
+          turnIds.includes(sender.turnId),
       )
         ? childConversationId
         : undefined;
@@ -522,13 +489,13 @@ async function listAnsweredLoopChildren(
  * List the other child agents of one parent whose results have not reached
  * the parent yet. A child counts while it runs and after it finishes until its
  * result is appended to the parent mailbox. A running child whose `reply` is
- * already in `parentInboundMessageIds`, the ids that reached the parent's
- * mailbox, has answered, so it does not count.
+ * already among `parentMessages`, the child replies and results that reached
+ * the parent's mailbox, has answered, so it does not count.
  */
 export async function listUnreportedSiblingAgents(
   parentConversationId: string,
   childConversationId: string,
-  parentInboundMessageIds: readonly string[],
+  parentMessages: readonly ChildMessage[],
 ): Promise<ChildAgent[]> {
   const db = getSqlExecutor().db();
   const [children, pendingResults, openInvocations] = await Promise.all([
@@ -565,16 +532,13 @@ export async function listUnreportedSiblingAgents(
   // A result that is not sent is not waited for.
   const withPendingResult = new Set(
     pendingResults
-      .filter((row) => sendsResultToParent(row, parentInboundMessageIds))
+      .filter((row) => sendsResultToParent(row, parentMessages))
       .map((row) => row.childConversationId),
   );
   const unanswered = new Set(
     openInvocations
       .filter(
-        (row) =>
-          !parentInboundMessageIds.some((messageId) =>
-            isAgentReplyMessageId(messageId, row.invocationId),
-          ),
+        (row) => !hasAgentInvocationReply(parentMessages, row.invocationId),
       )
       .map((row) => row.childConversationId),
   );
@@ -593,7 +557,7 @@ export async function listUnreportedSiblingAgents(
           (row) => row.childConversationId === child.childConversationId,
         ),
     ),
-    parentInboundMessageIds,
+    parentMessages,
   )) {
     answered.add(child);
   }

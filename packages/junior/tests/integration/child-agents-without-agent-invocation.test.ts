@@ -30,6 +30,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
+  appendInboundMessage,
   CONVERSATION_WORK_MAX_RETRIES,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
@@ -131,6 +132,17 @@ describe("child agents that no Agent invocation names", () => {
         },
         turnId: "turn_child",
       });
+      // The reply stores who sent it; readers never parse its id.
+      const [reply] =
+        (
+          await getConversationWorkState({
+            conversationId: slackParentConversationId,
+          })
+        )?.messages ?? [];
+      expect(reply?.input.metadata?.sender).toEqual({
+        conversationId: childId,
+        turnId: "turn_child",
+      });
       vi.setSystemTime(Date.now() + 60_000);
       await harness.processUntilRun(slackParentConversationId);
 
@@ -177,6 +189,62 @@ describe("child agents that no Agent invocation names", () => {
       await harness.close();
     }
   });
+
+  // A reply from before senders stored their fields has only its id. One
+  // release reads the sender from that id.
+  it.each([
+    {
+      case: "its sender fields, under any id",
+      id: "child-reply-1",
+      sender: (childId: string) => ({
+        conversationId: childId,
+        turnId: "turn_child",
+      }),
+    },
+    {
+      case: "an id with no sender fields",
+      id: (childId: string) => `agent-reply:${childId}:turn_child:call-reply`,
+      sender: () => undefined,
+    },
+  ])(
+    "drops an unread reply by $case when its parent stops the child",
+    async ({ id, sender }) => {
+      vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+      const harness = await createHarness();
+      try {
+        const childId = await spawnChild(harness, "parent-turn:call-1");
+        await harness.processUntilRun(childId);
+        await harness.drain(childId);
+        const before = await parentMessageTexts();
+        const fields = sender(childId);
+        await appendInboundMessage({
+          message: {
+            conversationId: slackParentConversationId,
+            createdAtMs: Date.now(),
+            delivery: "defer",
+            inboundMessageId: typeof id === "string" ? id : id(childId),
+            input: {
+              ...(fields ? { metadata: { sender: fields } } : undefined),
+              text: "Deploy is green.",
+            },
+            receivedAtMs: Date.now(),
+            source: "event",
+          },
+          state: harness.state,
+        });
+        await expect(
+          createStopAgentTool(slackParentConversationId).execute!(
+            { conversation_id: childId },
+            {},
+          ),
+        ).resolves.toMatchObject({ stopped: true });
+
+        await expect(parentMessageTexts()).resolves.toEqual(before);
+      } finally {
+        await harness.close();
+      }
+    },
+  );
 
   it("shows the child's status from its mailbox and Turns", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });

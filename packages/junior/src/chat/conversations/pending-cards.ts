@@ -2,13 +2,10 @@ import { getConversationEventStore, getDb } from "@/chat/db";
 import { isRecord } from "@/chat/coerce";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import {
-  getAgentInvocationTurnId,
-  parseAgentInvocationResultMessageId,
-  parseAgentReplyMessageId,
-  parseChildReplyMessageId,
-  parseTurnReplyMessageId,
-} from "@/chat/agent-invocations/ids";
-import { getAgentInvocation } from "@/chat/agent-invocations/store";
+  isAgentInvocationResult,
+  listChildMessages,
+} from "@/chat/agent-invocations/child-message";
+import { getConversationWorkState } from "@/chat/task-execution/store";
 import {
   readMessageCardRefs,
   removedCardSchema,
@@ -77,26 +74,20 @@ async function selectTurnCards(
  * A child cannot reply to people, so its parent's reply delivers its cards.
  */
 async function selectChildResultCards(
+  conversationId: string,
   inputMessageIds: readonly string[],
   selection: CardSelection,
 ): Promise<void> {
+  if (inputMessageIds.length === 0) return;
   const events = getConversationEventStore();
-  for (const messageId of [...inputMessageIds].reverse()) {
-    const replyInvocationId = parseAgentReplyMessageId(messageId);
-    const invocationId =
-      replyInvocationId ?? parseAgentInvocationResultMessageId(messageId);
-    const invocation = invocationId
-      ? await getAgentInvocation(invocationId)
-      : undefined;
-    // A reply from a child that no agent invocation names names its child
-    // Conversation and its Turn.
-    const childConversationId =
-      invocation?.childConversationId ?? parseChildReplyMessageId(messageId);
-    if (!childConversationId) continue;
-    // A Turn on the child's Conversation loop names its own Turn.
-    const turnId =
-      parseTurnReplyMessageId(messageId) ??
-      (invocation ? getAgentInvocationTurnId(invocation.invocationId) : "");
+  const execution = (await getConversationWorkState({ conversationId }))
+    ?.execution;
+  const messages = await listChildMessages(
+    inputMessageIds,
+    execution?.messageSenders ?? {},
+  );
+  for (const message of messages.reverse()) {
+    const { conversationId: childConversationId, turnId } = message.sender;
     // The child records its terminal Turn event before it reports the result.
     const terminal = await events.loadByIdempotencyKey(
       childConversationId,
@@ -104,7 +95,7 @@ async function selectChildResultCards(
     );
     // A `reply` ends the child's Turn, but it can reach the parent before the
     // child records that end. Then its cards are the newest ones.
-    if (!terminal && invocationId && !replyInvocationId) continue;
+    if (!terminal && isAgentInvocationResult(message)) continue;
     await selectTurnCards(childConversationId, selection, terminal?.seq);
   }
 }
@@ -115,7 +106,7 @@ export async function loadPendingMessageCards(
 ): Promise<MessageCard[]> {
   const selection: CardSelection = { cards: new Map(), deleted: new Set() };
   const inputMessageIds = await selectTurnCards(conversationId, selection);
-  await selectChildResultCards(inputMessageIds, selection);
+  await selectChildResultCards(conversationId, inputMessageIds, selection);
   if (selection.cards.size === 0) return [];
   return resolveMessageCards(
     [...selection.cards.values()].reverse(),

@@ -14,13 +14,8 @@ import {
 import { juniorAgentInvocations, juniorConversations } from "@/db/schema";
 import { recordSubagentEnded } from "./markers";
 import { isChildAgentSessionStopped } from "./list";
-import {
-  getChildAgentLockName,
-  parseAgentInvocationResultMessageId,
-  parseAgentReplyMessageId,
-  parseChildReplyMessageId,
-  parseTurnReplyMessageId,
-} from "./ids";
+import { getChildAgentLockName } from "./ids";
+import { ownAgentInvocation, readChildMessageSender } from "./child-message";
 import {
   getLatestAgentInvocationForConversation,
   invocationFromRow,
@@ -165,14 +160,14 @@ async function skipUnreadResults(
   // A child's `reply` is its result, so a stop skips it too. A reply from a
   // Turn on the Conversation loop names no work of its own:
   // `dropUnreadLoopReplies` drops it instead.
-  const invocationIds = messages.flatMap((message) => {
-    const invocationId =
-      parseAgentInvocationResultMessageId(message.inboundMessageId) ??
-      (parseTurnReplyMessageId(message.inboundMessageId) === undefined
-        ? parseAgentReplyMessageId(message.inboundMessageId)
-        : undefined);
-    return invocationId ? [invocationId] : [];
-  });
+  const invocationIds: string[] = [];
+  for (const message of messages) {
+    const sender = await readChildMessageSender(message);
+    const invocation = sender && ownAgentInvocation(sender);
+    if (invocation) {
+      invocationIds.push(invocation);
+    }
+  }
   if (invocationIds.length === 0) {
     return;
   }
@@ -191,11 +186,10 @@ async function skipUnreadResults(
 
 /**
  * Drop the unread replies that Turns on the Conversation loop of the stopped
- * Conversations left in each mailbox of `mailboxIds`. Such a reply names the
- * sender's newest finished agent invocation, not work that the stop skips,
- * so the stop drops it by its message id. A reply sent after the stop is
- * dropped when it is read, while the sender is stopped. Call this after the
- * stop is stored.
+ * Conversations left in each mailbox of `mailboxIds`. Such a reply names
+ * no work that the stop skips, so the stop drops it by its sender fields.
+ * A reply sent after the stop is dropped when it is read, while the sender
+ * is stopped. Call this after the stop is stored.
  *
  * A reply that a running Turn already took leaves the mailbox like one that
  * it read: the Turn's own ack removes nothing more.
@@ -210,52 +204,17 @@ async function dropUnreadLoopReplies(
     const messages =
       (await getConversationWorkState({ conversationId, state }))?.messages ??
       [];
-    const replies = messages.flatMap((message) => {
-      const invocationId =
-        parseTurnReplyMessageId(message.inboundMessageId) === undefined
-          ? undefined
-          : parseAgentReplyMessageId(message.inboundMessageId);
-      return invocationId
-        ? [{ invocationId, messageId: message.inboundMessageId }]
-        : [];
-    });
-    // A reply from a child that no agent invocation names names its child
-    // Conversation.
-    const childReplies = messages.filter((message) => {
-      const childConversationId = parseChildReplyMessageId(
-        message.inboundMessageId,
-      );
-      return (
-        childConversationId !== undefined && stopped.has(childConversationId)
-      );
-    });
-    const senders =
-      replies.length === 0
-        ? []
-        : await getSqlExecutor()
-            .db()
-            .select({
-              childConversationId: juniorAgentInvocations.childConversationId,
-              invocationId: juniorAgentInvocations.invocationId,
-            })
-            .from(juniorAgentInvocations)
-            .where(
-              inArray(
-                juniorAgentInvocations.invocationId,
-                replies.map((reply) => reply.invocationId),
-              ),
-            );
-    const stoppedSenders = new Set(
-      senders
-        .filter((sender) => stopped.has(sender.childConversationId))
-        .map((sender) => sender.invocationId),
-    );
-    const inboundMessageIds = [
-      ...replies
-        .filter((reply) => stoppedSenders.has(reply.invocationId))
-        .map((reply) => reply.messageId),
-      ...childReplies.map((message) => message.inboundMessageId),
-    ];
+    const inboundMessageIds: string[] = [];
+    for (const message of messages) {
+      const sender = await readChildMessageSender(message);
+      if (
+        sender &&
+        !ownAgentInvocation(sender) &&
+        stopped.has(sender.conversationId)
+      ) {
+        inboundMessageIds.push(message.inboundMessageId);
+      }
+    }
     if (inboundMessageIds.length > 0) {
       await dropPendingMessages({ conversationId, inboundMessageIds, state });
     }

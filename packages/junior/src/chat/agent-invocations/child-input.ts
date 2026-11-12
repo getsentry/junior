@@ -9,7 +9,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { getSqlExecutor } from "@/chat/db";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import { juniorAgentBindings, juniorConversations } from "@/db/schema";
-import { parseTurnReplyMessageId } from "./ids";
+import { ownAgentInvocation, readChildMessageSender } from "./child-message";
 import { isFromStoredParent, readParentMessage } from "./parent-message";
 import {
   AGENT_INVOCATION_EVENT_NAMESPACE,
@@ -172,11 +172,11 @@ async function isSkippedAgentResult(
   if (input.kind === "result") {
     return skipped;
   }
-  if (
-    skipped &&
-    parseTurnReplyMessageId(message.inboundMessageId) === undefined
-  ) {
-    return true;
+  if (skipped) {
+    const fields = await readChildMessageSender(message);
+    if (!fields || ownAgentInvocation(fields)) {
+      return true;
+    }
   }
   const senderStoppedAtMs = await getConversationStoppedAtMs(
     sender.childConversationId,

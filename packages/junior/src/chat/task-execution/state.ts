@@ -24,6 +24,11 @@ import {
 } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { logException } from "@/chat/logging";
+import {
+  normalizeMessageSenders,
+  withMessageSenders,
+  type InboundMessageSenders,
+} from "./message-sender";
 
 const CONVERSATION_PREFIX = "junior:conversation:v2";
 const CONVERSATION_SCHEMA_VERSION = 2;
@@ -162,6 +167,8 @@ export interface ConversationStop {
 
 export interface ConversationExecution {
   inboundMessageIds: string[];
+  /** Sender fields of the ids in `inboundMessageIds` that have them. */
+  messageSenders?: InboundMessageSenders;
   lastCheckpointAtMs?: number;
   lastEnqueuedAtMs?: number;
   lastProgressAtMs?: number;
@@ -494,6 +501,10 @@ function normalizeExecution(
           .filter((id): id is string => Boolean(id)),
       )
     : [];
+  const messageSenders = withMessageSenders(
+    normalizeMessageSenders(value.messageSenders),
+    pendingMessages,
+  );
 
   return {
     status,
@@ -501,6 +512,7 @@ function normalizeExecution(
       ...inboundMessageIds,
       ...pendingMessages.map((message) => message.inboundMessageId),
     ]),
+    ...(messageSenders ? { messageSenders } : undefined),
     pendingCount: pendingMessages.length,
     pendingMessages,
     lease: normalizeLease(value.lease),
@@ -648,12 +660,17 @@ function executionWithPendingMessages(
   pending: InboundMessage[],
 ): ConversationExecution {
   const pendingMessages = [...pending].sort(compareMessages);
+  const messageSenders = withMessageSenders(
+    execution.messageSenders,
+    pendingMessages,
+  );
   return {
     ...execution,
     inboundMessageIds: uniqueStrings([
       ...execution.inboundMessageIds,
       ...pendingMessages.map((message) => message.inboundMessageId),
     ]),
+    ...(messageSenders ? { messageSenders } : undefined),
     pendingMessages,
     pendingCount: pendingMessages.length,
   };
@@ -1286,7 +1303,10 @@ async function appendInboundMessageWithAdmission(args: {
         return { status: "active" };
       }
       const text = args.renderText
-        ? await args.renderText(current.execution.inboundMessageIds)
+        ? await args.renderText(
+            current.execution.inboundMessageIds,
+            current.execution.messageSenders ?? {},
+          )
         : args.message.input.text;
       if (text === undefined) {
         // Record the id, so a repeat append of the dropped message is a
@@ -1302,6 +1322,10 @@ async function appendInboundMessageWithAdmission(args: {
                 ...current.execution.inboundMessageIds,
                 args.message.inboundMessageId,
               ],
+              messageSenders: withMessageSenders(
+                current.execution.messageSenders,
+                [args.message],
+              ),
             },
             nowMs,
           ),
@@ -1357,12 +1381,14 @@ async function appendInboundMessageWithAdmission(args: {
 
 /**
  * Render the text of one inbound message from the ids that already reached
- * its mailbox. It runs under the mailbox lock, so two appends that depend on
- * each other see each other. Undefined drops the message for good: its id
- * is recorded and nothing is appended, as for a duplicate.
+ * its mailbox and their sender fields. It runs under the mailbox lock, so two
+ * appends that depend on each other see each other. Undefined drops the
+ * message for good: its id is recorded and nothing is appended, as for a
+ * duplicate.
  */
 export type RenderInboundText = (
   inboundMessageIds: readonly string[],
+  messageSenders: Readonly<InboundMessageSenders>,
 ) => Promise<string | undefined>;
 
 /** Persist one inbound message idempotently in its conversation mailbox. */

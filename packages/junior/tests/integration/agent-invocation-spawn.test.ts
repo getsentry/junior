@@ -539,6 +539,7 @@ describe("agent invocation spawn and result delivery", () => {
         },
         messageKey: "call-reply",
         sender: created,
+        turnId: getAgentInvocationTurnId(created.invocationId),
         state,
       });
 
@@ -699,6 +700,7 @@ describe("agent invocation spawn and result delivery", () => {
         },
         messageKey: "call-reply",
         sender: first,
+        turnId: getAgentInvocationTurnId(first.invocationId),
         state,
       });
 
@@ -754,6 +756,7 @@ describe("agent invocation spawn and result delivery", () => {
             result: { kind: "reply", reply },
             messageKey: "call-reply",
             sender: replied,
+            turnId: getAgentInvocationTurnId(replied.invocationId),
             state,
           });
         } else {
@@ -904,6 +907,7 @@ describe("agent invocation spawn and result delivery", () => {
             },
             messageKey: "call-reply",
             sender,
+            turnId: getAgentInvocationTurnId(sender.invocationId),
             state,
           }),
         ),
