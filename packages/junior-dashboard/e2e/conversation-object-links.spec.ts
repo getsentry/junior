@@ -31,6 +31,11 @@ test("links to saved objects show as a chip, a hover card, and a card", async ({
     }),
   ).toBeVisible();
 
+  // The links below resolve into chips and grow the transcript, which keeps
+  // its bottom in view, so the link moves. Hover once they settle.
+  await expect(
+    page.getByRole("link", { name: /Investigate checkout latency · Running/ }),
+  ).toBeVisible();
   // A labeled link keeps its text and previews the card on hover.
   await page.getByRole("link", { name: "relay fix" }).hover();
   await expect(
