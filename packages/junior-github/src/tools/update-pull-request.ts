@@ -214,9 +214,13 @@ export function createGitHubUpdatePullRequestTool(ctx: {
       });
       const parsed = response.body;
       if (!response.ok) {
-        throw new Error(
-          `GitHub pull request update failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`,
-        );
+        const message = `GitHub pull request update failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`;
+        // 404 and 422 mean the model named a missing pull request or GitHub
+        // rejected the requested change, such as a base change in a stack.
+        if (response.status === 404 || response.status === 422) {
+          throw new PluginToolInputError(message);
+        }
+        throw new Error(message);
       }
       const providerResult = z
         .object({

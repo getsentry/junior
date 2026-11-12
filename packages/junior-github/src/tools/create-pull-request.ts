@@ -228,13 +228,14 @@ function isEgressAuthRequired(error: unknown): boolean {
   );
 }
 
-function isDefinitiveGitHubPullRequestCreateRejection(
-  error: unknown,
-): error is GitHubPullRequestCreateRejectedError {
+function isDefinitiveGitHubPullRequestCreateRejection(error: unknown): boolean {
+  if (error instanceof PluginToolInputError) {
+    return true;
+  }
   if (!(error instanceof GitHubPullRequestCreateRejectedError)) {
     return false;
   }
-  return [400, 401, 404, 410, 422].includes(error.status);
+  return [400, 401, 410].includes(error.status);
 }
 
 /** Build the GitHub REST create-PR request after the runtime owns body/footer shaping. */
@@ -274,12 +275,15 @@ async function createGitHubPullRequest(
   });
   const parsed = response.body;
   if (!response.ok) {
-    throw new GitHubPullRequestCreateRejectedError(
-      `GitHub pull request creation failed with HTTP ${response.status}: ${githubErrorMessage(
-        parsed,
-      )}`,
-      response.status,
-    );
+    const message = `GitHub pull request creation failed with HTTP ${response.status}: ${githubErrorMessage(
+      parsed,
+    )}`;
+    // 404 and 422 mean the model named a missing repo or branch, or GitHub
+    // rejected the requested change. The model can fix the input and retry.
+    if (response.status === 404 || response.status === 422) {
+      throw new PluginToolInputError(message);
+    }
+    throw new GitHubPullRequestCreateRejectedError(message, response.status);
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(
