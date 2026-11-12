@@ -147,3 +147,80 @@ test("surfaces token create errors without losing the list", async ({
   ).toBeVisible();
   await expect(page.getByText("Local agent", { exact: true })).toBeVisible();
 });
+
+test("sends a new token to a Preview that Junior made for the viewer", async ({
+  page,
+  dashboard,
+}) => {
+  const previewOrigin = "https://sb-e2e.vercel.run";
+  const createBodies: unknown[] = [];
+  let previewForm = "";
+  await page.route("**/api/personal-tokens", async (route) => {
+    if (route.request().method() === "POST") {
+      createBodies.push(route.request().postDataJSON());
+      await route.fulfill({
+        json: {
+          createdAt: "2026-08-01T00:01:00.000Z",
+          expiresAt: "2026-10-30T00:01:00.000Z",
+          id: "00000000-0000-4000-8000-000000000003",
+          lastUsedAt: null,
+          name: "Live preview on sb-e2e.vercel.run",
+          token: "jr_pat_preview-secret",
+          tokenSuffix: "secret",
+        },
+      });
+      return;
+    }
+    await route.fulfill({ json: { tokens: [] } });
+  });
+  await page.route(`${previewOrigin}/**`, async (route) => {
+    previewForm = route.request().postData() ?? "";
+    await route.fulfill({ body: "<p>Preview</p>", contentType: "text/html" });
+  });
+
+  await page.goto(
+    `${dashboard.baseURL}/settings/api-tokens?preview=${encodeURIComponent(previewOrigin)}`,
+  );
+  await expect(
+    page.getByText("Send a read-only token to sb-e2e.vercel.run?"),
+  ).toBeVisible();
+  await screenshot(page, "settings-api-tokens-preview-handoff", {
+    view: "desktop",
+  });
+
+  await page.getByRole("button", { name: "Send token" }).click();
+  await expect(page).toHaveURL(`${previewOrigin}/?live`);
+  expect(createBodies).toEqual([
+    { name: "Live preview on sb-e2e.vercel.run", previewOrigin },
+  ]);
+  expect(new URLSearchParams(previewForm).get("token")).toBe(
+    "jr_pat_preview-secret",
+  );
+});
+
+test("explains when Junior did not make the Preview", async ({
+  page,
+  dashboard,
+}) => {
+  await page.route("**/api/personal-tokens", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({
+        json: { error: "Junior did not make this Preview for you." },
+        status: 403,
+      });
+      return;
+    }
+    await route.fulfill({ json: { tokens: [] } });
+  });
+
+  await page.goto(
+    `${dashboard.baseURL}/settings/api-tokens?preview=${encodeURIComponent("https://sb-other.vercel.run")}`,
+  );
+  await page.getByRole("button", { name: "Send token" }).click();
+  await expect(
+    page.getByText("did not make sb-other.vercel.run for you."),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByLabel("Token name")).toBeVisible();
+});

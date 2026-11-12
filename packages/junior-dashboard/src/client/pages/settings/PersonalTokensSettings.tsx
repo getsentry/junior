@@ -15,6 +15,7 @@ import { Input } from "../../components/ui/input";
 import { InlineError } from "../../components/InlineError";
 import { Card } from "../../components/layout/Card";
 import { SettingsSection } from "./SettingsPageLayout";
+import { parsePreviewOrigin, PreviewTokenHandoff } from "./PreviewTokenHandoff";
 
 const personalTokensQueryKey = ["dashboard", "personal-tokens"] as const;
 // Matches `createPersonalTokenBodySchema`.
@@ -30,12 +31,14 @@ function defaultTokenName(now = new Date()): string {
 
 /**
  * Create and revoke personal API tokens for local clients. `?name=` prefills
- * the token name, for example from a link that asks for a token.
+ * the token name, for example from a link that asks for a token. `?preview=`
+ * offers to send a new token to that Preview.
  */
 export function PersonalTokensSettings() {
   const queryClient = useQueryClient();
   const createTokenStarted = useRef(false);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const previewOrigin = parsePreviewOrigin(searchParams.get("preview"));
   const [name, setName] = useState(
     () =>
       searchParams.get("name")?.trim().slice(0, MAX_TOKEN_NAME_LENGTH) ?? "",
@@ -139,7 +142,12 @@ export function PersonalTokensSettings() {
       }
       title="API Tokens"
     >
-      {createdToken ? (
+      {previewOrigin ? (
+        <PreviewTokenHandoff
+          onCancel={() => setSearchParams({}, { replace: true })}
+          previewOrigin={previewOrigin}
+        />
+      ) : createdToken ? (
         <div className="rounded-md border border-emerald-400/40 bg-emerald-400/5 p-3">
           <p className="mt-0 mb-2 text-sm font-semibold">
             {autoCopied
