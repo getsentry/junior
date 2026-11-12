@@ -202,17 +202,22 @@ export function createMcpAuthOrchestration(
       );
     }
 
-    // This Turn's own link already asked for the missing scope, so the
-    // provider did not grant it and another link would loop. The next
-    // message starts a new Turn, which can ask again.
+    // This Turn already sent a link for this challenge, and the sign-in did
+    // not satisfy it. The link may not ask for the challenged scope, for
+    // example with a pre-registered client, so compare the challenges.
+    // Another link would loop. The next message starts a new Turn, which can
+    // ask again.
     if (
       insufficientScope !== undefined &&
       input.pendingAuth?.kind === "mcp" &&
       input.pendingAuth.provider === provider &&
       input.pendingAuth.actorId === actorId &&
       input.pendingAuth.sessionId === sessionId &&
-      input.pendingAuth.requestedScope !== undefined &&
-      hasRequiredOAuthScope(input.pendingAuth.requestedScope, insufficientScope)
+      input.pendingAuth.insufficientScope !== undefined &&
+      hasRequiredOAuthScope(
+        input.pendingAuth.insufficientScope,
+        insufficientScope,
+      )
     ) {
       await deleteMcpAuthSession(authSessionId);
       return false;
@@ -253,12 +258,15 @@ export function createMcpAuthOrchestration(
       linkSentAtMs: reusingPendingLink
         ? input.pendingAuth!.linkSentAtMs
         : Date.now(),
-      ...(reusingPendingLink &&
-      input.pendingAuth?.kind === "mcp" &&
-      input.pendingAuth.requestedScope
-        ? { requestedScope: input.pendingAuth.requestedScope }
-        : undefined),
     };
+    // A reused link keeps the challenge that caused it.
+    const linkChallenge =
+      reusingPendingLink && input.pendingAuth?.kind === "mcp"
+        ? input.pendingAuth.insufficientScope
+        : insufficientScope;
+    if (linkChallenge !== undefined) {
+      nextPendingAuth.insufficientScope = linkChallenge;
+    }
 
     if (!reusingPendingLink) {
       const authSession = await getMcpAuthSession(authSessionId);
@@ -266,12 +274,6 @@ export function createMcpAuthOrchestration(
         throw new Error(
           `Missing MCP authorization URL for plugin "${provider}"`,
         );
-      }
-      const requestedScope = new URL(
-        authSession.authorizationUrl,
-      ).searchParams.get("scope");
-      if (requestedScope) {
-        nextPendingAuth.requestedScope = requestedScope;
       }
       await recordPendingAuth(nextPendingAuth);
       const authorizationRequest = {

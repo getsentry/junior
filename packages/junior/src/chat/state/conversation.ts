@@ -88,8 +88,11 @@ export type ConversationPendingAuthState =
   | (ConversationPendingAuthBase & {
       authSessionId: string;
       kind: "mcp";
-      /** The scope the sent link asked for. Older records have none. */
-      requestedScope?: string;
+      /**
+       * The scope of the `403 insufficient_scope` challenge that caused the
+       * link. It can be empty. Older records and other links have none.
+       */
+      insufficientScope?: string;
     })
   | (ConversationPendingAuthBase & {
       kind: "plugin";
@@ -136,7 +139,10 @@ function coercePendingAuthState(
   const provider = toOptionalString(value.provider);
   const actorId = toOptionalString(value.actorId);
   const authSessionId = toOptionalString(value.authSessionId);
-  const requestedScope = toOptionalString(value.requestedScope);
+  const insufficientScope =
+    typeof value.insufficientScope === "string"
+      ? value.insufficientScope
+      : undefined;
   const scope = toOptionalString(value.scope);
   const sessionId = toOptionalString(value.sessionId);
   const linkSentAtMs = toOptionalNumber(value.linkSentAtMs);
@@ -163,7 +169,9 @@ function coercePendingAuthState(
         ...base,
         authSessionId: authSessionId!,
         kind,
-        ...(requestedScope ? { requestedScope } : undefined),
+        ...(insufficientScope !== undefined
+          ? { insufficientScope }
+          : undefined),
       }
     : { ...base, kind };
 }
