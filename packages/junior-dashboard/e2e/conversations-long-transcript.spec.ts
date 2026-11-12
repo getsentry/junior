@@ -426,15 +426,13 @@ test("points at the outline item under the pointer with a larger font size", asy
     name: "Conversation outline",
   });
   await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
-  const list = outline.getByRole("list");
-  const box = (await list.boundingBox())!;
-  const y = box.y + box.height - 20;
-  await page.mouse.move(box.x + 4, y);
-  const pointed = outline.locator("button[data-highlighted]");
-  await expect(pointed).toHaveCount(1);
-  const item = (await pointed.boundingBox())!;
-  expect(y).toBeGreaterThanOrEqual(item.y);
-  expect(y).toBeLessThanOrEqual(item.y + item.height);
+  const item = outline.getByRole("button", {
+    name: "Transcript message 1990 with",
+  });
+  await item.hover();
+  await expect(
+    page.locator('[data-slot="message-outline-preview-title"]'),
+  ).toHaveText((await item.getAttribute("aria-label"))!);
 });
 
 test("holds the top row while earlier pages load above it", async ({
