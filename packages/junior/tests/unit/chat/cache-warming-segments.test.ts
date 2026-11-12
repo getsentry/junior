@@ -11,7 +11,11 @@ import {
   WARMUP_MARGIN_MS,
 } from "@/chat/cache-warming/model";
 import { getConversationStore } from "@/chat/db";
-import { cancelWatch, createTimerWatch } from "@/chat/events/store";
+import {
+  cancelWatch,
+  createTimerWatch,
+  createWatch,
+} from "@/chat/events/store";
 import { createApp } from "@/app";
 import { defineJuniorPlugins } from "@/plugins";
 import { resolveGatewayModel } from "@/chat/pi/client";
@@ -41,6 +45,8 @@ const openWorkConversationId = "local:test:cache-warming-segments-open";
 // Only these Conversations have a timer or a child agent.
 const timerConversationId = "local:test:cache-warming-segments-timer";
 const parentConversationId = "local:test:cache-warming-segments-parent";
+// Only this Conversation has an Automation run's Watch.
+const automationConversationId = "local:test:cache-warming-segments-automation";
 const model = resolveGatewayModel("anthropic/claude-opus-5.5");
 const runPrompt = { platform: "local", mode: "conversation" } as const;
 // Warmups compare the stored prompt with the prompt of this deployment.
@@ -108,6 +114,27 @@ async function endTurnWithAnswerTool(toolName: string, mode: PromptMode) {
   await recorder.stop();
 }
 
+// Start a child agent that still runs when the parent's Turn ends.
+async function startChildAgent() {
+  const parentDestination = {
+    platform: "local",
+    conversationId: parentConversationId,
+  } as const;
+  await getConversationStore().recordActivity({
+    conversationId: parentConversationId,
+    destination: parentDestination,
+    source: "internal",
+  });
+  await createAgentInvocation({
+    actor: { name: "parent-agent", platform: "system" },
+    destination: parentDestination,
+    idempotencyKey: "cache-warming-child",
+    input: "Summarize the durable task.",
+    parentConversationId,
+    reasoningLevel: "medium",
+  });
+}
+
 function scheduledHorizon(): CacheWarmupMessage {
   const message = mocks.sendCacheWarmup.mock.calls
     .map(([sent]) => sent as CacheWarmupMessage)
@@ -162,6 +189,7 @@ describe("cache warming gap segments", () => {
       openWorkConversationId,
       timerConversationId,
       parentConversationId,
+      automationConversationId,
     ]) {
       await getStateAdapter().delete(`junior:cache_warming:conversation:${id}`);
     }
@@ -192,7 +220,7 @@ describe("cache warming gap segments", () => {
   });
 
   it.each(["reply", "noReply", "reportBlocked"])(
-    "starts an idle period from the %s call of a child agent's Turn, not of an Automation run",
+    "starts an idle period from the %s call of a child agent's Turn, not of an Automation run with no pending work",
     async (toolName) => {
       vi.useFakeTimers();
       mocks.sendCacheWarmup.mockClear();
@@ -220,6 +248,58 @@ describe("cache warming gap segments", () => {
         expect(await segmentGaps("system:1:none")).toEqual([4 * MINUTE]);
       } finally {
         await clearGaps();
+      }
+    },
+  );
+
+  it.each(["timer", "child", "watch"] as const)(
+    "starts an idle period from the ending of an Automation run with a pending %s",
+    async (pending) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const state = getStateAdapter();
+      mocks.sendCacheWarmup.mockClear();
+      const id =
+        pending === "child" ? parentConversationId : automationConversationId;
+      const watch =
+        pending === "timer"
+          ? await createTimerWatch({
+              conversationId: id,
+              toolCallId: "automation-timer",
+              afterMs: 30 * MINUTE,
+              intent: "Check the deploy.",
+            })
+          : pending === "watch"
+            ? // Like the pull request Watch that `createPullRequest` adds.
+              await createWatch({
+                conversationId: id,
+                events: ["pull_request.merged"],
+                expiresAtMs: Date.now() + 60 * MINUTE,
+                intent: "Report the merge.",
+                label: "Pull request",
+                namespace: "github",
+                identifier: "getsentry/junior#1",
+                resourceType: "pull_request",
+              })
+            : undefined;
+      if (pending === "child") await startChildAgent();
+      const segment = `system:1:none:${pending === "child" ? "child" : "automation"}`;
+      try {
+        await endTurn(false, id, context, "automation");
+        scheduledWarmup();
+        // The Watch or the child's result starts a Turn 4 minutes later.
+        vi.setSystemTime(Date.now() + 4 * MINUTE);
+        await endTurn(false, id);
+
+        expect(await segmentGaps(segment)).toEqual([4 * MINUTE]);
+        expect(await segmentGaps("system:1:none")).toEqual([4 * MINUTE]);
+      } finally {
+        if (watch) await cancelWatch({ conversationId: id, id: watch.id });
+        for (const key of [segment, "system:1:none"]) {
+          await state.delete(`junior:cache_warming:gaps:${key}`);
+          await state.delete(
+            `junior:cache_warming:gaps:conversation:${id}:${key}`,
+          );
+        }
       }
     },
   );
@@ -447,23 +527,7 @@ describe("cache warming gap segments", () => {
     });
     try {
       // The Turn started a child agent, which still runs.
-      const parentDestination = {
-        platform: "local",
-        conversationId: parentConversationId,
-      } as const;
-      await getConversationStore().recordActivity({
-        conversationId: parentConversationId,
-        destination: parentDestination,
-        source: "internal",
-      });
-      await createAgentInvocation({
-        actor: { name: "parent-agent", platform: "system" },
-        destination: parentDestination,
-        idempotencyKey: "cache-warming-child",
-        input: "Summarize the durable task.",
-        parentConversationId,
-        reasoningLevel: "medium",
-      });
+      await startChildAgent();
       await endTurn(true, parentConversationId);
       // The thin child segment warms with the gaps of its segment.
       await runCacheWarmup(scheduledWarmup());
