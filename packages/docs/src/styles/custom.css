@@ -260,7 +260,7 @@ body:has(.jr-hero-stage) .sl-container {
   padding: 0;
 }
 
-/* The demo thumbnail sits in the free space right of the note's lines. */
+/* The demo thumbnail sits on the note's right side, over its lines. */
 .jr-demo-thumb {
   background: var(--jr-cream);
   border: 0;
@@ -275,7 +275,8 @@ body:has(.jr-hero-stage) .sl-container {
     rotate 100ms ease,
     scale 100ms ease;
   translate: 0 -50%;
-  width: calc(13 * var(--u));
+  width: calc(26 * var(--u));
+  z-index: 1;
 }
 
 .jr-demo-thumb:hover {
@@ -291,12 +292,12 @@ body:has(.jr-hero-stage) .sl-container {
 
 .jr-demo-thumb svg {
   fill: var(--jr-pink);
-  height: calc(4.5 * var(--u));
+  height: calc(7 * var(--u));
   left: 50%;
   position: absolute;
   top: 50%;
   translate: -50% -50%;
-  width: calc(4.5 * var(--u));
+  width: calc(7 * var(--u));
 }
 
 .jr-demo-thumb svg path {
@@ -424,7 +425,7 @@ body:has(.jr-hero-stage) footer table {
     position: static;
     rotate: 2deg;
     translate: none;
-    width: 60%;
+    width: 80%;
   }
 }
 
