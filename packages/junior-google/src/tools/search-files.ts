@@ -1,5 +1,6 @@
 import {
   definePluginTool,
+  PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
@@ -48,10 +49,6 @@ const outputSchema = pluginToolOutputSchema.extend({
       url: z.string().optional(),
     }),
   ),
-  message: z
-    .string()
-    .optional()
-    .describe("Why no files were searched. Tell the requester."),
   truncated: z
     .boolean()
     .describe(
@@ -218,12 +215,9 @@ export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
       // so search only for requesters in them.
       const domain = requester ? emailDomain(requester) : undefined;
       if (!requester || !domain || !ctx.allowedDomains.includes(domain)) {
-        return {
-          target: "searchGoogleFiles" as const,
-          files: [],
-          message: `Search works only for requesters with a known email at ${ctx.allowedDomains.join(", ")}. ${PASTE_LINK}`,
-          truncated: false,
-        };
+        throw new PluginToolInputError(
+          `Search works only for requesters with a known email at ${ctx.allowedDomains.join(", ")}. ${PASTE_LINK}`,
+        );
       }
       const found = await searchFindableFiles(ctx, {
         maxResults: input.max_results,
@@ -233,12 +227,9 @@ export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
       });
       // Never retry a rejected query without the requester's terms.
       if (!found) {
-        return {
-          target: "searchGoogleFiles" as const,
-          files: [],
-          message: `Google rejected the search. ${PASTE_LINK}`,
-          truncated: false,
-        };
+        throw new PluginToolInputError(
+          `Google rejected the search. ${PASTE_LINK}`,
+        );
       }
       return {
         target: "searchGoogleFiles" as const,

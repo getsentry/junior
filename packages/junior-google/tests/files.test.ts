@@ -169,17 +169,14 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     const unknown = toolsFor(undefined);
     await expect(
       run(unknown.tools, "searchGoogleFiles", { query: "plan" }),
-    ).resolves.toMatchObject({
-      files: [],
-      message: expect.stringContaining("paste a link"),
-    });
+    ).rejects.toThrow("paste a link");
     // Without the requester's email, Junior never searches.
     expect(unknown.fetch).not.toHaveBeenCalled();
     // Domain-findable files are not findable for someone outside the company.
     const outside = toolsFor("eve@other.com");
     await expect(
       run(outside.tools, "searchGoogleFiles", { query: "plan" }),
-    ).resolves.toMatchObject({ files: [] });
+    ).rejects.toBeInstanceOf(PluginToolInputError);
     expect(outside.fetch).not.toHaveBeenCalled();
 
     const { fetch, tools } = docsTools(
@@ -188,10 +185,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     );
     await expect(
       run(tools, "searchGoogleFiles", { query: "plan" }),
-    ).resolves.toMatchObject({
-      files: [],
-      message: expect.stringContaining("Google rejected the search."),
-    });
+    ).rejects.toThrow("Google rejected the search.");
     // A rejected query is not retried without the requester's terms.
     expect(fetch).toHaveBeenCalledTimes(2);
   });
