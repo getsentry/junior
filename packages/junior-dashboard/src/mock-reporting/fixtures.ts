@@ -1400,7 +1400,8 @@ function longConversation(nowMs: number): ConversationDetailReport {
     isPriority: true,
     sidebarAnnotations: [
       {
-        icon: "circle-dashed",
+        objectType: "code_change",
+        status: "draft",
         key: "getsentry/junior#2201",
         label: "junior",
       },
