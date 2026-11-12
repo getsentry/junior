@@ -78,12 +78,16 @@ export function getAgentInvocationMessageId(invocationId: string): string {
 
 const REPLY_MESSAGE_PREFIX = "agent-reply:";
 
-/** Return the parent mailbox identity of one child agent `reply` call. */
+/**
+ * Return the parent mailbox identity of one child agent `reply` call.
+ * `senderId` is the Agent invocation that sent it, or the child Conversation
+ * when no Agent invocation names the child.
+ */
 export function getAgentReplyMessageId(
-  invocationId: string,
+  senderId: string,
   toolCallId: string,
 ): string {
-  return `${REPLY_MESSAGE_PREFIX}${invocationId}:${toolCallId}`;
+  return `${REPLY_MESSAGE_PREFIX}${senderId}:${toolCallId}`;
 }
 
 /**
@@ -94,8 +98,9 @@ export function getTurnReplyKey(turnId: string, toolCallId: string): string {
   return `${turnId}:${toolCallId}`;
 }
 
-// Agent invocation ids come from `stableId`.
+// Agent invocation ids and child Conversation ids come from `stableId`.
 const REPLY_MESSAGE_ID = /^agent-reply:(agent-invocation:[0-9a-f]{32}):/;
+const CHILD_REPLY_MESSAGE_ID = /^agent-reply:(agent:[0-9a-f]{32}):/;
 
 /** Read the agent invocation identity from one parent `reply` mailbox identity. */
 export function parseAgentReplyMessageId(
@@ -104,9 +109,19 @@ export function parseAgentReplyMessageId(
   return REPLY_MESSAGE_ID.exec(messageId)?.[1];
 }
 
+/**
+ * Read the child Conversation identity from one parent `reply` mailbox
+ * identity that no Agent invocation sent.
+ */
+export function parseChildReplyMessageId(
+  messageId: string,
+): string | undefined {
+  return CHILD_REPLY_MESSAGE_ID.exec(messageId)?.[1];
+}
+
 // Turn ids come from `buildDeterministicTurnId` and have no `:`.
 const TURN_REPLY_MESSAGE_ID =
-  /^agent-reply:agent-invocation:[0-9a-f]{32}:(turn_[A-Za-z0-9_-]+)(?::|$)/;
+  /^agent-reply:agent(?:-invocation)?:[0-9a-f]{32}:(turn_[A-Za-z0-9_-]+)(?::|$)/;
 
 /**
  * Read the Turn id from one parent mailbox identity that a Turn on a child's
@@ -116,12 +131,15 @@ export function parseTurnReplyMessageId(messageId: string): string | undefined {
   return TURN_REPLY_MESSAGE_ID.exec(messageId)?.[1];
 }
 
-/** Return whether one parent mailbox identity is a `reply` of an agent invocation. */
+/**
+ * Return whether one parent mailbox identity is a `reply` that `senderId`, an
+ * Agent invocation or a child Conversation, sent.
+ */
 export function isAgentReplyMessageId(
   messageId: string,
-  invocationId: string,
+  senderId: string,
 ): boolean {
-  return messageId.startsWith(`${REPLY_MESSAGE_PREFIX}${invocationId}:`);
+  return messageId.startsWith(`${REPLY_MESSAGE_PREFIX}${senderId}:`);
 }
 
 const RESULT_MESSAGE_PREFIX = "agent-invocation:";

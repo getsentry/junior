@@ -37,6 +37,7 @@ import {
   recoverPendingAgentInvocationMailboxAppends,
   recoverPendingAgentInvocationResults,
 } from "@/chat/agent-dispatch/heartbeat";
+import { spawnChildWithoutInvocation } from "../fixtures/child-without-invocation";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import {
   createEventSource,
@@ -245,6 +246,45 @@ describe("agent invocation spawn and result delivery", () => {
         message:
           'A child agent named "reviewer" already exists. Use messageAgent to give it more work, or choose a different name.',
       });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("replays a spawn that wrote no agent invocation", async () => {
+    const { conversationStore, fixture } = await prepareParentConversation();
+    const queue = createConversationWorkQueueTestAdapter();
+    try {
+      const childConversationId = await spawnChildWithoutInvocation({
+        actor: { platform: "local", userId: "local-user" },
+        conversationStore,
+        idempotencyKey: "parent-turn:call-1",
+        parentConversationId,
+        queue,
+      });
+      const spawnAgent = bindSpawnAgent(
+        {
+          conversationId: parentConversationId,
+          turnId: "parent-turn",
+          instruction: { text: "Delegate the investigation." },
+          actor: { platform: "local", userId: "local-user" },
+          destination,
+          source: createLocalSource(parentConversationId),
+        },
+        { conversationStore, queue },
+      )!;
+
+      await expect(
+        spawnAgent(
+          { task: "Check the deploy.", title: "Deploy check" },
+          { toolCallId: "call-1" },
+        ),
+      ).resolves.toEqual({ childConversationId });
+      await expect(
+        getAgentInvocation(
+          getAgentInvocationId(parentConversationId, "parent-turn:call-1"),
+        ),
+      ).resolves.toBeUndefined();
     } finally {
       await fixture.close();
     }

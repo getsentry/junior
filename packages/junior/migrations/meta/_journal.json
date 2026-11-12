@@ -729,6 +729,13 @@
       "when": 1794424481991,
       "tag": "0103_agent_invocation_fork",
       "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1794444537797,
+      "tag": "0104_conversation_spawn_options",
+      "breakpoints": true
     }
   ]
 }

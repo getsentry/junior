@@ -1,4 +1,3 @@
-import { isDeepStrictEqual } from "node:util";
 /** Run a mailbox Turn and store its assistant Messages. */
 import { blockRunAutomation } from "@/chat/automations/block-run";
 import {
@@ -16,6 +15,7 @@ import { createHash } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { createWebAuthorization } from "@/chat/conversations/web-authorization";
 import { loadProjection } from "@/chat/conversations/projection";
+import { childAgentTurnOptions } from "@/chat/agent-invocations/parent-task";
 import {
   hydrateConversationMessages,
   persistConversationMessages,
@@ -90,7 +90,6 @@ import {
   getEventBatchDelayMs,
   sourceFromTurnInput,
   turnInputFactsFromConversationMessage,
-  type MailboxTurnInput,
   type MailboxTurnWork,
   type TurnInputFacts,
 } from "@/chat/task-execution/mailbox-turn";
@@ -115,7 +114,10 @@ import type { InboundMessage } from "@/chat/task-execution/store";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import type { Actor } from "@sentry/junior-plugin-api";
 import type { Reply } from "@/chat/turn-answer";
-import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
+import {
+  sharedDelegatedSubject,
+  verifiedTimerWatchSubject,
+} from "@/chat/task-execution/turn-credentials";
 
 function stableHex(...parts: string[]): string {
   return createHash("sha256")
@@ -141,36 +143,6 @@ function captureConversationTurnFailure(args: {
     },
   );
   return typeof eventId === "string" ? eventId : undefined;
-}
-
-/** Return the saved timer creator subject when it is still valid here. */
-function resumedTimerWatchCredentialSubject(
-  conversationId: string,
-  subject: CredentialSubject | undefined,
-): CredentialSubject | undefined {
-  if (subject?.binding.type !== "timer-watch") return undefined;
-  return verifyTimerWatchCredentialSubject({
-    conversationId,
-    subject,
-    watchId: subject.binding.watchId,
-  })
-    ? subject
-    : undefined;
-}
-
-// The delegated subject that every input of a batch carries, if any.
-function sharedDelegatedSubject(
-  batch: readonly MailboxTurnInput[],
-): CredentialSubject | undefined {
-  const subjects = batch.map((entry) =>
-    entry.credentialContext && "subject" in entry.credentialContext
-      ? entry.credentialContext.subject
-      : undefined,
-  );
-  const first = subjects[0];
-  return first && subjects.every((subject) => isDeepStrictEqual(subject, first))
-    ? first
-    : undefined;
 }
 
 function hasLostTurnInputCommit(error: unknown): boolean {
@@ -370,11 +342,11 @@ export function createConversationTurnWorker(
               context.conversationId,
               resolved.batch.map((entry) => entry.message),
             ) ??
-            resumedTimerWatchCredentialSubject(
+            (await verifiedTimerWatchSubject(
               context.conversationId,
               sharedDelegatedSubject(resolved.batch),
-            ))
-          : resumedTimerWatchCredentialSubject(
+            )))
+          : await verifiedTimerWatchSubject(
               context.conversationId,
               savedTurn?.credentialSubject,
             );
@@ -634,9 +606,17 @@ export function createConversationTurnWorker(
           if (stopSignal?.aborted) {
             return await completeCancelledTurn();
           }
-          const piMessages = await loadProjection({
+          const childTurn = await childAgentTurnOptions({
             conversationId: context.conversationId,
+            history: await loadProjection({
+              conversationId: context.conversationId,
+            }),
+            inputs:
+              resolved.kind === "mailbox"
+                ? resolved.batch.map((entry) => entry.message)
+                : [],
           });
+          const piMessages = childTurn.history;
           failureCode = "agent_run_failed";
           currentRunId = `conversation-run:${stableHex(turnId, String(startedAtMs))}`;
           setTags({ runId: currentRunId });
@@ -655,6 +635,7 @@ export function createConversationTurnWorker(
               runId: currentRunId,
               instruction: {
                 ...instructionInputs,
+                ...childTurn.instruction,
                 storedAttachments: attachments,
                 context: await buildTurnThreadContext({
                   conversation,
@@ -665,6 +646,7 @@ export function createConversationTurnWorker(
                 }),
               },
               history: piMessages,
+              ...childTurn.run,
               actor,
               credentialContext: credentialContextForActor(
                 actor,

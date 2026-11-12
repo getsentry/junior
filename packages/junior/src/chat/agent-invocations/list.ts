@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, ne, notExists } from "drizzle-orm";
 import {
   conversationSubtree,
   conversationSubtreeColumns,
@@ -7,6 +7,7 @@ import {
   isPersonInput,
   turnBehavior,
 } from "@/chat/conversations/kind-behavior";
+import * as z from "zod";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type {
@@ -25,6 +26,7 @@ import {
   getAgentInvocationIdForResult,
   isAgentReplyMessageId,
   parseAgentReplyMessageId,
+  parseChildReplyMessageId,
   parseTurnReplyMessageId,
 } from "./ids";
 import {
@@ -35,6 +37,7 @@ import {
 } from "./store";
 import { routeChildInput } from "./child-input";
 import {
+  CHILD_AGENT_KINDS,
   CHILD_AGENT_RESULTS,
   type AgentInvocation,
   type AgentInvocationStatus,
@@ -47,6 +50,8 @@ function isChildAgentResult(
 ): status is ChildAgentResult {
   return (CHILD_AGENT_RESULTS as readonly string[]).includes(status);
 }
+
+const childAgentKindSchema = z.enum(CHILD_AGENT_KINDS);
 
 /** Bound the agent invocations that one child agent listing reads. */
 const CHILD_AGENT_LIST_INVOCATION_LIMIT = 200;
@@ -149,9 +154,22 @@ function childAgentFromInvocations(
 /**
  * List the direct child agents of one parent Conversation, with the newest
  * activity first. The state comes from SQL agent invocation records, not from
- * model output.
+ * model output. A child that no agent invocation names shows the state of
+ * its Turns and mailbox.
  */
 export async function listChildAgents(
+  parentConversationId: string,
+): Promise<ChildAgent[]> {
+  const [withInvocations, withoutInvocations] = await Promise.all([
+    listChildAgentsFromInvocations(parentConversationId),
+    listChildAgentsWithoutInvocations(parentConversationId),
+  ]);
+  return [...withInvocations, ...withoutInvocations].sort(
+    (left, right) => right.updatedAtMs - left.updatedAtMs,
+  );
+}
+
+async function listChildAgentsFromInvocations(
   parentConversationId: string,
 ): Promise<ChildAgent[]> {
   const db = getSqlExecutor().db();
@@ -230,16 +248,121 @@ export async function listChildAgents(
       },
     ]),
   );
-  return [...byChild.entries()]
-    .map(([childConversationId, invocations]) =>
-      childAgentFromInvocations(
-        invocations,
-        resultInvocationIds,
-        // A child row from before the kind column reads as a Task.
-        factsByChild.get(childConversationId) ?? { kind: "task" },
+  return [...byChild.entries()].map(([childConversationId, invocations]) =>
+    childAgentFromInvocations(
+      invocations,
+      resultInvocationIds,
+      // A child row from before the kind column reads as a Task.
+      factsByChild.get(childConversationId) ?? { kind: "task" },
+    ),
+  );
+}
+
+/**
+ * List the ids of the child agents of one parent that no agent invocation
+ * names and that have open work.
+ */
+export async function listOpenChildAgentsWithoutInvocations(
+  parentConversationId: string,
+): Promise<string[]> {
+  return (await listChildAgentsWithoutInvocations(parentConversationId))
+    .filter((child) =>
+      (NON_TERMINAL_AGENT_INVOCATION_STATUSES as readonly string[]).includes(
+        child.status,
       ),
     )
-    .sort((left, right) => right.updatedAtMs - left.updatedAtMs);
+    .map((child) => child.childConversationId);
+}
+
+/**
+ * List the child agents of one parent that no agent invocation names. Each
+ * stores its spawn options, so older children of a parent, such as ones
+ * that a removed feature created, are not listed. A child is `running` while
+ * a Turn or mailbox input that answers its parent is open, and is `failed`
+ * when its last Turn failed.
+ *
+ * TODO(dcramer): Make this the only listing when #3060 step 7 drops the
+ * agent invocation table.
+ */
+async function listChildAgentsWithoutInvocations(
+  parentConversationId: string,
+): Promise<ChildAgent[]> {
+  const db = getSqlExecutor().db();
+  const rows = await db
+    .select({
+      agentName: juniorAgentBindings.name,
+      archivedAt: juniorConversations.archivedAt,
+      conversationId: juniorConversations.conversationId,
+      executionStatus: juniorConversations.executionStatus,
+      executionUpdatedAt: juniorConversations.executionUpdatedAt,
+      kind: juniorConversations.kind,
+      parentConversationId: juniorConversations.parentConversationId,
+      stoppedAt: juniorConversations.stoppedAt,
+      title: juniorConversations.title,
+      updatedAt: juniorConversations.updatedAt,
+    })
+    .from(juniorConversations)
+    .leftJoin(
+      juniorAgentBindings,
+      eq(
+        juniorAgentBindings.childConversationId,
+        juniorConversations.conversationId,
+      ),
+    )
+    .where(
+      and(
+        eq(juniorConversations.parentConversationId, parentConversationId),
+        isNotNull(juniorConversations.spawnOptions),
+        notExists(
+          db
+            .select({ invocationId: juniorAgentInvocations.invocationId })
+            .from(juniorAgentInvocations)
+            .where(
+              eq(
+                juniorAgentInvocations.childConversationId,
+                juniorConversations.conversationId,
+              ),
+            ),
+        ),
+      ),
+    )
+    .limit(CHILD_AGENT_LIST_INVOCATION_LIMIT);
+  return await Promise.all(
+    rows.map(async (row): Promise<ChildAgent> => {
+      // A spawn without an agent invocation always stores the kind.
+      const kind = childAgentKindSchema.parse(row.kind);
+      const stoppedAtMs = row.stoppedAt?.getTime();
+      const running =
+        stoppedAtMs === undefined &&
+        (await runsOnConversationLoop(
+          row.conversationId,
+          kind,
+          undefined,
+          undefined,
+        ));
+      return {
+        ...(row.agentName ? { agentName: row.agentName } : undefined),
+        ...(row.archivedAt
+          ? { archivedAtMs: row.archivedAt.getTime() }
+          : undefined),
+        childConversationId: row.conversationId,
+        kind,
+        status:
+          stoppedAtMs !== undefined
+            ? "stopped"
+            : running
+              ? "running"
+              : row.executionStatus === "failed"
+                ? "failed"
+                : "completed",
+        // The task text stays in the child's transcript. The spawn title
+        // names it.
+        task: row.title ?? "",
+        ...(row.title ? { title: row.title } : undefined),
+        updatedAtMs: (row.executionUpdatedAt ?? row.updatedAt).getTime(),
+      };
+    }),
+  );
 }
 
 // Only a gated Turn answers the parent. A person's Turn in a Thread does not.
@@ -257,7 +380,7 @@ function answersParent(kind: ConversationKind, source: string | undefined) {
 async function runsOnConversationLoop(
   conversationId: string,
   kind: ConversationKind,
-  latest: AgentInvocation,
+  latest: AgentInvocation | undefined,
   stoppedAtMs: number | undefined,
 ) {
   const pending =
@@ -302,36 +425,44 @@ async function listAnsweredLoopChildren(
   children: readonly ChildAgent[],
   parentInboundMessageIds: readonly string[],
 ): Promise<string[]> {
+  // A reply from a child that no agent invocation names names its child
+  // Conversation.
   const replies = parentInboundMessageIds.flatMap((messageId) => {
     const invocationId = parseAgentReplyMessageId(messageId);
-    return invocationId ? [{ invocationId, messageId }] : [];
+    const childConversationId = parseChildReplyMessageId(messageId);
+    return invocationId || childConversationId
+      ? [{ childConversationId, invocationId, messageId }]
+      : [];
   });
   if (children.length === 0 || replies.length === 0) {
     return [];
   }
-  const senders = await getSqlExecutor()
-    .db()
-    .select({
-      childConversationId: juniorAgentInvocations.childConversationId,
-      invocationId: juniorAgentInvocations.invocationId,
-    })
-    .from(juniorAgentInvocations)
-    .where(
-      inArray(
-        juniorAgentInvocations.invocationId,
-        replies.map((reply) => reply.invocationId),
-      ),
-    );
+  const invocationIds = replies.flatMap((reply) =>
+    reply.invocationId ? [reply.invocationId] : [],
+  );
+  const senders =
+    invocationIds.length === 0
+      ? []
+      : await getSqlExecutor()
+          .db()
+          .select({
+            childConversationId: juniorAgentInvocations.childConversationId,
+            invocationId: juniorAgentInvocations.invocationId,
+          })
+          .from(juniorAgentInvocations)
+          .where(inArray(juniorAgentInvocations.invocationId, invocationIds));
   const answered = await Promise.all(
     children.map(async ({ childConversationId }) => {
       const turnIds = await listOpenLoopTurnIds(childConversationId);
       return replies.some(
         (reply) =>
-          senders.some(
-            (sender) =>
-              sender.invocationId === reply.invocationId &&
-              sender.childConversationId === childConversationId,
-          ) && turnIds.includes(parseTurnReplyMessageId(reply.messageId) ?? ""),
+          (reply.childConversationId === childConversationId ||
+            senders.some(
+              (sender) =>
+                sender.invocationId === reply.invocationId &&
+                sender.childConversationId === childConversationId,
+            )) &&
+          turnIds.includes(parseTurnReplyMessageId(reply.messageId) ?? ""),
       )
         ? childConversationId
         : undefined;

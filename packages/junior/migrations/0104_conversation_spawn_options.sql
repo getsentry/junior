@@ -1,0 +1,1 @@
+ALTER TABLE "junior_conversations" ADD COLUMN "spawn_options_json" jsonb;

@@ -26,6 +26,7 @@ import {
   EVENT_WAIT_MS,
   isEventMailboxMetadata,
 } from "@/chat/events/notification";
+import { AGENT_TASK_EVENT_TYPE } from "@/chat/agent-invocations/result-event-type";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
@@ -277,7 +278,12 @@ export function getEventBatchDelayMs(
   nowMs = Date.now(),
 ): number {
   const first = messages[0];
-  if (!first || !isEventMailboxMetadata(first.input.metadata)) {
+  // A parent agent task starts at once, as an agent invocation does.
+  if (
+    !first ||
+    !isEventMailboxMetadata(first.input.metadata) ||
+    first.input.metadata.event.eventType === AGENT_TASK_EVENT_TYPE
+  ) {
     return 0;
   }
   const waitMs = Math.min(

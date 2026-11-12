@@ -4,8 +4,13 @@ import {
   isSkippedAfterConversationStop,
 } from "@/chat/conversations/session-stop";
 import { isEventMailboxMetadata } from "@/chat/events/notification";
+import { eq } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import { getSqlExecutor } from "@/chat/db";
 import type { InboundMessage } from "@/chat/task-execution/store";
+import { juniorAgentBindings, juniorConversations } from "@/db/schema";
 import { parseTurnReplyMessageId } from "./ids";
+import { readParentTask } from "./parent-task";
 import {
   AGENT_INVOCATION_EVENT_NAMESPACE,
   AGENT_MESSAGE_EVENT_TYPE,
@@ -17,13 +22,18 @@ import {
   isStoppedAgentInvocation,
   isTerminalAgentInvocation,
 } from "./store";
-import type { AgentInvocation } from "./types";
+import type { AgentInvocation, ChildAgentSender } from "./types";
 import { isAgentInvocationInput } from "./work";
 
-/** One result, reply, or message that a child agent sent to its parent. */
+/**
+ * One result, reply, or message that a child agent sent to its parent.
+ * `senderId` is the Agent invocation that sent it, or the child Conversation
+ * when no Agent invocation names the child. Only an Agent invocation sends a
+ * result.
+ */
 export type ChildAgentInput = {
-  invocationId: string;
   kind: "message" | "reply" | "result";
+  senderId: string;
 };
 
 /**
@@ -36,8 +46,8 @@ export type ChildInputRoute =
   | "dropped";
 
 /**
- * Read the agent invocation that one result or message Event refers to: the
- * finished child work for a result, or the open sender work for a message.
+ * Read the sender that one result, reply, or message Event names: the
+ * finished child work for a result, or the sender for a reply or message.
  */
 export function childAgentInput(
   message: InboundMessage,
@@ -50,15 +60,15 @@ export function childAgentInput(
     return undefined;
   }
   if (metadata.event.eventType === AGENT_MESSAGE_EVENT_TYPE) {
-    return { invocationId: metadata.event.identifier, kind: "message" };
+    return { kind: "message", senderId: metadata.event.identifier };
   }
   // A reply, like a message, can arrive before its sender's agent invocation
   // ends.
   if (metadata.event.eventType === AGENT_REPLY_EVENT_TYPE) {
-    return { invocationId: metadata.event.identifier, kind: "reply" };
+    return { kind: "reply", senderId: metadata.event.identifier };
   }
   return isAgentInvocationResultEventType(metadata.event.eventType)
-    ? { invocationId: metadata.event.identifier, kind: "result" }
+    ? { kind: "result", senderId: metadata.event.identifier }
     : undefined;
 }
 
@@ -87,6 +97,13 @@ export async function routeChildInput(
   if (isAgentInvocationInput(message)) {
     return "agent invocation";
   }
+  // A parent task that no agent invocation names starts a Turn, as a
+  // person's Message does.
+  if (readParentTask(message)) {
+    return isSkippedAfterConversationStop(message, stoppedAtMs)
+      ? "dropped"
+      : "Conversation loop";
+  }
   const open = latest !== undefined && !isTerminalAgentInvocation(latest);
   const input = childAgentInput(message);
   if (!input) {
@@ -100,8 +117,7 @@ export async function routeChildInput(
   if (latest && isStoppedAgentInvocation(latest)) {
     return "dropped";
   }
-  const source = await getChildAgentInputInvocation(message, input);
-  if (await isSkippedAgentResult(input, source, message)) {
+  if (await isSkippedAgentResult(input, message)) {
     return "dropped";
   }
   // A child agent's result still starts an agent invocation: `main` counts a
@@ -132,13 +148,14 @@ export async function routeChildInput(
  */
 async function isSkippedAgentResult(
   input: ChildAgentInput,
-  invocation: AgentInvocation,
   message: InboundMessage,
 ): Promise<boolean> {
   if (input.kind === "message") {
     return false;
   }
+  const { invocation, sender } = await getChildAgentInputSender(message, input);
   const skipped =
+    invocation !== undefined &&
     isTerminalAgentInvocation(invocation) &&
     invocation.parentMailboxStatus === "skipped";
   if (input.kind === "result") {
@@ -151,7 +168,7 @@ async function isSkippedAgentResult(
     return true;
   }
   const senderStoppedAtMs = await getConversationStoppedAtMs(
-    invocation.childConversationId,
+    sender.childConversationId,
   );
   return (
     senderStoppedAtMs !== undefined && message.createdAtMs >= senderStoppedAtMs
@@ -159,22 +176,66 @@ async function isSkippedAgentResult(
 }
 
 /**
- * Read the agent invocation of one result or message and check that it
- * belongs to a child of the Conversation that received it.
+ * Read the sender of one child Conversation that no Agent invocation names,
+ * from its parent edge and its binding. A Conversation without a parent has
+ * none.
  */
-export async function getChildAgentInputInvocation(
+export async function readChildConversationSender(
+  childConversationId: string,
+): Promise<ChildAgentSender | undefined> {
+  const parent = alias(juniorConversations, "parent");
+  const [row] = await getSqlExecutor()
+    .db()
+    .select({
+      agentName: juniorAgentBindings.name,
+      parentConversationId: parent.conversationId,
+      title: juniorConversations.title,
+    })
+    .from(juniorConversations)
+    .innerJoin(
+      parent,
+      eq(parent.conversationId, juniorConversations.parentConversationId),
+    )
+    .leftJoin(
+      juniorAgentBindings,
+      eq(
+        juniorAgentBindings.childConversationId,
+        juniorConversations.conversationId,
+      ),
+    )
+    .where(eq(juniorConversations.conversationId, childConversationId));
+  return row
+    ? {
+        ...(row.agentName ? { agentName: row.agentName } : undefined),
+        childConversationId,
+        parentConversationId: row.parentConversationId,
+        ...(row.title ? { title: row.title } : undefined),
+      }
+    : undefined;
+}
+
+/**
+ * Read the sender of one result, reply, or message and check that it is a
+ * child of the Conversation that received it. The Agent invocation that the
+ * input names wins. A reply or message from a child that no Agent invocation
+ * names comes from its child Conversation, and has no `invocation`.
+ */
+export async function getChildAgentInputSender(
   message: InboundMessage,
   input: ChildAgentInput,
-): Promise<AgentInvocation> {
-  const invocation = await getAgentInvocation(input.invocationId);
-  if (
-    !invocation ||
-    (input.kind === "result" && !isTerminalAgentInvocation(invocation)) ||
-    invocation.parentConversationId !== message.conversationId
-  ) {
+): Promise<{ invocation?: AgentInvocation; sender: ChildAgentSender }> {
+  const invocation = await getAgentInvocation(input.senderId);
+  const sender: ChildAgentSender | undefined = invocation
+    ? input.kind === "result" && !isTerminalAgentInvocation(invocation)
+      ? undefined
+      : invocation
+    : input.kind === "result"
+      ? undefined
+      : await readChildConversationSender(input.senderId);
+  if (!sender || sender.parentConversationId !== message.conversationId) {
     throw new Error(
-      `Agent invocation ${input.kind} ${input.invocationId} does not belong to ${message.conversationId}`,
+      `Agent invocation ${input.kind} ${input.senderId} does not belong to ${message.conversationId}`,
     );
   }
-  return invocation;
+  return invocation ? { invocation, sender } : { sender };
 }

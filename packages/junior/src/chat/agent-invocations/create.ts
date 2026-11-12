@@ -1,6 +1,9 @@
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAgentBindings, juniorAgentInvocations } from "@/db/schema";
 import { getAgentBinding } from "./bindings";
+import { readChildConversationSender } from "./child-input";
+import { listOpenChildAgentsWithoutInvocations } from "./list";
+import { readChildSpawnOptions } from "./spawn-options";
 import {
   AgentInvocationLimitError,
   AgentMessageQueueFullError,
@@ -132,17 +135,19 @@ async function assertCanGiveChildWork(
  * has open work, so a busy child already counts and messages queued for it
  * do not count again. A new or idle child becomes active. This is the only
  * place the rule for which child agents count lives. `open` is the parent's
- * open work from `listOpenAgentInvocations`.
+ * open work from `listOpenAgentInvocations`. A child that no agent
+ * invocation names is active while its listing shows open work.
  */
-function assertChildAgentCapacity(
+async function assertChildAgentCapacity(
   open: readonly AgentInvocation[],
   args: { childConversationId: string; parentConversationId: string },
-): void {
-  const active = new Set(
-    open
+): Promise<void> {
+  const active = new Set([
+    ...open
       .filter((row) => row.parentConversationId === args.parentConversationId)
       .map((row) => row.childConversationId),
-  );
+    ...(await listOpenChildAgentsWithoutInvocations(args.parentConversationId)),
+  ]);
   if (
     !active.has(args.childConversationId) &&
     active.size >= MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT
@@ -198,7 +203,7 @@ export async function createAgentInvocation(
     ) {
       throw new AgentNameInUseError(input.agentName);
     }
-    assertChildAgentCapacity(open, {
+    await assertChildAgentCapacity(open, {
       childConversationId,
       parentConversationId: input.parentConversationId,
     });
@@ -341,17 +346,21 @@ export async function createAgentInvocationForMessage(
           );
         return { invocation: existing, queued };
       }
+      // A child that no agent invocation names reads its name from its
+      // binding and its model settings from its spawn options.
       const latest = await getLatestAgentInvocationForConversation(
         input.childConversationId,
       );
-      if (
-        !latest ||
-        latest.parentConversationId !== input.parentConversationId
-      ) {
+      const child =
+        latest ??
+        (await readChildConversationSender(input.childConversationId));
+      if (!child || child.parentConversationId !== input.parentConversationId) {
         throw new Error(
           `${input.childConversationId} is not a child agent of ${input.parentConversationId}`,
         );
       }
+      const spawnOptions =
+        latest ?? (await readChildSpawnOptions(input.childConversationId));
       const open = await listOpenAgentInvocations(input.parentConversationId);
       await assertCanGiveChildWork(input.parentConversationId, open);
       const openCount = open.filter(
@@ -362,15 +371,15 @@ export async function createAgentInvocationForMessage(
           MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD,
         );
       }
-      assertChildAgentCapacity(open, {
+      await assertChildAgentCapacity(open, {
         childConversationId: input.childConversationId,
         parentConversationId: input.parentConversationId,
       });
       const invocation = await insertAgentInvocation(
         {
           actor: input.actor,
-          agentName: latest.agentName,
-          agentType: latest.agentType,
+          agentName: child.agentName,
+          agentType: spawnOptions.agentType,
           childConversationId: input.childConversationId,
           credentialContext: input.credentialContext,
           destination: input.destination,
@@ -378,7 +387,7 @@ export async function createAgentInvocationForMessage(
           invocationId,
           parentConversationId: input.parentConversationId,
           parentToolCallId: input.parentToolCallId,
-          reasoningLevel: latest.reasoningLevel,
+          reasoningLevel: spawnOptions.reasoningLevel,
         },
         nowMs,
       );

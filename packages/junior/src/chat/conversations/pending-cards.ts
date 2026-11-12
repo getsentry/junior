@@ -5,6 +5,7 @@ import {
   getAgentInvocationTurnId,
   parseAgentInvocationResultMessageId,
   parseAgentReplyMessageId,
+  parseChildReplyMessageId,
   parseTurnReplyMessageId,
 } from "@/chat/agent-invocations/ids";
 import { getAgentInvocation } from "@/chat/agent-invocations/store";
@@ -87,24 +88,24 @@ async function selectChildResultCards(
     const invocation = invocationId
       ? await getAgentInvocation(invocationId)
       : undefined;
-    if (!invocation) continue;
+    // A reply from a child that no agent invocation names names its child
+    // Conversation and its Turn.
+    const childConversationId =
+      invocation?.childConversationId ?? parseChildReplyMessageId(messageId);
+    if (!childConversationId) continue;
     // A Turn on the child's Conversation loop names its own Turn.
     const turnId =
       parseTurnReplyMessageId(messageId) ??
-      getAgentInvocationTurnId(invocation.invocationId);
+      (invocation ? getAgentInvocationTurnId(invocation.invocationId) : "");
     // The child records its terminal Turn event before it reports the result.
     const terminal = await events.loadByIdempotencyKey(
-      invocation.childConversationId,
+      childConversationId,
       `turn:${turnId}:terminal`,
     );
     // A `reply` ends the child's Turn, but it can reach the parent before the
     // child records that end. Then its cards are the newest ones.
-    if (!terminal && !replyInvocationId) continue;
-    await selectTurnCards(
-      invocation.childConversationId,
-      selection,
-      terminal?.seq,
-    );
+    if (!terminal && invocationId && !replyInvocationId) continue;
+    await selectTurnCards(childConversationId, selection, terminal?.seq);
   }
 }
 

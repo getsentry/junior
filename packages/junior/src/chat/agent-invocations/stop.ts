@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, ne, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, ne, or } from "drizzle-orm";
 import type { StateAdapter } from "chat";
 import {
   getConversationStoppedAtMs,
@@ -11,13 +11,14 @@ import {
   getConversationWorkState,
   stopConversationWork,
 } from "@/chat/task-execution/store";
-import { juniorAgentInvocations } from "@/db/schema";
+import { juniorAgentInvocations, juniorConversations } from "@/db/schema";
 import { recordSubagentEnded } from "./markers";
 import { isChildAgentSessionStopped } from "./list";
 import {
   getChildAgentLockName,
   parseAgentInvocationResultMessageId,
   parseAgentReplyMessageId,
+  parseChildReplyMessageId,
   parseTurnReplyMessageId,
 } from "./ids";
 import {
@@ -218,30 +219,43 @@ async function dropUnreadLoopReplies(
         ? [{ invocationId, messageId: message.inboundMessageId }]
         : [];
     });
-    if (replies.length === 0) {
-      continue;
-    }
-    const senders = await getSqlExecutor()
-      .db()
-      .select({
-        childConversationId: juniorAgentInvocations.childConversationId,
-        invocationId: juniorAgentInvocations.invocationId,
-      })
-      .from(juniorAgentInvocations)
-      .where(
-        inArray(
-          juniorAgentInvocations.invocationId,
-          replies.map((reply) => reply.invocationId),
-        ),
+    // A reply from a child that no agent invocation names names its child
+    // Conversation.
+    const childReplies = messages.filter((message) => {
+      const childConversationId = parseChildReplyMessageId(
+        message.inboundMessageId,
       );
+      return (
+        childConversationId !== undefined && stopped.has(childConversationId)
+      );
+    });
+    const senders =
+      replies.length === 0
+        ? []
+        : await getSqlExecutor()
+            .db()
+            .select({
+              childConversationId: juniorAgentInvocations.childConversationId,
+              invocationId: juniorAgentInvocations.invocationId,
+            })
+            .from(juniorAgentInvocations)
+            .where(
+              inArray(
+                juniorAgentInvocations.invocationId,
+                replies.map((reply) => reply.invocationId),
+              ),
+            );
     const stoppedSenders = new Set(
       senders
         .filter((sender) => stopped.has(sender.childConversationId))
         .map((sender) => sender.invocationId),
     );
-    const inboundMessageIds = replies
-      .filter((reply) => stoppedSenders.has(reply.invocationId))
-      .map((reply) => reply.messageId);
+    const inboundMessageIds = [
+      ...replies
+        .filter((reply) => stoppedSenders.has(reply.invocationId))
+        .map((reply) => reply.messageId),
+      ...childReplies.map((message) => message.inboundMessageId),
+    ];
     if (inboundMessageIds.length > 0) {
       await dropPendingMessages({ conversationId, inboundMessageIds, state });
     }
@@ -260,11 +274,11 @@ export async function dropOwnUnreadLoopReplies(
   // A child agent has one parent, so this finds at most one mailbox.
   const parents = await getSqlExecutor()
     .db()
-    .selectDistinct({ id: juniorAgentInvocations.parentConversationId })
-    .from(juniorAgentInvocations)
-    .where(eq(juniorAgentInvocations.childConversationId, conversationId));
+    .select({ id: juniorConversations.parentConversationId })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, conversationId));
   await dropUnreadLoopReplies(
-    parents.map((parent) => parent.id),
+    parents.flatMap((parent) => (parent.id ? [parent.id] : [])),
     [conversationId],
     state,
   );
@@ -316,9 +330,22 @@ async function lockAgentConversationTree(
       })
       .from(juniorAgentInvocations)
       .where(inArray(juniorAgentInvocations.parentConversationId, parents));
-    parents = rows
-      .map((row) => row.childConversationId)
-      .filter((id) => !conversationIds.includes(id));
+    // A child agent that no agent invocation names stores its spawn options.
+    const withoutInvocations = await executor
+      .db()
+      .select({ childConversationId: juniorConversations.conversationId })
+      .from(juniorConversations)
+      .where(
+        and(
+          inArray(juniorConversations.parentConversationId, parents),
+          isNotNull(juniorConversations.spawnOptions),
+        ),
+      );
+    parents = [
+      ...new Set(
+        [...rows, ...withoutInvocations].map((row) => row.childConversationId),
+      ),
+    ].filter((id) => !conversationIds.includes(id));
     conversationIds.push(...parents);
   }
   return conversationIds;
@@ -375,24 +402,40 @@ export async function stopChildAgentInvocations(args: {
   nowMs?: number;
   parentConversationId: string;
 }): Promise<StoppedAgentTree | undefined> {
-  const owned = await getSqlExecutor()
-    .db()
-    .select({ invocationId: juniorAgentInvocations.invocationId })
-    .from(juniorAgentInvocations)
-    .where(
-      and(
-        eq(
-          juniorAgentInvocations.parentConversationId,
-          args.parentConversationId,
+  const db = getSqlExecutor().db();
+  const [owned, child] = await Promise.all([
+    db
+      .select({ invocationId: juniorAgentInvocations.invocationId })
+      .from(juniorAgentInvocations)
+      .where(
+        and(
+          eq(
+            juniorAgentInvocations.parentConversationId,
+            args.parentConversationId,
+          ),
+          eq(
+            juniorAgentInvocations.childConversationId,
+            args.childConversationId,
+          ),
         ),
-        eq(
-          juniorAgentInvocations.childConversationId,
-          args.childConversationId,
+      )
+      .limit(1),
+    // A child agent that no agent invocation names stores its spawn options.
+    db
+      .select({ conversationId: juniorConversations.conversationId })
+      .from(juniorConversations)
+      .where(
+        and(
+          eq(juniorConversations.conversationId, args.childConversationId),
+          eq(
+            juniorConversations.parentConversationId,
+            args.parentConversationId,
+          ),
+          isNotNull(juniorConversations.spawnOptions),
         ),
       ),
-    )
-    .limit(1);
-  if (owned.length === 0) {
+  ]);
+  if (owned.length === 0 && child.length === 0) {
     return undefined;
   }
   return await stopAgentInvocationTree(args.childConversationId, args.nowMs);

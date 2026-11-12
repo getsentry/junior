@@ -1,6 +1,10 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, exists, isNotNull, or } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
-import { juniorAgentBindings, juniorAgentInvocations } from "@/db/schema";
+import {
+  juniorAgentBindings,
+  juniorAgentInvocations,
+  juniorConversations,
+} from "@/db/schema";
 import { agentBindingSchema, type AgentBinding } from "./types";
 
 function bindingFromRow(
@@ -31,7 +35,10 @@ export async function getAgentBinding(args: {
   return rows[0] ? bindingFromRow(rows[0]) : undefined;
 }
 
-/** Find a direct child agent of one parent by name or child Conversation id. */
+/**
+ * Find a direct child agent of one parent by name or child Conversation id.
+ * A child that no Agent invocation names stores its spawn options.
+ */
 export async function findChildAgentConversationId(args: {
   parentConversationId: string;
   target: string;
@@ -43,19 +50,27 @@ export async function findChildAgentConversationId(args: {
   if (binding) {
     return binding.childConversationId;
   }
-  const rows = await getSqlExecutor()
-    .db()
-    .select({ childConversationId: juniorAgentInvocations.childConversationId })
-    .from(juniorAgentInvocations)
+  const db = getSqlExecutor().db();
+  const rows = await db
+    .select({ conversationId: juniorConversations.conversationId })
+    .from(juniorConversations)
     .where(
       and(
-        eq(
-          juniorAgentInvocations.parentConversationId,
-          args.parentConversationId,
+        eq(juniorConversations.parentConversationId, args.parentConversationId),
+        eq(juniorConversations.conversationId, args.target),
+        or(
+          isNotNull(juniorConversations.spawnOptions),
+          exists(
+            db
+              .select({ invocationId: juniorAgentInvocations.invocationId })
+              .from(juniorAgentInvocations)
+              .where(
+                eq(juniorAgentInvocations.childConversationId, args.target),
+              ),
+          ),
         ),
-        eq(juniorAgentInvocations.childConversationId, args.target),
       ),
     )
     .limit(1);
-  return rows[0]?.childConversationId;
+  return rows[0]?.conversationId;
 }
