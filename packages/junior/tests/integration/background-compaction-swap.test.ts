@@ -225,22 +225,43 @@ describe("background compaction swap", () => {
   });
 
   it.each([
-    { case: "summarized history", keptScriptTools: undefined },
-    { case: "kept history", keptScriptTools: "tools.c" },
+    { case: "summarized history", keptChange: undefined },
+    { case: "kept history", keptChange: "c" },
   ])(
-    "keeps one copy of the latest script tools from $case",
-    async ({ keptScriptTools }) => {
-      const conversationId = `local:web:swap-script-tools-${keptScriptTools ?? "summarized"}`;
+    "keeps one copy of the latest script tools and skills from $case",
+    async ({ keptChange }) => {
+      const conversationId = `local:web:swap-script-tools-${keptChange ?? "summarized"}`;
+      const skills = (...names: string[]) =>
+        names.map((name) => ({
+          name,
+          description: `Use ${name}.`,
+          skillPath: `/skills/${name}`,
+        }));
+      const skillsSection = (text: string) =>
+        text.match(/<available-skills>\n[\s\S]*?\n<\/available-skills>/)![0];
       const sessionContext = buildTurnContextPrompt({
-        availableSkills: [],
+        availableSkills: skills("a"),
         runtime: { conversationId },
         scriptTools: "tools.a",
       })!;
       const changedContext = buildTurnContextPrompt({
-        availableSkills: [],
+        availableSkills: skills("a", "b"),
         includeSessionContext: false,
+        latestCapabilitySections: {
+          "available-skills": skillsSection(sessionContext),
+        },
         scriptTools: "tools.b",
       })!;
+      const keptContext = keptChange
+        ? buildTurnContextPrompt({
+            availableSkills: skills("a", "b", keptChange),
+            includeSessionContext: false,
+            latestCapabilitySections: {
+              "available-skills": skillsSection(changedContext),
+            },
+            scriptTools: `tools.${keptChange}`,
+          })!
+        : undefined;
       const summarized = [
         user(sessionContext, 1),
         ...firstTurn,
@@ -250,18 +271,7 @@ describe("background compaction swap", () => {
       ];
       await prepareSummary(conversationId, summarized);
       const kept = [
-        ...(keptScriptTools
-          ? [
-              user(
-                buildTurnContextPrompt({
-                  availableSkills: [],
-                  includeSessionContext: false,
-                  scriptTools: keptScriptTools,
-                })!,
-                7,
-              ),
-            ]
-          : []),
+        ...(keptContext ? [user(keptContext, 7)] : []),
         user("<current-instruction>And the rollback?</current-instruction>", 7),
         assistant("Read that too.", 8),
       ];
@@ -291,13 +301,20 @@ describe("background compaction swap", () => {
 
       expect(result.compacted).toBe(true);
       const texts = result.piMessages!.map(textOf);
+      const all = texts.join("\n");
       expect(texts[0]).toContain(`- gen_ai.conversation.id: ${conversationId}`);
-      // A Turn compares its tools with the latest copy, so that copy must
+      // A Turn compares each section with its latest copy, so that copy must
       // stay byte for byte, once.
-      const latest = buildScriptToolsSection(keptScriptTools ?? "tools.b");
-      expect(texts.join("\n").split("<script-tools>").length - 1).toBe(1);
-      expect(texts.join("\n")).toContain(latest);
-      expect(texts[0]!.includes(latest)).toBe(!keptScriptTools);
+      const latestScriptTools = buildScriptToolsSection(
+        `tools.${keptChange ?? "b"}`,
+      );
+      expect(all.split("<script-tools>").length - 1).toBe(1);
+      expect(all).toContain(latestScriptTools);
+      expect(texts[0]!.includes(latestScriptTools)).toBe(!keptChange);
+      const latestSkills = skillsSection(keptContext ?? changedContext);
+      expect(all.split("<available-skills>").length - 1).toBe(1);
+      expect(all).toContain(latestSkills);
+      expect(texts[0]!.includes(latestSkills)).toBe(!keptChange);
     },
   );
 

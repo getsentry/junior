@@ -75,8 +75,11 @@ content of a block. It must not add or move a block. `<tool-call-style>`,
 - Put one-request facts in a request-scoped tag. See
   `REQUEST_CONTEXT_SECTION_TAG` in `packages/junior/src/chat/turn-context-tag.ts`.
 - Put the tools that a Code Mode script can call in `<script-tools>`, not in
-  the `codemode` description. A Turn adds it only when it differs from the
-  latest copy in history. Context compaction keeps that copy.
+  the `codemode` description.
+- A Turn adds `<script-tools>` or a capability section
+  (`CAPABILITY_SECTION_TAG`) only when it differs from the latest copy in
+  history. An empty section that had a copy says "none". Context compaction
+  keeps the latest copy of each.
 
 ### Changes
 
