@@ -50,8 +50,9 @@ export async function requestGitHubReviewersWhenReady(args: {
         repositoryFullName: target.repositoryFullName,
       })
     ).get(target.number);
-    // Only a pull request that a person asked Junior to open has a requester.
-    if (!opener) return;
+    // Only a pull request that Junior opened has a conversation. A person who
+    // only asked Junior to update a pull request did not open it.
+    if (!opener?.conversationId) return;
     const named = await readGitHubDraftReviewers(args.state, target);
     const requester = named
       ? undefined

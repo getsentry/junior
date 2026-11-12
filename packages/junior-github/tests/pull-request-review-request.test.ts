@@ -11,6 +11,7 @@ import {
   juniorGitHubPullRequests,
 } from "../src/db/schema";
 import { githubPlugin } from "../src/index";
+import { recordGitHubPullRequestRequester } from "../src/pull-request-requesters/store";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 
@@ -405,6 +406,32 @@ describe("review requested ask", () => {
     );
   }
 
+  /** Serve the ready webhook's GitHub calls and record each review request. */
+  function serveReviewRequests(status = 201): unknown[] {
+    const requests: unknown[] = [];
+    mswServer.use(
+      http.post(
+        "https://api.github.com/app/installations/456/access_tokens",
+        () =>
+          HttpResponse.json({
+            expires_at: "2027-01-01T00:00:00.000Z",
+            token: "installation-token",
+          }),
+      ),
+      http.get("https://api.github.com/repos/getsentry/junior/pulls/946", () =>
+        HttpResponse.json({ draft: false, html_url: PULL_URL, number: 946 }),
+      ),
+      http.post(
+        "https://api.github.com/repos/getsentry/junior/pulls/946/requested_reviewers",
+        async ({ request }) => {
+          requests.push(await request.json());
+          return HttpResponse.json({}, { status });
+        },
+      ),
+    );
+    return requests;
+  }
+
   it.each([
     { expected: ["Requester"], name: "the requester", reviewers: undefined },
     {
@@ -416,33 +443,7 @@ describe("review requested ask", () => {
     "asks $name to review a draft only when it becomes ready",
     async ({ expected, reviewers }) => {
       const fixture = await createGitHubFixture();
-      const requests: unknown[] = [];
-      mswServer.use(
-        http.post(
-          "https://api.github.com/app/installations/456/access_tokens",
-          () =>
-            HttpResponse.json({
-              expires_at: "2027-01-01T00:00:00.000Z",
-              token: "installation-token",
-            }),
-        ),
-        http.get(
-          "https://api.github.com/repos/getsentry/junior/pulls/946",
-          () =>
-            HttpResponse.json({
-              draft: false,
-              html_url: PULL_URL,
-              number: 946,
-            }),
-        ),
-        http.post(
-          "https://api.github.com/repos/getsentry/junior/pulls/946/requested_reviewers",
-          async ({ request }) => {
-            requests.push(await request.json());
-            return HttpResponse.json({}, { status: 201 });
-          },
-        ),
-      );
+      const requests = serveReviewRequests();
       try {
         const state = memoryState();
         const operations = await createDraft(fixture, state, reviewers);
@@ -459,26 +460,52 @@ describe("review requested ask", () => {
     },
   );
 
+  it("keeps the named reviewers when a draft create call is replayed", async () => {
+    const fixture = await createGitHubFixture();
+    const requests = serveReviewRequests();
+    try {
+      // The first call stops before it saves the named reviewers.
+      const state = memoryState();
+      const set = state.set.bind(state);
+      let dropped = false;
+      state.set = async (key, value, ttlMs) => {
+        if (!dropped && key.startsWith("pull-request-draft-reviewers:")) {
+          dropped = true;
+          throw new Error("state write failed");
+        }
+        await set(key, value, ttlMs);
+      };
+      await createDraft(fixture, state, ["octocat"]);
+      await createDraft(fixture, state, ["octocat"]);
+
+      await route(fixture, [], { state }).handler(readyForReview());
+      expect(requests).toEqual([{ reviewers: ["octocat"] }]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("does not ask for a review of a pull request that Junior only updated", async () => {
+    const fixture = await createGitHubFixture();
+    const requests = serveReviewRequests();
+    try {
+      await recordGitHubPullRequestRequester(fixture.db(), {
+        identityId: "identity-requester",
+        number: 946,
+        repositoryFullName: "getsentry/junior",
+      });
+
+      const response = await route(fixture, []).handler(readyForReview());
+      expect(response.status).toBe(202);
+      expect(requests).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("keeps the delivery when GitHub rejects the review request", async () => {
     const fixture = await createGitHubFixture();
-    mswServer.use(
-      http.post(
-        "https://api.github.com/app/installations/456/access_tokens",
-        () =>
-          HttpResponse.json({
-            expires_at: "2027-01-01T00:00:00.000Z",
-            token: "installation-token",
-          }),
-      ),
-      http.get("https://api.github.com/repos/getsentry/junior/pulls/946", () =>
-        HttpResponse.json({ draft: false, html_url: PULL_URL, number: 946 }),
-      ),
-      http.post(
-        "https://api.github.com/repos/getsentry/junior/pulls/946/requested_reviewers",
-        () =>
-          HttpResponse.json({ message: "Validation Failed" }, { status: 422 }),
-      ),
-    );
+    serveReviewRequests(422);
     try {
       await seedJuniorPullRequest(fixture);
       const warnings: string[] = [];

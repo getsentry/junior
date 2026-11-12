@@ -376,6 +376,24 @@ function namedReviewers(
 }
 
 /**
+ * Save the reviewers named for a draft, so the ready_for_review webhook asks
+ * them. With nothing saved, that webhook asks the requester.
+ */
+async function saveNamedDraftReviewers(
+  ctx: ToolRegistrationHookContext,
+  input: CreateGitHubPullRequestInput,
+  number: number,
+): Promise<void> {
+  const named = namedReviewers(input);
+  if (!input.draft || !named) return;
+  await saveGitHubDraftReviewers(
+    ctx.state,
+    { number, repositoryFullName: parseRepo(input.repo).ref },
+    named,
+  );
+}
+
+/**
  * Ask the named reviewers, or else the requester, to review a new pull
  * request. A draft waits until it is ready for review. The request is
  * optional: provider failures must not fail PR creation.
@@ -390,14 +408,7 @@ async function requestPullRequestReviewers(
   const repo = parseRepo(input.repo);
   try {
     if (input.draft) {
-      // The ready_for_review webhook asks the requester when nothing is saved.
-      if (named) {
-        await saveGitHubDraftReviewers(
-          ctx.state,
-          { number: result.number, repositoryFullName: repo.ref },
-          named,
-        );
-      }
+      await saveNamedDraftReviewers(ctx, input, result.number);
       return;
     }
     const requesterLogin = linkedGitHubLogin(requester?.user);
@@ -562,6 +573,8 @@ export function createGitHubPullRequestTool(
               conversationId,
               identityId: (await resolveGitHubRequester(ctx))?.identity?.id,
             });
+            // The same stop can drop the reviewers named for a draft.
+            await saveNamedDraftReviewers(ctx, completedInput, state.number);
             const completedResult = {
               facts:
                 state.facts === undefined
