@@ -357,7 +357,7 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
           timestamp={entry.timestamp}
         />
       )}
-      renderMessage={(entry) =>
+      renderMessage={(entry, footer) =>
         props.conversation.sourceTask &&
         isAutomationTriggerMessage(props.conversation, entry.message) ? (
           <div className="grid min-w-0 gap-2">
@@ -395,6 +395,7 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
           </TranscriptRailEvent>
         ) : (
           <TranscriptMessageView
+            footer={footer}
             message={entry.message}
             conversation={props.conversation}
           />
@@ -458,7 +459,11 @@ type TranscriptEntryRenderers = {
   ) => ReactNode;
   renderContext: (entry: TranscriptContextEntry) => ReactNode;
   renderFailure: (entry: TranscriptFailureEntry) => ReactNode;
-  renderMessage: (entry: TranscriptMessageEntry) => ReactNode;
+  /** `footer` goes under the message text, such as the Turn's Tasks. */
+  renderMessage: (
+    entry: TranscriptMessageEntry,
+    footer?: ReactNode,
+  ) => ReactNode;
   renderStructuredEvent: (entry: TranscriptStructuredEventEntry) => ReactNode;
   renderReasoning: (entry: TranscriptReasoningEntry) => ReactNode;
   renderThread: (entry: TranscriptSubagentEntry) => ReactNode;
@@ -634,8 +639,9 @@ function TranscriptEntryList(
     renderTool,
   } = props;
   const renderEntry = useCallback(
-    (entry: TranscriptEntry): ReactNode => {
-      // Only a Thread has an entry row. Tasks always come as a Tasks row.
+    (entry: TranscriptEntry, tasks?: TranscriptSubagentEntry[]): ReactNode => {
+      // Only a Thread has an entry row. Tasks come under a reply or as a
+      // Tasks row.
       if (entry.kind === "subagent") return renderThread(entry);
       if (entry.kind === "context") return renderContext(entry);
       if (entry.kind === "attachments_delivered") {
@@ -647,7 +653,7 @@ function TranscriptEntryList(
       if (entry.kind === "failure") return renderFailure(entry);
       if (entry.kind === "reasoning") return renderReasoning(entry);
       if (entry.kind === "tool") return renderTool(entry);
-      return renderMessage(entry);
+      return renderMessage(entry, tasks ? renderTasks(tasks) : undefined);
     },
     [
       renderAttachmentsDelivered,
@@ -656,6 +662,7 @@ function TranscriptEntryList(
       renderMessage,
       renderReasoning,
       renderStructuredEvent,
+      renderTasks,
       renderThread,
       renderTool,
     ],
@@ -730,7 +737,10 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
   live: boolean;
   measure: (element: HTMLElement | null) => void;
   offset: number;
-  renderEntry: (entry: TranscriptEntry) => ReactNode;
+  renderEntry: (
+    entry: TranscriptEntry,
+    tasks?: TranscriptSubagentEntry[],
+  ) => ReactNode;
   renderTasks: TranscriptEntryRenderers["renderTasks"];
   row: TranscriptListRow;
 }) {
@@ -762,7 +772,7 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
         </TranscriptRow>
       ) : (
         <TranscriptRow anchorKey={row.key} seq={row.seq}>
-          {props.renderEntry(row.entry)}
+          {props.renderEntry(row.entry, row.tasks)}
         </TranscriptRow>
       )}
     </div>
@@ -805,7 +815,7 @@ function RedactedTranscriptView(
           timestamp={entry.timestamp}
         />
       )}
-      renderMessage={(entry) =>
+      renderMessage={(entry, footer) =>
         props.conversation.sourceTask &&
         isAutomationTriggerMessage(props.conversation, entry.message) ? (
           <TranscriptAutomationTriggerView
@@ -833,6 +843,7 @@ function RedactedTranscriptView(
           </TranscriptRailEvent>
         ) : (
           <RedactedMessageView
+            footer={footer}
             message={entry.message}
             conversation={props.conversation}
           />

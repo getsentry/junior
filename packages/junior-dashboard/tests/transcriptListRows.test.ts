@@ -131,14 +131,14 @@ describe("transcriptListRows", () => {
       { keys: ["1:tool:0", "3:tool:0"], kind: "activity", seq: 3 },
       { keys: ["subagent:child-4"], kind: "entry", seq: 4 },
       { keys: ["6:message:0"], kind: "entry", seq: 6 },
-      {
-        keys: ["subagent:child-2", "subagent:child-5"],
-        kind: "tasks",
-        seq: 6,
-      },
       { keys: ["7:message:0"], kind: "entry", seq: 7 },
+      // With no reply yet, the Tasks get their own row.
       { keys: ["subagent:child-8"], kind: "tasks", seq: 8 },
     ]);
+    const reply = rows[3]!;
+    expect(
+      reply.kind === "entry" && reply.tasks?.map((task) => task.key),
+    ).toEqual(["subagent:child-2", "subagent:child-5"]);
     expect(liveActivityIndex(rows)).toBeUndefined();
     // A running Turn keeps its activity live above its Tasks row.
     expect(liveActivityIndex(rows.slice(0, 2))).toBe(1);

@@ -2,13 +2,6 @@ import { Bot } from "lucide-react";
 
 import { statusDotToneClass } from "../components/StatusDot";
 import { Button } from "../components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTitle,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
-import { formatElapsedDuration } from "../format";
 import { cn } from "../styles";
 import type { TranscriptViewSubagentPart } from "../types";
 import { subagentStatusTone } from "./ConversationChildAgents";
@@ -34,8 +27,8 @@ const chipClass =
   "inline-flex h-6 min-w-0 max-w-64 items-center gap-1.5 rounded-md border border-dashboard-border bg-transparent px-2 font-sans text-xs text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus";
 
 /**
- * Show the Tasks of one Turn as small chips under its reply. Hover shows
- * what a Task did, and a click opens its transcript drawer.
+ * Show the Tasks of one Turn as small chips under its reply. A click opens
+ * the Task transcript drawer.
  */
 export function TranscriptTasksLine(props: {
   entries: RenderedTaskEntry[];
@@ -61,10 +54,6 @@ function TaskChip(props: {
 }) {
   const { part } = props.entry;
   const label = taskLabel(part);
-  const duration = formatElapsedDuration(
-    props.entry.timestamp,
-    part.finishedTimestamp,
-  );
   const content = (
     <>
       <Bot
@@ -85,38 +74,26 @@ function TaskChip(props: {
       />
     </>
   );
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        closeOnClick
-        render={
-          props.onOpenTranscript ? (
-            <Button
-              aria-label={`Open ${label} transcript (${statusLabels[part.status]})`}
-              className={chipClass}
-              onClick={() => props.onOpenTranscript?.(part)}
-              size="bare"
-              variant="ghost"
-            />
-          ) : (
-            <span
-              aria-label={`${label} (${statusLabels[part.status]})`}
-              className={cn(chipClass, "cursor-default")}
-              role="img"
-            />
-          )
-        }
+  if (!props.onOpenTranscript) {
+    return (
+      <span
+        aria-label={`${label} (${statusLabels[part.status]})`}
+        className={cn(chipClass, "cursor-default")}
+        role="img"
       >
         {content}
-      </TooltipTrigger>
-      <TooltipContent>
-        <TooltipTitle>Task</TooltipTitle>
-        <div className="text-dashboard-text">{label}</div>
-        <div>
-          {statusLabels[part.status]}
-          {duration ? ` · ${duration}` : null}
-        </div>
-      </TooltipContent>
-    </Tooltip>
+      </span>
+    );
+  }
+  return (
+    <Button
+      aria-label={`Open ${label} transcript (${statusLabels[part.status]})`}
+      className={chipClass}
+      onClick={() => props.onOpenTranscript?.(part)}
+      size="bare"
+      variant="ghost"
+    >
+      {content}
+    </Button>
   );
 }
