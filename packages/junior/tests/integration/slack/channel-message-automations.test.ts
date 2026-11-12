@@ -11,48 +11,25 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createWatchEventsTool } from "@/chat/tools/watch-events";
-import { createTools, type ToolRuntimeContext } from "@/chat/tools";
-import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
-import { Hono } from "hono";
-import { createConversationRoutes } from "@/api/conversations/routes";
-import type { JuniorApiEnv } from "@/api/route";
-import type { AttachmentStorage } from "@/chat/attachments/storage";
-import { createJuniorRuntimeServices } from "@/chat/app/services";
-import { persistConversationMessages } from "@/chat/conversations/messages";
-import { collectAttachments } from "@/chat/providers/slack/input";
-import { toConversationMessage } from "@/chat/runtime/conversation-message";
-import { createSlackDispatchTurnRunner } from "@/chat/slack/dispatch-turn";
-import { getLocationConfigurationService } from "@/chat/runtime/thread-state";
-import type { Message } from "chat";
-import { coerceThreadConversationState } from "@/chat/state/conversation";
-import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { juniorAutomations } from "@/db/schema/automations";
 import { context, execute } from "../../fixtures/event-automations";
 import {
+  channelMessageTrigger,
+  postChannelMessage,
+} from "../../fixtures/slack-channel-messages";
+import {
   createConversationWorkQueueTestAdapter,
-  createNoopSlackWebhookRuntime,
-  createSlackAdapterFixture,
-  handleSlackWebhookAndFlush,
   SLACK_BOT_USER_ID,
-  slackEnvelope,
-  slackWebhookRequest,
   type ConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
 import {
   createConfiguredJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../../fixtures/sql";
-import {
-  botsInfoOk,
-  conversationsRepliesPage,
-  usersInfoOk,
-} from "../../fixtures/slack/factories/api";
+import { botsInfoOk, usersInfoOk } from "../../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
-  getCapturedSlackFileDownloadUrls,
-  queueSlackApiError,
   queueSlackApiResponse,
-  queueSlackPrivateFileDownload,
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
 
@@ -67,16 +44,6 @@ const TEAM_ID = "T123";
 let fixture: LocalJuniorSqlFixture;
 let queue: ConversationWorkQueueTestAdapter;
 
-function trigger(match?: Record<string, string | string[]>) {
-  return {
-    type: "event" as const,
-    namespace: "slack",
-    label: "New messages in #discuss-integration",
-    events: ["message.posted"],
-    ...(match ? { match } : undefined),
-  };
-}
-
 // Envelope fields of a channel that only workspace T123 can post in.
 const WORKSPACE_CHANNEL = {
   context_enterprise_id: null,
@@ -90,82 +57,6 @@ const ENTERPRISE_CHANNEL = {
   context_enterprise_id: "E123",
   enterprise_id: "E123",
 };
-
-// Start a dispatch run through the Slack runner and return its input message.
-// The Turn itself, with the agent, does not run.
-async function startDispatchRun(dispatchId: string): Promise<Message> {
-  const dispatch = await getDispatchRecord(dispatchId);
-  let input: Message | undefined;
-  await createSlackDispatchTurnRunner({
-    getLocationConfiguration: getLocationConfigurationService,
-    getSlackAdapter: () => createSlackAdapterFixture(),
-    executeSlackTurn: async (_thread, message) => {
-      input = message;
-    },
-  })(dispatch!, { ack: async () => {} });
-  return input!;
-}
-
-function conversationApi(storage: AttachmentStorage): Hono<JuniorApiEnv> {
-  return new Hono<JuniorApiEnv>().route(
-    "/api/conversations",
-    createConversationRoutes({ attachmentStorage: storage, queue }),
-  );
-}
-
-async function postChannelMessage(input: {
-  attachments?: unknown[];
-  blocks?: unknown[];
-  botId?: string;
-  botProfile?: Record<string, unknown>;
-  channel?: string;
-  envelope?: Record<string, unknown>;
-  files?: Array<Record<string, unknown>>;
-  /** Post as an app integration: a `bot_message` with a `bot_id` and no `user`. */
-  noUser?: boolean;
-  text?: string;
-  threadTs?: string;
-  ts: string;
-  user?: string;
-}) {
-  const state = getStateAdapter();
-  await state.connect();
-  const slackAdapter = createSlackAdapterFixture();
-  const {
-    attachments,
-    blocks,
-    botId,
-    botProfile,
-    envelope: fields,
-    files,
-    noUser,
-    ...message
-  } = input;
-  const envelope = slackEnvelope({
-    eventType: "message",
-    text: "How do I connect the Jira integration?",
-    ...message,
-  });
-  if (botId) Object.assign(envelope.event, { bot_id: botId });
-  if (blocks) Object.assign(envelope.event, { blocks });
-  if (botProfile) Object.assign(envelope.event, { bot_profile: botProfile });
-  if (files) Object.assign(envelope.event, { files });
-  if (attachments) Object.assign(envelope.event, { attachments });
-  if (noUser) {
-    Reflect.deleteProperty(envelope.event, "user");
-    Object.assign(envelope.event, { subtype: "bot_message" });
-  }
-  if (fields) Object.assign(envelope, fields);
-  return await handleSlackWebhookAndFlush({
-    request: slackWebhookRequest(envelope),
-    services: {
-      getSlackAdapter: () => slackAdapter,
-      queue,
-      runtime: createNoopSlackWebhookRuntime(),
-      state,
-    },
-  });
-}
 
 describe("Slack channel-message automations", () => {
   beforeEach(async () => {
@@ -214,7 +105,7 @@ describe("Slack channel-message automations", () => {
         outcomes: [
           { action: "send_message", destination: "current_conversation" },
         ],
-        trigger: trigger(),
+        trigger: channelMessageTrigger(),
       },
     )) as { automation: { id: string } };
 
@@ -229,24 +120,29 @@ describe("Slack channel-message automations", () => {
     // A thread reply, a bot post, and a message in another channel do not run it.
     expect(
       (
-        await postChannelMessage({
+        await postChannelMessage(queue, {
           threadTs: "1712345.0001",
           ts: "1712345.0002",
         })
       ).status,
     ).toBe(200);
     expect(
-      (await postChannelMessage({ botId: "B123", ts: "1712345.0005" })).status,
+      (await postChannelMessage(queue, { botId: "B123", ts: "1712345.0005" }))
+        .status,
     ).toBe(200);
     expect(
-      (await postChannelMessage({ channel: "C999", ts: "1712345.0003" }))
+      (await postChannelMessage(queue, { channel: "C999", ts: "1712345.0003" }))
         .status,
     ).toBe(200);
     expect(queue.sentRecords()).toEqual([]);
 
     // A new top-level message runs it once, even when Slack delivers it twice.
-    expect((await postChannelMessage({ ts: "1712345.0004" })).status).toBe(200);
-    expect((await postChannelMessage({ ts: "1712345.0004" })).status).toBe(200);
+    expect(
+      (await postChannelMessage(queue, { ts: "1712345.0004" })).status,
+    ).toBe(200);
+    expect(
+      (await postChannelMessage(queue, { ts: "1712345.0004" })).status,
+    ).toBe(200);
     const sent = queue.sentRecords();
     expect(sent).toHaveLength(1);
     const dispatch = await getDispatchRecord(
@@ -267,7 +163,7 @@ describe("Slack channel-message automations", () => {
 
     // A person's mention in the thread before the run replies joins the run.
     const runConversationId = sent[0]!.conversationId;
-    await postChannelMessage({
+    await postChannelMessage(queue, {
       text: `<@${SLACK_BOT_USER_ID}> any update?`,
       threadTs: "1712345.0004",
       ts: "1712345.0006",
@@ -303,264 +199,6 @@ describe("Slack channel-message automations", () => {
     ).toMatchObject({ credentialMode: "system" });
   });
 
-  it("stores the triggering post's files when the run starts and opens other thread files by id", async () => {
-    const channelContext = context(
-      "U123",
-      "C123",
-      "public",
-      undefined,
-      TEAM_ID,
-    );
-    await execute(
-      createAutomationTool(
-        automationToolContext(channelContext),
-        getEventCatalog(),
-      ),
-      {
-        instruction: "Answer questions about charts.",
-        title: "Triage charts",
-        outcomes: [
-          { action: "send_message", destination: "current_conversation" },
-        ],
-        trigger: trigger(),
-      },
-    );
-    const rootTs = "1712350.0001";
-    const slackFile = (id: string, name: string) => ({
-      id,
-      name,
-      mimetype: "image/png",
-      url_private: `https://files.slack.com/files-pri/${TEAM_ID}-${id}/${name}`,
-    });
-    const rootFile = slackFile("F0ROOTPNG1", "chart.png");
-    const forwardedFile = slackFile("F0FWDPNG1", "forwarded.png");
-    const replyFile = slackFile("F0REPLYPNG1", "reply.png");
-
-    // The post has its own file and forwards a message with a file. The
-    // dispatch record names the post, not its files.
-    const rootMessage = {
-      attachments: [{ fallback: "forwarded", files: [forwardedFile] }],
-      files: [rootFile],
-      text: "Why did this chart drop?",
-      ts: rootTs,
-    };
-    await postChannelMessage(rootMessage);
-    const runConversationId = queue.sentRecords()[0]!.conversationId;
-    const dispatchId = runConversationId.replace(/^agent-dispatch:/, "");
-    const dispatch = await getDispatchRecord(dispatchId);
-    expect(dispatch?.metadata).toMatchObject({ slackMessageTs: rootTs });
-    expect(JSON.stringify(dispatch)).not.toContain(rootFile.id);
-
-    // When the run starts, it reads the post from Slack. Its input message
-    // stores both files under their Slack file ids, gives them to the model,
-    // and lists them.
-    queueSlackApiResponse("conversations.replies", {
-      body: conversationsRepliesPage({
-        threadTs: rootTs,
-        messages: [{ ...rootMessage, user: "U123" }],
-      }),
-    });
-    const input = await startDispatchRun(dispatchId);
-    expect(
-      getCapturedSlackApiCalls("conversations.replies").map(
-        (call) => call.params,
-      ),
-    ).toEqual([
-      expect.objectContaining({
-        channel: "C123",
-        inclusive: "true",
-        latest: rootTs,
-        oldest: rootTs,
-        ts: rootTs,
-      }),
-    ]);
-    const attachmentStorage = createMemoryAttachmentStorage();
-    queueSlackPrivateFileDownload({ body: "root-chart" });
-    queueSlackPrivateFileDownload({ body: "forwarded" });
-    const modelFiles = await createJuniorRuntimeServices({
-      visionContext: { attachmentStorage },
-    }).visionContext.resolveUserAttachments(collectAttachments(input), {
-      conversationId: runConversationId,
-    });
-    expect(modelFiles.map((file) => file.filename)).toEqual([
-      "chart.png",
-      "forwarded.png",
-    ]);
-    const inputMessage = toConversationMessage({
-      entry: input,
-      text: dispatch!.input,
-    });
-    expect(inputMessage.meta?.slackFileIds).toEqual([
-      rootFile.id,
-      forwardedFile.id,
-    ]);
-    expect(dispatch?.destinationVisibility).toBe("public");
-    await getConversationStore().recordActivity({
-      conversationId: runConversationId,
-      destination: dispatch!.destination,
-      nowMs: Date.now(),
-      source: "slack",
-      visibility: dispatch!.destinationVisibility,
-    });
-    const conversation = coerceThreadConversationState({});
-    conversation.messages.push(inputMessage);
-    await persistConversationMessages({
-      conversation,
-      conversationId: runConversationId,
-    });
-
-    // The Conversation page shows the files on that message.
-    const page = await (
-      await conversationApi(attachmentStorage).request(
-        `http://localhost/api/conversations/${encodeURIComponent(runConversationId)}`,
-      )
-    ).json();
-    expect(
-      page.events.find(
-        (event: { data: { messageId?: string } }) =>
-          event.data.messageId === inputMessage.id,
-      )?.data.attachments,
-    ).toEqual([
-      expect.objectContaining({ filename: "chart.png", bytes: 10 }),
-      expect.objectContaining({ filename: "forwarded.png", bytes: 9 }),
-    ]);
-
-    // A person's mention in the thread joins the run's Conversation.
-    await postChannelMessage({
-      text: `<@${SLACK_BOT_USER_ID}> can you look at the chart?`,
-      threadTs: rootTs,
-      ts: "1712350.0002",
-    });
-    expect(
-      queue.sentRecords().map((record) => record.conversationId),
-    ).not.toContain(`slack:C123:${rootTs}`);
-    const stored = await getConversationStore().get({
-      conversationId: runConversationId,
-    });
-    expect(stored?.location).toMatchObject({
-      channelId: "C123",
-      threadTs: rootTs,
-    });
-
-    const written: string[] = [];
-    const workspace: SandboxWorkspace = {
-      readFileToBuffer: async () => null,
-      runCommand: async () => ({ exitCode: 0, stderr: "", stdout: "" }),
-      writeFiles: async (files) => {
-        written.push(...files.map((file) => file.content.toString()));
-      },
-    };
-    const { loadAttachment } = createTools([], {}, {
-      ...context("U123", "C123", "public", rootTs, TEAM_ID),
-      attachmentStorage,
-      conversationId: runConversationId,
-      location: stored?.location,
-      workspace,
-    } as ToolRuntimeContext);
-    const threadReplies = () =>
-      queueSlackApiResponse("conversations.replies", {
-        body: conversationsRepliesPage({
-          threadTs: rootTs,
-          messages: [
-            { ts: rootTs, user: "U123", files: [rootFile] },
-            {
-              ts: "1712350.0003",
-              thread_ts: rootTs,
-              user: "U123",
-              attachments: [
-                {
-                  files: [
-                    replyFile,
-                    {
-                      ...slackFile("F0APIURL1", "api.png"),
-                      url_private: "https://slack.com/api/auth.test",
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        }),
-      });
-    const repliesCalls = getCapturedSlackApiCalls(
-      "conversations.replies",
-    ).length;
-
-    // The root file opens by its Slack file id from the stored copy.
-    await expect(
-      execute(loadAttachment!, { attachment_id: rootFile.id }),
-    ).resolves.toMatchObject({ filename: "chart.png", bytes: 10 });
-    expect(written).toEqual(["root-chart"]);
-
-    // A file of a message that started no Turn is found in the thread and
-    // stored once.
-    threadReplies();
-    queueSlackPrivateFileDownload({ body: "reply" });
-    await expect(
-      execute(loadAttachment!, { attachment_id: replyFile.id }),
-    ).resolves.toMatchObject({ filename: "reply.png", bytes: 5 });
-    await execute(loadAttachment!, { attachment_id: replyFile.id });
-    expect(written).toEqual(["root-chart", "reply", "reply"]);
-    expect(
-      getCapturedSlackApiCalls("conversations.replies")
-        .slice(repliesCalls)
-        .map((call) => call.params),
-    ).toEqual([expect.objectContaining({ channel: "C123", ts: rootTs })]);
-    expect(getCapturedSlackFileDownloadUrls()).toEqual([
-      rootFile.url_private,
-      forwardedFile.url_private,
-      replyFile.url_private,
-    ]);
-
-    // A file that is not in the run's thread, or whose URL is not on Slack's
-    // file host, is refused and not downloaded.
-    for (const fileId of ["F0OTHERPNG", "F0APIURL1"]) {
-      threadReplies();
-      await expect(
-        execute(loadAttachment!, { attachment_id: fileId }),
-      ).rejects.toThrow("not in this conversation's thread");
-    }
-    expect(getCapturedSlackFileDownloadUrls()).toHaveLength(3);
-    expect(getCapturedSlackApiCalls("auth.test")).toEqual([]);
-  });
-
-  it("starts the run with its text when Slack cannot return the triggering post", async () => {
-    const channelContext = context(
-      "U123",
-      "C123",
-      "public",
-      undefined,
-      TEAM_ID,
-    );
-    await execute(
-      createAutomationTool(
-        automationToolContext(channelContext),
-        getEventCatalog(),
-      ),
-      {
-        instruction: "Answer questions about charts.",
-        title: "Triage charts",
-        outcomes: [
-          { action: "send_message", destination: "current_conversation" },
-        ],
-        trigger: trigger(),
-      },
-    );
-    await postChannelMessage({
-      text: "Why did this chart drop?",
-      ts: "1712351.0001",
-    });
-    const dispatchId = queue
-      .sentRecords()[0]!
-      .conversationId.replace(/^agent-dispatch:/, "");
-    queueSlackApiError("conversations.replies", { error: "channel_not_found" });
-
-    const input = await startDispatchRun(dispatchId);
-    expect(input.text).toContain("Why did this chart drop?");
-    expect(input.attachments).toEqual([]);
-    expect(getCapturedSlackFileDownloadUrls()).toEqual([]);
-  });
-
   it("runs for bot posts only when its match names the bot", async () => {
     const catalog = getEventCatalog();
     const channelContext = context(
@@ -578,12 +216,12 @@ describe("Slack channel-message automations", () => {
         outcomes: [
           { action: "send_message", destination: "current_conversation" },
         ],
-        trigger: trigger({ user_id: "U777" }),
+        trigger: channelMessageTrigger({ user_id: "U777" }),
       },
     )) as { automation: { id: string } };
 
     // A post from another bot does not run it.
-    await postChannelMessage({
+    await postChannelMessage(queue, {
       botId: "B888",
       ts: "1712346.0001",
       user: "U888",
@@ -591,7 +229,7 @@ describe("Slack channel-message automations", () => {
     expect(queue.sentRecords()).toEqual([]);
 
     // A post from the named bot runs it and replies in the alert thread.
-    await postChannelMessage({
+    await postChannelMessage(queue, {
       botId: "B777",
       ts: "1712346.0002",
       user: "U777",
@@ -624,7 +262,7 @@ describe("Slack channel-message automations", () => {
         outcomes: [
           { action: "send_message", destination: "current_conversation" },
         ],
-        trigger: trigger({ user_id: "B777" }),
+        trigger: channelMessageTrigger({ user_id: "B777" }),
       },
     )) as { automation: { id: string } };
 
@@ -666,7 +304,7 @@ describe("Slack channel-message automations", () => {
       },
     ];
     for (const [index, post] of rejected.entries()) {
-      await postChannelMessage({
+      await postChannelMessage(queue, {
         ...post,
         noUser: true,
         ts: `1712348.000${index + 1}`,
@@ -677,7 +315,7 @@ describe("Slack channel-message automations", () => {
     // A post from the named bot in a workspace-only channel runs it once and
     // replies in its thread, with system credentials. This bot has no bot
     // user, so bots.info is its only lookup.
-    await postChannelMessage({
+    await postChannelMessage(queue, {
       botId: "B777",
       envelope: WORKSPACE_CHANNEL,
       noUser: true,
@@ -718,7 +356,7 @@ describe("Slack channel-message automations", () => {
         outcomes: [
           { action: "send_message", destination: "current_conversation" },
         ],
-        trigger: trigger({
+        trigger: channelMessageTrigger({
           user_id: ["B701", "B702", "B703", "B704", "B705", "B706", "B707"],
         }),
       },
@@ -729,7 +367,7 @@ describe("Slack channel-message automations", () => {
       botProfile?: { deleted: boolean; team_id: string },
       envelope: Record<string, unknown> = WORKSPACE_CHANNEL,
     ) =>
-      postChannelMessage({
+      postChannelMessage(queue, {
         botId,
         ...(botProfile
           ? { botProfile: { id: botId, app_id: "A123", ...botProfile } }
@@ -802,7 +440,7 @@ describe("Slack channel-message automations", () => {
       outcomes: [
         { action: "send_message", destination: "current_conversation" },
       ],
-      trigger: trigger({ user_id: "U777" }),
+      trigger: channelMessageTrigger({ user_id: "U777" }),
     });
     const { automation } = (await execute(
       create,
@@ -812,14 +450,17 @@ describe("Slack channel-message automations", () => {
         outcomes: [
           { action: "send_message", destination: "current_conversation" },
         ],
-        trigger: trigger({ user_id: "U777", location: ["channel", "thread"] }),
+        trigger: channelMessageTrigger({
+          user_id: "U777",
+          location: ["channel", "thread"],
+        }),
       },
       "thread-automation-call",
     )) as { automation: { id: string } };
 
     // A bot reply in a Slack thread runs only the automation that names
     // the thread location, and Junior replies in that Slack thread.
-    await postChannelMessage({
+    await postChannelMessage(queue, {
       botId: "B777",
       threadTs: "1712347.0001",
       ts: "1712347.0002",
@@ -836,7 +477,7 @@ describe("Slack channel-message automations", () => {
     });
 
     // A top-level bot post still runs both.
-    await postChannelMessage({
+    await postChannelMessage(queue, {
       botId: "B777",
       ts: "1712347.0003",
       user: "U777",
@@ -861,7 +502,7 @@ describe("Slack channel-message automations", () => {
           instruction: "Summarize new messages.",
           title: "Summarize secrets",
           outcomes: [],
-          trigger: trigger({ channel_id: "C999" }),
+          trigger: channelMessageTrigger({ channel_id: "C999" }),
         },
       ),
     ).rejects.toThrow("can watch only the channel where it posts");
@@ -874,7 +515,7 @@ describe("Slack channel-message automations", () => {
         instruction: "Summarize new messages.",
         title: "Summarize messages",
         outcomes: [],
-        trigger: trigger(),
+        trigger: channelMessageTrigger(),
       },
     )) as { automation: { id: string } };
     await fixture.sql
@@ -885,7 +526,9 @@ describe("Slack channel-message automations", () => {
         record: sql`jsonb_set(${juniorAutomations.record}, '{destination,channelId}', '"C999"')`,
       })
       .where(eq(juniorAutomations.id, automation.id));
-    expect((await postChannelMessage({ ts: "1712345.0006" })).status).toBe(200);
+    expect(
+      (await postChannelMessage(queue, { ts: "1712345.0006" })).status,
+    ).toBe(200);
     expect(queue.sentRecords()).toEqual([]);
 
     // An update cannot drop the channel filter.
@@ -895,7 +538,7 @@ describe("Slack channel-message automations", () => {
         instruction: "Summarize new messages.",
         title: "Summarize scoped messages",
         outcomes: [],
-        trigger: trigger(),
+        trigger: channelMessageTrigger(),
       },
       "create-scoped",
     )) as { automation: { id: string } };
@@ -906,7 +549,7 @@ describe("Slack channel-message automations", () => {
       ),
       {
         automation_id: scoped.id,
-        trigger: { ...trigger(), match: { channel_id: null } },
+        trigger: { ...channelMessageTrigger(), match: { channel_id: null } },
       },
       "drop-channel",
     );
@@ -926,7 +569,9 @@ describe("Slack channel-message automations", () => {
     const saved = await getEventAutomation(fixture.sql.db(), scoped.id);
     expect(saved?.trigger).toMatchObject({ identifier: "C123" });
     expect(saved?.trigger.match).toBeUndefined();
-    expect((await postChannelMessage({ ts: "1712345.0007" })).status).toBe(200);
+    expect(
+      (await postChannelMessage(queue, { ts: "1712345.0007" })).status,
+    ).toBe(200);
     expect(queue.sentRecords()).toHaveLength(1);
 
     // A DM is not a channel, so the automation could never run there.
@@ -942,7 +587,7 @@ describe("Slack channel-message automations", () => {
           instruction: "Summarize new messages.",
           title: "Summarize DMs",
           outcomes: [],
-          trigger: trigger(),
+          trigger: channelMessageTrigger(),
         },
       ),
     ).rejects.toThrow("not in a DM");

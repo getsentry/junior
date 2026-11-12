@@ -6,6 +6,7 @@ import {
   type StoredAttachment,
 } from "@/chat/attachments/store";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { recordAttachmentLoaded } from "@/chat/conversations/projection";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -60,7 +61,7 @@ export function createLoadAttachmentTool(args: {
         ),
     }),
     outputSchema: juniorToolOutputSchema,
-    execute: async ({ attachment_id }) => {
+    execute: async ({ attachment_id }, options) => {
       let attachment = await readAttachment(attachment_id);
       if (!attachment && args.storeProviderFile) {
         const stored = await args.storeProviderFile(attachment_id);
@@ -97,6 +98,18 @@ export function createLoadAttachmentTool(args: {
         );
       }
       await args.workspace.writeFiles([{ content: data, path: sandboxPath }]);
+      if (options?.toolCallId) {
+        await recordAttachmentLoaded({
+          attachment: {
+            bytes: attachment.bytes,
+            contentType: attachment.contentType,
+            filename: attachment.filename,
+            id: attachment.id,
+          },
+          conversationId: args.conversationId,
+          toolCallId: options.toolCallId,
+        });
+      }
       return {
         path: sandboxPath,
         filename: attachment.filename,

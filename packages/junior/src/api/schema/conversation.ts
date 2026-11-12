@@ -558,6 +558,11 @@ const conversationReportStructuredEventDataSchema = z
   })
   .strict();
 
+/**
+ * Files that Junior sent, or read with a tool, shown as transcript media. The
+ * name predates read files. Renaming it would break dashboards loaded before a
+ * deploy, which parse this union strictly.
+ */
 const conversationReportAttachmentsDeliveredEventDataSchema = z
   .object({
     type: z.literal("attachments_delivered"),
