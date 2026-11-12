@@ -13,6 +13,7 @@ import {
   type HarnessRun,
   type TranscriptEvent,
 } from "vitest-evals/harness";
+import type { CapturedSlackApiCall } from "@junior-tests/msw/captured-slack-api-calls";
 import type { RequestApp, SlackPost } from "./slack";
 import { EARLIER_MESSAGES_KEY, type VisibleMessage } from "./judge";
 
@@ -373,6 +374,54 @@ function comparableText(text: string): string {
     .replace(/[*_~`>]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/** What one call did in a Slack thread, read from its Slack API calls. */
+export function slackThreadEffects(
+  slackCalls: CapturedSlackApiCall[],
+  thread: { channelId: string; threadTs: string } | undefined,
+): {
+  files: string[];
+  reactions: string[];
+  statuses: string[];
+  threadTitles: string[];
+} {
+  // Slack reactions are sets; ingress and the worker can add the same one.
+  const reactions = [
+    ...new Set(
+      slackCalls.flatMap((captured) =>
+        captured.method === "reactions.add" &&
+        captured.params.channel === thread?.channelId &&
+        typeof captured.params.name === "string"
+          ? [`${String(captured.params.timestamp)}:${captured.params.name}`]
+          : [],
+      ),
+    ),
+  ].map((key) => key.slice(key.indexOf(":") + 1));
+  const files = slackCalls.flatMap((captured) =>
+    captured.method === "files.completeUploadExternal" &&
+    captured.params.channel_id === thread?.channelId &&
+    captured.params.thread_ts === thread?.threadTs &&
+    Array.isArray(captured.params.files)
+      ? captured.params.files.map((file: { title?: unknown }) =>
+          String(file.title),
+        )
+      : [],
+  );
+  const threadCalls = (method: string) =>
+    slackCalls.filter(
+      (captured) =>
+        captured.method === method &&
+        captured.params.channel_id === thread?.channelId &&
+        captured.params.thread_ts === thread?.threadTs,
+    );
+  const statuses = threadCalls("assistant.threads.setStatus").map((captured) =>
+    String(captured.params.status),
+  );
+  const threadTitles = threadCalls("assistant.threads.setTitle").map(
+    (captured) => String(captured.params.title),
+  );
+  return { files, reactions, statuses, threadTitles };
 }
 
 /**
