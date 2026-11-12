@@ -119,11 +119,13 @@ fields=timestamp,level,event.name,trace_id,span_id,error.type,exception.message
 sort=timestamp
 ```
 
-Recent failed or timed-out agent runs.
+Recent failed or timed-out agent runs. `gen_ai.request.model` is the Turn
+model. `app.ai.provider_error.model` is the model whose call failed, such as
+the Guardian model.
 
 ```text
 dataset=logs query='event.name:agent.turn.timed_out OR event.name:agent.turn.failed OR event.name:agent.turn.provider_error'
-fields=timestamp,event.name,trace_id,gen_ai.conversation.id,gen_ai.request.model,error.type
+fields=timestamp,event.name,trace_id,gen_ai.conversation.id,gen_ai.request.model,app.ai.provider_error.model,error.type
 sort=-timestamp
 ```
 

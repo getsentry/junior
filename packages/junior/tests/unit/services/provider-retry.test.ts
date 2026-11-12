@@ -62,7 +62,7 @@ describe("provider retry helpers", () => {
       "app.ai.provider_error.kind": "server",
       "app.ai.provider_error.status": 503,
       "app.ai.provider_error.summary": "503",
-      "gen_ai.request.model": "xai/grok-4.5",
+      "app.ai.provider_error.model": "xai/grok-4.5",
     });
   });
 

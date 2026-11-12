@@ -1784,11 +1784,12 @@ async function executeAgentRunInPrivacyContext(
     }
 
     const providerError = findProviderError(error);
-    logException(
-      error,
-      "assistant.reply.generation.failed",
-      providerError ? getProviderErrorAttributes(providerError) : {},
-    );
+    logException(error, "assistant.reply.generation.failed", {
+      "gen_ai.request.model": activeModelId,
+      ...(providerError
+        ? getProviderErrorAttributes(providerError)
+        : undefined),
+    });
 
     // Raw exception text is diagnostics-only; the failure-response service
     // owns the sanitized user-visible fallback for empty provider errors.

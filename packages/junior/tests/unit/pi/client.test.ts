@@ -378,9 +378,24 @@ describe("completeText", () => {
   });
 
   it("classifies invalid structured output without capturing it", async () => {
-    const sdkError = new Error("No object generated.");
+    const sdkError = Object.assign(new Error("No object generated."), {
+      finishReason: "length",
+      usage: {
+        inputTokens: 10,
+        inputTokenDetails: {
+          noCacheTokens: 10,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
+        outputTokens: 2000,
+        outputTokenDetails: { textTokens: 0, reasoningTokens: 2000 },
+        totalTokens: 2010,
+      },
+    });
     mocks.generateObject.mockRejectedValue(sdkError);
-    mocks.noObjectGeneratedErrorIsInstance.mockReturnValueOnce(true);
+    mocks.noObjectGeneratedErrorIsInstance.mockImplementation(
+      (error) => error === sdkError,
+    );
 
     const { completeObject } = await import("@/chat/pi/client");
 
@@ -396,6 +411,13 @@ describe("completeText", () => {
       message: "AI provider error: invalid_response",
       retryable: false,
     });
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "gen_ai.response.finish_reasons": ["length"],
+        "gen_ai.usage.output_tokens": 2000,
+        "gen_ai.usage.reasoning.output_tokens": 2000,
+      }),
+    );
     expect(mocks.logWarn).not.toHaveBeenCalled();
     expect(mocks.logException).not.toHaveBeenCalled();
   });

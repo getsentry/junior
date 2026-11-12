@@ -153,6 +153,7 @@ export function finalizeFailedTurnReplyWithEvent(args: {
   const capture = getFailureCapture(args.reply);
   const eventId = requireTurnFailureEventId(
     args.logException(capture.error, capture.eventName, {
+      "gen_ai.request.model": args.reply.diagnostics.modelId,
       ...getAgentTurnDiagnosticsAttributes(args.reply),
       ...args.attributes,
       ...capture.attributes,
