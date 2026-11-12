@@ -269,6 +269,62 @@ describe("Code Mode bridge", () => {
     expect(spawnAgent).not.toHaveBeenCalled();
   });
 
+  it("redirects a catalog dispatcher call to the call to make instead", async () => {
+    const review = fakeGuardian();
+    const resume = turnCount();
+    const lookup = tool({
+      description: "Look up one customer.",
+      inputSchema: Type.Object({ id: Type.String() }),
+      execute: async ({ id }) => ({ id }),
+    }) as AnyToolDefinition;
+
+    const result = await runCodeModeScript({
+      countToolCall: resume.countToolCall,
+      pipeline: pipelineFor(review),
+      // The script hides the failures, so only the call list shows them.
+      source: `
+        const found = await tools
+          .executeTool({ tool_name: "lookup", arguments: { id: "a" } })
+          .catch(() => null);
+        await tools.searchTools({ query: "customers" }).catch(() => null);
+        // Never awaited, so it never starts, but it keeps its error.
+        tools.executeTool({ tool_name: "spawnAgent", arguments: {} });
+        return found;
+      `,
+      toolCallId: CODEMODE_CALL_ID,
+      tools: { lookup },
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: null,
+      calls: [
+        {
+          toolName: "executeTool",
+          status: "error",
+          error:
+            "executeTool does not run in a script. Call tools.lookup(arguments) directly, with only the object from the executeTool arguments field.",
+        },
+        {
+          toolName: "searchTools",
+          status: "error",
+          error: expect.stringContaining(
+            "searchTools does not run in a script. Call it directly before the script",
+          ),
+        },
+        {
+          toolName: "executeTool",
+          status: "not_started",
+          error:
+            "executeTool does not run in a script, and spawnAgent is not a script tool. Call spawnAgent outside the script.",
+        },
+      ],
+    });
+    // Nothing ran, so nothing was reviewed or counted.
+    expect(review).not.toHaveBeenCalled();
+    expect(resume.countToolCall()).toBe(1);
+  });
+
   it("gives a script the result of an MCP tool, not only its cards", async () => {
     const mcpUrl = "https://mcp.ci.example.com/mcp";
     const server = new McpServer({ name: "ci-test", version: "1.0.0" });
