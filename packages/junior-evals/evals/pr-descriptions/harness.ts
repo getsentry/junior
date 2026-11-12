@@ -2,7 +2,7 @@
  * Isolated harness for the model call that writes a pull request
  * description from the context that the agent passes to the GitHub PR tools.
  *
- * Calls the real `writePullRequestDescription` with the host plugin model
+ * Calls the real `writePullRequestDescription` with the host decision and plugin models
  * that the GitHub plugin gets. It does not run the agent, GitHub, Postgres,
  * or Redis.
  */
@@ -12,7 +12,7 @@ import {
   type JsonValue,
 } from "vitest-evals";
 import { botConfig } from "@/chat/config";
-import { createPluginModel } from "@/chat/plugins/model";
+import { createPluginDecider, createPluginModel } from "@/chat/plugins/model";
 import { writePullRequestDescription } from "../../../junior-github/src/tool-support/pull-request-description";
 
 interface PullRequestDescriptionEvalInput {
@@ -55,7 +55,10 @@ export const pullRequestDescriptionHarness = createHarness<
   name: "pull-request-description",
   run: async ({ input }) => {
     const { description, gaps } = await writePullRequestDescription(
-      createPluginModel("github"),
+      {
+        decider: createPluginDecider("github"),
+        model: createPluginModel("github"),
+      },
       {
         context: input.context,
         repo: "getsentry/junior",

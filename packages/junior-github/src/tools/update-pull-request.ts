@@ -5,6 +5,7 @@ import {
   type User,
   type Actor,
   type PluginLogger,
+  type PluginDecider,
   type PluginEgress,
   type PluginModel,
   type Source,
@@ -165,6 +166,7 @@ export function createGitHubUpdatePullRequestTool(ctx: {
   automationLink?: { url: string };
   conversationId?: string;
   db: unknown;
+  decider: PluginDecider;
   egress: PluginEgress;
   log: PluginLogger;
   model: PluginModel;
@@ -206,11 +208,14 @@ export function createGitHubUpdatePullRequestTool(ctx: {
           : undefined;
       const written =
         update.description_context !== undefined
-          ? await writePullRequestDescription(ctx.model, {
-              context: update.description_context,
-              repo: repo.ref,
-              title: update.title,
-            })
+          ? await writePullRequestDescription(
+              { decider: ctx.decider, model: ctx.model },
+              {
+                context: update.description_context,
+                repo: repo.ref,
+                title: update.title,
+              },
+            )
           : undefined;
       const payload = {
         ...(update.title !== undefined ? { title: update.title } : undefined),

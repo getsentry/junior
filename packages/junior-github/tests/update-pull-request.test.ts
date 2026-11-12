@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createGitHubUpdatePullRequestTool } from "../src/tools/update-pull-request";
-import { echoDescriptionModel } from "./description-model";
+import { echoDescriptionModel, firstChoiceDecider } from "./description-model";
 
 const ATTRIBUTED_BODY = `Original body
 
@@ -13,6 +13,7 @@ function toolContext(
   options: {
     actor?: unknown;
     currentBody?: string;
+    decider?: unknown;
     model?: unknown;
     requester?: unknown;
     source?: unknown;
@@ -53,6 +54,7 @@ function toolContext(
     conversationId: "slack:C123:123.456",
     egress: { fetch },
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+    decider: options.decider ?? firstChoiceDecider(),
     model: options.model ?? echoDescriptionModel(),
     events: { canSubscribe: true },
     conversationLink: { url: "https://example.com/session" },
@@ -76,14 +78,18 @@ describe("updatePullRequest", () => {
   it("updates mutable pull request fields and preserves runtime-owned body metadata", async () => {
     const model = {
       completeObject: vi.fn(async () => ({
-        object: {
-          body: "Updated body",
-          gaps: ["Does the base change affect release builds?"],
-        },
+        object: { body: "Updated body" },
+      })),
+    };
+    // The decision model finds every fact missing from the notes.
+    const decider = {
+      decide: vi.fn(async ({ criteria }: { criteria: object }) => ({
+        choice: "missing" in criteria ? "missing" : Object.keys(criteria)[0],
       })),
     };
     const { fetch, tool } = toolContext(undefined, {
       currentBody: ATTRIBUTED_BODY,
+      decider,
       model,
     });
 
@@ -105,7 +111,11 @@ describe("updatePullRequest", () => {
       state: "open",
       objectAnnotations: [{ status: "open", description: "Updated body" }],
       // The writer cannot see the diff, so it hands missing facts back to the agent.
-      description_gaps: ["Does the base change affect release builds?"],
+      description_gaps: [
+        "Why is this change needed?",
+        "Does this break existing callers or data, and what should they do?",
+        "Can you add before and after screenshots?",
+      ],
       target: "updatePullRequest",
       title: "Updated title",
       subscribable: {
@@ -132,6 +142,14 @@ describe("updatePullRequest", () => {
       title: "Updated title",
       body: expect.stringContaining("Updated body"),
     });
+    // The decision model's answers reach the writer as rules for these notes.
+    expect(model.completeObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining(
+          "Checks on these notes:\n- The notes do not say why. Do not give a reason.",
+        ),
+      }),
+    );
     // The description model writes the body from the escaped context.
     expect(model.completeObject).toHaveBeenCalledWith(
       expect.objectContaining({

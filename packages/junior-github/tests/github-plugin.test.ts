@@ -30,7 +30,7 @@ import { gitHubReleaseSourceResource } from "../src/events/release";
 import { gitHubRepositoryResource } from "../src/events/repository";
 import type { GitHubDb } from "../src/db/database";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
-import { echoDescriptionModel } from "./description-model";
+import { echoDescriptionModel, firstChoiceDecider } from "./description-model";
 import { mswServer } from "./msw";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -441,6 +441,7 @@ function githubToolsContext(input?: {
         );
       },
     },
+    decider: firstChoiceDecider(),
     model: echoDescriptionModel(),
     events: {
       canSubscribe: true,

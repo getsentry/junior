@@ -502,7 +502,7 @@ export function createGitHubPullRequestTool(
           const requester = await resolveGitHubRequester(ctx);
           const identityId = requester?.identity?.id;
           const { description, gaps } = await writePullRequestDescription(
-            ctx.model,
+            { decider: ctx.decider, model: ctx.model },
             {
               context: nonEmptyString(
                 parsedInput.description_context,
