@@ -115,6 +115,47 @@ export const RESOLVE_REVIEW_THREAD = githubGraphql(`
   }
 `);
 
+/**
+ * Read the merge state of one pull request and the checks of its head
+ * commit, with whether each check is required.
+ */
+export const PULL_REQUEST_CHECKS = githubGraphql(`
+  query PullRequestChecks($owner: String!, $name: String!, $number: Int!) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) {
+        mergeStateStatus
+        reviewDecision
+        autoMergeRequest { enabledAt }
+        commits(last: 1) {
+          nodes {
+            commit {
+              statusCheckRollup {
+                contexts(first: 100) {
+                  pageInfo { hasNextPage }
+                  nodes {
+                    __typename
+                    ... on CheckRun {
+                      name
+                      status
+                      conclusion
+                      isRequired(pullRequestNumber: $number)
+                    }
+                    ... on StatusContext {
+                      context
+                      state
+                      isRequired(pullRequestNumber: $number)
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`);
+
 /** Read one page of a pull request search, with mergeability. */
 export const OPEN_PULL_REQUEST_MERGEABILITY = githubGraphql(`
   query OpenPullRequestMergeability($query: String!, $after: String) {
