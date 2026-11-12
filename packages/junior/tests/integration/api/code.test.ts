@@ -249,9 +249,26 @@ describe("code API", () => {
       );
       expect(person.summary.open).toBe(105);
       expect(person.changes).toHaveLength(100);
-      // Longest idle first, so the limit drops the freshest open changes.
+      // Longest idle first. The next page has the freshest open changes.
       expect(person.changes[0]).toMatchObject({ number: 1, state: "open" });
       expect(person.summary.idle).toBe(1);
+      expect(person.nextOffset).toBe(100);
+      const next = codePersonReportSchema.parse(
+        await (
+          await api.request(
+            "http://localhost/api/people/alice@example.com/code?offset=100",
+          )
+        ).json(),
+      );
+      expect(next.nextOffset).toBeUndefined();
+      expect(next.changes.map((listed) => listed.state)).toEqual([
+        ...Array<string>(5).fill("open"),
+        ...Array<string>(15).fill("closed"),
+      ]);
+      const open = [...person.changes, ...next.changes].filter(
+        (listed) => listed.state === "open",
+      );
+      expect(new Set(open.map((listed) => listed.number)).size).toBe(105);
     } finally {
       vi.useRealTimers();
       await fixture.close();

@@ -381,7 +381,7 @@ test("the asks and Done load their next pages at the end of the list", async ({
   expect(cursors).toEqual(expect.arrayContaining(["1", "2"]));
 });
 
-test("Pull requests sorts your open changes into Waiting on you and Waiting on others", async ({
+test("Pull requests sorts your open changes into Waiting on you, Waiting on others and Drafts", async ({
   dashboard,
   page,
 }) => {
@@ -391,6 +391,7 @@ test("Pull requests sorts your open changes into Waiting on you and Waiting on o
     { idleDays: 10, number: 8, title: "Drop the legacy webhook" },
     // prReview asks the viewer to review this one.
     { idleDays: 1, number: 91, title: "Pin the release train" },
+    { draft: true, idleDays: 0, number: 15, title: "Sketch the replay" },
     {
       idleDays: 0,
       number: 9,
@@ -401,7 +402,7 @@ test("Pull requests sorts your open changes into Waiting on you and Waiting on o
   await page.goto(`${dashboard.baseURL}/?view=prs`);
   await expect(
     page.locator("section[aria-label] section[aria-label]"),
-  ).toHaveText([/^Waiting on you/, /^Waiting on others/]);
+  ).toHaveText([/^Waiting on you/, /^Waiting on others/, /^Drafts/]);
   const waiting = page
     .getByRole("region", { name: "Waiting on you" })
     .getByRole("listitem", { name: "Pin the release train" });
@@ -420,6 +421,12 @@ test("Pull requests sorts your open changes into Waiting on you and Waiting on o
       .getByRole("listitem"),
   ).toHaveText([/Tune the retry backoff/, /Drop the legacy webhook/]);
   await expect(page.getByText("Rename the payments queue")).toHaveCount(0);
+  // A draft waits on its author, so it leaves the other piles. Drafts starts
+  // collapsed.
+  const drafts = page.getByRole("region", { name: "Drafts" });
+  await expect(drafts.getByRole("listitem")).toHaveCount(0);
+  await drafts.getByRole("button", { name: /Drafts/ }).click();
+  await expect(drafts.getByRole("listitem")).toHaveText([/Sketch the replay/]);
 
   // The ask keeps its actions: Done closes it.
   await waiting
@@ -432,6 +439,32 @@ test("Pull requests sorts your open changes into Waiting on you and Waiting on o
   await expect
     .poll(() => actions.map((action) => action.id))
     .toEqual([prReview.id]);
+});
+
+test("Pull requests lists every open change, past the first page", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page, { open: [] });
+  // The server lists the longest idle first, so the freshest come last.
+  await mockViewerCodeChanges(page, [
+    ...Array.from({ length: 100 }, (_, index) => ({
+      idleDays: 3 + index / 100,
+      number: 1000 + index,
+      title: `Older change ${index + 1}`,
+    })).reverse(),
+    ...Array.from({ length: 5 }, (_, index) => ({
+      idleDays: 0,
+      number: 2000 + index,
+      title: `Fresh change ${index + 1}`,
+    })),
+  ]);
+  await page.goto(`${dashboard.baseURL}/?view=prs`);
+  const others = page
+    .getByRole("region", { name: "Waiting on others" })
+    .getByRole("listitem");
+  await expect(others).toHaveCount(105);
+  await expect(others.first()).toHaveText(/Fresh change/);
 });
 
 test("To do lists its rows while the count is pending or failed", async ({
@@ -744,6 +777,44 @@ test("an item row's second line names its subject, not its own title", async ({
     .filter({ hasText: prReview.title });
   await expect(row).toContainText(prReview.subject.title);
   await expect(row.getByText(prReview.title, { exact: true })).toHaveCount(1);
+});
+
+test("an item's text clamps only its prose, and its cards show in full", async ({
+  dashboard,
+  page,
+}) => {
+  const card = "Pull request: Pin the release train to payments 4.2";
+  const item = {
+    ...prReview,
+    addedByConversationId: "slack:CQA456:1770021600.000600",
+    body: [
+      "GitHub asks you to review this pull request.",
+      "https://github.com/getsentry/payments/pull/91",
+      ...Array.from(
+        { length: 6 },
+        (_, index) => `Release note ${index + 1}: the train pins payments.`,
+      ),
+    ].join("\n\n"),
+    id: "item-pr-card-clamp",
+    kind: "notice" as const,
+    request: undefined,
+  };
+  await mockReviewItems(page, { open: [item] });
+  await page.goto(`${dashboard.baseURL}/?view=prs`);
+  await rowHead(page, item.title).click();
+  const toggle = page.getByRole("button", { name: `Expand ${item.title}` });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  const clamp = page.locator(
+    `[id="${await toggle.getAttribute("aria-controls")}"]`,
+  );
+  await expect(clamp).toContainText("Release note 1");
+  // The card is not part of the clamped prose, and only one shows.
+  await expect(clamp.getByRole("region", { name: card })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: card })).toHaveCount(1);
+  await page.getByRole("region", { name: card }).scrollIntoViewIfNeeded();
+  await expect(page.getByRole("region", { name: card })).toBeInViewport({
+    ratio: 1,
+  });
 });
 
 test("an item's subject card hides when its text already shows that card", async ({

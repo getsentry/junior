@@ -4,7 +4,10 @@ import {
   useInfiniteQuery,
   useQuery,
 } from "@tanstack/react-query";
-import type { ActorProfileReport } from "@sentry/junior/api/schema";
+import type {
+  ActorProfileReport,
+  CodePersonReport,
+} from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
   conversationFeedSchema,
@@ -341,6 +344,28 @@ export function useActorCodeData(email: string | undefined) {
         `/api/people/${encodeURIComponent(email!)}/code`,
         signal,
       ),
+    retry: false,
+  });
+}
+
+/**
+ * Read every open code change of one person, a page of the code overview at
+ * a time. Open changes list first, so paging stops at the first page that
+ * reaches completed changes.
+ */
+export function useActorOpenCodeChanges(email: string | undefined) {
+  return useInfiniteQuery({
+    enabled: Boolean(email),
+    queryKey: ["dashboard", "people", email, "code", "open"],
+    queryFn: ({ pageParam, signal }) =>
+      fetchDashboardJson(
+        codePersonReportSchema,
+        `/api/people/${encodeURIComponent(email!)}/code${pageParam ? `?offset=${pageParam}` : ""}`,
+        signal,
+      ),
+    initialPageParam: 0,
+    getNextPageParam: (page: CodePersonReport) =>
+      page.changes.at(-1)?.state === "open" ? page.nextOffset : undefined,
     retry: false,
   });
 }

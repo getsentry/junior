@@ -4,7 +4,7 @@ import {
   type OwnedObjectAnnotation,
 } from "@sentry/junior/api/schema";
 
-import { parseMarkdownBlocks } from "./codeBlocks";
+import { MARKDOWN_FENCE, parseMarkdownBlocks } from "./codeBlocks";
 import { slackLinksToMarkdown } from "./links";
 
 /** Saved objects that display text can show for a link, by `objectUrlKey`. */
@@ -70,4 +70,36 @@ export function textHasStandaloneUrl(text: string, url: string): boolean {
           }),
     )
   );
+}
+
+/**
+ * Split display text into its prose and the bare URLs that stand alone in a
+ * paragraph, in their order. The Markdown renderer shows each such URL as an
+ * object card, so a clamped preview clamps only the prose and shows the
+ * cards in full after it. Code fences stay in the prose.
+ */
+export function splitStandaloneUrls(text: string): {
+  prose: string;
+  urls: string[];
+} {
+  const urls: string[] = [];
+  const parts: string[] = [];
+  const keepProse = (prose: string) => {
+    const kept = prose.split(/\n[ \t]*\n/).filter((paragraph) => {
+      const bare = STANDALONE_URL_RE.exec(
+        slackLinksToMarkdown(paragraph).replace(/^\n+/, ""),
+      )?.[1];
+      if (bare) urls.push(bare);
+      return !bare && paragraph.trim();
+    });
+    if (kept.length > 0) parts.push(kept.join("\n\n").trim());
+  };
+  let cursor = 0;
+  for (const fence of text.matchAll(MARKDOWN_FENCE)) {
+    keepProse(text.slice(cursor, fence.index));
+    parts.push(fence[0]);
+    cursor = fence.index + fence[0].length;
+  }
+  keepProse(text.slice(cursor));
+  return { prose: parts.join("\n\n"), urls };
 }

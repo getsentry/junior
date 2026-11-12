@@ -271,24 +271,31 @@ export async function mockReviewItems(
 export async function mockViewerCodeChanges(
   page: Page,
   changes: readonly {
+    draft?: boolean;
     idleDays: number;
     number: number;
     state?: "closed" | "merged" | "open";
     title: string;
   }[],
 ) {
-  await page.route(/\/api\/people\/[^/]+\/code$/, async (route) => {
+  // Like the server: 100 changes a page, in the given order, and the offset
+  // of the next page while one is left.
+  await page.route(/\/api\/people\/[^/]+\/code(\?.*)?$/, async (route) => {
     const response = await route.fetch();
     const report = await response.json();
     const nowMs = Date.parse(report.generatedAt);
     const daysAgo = (days: number) =>
       new Date(nowMs - days * 86_400_000).toISOString();
+    const offset = Number(
+      new URL(route.request().url()).searchParams.get("offset") ?? 0,
+    );
     await route.fulfill({
       response,
       json: {
         ...report,
-        changes: changes.map((change) => ({
-          draft: false,
+        nextOffset: offset + 100 < changes.length ? offset + 100 : undefined,
+        changes: changes.slice(offset, offset + 100).map((change) => ({
+          draft: change.draft ?? false,
           id: `00000000-0000-4000-9000-${String(change.number).padStart(12, "0")}`,
           lastActivityAt: daysAgo(change.idleDays),
           number: change.number,

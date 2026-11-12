@@ -1,8 +1,8 @@
 import type { CodeChangeSummaryReport } from "@sentry/junior/api/schema";
 import { ArrowUpRight } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 
-import { useActorCodeData, useDashboardCoreData } from "../api";
+import { useActorOpenCodeChanges, useDashboardCoreData } from "../api";
 import { SidebarAnnotationIcon } from "../conversations/ConversationMeta";
 import { IdleText, lastActivity } from "../conversations/codeChangeIdle";
 import { cn } from "../styles";
@@ -18,6 +18,8 @@ export type PullRequestChangeRow = {
 /** One group of the Pull requests view. */
 export type PullRequestSection = {
   changes: PullRequestChangeRow[];
+  /** The pile starts collapsed until the viewer opens it. */
+  collapsedByDefault?: boolean;
   /** Pull request asks that name no open change of the viewer's. */
   items: InboxBundle[];
   key: string;
@@ -33,12 +35,16 @@ const waitedSince = (row: PullRequestChangeRow) =>
       .map((item) => Date.parse(item.waitingSince)),
   );
 
+const byActivity = (a: PullRequestChangeRow, b: PullRequestChangeRow) =>
+  lastActivity(b.change).localeCompare(lastActivity(a.change));
+
 /**
- * Sort the viewer's open code changes and the pull request asks into two
+ * Sort the viewer's open code changes and the pull request asks into three
  * piles. Waiting on you: changes with an ask that waits on the viewer,
  * longest wait first, and such asks that name no open change of theirs.
  * Waiting on others: every other open change, waiting on a reviewer, CI or
  * Junior, newest activity first, and the other asks, so nothing gets lost.
+ * Drafts: draft changes with their asks, newest activity first, collapsed.
  * Empty piles drop out.
  */
 export function pullRequestSections(
@@ -61,14 +67,12 @@ export function pullRequestSections(
     );
   const attached = new Set(rows.flatMap((row) => row.items));
   const loose = itemRows.filter((row) => !attached.has(row));
-  const waiting = rows
+  const drafts = rows.filter((row) => row.change.draft).sort(byActivity);
+  const ready = rows.filter((row) => !row.change.draft);
+  const waiting = ready
     .filter((row) => row.items.some((item) => item.needsYou))
     .sort((a, b) => waitedSince(a) - waitedSince(b));
-  const others = rows
-    .filter((row) => !waiting.includes(row))
-    .sort((a, b) =>
-      lastActivity(b.change).localeCompare(lastActivity(a.change)),
-    );
+  const others = ready.filter((row) => !waiting.includes(row)).sort(byActivity);
   return [
     {
       changes: waiting,
@@ -82,25 +86,38 @@ export function pullRequestSections(
       key: "pr-others",
       label: "Waiting on others",
     },
+    {
+      changes: drafts,
+      collapsedByDefault: true,
+      items: [],
+      key: "pr-drafts",
+      label: "Drafts",
+    },
   ].filter((section) => section.changes.length + section.items.length > 0);
 }
 
 /**
- * Read the Pull requests view: the viewer's open code changes from their
- * person Code overview, grouped with the pull request asks. The overview
- * lists at most 100 changes, open ones first and the longest idle first, so
- * past 100 open changes the view leaves out the freshest. It has no paging.
+ * Read the Pull requests view: every open code change of the viewer, from
+ * their person Code overview, grouped with the pull request asks. Pages load
+ * one after another only while the view is open.
  */
 export function usePullRequestSections(
   itemRows: readonly InboxBundle[],
   enabled: boolean,
 ) {
   const email = useDashboardCoreData().data?.me.user.email;
-  // The same query as the home summary, so the two share one read.
-  const code = useActorCodeData(enabled ? email : undefined);
+  const code = useActorOpenCodeChanges(enabled ? email : undefined);
+  const { fetchNextPage, hasNextPage, isFetchNextPageError, isFetching } = code;
+  // A failed page stops the paging; the loaded changes still show.
+  useEffect(() => {
+    if (enabled && hasNextPage && !isFetching && !isFetchNextPageError) {
+      void fetchNextPage();
+    }
+  }, [enabled, fetchNextPage, hasNextPage, isFetchNextPageError, isFetching]);
   // Signed out, or before the overview loads, the asks show on their own.
-  const changes = code.data?.changes ?? [];
-  const nowMs = code.data ? Date.parse(code.data.generatedAt) : Date.now();
+  const pages = code.data?.pages ?? [];
+  const changes = pages.flatMap((page) => page.changes);
+  const nowMs = pages[0] ? Date.parse(pages[0].generatedAt) : Date.now();
   return {
     loading: enabled && Boolean(email) && code.isPending,
     nowMs,

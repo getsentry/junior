@@ -715,3 +715,78 @@ test("every pin shows on the first feed page, and a reorder saves them all", asy
     ),
   });
 });
+
+test("only pins drag in In flight", async ({ dashboard, page }) => {
+  await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
+    const response = await route.fetch();
+    const feed = await response.json();
+    const row = (index: number, displayTitle: string, pinned: boolean) => ({
+      ...feed.conversations[0],
+      conversationId: `slack:CPINS:${1770000000 + index}.000100`,
+      displayTitle,
+      isParticipant: true,
+      pinnedAt: pinned ? "2026-08-07T10:00:00.000Z" : null,
+      pinPosition: pinned ? index : undefined,
+      status: pinned ? "completed" : "active",
+    });
+    return route.fulfill({
+      response,
+      json: {
+        ...feed,
+        conversations: [
+          row(0, "Alpha pin", true),
+          row(1, "Bravo pin", true),
+          row(2, "Delta run", false),
+        ],
+        nextCursor: undefined,
+      },
+    });
+  });
+  await mockReviewItems(page, { open: [] });
+  const saves: unknown[] = [];
+  page.on("request", (request) => {
+    if (
+      request.method() === "PUT" &&
+      request.url().includes("/api/conversations/pin-order")
+    )
+      saves.push(request.postDataJSON());
+  });
+  await page.goto(`${dashboard.baseURL}/`);
+  const inFlight = page.getByRole("list", { name: "In flight" });
+  // The running Conversation that is not pinned shows first.
+  await expect(inFlight.getByRole("listitem")).toHaveText([
+    /Delta run/,
+    /Alpha pin/,
+    /Bravo pin/,
+  ]);
+  const running = inFlight.getByRole("link", { name: /Delta run/ });
+  const alpha = inFlight.getByRole("link", { name: /Alpha pin/ });
+  const bravo = inFlight.getByRole("link", { name: /Bravo pin/ });
+  // A row that is not a pin offers no reorder keys, and a drag of it saves
+  // nothing and moves nothing.
+  await expect(running).not.toHaveAttribute("aria-keyshortcuts");
+  await expect(alpha).toHaveAttribute(
+    "aria-keyshortcuts",
+    "Alt+ArrowUp Alt+ArrowDown",
+  );
+  await running.dragTo(bravo, { steps: 10 });
+  await expect(inFlight.getByRole("listitem")).toHaveText([
+    /Delta run/,
+    /Alpha pin/,
+    /Bravo pin/,
+  ]);
+  expect(saves).toEqual([]);
+  // A pin dropped on the running row lands on the nearest pin instead.
+  const save = page.waitForRequest(
+    (request) =>
+      request.method() === "PUT" &&
+      request.url().includes("/api/conversations/pin-order"),
+  );
+  await bravo.dragTo(running, { steps: 10 });
+  expect((await save).postDataJSON()).toEqual({
+    conversationIds: [
+      "slack:CPINS:1770000001.000100",
+      "slack:CPINS:1770000000.000100",
+    ],
+  });
+});

@@ -11,7 +11,7 @@ import {
   personParamsSchema,
   personalSpendReportSchema,
 } from "../schema/person";
-import { codePersonReportSchema } from "../schema/code";
+import { codePersonReportSchema, personCodeQuerySchema } from "../schema/code";
 import { pluginOperationalReportFeedSchema } from "../../reporting-schema";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
@@ -95,9 +95,14 @@ export function createPeopleRoutes(): Hono<JuniorApiEnv> {
   app.get(
     "/:email/code",
     validateRequest("param", personParamsSchema, "Invalid route parameters."),
+    validateRequest("query", personCodeQuerySchema, "Invalid code query."),
     async (context) => {
       const { email } = context.req.valid("param");
-      return jsonResponse(codePersonReportSchema, await readPeopleCode(email));
+      const { offset } = context.req.valid("query");
+      return jsonResponse(
+        codePersonReportSchema,
+        await readPeopleCode(email, offset),
+      );
     },
   );
 

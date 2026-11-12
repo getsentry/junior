@@ -731,7 +731,9 @@ export function InboxList(props: {
             [...section.changes.flatMap((row) => row.items), ...section.items],
             section.label,
           )}
-          collapsed={collapsed.has(section.key)}
+          collapsed={
+            collapsed.has(section.key) !== Boolean(section.collapsedByDefault)
+          }
           count={section.changes.length + section.items.length}
           key={section.key}
           label={section.label}

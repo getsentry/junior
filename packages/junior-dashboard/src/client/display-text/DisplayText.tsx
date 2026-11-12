@@ -1,9 +1,11 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import type { ActorIdentity } from "@sentry/junior/api/schema";
 
 import { HighlightedCode } from "../code";
+import { ClampedPreview } from "../components/ClampedPreview";
 import { CopyButton } from "../components/CopyButton";
 import { parseMarkdownBlocks } from "./codeBlocks";
+import { splitStandaloneUrls } from "./knownObjects";
 import { MarkdownText } from "./markdown";
 import { MentionPeopleProvider } from "./mentions";
 
@@ -95,5 +97,40 @@ function DisplayTextBlocks(props: {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * Display text clamped to `lines` lines, such as an ask's text in an Inbox
+ * row. Only the prose clamps: each bare URL alone in a paragraph shows after
+ * it, in order and in full, as its object card. Inline links stay in the
+ * prose.
+ */
+export function ClampedDisplayText(props: {
+  className?: string;
+  /** What the clamp toggle expands, for its accessible name. */
+  label: string;
+  lines: number;
+  text: string;
+}) {
+  const { prose, urls } = useMemo(
+    () => splitStandaloneUrls(props.text),
+    [props.text],
+  );
+  return (
+    <>
+      {prose ? (
+        <ClampedPreview
+          className={props.className}
+          label={props.label}
+          lines={props.lines}
+        >
+          <DisplayText text={prose} />
+        </ClampedPreview>
+      ) : null}
+      {urls.map((url, index) => (
+        <DisplayText key={`${index}:${url}`} text={url} />
+      ))}
+    </>
   );
 }

@@ -12,7 +12,6 @@ import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
-import { ClampedPreview } from "../components/ClampedPreview";
 import { Button, buttonVariants } from "../components/ui/button";
 import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
 import {
@@ -50,7 +49,7 @@ import type { PinnedRowDrag } from "../conversations/PinnedConversationOrder";
 import { sidebarThreads } from "../conversations/sidebarThreads";
 import { useConversationRowActions } from "../conversations/useConversationRowActions";
 import { usePinConversation } from "../conversations/usePinConversation";
-import { DisplayText } from "../display-text/DisplayText";
+import { ClampedDisplayText } from "../display-text/DisplayText";
 import { displayPlainText } from "../display-text/plainText";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
@@ -164,9 +163,12 @@ function RowItem(props: {
       </div>
       <ReviewItemObjects conversationId={item.addedByConversationId}>
         {showBody ? (
-          <ClampedPreview className="leading-6" label={item.title} lines={4}>
-            <DisplayText text={item.body} />
-          </ClampedPreview>
+          <ClampedDisplayText
+            className="leading-6"
+            label={item.title}
+            lines={4}
+            text={item.body}
+          />
         ) : null}
         {item.subject ? (
           <ReviewItemSubjectPreview

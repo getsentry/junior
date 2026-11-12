@@ -36,6 +36,8 @@ export type PinnedRowDrag = {
 
 type PinnedOrder = {
   disabled: boolean;
+  /** The pins, in order. Other rows in the list do not drag. */
+  ids: readonly string[];
   move(conversationId: string, toIndex: number): void;
 };
 
@@ -78,7 +80,7 @@ export function PinnedConversationOrder(props: {
     [conversations, ids, onError, reorder],
   );
   const disabled = !reorder || ids.length < 2;
-  const order = useMemo(() => ({ disabled, move }), [disabled, move]);
+  const order = useMemo(() => ({ disabled, ids, move }), [disabled, ids, move]);
   const sensors = useSensors(
     // A short move before the drag starts keeps a click a click.
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
@@ -122,13 +124,15 @@ export function PinnedConversationOrder(props: {
 /**
  * Make one pinned row draggable inside `PinnedConversationOrder`. Alt+ArrowUp
  * and Alt+ArrowDown move the row one place without a pointer. Returns nothing
- * when the order is disabled, so the row renders as a plain row.
+ * when the order is disabled or the row is not a pin, so it renders as a
+ * plain row that is neither dragged nor dropped on.
  */
 export function usePinnedRowDrag(
   conversationId: string,
 ): PinnedRowDrag | undefined {
   const order = useContext(PinnedOrderContext);
-  const disabled = !order || order.disabled;
+  const disabled =
+    !order || order.disabled || !order.ids.includes(conversationId);
   const sortable = useSortable({ disabled, id: conversationId });
   const { index } = sortable;
   if (disabled) return undefined;

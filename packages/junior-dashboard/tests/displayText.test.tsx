@@ -7,7 +7,10 @@ import {
   DisplayText,
   KnownObjectsProvider,
 } from "../src/client/display-text/DisplayText";
-import { textHasStandaloneUrl } from "../src/client/display-text/knownObjects";
+import {
+  splitStandaloneUrls,
+  textHasStandaloneUrl,
+} from "../src/client/display-text/knownObjects";
 import { displayPlainText } from "../src/client/display-text/plainText";
 
 // Links can ask the API for cards, so display text needs a query client.
@@ -238,5 +241,22 @@ describe("display text object links", () => {
     expect(textHasStandaloneUrl("```\n" + PR + "\n```", PR)).toBe(false);
     expect(textHasStandaloneUrl(`Ready.\n\n    ${PR}`, PR)).toBe(false);
     expect(textHasStandaloneUrl(`Ready.\n\n\t${PR}`, PR)).toBe(false);
+  });
+
+  it("splits the bare URLs that show as cards from the prose", () => {
+    const ISSUE = "https://github.com/getsentry/junior/issues/7";
+    expect(
+      splitStandaloneUrls(`Ready.\n\n${PR}\n\nMore: ${ISSUE}\n\n<${ISSUE}>`),
+    ).toEqual({ prose: `Ready.\n\nMore: ${ISSUE}`, urls: [PR, ISSUE] });
+    const fenced = "```\n" + PR + "\n\nstill code\n```";
+    expect(splitStandaloneUrls(`Run:\n\n${fenced}\n\n${PR}`)).toEqual({
+      prose: `Run:\n\n${fenced}`,
+      urls: [PR],
+    });
+    expect(splitStandaloneUrls(`Ready.\n\n    ${PR}`)).toEqual({
+      prose: `Ready.\n\n    ${PR}`,
+      urls: [],
+    });
+    expect(splitStandaloneUrls(PR)).toEqual({ prose: "", urls: [PR] });
   });
 });
