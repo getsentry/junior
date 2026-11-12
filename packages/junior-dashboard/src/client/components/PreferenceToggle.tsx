@@ -13,7 +13,7 @@ import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 // Base UI marks the checked radio item with data-checked, not data-pressed.
 const menuRadioItemClass = cn(
   toggleVariants(),
-  "outline-none data-checked:border-dashboard-border-interactive data-checked:bg-dashboard-surface-active data-checked:text-dashboard-text",
+  "data-checked:border-dashboard-border-interactive data-checked:bg-dashboard-surface-active data-checked:text-dashboard-text",
 );
 
 /** One icon option of a `PreferenceToggle`. */

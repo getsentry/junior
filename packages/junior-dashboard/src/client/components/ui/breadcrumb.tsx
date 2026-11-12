@@ -58,21 +58,6 @@ function BreadcrumbLink({
   });
 }
 
-/** Mark the current page at the end of the trail. */
-function BreadcrumbPage({ className, ...props }: ComponentProps<"span">) {
-  return (
-    <span
-      data-slot="breadcrumb-page"
-      aria-current="page"
-      className={cn(
-        "inline-flex min-w-0 items-center gap-1.5 text-foreground",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
 /** Divide two pages of the trail. */
 function BreadcrumbSeparator({ className, ...props }: ComponentProps<"li">) {
   return (
@@ -96,6 +81,5 @@ export {
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
-  BreadcrumbPage,
   BreadcrumbSeparator,
 };

@@ -33,7 +33,7 @@ export function AutomationActions({
 }: {
   automation: AutomationSummary;
   editPath: string;
-  /** Use "default" when a notice on the page owns the main action. */
+  /** Use "outline" when a notice on the page owns the main action. */
   editVariant: "default" | "outline";
   onDelete(source: HTMLButtonElement): void;
 }) {

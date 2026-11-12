@@ -138,7 +138,10 @@ export function ConversationHeader(props: {
         </span>
       </>
     ) : (
-      <h2 className="m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight">
+      <h2
+        aria-current="page"
+        className="m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight"
+      >
         {props.title}
       </h2>
     );

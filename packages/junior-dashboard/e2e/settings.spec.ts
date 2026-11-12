@@ -238,6 +238,15 @@ test("follows the system theme until the user picks one", async ({
     page.getByRole("menuitemradio", { name: "System theme" }),
   ).toHaveAttribute("aria-checked", "true");
   await screenshot(page, "settings-theme-light", { view: "desktop" });
+  // Arrow keys reach the theme choices inside the menu.
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    page.getByRole("menuitemradio", { name: "System theme" }),
+  ).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    page.getByRole("menuitemradio", { name: "Light theme" }),
+  ).toBeFocused();
 
   await page.getByRole("menuitemradio", { name: "Dark theme" }).click();
   await expect(root).toHaveAttribute("data-theme", "dark");

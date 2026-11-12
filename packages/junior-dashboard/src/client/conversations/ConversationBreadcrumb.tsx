@@ -7,7 +7,6 @@ import {
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
-  BreadcrumbPage,
   BreadcrumbSeparator,
 } from "../components/ui/breadcrumb";
 import { conversationPath } from "./conversationRoutes";
@@ -15,9 +14,10 @@ import { FeedThreads } from "./feedThreads";
 
 /**
  * Show the parents of a child Conversation as links, root first, then
- * `current`, the page title. The mobile header already shows the title, so
- * it may be left out. The agent tree labels a Thread with its invocation
- * title, so a Thread in the feed uses its own title, like the sidebar.
+ * `current`, the page title. The title carries its own `aria-current`. The
+ * mobile header already shows the title, so it may be left out. The agent
+ * tree labels a Thread with its invocation title, so a Thread in the feed
+ * uses its own title, like the sidebar.
  */
 export function ConversationBreadcrumb(props: {
   current?: ReactNode;
@@ -52,8 +52,8 @@ export function ConversationBreadcrumb(props: {
         {props.current ? (
           <>
             <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage>{props.current}</BreadcrumbPage>
+            <BreadcrumbItem className="text-foreground">
+              {props.current}
             </BreadcrumbItem>
           </>
         ) : null}
