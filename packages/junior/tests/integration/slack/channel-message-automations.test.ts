@@ -365,7 +365,15 @@ describe("Slack channel-message automations", () => {
       getCapturedSlackApiCalls("conversations.replies").map(
         (call) => call.params,
       ),
-    ).toEqual([expect.objectContaining({ channel: "C123", ts: rootTs })]);
+    ).toEqual([
+      expect.objectContaining({
+        channel: "C123",
+        inclusive: "true",
+        latest: rootTs,
+        oldest: rootTs,
+        ts: rootTs,
+      }),
+    ]);
     const attachmentStorage = createMemoryAttachmentStorage();
     queueSlackPrivateFileDownload({ body: "root-chart" });
     queueSlackPrivateFileDownload({ body: "forwarded" });

@@ -60,10 +60,11 @@ async function readDispatchTriggerFiles(
   const channelId = parseSlackChannelId(dispatch.destination.channelId);
   if (!messageTs || !threadTs || !channelId) return [];
   try {
+    // Read only the post, so a post late in a long thread is found.
     const replies = await listThreadReplies({
       channelId,
       threadTs,
-      targetMessageTs: [messageTs],
+      range: { oldest: messageTs, latest: messageTs },
     });
     const message = replies.find((reply) => reply.ts === messageTs);
     if (!message) {
