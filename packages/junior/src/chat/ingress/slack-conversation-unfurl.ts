@@ -17,7 +17,6 @@ import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
 import {
   alreadyContinuesInSlackMessage,
   BUSY,
-  canContinueInSlack,
   continueConversationInSlack,
   isMovableToSlack,
 } from "@/chat/slack/continue-in-slack";
@@ -321,11 +320,13 @@ async function continueHere(
           )
         ).get(click.conversationId)
       : undefined;
-    if (!conversation || !access?.isParticipant) {
-      await tell("Only people in this conversation can move it here.");
+    // Anyone who can read a public Conversation may move it, as anyone may
+    // post in it. Private ones never get a button; refuse a stale one.
+    if (!conversation || access?.visibility !== "public") {
+      await tell("Only public conversations can move here.");
       return;
     }
-    if (!canContinueInSlack(conversation, access)) {
+    if (!isMovableToSlack(conversation)) {
       await tell(
         conversation.location
           ? await alreadyContinuesInSlackMessage(conversation)
@@ -367,7 +368,7 @@ async function continueHere(
 
 /**
  * Move a dashboard Conversation into the thread of the message that shared
- * its link, as the participant who clicked "Continue here". While a Run holds
+ * its link, as the person who clicked "Continue here". While a Run holds
  * the Conversation, the move waits for that Run to end.
  */
 export async function handleSlackContinueHereClick(args: {
