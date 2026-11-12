@@ -262,3 +262,43 @@ export async function mockReviewItems(
   });
   return actions;
 }
+
+/**
+ * Serve the viewer's code changes from their person Code overview, for the
+ * Pull requests view. Each change is in getsentry/payments and opened 30
+ * days before the report.
+ */
+export async function mockViewerCodeChanges(
+  page: Page,
+  changes: readonly {
+    idleDays: number;
+    number: number;
+    state?: "closed" | "merged" | "open";
+    title: string;
+  }[],
+) {
+  await page.route(/\/api\/people\/[^/]+\/code$/, async (route) => {
+    const response = await route.fetch();
+    const report = await response.json();
+    const nowMs = Date.parse(report.generatedAt);
+    const daysAgo = (days: number) =>
+      new Date(nowMs - days * 86_400_000).toISOString();
+    await route.fulfill({
+      response,
+      json: {
+        ...report,
+        changes: changes.map((change) => ({
+          id: `00000000-0000-4000-9000-${String(change.number).padStart(12, "0")}`,
+          lastActivityAt: daysAgo(change.idleDays),
+          number: change.number,
+          openedAt: daysAgo(30),
+          provider: "github",
+          repository: "getsentry/payments",
+          state: change.state ?? "open",
+          title: change.title,
+          url: `https://github.com/getsentry/payments/pull/${change.number}`,
+        })),
+      },
+    });
+  });
+}

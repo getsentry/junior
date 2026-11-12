@@ -31,6 +31,7 @@ import {
   type InboxFeedPages,
 } from "./inboxData";
 import { InboxDoneView } from "./InboxDoneView";
+import { PullRequestChange, usePullRequestSections } from "./InboxPullRequests";
 import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
 import {
   automationSections,
@@ -169,6 +170,10 @@ export function InboxList(props: {
   };
 
   const todoIds = new Set(data.todoRows.map((row) => row.conversationId));
+  const pullRequests = usePullRequestSections(
+    viewRows(data.awake, "prs"),
+    view === "prs",
+  );
   const streamRows =
     view === "inbox"
       ? data.conversationRows.filter((row) => !todoIds.has(row.conversationId))
@@ -616,8 +621,41 @@ export function InboxList(props: {
           {data.snoozedRows.map((row) => bundleRow(row, { snoozed: true }))}
         </ul>
       );
+  } else if (view === "prs") {
+    body = pullRequests.loading ? (
+      <RowsLoading />
+    ) : pullRequests.sections.length === 0 ? (
+      <EmptyState label="Nothing left here" />
+    ) : (
+      pullRequests.sections.map((section) => (
+        <InboxSection
+          action={sweepControl(
+            [...section.changes.flatMap((row) => row.items), ...section.items],
+            section.label,
+          )}
+          collapsed={collapsed.has(section.key)}
+          count={section.changes.length + section.items.length}
+          key={section.key}
+          label={section.label}
+          onToggle={() => toggleSection(section.key)}
+        >
+          {section.changes.map((row) => (
+            <PullRequestChange
+              key={row.change.id}
+              nowMs={pullRequests.nowMs}
+              row={row}
+            >
+              {row.items.length > 0
+                ? row.items.map((item) => bundleRow(item, { itemRow: true }))
+                : null}
+            </PullRequestChange>
+          ))}
+          {section.items.map((row) => bundleRow(row, { itemRow: true }))}
+        </InboxSection>
+      ))
+    );
   } else {
-    const sections = viewSections(view, viewRows(data.awake, view), titleOf);
+    const sections = viewSections(viewRows(data.awake, view), titleOf);
     body =
       sections.length === 0 ? (
         <EmptyState label="Nothing left here" />

@@ -174,19 +174,6 @@ export function inboxItemKind(item: ReviewItemPayload): string {
   return state === "Other" ? "Approval" : state;
 }
 
-/** Group rows by a fixed list of labels, in that order. */
-function byLabels(
-  rows: readonly InboxBundle[],
-  labels: readonly string[],
-  labelOf: (row: InboxBundle) => string,
-): InboxSection[] {
-  return labels.map((label) => ({
-    key: label,
-    label,
-    rows: rows.filter((row) => labelOf(row) === label),
-  }));
-}
-
 /**
  * Group rows by Conversation. The Conversation that waited longest comes
  * first, so groups do not move while the reader works.
@@ -215,21 +202,16 @@ function byConversation(
 }
 
 /**
- * Group the rows of a bundle of items the way it reads best: pull requests
- * by state, decisions by Conversation. Empty groups drop out.
+ * Group the rows of the Decisions bundle by Conversation. Empty groups drop
+ * out. Pull requests group by code change instead (`pullRequestSections`).
  */
 export function viewSections(
-  view: "decisions" | "prs",
   rows: readonly InboxBundle[],
   titleOf: (conversationId: string) => string | undefined,
 ): InboxSection[] {
-  const sections =
-    view === "prs"
-      ? byLabels(rows, [...PULL_REQUEST_STATES, "Other"], (row) =>
-          pullRequestState(row.newest),
-        )
-      : byConversation(rows, titleOf);
-  return sections.filter((section) => section.rows.length > 0);
+  return byConversation(rows, titleOf).filter(
+    (section) => section.rows.length > 0,
+  );
 }
 
 /** Why an Automation needs attention, as the Automations bundle groups it. */

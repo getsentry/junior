@@ -8,6 +8,7 @@ import {
   license,
   migration,
   mockReviewItems,
+  mockViewerCodeChanges,
   prMerge,
   prReady,
   prReview,
@@ -90,15 +91,16 @@ test("each entry lists its own rows under its name", async ({
   ]);
   const sections = page.locator("section[aria-label] section[aria-label]");
 
-  // Pull requests group by state.
+  // Pull requests list the viewer's open changes, with their asks.
   await nav.getByRole("link", { name: /^Pull requests/ }).click();
   await expect(page).toHaveURL(/\/\?view=prs$/);
   await expect(
     page.getByRole("heading", { level: 1, name: "Pull requests" }),
   ).toBeVisible();
   await expect(sections).toHaveText([
-    /^Review requested/,
-    /^Ready to merge/,
+    /^Waiting on you/,
+    /^Idle/,
+    /^Open/,
     /^Other/,
   ]);
   await expect(
@@ -351,6 +353,8 @@ test("the asks and Done load their next pages at the end of the list", async ({
     open: [prReview, prMerge, prReady],
     pageSize: 1,
   });
+  // No code changes, so the asks are the whole list and its end shows.
+  await mockViewerCodeChanges(page, []);
   const cursors: string[] = [];
   page.on("request", (request) => {
     const cursor = new URL(request.url()).searchParams.get("cursor");
@@ -361,7 +365,7 @@ test("the asks and Done load their next pages at the end of the list", async ({
   // Each PR is on its own page; the list loads the next as its end shows.
   await expect(
     page.locator("section[aria-label] section[aria-label]"),
-  ).toHaveText([/^Review requested/, /^Ready to merge/, /^Other/]);
+  ).toHaveText([/^Waiting on you/, /^Other/]);
   await expect(page.getByText("Loading more…")).toHaveCount(0);
 
   await page
@@ -375,6 +379,57 @@ test("the asks and Done load their next pages at the end of the list", async ({
     page.getByRole("button", { name: /initech license entry/ }),
   ).toBeVisible();
   expect(cursors).toEqual(expect.arrayContaining(["1", "2"]));
+});
+
+test("Pull requests lists your open changes, the one waiting on you first", async ({
+  dashboard,
+  page,
+}) => {
+  const actions = await mockReviewItems(page, { open: [prReview] });
+  await mockViewerCodeChanges(page, [
+    { idleDays: 0, number: 7, title: "Tune the retry backoff" },
+    { idleDays: 10, number: 8, title: "Drop the legacy webhook" },
+    // prReview asks the viewer to review this one.
+    { idleDays: 1, number: 91, title: "Pin the release train" },
+    {
+      idleDays: 0,
+      number: 9,
+      state: "merged",
+      title: "Rename the payments queue",
+    },
+  ]);
+  await page.goto(`${dashboard.baseURL}/?view=prs`);
+  await expect(
+    page.locator("section[aria-label] section[aria-label]"),
+  ).toHaveText([/^Waiting on you/, /^Idle/, /^Open/]);
+  const waiting = page
+    .getByRole("region", { name: "Waiting on you" })
+    .getByRole("listitem", { name: "Pin the release train" });
+  await expect(
+    waiting.getByRole("link", { name: "Pin the release train" }),
+  ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/91");
+  // The ask stays with its pull request.
+  await expect(
+    waiting.getByRole("link", { name: new RegExp(prReview.title) }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "Idle" })
+      .getByRole("link", { name: "Drop the legacy webhook" }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "Open" })
+      .getByRole("link", { name: "Tune the retry backoff" }),
+  ).toBeVisible();
+  await expect(page.getByText("Rename the payments queue")).toHaveCount(0);
+
+  // The ask keeps its actions: Done closes it.
+  await waiting.getByRole("button", { name: /^Show asks in / }).click();
+  await waiting.getByRole("button", { name: "Done", exact: true }).click();
+  await expect
+    .poll(() => actions.map((action) => action.id))
+    .toEqual([prReview.id]);
 });
 
 test("To do lists its rows while the count is pending or failed", async ({
@@ -402,6 +457,8 @@ test("a failed next page waits for Try again", async ({ dashboard, page }) => {
     open: [prReview, prMerge, prReady],
     pageSize: 1,
   });
+  // No code changes, so the asks are the whole list and its end shows.
+  await mockViewerCodeChanges(page, []);
   let attempts = 0;
   await page.route(/\/api\/review-items\?.*cursor=1(?:&|$)/, (route) => {
     attempts += 1;
@@ -424,7 +481,7 @@ test("a failed next page waits for Try again", async ({ dashboard, page }) => {
   // The retried page loads, and the pages after it load on their own.
   await expect(
     page.locator("section[aria-label] section[aria-label]"),
-  ).toHaveText([/^Review requested/, /^Ready to merge/, /^Other/]);
+  ).toHaveText([/^Waiting on you/, /^Other/]);
   await expect(retry).toHaveCount(0);
 });
 
