@@ -3,11 +3,13 @@ import {
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { emailDomain } from "../config";
 import {
   fileOutputFields,
   GOOGLE_FILE_TYPES,
   googleFileMimeType,
   googleFileType,
+  type GoogleFileType,
 } from "./files";
 import {
   googleApiError,
@@ -64,10 +66,14 @@ const fileListSchema = z.object({
   files: z
     .array(
       z.object({
+        driveId: z.string().optional(),
         id: z.string(),
         mimeType: z.string(),
         modifiedTime: z.string().optional(),
         name: z.string(),
+        owners: z
+          .array(z.object({ emailAddress: z.string().optional() }))
+          .optional(),
         webViewLink: z.string().optional(),
       }),
     )
@@ -76,20 +82,118 @@ const fileListSchema = z.object({
   nextPageToken: z.string().optional(),
 });
 
+type DriveFile = z.infer<typeof fileListSchema>["files"][number];
+
 /** Quote a value for a Drive search query. */
 function driveQueryString(value: string): string {
   return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
 }
 
-/**
- * Drive search terms for files that any employee could find, or that are
- * shared with the requester by name. Files shared only by link, or only with
- * other people, never match: Junior's account may hold them, but search
- * must not surface them to someone who was not given them.
- */
-function findableQuery(requester: string): string {
+/** Drive search terms for files that name the requester in a permission. */
+function namedQuery(requester: string): string {
   const email = driveQueryString(requester);
-  return `(visibility = 'domainCanFind' or visibility = 'anyoneCanFind' or ${email} in readers or ${email} in writers or ${email} in owners)`;
+  return `(${email} in readers or ${email} in writers or ${email} in owners)`;
+}
+
+/**
+ * Drive search terms for files that anyone in a domain, or anyone at all, can
+ * find. Files shared only by link never match. The terms do not say which
+ * domain, so `isShown` also checks the owner.
+ */
+const FINDABLE_QUERY =
+  "(visibility = 'domainCanFind' or visibility = 'anyoneCanFind')";
+
+/**
+ * Keep a file only when an allowed domain owns it. A file in a shared drive
+ * has no owners, so it shows only when it names the requester. A file with no
+ * owner data never shows.
+ */
+function isShown(
+  file: DriveFile,
+  namedIds: Set<string>,
+  allowedDomains: string[],
+): boolean {
+  if (file.driveId) {
+    return namedIds.has(file.id);
+  }
+  return (file.owners ?? []).some((owner) => {
+    const domain = owner.emailAddress && emailDomain(owner.emailAddress);
+    return !!domain && allowedDomains.includes(domain);
+  });
+}
+
+async function listDriveFiles(
+  ctx: Pick<GoogleToolContext, "egress">,
+  q: string,
+  pageSize: number,
+) {
+  const response = await googleApiRequest(ctx, {
+    operation: "google.drive.files.list",
+    path: "/drive/v3/files",
+    query: {
+      corpora: "allDrives",
+      fields:
+        "files(driveId,id,mimeType,modifiedTime,name,owners(emailAddress),webViewLink),incompleteSearch,nextPageToken",
+      includeItemsFromAllDrives: "true",
+      pageSize: String(pageSize),
+      q,
+      supportsAllDrives: "true",
+    },
+  });
+  // Google answers 400 to a query it rejects.
+  if (response.status === 400) {
+    return undefined;
+  }
+  if (response.status !== 200) {
+    throw googleApiError("google.drive.files.list", response);
+  }
+  return fileListSchema.parse(response.body);
+}
+
+/**
+ * Find files that the requester could find in Drive themselves: files that
+ * name them, and files that anyone in an allowed domain can find. Returns
+ * undefined when Google rejects a query.
+ */
+export async function searchFindableFiles(
+  ctx: Pick<GoogleToolContext, "allowedDomains" | "egress">,
+  input: {
+    maxResults: number;
+    query: string;
+    requester: string;
+    types: readonly GoogleFileType[];
+  },
+): Promise<{ files: DriveFile[]; truncated: boolean } | undefined> {
+  const mimeTypes = input.types
+    .map((type) => `mimeType = '${googleFileMimeType(type)}'`)
+    .join(" or ");
+  const terms = `(${mimeTypes}) and trashed = false and fullText contains ${driveQueryString(input.query)}`;
+  const [named, findable] = await Promise.all([
+    listDriveFiles(
+      ctx,
+      `${terms} and ${namedQuery(input.requester)}`,
+      input.maxResults,
+    ),
+    listDriveFiles(ctx, `${terms} and ${FINDABLE_QUERY}`, input.maxResults),
+  ]);
+  if (!named || !findable) {
+    return undefined;
+  }
+  const namedIds = new Set(named.files.map((file) => file.id));
+  const shown = [
+    ...new Map(
+      [...named.files, ...findable.files].map((file) => [file.id, file]),
+    ).values(),
+  ].filter((file) => isShown(file, namedIds, ctx.allowedDomains));
+  return {
+    files: shown.slice(0, input.maxResults),
+    truncated:
+      shown.length > input.maxResults ||
+      [named, findable].some(
+        (list) =>
+          list.nextPageToken !== undefined || list.incompleteSearch === true,
+      ),
+  };
 }
 
 /**
@@ -105,7 +209,7 @@ export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "Find Google Docs, Sheets, and Slides by words in the title or text. Finds only files that anyone in the company can find in Drive, and files shared with the requester by name. Files shared by link, or only with other people, are never found; ask the requester for their link instead. Returns file ids for readGoogleDoc, readGoogleSheet, readGoogleSlides, and listGoogleFileComments.",
+      "Find Google Docs, Sheets, and Slides by words in the title or text. Finds only company-owned files that anyone in the company can find in Drive, or that are shared with the requester by name. Shared-drive files are found only when shared with the requester by name. Files shared by link, shared only with other people or groups, or owned outside the company are never found; ask the requester for their link instead. Returns file ids for readGoogleDoc, readGoogleSheet, readGoogleSlides, and listGoogleFileComments.",
     inputSchema,
     outputSchema,
     async execute(input) {
@@ -118,25 +222,14 @@ export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
           truncated: false,
         };
       }
-      const mimeTypes = (input.types ?? GOOGLE_FILE_TYPES)
-        .map((type) => `mimeType = '${googleFileMimeType(type)}'`)
-        .join(" or ");
-      const response = await googleApiRequest(ctx, {
-        operation: "google.drive.files.list",
-        path: "/drive/v3/files",
-        query: {
-          corpora: "allDrives",
-          fields:
-            "files(id,mimeType,modifiedTime,name,webViewLink),incompleteSearch,nextPageToken",
-          includeItemsFromAllDrives: "true",
-          pageSize: String(input.max_results),
-          q: `(${mimeTypes}) and trashed = false and fullText contains ${driveQueryString(input.query)} and ${findableQuery(requester)}`,
-          supportsAllDrives: "true",
-        },
+      const found = await searchFindableFiles(ctx, {
+        maxResults: input.max_results,
+        query: input.query,
+        requester,
+        types: input.types ?? GOOGLE_FILE_TYPES,
       });
-      // Google answers 400 to a query it rejects. Never retry without the
-      // requester's terms.
-      if (response.status === 400) {
+      // Never retry a rejected query without the requester's terms.
+      if (!found) {
         return {
           target: "searchGoogleFiles" as const,
           files: [],
@@ -144,15 +237,9 @@ export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
           truncated: false,
         };
       }
-      if (response.status !== 200) {
-        throw googleApiError("google.drive.files.list", response);
-      }
-      const { files, incompleteSearch, nextPageToken } = fileListSchema.parse(
-        response.body,
-      );
       return {
         target: "searchGoogleFiles" as const,
-        files: files.flatMap((file) => {
+        files: found.files.flatMap((file) => {
           const type = googleFileType(file.mimeType);
           return type
             ? [
@@ -165,7 +252,7 @@ export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
               ]
             : [];
         }),
-        truncated: nextPageToken !== undefined || incompleteSearch === true,
+        truncated: found.truncated,
       };
     },
   });

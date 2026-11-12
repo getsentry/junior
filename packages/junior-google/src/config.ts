@@ -9,6 +9,11 @@ export const GOOGLE_CLIENT_ID_ENV = "GOOGLE_CLIENT_ID";
 export const GOOGLE_CLIENT_SECRET_ENV = "GOOGLE_CLIENT_SECRET";
 export const GOOGLE_ACCOUNT_EMAIL_ENV = "GOOGLE_WORKSPACE_ACCOUNT_EMAIL";
 export const GOOGLE_ALLOWED_DOMAINS_ENV = "GOOGLE_WORKSPACE_ALLOWED_DOMAINS";
+/**
+ * Set to `true` to register `searchGoogleFiles`. Leave it unset until
+ * `junior google verify-search` passes against live fixture files.
+ */
+export const GOOGLE_DRIVE_SEARCH_ENV = "GOOGLE_DRIVE_SEARCH_ENABLED";
 
 /**
  * API scopes the tools need. A connected grant must have all of them. Request
@@ -41,6 +46,8 @@ export interface GoogleConfig {
   allowedDomains: string[];
   clientId: string;
   clientSecret: string;
+  /** Whether `searchGoogleFiles` is registered. */
+  driveSearch: boolean;
 }
 
 function readEnv(name: string): string | undefined {
@@ -85,5 +92,6 @@ export function readGoogleConfig(): GoogleConfig | undefined {
     allowedDomains: allowedDomains.length ? allowedDomains : [accountDomain],
     clientId,
     clientSecret,
+    driveSearch: readEnv(GOOGLE_DRIVE_SEARCH_ENV) === "true",
   };
 }

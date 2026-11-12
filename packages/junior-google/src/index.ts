@@ -15,6 +15,7 @@ import { createGoogleCliCommand } from "./cli";
 import {
   GOOGLE_ACCOUNT_EMAIL_ENV,
   GOOGLE_ALLOWED_DOMAINS_ENV,
+  GOOGLE_DRIVE_SEARCH_ENV,
   GOOGLE_CLIENT_ID_ENV,
   GOOGLE_CLIENT_SECRET_ENV,
   readGoogleConfig,
@@ -53,6 +54,7 @@ export function googlePlugin(): PluginRegistration {
         [GOOGLE_CLIENT_SECRET_ENV]: {},
         [GOOGLE_ACCOUNT_EMAIL_ENV]: {},
         [GOOGLE_ALLOWED_DOMAINS_ENV]: {},
+        [GOOGLE_DRIVE_SEARCH_ENV]: {},
       },
     },
     cli: {
@@ -80,7 +82,7 @@ export function googlePlugin(): PluginRegistration {
           sandbox: ctx.sandbox,
           users: ctx.users,
         };
-        return {
+        const tools: Record<string, PluginToolDefinition> = {
           cancelCalendarEvent: createCancelCalendarEventTool(toolContext),
           createCalendarEvent: createCreateCalendarEventTool(toolContext),
           findMeetingTimes: createFindMeetingTimesTool(toolContext),
@@ -90,9 +92,13 @@ export function googlePlugin(): PluginRegistration {
           readGoogleSheet: createReadGoogleSheetTool(toolContext),
           readGoogleSlides: createReadGoogleSlidesTool(toolContext),
           readMeetingTranscript: createReadMeetingTranscriptTool(toolContext),
-          searchGoogleFiles: createSearchGoogleFilesTool(toolContext),
           updateCalendarEvent: createUpdateCalendarEventTool(toolContext),
         };
+        // Off until `junior google verify-search` passes on live fixtures.
+        if (config.driveSearch) {
+          tools.searchGoogleFiles = createSearchGoogleFilesTool(toolContext);
+        }
+        return tools;
       },
     },
   });

@@ -28,7 +28,28 @@ calendars and files with that account only when that is acceptable. Given a
 link, Junior opens any Doc, Sheet, or Slides file shared with its account.
 Search finds only files that any employee could already find in Drive, and
 files shared with the requester by name. Files shared by link, or only with
-other people, never show up in search.
+other people or groups, never show up in search. Search also drops every file
+that no account in `GOOGLE_WORKSPACE_ALLOWED_DOMAINS` owns. Shared-drive files
+have no owner, so search shows them only when they are shared with the
+requester by name.
+
+## Turn on search
+
+`searchGoogleFiles` is off until `GOOGLE_DRIVE_SEARCH_ENABLED=true`. Set it
+only after the live check passes:
+
+1. As a company account that is not Junior's account or the requester's,
+   create one Doc for each case in `SEARCH_FIXTURE_CASES`
+   (`src/verify-search.ts`). Share each Doc as its `setup` says. Put the same
+   marker word, such as `jrsearchcheck7`, in every title, and nowhere else.
+2. Write the file ids to a JSON file:
+   `{"marker": "jrsearchcheck7", "files": {"private": "<id>", ...}}`.
+3. Wait a few minutes for Drive to index the Docs. Then run
+   `junior google verify-search --fixtures <file> --requester <email>`.
+
+The check fails when search shows a file that it must hide, when Google
+accepts a query with an unsupported term, or when a fixture is set up wrong.
+Run it again after Google changes Drive search.
 
 Google Meet shares transcripts and Gemini notes with every invitee, Junior's
 account too. The file tools refuse files whose titles end in "- Transcript" or
