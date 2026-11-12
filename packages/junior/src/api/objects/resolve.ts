@@ -38,6 +38,8 @@ function coreLinkTypes(): ObjectLinkType[] {
       resolve: resolveConversationLink,
     },
     {
+      // Person cards read the identity cache. A link or unlink clears it.
+      cacheCards: false,
       filters: [people, { scheme: "mailto" }],
       objectType: "person",
       owner: "junior",
@@ -115,11 +117,15 @@ export async function resolveObjectLinks(
       if (!parsed || !linkType) return [];
       // Each viewer has their own entry: a card holds only what they see.
       const key = `${viewer.id}:${createHash("sha256").update(url).digest("hex")}`;
+      const resolve = () => resolveWithLinkType(linkType, viewer, parsed);
       try {
-        const object = await cache.getOrLoad(key, async () => ({
-          value: await resolveWithLinkType(linkType, viewer, parsed),
-          ttlMs: OBJECT_LINK_TTL_MS,
-        }));
+        const object =
+          linkType.cacheCards === false
+            ? await resolve()
+            : await cache.getOrLoad(key, async () => ({
+                value: await resolve(),
+                ttlMs: OBJECT_LINK_TTL_MS,
+              }));
         return object ? [{ object, url }] : [];
       } catch (error) {
         // One failed provider read must not hide the other cards.

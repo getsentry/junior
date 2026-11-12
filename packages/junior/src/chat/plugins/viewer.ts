@@ -11,11 +11,27 @@ import { getDb } from "@/chat/db";
 import { findActorIdentityId } from "@/chat/identities/actor";
 import { readUserAvatarUrls } from "@/chat/identities/avatar";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
+import {
+  clearCachedEmail,
+  clearCachedUser,
+  readCachedUserByEmail,
+} from "@/chat/identities/user-cache";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import type { JuniorDatabase } from "@/db/db";
 
-type IdentityRow = typeof juniorIdentities.$inferSelect;
-type UserRow = typeof juniorUsers.$inferSelect;
+type IdentityRow = Pick<
+  typeof juniorIdentities.$inferSelect,
+  | "displayName"
+  | "handle"
+  | "id"
+  | "provider"
+  | "providerSubjectId"
+  | "providerTenantId"
+>;
+type UserRow = Pick<
+  typeof juniorUsers.$inferSelect,
+  "displayName" | "id" | "isAdmin" | "primaryEmail"
+>;
 
 function identityFromRow(row: IdentityRow): Identity {
   return identitySchema.parse({
@@ -61,32 +77,13 @@ function userFromRows(userRow: UserRow, identityRows: IdentityRow[]): User {
   });
 }
 
+// Every signed-in request reads its viewer, so this read uses the cache.
 async function readUserByNormalizedEmail(
   db: JuniorDatabase,
   normalizedEmail: string,
 ): Promise<User | undefined> {
-  const rows = await db
-    .select({ user: juniorUsers, identity: juniorIdentities })
-    .from(juniorUsers)
-    .leftJoin(
-      juniorIdentities,
-      and(
-        eq(juniorIdentities.userId, juniorUsers.id),
-        eq(juniorIdentities.kind, "user"),
-      ),
-    )
-    .where(eq(juniorUsers.primaryEmailNormalized, normalizedEmail))
-    .orderBy(
-      asc(juniorIdentities.provider),
-      asc(juniorIdentities.providerTenantId),
-      asc(juniorIdentities.providerSubjectId),
-    );
-  const userRow = rows[0]?.user;
-  if (!userRow) return undefined;
-  return userFromRows(
-    userRow,
-    rows.flatMap((row) => (row.identity ? [row.identity] : [])),
-  );
+  const cached = await readCachedUserByEmail(db, normalizedEmail);
+  return cached ? userFromRows(cached.user, cached.identities) : undefined;
 }
 
 /** Resolve or create the canonical user for one verified viewer email. */
@@ -97,7 +94,7 @@ export async function resolveViewerUserFromSql(
   const normalizedEmail = normalizeIdentityEmail(email);
   if (!normalizedEmail) return undefined;
   // Every authenticated request resolves its viewer. Read first, so a known
-  // user costs one read instead of an insert attempt and two reads.
+  // user costs a cache read instead of an insert attempt and two reads.
   const existing = await readUserByNormalizedEmail(db, normalizedEmail);
   if (existing) return existing;
   const now = new Date();
@@ -113,6 +110,7 @@ export async function resolveViewerUserFromSql(
     })
     .onConflictDoNothing({ target: juniorUsers.primaryEmailNormalized })
     .returning();
+  await clearCachedEmail(normalizedEmail);
   const userRow =
     rows[0] ??
     (
@@ -160,6 +158,7 @@ export async function updateViewerDisplayNameFromSql(
     .set({ displayName, updatedAt: new Date() })
     .where(eq(juniorUsers.id, userId))
     .returning();
+  await clearCachedUser(userId);
   const userRow = rows[0];
   return userRow ? await readUserById(db, userRow) : undefined;
 }
@@ -199,6 +198,7 @@ export async function setUserAdminFromSql(
     .set({ isAdmin, updatedAt: new Date() })
     .where(eq(juniorUsers.id, user.id))
     .returning();
+  await clearCachedUser(user.id);
   const userRow = rows[0];
   return userRow ? await readUserById(db, userRow) : undefined;
 }
