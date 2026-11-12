@@ -2,7 +2,16 @@ import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
+import {
+  createConversationWorkQueueTestAdapter,
+  createSlackAdapterFixture,
+} from "../../../fixtures/conversation-work";
+import { queueSlackPrivateFileDownload } from "../../../msw/handlers/slack-api";
+import { createJuniorRuntimeServices } from "@/chat/app/services";
+import { persistConversationMessages } from "@/chat/conversations/messages";
+import { collectAttachments } from "@/chat/providers/slack/input";
+import { toConversationMessage } from "@/chat/runtime/conversation-message";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
@@ -329,6 +338,118 @@ describe("conversation attachment API", () => {
       ).status,
     ).toBe(400);
     expect(storage.objects.size).toBe(0);
+  });
+
+  it("shows each Slack file on the message that carried it", async () => {
+    const conversationId = "slack:C-public:slack-files";
+    await getConversationStore().recordActivity({
+      conversationId,
+      destination: {
+        channelId: "CPUBLIC",
+        platform: "slack",
+        teamId: "TPUBLIC",
+      },
+      nowMs: 1,
+      source: "slack",
+      title: "Slack files conversation",
+      visibility: "public",
+    });
+    const storage = createMemoryAttachmentStorage();
+    const slackFile = (id: string, name: string, mimetype: string) => ({
+      id,
+      name,
+      mimetype,
+      url_private: `https://files.slack.com/files-pri/TPUBLIC-${id}/${name}`,
+    });
+    const adapter = createSlackAdapterFixture();
+    const slackMessage = (ts: string, fields: Record<string, unknown>) =>
+      adapter.parseMessage({
+        type: "message",
+        channel: "CPUBLIC",
+        team: "TPUBLIC",
+        text: `message ${ts}`,
+        ts,
+        user: "U-person",
+        ...fields,
+      });
+    // One message uploads two files. The next forwards a message with a
+    // file, which Slack puts under `attachments[].files`.
+    const messages = [
+      slackMessage("1700000001.000001", {
+        files: [
+          slackFile("F0CHARTPNG", "chart.png", "image/png"),
+          slackFile("F0NOTESTXT", "notes.txt", "text/plain"),
+        ],
+      }),
+      slackMessage("1700000002.000001", {
+        attachments: [
+          {
+            fallback: "forwarded",
+            files: [slackFile("F0FWDTXT", "forwarded.txt", "text/plain")],
+          },
+        ],
+      }),
+    ];
+    const { resolveUserAttachments } = createJuniorRuntimeServices({
+      visionContext: { attachmentStorage: storage },
+    }).visionContext;
+    const conversation = coerceThreadConversationState({});
+    for (const body of ["chart", "notes", "forwarded"]) {
+      queueSlackPrivateFileDownload({ body });
+    }
+    for (const message of messages) {
+      await resolveUserAttachments(collectAttachments(message), {
+        conversationId,
+      });
+      conversation.messages.push(
+        toConversationMessage({ entry: message, text: message.text }),
+      );
+    }
+    // A message saved before Junior read Slack file ids listed `files`, the
+    // id that the file URL gave, and its file was stored under that id.
+    await storeAttachment({
+      conversationId,
+      db: getSqlExecutor(),
+      file: {
+        bytes: 3,
+        data: Buffer.from("old"),
+        filename: "old.png",
+        mimeType: "image/png",
+        path: "old.png",
+      },
+      source: { id: "files", provider: "slack" },
+      storage,
+    });
+    conversation.messages.push({
+      id: "old-message",
+      role: "user",
+      text: "old upload",
+      createdAtMs: 3,
+      author: { userId: "U-person" },
+      meta: { slackFileIds: ["files"] },
+    });
+    await persistConversationMessages({ conversation, conversationId });
+
+    const page = await (
+      await apiWithViewer(undefined, storage).request(
+        `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+      )
+    ).json();
+    const filenames = (messageId: string) =>
+      page.events
+        .find(
+          (event: { data: { messageId?: string } }) =>
+            event.data.messageId === messageId,
+        )
+        ?.data.attachments?.map(
+          (attachment: { filename: string }) => attachment.filename,
+        );
+    expect(filenames(conversation.messages[0]!.id)).toEqual([
+      "chart.png",
+      "notes.txt",
+    ]);
+    expect(filenames(conversation.messages[1]!.id)).toEqual(["forwarded.txt"]);
+    expect(filenames("old-message")).toBeUndefined();
   });
 
   it("hides purge-marked attachments", async () => {

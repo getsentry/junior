@@ -12,6 +12,7 @@ import * as z from "zod";
 import { automationSkillNameSchema } from "@/chat/automations/task";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
+import { slackMessageFileSchema } from "@/chat/slack/message-files";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
@@ -71,6 +72,7 @@ const dispatchRecordSchema = z
     source: sourceSchema,
     outcomes: z.array(taskOutcomeSchema).max(5).optional(),
     skill: automationSkillNameSchema.optional(),
+    slackFiles: z.array(slackMessageFileSchema.strict()).optional(),
     status: dispatchStatusSchema,
     // Plugin titles may be any non-blank text, including "unknown".
     title: z.string().min(1).optional(),
@@ -358,6 +360,9 @@ export async function createOrGetDispatch(args: {
         ? { outcomes: args.options.outcomes }
         : undefined),
       ...(args.options.skill ? { skill: args.options.skill } : undefined),
+      ...(args.options.slackFiles?.length
+        ? { slackFiles: args.options.slackFiles }
+        : undefined),
       status: "pending",
       source: args.options.source,
       ...(args.options.title?.trim()

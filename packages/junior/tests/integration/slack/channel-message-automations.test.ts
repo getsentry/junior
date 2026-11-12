@@ -13,8 +13,16 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createWatchEventsTool } from "@/chat/tools/watch-events";
 import { createTools, type ToolRuntimeContext } from "@/chat/tools";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
+import { Hono } from "hono";
+import { createConversationRoutes } from "@/api/conversations/routes";
+import type { JuniorApiEnv } from "@/api/route";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { createJuniorRuntimeServices } from "@/chat/app/services";
+import { persistConversationMessages } from "@/chat/conversations/messages";
 import { collectAttachments } from "@/chat/providers/slack/input";
+import { toConversationMessage } from "@/chat/runtime/conversation-message";
+import { slackDispatchInputMessage } from "@/chat/slack/dispatch-turn";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { juniorAutomations } from "@/db/schema/automations";
 import { context, execute } from "../../fixtures/event-automations";
@@ -80,7 +88,15 @@ const ENTERPRISE_CHANNEL = {
   enterprise_id: "E123",
 };
 
+function conversationApi(storage: AttachmentStorage): Hono<JuniorApiEnv> {
+  return new Hono<JuniorApiEnv>().route(
+    "/api/conversations",
+    createConversationRoutes({ attachmentStorage: storage, queue }),
+  );
+}
+
 async function postChannelMessage(input: {
+  attachments?: unknown[];
   blocks?: unknown[];
   botId?: string;
   botProfile?: Record<string, unknown>;
@@ -98,6 +114,7 @@ async function postChannelMessage(input: {
   await state.connect();
   const slackAdapter = createSlackAdapterFixture();
   const {
+    attachments,
     blocks,
     botId,
     botProfile,
@@ -115,6 +132,7 @@ async function postChannelMessage(input: {
   if (blocks) Object.assign(envelope.event, { blocks });
   if (botProfile) Object.assign(envelope.event, { bot_profile: botProfile });
   if (files) Object.assign(envelope.event, { files });
+  if (attachments) Object.assign(envelope.event, { attachments });
   if (noUser) {
     Reflect.deleteProperty(envelope.event, "user");
     Object.assign(envelope.event, { subtype: "bot_message" });
@@ -267,7 +285,7 @@ describe("Slack channel-message automations", () => {
     ).toMatchObject({ credentialMode: "system" });
   });
 
-  it("opens files of the triggering post after a person mentions Junior in the run's thread", async () => {
+  it("stores the triggering post's files when the run starts and opens other thread files by id", async () => {
     const channelContext = context(
       "U123",
       "C123",
@@ -298,18 +316,80 @@ describe("Slack channel-message automations", () => {
     });
     const rootFile = slackFile("F0ROOTPNG1", "chart.png");
     const forwardedFile = slackFile("F0FWDPNG1", "forwarded.png");
+    const replyFile = slackFile("F0REPLYPNG1", "reply.png");
 
-    // The run starts on a post with an image. The run's input is the post's
-    // text, so no Turn stores the post's files.
+    // The run carries the post's own file and the file of a message that the
+    // post forwards.
     await postChannelMessage({
+      attachments: [{ fallback: "forwarded", files: [forwardedFile] }],
       files: [rootFile],
       text: "Why did this chart drop?",
       ts: rootTs,
     });
     const runConversationId = queue.sentRecords()[0]!.conversationId;
+    const dispatch = await getDispatchRecord(
+      runConversationId.replace(/^agent-dispatch:/, ""),
+    );
+    expect(dispatch?.slackFiles?.map((file) => file.id)).toEqual([
+      rootFile.id,
+      forwardedFile.id,
+    ]);
 
-    // A person's mention in the thread joins the run's Conversation, so no
-    // new Conversation reads the thread root and stores its files.
+    // When the run starts, its input message stores both files under their
+    // Slack file ids, gives them to the model, and lists them.
+    const attachmentStorage = createMemoryAttachmentStorage();
+    const input = slackDispatchInputMessage(dispatch!);
+    queueSlackPrivateFileDownload({ body: "root-chart" });
+    queueSlackPrivateFileDownload({ body: "forwarded" });
+    const modelFiles = await createJuniorRuntimeServices({
+      visionContext: { attachmentStorage },
+    }).visionContext.resolveUserAttachments(collectAttachments(input), {
+      conversationId: runConversationId,
+    });
+    expect(modelFiles.map((file) => file.filename)).toEqual([
+      "chart.png",
+      "forwarded.png",
+    ]);
+    const inputMessage = toConversationMessage({
+      entry: input,
+      text: dispatch!.input,
+    });
+    expect(inputMessage.meta?.slackFileIds).toEqual([
+      rootFile.id,
+      forwardedFile.id,
+    ]);
+    expect(dispatch?.destinationVisibility).toBe("public");
+    await getConversationStore().recordActivity({
+      conversationId: runConversationId,
+      destination: dispatch!.destination,
+      nowMs: Date.now(),
+      source: "slack",
+      visibility: dispatch!.destinationVisibility,
+    });
+    const conversation = coerceThreadConversationState({});
+    conversation.messages.push(inputMessage);
+    await persistConversationMessages({
+      conversation,
+      conversationId: runConversationId,
+    });
+
+    // The Conversation page shows the files on that message.
+    const page = await (
+      await conversationApi(attachmentStorage).request(
+        `http://localhost/api/conversations/${encodeURIComponent(runConversationId)}`,
+      )
+    ).json();
+    expect(
+      page.events.find(
+        (event: { data: { messageId?: string } }) =>
+          event.data.messageId === inputMessage.id,
+      )?.data.attachments,
+    ).toEqual([
+      expect.objectContaining({ filename: "chart.png", bytes: 10 }),
+      expect.objectContaining({ filename: "forwarded.png", bytes: 9 }),
+    ]);
+
+    // A person's mention in the thread joins the run's Conversation.
     await postChannelMessage({
       text: `<@${SLACK_BOT_USER_ID}> can you look at the chart?`,
       threadTs: rootTs,
@@ -334,7 +414,6 @@ describe("Slack channel-message automations", () => {
         written.push(...files.map((file) => file.content.toString()));
       },
     };
-    const attachmentStorage = createMemoryAttachmentStorage();
     const { loadAttachment } = createTools([], {}, {
       ...context("U123", "C123", "public", rootTs, TEAM_ID),
       attachmentStorage,
@@ -355,7 +434,7 @@ describe("Slack channel-message automations", () => {
               attachments: [
                 {
                   files: [
-                    forwardedFile,
+                    replyFile,
                     {
                       ...slackFile("F0APIURL1", "api.png"),
                       url_private: "https://slack.com/api/auth.test",
@@ -371,69 +450,31 @@ describe("Slack channel-message automations", () => {
       "conversations.replies",
     ).length;
 
-    // The root file and a file under a forwarded message open by their Slack
-    // file ids.
-    threadReplies();
-    queueSlackPrivateFileDownload({ body: "root-chart" });
+    // The root file opens by its Slack file id from the stored copy.
     await expect(
       execute(loadAttachment!, { attachment_id: rootFile.id }),
     ).resolves.toMatchObject({ filename: "chart.png", bytes: 10 });
+    expect(written).toEqual(["root-chart"]);
+
+    // A file of a message that started no Turn is found in the thread and
+    // stored once.
     threadReplies();
-    queueSlackPrivateFileDownload({ body: "forwarded" });
+    queueSlackPrivateFileDownload({ body: "reply" });
     await expect(
-      execute(loadAttachment!, { attachment_id: forwardedFile.id }),
-    ).resolves.toMatchObject({ filename: "forwarded.png", bytes: 9 });
-    expect(written).toEqual(["root-chart", "forwarded"]);
+      execute(loadAttachment!, { attachment_id: replyFile.id }),
+    ).resolves.toMatchObject({ filename: "reply.png", bytes: 5 });
+    await execute(loadAttachment!, { attachment_id: replyFile.id });
+    expect(written).toEqual(["root-chart", "reply", "reply"]);
     expect(
       getCapturedSlackApiCalls("conversations.replies")
         .slice(repliesCalls)
         .map((call) => call.params),
-    ).toEqual([
-      expect.objectContaining({ channel: "C123", ts: rootTs }),
-      expect.objectContaining({ channel: "C123", ts: rootTs }),
-    ]);
-
-    // A stored file opens again without another Slack read or download.
-    await execute(loadAttachment!, { attachment_id: rootFile.id });
-    expect(written.at(-1)).toBe("root-chart");
+    ).toEqual([expect.objectContaining({ channel: "C123", ts: rootTs })]);
     expect(getCapturedSlackFileDownloadUrls()).toEqual([
       rootFile.url_private,
       forwardedFile.url_private,
+      replyFile.url_private,
     ]);
-    expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(
-      repliesCalls + 2,
-    );
-
-    // A Turn stores a file of a person's message under the Slack file id from
-    // the Slack event, so it opens without a Slack read or another download.
-    const notesFile = {
-      ...slackFile("F0NOTESTXT", "notes.txt"),
-      mimetype: "text/plain",
-    };
-    const notesMessage = createSlackAdapterFixture().parseMessage({
-      type: "message",
-      channel: "C123",
-      files: [notesFile],
-      team: TEAM_ID,
-      text: "my notes",
-      thread_ts: rootTs,
-      ts: "1712350.0004",
-      user: "U123",
-    });
-    queueSlackPrivateFileDownload({ body: "notes" });
-    await createJuniorRuntimeServices({
-      visionContext: { attachmentStorage },
-    }).visionContext.resolveUserAttachments(collectAttachments(notesMessage), {
-      conversationId: runConversationId,
-    });
-    await expect(
-      execute(loadAttachment!, { attachment_id: notesFile.id }),
-    ).resolves.toMatchObject({ filename: "notes.txt", bytes: 5 });
-    expect(written.at(-1)).toBe("notes");
-    expect(getCapturedSlackFileDownloadUrls()).toHaveLength(3);
-    expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(
-      repliesCalls + 2,
-    );
 
     // A file that is not in the run's thread, or whose URL is not on Slack's
     // file host, is refused and not downloaded.

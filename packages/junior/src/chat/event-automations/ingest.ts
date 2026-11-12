@@ -38,6 +38,7 @@ import {
   slackChannelMessageReplyThreadTs,
   slackChannelMessageRunsAutomation,
 } from "@/chat/slack/channel-message-events";
+import type { SlackMessageFile } from "@/chat/slack/message-files";
 import { logWarn } from "@/chat/logging";
 import { captureMessage } from "@/chat/sentry";
 import type { EventAutomation } from "@/chat/event-automations/types";
@@ -95,6 +96,8 @@ export async function ingestEventAutomations(
   options: {
     nowMs?: number;
     queue: ConversationWorkQueue;
+    /** Files of the Slack message that a `slack` Event names. */
+    slackFiles?: SlackMessageFile[];
     teamId: string;
   },
 ): Promise<{ dispatched: number }> {
@@ -199,6 +202,7 @@ export async function ingestEventAutomations(
           metadata: { eventAutomationId: task.id },
           replyAttribution: automationReplyAttribution(task.title),
           outcomes,
+          slackFiles: options.slackFiles,
         },
       });
       await recordEventAutomationRunStarted(db, {

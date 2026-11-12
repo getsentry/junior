@@ -14,7 +14,7 @@ import { readSlackActionToken } from "@/chat/slack/action-token";
 import {
   readSlackMessageAttachments,
   type SlackMessageAttachment,
-} from "@/chat/slack/attachments";
+} from "@/chat/slack/message-files";
 import {
   logException,
   getActiveTraceId,

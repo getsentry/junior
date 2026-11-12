@@ -14,7 +14,7 @@ import type { QueuedTurnMessage } from "@/chat/runtime/turn-input";
 import {
   readSlackMessageAttachments,
   type SlackMessageAttachment,
-} from "@/chat/slack/attachments";
+} from "@/chat/slack/message-files";
 import { getConversationInfo } from "@/chat/slack/channel";
 import { SlackActionError } from "@/chat/slack/client";
 import {

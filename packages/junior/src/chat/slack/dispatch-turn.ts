@@ -12,6 +12,7 @@ import {
   getDispatchTurnId,
 } from "@/chat/agent-dispatch/store";
 import { buildDispatchRoutingContext } from "@/chat/agent-dispatch/work";
+import { slackFileAttachment } from "@/chat/slack/message-files";
 
 type ExecuteSlackTurn = (
   thread: ThreadImpl,
@@ -28,6 +29,45 @@ type ExecuteSlackTurn = (
     skipBackfill?: boolean;
   },
 ) => Promise<void>;
+
+/**
+ * Build the input Message of a dispatch run. The files of the Slack message
+ * that started the run are its files, so the run stores them and the model
+ * reads them as it reads the files of a person's message.
+ */
+export function slackDispatchInputMessage(dispatch: DispatchRecord): Message {
+  const files = dispatch.slackFiles ?? [];
+  // TODO(dcramer): Remove this synthetic Slack Message after dispatch work
+  // supplies Slack Delivery to the shared Turn path.
+  const message = new Message({
+    id: getDispatchInputMessageId(dispatch.id),
+    threadId: getDispatchConversationId(dispatch),
+    text: dispatch.input,
+    attachments: files.map(slackFileAttachment),
+    formatted: { type: "root", children: [] },
+    metadata: {
+      dateSent: new Date(dispatch.createdAtMs),
+      edited: false,
+    },
+    raw: {
+      channel: dispatch.destination.channelId,
+      team: dispatch.destination.teamId,
+      ...(dispatch.destination.threadTs
+        ? { thread_ts: dispatch.destination.threadTs }
+        : undefined),
+      ...(files.length > 0 ? { files } : undefined),
+    },
+    author: {
+      userId: dispatch.actor.name,
+      userName: dispatch.actor.name,
+      fullName: dispatch.actor.name,
+      isBot: true,
+      isMe: false,
+    },
+  });
+  message.isMention = true;
+  return message;
+}
 
 /** Build the Slack provider adapter for agent-dispatched conversation turns. */
 export function createSlackDispatchTurnRunner(options: {
@@ -49,34 +89,9 @@ export function createSlackDispatchTurnRunner(options: {
     await state.connect();
     const conversationId = getDispatchConversationId(dispatch);
     const adapter = options.getSlackAdapter();
-    // TODO(dcramer): Remove this synthetic Slack Message and Thread after
-    // dispatch work supplies Slack Delivery to the shared Turn path.
-    const message = new Message({
-      id: getDispatchInputMessageId(dispatch.id),
-      threadId: conversationId,
-      text: dispatch.input,
-      attachments: [],
-      formatted: { type: "root", children: [] },
-      metadata: {
-        dateSent: new Date(dispatch.createdAtMs),
-        edited: false,
-      },
-      raw: {
-        channel: dispatch.destination.channelId,
-        team: dispatch.destination.teamId,
-        ...(dispatch.destination.threadTs
-          ? { thread_ts: dispatch.destination.threadTs }
-          : undefined),
-      },
-      author: {
-        userId: dispatch.actor.name,
-        userName: dispatch.actor.name,
-        fullName: dispatch.actor.name,
-        isBot: true,
-        isMe: false,
-      },
-    });
-    message.isMention = true;
+    // TODO(dcramer): Remove this synthetic Slack Thread after dispatch work
+    // supplies Slack Delivery to the shared Turn path.
+    const message = slackDispatchInputMessage(dispatch);
     const thread = new ThreadImpl({
       adapter,
       stateAdapter: state,

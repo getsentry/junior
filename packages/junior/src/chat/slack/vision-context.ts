@@ -12,8 +12,8 @@ import { storeAttachment } from "@/chat/attachments/store";
 import {
   readAttachmentVisionSummary,
   recordSlackAttachment,
-  type SlackMessageAttachment,
 } from "@/chat/slack/attachments";
+import type { SlackMessageAttachment } from "@/chat/slack/message-files";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { toOptionalString } from "@/chat/coerce";
 import { logInfo, logWarn } from "@/chat/logging";

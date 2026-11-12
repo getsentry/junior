@@ -17,6 +17,7 @@ import type {
 import type { AgentDispatch } from "@/chat/agent/types";
 import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
+import type { SlackMessageFile } from "@/chat/slack/message-files";
 
 export type DispatchStatus =
   | "pending"
@@ -31,6 +32,11 @@ export type SlackDispatchOptions = Omit<DispatchOptions, "destination"> & {
   outcomes?: TaskOutcome[];
   /** Skill that an Automation run invokes. Core-owned; plugins cannot set it. */
   skill?: string;
+  /**
+   * Files of the Slack message that started an Automation run. The run
+   * stores them as files of its input message. Core-owned.
+   */
+  slackFiles?: SlackMessageFile[];
 };
 
 export interface BoundDispatchOptions extends Omit<
@@ -63,6 +69,8 @@ export interface DispatchRecord {
   outcomes?: TaskOutcome[];
   /** Skill that the run invokes, from an Automation in skill mode. */
   skill?: string;
+  /** Files of the Slack message that started the run. */
+  slackFiles?: SlackMessageFile[];
   status: DispatchStatus;
   /** Title of the dispatch Conversation, saved when it is created. */
   title?: string;

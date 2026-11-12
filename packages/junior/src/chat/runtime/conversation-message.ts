@@ -1,5 +1,5 @@
 import { getMessageReviewItemChange } from "@/chat/review-items/message-change";
-import { readSlackMessageAttachments } from "@/chat/slack/attachments";
+import { readSlackMessageAttachments } from "@/chat/slack/message-files";
 import type { Message } from "chat";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
 import type {

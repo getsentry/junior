@@ -19,13 +19,31 @@ import {
 } from "@/chat/slack/timestamp-param";
 import type { SlackChannelId, SlackTeamId } from "@/chat/slack/ids";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
-import type { SlackThreadReply } from "@/chat/slack/channel";
+import type { SlackFileRef, SlackThreadReply } from "@/chat/slack/channel";
 import {
-  collectMessageFiles,
+  extractAttachmentFiles,
   renderAttachmentText,
 } from "@/chat/slack/message/attachments";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { getConversationStore } from "@/chat/db";
+
+/**
+ * Combine top-level `files` with files nested inside `attachments`
+ * (forwarded/shared messages carry their files there), deduped by id.
+ */
+function collectMessageFiles(msg: SlackThreadReply): SlackFileRef[] {
+  const seen = new Set<string>();
+  const files: SlackFileRef[] = [];
+  for (const file of [
+    ...(msg.files ?? []),
+    ...extractAttachmentFiles(msg.attachments),
+  ]) {
+    if (!file.id || seen.has(file.id)) continue;
+    seen.add(file.id);
+    files.push(file);
+  }
+  return files;
+}
 
 /** Project a thread reply to safe output fields (strips url_private etc). */
 function sanitizeMessage(msg: SlackThreadReply) {

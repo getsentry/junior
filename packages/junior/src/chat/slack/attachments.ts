@@ -1,5 +1,3 @@
-import type { Attachment, Message } from "chat";
-import * as z from "zod";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
@@ -95,40 +93,4 @@ export function slackAttachmentsVersionQuery(
         isNull(juniorAttachments.deleteRequestedAt),
       ),
     );
-}
-
-/** A Slack message attachment with its Slack file id. */
-export type SlackMessageAttachment = Attachment & { slackFileId?: string };
-
-// The Slack adapter keeps the Slack event as `raw` and makes one Attachment
-// for each `raw.files` entry, but it drops the file id. Read only the fields
-// that pair them. Other event fields are Slack's and stay unread.
-const slackEventFilesSchema = z.object({
-  files: z
-    .array(
-      z.object({
-        id: z.string().min(1),
-        url_private: z.string().min(1).optional(),
-      }),
-    )
-    .optional(),
-});
-
-/**
- * Pair each attachment of a Slack message with its Slack file id from the
- * event's `files`, matched by private URL. A message whose `raw` is not a
- * Slack event gets no ids.
- */
-export function readSlackMessageAttachments(
-  message: Pick<Message, "attachments" | "raw">,
-): SlackMessageAttachment[] {
-  const parsed = slackEventFilesSchema.safeParse(message.raw);
-  const files = parsed.success ? (parsed.data.files ?? []) : [];
-  return message.attachments.map((attachment) => {
-    const url = attachment.url ?? attachment.fetchMetadata?.url;
-    const slackFileId = url
-      ? files.find((file) => file.url_private === url)?.id
-      : undefined;
-    return slackFileId ? { ...attachment, slackFileId } : attachment;
-  });
 }
