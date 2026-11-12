@@ -213,13 +213,11 @@ export function InboxNav(props: {
               {data.inFlightCount}
             </span>
           </h2>
-          {/* Pins drag only when every pin shows, so a drop can place all. */}
+          {/* Every pin shows, so a drop can place them all. */}
           <PinnedConversationOrder
             conversations={pinnedShown}
             onError={onReorderError}
-            reorder={
-              pinnedShown.length === data.pinnedCount ? reorderPins : undefined
-            }
+            reorder={reorderPins}
           >
             <ul aria-label="In flight" className="m-0 grid gap-0.5 p-0">
               {data.inFlight.map((conversation) => (

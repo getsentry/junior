@@ -249,6 +249,109 @@ test("a linked item past the loaded page stays after a tab switch", async ({
   await expect(asks).toContainText(rollout.title);
 });
 
+test("an item link past the shown rows opens its row in view", async ({
+  dashboard,
+  page,
+}) => {
+  // Newer Conversations fill the first rows the list shows, so the linked
+  // Conversation renders only after the list shows more.
+  await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
+    const response = await route.fetch();
+    const feed = await response.json();
+    const linked = feed.conversations.find(
+      (conversation: { conversationId: string }) =>
+        conversation.conversationId === rollout.addedByConversationId,
+    );
+    const newer = Array.from({ length: 40 }, (_, index) => ({
+      ...linked,
+      conversationId: `slack:CNEWER:${1770000000 + index}.000100`,
+      displayTitle: `Newer conversation ${index + 1}`,
+      pinnedAt: null,
+      status: "completed",
+    }));
+    return route.fulfill({
+      response,
+      json: {
+        ...feed,
+        conversations: [
+          ...newer,
+          {
+            ...linked,
+            lastMessageAt: "2026-06-01T09:00:00.000Z",
+            lastProgressAt: "2026-06-01T09:00:00.000Z",
+            pinnedAt: null,
+          },
+        ],
+        nextCursor: undefined,
+      },
+    });
+  });
+  await mockReviewItems(page, { open: [rollout] });
+  await page.goto(
+    `${dashboard.baseURL}/?view=conversations&item=${rollout.id}`,
+  );
+  const asks = page.getByRole("region", { name: `${checkout}: asks` });
+  await expect(asks).toContainText(rollout.title);
+  await expect(asks).toBeInViewport();
+  // The link leaves the URL only once its row is in view.
+  await expect(page).toHaveURL(/\/\?view=conversations$/);
+});
+
+test("In flight shows every pin past five running Conversations", async ({
+  dashboard,
+  page,
+}) => {
+  await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
+    const response = await route.fetch();
+    const feed = await response.json();
+    const conversation = (
+      index: number,
+      displayTitle: string,
+      fields: { pinnedAt: string | null; pinPosition?: number; status: string },
+    ) => ({
+      ...feed.conversations[0],
+      conversationId: `slack:CFLIGHT:${1770000000 + index}.000100`,
+      displayTitle,
+      ...fields,
+    });
+    return route.fulfill({
+      response,
+      json: {
+        ...feed,
+        conversations: [
+          ...Array.from({ length: 6 }, (_, index) =>
+            conversation(index, `Running conversation ${index + 1}`, {
+              pinnedAt: null,
+              status: "active",
+            }),
+          ),
+          conversation(6, "Running pin", {
+            pinnedAt: "2026-08-07T10:00:00.000Z",
+            pinPosition: 0,
+            status: "active",
+          }),
+          conversation(7, "Idle pin", {
+            pinnedAt: "2026-08-07T10:00:00.000Z",
+            pinPosition: 1,
+            status: "completed",
+          }),
+        ],
+        nextCursor: undefined,
+      },
+    });
+  });
+  await mockReviewItems(page, { open: [] });
+  await page.goto(`${dashboard.baseURL}/`);
+  const inFlight = page.getByRole("list", { name: "In flight" });
+  // Pins always show. Running Conversations fill the rows left, up to five.
+  await expect(
+    inFlight.getByRole("link", { name: /Running pin/ }),
+  ).toBeVisible();
+  await expect(inFlight.getByRole("link", { name: /Idle pin/ })).toBeVisible();
+  await expect(inFlight.getByRole("listitem")).toHaveCount(5);
+  await expect(page.getByRole("link", { name: "Show all" })).toBeVisible();
+});
+
 test("a failed page still lets another list show its loaded rows", async ({
   dashboard,
   page,

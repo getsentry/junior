@@ -152,15 +152,20 @@ function useBuildInboxData(input: {
       ),
   ];
 
-  // In flight: running Conversations, then the pins in the viewer's order,
-  // each one click away.
-  const pinned = conversations.filter((conversation) => conversation.pinnedAt);
+  // In flight: every pin, each one click away, and running Conversations in
+  // the rows left, up to IN_FLIGHT_LIMIT. Running rows come first, a running
+  // pin with them, then the other pins in the viewer's order.
+  const pinned = pinnedFirst(
+    conversations.filter((conversation) => conversation.pinnedAt),
+  );
+  const running = conversations.filter(
+    (conversation) =>
+      conversation.status === "active" && !conversation.pinnedAt,
+  );
   const inFlight = [
-    ...conversations.filter(
-      (conversation) =>
-        conversation.status === "active" && !conversation.pinnedAt,
-    ),
-    ...pinnedFirst(pinned),
+    ...running.slice(0, Math.max(0, IN_FLIGHT_LIMIT - pinned.length)),
+    ...pinned.filter((conversation) => conversation.status === "active"),
+    ...pinned.filter((conversation) => conversation.status !== "active"),
   ];
 
   // Done has no count: it would need every closed item.
@@ -182,8 +187,8 @@ function useBuildInboxData(input: {
     feed,
     includedId: linkedId,
     includeItem,
-    inFlight: inFlight.slice(0, IN_FLIGHT_LIMIT),
-    inFlightCount: inFlight.length,
+    inFlight,
+    inFlightCount: running.length + pinned.length,
     isPinned,
     // The open asks load a page at a time too, as the list scrolls.
     itemPages: scrollPages(itemsQuery),

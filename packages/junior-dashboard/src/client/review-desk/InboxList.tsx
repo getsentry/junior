@@ -177,7 +177,8 @@ export function InboxList(props: {
         : [];
 
   // `?item=` names one item, as old Inbox links and notifications do. Its
-  // row expands once, then the link leaves the URL.
+  // row expands, the list shows rows until it renders, and it scrolls into
+  // view. Only then does the link leave the URL.
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const linkedId = params.get("item") ?? undefined;
@@ -216,18 +217,32 @@ export function InboxList(props: {
   const linked = useReviewItemData(
     linkedId && !linkedRowKey && linkedLoaded ? linkedId : undefined,
   );
-  const { listPath, setExpandedKey } = state;
+  // Stream rows show a page at a time, so a linked row can be past them.
+  const linkedStreamIndex = linkedRowKey
+    ? streamRows.findIndex(
+        (row) => `conversation:${row.conversationId}` === linkedRowKey,
+      )
+    : -1;
+  const { expandedKey, listPath, loaded, setExpandedKey, showMore } = state;
   const { includedId, includeItem } = data;
   useEffect(() => {
     if (!linkedId) return;
     if (linkedRowKey) {
-      setExpandedKey(linkedRowKey);
+      if (expandedKey !== linkedRowKey) {
+        setExpandedKey(linkedRowKey);
+        return;
+      }
+      // The skeleton has no rows yet.
+      if (!ready) return;
+      if (linkedStreamIndex >= loaded) {
+        showMore();
+        return;
+      }
+      // Effects run after the render commits, so the expanded row is here.
+      document
+        .querySelector(`[data-inbox-row="${CSS.escape(linkedRowKey)}"]`)
+        ?.scrollIntoView({ block: "center" });
       navigate(listPath, { replace: true });
-      requestAnimationFrame(() =>
-        document
-          .querySelector(`[data-inbox-row="${CSS.escape(linkedRowKey)}"]`)
-          ?.scrollIntoView({ block: "center" }),
-      );
       return;
     }
     if (snoozedKey) {
@@ -254,6 +269,7 @@ export function InboxList(props: {
       navigate(inboxViewPath("done", { itemId: linkedId }), { replace: true });
     }
   }, [
+    expandedKey,
     includeItem,
     includedId,
     linked.data,
@@ -261,10 +277,14 @@ export function InboxList(props: {
     linkedId,
     linkedLoaded,
     linkedRowKey,
+    linkedStreamIndex,
     listPath,
+    loaded,
     navigate,
+    ready,
     setExpandedKey,
     setLinkedItems,
+    showMore,
     snoozedKey,
     view,
   ]);
