@@ -4,7 +4,10 @@ import type {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
-import { githubPreviewImageUrls } from "../object-facts.js";
+import {
+  githubPreviewImageUrls,
+  withGitHubPreviewImages,
+} from "../object-facts.js";
 import { readGitHubPullRequestConversationIds } from "../pull-request-outcomes/store.js";
 
 // These actions carry the current body. `edited` can add or remove an image.
@@ -54,25 +57,25 @@ export async function refreshGitHubPullRequestPreview(args: {
         : undefined;
       // A late delivery must not undo a newer body.
       if (storedAt !== undefined && storedAt > updatedAt) return;
-      // Unchanged images still move `sourceUpdatedAt` forward, so a late
-      // delivery of a body between the two cannot pass the check above.
-      if (
-        current.facts.previewImageUrls?.join("\n") ===
-          previewImageUrls?.join("\n") &&
-        storedAt === updatedAt
-      ) {
-        return;
-      }
       const {
         plugin: _plugin,
         createdAt: _createdAt,
         updatedAt: _updatedAt,
-        facts: { previewImageUrls: _previous, ...facts },
+        facts: { previewImageUrls: previous, ...facts },
         ...annotation
       } = current;
+      const next = withGitHubPreviewImages(facts, previewImageUrls);
+      // Unchanged images still move `sourceUpdatedAt` forward, so a late
+      // delivery of a body between the two cannot pass the check above.
+      if (
+        previous?.join("\n") === next.previewImageUrls?.join("\n") &&
+        storedAt === updatedAt
+      ) {
+        return;
+      }
       await store.upsert({
         ...annotation,
-        facts: previewImageUrls ? { ...facts, previewImageUrls } : facts,
+        facts: next,
         sourceUpdatedAt: pullRequest.updated_at,
       });
     }),

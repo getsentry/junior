@@ -166,7 +166,8 @@ describe("getPullRequest", () => {
           "```md",
           "![Example](https://junior.example.com/public/artifacts/code.png)",
           "```",
-          `| Before | After |\n| --- | --- |\n| ![Before][before] | <img src="${after}"> |`,
+          // A `src=` inside another attribute value is not the image.
+          `| Before | After |\n| --- | --- |\n| ![Before][before] | <img alt=" src=https://junior.example.com/public/artifacts/alt.png" src="${after}"> |`,
           `![Again](${artifact})`,
           "",
           `[before]: ${artifact}`,
@@ -189,6 +190,48 @@ describe("getPullRequest", () => {
     expect(await preview()).toEqual([artifact, after]);
     expect(await preview()).toBeUndefined();
     expect(await preview()).toBeUndefined();
+  });
+
+  it("saves as many preview images as fit in the facts limit", async () => {
+    vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
+    const images = Array.from(
+      { length: 80 },
+      (_, index) =>
+        `https://junior.example.com/public/artifacts/${String(index).padStart(16, "0")}.png`,
+    );
+    const response = pullRequestResponse();
+    const { tool } = toolContext(true, [
+      {
+        body: {
+          ...response.body,
+          body: images.map((url) => `![Step](${url})`).join("\n"),
+          // 180 extra UTF-8 bytes, more than one image entry, so counting
+          // characters instead of bytes would save one image too many.
+          user: { login: "ü".repeat(60) },
+          head: { ...response.body.head, ref: "ü".repeat(60) },
+          base: { ...response.body.base, ref: "ü".repeat(60) },
+        },
+      },
+      checksResponse({ contexts: [] }),
+    ]);
+
+    const result = (await tool.execute?.(
+      { repo: "getsentry/junior", number: 691 },
+      { toolCallId: "get-pr" },
+    )) as { objectAnnotations: Array<{ facts: Record<string, unknown> }> };
+    const facts = result.objectAnnotations[0]!.facts;
+    const saved = facts.previewImageUrls as string[];
+
+    const bytes = (value: unknown) =>
+      new TextEncoder().encode(JSON.stringify(value)).length;
+
+    // More than the old fixed 4, in body order, and the next one would not fit.
+    expect(saved.length).toBeGreaterThan(4);
+    expect(saved).toEqual(images.slice(0, saved.length));
+    expect(bytes(facts)).toBeLessThanOrEqual(4096);
+    expect(
+      bytes({ ...facts, previewImageUrls: images.slice(0, saved.length + 1) }),
+    ).toBeGreaterThan(4096);
   });
 
   it("returns the required checks and the merge state", async () => {
