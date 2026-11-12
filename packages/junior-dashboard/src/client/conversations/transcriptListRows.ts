@@ -17,6 +17,8 @@ export type TranscriptListRow =
       entry: RenderedTranscriptEntry;
       key: string;
       seq?: number;
+      /** The Tasks of the Turn that this reply ends. */
+      tasks?: SubagentEntry[];
     }
   | {
       kind: "activity";
@@ -38,11 +40,12 @@ export const UNREAD_MARKER_KEY = "unread-marker";
 
 /**
  * Turn transcript entries into list rows. Runs of collapsible activity
- * become one group row, each run of Tasks becomes one Tasks row, a Thread
- * keeps its own row, and the "New" marker becomes its own row before the
- * first unread row. A question that Junior asked moves to the end of its
- * Turn, after the final message. Search shows only the matching messages,
- * one row each, so every row is a match.
+ * become one group row, a Thread keeps its own row, and the "New" marker
+ * becomes its own row before the first unread row. The Tasks of a Turn move
+ * to its end, so they do not split its activity: under its reply, or in a
+ * Tasks row when it has no reply yet. A question that Junior asked moves
+ * after them. Search shows only the matching messages, one row each, so
+ * every row is a match.
  *
  * `knownActivityKeys` maps entry keys to group keys across calls, so a
  * group keeps its key while events extend either edge.
@@ -103,11 +106,45 @@ export function transcriptListRows(input: {
     }
     asks = [];
   };
+  let tasks: SubagentEntry[] = [];
+  const pushTurnEnd = () => {
+    if (tasks.length > 0) {
+      const rowSeq = lastRowSeq(rows);
+      const taskSeq = lastEntrySeq(tasks);
+      // The row moves after later rows, so it takes the larger seq.
+      const seq =
+        rowSeq === undefined || taskSeq === undefined
+          ? (rowSeq ?? taskSeq)
+          : Math.max(rowSeq, taskSeq);
+      const last = rows.at(-1);
+      if (last?.kind === "entry" && isReplyEntry(last.entry)) {
+        // The Tasks sit under the reply text, before its actions. The reply
+        // goes back through pushRow, so unread Tasks still get the marker.
+        rows.pop();
+        pushRow({ ...last, seq, tasks });
+      } else {
+        pushRow({
+          kind: "tasks",
+          entries: tasks,
+          // New Tasks join at the end, so the first one keeps the key.
+          key: `${input.keyPrefix}:tasks:${tasks[0]!.key}`,
+          seq,
+        });
+      }
+    }
+    tasks = [];
+    pushAsks();
+  };
 
   for (let index = 0; index < entries.length; ) {
     const entry = entries[index]!;
     if (isAskEntry(entry)) {
       asks.push(entry);
+      index += 1;
+      continue;
+    }
+    if (isTaskEntry(entry)) {
+      tasks.push(entry);
       index += 1;
       continue;
     }
@@ -117,15 +154,16 @@ export function transcriptListRows(input: {
       entry.message.role === "user" &&
       !collapsible(entry)
     ) {
-      pushAsks();
+      pushTurnEnd();
     }
     if (collapsible(entry)) {
       const group: RenderedTranscriptEntry[] = [];
-      // An ask in the activity moves out, so the activity on both sides of
-      // it stays one row.
+      // An ask or a Task in the activity moves out, so the activity on both
+      // sides of it stays one row.
       while (index < entries.length) {
         const next = entries[index]!;
         if (isAskEntry(next)) asks.push(next);
+        else if (isTaskEntry(next)) tasks.push(next);
         else if (collapsible(next)) group.push(next);
         else break;
         index += 1;
@@ -144,21 +182,6 @@ export function transcriptListRows(input: {
       });
       continue;
     }
-    if (isTaskEntry(entry)) {
-      const group: SubagentEntry[] = [];
-      while (index < entries.length && isTaskEntry(entries[index]!)) {
-        group.push(entries[index] as SubagentEntry);
-        index += 1;
-      }
-      pushRow({
-        kind: "tasks",
-        entries: group,
-        // New Tasks join at the end, so the first one keeps the key.
-        key: `${input.keyPrefix}:tasks:${group[0]!.key}`,
-        seq: lastEntrySeq(group),
-      });
-      continue;
-    }
     pushRow({
       kind: "entry",
       entry,
@@ -167,8 +190,23 @@ export function transcriptListRows(input: {
     });
     index += 1;
   }
-  pushAsks();
+  pushTurnEnd();
   return rows;
+}
+
+/**
+ * Find the activity row of the running Turn: its last activity row after the
+ * last message. Tasks, Thread cards, asks, and the "New" marker can follow it.
+ */
+export function liveActivityIndex(
+  rows: readonly TranscriptListRow[],
+): number | undefined {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index]!;
+    if (row.kind === "activity") return index;
+    if (row.kind === "entry" && row.entry.kind === "message") return undefined;
+  }
+  return undefined;
 }
 
 function askedItemId(entry: RenderedTranscriptEntry): string | undefined {
@@ -200,7 +238,16 @@ function lastRowSeq(rows: readonly TranscriptListRow[]): number | undefined {
   return undefined;
 }
 
-function isTaskEntry(entry: RenderedTranscriptEntry): boolean {
+function isReplyEntry(entry: RenderedTranscriptEntry): boolean {
+  return (
+    entry.kind === "message" &&
+    entry.message.role === "assistant" &&
+    !entry.message.eventType &&
+    !entry.message.context
+  );
+}
+
+function isTaskEntry(entry: RenderedTranscriptEntry): entry is SubagentEntry {
   return entry.kind === "subagent" && entry.part.childKind === "task";
 }
 

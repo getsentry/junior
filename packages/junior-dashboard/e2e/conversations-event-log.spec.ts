@@ -48,20 +48,14 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(toolResult).toBeHidden();
   await expect(toolRow).toHaveAttribute("aria-expanded", "false");
 
-  // Search finds what people and Junior said, not tool calls or the
-  // thinking row. The reply and the tool result both name payments-v42.
-  const thinking = transcript.getByRole("status").filter({
-    hasText: "is thinking",
-  });
-  await expect(thinking).toBeVisible();
+  // Search finds what people and Junior said, not tool calls. The reply and
+  // the tool result both name payments-v42.
   await page.getByRole("button", { name: "Search transcript" }).click();
   await page.getByPlaceholder("Search transcript…").fill("payments-v42");
   await expect(transcript.getByText("p95 jumped after")).toBeVisible();
   await expect(toolRow).toBeHidden();
-  await expect(thinking).toBeHidden();
   await page.getByPlaceholder("Search transcript…").fill("");
   await expect(toolRow).toBeVisible();
-  await expect(thinking).toBeVisible();
 
   await chooseTranscriptView(page, "Event log");
   const log = page.getByRole("region", { name: "Conversation event log" });
