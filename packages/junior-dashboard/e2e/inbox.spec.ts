@@ -1,4 +1,5 @@
 import { mockAutomationCollection } from "../src/mock-reporting/automation-collection";
+import { NOW_MS } from "../src/mock-reporting/fixtures";
 import { mockAutomationEditor } from "./automation-editor-fixture";
 import { automationReport } from "./automation-fixture";
 import {
@@ -208,6 +209,9 @@ test("a sweep clears only FYI items, with an Undo", async ({
   dashboard,
   page,
 }) => {
+  // Today is a calendar day, so the clock is fixed: on a real clock, half
+  // an hour ago is yesterday just after midnight.
+  await page.clock.setFixedTime(NOW_MS);
   // A question for Everyone is still a question, so a sweep leaves it.
   const teamAsk = {
     ...audit,
@@ -215,7 +219,7 @@ test("a sweep clears only FYI items, with an Undo", async ({
     assignedToEveryone: true,
     assignees: [],
     // Recent, so it shows in Today above the older Conversations.
-    createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+    createdAt: new Date(NOW_MS - 30 * 60_000).toISOString(),
     id: "item-team-ask",
     title: "Pick the on-call rotation",
   };
@@ -552,4 +556,85 @@ test("a failed Automations read does not look like nothing waits", async ({
   // With nothing to do, To do hides, and closed items stay in Done.
   await expect(page.getByRole("region", { name: "To do" })).toHaveCount(0);
   await expect(page.getByText(answered.title)).toHaveCount(0);
+});
+
+test("To do loads its next asks at its own end", async ({
+  dashboard,
+  page,
+}) => {
+  // Each ask is in its own Conversation, so the stream below To do is long
+  // and its end stays out of view.
+  const asks = Array.from({ length: 30 }, (_, index) => ({
+    ...license,
+    addedByConversationId: `slack:CTODO:17700${String(index).padStart(5, "0")}.000100`,
+    conversationIds: [],
+    createdAt: new Date(NOW_MS - index * 60_000).toISOString(),
+    id: `item-todo-${index}`,
+    title: `Approve rollout step ${index}`,
+  }));
+  await mockReviewItems(page, { open: asks, pageSize: 10 });
+  await page.goto(`${dashboard.baseURL}/`);
+  const rows = page
+    .getByRole("region", { name: "To do" })
+    .locator("[data-inbox-row]");
+  await expect(rows).toHaveCount(10);
+  // Its end loads the next page while it shows fewer than its count.
+  await expect(async () => {
+    await rows.last().scrollIntoViewIfNeeded();
+    await expect(rows).toHaveCount(30, { timeout: 1_000 });
+  }).toPass();
+});
+
+test("a link into a collapsed To do opens it and its row", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page, { open: [rollout, license] });
+  await page.goto(`${dashboard.baseURL}/`);
+  const todo = page.getByRole("region", { name: "To do" });
+  await todo.getByRole("button", { name: /^To do/ }).click();
+  await expect(todo.locator("[data-inbox-row]")).toHaveCount(0);
+
+  await page.goto(`${dashboard.baseURL}/?item=${rollout.id}`);
+  const asks = todo.getByRole("region", { name: `${checkout}: asks` });
+  await expect(asks).toContainText(rollout.title);
+  await expect(asks).toBeInViewport();
+  // The link leaves the URL only once its row is on screen.
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+});
+
+test("To do lists every Automation that the count counts", async ({
+  dashboard,
+  page,
+}) => {
+  const base = automationReport.automations.find(
+    (automation) => automation.id === "scheduled-1",
+  )!;
+  // More than one page of the Automation list.
+  const report = {
+    automations: Array.from({ length: 105 }, (_, index) => ({
+      ...structuredClone(base),
+      id: `blocked-${index}`,
+      lastRunStatus: "blocked" as const,
+      ownedByViewer: true,
+      status: "blocked" as const,
+      statusReason: "GitHub access expired.",
+      title: `Blocked digest ${index}`,
+    })),
+  };
+  await page.route(/\/api\/automations(?:\?.*)?$/, (route) =>
+    route.fulfill({
+      json: mockAutomationCollection(
+        report,
+        new URL(route.request().url()).searchParams,
+      ),
+    }),
+  );
+  await mockReviewItems(page, { automations: () => 105, open: [] });
+  await page.goto(`${dashboard.baseURL}/`);
+  await expect(
+    page
+      .getByRole("region", { name: "To do" })
+      .locator('[data-inbox-row^="automation:"]'),
+  ).toHaveCount(105);
 });

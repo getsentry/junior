@@ -497,6 +497,33 @@ test.describe("on a phone", () => {
   });
 });
 
+test.describe("on a phone, from the entries", () => {
+  test.use({ viewport: { height: 844, width: 390 } });
+
+  test("Back from In flight returns to the entries", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page);
+    await page.goto(`${dashboard.baseURL}/`);
+    const entries = page.getByRole("navigation", { name: "Inbox" });
+    // A list leaves its path as the place Back returns to.
+    await entries.getByRole("link", { name: /^Decisions/ }).click();
+    await expect(page).toHaveURL(/\/\?view=decisions$/);
+    await page.getByRole("link", { name: "Back to the Inbox entries" }).click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+
+    await page
+      .getByRole("list", { name: "In flight" })
+      .getByRole("link")
+      .first()
+      .click();
+    await expect(page).toHaveURL(/\/conversations\//);
+    await page.getByRole("link", { name: /^Back to / }).click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  });
+});
+
 test.describe("on a touch phone", () => {
   test.use({ hasTouch: true, viewport: { height: 844, width: 390 } });
 

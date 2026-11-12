@@ -13,6 +13,8 @@ export function InboxSection(props: {
   badge?: ReactNode;
   children: ReactNode;
   collapsed: boolean;
+  /** Shows after the rows while the section is open, such as its paging. */
+  footer?: ReactNode;
   count: number;
   label: string;
   onToggle(): void;
@@ -34,7 +36,10 @@ export function InboxSection(props: {
         {props.action}
       </div>
       {props.collapsed ? null : (
-        <ul className="m-0 grid gap-2 p-0">{props.children}</ul>
+        <>
+          <ul className="m-0 grid gap-2 p-0">{props.children}</ul>
+          {props.footer}
+        </>
       )}
     </section>
   );

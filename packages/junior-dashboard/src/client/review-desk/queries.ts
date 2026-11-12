@@ -234,12 +234,22 @@ export function useAutomationAttentionData(enabled: boolean) {
   return useQuery({
     enabled,
     queryKey: ["dashboard", "automations", "scope=attention&owner=me"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        automationListSchema,
-        "/api/automations?scope=attention&owner=me&pageSize=100",
-        signal,
-      ),
+    // The Inbox count is not capped, so read every page: the list then
+    // shows each Automation that the count counts.
+    queryFn: async ({ signal }) => {
+      const readPage = (page: number) =>
+        fetchDashboardJson(
+          automationListSchema,
+          `/api/automations?scope=attention&owner=me&pageSize=100&page=${page}`,
+          signal,
+        );
+      const first = await readPage(1);
+      const automations = [...first.automations];
+      const pages = Math.ceil(first.total / first.pageSize);
+      for (let page = 2; page <= pages; page += 1)
+        automations.push(...(await readPage(page)).automations);
+      return { ...first, automations };
+    },
     retry: false,
   });
 }

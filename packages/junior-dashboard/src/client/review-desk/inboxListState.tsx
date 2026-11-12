@@ -129,9 +129,9 @@ export function useInboxListState(ready: boolean) {
     new URLSearchParams(location.search).get("view"),
   );
   const place = list.places[view] ?? NEW_PLACE;
-  const { scroll, setPlace, setReturnPath } = list;
+  const { scroll, setPlace } = list;
 
-  useEffect(() => setReturnPath(listPath), [listPath, setReturnPath]);
+  useInboxReturnHere(listPath);
 
   // Stable, because the item link effect depends on it.
   const setExpandedKey = useCallback(
@@ -165,6 +165,17 @@ export function useInboxListState(ready: boolean) {
 /** The Inbox list that Back returns to: the last one shown, or the Inbox. */
 export function useInboxReturnPath(): string {
   return useInboxListContext().returnPath;
+}
+
+/**
+ * While the caller shows, make `path` where Back returns from a
+ * Conversation or the composer. Without a path, it leaves Back alone.
+ */
+export function useInboxReturnHere(path: string | undefined) {
+  const { setReturnPath } = useInboxListContext();
+  useEffect(() => {
+    if (path) setReturnPath(path);
+  }, [path, setReturnPath]);
 }
 
 /**

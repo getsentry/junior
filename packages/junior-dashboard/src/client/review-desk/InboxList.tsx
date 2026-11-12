@@ -76,6 +76,59 @@ function SweepControl(props: {
   );
 }
 
+/**
+ * The end of a paged list. While it shows, it asks for more, and asks again
+ * whenever `progress` changes. After a failed read it shows Try again
+ * instead, and asks for nothing until the reader tries again.
+ */
+function PageEnd(props: {
+  failed: boolean;
+  loading: boolean;
+  more: boolean;
+  onRetry(): void;
+  onShow(): void;
+  progress: string;
+}) {
+  const sentinel = useRef<HTMLDivElement>(null);
+  const onShow = useEffectEvent(props.onShow);
+  const active = props.more && !props.failed;
+  // A new observer reports at once, so the list keeps loading while its
+  // end shows.
+  useEffect(() => {
+    const node = sentinel.current;
+    if (!node || !active) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) onShow();
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [active, props.progress]);
+  if (props.failed)
+    return (
+      <div className="flex items-center justify-center gap-2 py-3 text-xs">
+        <InlineError className="w-auto">Could not load more.</InlineError>
+        <Button
+          className="h-7 px-2 text-xs"
+          disabled={props.loading}
+          onClick={props.onRetry}
+          variant="ghost"
+        >
+          Try again
+        </Button>
+      </div>
+    );
+  if (!props.more) return null;
+  return (
+    <div
+      className="py-3 text-center font-sans text-xs text-dashboard-text-muted"
+      ref={sentinel}
+      role="status"
+    >
+      {props.loading ? "Loading more…" : null}
+    </div>
+  );
+}
+
 function RowsLoading() {
   return (
     <div aria-busy="true" className="grid gap-1 pt-2" role="status">
@@ -233,6 +286,11 @@ export function InboxList(props: {
   useEffect(() => {
     if (!linkedId) return;
     if (linkedRowKey) {
+      // A collapsed To do has no rows, so a link into it opens it first.
+      if (linkedRowKey.startsWith("todo:") && todoCollapsed) {
+        setTodoCollapsed(false);
+        return;
+      }
       if (expandedKey !== linkedRowKey) {
         setExpandedKey(linkedRowKey);
         return;
@@ -243,10 +301,13 @@ export function InboxList(props: {
         showMore();
         return;
       }
-      // Effects run after the render commits, so the expanded row is here.
-      document
-        .querySelector(`[data-inbox-row="${CSS.escape(linkedRowKey)}"]`)
-        ?.scrollIntoView({ block: "center" });
+      // The link leaves the URL only once its row is on screen. Until the
+      // row renders, a later render runs this again.
+      const row = document.querySelector(
+        `[data-inbox-row="${CSS.escape(linkedRowKey)}"]`,
+      );
+      if (!row) return;
+      row.scrollIntoView({ block: "center" });
       navigate(listPath, { replace: true });
       return;
     }
@@ -289,8 +350,10 @@ export function InboxList(props: {
     ready,
     setExpandedKey,
     setLinkedItems,
+    setTodoCollapsed,
     showMore,
     snoozedKey,
+    todoCollapsed,
     view,
   ]);
 
@@ -403,7 +466,6 @@ export function InboxList(props: {
   // Infinite scroll: stream rows render a page at a time as the end comes
   // into view. When every loaded row shows, the next page of what the list
   // reads loads: the feed, the open asks, or Done.
-  const sentinel = useRef<HTMLDivElement>(null);
   const hidden = Math.max(0, streamRows.length - state.loaded);
   const pages: InboxFeedPages[] =
     view === "inbox"
@@ -415,59 +477,58 @@ export function InboxList(props: {
           : view === "done"
             ? [donePages]
             : [];
+  // To do pages its asks on its own while it shows fewer than its count,
+  // and shows its own Try again, so the stream does not repeat it.
+  const todoMore =
+    data.signedIn && data.todoLoaded < data.todoCount && data.itemPages.hasMore;
+  const todoPaging = view === "inbox" && todoMore && !todoCollapsed;
   // A failed page read stops only new reads. Rows already loaded still
   // show as the reader scrolls, and Try again shows once they all do.
-  const failed = hidden > 0 ? [] : pages.filter((source) => source.failed);
+  const failed =
+    hidden > 0
+      ? []
+      : pages.filter(
+          (source) =>
+            source.failed && !(todoPaging && source === data.itemPages),
+        );
   const more =
     hidden > 0 ||
     (failed.length === 0 && pages.some((source) => source.hasMore));
   const loadingMore = pages.some((source) => source.loadingMore);
-  const loadNext = useEffectEvent(() => {
-    if (hidden > 0) state.showMore();
-    else for (const source of pages) source.loadMore();
-  });
-  // A new observer reports at once, so the list keeps loading while its
-  // end shows: it starts again when the list is ready, and whenever more
-  // rows arrive or show.
+  // The trigger asks again whenever rows arrive or show.
   const progress = [
+    view,
     state.loaded,
     streamRows.length,
     data.awake.length,
     doneItems.length,
     ...pages.map((source) => source.loadingMore),
   ].join();
-  useEffect(() => {
-    const node = sentinel.current;
-    if (!node || !more) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) loadNext();
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [more, progress, ready, view]);
-  const listEnd = !ready ? null : failed.length > 0 ? (
-    <div className="flex items-center justify-center gap-2 py-3 text-xs">
-      <InlineError className="w-auto">Could not load more.</InlineError>
-      <Button
-        className="h-7 px-2 text-xs"
-        disabled={loadingMore}
-        onClick={() => {
-          for (const source of failed) source.retry();
-        }}
-        variant="ghost"
-      >
-        Try again
-      </Button>
-    </div>
-  ) : more ? (
-    <div
-      className="py-3 text-center font-sans text-xs text-dashboard-text-muted"
-      ref={sentinel}
-      role="status"
-    >
-      {hidden > 0 || loadingMore ? "Loading more…" : null}
-    </div>
+  const listEnd = ready ? (
+    <PageEnd
+      failed={failed.length > 0}
+      loading={hidden > 0 || loadingMore}
+      more={more}
+      onRetry={() => {
+        for (const source of failed) source.retry();
+      }}
+      onShow={() => {
+        if (hidden > 0) state.showMore();
+        else for (const source of pages) source.loadMore();
+      }}
+      progress={progress}
+    />
   ) : null;
+  const todoEnd = (
+    <PageEnd
+      failed={data.itemPages.failed && todoMore}
+      loading={data.itemPages.loadingMore}
+      more={todoMore}
+      onRetry={data.itemPages.retry}
+      onShow={data.itemPages.loadMore}
+      progress={[data.todoLoaded, data.itemPages.loadingMore].join()}
+    />
+  );
 
   const stream = () => {
     const shown = streamRows.slice(0, state.loaded);
@@ -550,6 +611,7 @@ export function InboxList(props: {
               ) : null
             }
             collapsed={todoCollapsed}
+            footer={todoEnd}
             // The rows show without the server count, which may still load
             // or have failed.
             count={

@@ -23,6 +23,7 @@ import { useReorderPinnedConversations } from "../conversations/useReorderPinned
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { useInboxData } from "./inboxData";
+import { useInboxReturnHere } from "./inboxListState";
 import {
   INBOX_VIEW_LABELS,
   inboxViewPath,
@@ -153,6 +154,9 @@ export function InboxNav(props: {
   const { pathname } = useLocation();
   const [params] = useSearchParams();
   const data = useInboxData();
+  // On a phone the entries are a screen of their own, so Back from what
+  // they open returns here.
+  useInboxReturnHere(props.phone ? "/" : undefined);
   const reorderPins = useReorderPinnedConversations();
   const { showActionError } = useConversationActionToasts();
   const onReorderError = useCallback(

@@ -20,7 +20,11 @@ import {
   useReviewItemsData,
   scrollPages,
 } from "./queries";
-import { inboxBundles, type InboxBundle } from "./reviewItemFormat";
+import {
+  inboxBundles,
+  itemNeedsViewer,
+  type InboxBundle,
+} from "./reviewItemFormat";
 import { useInboxSweep } from "./useInboxSweep";
 
 /** A Conversation row, with what it asks of the viewer when it asks. */
@@ -148,6 +152,11 @@ function useBuildInboxData(input: {
     bundles.map((bundle) => [bundle.conversationId, bundle]),
   );
   const todoRows = bundles.filter((bundle) => bundle.needsYou);
+  // What To do has loaded of what the count counts: the asks that wait on
+  // the viewer, and the Automations that need their attention.
+  const todoLoaded =
+    todoRows.flatMap((row) => row.items).filter(itemNeedsViewer).length +
+    automations.length;
   const snoozedRows = inboxBundles(live.filter(asleep));
 
   // Every Conversation, pinned first in the viewer's order, then newest
@@ -224,6 +233,7 @@ function useBuildInboxData(input: {
     sweeper,
     titleOf,
     todoCount,
+    todoLoaded,
     todoRows,
   };
 }
