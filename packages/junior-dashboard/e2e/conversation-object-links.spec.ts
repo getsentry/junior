@@ -1,4 +1,4 @@
-import { screenshot } from "./screenshot";
+import { desktop, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
 // The mock release Conversation saves Annotations for these pull requests,
@@ -37,6 +37,38 @@ test("links to saved objects show as a chip, a hover card, and a card", async ({
     page.getByRole("region", { name: /getsentry\/relay#44/ }),
   ).toBeVisible();
   await screenshot(page, "conversation-object-links", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
+test("links without an Annotation resolve to a chip and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  // The screenshot uses this size. A resize would move the chip from under
+  // the pointer and close the hover card.
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  // The reply links to another Conversation that has no saved Annotation.
+  const chip = page.getByRole("link", {
+    name: /Investigate checkout latency · Running/,
+  });
+  await expect(chip).toHaveAttribute(
+    "href",
+    `https://junior.example.com/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
+  );
+  await expect(page.getByRole("link", { name: /Morgan Lee/ })).toBeVisible();
+
+  await chip.hover();
+  await expect(
+    page.getByRole("region", {
+      name: "Conversation: Investigate checkout latency",
+    }),
+  ).toBeVisible();
+  await screenshot(page, "conversation-resolved-object-links", {
     lightTheme: true,
     view: "desktop",
   });

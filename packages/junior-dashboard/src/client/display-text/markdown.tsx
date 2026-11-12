@@ -1,4 +1,5 @@
 import { Children, type ReactNode } from "react";
+import type { OwnedObjectAnnotation } from "@sentry/junior/api/schema";
 import Markdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -25,6 +26,11 @@ import {
   ObjectLinkPreview,
   useKnownObject,
 } from "./ObjectLinks";
+import {
+  resolvableUrl,
+  useResolvedObject,
+  useWhenVisible,
+} from "./resolvedObjects";
 
 /**
  * Render display text Markdown as readable prose.
@@ -36,9 +42,11 @@ import {
  * line or in a button. Document mode reads a Markdown file: plain CommonMark
  * plus GFM, where a newline in a paragraph does not break the line.
  *
- * Outside document mode, a link to a known object (`KnownObjectsProvider`)
- * previews its card on hover. A bare URL in running text shows as a chip,
- * and a bare URL alone in a top-level paragraph shows the full card.
+ * A link to a known object (`KnownObjectsProvider`) previews its card on
+ * hover. Other links ask the API for a card when they scroll into view or
+ * the reader hovers them, and stay plain links until a card arrives.
+ * Outside document mode, a bare URL in running text shows as a chip, and a
+ * bare URL alone in a top-level paragraph shows the full card.
  */
 export function MarkdownText(props: {
   chat?: boolean;
@@ -390,10 +398,28 @@ function alignClass(align: unknown): string | undefined {
 }
 
 function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
-  const card = useKnownObject(
+  const known = useKnownObject(
     typeof props.objectUrl === "string" ? props.objectUrl : undefined,
   );
-  if (card) return <ObjectCard card={card} />;
+  if (known) return <ObjectCard card={known} />;
+  if (typeof props.objectUrl === "string" && resolvableUrl(props.objectUrl)) {
+    return (
+      <ResolvedParagraph objectUrl={props.objectUrl}>
+        {props.children}
+      </ResolvedParagraph>
+    );
+  }
+  return <PlainParagraph>{props.children}</PlainParagraph>;
+}
+
+// The link in the paragraph asks for the card. This reads the same entry.
+function ResolvedParagraph(props: { children: ReactNode; objectUrl: string }) {
+  const { card } = useResolvedObject(props.objectUrl);
+  if (card) return <ObjectCard card={card} live />;
+  return <PlainParagraph>{props.children}</PlainParagraph>;
+}
+
+function PlainParagraph(props: { children: ReactNode }) {
   return (
     <p className="m-0 min-w-0 whitespace-normal">
       {renderText(props.children)}
@@ -409,33 +435,102 @@ function TranscriptAnchor(props: {
   const card = useKnownObject(props.href);
   // `safeHref` removes unsafe destinations. Keep their label text.
   if (!props.href) return <>{renderText(props.children)}</>;
-  if (card && props.bare) {
-    return <ObjectLinkChip card={card} href={props.href} />;
-  }
-
   const label =
     typeof props.children === "string" ? (
       <SearchAwareLinkLabel href={props.href} label={props.children} />
     ) : (
       props.children
     );
-  if (!/^https?:/i.test(props.href)) {
-    return (
-      <a className={ANCHOR_CLASS} href={props.href}>
-        {label}
-      </a>
-    );
-  }
   if (card) {
     return (
-      <ObjectLinkPreview card={card} className={ANCHOR_CLASS} href={props.href}>
+      <ObjectAnchor bare={props.bare} card={card} href={props.href}>
         {label}
-      </ObjectLinkPreview>
+      </ObjectAnchor>
+    );
+  }
+  if (resolvableUrl(props.href)) {
+    return (
+      <ResolvedAnchor bare={props.bare} href={props.href}>
+        {label}
+      </ResolvedAnchor>
+    );
+  }
+  return <PlainAnchor href={props.href}>{label}</PlainAnchor>;
+}
+
+// A link without a saved object asks the API for a card when it scrolls
+// into view or the reader hovers it.
+function ResolvedAnchor(props: {
+  bare?: boolean;
+  children: ReactNode;
+  href: string;
+}) {
+  const { card, request } = useResolvedObject(props.href);
+  const observe = useWhenVisible(request, !card);
+  if (card) {
+    return (
+      <ObjectAnchor bare={props.bare} card={card} href={props.href} live>
+        {props.children}
+      </ObjectAnchor>
     );
   }
   return (
-    <OutboundLink className={ANCHOR_CLASS} href={props.href}>
-      {label}
+    <PlainAnchor href={props.href} observe={observe} onPointerEnter={request}>
+      {props.children}
+    </PlainAnchor>
+  );
+}
+
+function ObjectAnchor(props: {
+  bare?: boolean;
+  card: OwnedObjectAnnotation;
+  children: ReactNode;
+  href: string;
+  live?: boolean;
+}) {
+  if (props.bare) {
+    return (
+      <ObjectLinkChip card={props.card} href={props.href} live={props.live} />
+    );
+  }
+  return (
+    <ObjectLinkPreview
+      card={props.card}
+      className={ANCHOR_CLASS}
+      href={props.href}
+      live={props.live}
+    >
+      {props.children}
+    </ObjectLinkPreview>
+  );
+}
+
+function PlainAnchor(props: {
+  children: ReactNode;
+  href: string;
+  observe?: (element: Element | null) => void;
+  onPointerEnter?: () => void;
+}) {
+  if (!/^https?:/i.test(props.href)) {
+    return (
+      <a
+        className={ANCHOR_CLASS}
+        href={props.href}
+        onPointerEnter={props.onPointerEnter}
+        ref={props.observe}
+      >
+        {props.children}
+      </a>
+    );
+  }
+  return (
+    <OutboundLink
+      className={ANCHOR_CLASS}
+      href={props.href}
+      onPointerEnter={props.onPointerEnter}
+      ref={props.observe}
+    >
+      {props.children}
     </OutboundLink>
   );
 }

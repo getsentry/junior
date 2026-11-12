@@ -124,6 +124,8 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
 }
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+// Mock text links to dashboard pages on this origin.
+const MOCK_DASHBOARD_ORIGIN = "https://junior.example.com";
 const INCIDENT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 const PRIVATE_CONVERSATION_ID = "slack:DQA123:1770007200.000300";
 const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
@@ -1378,7 +1380,8 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "",
         "https://github.com/getsentry/payments/pull/91",
         "",
-        "Deployment is ready.",
+        // No Annotations: the API resolves these dashboard links.
+        `Deployment is ready. Next, ${MOCK_DASHBOARD_ORIGIN}/people/dev%40example.com picks up ${MOCK_DASHBOARD_ORIGIN}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}.`,
       ].join("\n"),
     }),
   );

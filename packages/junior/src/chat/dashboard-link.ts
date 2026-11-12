@@ -1,4 +1,9 @@
-import { objectIconPath, type ObjectIconName } from "@sentry/junior-plugin-api";
+import {
+  objectIconPath,
+  objectLinkFilterSchema,
+  type ObjectIconName,
+  type ObjectLinkFilter,
+} from "@sentry/junior-plugin-api";
 export interface DashboardConversationLinkOptions {
   basePath?: string;
   baseURL?: string;
@@ -87,11 +92,13 @@ export function getDashboardSettingsLink(): string | undefined {
   return resolveDashboardPath("/settings");
 }
 
-/** Return the Conversation id in a dashboard conversation URL, if it is one. */
-export function parseDashboardConversationLink(
+// Return the decoded segment after one dashboard page prefix, if the URL
+// is that page.
+function parseDashboardPageLink(
   url: string,
+  pagePrefix: string,
 ): string | undefined {
-  const prefix = resolveDashboardPath("/conversations/");
+  const prefix = resolveDashboardPath(pagePrefix);
   if (!prefix || !URL.canParse(url)) return undefined;
   const base = new URL(prefix);
   const link = new URL(url);
@@ -105,6 +112,40 @@ export function parseDashboardConversationLink(
   } catch {
     return undefined;
   }
+}
+
+/** Return the Conversation id in a dashboard conversation URL, if it is one. */
+export function parseDashboardConversationLink(
+  url: string,
+): string | undefined {
+  return parseDashboardPageLink(url, "/conversations/");
+}
+
+/** Build the dashboard URL of one person's page. */
+export function getDashboardPersonLink(email: string): string | undefined {
+  return resolveDashboardPath(`/people/${encodeURIComponent(email)}`);
+}
+
+/** Return the email in a dashboard person URL, if it is one. */
+export function parseDashboardPersonLink(url: string): string | undefined {
+  return parseDashboardPageLink(url, "/people/");
+}
+
+/**
+ * Return the link filter for one dashboard page pattern, such as
+ * `/conversations/*`, when the core dashboard is enabled.
+ */
+export function getDashboardLinkFilter(
+  pagePattern: string,
+): ObjectLinkFilter | undefined {
+  const link = resolveDashboardPath(pagePattern);
+  if (!link) return undefined;
+  const url = new URL(link);
+  return objectLinkFilterSchema.parse({
+    scheme: url.protocol.slice(0, -1),
+    host: url.host,
+    pathPattern: url.pathname,
+  });
 }
 
 /** Build the dashboard task detail URL when the core dashboard is enabled. */
