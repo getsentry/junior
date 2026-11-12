@@ -17,6 +17,7 @@ const names = [
   "comment-discussion",
   "person",
   "file",
+  "comment",
   "package",
 ];
 const paths = Object.fromEntries(

@@ -1,5 +1,6 @@
 import {
   conversationObjectCard,
+  messageObjectCard,
   personObjectCard,
   type ObjectLinksReport,
 } from "@sentry/junior/api/schema";
@@ -42,6 +43,8 @@ const GOOGLE_OBJECTS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
     plugin: "google",
   },
 };
+// The mock release thread links to one Slack message.
+const SLACK_MESSAGE_PATH = "/archives/CQA456/p1770021700000100";
 
 function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   if (!URL.canParse(href)) return [];
@@ -50,6 +53,18 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
     ? GOOGLE_OBJECTS[url.pathname]
     : undefined;
   if (google) return [{ object: { ...google, url: href }, url: href }];
+  if (url.hostname.endsWith(".slack.com")) {
+    if (url.pathname !== SLACK_MESSAGE_PATH) return [];
+    const object = messageObjectCard({
+      author: "Morgan Lee",
+      channel: "#proj-release",
+      key: "slack:TQA:CQA456:1770021700.000100",
+      sentAt: new Date(1770021700_000).toISOString(),
+      text: "Release notes are ready for review. Ping me before the train leaves at 3 PM, and I will hold the payments deploy until the pin lands.",
+      url: href,
+    });
+    return [{ object: { ...object, plugin: "junior" }, url: href }];
+  }
   const conversationId = pageSegment(url, "conversations");
   const detail = conversationId
     ? readMockConversationDetail(conversationId)

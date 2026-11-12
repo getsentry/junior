@@ -23,6 +23,10 @@ import {
   type ObjectLinkType,
 } from "./link-types";
 import { resolvePersonLink } from "./person";
+import {
+  resolveSlackMessageLink,
+  SLACK_MESSAGE_LINK_FILTER,
+} from "./slack-message";
 
 /** A card is a short-lived read. A changed object shows within this time. */
 export const OBJECT_LINK_TTL_MS = 60_000;
@@ -36,11 +40,19 @@ const OBJECT_LINK_SYSTEM_ACTOR = {
 } as const;
 
 function coreLinkTypes(): ObjectLinkType[] {
+  // Slack runtime is in core until Slack is a plugin.
+  const slack: ObjectLinkType = {
+    filters: [SLACK_MESSAGE_LINK_FILTER],
+    objectType: "message",
+    owner: "junior",
+    resolve: resolveSlackMessageLink,
+  };
   const conversations = getDashboardLinkFilter("/conversations/*");
   const people = getDashboardLinkFilter("/people/*");
-  // Core links need the dashboard: each card links to a dashboard page.
-  if (!conversations || !people) return [];
+  // These links need the dashboard: each card links to a dashboard page.
+  if (!conversations || !people) return [slack];
   return [
+    slack,
     {
       filters: [conversations],
       objectType: "conversation",
