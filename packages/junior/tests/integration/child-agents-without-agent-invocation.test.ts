@@ -50,6 +50,8 @@ import {
 } from "../fixtures/child-without-agent-invocation";
 import { webTestActor } from "../fixtures/conversation";
 import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
+import { enqueueEventNotification } from "@/chat/events/notification";
+import { createWatch } from "@/chat/events/store";
 import {
   commitRunInput,
   createHarness,
@@ -840,6 +842,82 @@ describe("child agents that no Agent invocation names", () => {
 
       // The fourth message is within the limit of four.
       await expect(queued).resolves.toMatchObject({ queued: true });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("does not count an open Watch Turn as a parent message", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await spawnChild(harness, "parent-turn:call-0");
+      // The child's Turn for its task fails on every retry, so it ends.
+      for (let tries = 0; tries < CONVERSATION_WORK_MAX_RETRIES; tries++) {
+        await harness.drain(childId);
+        await runHeartbeatAfterLeasesExpire(harness.queue);
+      }
+
+      // Its timer fires. The Watch Turn takes the Event, then pauses.
+      const watch = await createWatch(
+        {
+          conversationId: childId,
+          events: ["timer.fired"],
+          expiresAtMs: Date.now() + 3_600_000,
+          identifier: "timer-1",
+          intent: "Check back.",
+          label: "Timer",
+          namespace: "junior",
+          resourceType: "timer",
+        },
+        { state: harness.state },
+      );
+      await enqueueEventNotification({
+        event: {
+          eventKey: "timer-1:fired",
+          eventType: "timer.fired",
+          identifier: "timer-1",
+          namespace: "junior",
+          occurredAtMs: Date.now(),
+          trustedSummary: "Timer elapsed.",
+        },
+        queue: harness.queue,
+        state: harness.state,
+        subscription: watch,
+      });
+      // An Event wake waits 30 seconds for more Events.
+      vi.setSystemTime(Date.now() + 31_000);
+      harness.onPersonRun(async (run) => {
+        await commitRunInput(run);
+        return await yieldRun(run);
+      });
+      await harness.processUntilRun(childId);
+      expect(harness.runs.at(-1)?.source).toMatchObject({
+        eventType: "timer.fired",
+      });
+
+      for (let index = 1; index < 4; index++) {
+        await sendParentMessage({
+          actor: slackInvocationInput.actor,
+          childConversationId: childId,
+          idempotencyKey: `parent-turn:call-${index}`,
+          parentConversationId: slackParentConversationId,
+          queue: harness.queue,
+          state: harness.state,
+        });
+      }
+      // The fourth open parent message is within the limit of four.
+      await expect(
+        createAgentInvocationForMessage({
+          actor: slackInvocationInput.actor,
+          childConversationId: childId,
+          destination: slackInvocationInput.destination,
+          idempotencyKey: "parent-turn:call-4",
+          input: "Check it again.",
+          parentConversationId: slackParentConversationId,
+          parentToolCallId: "call-4",
+        }),
+      ).resolves.toMatchObject({ queued: true });
     } finally {
       await harness.close();
     }

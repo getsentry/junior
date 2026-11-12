@@ -121,12 +121,14 @@ export async function createHarness() {
 
 export type Harness = Awaited<ReturnType<typeof createHarness>>;
 
-// The checkpoint fields of a run's input.
+// The checkpoint fields of a run's input: its history, then its instruction.
 function runInputCheckpoint(run: AgentRun) {
+  const history = run.history ?? [];
   return {
     actor: run.actor!,
     conversationId: run.conversationId,
     messages: [
+      ...history,
       {
         role: "user" as const,
         content: [{ type: "text" as const, text: run.instruction.text }],
@@ -137,6 +139,7 @@ function runInputCheckpoint(run: AgentRun) {
     source: run.source!,
     surface: run.surface,
     turnId: run.turnId,
+    turnStartMessageIndex: history.length,
   };
 }
 
