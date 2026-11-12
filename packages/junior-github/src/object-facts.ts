@@ -130,10 +130,14 @@ export function withGitHubPreviewImages(
   facts: Omit<CodeChangeFacts, "previewImageUrls">,
   urls: readonly string[],
 ): CodeChangeFacts {
+  // Serialize the other facts once. The list goes last in the JSON, as
+  // `,"previewImageUrls":[...]`, so each URL adds its JSON string and a
+  // comma. `URL.href` is ASCII, so its length is its size in bytes.
+  let bytes = objectFactsBytes(facts) + ',"previewImageUrls":[]'.length;
   const previewImageUrls: string[] = [];
   for (const url of urls) {
-    const next = { ...facts, previewImageUrls: [...previewImageUrls, url] };
-    if (objectFactsBytes(next) > OBJECT_FACTS_MAX_BYTES) break;
+    bytes += JSON.stringify(url).length + (previewImageUrls.length ? 1 : 0);
+    if (bytes > OBJECT_FACTS_MAX_BYTES) break;
     previewImageUrls.push(url);
   }
   return previewImageUrls.length > 0 ? { ...facts, previewImageUrls } : facts;

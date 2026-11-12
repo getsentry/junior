@@ -205,6 +205,11 @@ describe("getPullRequest", () => {
         body: {
           ...response.body,
           body: images.map((url) => `![Step](${url})`).join("\n"),
+          // 180 extra UTF-8 bytes, more than one image entry, so counting
+          // characters instead of bytes would save one image too many.
+          user: { login: "ü".repeat(60) },
+          head: { ...response.body.head, ref: "ü".repeat(60) },
+          base: { ...response.body.base, ref: "ü".repeat(60) },
         },
       },
       checksResponse({ contexts: [] }),
