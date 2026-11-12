@@ -82,18 +82,29 @@ When a person wants to open the UI that you changed, send a preview URL:
 
 1. Push the branch, so a later Turn can make the preview again.
 2. Start the server in the background on all interfaces:
-   `(HOST=0.0.0.0 JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true setsid nohup pnpm dev > /tmp/dev.log 2>&1 &)`
+   `(HOST=0.0.0.0 JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true JUNIOR_DASHBOARD_LIVE_ORIGIN=https://junior-prod.sentry.dev JUNIOR_BOT_NAME="junior (Preview)" setsid nohup pnpm dev > /tmp/dev.log 2>&1 &)`
+   `JUNIOR_BOT_NAME` replaces the `junior-example` name from `.env.example`
+   in the tab title.
 3. Wait until `curl -s -o /dev/null -w '%{http_code}' localhost:3000/` returns
    `200`.
 4. Call `createPreview` with port `3000`, and send the URL.
 
 Rules:
 
-- Anyone with the URL can open it. Serve mock data only. Do not give the
-  server provider credentials.
-- The URL stops working when the Sandbox stops. When the person asks to
-  refresh the preview, check out the branch, start the server again, and send
-  the new URL.
+- Serve mock data only. Do not give the server provider credentials. A viewer
+  can choose **Use live data** in the banner and connect it to their account.
+  Never ask for a token, and never put one in the Sandbox.
+- Live data uses the API of the live deployment. When the change touches an
+  API, tell the person that only mock data shows it.
+- After more edits, run the `curl` check first. If it returns `200`, do not
+  restart the server. It rebuilds `packages/junior` edits by itself. It does
+  not rebuild the dashboard browser bundle, so after edits in
+  `packages/junior-dashboard`, run
+  `pnpm --filter @sentry/junior-dashboard run build:css && pnpm --filter @sentry/junior-dashboard run build:client && pnpm --filter @sentry/junior-dashboard run build:server`.
+  The server restarts on the new build. Then tell the person to refresh the
+  same URL.
+- When the person asks to refresh the preview after the Sandbox stopped, check
+  out the branch, start the server again, and send the new URL.
 
 ## Docker Sandbox QA
 

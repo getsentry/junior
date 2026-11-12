@@ -15,6 +15,7 @@ import {
 import {
   getAgentInvocation,
   getLatestAgentInvocationForConversation,
+  isStoppedAgentInvocation,
   listOpenAgentInvocations,
 } from "./store";
 import {
@@ -39,6 +40,7 @@ type NewAgentInvocation = Pick<
   | "childConversationId"
   | "credentialContext"
   | "destination"
+  | "fork"
   | "input"
   | "invocationId"
   | "parentConversationId"
@@ -62,6 +64,7 @@ async function insertAgentInvocation(
       ...invocation,
       agentName: invocation.agentName ?? null,
       agentType: invocation.agentType ?? null,
+      fork: invocation.fork ?? false,
       credentialContext: invocation.credentialContext ?? null,
       parentToolCallId: invocation.parentToolCallId ?? null,
       reasoningLevel: invocation.reasoningLevel ?? null,
@@ -91,6 +94,7 @@ function sameCreateInput(
     invocation.agentName === input.agentName &&
     invocation.input === input.input &&
     invocation.agentType === input.agentType &&
+    invocation.fork === input.fork &&
     invocation.reasoningLevel === input.reasoningLevel &&
     JSON.stringify(invocation.actor) === JSON.stringify(input.actor) &&
     JSON.stringify(invocation.credentialContext) ===
@@ -100,8 +104,9 @@ function sameCreateInput(
 }
 
 /**
- * A child agent can only start or give work to child agents while it has
- * open work. A stopped child has none. A root Conversation has no agent
+ * A stopped child agent cannot start or give work to child agents until its
+ * parent gives it new work. A Turn on the child's Conversation loop
+ * has no open agent invocation, but it can. A root Conversation has no agent
  * invocation, so it always passes. `open` is the parent's open work from
  * `listOpenAgentInvocations`.
  */
@@ -109,12 +114,14 @@ async function assertCanGiveChildWork(
   parentConversationId: string,
   open: readonly AgentInvocation[],
 ): Promise<void> {
-  if (
-    !open.some((row) => row.childConversationId === parentConversationId) &&
-    (await getLatestAgentInvocationForConversation(parentConversationId))
-  ) {
+  if (open.some((row) => row.childConversationId === parentConversationId)) {
+    return;
+  }
+  const latest =
+    await getLatestAgentInvocationForConversation(parentConversationId);
+  if (latest && isStoppedAgentInvocation(latest)) {
     throw new Error(
-      `Agent conversation ${parentConversationId} has no open work and cannot give work to child agents`,
+      `Agent conversation ${parentConversationId} is stopped and cannot give work to child agents`,
     );
   }
 }
@@ -170,7 +177,10 @@ export async function createAgentInvocation(
   return await getSqlExecutor().withLock(lockName, async () => {
     const existing = await getAgentInvocation(invocationId);
     if (existing) {
-      if (!sameCreateInput(existing, input)) {
+      const child = await getConversationStore().get({
+        conversationId: existing.childConversationId,
+      });
+      if (!sameCreateInput(existing, input) || child?.kind !== input.kind) {
         throw new Error(
           `Agent invocation idempotency key was reused with different input for ${invocationId}`,
         );
@@ -195,10 +205,12 @@ export async function createAgentInvocation(
 
     await getConversationStore().createChild({
       childConversationId,
-      kind: "task",
+      kind: input.kind,
       parentConversationId: input.parentConversationId,
       nowMs,
       source: "internal",
+      // The spawn title names the child, so title generation skips it.
+      ...(input.title ? { title: input.title } : undefined),
     });
 
     // The name check above runs under the parent lock, in the same
@@ -219,6 +231,7 @@ export async function createAgentInvocation(
         childConversationId,
         credentialContext: input.credentialContext,
         destination: input.destination,
+        fork: input.fork,
         input: input.input,
         invocationId,
         parentConversationId: input.parentConversationId,
@@ -248,8 +261,9 @@ export async function createAgentInvocationFromLatest(
     input: string;
     invocationId: string;
     latest: AgentInvocation;
-    /** Actor, credentials, and Source for watch events. */
-    runAs?: Pick<AgentInvocation, "actor" | "credentialContext" | "source">;
+    /** Actor, credentials, and Source for watch events and results. */
+    runAs?: Pick<AgentInvocation, "actor" | "credentialContext"> &
+      Partial<Pick<AgentInvocation, "source">>;
   },
   nowMs = Date.now(),
 ): Promise<AgentInvocation> {

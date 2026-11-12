@@ -375,6 +375,7 @@ export function transcriptMessagesFromEvents(
         type: "subagent" as const,
         id: subagentId,
         childConversationId: data.childConversationId,
+        childKind: data.childKind,
         subagentKind: data.subagentKind,
         status: data.status,
         ...(finishedTimestamp === undefined

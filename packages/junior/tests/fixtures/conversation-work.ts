@@ -453,6 +453,12 @@ export type ConversationWorkSlackHarness = {
     ts?: string;
     user?: string;
   }) => Promise<Response>;
+  /** Press Slack's native stop button in a thread. */
+  sendSessionStop: (input: {
+    eventTs: string;
+    threadTs: string;
+    user?: string;
+  }) => Promise<Response>;
 };
 
 /**
@@ -648,6 +654,23 @@ export async function createConversationWorkSlackHarness(
             ...input,
           }),
         ),
+        services,
+      }),
+    sendSessionStop: async (input) =>
+      await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest({
+          type: "event_callback",
+          team_id: "T123",
+          event_id: `Ev_SESSION_STOP_${input.eventTs}`,
+          event: {
+            type: "agent_session_stopped",
+            channel: "C123",
+            event_ts: input.eventTs,
+            streaming_message_ts: [],
+            thread_ts: input.threadTs,
+            user: input.user ?? "U123",
+          },
+        }),
         services,
       }),
   };

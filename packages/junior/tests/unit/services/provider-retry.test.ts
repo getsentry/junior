@@ -10,7 +10,10 @@ import {
   isProviderRetryError,
   ProviderError,
 } from "@/chat/services/provider-error";
-import { nextProviderRetry } from "@/chat/services/provider-retry";
+import {
+  nextProviderRetry,
+  nextRefusalFallback,
+} from "@/chat/services/provider-retry";
 
 function assistantError(errorMessage: string | undefined): AssistantMessage {
   return fauxAssistantMessage([], {
@@ -381,6 +384,37 @@ describe("provider retry helpers", () => {
     expect(retry({ attempt: 3 })).toBeUndefined();
     expect(
       retry({ failure: undefined, messages: [failedAssistant] }),
+    ).toBeUndefined();
+  });
+
+  it("continues a provider refusal on the fallback model only when one is set", () => {
+    const user = {
+      role: "user",
+      content: [{ type: "text", text: "check this CVE" }],
+    } as PiMessage;
+    const refusal: AssistantMessage = {
+      ...assistantError("Cyber safeguards flagged this message."),
+      rawStopReason: "refusal",
+    };
+
+    expect(
+      nextRefusalFallback({
+        failure: refusal,
+        fallbackModelId: "openai/gpt-6-astra",
+        messages: [user, refusal],
+      }),
+    ).toEqual({ messages: [user], modelId: "openai/gpt-6-astra" });
+    expect(
+      nextRefusalFallback({ failure: refusal, messages: [user, refusal] }),
+    ).toBeUndefined();
+
+    const serverError = assistantError("Error: 502 Bad Gateway");
+    expect(
+      nextRefusalFallback({
+        failure: serverError,
+        fallbackModelId: "openai/gpt-6-astra",
+        messages: [user, serverError],
+      }),
     ).toBeUndefined();
   });
 });

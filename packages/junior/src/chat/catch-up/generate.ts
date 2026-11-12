@@ -1,5 +1,5 @@
 import type { BriefEntry, ConversationBrief } from "@/chat/briefs/schema";
-import type { completeText } from "@/chat/pi/client";
+import type { completeText, ConversationModelCost } from "@/chat/core-model";
 
 /** Bound the request so a long unread range keeps a fixed cost. */
 const MAX_INPUT_CHARS = 40_000;
@@ -15,7 +15,7 @@ Rules:
 - Use only facts in the input. Do not invent names, ids, numbers, outcomes, or links.
 - Do not repeat what the Brief already says unless it changed.
 - Never say that a code change was merged, closed, deployed, or released unless a row says so.
-- Ignore Junior runtime mechanics, context tags, and markers such as [[NO_REPLY]].
+- Ignore Junior runtime mechanics and context tags.
 - Address the reader as "you".
 - When a row asks the reader a question, asks them to review, approve, or decide something, or waits on them, add one last line that starts with "Needs you:" and says what. Otherwise, do not add that line.
 - Plain text only. No headings, lists, or Markdown.`;
@@ -105,6 +105,7 @@ export async function generateCatchUp(args: {
   brief?: CatchUpBrief;
   completeText: typeof completeText;
   conversationId: string;
+  cost: ConversationModelCost;
   entries: BriefEntry[];
   modelId: string;
   omittedEarlierRows: boolean;
@@ -122,9 +123,9 @@ export async function generateCatchUp(args: {
     ],
     metadata: { conversationId: args.conversationId, modelId: args.modelId },
     modelId: args.modelId,
-    promptName: "junior.conversation_catch_up",
+    operation: "conversation_catch_up",
+    cost: args.cost,
     system: CATCH_UP_PROMPT,
-    temperature: 0,
   });
   const catchUp = parseCatchUp(result.text);
   if (!catchUp) throw new Error("The catch-up model returned no summary");

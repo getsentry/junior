@@ -5,7 +5,7 @@ import {
   type Context,
 } from "@earendil-works/pi-ai";
 import { Type } from "@sinclair/typebox";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildAgentModelRequest } from "@/chat/agent/context-summary";
 import { botConfig } from "@/chat/config";
 import { getConversationEventStore } from "@/chat/db";
@@ -155,7 +155,7 @@ describe("background compaction events", () => {
 
 const MODEL_ID = botConfig.modelId;
 
-function assistant(text: string, input = 0): AssistantMessage {
+function assistant(text: string, input = 0, costUsd = 0): AssistantMessage {
   return {
     role: "assistant",
     content: [{ type: "text", text }],
@@ -168,20 +168,44 @@ function assistant(text: string, input = 0): AssistantMessage {
       cacheRead: 0,
       cacheWrite: 0,
       totalTokens: input,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      cost: {
+        input: 0,
+        output: costUsd,
+        cacheRead: 0,
+        cacheWrite: 0,
+        total: costUsd,
+      },
     },
     stopReason: "stop",
     timestamp: 0,
   };
 }
 
-/** A model stream that answers each call with the next text. */
-function replies(texts: string[]): { calls: Context[]; streamFn: StreamFn } {
+/**
+ * A model stream that answers each call with the next text, at $0.001. An
+ * `{ error }` entry is a provider error with no cost.
+ */
+function replies(texts: Array<string | { error: string }>): {
+  calls: Context[];
+  streamFn: StreamFn;
+} {
   const calls: Context[] = [];
   const streamFn: StreamFn = (_model, context) => {
-    const message = assistant(texts[calls.length]!);
+    const reply = texts[calls.length]!;
     calls.push({ ...context, messages: [...context.messages] });
     const stream = createAssistantMessageEventStream();
+    if (typeof reply !== "string") {
+      const error: AssistantMessage = {
+        ...assistant(""),
+        stopReason: "error",
+        errorMessage: reply.error,
+      };
+      queueMicrotask(() => {
+        stream.push({ type: "error", reason: "error", error });
+      });
+      return stream;
+    }
+    const message = assistant(reply, 0, 0.001);
     queueMicrotask(() => {
       stream.push({ type: "start", partial: message });
       stream.push({ type: "done", reason: "stop", message });
@@ -295,6 +319,7 @@ describe("background compaction job", () => {
       {
         type: "compaction_prepared",
         ...request,
+        costUsd: 0.001,
         outcome: "ready",
         summary: "The person picked blue.",
       },
@@ -323,19 +348,25 @@ describe("background compaction job", () => {
     ]);
     const [secondJob] = await completeTurn(liveAgent(mark));
     await processBackgroundCompaction(secondJob!, {
-      streamFn: replies(["No tags.", "Still no tags."]).streamFn,
+      streamFn: replies(["No tags.", { error: "Internal server error" }])
+        .streamFn,
     });
     await events.append(CONVERSATION_ID, [
       { createdAtMs: 3, data: userMessage("Third question.", 3) },
     ]);
 
+    // The attempt check reads only compaction facts, not the full history.
+    const loadCurrentHistory = vi.spyOn(events, "loadCurrentHistory");
     await expect(completeTurn(liveAgent(mark))).resolves.toEqual([]);
+    expect(loadCurrentHistory).not.toHaveBeenCalled();
+    loadCurrentHistory.mockRestore();
     const prepared = (await bookkeeping()).filter(
       (event) => event.type === "compaction_prepared",
     );
+    // A failed nudge request keeps the cost of the first request.
     expect(prepared).toMatchObject([
-      { outcome: "failed", errorType: "missing_summary" },
-      { outcome: "failed", errorType: "missing_summary" },
+      { outcome: "failed", errorType: "missing_summary", costUsd: 0.002 },
+      { outcome: "failed", errorType: "provider_server", costUsd: 0.001 },
     ]);
   });
 

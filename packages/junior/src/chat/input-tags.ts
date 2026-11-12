@@ -13,6 +13,7 @@ const RUNTIME_INPUT_TAGS = [
   "agent-message",
   "parent-agent-task",
   "review-item-answer",
+  // Saved Turns from before a dismiss stopped starting a Turn have it.
   "review-item-dismissed",
   "relayed-review-item-answer",
   "relayed-review-item-dismissed",
@@ -101,6 +102,26 @@ export function renderUntrustedTag(
 /** Render one short child tag, such as `<summary>`, around escaped text. */
 export function renderChildTag(name: string, text: string): string {
   return `<${name}>${text}</${name}>`;
+}
+
+const PARENT_AGENT_TASK_OPEN = "<parent-agent-task>\n";
+const PARENT_AGENT_TASK_CLOSE = "\n</parent-agent-task>";
+
+/**
+ * Return the text of a `<parent-agent-task>` input without its tag, as
+ * `<current-instruction>` is read for a person. Returns nothing for another
+ * input. The tag is only for the model: provenance decides authority.
+ */
+export function readParentAgentTask(text: string): string | undefined {
+  if (
+    !text.startsWith(PARENT_AGENT_TASK_OPEN) ||
+    !text.endsWith(PARENT_AGENT_TASK_CLOSE)
+  ) {
+    return undefined;
+  }
+  return text
+    .slice(PARENT_AGENT_TASK_OPEN.length, -PARENT_AGENT_TASK_CLOSE.length)
+    .replaceAll("&lt;/", "</");
 }
 
 /**

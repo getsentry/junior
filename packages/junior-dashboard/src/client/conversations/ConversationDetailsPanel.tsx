@@ -13,7 +13,7 @@ import {
   type ConversationMemoryEntry,
   type ConversationMemoryState,
 } from "./conversationMemory";
-import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
+import type { ConversationDrawerTarget } from "./ConversationDrawer";
 import {
   conversationParticipants,
   ParticipantAvatarStack,
@@ -25,13 +25,12 @@ export function ConversationDetailsPanel(props: {
   conversation: Conversation | undefined;
   conversationId: string;
   detail: ConversationDetailReport | undefined;
-  feedConversations: readonly Conversation[];
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;
   links: ConversationLink[];
   memoryState: ConversationMemoryState;
   onClose(): void;
-  onOpenSubagent(target: SubagentTranscriptTarget): void;
+  onOpenSubagent(target: ConversationDrawerTarget): void;
   onSelectMemory(entry: ConversationMemoryEntry & { turnId: string }): void;
 }) {
   const { conversation, detail } = props;
@@ -44,7 +43,6 @@ export function ConversationDetailsPanel(props: {
     <ConversationMemoryContext value={props.memoryState}>
       <ConversationDetails
         agentTree={detail?.agentTree}
-        feedConversations={props.feedConversations}
         autoArchive={
           detail?.autoArchive === undefined ? null : (
             <AutoArchiveToggle

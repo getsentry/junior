@@ -4,7 +4,9 @@ import { linkifyGitHubReferences } from "../src/reply-markdown.js";
 
 describe("GitHub reply markdown", () => {
   it("turns repository issue references into links", () => {
-    expect(linkifyGitHubReferences("opened getsentry/junior#1509 for review")).toBe(
+    expect(
+      linkifyGitHubReferences("opened getsentry/junior#1509 for review"),
+    ).toBe(
       "opened [getsentry/junior#1509](https://github.com/getsentry/junior/issues/1509) for review",
     );
   });
@@ -58,9 +60,9 @@ describe("GitHub reply markdown", () => {
   });
 
   it("leaves ambiguous references unchanged", () => {
-    expect(linkifyGitHubReferences("PR #1509 and foo.getsentry/junior#1509")).toBe(
-      "PR #1509 and foo.getsentry/junior#1509",
-    );
+    expect(
+      linkifyGitHubReferences("PR #1509 and foo.getsentry/junior#1509"),
+    ).toBe("PR #1509 and foo.getsentry/junior#1509");
   });
 
   it("registers linkification on the GitHub plugin", () => {

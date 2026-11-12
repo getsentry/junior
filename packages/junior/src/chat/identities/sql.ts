@@ -3,6 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
+import { recordStartedConversationParticipants } from "@/chat/conversations/sql/participants";
 import {
   GOOGLE_IDENTITY_PROVIDER,
   normalizeIdentityEmail,
@@ -184,6 +185,15 @@ async function upsertIdentityRecord(
       throw new Error("Identity conflicts with linked user");
     }
     throw new Error("Identity upsert returned no row");
+  }
+  // Check every write that may have set the User, not only a known existing
+  // row: a concurrent first write can create the Identity and its roots
+  // between the read above and this upsert.
+  if (!existing?.userId && row.userId && identity.kind === "user") {
+    await recordStartedConversationParticipants(executor, {
+      identityId: row.id,
+      userId: row.userId,
+    });
   }
   return {
     id: row.id,

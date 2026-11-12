@@ -20,9 +20,13 @@ import {
   consumeSandboxEgressPermissionDeniedSignal,
   createSandboxEgressCredentialToken,
 } from "@/chat/sandbox/egress/session";
-import type { SandboxEgressSignalTransport } from "@/chat/sandbox/egress/signals";
+import {
+  SANDBOX_EGRESS_AUTH_REQUIRED_MARKER,
+  type SandboxEgressSignalTransport,
+} from "@/chat/sandbox/egress/signals";
 import { formatSandboxCommandResult } from "@/chat/sandbox/command-result";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
+import type { CredentialAuditSource } from "@/chat/credentials/audit";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { throwSandboxOperationError } from "@/chat/sandbox/errors";
 import { getSandboxProvider } from "@/chat/sandbox/provider";
@@ -97,6 +101,8 @@ export interface SandboxOptions {
   /** Conversation that sandbox egress records for its credentialed requests. */
   conversationId?: string;
   credentialEgress?: CredentialContext;
+  /** Run Source that sandbox egress records for its credentialed writes. */
+  credentialAuditSource?: CredentialAuditSource;
   egressSignals?: SandboxEgressSignalTransport;
   prepare?: (workspace: SandboxWorkspace) => void | Promise<void>;
   prepareWorkspace?: (
@@ -185,6 +191,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       conversationId: options.conversationId,
       credentials: credentialEgress,
       egressId,
+      source: options.credentialAuditSource,
       ttlMs: sandboxEgressTokenTtlMs,
     });
     sandboxEgressCredentialTokens.set(egressId, {
@@ -337,7 +344,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     });
     // Resolve before the turn so concurrent calls share one acquisition.
     let tools = await runtime.tools(context.signal);
+    const waitStartedAtMs = Date.now();
     const bashTurn = await takeBashTurn();
+    const waitMs = Date.now() - waitStartedAtMs;
     try {
       context.signal?.throwIfAborted();
       // A switch or reacquire can replace the Sandbox while this command
@@ -352,6 +361,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         "process.exec",
         {
           "process.executable.name": "bash",
+          "app.sandbox.bash.wait_ms": waitMs,
         },
         async () => {
           const response = await executeBash({
@@ -402,6 +412,19 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       // cross-command leakage.
       const { authRequired, permissionDenied } =
         await consumeEgressSignals(activeSessionId);
+      // The egress proxy answers a missing credential with this marker and
+      // also records a signal. Output with the marker but no signal means
+      // the signal went to another command or was lost.
+      if (
+        !authRequired &&
+        `${result.stdout ?? ""}${result.stderr ?? ""}`.includes(
+          `${SANDBOX_EGRESS_AUTH_REQUIRED_MARKER} provider=`,
+        )
+      ) {
+        logWarn("sandbox.egress.auth_signal.missing", {
+          "app.sandbox.egress_id": activeSessionId,
+        });
+      }
 
       return formatSandboxCommandResult({
         ok: result.exitCode === 0,

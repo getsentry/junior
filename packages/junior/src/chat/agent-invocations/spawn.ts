@@ -63,12 +63,14 @@ export function bindSpawnAgent(
         actor,
         ...(input.name ? { agentName: input.name } : undefined),
         ...(input.agentType ? { agentType: input.agentType } : undefined),
+        ...(input.fork ? { fork: true as const } : undefined),
         ...(run.credentialContext
           ? { credentialContext: run.credentialContext }
           : undefined),
         destination: toolInvocationDestination(run),
         idempotencyKey: `${run.turnId}:${call.toolCallId}`,
         input: input.task,
+        ...(input.kind ? { kind: input.kind } : undefined),
         parentConversationId: run.conversationId,
         parentToolCallId: call.toolCallId,
         ...(input.reasoningLevel

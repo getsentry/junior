@@ -21,6 +21,7 @@ import {
   createAgentInvocationWorker,
   agentInvocationInputText,
 } from "@/chat/agent-invocations/work";
+import { FORK_INSTRUCTIONS } from "@/chat/agent-invocations/fork-history";
 import { commitMessages } from "@/chat/conversations/projection";
 import { stopConversation } from "@/chat/conversations/stop";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -205,7 +206,8 @@ describe("agent invocation worker", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-              text: "Partial result",
+              reply: { text: "Partial result", toolCallId: "call-reply" },
+              text: "",
             },
           };
         },
@@ -255,6 +257,7 @@ describe("agent invocation worker", () => {
         ...INVOCATION_INPUT,
         agentName: "researcher",
         idempotencyKey: "steer-task",
+        parentToolCallId: "call-steer-task",
       });
       await markAgentInvocationRunning(created.invocationId);
       const { invocation: message, queued } =
@@ -299,8 +302,10 @@ describe("agent invocation worker", () => {
       // The runner drains steering messages, as the agent does before its
       // next model call.
       const steered: AgentSteeringMessage[][] = [];
+      const provenances: unknown[] = [];
       const worker = createAgentInvocationWorker({
         run: async (run) => {
+          provenances.push(run.instruction.provenance);
           await run.durability?.drainSteeringMessages?.(async (messages) => {
             steered.push(messages);
           });
@@ -316,7 +321,8 @@ describe("agent invocation worker", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-              text: "Checked both paths.",
+              reply: { text: "Checked both paths.", toolCallId: "call-reply" },
+              text: "",
             },
           };
         },
@@ -352,7 +358,9 @@ describe("agent invocation worker", () => {
       expect(context.attempt.drain).toHaveBeenCalledWith(expect.any(Function), {
         deferred: true,
       });
-      // The parent's text is a runtime input tag and has no Actor.
+      // The parent's task and messages are the child's instructions, with no
+      // Actor.
+      expect(provenances).toEqual([agentInstructionProvenance]);
       expect(steered).toEqual([
         [
           expect.objectContaining({
@@ -470,7 +478,7 @@ describe("agent invocation worker", () => {
                 id: "call-fork",
                 name: "spawnAgent",
                 arguments: {
-                  agent_type: "fork",
+                  fork: true,
                   task: "Check the other path.",
                 },
               },
@@ -481,7 +489,7 @@ describe("agent invocation worker", () => {
       });
       const created = await createAgentInvocation({
         ...INVOCATION_INPUT,
-        agentType: "fork",
+        fork: true,
         idempotencyKey: "fork-task",
         input: "Check the other path.",
         parentToolCallId: "call-fork",
@@ -532,6 +540,7 @@ describe("agent invocation worker", () => {
       expect(histories).toEqual([
         readRound.map((item) => expect.objectContaining(item)),
       ]);
+      expect(agentInvocationInputText(created)).toContain(FORK_INSTRUCTIONS);
     } finally {
       await fixture.close();
     }

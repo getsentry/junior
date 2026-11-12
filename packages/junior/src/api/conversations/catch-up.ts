@@ -5,7 +5,7 @@ import { readConversationBriefThrough } from "@/chat/briefs/store";
 import { generateCatchUp } from "@/chat/catch-up/generate";
 import { botConfig } from "@/chat/config";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
-import { completeText } from "@/chat/pi/client";
+import { completeText } from "@/chat/core-model";
 import { throwApiError } from "../http";
 import type {
   ConversationCatchUp,
@@ -79,6 +79,8 @@ export async function catchUpOnConversation(
     ...(brief ? { brief: brief.content } : undefined),
     completeText,
     conversationId,
+    // The Conversation pays for its catch-up.
+    cost: { conversationId },
     entries,
     modelId: botConfig.fastModelId,
     omittedEarlierRows,

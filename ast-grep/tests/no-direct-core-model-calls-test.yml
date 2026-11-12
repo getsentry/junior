@@ -1,0 +1,8 @@
+id: no-direct-core-model-calls
+valid:
+  - 'import { completeText } from "@/chat/core-model";'
+  - 'import { resolveGatewayModel } from "@/chat/pi/client";'
+invalid:
+  - 'import { completeText } from "@/chat/pi/client";'
+  - 'import { getGatewayApiKey, completeObject } from "@/chat/pi/client";'
+  - 'import type { completeDecision } from "@/chat/pi/client";'

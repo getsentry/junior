@@ -680,7 +680,7 @@ for (const width of [1440, 390]) {
 }
 
 for (const view of [desktop, mobile]) {
-  test(`leads the reader to a new review item question (${view.name})`, async ({
+  test(`docks a tall question above the message box (${view.name})`, async ({
     page,
     dashboard,
   }) => {
@@ -779,31 +779,62 @@ for (const view of [desktop, mobile]) {
       `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
     );
 
-    // The reader must see the title and question first, not the end of the form.
-    const card = page.getByRole("region", {
-      name: `Review item: ${item.title}`,
+    // The form scrolls inside the dock, so its title and question stay in
+    // view, and the message box and queued messages stay below it.
+    const question = page.getByRole("region", {
+      name: `Question: ${item.title}`,
     });
-    await expect(card.getByRole("button", { name: "Send" })).toBeAttached();
     await expect(
-      card.getByRole("heading", { name: item.title }),
+      question.getByRole("radiogroup", { name: "Owner" }),
+    ).toBeAttached();
+    await expect(
+      question.getByRole("heading", { name: item.title }),
     ).toBeInViewport();
-    // The message box and queued messages hide while Junior waits, so the
-    // question is last and the reader does not type the answer as a new
-    // message.
     const composer = page.getByLabel("Continue this conversation");
     const queue = page.getByRole("button", { name: /queued messages/ });
-    await expect(composer).toBeHidden();
-    await expect(queue).toBeHidden();
-    await screenshot(page, "conversation-review-item-card", {
+    await expect(composer).toBeInViewport();
+    await expect(queue).toBeVisible();
+    const record = page.getByRole("region", { name: `Asked ${item.title}` });
+    await expect(record).toContainText("Waiting on you");
+    await screenshot(page, "conversation-question-form", {
       view: view.name,
     });
 
-    // Dismiss closes the item and shows the message box and queue again.
-    await card.getByRole("button", { name: "Dismiss" }).click();
-    await expect(composer).toBeVisible();
-    await expect(queue).toBeVisible();
-    await screenshot(page, "conversation-review-item-dismissed", {
+    // Esc dismisses the question, and its record says so.
+    await question.getByRole("heading", { name: item.title }).click();
+    await page.keyboard.press("Escape");
+    await expect(question).toHaveCount(0);
+    await expect(record).toContainText("Dismissed");
+    await screenshot(page, "conversation-question-dismissed", {
       view: view.name,
     });
   });
 }
+
+test("opens the event log from the sidebar row menu", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(dashboard.baseURL);
+  const row = page
+    .getByRole("navigation", { name: "Your conversations" })
+    .getByRole("link", { name: /Closed issue summary/ });
+  const log = page.getByRole("region", { name: "Conversation event log" });
+  await row.click({ button: "right" });
+  // The viewer is not a participant, so the menu disables changes.
+  await expect(page.getByRole("menuitem", { name: "Archive" })).toBeDisabled();
+  await page.getByRole("menuitem", { name: "Open event log" }).click();
+  await expect(row).toHaveAttribute("aria-current", "page");
+  await expect(log).toBeVisible();
+
+  // The page is open already, so the row menu switches its view.
+  await page.getByTitle("Back to conversation").click();
+  await expect(log).toBeHidden();
+  await row.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Open event log" }).click();
+  await expect(log).toBeVisible();
+  // That switch adds no history entry, so Back leaves the conversation.
+  await page.goBack();
+  await expect(row).not.toHaveAttribute("aria-current", "page");
+  await expect(log).toBeHidden();
+});

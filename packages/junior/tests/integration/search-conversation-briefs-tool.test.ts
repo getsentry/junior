@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { ConversationBriefSearchScope } from "@/chat/briefs/search";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
@@ -13,12 +12,7 @@ import {
 } from "../fixtures/slack/factories/api";
 import { queueSlackApiResponse } from "../msw/handlers/slack-api";
 
-const scope: ConversationBriefSearchScope = {
-  kind: "public_provider_tenant",
-  provider: "slack",
-  providerTenantId: "T123",
-};
-const teamId = parseSlackTeamId(scope.providerTenantId);
+const teamId = parseSlackTeamId("T123");
 if (!teamId) {
   throw new Error("test Slack team id did not parse");
 }
@@ -82,7 +76,6 @@ describe("searchConversationBriefs", () => {
     });
 
     const tool = createSearchConversationBriefsTool(
-      scope,
       "slack:CREQUEST:1700000000.900000",
       slackProvider,
     );
@@ -135,10 +128,7 @@ describe("searchConversationBriefs", () => {
     });
     expect(resultWithoutPermalink.matches[0]).not.toHaveProperty("permalink");
 
-    const publicTool = createSearchConversationBriefsTool(
-      { kind: "public" },
-      "local:test:current",
-    );
+    const publicTool = createSearchConversationBriefsTool("local:test:current");
     expect(publicTool.inputSchema.properties).not.toHaveProperty("channel_id");
     expect(() =>
       publicTool.prepareArguments({ channel_id: "CARCHIVE" }),
