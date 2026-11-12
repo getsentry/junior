@@ -163,7 +163,7 @@ export async function dispatchEventAutomation(args: {
   };
 }) {
   const plugin = "junior";
-  const { credentialSubject, outcomes, skill, slackFiles, ...unboundOptions } =
+  const { credentialSubject, outcomes, skill, ...unboundOptions } =
     args.options;
   validateDispatchOptions({ ...unboundOptions });
   const boundSubject = credentialSubject
@@ -179,7 +179,6 @@ export async function dispatchEventAutomation(args: {
     ...unboundOptions,
     ...(outcomes !== undefined ? { outcomes } : undefined),
     ...(skill ? { skill } : undefined),
-    ...(slackFiles ? { slackFiles } : undefined),
     ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
     source: {
       kind: "event_automation",

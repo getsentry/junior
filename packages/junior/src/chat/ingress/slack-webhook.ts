@@ -56,7 +56,6 @@ import {
   SubscribedReplyReason,
 } from "@/chat/services/subscribed-decision";
 import { parseContent } from "@/chat/slack/message/content";
-import { readSlackMessageFiles } from "@/chat/slack/message-files";
 import { stripLeadingBotMention } from "@/chat/runtime/thread-context";
 import {
   normalizeIncomingSlackThreadId,
@@ -566,11 +565,7 @@ async function ingestChannelMessage(args: {
   if (!channelMessage) return;
   await ingestEventAutomations(
     { ...channelMessage, namespace: SLACK_EVENT_NAMESPACE },
-    {
-      queue: args.queue,
-      slackFiles: readSlackMessageFiles(event),
-      teamId: args.teamId,
-    },
+    { queue: args.queue, teamId: args.teamId },
   );
 }
 

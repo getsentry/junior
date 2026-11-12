@@ -8,7 +8,7 @@ const SLACK_FILE_ID_PATTERN = /^F[A-Z0-9]+$/;
 // Read only the fields that name, type, and fetch a file. Other Slack file
 // fields stay unread. A file without a private URL, such as a deleted file,
 // has nothing to fetch.
-export const slackMessageFileSchema = z.object({
+const slackMessageFileSchema = z.object({
   id: z.string().regex(SLACK_FILE_ID_PATTERN),
   mimetype: z.string().min(1).optional(),
   name: z.string().min(1).optional(),

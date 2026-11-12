@@ -21,7 +21,9 @@ import { createJuniorRuntimeServices } from "@/chat/app/services";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { collectAttachments } from "@/chat/providers/slack/input";
 import { toConversationMessage } from "@/chat/runtime/conversation-message";
-import { slackDispatchInputMessage } from "@/chat/slack/dispatch-turn";
+import { createSlackDispatchTurnRunner } from "@/chat/slack/dispatch-turn";
+import { getLocationConfigurationService } from "@/chat/runtime/thread-state";
+import type { Message } from "chat";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { juniorAutomations } from "@/db/schema/automations";
@@ -48,6 +50,7 @@ import {
 import {
   getCapturedSlackApiCalls,
   getCapturedSlackFileDownloadUrls,
+  queueSlackApiError,
   queueSlackApiResponse,
   queueSlackPrivateFileDownload,
   resetSlackApiMockState,
@@ -87,6 +90,21 @@ const ENTERPRISE_CHANNEL = {
   context_enterprise_id: "E123",
   enterprise_id: "E123",
 };
+
+// Start a dispatch run through the Slack runner and return its input message.
+// The Turn itself, with the agent, does not run.
+async function startDispatchRun(dispatchId: string): Promise<Message> {
+  const dispatch = await getDispatchRecord(dispatchId);
+  let input: Message | undefined;
+  await createSlackDispatchTurnRunner({
+    getLocationConfiguration: getLocationConfigurationService,
+    getSlackAdapter: () => createSlackAdapterFixture(),
+    executeSlackTurn: async (_thread, message) => {
+      input = message;
+    },
+  })(dispatch!, { ack: async () => {} });
+  return input!;
+}
 
 function conversationApi(storage: AttachmentStorage): Hono<JuniorApiEnv> {
   return new Hono<JuniorApiEnv>().route(
@@ -318,27 +336,37 @@ describe("Slack channel-message automations", () => {
     const forwardedFile = slackFile("F0FWDPNG1", "forwarded.png");
     const replyFile = slackFile("F0REPLYPNG1", "reply.png");
 
-    // The run carries the post's own file and the file of a message that the
-    // post forwards.
-    await postChannelMessage({
+    // The post has its own file and forwards a message with a file. The
+    // dispatch record names the post, not its files.
+    const rootMessage = {
       attachments: [{ fallback: "forwarded", files: [forwardedFile] }],
       files: [rootFile],
       text: "Why did this chart drop?",
       ts: rootTs,
-    });
+    };
+    await postChannelMessage(rootMessage);
     const runConversationId = queue.sentRecords()[0]!.conversationId;
-    const dispatch = await getDispatchRecord(
-      runConversationId.replace(/^agent-dispatch:/, ""),
-    );
-    expect(dispatch?.slackFiles?.map((file) => file.id)).toEqual([
-      rootFile.id,
-      forwardedFile.id,
-    ]);
+    const dispatchId = runConversationId.replace(/^agent-dispatch:/, "");
+    const dispatch = await getDispatchRecord(dispatchId);
+    expect(dispatch?.metadata).toMatchObject({ slackMessageTs: rootTs });
+    expect(JSON.stringify(dispatch)).not.toContain(rootFile.id);
 
-    // When the run starts, its input message stores both files under their
-    // Slack file ids, gives them to the model, and lists them.
+    // When the run starts, it reads the post from Slack. Its input message
+    // stores both files under their Slack file ids, gives them to the model,
+    // and lists them.
+    queueSlackApiResponse("conversations.replies", {
+      body: conversationsRepliesPage({
+        threadTs: rootTs,
+        messages: [{ ...rootMessage, user: "U123" }],
+      }),
+    });
+    const input = await startDispatchRun(dispatchId);
+    expect(
+      getCapturedSlackApiCalls("conversations.replies").map(
+        (call) => call.params,
+      ),
+    ).toEqual([expect.objectContaining({ channel: "C123", ts: rootTs })]);
     const attachmentStorage = createMemoryAttachmentStorage();
-    const input = slackDispatchInputMessage(dispatch!);
     queueSlackPrivateFileDownload({ body: "root-chart" });
     queueSlackPrivateFileDownload({ body: "forwarded" });
     const modelFiles = await createJuniorRuntimeServices({
@@ -486,6 +514,43 @@ describe("Slack channel-message automations", () => {
     }
     expect(getCapturedSlackFileDownloadUrls()).toHaveLength(3);
     expect(getCapturedSlackApiCalls("auth.test")).toEqual([]);
+  });
+
+  it("starts the run with its text when Slack cannot return the triggering post", async () => {
+    const channelContext = context(
+      "U123",
+      "C123",
+      "public",
+      undefined,
+      TEAM_ID,
+    );
+    await execute(
+      createAutomationTool(
+        automationToolContext(channelContext),
+        getEventCatalog(),
+      ),
+      {
+        instruction: "Answer questions about charts.",
+        title: "Triage charts",
+        outcomes: [
+          { action: "send_message", destination: "current_conversation" },
+        ],
+        trigger: trigger(),
+      },
+    );
+    await postChannelMessage({
+      text: "Why did this chart drop?",
+      ts: "1712351.0001",
+    });
+    const dispatchId = queue
+      .sentRecords()[0]!
+      .conversationId.replace(/^agent-dispatch:/, "");
+    queueSlackApiError("conversations.replies", { error: "channel_not_found" });
+
+    const input = await startDispatchRun(dispatchId);
+    expect(input.text).toContain("Why did this chart drop?");
+    expect(input.attachments).toEqual([]);
+    expect(getCapturedSlackFileDownloadUrls()).toEqual([]);
   });
 
   it("runs for bot posts only when its match names the bot", async () => {
