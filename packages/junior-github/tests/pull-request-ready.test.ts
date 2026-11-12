@@ -315,7 +315,7 @@ describe("ready to merge notice", () => {
           dedupeKey: DEDUPE_KEY,
           subject: {
             id: PULL_URL,
-            title: "Add the review desk notice",
+            title: "Add the review desk notice (#946)",
             url: PULL_URL,
           },
           title: "Ready to merge · #946",

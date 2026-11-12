@@ -208,7 +208,12 @@ export async function syncGitHubPullRequestReviewRequest(args: {
       assigneeIdentityIds: [opener.identityId],
       body: `GitHub asks you to review **${change.title}**: ${change.url}`,
       dedupeKey,
-      subject: { id: change.url, title: change.title, url: change.url },
+      // The number stays visible where a view shows only the subject title.
+      subject: {
+        id: change.url,
+        title: `${change.title} (#${number})`,
+        url: change.url,
+      },
       title: `Review requested · #${number}`,
       waitsOnAssignees: true,
     });
