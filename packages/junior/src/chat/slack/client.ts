@@ -38,6 +38,8 @@ export class SlackActionError extends Error {
   detail?: string;
   detailLine?: number;
   detailRule?: string;
+  /** Network error code, such as `ECONNABORTED`, when no Slack response arrived. */
+  networkCode?: string;
 
   constructor(
     message: string,
@@ -53,10 +55,10 @@ export class SlackActionError extends Error {
       detail?: string;
       detailLine?: number;
       detailRule?: string;
-      cause?: unknown;
+      networkCode?: string;
     } = {},
   ) {
-    super(message, { cause: options.cause });
+    super(message);
     this.name = "SlackActionError";
     this.code = code;
     this.apiError = options.apiError;
@@ -69,6 +71,7 @@ export class SlackActionError extends Error {
     this.detail = options.detail;
     this.detailLine = options.detailLine;
     this.detailRule = options.detailRule;
+    this.networkCode = options.networkCode;
   }
 }
 
@@ -284,7 +287,7 @@ function mapSlackError(error: unknown): SlackActionError {
   const message = candidate.message ?? "Slack action failed";
   const baseOptions = {
     apiError,
-    cause: error,
+    networkCode: findNetworkErrorCode(error),
     statusCode: candidate.statusCode,
     requestId: getHeaderString(candidate.headers, "x-slack-req-id"),
     errorData: serializeSlackErrorData(candidate.data),
@@ -416,7 +419,10 @@ function findNetworkErrorCode(error: unknown, depth = 0): string | undefined {
 
 /** Report whether a Slack call failed because its request deadline elapsed. */
 export function isSlackRequestTimeout(error: unknown): boolean {
-  const networkCode = findNetworkErrorCode(error);
+  const networkCode =
+    error instanceof SlackActionError
+      ? error.networkCode
+      : findNetworkErrorCode(error);
   return networkCode !== undefined && TIMEOUT_ERROR_CODES.has(networkCode);
 }
 

@@ -129,12 +129,7 @@ describe("Slack processing reaction", () => {
         new SlackActionError(
           "A request error occurred: timeout of 1000ms exceeded",
           "internal_error",
-          {
-            cause: {
-              code: "slack_webapi_request_error",
-              original: { code: "ECONNABORTED" },
-            },
-          },
+          { networkCode: "ECONNABORTED" },
         ),
       )
       .mockRejectedValueOnce(
