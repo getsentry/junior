@@ -159,13 +159,14 @@ export function linkifyGitHubReferences(text: string): string {
 }
 
 /**
- * Linkify shorthand in a GitHub body, but keep closing references such as
- * `Fixes owner/repo#1` bare so GitHub still links and closes the issue.
+ * Linkify shorthand in a pull request description, but keep closing
+ * references such as `Fixes owner/repo#1` bare so GitHub still links and
+ * closes the issue. GitHub reads closing keywords only there.
  *
  * A repository autolink prefix such as `SENTRY-` can claim part of bare
  * `getsentry/sentry-docs#1` and link the rest as a same-repository reference.
  * GitHub does not rewrite Markdown link labels.
  */
-export function linkifyGitHubBodyReferences(text: string): string {
+export function linkifyPullRequestBodyReferences(text: string): string {
   return linkify(text, true);
 }

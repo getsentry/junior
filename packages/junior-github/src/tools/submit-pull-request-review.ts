@@ -5,7 +5,7 @@ import {
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { linkifyGitHubBodyReferences } from "../reply-markdown.js";
+import { linkifyGitHubReferences } from "../reply-markdown.js";
 import * as z from "zod";
 import {
   githubApi,
@@ -98,7 +98,7 @@ export function createGitHubSubmitPullRequestReviewTool(egress: PluginEgress) {
       const repo = parseRepo(review.repo);
       const comments = review.comments?.map((comment) => ({
         path: comment.path,
-        body: linkifyGitHubBodyReferences(comment.body),
+        body: linkifyGitHubReferences(comment.body),
         line: comment.line,
         side: comment.side,
         ...(comment.start_line !== undefined
@@ -113,7 +113,7 @@ export function createGitHubSubmitPullRequestReviewTool(egress: PluginEgress) {
         method: "POST",
         path: `${repoPath(repo)}/pulls/${review.number}/reviews`,
         body: {
-          body: linkifyGitHubBodyReferences(review.body),
+          body: linkifyGitHubReferences(review.body),
           event: review.event,
           ...(comments ? { comments } : undefined),
         },

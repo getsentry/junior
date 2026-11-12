@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { githubPlugin } from "../src/plugin.js";
 import {
-  linkifyGitHubBodyReferences,
+  linkifyPullRequestBodyReferences,
   linkifyGitHubReferences,
 } from "../src/reply-markdown.js";
 
@@ -68,9 +68,9 @@ describe("GitHub reply markdown", () => {
     ).toBe("PR #1509 and foo.getsentry/junior#1509");
   });
 
-  it("keeps closing references bare in GitHub bodies", () => {
+  it("keeps closing references bare in pull request descriptions", () => {
     expect(
-      linkifyGitHubBodyReferences(
+      linkifyPullRequestBodyReferences(
         "Fixes getsentry/junior#1, closes: getsentry/junior#2. See getsentry/junior#3.",
       ),
     ).toBe(
