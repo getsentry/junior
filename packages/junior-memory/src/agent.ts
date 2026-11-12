@@ -535,7 +535,10 @@ export function createMemoryAgent(model: PluginModel): MemoryAgent {
         schema: extractMemoriesResponseSchema,
         system: MEMORY_EXTRACTION_SYSTEM,
         prompt: sessionExtractionPrompt(request),
-        maxTokens: 1_000,
+        // Reasoning tokens count against this budget. At 1,000, about 40% of
+        // extractions stopped mid-JSON. The schema caps the memory count, so
+        // this only bounds spend.
+        maxTokens: 8_000,
       });
       return {
         memories: extractedMemoriesFromResponse(
