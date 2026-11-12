@@ -28,6 +28,7 @@ export interface FetchApp<Rest extends unknown[]> {
 }
 
 const LIVE_PARAM = "live";
+const DEMO_PARAM = "demo";
 const TOKEN_COOKIE = "junior_live_token";
 const AUTH_PATH = "/api/auth";
 const VERSION_HEADER = "x-junior-version";
@@ -55,8 +56,20 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#039;");
 }
 
-function errorResponse(error: string): Response {
-  return Response.json({ error }, { status: 403 });
+function errorResponse(error: string, headers?: HeadersInit): Response {
+  return Response.json({ error }, { headers, status: 403 });
+}
+
+/** Build the Set-Cookie value that keeps the token, or clears it. */
+function tokenCookie(request: Request, token?: string): string {
+  const secure =
+    new URL(request.url).protocol === "https:" ||
+    request.headers.get("x-forwarded-proto") === "https";
+  // Lax, not Strict: the token arrives in a POST from the live deployment,
+  // and the redirect that follows must send the cookie.
+  const value = token ? encodeURIComponent(token) : "";
+  const clear = token ? "" : "; Max-Age=0";
+  return `${TOKEN_COOKIE}=${value}; Path=/; HttpOnly; SameSite=Lax${clear}${secure ? "; Secure" : ""}`;
 }
 
 /** Read the personal token from the cookie that `/?live` sets. */
@@ -107,9 +120,11 @@ async function proxyRequest(
   );
   // A 401 makes the client restart local sign-in, which cannot fix a bad
   // token. Report it as 403, so the page shows the error.
+  // Also drop the cookie, so the next page load shows demo data.
   if (upstream.status === 401) {
     return errorResponse(
       `${new URL(origin).host} rejected the personal token.`,
+      { "set-cookie": tokenCookie(request) },
     );
   }
   const responseHeaders = new Headers(upstream.headers);
@@ -135,6 +150,7 @@ function livePreviewPage(
   request: Request,
   origin: string,
   error?: { message: string; status: number },
+  headers?: Record<string, string>,
 ): Response {
   const host = escapeHtml(new URL(origin).host);
   const tokensUrl = new URL("/settings/api-tokens", origin).href;
@@ -159,13 +175,14 @@ function livePreviewPage(
       <input name="token" required autocomplete="off" style="display:block;width:100%;margin:0.5rem 0;font:inherit" /></label>
     <button type="submit">Use token</button>
   </form>
-  <p><a href="/">Use demo data</a></p>
+  <p><a href="/?${DEMO_PARAM}">Use demo data</a></p>
 </body>
 </html>`,
     {
       headers: {
         "cache-control": "no-store",
         "content-type": "text/html; charset=utf-8",
+        ...headers,
       },
       status: error?.status ?? 200,
     },
@@ -205,16 +222,8 @@ async function acceptLivePreviewToken(
       status: 403,
     });
   }
-  const secure =
-    url.protocol === "https:" ||
-    request.headers.get("x-forwarded-proto") === "https";
   return new Response(null, {
-    headers: {
-      location: "/",
-      // Lax, not Strict: the token arrives in a POST from the live
-      // deployment, and the redirect that follows must send the cookie.
-      "set-cookie": `${TOKEN_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`,
-    },
+    headers: { location: "/", "set-cookie": tokenCookie(request, token) },
     status: 303,
   });
 }
@@ -231,10 +240,23 @@ async function startLivePreview(
     return await acceptLivePreviewToken(request, origin);
   }
   const token = livePreviewToken(request);
-  if (token && (await liveDeploymentAccepts(token, origin))) {
+  if (!token) return livePreviewPage(request, origin);
+  if (await liveDeploymentAccepts(token, origin)) {
     return Response.redirect(new URL("/", request.url), 302);
   }
-  return livePreviewPage(request, origin);
+  // A revoked or expired token: drop it, so the Preview shows demo data
+  // until the viewer connects again.
+  return livePreviewPage(request, origin, undefined, {
+    "set-cookie": tokenCookie(request),
+  });
+}
+
+/** Leave live mode: drop the token and show demo data. */
+function stopLivePreview(request: Request): Response {
+  return new Response(null, {
+    headers: { location: "/", "set-cookie": tokenCookie(request) },
+    status: 302,
+  });
 }
 
 /**
@@ -252,7 +274,7 @@ async function withPreviewBanner(
   // load, so the link reads it when clicked.
   const liveLink = `<a href="${escapeHtml(origin)}" onclick="this.href=${escapeHtml(JSON.stringify(origin))}+location.pathname+location.search" style="color:inherit;text-decoration:underline">${host}</a>`;
   const text = live
-    ? `You are seeing a preview of ${liveLink}. Read-only.`
+    ? `You are seeing a preview of ${liveLink}. Read-only. <a href="/?${DEMO_PARAM}" style="color:inherit;text-decoration:underline">Use demo data</a>`
     : `Demo data. <a href="/?${LIVE_PARAM}" style="color:inherit;text-decoration:underline">Use live data from ${host}</a>`;
   const banner = `<div role="status" style="position:fixed;z-index:2147483647;left:0.75rem;bottom:calc(0.75rem + env(safe-area-inset-bottom));display:flex;gap:0.5rem;align-items:center;padding:0.375rem 0.75rem;border-radius:9999px;background:#6c5fc7;color:#fff;font:600 12px/1.4 system-ui,sans-serif;box-shadow:0 2px 8px rgb(0 0 0 / 0.3)"><span>${text}</span><button type="button" aria-label="Hide" onclick="this.parentElement.remove()" style="all:unset;cursor:pointer;font-size:14px;line-height:1">×</button></div>`;
   // Classic scripts run before the deferred client module.
@@ -286,6 +308,9 @@ export function withLivePreview<Rest extends unknown[]>(
       const url = new URL(request.url);
       if (url.pathname === "/" && url.searchParams.has(LIVE_PARAM)) {
         return startLivePreview(request, origin);
+      }
+      if (url.pathname === "/" && url.searchParams.has(DEMO_PARAM)) {
+        return stopLivePreview(request);
       }
       const token = livePreviewToken(request);
       if (

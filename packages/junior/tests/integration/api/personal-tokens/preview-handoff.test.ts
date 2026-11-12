@@ -27,8 +27,14 @@ async function viewer(email: string) {
   return user;
 }
 
-async function createPreviewAs(email: string, url = PREVIEW_URL) {
-  const user = await viewer(email);
+async function createPreviewAs(
+  email: string,
+  url = PREVIEW_URL,
+  resolveActorIdentity: ToolRuntimeContext["resolveActorIdentity"] = async () => ({
+    identity: IDENTITY,
+    user: await viewer(email),
+  }),
+) {
   const tools = createTools([], {}, {
     conversationId: CONVERSATION_ID,
     destination: { platform: "local", conversationId: CONVERSATION_ID },
@@ -37,7 +43,7 @@ async function createPreviewAs(email: string, url = PREVIEW_URL) {
         return new Response("ok");
       },
     },
-    resolveActorIdentity: async () => ({ identity: IDENTITY, user }),
+    resolveActorIdentity,
     source: createLocalSource(CONVERSATION_ID),
     turnTools: turnBehavior({ kind: "root", personInput: true }).tools,
     workspace: {
@@ -51,7 +57,7 @@ async function createPreviewAs(email: string, url = PREVIEW_URL) {
   if (!tool?.execute || !tool.prepareArguments) {
     throw new Error("createPreview is missing");
   }
-  await tool.execute(tool.prepareArguments({ port: 3000 }), {});
+  return await tool.execute(tool.prepareArguments({ port: 3000 }), {});
 }
 
 function createToken(email: string, previewOrigin: string) {
@@ -87,6 +93,25 @@ describe("personal token handoff to a Preview", () => {
     expect(apiErrorSchema.parse(await other.json())).toEqual({
       error: "Junior did not make this Preview for you.",
     });
+  });
+
+  it("returns the Preview when Junior cannot record it", async () => {
+    const result = await createPreviewAs(
+      "owner@example.com",
+      "https://sb-unrecorded.vercel.run",
+      async () => {
+        throw new Error("identity lookup failed");
+      },
+    );
+    const response = await createToken(
+      "owner@example.com",
+      "https://sb-unrecorded.vercel.run",
+    );
+
+    expect(JSON.stringify(result)).toContain(
+      "https://sb-unrecorded.vercel.run",
+    );
+    expect(response.status).toBe(403);
   });
 
   it("rejects a Preview that Junior did not make", async () => {
