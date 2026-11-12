@@ -201,7 +201,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
     await expect(
       run(tools, "readGoogleDoc", { document: DOC_ID }),
-    ).rejects.toThrow("Use readMeetingTranscript");
+    ).rejects.toThrow("Call readMeetingTranscript with this link as record");
 
     // Meet names records in the organizer's language.
     const localized = docsTools(
@@ -213,7 +213,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     );
     await expect(
       run(localized.tools, "readGoogleDoc", { document: DOC_ID }),
-    ).rejects.toThrow("Use readMeetingTranscript");
+    ).rejects.toThrow("Call readMeetingTranscript with this link as record");
   });
 
   it("shows only company-owned files in search", async () => {
