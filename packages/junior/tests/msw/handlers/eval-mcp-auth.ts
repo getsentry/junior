@@ -95,11 +95,16 @@ export function preRegisterEvalMcpClient(): void {
   clientRegistered = true;
 }
 
-/** The `resource_metadata` challenge parameter, when the server has one. */
-function resourceMetadataParam(): string {
-  return publishesNoResourceMetadata
-    ? ""
-    : `resource_metadata="${EVAL_MCP_RESOURCE_METADATA_URL}", `;
+/** A Bearer challenge. It points to the resource metadata, when the server has one. */
+function bearerChallenge(params: { error?: string; scope?: string }): string {
+  return `Bearer ${[
+    params.error && `error="${params.error}"`,
+    !publishesNoResourceMetadata &&
+      `resource_metadata="${EVAL_MCP_RESOURCE_METADATA_URL}"`,
+    params.scope && `scope="${params.scope}"`,
+  ]
+    .filter(Boolean)
+    .join(", ")}`;
 }
 
 /** An admin gives the person's account `mcp:write`. */
@@ -159,11 +164,13 @@ function getEvalMcpCallbackUrl(): string {
 
 /** A missing token gets a plain challenge, a stale one `invalid_token`. */
 function unauthorizedResponse(hasToken: boolean) {
-  const error = hasToken ? `error="invalid_token", ` : "";
   return new HttpResponse(null, {
     status: 401,
     headers: {
-      "WWW-Authenticate": `Bearer ${error}${resourceMetadataParam()}scope="${EVAL_MCP_READ_SCOPE}"`,
+      "WWW-Authenticate": bearerChallenge({
+        ...(hasToken ? { error: "invalid_token" } : undefined),
+        scope: EVAL_MCP_READ_SCOPE,
+      }),
     },
   });
 }
@@ -172,11 +179,12 @@ function insufficientScopeResponse() {
   return new HttpResponse(null, {
     status: 403,
     headers: {
-      "WWW-Authenticate": `Bearer error="insufficient_scope", ${resourceMetadataParam()}${
-        omitsChallengeScope
-          ? ""
-          : `scope="${EVAL_MCP_READ_SCOPE} ${EVAL_MCP_WRITE_SCOPE}"`
-      }`,
+      "WWW-Authenticate": bearerChallenge({
+        error: "insufficient_scope",
+        ...(omitsChallengeScope
+          ? undefined
+          : { scope: `${EVAL_MCP_READ_SCOPE} ${EVAL_MCP_WRITE_SCOPE}` }),
+      }),
     },
   });
 }
