@@ -14,6 +14,7 @@ packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error("Invalid GitHub createPullRequest idempotency state.", { cause: error, });
 packages/junior-github/src/tools/get-deployment.ts	throw new Error(message);
 packages/junior-github/src/tools/get-issue.ts	throw new Error(message);
+packages/junior-github/src/tools/get-pull-request.ts	throw new Error( `GitHub pull request checks lookup failed with HTTP ${response.status}`, );
 packages/junior-github/src/tools/get-pull-request.ts	throw new Error(message);
 packages/junior-github/src/tools/get-release.ts	throw new Error( `GitHub release lookup failed with HTTP ${response.status}`, );
 packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new Error( `GitHub review thread lookup failed with HTTP ${lookupResponse.status}: ${githubErrorMessage(lookupPayload)}`, );
@@ -33,7 +34,10 @@ packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub pull request lookup failed with HTTP ${pullResponse.status}: ${githubErrorMessage(pullPayload)}`, );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( "GitHub pull request response did not include node_id.", );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( `GitHub pull request draft update failed with HTTP ${response.status}: ${githubErrorMessage(payload)}`, );
-packages/junior-github/src/tools/update-pull-request.ts	throw new Error( `GitHub pull request update failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`, );
+packages/junior-github/src/tools/update-pull-request.ts	throw new Error(message);
+packages/junior-github/src/tools/react-to-issue.ts	throw new Error(message);
+packages/junior-github/src/tools/update-issue-comment.ts	throw new Error("GitHub App bot identity is not configured.");
+packages/junior-github/src/tools/update-issue-comment.ts	throw new Error(message);
 # Vercel auth, rate-limit, and upstream failures are not repairable by changing tool input.
 packages/junior-vercel/src/tools/actions.ts	throw new Error(message);
 packages/junior-vercel/src/tools/deployment.ts	throw new Error(message);
@@ -44,6 +48,7 @@ packages/junior/src/chat/tools/index.ts	throw new Error(`Plugin tool "${name}" c
 packages/junior/src/chat/tools/load-attachment.ts	throw new Error( `Attachment ${attachment.id} read ${data.byteLength} bytes, expected ${attachment.bytes}.`, );
 packages/junior/src/chat/tools/load-attachment.ts	throw new Error( `Failed to create attachment directory: ${mkdir.stderr}`, );
 packages/junior/src/chat/tools/publish-image.ts	throw new Error( "publishImage requires JUNIOR_BASE_URL or a Vercel deployment URL.", );
+packages/junior/src/chat/tools/runtime/archive-agent.ts	throw new Error( `Archive of Thread ${childConversationId} returned ${result.status}`, );
 packages/junior/src/chat/tools/sandbox/bash.ts	throw new Error("bash can only run when sandbox execution is enabled.");
 packages/junior/src/chat/tools/sandbox/edit-file.ts	throw new Error( "editFile can only run when sandbox execution is enabled.", );
 packages/junior/src/chat/tools/sandbox/generated-artifacts.ts	throw new Error( `failed to create generated artifact directory: ${mkdir.stderr}`, );

@@ -7,6 +7,7 @@ import type {
 
 import { InlineError } from "../components/InlineError";
 import { SearchInput } from "../components/SearchInput";
+import { ScrollArea } from "../components/ui/scroll-area";
 import { Skeleton } from "../components/ui/skeleton";
 import { ConversationSectionHeading } from "../conversations/ConversationSectionHeading";
 import { automationPath, formatRelativeTime } from "../format";
@@ -197,63 +198,65 @@ export function ReviewDeskSidebar(props: {
           value={props.search}
         />
       </div>
-      <nav
-        aria-label="Review items"
-        className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
-      >
-        {props.error ? (
-          <InlineError className="px-3 py-2">
-            Could not load review items.
-          </InlineError>
-        ) : props.loading ? (
-          <InboxRowsLoading />
-        ) : props.results ? (
-          <>
-            {props.results.length > 0 ? (
-              <ul
-                aria-label="Search results"
-                className="m-0 grid list-none gap-0.5 p-0 pt-1"
-              >
-                {props.results.map(itemRow)}
-              </ul>
-            ) : null}
-            {props.footer}
-          </>
-        ) : (
-          <>
-            {groups.map((group, index) => (
-              <InboxGroup
-                collapsed={props.collapsed.has(group.key)}
-                count={group.items.length}
-                first={firstKey(index)}
-                key={group.key}
-                label={group.label}
-                onToggle={() => props.onToggle(group.key)}
-              >
-                {group.items.map(itemRow)}
-              </InboxGroup>
-            ))}
-            <InboxGroup
-              collapsed={props.collapsed.has("blocked")}
-              count={props.blocked.length}
-              first={firstKey(2)}
-              label="Blocked automations"
-              onToggle={() => props.onToggle("blocked")}
-            >
-              {props.blocked.map((automation) => (
-                <InboxRow
-                  dot="warning"
-                  key={automation.id}
-                  meta={automation.statusReason ?? "Blocked"}
-                  title={automation.title}
-                  to={automationPath(automation.id)}
-                />
+      <ScrollArea>
+        <nav
+          aria-label="Review items"
+          className="px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+        >
+          {props.error ? (
+            <InlineError className="px-3 py-2">
+              Could not load review items.
+            </InlineError>
+          ) : props.loading ? (
+            <InboxRowsLoading />
+          ) : props.results ? (
+            <>
+              {props.results.length > 0 ? (
+                <ul
+                  aria-label="Search results"
+                  className="m-0 grid list-none gap-0.5 p-0 pt-1"
+                >
+                  {props.results.map(itemRow)}
+                </ul>
+              ) : null}
+              {props.footer}
+            </>
+          ) : (
+            <>
+              {groups.map((group, index) => (
+                <InboxGroup
+                  collapsed={props.collapsed.has(group.key)}
+                  count={group.items.length}
+                  first={firstKey(index)}
+                  key={group.key}
+                  label={group.label}
+                  onToggle={() => props.onToggle(group.key)}
+                >
+                  {group.items.map(itemRow)}
+                </InboxGroup>
               ))}
-            </InboxGroup>
-            {props.footer}
-          </>
-        )}
-      </nav>
+              <InboxGroup
+                collapsed={props.collapsed.has("blocked")}
+                count={props.blocked.length}
+                first={firstKey(2)}
+                label="Blocked automations"
+                onToggle={() => props.onToggle("blocked")}
+              >
+                {props.blocked.map((automation) => (
+                  <InboxRow
+                    dot="warning"
+                    key={automation.id}
+                    meta={automation.statusReason ?? "Blocked"}
+                    title={automation.title}
+                    to={automationPath(automation.id)}
+                  />
+                ))}
+              </InboxGroup>
+              {props.footer}
+            </>
+          )}
+        </nav>
+      </ScrollArea>
     </aside>
   );
 }

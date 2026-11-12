@@ -18,10 +18,9 @@ export function FormNotice(props: {
       role={error ? "alert" : "status"}
       className={cn(
         "flex min-w-0 rounded-md p-4 has-[>svg]:gap-x-3",
-        error
-          ? "border-rose-300/25 bg-rose-300/5 *:[svg]:text-rose-300"
-          : "border-amber-300/25 bg-amber-300/5 *:[svg]:text-amber-300",
+        error && "border-rose-300/25 bg-rose-300/5 *:[svg]:text-rose-300",
       )}
+      variant={error ? "default" : "warning"}
     >
       <TriangleAlert aria-hidden className="size-4.5 shrink-0" />
       <div className="min-w-0">

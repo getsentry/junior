@@ -4,7 +4,6 @@ import {
   eq,
   gt,
   gte,
-  isNull,
   lt,
   ne,
   notExists,
@@ -14,6 +13,7 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
 import { hasAnnotationKey } from "@/chat/conversations/sql/annotation-filter";
+import { listedConversation } from "@/chat/conversations/sql/listed";
 import {
   juniorConversationBriefs,
   juniorConversations,
@@ -39,15 +39,6 @@ export interface ConversationBriefSearchResult {
   version: number;
 }
 
-/** Public scope available to one Conversation Brief search. */
-export type ConversationBriefSearchScope =
-  | {
-      kind: "public_provider_tenant";
-      provider: "slack";
-      providerTenantId: string;
-    }
-  | { kind: "public" };
-
 /** Optional filters for latest public Brief search. */
 export interface ConversationBriefSearchFilters {
   /** Only Briefs updated at or after this time. */
@@ -56,7 +47,7 @@ export interface ConversationBriefSearchFilters {
   annotation?: string;
   /** Only Briefs updated before this time. */
   beforeMs?: number;
-  /** Provider destination id, available for provider-tenant search. */
+  /** Provider destination id, such as a Slack channel id. */
   channelId?: string;
   /** Full-text query over indexed Brief content. */
   query?: string;
@@ -64,14 +55,13 @@ export interface ConversationBriefSearchFilters {
   status?: BriefOutcomeStatus;
 }
 
-/** Search the latest Brief of each public root Conversation in one scope. */
+/** Search the latest Brief of each public root Conversation of any surface. */
 export async function searchConversationBriefs(
   db: JuniorDatabase,
   args: {
     currentConversationId: string;
     filters: ConversationBriefSearchFilters;
     limit: number;
-    scope: ConversationBriefSearchScope;
   },
 ): Promise<ConversationBriefSearchResult[]> {
   const query = args.filters.query?.trim() || undefined;
@@ -103,19 +93,10 @@ export async function searchConversationBriefs(
           ),
         ),
     ),
-    isNull(juniorConversations.parentConversationId),
-    // An unkept Quick question is a private side thread.
-    isNull(juniorConversations.quickQuestionAt),
+    listedConversation(),
     ne(juniorConversations.conversationId, args.currentConversationId),
     eq(juniorDestinations.visibility, "public"),
   ];
-  if (args.scope.kind === "public_provider_tenant") {
-    conditions.push(
-      eq(juniorConversations.source, args.scope.provider),
-      eq(juniorDestinations.provider, args.scope.provider),
-      eq(juniorDestinations.providerTenantId, args.scope.providerTenantId),
-    );
-  }
   if (tsquery) {
     conditions.push(sql`${searchVector} @@ ${tsquery}`);
   }

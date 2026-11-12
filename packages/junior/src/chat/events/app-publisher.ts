@@ -1,5 +1,6 @@
 import type { Event, EventData } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
+import pLimit from "p-limit";
 import { getDb } from "@/chat/db";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import {
@@ -16,8 +17,12 @@ import { createEventTeamIdResolver } from "@/chat/events/workspace";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
+// Each Watch check reads the state adapter. Bound the reads for a webhook
+// with many events.
+const WATCH_MATCH_CONCURRENCY = 4;
+
 export type EventAppPublisher = {
-  hasMatch(event: Event): Promise<boolean>;
+  hasMatch(events: Event[]): Promise<boolean>;
   neededMatchKeys(input: {
     data?: EventData;
     eventTypes: string[];
@@ -40,27 +45,34 @@ export function createEventAppPublisher(args: {
   const resolveEventAutomationTeamId = createEventTeamIdResolver();
 
   return {
-    async hasMatch(event) {
+    async hasMatch(events) {
       const work = args.conversationWork();
       const eventAutomationTeamId = await resolveEventAutomationTeamId();
+      const limit = pLimit(WATCH_MATCH_CONCURRENCY);
       const [subscriptions, tasks] = await Promise.all([
-        findMatchingWatches({
-          data: event.data,
-          eventType: event.eventType,
-          namespace: event.namespace,
-          identifier: event.identifier,
-          state: work.state,
-        }),
+        Promise.all(
+          events.map((event) =>
+            limit(() =>
+              findMatchingWatches({
+                data: event.data,
+                eventType: event.eventType,
+                namespace: event.namespace,
+                identifier: event.identifier,
+                state: work.state,
+              }),
+            ),
+          ),
+        ),
         eventAutomationTeamId
           ? findMatchingEventAutomations(
               getDb(),
-              event,
+              events,
               eventAutomationTeamId,
               getEventCatalog(),
             )
           : Promise.resolve([]),
       ]);
-      return subscriptions.length > 0 || tasks.length > 0;
+      return [...subscriptions, ...tasks].some((matched) => matched.length > 0);
     },
     async neededMatchKeys(input) {
       const work = args.conversationWork();

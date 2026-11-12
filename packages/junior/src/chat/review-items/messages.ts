@@ -113,24 +113,37 @@ async function openConversationIds(
   return rows.map((row) => row.conversationId).sort();
 }
 
-function takeMessageId(item: ReviewItem, user: User): string {
-  return `review-item:${item.id}:taken:${user.id}:${item.updatedAt.getTime()}`;
+// A change that only records a Message. It starts no Turn.
+type RecordedChange = Extract<
+  ReviewItemChange,
+  { kind: "taken" } | { kind: "dismissed" }
+>;
+
+function isRecordedChange(change: ReviewItemChange): change is RecordedChange {
+  return change.kind === "taken" || change.kind === "dismissed";
+}
+
+// Each take has its own key. A dismiss is a close, so it uses the close key.
+function recordedMessageId(item: ReviewItem, change: RecordedChange): string {
+  return change.kind === "taken"
+    ? `review-item:${item.id}:taken:${change.user.id}:${item.updatedAt.getTime()}`
+    : `review-item:${item.id}:closed`;
 }
 
 /**
- * Save a take as a handled Message in one Conversation. A take does not
- * start a Turn or reach the model: the agent has nothing to do until the
- * person answers. The dashboard shows the Message from its record. A retry
- * is safe, because the Message id is the take key.
+ * Save a take or a dismiss as a handled Message in one Conversation. Neither
+ * starts a Turn or reaches the model: neither is a decision. The dashboard
+ * shows the Message from its record. A retry is safe, because the Message id
+ * is the change key.
  */
-async function recordReviewItemTake(args: {
+async function recordReviewItemChange(args: {
+  change: RecordedChange;
   conversationId: string;
   item: ReviewItem;
   nowMs: number;
-  user: User;
 }): Promise<void> {
-  const change: ReviewItemChange = { kind: "taken", user: args.user };
-  const messageId = takeMessageId(args.item, args.user);
+  const { change } = args;
+  const messageId = recordedMessageId(args.item, change);
   await getConversationEventStore().append(args.conversationId, [
     {
       idempotencyKey: `message:${messageId}`,
@@ -142,9 +155,9 @@ async function recordReviewItemTake(args: {
         text: renderReviewItemMessage(args.item, change),
         meta: {
           author: {
-            email: args.user.email,
-            ...(args.user.displayName
-              ? { fullName: args.user.displayName }
+            email: change.user.email,
+            ...(change.user.displayName
+              ? { fullName: change.user.displayName }
               : undefined),
           },
           replied: false,
@@ -168,12 +181,12 @@ async function sendOne(args: {
   queue: ConversationWorkQueue;
   text: string;
 }): Promise<void> {
-  if (args.change.kind === "taken") {
-    await recordReviewItemTake({
+  if (isRecordedChange(args.change)) {
+    await recordReviewItemChange({
+      change: args.change,
       conversationId: args.conversationId,
       item: args.item,
       nowMs: args.nowMs,
-      user: args.change.user,
     });
     return;
   }
@@ -237,8 +250,8 @@ async function sendOne(args: {
  * Send one change to every open linked Conversation, except the
  * Conversation that made the change. A Conversation is open until Junior
  * purges its transcript; archive is only a per-viewer list state. Each
- * message starts a new Turn, except a take, which is only recorded. Repeat
- * calls for the same change are safe.
+ * message starts a new Turn, except a take or a dismiss, which is only
+ * recorded. Repeat calls for the same change are safe.
  */
 export async function sendReviewItemMessages(args: {
   change: ReviewItemChange;

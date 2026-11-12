@@ -66,6 +66,7 @@ export const TranscriptMessageView = memo(
       <TranscriptMessageShell
         role={props.message.role}
         actor={transcriptMessageActorLabel(props.conversation, props.message)}
+        fromAgent={Boolean(props.message.agentInvocationId)}
         avatarUrl={
           transcriptMessageActor(props.conversation, props.message)?.avatarUrl
         }
@@ -88,6 +89,7 @@ export const TranscriptMessageView = memo(
         {props.message.reviewItemChanges?.length
           ? props.message.reviewItemChanges.map((record, index) => (
               <ReviewItemChangeRow
+                conversationId={props.conversation.conversationId}
                 fallback={text}
                 key={index}
                 record={record}
@@ -160,6 +162,7 @@ export function RedactedMessageView(props: {
     <TranscriptMessageShell
       role={props.message.role}
       actor={transcriptMessageActorLabel(props.conversation, props.message)}
+      fromAgent={Boolean(props.message.agentInvocationId)}
       avatarUrl={
         transcriptMessageActor(props.conversation, props.message)?.avatarUrl
       }

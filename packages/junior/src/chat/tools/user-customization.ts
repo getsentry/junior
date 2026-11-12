@@ -25,7 +25,7 @@ export function createUserCustomizationTools(
   context: ToolRuntimeContext,
 ): ToolRegistry {
   if (!isExperimentalFeatureEnabled("user-customization")) return {};
-  if (context.agentInvocationId) return {};
+  if (!context.turnTools.userCustomization) return {};
 
   return {
     updateUserCustomization: zodTool({

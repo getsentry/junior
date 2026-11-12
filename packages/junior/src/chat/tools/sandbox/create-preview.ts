@@ -23,7 +23,7 @@ export function createCreatePreviewTool(
     },
     approvalMode: "approve",
     description:
-      "Create a public HTTPS preview URL for a server running in the sandbox. Anyone with the URL can open it until the sandbox stops.",
+      "Create a public HTTPS preview URL for a server running in the sandbox. Anyone with the URL can open it until the sandbox stops. The URL for a port stays the same while the sandbox runs. Use it after you build or change something that a person can open in a browser, such as a web page or app, so they can try it.",
     executionMode: "sequential",
     inputSchema: z
       .object({

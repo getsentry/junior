@@ -5,7 +5,7 @@ import {
   SlackActionError,
   withSlackRetries,
 } from "@/chat/slack/client";
-import type { SlackUserId } from "@/chat/slack/ids";
+import type { SlackBotId, SlackUserId } from "@/chat/slack/ids";
 
 /** Normalized Slack user profile with custom fields from the Slack workspace. */
 export interface SlackUserProfile {
@@ -150,6 +150,26 @@ export async function lookupActiveSlackWorkspaceMember(
     !user.is_bot
     ? user
     : undefined;
+}
+
+/** Look up a Slack bot by ID. Returns undefined when Slack has no such bot. */
+export async function lookupSlackBot(botId: SlackBotId) {
+  try {
+    const result = await withSlackRetries(
+      () => getSlackClient().bots.info({ bot: botId }),
+      3,
+      { action: "bots.info" },
+    );
+    return result.bot;
+  } catch (error) {
+    if (
+      error instanceof SlackActionError &&
+      error.apiError === "bot_not_found"
+    ) {
+      return undefined;
+    }
+    throw error;
+  }
 }
 
 /** Look up a Slack user by email. Returns null when no user matches. */

@@ -111,6 +111,11 @@ export function useTranscriptSearchMatch(query: string) {
       if (count === 0) return;
       setPosition({ index: (index + delta + count) % count, query });
     },
+    /** Forget the current match, such as when another transcript opens. */
+    reset() {
+      setPosition({ index: 0, query: "" });
+      setCount(0);
+    },
   };
 }
 

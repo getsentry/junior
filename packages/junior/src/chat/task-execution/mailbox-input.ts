@@ -13,9 +13,8 @@ import type { InboundMessage } from "@/chat/task-execution/store";
 /**
  * Return the Turn inputs of web Messages, one per non-empty Message, in
  * order. Each one becomes its own prompt content part. A Message that
- * records an answer or a dismiss becomes its Review item tag. A batch with
- * only attachments keeps one empty input, so the prompt still has an
- * instruction.
+ * records an answer becomes its Review item tag. A batch with only
+ * attachments keeps one empty input, so the prompt still has an instruction.
  */
 export async function webTurnInputs(
   messages: readonly {

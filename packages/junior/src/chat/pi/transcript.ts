@@ -11,7 +11,7 @@ import type {
   ToolResultMessage,
 } from "@earendil-works/pi-ai";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
-import { isRuntimeInputText } from "@/chat/input-tags";
+import { isRuntimeInputText, readParentAgentTask } from "@/chat/input-tags";
 import type { PiMessage } from "@/chat/pi/messages";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 
@@ -225,6 +225,32 @@ export function retainRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
 }
 
 /**
+ * Find the latest copy of one `<runtime-turn-context>` section in history,
+ * such as `<script-tools>`, with its tags.
+ */
+export function latestTurnContextSection(
+  messages: PiMessage[],
+  tag: string,
+): string | undefined {
+  const section = new RegExp(`\\n<${tag}>\\n[\\s\\S]*?\\n</${tag}>`, "g");
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const texts = (userMessageContent(messages[index]!) ?? []).flatMap(
+      (part) => {
+        const text = textPartValue(part);
+        return text?.startsWith(RUNTIME_TURN_CONTEXT_START) ? [text] : [];
+      },
+    );
+    for (const text of texts.reverse()) {
+      const match = [...text.matchAll(section)].at(-1);
+      if (match) {
+        return match[0].slice(1);
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
  * Reduce a runtime user-turn prompt to only the current turn's instruction.
  *
  * Live user prompts embed prior-thread context as `<thread-context
@@ -270,7 +296,9 @@ export function getUserMessageInstructionText(message: PiMessage): string {
     const withoutContext = text
       .replace(EMBEDDED_THREAD_CONTEXT_PATTERN, "")
       .trim();
-    if (isRuntimeInputText(withoutContext)) return [withoutContext];
+    if (isRuntimeInputText(withoutContext)) {
+      return [readParentAgentTask(withoutContext) ?? withoutContext];
+    }
     const instruction = unwrapCurrentInstruction(withoutContext);
     return instruction === undefined ? [] : [instruction.trim()];
   });

@@ -5,13 +5,11 @@ import {
   type ConversationReach,
 } from "@/api/conversations/access";
 
-const WORKSPACE = { provider: "slack", providerTenantId: "T1" };
 let nextRoot = 0;
 
 function reach(overrides: Partial<ConversationReach> = {}): ConversationReach {
   return {
     rootConversationId: `root:${nextRoot++}`,
-    tenant: WORKSPACE,
     visibility: "public",
     ...overrides,
   };
@@ -32,10 +30,10 @@ const scenarios: [
     true,
   ],
   [
-    "row 2: public target in another workspace",
-    reach(),
-    reach({ tenant: { provider: "slack", providerTenantId: "T2" } }),
-    false,
+    "row 2: private target at the same Destination",
+    reach({ destinationId: "dest:a", visibility: "private" }),
+    reach({ destinationId: "dest:a", visibility: "private" }),
+    true,
   ],
   ["row 3: public target from a public requester", reach(), reach(), true],
   [
@@ -46,8 +44,8 @@ const scenarios: [
   ],
   [
     "row 4: private target from a private requester",
-    reach({ visibility: "private" }),
-    reach({ visibility: "private" }),
+    reach({ destinationId: "dest:a", visibility: "private" }),
+    reach({ destinationId: "dest:b", visibility: "private" }),
     false,
   ],
   [
@@ -72,12 +70,6 @@ const scenarios: [
     "a target with a missing root or Destination",
     reach(),
     reach({ rootConversationId: undefined, visibility: null }),
-    false,
-  ],
-  [
-    "a requester with no workspace",
-    reach({ tenant: undefined }),
-    reach(),
     false,
   ],
 ];

@@ -1,8 +1,7 @@
 import type { SlackDestination, User } from "@sentry/junior-plugin-api";
-import { and, desc, eq, exists, inArray, or } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 import type { ConversationSourceTask } from "@/api/schema/conversation";
 import type {
-  AutomationExecutionDay,
   AutomationExecutionList,
   AutomationExecutionStatusDay,
   AutomationList,
@@ -18,11 +17,10 @@ import {
 } from "./collection";
 import { sumUtcHoursIntoSixHours } from "@/api/reporting-window";
 import { fallbackShortTitle } from "@/chat/services/short-title";
+import { automationTaskDescription, automationTaskSchema } from "./task";
 import {
   emptyAutomationRunWindows,
   readAutomationExecutionByConversationId,
-  readAutomationExecutionDays,
-  readAutomationExecutionHours,
   readAutomationExecutions,
   readAutomationExecutionStatusDays,
   readAutomationExecutionStatusHours,
@@ -60,7 +58,6 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { parseScheduledAutomationRow } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import {
-  juniorAutomationRuns,
   juniorAutomations,
   juniorDestinations,
   juniorIdentities,
@@ -242,7 +239,9 @@ function executionSummaryFields(stats: AutomationExecutionSummary | undefined) {
       ? { lastRunAt: new Date(stats.lastExecutedAtMs).toISOString() }
       : undefined),
     costUsd: stats?.costUsd ?? emptyAutomationRunWindows(),
+    recentRuns: stats?.recentRuns ?? [],
     runs: stats?.runs ?? emptyAutomationRunWindows(),
+    totalCostUsd: stats?.totalCostUsd ?? 0,
     totalRuns: stats?.totalRuns ?? 0,
   };
 }
@@ -263,8 +262,8 @@ function scheduledAutomationSummary(
     task.status === "active"
       ? (task.runNowAtMs ?? task.nextRunAtMs)
       : undefined;
-  const instruction = displayText(
-    task.task.text,
+  const description = displayText(
+    automationTaskDescription(task.task),
     "Untitled scheduled automation",
   );
   return {
@@ -279,7 +278,7 @@ function scheduledAutomationSummary(
       visibility: destination.visibility,
     },
     id: task.id,
-    instruction,
+    task: task.task,
     kind: "scheduled",
     ...executionSummaryFields(stats),
     ...(nextRunAtMs !== undefined
@@ -294,7 +293,7 @@ function scheduledAutomationSummary(
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     title: taskDisplayTitle(
       task.title,
-      instruction,
+      description,
       "Untitled scheduled automation",
     ),
   };
@@ -307,7 +306,7 @@ function eventAutomationSummary(
   stats: AutomationExecutionSummary | undefined,
   creator: CreatorProfile | undefined,
 ): AutomationSummary {
-  const instruction = task.task.text;
+  const description = automationTaskDescription(task.task);
   const catalog = getEventCatalog();
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
@@ -321,7 +320,7 @@ function eventAutomationSummary(
       visibility: destination.visibility,
     },
     id: task.id,
-    instruction,
+    task: task.task,
     kind: "event",
     ...executionSummaryFields(stats),
     ownedByViewer,
@@ -333,7 +332,7 @@ function eventAutomationSummary(
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     title: taskDisplayTitle(
       task.title,
-      instruction,
+      description,
       "Untitled event automation",
     ),
     status: task.status === "deleted" ? "active" : task.status,
@@ -452,25 +451,10 @@ async function automationSummaryForCandidate(
   );
 }
 
-function emptyAutomationExecutionDay(date: string): AutomationExecutionDay {
-  return { costUsd: 0, date, event: 0, scheduled: 0 };
-}
-
 function emptyAutomationExecutionStatusDay(
   date: string,
 ): AutomationExecutionStatusDay {
-  return { blocked: 0, completed: 0, date, failed: 0 };
-}
-
-function automationExecutionSixHours(
-  hours: readonly AutomationExecutionDay[],
-  nowMs = Date.now(),
-): AutomationExecutionDay[] {
-  return sumUtcHoursIntoSixHours({
-    empty: emptyAutomationExecutionDay,
-    hours,
-    nowMs,
-  });
+  return { blocked: 0, completed: 0, costUsd: 0, date, failed: 0 };
 }
 
 function automationExecutionStatusSixHours(
@@ -542,18 +526,7 @@ export async function readViewerAutomations(
       destinations.get(destinationKey(candidate.task.destination))
         ?.visibility === "public",
   );
-  const collection = viewerAutomationCollection(user);
-  const access = exists(
-    getDb()
-      .select({ id: collection.id })
-      .from(collection)
-      .where(eq(collection.id, juniorAutomationRuns.automationId)),
-  );
-  const [executionDays, executionHours, stats] = await Promise.all([
-    readAutomationExecutionDays(90, { access }),
-    readAutomationExecutionHours(7 * 24, { access }),
-    readAutomationExecutionSummaries(ids),
-  ]);
+  const stats = await readAutomationExecutionSummaries(ids);
   const automations = visible.map((candidate): AutomationSummary => {
     const destination = destinations.get(
       destinationKey(candidate.task.destination),
@@ -585,9 +558,6 @@ export async function readViewerAutomations(
     );
   });
   return {
-    executionDays,
-    executionHours,
-    executionSixHours: automationExecutionSixHours(executionHours),
     automations,
     ...page,
   };
@@ -676,7 +646,7 @@ export async function readViewerAutomationRuns(
       `${task.kind}:${task.id}`,
       taskDisplayTitle(
         task.title ?? undefined,
-        task.instruction,
+        automationTaskDescription(automationTaskSchema.parse(task.task)),
         `Untitled ${task.kind} automation`,
       ),
     );
@@ -684,7 +654,7 @@ export async function readViewerAutomationRuns(
   }
   for (const task of deletedScheduled) {
     const instruction = displayText(
-      task.task.text,
+      automationTaskDescription(task.task),
       "Untitled scheduled automation",
     );
     addDeletedAutomationRun(
@@ -703,7 +673,7 @@ export async function readViewerAutomationRuns(
   }
   for (const task of deletedEvent) {
     const instruction = displayText(
-      task.task.text,
+      automationTaskDescription(task.task),
       "Untitled event automation",
     );
     addDeletedAutomationRun(
@@ -859,7 +829,7 @@ export async function readConversationSourceTask(args: {
   );
   if (candidate.kind === "scheduled") {
     const instruction = displayText(
-      candidate.task.task.text,
+      automationTaskDescription(candidate.task.task),
       "Untitled scheduled automation",
     );
     const schedule = candidate.task.schedule.description.trim();
@@ -878,7 +848,7 @@ export async function readConversationSourceTask(args: {
     };
   }
   const instruction = displayText(
-    candidate.task.task.text,
+    automationTaskDescription(candidate.task.task),
     "Untitled event automation",
   );
   const { events, label } = candidate.task.trigger;

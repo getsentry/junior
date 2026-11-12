@@ -1,8 +1,17 @@
 import { describe, expect } from "vitest";
 import { slackMention } from "@junior-evals/fixture/inputs";
-import { completedToolCalls, toolCallsOf } from "@junior-evals/fixture/results";
+import {
+  completedToolCalls,
+  toolCallsOf,
+  type ToolCall,
+} from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 import { mockWebPages, mockWebSearchResults } from "@junior-evals/fixture/web";
+
+/** Calls of a tool that the model made itself, not in a script. */
+function directCalls(name: string, result: { toolCalls: ToolCall[] }): number {
+  return result.toolCalls.filter((call) => call.name === name).length;
+}
 
 // The user never names codemode. These cases measure whether Junior picks a
 // script when one call per item would be many calls, and skips it for one
@@ -21,7 +30,7 @@ describe("Code Mode Scripts", () => {
       0,
     );
     // The script makes the lookups, so few of them are direct calls.
-    expect(toolCallsOf("systemTime", conversation).length).toBeLessThan(8);
+    expect(directCalls("systemTime", conversation)).toBeLessThan(8);
     expect(conversation.replies).toHaveLength(1);
   });
 
@@ -58,9 +67,7 @@ describe("Code Mode Scripts", () => {
       0,
     );
     // The script reads the pages, so few of them are direct calls.
-    expect(toolCallsOf("webFetch", conversation).length).toBeLessThan(
-      releases.length,
-    );
+    expect(directCalls("webFetch", conversation)).toBeLessThan(releases.length);
     expect(conversation.replies).toHaveLength(1);
   });
 

@@ -75,8 +75,11 @@ export async function createConversationFixture(): Promise<ConversationFixture> 
   const queue = createConversationWorkQueueTestAdapter();
   const state = getStateAdapter();
   await state.connect();
+  // Sign in like the dashboard and ACP, so the web Actor id is the User id.
+  const viewer = await resolveViewerUser(webTestActor.email);
+  if (!viewer) throw new Error("Expected a web test viewer");
   return {
-    actor: webTestActor,
+    actor: { ...webTestActor, userId: viewer.id },
     conversationStore,
     queue,
     state,

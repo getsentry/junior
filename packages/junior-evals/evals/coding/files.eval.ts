@@ -46,7 +46,7 @@ describe("Coding File Tools", () => {
       RubricJudge,
       rubric({
         pass: [
-          "The final reply identifies project/src/config.ts and says the default retry count is now 3.",
+          "The final response identifies project/src/config.ts and says the default retry count is now 3.",
         ],
         fail: [
           "Do not answer with only a plan or promise to edit later.",

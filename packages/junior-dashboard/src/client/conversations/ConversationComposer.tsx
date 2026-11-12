@@ -17,6 +17,7 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
+import { flushSync } from "react-dom";
 import { ImagePlus, Send, Square } from "lucide-react";
 
 import { Button } from "../components/ui/button";
@@ -117,10 +118,19 @@ type ConversationComposerProps = {
   ref?: Ref<ConversationComposerHandle>;
   submitLabel: string;
   /**
-   * Return a promise to ask the reader before a send. The draft stays when it
+   * Return a promise to run before a send, such as a question to the reader
+   * or answers that go with the message. `sendsMessage` is false when the
+   * draft is empty, so only those answers go. The draft stays when it
    * resolves false. Return undefined to send at once.
    */
-  confirmSubmit?: () => Promise<boolean> | undefined;
+  beforeSubmit?: (send: {
+    sendsMessage: boolean;
+  }) => Promise<boolean> | undefined;
+  /**
+   * Enable Send with an empty draft, because `beforeSubmit` has input of its
+   * own to send. An empty draft then sends no message.
+   */
+  sendsWithoutDraft?: boolean;
   onFocus?: () => void;
   onSubmit(
     message: string,
@@ -177,7 +187,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   });
   // Blocks same-tick double fire. A held draft also blocks until settle.
   const submittingRef = useRef(false);
-  // Blocks a second send while the reader answers `confirmSubmit`.
+  // Blocks a second send while `beforeSubmit` runs.
   const confirmingRef = useRef(false);
   const stoppingRef = useRef(false);
   const sendLocked = Boolean(props.disabled) || holdPending;
@@ -300,7 +310,11 @@ export const ConversationComposer = memo(function ConversationComposer(
   };
 
   const canSubmit = () =>
-    Boolean(draftRef.current.text.trim() || imagesRef.current.length) &&
+    Boolean(
+      draftRef.current.text.trim() ||
+      imagesRef.current.length ||
+      props.sendsWithoutDraft,
+    ) &&
     online &&
     !submittingRef.current &&
     !confirmingRef.current &&
@@ -310,7 +324,11 @@ export const ConversationComposer = memo(function ConversationComposer(
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!canSubmit()) return;
-    const confirmation = props.confirmSubmit?.();
+    const confirmation = props.beforeSubmit?.({
+      sendsMessage: Boolean(
+        draftRef.current.text.trim() || imagesRef.current.length,
+      ),
+    });
     if (confirmation) {
       confirmingRef.current = true;
       let confirmed: boolean;
@@ -323,6 +341,7 @@ export const ConversationComposer = memo(function ConversationComposer(
     }
     const text = draftRef.current.text.trim();
     const submittedImages = imagesRef.current;
+    if (!text && !submittedImages.length) return;
 
     const attempt = conversationAttemptForSubmit(
       attemptRef.current,
@@ -362,7 +381,10 @@ export const ConversationComposer = memo(function ConversationComposer(
       try {
         await send();
       } catch {
-        // The parent shows the error. The draft stays for a retry.
+        // The parent shows the error. The draft stays for a retry, with
+        // focus, so Enter sends it again.
+        flushSync(() => setHoldPending(false));
+        textareaRef.current?.focus({ preventScroll: true });
         return;
       } finally {
         submittingRef.current = false;
@@ -595,6 +617,7 @@ export const ConversationComposer = memo(function ConversationComposer(
                 <TooltipTrigger
                   render={
                     <Button
+                      variant="ghost"
                       focusableWhenDisabled
                       aria-label="Attach images"
                       disabled={sendLocked || readingImages}
@@ -621,6 +644,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           <div className="flex shrink-0 items-center gap-2">
             {props.onStop ? (
               <Button
+                variant="outline"
                 aria-label={props.stopPending ? "Stopping" : "Stop"}
                 disabled={props.stopPending || !online}
                 onClick={() => void stopTurn()}
@@ -638,12 +662,12 @@ export const ConversationComposer = memo(function ConversationComposer(
                 props.compact && "w-9 px-0",
               )}
               disabled={
-                (!canSend && !images.length) ||
+                (!canSend && !images.length && !props.sendsWithoutDraft) ||
                 !online ||
                 sendLocked ||
                 readingImages
               }
-              variant="primary"
+              variant="default"
               type="submit"
             >
               <Send aria-hidden="true" size={14} />
@@ -736,6 +760,17 @@ export function restoreStoredDraftText(draftId: string, text: string): void {
   if (!text.trim()) return;
   const storageKey = draftStorageKey(draftId);
   storeDraft(storageKey, withPrependedText(readStoredDraft(storageKey), text));
+}
+
+/**
+ * Remove the saved draft text of a composer that is gone, to move it to
+ * another composer.
+ */
+export function takeStoredDraftText(draftId: string): string {
+  const storageKey = draftStorageKey(draftId);
+  const { text } = readStoredDraft(storageKey);
+  storeDraft(storageKey, { ...emptyDraft(), text: "" });
+  return text;
 }
 
 function storeDraft(storageKey: string, draft: ConversationDraft): void {

@@ -78,6 +78,13 @@ class MemoryConversationEventStore implements ConversationEventStore {
     );
   }
 
+  async loadEventsAfter(
+    _conversationId: string,
+    afterSeq: number,
+  ): Promise<ConversationEvent[]> {
+    return this.history.filter((event) => event.seq > afterSeq);
+  }
+
   async loadHistoryContaining(): Promise<ConversationEvent[]> {
     return this.history;
   }
@@ -88,6 +95,13 @@ class MemoryConversationEventStore implements ConversationEventStore {
 
   async loadHistory(): Promise<ConversationEvent[]> {
     return this.history;
+  }
+
+  async loadEventsOfType(
+    _conversationId: string,
+    type: string,
+  ): Promise<ConversationEvent[]> {
+    return this.history.filter((event) => event.data.type === type);
   }
 
   async query(

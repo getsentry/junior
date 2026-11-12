@@ -12,7 +12,7 @@ related:
 
 The memory plugin uses a Postgres database with the pgvector extension to store and retrieve long-term memories across conversations. Before each user turn, Junior combines semantic and full-text matches and includes only memories that directly help with the current request. The plugin also exposes explicit memory tools (remember, list, search, remove) and passively extracts memories from completed sessions in public Conversations.
 
-All memories are public. Junior recalls them in every Conversation, but it stores new memories only in public Conversations. In private Conversations, such as DMs and private channels, the remember and remove tools are not available and passive extraction does not run.
+All memories are public. Junior recalls them in every Conversation, but it stores new memories only in public Conversations. In private Conversations, such as DMs and private channels, the remember and remove tools are disabled and passive extraction does not run.
 
 New apps created with `junior init` include `memoryPlugin()` in `plugins.ts` by default.
 
@@ -208,7 +208,7 @@ What do you remember about my preferences?
 
 Junior should recall the preference without prompting.
 
-Memories are workspace-visible. A durable fact remembered in a public channel or public-channel thread can be recalled from any Conversation in the same Slack workspace, including DMs. The upgrade deletes private memories from older versions.
+Memories are public. A durable fact remembered in a public Conversation can be recalled from any Conversation, including DMs, web Conversations, and other Slack workspaces. The upgrade deletes private memories from older versions.
 
 ## Failure modes
 

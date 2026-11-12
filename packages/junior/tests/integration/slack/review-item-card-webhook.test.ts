@@ -5,10 +5,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
-import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import { projectConversationMessages } from "@/chat/conversations/message-projection";
+import {
+  closeDb,
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
-import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { actOnReviewItem } from "@/chat/review-items/actions";
 import {
   closeReviewItem,
@@ -20,7 +25,6 @@ import { getConversationWorkState } from "@/chat/task-execution/store";
 import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { createAddReviewItemTool } from "@/chat/tools/review-items";
-import { juniorIdentities } from "@/db/schema";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { mswServer } from "../../msw/server";
 import {
@@ -31,6 +35,7 @@ import {
   createSlackAdapterFixture,
 } from "../../fixtures/conversation-work";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { linkSlackUser } from "../../fixtures/slack-user";
 import { usersInfoOk } from "../../fixtures/slack/factories/api";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
@@ -77,38 +82,6 @@ async function slackThread(
     source: "slack",
     visibility,
   });
-}
-
-/** A Junior User with a linked Slack identity, like a person who signed in. */
-async function slackUser(email: string, slackUserId: string): Promise<User> {
-  const user = await resolveViewerUserFromSql(getDb(), email);
-  if (!user) throw new Error(`no user for ${email}`);
-  const now = new Date(1);
-  await getDb()
-    .insert(juniorIdentities)
-    .values({
-      createdAt: now,
-      displayName: email.split("@")[0]!,
-      email,
-      emailNormalized: email,
-      emailVerified: true,
-      id: `identity:${slackUserId}`,
-      kind: "user",
-      provider: "slack",
-      providerSubjectId: slackUserId,
-      providerTenantId: "T123",
-      updatedAt: now,
-      userId: user.id,
-    })
-    .onConflictDoUpdate({
-      target: [
-        juniorIdentities.provider,
-        juniorIdentities.providerTenantId,
-        juniorIdentities.providerSubjectId,
-      ],
-      set: { userId: user.id },
-    });
-  return user;
 }
 
 async function addItem(
@@ -283,8 +256,8 @@ describe("Slack webhook: Review item cards", () => {
     const { click, state } = harness();
     await slackThread(THREAD, "public");
     await slackThread(OTHER_THREAD, "public");
-    const ana = await slackUser("ana@example.com", "U123");
-    await slackUser("ben@example.com", "U456");
+    const ana = await linkSlackUser("ana@example.com", "U123");
+    await linkSlackUser("ben@example.com", "U456");
 
     const { item } = await addItem(ana, {
       kind: "action",
@@ -390,6 +363,16 @@ describe("Slack webhook: Review item cards", () => {
       kind: "submitted",
       reviewItemId: item.id,
     });
+    // The click starts input in a thread no Conversation claimed, so it
+    // claims the thread for this one.
+    await expect(
+      getConversationStore().getConversationIdByProviderConversation({
+        provider: "slack",
+        providerConversationId: "1712345.0001",
+        providerDestinationId: "C123",
+        providerTenantId: "T123",
+      }),
+    ).resolves.toBe(THREAD);
     // The other linked thread learns about it once, from the person.
     const other = await getConversationWorkState({
       conversationId: OTHER_THREAD,
@@ -455,7 +438,7 @@ describe("Slack webhook: Review item cards", () => {
       providerDestinationId: "C123",
       providerTenantId: "T123",
     });
-    const ana = await slackUser("ana@example.com", "U123");
+    const ana = await linkSlackUser("ana@example.com", "U123");
     const { item } = await addItem(
       ana,
       {
@@ -498,7 +481,7 @@ describe("Slack webhook: Review item cards", () => {
   it("names the recommended option of a form in the card text", async () => {
     harness();
     await slackThread(THREAD, "public");
-    const ana = await slackUser("ana@example.com", "U123");
+    const ana = await linkSlackUser("ana@example.com", "U123");
     await addItem(ana, {
       kind: "action",
       title: "Plan the rollout",
@@ -534,7 +517,7 @@ describe("Slack webhook: Review item cards", () => {
     try {
       const { queue } = harness();
       await slackThread(THREAD, "public");
-      const ana = await slackUser("ana@example.com", "U123");
+      const ana = await linkSlackUser("ana@example.com", "U123");
       const { item } = await addItem(ana, {
         kind: "action",
         title: "Review the release notes",
@@ -577,8 +560,8 @@ describe("Slack webhook: Review item cards", () => {
   it("lets only an assignee act on a private item card", async () => {
     const { click, state } = harness();
     await slackThread(THREAD, "private");
-    const ana = await slackUser("ana@example.com", "U123");
-    await slackUser("ben@example.com", "U456");
+    const ana = await linkSlackUser("ana@example.com", "U123");
+    await linkSlackUser("ben@example.com", "U456");
 
     const { item } = await addItem(ana, {
       kind: "notice",
@@ -627,14 +610,18 @@ describe("Slack webhook: Review item cards", () => {
     expect(JSON.stringify(blocksOf(updates[0]))).toContain(
       "ana@example.com dismissed this",
     );
-    // The thread input records the dismiss.
+    // A dismiss starts no Turn. The thread saves it as a handled Message.
     const work = await getConversationWorkState({
       conversationId: THREAD,
       state,
     });
-    expect(
-      work?.messages.map((message) => message.input.reviewItemChange),
-    ).toEqual([{ kind: "dismissed", reviewItemId: item.id }]);
+    expect(work?.messages ?? []).toEqual([]);
+    const saved = projectConversationMessages(
+      await getConversationEventStore().loadMessageHistory(THREAD),
+    );
+    expect(saved.map((message) => message.meta?.reviewItemChanges)).toEqual([
+      [{ kind: "dismissed", reviewItemId: item.id }],
+    ]);
   });
 
   // Which open question a reply answers is a decision model choice, so the
@@ -658,8 +645,8 @@ describe("Slack webhook: Review item cards", () => {
       }),
     );
     await slackThread(THREAD, "public");
-    const ana = await slackUser("ana@example.com", "U123");
-    await slackUser("ben@example.com", "U456");
+    const ana = await linkSlackUser("ana@example.com", "U123");
+    await linkSlackUser("ben@example.com", "U456");
 
     // The agent asks without naming anyone, so the question goes to Ana.
     const { item } = await addItem(ana, {
@@ -675,12 +662,15 @@ describe("Slack webhook: Review item cards", () => {
     expect((await getReviewItem(getDb(), item.id))?.status).toBe("open");
 
     // A question with no assignees takes an answer from anyone, but not
-    // from a Slack author outside the allowed domains.
+    // from a Slack author outside the allowed domains. A Slack Actor without
+    // a Junior User asks one.
     const unassigned = await (
       createAddReviewItemTool(
         {
           conversationId: THREAD,
-          resolveActorIdentity: async () => undefined,
+          resolveActorIdentity: async () => ({
+            identity: { id: "identity:slack:UNOUSER" } as any,
+          }),
           source: { kind: "slack" } as any,
         },
         createSlackReviewItemToolServices(
@@ -721,7 +711,7 @@ describe("Slack webhook: Review item cards", () => {
     const { postInDashboard, queue } = harness();
     await slackThread(THREAD, "public");
     await slackThread(OTHER_THREAD, "public");
-    const ana = await slackUser("ana@example.com", "U123");
+    const ana = await linkSlackUser("ana@example.com", "U123");
     const { item } = await addItem(ana, {
       kind: "action",
       title: "Ship release 1.2.3",

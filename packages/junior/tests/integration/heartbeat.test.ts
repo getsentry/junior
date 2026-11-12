@@ -5,7 +5,11 @@ import {
 } from "@sentry/junior-plugin-api";
 import { createHeartbeatContext } from "@/chat/agent-dispatch/context";
 import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
-import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import {
+  getDispatchConversationId,
+  getDispatchRecord,
+} from "@/chat/agent-dispatch/store";
+import { getConversationStore } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
@@ -34,7 +38,7 @@ let conversationWorkQueue = createConversationWorkQueueTestAdapter();
 function createTestHeartbeatContext(
   args: Omit<
     Parameters<typeof createHeartbeatContext>[0],
-    "conversationWorkQueue" | "dispatchForIdentity"
+    "conversationWorkQueue" | "dispatchForIdentity" | "events"
   >,
 ) {
   return createHeartbeatContext({
@@ -44,6 +48,11 @@ function createTestHeartbeatContext(
       allowedDomains: [],
       conversationWorkQueue: () => conversationWorkQueue,
     }),
+    events: {
+      async publish() {
+        throw new Error("Dispatch tests do not publish events");
+      },
+    },
   });
 }
 
@@ -54,6 +63,7 @@ function testHeartbeat(
 ) {
   const queue = options.conversationWorkQueue ?? conversationWorkQueue;
   return heartbeat(request, waitUntil, {
+    ...options,
     conversationWorkQueue: queue,
     dispatchForIdentity:
       options.dispatchForIdentity ??
@@ -381,6 +391,7 @@ describe("plugin heartbeat", () => {
       destinationVisibility: "private",
       input: "Run the scheduled automation.",
       metadata: { runId: "run-1" },
+      title: " Nightly sync ",
     });
 
     await expect(schedulerCtx.agent.get(result.id)).resolves.toEqual({
@@ -400,6 +411,13 @@ describe("plugin heartbeat", () => {
       metadata: { runId: "run-1" },
       source: { kind: "plugin_dispatch" },
     });
+    // The dispatch Conversation starts with the passed title, so title
+    // generation skips it.
+    await expect(
+      getConversationStore().get({
+        conversationId: getDispatchConversationId({ id: result.id }),
+      }),
+    ).resolves.toMatchObject({ kind: "root", title: "Nightly sync" });
   });
 
   it("keeps plugin state isolated when plugin names and keys contain delimiters", async () => {

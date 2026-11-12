@@ -104,6 +104,8 @@ export function viewerAutomationCollection(viewer: AutomationViewer) {
         ),
       isPublic: publicDestination.as("is_public"),
       instruction: automation.instruction,
+      skill: automation.skill,
+      task: sql<unknown>`${automation.record}->'task'`.as("task"),
     })
     .from(automation)
     .leftJoin(
@@ -178,9 +180,10 @@ export async function readAutomationCollection(
     input.destination
       ? eq(collection.destination, input.destination)
       : undefined,
+    input.skill ? eq(collection.skill, input.skill) : undefined,
     // A pasted dashboard URL finds its Automation by ID.
     input.q
-      ? sql`(strpos(lower(concat_ws(' ', ${collection.title}, ${collection.instruction}, ${collection.resource})), ${input.q.toLowerCase()}) > 0 or strpos(${input.q.toLowerCase()}, lower(${collection.id})) > 0)`
+      ? sql`(strpos(lower(concat_ws(' ', ${collection.title}, ${collection.instruction}, ${collection.skill}, ${collection.resource})), ${input.q.toLowerCase()}) > 0 or strpos(${input.q.toLowerCase()}, lower(${collection.id})) > 0)`
       : undefined,
   );
   const [totals, counts, creators, destinations] = await Promise.all([
@@ -223,7 +226,7 @@ export async function readAutomationCollection(
       ? asc(collection.createdAtMs)
       : input.sort === "title"
         ? asc(
-            sql`lower(coalesce(nullif(trim(${collection.title}), ''), ${collection.instruction}))`,
+            sql`lower(coalesce(nullif(trim(${collection.title}), ''), ${collection.instruction}, ${collection.skill}))`,
           )
         : desc(collection.createdAtMs);
   const rows = await db

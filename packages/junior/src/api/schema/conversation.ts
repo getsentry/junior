@@ -8,12 +8,14 @@ import { messageCardRefSchema } from "@/chat/conversations/cards";
 import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
 import * as z from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
+import { conversationTitleSchema } from "./conversation-title";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
   conversationTurnFailureCodeSchema,
   conversationTurnFailureReasonSchema,
 } from "@/chat/conversations/history";
 import { conversationBriefSchema } from "@/chat/briefs/schema";
+import { agentTypeSchema } from "@/chat/agent-invocations/agent-types";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
 import { conversationChildAgentTotalsSchema } from "./child-agent-totals";
 import {
@@ -35,7 +37,7 @@ export const conversationReportStatusSchema = z.enum([
 ]);
 
 /** Where a Conversation sits in its tree. See `TERMINOLOGY.md`. */
-const conversationKindSchema = z.enum(["root", "thread", "task"]);
+const conversationKindSchema = z.enum(["root", "automation", "thread", "task"]);
 
 export const conversationSurfaceSchema = z.enum([
   "api",
@@ -128,6 +130,8 @@ export const conversationFeedQuerySchema = z
       .transform((value) => value.toLowerCase())
       .optional(),
     codeRepositoryId: z.string().uuid().optional(),
+    /** `nextCursor` from the previous page of the same feed. */
+    cursor: z.string().min(1).max(500).optional(),
     q: z.string().trim().max(200).optional(),
     status: z.enum(["active", "archived"]).default("active"),
   })
@@ -153,6 +157,8 @@ export const createConversationMessageBodySchema = z
 
 export const createConversationBodySchema =
   createConversationMessageBodySchema.safeExtend({
+    /** Saved title. Title generation runs only when it is omitted. */
+    title: conversationTitleSchema.optional(),
     /** New roots default public. Private roots stay participant-only. */
     visibility: z.enum(["private", "public"]).optional(),
   });
@@ -259,6 +265,9 @@ export const conversationSummaryReportSchema = z
     startedAt: z.string(),
     lastSeenAt: z.string(),
     lastProgressAt: z.string(),
+    // Feed rows only: the newest Message that a reader would notice
+    // (`refreshLastMessageAt`). The dashboard sorts and groups rows by it.
+    lastMessageAt: z.string().datetime().optional(),
     surface: conversationSurfaceSchema,
     actorIdentity: actorIdentitySchema.optional(),
     participants: z.array(actorIdentitySchema).optional(),
@@ -270,13 +279,6 @@ export const conversationSummaryReportSchema = z
     pinnedAt: z.string().datetime().nullable().optional(),
     /** The viewer's place in Pinned. Unset until they reorder their pins. */
     pinPosition: z.number().int().optional(),
-    /**
-     * True when the conversation is idle and Junior's latest reply that the
-     * transcript shows is after the viewer's read position. Quiet replies do
-     * not count. Opening the conversation does not move the position; reading
-     * in it, replying, archiving, or Mark as read does.
-     */
-    unread: z.boolean().optional(),
     channel: z.string().optional(),
     channelName: z.string().optional(),
     channelNameRedacted: z.boolean().optional(),
@@ -305,6 +307,12 @@ export const conversationSummaryReportSchema = z
      */
     isPriority: z.boolean().optional(),
     unfinishedWork: z.boolean().optional(),
+    /**
+     * True on the conversation feed when a Turn in the conversation or a
+     * child waits on a person to finish an authorization that has not
+     * expired.
+     */
+    awaitingAuthorization: z.boolean().optional(),
   })
   .strict();
 
@@ -594,6 +602,8 @@ const conversationReportSubagentEventDataSchema = z
     startedSeq: z.number().int().nonnegative(),
     startedAt: z.string().datetime(),
     childConversationId: z.string().min(1),
+    /** The child's Conversation kind. Only a Thread has its own page link. */
+    childKind: z.enum(["thread", "task"]),
     subagentKind: z.string().min(1),
     agentName: z.string().min(1).optional(),
     task: z.string().min(1).optional(),
@@ -794,6 +804,16 @@ export const conversationAgentTreeNodeSchema = z
     conversationId: z.string().min(1),
     kind: conversationKindSchema,
     label: z.string().min(1),
+    /**
+     * Agent type of a child, such as `explore`. Absent for a root, a child
+     * without a type, or a viewer who cannot see private content.
+     */
+    agentType: agentTypeSchema.optional(),
+    /**
+     * The child started with its parent's history. Absent like `agentType`,
+     * or when the child started fresh.
+     */
+    fork: z.literal(true).optional(),
   })
   .strict();
 
@@ -840,6 +860,16 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     canFork: z.boolean().optional(),
     /** The viewer can move this dashboard conversation to a Slack thread. */
     canContinueInSlack: z.literal(true).optional(),
+    /**
+     * Event Turn replies stay out of the Location. Set only for a root with
+     * a Location, when the viewer is a participant, who can change it.
+     */
+    deliveryPaused: z.boolean().optional(),
+    /**
+     * The viewer gets this conversation in their active feed. Participants
+     * only. False after an unsubscribe, until they mention Junior again.
+     */
+    subscribed: z.boolean().optional(),
     /** How far the signed-in viewer has read. Absent until they read. */
     readPosition: conversationReadPositionSchema.optional(),
     /**
@@ -894,28 +924,6 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
   .strict()
   .superRefine(validateConversationEvents);
 
-/** A feed row, with its visible Threads nested under their parents. */
-export type ConversationFeedItem = ConversationSummaryReport & {
-  threads?: ConversationFeedItem[];
-};
-
-/**
- * A root in the feed, or one of its visible Threads. A Thread nests under
- * its nearest visible Thread ancestor, or under the root. Tasks never show.
- */
-const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
-  conversationSummaryReportSchema.extend({
-    threads: z.lazy(() => z.array(conversationFeedItemSchema)).optional(),
-  });
-
-export const conversationFeedSchema = z
-  .object({
-    conversations: z.array(conversationFeedItemSchema),
-    source: z.literal("conversation_index"),
-    generatedAt: z.string(),
-  })
-  .strict();
-
 export type ConversationReportStatus = z.infer<
   typeof conversationReportStatusSchema
 >;
@@ -960,7 +968,6 @@ export type ConversationDetailReport = z.infer<
   typeof conversationDetailReportSchema
 >;
 export type ConversationEventPage = z.infer<typeof conversationEventPageSchema>;
-export type ConversationFeed = z.infer<typeof conversationFeedSchema>;
 export type ConversationParams = z.infer<typeof conversationParamsSchema>;
 export type ForkConversationBody = z.infer<typeof forkConversationBodySchema>;
 export type CreateConversationBody = z.infer<

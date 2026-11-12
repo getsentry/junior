@@ -8,11 +8,17 @@ import {
   completeAgentInvocation,
   getAgentInvocation,
 } from "@/chat/agent-invocations/store";
-import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
+import {
+  enqueueAgentInvocationResult,
+  enqueueChildResultToParent,
+} from "@/chat/agent-invocations/result";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import type { AgentRun } from "@/chat/agent/types";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  appendInboundMessage,
+  getConversationWorkState,
+} from "@/chat/task-execution/store";
 import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import {
@@ -47,11 +53,13 @@ describe("nested agent invocations", () => {
     const mailbox = async (conversationId: string) =>
       (await getConversationWorkState({ conversationId, state }))?.messages ??
       [];
-    const complete = async (invocationId: string, result: string) =>
+    // A completed agent invocation sends nothing, so each one here ends
+    // blocked, which still reports.
+    const complete = async (invocationId: string, report: string) =>
       (await completeAgentInvocation({
+        errorMessage: report,
         invocationId,
-        result,
-        status: "completed",
+        status: "blocked",
       })) as TerminalAgentInvocation;
     // Production work gives a result to the parent child. That starts a new
     // agent invocation there and runs it.
@@ -92,32 +100,43 @@ describe("nested agent invocations", () => {
       });
 
       // A child that finishes while its own child runs does not report yet.
-      for (const invocation of [child, helper]) {
-        await expect(
-          complete(invocation.invocationId, "Started a helper."),
-        ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
-      }
-      const grandResult = await complete(
-        grandHelper.invocationId,
-        "Grand helper fact: 42.",
-      );
+      await expect(
+        complete(child.invocationId, "Started a helper."),
+      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
+      // A completed row saved before `reply` existed still sends its text,
+      // so the helper waits for it too.
+      const grandResult = (await completeAgentInvocation({
+        invocationId: grandHelper.invocationId,
+        result: "Grand helper fact: 42.",
+        status: "completed",
+      })) as TerminalAgentInvocation;
       expect(grandResult).toMatchObject({ parentMailboxStatus: "pending" });
+      await expect(
+        complete(helper.invocationId, "Started a helper."),
+      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
       await enqueueAgentInvocationResult(grandResult, { queue, state });
 
       // searchAgents shows the state of open work. A `replaced` child still
       // has work.
       const listedChild = (childConversationId: string) => ({
         conversation_id: childConversationId,
+        kind: "task",
         relation: "child",
         status: "pending",
         task: slackInvocationInput.input,
         updated_at: expect.any(String),
       });
       await expect(searchAgents(slackParentConversationId)).resolves.toEqual([
-        listedChild(child.childConversationId),
+        {
+          ...listedChild(child.childConversationId),
+          error: "Started a helper.",
+        },
       ]);
       await expect(searchAgents(child.childConversationId)).resolves.toEqual([
-        listedChild(helper.childConversationId),
+        {
+          ...listedChild(helper.childConversationId),
+          error: "Started a helper.",
+        },
       ]);
 
       // The result runs on the helper as the Actor that started the tree,
@@ -165,6 +184,136 @@ describe("nested agent invocations", () => {
           ),
           input: expect.objectContaining({
             text: expect.stringContaining("Final answer: 42."),
+          }),
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("sends a child's report when its helper ends without a reply", async () => {
+    const { fixture } = await prepareSlackParentConversation();
+    const harness = await createConversationWorkHarness({
+      run: async () => {
+        throw new Error("The agent does not run in this test.");
+      },
+    });
+    const { queue, state } = harness;
+    try {
+      const child = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "quiet-child",
+      });
+      const helper = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "quiet-helper",
+        parentConversationId: child.childConversationId,
+      });
+      await expect(
+        completeAgentInvocation({
+          errorMessage: "Started a helper.",
+          invocationId: child.invocationId,
+          status: "blocked",
+        }),
+      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
+
+      // A sibling's reply that still waits in another child's mailbox starts
+      // a later agent invocation there, so that child does not report yet.
+      const busy = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "busy-child",
+      });
+      const [busyQuiet, busyReplied] = await Promise.all(
+        ["busy-quiet", "busy-replied"].map((idempotencyKey) =>
+          createAgentInvocation({
+            ...slackInvocationInput,
+            idempotencyKey,
+            parentConversationId: busy.childConversationId,
+          }),
+        ),
+      );
+      await completeAgentInvocation({
+        errorMessage: "Started helpers.",
+        invocationId: busy.invocationId,
+        status: "blocked",
+      });
+      await enqueueChildResultToParent({
+        result: {
+          kind: "reply",
+          reply: { text: "Sibling finding.", toolCallId: "call-reply" },
+        },
+        messageKey: "call-reply",
+        queue,
+        sender: busyReplied!,
+        state,
+      });
+      for (const [invocation, result] of [
+        [busyReplied!, "Sibling finding."],
+        [busyQuiet!, ""],
+      ] as const) {
+        await enqueueAgentInvocationResult(
+          (await completeAgentInvocation({
+            invocationId: invocation.invocationId,
+            result,
+            status: "completed",
+          })) as TerminalAgentInvocation,
+          { queue, state },
+        );
+      }
+      await expect(
+        getAgentInvocation(busy.invocationId),
+      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
+
+      // A person's message in a Thread starts no agent invocation, so it
+      // does not hold the report.
+      await appendInboundMessage({
+        message: {
+          conversationId: child.childConversationId,
+          createdAtMs: Date.now(),
+          delivery: "defer",
+          inboundMessageId: "web:quiet-child:person",
+          input: { text: "Any update?" },
+          receivedAtMs: Date.now(),
+          source: "web",
+        },
+        state,
+      });
+
+      // The helper ends with `noReply`, so it sends the child nothing. No
+      // later agent invocation of the child would send its report.
+      const quiet = (await completeAgentInvocation({
+        invocationId: helper.invocationId,
+        result: "",
+        status: "completed",
+      })) as TerminalAgentInvocation;
+      await enqueueAgentInvocationResult(quiet, { queue, state });
+
+      expect(
+        (
+          await getConversationWorkState({
+            conversationId: child.childConversationId,
+            state,
+          })
+        )?.messages.map((message) => message.source),
+      ).toEqual(["web"]);
+      await expect(
+        getAgentInvocation(child.invocationId),
+      ).resolves.toMatchObject({ parentMailboxStatus: "appended" });
+      expect(
+        (
+          await getConversationWorkState({
+            conversationId: slackParentConversationId,
+            state,
+          })
+        )?.messages,
+      ).toEqual([
+        expect.objectContaining({
+          inboundMessageId: getAgentInvocationResultMessageId(
+            child.invocationId,
+          ),
+          input: expect.objectContaining({
+            text: expect.stringContaining("Started a helper."),
           }),
         }),
       ]);

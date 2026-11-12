@@ -10,9 +10,8 @@ import { deliverReviewItemChange, type ReviewItemDelivery } from "./changes";
 import type { ReviewItemChange } from "./messages";
 import {
   canActOnReviewItem,
-  canReadReviewItem,
+  canUserReadReviewItem,
   isOnlyAssignee,
-  reviewItemReaderForUser,
 } from "./access";
 import { matchReplyToReviewItems } from "./reply-match";
 import {
@@ -44,7 +43,7 @@ export async function readReviewItemForUser(
   id: string,
 ): Promise<ReviewItem> {
   const item = await getReviewItem(getDb(), id);
-  if (!item || !canReadReviewItem(item, reviewItemReaderForUser(user))) {
+  if (!item || !(await canUserReadReviewItem(item, user))) {
     throw new ReviewItemActionError("not_found", "Review item not found.");
   }
   return item;

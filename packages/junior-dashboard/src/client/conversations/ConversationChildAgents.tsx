@@ -10,13 +10,14 @@ import {
   LockKeyhole,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useContext, useState } from "react";
 import {
   conversationChildAgentsReportSchema,
   type ConversationChildAgent,
 } from "@sentry/junior/api/schema";
 
 import type { StatusChipTone } from "../components/StatusChip";
+import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
 import {
   formatConversationCostTotal,
@@ -25,9 +26,9 @@ import {
   formatUsageTotal,
 } from "../format";
 import { fetchDashboardJson } from "../http";
-import type { Conversation } from "../types";
-import { conversationSideReadQueryKey } from "./queries";
+import { conversationSideReadQueryKey } from "./conversationSideReads";
 import { conversationPath } from "./conversationRoutes";
+import { FeedThreads } from "./feedThreads";
 import { cn } from "../styles";
 import {
   DetailsCard,
@@ -35,7 +36,7 @@ import {
   DetailsRow,
   DetailsRowLine,
 } from "./DetailsList";
-import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
+import type { ConversationDrawerTarget } from "./ConversationDrawer";
 
 const statusTones: Partial<Record<string, StatusChipTone>> = {
   active: "info",
@@ -76,13 +77,9 @@ export function useConversationChildAgents(conversationId: string) {
  * Archived Threads stay hidden until the reader asks for them.
  */
 export function ConversationThreads(props: {
-  feedConversations: readonly Conversation[];
   threads: readonly ConversationChildAgent[];
 }) {
-  const titles = useMemo(
-    () => feedThreadTitles(props.feedConversations),
-    [props.feedConversations],
-  );
+  const feedThreads = useContext(FeedThreads);
   const { action, items: threads } = useShowArchived(props.threads);
   return (
     <DetailsCard
@@ -99,7 +96,9 @@ export function ConversationThreads(props: {
           renderItem={(thread) => (
             <ChildAgentRow
               agent={thread}
-              title={titles.get(thread.conversationId)}
+              // The report title is the invocation title, so the Thread's
+              // own title wins. Archived Threads are not in the feed.
+              title={feedThreads.get(thread.conversationId)?.displayTitle}
               to={conversationPath(thread.conversationId)}
             />
           )}
@@ -112,30 +111,11 @@ export function ConversationThreads(props: {
 }
 
 /**
- * Map each Thread in the feed, at any depth, to its own title. The report
- * title is the invocation title, so it is only the fallback. Archived Threads
- * are not in the feed and use that fallback.
- */
-function feedThreadTitles(
-  conversations: readonly Conversation[],
-  titles = new Map<string, string>(),
-): Map<string, string> {
-  for (const conversation of conversations) {
-    if (!conversation.threads) continue;
-    for (const thread of conversation.threads) {
-      titles.set(thread.id, thread.displayTitle);
-    }
-    feedThreadTitles(conversation.threads, titles);
-  }
-  return titles;
-}
-
-/**
  * List the Tasks of one Conversation. Tasks are background work, so the list
  * stays short, and a row opens the Task transcript beside this page.
  */
 export function ConversationTasks(props: {
-  onOpenTask(target: SubagentTranscriptTarget): void;
+  onOpenTask(target: ConversationDrawerTarget): void;
   tasks: readonly ConversationChildAgent[];
 }) {
   const { action, items: tasks } = useShowArchived(props.tasks);
@@ -183,13 +163,14 @@ function useShowArchived(children: readonly ConversationChildAgent[]) {
   return {
     action:
       archivedCount > 0 ? (
-        <button
-          className="cursor-pointer rounded-md px-1.5 py-0.5 font-sans text-xs text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+        <Button
+          className="rounded-md px-1.5 py-0.5 text-xs"
           onClick={() => setShowArchived((value) => !value)}
-          type="button"
+          variant="ghost"
+          size="bare"
         >
           {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
-        </button>
+        </Button>
       ) : null,
     items: showArchived
       ? children

@@ -21,10 +21,17 @@ export const pluginsSchema = z.array(pluginSchema);
 export const skillReportSchema = z
   .object({
     name: z.string(),
+    description: z.string(),
     pluginProvider: z.string().optional(),
+    /** The skill runs only when invoked by name, such as from an Automation. */
+    disableModelInvocation: z.boolean().optional(),
   })
   .strict();
 export const skillReportsSchema = z.array(skillReportSchema);
+/** One skill with its authored SKILL.md body, without frontmatter. */
+export const skillDetailReportSchema = skillReportSchema
+  .extend({ body: z.string() })
+  .strict();
 
 export const pluginPackageContentItemReportSchema = z
   .object({
@@ -160,6 +167,7 @@ export type Plugin = z.infer<typeof pluginSchema>;
 export type Plugins = z.infer<typeof pluginsSchema>;
 export type SkillReport = z.infer<typeof skillReportSchema>;
 export type SkillReports = z.infer<typeof skillReportsSchema>;
+export type SkillDetailReport = z.infer<typeof skillDetailReportSchema>;
 export type RuntimeInfoReport = z.infer<typeof runtimeInfoReportSchema>;
 export type PluginPackageContentItemReport = z.infer<
   typeof pluginPackageContentItemReportSchema

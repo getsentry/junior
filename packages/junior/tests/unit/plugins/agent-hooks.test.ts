@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
   createLocalSource,
   createSlackSource,
@@ -44,6 +45,7 @@ import {
   getPluginTools,
   setPlugins,
 } from "@/chat/plugins/agent-hooks";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { createTools } from "@/chat/tools";
 import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -52,6 +54,11 @@ import type {
   SandboxCommandInput,
   SandboxSession,
 } from "@/chat/sandbox/workspace";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
 
 const demoToolResultSchema = pluginToolOutputSchema.extend({
   message: z.string(),
@@ -640,6 +647,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const tools = getPluginTools({
+        turnTools: rootTurnTools,
         conversationId: "slack:DDM:1712345.0001",
         destination: SLACK_DESTINATION,
         actor: TEST_ACTOR,
@@ -712,6 +720,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const tools = getPluginTools({
+        turnTools: rootTurnTools,
         conversationId: "local:web:dashboard-1",
         destination: LOCAL_DESTINATION,
         actor: webActor,
@@ -750,6 +759,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       getPluginTools({
+        turnTools: rootTurnTools,
         conversationId: "slack:DDM:1712345.0001",
         destination: SLACK_DESTINATION,
         actor: TEST_ACTOR,
@@ -793,6 +803,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const tools = getPluginTools({
+        turnTools: rootTurnTools,
         conversationId: LOCAL_DESTINATION.conversationId,
         destination: LOCAL_DESTINATION,
         egress: TEST_EGRESS,
@@ -845,6 +856,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const tools = getPluginTools({
+        turnTools: rootTurnTools,
         conversationId: LOCAL_DESTINATION.conversationId,
         destination: LOCAL_DESTINATION,
         egress: TEST_EGRESS,
@@ -879,6 +891,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const tools = getPluginTools({
+        turnTools: rootTurnTools,
         conversationId: LOCAL_DESTINATION.conversationId,
         destination: LOCAL_DESTINATION,
         egress: TEST_EGRESS,
@@ -912,6 +925,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const tools = getPluginTools({
+        turnTools: rootTurnTools,
         conversationId: LOCAL_DESTINATION.conversationId,
         destination: LOCAL_DESTINATION,
         egress: TEST_EGRESS,
@@ -950,6 +964,7 @@ describe("agent plugin hooks", () => {
         [],
         {},
         {
+          turnTools: rootTurnTools,
           conversationId: LOCAL_DESTINATION.conversationId,
           destination: LOCAL_DESTINATION,
           egress: TEST_EGRESS,
@@ -1001,6 +1016,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       getPluginTools({
+        turnTools: rootTurnTools,
         conversationId: LOCAL_DESTINATION.conversationId,
         destination: LOCAL_DESTINATION,
         egress: TEST_EGRESS,
@@ -2002,6 +2018,7 @@ describe("agent plugin hooks", () => {
 describe("getPluginTools channel resolution", () => {
   function capturePluginContext(
     context: ToolRuntimeContext = {
+      turnTools: rootTurnTools,
       conversationId: LOCAL_DESTINATION.conversationId,
       destination: LOCAL_DESTINATION,
       egress: TEST_EGRESS,
@@ -2037,6 +2054,7 @@ describe("getPluginTools channel resolution", () => {
     const source = slackSource("DDM");
     const ctx = capturePluginContext({
       conversationId: "slack:DDM:1712345.0001",
+      turnTools: rootTurnTools,
       source,
       destination: {
         platform: "slack",
@@ -2058,6 +2076,7 @@ describe("getPluginTools channel resolution", () => {
     // DM channel: canvas and reactions yes, standalone channel-post no
     const ctx = capturePluginContext({
       conversationId: "slack:DDM:1712345.0001",
+      turnTools: rootTurnTools,
       source: slackSource("DDM"),
       location: {
         id: "location:T123:DDM",
@@ -2081,6 +2100,7 @@ describe("getPluginTools channel resolution", () => {
 
   it("exposes Slack context and Actor for an Agent invocation", () => {
     const ctx = capturePluginContext({
+      turnTools: rootTurnTools,
       conversationId: "agent-invocation:invocation-1",
       source: { kind: "agent_invocation" },
       actor: TEST_ACTOR,
@@ -2103,6 +2123,7 @@ describe("getPluginTools channel resolution", () => {
   it("creates a direct credential subject when channelId is a DM", () => {
     const ctx = capturePluginContext({
       conversationId: "slack:DDM:1712345.0001",
+      turnTools: rootTurnTools,
       source: slackSource("DDM"),
       destination: {
         platform: "slack",
@@ -2124,6 +2145,7 @@ describe("getPluginTools channel resolution", () => {
   it("does not create a credential subject when channelId is not a DM", () => {
     const ctx = capturePluginContext({
       conversationId: "slack:DDM:1712345.0001",
+      turnTools: rootTurnTools,
       source: slackSource("CSOURCE"),
       destination: {
         platform: "slack",
@@ -2143,6 +2165,7 @@ describe("getPluginTools channel resolution", () => {
       conversationId: "slack:DDM:1780479160.406339",
       destination: SLACK_DESTINATION,
       egress: TEST_EGRESS,
+      turnTools: rootTurnTools,
       source: SLACK_SOURCE,
       workspace: {} as any,
     });
@@ -2161,5 +2184,20 @@ describe("getPluginTools channel resolution", () => {
     expect(ctx.destination).toEqual(LOCAL_DESTINATION);
     expect(ctx.source).toEqual(LOCAL_SOURCE);
     expect(ctx.slack).toBeUndefined();
+  });
+
+  it("exposes the dashboard conversation link outside Slack", () => {
+    const previous = setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+    try {
+      const ctx = capturePluginContext();
+      expect(ctx.slack).toBeUndefined();
+      expect(ctx.conversationLink).toEqual({
+        url: `https://junior.example.com/conversations/${encodeURIComponent(LOCAL_DESTINATION.conversationId)}`,
+      });
+    } finally {
+      setDashboardConversationLinkOptions(previous);
+    }
   });
 });

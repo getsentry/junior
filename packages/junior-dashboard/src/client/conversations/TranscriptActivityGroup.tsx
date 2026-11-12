@@ -9,7 +9,6 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { formatMs } from "../format";
-import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import { isMemoryCaptureEvent } from "./conversationMemory";
 import {
   isAgentInvocationResultMessage,
@@ -32,19 +31,16 @@ export function isCollapsibleActivityEntry(
   if (entry.kind === "failure") return false;
   // Delivered files are human-facing media, not collapsible tool chrome.
   if (entry.kind === "attachments_delivered") return false;
-  // Child agent rows stay in the main view. A run of them is one group card.
+  // Thread cards and Task lines stay in the main view.
   if (entry.kind === "subagent") return false;
   // An agent invocation result left only for its recalled memories is
-  // activity of the Turn it started. Its child agent card shows the outcome.
+  // activity of the Turn it started. Its Thread card or Task line shows the
+  // outcome.
   if (entry.kind === "message") {
     return isAgentInvocationResultMessage(entry.message);
   }
   // A Turn's captured memories stay visible, so the reader sees what it saved.
   if (entry.kind === "structured_event" && isMemoryCaptureEvent(entry.part)) {
-    return false;
-  }
-  // A review card stays visible where the agent added the item.
-  if (entry.kind === "tool" && reviewItemIdFromToolCall(entry.part)) {
     return false;
   }
   return true;

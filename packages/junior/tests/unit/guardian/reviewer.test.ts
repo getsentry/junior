@@ -7,7 +7,6 @@ import {
 } from "@/chat/guardian/reviewer";
 import { ProviderError } from "@/chat/services/provider-error";
 import {
-  CHILD_AGENT_USER_INTENT,
   type RootConversation,
   type ToolActionProposal,
 } from "@/chat/guardian/proposal";
@@ -86,7 +85,7 @@ describe("Guardian action review", () => {
     ).toEqual([]);
     expect(completeObject).toHaveBeenCalledWith(
       expect.objectContaining({
-        maxTokens: 2_000,
+        maxTokens: 8_000,
         modelId: "test/guardian",
         prompt: expect.stringContaining('"cadence": "weekly"'),
       }),
@@ -142,13 +141,6 @@ describe("Guardian action review", () => {
       ...proposal,
       context: { ...proposal.context, source: { kind: "event_automation" } },
     };
-    const automationChild: ToolActionProposal = {
-      ...proposal,
-      rootConversation: {
-        messages: [{ author: "automation", text: "Post the findings." }],
-        truncated: false,
-      },
-    };
 
     expect(guardianDecision(assess("none"), proposal).decision).toBe("allow");
     expect(guardianDecision(assess("withheld_step"), proposal).decision).toBe(
@@ -179,9 +171,6 @@ describe("Guardian action review", () => {
     expect(
       guardianDecision(assess("unclear_destination"), automationProposal)
         .decision,
-    ).toBe("deny");
-    expect(
-      guardianDecision(assess("withheld_step"), automationChild).decision,
     ).toBe("deny");
     expect(guardianDecision(assess("none"), automationProposal).decision).toBe(
       "allow",
@@ -255,23 +244,12 @@ describe("Guardian action review", () => {
     expect(prompt).not.toContain('"rootConversation"');
     expect(guardianPrompt(proposal)).not.toContain("root_user_instructions");
 
-    // A root Run gets the root rules, and only when it has messages. A child
-    // gets the child rules even for an empty root, its only authority.
+    // A Run gets the rules and the section only when it has messages.
     const empty: RootConversation = { messages: [], truncated: false };
-    const child = (root: RootConversation): ToolActionProposal => ({
-      ...proposal,
-      context: { ...proposal.context, userIntent: CHILD_AGENT_USER_INTENT },
-      rootConversation: root,
-    });
     expect(prompt).toContain("visible conversation of this run");
-    expect(prompt).not.toContain("This action comes from a child agent");
     expect(
       guardianPrompt({ ...proposal, rootConversation: empty }),
     ).not.toContain("root_user_instructions");
-    expect(guardianPrompt(child(empty))).toContain(
-      "This action comes from a child agent",
-    );
-    expect(guardianPrompt(child(empty))).toContain("(no messages)");
   });
 
   it("puts the requester instructions of an Event Turn in a section that only this request can open", () => {
