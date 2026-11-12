@@ -3,8 +3,11 @@ import { reviewItemSchema } from "@sentry/junior/api/schema";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -36,12 +39,38 @@ async function commitSweep(
     .map((item) => item.id);
 }
 
+function unsweep(
+  setSwept: (
+    update: (current: ReadonlySet<string>) => ReadonlySet<string>,
+  ) => void,
+  ids: readonly string[],
+) {
+  setSwept((current) => {
+    const next = new Set(current);
+    for (const itemId of ids) next.delete(itemId);
+    return next;
+  });
+}
+
 type InboxSweeper = {
   isSwept(id: string): boolean;
   sweep(items: ReviewItemPayload[]): void;
 };
 
 const InboxSweepContext = createContext<InboxSweeper | null>(null);
+
+type Toasts = Pick<ReturnType<typeof useToastManager>, "add" | "close">;
+
+// The toast manager re-renders its caller on every toast change. This leaf
+// takes those renders, so the provider and the Inbox that reads it do not.
+function ToastsBridge(props: { onToasts: (toasts: Toasts) => void }) {
+  const { add, close } = useToastManager();
+  const { onToasts } = props;
+  useLayoutEffect(() => {
+    onToasts({ add, close });
+  }, [add, close, onToasts]);
+  return null;
+}
 
 /**
  * Own the Inbox's Clears for the whole dashboard, next to the toasts. The
@@ -52,7 +81,10 @@ const InboxSweepContext = createContext<InboxSweeper | null>(null);
  */
 export function InboxSweepProvider(props: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const { add, close } = useToastManager();
+  const toasts = useRef<Toasts | null>(null);
+  const onToasts = useCallback((next: Toasts) => {
+    toasts.current = next;
+  }, []);
   const [swept, setSwept] = useState<ReadonlySet<string>>(() => new Set());
   // The items of each Clear whose toast still shows, by toast id. Each
   // Clear gets its own toast, so Undo takes back only its own items.
@@ -69,54 +101,55 @@ export function InboxSweepProvider(props: { children: ReactNode }) {
     return () => window.removeEventListener("pagehide", flush);
   }, [queryClient]);
 
-  const unsweep = (ids: readonly string[]) =>
-    setSwept((current) => {
-      const next = new Set(current);
-      for (const itemId of ids) next.delete(itemId);
-      return next;
-    });
-
-  const sweep = (items: ReviewItemPayload[]) => {
-    if (items.length === 0) return;
-    sweeps.current += 1;
-    const id = `inbox-sweep-${sweeps.current}`;
-    const ids = items.map((item) => item.id);
-    setSwept((current) => new Set([...current, ...ids]));
-    pending.current.set(id, items);
-    const commit = () => {
-      // Undo or leaving the page already settled this Clear.
-      if (!pending.current.delete(id)) return;
-      // Items that did not close come back, so the inbox shows what is
-      // still open on the server.
-      void commitSweep(queryClient, items).then((failed) => {
-        if (failed.length === 0) return;
-        unsweep(failed);
-        add({
-          title: `Could not clear ${failed.length} item${failed.length === 1 ? "" : "s"}`,
-          type: "error",
+  const sweep = useCallback(
+    (items: ReviewItemPayload[]) => {
+      const manager = toasts.current;
+      if (items.length === 0 || !manager) return;
+      const { add, close } = manager;
+      sweeps.current += 1;
+      const id = `inbox-sweep-${sweeps.current}`;
+      const ids = items.map((item) => item.id);
+      setSwept((current) => new Set([...current, ...ids]));
+      pending.current.set(id, items);
+      const commit = () => {
+        // Undo or leaving the page already settled this Clear.
+        if (!pending.current.delete(id)) return;
+        // Items that did not close come back, so the inbox shows what is
+        // still open on the server.
+        void commitSweep(queryClient, items).then((failed) => {
+          if (failed.length === 0) return;
+          unsweep(setSwept, failed);
+          add({
+            title: `Could not clear ${failed.length} item${failed.length === 1 ? "" : "s"}`,
+            type: "error",
+          });
         });
+      };
+      const undo = () => {
+        pending.current.delete(id);
+        unsweep(setSwept, ids);
+        close(id);
+      };
+      add({
+        actionProps: { children: "Undo", onClick: undo },
+        description: "Questions and approvals stay.",
+        id,
+        onClose: commit,
+        timeout: UNDO_MS,
+        title: `Cleared ${items.length} item${items.length === 1 ? "" : "s"}`,
+        type: "success",
       });
-    };
-    const undo = () => {
-      pending.current.delete(id);
-      unsweep(ids);
-      close(id);
-    };
-    add({
-      actionProps: { children: "Undo", onClick: undo },
-      description: "Questions and approvals stay.",
-      id,
-      onClose: commit,
-      timeout: UNDO_MS,
-      title: `Cleared ${items.length} item${items.length === 1 ? "" : "s"}`,
-      type: "success",
-    });
-  };
+    },
+    [queryClient],
+  );
+  const sweeper = useMemo<InboxSweeper>(
+    () => ({ isSwept: (id) => swept.has(id), sweep }),
+    [swept, sweep],
+  );
 
   return (
-    <InboxSweepContext.Provider
-      value={{ isSwept: (id) => swept.has(id), sweep }}
-    >
+    <InboxSweepContext.Provider value={sweeper}>
+      <ToastsBridge onToasts={onToasts} />
       {props.children}
     </InboxSweepContext.Provider>
   );
