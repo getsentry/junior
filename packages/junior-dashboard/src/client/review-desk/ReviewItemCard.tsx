@@ -6,6 +6,7 @@ import { StatusChip } from "../components/StatusChip";
 import { DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import { ReviewItemActions } from "./ReviewItemActions";
+import { ReviewItemObjects } from "./ReviewItemObjects";
 import {
   assigneeLabel,
   reviewItemPath,
@@ -56,7 +57,9 @@ export function ReviewItemCard(props: { item: ReviewItemPayload }) {
         </div>
       </header>
       <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
-        <DisplayText text={item.body} />
+        <ReviewItemObjects conversationId={item.addedByConversationId}>
+          <DisplayText text={item.body} />
+        </ReviewItemObjects>
         <div className="border-t border-dashboard-border pt-4">
           <ReviewItemActions item={item} />
         </div>

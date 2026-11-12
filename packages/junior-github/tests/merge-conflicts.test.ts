@@ -7,6 +7,7 @@ import type {
   HeartbeatHookContext,
   PluginState,
 } from "@sentry/junior-plugin-api";
+import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { juniorGitHubPullRequests } from "../src/db/schema";
@@ -360,15 +361,19 @@ describe("merge conflict check on webhook events", () => {
         body: {
           action: "ready_for_review",
           installation: { id: 456 },
-          repository: { full_name: "getsentry/junior" },
+          repository: { full_name: "getsentry/junior", id: 1 },
           pull_request: {
             ...pullRequestResponse({
               headSha: "3333333333333333333333333333333333333333",
               mergeable: false,
               mergeableState: "dirty",
             }),
+            created_at: "2026-07-01T12:00:00.000Z",
             draft: false,
+            id: 9460,
+            merged: false,
             number: 946,
+            updated_at: "2026-07-02T12:00:00.000Z",
             user: { login: "jane" },
           },
         },
@@ -541,6 +546,7 @@ describe("merge conflict check on webhook events", () => {
     const now = Date.parse("2026-11-09T12:00:00.000Z");
     const day = 24 * 60 * 60_000;
     let queries: number[][];
+    let drafts: Set<number>;
 
     /** A pull request lifecycle as GitHub GraphQL returns it. */
     function lifecycle(number: number) {
@@ -553,7 +559,7 @@ describe("merge conflict check on webhook events", () => {
         createdAt: new Date(now - 3 * day).toISOString(),
         databaseId: number * 10,
         headRefName: `feat/pr-${number}`,
-        isDraft: false,
+        isDraft: drafts.has(number),
         merged,
         mergedAt: merged ? new Date(now - day).toISOString() : null,
         number,
@@ -566,6 +572,7 @@ describe("merge conflict check on webhook events", () => {
     beforeEach(async () => {
       vi.useFakeTimers({ now, toFake: ["Date"] });
       queries = [];
+      drafts = new Set();
       vi.stubEnv(
         "GITHUB_APP_BOT_EMAIL",
         "1234+sentry-junior[bot]@users.noreply.github.com",
@@ -716,6 +723,29 @@ describe("merge conflict check on webhook events", () => {
       vi.setSystemTime(now + day);
       await heartbeat(now + day);
       expect(queries[1]?.sort()).toEqual([947, 950, 951]);
+    });
+
+    it("writes a draft state that changed on GitHub", async () => {
+      drafts = new Set([947]);
+      await heartbeat(now);
+
+      const [row] = await fixture
+        .db()
+        .select()
+        .from(juniorGitHubPullRequests)
+        .where(eq(juniorGitHubPullRequests.number, 947));
+      expect(row).toMatchObject({ draft: true, state: "open" });
+      expect(
+        codeChanges.map((change) => [
+          change.number,
+          change.state,
+          change.draft,
+        ]),
+      ).toEqual([
+        [946, "merged", undefined],
+        [947, "open", true],
+        [949, "closed", undefined],
+      ]);
     });
 
     it("publishes a corrected close with the key of its webhook", async () => {

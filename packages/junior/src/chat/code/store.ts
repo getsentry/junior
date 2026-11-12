@@ -71,6 +71,7 @@ export async function recordCodeChange(
             ORDER BY value
           )`
         : juniorCodeChanges.conversationIds,
+    ...(change.draft !== undefined ? { draft: change.draft } : undefined),
     mergedAt: change.mergedAt ?? null,
     number: change.number,
     openedAt: change.openedAt,

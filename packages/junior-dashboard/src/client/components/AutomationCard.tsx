@@ -6,6 +6,7 @@ import { Link } from "react-router";
 import type { AutomationCard as AutomationCardValue } from "@sentry/junior/api/schema";
 import { DisplayText } from "../display-text/DisplayText";
 import { Item, ItemContent, ItemMedia } from "./ui/item";
+import { MessageCard } from "./MessageCard";
 import { automationPath } from "../format";
 
 /** Show a saved automation inside a reply, with a preview and a detail link. */
@@ -18,10 +19,7 @@ export function AutomationCard({
   > & { status?: string };
 }) {
   return (
-    <section
-      aria-label={card.title}
-      className="my-1 w-full min-w-0 max-w-[37.5rem] overflow-hidden rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel text-sm"
-    >
+    <MessageCard aria-label={card.title} className="my-1">
       <Item className="items-center" size="card">
         <ItemMedia className="text-dashboard-accent-text" variant="icon">
           <ObjectIcon objectType="automation" status={card.status} size={18} />
@@ -73,6 +71,6 @@ export function AutomationCard({
           <ArrowUpRight aria-hidden="true" size={14} />
         </Link>
       </div>
-    </section>
+    </MessageCard>
   );
 }

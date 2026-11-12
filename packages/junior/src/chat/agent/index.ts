@@ -64,7 +64,6 @@ import {
   resolveGatewayModel,
 } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
-import { renderAgentsInstructions } from "@/chat/repository-instructions";
 import { createRepositoryInstructionsContext } from "@/chat/agent/repository-context";
 import {
   extractAssistantText,
@@ -788,27 +787,19 @@ async function executeAgentRunInPrivacyContext(
       currentActor: actor,
       availableSkills,
       configurationValues,
-      contextContentParts: [
-        ...(initialRepositoryInstructions
-          ? [
-              {
-                type: "text" as const,
-                text: renderAgentsInstructions(initialRepositoryInstructions),
-              },
-            ]
-          : []),
-        ...contextContentParts,
-      ],
+      contextContentParts,
       conversationPrivacy,
       existingSessionPiMessages: existingSessionRecord?.piMessages,
       existingTurnStartMessageIndex:
         existingSessionRecord?.turnStartMessageIndex,
       explicitSkill,
       priorPiMessages,
+      repositoryInstructions: initialRepositoryInstructions,
       resumedFromSessionRecord,
       run,
       spanContext,
       disabledTools: wiring.disabledTools,
+      scriptTools: wiring.scriptTools,
       toolGuidance: wiring.toolGuidance,
       turnContext: promptTurnContext,
       userContentParts,
@@ -822,9 +813,9 @@ async function executeAgentRunInPrivacyContext(
         await runResume.persistSafeBoundary(messages, [contextProvenance]);
       },
       hasSandbox: () => Boolean(wiring.getSandboxRef()),
-      initialInstructions: initialRepositoryInstructions,
       onTransition: recordAgentsTransition,
       promptContextContentParts,
+      promptHistoryMessages,
       restoredMessages: existingSessionRecord?.piMessages,
       restoredProvenance: existingSessionRecord?.piMessageProvenance,
       setMessages(messages) {

@@ -22,6 +22,7 @@ import {
 } from "../components/ui/empty";
 import { Card } from "../components/layout/Card";
 import { formatTime, unavailableTranscriptLabel } from "../format";
+import { KnownObjectsProvider } from "../display-text/DisplayText";
 import { ConversationBrief } from "./ConversationBrief";
 import { transcriptMessagesFromEvents } from "./eventTranscript";
 import type {
@@ -192,17 +193,19 @@ export const ConversationTranscriptView = memo(
           conversationId={props.conversation.conversationId}
           messages={messages}
         >
-          <section className="min-w-0 pt-1">
-            <SegmentEvents
-              onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-              conversation={props.conversation}
-              messages={messages}
-              responding={props.responding}
-              revealSeq={props.revealSeq}
-              scrollAnchorKey={props.scrollAnchorKey}
-              unread={props.unread}
-            />
-          </section>
+          <KnownObjectsProvider annotations={annotations}>
+            <section className="min-w-0 pt-1">
+              <SegmentEvents
+                onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+                conversation={props.conversation}
+                messages={messages}
+                responding={props.responding}
+                revealSeq={props.revealSeq}
+                scrollAnchorKey={props.scrollAnchorKey}
+                unread={props.unread}
+              />
+            </section>
+          </KnownObjectsProvider>
         </TranscriptImagesProvider>
       </TranscriptTimestampProvider>
     );

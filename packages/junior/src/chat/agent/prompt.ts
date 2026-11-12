@@ -16,6 +16,7 @@ import {
   sandboxSkillPathResolution,
 } from "@/chat/sandbox/paths";
 import {
+  buildScriptToolsSection,
   buildTurnContextPrompt,
   type DisabledToolPromptContext,
 } from "@/chat/prompt";
@@ -27,7 +28,12 @@ import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { readUserCustomization } from "@/chat/identities/customization";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
+  renderAgentsInstructionsForPrompt,
+  type RepositoryInstructions,
+} from "@/chat/repository-instructions";
+import {
   hasRuntimeTurnContext,
+  latestTurnContextSection,
   retainRuntimeTurnContext,
   stripRuntimeTurnContext,
 } from "@/chat/pi/transcript";
@@ -38,6 +44,10 @@ import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
+import {
+  CAPABILITY_SECTION_TAG,
+  SCRIPT_TOOLS_SECTION_TAG,
+} from "@/chat/turn-context-tag";
 import { escapeXml } from "@/chat/xml";
 import { listWorkspaces } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
@@ -607,6 +617,8 @@ export async function assemblePrompt(args: {
   priorPiMessages?: PiMessage[];
   /** From `turnBehavior`. */
   promptMode: PromptMode;
+  /** AGENTS.md read from the sandbox when this slice started. */
+  repositoryInstructions?: RepositoryInstructions;
   resumedFromSessionRecord: boolean;
   run: Pick<
     AgentRun,
@@ -619,6 +631,8 @@ export async function assemblePrompt(args: {
   >;
   spanContext: LogContext;
   disabledTools: DisabledToolPromptContext[];
+  /** The tools that a Code Mode script can call, from `renderScriptTools`. */
+  scriptTools: string;
   toolGuidance: Array<{
     name: string;
     promptGuidelines: AnyToolDefinition["promptGuidelines"];
@@ -667,40 +681,61 @@ export async function assemblePrompt(args: {
     workspaces,
   } = args.turnContext;
   const disabledTools = loadsTurnContext ? args.disabledTools : [];
-  const turnContextPrompt =
-    needsBootstrapContextForPrompt ||
-    pluginUserPromptContributions.length > 0 ||
-    (conversationNotes?.length ?? 0) > 0 ||
-    disabledTools.length > 0 ||
-    userCustomization
-      ? buildTurnContextPrompt({
-          availableSkills: args.availableSkills,
-          activeMcpCatalogs: args.activeMcpCatalogs,
-          conversationNotes,
-          disabledTools,
-          includeSessionContext: needsBootstrapContextForPrompt,
-          pluginPromptContributions: pluginUserPromptContributions,
-          toolGuidance: args.toolGuidance,
-          userCustomization,
-          workspaces,
-          runtime: {
-            conversationId: args.spanContext.conversationId,
-            slackConversation: args.run.slackConversation,
-          },
-          dispatch: args.run.dispatch
-            ? {
-                ...args.run.dispatch,
-                destination: args.run.destination,
-                source,
-              }
-            : undefined,
-          actor: isUserActor(args.currentActor) ? args.currentActor : undefined,
-          configuration: args.configurationValues,
-        })
-      : null;
+  // Send the script tools again only when they changed. Context compaction
+  // keeps the latest copy, so this also holds after a compaction.
+  const scriptTools =
+    loadsTurnContext &&
+    latestTurnContextSection(
+      promptHistoryMessages,
+      SCRIPT_TOOLS_SECTION_TAG,
+    ) !== buildScriptToolsSection(args.scriptTools)
+      ? args.scriptTools
+      : undefined;
+  // It returns nothing when no section has news for this Turn.
+  const turnContextPrompt = loadsTurnContext
+    ? buildTurnContextPrompt({
+        availableSkills: args.availableSkills,
+        activeMcpCatalogs: args.activeMcpCatalogs,
+        conversationNotes,
+        disabledTools,
+        includeSessionContext: needsBootstrapContextForPrompt,
+        // Send a capability section again only when it changed. Context
+        // compaction keeps the latest copy of each.
+        latestCapabilitySections: Object.fromEntries(
+          Object.values(CAPABILITY_SECTION_TAG).map((tag) => [
+            tag,
+            latestTurnContextSection(promptHistoryMessages, tag),
+          ]),
+        ),
+        pluginPromptContributions: pluginUserPromptContributions,
+        scriptTools,
+        toolGuidance: args.toolGuidance,
+        userCustomization,
+        workspaces,
+        runtime: {
+          conversationId: args.spanContext.conversationId,
+          slackConversation: args.run.slackConversation,
+        },
+        dispatch: args.run.dispatch
+          ? {
+              ...args.run.dispatch,
+              destination: args.run.destination,
+              source,
+            }
+          : undefined,
+        actor: isUserActor(args.currentActor) ? args.currentActor : undefined,
+        configuration: args.configurationValues,
+      })
+    : null;
   const turnContextParts: UserContentPart[] = turnContextPrompt
     ? [{ type: "text", text: turnContextPrompt }]
     : [];
+  const agentsInstructions = args.repositoryInstructions
+    ? renderAgentsInstructionsForPrompt(
+        promptHistoryMessages,
+        args.repositoryInstructions,
+      )
+    : undefined;
   const contextContentParts = replayedPrompt?.contextContentParts ?? [
     ...turnContextParts,
     ...(args.explicitSkill
@@ -710,6 +745,9 @@ export async function assemblePrompt(args: {
             text: renderExplicitSkillInstructions(args.explicitSkill),
           },
         ]
+      : []),
+    ...(agentsInstructions
+      ? [{ type: "text" as const, text: agentsInstructions }]
       : []),
     ...args.contextContentParts,
   ];

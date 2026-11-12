@@ -8,6 +8,7 @@ import {
   PluginToolInputError,
   type WatchResult,
   type SubscribableResource,
+  type PluginDecider,
   type PluginToolExecuteOptions,
   type PluginToolOutput,
   type ToolRegistrationHookContext,
@@ -40,6 +41,7 @@ import {
   type GitHubPullRequestStack,
   type GitHubStackTarget,
 } from "./stack-pull-request.js";
+import { checkPullRequestDescription } from "../tool-support/pull-request-description.js";
 import {
   githubApi,
   githubErrorMessage,
@@ -534,6 +536,8 @@ async function gitHubPullRequestStructuredResult(
 export function createGitHubPullRequestTool(
   ctx: ToolRegistrationHookContext,
   subscriptionConfig?: GitHubPullRequestSubscriptionConfig,
+  /** Set when the description check experiment is on. */
+  descriptionDecider?: PluginDecider,
 ) {
   return definePluginTool({
     annotations: {
@@ -595,6 +599,12 @@ export function createGitHubPullRequestTool(
           if (state?.status === "pending") {
             throw new Error(
               "GitHub pull request creation for this tool call has an uncertain pending result; refusing to create a duplicate pull request.",
+            );
+          }
+          if (descriptionDecider) {
+            await checkPullRequestDescription(
+              descriptionDecider,
+              parsedInput.body ?? "",
             );
           }
           const requester = await resolveGitHubRequester(ctx);
