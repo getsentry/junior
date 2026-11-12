@@ -841,6 +841,9 @@ export function buildTurnContextPrompt(
   // <active-mcp-catalogs> and execute them through callMcpTool without mutating
   // the native tool list.
   const runtimeSections = [
+    // First, so this long block of declarations sits farthest from the
+    // instruction and the facts about the request.
+    params.scriptTools ? buildScriptToolsSection(params.scriptTools) : null,
     includeSessionContext
       ? buildCapabilitiesSection({
           availableSkills: params.availableSkills,
@@ -849,7 +852,6 @@ export function buildTurnContextPrompt(
           workspaces: params.workspaces,
         })
       : null,
-    params.scriptTools ? buildScriptToolsSection(params.scriptTools) : null,
     pluginPromptContributions,
     conversationNotes,
     disabledTools,
