@@ -133,6 +133,25 @@ export function buildUserTurnText(
 }
 
 /**
+ * Return the author of a person's instruction, or undefined for a system
+ * actor. Every Turn path that renders `<current-instruction>` sets it, so the
+ * model knows who asks now even when the speaker changed after the first
+ * Turn, whose `<actor>` block is not sent again.
+ */
+export function instructionActorFor(
+  actor: Actor,
+  slackTs?: string,
+): AgentInstructionActor | undefined {
+  if (!isUserActor(actor)) return undefined;
+  const authorName = actor.fullName ?? actor.userName;
+  return {
+    authorId: actor.userId,
+    ...(authorName ? { authorName } : undefined),
+    ...(slackTs ? { slackTs } : undefined),
+  };
+}
+
+/**
  * Build the instruction for Turn inputs. Each input keeps its own prompt
  * content part, and `text` joins them for action review.
  */

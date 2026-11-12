@@ -6,6 +6,7 @@
  * generation; started continues must durably record success, failure, auth
  * pause, or another safe pause boundary.
  */
+import { instructionActorFor } from "@/chat/agent/prompt";
 import { savedInputInstruction } from "@/chat/review-items/prompt-input";
 import {
   buildTurnFailureResponse,
@@ -611,14 +612,17 @@ async function runPausedTurnInContext(
           });
         };
 
+        const messageTs = getTurnUserSlackMessageTs(userMessage);
+        const instructionActor = instructionActorFor(actor, messageTs);
         return {
           messageText: userMessage.text,
           sliceId: activeTurn.sliceId,
-          messageTs: getTurnUserSlackMessageTs(userMessage),
+          messageTs,
           inputMessageIds: [userMessage.id],
           initialStatus: latestProgressStatus(turnMessages),
           run: {
             instruction: {
+              ...(instructionActor ? { actor: instructionActor } : undefined),
               // Attachment fields come from the turn user message context helper.
               ...getTurnUserReplyAttachmentContext(userMessage),
               ...(await savedInputInstruction({
