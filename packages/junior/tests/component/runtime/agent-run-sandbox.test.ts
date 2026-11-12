@@ -465,6 +465,10 @@ import { executeAgentRun } from "@/chat/agent";
 import type { AgentRun } from "@/chat/agent/types";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
+  AGENTS_REMOVAL_NOTICE,
+  renderAgentsInstructions,
+} from "@/chat/repository-instructions";
+import {
   renderCompactionSummary,
   selectRetainedUserMessages,
   summarizedRuntimeContextMessage,
@@ -763,5 +767,29 @@ describe("executeAgentRun lazy sandbox boot", () => {
       original,
       "# AGENTS.md instructions for /vercel/sandbox/repo\n\n<INSTRUCTIONS>\nThese AGENTS.md instructions replace all previously provided AGENTS.md instructions.\n\nUse the current repository formatter.\n</INSTRUCTIONS>",
     ]);
+
+    // Unchanged after a replacement: the replacement notice must not count as a change.
+    const afterReplace = await generateLocalReply("fifth request", {
+      history: changed.piMessages,
+      state,
+    });
+    expect(agentsBlocks(afterReplace.piMessages)).toHaveLength(2);
+
+    // Removed: one removal notice, then nothing more.
+    repositoryInstructionsAvailable.value = false;
+    const removed = await generateLocalReply("sixth request", {
+      history: afterReplace.piMessages,
+      state,
+    });
+    const removedBlocks = agentsBlocks(removed.piMessages);
+    expect(removedBlocks).toHaveLength(3);
+    expect(removedBlocks[2]).toEqual(
+      renderAgentsInstructions({ text: AGENTS_REMOVAL_NOTICE }),
+    );
+    const afterRemoved = await generateLocalReply("seventh request", {
+      history: removed.piMessages,
+      state,
+    });
+    expect(agentsBlocks(afterRemoved.piMessages)).toHaveLength(3);
   });
 });
