@@ -9,9 +9,14 @@ import {
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
+import type { StateAdapter } from "chat";
 import { findLegacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
 import { parseDestination } from "@/chat/destination";
 import { isRecord } from "@/chat/coerce";
+import {
+  createEncryptedState,
+  readEncryptedState,
+} from "@/chat/encryption/state";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 const MCP_AUTH_SESSION_PREFIX = "junior:mcp_oauth_attempt:v2";
@@ -88,15 +93,12 @@ function parseSessionIndex(value: unknown): string[] {
 }
 
 function parseMcpAuthSession(value: unknown): McpAuthSessionState | undefined {
-  if (typeof value !== "string") {
+  if (!isRecord(value)) {
     return undefined;
   }
 
   try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
-    if (!isRecord(parsed)) {
-      return undefined;
-    }
+    const parsed = value;
 
     if (
       parsed.schemaVersion !== 2 ||
@@ -190,12 +192,10 @@ function parseServerSession(value: unknown): McpServerSessionState | undefined {
 function parseStoredCredentials(
   value: unknown,
 ): McpStoredOAuthCredentials | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
   try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
+    // Plaintext values from before encryption are JSON strings.
+    const parsed: unknown =
+      typeof value === "string" ? JSON.parse(value) : value;
     if (!isRecord(parsed)) {
       return undefined;
     }
@@ -222,6 +222,28 @@ function parseStoredCredentials(
   }
 }
 
+// Attempts hold the PKCE code verifier and the user's message, so they are
+// encrypted. The attempt index holds only ids and stays plain.
+async function readMcpAuthSession(
+  stateAdapter: StateAdapter,
+  authSessionId: string,
+): Promise<unknown> {
+  const stored = await readEncryptedState(
+    stateAdapter,
+    sessionKey(authSessionId),
+  );
+  // TODO(dcramer): Delete one attempt TTL after deploy. Attempts saved before
+  // encryption are JSON strings; the next write encrypts them.
+  if (stored?.stale && typeof stored.value === "string") {
+    try {
+      return JSON.parse(stored.value);
+    } catch {
+      return undefined;
+    }
+  }
+  return stored?.value;
+}
+
 async function getConnectedStateAdapter() {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
@@ -232,7 +254,9 @@ export async function getMcpAuthSession(
   authSessionId: string,
 ): Promise<McpAuthSessionState | undefined> {
   const stateAdapter = await getConnectedStateAdapter();
-  return parseMcpAuthSession(await stateAdapter.get(sessionKey(authSessionId)));
+  return parseMcpAuthSession(
+    await readMcpAuthSession(stateAdapter, authSessionId),
+  );
 }
 
 export async function putMcpAuthSession(
@@ -240,9 +264,9 @@ export async function putMcpAuthSession(
   ttlMs: number = MCP_AUTH_SESSION_TTL_MS,
 ): Promise<void> {
   const stateAdapter = await getConnectedStateAdapter();
-  await stateAdapter.set(
+  await createEncryptedState(stateAdapter).set(
     sessionKey(session.authSessionId),
-    JSON.stringify(session),
+    session,
     ttlMs,
   );
   const nextIndex = parseSessionIndex(
@@ -290,7 +314,7 @@ export async function deleteMcpAuthSession(
 ): Promise<void> {
   const stateAdapter = await getConnectedStateAdapter();
   const current = parseMcpAuthSession(
-    await stateAdapter.get(sessionKey(authSessionId)),
+    await readMcpAuthSession(stateAdapter, authSessionId),
   );
   await stateAdapter.delete(sessionKey(authSessionId));
   if (!current) {
@@ -340,7 +364,7 @@ export async function getLatestMcpAuthSessionForUserProvider(
   let latestSession: McpAuthSessionState | undefined;
   for (const authSessionId of authSessionIds) {
     const session = parseMcpAuthSession(
-      await stateAdapter.get(sessionKey(authSessionId)),
+      await readMcpAuthSession(stateAdapter, authSessionId),
     );
     if (!session) {
       continue;
@@ -358,8 +382,11 @@ export async function getMcpStoredOAuthCredentials(
   provider: string,
 ): Promise<McpStoredOAuthCredentials | undefined> {
   const stateAdapter = await getConnectedStateAdapter();
+  // Stale values expire within the credential TTL or move to the active key
+  // on the next save, so they are not saved again here.
   const stored = parseStoredCredentials(
-    await stateAdapter.get(credentialsKey(userId, provider)),
+    (await readEncryptedState(stateAdapter, credentialsKey(userId, provider)))
+      ?.value,
   );
   if (stored) return stored;
   // TODO(dcramer): Delete after no legacy `dashboard:` MCP credential keys
@@ -367,7 +394,9 @@ export async function getMcpStoredOAuthCredentials(
   const legacyUserId = await findLegacyWebActorUserId(userId);
   if (!legacyUserId) return undefined;
   const legacyKey = credentialsKey(legacyUserId, provider);
-  const legacy = parseStoredCredentials(await stateAdapter.get(legacyKey));
+  const legacy = parseStoredCredentials(
+    (await readEncryptedState(stateAdapter, legacyKey))?.value,
+  );
   if (!legacy) return undefined;
   await putMcpStoredOAuthCredentials(userId, provider, legacy);
   await stateAdapter.delete(legacyKey);
@@ -381,9 +410,9 @@ export async function putMcpStoredOAuthCredentials(
   ttlMs: number = MCP_AUTH_CREDENTIALS_TTL_MS,
 ): Promise<void> {
   const stateAdapter = await getConnectedStateAdapter();
-  await stateAdapter.set(
+  await createEncryptedState(stateAdapter).set(
     credentialsKey(userId, provider),
-    JSON.stringify(value),
+    value,
     ttlMs,
   );
 }

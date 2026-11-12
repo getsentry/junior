@@ -8,6 +8,11 @@ import type {
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
 import { storedTokensSchema } from "@/chat/credentials/user-token-store";
+import {
+  createEncryptedState,
+  readEncryptedState,
+  type EncryptedState,
+} from "@/chat/encryption/state";
 import { sleep } from "@/chat/sleep";
 import {
   acquireActiveLock,
@@ -65,18 +70,20 @@ function tokenTtlMs(tokens: StoredTokens): number {
 
 export class StateAdapterTokenStore implements UserTokenStore {
   private readonly state: StateAdapter;
+  private readonly secrets: EncryptedState;
 
   constructor(stateAdapter: StateAdapter) {
     this.state = stateAdapter;
+    this.secrets = createEncryptedState(stateAdapter);
   }
 
   async read(
     userId: string,
     provider: string,
   ): Promise<UserConnection | undefined> {
-    return decodeConnection(
-      await this.state.get<unknown>(tokenKey(userId, provider)),
-    );
+    const stored = await this.readStored(userId, provider);
+    if (stored?.stale) await this.saveStale(userId, provider);
+    return stored?.connection;
   }
 
   async get(
@@ -97,20 +104,20 @@ export class StateAdapterTokenStore implements UserTokenStore {
     provider: string,
     change: UserConnectionChange,
   ): Promise<boolean> {
-    const key = tokenKey(userId, provider);
     return await this.withWriteLock(userId, provider, async (lock) => {
       if (change.type === "connect") {
-        const tokens = storedTokensSchema.parse(change.tokens);
-        await fenceLock(this.state, lock);
-        await this.state.set(key, tokens, tokenTtlMs(tokens));
+        await this.write(lock, userId, provider, {
+          status: "connected",
+          tokens: storedTokensSchema.parse(change.tokens),
+        });
         return true;
       }
       if (change.type === "disconnect") {
         await fenceLock(this.state, lock);
-        await this.state.delete(key);
+        await this.state.delete(tokenKey(userId, provider));
         return true;
       }
-      const current = await this.read(userId, provider);
+      const current = (await this.readStored(userId, provider))?.connection;
       if (
         current?.status !== "connected" ||
         !hasSameTokens(current.tokens, change.from)
@@ -118,18 +125,17 @@ export class StateAdapterTokenStore implements UserTokenStore {
         return false;
       }
       if (change.type === "update") {
-        const tokens = storedTokensSchema.parse(change.tokens);
-        await fenceLock(this.state, lock);
-        await this.state.set(key, tokens, tokenTtlMs(tokens));
+        await this.write(lock, userId, provider, {
+          status: "connected",
+          tokens: storedTokensSchema.parse(change.tokens),
+        });
         return true;
       }
       const account = current.tokens.account;
-      await fenceLock(this.state, lock);
-      await this.state.set(
-        key,
-        { status: "expired", ...(account ? { account } : undefined) },
-        LONG_LIVED_TTL_MS,
-      );
+      await this.write(lock, userId, provider, {
+        status: "expired",
+        ...(account ? { account } : undefined),
+      });
       return true;
     });
   }
@@ -145,26 +151,69 @@ export class StateAdapterTokenStore implements UserTokenStore {
     provider: string,
   ): Promise<UserConnection | undefined> {
     return await this.withWriteLock(userId, provider, async (lock) => {
-      const current = await this.read(userId, provider);
+      const current = (await this.readStored(userId, provider))?.connection;
       if (current) return current;
       return await this.withWriteLock(
         fromUserId,
         provider,
         async (fromLock) => {
-          const moved = await this.read(fromUserId, provider);
+          const moved = (await this.readStored(fromUserId, provider))
+            ?.connection;
           if (moved?.status !== "connected") return undefined;
-          await fenceLock(this.state, lock);
-          await this.state.set(
-            tokenKey(userId, provider),
-            moved.tokens,
-            tokenTtlMs(moved.tokens),
-          );
+          await this.write(lock, userId, provider, moved);
           await fenceLock(this.state, fromLock);
           await this.state.delete(tokenKey(fromUserId, provider));
           return moved;
         },
       );
     });
+  }
+
+  // Writers already hold the write lock, so they read without saving stale
+  // values again.
+  private async readStored(
+    userId: string,
+    provider: string,
+  ): Promise<{ connection: UserConnection; stale: boolean } | undefined> {
+    const stored = await readEncryptedState(
+      this.state,
+      tokenKey(userId, provider),
+    );
+    const connection = stored && decodeConnection(stored.value);
+    return connection && { connection, stale: stored.stale };
+  }
+
+  /** Save a stale record again with the active encryption key. */
+  private async saveStale(userId: string, provider: string): Promise<void> {
+    await this.withWriteLock(userId, provider, async (lock) => {
+      const current = await this.readStored(userId, provider);
+      if (current?.stale) {
+        await this.write(lock, userId, provider, current.connection);
+      }
+    });
+  }
+
+  // Connected records stay bare tokens; see decodeConnection.
+  private async write(
+    lock: Lock,
+    userId: string,
+    provider: string,
+    connection: UserConnection,
+  ): Promise<void> {
+    await fenceLock(this.state, lock);
+    if (connection.status === "connected") {
+      await this.secrets.set(
+        tokenKey(userId, provider),
+        connection.tokens,
+        tokenTtlMs(connection.tokens),
+      );
+      return;
+    }
+    await this.secrets.set(
+      tokenKey(userId, provider),
+      connection,
+      LONG_LIVED_TTL_MS,
+    );
   }
 
   private async withWriteLock<T>(

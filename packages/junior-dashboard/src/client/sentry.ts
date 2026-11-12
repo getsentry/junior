@@ -164,6 +164,28 @@ export async function readResponseJson<T>(
   }
 }
 
+/**
+ * Record the change tokens that moved on one versions poll, so the poll
+ * that refreshes a read shows which token caused it, and which feed-row
+ * inputs moved the feed token. A poll that moves no token adds no span.
+ */
+export function recordMovedVersions(
+  moved: readonly string[],
+  feedMoved: readonly string[],
+): void {
+  if (moved.length === 0) return;
+  startInactiveSpan({
+    attributes: {
+      "app.dashboard.versions.moved": moved.join(","),
+      ...(feedMoved.length > 0
+        ? { "app.dashboard.versions.feed_moved": feedMoved.join(",") }
+        : undefined),
+    },
+    name: "Refresh changed reads",
+    op: "function",
+  }).end();
+}
+
 /** A reader's rating of one Junior Reply. */
 export type ReplyRating = "good" | "bad";
 

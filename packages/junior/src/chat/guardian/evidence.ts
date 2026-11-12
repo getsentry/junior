@@ -6,7 +6,10 @@ import {
   isToolResultMessage,
   normalizeToolNameFromResult,
 } from "@/chat/pi/transcript";
-import { estimateTextTokens } from "@/chat/services/context-budget";
+import {
+  estimateTextTokens,
+  textCharsForTokens,
+} from "@/chat/services/token-estimate";
 import type { ToolActionEvidence } from "@/chat/guardian/proposal";
 
 const MAX_MESSAGE_TRANSCRIPT_TOKENS = 10_000;
@@ -26,7 +29,7 @@ function truncateText(text: string, maxTokens: number): string {
   if (tokenCount <= maxTokens) {
     return text;
   }
-  const maxChars = maxTokens * 4;
+  const maxChars = textCharsForTokens(maxTokens);
   const omittedTokens = Math.max(1, tokenCount - maxTokens);
   const marker = `<truncated omitted_approx_tokens="${omittedTokens}" />`;
   if (maxChars <= marker.length) {

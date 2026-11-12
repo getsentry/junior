@@ -21,6 +21,7 @@ import {
 import { recordGoogleSignIn } from "@/chat/identities/sql";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { getActiveSpan, getRootSpan } from "@/chat/sentry";
+import { readSignInSecret } from "@/chat/secrets";
 import { isAllowedDomain, readEnvList } from "./allowlist";
 
 const DEFAULT_AUTH_PATH = "/api/auth";
@@ -146,9 +147,7 @@ function required(value: string | undefined, name: string): string {
 
 function createBetterAuth(config: SignInAuthConfig) {
   const secret = required(
-    config.secret ??
-      process.env.BETTER_AUTH_SECRET ??
-      process.env.JUNIOR_SECRET,
+    config.secret ?? readSignInSecret(),
     "JUNIOR_SECRET or BETTER_AUTH_SECRET",
   );
   const sessionMaxAgeSeconds =

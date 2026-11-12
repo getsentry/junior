@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
   createSlackSource,
   defineJuniorPlugin,
@@ -16,6 +17,11 @@ import {
   SLACK_DESTINATION,
   createConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
 
 async function seedSlackUser(args: {
   email: string;
@@ -89,6 +95,7 @@ describe("Watch Event people", () => {
       slackUserId: "U999",
     });
     getPluginTools({
+      turnTools: rootTurnTools,
       conversationId: CONVERSATION_ID,
       destination: SLACK_DESTINATION,
       egress: { fetch: async () => new Response("ok") },

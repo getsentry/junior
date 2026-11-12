@@ -6,7 +6,7 @@ import {
   closeConversationFixture,
   createConversationFixture,
 } from "../../fixtures/conversation";
-import { testViewer } from "../../fixtures/user";
+import { signedInViewer } from "../../fixtures/user";
 
 afterEach(closeConversationFixture);
 
@@ -40,7 +40,7 @@ it("shows a reply that a plugin tool posted once, and keeps it out of the tool r
   const posted = history.filter((event) => event.data.type === "reply_posted");
   expect(posted).toHaveLength(1);
   const detail = await readConversationDetail(conversationId, {
-    viewer: testViewer(fixture.actor.email),
+    viewer: await signedInViewer(fixture.actor.email),
   });
   expect(
     detail?.events.find((event) => event.seq === posted[0]?.seq)?.data,

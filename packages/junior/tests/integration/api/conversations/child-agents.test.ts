@@ -2,12 +2,14 @@ import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
 import {
+  CONVERSATION_DETAIL_VERSION_HEADER,
   conversationChildAgentsReportSchema,
   conversationDetailReportSchema,
 } from "@/api/schema";
 import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import { completeAgentInvocation } from "@/chat/agent-invocations/store";
-import { closeDb, getDb } from "@/chat/db";
+import { setConversationTitle } from "@/chat/conversations/sql/title";
+import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
 import {
   invocationInput,
@@ -18,9 +20,10 @@ import {
   slackParentConversationId,
 } from "../../../fixtures/agent-invocations";
 
-async function requestDetail(conversationId: string) {
+async function requestDetail(conversationId: string, etag?: string) {
   return await createJuniorApi().request(
     `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+    { headers: etag ? { [CONVERSATION_DETAIL_VERSION_HEADER]: etag } : {} },
   );
 }
 
@@ -196,6 +199,8 @@ describe("conversation child agents API", () => {
     const helper = await createAgentInvocation(
       {
         ...slackInvocationInput,
+        agentType: "explore",
+        fork: true,
         idempotencyKey: "agent-tree-helper",
         input: "Check one claim.",
         parentConversationId: reviewer.childConversationId,
@@ -225,11 +230,34 @@ describe("conversation child agents API", () => {
         label: "Plan review",
       },
       {
+        agentType: "explore",
         conversationId: helper.childConversationId,
+        fork: true,
         kind: "task",
         label: "Claim check",
       },
     ]);
+
+    // An unchanged child answers 304. Renaming an ancestor changes the label
+    // that the agent tree shows, so it changes the ETag.
+    const etag = response.headers.get(CONVERSATION_DETAIL_VERSION_HEADER)!;
+    expect((await requestDetail(helper.childConversationId, etag)).status).toBe(
+      304,
+    );
+    await setConversationTitle(
+      getSqlExecutor(),
+      slackParentConversationId,
+      "Renamed plan",
+    );
+    const renamed = await requestDetail(helper.childConversationId, etag);
+    expect(renamed.status).toBe(200);
+    expect(
+      conversationDetailReportSchema.parse(await renamed.json()).agentTree?.[0],
+    ).toEqual({
+      conversationId: slackParentConversationId,
+      kind: "root",
+      label: "Renamed plan",
+    });
   });
 
   it("redacts child agent content from viewers without private access", async () => {
@@ -238,6 +266,8 @@ describe("conversation child agents API", () => {
       {
         ...invocationInput,
         agentName: "private-reviewer",
+        agentType: "reviewer",
+        fork: true,
         idempotencyKey: "child-agents-private",
         title: "Private plan review",
       },

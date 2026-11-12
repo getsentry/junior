@@ -85,6 +85,10 @@ function clientManifestPlugin(): Rolldown.Plugin {
   };
 }
 
+// pnpm injects a copy of @sentry/junior under node_modules/.pnpm, so match
+// the package name anywhere in the path.
+const WORKSPACE_PACKAGE = /[\\/]@sentry[\\/]junior[\\/]/;
+
 // Run with `--config-loader unrun`: Node's own loader cannot resolve the
 // extensionless imports in ./src/public-assets.
 //
@@ -129,7 +133,15 @@ export default defineConfig({
     // third-party code that the first load needs out of the entry, so its
     // files keep their hashes and stay cached across deploys. `$initial`
     // limits each group to code that the entry imports statically, so lazy
-    // pages, grammars, and wasm stay lazy. Workspace packages are app code.
+    // pages, grammars, and wasm stay lazy.
+    //
+    // App code imports single icons and Base UI components by name, so a
+    // new import adds modules to the chunk that holds them. Those packages
+    // get their own chunks, so a new import does not change `vendor`.
+    //
+    // Workspace packages are app code and change with each release, so they
+    // stay out of `vendor`. They need a group too: without one, routes that
+    // share them split into many small first-load chunks.
     codeSplitting: {
       groups: [
         {
@@ -145,10 +157,31 @@ export default defineConfig({
           priority: 2,
         },
         {
+          name: "vendor-icons",
+          test: /node_modules[\\/]lucide-react[\\/]/,
+          tags: ["$initial"],
+          priority: 2,
+        },
+        {
+          name: "vendor-ui",
+          test: /node_modules[\\/]@base-ui[\\/]/,
+          tags: ["$initial"],
+          priority: 2,
+        },
+        {
           name: "vendor",
-          test: /node_modules[\\/](?!@sentry[\\/]junior)/,
+          test: (id) =>
+            /node_modules[\\/]/.test(id) && !WORKSPACE_PACKAGE.test(id),
           tags: ["$initial"],
           priority: 1,
+        },
+        {
+          // Lowest priority: `vendor` takes zod first. Otherwise this group
+          // would pull it in as a dependency of @sentry/junior.
+          name: "junior",
+          test: WORKSPACE_PACKAGE,
+          tags: ["$initial"],
+          priority: 0,
         },
       ],
     },

@@ -1,4 +1,7 @@
-/** A notice that a plugin puts on the review desk. */
+/**
+ * An item that a plugin puts on the review desk: a notice for information,
+ * or an ask that waits on its assignees.
+ */
 export interface PluginReviewNotice {
   /**
    * Junior assigns the User linked to each Identity, but only when that User
@@ -14,7 +17,18 @@ export interface PluginReviewNotice {
   dedupeKey: string;
   /** What the notice is about, such as a pull request. Search matches `id`. */
   subject?: { id: string; title?: string; url?: string };
+  /**
+   * For an item that waits on its assignees, name their step, such as
+   * `Ready to merge · #946`. It is the reason that the dashboard shows.
+   */
   title: string;
+  /**
+   * The assignees must act, such as merge a pull request that is ready. The
+   * item then waits on them: its Conversation shows in their Needs you, and
+   * it counts in their Inbox. Leave it unset for a notice that is only for
+   * information.
+   */
+  waitsOnAssignees?: boolean;
 }
 
 /**
@@ -23,7 +37,7 @@ export interface PluginReviewNotice {
  * the Slack cards.
  */
 export interface PluginReviewItems {
-  /** Add an open notice, or replace the content of the open one with the key. */
+  /** Add an open item, or replace the content of the open one with the key. */
   upsert(notice: PluginReviewNotice): Promise<void>;
   /** Close the open item with the key. Do nothing when no item is open. */
   close(input: {

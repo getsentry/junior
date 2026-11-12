@@ -9,6 +9,7 @@ import {
 } from "../components/ui/popover";
 import { formatMessageTimestamp, memoryPath } from "../format";
 import { cn } from "../styles";
+import { Button } from "../components/ui/button";
 import type { TranscriptViewMessage } from "../types";
 import {
   anchorMemories,
@@ -116,13 +117,14 @@ export function TranscriptRecalledMemories(props: {
             memories={memories}
             state={state}
             trigger={
-              <button
-                className="inline-flex h-6 cursor-pointer items-center gap-1.5 rounded-md border border-dashboard-border-subtle bg-transparent px-2 font-sans text-xs text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus aria-expanded:bg-dashboard-fill-strong aria-expanded:text-dashboard-text"
-                type="button"
+              <Button
+                className="inline-flex h-6 items-center gap-1.5 rounded-md border border-dashboard-border-subtle px-2 text-xs hover:bg-dashboard-fill-hover focus-visible:-outline-offset-2 aria-expanded:bg-dashboard-fill-strong aria-expanded:text-dashboard-text"
+                size="bare"
+                variant="ghost"
               >
                 <Brain aria-hidden="true" size={13} strokeWidth={1.8} />
                 {label}
-              </button>
+              </Button>
             }
           />
         );
@@ -155,9 +157,10 @@ export function TranscriptCapturedMemories(props: {
       memories={memories}
       state={state}
       trigger={
-        <button
-          className="-mx-2 -my-1.5 grid w-[calc(100%+1rem)] cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-start gap-2 rounded-md border-0 bg-transparent px-2 py-1.5 text-left font-sans transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus aria-expanded:bg-dashboard-fill-hover max-md:grid-cols-[minmax(0,1fr)]"
-          type="button"
+        <Button
+          className="-mx-2 -my-1.5 grid w-[calc(100%+1rem)] grid-cols-[minmax(0,1fr)_auto] items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-dashboard-fill-hover focus-visible:-outline-offset-2 aria-expanded:bg-dashboard-fill-hover max-md:grid-cols-[minmax(0,1fr)]"
+          size="bare"
+          variant="ghost"
         >
           <span className="text-sm font-medium leading-6 text-dashboard-text">
             {label}
@@ -167,7 +170,7 @@ export function TranscriptCapturedMemories(props: {
               {timestamp}
             </span>
           ) : null}
-        </button>
+        </Button>
       }
     />
   );

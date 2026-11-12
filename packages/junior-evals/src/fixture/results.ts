@@ -8,11 +8,17 @@ import {
   conversationPendingMessagesReportSchema,
 } from "@/api/schema";
 import {
+  CODE_MODE_CALL_STATUS_TEXT,
+  CODEMODE_TOOL_NAME,
+  type CodeModeCallStatus,
+} from "@/chat/codemode/result";
+import {
   serializeError,
   toJsonValue,
   type HarnessRun,
   type TranscriptEvent,
 } from "vitest-evals/harness";
+import type { CapturedSlackApiCall } from "@junior-tests/msw/captured-slack-api-calls";
 import type { RequestApp, SlackPost } from "./slack";
 import { EARLIER_MESSAGES_KEY, type VisibleMessage } from "./judge";
 
@@ -40,10 +46,48 @@ export interface ToolCall {
   toolCallId: string;
 }
 
+const SCRIPT_CALL_STATUS = new Map(
+  Object.entries(CODE_MODE_CALL_STATUS_TEXT).map(([status, text]) => [
+    text,
+    status as CodeModeCallStatus,
+  ]),
+);
+
+/**
+ * The tool calls that a `codemode` script made, read from its result text
+ * (`renderResult` in `codemode/tool.ts`): a status line, `Tool calls (N):`,
+ * then `<i>. <tool>: <status>` for each call, with indented notes. The
+ * reporting API does not return script arguments, so the calls have no
+ * `input`. A call that did not start is not a call.
+ */
+function scriptToolCalls(call: ToolCall): ToolCall[] {
+  const lines = typeof call.output === "string" ? call.output.split("\n") : [];
+  const count = /^Tool calls \((\d+)\):$/.exec(lines[1] ?? "")?.[1];
+  if (!lines[0]?.startsWith("Script ") || !count) return [];
+  const calls: ToolCall[] = [];
+  let index = 0;
+  for (const line of lines.slice(2)) {
+    if (index === Number(count)) break;
+    if (line.startsWith(" ")) continue;
+    const match = /^(\d+)\. (\S+): (.+)$/.exec(line);
+    const status = match && SCRIPT_CALL_STATUS.get(match[3]!);
+    if (!status || Number(match[1]) !== index + 1) break;
+    index += 1;
+    if (status === "not_started") continue;
+    calls.push({
+      name: match[2]!,
+      status: status === "ok" ? "completed" : "error",
+      toolCallId: `${call.toolCallId}/${index}`,
+    });
+  }
+  return calls;
+}
+
 /**
  * Calls of one tool in any state across the results of several calls. The
  * agent runs deferred tools through `executeTool`; those calls count as calls
- * of the inner tool, with its arguments as `input`.
+ * of the inner tool, with its arguments as `input`. Calls that a `codemode`
+ * script made count too, without `input`.
  */
 export function toolCallsOf(
   name: string,
@@ -53,6 +97,9 @@ export function toolCallsOf(
     .flatMap((result) => result.toolCalls)
     .flatMap((call) => {
       if (call.name === name) return [call];
+      if (call.name === CODEMODE_TOOL_NAME) {
+        return scriptToolCalls(call).filter((inner) => inner.name === name);
+      }
       const deferred = call.input as
         | { arguments?: unknown; tool_name?: unknown }
         | undefined;
@@ -373,6 +420,54 @@ function comparableText(text: string): string {
     .replace(/[*_~`>]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/** What one call did in a Slack thread, read from its Slack API calls. */
+export function slackThreadEffects(
+  slackCalls: CapturedSlackApiCall[],
+  thread: { channelId: string; threadTs: string } | undefined,
+): {
+  files: string[];
+  reactions: string[];
+  statuses: string[];
+  threadTitles: string[];
+} {
+  // Slack reactions are sets; ingress and the worker can add the same one.
+  const reactions = [
+    ...new Set(
+      slackCalls.flatMap((captured) =>
+        captured.method === "reactions.add" &&
+        captured.params.channel === thread?.channelId &&
+        typeof captured.params.name === "string"
+          ? [`${String(captured.params.timestamp)}:${captured.params.name}`]
+          : [],
+      ),
+    ),
+  ].map((key) => key.slice(key.indexOf(":") + 1));
+  const files = slackCalls.flatMap((captured) =>
+    captured.method === "files.completeUploadExternal" &&
+    captured.params.channel_id === thread?.channelId &&
+    captured.params.thread_ts === thread?.threadTs &&
+    Array.isArray(captured.params.files)
+      ? captured.params.files.map((file: { title?: unknown }) =>
+          String(file.title),
+        )
+      : [],
+  );
+  const threadCalls = (method: string) =>
+    slackCalls.filter(
+      (captured) =>
+        captured.method === method &&
+        captured.params.channel_id === thread?.channelId &&
+        captured.params.thread_ts === thread?.threadTs,
+    );
+  const statuses = threadCalls("assistant.threads.setStatus").map((captured) =>
+    String(captured.params.status),
+  );
+  const threadTitles = threadCalls("assistant.threads.setTitle").map(
+    (captured) => String(captured.params.title),
+  );
+  return { files, reactions, statuses, threadTitles };
 }
 
 /**
