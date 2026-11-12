@@ -3,10 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
+import { CACHE_WARMUP_QUEUE_TOPIC } from "@/chat/cache-warming/queue";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { BACKGROUND_COMPACTION_QUEUE_TOPIC } from "@/chat/services/background-compaction-queue";
 import { DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC } from "@/chat/task-execution/vercel-queue";
 import {
+  JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
@@ -14,6 +16,8 @@ import {
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_RETENTION_CRON_SCHEDULE,
   JUNIOR_RETENTION_ROUTE,
+  JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
+  JUNIOR_AUTO_ARCHIVE_ROUTE,
 } from "@/deployment";
 import { juniorNitro } from "@/nitro";
 import { defineJuniorPlugins } from "@/plugins";
@@ -104,6 +108,10 @@ describe("juniorNitro plugin modules", () => {
           path: JUNIOR_RETENTION_ROUTE,
           schedule: JUNIOR_RETENTION_CRON_SCHEDULE,
         },
+        {
+          path: JUNIOR_AUTO_ARCHIVE_ROUTE,
+          schedule: JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
+        },
       ],
     });
     expect(vercel.functions).toEqual({
@@ -126,6 +134,15 @@ describe("juniorNitro plugin modules", () => {
         {
           type: "queue/v2beta",
           topic: PLUGIN_TASK_QUEUE_TOPIC,
+        },
+      ],
+    });
+    expect(vercel.functionRules?.[JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE]).toEqual({
+      maxDuration: 300,
+      experimentalTriggers: [
+        {
+          type: "queue/v2beta",
+          topic: CACHE_WARMUP_QUEUE_TOPIC,
         },
       ],
     });
@@ -203,6 +220,10 @@ describe("juniorNitro plugin modules", () => {
       {
         path: JUNIOR_RETENTION_ROUTE,
         schedule: JUNIOR_RETENTION_CRON_SCHEDULE,
+      },
+      {
+        path: JUNIOR_AUTO_ARCHIVE_ROUTE,
+        schedule: JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
       },
     ]);
     expect(vercel.functions).toEqual({
@@ -412,7 +433,7 @@ describe("juniorNitro plugin modules", () => {
     delete globalState.__juniorNitroPluginModuleImports;
   });
 
-  it("copies dashboard assets when core dashboard config is enabled", async () => {
+  it("serves dashboard browser files as static assets when the dashboard is enabled", async () => {
     const tempRoot = await makeTempDir();
     const dashboardDist = path.join(
       tempRoot,
@@ -433,28 +454,18 @@ describe("juniorNitro plugin modules", () => {
       JSON.stringify({ name: "@sentry/junior-dashboard" }),
       "utf8",
     );
-    await fs.writeFile(path.join(dashboardDist, "client.js"), "client", "utf8");
-    await fs.writeFile(
-      path.join(dashboardDist, "tailwind.css"),
-      "tailwind",
-      "utf8",
-    );
+    await fs.mkdir(path.join(dashboardDist, "public"));
 
-    const rollupBeforeHooks: TestRollupBeforeHook[] = [];
-    const buildPlugins: TestBuildPlugin[] = [];
     const virtual: Record<string, (() => Promise<string>) | string> = {};
     const nitro = {
       hooks: {
-        hook(name: string, callback: TestRollupBeforeHook) {
-          if (name === "rollup:before") {
-            rollupBeforeHooks.push(callback);
-          }
-        },
+        hook() {},
       },
       options: {
         output: {
           serverDir: path.join(tempRoot, ".output", "server"),
         },
+        publicAssets: [] as unknown[],
         rootDir: tempRoot,
         vercel: {},
         virtual,
@@ -465,42 +476,14 @@ describe("juniorNitro plugin modules", () => {
       dashboard: { basePath: "/ops" },
     }).nitro.setup(nitro);
 
-    expect(rollupBeforeHooks).toHaveLength(1);
-    await rollupBeforeHooks[0]!({}, { plugins: buildPlugins });
-    await buildPlugins
-      .find((plugin) => plugin.name === "junior:copy-build-content")
-      ?.writeBundle?.();
-
-    await expect(
-      fs.readFile(
-        path.join(
-          tempRoot,
-          ".output",
-          "server",
-          "node_modules",
-          "@sentry",
-          "junior-dashboard",
-          "dist",
-          "client.js",
-        ),
-        "utf8",
-      ),
-    ).resolves.toBe("client");
-    await expect(
-      fs.readFile(
-        path.join(
-          tempRoot,
-          ".output",
-          "server",
-          "node_modules",
-          "@sentry",
-          "junior-dashboard",
-          "dist",
-          "tailwind.css",
-        ),
-        "utf8",
-      ),
-    ).resolves.toBe("tailwind");
+    expect(nitro.options.publicAssets).toEqual([
+      {
+        baseURL: "/_junior/dashboard/assets",
+        dir: path.join(dashboardDist, "public"),
+        fallthrough: false,
+        maxAge: 31_536_000,
+      },
+    ]);
   });
 
   it("rejects direct plugin sets with runtime code because they need a runtime import", () => {

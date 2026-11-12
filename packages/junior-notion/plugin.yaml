@@ -11,10 +11,14 @@ mcp:
     - notion-update-page
     - notion-move-pages
 
-# Optional shared read account. It has no effect until an admin connects it
-# on the dashboard Admin page.
+# Optional shared account. It has no effect until an admin connects it on the
+# dashboard Admin page. It can create and update pages so scheduled
+# automations can write without a person's Notion login. Moves stay
+# per-user because they change who can see the moved pages.
 accounts:
   service-account:
     tools:
       - notion-search
       - notion-fetch
+      - notion-create-pages
+      - notion-update-page

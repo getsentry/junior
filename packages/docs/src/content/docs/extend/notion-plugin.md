@@ -57,11 +57,12 @@ No plugin config is required.
 
 A Junior admin can connect one Notion account that Junior itself uses, for
 example `junior@example.com`. Then people who have not connected Notion can
-search and fetch pages without OAuth. Scheduled automations can read Notion
-too.
+search, fetch, create, and update pages without OAuth. Scheduled automations
+can read and write Notion too.
 
 1. Create the Notion account and add it to your workspace. Give it only the
-   pages and teamspaces that everyone who can talk to Junior may read.
+   pages and teamspaces that everyone who can talk to Junior may read. Give
+   it edit access only where all of them may create and update pages.
 2. In the Junior dashboard, open **Admin**. Under **Service accounts**, click
    **Connect** on Notion. Only Junior admins see this section.
 3. Sign in to Notion as that account, not as yourself.
@@ -71,11 +72,11 @@ too.
 If the dashboard is not available, run `junior service-account connect notion`
 on a machine with a browser and the deployment `REDIS_URL`.
 
-The Notion plugin lists only `notion-search` and `notion-fetch` for the
-service account, so it calls only those tools. To create,
-update, or move pages, Junior still asks the person to connect their own
-Notion account. After they connect, Junior uses their account for all Notion
-tools.
+The Notion plugin lists `notion-search`, `notion-fetch`,
+`notion-create-pages`, and `notion-update-page` for the service account. To
+move pages, Junior still asks the person to connect their own Notion account,
+because a move changes who can see the moved pages. After they connect, Junior
+uses their account for all Notion tools.
 
 To remove the account, click **Disconnect** on the Admin page, or run
 `junior service-account disconnect notion`. Then
@@ -88,7 +89,7 @@ per-user OAuth.
 To stop people from connecting their own Notion accounts, turn off user
 OAuth in your plugin list. Then everyone uses the shared account, and Junior
 never sends a Notion connect link. Junior hides the Notion tools that the
-service account does not list, so only search and fetch stay available:
+service account does not list, so moving pages is not available:
 
 ```ts title="plugins.ts"
 export const plugins = defineJuniorPlugins(["@sentry/junior-notion"], {
@@ -117,7 +118,8 @@ admin connects the account again.
 - Write tools go through Junior's normal MCP action review path.
 - Database deletion, schema redesign, and other broad administrative operations stay out of scope.
 - Permission failures remain user-scoped. Junior can only act on Notion content the authenticated user can access.
-- With a service account, anyone who can talk to Junior can read what that account can read.
+- With a service account, anyone who can talk to Junior can read what that account can read, and create or update pages where that account can edit.
+- Each successful tool call emits the `mcp.tool_call.completed` audit event. `app.credential.account` shows whether the service account or the person's own account made the call. See [Audit events](/extend/build-a-plugin/#audit-events).
 
 ## Verify
 

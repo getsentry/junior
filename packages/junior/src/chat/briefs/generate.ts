@@ -1,4 +1,5 @@
-import { z, type ZodTypeAny } from "zod";
+import * as z from "zod";
+import type { ZodTypeAny } from "zod";
 import {
   briefOutcomeStatusSchema,
   conversationBriefSchema,
@@ -15,9 +16,9 @@ const MAX_TOOL_TEXT_CHARS = 1_500;
 const MAX_LINKS = 40;
 
 const SIZE_CAPS = {
-  small: { decisions: 3, openDecisions: 2, facts: 5, keywords: 5 },
-  medium: { decisions: 8, openDecisions: 5, facts: 10, keywords: 8 },
-  large: { decisions: 20, openDecisions: 10, facts: 15, keywords: 12 },
+  small: { decisions: 3, facts: 5, keywords: 5 },
+  medium: { decisions: 8, facts: 10, keywords: 8 },
+  large: { decisions: 20, facts: 15, keywords: 12 },
 } as const;
 
 type BriefSizeClass = keyof typeof SIZE_CAPS;
@@ -39,14 +40,6 @@ const modelBriefSchema = z
           text: z.string().trim().min(1),
           by: z.string().trim().min(1).nullable(),
           kind: z.enum(["stated", "confirmed", "assumed"]),
-        })
-        .strict(),
-    ),
-    openDecisions: z.array(
-      z
-        .object({
-          text: z.string().trim().min(1),
-          owner: z.string().trim().min(1).nullable(),
         })
         .strict(),
     ),
@@ -74,7 +67,6 @@ type BriefCompleteObject = (request: {
   prompt: string;
   schema: ZodTypeAny;
   system: string;
-  temperature: number;
 }) => Promise<{ costUsd?: number; object: unknown }>;
 
 /** Evidence-check diagnostics, rendered by the local replay CLI. */
@@ -196,19 +188,6 @@ function normalizeModelBrief(args: {
       },
     ];
   });
-  const openDecisions = args.model.openDecisions.flatMap((decision) => {
-    if (hasRuntimeMarker(decision.text)) {
-      droppedRuntimeMarkerCount += 1;
-      return [];
-    }
-    const owner = attribution(decision.owner);
-    return [
-      {
-        text: truncate(decision.text, 400),
-        ...(owner ? { owner } : undefined),
-      },
-    ];
-  });
   const facts = args.model.facts.filter((fact) => {
     const keep = !hasRuntimeMarker(fact);
     if (!keep) droppedRuntimeMarkerCount += 1;
@@ -226,7 +205,6 @@ function normalizeModelBrief(args: {
         text: truncateSentence(args.model.outcome.text, 600),
       },
       decisions: decisions.slice(0, args.caps.decisions),
-      openDecisions: openDecisions.slice(0, args.caps.openDecisions),
       facts: uniqueStrings(facts, args.caps.facts),
       links: args.links,
       keywords: uniqueStrings(
@@ -528,25 +506,26 @@ function hasMergedEvidence(input: BriefInput): boolean {
 /** Build the text indexed for a Brief without adding transcript content. */
 function buildBriefSearchText(
   brief: ConversationBrief,
-  title?: string,
+  input: BriefInput,
 ): string {
-  return [
-    title,
+  const values = [
+    input.title,
     brief.summary,
     brief.intent,
     brief.outcome.text,
     ...brief.decisions.map((decision) => decision.text),
-    ...brief.openDecisions.map((decision) => decision.text),
     ...brief.facts,
     ...brief.keywords,
     ...brief.links.map((link) => link.label),
+    // Stored links stop at MAX_LINKS. Index every linked object so a later
+    // Conversation still finds an issue that a long run of PRs pushed out.
+    ...deterministicLinks(input).map((link) => link.label),
     ...brief.record.participants.map((participant) => participant.name),
     ...brief.record.codeChanges.map(
       (change) => `${change.repository}#${change.number} ${change.state}`,
     ),
-  ]
-    .filter((value): value is string => Boolean(value?.trim()))
-    .join("\n");
+  ].filter((value): value is string => Boolean(value?.trim()));
+  return [...new Set(values)].join("\n");
 }
 
 /** Generate one bounded Brief and attach only deterministic evidence links. */
@@ -573,7 +552,6 @@ export async function generateBrief(
     }),
     schema: modelBriefSchema,
     system: args.prompt,
-    temperature: 0,
   });
   const model = modelBriefSchema.parse(result.object);
   const { droppedUrls, keptUrlCount, links } = buildEvidenceLinks({
@@ -603,7 +581,7 @@ export async function generateBrief(
         mergedClaim && hasLinkedEvidence && !hasMergedEvidence(input),
       resourceCount: input.resources.length,
     },
-    searchText: buildBriefSearchText(normalized.brief, input.title),
+    searchText: buildBriefSearchText(normalized.brief, input),
     throughIndex: args.throughIndex,
   };
 }

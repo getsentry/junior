@@ -1,4 +1,4 @@
-import type { Message, Thread } from "chat";
+import type { Message } from "chat";
 import type { AgentSteeringMessage } from "@/chat/agent/types";
 import { createActor, parseActorUserId } from "@/chat/actor";
 import {
@@ -20,59 +20,10 @@ import {
 } from "@/chat/slack/conversation-context";
 import { parseSlackChannelId } from "@/chat/slack/ids";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
-import { appendThreadContextMessages } from "@/chat/services/conversation-memory";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
-import { escapeXml } from "@/chat/xml";
 import { withoutSavedSteeringMessages } from "@/chat/agent/prompt";
-
-function renderRecentThreadMessageLines(
-  conversationContext: string | undefined,
-  messages: QueuedTurnMessage[],
-): string[] {
-  const messagesForContext = messages.filter((queued) => {
-    if (queued.explicitMention) {
-      return false;
-    }
-    const slackTs = inboundMessageActor(queued)?.slackTs;
-    return !slackTs || !conversationContext?.includes(`slack_ts="${slackTs}"`);
-  });
-  if (messagesForContext.length === 0) {
-    return [];
-  }
-  const lines: string[] = [];
-  for (const queued of messagesForContext) {
-    const actor = inboundMessageActor(queued);
-    const author = escapeXml(actor?.authorName ?? "user");
-    const attrs = [
-      `role="user"`,
-      `author="${author}"`,
-      actor?.authorId ? `actor_id="${escapeXml(actor.authorId)}"` : undefined,
-      actor?.slackTs ? `slack_ts="${escapeXml(actor.slackTs)}"` : undefined,
-    ]
-      .filter((attr): attr is string => Boolean(attr))
-      .join(" ");
-    const text = escapeXml(queued.userText.replace(/\s+/g, " "));
-    lines.push(
-      `  <message ${attrs}>`,
-      `[user] ${author}: ${text}`,
-      "  </message>",
-    );
-  }
-  return lines;
-}
-
-/** Add recent Slack messages to the agent context. */
-export function appendRecentMessagesToContext(
-  conversationContext: string | undefined,
-  messages: QueuedTurnMessage[],
-): string | undefined {
-  return appendThreadContextMessages(
-    conversationContext,
-    renderRecentThreadMessageLines(conversationContext, messages),
-  );
-}
 
 /** Return the actor stored with one inbound Slack message. */
 export function inboundMessageActor(
@@ -110,52 +61,47 @@ export function inboundMessageProvenance(
   return instructionProvenanceFor(author);
 }
 
-/** Return the Slack channel name when it is available. */
-export async function resolveChannelName(
-  thread: Thread,
-): Promise<string | undefined> {
-  const existingName = thread.channel.name?.trim();
-  if (existingName) {
-    return existingName;
-  }
-
-  try {
-    const metadata = await thread.channel.fetchMetadata();
-    return metadata.name?.trim() || undefined;
-  } catch {
-    return undefined;
-  }
+/** Slack channel facts for one Turn. */
+export interface SlackChannelFacts {
+  channelType?: SlackEventChannelType;
+  name?: string;
+  topic?: string;
+  description?: string;
 }
 
 /**
- * Return the Slack channel type of a message.
+ * Return the Slack channel type, name, topic, and description of a message
+ * with one `conversations.info` call.
  *
  * Slack delivers a channel mention as two events with the same `ts`: `message`
  * has `channel_type`, and `app_mention` does not. Junior stores the event that
- * arrives first. When that event has no `channel_type`, ask Slack for the
- * conversation, so the turn does not depend on the order of the two events.
+ * arrives first. When that event has no `channel_type`, the live conversation
+ * metadata supplies it, so the turn does not depend on the order of the two
+ * events.
  */
-export async function resolveSlackChannelType(
+export async function resolveSlackChannelFacts(
   message: Message,
   channelId: string | undefined,
-): Promise<SlackEventChannelType | undefined> {
+): Promise<SlackChannelFacts> {
   const eventChannelType = resolveSlackChannelTypeFromMessage(message);
-  if (eventChannelType) {
-    return eventChannelType;
-  }
   const slackChannelId = parseSlackChannelId(channelId);
   if (!slackChannelId) {
-    return undefined;
+    return { channelType: eventChannelType };
   }
   try {
-    return slackChannelTypeFromConversationInfo(
-      await getConversationInfo(slackChannelId),
-    );
+    const info = await getConversationInfo(slackChannelId);
+    return {
+      channelType:
+        eventChannelType ?? slackChannelTypeFromConversationInfo(info),
+      name: info.name,
+      topic: info.topic,
+      description: info.description,
+    };
   } catch (error) {
     // Slack can refuse the lookup, for example when an install has no read
     // scope for this conversation. The turn then has no confirmed visibility.
     if (error instanceof SlackActionError) {
-      return undefined;
+      return { channelType: eventChannelType };
     }
     throw error;
   }

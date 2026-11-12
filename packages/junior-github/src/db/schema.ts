@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   index,
   integer,
   pgTable,
@@ -7,7 +8,7 @@ import {
   text,
   timestamp,
 } from "drizzle-orm/pg-core";
-import { z } from "zod";
+import * as z from "zod";
 
 export const githubPullRequestStateSchema = z.enum([
   "closed_unmerged",
@@ -85,6 +86,8 @@ export const juniorGitHubPullRequests = pgTable(
       .array()
       .notNull()
       .default(sql`ARRAY[]::text[]`),
+    /** The daily reconcile compares this with GitHub. */
+    draft: boolean("draft").notNull().default(false),
     openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
     mergedAt: timestamp("merged_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),

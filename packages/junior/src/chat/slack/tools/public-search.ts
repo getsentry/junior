@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import {
   getSlackClient,

@@ -6,6 +6,7 @@ import type { JuniorApiEnv } from "@/api/route";
 import {
   forkConversationResponseSchema,
   conversationDetailReportSchema,
+  versionsSchema,
 } from "@/api/schema";
 import {
   getConversationEventStore,
@@ -167,7 +168,6 @@ describe("conversation forks", () => {
       createdAtMs: Date.now(),
       data: {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "test-model",
         replacementHistory: [
           {
@@ -267,6 +267,26 @@ describe("conversation forks", () => {
     expect(
       (await readDetail(nested.conversationId)).modelUsage,
     ).toBeUndefined();
+
+    // A fork after the compaction also copies the transcript before it.
+    const laterReply = await storeAnsweredTurn(source, {
+      question: "Now compare the red option.",
+      answer: "Second answer.",
+      turn: "later",
+    });
+    const later = forkConversationResponseSchema.parse(
+      await (await app.request(url, forkRequest(laterReply, "fork-3"))).json(),
+    );
+    expect(visibleEvents(await readDetail(later.conversationId))).toEqual([
+      "user: Remember the blue option.",
+      "turn",
+      "assistant: First answer.",
+      "turn",
+      "user: Now compare the red option.",
+      "turn",
+      "assistant: Second answer.",
+      "turn",
+    ]);
   });
 
   it("keeps private forks private and rejects inaccessible or unfinished cutoffs without creating roots", async () => {
@@ -329,6 +349,7 @@ describe("conversation forks", () => {
     expect(hidden.canFork).toBe(false);
     const child = "local:web:private-child";
     await store.createChild({
+      kind: "task",
       childConversationId: child,
       parentConversationId: source,
     });
@@ -377,6 +398,11 @@ describe("conversation forks", () => {
     const owner = await authenticatedApi(OWNER_EMAIL);
     // A reader of a public Conversation asks in a fork of their own.
     const reader = await authenticatedApi("reader@example.com");
+    // The feed change token covers the same rows as the feed.
+    const feedToken = async () =>
+      versionsSchema.parse(await (await reader.request("/api/versions")).json())
+        .conversations;
+    const emptyFeedToken = await feedToken();
     const quote = "blue <option>";
     const response = await reader.request(
       `/api/conversations/${encodeURIComponent(source)}/forks`,
@@ -423,6 +449,7 @@ describe("conversation forks", () => {
         ).json(),
       ).forks;
     expect(await listed(reader)).not.toContain(conversationId);
+    expect(await feedToken()).toBe(emptyFeedToken);
     expect(await sourceForks()).toEqual([]);
 
     const keep = (api: Hono<JuniorApiEnv>) =>
@@ -434,6 +461,7 @@ describe("conversation forks", () => {
     expect((await keep(reader)).status).toBe(200);
     expect((await keep(reader)).status).toBe(200);
     expect(await listed(reader)).toContain(conversationId);
+    expect(await feedToken()).not.toBe(emptyFeedToken);
     expect(await sourceForks()).toEqual([conversationId]);
     expect(
       (await getConversationEventStore().loadHistory(conversationId)).filter(

@@ -14,67 +14,17 @@ import { dashboardDisclosureChevronClass } from "../styles";
 import { RedactedMarker } from "./TranscriptRedacted";
 import { DetailsCard } from "./DetailsList";
 import { DisplayText } from "../display-text/DisplayText";
-import { eventLogModel } from "./eventLog";
-import { formatCostBreakdown } from "../format";
 import { EventUsage } from "./EventUsage";
 
 /** Present event content as readable sections, with the exact report available on demand. */
 export function EventDetails({ event }: { event: ConversationReportEvent }) {
   const data = event.data;
   const mentions = event.mentions ?? [];
-  const model = eventLogModel(event);
+  const model = event.model;
   const { usage, ...callAttributes } = event.modelCall ?? {};
   let content: ReactNode;
 
   switch (data.type) {
-    case "turn_routed": {
-      const {
-        type: _,
-        modelId: _modelId,
-        modelProfile: _profile,
-        reasoningLevel: _reasoning,
-        costUsd,
-        ...metadata
-      } = data;
-      content = (
-        <DetailSection title="Route selection">
-          <DetailValue
-            value={{
-              ...metadata,
-              ...(costUsd !== undefined
-                ? { routerCostUsd: formatCostBreakdown({ total: costUsd }) }
-                : undefined),
-            }}
-          />
-        </DetailSection>
-      );
-      break;
-    }
-    case "handoff": {
-      const {
-        type: _,
-        modelId: _modelId,
-        modelProfile: _profile,
-        reasoningLevel: _reasoning,
-        summary,
-        ...metadata
-      } = data;
-      content = (
-        <>
-          {Object.keys(metadata).length > 0 ? (
-            <DetailSection>
-              <DetailValue value={metadata} />
-            </DetailSection>
-          ) : null}
-          {summary ? (
-            <DetailSection title="Continuation summary">
-              <DisplayText mentions={mentions} text={summary} />
-            </DetailSection>
-          ) : null}
-        </>
-      );
-      break;
-    }
     case "message": {
       const { type: _, text, redacted, ...metadata } = data;
       content = (
@@ -172,20 +122,10 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
 
   return (
     <div className="@container grid min-w-0 gap-3">
-      <DetailSection
-        title={
-          data.type === "handoff" ? "Target configuration" : "Configuration"
-        }
-      >
+      <DetailSection title="Configuration">
         <DetailValue
           value={{
             model: model?.modelId ?? "Not recorded",
-            ...(model
-              ? {
-                  modelProfile: model.modelProfile ?? "Not recorded",
-                  reasoningLevel: model.reasoningLevel ?? "Not recorded",
-                }
-              : undefined),
             ...callAttributes,
           }}
         />

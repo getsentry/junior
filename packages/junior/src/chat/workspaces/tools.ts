@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { watchResultSchema, type WatchResult } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
@@ -28,6 +28,11 @@ import {
   WorkspaceValidationError,
 } from "./store";
 import type { Workspace } from "./types";
+
+const WORKSPACES_TOOL_SOURCE = {
+  id: "workspaces",
+  description: "Create, replace, or delete Workspace recipes.",
+} as const;
 
 /** Record optional reporting without changing the switchWorkspace outcome. */
 async function tryRecordWorkspaceSwitchStat(workspace: Workspace) {
@@ -229,6 +234,8 @@ function createWorkspaceWriteTools(
     workspaceWriteSchemas(providers);
   return {
     createWorkspace: zodTool({
+      exposure: "deferred",
+      source: WORKSPACES_TOOL_SOURCE,
       approvalMode: "review",
       describeProposal: (input) => describeWorkspaceWrite("Create", input),
       executionMode: "sequential",
@@ -252,6 +259,8 @@ function createWorkspaceWriteTools(
       },
     }),
     updateWorkspace: zodTool({
+      exposure: "deferred",
+      source: WORKSPACES_TOOL_SOURCE,
       approvalMode: "review",
       describeProposal: ({ id: _id, ...input }) =>
         describeWorkspaceWrite("Replace", input),
@@ -289,6 +298,8 @@ function createWorkspaceWriteTools(
       },
     }),
     deleteWorkspace: zodTool({
+      exposure: "deferred",
+      source: WORKSPACES_TOOL_SOURCE,
       approvalMode: "review",
       describeProposal: ({ id }) => `Delete Workspace ${id}.`,
       executionMode: "sequential",
@@ -350,6 +361,7 @@ export function createWorkspaceTools(
     }),
     switchWorkspace: zodTool({
       executionMode: "sequential",
+      exposure: "modelOnly",
       annotations: {
         destructiveHint: true,
         idempotentHint: true,

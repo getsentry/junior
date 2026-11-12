@@ -4,7 +4,7 @@ import tls from "node:tls";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { z } from "zod";
+import * as z from "zod";
 import { dockerJson } from "@/chat/sandbox/docker/api";
 import { dockerSandboxProvider } from "@/chat/sandbox/docker/provider";
 import { egressCaPem } from "@/chat/sandbox/docker/egress";

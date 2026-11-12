@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { z } from "zod";
+import * as z from "zod";
 
 export const postgresHarnessConfigSchema = z
   .object({
@@ -79,6 +79,16 @@ export function createPostgresDatabaseUrl(
   databaseName: string,
 ): string {
   return databaseUrl(connectionString, databaseName);
+}
+
+/** Refuse a test database URL that does not point at this machine. */
+export function assertLocalPostgresUrl(databaseUrl: string): void {
+  const { hostname } = new URL(databaseUrl);
+  if (hostname !== "localhost" && hostname !== "127.0.0.1") {
+    throw new Error(
+      `Junior test database URL must point at localhost or 127.0.0.1, got ${hostname}`,
+    );
+  }
 }
 
 /** Parse serialized Vitest worker config before using database privileges. */

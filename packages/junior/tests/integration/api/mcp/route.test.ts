@@ -29,7 +29,7 @@ import {
 } from "../../../msw/handlers/mcp-client-metadata";
 
 const ALL_SCOPES =
-  "conversations:read conversations:manage review_items:read automations:read";
+  "conversations:read conversations:manage conversations:write review_items:read automations:read";
 
 mockMcpDashboardConfig();
 
@@ -323,7 +323,7 @@ describe("remote MCP HTTP", () => {
         client_id: MCP_CLIENT_ID,
         code_challenge: createPkce().challenge,
         redirect_uri: MCP_TEST_REDIRECT_URI,
-        scope: "conversations:write",
+        scope: "conversations:delete",
       }),
     );
     const widenedRefresh = await requestMcpTokens(app, {
@@ -340,13 +340,21 @@ describe("remote MCP HTTP", () => {
     expect(everyTokens.scope).toBe(ALL_SCOPES);
     expect(await toolNames(everyTokens.access_token)).toEqual([
       "archiveConversation",
+      "archiveDoneConversations",
+      "cancelQueuedMessages",
+      "createConversation",
       "getAutomation",
       "getConversation",
       "getReviewItem",
       "listConversationMessages",
+      "markConversationRead",
+      "pinConversation",
       "searchAutomations",
       "searchConversations",
       "searchReviewItems",
+      "sendMessage",
+      "setConversationAutoArchive",
+      "setConversationSubscription",
       "stopConversation",
     ]);
     expect(await toolNames(readOnly)).toEqual([

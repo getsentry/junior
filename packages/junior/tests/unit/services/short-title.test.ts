@@ -39,6 +39,7 @@ describe("generateShortTitle", () => {
     await expect(
       generateShortTitle({
         completeText: completeText as never,
+        cost: { owner: "none" },
         kind: "task",
         sourceText: "Send the weekly project summary every Monday",
       }),
@@ -58,6 +59,7 @@ describe("generateShortTitle", () => {
     await expect(
       resolveTaskTitle({
         completeText: completeText as never,
+        cost: { owner: "none" },
         instruction: "Post a digest",
         signal: controller.signal,
       }),
@@ -72,6 +74,7 @@ describe("generateShortTitle", () => {
     await expect(
       generateShortTitle({
         completeText: completeText as never,
+        cost: { owner: "none" },
         kind: "conversation",
         sourceText: "Help me debug this incident",
       }),
@@ -88,6 +91,7 @@ describe("resolveTaskTitle", () => {
     await expect(
       resolveTaskTitle({
         completeText: completeText as never,
+        cost: { owner: "none" },
         instruction: "Send the weekly project summary",
         title: "  Weekly ops digest  ",
       }),
@@ -103,6 +107,7 @@ describe("resolveTaskTitle", () => {
     await expect(
       resolveTaskTitle({
         completeText: completeText as never,
+        cost: { owner: "none" },
         instruction: "Send the weekly project summary",
       }),
     ).resolves.toBe("Weekly project summary");

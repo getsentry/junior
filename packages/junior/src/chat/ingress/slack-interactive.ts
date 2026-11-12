@@ -16,6 +16,10 @@ import {
   handleSlackReviewItemClick,
   handleSlackReviewItemSubmission,
 } from "./slack-review-item";
+import {
+  handleSlackContinueHereClick,
+  SLACK_CONTINUE_HERE_ACTION_ID,
+} from "./slack-conversation-unfurl";
 import type { SlackInteractionInputFacts } from "./slack-interaction-input";
 import type { SlackInteractivePayload } from "./slack-payload";
 
@@ -69,8 +73,8 @@ async function handleAppHomeDisconnect(args: {
 }
 
 /**
- * Handle Slack interactions from App Home and Review item cards: block
- * actions and submitted forms.
+ * Handle Slack interactions from App Home, Review item cards, and dashboard
+ * link previews: block actions and submitted forms.
  */
 export async function handleSlackInteractivePayload(args: {
   adapter: SlackAdapter;
@@ -122,6 +126,25 @@ export async function handleSlackInteractivePayload(args: {
       );
       return;
     }
+  }
+
+  const continueHere = args.payload.actions?.find(
+    (candidate) => candidate.action_id === SLACK_CONTINUE_HERE_ACTION_ID,
+  );
+  if (continueHere) {
+    await withSpan(
+      "chat.slack_continue_here_click",
+      "chat.slack_continue_here_click",
+      spanAttributes,
+      () =>
+        handleSlackContinueHereClick({
+          isAuthorAllowed: args.isAuthorAllowed,
+          payload: args.payload,
+          state: args.state,
+          value: continueHere.value,
+        }),
+    );
+    return;
   }
 
   const disconnect = args.payload.actions?.find(

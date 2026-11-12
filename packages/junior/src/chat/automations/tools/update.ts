@@ -1,16 +1,18 @@
 import { declaredEventKeys } from "@sentry/junior-plugin-api";
 import { and, eq, inArray } from "drizzle-orm";
-import { z } from "zod";
+import * as z from "zod";
 import {
   automationEditor,
   changeAutomationLifecycle,
 } from "@/chat/automations/edit";
 import {
+  automationContextToolSchema,
   automationInstructionToolSchema,
   automationTitleSchema,
 } from "@/chat/automations/edit-schema";
+import type { AutomationTask } from "@/chat/automations/task";
 import type { TaskCandidate } from "@/chat/automations/read";
-import { requireInstructionReferences } from "@/chat/automations/instruction-references";
+import { requireAutomationTaskText } from "@/chat/automations/instruction-references";
 import { automationRevision } from "@/chat/automations/revision";
 import {
   requireToolAutomation,
@@ -19,9 +21,11 @@ import {
   type AutomationToolContext,
 } from "@/chat/automations/tool-access";
 import {
+  automationSkillToolSchema,
   automationToolResult,
   automationToolResultSchema,
   automationTriggerChangesSchema,
+  editedAutomationTask,
   triggerKind,
   type AutomationTriggerChangesInput,
 } from "@/chat/automations/tool-support";
@@ -33,6 +37,7 @@ import { editEventAutomation } from "@/chat/event-automations/edit";
 import { changedEventMatch } from "@/chat/event-automations/tool-support";
 import { saveEventAutomation } from "@/chat/event-automations/store";
 import type { EventCatalog } from "@/chat/events/catalog";
+import type { SkillMetadata } from "@/chat/skills";
 import { logInfo } from "@/chat/logging";
 import { editScheduledAutomation } from "@/chat/scheduled-automations/edit";
 import { scheduleIntentFromTool } from "@/chat/scheduled-automations/schedule-intent";
@@ -53,10 +58,14 @@ import { taskOutcomeInputSchema } from "@/chat/task-outcomes-schema";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
+import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
 
 type UpdateInput = {
   title?: string;
   instruction?: string;
+  skill?: string;
+  /** Null clears the context of a skill. */
+  context?: string | null;
   trigger?: AutomationTriggerChangesInput;
   outcomes?: z.output<typeof taskOutcomeInputSchema>[];
   credential_mode?: "creator" | "system";
@@ -149,6 +158,7 @@ async function updateScheduled(
   context: AutomationToolContext,
   current: Extract<TaskCandidate, { kind: "scheduled" }>,
   input: UpdateInput,
+  editedTask: AutomationTask | undefined,
   editor: Editor,
 ): Promise<TaskCandidate> {
   const { task, ownedByViewer: isCreator } = current;
@@ -177,7 +187,7 @@ async function updateScheduled(
     task,
     {
       title: input.title,
-      instruction: input.instruction,
+      task: editedTask,
       schedule:
         input.trigger?.type === "schedule"
           ? scheduleIntentFromTool(input.trigger.schedule)
@@ -225,6 +235,7 @@ async function updateScheduled(
 async function updateEvent(
   current: Extract<TaskCandidate, { kind: "event" }>,
   input: UpdateInput,
+  editedTask: AutomationTask | undefined,
   editor: Editor,
   catalog: EventCatalog,
 ): Promise<TaskCandidate> {
@@ -234,7 +245,7 @@ async function updateEvent(
     task,
     {
       title: input.title,
-      instruction: input.instruction,
+      task: editedTask,
       // The tools cannot set an identifier, so a saved one stays. A filter
       // that is left out keeps its saved value. Another namespace starts a
       // new trigger.
@@ -274,8 +285,11 @@ async function updateEvent(
 export function createUpdateAutomationTool(
   context: AutomationToolContext,
   catalog: EventCatalog,
+  /** Every discovered skill, listed in the skill input. */
+  skills: readonly SkillMetadata[] = [],
 ) {
   const trigger = automationTriggerChangesSchema(catalog);
+  const skill = automationSkillToolSchema(skills);
   const inputSchema = z
     .object({
       automation_id: z
@@ -285,7 +299,24 @@ export function createUpdateAutomationTool(
           "ID of the automation, from searchAutomations or its dashboard URL.",
         ),
       title: automationTitleSchema.optional(),
-      instruction: automationInstructionToolSchema.nullable().optional(),
+      instruction: automationInstructionToolSchema
+        .nullable()
+        .describe(
+          `${automationInstructionToolSchema.description} Setting it switches a skill Automation to this instruction and drops its context. Omit or use null to keep the current task.`,
+        )
+        .optional(),
+      skill: skill
+        .nullable()
+        .describe(
+          `${skill.description} Setting it switches an instruction Automation to this skill, or changes the skill and keeps its context. Omit or use null to keep the current task.`,
+        )
+        .optional(),
+      context: automationContextToolSchema
+        .nullable()
+        .describe(
+          `${automationContextToolSchema.description} Only for a skill Automation, or with skill. Use null to remove the context. Omit to keep it.`,
+        )
+        .optional(),
       trigger: trigger
         .nullable()
         .describe(
@@ -323,6 +354,8 @@ export function createUpdateAutomationTool(
     })
     .strict();
   return zodTool({
+    exposure: "deferred",
+    source: AUTOMATIONS_TOOL_SOURCE,
     approvalMode: "review",
     annotations: {
       destructiveHint: true,
@@ -332,19 +365,20 @@ export function createUpdateAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Update the title, instruction, trigger, outcomes, credential use, or status of a scheduled or event automation. Anyone in the workspace can update anything on an automation in a public channel, including its outcomes and destination. Automations in private channels and DMs can be updated from there or by their creator, and only their creator can move them. Only the creator can enable creator credentials. A non-creator who changes the instruction, trigger, outcomes, or destination switches it to system credentials. The trigger type cannot change. Set destination to move a scheduled automation to this conversation or to a public channel.",
+      "Update the title, instruction or skill and its context, trigger, outcomes, credential use, or status of a scheduled or event automation. Anyone in the workspace can update anything on an automation in a public channel, including its outcomes and destination. Automations in private channels and DMs can be updated from there or by their creator, and only their creator can move them. Only the creator can enable creator credentials. A non-creator who changes the instruction, skill, context, trigger, outcomes, or destination switches it to system credentials. The trigger type cannot change. Set destination to move a scheduled automation to this conversation or to a public channel.",
     inputSchema,
     prepareArguments(args) {
-      // Null means omitted.
+      // Null means omitted, except a null context, which removes it.
       return Object.fromEntries(
         Object.entries(args as Record<string, unknown>).filter(
-          ([, value]) => value != null,
+          ([key, value]) =>
+            value !== undefined && (value !== null || key === "context"),
         ),
       ) as z.input<typeof inputSchema>;
     },
     outputSchema: automationToolResultSchema,
     async execute({ automation_id, status: requestedStatus, ...fields }) {
-      // prepareArguments removed every null.
+      // prepareArguments removed every null but the context.
       const input = fields as UpdateInput;
       const status = requestedStatus ?? undefined;
       const caller = await requireToolCaller(context);
@@ -381,23 +415,20 @@ export function createUpdateAutomationTool(
         );
       }
       const editor = automationEditor(caller.viewer, current);
-      if (
-        input.instruction !== undefined &&
-        input.instruction !== current.task.task.text
-      ) {
-        requireInstructionReferences(input.instruction, {
+      const editedTask = editedAutomationTask(current.task.task, input);
+      if (editedTask) {
+        requireAutomationTaskText(editedTask, {
           creator: current.task.createdBy,
-          destinationChannelId: current.task.destination.channelId,
           requester: editor,
-          previousInstruction: current.task.task.text,
+          current: current.task.task,
         });
       }
       let saved = current;
       if (Object.keys(input).length > 0) {
         saved =
           current.kind === "scheduled"
-            ? await updateScheduled(context, current, input, editor)
-            : await updateEvent(current, input, editor, catalog);
+            ? await updateScheduled(context, current, input, editedTask, editor)
+            : await updateEvent(current, input, editedTask, editor, catalog);
       }
       // Setting the current status again changes nothing.
       if (status !== undefined && status !== saved.task.status) {

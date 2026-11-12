@@ -37,6 +37,10 @@ Optional `match` values come from the resource type. Junior drops events that do
 
 Each event also carries the values of its scope, and each value is a match key. For GitHub, events carry `repo`, and `pull_request`, `issue`, `commit_sha`, `deployment_id`, or `tag` when the event has one. A check suite with no pull request has no `pull_request`. For Sentry, events carry `projects`, and issue events also carry `issue_id`. `projects` is a list: an issue has one project, and a metric alert has the projects of its rule. Sentry events have no `org` value, because one Sentry integration belongs to one org. For Vercel, events carry `project_id` and `deployment_id`. For Linear, issue events carry `issue_identifier` and `team_key`. The values use the same case as identifiers. GitHub and Sentry values are lowercase, Vercel ids keep their case, and Linear values are uppercase. A GitHub `tag` is the release tag as GitHub sent it, with only ASCII letters in lowercase, such as `release/1.0`.
 
+## Quiet Replies
+
+Some watch events need nobody's attention, such as a routine CI fix that worked or bot review feedback that Junior handled. For these events, Junior does not post its reply in Slack. The reply stays in the conversation. The web view puts the event, its tool calls, and the reply in one row that you can open. It does the same for an event that gets no reply. A reply always posts when the watch says to tell a person, or when the reply asks a question, needs a decision, reports a failure, or has a card.
+
 ## Limits
 
 - Watches default to 14 days and cannot exceed 30 days.

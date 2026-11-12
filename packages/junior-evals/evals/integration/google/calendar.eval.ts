@@ -143,7 +143,7 @@ describe("Google Calendar", () => {
 
     const conversation = await run(
       slackMention(
-        `book a 30 minute meeting called "Stream prep" with ${SAM_EMAIL} next tuesday at 2pm pacific`,
+        `book a 30 minute meeting called "Stream prep" with ${SAM_EMAIL} on tuesday october 13 at 2pm pacific`,
       ),
     );
 

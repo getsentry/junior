@@ -8,7 +8,7 @@ import {
   resolveSlackChannelRef,
   slackChannelRefParam,
 } from "@/chat/slack/tool-support/channel-target";
-import { z } from "zod";
+import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { parseSlackMessageReference } from "@/chat/slack/tool-support/slack-message-url";
@@ -28,8 +28,6 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { matchSlackAttachments } from "@/chat/slack/attachments";
 import { getConversationStore } from "@/chat/db";
-
-const MAX_THREAD_READ_CHARS = 40_000;
 
 interface ThreadReadAttachmentDeps {
   conversationId: string;
@@ -94,32 +92,6 @@ function sanitizeMessage(
         }
       : undefined),
   };
-}
-
-type SanitizedMessage = ReturnType<typeof sanitizeMessage>;
-
-/**
- * Pick the subset of messages that fit within the character budget,
- * returning the count of messages omitted due to truncation.
- */
-function truncateMessages(
-  messages: SanitizedMessage[],
-  maxChars: number,
-): { messages: SanitizedMessage[]; omitted: number } {
-  let chars = 0;
-  const kept: SanitizedMessage[] = [];
-
-  for (const msg of messages) {
-    const textLen =
-      (msg.text?.length ?? 0) + (msg.attachment_text?.length ?? 0);
-    if (kept.length > 0 && chars + textLen > maxChars) {
-      break;
-    }
-    kept.push(msg);
-    chars += textLen;
-  }
-
-  return { messages: kept, omitted: messages.length - kept.length };
 }
 
 /**
@@ -326,12 +298,8 @@ export function createSlackThreadReadTool(
             : [],
         ),
       );
-      const sanitized = replies.map((reply) =>
+      const messages = replies.map((reply) =>
         sanitizeMessage(reply, attachmentIdsBySlackFileId),
-      );
-      const { messages, omitted } = truncateMessages(
-        sanitized,
-        MAX_THREAD_READ_CHARS,
       );
       const conversationIds = await findThreadConversationIds({
         channelId,
@@ -349,9 +317,6 @@ export function createSlackThreadReadTool(
           ? { conversation_ids: conversationIds }
           : undefined),
         count: messages.length,
-        fetched_count: replies.length,
-        truncated: omitted > 0,
-        ...(omitted > 0 ? { omitted_message_count: omitted } : undefined),
         messages,
       };
     },

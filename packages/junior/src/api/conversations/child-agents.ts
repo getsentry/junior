@@ -16,7 +16,8 @@ import {
 /**
  * Load the direct child agents of one Conversation, or throw a standard API
  * not-found error. Viewers who cannot see private content get only the status,
- * time, and usage of each child agent.
+ * time, and usage of each child agent. Archived children stay in the report,
+ * so the dashboard can show and restore them.
  */
 export async function requireConversationChildAgents(
   conversationId: string,
@@ -52,6 +53,11 @@ export async function requireConversationChildAgents(
         ? { auxiliaryCosts: auxiliaryCosts.total }
         : undefined),
       ...(childAgentTotals ? { childAgentTotals } : undefined),
+      archivedAt:
+        agent.archivedAtMs !== undefined
+          ? new Date(agent.archivedAtMs).toISOString()
+          : null,
+      kind: agent.kind,
       status: agent.status,
       updatedAt: new Date(agent.updatedAtMs).toISOString(),
       ...(canExposePayload

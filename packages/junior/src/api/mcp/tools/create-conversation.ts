@@ -1,0 +1,85 @@
+import { randomUUID } from "node:crypto";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { encodeConversationCursor } from "@/api/conversations/cursor";
+import * as z from "zod";
+import { createConversationForViewer } from "@/api/conversations/create";
+import { conversationTitleSchema } from "@/api/schema/conversation-title";
+import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import {
+  mcpAcceptedMessageSchema,
+  mcpIdempotencyKeySchema,
+  mcpMessageTextSchema,
+  readMcpPendingWorkAfterSend,
+} from "../conversation";
+import {
+  apiToolError,
+  mcpToolResult,
+  type McpToolContext,
+} from "../tool-context";
+
+/**
+ * Register `createConversation`, which starts a dashboard Conversation with
+ * the user's first message. Junior starts a Turn for it.
+ */
+export function registerCreateConversationTool(
+  server: McpServer,
+  { attachmentStorage, queue, user }: McpToolContext,
+): void {
+  server.registerTool(
+    "createConversation",
+    {
+      title: "Create conversation",
+      description:
+        "Start a new conversation as you, with a first message. The agent works on it in the background. Returns the messages that no turn has read yet and a `cursor`. Pass the `cursor` as `after` to getConversation to read the reply.",
+      inputSchema: {
+        message: mcpMessageTextSchema,
+        title: conversationTitleSchema
+          .optional()
+          .describe(
+            "Short title for the conversation. Omit it to generate one from the message.",
+          ),
+        visibility: z
+          .enum(["private", "public"])
+          .default("private")
+          .describe(
+            "`private` keeps it to its participants. `public` lets people in your workspace find and read it.",
+          ),
+        idempotencyKey: mcpIdempotencyKeySchema,
+      },
+      outputSchema: mcpAcceptedMessageSchema,
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+        readOnlyHint: false,
+      },
+    },
+    async ({ idempotencyKey, message, title, visibility }) => {
+      let accepted;
+      try {
+        accepted = await createConversationForViewer(
+          user,
+          {
+            idempotencyKey: idempotencyKey ?? randomUUID(),
+            message,
+            ...(title ? { title } : undefined),
+            visibility,
+          },
+          { attachmentStorage, queue },
+        );
+      } catch (error) {
+        return apiToolError(error);
+      }
+      return mcpToolResult({
+        ...accepted,
+        ...(await readMcpPendingWorkAfterSend(user, accepted.conversationId)),
+        // A new Conversation has no events yet.
+        cursor: encodeConversationCursor({
+          conversationId: accepted.conversationId,
+          seq: -1,
+        }),
+        url: getDashboardConversationLink(accepted.conversationId),
+      });
+    },
+  );
+}

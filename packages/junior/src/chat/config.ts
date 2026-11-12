@@ -2,23 +2,18 @@ import {
   readAttachmentStorageConfig,
   type AttachmentStorageConfig,
 } from "@/chat/attachments/config";
+import {
+  readEncryptionKeyring,
+  type EncryptionKeyring,
+} from "@/chat/encryption/keyring";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { readQueueConfig, type QueueConfig } from "@/chat/queue/config";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
-import { logWarn } from "@/chat/logging";
 import {
   parseTurnReasoningLevel,
-  TURN_REASONING_LEVELS,
   type TurnReasoningLevel,
 } from "@/chat/reasoning-level";
-import {
-  DEFAULT_MODEL_PROFILES,
-  type ModelProfileConfig,
-  type ModelProfile,
-  type ModelProfileInput,
-  modelProfileSchema,
-} from "@/chat/model-profile";
 
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
@@ -83,6 +78,8 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
 ] as const;
 
 export interface BotModelConfig {
+  /** Model that runs every agent Turn. */
+  modelId?: string;
   /** Decision model used by the passive reply router. */
   decisionModelId?: string;
   /** Model used for embeddings. */
@@ -99,20 +96,22 @@ export interface BotModelConfig {
   visionModelId?: string;
   /** Model used for web search. */
   webSearchModelId?: string;
+  /** Model that continues an agent Turn after the main model refuses it. Unset by default. */
+  refusalFallbackModelId?: string;
 }
 
 export interface BotConfig {
   contextWindowTokens: number;
   decisionModelId: string;
-  defaultProfile: ModelProfile;
   embeddingModelId: string;
   fastModelId: string;
   guardianModelId: string;
   rerankingModelId: string;
   imageGenerationModelId: string;
   loadingMessages: string[];
-  profiles: Readonly<Record<string, ModelProfileConfig>>;
-  reasoningLevel?: TurnReasoningLevel;
+  modelId: string;
+  reasoningLevel: TurnReasoningLevel;
+  refusalFallbackModelId?: string;
   visionModelId?: string;
   maxAgentDepth: number;
   maxSlicesPerTurn: number;
@@ -133,8 +132,12 @@ export interface ChatConfig {
   bot: BotConfig;
   queue: QueueConfig;
   functionMaxDurationSeconds: number;
+  /** Kill switch for prompt cache warming. Defaults to true. */
+  cacheWarmingEnabled: boolean;
   conversationWorkEnabled: boolean;
   conversationWorkSoftYieldAfterMs: number;
+  /** Keys for secrets at rest. Startup fails when they are missing or invalid. */
+  encryption: EncryptionKeyring;
   sql: {
     databaseUrl: string;
     driver: SqlDriver;
@@ -236,7 +239,8 @@ function parseOptionalPositiveInteger(
   return value;
 }
 
-function parseConversationWorkEnabled(rawValue: string | undefined): boolean {
+// Operational kill switches default to on. Only "false" turns them off.
+function parseKillSwitch(name: string, rawValue: string | undefined): boolean {
   const value = toOptionalTrimmed(rawValue)?.toLowerCase();
   if (value === undefined || value === "true") {
     return true;
@@ -244,17 +248,13 @@ function parseConversationWorkEnabled(rawValue: string | undefined): boolean {
   if (value === "false") {
     return false;
   }
-  throw new Error("JUNIOR_CONVERSATION_WORK_ENABLED must be true or false");
+  throw new Error(`${name} must be true or false`);
 }
 
-const DEFAULT_MODEL_ID = resolveGatewayModel(
-  DEFAULT_MODEL_PROFILES.standard.modelId,
-).id;
+const DEFAULT_MODEL_ID = resolveGatewayModel("anthropic/claude-opus-5.5").id;
+const DEFAULT_REASONING_LEVEL: TurnReasoningLevel = "high";
 const DEFAULT_FAST_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
 const DEFAULT_GUARDIAN_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
-const DEFAULT_HANDOFF_MODEL_ID = resolveGatewayModel(
-  DEFAULT_MODEL_PROFILES.handoff.modelId,
-).id;
 const DEFAULT_WEB_SEARCH_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
 const DEFAULT_DECISION_MODEL_ID = "typesafe-ai/jev";
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
@@ -285,156 +285,6 @@ function requireModelId(
   return modelId;
 }
 
-function parseOptionalProfileDescription(
-  rawDescription: unknown,
-  configName: string,
-  profile: string,
-): string | undefined {
-  if (rawDescription === undefined) {
-    return undefined;
-  }
-  if (typeof rawDescription !== "string") {
-    throw new Error(
-      `${configName}.${profile}.description must be a string when set`,
-    );
-  }
-  const description = toOptionalTrimmed(rawDescription);
-  if (!description) {
-    throw new Error(
-      `${configName}.${profile}.description must not be empty when set`,
-    );
-  }
-  return description;
-}
-
-function parseOptionalProfileReasoningLevel(
-  rawReasoningLevel: unknown,
-  configName: string,
-  profile: string,
-): TurnReasoningLevel | undefined {
-  if (rawReasoningLevel === undefined) {
-    return undefined;
-  }
-  try {
-    return parseTurnReasoningLevel(rawReasoningLevel);
-  } catch {
-    throw new Error(
-      `${configName}.${profile}.reasoningLevel must be one of ${TURN_REASONING_LEVELS.join(", ")}`,
-    );
-  }
-}
-
-function parseProfileConfig(
-  rawProfile: unknown,
-  configName: string,
-  profile: string,
-): ModelProfileConfig {
-  if (typeof rawProfile === "string") {
-    const modelId = validateGatewayModelId(rawProfile);
-    if (!modelId) {
-      throw new Error(`${configName}.${profile} must not be empty`);
-    }
-    return { modelId };
-  }
-
-  if (
-    !rawProfile ||
-    typeof rawProfile !== "object" ||
-    Array.isArray(rawProfile)
-  ) {
-    throw new Error(
-      `${configName}.${profile} must be a model id string or an object with modelId`,
-    );
-  }
-
-  const rawModelId = (rawProfile as { modelId?: unknown }).modelId;
-  if (typeof rawModelId !== "string") {
-    throw new Error(
-      `${configName}.${profile}.modelId must be a model id string`,
-    );
-  }
-  const modelId = validateGatewayModelId(rawModelId);
-  if (!modelId) {
-    throw new Error(`${configName}.${profile}.modelId must not be empty`);
-  }
-
-  const description = parseOptionalProfileDescription(
-    (rawProfile as { description?: unknown }).description,
-    configName,
-    profile,
-  );
-  const reasoningLevel = parseOptionalProfileReasoningLevel(
-    (rawProfile as { reasoningLevel?: unknown }).reasoningLevel,
-    configName,
-    profile,
-  );
-
-  return {
-    modelId,
-    ...(description ? { description } : undefined),
-    ...(reasoningLevel ? { reasoningLevel } : undefined),
-  };
-}
-
-function parseProfileMap(
-  rawProfiles: unknown,
-  configName: string,
-): Readonly<Record<string, ModelProfileConfig>> {
-  if (
-    !rawProfiles ||
-    typeof rawProfiles !== "object" ||
-    Array.isArray(rawProfiles)
-  ) {
-    const objectType =
-      configName === "AI_MODEL_PROFILES" ? "a JSON object" : "an object";
-    throw new Error(`${configName} must be ${objectType}`);
-  }
-  const profiles: Record<string, ModelProfileConfig> = {};
-  for (const [profile, rawProfile] of Object.entries(rawProfiles)) {
-    if (!modelProfileSchema.safeParse(profile).success) {
-      throw new Error(
-        `${configName} profile "${profile}" must match ^[a-z][a-z0-9_-]*$`,
-      );
-    }
-    profiles[profile] = parseProfileConfig(rawProfile, configName, profile);
-  }
-  return profiles;
-}
-
-// TODO(dcramer): Remove env profile settings after supported deployments no
-// longer use AI_MODEL, AI_HANDOFF_MODEL, or AI_MODEL_PROFILES.
-function parseProfiles(
-  rawValue: string | undefined,
-  standardModelId: string,
-  handoffModelId: string,
-): Readonly<Record<string, ModelProfileConfig>> {
-  const profiles: Record<string, ModelProfileConfig> = {
-    standard: {
-      ...DEFAULT_MODEL_PROFILES.standard,
-      modelId: standardModelId,
-    },
-    handoff: {
-      ...DEFAULT_MODEL_PROFILES.handoff,
-      modelId: handoffModelId,
-    },
-  };
-  const trimmed = toOptionalTrimmed(rawValue);
-  if (trimmed === undefined) {
-    return profiles;
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    throw new Error("AI_MODEL_PROFILES must be a JSON object");
-  }
-  return {
-    ...profiles,
-    ...parseProfileMap(parsed, "AI_MODEL_PROFILES"),
-  };
-}
-
 function parseReactionEmoji(
   envName: string,
   rawValue: string | undefined,
@@ -453,21 +303,6 @@ function parseReactionEmoji(
   return normalized;
 }
 
-function warnDeprecatedProfileEnv(env: NodeJS.ProcessEnv): void {
-  for (const envName of [
-    "AI_MODEL",
-    "AI_HANDOFF_MODEL",
-    "AI_MODEL_PROFILES",
-  ] as const) {
-    if (toOptionalTrimmed(env[envName]) !== undefined) {
-      logWarn("config.profile_env.deprecated", {
-        "app.config.env_name": envName,
-        "app.config.replacement": "createApp({ defaultProfile, profiles })",
-      });
-    }
-  }
-}
-
 function readBotConfig(
   env: NodeJS.ProcessEnv,
   functionMaxDurationSeconds: number,
@@ -480,13 +315,10 @@ function readBotConfig(
     DEFAULT_FAST_MODEL_ID;
   const guardianModelId =
     validateGatewayModelId(env.AI_GUARDIAN_MODEL) ?? DEFAULT_GUARDIAN_MODEL_ID;
-  const handoffModelId =
-    validateGatewayModelId(env.AI_HANDOFF_MODEL) ?? DEFAULT_HANDOFF_MODEL_ID;
 
   return {
     userName: toOptionalTrimmed(env.JUNIOR_BOT_NAME) ?? "junior",
-    defaultProfile: "standard",
-    profiles: parseProfiles(env.AI_MODEL_PROFILES, modelId, handoffModelId),
+    modelId,
     contextWindowTokens:
       parseOptionalPositiveInteger(
         "AI_MODEL_CONTEXT_WINDOW_TOKENS",
@@ -494,7 +326,7 @@ function readBotConfig(
       ) ?? DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS,
     reasoningLevel:
       reasoningLevel === undefined
-        ? undefined
+        ? DEFAULT_REASONING_LEVEL
         : parseTurnReasoningLevel(reasoningLevel),
     decisionModelId:
       toOptionalTrimmed(env.AI_DECISION_MODEL) ?? DEFAULT_DECISION_MODEL_ID,
@@ -509,6 +341,9 @@ function readBotConfig(
     rerankingModelId:
       toOptionalTrimmed(env.AI_RERANKING_MODEL) ?? DEFAULT_RERANKING_MODEL_ID,
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
+    refusalFallbackModelId: validateGatewayModelId(
+      env.AI_REFUSAL_FALLBACK_MODEL,
+    ),
     visionModelId:
       env.AI_VISION_MODEL === undefined
         ? DEFAULT_VISION_MODEL_ID
@@ -585,7 +420,6 @@ export function readChatConfig(
   functionMaxDurationSeconds = DEFAULT_FUNCTION_MAX_DURATION_SECONDS,
 ): ChatConfig {
   const databaseUrl = readDatabaseUrl(env);
-  warnDeprecatedProfileEnv(env);
   const resolvedFunctionMaxDurationSeconds = resolveFunctionMaxDurationSeconds(
     functionMaxDurationSeconds,
   );
@@ -594,12 +428,18 @@ export function readChatConfig(
     bot: readBotConfig(env, resolvedFunctionMaxDurationSeconds),
     queue: readQueueConfig(env),
     functionMaxDurationSeconds: resolvedFunctionMaxDurationSeconds,
-    conversationWorkEnabled: parseConversationWorkEnabled(
+    cacheWarmingEnabled: parseKillSwitch(
+      "JUNIOR_CACHE_WARMING_ENABLED",
+      env.JUNIOR_CACHE_WARMING_ENABLED,
+    ),
+    conversationWorkEnabled: parseKillSwitch(
+      "JUNIOR_CONVERSATION_WORK_ENABLED",
       env.JUNIOR_CONVERSATION_WORK_ENABLED,
     ),
     conversationWorkSoftYieldAfterMs: resolveConversationWorkSoftYieldAfterMs(
       resolvedFunctionMaxDurationSeconds,
     ),
+    encryption: readEncryptionKeyring(env),
     sql: {
       databaseUrl,
       driver: readSqlDriver(env, databaseUrl),
@@ -838,6 +678,13 @@ export interface SlackReactionConfig {
 
 /** Apply model overrides from createApp(). */
 export function setBotModelConfig(config: BotModelConfig): void {
+  if (config.modelId !== undefined) {
+    botConfig.modelId = requireModelId(
+      "modelId",
+      config.modelId,
+      validateGatewayModelId,
+    );
+  }
   if (config.decisionModelId !== undefined) {
     botConfig.decisionModelId = requireModelId(
       "decisionModelId",
@@ -887,6 +734,13 @@ export function setBotModelConfig(config: BotModelConfig): void {
       validateGatewayModelId,
     );
   }
+  if (config.refusalFallbackModelId !== undefined) {
+    botConfig.refusalFallbackModelId = requireModelId(
+      "refusalFallbackModelId",
+      config.refusalFallbackModelId,
+      validateGatewayModelId,
+    );
+  }
   if (config.webSearchModelId !== undefined) {
     botConfig.webSearchModelId = requireModelId(
       "webSearchModelId",
@@ -894,28 +748,6 @@ export function setBotModelConfig(config: BotModelConfig): void {
       validateGatewayModelId,
     );
   }
-}
-
-/** Apply profiles from createApp(). */
-export function setProfiles(
-  profiles: Readonly<Record<string, ModelProfileInput>> | undefined,
-  defaultProfile: string | undefined,
-): void {
-  if (!profiles || !defaultProfile) {
-    throw new Error("profiles and defaultProfile must be configured together");
-  }
-  const configuredProfiles = parseProfileMap(profiles, "profiles");
-  const selectedDefault = defaultProfile;
-  if (!modelProfileSchema.safeParse(selectedDefault).success) {
-    throw new Error(
-      `defaultProfile "${selectedDefault}" must match ^[a-z][a-z0-9_-]*$`,
-    );
-  }
-  if (!Object.hasOwn(configuredProfiles, selectedDefault)) {
-    throw new Error(`defaultProfile "${selectedDefault}" is not configured`);
-  }
-  botConfig.profiles = configuredProfiles;
-  botConfig.defaultProfile = selectedDefault;
 }
 
 /** Return the current Slack reaction emoji config. */

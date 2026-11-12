@@ -4,6 +4,7 @@
  */
 import { Hono } from "hono";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { isAllowedSignInEmail } from "@/chat/sign-in/allowlist";
 import { handleMcpAuthorize } from "./oauth/authorization";
@@ -36,6 +37,8 @@ export const MCP_ROUTE_PATHS = [
 type McpHttpHandlerOptions = {
   /** The app's `allowedDomains`. */
   allowedDomains: readonly string[];
+  /** Attachment storage for messages that MCP clients send. */
+  attachmentStorage: AttachmentStorage;
   /** Configured public origin. Unset allows only loopback request origins. */
   baseURL?: string;
   /** Conversation work queue. Stopping a Turn clears its queued work. */
@@ -110,6 +113,7 @@ export function createMcpHttpHandler(
       return new Response(null, { status: 405, headers: { allow: "POST" } });
     }
     return await handleMcpServerRequest(c.req.raw, {
+      attachmentStorage: options.attachmentStorage,
       queue: options.queue,
       scopes: grant.scopes,
       user,

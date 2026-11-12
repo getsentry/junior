@@ -1,5 +1,5 @@
 import { eventMatchSchema } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 
 /**
  * One active Watch that a Conversation owns: its own, or one that a child agent

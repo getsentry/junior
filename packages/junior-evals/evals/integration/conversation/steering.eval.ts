@@ -102,7 +102,7 @@ describe("Slack Turn Steering", () => {
     expect(next.reactions).toEqual([]);
   });
 
-  test("when someone says stop during a turn, Junior stops and stays out of the thread", async ({
+  test("when someone says stop during a turn, Junior stops the turn until a later mention", async ({
     agent,
   }) => {
     const { run } = await agent(PASSIVE_ROUTING);
@@ -116,14 +116,15 @@ describe("Slack Turn Steering", () => {
 
     expect(conversation.turns.map((turn) => turn.status)).toEqual(["no_reply"]);
     expect(conversation.replies.map((reply) => reply.text)).toEqual([
-      expect.stringContaining("stay out of this thread"),
+      "Stopped.",
     ]);
     expect(conversation.reactions).not.toContain("white_check_mark");
 
+    // The stop keeps the thread, so a later mention starts a Turn again.
     const next = await conversation.continue(
-      slackThreadMessage("what about the regions?"),
+      slackMention("Reply with only the word ready."),
     );
-    expect(next.turns).toEqual([]);
+    expect(next.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
   });
 });
 

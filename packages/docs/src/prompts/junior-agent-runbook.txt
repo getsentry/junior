@@ -96,15 +96,17 @@ silently replacing it.
 
   JUNIOR_SECRET=$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64url'))")
   CRON_SECRET=$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64url'))")
+  JUNIOR_ENCRYPTION_KEYS=$(node -e "process.stdout.write(new Date().toISOString().slice(0, 7) + ':' + require('node:crypto').randomBytes(32).toString('base64url'))")
   for ENV in production preview development; do
     printf '%s' "$JUNIOR_SECRET" | pnpm dlx vercel@latest env add JUNIOR_SECRET "$ENV" $VERCEL_SCOPE
     printf '%s' "$CRON_SECRET" | pnpm dlx vercel@latest env add CRON_SECRET "$ENV" $VERCEL_SCOPE
+    printf '%s' "$JUNIOR_ENCRYPTION_KEYS" | pnpm dlx vercel@latest env add JUNIOR_ENCRYPTION_KEYS "$ENV" $VERCEL_SCOPE
     printf '%s' '900000' | pnpm dlx vercel@latest env add VERCEL_SANDBOX_KEEPALIVE_MS "$ENV" $VERCEL_SCOPE
   done
-  unset JUNIOR_SECRET CRON_SECRET
+  unset JUNIOR_SECRET CRON_SECRET JUNIOR_ENCRYPTION_KEYS
 
 Success:
-- JUNIOR_SECRET, CRON_SECRET, and VERCEL_SANDBOX_KEEPALIVE_MS are listed in all
+- JUNIOR_SECRET, CRON_SECRET, JUNIOR_ENCRYPTION_KEYS, and VERCEL_SANDBOX_KEEPALIVE_MS are listed in all
   three environments. Their values were never printed.
 
 ## Phase 5 — First production deploy
@@ -170,16 +172,11 @@ bot to a test channel, mention it, and confirm that it reacts and replies in the
 same thread. If URL validation or delivery fails, use:
   https://junior.sentry.dev/start-here/verify-and-troubleshoot/
 
-Also verify the Vercel deployment contains:
-- the /api/internal/heartbeat cron
-- Queue triggers for /api/internal/agent/continue and /api/internal/plugin/tasks
-
 ## Done
 
 Report only non-secret results:
 - local app directory
 - linked Vercel project and production URL
 - health result
-- heartbeat and Queue trigger result
 - Slack reply result
 - any optional setup left undone

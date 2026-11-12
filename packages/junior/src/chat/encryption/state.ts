@@ -1,0 +1,74 @@
+import type { StateAdapter } from "chat";
+import {
+  decryptSecret,
+  encryptSecret,
+  isEncryptedSecret,
+  UnreadableSecretError,
+} from "@/chat/encryption/secret";
+import { logWarn } from "@/chat/logging";
+
+/** Key-value state that keeps each value encrypted at rest. */
+export interface EncryptedState {
+  get(key: string): Promise<unknown>;
+  set(key: string, value: unknown, ttlMs?: number): Promise<void>;
+}
+
+/** One decrypted value. `stale` means the owner should save it again. */
+export interface EncryptedStateRead {
+  stale: boolean;
+  value: unknown;
+}
+
+/**
+ * Decrypt one stored envelope. The storage key is the encryption context.
+ * A value that cannot be decrypted, such as one from a key that is no longer
+ * configured or one that was altered, reads as missing. The owner then asks
+ * for the credential again and saves it with the active key.
+ */
+function decode(key: string, envelope: string): EncryptedStateRead | undefined {
+  let decrypted: { stale: boolean; text: string };
+  try {
+    decrypted = decryptSecret(envelope, key);
+  } catch (error) {
+    if (!(error instanceof UnreadableSecretError)) throw error;
+    logWarn("encryption.secret_unreadable", { "error.type": error.reason });
+    return undefined;
+  }
+  return { stale: decrypted.stale, value: JSON.parse(decrypted.text) };
+}
+
+/**
+ * Wrap a state adapter so values are JSON-encoded and encrypted before they
+ * reach storage. Keys and TTLs stay readable. Use it for credentials and
+ * other secrets; delete, lock, and keep plain state on the base adapter.
+ */
+export function createEncryptedState(state: StateAdapter): EncryptedState {
+  return {
+    async get(key) {
+      const stored = await state.get<unknown>(key);
+      // A value that is not an envelope, such as one saved before
+      // encryption, reads as missing.
+      if (!isEncryptedSecret(stored)) return undefined;
+      return decode(key, stored)?.value;
+    },
+    async set(key, value, ttlMs) {
+      await state.set(key, encryptSecret(JSON.stringify(value), key), ttlMs);
+    },
+  };
+}
+
+/**
+ * Read a value and report whether it is stale: encrypted with a key that is
+ * not active, or saved before encryption. Long-lived owners save stale values
+ * again, so they move to the active key.
+ */
+export async function readEncryptedState(
+  state: StateAdapter,
+  key: string,
+): Promise<EncryptedStateRead | undefined> {
+  const stored = await state.get<unknown>(key);
+  if (stored === null || stored === undefined) return undefined;
+  // TODO(dcramer): Delete after no plaintext credential keys remain.
+  if (!isEncryptedSecret(stored)) return { stale: true, value: stored };
+  return decode(key, stored);
+}

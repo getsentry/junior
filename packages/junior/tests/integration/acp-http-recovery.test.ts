@@ -9,7 +9,6 @@ import { createAcpConversations } from "@/api/acp/conversations";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore } from "@/chat/db";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { recordConversationExecution } from "@/chat/task-execution/state";
 import {
   closeConversationFixture,
   createConversationWebHarness,
@@ -34,7 +33,7 @@ import {
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
 import { readProxyProperty } from "../fixtures/proxy-property";
-import { testViewer } from "../fixtures/user";
+import { signedInViewer } from "../fixtures/user";
 
 mockAcpDashboardConfig();
 
@@ -114,7 +113,7 @@ describe("remote ACP recovery", () => {
       completeAcpAuthorization({
         state: harness.state,
         transactionId,
-        user: testViewer(harness.actor.email),
+        user: await signedInViewer(harness.actor.email),
         userCode:
           userCode === "0000-0000-0000" ? "1111-1111-1111" : "0000-0000-0000",
       }),
@@ -150,7 +149,7 @@ describe("remote ACP recovery", () => {
       completeAcpAuthorization({
         state: harness.state,
         transactionId,
-        user: testViewer(harness.actor.email),
+        user: await signedInViewer(harness.actor.email),
         userCode,
       }),
     ).resolves.toBe("expired");
@@ -303,7 +302,7 @@ describe("remote ACP recovery", () => {
       completeAcpAuthorization({
         state: harness.state,
         transactionId,
-        user: testViewer(harness.actor.email),
+        user: await signedInViewer(harness.actor.email),
         userCode: verificationCodeFromElicitation(params),
       }),
     ).resolves.toBe("completed");
@@ -766,7 +765,7 @@ describe("remote ACP recovery", () => {
       state: harness.state,
     });
     const conversationId = `local:acp:${"1".repeat(32)}`;
-    const user = testViewer(harness.actor.email);
+    const user = await signedInViewer(harness.actor.email);
     await conversations.create({ conversationId, user });
     const first = await conversations.prompt({
       conversationId,
@@ -780,14 +779,14 @@ describe("remote ACP recovery", () => {
     await harness.drain();
 
     const failedAtMs = Date.now();
-    await recordConversationExecution({
-      conversationId,
-      createdAtMs: failedAtMs,
-      execution: { status: "failed", updatedAtMs: failedAtMs },
-      lastActivityAtMs: failedAtMs,
-      state: harness.state,
-      updatedAtMs: failedAtMs,
-    });
+    // Seed the residue of a Run that failed during cleanup.
+    const workKey = `junior:conversation:v2:${conversationId}`;
+    const raw = (await harness.state.get(workKey)) as {
+      execution: { status: string; updatedAtMs: number };
+    };
+    raw.execution.status = "failed";
+    raw.execution.updatedAtMs = failedAtMs;
+    await harness.state.set(workKey, raw);
     await expect(
       conversations.readTurn({
         afterCursor: first.afterCursor,

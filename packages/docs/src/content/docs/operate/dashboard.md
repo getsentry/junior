@@ -95,7 +95,7 @@ The dashboard package owns these routes:
 | `/system/workspaces/:id/edit`   | Full-page Workspace editor.                       |
 | `/system/plugins`               | Loaded plugin and skill inventory.                |
 | `/system/plugins/:plugin`       | Plugin details and operational reports.           |
-| `/_junior/dashboard/client.js`  | Authenticated dashboard browser bundle.           |
+| `/_junior/dashboard/assets/*`   | Public content-hashed dashboard browser files.    |
 | `/_junior/dashboard/avatar.png` | Authenticated Junior header avatar.               |
 | `/auth/login`                   | Dashboard Google login starter.                   |
 | `/api/auth/*`                   | Better Auth Google login and callbacks.           |
@@ -122,6 +122,7 @@ The current authenticated product API slices are:
 | `/api/automations`                        | Viewer-owned scheduled and event automations.                                                                                                                                                         |
 | `/api/automations/:id`                    | Deletes one viewer-owned scheduled or event automation.                                                                                                                                               |
 | `/api/skills`                             | Discovered skill list.                                                                                                                                                                                |
+| `/api/skills/:name`                       | One skill with its `SKILL.md` body, without frontmatter.                                                                                                                                              |
 | `/api/conversations`                      | Recent SQL conversation feed; optional `actorEmail` is a normalized presentation filter, not authorization; optional `codeRepositoryId` lists conversations linked to that repository's code changes. |
 | `/api/conversations/stats`                | Complete 90-day conversation stats and people/place leaderboards aggregated by SQL.                                                                                                                   |
 | `/api/code`                               | Native code-change overview across repositories.                                                                                                                                                      |
@@ -134,23 +135,25 @@ The current authenticated product API slices are:
 | `/api/locations/:location`                | Activity, actors, and recent conversations for one public location.                                                                                                                                   |
 | `/api/plugin-reports`                     | Sanitized plugin operational summaries.                                                                                                                                                               |
 | `/api/conversations/:conversation`        | Conversation header metadata and expiring transcript; private transcripts are participant-authorized.                                                                                                 |
-| `/api/conversations/:conversation/events` | Earlier transcript event pages selected with a signed `before` cursor.                                                                                                                                |
+| `/api/conversations/:conversation/events` | Transcript event pages selected with a signed cursor, an event seq, or a Turn id.                                                                                                                     |
 | `/api/config`                             | Safe dashboard config signals and feature readiness.                                                                                                                                                  |
 | `/api/me`                                 | Signed-in dashboard identity.                                                                                                                                                                         |
 
 For a private conversation, the transcript is available only when the signed-in verified email matches the owning root conversation actor's persisted verified email. Conversation summary resources report that match through `isParticipant`; event-page resources apply the same authorization decision through their projected events and `eventHistory`. Other viewers receive redacted metadata. Top-level conversation resources and System, People, and Location statistics include descendant duration and usage even when child resources are loaded separately. A directly requested child reports only its own metrics.
 
-The dashboard UI is a React client using React Router for browser views and TanStack Query for authenticated product API state. `/` is a focused workspace listing the signed-in actor's conversations in a sidebar; `/conversations/:conversation` selects a transcript in that workspace. `/automations` combines the signed-in user's scheduled and event automations. `/code` shows install-wide native code-change volume, merge rate, median merge time, and conversation cost. `/conversations` redirects to the personal workspace instead of exposing a global conversation index. `/system` owns runtime metrics and the People, Locations, and Plugins reporting views. People and Locations remain separate pages under System so their directories and detail views stay focused. Person profiles include the same native code stats as `/code`, scoped to that actor. Each `/system/plugins/:plugin` page shows that plugin's details and any operational summaries the plugin still publishes. Plugins may also register signed-in pages in primary navigation or the profile menu; Junior owns their route, metrics, search, pagination, record inspection, and actions. System always remains the last primary navigation item. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
+The dashboard UI is a React client using React Router for browser views and TanStack Query for authenticated product API state. `/` is a focused workspace listing the signed-in actor's conversations in a sidebar; `/conversations/:conversation` selects a transcript in that workspace. `/automations` combines the signed-in user's scheduled and event automations. `/code` shows install-wide native code-change volume, merge rate, median merge time, and conversation cost. `/conversations` redirects to the personal workspace instead of exposing a global conversation index. `/system` owns runtime metrics and the People, Locations, and Plugins reporting views. People and Locations remain separate pages under System so their directories and detail views stay focused. Person profiles include the same native code stats as `/code`, scoped to that actor. Each `/system/plugins/:plugin` page shows that plugin's details and any operational summaries the plugin still publishes. Plugins may also register signed-in pages in primary navigation or the profile menu; Junior owns their route, metrics, search, pagination, record inspection, and actions. For a signed-in viewer, Code, System, and the Memories page are in the profile menu, not in primary navigation. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
 On desktop, the conversation sidebar and selected transcript scroll independently within the viewport. Mobile presents the list and selected conversation as separate navigable views.
 When dashboard auth is explicitly disabled for local or demo use, Junior uses `dev@example.com` as the verified local viewer. The workspace and API use that viewer for conversation access and writes.
-The conversation feed and detail are backed by durable SQL conversation and event records. Retention and purge settings determine when transcript data is removed. Conversation detail returns the latest 500 reporting events by default and a `previousCursor` when earlier events remain. The `limit` query parameter can select between 1 and 1,000 events. Cursors are signed for one conversation; consumers should treat them as opaque.
+The conversation feed and detail are backed by durable SQL conversation and event records. Retention and purge settings determine when transcript data is removed. By default, conversation detail returns the reporting events of the latest three Turns, up to 150 events, and a `previousCursor` when earlier events remain. The page starts after the Turn before them, so it includes their input messages. The `limit` query parameter selects the latest 1 to 1,000 events instead. Cursors are signed for one conversation; consumers should treat them as opaque.
 
-The dashboard polls the bounded detail resource while a conversation is active and loads earlier pages from the `/events` collection on demand. Conversation detail pages source their header and Sentry conversation link from `/api/conversations/:conversation`, not from the recent feed. When `SENTRY_DSN` initializes the runtime and `SENTRY_ORG_SLUG` is set, conversation detail includes a Sentry conversation link; when the runtime captures a trace ID, conversation detail shows it with the run metadata.
+When the signed-in viewer's read position is older than those events, detail also returns an `unreadCursor`. The read position is never before the viewer's latest Message, from the dashboard or from Slack, because the viewer saw the transcript up to it. By default, an `/events` page holds 150 events. Use `limit` to select 1 to 1,000. Pass a cursor as `before` to the `/events` collection to page toward the start, or as `after` to page toward the latest. Pass it as `around` to get one page on both sides of the cursor event: half of the page ends with that event, and the rest follows it. `after` and `around` pages return a `nextCursor` when newer events follow them. Add `unreadPage=true` to the detail request to also get the `around` page of `unreadCursor` as `unreadPage`. Pass `event=<seq>` to get the page around one event, or `turn=<turnId>` to get the page around the event that started a Turn. An unknown Turn returns 404. Add `mailbox=true` to also get the `/pending-messages` report as `mailbox`. Junior reads the mailbox before history, so a message that moves from the mailbox to history between the two reads is in at least one of them. When the detail version that the request sends still matches, a request with `mailbox=true` returns `200` with `{ "unchanged": true, "mailbox": ... }` instead of 304. Detail also returns an `appendCursor`. Pass it as `after` to the next detail request to get only the events after it, with `appended: true`. That report omits `previousCursor` and `unreadCursor`, because the reader already has them. When events that the reader has may now look different, for example after an access change, a matched Slack file, or a Junior upgrade, or when more than a page of events is new, the request gets the latest page instead. Names and mentions in events that the reader has refresh with a reload.
+
+The dashboard polls the bounded detail resource while a conversation is active and loads earlier pages from the `/events` collection on demand. A viewer whose read position is older than the latest events opens at the read position, with the page around it. The first detail request of a visit asks for that page, so the dashboard needs no second request. Polls do not ask for it. Each detail request, including polls, also asks for the mailbox, so a poll is one request. Polls send `after`, so the server reads only the new events. The dashboard loads newer pages when the viewer scrolls near them, the same way as earlier pages. A link to an event, a Turn, or a memory that the loaded events do not hold opens at the page around it, with one `event` or `turn` request. The memory list gives the seq of each recall and capture. Jump to latest, a send, or the mobile keyboard skips the newer pages. The dashboard then shows the latest page from detail, with no request, and loads earlier pages above it as the viewer scrolls up. Conversation detail pages source their header and Sentry conversation link from `/api/conversations/:conversation`, not from the recent feed. When `SENTRY_DSN` initializes the runtime and `SENTRY_ORG_SLUG` is set, conversation detail includes a Sentry conversation link; when the runtime captures a trace ID, conversation detail shows it with the run metadata.
 When `SENTRY_DSN` is set, dashboard pages also send browser performance spans to that project, in the same trace as the server requests. The browser sends no errors or replays.
 The conversation stats endpoint is separate from the recent feed. PostgreSQL computes complete 90-day counts, locations, actors, status, runtime, token usage, and estimated cost directly from durable conversation-index records; those aggregates are not derived from a bounded recent-row sample.
 Dashboard dates use the viewer's browser timezone. `JUNIOR_TIMEZONE` does not change them.
 
-For local dashboard visual QA, pass `mockConversations: true` in the dashboard config or set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` for the env-configured path. The sample conversations are read-only reporting fixtures and appear before real conversation records.
+For local dashboard visual QA, pass `mockConversations: true` in the dashboard config or set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` for the env-configured path. The sample conversations are reporting fixtures and appear before real conversation records. Messages that you send get a fixed reply, and no agent runs.
 
 ## Configure Google auth
 
@@ -169,6 +172,55 @@ Set the required environment variables:
 
 Dashboard cookies are signed with `JUNIOR_SECRET` by default. Set `BETTER_AUTH_SECRET` only when you need a separate rotation boundary for browser sessions.
 Dashboard callbacks use `dashboard.baseURL`, `JUNIOR_BASE_URL`, Vercel URL envs, or local dev by default. Set `JUNIOR_BASE_URL` to the public origin users should visit. Alternate deployment origins redirect there before Google sign-in so the OAuth state and callback cookies share one host. Slack reply footers and other surfaces that include a dashboard conversation link use the same public origin.
+
+## Configure push notifications
+
+The dashboard can send push notifications through Web Push. When Junior
+replies in a dashboard Conversation, the person who sent the message gets a
+notification on each device that they turned on. A Conversation in a Slack
+thread does not send these notifications. Slack notifies people there. A
+quiet reply to a watch event sends no notification.
+
+1. Create one VAPID key pair for the deployment:
+
+   ```bash
+   npx web-push generate-vapid-keys
+   ```
+
+2. Set the environment variables:
+
+   | Variable                      | Required | Purpose                                                                                                                                 |
+   | ----------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+   | `JUNIOR_WEB_PUSH_PUBLIC_KEY`  | Yes      | VAPID public key. The browser uses it to subscribe.                                                                                     |
+   | `JUNIOR_WEB_PUSH_PRIVATE_KEY` | Yes      | VAPID private key. Keep it secret.                                                                                                      |
+   | `JUNIOR_WEB_PUSH_SUBJECT`     | No       | `mailto:` or `https:` contact for push services. Defaults to an `https:` `JUNIOR_BASE_URL`. Notifications stay off with an `http:` URL. |
+
+3. Redeploy. Each person opens **Settings** and selects **Turn on for this
+   device**. After a person starts a dashboard Conversation, the dashboard
+   also shows a tip one time in each browser. The person can turn on
+   notifications from the tip.
+
+On iPhone and iPad, Web Push works only from a Home Screen app. Open the
+dashboard in Safari, select **Share**, then **Add to Home Screen**. Open Junior
+from the Home Screen and turn on notifications there.
+
+Each person sets working hours in **Settings**: days, a start time, an end
+time, and a timezone. The default is 09:00 to 18:00, Monday to Friday. Outside
+these hours, Junior does not send a notification. The reply still shows in the
+dashboard. The automatic timezone comes from the person's linked Slack profile,
+then the saved user timezone, then `JUNIOR_TIMEZONE`. Calendar working hours
+are not used, because Google Calendar does not make them available.
+
+For a person with a linked Slack account, push notifications follow their
+Slack notification schedule by default. Junior asks Slack at most one time
+each minute for each person and pauses when Slack pauses. A person with no Slack schedule
+gets notifications at any time. Slack does not show Junior a manual pause,
+only the schedule. To use only the working hours, clear **Follow my Slack
+notification schedule**. Junior uses the working hours when the person has no
+linked Slack account or Slack cannot answer. This needs the `dnd:read` bot
+scope. After you add the scope, reinstall the Slack app.
+
+If you change the key pair, every device must turn notifications on again.
 
 ## Verify
 

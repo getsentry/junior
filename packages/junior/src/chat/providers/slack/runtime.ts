@@ -42,8 +42,8 @@ import {
 import {
   getTurnInputSpanAttributes,
   withTurnSpan,
-  type SlackTurnInputTelemetry,
-} from "@/chat/providers/slack/turn-input-telemetry";
+  type TurnInputTelemetry,
+} from "@/chat/task-execution/turn-telemetry";
 import {
   getChannelId,
   getMessageTs,
@@ -96,8 +96,8 @@ export interface ReplyHooks {
   onTurnStatePersisted?: () => Promise<void>;
   isFinalAttempt?: boolean;
   shouldYield?: () => boolean;
+  checkIn?: () => Promise<boolean>;
   stopSignal?: AbortSignal;
-  subscribeThread?: () => Promise<boolean>;
 }
 
 interface SteeringDrainContext {
@@ -107,7 +107,7 @@ interface SteeringDrainContext {
 export interface SlackTurnOptions extends ReplyHooks {
   conversationId?: string;
   destination: Destination;
-  telemetry?: SlackTurnInputTelemetry;
+  telemetry?: TurnInputTelemetry;
 }
 
 /** Sent when a stop decision unsubscribes a thread. */
@@ -200,6 +200,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
         context?: SteeringDrainContext,
       ) => Promise<QueuedTurnMessage[]>;
       shouldYield?: () => boolean;
+      checkIn?: () => Promise<boolean>;
       stopSignal?: AbortSignal;
     },
   ) => Promise<void>;
@@ -731,13 +732,7 @@ export function createSlackTurnRuntime<
           actorUserName: actorUserName(message),
           runId,
         });
-        const subscribed = hooks.subscribeThread
-          ? await hooks.subscribeThread()
-          : (await thread.subscribe(), true);
-        if (!subscribed) {
-          await hooks.ack?.();
-          return;
-        }
+        await thread.subscribe();
         processingReaction = await processingReactions.start(context, message);
         const toolInvocationHook = createToolInvocationHook(
           processingReaction,
@@ -807,6 +802,7 @@ export function createSlackTurnRuntime<
             drainSteeringMessages,
             onTurnStatePersisted: hooks.onTurnStatePersisted,
             shouldYield: hooks.shouldYield,
+            checkIn: hooks.checkIn,
             stopSignal: hooks.stopSignal,
           });
         });
@@ -1187,6 +1183,7 @@ export function createSlackTurnRuntime<
             drainSteeringMessages,
             onTurnStatePersisted: hooks.onTurnStatePersisted,
             shouldYield: hooks.shouldYield,
+            checkIn: hooks.checkIn,
             stopSignal: hooks.stopSignal,
           });
         });

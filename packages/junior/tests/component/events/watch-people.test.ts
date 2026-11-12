@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
   createSlackSource,
   defineJuniorPlugin,
@@ -16,6 +17,11 @@ import {
   SLACK_DESTINATION,
   createConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
 
 async function seedSlackUser(args: {
   email: string;
@@ -89,6 +95,7 @@ describe("Watch Event people", () => {
       slackUserId: "U999",
     });
     getPluginTools({
+      turnTools: rootTurnTools,
       conversationId: CONVERSATION_ID,
       destination: SLACK_DESTINATION,
       egress: { fetch: async () => new Response("ok") },
@@ -141,16 +148,16 @@ describe("Watch Event people", () => {
     const [succeeded, failed] = (work?.messages ?? []).map(
       (message) => message.input.text,
     );
-    // The doer is in People involved, so they are listed once, with the
+    // The doer is in the people involved, so they are listed once, with the
     // handle that the Event uses for them.
     expect(succeeded).toContain(
-      'People involved: <@U123> (did what this Event describes; called "REQUESTER" in the Event data), <@U456>\n',
+      '<people><@U123> (did what this Event describes; called "REQUESTER" in the Event data), <@U456></people>\n',
     );
-    expect(succeeded).not.toContain("Done by:");
+    expect(succeeded).not.toContain("<done-by>");
     expect(succeeded).toContain("Tell the people involved.");
     // Watch guidance applies only to its own event type.
     expect(failed).toContain(
-      'People involved: <@U123> (did what this Event describes; called "REQUESTER" in the Event data), <@U456>\n',
+      '<people><@U123> (did what this Event describes; called "REQUESTER" in the Event data), <@U456></people>\n',
     );
     expect(failed).not.toContain("Tell the people involved.");
   });

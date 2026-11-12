@@ -17,7 +17,7 @@ import { ForkConversationButton } from "./ForkConversationButton";
 // Step buttons keep focus at the ends of the log, so style the ARIA state.
 // They sit in one bordered group, so they are a little smaller than `size-9`.
 const stepButtonClass =
-  "size-8 data-disabled:cursor-not-allowed data-disabled:opacity-50 data-disabled:hover:!bg-transparent data-disabled:hover:!text-dashboard-text-muted";
+  "size-8 data-disabled:cursor-not-allowed data-disabled:opacity-50 data-disabled:hover:bg-transparent data-disabled:hover:text-dashboard-text-muted";
 
 /**
  * Show the selected event without blocking the main conversation's event log.
@@ -71,6 +71,7 @@ export function ConversationEventDetails(props: {
         className="rounded-md border border-dashboard-border"
       >
         <Button
+          variant="ghost"
           aria-label="Previous event"
           className={stepButtonClass}
           disabled={props.previous === undefined}
@@ -85,6 +86,7 @@ export function ConversationEventDetails(props: {
         </Button>
         <ButtonGroupSeparator />
         <Button
+          variant="ghost"
           aria-label="Next event"
           className={stepButtonClass}
           disabled={props.next === undefined}

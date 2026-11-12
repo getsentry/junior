@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { StateAdapter } from "chat";
-import type { z } from "zod";
+import type * as z from "zod";
 
 /** Shared state operations used by MCP OAuth records. */
 export type McpState = Pick<

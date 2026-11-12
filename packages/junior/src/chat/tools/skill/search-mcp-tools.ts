@@ -2,7 +2,7 @@ import type {
   ManagedMcpToolDescriptor,
   McpAuthorizationContext,
 } from "@/chat/mcp/tool-manager";
-import { z } from "zod";
+import * as z from "zod";
 import { mcpProviderLabel } from "@/chat/mcp/tool-name";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { toExposedToolSummary } from "@/chat/tool-support/skill/mcp-tool-summary";

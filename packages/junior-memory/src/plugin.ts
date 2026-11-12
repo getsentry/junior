@@ -15,6 +15,7 @@ import { processMemorySession } from "./process-session";
 import { reembedMemories } from "./reembed";
 import { createMemoryPromptContributions } from "./recall";
 import { buildMemoryOperationalReport } from "./operational-report";
+import { extractionCostFlow, memoryCostsByDay } from "./model-cost";
 import {
   memoriesCapturedEvent,
   memoriesCapturedEventV1,
@@ -143,10 +144,11 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
         });
       },
       async operationalReport(ctx) {
-        const extractionDays = await ctx.eventStats.costsByDay({
-          days: 90,
-          eventName: "memories_captured",
-        });
+        const extractionDays = await memoryCostsByDay(
+          ctx.eventStats,
+          extractionCostFlow,
+          90,
+        );
         return await buildMemoryOperationalReport({
           db: ctx.db as MemoryDb,
           extractionDays,
@@ -169,27 +171,35 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
           db: ctx.db as MemoryDb,
           embedder: ctx.embedder,
         });
-        const readTools = {
+        // Only a person's message in a public Conversation may write memory.
+        // Disable the write tools instead of omitting them, so the tool list
+        // and the prompt cache stay the same in every Turn.
+        const writeAccess =
+          "visibility" in ctx.source && ctx.source.visibility === "public"
+            ? {}
+            : {
+                disabledReason:
+                  "Only a person's message in a public Conversation can write memory.",
+              };
+        return {
+          createMemory: {
+            ...createMemoryCreateTool(
+              memoryCreateToolContext({
+                ...ctx,
+                agent,
+                db: ctx.db as MemoryDb,
+                embedder: ctx.embedder,
+                supersessionDecider: agent,
+              }),
+            ),
+            ...writeAccess,
+          },
+          archiveMemory: {
+            ...createMemoryArchiveTool(context),
+            ...writeAccess,
+          },
           listMemories: createMemoryListTool(context),
           searchMemories: createMemorySearchTool(context),
-        };
-        // Only the main agent writes memory. Child agent runs can read memory
-        // and suggest memories in their result.
-        if (ctx.source.kind === "agent_invocation") {
-          return readTools;
-        }
-        return {
-          createMemory: createMemoryCreateTool(
-            memoryCreateToolContext({
-              ...ctx,
-              agent,
-              db: ctx.db as MemoryDb,
-              embedder: ctx.embedder,
-              supersessionDecider: agent,
-            }),
-          ),
-          archiveMemory: createMemoryArchiveTool(context),
-          ...readTools,
         };
       },
       ...(!options.disableRecall

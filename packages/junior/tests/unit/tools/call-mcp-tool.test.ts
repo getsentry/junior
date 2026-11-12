@@ -155,7 +155,7 @@ describe("callMcpTool", () => {
       ),
     ).resolves.toEqual({
       content: nativeContent,
-      details: { objectCards: [] },
+      details: { result: "image generated", objectCards: [] },
     });
   });
 

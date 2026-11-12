@@ -4,7 +4,7 @@ import {
   pluginToolOutputSchema,
   type PluginToolOutput,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { loadGitHubStatusIncidents } from "../github-status.js";
 
 const RECENT_INCIDENT_MS = 24 * 60 * 60 * 1000;

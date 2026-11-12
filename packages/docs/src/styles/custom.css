@@ -62,36 +62,26 @@ html:root[data-theme="light"] {
   width: 2rem;
 }
 
-body:has(.jr-home) {
+body:has(.jr-hero-stage) {
   background: var(--ve-bg);
   color: var(--jr-cream);
 }
 
-body:has(.jr-home) header.header {
-  background: var(--ve-bg-soft);
-  border-bottom: 1px solid var(--ve-line);
+/* The homepage is one screen: no top bar, just the hero. */
+body:has(.jr-hero-stage) header.header {
+  display: none;
+}
+
+body:has(.jr-hero-stage) .main-frame {
+  padding-top: 0;
 }
 
 /* The docs heading marker is for article pages, not the homepage. */
-body:has(.jr-home) .sl-markdown-content h2::before {
+body:has(.jr-hero-stage) .sl-markdown-content h2::before {
   content: none;
 }
 
-body:has(.jr-home) .site-title,
-body:has(.jr-home) .social-icons a,
-body:has(.jr-home) starlight-theme-select label,
-body:has(.jr-home) site-search button {
-  color: var(--jr-cream);
-}
-
-body:has(.jr-home) site-search button {
-  background: var(--ve-surface-raised);
-  border: 1px solid var(--ve-line);
-  border-radius: 0.5rem;
-  box-shadow: none;
-}
-
-body:has(.jr-home) .page {
+body:has(.jr-hero-stage) .page {
   background-color: var(--ve-bg);
   background-image: radial-gradient(
     circle,
@@ -101,15 +91,29 @@ body:has(.jr-home) .page {
   background-size: 17px 17px;
 }
 
-body:has(.jr-home) main {
+body:has(.jr-hero-stage) main {
   overflow: hidden;
+  padding: 0;
+  position: relative;
+}
+
+body:has(.jr-hero-stage) .content-panel {
+  padding: 0;
+}
+
+/*
+ * The page body holds only the demo dialog, which renders in the top layer.
+ * Drop the body's box so the hero stays one screen.
+ */
+body:has(.jr-hero-stage) .sl-markdown-content {
+  display: contents;
 }
 
 /*
  * Starlight centers .sl-container only at 72rem and wider. The full-width
- * homepage bands use calc(50% - 50vw), which needs a centered parent.
+ * hero uses calc(50% - 50vw), which needs a centered parent.
  */
-body:has(.jr-home) .sl-container {
+body:has(.jr-hero-stage) .sl-container {
   margin-inline: auto;
 }
 
@@ -117,70 +121,229 @@ body:has(.jr-home) .sl-container {
   box-sizing: border-box;
   margin-inline: calc(50% - 50vw);
   max-width: none;
-  min-height: min(76vw, 54rem);
-  padding: clamp(2rem, 5vw, 5rem) max(1.25rem, calc((100vw - 86rem) / 2));
+  align-content: center;
+  min-height: 100svh;
+  padding: 4rem max(1.25rem, calc((100vw - 86rem) / 2));
   position: relative;
   width: 100vw;
 }
 
-:root:not([data-has-sidebar]) .hero > div {
-  box-sizing: border-box;
-  margin-inline: auto;
-  max-width: none;
-  position: relative;
-  width: min(calc(100vw - 2.5rem), 86rem);
-  z-index: 3;
+:root:not([data-has-sidebar]) .hero > .hero-html {
+  order: 2;
+  width: 100%;
+}
+
+:root:not([data-has-sidebar]) .hero .stack {
+  text-align: start;
 }
 
 :root:not([data-has-sidebar]) .hero .copy {
-  align-items: center;
-  width: 100%;
+  align-items: flex-start;
+  gap: 1.25rem;
+}
+
+/* Starlight renders the tagline as one block; let its kicker sit above the h1. */
+:root:not([data-has-sidebar]) .hero .tagline {
+  display: contents;
+}
+
+:root:not([data-has-sidebar]) .hero .tagline p {
+  color: var(--jr-cream);
+  font-size: clamp(1.15rem, 1.6vw, 1.4rem);
+  line-height: 1.4;
+  margin: 0;
+  max-width: 28ch;
+  text-wrap: pretty;
+}
+
+:root:not([data-has-sidebar]) .hero .tagline .jr-hero-kicker {
+  color: var(--jr-yellow);
+  font-family: var(--sl-font-mono);
+  font-size: 0.95rem;
+  max-width: none;
+  order: -1;
 }
 
 :root:not([data-has-sidebar]) .hero :is(h1, [data-page-title]) {
-  margin: 0;
-  max-width: none;
-  width: 100%;
-}
-
-.jr-home-mega {
-  color: var(--jr-yellow);
-  display: block;
-  font-family: "Arial Black", Impact, Haettenschweiler, sans-serif;
-  font-size: clamp(5.2rem, 18vw, 16rem);
-  font-stretch: condensed;
-  font-weight: 950;
-  letter-spacing: -0.09em;
-  line-height: 0.72;
-  margin-inline: auto;
-  text-shadow: clamp(8px, 1.5vw, 22px) clamp(8px, 1.5vw, 22px) 0
-    var(--jr-violet);
-  transform: scaleX(1.08);
-  transform-origin: center;
-  width: max-content;
-  white-space: nowrap;
-}
-
-:root:not([data-has-sidebar]) .hero .tagline {
-  background: var(--jr-cream);
-  border: 4px solid var(--jr-black);
-  box-shadow: 8px 8px 0 var(--jr-black);
-  color: var(--jr-black);
+  color: var(--jr-cream);
   font-family: "Arial Black", Impact, sans-serif;
-  font-size: clamp(1.1rem, 2.2vw, 1.5rem);
-  font-weight: 900;
-  line-height: 1.25;
-  margin: clamp(2rem, 5vw, 4rem) auto 0;
-  max-width: 34rem;
-  padding: 1rem 1.25rem;
-  text-wrap: pretty;
-  transform: rotate(-2deg);
+  font-size: clamp(3.25rem, 6.5vw, 6rem);
+  font-weight: 950;
+  letter-spacing: -0.05em;
+  line-height: 0.95;
+  margin: 0;
+}
+
+.jr-hero-name {
+  color: var(--jr-yellow);
 }
 
 :root:not([data-has-sidebar]) .hero .actions {
   gap: 1.25rem;
-  justify-content: center;
-  margin-top: 1.75rem;
+  justify-content: flex-start;
+  margin-top: 0.75rem;
+}
+
+/*
+ * The pad and mascot share one coordinate space. --u is 1% of the stage
+ * width, so the claw keeps its grip on the pad at every size.
+ */
+.jr-hero-stage {
+  aspect-ratio: 920 / 712;
+  container-type: inline-size;
+  margin-inline: auto;
+  max-width: 58rem;
+  position: relative;
+  /* Leave room for the rotated pad's corner. */
+  width: 94%;
+  --u: 1cqw;
+}
+
+.jr-hero-mascot {
+  height: auto;
+  left: 52.2%;
+  position: absolute;
+  top: 0;
+  width: 47.8%;
+  z-index: 2;
+}
+
+.jr-pad {
+  background-color: #fff4b8;
+  background-image:
+    linear-gradient(
+      to right,
+      transparent calc(6.1 * var(--u)),
+      #e8656b calc(6.1 * var(--u)),
+      #e8656b calc(6.1 * var(--u) + 2px),
+      transparent calc(6.1 * var(--u) + 2px)
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent calc(4.13 * var(--u) - 1px),
+      #9cc3e6 calc(4.13 * var(--u) - 1px),
+      #9cc3e6 calc(4.13 * var(--u))
+    );
+  background-position:
+    0 0,
+    0 calc(0.65 * var(--u));
+  border-top: calc(3 * var(--u)) solid #8c1d2b;
+  box-shadow: calc(2 * var(--u)) calc(2.4 * var(--u)) 0 rgba(0, 0, 0, 0.4);
+  color: #1f2a44;
+  font-family: "Caveat", "Comic Sans MS", cursive;
+  left: 0;
+  padding: calc(1.8 * var(--u)) calc(8.7 * var(--u)) calc(2.8 * var(--u));
+  position: absolute;
+  top: 25%;
+  transform: rotate(-6deg);
+  width: 58.7%;
+  z-index: 1;
+}
+
+.jr-pad-title,
+.jr-pad li {
+  font-size: calc(3.04 * var(--u));
+  font-weight: 500;
+  line-height: calc(4.13 * var(--u));
+  margin: 0;
+}
+
+.jr-pad .jr-pad-title {
+  font-size: calc(3.7 * var(--u));
+  font-weight: 700;
+}
+
+.jr-pad ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* The demo thumbnail sits on the note's right side, over its lines. */
+.jr-demo-thumb {
+  background: var(--jr-cream);
+  border: 0;
+  box-shadow: calc(1 * var(--u)) calc(1.2 * var(--u)) 0 rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  padding: calc(0.7 * var(--u));
+  position: absolute;
+  right: calc(6.5 * var(--u));
+  rotate: 5deg;
+  top: 50%;
+  transition:
+    rotate 100ms ease,
+    scale 100ms ease;
+  translate: 0 -50%;
+  width: calc(26 * var(--u));
+  z-index: 1;
+}
+
+.jr-demo-thumb:hover {
+  rotate: 2deg;
+  scale: 1.05;
+}
+
+.jr-demo-thumb img {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.jr-demo-thumb svg {
+  fill: var(--jr-pink);
+  height: calc(7 * var(--u));
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  translate: -50% -50%;
+  width: calc(7 * var(--u));
+}
+
+.jr-demo-thumb svg path {
+  fill: var(--jr-cream);
+}
+
+.jr-demo-dialog {
+  background: var(--jr-black);
+  border: 4px solid var(--jr-cream);
+  box-shadow: 10px 10px 0 var(--jr-violet);
+  max-width: none;
+  padding: 0;
+  width: min(64rem, calc(100vw - 2.5rem));
+}
+
+/* The theme sets the body's first-child top margin to 0. Center the dialog. */
+.jr-demo-dialog:modal {
+  margin: auto;
+}
+
+.jr-demo-dialog::backdrop {
+  background: rgba(24, 16, 36, 0.85);
+}
+
+.jr-demo-dialog form {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.jr-demo-close {
+  background: var(--jr-pink);
+  border: 0;
+  color: var(--jr-black);
+  cursor: pointer;
+  font-family: "Arial Black", Impact, sans-serif;
+  font-size: 0.85rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  padding: 0.55rem 0.9rem;
+  text-transform: uppercase;
+}
+
+.jr-demo-dialog video {
+  aspect-ratio: 16 / 9;
+  display: block;
+  width: 100%;
 }
 
 :root:not([data-has-sidebar]) .hero .sl-link-button {
@@ -203,774 +366,70 @@ body:has(.jr-home) .sl-container {
   background: var(--jr-pink);
 }
 
-:root:not([data-has-sidebar]) .hero .sl-link-button:last-child {
-  background: var(--jr-cream);
-}
-
 :root:not([data-has-sidebar]) .hero .sl-link-button:hover {
   box-shadow: 3px 3px 0 var(--jr-black);
   transform: translate(4px, 4px);
 }
 
-.jr-home {
+/* Overlay the footer link on the hero's bottom padding so it adds no height. */
+body:has(.jr-hero-stage) footer {
+  bottom: 1.25rem;
   color: var(--jr-cream);
-  margin: -4rem auto 0;
-  max-width: 86rem;
-  padding: 0 1.25rem 4rem;
-  position: relative;
-}
-
-.jr-sticker-scene {
-  align-items: center;
-  display: grid;
-  grid-template-columns: 0.9fr 0.8fr 1.2fr 0.8fr 1fr;
-  min-height: 25rem;
-  padding: 2rem 0 4rem;
-  position: relative;
-}
-
-.jr-sticker {
-  align-items: center;
-  border: 5px solid var(--jr-black);
-  box-shadow: 9px 9px 0 var(--jr-black);
-  display: flex;
-  flex-direction: column;
-  font-family: "Arial Black", Impact, sans-serif;
-  font-weight: 900;
-  justify-content: center;
-  line-height: 1;
-  position: relative;
-  text-transform: uppercase;
-}
-
-.jr-sticker-slack {
-  background: var(--jr-cream);
-  color: var(--jr-black);
-  padding: 1rem;
-  transform: rotate(-6deg);
-}
-
-.jr-sticker-slack svg {
+  inset-inline: 0;
   margin: 0;
-  width: 7rem;
-}
-
-.jr-sticker-slack strong {
-  font-size: 1.5rem;
-  margin-top: -0.25rem;
-}
-
-.jr-sticker-kicker {
-  background: var(--jr-violet);
-  border: 3px solid var(--jr-black);
-  color: #fff;
-  font-size: 0.72rem;
-  left: -1.2rem;
-  padding: 0.35rem 0.5rem;
   position: absolute;
-  top: -1.2rem;
-  transform: rotate(-5deg);
 }
 
-.jr-flow-arrow {
-  color: var(--jr-violet);
-  font-family: "Arial Black", Impact, sans-serif;
-  font-size: 0.75rem;
-  font-weight: 900;
-  text-align: center;
-  text-transform: uppercase;
-  transform: rotate(-4deg);
-}
-
-.jr-flow-arrow svg {
-  display: block;
-  margin: -0.6rem auto 0;
-  overflow: visible;
-  width: 100%;
-}
-
-.jr-flow-arrow-pink {
-  color: var(--jr-pink);
-}
-
-.jr-flow-arrow-yellow {
-  color: var(--jr-yellow);
-  transform: rotate(6deg);
-}
-
-.jr-mascot {
-  filter: drop-shadow(10px 10px 0 var(--jr-black));
-  margin: 0 auto;
-  max-width: 16rem;
-  position: relative;
-  transform: rotate(3deg);
-}
-
-.jr-mascot img {
-  display: block;
+body:has(.jr-hero-stage) footer table {
   height: auto;
-  margin: 0;
-  width: 100%;
 }
 
-.jr-mascot-note {
-  background: var(--jr-pink);
-  border: 4px solid var(--jr-black);
-  font-family: "Arial Black", Impact, sans-serif;
-  font-size: 0.75rem;
-  font-weight: 900;
-  padding: 0.45rem 0.6rem;
-  position: absolute;
-  right: -2.5rem;
-  text-transform: uppercase;
-  top: 58%;
-  transform: rotate(9deg);
-  z-index: 2;
-}
-
-.jr-tool-pile {
-  display: grid;
-  gap: 1rem;
-  justify-items: center;
-  position: relative;
-}
-
-.jr-sticker-tool {
-  color: var(--jr-black);
-  flex-direction: row;
-  font-size: 1rem;
-  gap: 0.6rem;
-  padding: 0.75rem 1rem;
-}
-
-.jr-sticker-tool img {
-  height: 1.75rem;
-  margin: 0;
-  width: 1.75rem;
-}
-
-.jr-sticker-github {
-  background: var(--jr-cream);
-  transform: rotate(5deg);
-}
-
-.jr-sticker-sentry {
-  background: var(--jr-pink);
-  transform: rotate(-4deg);
-}
-
-.jr-sticker-more {
-  background: var(--jr-yellow);
-  font-size: 0.75rem;
-  transform: rotate(3deg);
-}
-
-.jr-proof {
-  align-items: center;
-  display: grid;
-  gap: clamp(3rem, 7vw, 7rem);
-  grid-template-columns: 0.75fr 1.25fr;
-  padding: clamp(6rem, 10vw, 10rem) 0;
-}
-
-.jr-section-number {
-  color: var(--jr-yellow) !important;
-  font-family: "Arial Black", Impact, sans-serif;
-  font-size: 0.8rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  margin: 0 0 1rem;
-}
-
-.jr-proof-copy h2,
-.jr-card h2 {
-  font-family: "Arial Black", Impact, sans-serif;
-  font-weight: 950;
-  letter-spacing: -0.055em;
-  line-height: 0.9;
-  margin: 0;
-  text-transform: uppercase;
-}
-
-.jr-proof-copy h2 {
-  color: var(--jr-cream);
-  font-size: clamp(3rem, 6vw, 5.5rem);
-}
-
-.jr-proof-copy > p:not(.jr-section-number) {
-  color: var(--jr-cream);
-  font-size: 1.05rem;
-  font-weight: 700;
-  line-height: 1.5;
-  margin: 1.75rem 0;
-  max-width: 34rem;
-}
-
-.jr-slack-wrap {
-  position: relative;
-  transform: rotate(2deg);
-}
-
-.jr-tape {
-  background: rgba(255, 247, 223, 0.9);
-  border: 3px solid var(--jr-black);
-  height: 2.2rem;
-  position: absolute;
-  width: 8rem;
-  z-index: 3;
-}
-
-.jr-tape-top {
-  right: 20%;
-  top: -1.5rem;
-  transform: rotate(-7deg);
-}
-
-.jr-tape-bottom {
-  bottom: -1.4rem;
-  left: 12%;
-  transform: rotate(8deg);
-}
-
-.slk-window {
-  background: #1a1d21;
-  border: 5px solid var(--jr-black);
-  border-radius: 0;
-  box-shadow: 14px 14px 0 var(--jr-violet);
-  color: #c9cdd1;
-  font-size: 0.9375rem;
-  line-height: 1.46668;
-  overflow: hidden;
-}
-
-.slk-header {
-  align-items: center;
-  background: #24272b;
-  border-bottom: 2px solid #000;
-  display: flex;
-  gap: 0.5rem;
-  justify-content: space-between;
-  margin: 0;
-  padding: 0.9rem 1rem;
-}
-
-.slk-header-left,
-.slk-msg-meta {
-  align-items: center;
-  display: flex;
-  gap: 0.4rem;
-  margin: 0;
-}
-
-.slk-thread-icon {
-  color: #fff;
-  height: 1rem;
-  width: 1rem;
-}
-
-.slk-header-title,
-.slk-name {
-  color: #fff;
-  font-weight: 800;
-}
-
-.slk-header-channel,
-.slk-time {
-  color: #9299a1;
-  font-size: 0.78rem;
-}
-
-.slk-messages {
-  margin: 0;
-  padding: 0.7rem 0;
-}
-
-.slk-msg {
-  align-items: flex-start;
-  display: flex;
-  gap: 0.75rem;
-  padding: 0.7rem 1rem;
-}
-
-.slk-msg-junior {
-  background: rgba(108, 76, 156, 0.13);
-  border-left: 6px solid var(--jr-pink);
-}
-
-.slk-avatar {
-  align-items: center;
-  border: 2px solid #000;
-  display: flex;
-  flex: 0 0 auto;
-  font-size: 0.8rem;
-  font-weight: 900;
-  height: 2.35rem;
-  justify-content: center;
-  width: 2.35rem;
-}
-
-.slk-avatar-user {
-  background: var(--jr-pink);
-  color: #000;
-}
-
-.slk-avatar-bot {
-  background: var(--jr-cream);
-  overflow: hidden;
-  padding: 0;
-}
-
-.slk-avatar-bot img {
-  display: block;
-  height: 100%;
-  margin: 0;
-  width: 100%;
-}
-
-.slk-msg-body {
-  flex: 1;
-  margin: 0;
-  min-width: 0;
-}
-
-.slk-msg-meta {
-  align-items: baseline;
-  flex-wrap: wrap;
-  margin-bottom: 0.15rem;
-}
-
-.slk-app-badge {
-  background: var(--jr-violet);
-  color: #fff;
-  font-size: 0.65rem;
-  font-weight: 800;
-  padding: 0.05rem 0.25rem;
-  text-transform: uppercase;
-}
-
-.slk-text {
-  color: #e7e8ea !important;
-  line-height: 1.5;
-  margin: 0;
-}
-
-.slk-code {
-  background: var(--jr-cream);
-  border: 2px solid #000;
-  color: #000;
-  font-family: var(--__sl-font-mono);
-  font-size: 0.875em;
-  padding: 0.05em 0.25em;
-}
-
-.slk-mention {
-  background: rgba(108, 76, 156, 0.3);
-  color: #c9b6ee;
-  font-weight: 700;
-  padding: 0 0.12em;
-}
-
-.slk-mention-user {
-  background: var(--jr-yellow);
-  color: #000;
-}
-
-.slk-tool-call {
-  color: var(--jr-yellow);
-  font-size: 0.78rem;
-  font-weight: 700;
-  margin-top: 0.45rem;
-}
-
-.slk-tool-call code {
-  background: none;
-  color: inherit;
-  font-size: 1em;
-  padding: 0;
-}
-
-.jr-cards {
-  display: grid;
-  gap: 1.5rem;
-  grid-template-columns: repeat(3, 1fr);
-  margin-inline: clamp(0.5rem, 2.5vw, 2.5rem);
-  padding-bottom: clamp(5rem, 9vw, 9rem);
-}
-
-.jr-card {
-  border: 5px solid var(--jr-black);
-  box-shadow: 10px 10px 0 var(--jr-black);
-  container-type: inline-size;
-  min-height: 18rem;
-  min-width: 0;
-  overflow: hidden;
-  padding: 1.5rem;
-  position: relative;
-}
-
-.jr-card:nth-child(1) {
-  transform: rotate(-2deg);
-}
-
-.jr-card:nth-child(2) {
-  transform: translateY(1.5rem) rotate(2deg);
-}
-
-.jr-card:nth-child(3) {
-  transform: rotate(-1deg);
-}
-
-.jr-card-violet {
-  background: var(--jr-violet);
-  color: #fff;
-}
-
-.jr-card-pink {
-  background: var(--jr-pink);
-}
-
-.jr-card-cream {
-  background: var(--jr-cream);
-}
-
-.jr-card > span {
-  background: var(--jr-black);
-  color: var(--jr-yellow);
-  display: inline-block;
-  font-family: "Arial Black", Impact, sans-serif;
-  font-size: 1.3rem;
-  font-weight: 900;
-  margin-bottom: 3rem;
-  padding: 0.4rem 0.55rem;
-}
-
-.jr-card h2 {
-  color: var(--jr-black);
-  /* Size from the card, not the viewport: the page column caps card width. */
-  font-size: clamp(2rem, 30cqi, 3.7rem);
-  hyphens: none;
-  overflow-wrap: normal;
-  word-break: normal;
-}
-
-.jr-card-violet h2,
-.jr-card-violet p {
-  color: #fff !important;
-}
-
-.jr-card p {
-  color: var(--jr-black);
-  font-size: 0.95rem;
-  font-weight: 800;
-  line-height: 1.4;
-  margin: 1rem 0 0;
-}
-
-.jr-integrations {
-  background: var(--jr-violet);
-  border-block: 5px solid var(--jr-black);
-  box-sizing: border-box;
-  margin: 0 calc(50% - 50vw) clamp(5rem, 9vw, 9rem);
-  padding: clamp(4rem, 7vw, 7rem) max(1.25rem, calc((100vw - 86rem) / 2));
-  position: relative;
-  transform: rotate(-0.35deg);
-  width: 100vw;
-}
-
-.jr-integrations > * {
-  position: relative;
-}
-
-.jr-integrations-heading {
-  align-items: end;
-  display: grid;
-  gap: 3rem;
-  grid-template-columns: 1.2fr 0.8fr;
-  margin-bottom: 3rem;
-}
-
-.jr-integrations-heading > div > span {
-  color: var(--jr-yellow);
-  font-family: "Arial Black", Impact, sans-serif;
-  font-size: 0.8rem;
-  font-weight: 900;
-  letter-spacing: 0.1em;
-}
-
-.jr-integrations-heading h2 {
-  background: none !important;
-  color: #fff;
-  font-family: "Arial Black", Impact, sans-serif;
-  font-size: clamp(3.5rem, 7vw, 6.8rem);
-  font-weight: 950;
-  letter-spacing: -0.065em;
-  line-height: 0.82;
-  margin: 0.7rem 0 0;
-  text-transform: uppercase;
-}
-
-.jr-integrations-heading h2::before,
-.jr-integrations-heading h2::after {
-  content: none !important;
-}
-
-.jr-integrations-summary {
-  align-self: end;
-}
-
-.jr-integrations-summary p {
-  color: #fff;
-  font-size: 1rem;
-  font-weight: 800;
-  line-height: 1.5;
-  margin: 0;
-  max-width: 29rem;
-}
-
-.jr-integration-grid {
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
-.jr-integration-card {
-  align-items: center;
-  background: var(--jr-cream);
-  background-image: none !important;
-  border: 4px solid var(--jr-black);
-  box-shadow: 7px 7px 0 var(--jr-black);
-  color: var(--jr-black) !important;
-  display: flex;
-  gap: 1rem;
-  min-height: 6.8rem;
-  padding: 1rem 1.1rem;
-  text-decoration: none !important;
-  transition:
-    transform 100ms ease,
-    box-shadow 100ms ease;
-}
-
-.jr-integration-card:nth-child(3n + 2) {
-  background: var(--jr-yellow);
-}
-
-.jr-integration-card:nth-child(4n) {
-  background: var(--jr-pink);
-}
-
-.jr-integration-card:hover {
-  box-shadow: 3px 3px 0 var(--jr-black);
-  transform: translate(4px, 4px);
-}
-
-.jr-integration-card img {
-  border: 0;
-  box-shadow: none;
-  display: block;
-  flex: 0 0 auto;
-  height: 2.7rem;
-  margin: 0;
-  max-width: 3.2rem;
-  object-fit: contain;
-  padding: 0;
-  width: 2.7rem;
-}
-
-.jr-integration-card > span {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.jr-integration-card strong,
-.jr-integration-card small {
-  background-image: none !important;
-  text-decoration: none !important;
-}
-
-.jr-integration-card strong {
-  font-family: "Arial Black", Impact, sans-serif;
-  font-size: 1rem;
-  line-height: 1;
-}
-
-.jr-integration-card small {
-  font-size: 0.58rem;
-  font-weight: 900;
-  letter-spacing: 0.1em;
-  margin-top: 0.35rem;
-}
-
-.jr-integrations-cta {
-  background: var(--jr-pink);
-  border: 4px solid var(--jr-black);
-  box-shadow: 6px 6px 0 var(--jr-black);
-  color: var(--jr-black) !important;
-  display: inline-block;
-  font-family: "Arial Black", Impact, sans-serif;
-  font-size: 0.8rem;
-  font-weight: 900;
-  margin-top: 2rem;
-  padding: 0.7rem 0.9rem;
-  text-decoration: none;
-  text-transform: uppercase;
-}
-
-.jr-customers {
-  align-items: center;
-  background: var(--jr-cream);
-  border: 5px solid var(--jr-black);
-  box-shadow: 12px 12px 0 var(--jr-pink);
-  display: flex;
-  flex-direction: column;
-  margin: 2rem auto 5rem;
-  max-width: 36rem;
-  padding: 2rem;
-  text-align: center;
-  transform: rotate(1deg);
-}
-
-.jr-customers-eyebrow {
-  color: var(--jr-black) !important;
-  font-family: "Arial Black", Impact, sans-serif;
-  font-size: 0.8rem;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-  margin: 0 0 1rem;
-}
-
-.jr-customers-eyebrow p {
-  color: var(--jr-black) !important;
-  margin: 0;
-}
-
-.jr-customer-logo {
-  color: var(--jr-black) !important;
-  display: inline-flex;
-  text-decoration: none;
-}
-
-.jr-customer-logo svg {
-  height: 4.5rem;
-  width: auto;
-}
-
-.jr-customers-cta {
-  color: var(--jr-black) !important;
-  font-family: "Arial Black", Impact, sans-serif;
-  font-size: 0.8rem;
-  font-weight: 900;
-  margin-top: 1rem;
-  text-decoration-thickness: 3px;
-  text-underline-offset: 0.25em;
-  text-transform: uppercase;
-}
-
-body:has(.jr-home) footer {
-  color: var(--jr-cream);
-}
-
-@media (max-width: 64rem) {
+@media (min-width: 72rem) {
   :root:not([data-has-sidebar]) .hero {
-    min-height: auto;
+    gap: 2rem;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
   }
+}
 
-  .jr-home {
-    margin-top: 1rem;
-  }
-
-  .jr-sticker-scene {
-    grid-template-columns: 1fr 0.6fr 1.2fr 0.6fr 1fr;
-  }
-
-  .jr-mascot-note {
-    right: -0.5rem;
-  }
-
-  .jr-integration-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+@media (max-width: 71.99rem) {
+  :root:not([data-has-sidebar]) .hero {
+    grid-template-columns: 100%;
   }
 }
 
 @media (max-width: 48rem) {
-  .jr-home-mega {
-    font-size: clamp(4rem, 22vw, 8rem);
-    letter-spacing: -0.1em;
-    text-shadow: 8px 8px 0 var(--jr-violet);
+  /* Too narrow for the claw grip: stack the mascot over a readable pad. */
+  .jr-hero-stage {
+    aspect-ratio: auto;
+    display: grid;
+    justify-items: center;
+    --u: 0.4rem;
   }
 
-  :root:not([data-has-sidebar]) .hero .tagline {
-    margin-left: 0;
+  .jr-hero-mascot {
+    order: -1;
+    position: static;
+    width: 11rem;
   }
 
-  :root:not([data-has-sidebar]) .hero .actions {
-    justify-content: flex-start;
+  .jr-pad {
+    margin-top: -2.5rem;
+    position: static;
+    transform: rotate(-2deg);
+    width: 100%;
   }
 
-  .jr-sticker-scene {
-    gap: 2.5rem 1rem;
-    grid-template-columns: 1fr 1fr;
-    padding-top: 3rem;
-  }
-
-  .jr-sticker-slack,
-  .jr-tool-pile {
-    justify-self: center;
-  }
-
-  .jr-flow-arrow {
-    display: none;
-  }
-
-  .jr-mascot {
-    grid-column: 1 / -1;
-    grid-row: 1;
-  }
-
-  .jr-sticker-slack {
-    grid-column: 1;
-    grid-row: 2;
-  }
-
-  .jr-tool-pile {
-    grid-column: 2;
-    grid-row: 2;
-  }
-
-  .jr-proof {
-    grid-template-columns: 1fr;
-  }
-
-  .jr-cards {
-    grid-template-columns: 1fr;
-  }
-
-  .jr-card,
-  .jr-card:nth-child(2) {
-    min-height: 15rem;
-    transform: none;
-  }
-
-  .jr-integrations-heading {
-    align-items: start;
-    gap: 1.5rem;
-    grid-template-columns: 1fr;
-  }
-
-  .jr-integrations-heading h2 {
-    font-size: 3.6rem;
-  }
-
-  .jr-integration-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .jr-demo-thumb {
+    display: block;
+    margin: calc(2 * var(--u)) auto 0;
+    position: static;
+    rotate: 2deg;
+    translate: none;
+    width: 80%;
   }
 }
 
 @media (max-width: 30rem) {
-  .jr-home-mega {
-    font-size: 19vw;
-  }
-
   :root:not([data-has-sidebar]) .hero .actions {
     align-items: stretch;
     flex-direction: column;
@@ -978,71 +437,5 @@ body:has(.jr-home) footer {
 
   :root:not([data-has-sidebar]) .hero .sl-link-button {
     justify-content: center;
-  }
-
-  .jr-sticker-scene {
-    grid-template-columns: 1fr;
-  }
-
-  .jr-sticker-slack,
-  .jr-tool-pile,
-  .jr-mascot {
-    grid-column: 1;
-  }
-
-  .jr-mascot {
-    grid-row: 1;
-  }
-
-  .jr-sticker-slack {
-    grid-row: 2;
-  }
-
-  .jr-tool-pile {
-    grid-row: 3;
-  }
-
-  .slk-msg {
-    gap: 0.5rem;
-    padding: 0.65rem;
-  }
-
-  .slk-avatar {
-    height: 1.9rem;
-    width: 1.9rem;
-  }
-
-  .jr-integrations {
-    padding-inline: 1.25rem;
-  }
-
-  .jr-integrations-heading h2 {
-    font-size: 3rem;
-  }
-
-  .jr-integration-grid {
-    gap: 0.65rem;
-  }
-
-  .jr-integration-card {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0.7rem;
-    justify-content: space-between;
-    min-height: 7.2rem;
-    padding: 0.8rem;
-  }
-
-  .jr-integration-card img {
-    height: 2.3rem;
-    width: 2.3rem;
-  }
-
-  .jr-integration-card strong {
-    font-size: 0.84rem;
-  }
-
-  .jr-integration-card small {
-    font-size: 0.48rem;
   }
 }

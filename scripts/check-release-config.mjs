@@ -61,10 +61,6 @@ function collectPublishablePackages() {
     .sort();
 }
 
-function collectCraftPackages() {
-  return collectMatches(readFile(".craft.yml"), /^\s*id:\s*"([^"]+)"/gm);
-}
-
 function collectBumpPackages() {
   const packageFiles = collectMatches(
     readFile("scripts/bump-release-versions.mjs"),
@@ -113,11 +109,12 @@ function describeMismatch(expected, actual) {
 }
 
 // Craft must create the approved tag before npm. Only the tag workflow publishes assets.
+// The npm target publishes every public workspace package, so it has no list to check.
 const craftConfig = readFile(".craft.yml");
 assert.match(
   craftConfig,
-  /^targets:\n  - name: github\n    tagOnly: true\n  - name: npm/m,
-  "Craft must create the release tag before publishing npm packages.",
+  /^targets:\n  - name: github\n    tagOnly: true\n  - name: npm\n    workspaces: true$/m,
+  "Craft must create the release tag before publishing every workspace package to npm.",
 );
 assert.equal(
   [...craftConfig.matchAll(/^  - name: github$/gm)].length,
@@ -129,10 +126,6 @@ const sources = [
   {
     label: "packages/*/package.json",
     packages: collectPublishablePackages(),
-  },
-  {
-    label: ".craft.yml",
-    packages: collectCraftPackages(),
   },
   {
     label: "scripts/bump-release-versions.mjs",

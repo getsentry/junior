@@ -152,7 +152,6 @@ describe("paused turn scheduling", () => {
     await persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "1712345.0006",
@@ -261,7 +260,6 @@ describe("paused turn scheduling", () => {
     await persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "1712345.0004",

@@ -6,6 +6,10 @@ import { juniorConversationEvents } from "@/db/schema";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { AgentInvocation } from "./types";
 
+/** Instructions that a fork child reads with its first task. */
+export const FORK_INSTRUCTIONS =
+  "You are a fork of your parent agent. The messages before your first parent task are copied from the parent's conversation so you have its context. They are not your job: your job is the parent task below. Sandbox files, approvals, and credentials of the parent were not copied, and your sandbox is separate. Verify files in your own sandbox before you use them.";
+
 /**
  * Cut parent history for a fork: everything before the parent's message that
  * started the fork, through the last point where every tool call has its

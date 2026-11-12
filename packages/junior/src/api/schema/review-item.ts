@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { userInputRequestSchema } from "@/chat/tools/runtime/user-input-request";
 
 const answerSchema = z
@@ -110,7 +110,8 @@ export const reviewItemCountSchema = z
 
 /**
  * Conversations linked to an open action item assigned to the viewer. `title`
- * is the newest such item; `count` is how many there are.
+ * is the newest such item; `count` is how many there are; `waitingSince` is
+ * when the oldest was added.
  */
 export const reviewItemWaitingConversationsSchema = z
   .object({
@@ -118,8 +119,20 @@ export const reviewItemWaitingConversationsSchema = z
       z
         .object({
           conversationId: z.string().min(1),
-          title: z.string().min(1),
-          count: z.number().int().positive(),
+          /** Open items that need the viewer, newest first. */
+          items: z
+            .array(
+              z
+                .object({
+                  /** The plugin that added the item, such as `github`. */
+                  plugin: z.string().min(1).optional(),
+                  title: z.string().min(1),
+                })
+                .strict(),
+            )
+            .min(1),
+          /** When the oldest of those items was added: when the wait began. */
+          waitingSince: z.string().datetime(),
         })
         .strict(),
     ),

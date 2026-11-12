@@ -5,7 +5,7 @@ import {
   type PluginRunTranscriptEntry,
   type PluginTaskContext,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   createMemoryStore,
   type CreateMemoryInput,
@@ -43,10 +43,13 @@ const extractedMemorySchema = z
 const extractedMemoryCacheSchema = z.union([
   z
     .object({
+      // Only cache entries written before Junior recorded plugin model cost
+      // have it. Junior records that cost now.
       costUsd: z.number().finite().nonnegative().optional(),
       memories: z.array(extractedMemorySchema).max(5),
     })
-    .strict(),
+    .strict()
+    .transform(({ memories }) => ({ memories })),
   z
     .array(extractedMemorySchema)
     .max(5)
@@ -239,7 +242,8 @@ export async function processMemorySession(
     return;
   }
   const sourceKey = getSourceKey(run.source);
-  if (!sourceKey || (run.source.visibility === "private" && !run.actorUserId)) {
+  // All memory is public, so a private Conversation never creates memory.
+  if (!sourceKey || run.source.visibility !== "public") {
     return;
   }
   const transcript = run.transcript
@@ -300,12 +304,5 @@ export async function processMemorySession(
     const result = await store.createMemory(input);
     recordCapturedMemory(captured, result);
   }
-  await context.events.emit(
-    memoriesCapturedEvent({
-      memories: captured,
-      ...(extraction.costUsd !== undefined
-        ? { costUsd: extraction.costUsd }
-        : undefined),
-    }),
-  );
+  await context.events.emit(memoriesCapturedEvent({ memories: captured }));
 }

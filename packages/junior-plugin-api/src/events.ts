@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { objectTypeSchema } from "./object-presentation";
 
 export const EVENT_SUMMARY_MAX_LENGTH = 4_000;
@@ -656,8 +656,12 @@ export const eventSchema = eventInputSchema.extend({
 export type Event = z.output<typeof eventSchema>;
 
 export interface EventPublisher {
-  /** Return whether an active watch or event automation matches this event. */
-  hasMatch?(event: EventInput): Promise<boolean>;
+  /**
+   * Return whether an active watch or event automation matches any of these
+   * events. Pass every copy of a webhook's events in one call, so core reads
+   * event automations once.
+   */
+  hasMatch?(events: EventInput[]): Promise<boolean>;
   /** Publish one normalized event under the owning plugin's namespace. */
   publish(event: EventInput): Promise<void>;
   /**

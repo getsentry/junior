@@ -8,7 +8,7 @@ import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
 import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
 import { buildSentryEventUrl } from "@/chat/sentry-links";
-import { z } from "zod";
+import * as z from "zod";
 import {
   conversationEventModel,
   conversationEventModelCall,
@@ -32,11 +32,10 @@ export const conversationReportSourceEventTypes = [
   "turn_context",
   "structured_event",
   "attachments_delivered",
-  "turn_routed",
+  "reply_posted",
   "turn_completed",
   "turn_failed",
   "compaction",
-  "handoff",
   "subagent_started",
   "subagent_ended",
 ] as const;
@@ -393,9 +392,13 @@ function reportEventData(args: {
         ...(typeof data.meta?.eventType === "string"
           ? { eventType: data.meta.eventType }
           : undefined),
+        ...(typeof data.meta?.eventNamespace === "string"
+          ? { eventNamespace: data.meta.eventNamespace }
+          : undefined),
         ...(typeof data.meta?.explicitMention === "boolean"
           ? { explicitMention: data.meta.explicitMention }
           : undefined),
+        ...(data.meta?.quiet === true ? { quiet: true as const } : undefined),
         ...(args.canExposePayload &&
         typeof data.meta?.trustedSummary === "string"
           ? { trustedSummary: data.meta.trustedSummary }
@@ -449,18 +452,15 @@ function reportEventData(args: {
         type: "attachments_delivered",
         attachments: data.attachments,
       };
-    case "turn_routed":
+    case "reply_posted":
+      if (!args.canExposePayload) {
+        return undefined;
+      }
       return {
-        type: "turn_routed",
-        turnId: data.turnId,
-        modelProfile: data.modelProfile,
-        modelId: data.modelId,
-        ...(data.costUsd !== undefined ? { costUsd: data.costUsd } : undefined),
-        reasoningLevel: data.reasoningLevel,
-        ...(data.confidence !== undefined
-          ? { confidence: data.confidence }
-          : undefined),
-        source: data.source,
+        type: "reply_posted",
+        plugin: data.plugin,
+        text: data.text,
+        ...(data.url ? { url: data.url } : undefined),
       };
     case "guardian_action_reviewed":
       return {
@@ -498,7 +498,6 @@ function reportEventData(args: {
     case "compaction":
       return {
         type: "compaction",
-        modelProfile: data.modelProfile,
         modelId: data.modelId,
         ...(args.canExposePayload && data.summary
           ? { summary: data.summary }
@@ -525,6 +524,15 @@ function reportSubagentLabel(
   };
 }
 
+// A child with no row, or a page counted before its kinds are read, shows as
+// a Task: only a Thread links to a page of its own.
+function childKind(
+  threadIds: ReadonlySet<string> | undefined,
+  conversationId: string,
+): "thread" | "task" {
+  return threadIds?.has(conversationId) ? "thread" : "task";
+}
+
 /**
  * Project canonical events into the ordered reporting boundary.
  *
@@ -533,6 +541,8 @@ function reportSubagentLabel(
  */
 export function projectConversationReportEventPage(args: {
   canExposePayload: boolean;
+  /** Child Conversations that subagent events name and that are Threads. */
+  threadIds?: ReadonlySet<string>;
   events: ConversationEvent[];
   /** `turn_started` of the Conversation's first Turn. */
   firstTurnStart?: ConversationEvent;
@@ -643,6 +653,7 @@ export function projectConversationReportEventPage(args: {
         startedSeq: event.seq,
         startedAt: new Date(event.createdAtMs).toISOString(),
         childConversationId: event.data.childConversationId,
+        childKind: childKind(args.threadIds, event.data.childConversationId),
         subagentKind: event.data.subagentKind,
         ...reportSubagentLabel(event.data, args.canExposePayload),
         status: "running",
@@ -658,6 +669,10 @@ export function projectConversationReportEventPage(args: {
           startedSeq: started.seq,
           startedAt: new Date(started.createdAtMs).toISOString(),
           childConversationId: started.data.childConversationId,
+          childKind: childKind(
+            args.threadIds,
+            started.data.childConversationId,
+          ),
           subagentKind: started.data.subagentKind,
           ...reportSubagentLabel(started.data, args.canExposePayload),
           ...(started.data.parentToolCallId
@@ -668,21 +683,6 @@ export function projectConversationReportEventPage(args: {
         };
         subagentStarts.delete(event.data.subagentInvocationId);
       }
-    } else if (event.data.type === "handoff") {
-      data = {
-        type: "handoff",
-        modelProfile: event.data.modelProfile,
-        modelId: event.data.modelId,
-        ...(event.data.reasoningLevel
-          ? { reasoningLevel: event.data.reasoningLevel }
-          : undefined),
-        ...(event.data.triggeringToolCallId
-          ? { triggeringToolCallId: event.data.triggeringToolCallId }
-          : undefined),
-        ...(args.canExposePayload && event.data.summary
-          ? { summary: event.data.summary }
-          : undefined),
-      };
     } else {
       data = reportEventData({
         canExposePayload: args.canExposePayload,

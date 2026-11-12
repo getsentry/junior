@@ -21,7 +21,7 @@
  * `crypto.randomUUID` stays real on purpose. Sandbox names and workspace
  * snapshot names come from it, and Vercel Sandbox reuses a sandbox by name.
  * Repeated UUIDs would share sandboxes between runs and pull requests. The
- * `uuid` value of the model rule in `recording-rules.ts` replaces UUIDs in
+ * `uuid` value of the model rule in `roach.json` replaces UUIDs in
  * requests instead.
  */
 import { relative } from "node:path";

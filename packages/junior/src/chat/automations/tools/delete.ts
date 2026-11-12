@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { removedCardSchema } from "@/chat/conversations/cards";
 import {
   deleteToolAutomation,
@@ -12,6 +12,7 @@ import {
 } from "@/chat/automations/tool-support";
 import type { EventCatalog } from "@/chat/events/catalog";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
 
 /** Create the tool that deletes one Automation. */
 export function createDeleteAutomationTool(
@@ -19,6 +20,8 @@ export function createDeleteAutomationTool(
   catalog: EventCatalog,
 ) {
   return zodTool({
+    exposure: "deferred",
+    source: AUTOMATIONS_TOOL_SOURCE,
     approvalMode: "review",
     annotations: {
       destructiveHint: true,

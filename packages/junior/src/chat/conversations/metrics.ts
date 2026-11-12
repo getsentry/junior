@@ -11,6 +11,7 @@ import {
   type AgentTurnUsage,
 } from "@/chat/usage";
 import type { ConversationRunMetrics } from "./store";
+import { nextDetailVersion } from "./sql/detail-version";
 
 function finite(value: number | undefined): number | undefined {
   return value !== undefined && Number.isFinite(value) && value >= 0
@@ -90,6 +91,8 @@ export async function readConversationRunMetrics(
 export async function replaceConversationMetrics(
   executor: JuniorSqlDatabase,
   args: {
+    /** Identity of the Turn Actor. People spend reads it. */
+    actorIdentityId?: string;
     conversationId: string;
     runId: string;
     occurredAtMs: number;
@@ -130,6 +133,7 @@ export async function replaceConversationMetrics(
       ? []
       : [
           {
+            actorIdentityId: args.actorIdentityId ?? null,
             conversationId: args.conversationId,
             runId: args.runId,
             metric,
@@ -187,6 +191,7 @@ export async function replaceConversationMetrics(
           'cost', ${cost}
         ))
       end`,
+      detailVersion: nextDetailVersion,
     })
     .where(eq(juniorConversations.conversationId, args.conversationId));
 }

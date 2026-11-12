@@ -1,17 +1,19 @@
-import { z } from "zod";
+import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ImageGenerateToolDeps, ToolHooks } from "@/chat/tools/types";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 import { generateImage, NoImageGeneratedError, type GeneratedFile } from "ai";
 import { botConfig } from "@/chat/config";
-import { completeText, getGatewayApiKey } from "@/chat/pi/client";
+import { completeText, type ConversationModelCost } from "@/chat/core-model";
+import { getGatewayApiKey } from "@/chat/pi/client";
 import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import { logInfo, logWarn } from "@/chat/logging";
 import { generatedArtifactFileRefSchema } from "@/chat/tools/sandbox/file-uploads";
 import { readSandboxImage } from "@/chat/tools/sandbox/image-files";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
+import { IMAGES_TOOL_SOURCE } from "@/chat/artifacts/tool-source";
 
 // AI Gateway rejects request bodies over 4.5 MB with HTTP 413. Base64 makes
 // images a third larger, so 3 MB of images keeps the body under that limit.
@@ -56,14 +58,18 @@ ${JUNIOR_PERSONALITY}
 
 Rewrite the user's image request into a detailed image generation prompt that encodes this personality's visual aesthetic. Output ONLY the rewritten prompt text — no explanation, no wrapper.`;
 
-async function enrichImagePrompt(rawPrompt: string): Promise<string> {
+async function enrichImagePrompt(
+  rawPrompt: string,
+  cost: ConversationModelCost,
+): Promise<string> {
   try {
     const { text } = await completeText({
+      operation: "image_prompt_enrichment",
+      cost,
       modelId: botConfig.fastModelId,
       system: ENRICHMENT_SYSTEM_PROMPT,
       messages: [{ role: "user", content: rawPrompt, timestamp: Date.now() }],
       maxTokens: 1024,
-      promptName: "junior.image_prompt_enrichment",
     });
     if (text && text.trim().length > 0) {
       logInfo("image.prompt.enriched", {
@@ -166,11 +172,14 @@ export function createImageGenerateTool(
   options: {
     modelId: string;
     canSendFilesToActiveConversation?: boolean;
+    promptCost: ConversationModelCost;
     sandbox: SandboxWorkspace;
   },
   deps: ImageGenerateToolDeps = {},
 ) {
   return zodTool({
+    exposure: "deferred",
+    source: IMAGES_TOOL_SOURCE,
     describeProgress: () => "Generating an image",
     annotations: {
       destructiveHint: false,
@@ -226,7 +235,9 @@ export function createImageGenerateTool(
           : {};
       // Enrichment restyles the whole image, so it would undo an edit.
       const enrichedPrompt =
-        inputImages.length > 0 ? prompt : await enrichImagePrompt(prompt);
+        inputImages.length > 0
+          ? prompt
+          : await enrichImagePrompt(prompt, options.promptCost);
       let generatedImages: GeneratedFile[];
       try {
         ({ images: generatedImages } = await generateImage({

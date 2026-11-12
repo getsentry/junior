@@ -1,19 +1,26 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   actorDirectoryReportSchema,
   codeOverviewReportSchema,
+  CONVERSATION_DETAIL_VERSION_HEADER,
+  conversationChildAgentsReportSchema,
   conversationDetailReportSchema,
+  conversationUnchangedDetailWithMailboxSchema,
   conversationEventPageSchema,
+  conversationFeedSchema,
+  type ConversationDetailReport,
   type ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 
-import { createDashboardApp } from "../src/app";
+import { createDashboardApp, resetMockDashboardState } from "../src/app";
 import {
   ARCHIVED_CONVERSATION_ID,
   conversationTimeBounds,
+  DASHBOARD_QA_ARCHIVED_THREAD_ID,
   DASHBOARD_QA_CONVERSATION_ID,
+  DASHBOARD_QA_THREAD_ID,
   NOW,
-  setMockConversationArchived,
+  resetMockConversationViewerState,
 } from "../src/mock-reporting/fixtures";
 
 const DASHBOARD_QA_CHILD_IDS = [
@@ -24,7 +31,7 @@ const DASHBOARD_QA_CHILD_IDS = [
 describe("dashboard canonical-event mock routes", () => {
   afterEach(() => {
     // Keep the default archived fixture available for later visual/mock runs.
-    setMockConversationArchived(ARCHIVED_CONVERSATION_ID, true);
+    resetMockConversationViewerState();
   });
 
   it("derives public location bounds independently of summary order", () => {
@@ -33,6 +40,7 @@ describe("dashboard canonical-event mock routes", () => {
       startedAt: string,
       lastSeenAt: string,
     ): ConversationSummaryReport => ({
+      kind: "root",
       channel: "CQA123",
       channelName: "proj-checkout",
       conversationId,
@@ -78,6 +86,8 @@ describe("dashboard canonical-event mock routes", () => {
 
     const me = await app.fetch(new Request("http://localhost/api/me"));
     await expect(me.json()).resolves.toEqual({
+      autoArchiveDefault: false,
+      autoArchiveGraceHours: 24,
       user: { email: "dev@example.com", emailVerified: true, isAdmin: false },
     });
 
@@ -102,9 +112,20 @@ describe("dashboard canonical-event mock routes", () => {
         cumulativeDurationMs: number;
         locationId?: string;
       }>;
+      nextCursor?: string;
       source: string;
     };
     expect(body.source).toBe("conversation_index");
+    // The mock pages the feed like the API, so read the next page too.
+    expect(body.nextCursor).toBeDefined();
+    const nextPage = await app.fetch(
+      new Request(
+        `http://localhost/api/conversations?cursor=${encodeURIComponent(body.nextCursor!)}`,
+      ),
+    );
+    const nextBody = (await nextPage.json()) as typeof body;
+    expect(nextBody.nextCursor).toBeUndefined();
+    const allConversations = [...body.conversations, ...nextBody.conversations];
     expect(body.conversations[0]?.conversationId).toBe(
       "slack:CQA123:1770003600.000200",
     );
@@ -150,7 +171,7 @@ describe("dashboard canonical-event mock routes", () => {
     expect(
       restoredBody.conversations.map((item) => item.conversationId),
     ).toContain(ARCHIVED_CONVERSATION_ID);
-    setMockConversationArchived(ARCHIVED_CONVERSATION_ID, true);
+    resetMockConversationViewerState();
     expect(
       body.conversations
         .filter((item) => item.channel?.startsWith("C"))
@@ -180,9 +201,9 @@ describe("dashboard canonical-event mock routes", () => {
       windowEnd: string;
       windowStart: string;
     };
-    expect(statsBody.conversations).toBe(body.conversations.length);
+    expect(statsBody.conversations).toBe(allConversations.length);
     expect(statsBody.durationMs).toBe(
-      body.conversations.reduce(
+      allConversations.reduce(
         (sum, conversation) => sum + conversation.cumulativeDurationMs,
         0,
       ),
@@ -231,7 +252,7 @@ describe("dashboard canonical-event mock routes", () => {
         (sum, item) => sum + item.conversations,
         locationBody.privateActivity.conversations,
       ),
-    ).toBe(body.conversations.length);
+    ).toBe(allConversations.length);
     const locationResponse = await app.fetch(
       new Request(
         `http://localhost/api/locations/${encodeURIComponent(
@@ -368,7 +389,7 @@ describe("dashboard canonical-event mock routes", () => {
 
     const long = await readDetail("slack:CQA456:1770021600.000600");
     expect(long.events.map((event) => event.data.type)).toEqual(
-      expect.arrayContaining(["compaction", "handoff"]),
+      expect.arrayContaining(["compaction"]),
     );
     const historyResponse = await app.fetch(
       new Request(
@@ -406,22 +427,158 @@ describe("dashboard canonical-event mock routes", () => {
     );
   });
 
+  it("nests shown Threads under their root and archives children for everyone", async () => {
+    const app = createDashboardApp({
+      authRequired: false,
+      allowedDomains: [],
+      mockConversations: true,
+    });
+    const qaThreads = async () =>
+      conversationFeedSchema
+        .parse(
+          await (
+            await app.fetch(new Request("http://localhost/api/conversations"))
+          ).json(),
+        )
+        .conversations.find(
+          (item) => item.conversationId === DASHBOARD_QA_CONVERSATION_ID,
+        )
+        ?.threads?.map((thread) => thread.conversationId);
+    const archiveThread = (
+      conversationId: string,
+      archived: boolean,
+      applyToChildren?: boolean,
+    ) =>
+      app.fetch(
+        new Request(
+          `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/archive`,
+          {
+            body: JSON.stringify({
+              applyToChildren,
+              archived,
+              lastSeenAt: NOW,
+            }),
+            headers: { "content-type": "application/json" },
+            method: "PATCH",
+          },
+        ),
+      );
+
+    try {
+      await expect(qaThreads()).resolves.toEqual([DASHBOARD_QA_THREAD_ID]);
+      const archivedThread = conversationDetailReportSchema.parse(
+        await (
+          await app.fetch(
+            new Request(
+              `http://localhost/api/conversations/${encodeURIComponent(DASHBOARD_QA_ARCHIVED_THREAD_ID)}`,
+            ),
+          )
+        ).json(),
+      );
+      expect(archivedThread).toMatchObject({
+        agentTree: [
+          { conversationId: DASHBOARD_QA_CONVERSATION_ID, kind: "root" },
+          { conversationId: DASHBOARD_QA_ARCHIVED_THREAD_ID, kind: "thread" },
+        ],
+        kind: "thread",
+        parentConversationId: DASHBOARD_QA_CONVERSATION_ID,
+        archivedAt: expect.any(String),
+      });
+      // The child-agents report keeps archived Threads for "Show archived".
+      const childAgents = conversationChildAgentsReportSchema.parse(
+        await (
+          await app.fetch(
+            new Request(
+              `http://localhost/api/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}/agents`,
+            ),
+          )
+        ).json(),
+      );
+      expect(
+        childAgents.agents.map(({ conversationId, kind, archivedAt }) => ({
+          conversationId,
+          kind,
+          archivedAt,
+        })),
+      ).toEqual([
+        {
+          conversationId: DASHBOARD_QA_THREAD_ID,
+          kind: "thread",
+          archivedAt: null,
+        },
+        {
+          conversationId: DASHBOARD_QA_ARCHIVED_THREAD_ID,
+          kind: "thread",
+          archivedAt: archivedThread.archivedAt,
+        },
+        expect.objectContaining({ kind: "task" }),
+        expect.objectContaining({ kind: "task" }),
+      ]);
+
+      // The Thread has a nested Thread, so it archives with its children.
+      expect(
+        (await archiveThread(DASHBOARD_QA_THREAD_ID, true, true)).status,
+      ).toBe(200);
+      await expect(qaThreads()).resolves.toBeUndefined();
+      expect(
+        (await archiveThread(DASHBOARD_QA_ARCHIVED_THREAD_ID, false)).status,
+      ).toBe(200);
+      await expect(qaThreads()).resolves.toEqual([
+        DASHBOARD_QA_ARCHIVED_THREAD_ID,
+      ]);
+
+      // Like the API, a Task with an unarchived child needs applyToChildren,
+      // and its child cannot be restored while the Task is archived.
+      const planId = DASHBOARD_QA_CHILD_IDS[0]!;
+      const refused = await archiveThread(planId, true);
+      expect(refused.status).toBe(409);
+      await expect(refused.json()).resolves.toEqual({
+        error:
+          "1 child conversation is not archived. Pass applyToChildren to archive it too.",
+      });
+      expect((await archiveThread(planId, true, true)).status).toBe(200);
+      const restoreChild = await archiveThread(`${planId}:claim-check`, false);
+      expect(restoreChild.status).toBe(409);
+      await expect(restoreChild.json()).resolves.toEqual({
+        error: `Conversation ${planId} above this one is archived. Restore it first.`,
+      });
+    } finally {
+      resetMockConversationViewerState();
+    }
+  });
+
   it("loads canonical child conversations through the ordinary detail route", async () => {
     const app = createDashboardApp({
       authRequired: false,
       allowedDomains: [],
       mockConversations: true,
     });
-    const parentResponse = await app.fetch(
-      new Request(
-        `http://localhost/api/conversations/${encodeURIComponent(
-          DASHBOARD_QA_CONVERSATION_ID,
-        )}`,
-      ),
-    );
+    const parentPath = `http://localhost/api/conversations/${encodeURIComponent(
+      DASHBOARD_QA_CONVERSATION_ID,
+    )}`;
+    const parentResponse = await app.fetch(new Request(parentPath));
     const parent = conversationDetailReportSchema.parse(
       await parentResponse.json(),
     );
+    const version = {
+      [CONVERSATION_DETAIL_VERSION_HEADER]: parentResponse.headers.get(
+        CONVERSATION_DETAIL_VERSION_HEADER,
+      )!,
+    };
+    const unchanged = await app.fetch(
+      new Request(parentPath, { headers: version }),
+    );
+    expect(unchanged.status).toBe(304);
+    // The mailbox changes apart from the version, so a poll gets it alone.
+    const withMailbox = await app.fetch(
+      new Request(`${parentPath}?mailbox=true`, { headers: version }),
+    );
+    expect(withMailbox.status).toBe(200);
+    expect(
+      conversationUnchangedDetailWithMailboxSchema.parse(
+        await withMailbox.json(),
+      ).mailbox.conversationId,
+    ).toBe(DASHBOARD_QA_CONVERSATION_ID);
     const childIds = parent.events.flatMap((event) =>
       event.data.type === "subagent" && event.data.status === "running"
         ? [event.data.childConversationId]
@@ -440,5 +597,163 @@ describe("dashboard canonical-event mock routes", () => {
       expect(child.conversationId).toBe(childId);
       expect(child.events.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("dashboard mock sends", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    resetMockDashboardState();
+  });
+
+  const app = createDashboardApp({
+    authRequired: false,
+    allowedDomains: [],
+    mockConversations: true,
+  });
+  const post = (path: string, body: unknown) =>
+    app.fetch(
+      new Request(`http://localhost/api${path}`, {
+        body: JSON.stringify(body),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
+    );
+  const readDetail = async (conversationId: string) =>
+    conversationDetailReportSchema.parse(
+      await (
+        await app.fetch(
+          new Request(
+            `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+          ),
+        )
+      ).json(),
+    );
+  const readFeedIds = async () =>
+    conversationFeedSchema
+      .parse(
+        await (
+          await app.fetch(new Request("http://localhost/api/conversations"))
+        ).json(),
+      )
+      .conversations.map((conversation) => conversation.conversationId);
+  const messages = (detail: ConversationDetailReport) =>
+    detail.events.flatMap(({ data }) =>
+      data.type === "message" ? [`${data.role}: ${data.text}`] : [],
+    );
+
+  it("starts a Conversation that shows a working Turn, then a fixed reply", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const created = await post("/conversations", {
+      idempotencyKey: "new-1",
+      message: "Draw the release checklist",
+    });
+    expect(created.status).toBe(200);
+    const accepted = (await created.json()) as {
+      conversationId: string;
+      messageId: string;
+      status: string;
+    };
+    expect(accepted.status).toBe("accepted");
+    expect(await readFeedIds()).toContain(accepted.conversationId);
+
+    const working = await readDetail(accepted.conversationId);
+    expect(working).toMatchObject({
+      displayTitle: "Draw the release checklist",
+      isParticipant: true,
+      status: "active",
+      surface: "api",
+    });
+    expect(messages(working)).toEqual(["user: Draw the release checklist"]);
+
+    vi.advanceTimersByTime(2_000);
+    const replied = await readDetail(accepted.conversationId);
+    expect(replied.status).toBe("completed");
+    expect(messages(replied)).toEqual([
+      "user: Draw the release checklist",
+      "assistant: Mock reply. No agent ran.\n\n> Draw the release checklist",
+    ]);
+
+    const retry = await post("/conversations", {
+      idempotencyKey: "new-1",
+      message: "Draw the release checklist",
+    });
+    await expect(retry.json()).resolves.toEqual({
+      ...accepted,
+      status: "duplicate",
+    });
+
+    // A fork at the reply copies the end of its Turn too.
+    const fork = await post(
+      `/conversations/${encodeURIComponent(accepted.conversationId)}/forks`,
+      {
+        idempotencyKey: "fork-1",
+        messageId: `mock-reply:${accepted.messageId}`,
+      },
+    );
+    const { conversationId: forkId } = (await fork.json()) as {
+      conversationId: string;
+    };
+    expect(
+      (await readDetail(forkId)).events.flatMap(({ data }) =>
+        data.type === "turn_lifecycle" ? [data.state] : [],
+      ),
+    ).toEqual(["started", "succeeded"]);
+  });
+
+  it("adds a send to a fixture Conversation", async () => {
+    const before = await readDetail(DASHBOARD_QA_CONVERSATION_ID);
+    const response = await post(
+      `/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}/messages`,
+      { idempotencyKey: "append-1", message: "One more thing" },
+    );
+    expect(response.status).toBe(200);
+    const after = await readDetail(DASHBOARD_QA_CONVERSATION_ID);
+    expect(after.status).toBe("active");
+    expect(messages(after)).toEqual([
+      ...messages(before),
+      "user: One more thing",
+    ]);
+  });
+
+  it("keeps a Quick question unlisted until the reader keeps it", async () => {
+    const fork = await post(
+      `/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}/forks`,
+      {
+        idempotencyKey: "quick-1",
+        messageId: "qa-assistant",
+        quickQuestion: { quote: "the plan" },
+      },
+    );
+    expect(fork.status).toBe(200);
+    const { conversationId } = (await fork.json()) as {
+      conversationId: string;
+    };
+    const asked = await post(
+      `/conversations/${encodeURIComponent(conversationId)}/messages`,
+      { idempotencyKey: "quick-ask-1", message: "Why this order?" },
+    );
+    expect(asked.status).toBe(200);
+
+    const thread = await readDetail(conversationId);
+    expect(thread).toMatchObject({
+      canFork: false,
+      forkedFromConversationId: DASHBOARD_QA_CONVERSATION_ID,
+    });
+    expect(messages(thread).at(-1)).toBe("user: Why this order?");
+    expect(await readFeedIds()).not.toContain(conversationId);
+    expect(
+      (await readDetail(DASHBOARD_QA_CONVERSATION_ID)).forks,
+    ).toBeUndefined();
+
+    const kept = await post(
+      `/conversations/${encodeURIComponent(conversationId)}/quick-question/keep`,
+      {},
+    );
+    expect(kept.status).toBe(200);
+    expect(await readFeedIds()).toContain(conversationId);
+    expect((await readDetail(DASHBOARD_QA_CONVERSATION_ID)).forks).toEqual([
+      conversationId,
+    ]);
   });
 });

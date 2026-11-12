@@ -1,6 +1,6 @@
 import path from "node:path";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { z } from "zod";
+import * as z from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 export {
   missingFileResult,
@@ -11,7 +11,7 @@ export {
 export function createReadFileTool() {
   return zodTool({
     description:
-      "Read a bounded line range from a file in the sandbox workspace. Use when you need exact file contents to verify facts or make edits safely. Prefer grep/findFiles/listDir for broad discovery.",
+      "Read a bounded line range from a file in the sandbox workspace. Use when you need exact file contents to verify facts or make edits safely. Use bash (rg, find, ls) for broad discovery.",
     describeProgress: ({ path: filePath }) =>
       `Reading ${path.posix.basename(filePath)}`,
     annotations: {

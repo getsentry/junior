@@ -6,7 +6,7 @@
  */
 import { createHash } from "node:crypto";
 import { and, eq, sql, type Column, type SQL } from "drizzle-orm";
-import { z } from "zod";
+import * as z from "zod";
 import { juniorMemoryEmbeddings } from "./db/schema";
 import {
   MEMORY_EMBEDDING_DIMENSIONS,

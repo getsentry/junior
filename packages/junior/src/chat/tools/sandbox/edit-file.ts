@@ -19,7 +19,7 @@ import {
   validateAndApplyTextEdits,
   type TextReplacement,
 } from "@/chat/tools/sandbox/text-edits";
-import { z } from "zod";
+import * as z from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
 type EditReplacement = TextReplacement;

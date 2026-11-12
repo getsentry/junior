@@ -7,11 +7,14 @@ export const JUNIOR_RETENTION_ROUTE = "/api/internal/retention";
 // Retention is a dedicated daily bounded-batch cron, kept off the heartbeat
 // repair loop; a purge failure must not touch execution or recovery paths.
 export const JUNIOR_RETENTION_CRON_SCHEDULE = "0 4 * * *";
+export const JUNIOR_AUTO_ARCHIVE_ROUTE = "/api/internal/auto-archive";
+export const JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE = "17 * * * *";
 export const JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE =
   "/api/internal/agent/continue";
 export const JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE = "/api/internal/plugin/tasks";
 export const JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE =
   "/api/internal/workspace/snapshots";
+export const JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE = "/api/internal/cache/warmups";
 export const JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE =
   "/api/internal/context/compactions";
 export const LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION =

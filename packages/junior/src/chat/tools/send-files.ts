@@ -3,7 +3,7 @@ import { storeAttachments } from "@/chat/attachments/store";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { recordAttachmentsDelivered } from "@/chat/conversations/projection";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { z } from "zod";
+import * as z from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import {

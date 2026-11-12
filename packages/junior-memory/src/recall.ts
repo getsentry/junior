@@ -9,7 +9,7 @@ import {
   type Source,
   type User,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { memoriesRecalledEvent } from "./events";
 import {
   createMemoryStore,
@@ -99,7 +99,7 @@ function selectPromptMemories(memories: MemoryRecord[]): RecalledMemory[] {
       id: memory.id,
       content,
       observedAtMs: memory.observedAtMs,
-      scope: memory.scope === "private" ? "personal" : "conversation",
+      scope: "conversation",
       kind: memory.kind,
     });
     totalChars += line.length + 1;
@@ -119,26 +119,11 @@ function renderMemoryPrompt(memories: RecalledMemory[]): string {
   ].join("\n");
 }
 
-function addUsd(
-  left: number | undefined,
-  right: number | undefined,
-): number | undefined {
-  if (left === undefined) return right;
-  if (right === undefined) return left;
-  return Math.round((left + right) * 1e12) / 1e12;
-}
-
 async function emitRecallOutcome(args: {
-  costUsd?: number;
   events?: PluginConversationEvents;
   memories: string[];
 }): Promise<void> {
-  await args.events?.emit(
-    memoriesRecalledEvent({
-      memories: args.memories,
-      ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined),
-    }),
-  );
+  await args.events?.emit(memoriesRecalledEvent({ memories: args.memories }));
 }
 
 const memoryRecallContext = definePromptContext({
@@ -165,33 +150,14 @@ export async function createMemoryPromptContributions(
     source: context.source,
     ...(actorUser ? { userId: actorUser.id } : undefined),
   });
-  let embeddingCostUsd: number | undefined;
-  const sourceEmbedder = context.embedder;
-  const embedder: MemoryEmbeddingProvider | undefined = sourceEmbedder
-    ? {
-        model: sourceEmbedder.model,
-        provider: sourceEmbedder.provider,
-        async embedTexts(input) {
-          const result = await sourceEmbedder.embedTexts(input);
-          embeddingCostUsd = addUsd(embeddingCostUsd, result.costUsd);
-          return result;
-        },
-      }
-    : undefined;
   const candidates = await createMemoryStore(context.db, runtimeContext, {
-    embedder,
+    embedder: context.embedder,
   }).recallMemories({
     query: context.text,
     limit: RECALL_CANDIDATE_LIMIT,
   });
   if (candidates.length === 0) {
-    await emitRecallOutcome({
-      ...(embeddingCostUsd !== undefined
-        ? { costUsd: embeddingCostUsd }
-        : undefined),
-      events: context.events,
-      memories: [],
-    });
+    await emitRecallOutcome({ events: context.events, memories: [] });
     return undefined;
   }
   // Counts and scores only: recall diagnostics never carry query or memory
@@ -199,12 +165,12 @@ export async function createMemoryPromptContributions(
   context.setSpanAttributes({
     "app.memory.recall.candidate.count": candidates.length,
   });
-  let rerank: { costUsd?: number; scores: number[] };
+  let scores: number[];
   try {
-    rerank = await context.reranker.rerank({
+    ({ scores } = await context.reranker.rerank({
       documents: candidates.map(({ content }) => content),
       query: context.text,
-    });
+    }));
   } catch (error) {
     // Automatic recall is optional context; a reranker failure must not
     // prevent the user's turn from continuing without recalled memory.
@@ -214,7 +180,6 @@ export async function createMemoryPromptContributions(
     });
     return undefined;
   }
-  const { scores } = rerank;
   // Sort is stable, so equal scores keep retrieval rank order.
   const relevant = candidates
     .map((memory, index) => ({ memory, score: scores[index]! }))
@@ -227,9 +192,7 @@ export async function createMemoryPromptContributions(
     "app.memory.recall.injected.count": selected.length,
     "app.memory.recall.score.max": Math.max(...scores),
   });
-  const costUsd = addUsd(embeddingCostUsd, rerank.costUsd);
   await emitRecallOutcome({
-    ...(costUsd !== undefined ? { costUsd } : undefined),
     events: context.events,
     memories: selected.map(({ id }) => id),
   });

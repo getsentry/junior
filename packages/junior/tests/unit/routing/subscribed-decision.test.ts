@@ -321,7 +321,7 @@ describe("subscribed reply decision", () => {
     expect(completeDecision).toHaveBeenCalledWith(
       expect.objectContaining({
         modelId: "router-model",
-        promptName: "junior.passive_reply_route",
+        operation: "passive_reply_route",
         state: expect.stringContaining(">>> TRANSCRIPT START"),
       }),
     );
