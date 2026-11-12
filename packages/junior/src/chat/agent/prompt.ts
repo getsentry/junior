@@ -603,6 +603,23 @@ export async function loadPromptTurnContext(
   };
 }
 
+/** Choose the platform whose system prompt a Turn gets. */
+export function promptPlatform(
+  run: Pick<AgentRun, "delivery" | "location">,
+  promptMode: PromptMode,
+): Platform {
+  // A child agent's final text goes to its parent, not to Slack. So every
+  // child Turn is local, also on a path that has a Delivery, and its system
+  // prompt stays the same on every path.
+  if (promptMode === "child_agent") return "local";
+  // Automation runs have no Delivery port. Their `reply` text still goes to
+  // Slack, so they keep Slack formatting rules.
+  return (run.delivery || promptMode === "automation") &&
+    run.location?.provider === "slack"
+    ? "slack"
+    : "local";
+}
+
 /** Assemble prompt history, instructions, and telemetry input for one slice. */
 export async function assemblePrompt(args: {
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
@@ -661,13 +678,7 @@ export async function assemblePrompt(args: {
     shouldPromptAgent &&
     !replayedPrompt &&
     !hasRuntimeTurnContext(promptHistoryMessages);
-  // Automation runs have no Delivery port. Their `reply` text still goes to
-  // Slack, so they keep Slack formatting rules.
-  const platform =
-    (args.run.delivery || args.promptMode === "automation") &&
-    args.run.location?.provider === "slack"
-      ? "slack"
-      : "local";
+  const platform = promptPlatform(args.run, args.promptMode);
   const baseInstructions = await buildDeploymentSystemPrompt(
     platform,
     args.promptMode,
