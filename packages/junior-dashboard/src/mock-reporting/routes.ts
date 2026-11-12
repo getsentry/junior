@@ -58,6 +58,8 @@ import {
   reviewItemListSchema,
   reviewItemSchema,
   reviewItemWaitingConversationsSchema,
+  objectLinksQuerySchema,
+  objectLinksReportSchema,
   versionsSchema,
   automationExecutionListSchema,
   automationListSchema,
@@ -75,6 +77,7 @@ import {
 import { mockChartPng } from "./chart-png";
 import { mockDemoMp4 } from "./demo-mp4";
 import { mockConversationFeedPage } from "./feed-page";
+import { readMockObjectLinks } from "./objects";
 import { readMockConversationOutline } from "./outline";
 import {
   actOnMockReviewItem,
@@ -204,6 +207,16 @@ export function createMockReportingApi(): Hono<{
     jsonResponse(pluginOperationalReportFeedSchema, readMockPluginReports()),
   );
 
+  app.get("/objects", (c) => {
+    const query = objectLinksQuerySchema.safeParse({
+      url: c.req.queries("url"),
+    });
+    if (!query.success) return errorResponse("Invalid object links.", 400);
+    return jsonResponse(
+      objectLinksReportSchema,
+      readMockObjectLinks(query.data.url),
+    );
+  });
   app.get("/people", () =>
     jsonResponse(actorDirectoryReportSchema, readMockPeopleDirectory()),
   );

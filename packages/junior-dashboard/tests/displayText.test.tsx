@@ -1,3 +1,5 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
@@ -8,8 +10,17 @@ import {
 import { textHasStandaloneUrl } from "../src/client/display-text/knownObjects";
 import { displayPlainText } from "../src/client/display-text/plainText";
 
+// Links can ask the API for cards, so display text needs a query client.
+function markup(children: ReactNode) {
+  return renderToStaticMarkup(
+    <QueryClientProvider client={new QueryClient()}>
+      {children}
+    </QueryClientProvider>,
+  );
+}
+
 function renderedLinks(text: string) {
-  const html = renderToStaticMarkup(<DisplayText text={text} />);
+  const html = markup(<DisplayText text={text} />);
   return {
     html,
     links: [...html.matchAll(/<a [^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/g)].map(
@@ -114,10 +125,8 @@ describe("display text tokens", () => {
     "**Done** :smile: <@U0BOT> see <https://example.com/pr|the PR> :wave::skin-tone-3: :custom_parrot:";
 
   it("renders Slack mentions, links, and emoji the same way in each mode", () => {
-    const block = renderToStaticMarkup(
-      <DisplayText mentions={mentions} text={text} />,
-    );
-    const inline = renderToStaticMarkup(
+    const block = markup(<DisplayText mentions={mentions} text={text} />);
+    const inline = markup(
       <DisplayText inline mentions={mentions} text={text} />,
     );
 
@@ -138,7 +147,7 @@ describe("display text tokens", () => {
   });
 
   it("keeps emoji codes literal inside code", () => {
-    const html = renderToStaticMarkup(<DisplayText text="Use `:smile:`." />);
+    const html = markup(<DisplayText text="Use `:smile:`." />);
 
     expect(html).toContain(":smile:");
     expect(html).not.toContain("😄");
@@ -170,7 +179,7 @@ describe("display text object links", () => {
   ];
 
   function render(text: string) {
-    return renderToStaticMarkup(
+    return markup(
       <KnownObjectsProvider annotations={annotations}>
         <DisplayText text={text} />
       </KnownObjectsProvider>,

@@ -459,6 +459,22 @@ export function dndInfoOk(window?: { startMs: number; endMs: number }) {
   });
 }
 
+/** Model the bot fields from https://docs.slack.dev/reference/methods/bots.info/. */
+export function botsInfoOk(
+  input: { botId?: string; deleted?: boolean; userId?: string } = {},
+): { ok: true; bot: Record<string, unknown> } {
+  return slackOk({
+    bot: {
+      id: input.botId ?? "B0TEST",
+      app_id: "A0TEST",
+      name: "test-bot",
+      deleted: input.deleted ?? false,
+      updated: 1700000000,
+      ...(input.userId ? { user_id: input.userId } : undefined),
+    },
+  });
+}
+
 /** Model the user fields from https://docs.slack.dev/reference/methods/users.info/. */
 export function usersInfoOk(
   input: {

@@ -405,6 +405,7 @@ describe("dashboard routes", () => {
       "/api/conversations/stats",
       "/api/people",
       "/api/people/person%40sentry.io",
+      "/api/objects",
       "/api/locations",
       "/api/locations/destination-1",
       "/api/plugin-reports",

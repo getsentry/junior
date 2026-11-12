@@ -685,6 +685,8 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   automationLink?: { url: string };
   /** Host-owned dashboard link to this conversation, when the dashboard is enabled. */
   conversationLink?: { url: string };
+  /** Decision model for narrow choices, such as checks on text a tool writes. */
+  decider: PluginDecider;
   embedder: PluginEmbedder;
   egress: PluginEgress;
   mcp?: PluginMcp;

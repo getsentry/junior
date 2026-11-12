@@ -186,6 +186,28 @@ When the base of a new pull request is the head branch of another open pull requ
 </details>
 
 <details class="plugin-config">
+<summary><code>experimental</code></summary>
+
+Turns on GitHub plugin behavior that is still being tested.
+
+```ts title="plugins.ts"
+export const plugins = defineJuniorPlugins([
+  githubPlugin({
+    experimental: { pullRequestDescriptionChecks: true },
+  }),
+]);
+```
+
+- **Define:** `githubPlugin({ experimental: { ... } })` in `plugins.ts`
+- **Default:** Off
+- **Required:** No
+- **Environment override:** None
+
+`pullRequestDescriptionChecks` checks the description before `github_createPullRequest` or `github_updatePullRequest` writes it. The decision model answers a few yes/no questions about it. The tool rejects a description that has check results, a test plan or test coverage notes, a work log, or talk about the request, or that does not say why the change is needed. The agent gets the fixes and sends the description again.
+
+</details>
+
+<details class="plugin-config">
 <summary><code>appIdEnv</code></summary>
 
 Names the deployment variable containing the GitHub App ID.
