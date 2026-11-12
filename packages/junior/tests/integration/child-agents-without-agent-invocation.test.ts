@@ -32,7 +32,6 @@ import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
-import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   appendInboundMessage,
   CONVERSATION_WORK_MAX_RETRIES,
@@ -593,11 +592,9 @@ describe("child agents that no Agent invocation names", () => {
         status: "completed",
       });
       // The grandchild's Turn takes its input and yields between slices.
-      // This fake runner saves no slice, so only the Turn's end status
-      // holds the child's result back.
       harness.onPersonRun(async (run) => {
-        await run.durability?.onInputCommitted?.();
-        return { reason: "yield", resumeVersion: 1, status: "suspended" };
+        await commitRunInput(run);
+        return await yieldRun(run);
       });
       await harness.processUntilRun(grandchildId);
 
@@ -690,29 +687,12 @@ describe("child agents that no Agent invocation names", () => {
     const harness = await createHarness();
     try {
       const childId = await spawnChild(harness, "parent-turn:call-1");
-      // The first attempt takes its input and saves a slice. The retry
-      // resumes that Turn.
+      // The first run takes its input and yields. The next run resumes
+      // that Turn.
       harness.onPersonRun(async (run) => {
         if (harness.runs.length === 1) {
-          await run.durability?.onInputCommitted?.();
-          await saveTurnCheckpoint({
-            actor: run.actor!,
-            conversationId: childId,
-            destination: undefined,
-            messages: [
-              {
-                role: "user",
-                content: [{ type: "text", text: "Check the deploy." }],
-                timestamp: 1,
-              },
-            ],
-            mode: "paused",
-            reason: "yield",
-            sliceId: 1,
-            source: run.source!,
-            surface: "api",
-            turnId: run.turnId!,
-          });
+          await commitRunInput(run);
+          return await yieldRun(run);
         }
         throw new Error("stop after reading the run");
       });

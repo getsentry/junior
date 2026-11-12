@@ -160,12 +160,19 @@ export async function commitRunInput(run: AgentRun): Promise<void> {
 
 /** Pause a run's Turn at a yield, as the agent does between slices. */
 export async function yieldRun(run: AgentRun): Promise<AgentRunOutcome> {
-  await saveTurnCheckpoint({
+  const record = await saveTurnCheckpoint({
     ...runInputCheckpoint(run),
     mode: "paused",
     reason: "yield",
   });
-  return { reason: "yield", resumeVersion: 1, status: "suspended" };
+  if (!record) {
+    throw new Error(`Turn ${run.turnId} saved no yield checkpoint`);
+  }
+  return {
+    reason: "yield",
+    resumeVersion: record.version,
+    status: "suspended",
+  };
 }
 
 /** Finish the open Agent invocation of a child, then report its result. */

@@ -295,9 +295,11 @@ export async function listOpenChildAgentsWithoutAgentInvocations(
 
 /**
  * Count the open parent messages of one child that no Agent invocation
- * names: each open Turn that runs one, and each one that waits in its
- * mailbox. A Turn keeps its input in the mailbox until it commits it, so a
- * message and its Turn count once. Other Turns, such as a Watch Turn, do not
+ * names: each open Turn that runs parent messages counts once, and each
+ * parent message that waits in its mailbox counts once. A Turn keeps its
+ * input in the mailbox until it commits it, so a message and its Turn count
+ * once. After commit, a batch of parent messages that share one Turn counts
+ * as one, the same as `main`. Other Turns, such as a Watch Turn, do not
  * count. This is the queue that `MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD` caps.
  */
 export async function countOpenParentMessages(
