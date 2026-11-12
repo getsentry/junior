@@ -22,6 +22,10 @@ import {
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
 import type { GitHubDb } from "../db/database.js";
+import {
+  CONVERT_PULL_REQUEST_TO_DRAFT,
+  MARK_PULL_REQUEST_READY_FOR_REVIEW,
+} from "../graphql-documents.js";
 import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 import { appendGitHubFooter } from "./footer.js";
 import {
@@ -75,18 +79,6 @@ const inputSchema = z
     { message: "At least one pull request field must be provided." },
   );
 
-// GitHub's REST API cannot change draft state; only these GraphQL mutations can.
-// Both alias the mutation field to `result` so one schema reads either response.
-const MARK_READY_FOR_REVIEW = {
-  operationName: "MarkPullRequestReadyForReview",
-  query:
-    "mutation MarkPullRequestReadyForReview($id: ID!) { result: markPullRequestReadyForReview(input: {pullRequestId: $id}) { pullRequest { isDraft } } }",
-};
-const CONVERT_TO_DRAFT = {
-  operationName: "ConvertPullRequestToDraft",
-  query:
-    "mutation ConvertPullRequestToDraft($id: ID!) { result: convertPullRequestToDraft(input: {pullRequestId: $id}) { pullRequest { isDraft } } }",
-};
 const draftMutationResponseSchema = z.object({
   data: z.object({
     result: z.object({ pullRequest: z.object({ isDraft: z.boolean() }) }),
@@ -127,14 +119,15 @@ async function setPullRequestDraft(input: {
   nodeId: string;
   repo: string;
 }): Promise<boolean> {
-  const mutation = input.draft ? CONVERT_TO_DRAFT : MARK_READY_FOR_REVIEW;
+  const mutation = input.draft
+    ? CONVERT_PULL_REQUEST_TO_DRAFT
+    : MARK_PULL_REQUEST_READY_FOR_REVIEW;
   const response = await githubApi(input.egress, {
     operation: `github.pull.draft.update:${input.repo.toLowerCase()}`,
     method: "POST",
     path: "/graphql",
     body: {
-      operationName: mutation.operationName,
-      query: mutation.query,
+      ...mutation,
       variables: { id: input.nodeId },
     },
   });
