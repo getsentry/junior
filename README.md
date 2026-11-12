@@ -44,3 +44,5 @@ Start here:
 | `@sentry/junior-sentry`        | Sentry investigations and issue events                                       |
 | `@sentry/junior-vercel`        | Vercel plugin package for deployment monitoring and log investigations       |
 | `@sentry/junior-xdotcom`       | Read-only X post search, post lookup, and user timelines                     |
+
+<!-- WIP: test PR for GitHub assignment and attribution. Do not merge. -->
