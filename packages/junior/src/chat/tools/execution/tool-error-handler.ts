@@ -21,7 +21,10 @@ import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orches
 import { SlackActionError } from "@/chat/slack/client";
 import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { ToolNameMissError } from "@/chat/tool-support/tool-name-suggestions";
+import {
+  suggestionCount,
+  ToolNameMissError,
+} from "@/chat/tool-support/tool-name-suggestions";
 import {
   ToolActionRejectedError,
   ToolActionReviewLimitError,
@@ -93,7 +96,7 @@ export function handleToolExecutionError(
       ? { "app.credential.provider": error.provider }
       : undefined),
     ...(error instanceof ToolNameMissError
-      ? { "app.tool_name_miss.suggestion_count": error.suggestions.length }
+      ? { "app.tool_name_miss.suggestion_count": suggestionCount(error.hint) }
       : undefined),
   };
   if (setExecutionSpanAttributes) {

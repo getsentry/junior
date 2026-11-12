@@ -38,8 +38,9 @@ import {
 import type { CodeModeCall, CodeModeResult } from "@/chat/codemode/result";
 import { redirectDeclarations, scriptRedirect } from "@/chat/codemode/redirect";
 import {
-  didYouMean,
-  suggestToolNames,
+  renderToolNameHint,
+  suggestionCount,
+  findToolNameHint,
 } from "@/chat/tool-support/tool-name-suggestions";
 
 /** Deadline of one script, including the time its nested calls take. */
@@ -184,20 +185,18 @@ function vmErrorKind(result: CodemodeResult): CodeModeErrorKind | undefined {
 /**
  * Close script tool names for a `missing_tool` error, and the hint to add
  * to it. pi names close tools by substring only, so it misses typos. The
- * hint is empty when pi named some or nothing is close.
+ * hint is empty when pi named some or Junior has none.
  */
 function missingToolHint(
   message: string,
   tools: Record<string, AnyToolDefinition>,
 ): { hint: string; suggestionCount: number } {
   const missing = MISSING_TOOL_MESSAGE.exec(message)![1]!;
-  const suggestions = suggestToolNames(missing, tools);
+  const hint = findToolNameHint(missing, tools);
+  const text = renderToolNameHint(hint, "tools.");
   return {
-    hint:
-      suggestions.length > 0 && !message.includes("Did you mean")
-        ? `\n${didYouMean(suggestions.map((name) => `tools.${name}`))}`
-        : "",
-    suggestionCount: suggestions.length,
+    hint: text && !message.includes("Did you mean") ? `\n${text}` : "",
+    suggestionCount: suggestionCount(hint),
   };
 }
 

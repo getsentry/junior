@@ -2,27 +2,95 @@ import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const MAX_SUGGESTIONS = 3;
+const MAX_SOURCE_TOOLS = 10;
 
 /**
- * A call named a tool that the caller cannot call. `suggestions` are the
- * close names from {@link suggestToolNames}, possibly none.
+ * What an unknown tool name error adds: close names, or the tools of the
+ * source that the name starts with when none of them is close.
+ */
+export type ToolNameHint =
+  | { suggestions: string[] }
+  | { source: string; tools: string[] };
+
+/**
+ * A call named a tool that the caller cannot call. `hint` comes from
+ * {@link findToolNameHint} and can be empty.
  */
 export class ToolNameMissError extends ToolInputError {
-  readonly suggestions: readonly string[];
+  readonly hint: ToolNameHint;
 
-  constructor(message: string, suggestions: readonly string[]) {
-    super(
-      suggestions.length > 0
-        ? `${message} ${didYouMean(suggestions)}`
-        : message,
-    );
+  constructor(message: string, hint: ToolNameHint) {
+    const text = renderToolNameHint(hint);
+    super(text ? `${message} ${text}` : message);
     this.name = "ToolNameMissError";
-    this.suggestions = suggestions;
+    this.hint = hint;
   }
+}
+
+/** Number of close names in a hint. A source listing has none. */
+export function suggestionCount(hint: ToolNameHint): number {
+  return "suggestions" in hint ? hint.suggestions.length : 0;
 }
 
 function normalize(name: string): string {
   return name.toLowerCase().replace(/[._-]/g, "");
+}
+
+/** Lowercase words of a camelCase, snake_case, dotted, or kebab name. */
+function words(name: string): string[] {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[\s._-]+/)
+    .filter(Boolean);
+}
+
+/** True when each wanted word starts a word of `candidate`, in order. */
+function hasWordsInOrder(candidate: string[], wanted: string[]): boolean {
+  let next = 0;
+  for (const word of candidate) {
+    if (next < wanted.length && word.startsWith(wanted[next]!)) {
+      next += 1;
+    }
+  }
+  return next === wanted.length;
+}
+
+/**
+ * Hint for a name that starts with a source id, such as `agents.stop`. The
+ * model can only mean a tool of that source, so other tools never match.
+ */
+function sourceHint(
+  source: string,
+  remainder: string,
+  tools: string[],
+): ToolNameHint {
+  const wanted = normalize(remainder);
+  const id = normalize(source);
+  // Plugin tools carry the source as a name prefix (`agentBrowser_`).
+  const exact = tools.filter((tool) => {
+    const full = normalize(tool);
+    return (
+      full === wanted ||
+      (full.startsWith(id) && full.slice(id.length) === wanted)
+    );
+  });
+  if (exact.length > 0) {
+    return { suggestions: exact.slice(0, MAX_SUGGESTIONS) };
+  }
+  const wantedWords = words(remainder);
+  const byWords = tools
+    .map((tool) => ({ tool, words: words(tool) }))
+    .filter(
+      (candidate) =>
+        wantedWords.length > 0 && hasWordsInOrder(candidate.words, wantedWords),
+    )
+    .sort((left, right) => left.words.length - right.words.length)
+    .map(({ tool }) => tool);
+  if (byWords.length > 0) {
+    return { suggestions: byWords.slice(0, MAX_SUGGESTIONS) };
+  }
+  return { source, tools };
 }
 
 /** The normalized name, then the name after each source id it starts with. */
@@ -58,17 +126,35 @@ function editDistance(a: string, b: string): number {
 }
 
 /**
- * Return up to three names from `tools` that are close to `name`, closest
- * first. The match ignores case, `.`, `_`, `-`, and a source id prefix on
- * either name, so `agents.stopAgent` finds `stopAgent`. Otherwise the
- * full names must be within about a third of the name's length in edits.
- * Pass only the tools that the caller can call, so a hidden tool is never
- * named.
+ * Hint for an unknown tool name. Pass only the tools that the caller can
+ * call, so a hidden tool is never named.
+ *
+ * A name whose first `.` or `_` part is a source id, such as `agents.stop`,
+ * matches only tools of that source: an exact match on the rest, then the
+ * tools whose words start with its words in order, else a list of the
+ * source's tools. Other names match ignoring case, `.`, `_`, `-`, and a
+ * source id prefix on either name, then by full names within about a third
+ * of the name's length in edits. A match returns up to three names.
  */
-export function suggestToolNames(
+export function findToolNameHint(
   name: string,
   tools: Record<string, AnyToolDefinition>,
-): string[] {
+): ToolNameHint {
+  const separator = name.search(/[._]/);
+  if (separator > 0) {
+    const prefix = normalize(name.slice(0, separator));
+    const scoped = Object.keys(tools)
+      .filter((tool) => normalize(tools[tool]!.source?.id ?? "") === prefix)
+      .sort();
+    if (scoped.length > 0) {
+      return sourceHint(
+        tools[scoped[0]!]!.source!.id,
+        name.slice(separator + 1),
+        scoped,
+      );
+    }
+  }
+
   const sourceIds = [
     ...new Set(
       Object.values(tools).flatMap((tool) =>
@@ -78,7 +164,7 @@ export function suggestToolNames(
   ].filter((id) => id.length > 0);
   const [wanted, ...wantedWithoutSource] = nameForms(name, sourceIds);
   if (!wanted) {
-    return [];
+    return { suggestions: [] };
   }
 
   const allowed = Math.max(1, Math.floor(wanted.length / 3));
@@ -93,19 +179,35 @@ export function suggestToolNames(
     return distance <= allowed ? [{ candidate, distance }] : [];
   });
 
-  return ranked
-    .sort(
-      (left, right) =>
-        left.distance - right.distance ||
-        (left.candidate < right.candidate ? -1 : 1),
-    )
-    .slice(0, MAX_SUGGESTIONS)
-    .map(({ candidate }) => candidate);
+  return {
+    suggestions: ranked
+      .sort(
+        (left, right) =>
+          left.distance - right.distance ||
+          (left.candidate < right.candidate ? -1 : 1),
+      )
+      .slice(0, MAX_SUGGESTIONS)
+      .map(({ candidate }) => candidate),
+  };
 }
 
-/** Render `Did you mean `a`, `b`, or `c`?` for one or more suggestions. */
-export function didYouMean(suggestions: readonly string[]): string {
-  const quoted = suggestions.map((suggestion) => `\`${suggestion}\``);
+/**
+ * Render a hint as error text, or "" when it is empty. `prefix` goes before
+ * each tool name, such as `tools.` in Code Mode.
+ */
+export function renderToolNameHint(hint: ToolNameHint, prefix = ""): string {
+  if ("source" in hint) {
+    const shown = hint.tools
+      .slice(0, MAX_SOURCE_TOOLS)
+      .map((tool) => `${prefix}${tool}`);
+    const more = hint.tools.length - shown.length;
+    const rest = more > 0 ? `, and ${more} more` : "";
+    return `Tools in \`${hint.source}\`: ${shown.join(", ")}${rest}.`;
+  }
+  if (hint.suggestions.length === 0) {
+    return "";
+  }
+  const quoted = hint.suggestions.map((name) => `\`${prefix}${name}\``);
   const last = quoted.pop()!;
   const list =
     quoted.length === 0

@@ -6,7 +6,7 @@ import {
 } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
-  suggestToolNames,
+  findToolNameHint,
   ToolNameMissError,
 } from "@/chat/tool-support/tool-name-suggestions";
 
@@ -47,7 +47,7 @@ export function resolveCatalogToolCall(
   if (!definition) {
     throw new ToolNameMissError(
       `executeTool can only call catalog tools returned by searchTools: ${toolName}.`,
-      suggestToolNames(toolName, catalogTools),
+      findToolNameHint(toolName, catalogTools),
     );
   }
 
