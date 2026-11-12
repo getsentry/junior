@@ -259,6 +259,16 @@ describe("object links API", () => {
     expect(outsider.objects.size).toBe(0);
     expect(outsider.body).not.toContain("launch-legal");
 
+    // A deleted message: no card.
+    queueSlackApiResponse("conversations.info", privateInfo);
+    queueSlackApiResponse("conversations.members", members);
+    queueSlackApiResponse("conversations.replies", {
+      body: slackError({ error: "thread_not_found" }),
+    });
+    const deletedUrl =
+      "https://example.slack.com/archives/C0PRIVATE/p1712345000000300";
+    expect((await alice(deletedUrl)).objects.size).toBe(0);
+
     // No linked Slack account, or a link to another workspace: no card.
     const unlinked = await (await viewerApi("carol@example.com"))(publicUrl);
     expect(unlinked.objects.size).toBe(0);

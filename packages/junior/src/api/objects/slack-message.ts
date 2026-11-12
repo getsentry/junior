@@ -9,6 +9,7 @@ import type {
   User,
 } from "@sentry/junior-plugin-api";
 import { getProductionSlackAdapter } from "@/chat/app/production";
+import { logWarn } from "@/chat/logging";
 import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
 import {
   getChannelMessage,
@@ -93,6 +94,13 @@ async function readMessageCard(args: {
   try {
     message = await getChannelMessage({ channelId, messageTs, threadTs });
   } catch (error) {
+    // A deleted message has no card.
+    if (
+      error instanceof SlackActionError &&
+      error.apiError === "thread_not_found"
+    ) {
+      return undefined;
+    }
     // The bot reads a public channel only after it joins it. Keep the card
     // without the message, and do not join a channel for a card.
     if (!isHiddenError(error)) throw error;
@@ -138,22 +146,33 @@ export async function resolveSlackMessageLink(
   for (const identity of viewer.identities) {
     const teamId = parseSlackTeamId(identity.providerTenantId);
     if (identity.provider !== "slack" || !teamId) continue;
-    const card = await runWithSlackInstallation({
-      adapter: getProductionSlackAdapter(),
-      installation: { teamId },
-      task: async () => {
-        const domain = await resolveSlackTeamDomain(teamId);
-        if (!domain || url.hostname !== `${domain}.slack.com`) return null;
-        return await readMessageCard({
-          reference: parsed.reference,
-          slackUserId: identity.providerSubjectId,
-          teamId,
-          url,
-        });
-      },
-    });
-    // `null`: another workspace. `undefined`: this workspace, no access.
-    if (card !== null) return card;
+    const run = <T>(task: () => Promise<T>) =>
+      runWithSlackInstallation({
+        adapter: getProductionSlackAdapter(),
+        installation: { teamId },
+        task,
+      });
+    let domain: string | undefined;
+    try {
+      domain = await run(() => resolveSlackTeamDomain(teamId));
+    } catch (error) {
+      // A workspace that removed Junior has no token. Check the next one.
+      logWarn("object_link.slack_team.unavailable", {
+        "app.slack.team_id": teamId,
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
+    if (!domain || url.hostname !== `${domain}.slack.com`) continue;
+    return await run(() =>
+      readMessageCard({
+        reference: parsed.reference,
+        slackUserId: identity.providerSubjectId,
+        teamId,
+        url,
+      }),
+    );
   }
   return undefined;
 }
