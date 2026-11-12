@@ -99,7 +99,7 @@ import {
   webConversationMessage,
   webTurnInputs,
 } from "@/chat/task-execution/mailbox-input";
-import { instructionForInputs } from "@/chat/agent/prompt";
+import { instructionActorFor, instructionForInputs } from "@/chat/agent/prompt";
 import type { AgentInstructionInput } from "@/chat/agent/types";
 import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
@@ -360,6 +360,7 @@ export function createConversationTurnWorker(
     const { actor, author } = turnInputFacts;
     const instructionInputs = instructionForInputs(inputs);
     const { text } = instructionInputs;
+    const instructionActor = instructionActorFor(actor);
     // A timer Turn stays system-acted but may use its creator's grants. So
     // does the result of a child agent that a timer Turn spawned.
     let credentialSubject: CredentialSubject | undefined;
@@ -655,6 +656,7 @@ export function createConversationTurnWorker(
               runId: currentRunId,
               instruction: {
                 ...instructionInputs,
+                ...(instructionActor ? { actor: instructionActor } : undefined),
                 storedAttachments: attachments,
                 context: await buildTurnThreadContext({
                   conversation,
