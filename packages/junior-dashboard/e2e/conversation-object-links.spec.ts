@@ -1,9 +1,22 @@
+import type { Page } from "@playwright/test";
 import { desktop, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
 // The mock release Conversation saves Annotations for these pull requests,
 // and its last reply links to them.
 const CONVERSATION_ID = "slack:CQA456:1770021600.000600";
+
+// Resolved links render again when their cards arrive, which drops an
+// earlier hover. Wait for all of them before a hover.
+async function waitForResolvedLinks(page: Page): Promise<void> {
+  for (const name of [
+    /Release 4\.2 checklist/,
+    /Release 4\.2 go\/no-go/,
+    /#proj-release/,
+  ]) {
+    await expect(page.getByRole("link", { name })).toBeVisible();
+  }
+}
 
 test("links to saved objects show as a chip, a hover card, and a card", async ({
   page,
@@ -31,11 +44,7 @@ test("links to saved objects show as a chip, a hover card, and a card", async ({
     }),
   ).toBeVisible();
 
-  // Resolved links render again when their cards arrive, which drops an
-  // earlier hover. Wait for them first.
-  await expect(
-    page.getByRole("link", { name: /Release 4\.2 checklist/ }),
-  ).toBeVisible();
+  await waitForResolvedLinks(page);
   // A labeled link keeps its text and previews the card on hover.
   await page.getByRole("link", { name: "relay fix" }).hover();
   await expect(
@@ -67,6 +76,7 @@ test("links without an Annotation resolve to a chip and a hover card", async ({
   );
   await expect(page.getByRole("link", { name: /Morgan Lee/ })).toBeVisible();
 
+  await waitForResolvedLinks(page);
   await chip.hover();
   await expect(
     page.getByRole("region", {
@@ -92,6 +102,7 @@ test("Google Doc and Calendar links resolve to chips and hover cards", async ({
     "href",
     /^https:\/\/www\.google\.com\/calendar\/event\?eid=/,
   );
+  await waitForResolvedLinks(page);
   await event.hover();
   const eventCard = page.getByRole("region", {
     name: "Calendar event: Release 4.2 go/no-go",
@@ -129,6 +140,7 @@ test("a Slack message link resolves to a chip and a hover card", async ({
     "href",
     "https://acme.slack.com/archives/CQA456/p1770021700000100",
   );
+  await waitForResolvedLinks(page);
   await chip.hover();
   const card = page.getByRole("region", {
     name: /^Message: Release notes are ready for review/,
