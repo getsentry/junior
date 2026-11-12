@@ -81,6 +81,12 @@ export const reviewItemListQuerySchema = z
     include: z.enum(["archived"]).optional(),
     q: z.string().trim().max(200).optional(),
     /**
+     * `waiting` lists the open items that wait on the viewer first, then the
+     * rest, newest first within each group. By default open items page
+     * oldest first. A closed list ignores it.
+     */
+    sort: z.enum(["waiting"]).optional(),
+    /**
      * `open` (the default), or closed statuses, comma separated, such as
      * `done,dismissed`. Closed items page newest closed first.
      */

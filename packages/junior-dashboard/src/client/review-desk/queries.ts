@@ -34,6 +34,11 @@ type ReviewItemListFilters = {
   enabled?: boolean;
   forViewer?: boolean;
   q?: string;
+  /**
+   * `waiting` pages the open items that wait on the viewer first, so the
+   * first page holds what needs them now.
+   */
+  sort?: "waiting";
 };
 
 function reviewItemListSearch(filters: ReviewItemListFilters) {
@@ -43,6 +48,7 @@ function reviewItemListSearch(filters: ReviewItemListFilters) {
   }
   if (filters.forViewer) params.set("for", "viewer");
   if (filters.q) params.set("q", filters.q);
+  if (filters.sort) params.set("sort", filters.sort);
   if (filters.closed) params.set("status", "done,dismissed");
   return params.toString();
 }

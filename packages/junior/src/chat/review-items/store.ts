@@ -10,6 +10,7 @@ import {
   inArray,
   isNull,
   lt,
+  not,
   notLike,
   or,
   sql,
@@ -512,6 +513,14 @@ export interface ReviewItemPosition {
 }
 
 /**
+ * A position in the waiting-first order: the last item of a page, and
+ * whether it needs the User. Search returns the items after it.
+ */
+export interface ReviewItemWaitingPosition extends ReviewItemPosition {
+  needsUser: boolean;
+}
+
+/**
  * A position in the newest-closed-first order: the last closed item of a
  * page. Search returns the items closed before it.
  */
@@ -528,6 +537,11 @@ export interface ReviewItemFilters {
    * first.
    */
   after?: ReviewItemPosition;
+  /**
+   * Return only the items after this position. Use it with
+   * `order: { needsUserId }` and only open items.
+   */
+  afterWaiting?: ReviewItemWaitingPosition;
   /** One assigned User, or Everyone. */
   assignee?: { everyone: true } | { userId: string };
   automationId?: string;
@@ -547,10 +561,11 @@ export interface ReviewItemFilters {
   query?: string;
   /**
    * `oldest` sorts by creation, oldest first. `closed` sorts closed items by
-   * when they closed, newest first. By default the newest change comes
-   * first.
+   * when they closed, newest first. `{ needsUserId }` puts the items that
+   * need that User first (`reviewItemNeedsUser`), then the rest, each group
+   * newest created first. By default the newest change comes first.
    */
-  order?: "closed" | "oldest";
+  order?: "closed" | "oldest" | { needsUserId: string };
   statuses: readonly ReviewItemStatus[];
   subjectId?: string;
 }
@@ -572,6 +587,23 @@ function searchConditions(
           gt(juniorReviewItems.id, filters.after.id),
         ),
       )!,
+    );
+  }
+  if (filters.afterWaiting) {
+    if (typeof filters.order !== "object") {
+      throw new Error("afterWaiting needs the waiting-first order");
+    }
+    const needs = reviewItemNeedsUser(filters.order.needsUserId);
+    const { createdAt, id, needsUser } = filters.afterWaiting;
+    const older = or(
+      lt(juniorReviewItems.createdAt, createdAt),
+      and(
+        eq(juniorReviewItems.createdAt, createdAt),
+        lt(juniorReviewItems.id, id),
+      ),
+    )!;
+    conditions.push(
+      needsUser ? or(not(needs), and(needs, older))! : and(not(needs), older)!,
     );
   }
   if (filters.closedBefore) {
@@ -652,7 +684,9 @@ export function reviewItemsNeedingUserVersionQuery(
  * `order: "oldest"`, the oldest item comes first: `created_at`, then `id`,
  * both ascending. `after` pages through that order. With `order: "closed"`,
  * the item closed last comes first: `closed_at`, then `id`, both
- * descending. `closedBefore` pages through that order.
+ * descending. `closedBefore` pages through that order. With
+ * `order: { needsUserId }`, the items that need the User come first, then
+ * `created_at` and `id`, both descending. `afterWaiting` pages through it.
  */
 export async function searchReviewItems(
   db: JuniorDatabase,
@@ -665,11 +699,17 @@ export async function searchReviewItems(
     .where(and(...searchConditions(reader, filters)))
     .orderBy(
       desc(eq(juniorReviewItems.status, "open")),
-      ...(filters.order === "oldest"
-        ? [asc(juniorReviewItems.createdAt), asc(juniorReviewItems.id)]
-        : filters.order === "closed"
-          ? [desc(juniorReviewItems.closedAt), desc(juniorReviewItems.id)]
-          : [desc(juniorReviewItems.updatedAt), desc(juniorReviewItems.id)]),
+      ...(typeof filters.order === "object"
+        ? [
+            desc(reviewItemNeedsUser(filters.order.needsUserId)),
+            desc(juniorReviewItems.createdAt),
+            desc(juniorReviewItems.id),
+          ]
+        : filters.order === "oldest"
+          ? [asc(juniorReviewItems.createdAt), asc(juniorReviewItems.id)]
+          : filters.order === "closed"
+            ? [desc(juniorReviewItems.closedAt), desc(juniorReviewItems.id)]
+            : [desc(juniorReviewItems.updatedAt), desc(juniorReviewItems.id)]),
     )
     .limit(filters.limit);
   return await hydrate(db, rows);

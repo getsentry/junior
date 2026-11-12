@@ -79,9 +79,12 @@ function useBuildInboxData(input: {
   signedIn: boolean;
 }) {
   const { conversations, feed, signedIn } = input;
+  // To do shows the first page even while collapsed, and the waiting sort
+  // puts what needs the viewer on it.
   const { items: loaded, query: itemsQuery } = useReviewItemsData({
     enabled: signedIn,
     forViewer: true,
+    sort: "waiting",
   });
   // A link can name an open item past the loaded page. It joins the list
   // for the session, so a tab switch or a remount keeps its row.

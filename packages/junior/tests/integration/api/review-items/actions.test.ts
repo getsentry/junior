@@ -441,6 +441,83 @@ describe("review item actions API", () => {
     });
   });
 
+  it("pages what waits on the viewer first with the waiting sort", async () => {
+    const fixture = await createConversationFixture();
+    await slackConversation("slack:CPUB:1.000001");
+    const ana = await user("ana@example.com");
+    const base = Date.parse("2026-10-01T12:00:00.000Z");
+    const item = async (
+      index: number,
+      kind: "action" | "notice",
+      nowMs: number,
+    ) => {
+      const created = await insertReviewItem(getDb(), {
+        addedByConversationId: "slack:CPUB:1.000001",
+        assignedToEveryone: false,
+        assigneeUserIds: [ana.id],
+        body: `Item ${index}.`,
+        conversationIds: ["slack:CPUB:1.000001"],
+        dedupeKey: `waiting-sort:${index}`,
+        ...(kind === "action"
+          ? {
+              kind,
+              request: {
+                fields: [
+                  {
+                    id: "decision",
+                    kind: "choice" as const,
+                    label: "Decision",
+                    options: [{ label: "Approve" }, { label: "Reject" }],
+                  },
+                ],
+                question: "Approve or reject this entry?",
+              },
+            }
+          : { kind }),
+        nowMs,
+        title: `Item ${index}`,
+        visibility: "private",
+      });
+      if (!created) throw new Error(`item ${index} was not added`);
+      return created.id;
+    };
+    // 30 old notices, two at each time so the id breaks the tie, then one
+    // new ask. Oldest first, the ask would be on the second page.
+    const notices: string[] = [];
+    for (let index = 0; index < 30; index += 1) {
+      notices.push(
+        await item(index, "notice", base + Math.floor(index / 2) * 1_000),
+      );
+    }
+    const ask = await item(30, "action", base + 60_000);
+
+    const first = await (
+      await api(fixture, ana).get("?for=viewer&sort=waiting&limit=25")
+    ).json();
+    expect(first.items[0]).toMatchObject({ id: ask, kind: "action" });
+    expect(first.items).toHaveLength(25);
+    const cursor = encodeURIComponent(first.nextCursor);
+    const second = await (
+      await api(fixture, ana).get(
+        `?for=viewer&sort=waiting&limit=25&cursor=${cursor}`,
+      )
+    ).json();
+    expect(second.nextCursor).toBeUndefined();
+    // The rest page newest first, with no item twice and none skipped.
+    const rest = [...first.items, ...second.items].slice(1) as {
+      createdAt: string;
+      id: string;
+    }[];
+    expect(rest.map((notice) => notice.id).sort()).toEqual([...notices].sort());
+    const times = rest.map((notice) => Date.parse(notice.createdAt));
+    expect(times).toEqual([...times].sort((x, y) => y - x));
+    // A cursor pages only the order it came from.
+    expect(
+      (await api(fixture, ana).get(`?for=viewer&limit=25&cursor=${cursor}`))
+        .status,
+    ).toBe(400);
+  });
+
   it("lets anyone take an item assigned to Everyone", async () => {
     const fixture = await createConversationFixture();
     await slackConversation("slack:CPUB:1.000001");

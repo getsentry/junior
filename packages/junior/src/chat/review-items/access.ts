@@ -391,6 +391,19 @@ export function canActOnReviewItem(item: ReviewItem, userId: string): boolean {
   return item.assignees.some((assignee) => assignee.userId === userId);
 }
 
+/**
+ * Return whether a Review item needs a User: an open `action` item that is
+ * assigned to them. `reviewItemNeedsUser` is the SQL form; keep the two the
+ * same.
+ */
+export function itemNeedsUser(item: ReviewItem, userId: string): boolean {
+  return (
+    item.status === "open" &&
+    item.kind === "action" &&
+    item.assignees.some((assignee) => assignee.userId === userId)
+  );
+}
+
 /** Return whether a User is already the only assignee, so take does nothing. */
 export function isOnlyAssignee(item: ReviewItem, userId: string): boolean {
   return (

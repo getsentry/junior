@@ -158,7 +158,8 @@ function CommandPaletteBody(props: {
   // no request. The server search only reaches conversations outside it.
   const feed = useConversationsData();
   const searched = useConversationsData(search);
-  const inbox = useReviewItemsData({ forViewer: true });
+  // The Inbox's own list, so the palette reads its cache.
+  const inbox = useReviewItemsData({ forViewer: true, sort: "waiting" });
   // The server matches body text too, which the cached list cannot.
   const inboxSearched = useReviewItemsData({
     enabled: Boolean(search),

@@ -231,6 +231,19 @@ export async function mockReviewItems(
           (!linked || i.conversationIds.includes(linked)) &&
           `${i.title}\n${i.body}`.toLowerCase().includes(q),
       );
+      // The waiting sort lists what waits on the viewer first, then the
+      // rest, newest first, as the server does. Otherwise items keep their
+      // order.
+      if (!closed && url.searchParams.get("sort") === "waiting") {
+        const waits = (i: (typeof list)[number]) =>
+          Number(i.kind === "action" && i.canAct && !i.assignedToEveryone);
+        list.sort(
+          (x, y) =>
+            waits(y) - waits(x) ||
+            y.createdAt.localeCompare(x.createdAt) ||
+            y.id.localeCompare(x.id),
+        );
+      }
       // The cursor is the index of the first item of the page.
       const start = Number(url.searchParams.get("cursor") ?? 0);
       const end = start + (options.pageSize ?? list.length);

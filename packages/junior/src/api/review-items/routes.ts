@@ -20,6 +20,7 @@ import { getDb } from "@/chat/db";
 import {
   canActOnReviewItem,
   isOnlyAssignee,
+  itemNeedsUser,
   reviewItemReaderForUser,
   reviewItemReaderForUserInConversation,
 } from "@/chat/review-items/access";
@@ -44,16 +45,21 @@ import { countOwnedAutomationsNeedingAttention } from "@/chat/automations/collec
 // an item that closes while a person reads only leaves the open order, so a
 // cursor never skips or repeats an item. A `status` list of closed items
 // pages newest closed first: an item closes once, so its place never moves.
+// The `waiting` sort pages what waits on the viewer first, newest first, so
+// the first page holds what needs them now. An item that starts or stops
+// waiting on the viewer while they read can move between the two groups;
+// the next read of the first page shows it.
 const ARCHIVED_LIMIT = 50;
 
 /**
  * The list that a cursor belongs to. `status` names the closed statuses of
- * a closed list, such as `done,dismissed`; an open list has none.
+ * a closed list, such as `done,dismissed`; an open list has none. `sort`
+ * names the waiting-first order of an open list.
  */
 type ListFilters = Pick<
   ReviewItemFilters,
   "conversationId" | "forUserId" | "query"
-> & { status?: string };
+> & { sort?: "waiting"; status?: string };
 
 const cursorSchema = z
   .object({
@@ -62,7 +68,9 @@ const cursorSchema = z
     createdAtMs: z.number().int(),
     forUserId: z.string().min(1).optional(),
     id: z.string().min(1),
+    needsUser: z.boolean().optional(),
     query: z.string().min(1).optional(),
+    sort: z.literal("waiting").optional(),
     status: z.string().min(1).optional(),
     version: z.literal(2),
   })
@@ -72,12 +80,19 @@ const cursorSchema = z
  * Encode the last item of a page as the cursor of the next page. The
  * cursor names its list, so it cannot page through a different list.
  */
-function encodeCursor(item: ReviewItem, filters: ListFilters): string {
+function encodeCursor(
+  item: ReviewItem,
+  filters: ListFilters,
+  viewer: User,
+): string {
   return Buffer.from(
     JSON.stringify({
       ...filters,
       ...(filters.status && item.closedAt
         ? { closedAtMs: item.closedAt.getTime() }
+        : undefined),
+      ...(filters.sort
+        ? { needsUser: itemNeedsUser(item, viewer.id) }
         : undefined),
       createdAtMs: item.createdAt.getTime(),
       id: item.id,
@@ -91,7 +106,12 @@ function encodeCursor(item: ReviewItem, filters: ListFilters): string {
 function decodeCursor(
   cursor: string,
   filters: ListFilters,
-): (ReviewItemPosition & { closedAt?: Date }) | undefined {
+):
+  | (ReviewItemPosition & {
+      closedAt?: Date;
+      needsUser?: boolean;
+    })
+  | undefined {
   try {
     const parsed = cursorSchema.parse(
       JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")),
@@ -100,8 +120,10 @@ function decodeCursor(
       parsed.conversationId !== filters.conversationId ||
       parsed.forUserId !== filters.forUserId ||
       parsed.query !== filters.query ||
+      parsed.sort !== filters.sort ||
       parsed.status !== filters.status ||
-      (filters.status !== undefined && parsed.closedAtMs === undefined)
+      (filters.status !== undefined && parsed.closedAtMs === undefined) ||
+      (filters.sort !== undefined && parsed.needsUser === undefined)
     ) {
       return undefined;
     }
@@ -111,6 +133,9 @@ function decodeCursor(
         : undefined),
       createdAt: new Date(parsed.createdAtMs),
       id: parsed.id,
+      ...(parsed.needsUser !== undefined
+        ? { needsUser: parsed.needsUser }
+        : undefined),
     };
   } catch {
     return undefined;
@@ -187,7 +212,9 @@ export function createReviewItemRoutes(services: {
         ...(query.for === "viewer" ? { forUserId: viewer.id } : undefined),
         ...(query.q ? { query: query.q } : undefined),
         ...(query.status[0] === "open"
-          ? undefined
+          ? query.sort
+            ? { sort: query.sort }
+            : undefined
           : { status: [...query.status].sort().join(",") }),
       };
       const after = query.cursor
@@ -224,16 +251,28 @@ export function createReviewItemRoutes(services: {
         return jsonResponse(reviewItemListSchema, {
           items: page.map((item) => reviewItemPayload(item, viewer)),
           ...(closed.length > query.limit && last
-            ? { nextCursor: encodeCursor(last, filters) }
+            ? { nextCursor: encodeCursor(last, filters, viewer) }
             : undefined),
         });
       }
       const open = await searchReviewItems(db, reader, {
         ...filters,
         limit: query.limit + 1,
-        order: "oldest",
         statuses: ["open"],
-        ...(after ? { after } : undefined),
+        ...(filters.sort
+          ? {
+              order: { needsUserId: viewer.id },
+              ...(after
+                ? {
+                    afterWaiting: {
+                      createdAt: after.createdAt,
+                      id: after.id,
+                      needsUser: after.needsUser === true,
+                    },
+                  }
+                : undefined),
+            }
+          : { order: "oldest", ...(after ? { after } : undefined) }),
       });
       const page = open.slice(0, query.limit);
       const last = page.at(-1);
@@ -254,7 +293,7 @@ export function createReviewItemRoutes(services: {
           ? { moreArchived: true }
           : undefined),
         ...(open.length > query.limit && last
-          ? { nextCursor: encodeCursor(last, filters) }
+          ? { nextCursor: encodeCursor(last, filters, viewer) }
           : undefined),
       });
     },
