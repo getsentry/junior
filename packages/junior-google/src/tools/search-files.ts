@@ -214,11 +214,14 @@ export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
     outputSchema,
     async execute(input) {
       const requester = await requesterEmail(ctx);
-      if (!requester) {
+      // Domain-findable files are findable only inside the allowed domains,
+      // so search only for requesters in them.
+      const domain = requester ? emailDomain(requester) : undefined;
+      if (!requester || !domain || !ctx.allowedDomains.includes(domain)) {
         return {
           target: "searchGoogleFiles" as const,
           files: [],
-          message: `The requester's email is unknown, so search cannot check which files they could find. ${PASTE_LINK}`,
+          message: `Search works only for requesters with a known email at ${ctx.allowedDomains.join(", ")}. ${PASTE_LINK}`,
           truncated: false,
         };
       }

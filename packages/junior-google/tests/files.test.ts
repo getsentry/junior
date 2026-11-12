@@ -175,6 +175,12 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     });
     // Without the requester's email, Junior never searches.
     expect(unknown.fetch).not.toHaveBeenCalled();
+    // Domain-findable files are not findable for someone outside the company.
+    const outside = toolsFor("eve@other.com");
+    await expect(
+      run(outside.tools, "searchGoogleFiles", { query: "plan" }),
+    ).resolves.toMatchObject({ files: [] });
+    expect(outside.fetch).not.toHaveBeenCalled();
 
     const { fetch, tools } = docsTools(
       Response.json({ error: { message: "Invalid Value" } }, { status: 400 }),

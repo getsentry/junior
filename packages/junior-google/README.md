@@ -31,7 +31,8 @@ files shared with the requester by name. Files shared by link, or only with
 other people or groups, never show up in search. Search also drops every file
 that no account in `GOOGLE_WORKSPACE_ALLOWED_DOMAINS` owns. Shared-drive files
 have no owner, so search shows them only when they are shared with the
-requester by name.
+requester by name. Search returns nothing for a requester outside those
+domains.
 
 Google Meet shares transcripts and Gemini notes with every invitee, Junior's
 account too. The file tools refuse files whose titles end in "- Transcript" or
