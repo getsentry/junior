@@ -790,3 +790,83 @@ test("only pins drag in In flight", async ({ dashboard, page }) => {
     ],
   });
 });
+
+test("Open conversation shows the row's ask, far back in the transcript", async ({
+  dashboard,
+  page,
+}) => {
+  const conversationId = "internal:question-qa";
+  const ask = "Approve the payments-v42 rollout";
+  // Long replies after the ask put it far above the latest message, where
+  // the transcript opens.
+  await page.route(
+    (url) =>
+      url.pathname ===
+      `/api/conversations/${encodeURIComponent(conversationId)}`,
+    async (route) => {
+      const response = await route.fetch();
+      const report = await response.json();
+      if (!Array.isArray(report.events)) return route.fulfill({ response });
+      const last = report.events.at(-1);
+      const later = Array.from({ length: 40 }, (_, index) => ({
+        createdAt: last.createdAt,
+        data: {
+          messageId: `qa-later-${index}`,
+          role: "assistant",
+          text: `Canary check ${index + 1}. ${"Error rate and latency hold steady across every region. ".repeat(6)}`,
+          type: "message",
+        },
+        seq: last.seq + 1 + index,
+      }));
+      // The reader has read them all, so the transcript opens at the latest.
+      await route.fulfill({
+        response,
+        json: {
+          ...report,
+          events: [...report.events, ...later],
+          lastSeenAt: last.createdAt,
+        },
+      });
+    },
+  );
+  // The mark is brief, so count every time a record gets it.
+  await page.addInitScript(() => {
+    const marks = { count: 0 };
+    Object.assign(window, { askMarks: marks });
+    new MutationObserver((changes) => {
+      marks.count += changes.filter((change) =>
+        (change.target as Element).hasAttribute("data-highlighted"),
+      ).length;
+    }).observe(document, {
+      attributeFilter: ["data-highlighted"],
+      subtree: true,
+    });
+  });
+  await page.goto(`${dashboard.baseURL}/`);
+  const row = page
+    .getByRole("region", { name: "To do" })
+    .locator("[data-inbox-row]")
+    .filter({ hasText: "Roll out payments-v42" })
+    .first();
+  await row.hover();
+  await row.getByRole("link", { name: "Open conversation" }).first().click();
+  await expect(page).toHaveURL(
+    new RegExp(`/conversations/${encodeURIComponent(conversationId)}$`),
+  );
+  const record = page
+    .getByLabel("Conversation transcript")
+    .locator("[data-review-item-ask]")
+    .filter({ hasText: ask });
+  // The record gets its mark once it scrolls into view. The transcript can
+  // render from the top before it opens at the latest, so check the place
+  // after the mark.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { askMarks: { count: number } }).askMarks.count,
+      ),
+    )
+    .toBeGreaterThan(0);
+  await expect(record).toBeInViewport();
+});

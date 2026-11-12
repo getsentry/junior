@@ -59,6 +59,7 @@ import { snoozeChoices, type SnoozeChoice } from "./inboxSnooze";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
+import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
 
 const PLURALS: Record<string, string> = {
@@ -181,6 +182,7 @@ function RowItem(props: {
       {/* A notice's only action is Dismiss, the row's Done. A question keeps
           its own beside its answer. */}
       <ReviewItemActions dismiss={!(props.done && showBody)} item={item} />
+      {item.request ? <ReviewItemTurnMessage item={item} /> : null}
     </section>
   );
 }
@@ -239,10 +241,10 @@ function RowOpenLink(props: { to: string }) {
   );
 }
 
-/** Where the row opens: an item row opens at the Turn that added its ask. */
+/** Where the row opens: at the record of its newest ask, when it has one. */
 function rowConversationPath(props: InboxRowProps): string {
   return conversationPath(props.conversationId, {
-    turnId: props.itemTitle ? props.bundle?.newest.addedByTurnId : undefined,
+    askItemId: props.bundle?.newest.id,
   });
 }
 

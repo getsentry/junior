@@ -94,7 +94,7 @@ function DoneRow(props: {
             <Link
               className="ml-auto inline-flex items-center gap-1.5 font-medium text-dashboard-text no-underline hover:underline focus-visible:outline-dashboard-focus"
               to={conversationPath(item.addedByConversationId, {
-                turnId: item.addedByTurnId,
+                askItemId: item.id,
               })}
             >
               Open conversation

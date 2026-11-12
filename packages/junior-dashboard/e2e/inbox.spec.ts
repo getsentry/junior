@@ -841,3 +841,90 @@ test("an item's subject card hides when its text already shows that card", async
   await expect(card.first()).toBeVisible();
   await expect(card).toHaveCount(1);
 });
+
+test("an expanded question shows the message of the Turn that asked it", async ({
+  dashboard,
+  page,
+}) => {
+  const turnId = "turn-rollout";
+  await mockReviewItems(page, {
+    open: [{ ...rollout, addedByTurnId: turnId }],
+  });
+  const event = (seq: number, data: Record<string, unknown>) => ({
+    createdAt: new Date(NOW_MS - (60 - seq) * 1000).toISOString(),
+    data,
+    seq,
+  });
+  const reply = [
+    "The canary error rate is flat for 30 minutes.",
+    ...Array.from({ length: 8 }, (_, index) => `Region ${index + 1} holds.`),
+    "Roll out when ready.",
+  ].join("\n\n");
+  let reads = 0;
+  await page.route("**/api/conversations/*/events?*", (route) => {
+    if (new URL(route.request().url()).searchParams.get("turn") !== turnId) {
+      return route.fallback();
+    }
+    reads += 1;
+    return route.fulfill({
+      json: {
+        eventHistory: { status: "available" },
+        events: [
+          event(1, {
+            messageId: "m-before",
+            role: "assistant",
+            text: "An older Turn's reply.",
+            type: "message",
+          }),
+          event(2, { state: "started", turnId, type: "turn_lifecycle" }),
+          event(3, {
+            messageId: "m-check",
+            role: "assistant",
+            text: "Checking the canary first.",
+            type: "message",
+          }),
+          event(4, {
+            messageId: "m-reply",
+            role: "assistant",
+            text: reply,
+            type: "message",
+          }),
+          event(5, { state: "succeeded", turnId, type: "turn_lifecycle" }),
+          event(6, {
+            state: "started",
+            turnId: "turn-later",
+            type: "turn_lifecycle",
+          }),
+          event(7, {
+            messageId: "m-later",
+            role: "assistant",
+            text: "A later Turn's reply.",
+            type: "message",
+          }),
+        ],
+        generatedAt: new Date(NOW_MS).toISOString(),
+      },
+    });
+  });
+  await page.goto(`${dashboard.baseURL}/?view=decisions`);
+  const head = rowHead(page, rollout.title);
+  await expect(head).toBeVisible();
+  // Nothing loads until the row expands.
+  expect(reads).toBe(0);
+  await head.click();
+  const message = page.getByRole("region", { name: "Junior's message" });
+  await expect(message).toContainText("The canary error rate is flat");
+  await expect(message).not.toContainText("Checking the canary first.");
+  await expect(message).not.toContainText("Turn's reply");
+  // Long messages clamp, and the toggle opens the rest.
+  const toggle = message.getByRole("button", {
+    name: "Expand Junior's message",
+  });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(
+    message.getByRole("button", { name: "Collapse Junior's message" }),
+  ).toHaveAttribute("aria-expanded", "true");
+  await expect(message.getByText("Roll out when ready.")).toBeInViewport();
+  expect(reads).toBe(1);
+});

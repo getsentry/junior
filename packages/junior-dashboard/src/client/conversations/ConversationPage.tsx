@@ -37,6 +37,7 @@ import {
 } from "./conversationCatchUpState";
 import { buildConversationMarkdown } from "../markdownExport";
 import {
+  CONVERSATION_ASK_PARAM,
   CONVERSATION_EVENT_PARAM,
   CONVERSATION_REVIEW_OPEN,
   CONVERSATION_REVIEW_PARAM,
@@ -84,7 +85,10 @@ import {
   ChildConversationStatusPill,
   childConversationStatus,
 } from "./ChildConversationStatus";
-import { useWaitingConversations } from "../review-desk/queries";
+import {
+  useReviewItemData,
+  useWaitingConversations,
+} from "../review-desk/queries";
 import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import { conversationContextTags } from "./ConversationContextTags";
 import { conversationLinks } from "./ConversationLinkedWork";
@@ -539,6 +543,23 @@ export function ConversationPage(props: {
       openAskTurn(askReveal.itemId, askReveal.turnId);
     }
   }, [askReveal]);
+  // An Inbox link names the ask it opens for. Its record shows like a
+  // question the reader moves to, once, and the link drops the param.
+  const askLinkId = searchParams.get(CONVERSATION_ASK_PARAM) ?? undefined;
+  const askLink = useReviewItemData(askLinkId).data;
+  const showAskLink = useEffectEvent((item: ReviewItemPayload) => {
+    showQuestion(item, false);
+    setSearchParams(
+      (params) => {
+        params.delete(CONVERSATION_ASK_PARAM);
+        return params;
+      },
+      { replace: true },
+    );
+  });
+  useEffect(() => {
+    if (askLink && askLink.id === askLinkId) showAskLink(askLink);
+  }, [askLink, askLinkId]);
   useEffect(() => {
     if (linkedTurnId !== undefined) openLink({ turn: linkedTurnId });
     else if (selectedEventSeq !== undefined) {
