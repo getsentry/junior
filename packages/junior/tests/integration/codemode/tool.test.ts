@@ -109,6 +109,24 @@ describe("codemode tool", () => {
     if (!codemode) {
       throw new Error("codemode was not registered");
     }
+    // `<script-tools>` lists the tools, so another tool set keeps the same
+    // tool definition and the provider prompt cache.
+    expect(
+      createPiAgentTools(
+        registry as Record<string, AnyToolDefinition>,
+        new SkillSandbox([], []),
+        {},
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        "private",
+        undefined,
+        undefined,
+        { countToolCall: resume.countToolCall },
+      ).find((candidate) => candidate.name === CODEMODE_TOOL_NAME)?.description,
+    ).toBe(codemode.description);
 
     const result = (await codemode.execute(CODEMODE_CALL_ID, {
       code: `
