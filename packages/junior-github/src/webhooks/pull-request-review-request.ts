@@ -208,7 +208,7 @@ export async function syncGitHubPullRequestReviewRequest(args: {
       assigneeIdentityIds: [opener.identityId],
       body: `GitHub asks you to review **${change.title}**: ${change.url}`,
       dedupeKey,
-      subject: { id: change.url, title: name, url: change.url },
+      subject: { id: change.url, title: change.title, url: change.url },
       title: `Review requested · #${number}`,
       waitsOnAssignees: true,
     });

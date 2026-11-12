@@ -225,7 +225,7 @@ describe("review requested ask", () => {
           dedupeKey: DEDUPE_KEY,
           subject: {
             id: PULL_URL,
-            title: "getsentry/junior#946",
+            title: "Add the review desk ask",
             url: PULL_URL,
           },
           title: "Review requested · #946",
