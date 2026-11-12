@@ -1,21 +1,32 @@
+import type { SlackAdapter } from "@chat-adapter/slack";
 import type { KnownBlock } from "@slack/types";
+import type { User } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
 import * as z from "zod";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
+import { createSlackActor } from "@/chat/actor";
 import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { getConversationIdByProviderConversation } from "@/chat/conversations/sql/bindings";
 import type { Conversation } from "@/chat/conversations/store";
 import { parseDashboardConversationLink } from "@/chat/dashboard-link";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
+import { withSpan } from "@/chat/logging";
+import { readActorIdentity } from "@/chat/plugins/viewer";
+import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
 import {
   alreadyContinuesInSlackMessage,
+  BUSY,
   continueConversationInSlack,
   isMovableToSlack,
 } from "@/chat/slack/continue-in-slack";
 import {
   parseSlackChannelId,
   parseSlackTeamId,
+  parseSlackUserId,
+  slackChannelIdSchema,
+  slackTeamIdSchema,
+  slackUserIdSchema,
   type SlackChannelId,
   type SlackTeamId,
 } from "@/chat/slack/ids";
@@ -26,6 +37,7 @@ import {
 } from "@/chat/slack/outbound";
 import { slackMessageTsSchema } from "@/chat/slack/timestamp";
 import { checkSlackChannelReadAccess } from "@/chat/slack/tool-support/channel-access";
+import { deferConversationMove } from "@/chat/task-execution/store";
 import { resolveSlackActingUser } from "./slack-acting-user";
 import type {
   SlackChannelScope,
@@ -227,9 +239,137 @@ export async function unfurlDashboardConversationLinks(args: {
   });
 }
 
+// A click that waits for the Run of its Conversation keeps what the move
+// needs to act later as the person who clicked.
+const continueHereClickSchema = continueHereValueSchema.extend({
+  channelId: slackChannelIdSchema,
+  slackUserId: slackUserIdSchema,
+  teamId: slackTeamIdSchema,
+});
+
+type ContinueHereClick = z.output<typeof continueHereClickSchema>;
+
+function tellClicker(
+  click: Pick<ContinueHereClick, "channelId" | "messageTs" | "threadTs">,
+  userId: string,
+  text: string,
+) {
+  return postSlackEphemeralMessage({
+    channelId: click.channelId,
+    text,
+    // A top-level message has no thread to show the note in yet.
+    ...(click.threadTs !== click.messageTs
+      ? { threadTs: click.threadTs }
+      : undefined),
+    userId,
+  });
+}
+
+async function showContinuesIn(
+  conversation: Conversation,
+  click: ContinueHereClick,
+  locationUrl: string | undefined,
+): Promise<void> {
+  await unfurlSlackLinks({
+    channelId: click.channelId,
+    messageTs: click.messageTs,
+    unfurls: {
+      [click.url]: {
+        blocks: await previewBlocks({
+          conversation,
+          footer: {
+            type: "context",
+            elements: [
+              {
+                type: "mrkdwn",
+                text: locationUrl
+                  ? `Continues in ${formatSlackLink(locationUrl, "this thread")}.`
+                  : "Continues in this thread.",
+              },
+            ],
+          },
+          url: click.url,
+        }),
+      },
+    },
+  });
+}
+
+/**
+ * Move the Conversation of a click into its thread, or store the click until
+ * the Run that holds the Conversation ends. The clicker gets each refusal.
+ * A stored click (`deferred`) stays quiet when it has to wait again.
+ */
+async function continueHere(
+  click: ContinueHereClick,
+  user: User,
+  deferred: boolean,
+): Promise<void> {
+  const tell = (text: string) => tellClicker(click, click.slackUserId, text);
+  // A Run can end or start between the checks. Then try again, a few times.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const conversation = await getConversationStore().get({
+      conversationId: click.conversationId,
+    });
+    const access = conversation
+      ? (
+          await readConversationAccessFromSql(
+            getDb(),
+            [click.conversationId],
+            user,
+          )
+        ).get(click.conversationId)
+      : undefined;
+    // Anyone who can read a public Conversation may move it, as anyone may
+    // post in it. Private ones never get a button; refuse a stale one.
+    if (!conversation || access?.visibility !== "public") {
+      await tell("Only public conversations can move here.");
+      return;
+    }
+    if (!isMovableToSlack(conversation)) {
+      await tell(
+        conversation.location
+          ? await alreadyContinuesInSlackMessage(conversation)
+          : "This conversation can no longer move to Slack.",
+      );
+      return;
+    }
+    const result = await continueConversationInSlack({
+      actorName: user.displayName ?? user.email,
+      channel: { channelId: click.channelId, teamId: click.teamId },
+      conversation,
+      threadTs: click.threadTs,
+    });
+    if (result.status === "refused") {
+      await tell(result.message);
+      return;
+    }
+    if (result.status === "moved") {
+      await showContinuesIn(conversation, click, result.locationUrl);
+      return;
+    }
+    const waiting = await deferConversationMove({
+      conversationId: click.conversationId,
+      move: click,
+    });
+    if (waiting.status === "idle") continue;
+    if (deferred && waiting.move === click) return;
+    // The first stored click wins.
+    const first = continueHereClickSchema.safeParse(waiting.move).data;
+    await tell(
+      first?.channelId === click.channelId && first.threadTs === click.threadTs
+        ? "This conversation moves here when Junior finishes."
+        : "This conversation moves to another thread when Junior finishes.",
+    );
+    return;
+  }
+  await tell(BUSY);
+}
+
 /**
  * Move a dashboard Conversation into the thread of the message that shared
- * its link, as the person who clicked "Continue here".
+ * its link, as the person who clicked "Continue here". While a Run holds
+ * the Conversation, the move waits for that Run to end.
  */
 export async function handleSlackContinueHereClick(args: {
   isAuthorAllowed: (userId: string) => Promise<boolean>;
@@ -242,82 +382,52 @@ export async function handleSlackContinueHereClick(args: {
   if (!target || !channelId) {
     throw new Error("Slack Continue here payload is incomplete");
   }
-  const tellPerson = (userId: string, text: string) =>
-    postSlackEphemeralMessage({
-      channelId,
-      text,
-      // A top-level message has no thread to show the note in yet.
-      ...(target.threadTs !== target.messageTs
-        ? { threadTs: target.threadTs }
-        : undefined),
-      userId,
-    });
   const actor = await resolveSlackActingUser({
     isAuthorAllowed: args.isAuthorAllowed,
     payload: args.payload,
     state: args.state,
-    tell: tellPerson,
+    tell: (userId, text) => tellClicker({ ...target, channelId }, userId, text),
   });
   if (!actor) return;
-  const { teamId, user } = actor;
-  const tell = (text: string) => tellPerson(actor.slackUserId, text);
-  const conversation = await getConversationStore().get({
-    conversationId: target.conversationId,
-  });
-  const access = conversation
-    ? (
-        await readConversationAccessFromSql(
-          getDb(),
-          [target.conversationId],
-          user,
-        )
-      ).get(target.conversationId)
-    : undefined;
-  // Anyone who can read a public Conversation may move it, as anyone may
-  // post in it. Private ones never get a button; refuse a stale one.
-  if (!conversation || access?.visibility !== "public") {
-    await tell("Only public conversations can move here.");
-    return;
-  }
-  if (!isMovableToSlack(conversation)) {
-    await tell(
-      conversation.location
-        ? await alreadyContinuesInSlackMessage(conversation)
-        : "This conversation can no longer move to Slack.",
-    );
-    return;
-  }
-  const result = await continueConversationInSlack({
-    actorName: user.displayName ?? user.email,
-    channel: { channelId, teamId },
-    conversation,
-    threadTs: target.threadTs,
-  });
-  if (result.status === "refused") {
-    await tell(result.message);
-    return;
-  }
-  await unfurlSlackLinks({
-    channelId,
-    messageTs: target.messageTs,
-    unfurls: {
-      [target.url]: {
-        blocks: await previewBlocks({
-          conversation,
-          footer: {
-            type: "context",
-            elements: [
-              {
-                type: "mrkdwn",
-                text: result.locationUrl
-                  ? `Continues in ${formatSlackLink(result.locationUrl, "this thread")}.`
-                  : "Continues in this thread.",
-              },
-            ],
-          },
-          url: target.url,
-        }),
-      },
-    },
-  });
+  const slackUserId = parseSlackUserId(actor.slackUserId);
+  if (!slackUserId) throw new Error("Slack Continue here user is invalid");
+  await continueHere(
+    { ...target, channelId, slackUserId, teamId: actor.teamId },
+    actor.user,
+    false,
+  );
+}
+
+/**
+ * Run a stored "Continue here" click, as the person who clicked, after the
+ * Run that held its Conversation ended. Without an adapter, Slack calls use
+ * the default bot token.
+ */
+export async function continueDeferredSlackClick(
+  value: unknown,
+  getSlackAdapter: (() => SlackAdapter) | undefined,
+): Promise<void> {
+  const click = continueHereClickSchema.parse(value);
+  const task = async () => {
+    const user = (
+      await readActorIdentity(
+        createSlackActor(click.teamId, click.slackUserId, undefined),
+      )
+    )?.user;
+    if (!user) throw new Error("Slack Continue here clicker is unknown");
+    await continueHere(click, user, true);
+  };
+  await withSpan(
+    "chat.slack_continue_here_deferred",
+    "chat.slack_continue_here_deferred",
+    { conversationId: click.conversationId },
+    () =>
+      getSlackAdapter
+        ? runWithSlackInstallation({
+            adapter: getSlackAdapter(),
+            installation: { teamId: click.teamId },
+            task,
+          })
+        : task(),
+  );
 }

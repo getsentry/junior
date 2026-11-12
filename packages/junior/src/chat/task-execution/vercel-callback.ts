@@ -1,3 +1,4 @@
+import type { SlackAdapter } from "@chat-adapter/slack";
 import type { StateAdapter } from "chat";
 import { getChatConfig } from "@/chat/config";
 import { logWarn, withLogContext, withSpan } from "@/chat/logging";
@@ -35,6 +36,8 @@ export const CONVERSATION_WORK_DEV_CONSUMER_GROUP =
 export interface ProcessConversationQueueMessageOptions {
   checkInIntervalMs?: number;
   conversationStore?: ConversationStore;
+  /** Slack installation lookup for work that runs after the Run ends. */
+  getSlackAdapter?: () => SlackAdapter;
   nowMs?: () => number;
   queue?: ConversationWorkQueue;
   run(context: ConversationWorkerContext): Promise<ConversationWorkerResult>;
@@ -115,6 +118,7 @@ export async function processConversationQueueMessage(
           const result = await processConversationWork(parsed, {
             checkInIntervalMs: options.checkInIntervalMs,
             conversationStore: options.conversationStore,
+            getSlackAdapter: options.getSlackAdapter,
             nowMs: options.nowMs,
             queue: options.queue ?? getVercelConversationWorkQueue(),
             run: options.run,
