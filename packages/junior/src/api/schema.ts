@@ -99,6 +99,7 @@ export {
   conversationUnchangedDetailWithMailboxSchema,
 } from "./schema/conversation-pending-messages";
 export {
+  CONVERSATION_FEED_LINK_LIMIT,
   CONVERSATION_FEED_MEDIA_LIMIT,
   conversationFeedSchema,
 } from "./schema/conversation-feed";

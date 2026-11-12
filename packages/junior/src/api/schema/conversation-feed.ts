@@ -36,10 +36,14 @@ export const conversationFeedMediaSchema = z
 
 export type ConversationFeedMedia = z.infer<typeof conversationFeedMediaSchema>;
 
+/** The most links a feed row lists. */
+export const CONVERSATION_FEED_LINK_LIMIT = 3;
+
 /** A feed row, with its visible Threads nested under their parents. */
 export type ConversationFeedItem = ConversationSummaryReport & {
   brief?: ConversationFeedBrief;
   media?: ConversationFeedMedia[];
+  links?: string[];
   threads?: ConversationFeedItem[];
 };
 
@@ -54,6 +58,11 @@ const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
       .array(conversationFeedMediaSchema)
       .max(CONVERSATION_FEED_MEDIA_LIMIT)
       .optional(),
+    /**
+     * Web links from the Conversation's recent messages, newest first, for
+     * the row to resolve into cards. URLs only: never message text.
+     */
+    links: z.array(z.url()).max(CONVERSATION_FEED_LINK_LIMIT).optional(),
     threads: z.lazy(() => z.array(conversationFeedItemSchema)).optional(),
   });
 

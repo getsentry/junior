@@ -881,6 +881,7 @@ export function buildConversations(
       activityPreview: summary.activityPreview,
       brief: summary.brief,
       media: summary.media,
+      links: summary.links,
       annotations: summary.annotations,
       sidebarAnnotations: summary.sidebarAnnotations,
       archivedAt: summary.archivedAt,

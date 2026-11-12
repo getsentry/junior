@@ -34,6 +34,7 @@ import type {
   AutomationSummary,
 } from "@sentry/junior/api/schema";
 import { IDLE_CHANGE_DAYS } from "@sentry/junior/api/schema";
+import { mockFeedLinks } from "./feed-links";
 import { mockFeedMedia } from "./feed-media";
 import { mockQuestionConversations } from "./review-items";
 import { isUnlistedMockConversation, withMockSends } from "./sends";
@@ -2160,6 +2161,7 @@ function feedItemFromConversation(
   const summary = {
     ...summaryFromConversation(conversation),
     media: mockFeedMedia(conversation),
+    links: mockFeedLinks(conversation),
   };
   const brief = conversation.brief?.content;
   if (!brief) return summary;

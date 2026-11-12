@@ -10,6 +10,7 @@ import { MarkdownText } from "./markdown";
 import { MentionPeopleProvider } from "./mentions";
 
 export { KnownObjectsProvider, useTextShowsObjectCard } from "./ObjectLinks";
+export { useResolvedObject } from "./resolvedObjects";
 
 const NO_MENTIONS: readonly ActorIdentity[] = [];
 

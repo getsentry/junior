@@ -781,6 +781,48 @@ test("an expanded question shows the message of the Turn that asked it", async (
   expect(reads).toBe(1);
 });
 
+test("comfortable rows show cards for message links that name an object", async ({
+  dashboard,
+  page,
+}) => {
+  await page.route(CHECKOUT_PREVIEW_IMAGE_URL, (route) =>
+    route.fulfill({ body: ONE_PIXEL_PNG, contentType: "image/png" }),
+  );
+  const person = `${dashboard.baseURL}/people/dev%40example.com`;
+  const unknown = "https://example.com/no-card";
+  // The feed lists the links from this row's messages.
+  await page.route(
+    (url) => url.pathname === "/api/conversations",
+    async (route) => {
+      const response = await route.fetch();
+      const feed = (await response.json()) as {
+        conversations: Array<{ displayTitle: string; links?: string[] }>;
+      };
+      for (const row of feed.conversations) {
+        if (row.displayTitle === "Investigate checkout latency") {
+          row.links = [person, unknown];
+        }
+      }
+      await route.fulfill({ json: feed, response });
+    },
+  );
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
+  await page.evaluate(() => {
+    localStorage.setItem("junior:density", "comfortable");
+  });
+  await page.reload();
+  const row = page
+    .locator("[data-inbox-row]")
+    .filter({ hasText: "Investigate checkout latency" })
+    .first();
+  const links = row.getByRole("group", { name: "Links" });
+  // The person link resolves to a card; the other link names nothing and
+  // shows nothing, not a bare link.
+  await expect(links.getByRole("link")).toHaveCount(1);
+  await expect(links.getByRole("link")).toHaveAttribute("href", person);
+  await expect(row.locator(`a[href="${unknown}"]`)).toHaveCount(0);
+});
+
 test("comfortable rows show files and linked work as cards, and compact rows keep chips", async ({
   dashboard,
   page,

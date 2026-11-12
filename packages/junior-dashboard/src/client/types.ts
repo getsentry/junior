@@ -172,6 +172,7 @@ export type Conversation = {
   brief?: ConversationFeedItem["brief"];
   /** The newest stored files, when private content is visible. */
   media?: ConversationFeedItem["media"];
+  links?: ConversationFeedItem["links"];
   annotations?: ConversationSummaryReport["annotations"];
   sidebarAnnotations?: ConversationSummaryReport["sidebarAnnotations"];
   archivedAt?: string | null;

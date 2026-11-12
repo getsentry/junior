@@ -59,7 +59,12 @@ import { snoozeChoices, type SnoozeChoice } from "./inboxSnooze";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
-import { InboxLinkedWork } from "./InboxLinkedWork";
+import {
+  InboxLinkCards,
+  InboxLinkedWork,
+  linkedWorkCardCount,
+  MAX_ROW_PREVIEWS,
+} from "./InboxLinkedWork";
 import { InboxMedia } from "./InboxMedia";
 import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
@@ -450,13 +455,25 @@ function InboxRowBody(
   const waiting = bundle?.needsYou ?? false;
   const summary = props.itemTitle ? undefined : rowSummary(conversation);
   const annotations = conversation?.sidebarAnnotations ?? [];
-  const media = conversation?.media ?? [];
+  // One budget for the strip, in order: linked work (with any PR image),
+  // then files, then cards for message links.
+  const workCards = linkedWorkCardCount(annotations);
+  const media = (conversation?.media ?? []).slice(
+    0,
+    MAX_ROW_PREVIEWS - workCards,
+  );
+  const links = (conversation?.links ?? []).slice(
+    0,
+    MAX_ROW_PREVIEWS - workCards - media.length,
+  );
   const canDone = openItems.some((item) => item.canAct);
   const regionId = `inbox-row-${props.rowKey}`;
   const pinned = Boolean(conversation?.pinnedAt);
   const running = conversation?.status === "active";
   // Comfortable rows show files and linked work as cards in their own strip.
-  const cards = comfortable && (annotations.length > 0 || media.length > 0);
+  const cards =
+    comfortable &&
+    (annotations.length > 0 || media.length > 0 || links.length > 0);
   const hasChips = pills.length > 0 || (!cards && annotations.length > 0);
   // A comfortable row with a summary reads in two columns on wider screens:
   // the title and people, then the summary beside them.
@@ -616,12 +633,13 @@ function InboxRowBody(
               columns && "sm:pl-[calc(1.875rem+var(--inbox-lead)+0.625rem)]",
             )}
           >
-            {media.length > 0 ? (
-              <InboxMedia conversationId={props.conversationId} media={media} />
-            ) : null}
             {annotations.length > 0 ? (
               <InboxLinkedWork annotations={annotations} />
             ) : null}
+            {media.length > 0 ? (
+              <InboxMedia conversationId={props.conversationId} media={media} />
+            ) : null}
+            {links.length > 0 ? <InboxLinkCards links={links} /> : null}
           </div>
         ) : null}
       </div>
