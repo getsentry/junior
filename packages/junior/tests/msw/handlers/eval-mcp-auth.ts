@@ -40,6 +40,7 @@ let issuedTokens = 0;
 let requiresWriteScope = false;
 let deniesWriteScope = false;
 let publishesNoResourceMetadata = false;
+let omitsChallengeScope = false;
 let releasePushCalls = 0;
 
 /**
@@ -76,6 +77,22 @@ export function denyEvalMcpWriteScope(): void {
  */
 export function publishNoEvalMcpResourceMetadata(): void {
   publishesNoResourceMetadata = true;
+}
+
+/**
+ * Injected fault: the `403 insufficient_scope` challenge names no scope. The
+ * SDK then asks for every scope the server advertises.
+ */
+export function challengeEvalMcpWithoutScope(): void {
+  omitsChallengeScope = true;
+}
+
+/**
+ * The provider admin registers Junior's OAuth client ahead of time, for a
+ * plugin with a pre-registered client.
+ */
+export function preRegisterEvalMcpClient(): void {
+  clientRegistered = true;
 }
 
 /** The `resource_metadata` challenge parameter, when the server has one. */
@@ -155,7 +172,11 @@ function insufficientScopeResponse() {
   return new HttpResponse(null, {
     status: 403,
     headers: {
-      "WWW-Authenticate": `Bearer error="insufficient_scope", ${resourceMetadataParam()}scope="${EVAL_MCP_READ_SCOPE} ${EVAL_MCP_WRITE_SCOPE}"`,
+      "WWW-Authenticate": `Bearer error="insufficient_scope", ${resourceMetadataParam()}${
+        omitsChallengeScope
+          ? ""
+          : `scope="${EVAL_MCP_READ_SCOPE} ${EVAL_MCP_WRITE_SCOPE}"`
+      }`,
     },
   });
 }
@@ -182,6 +203,7 @@ export function resetEvalMcpAuthMockState(): void {
   requiresWriteScope = false;
   deniesWriteScope = false;
   publishesNoResourceMetadata = false;
+  omitsChallengeScope = false;
   releasePushCalls = 0;
 }
 
