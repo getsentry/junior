@@ -5,6 +5,7 @@ import {
   type User,
   type Actor,
   type PluginLogger,
+  type PluginDecider,
   type PluginEgress,
   type Source,
   definePluginTool,
@@ -34,6 +35,7 @@ import {
   parseRepo,
   repoPath,
 } from "../tool-support/github-api.js";
+import { checkPullRequestDescription } from "../tool-support/pull-request-description.js";
 
 const inputSchema = z
   .object({
@@ -144,20 +146,24 @@ async function setPullRequestDraft(input: {
 }
 
 /** Update mutable PR metadata while preserving runtime-owned body attribution. */
-export function createGitHubUpdatePullRequestTool(ctx: {
-  actor?: Actor;
-  automationLink?: { url: string };
-  conversationId?: string;
-  db: unknown;
-  egress: PluginEgress;
-  log: PluginLogger;
-  events: { canSubscribe: boolean };
-  conversationLink?: { url: string };
-  source?: Source;
-  users: {
-    resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
-  };
-}) {
+export function createGitHubUpdatePullRequestTool(
+  ctx: {
+    actor?: Actor;
+    automationLink?: { url: string };
+    conversationId?: string;
+    db: unknown;
+    egress: PluginEgress;
+    log: PluginLogger;
+    events: { canSubscribe: boolean };
+    conversationLink?: { url: string };
+    source?: Source;
+    users: {
+      resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
+    };
+  },
+  /** Set when the description check experiment is on. */
+  descriptionDecider?: PluginDecider,
+) {
   return definePluginTool({
     annotations: {
       destructiveHint: true,
@@ -178,6 +184,9 @@ export function createGitHubUpdatePullRequestTool(ctx: {
         );
       }
       const update = parsedInput.data;
+      if (descriptionDecider && update.body !== undefined) {
+        await checkPullRequestDescription(descriptionDecider, update.body);
+      }
       const repo = parseRepo(update.repo);
       const requester = await resolveGitHubRequester(ctx);
       const currentBody =
