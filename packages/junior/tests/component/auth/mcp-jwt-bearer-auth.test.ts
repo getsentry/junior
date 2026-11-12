@@ -1,6 +1,7 @@
 import { generateKeyPairSync, type KeyObject } from "node:crypto";
 import { decodeProtectedHeader, jwtVerify } from "jose";
 import { http, HttpResponse } from "msw";
+import type { Actor } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   mcpHandshakeResponse,
@@ -12,7 +13,7 @@ import {
   PluginMcpClient,
 } from "@/chat/mcp/client";
 import { McpProviderError } from "@/chat/mcp/errors";
-import { createJwtBearerMcpClientProvider } from "@/chat/mcp/jwt-bearer-provider";
+import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import type { PluginDefinition } from "@/chat/plugins/types";
 
 const ORIGIN = "https://bot-mcp.example.test";
@@ -30,7 +31,7 @@ const AUTH = {
 const TRUSTED_KEY = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const UNTRUSTED_KEY = generateKeyPairSync("rsa", { modulusLength: 2048 });
 
-function jwtBearerClient(): PluginMcpClient {
+async function jwtBearerClient(actor?: Actor): Promise<PluginMcpClient> {
   const plugin: PluginDefinition = {
     dir: `/plugins/${PROVIDER}`,
     manifest: {
@@ -41,9 +42,17 @@ function jwtBearerClient(): PluginMcpClient {
       mcp: { transport: "http", url: MCP_URL, auth: AUTH },
     },
   };
-  return new PluginMcpClient(plugin, {
-    authProvider: createJwtBearerMcpClientProvider(PROVIDER, MCP_URL, AUTH),
+  const orchestration = createMcpAuthOrchestration({
+    abortAgent: () => {},
+    actor,
+    userMessage: "use bot MCP",
+    getConfiguration: () => ({}),
   });
+  const authProvider = await orchestration.authProviderFactory(plugin);
+  if (!authProvider) {
+    throw new Error("Expected bot MCP auth provider");
+  }
+  return new PluginMcpClient(plugin, { authProvider });
 }
 
 /**
@@ -52,6 +61,8 @@ function jwtBearerClient(): PluginMcpClient {
  */
 function useJwtBearerMcpServer(trustedKey: KeyObject) {
   const tokenRequests: URLSearchParams[] = [];
+  const assertionSubjects: string[] = [];
+  const clientNames: string[] = [];
   mswServer.use(
     http.get(MCP_URL, () => new HttpResponse(null, { status: 405 })),
     http.post(MCP_URL, async ({ request }) => {
@@ -87,6 +98,7 @@ function useJwtBearerMcpServer(trustedKey: KeyObject) {
     ),
     http.post(`${ORIGIN}/register`, async ({ request }) => {
       const body = (await request.json()) as Record<string, unknown>;
+      clientNames.push(String(body.client_name));
       return HttpResponse.json({ ...body, client_id: CLIENT_ID });
     }),
     http.post(`${ORIGIN}/token`, async ({ request }) => {
@@ -100,9 +112,12 @@ function useJwtBearerMcpServer(trustedKey: KeyObject) {
         const { payload } = await jwtVerify(assertion, trustedKey, {
           issuer: AUTH.issuer,
           audience: `${ORIGIN}/`,
-          subject: PROVIDER,
           typ: "oauth-id-jag+jwt",
         });
+        if (typeof payload.sub !== "string" || !payload.sub) {
+          throw new Error("assertion has no subject");
+        }
+        assertionSubjects.push(payload.sub);
         if (payload.client_id !== CLIENT_ID || payload.resource !== MCP_URL) {
           throw new Error("assertion does not match client and resource");
         }
@@ -119,7 +134,7 @@ function useJwtBearerMcpServer(trustedKey: KeyObject) {
       });
     }),
   );
-  return { tokenRequests };
+  return { assertionSubjects, clientNames, tokenRequests };
 }
 
 describe("jwt-bearer MCP auth through PluginMcpClient", () => {
@@ -133,26 +148,47 @@ describe("jwt-bearer MCP auth through PluginMcpClient", () => {
     delete process.env[AUTH.privateKeyEnv];
   });
 
-  it("exchanges a signed assertion for an access token without user interaction", async () => {
+  it("attributes assertions to user and system actors", async () => {
     const server = useJwtBearerMcpServer(TRUSTED_KEY.publicKey);
-    const client = jwtBearerClient();
+    const userClient = await jwtBearerClient({
+      platform: "local",
+      userId: "user-123",
+    });
+    const unattendedClient = await jwtBearerClient({
+      platform: "system",
+      name: "scheduled",
+    });
 
     try {
-      const tools = await client.listTools();
+      const userTools = await userClient.listTools();
+      const unattendedTools = await unattendedClient.listTools();
 
-      expect(tools.map((tool) => tool.name)).toEqual(["status"]);
-      expect(server.tokenRequests).toHaveLength(1);
-      expect(server.tokenRequests[0]?.get("grant_type")).toBe(
+      expect(userTools.map((tool) => tool.name)).toEqual(["status"]);
+      expect(unattendedTools.map((tool) => tool.name)).toEqual(["status"]);
+      expect(server.assertionSubjects).toEqual([
+        "user:user-123",
+        "system:scheduled",
+      ]);
+      expect(server.clientNames).toEqual([PROVIDER, PROVIDER]);
+      expect(server.tokenRequests).toHaveLength(2);
+      expect(
+        server.tokenRequests.map((request) => request.get("grant_type")),
+      ).toEqual([
         "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      );
+        "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      ]);
     } finally {
-      await client.close();
+      await userClient.close();
+      await unattendedClient.close();
     }
   });
 
   it("surfaces a rejected assertion as a provider failure, not an authorization pause", async () => {
     const server = useJwtBearerMcpServer(UNTRUSTED_KEY.publicKey);
-    const client = jwtBearerClient();
+    const client = await jwtBearerClient({
+      platform: "local",
+      userId: "user-123",
+    });
 
     try {
       const failure = await client.listTools().catch((error: unknown) => error);
