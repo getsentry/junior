@@ -8,6 +8,11 @@ import {
   conversationPendingMessagesReportSchema,
 } from "@/api/schema";
 import {
+  CODE_MODE_CALL_STATUS_TEXT,
+  CODEMODE_TOOL_NAME,
+  type CodeModeCallStatus,
+} from "@/chat/codemode/result";
+import {
   serializeError,
   toJsonValue,
   type HarnessRun,
@@ -40,10 +45,48 @@ export interface ToolCall {
   toolCallId: string;
 }
 
+const SCRIPT_CALL_STATUS = new Map(
+  Object.entries(CODE_MODE_CALL_STATUS_TEXT).map(([status, text]) => [
+    text,
+    status as CodeModeCallStatus,
+  ]),
+);
+
+/**
+ * The tool calls that a `codemode` script made, read from its result text
+ * (`renderResult` in `codemode/tool.ts`): a status line, `Tool calls (N):`,
+ * then `<i>. <tool>: <status>` for each call, with indented notes. The
+ * reporting API does not return script arguments, so the calls have no
+ * `input`. A call that did not start is not a call.
+ */
+function scriptToolCalls(call: ToolCall): ToolCall[] {
+  const lines = typeof call.output === "string" ? call.output.split("\n") : [];
+  const count = /^Tool calls \((\d+)\):$/.exec(lines[1] ?? "")?.[1];
+  if (!lines[0]?.startsWith("Script ") || !count) return [];
+  const calls: ToolCall[] = [];
+  let index = 0;
+  for (const line of lines.slice(2)) {
+    if (index === Number(count)) break;
+    if (line.startsWith(" ")) continue;
+    const match = /^(\d+)\. (\S+): (.+)$/.exec(line);
+    const status = match && SCRIPT_CALL_STATUS.get(match[3]!);
+    if (!status || Number(match[1]) !== index + 1) break;
+    index += 1;
+    if (status === "not_started") continue;
+    calls.push({
+      name: match[2]!,
+      status: status === "ok" ? "completed" : "error",
+      toolCallId: `${call.toolCallId}/${index}`,
+    });
+  }
+  return calls;
+}
+
 /**
  * Calls of one tool in any state across the results of several calls. The
  * agent runs deferred tools through `executeTool`; those calls count as calls
- * of the inner tool, with its arguments as `input`.
+ * of the inner tool, with its arguments as `input`. Calls that a `codemode`
+ * script made count too, without `input`.
  */
 export function toolCallsOf(
   name: string,
@@ -53,6 +96,9 @@ export function toolCallsOf(
     .flatMap((result) => result.toolCalls)
     .flatMap((call) => {
       if (call.name === name) return [call];
+      if (call.name === CODEMODE_TOOL_NAME) {
+        return scriptToolCalls(call).filter((inner) => inner.name === name);
+      }
       const deferred = call.input as
         | { arguments?: unknown; tool_name?: unknown }
         | undefined;

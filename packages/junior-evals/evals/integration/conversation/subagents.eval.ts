@@ -1,5 +1,6 @@
 import { describe, expect } from "vitest";
 import { reply, slackMention } from "@junior-evals/fixture/inputs";
+import { requestsTool } from "@junior-evals/fixture/gateway";
 import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test, type CallOptions } from "@junior-evals/fixture/test";
 
@@ -133,10 +134,10 @@ describe("Child Agents", () => {
           ) {
             stopRan();
           } else if (progress.type === "tool_request") {
-            if (progress.name === "stopAgent") {
+            if (requestsTool(progress, "stopAgent")) {
               await childAskedOnce;
               stopRequested = true;
-            } else if (progress.name === "webSearch") {
+            } else if (requestsTool(progress, "webSearch")) {
               childAsked();
               await stopRanOnce;
               await new Promise((resolve) => setTimeout(resolve, 1_500));

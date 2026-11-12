@@ -17,10 +17,10 @@ import {
   runCodeModeScript,
   type CodeModeScriptRun,
 } from "@/chat/codemode/bridge";
-import type {
-  CodeModeCall,
-  CodeModeCallStatus,
-  CodeModeResult,
+import {
+  CODE_MODE_CALL_STATUS_TEXT,
+  type CodeModeCall,
+  type CodeModeResult,
 } from "@/chat/codemode/result";
 import { MAX_TOOL_ACTION_BATCH } from "@/chat/guardian/gate";
 import { effectiveToolExposure } from "@/chat/tool-exposure";
@@ -181,16 +181,8 @@ function renderDescription(tools: Record<string, AnyToolDefinition>): string {
   ].join("\n");
 }
 
-const STATUS_TEXT: Record<CodeModeCallStatus, string> = {
-  ok: "ok",
-  error: "failed",
-  rejected: "rejected by action review",
-  interrupted: "interrupted, outcome unknown",
-  not_started: "not started",
-};
-
 function renderCall(call: CodeModeCall, index: number): string {
-  const line = `${index + 1}. ${call.toolName}: ${STATUS_TEXT[call.status]}`;
+  const line = `${index + 1}. ${call.toolName}: ${CODE_MODE_CALL_STATUS_TEXT[call.status]}`;
   const notes = [
     ...(call.error ? [call.error] : []),
     ...(call.nudges ?? []).map(renderToolResultNudge),
