@@ -825,53 +825,56 @@ describe("canonical event transcript reduction", () => {
     }
   });
 
-  it("shows agent invocation results only for the memories their Turn recalled", () => {
-    const result = (seq: number, messageId: string) =>
-      event(seq, "2026-01-01T00:00:05.000Z", {
-        type: "message",
-        messageId,
-        role: "user",
-        eventType: "agent_invocation.completed",
-        trustedSummary: 'Child agent "planner" finished its task.',
-        text: "<agent-result>done</agent-result>",
-      });
-    const entries = groupTranscriptMessages(
-      conversationTranscriptMessages(
-        conversation([
-          result(1, "result-quiet"),
-          result(2, "result-recalled"),
-          event(3, "2026-01-01T00:00:06.000Z", {
-            type: "turn_lifecycle",
-            turnId: "turn-recalled",
-            state: "started",
-            inputMessageIds: ["result-recalled"],
-          }),
-          event(4, "2026-01-01T00:00:07.000Z", {
-            type: "turn_context",
-            turnId: "turn-recalled",
-            pluginName: "memory",
-            kind: "recall",
-            version: 1,
-            content: {
-              memories: [
-                {
-                  id: "memory-1",
-                  content: "Release notes live in Notion.",
-                  observedAtMs: 1_750_000_000_000,
-                  scope: "conversation",
-                  kind: "knowledge",
-                },
-              ],
-            },
-          }),
-        ]),
-      ),
-    );
+  it.each(["agent_invocation.completed", "agent.reply"])(
+    "shows %s inputs only for the memories their Turn recalled",
+    (eventType) => {
+      const result = (seq: number, messageId: string) =>
+        event(seq, "2026-01-01T00:00:05.000Z", {
+          type: "message",
+          messageId,
+          role: "user",
+          eventType,
+          trustedSummary: 'Child agent "planner" finished its task.',
+          text: "<agent-result>done</agent-result>",
+        });
+      const entries = groupTranscriptMessages(
+        conversationTranscriptMessages(
+          conversation([
+            result(1, "result-quiet"),
+            result(2, "result-recalled"),
+            event(3, "2026-01-01T00:00:06.000Z", {
+              type: "turn_lifecycle",
+              turnId: "turn-recalled",
+              state: "started",
+              inputMessageIds: ["result-recalled"],
+            }),
+            event(4, "2026-01-01T00:00:07.000Z", {
+              type: "turn_context",
+              turnId: "turn-recalled",
+              pluginName: "memory",
+              kind: "recall",
+              version: 1,
+              content: {
+                memories: [
+                  {
+                    id: "memory-1",
+                    content: "Release notes live in Notion.",
+                    observedAtMs: 1_750_000_000_000,
+                    scope: "conversation",
+                    kind: "knowledge",
+                  },
+                ],
+              },
+            }),
+          ]),
+        ),
+      );
 
-    expect(
-      entries.map((entry) =>
-        entry.kind === "message" ? entry.message.messageId : entry.kind,
-      ),
-    ).toEqual(["result-recalled"]);
-  });
+      expect(
+        entries.map((entry) =>
+          entry.kind === "message" ? entry.message.messageId : entry.kind,
+        ),
+      ).toEqual(["result-recalled"]);
+    },
+  );
 });

@@ -12,10 +12,11 @@ import { juniorUsers } from "./users";
 import { timestamptz } from "./timestamps";
 
 /**
- * Materialized personal-feed membership for one linked user on one root
- * conversation. Rows come from the root actor and from the authors of Turn
- * input messages. Thread context authors do not get a row. An unsubscribed
- * row keeps access but leaves the active feed.
+ * One Participant: a linked user on one root conversation. Rows come from
+ * Turn Actors: the root Actor and the authors of Turn input messages, and
+ * the root Actor again when their Identity gets its User later. Thread
+ * context authors do not get a row. Access and feeds read only these rows.
+ * An unsubscribed row keeps access but leaves the active feed.
  */
 export const juniorConversationParticipants = pgTable(
   "junior_conversation_participants",
@@ -66,5 +67,10 @@ export const juniorConversationParticipants = pgTable(
     index("junior_conversation_participants_auto_archive_idx")
       .on(table.userId)
       .where(sql`${table.autoArchive}`),
+    // The active feed excludes a person's unsubscribed roots with an
+    // anti-join. Few rows are unsubscribed, so this index stays small.
+    index("junior_conversation_participants_unsubscribed_idx")
+      .on(table.userId, table.rootConversationId)
+      .where(sql`${table.unsubscribedAt} is not null`),
   ],
 );

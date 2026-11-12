@@ -650,7 +650,7 @@ import * as turnSessionState from "@/chat/task-execution/turn-cursor";
 
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {
-    throw new Error(`Expected final reply, got ${outcome.status}`);
+    throw new Error(`Expected final response, got ${outcome.status}`);
   }
   return outcome.result;
 }

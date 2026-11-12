@@ -21,6 +21,7 @@ const GITHUB_STACKS_API_VERSION = "2026-03-10";
 export const stackTargetSchema = z.object({
   number: z.number().int().positive(),
   head: z.object({
+    ref: z.string().min(1),
     repo: z.object({ full_name: z.string().min(1) }).nullable(),
   }),
   base: z.object({
@@ -65,9 +66,12 @@ export async function stackGitHubPullRequest(
   target: GitHubStackTarget,
 ): Promise<GitHubPullRequestStack | undefined> {
   const repo = target.base.repo.full_name;
-  // Stacks need every branch in one repository.
+  const trunk = target.base.repo.default_branch;
+  // Stacks need every branch in one repository. A pull request from the trunk,
+  // such as a sync of the trunk into a long-lived branch, is not stacked work.
   if (
-    target.base.ref === target.base.repo.default_branch ||
+    target.base.ref === trunk ||
+    target.head.ref === trunk ||
     target.head.repo?.full_name !== repo
   ) {
     return undefined;
@@ -108,7 +112,11 @@ export async function stackGitHubPullRequest(
     // Bottom to top. Each pull request is based on the head of the one below.
     const chain = [target.number];
     let branch = target.base.ref;
-    for (let depth = 0; depth < MAX_STACK_DEPTH; depth += 1) {
+    for (
+      let depth = 0;
+      depth < MAX_STACK_DEPTH && branch !== trunk;
+      depth += 1
+    ) {
       const parents = await github(
         "github.pull.list",
         `${api}/pulls?state=open&per_page=2&head=${encodeURIComponent(`${owner}:${branch}`)}`,
@@ -118,6 +126,8 @@ export async function stackGitHubPullRequest(
       // No parent: `branch` is the trunk. Two parents: the chain is ambiguous.
       if (parents.length !== 1) break;
       const parent = parents[0]!;
+      // Base branches that loop back are not a stack.
+      if (chain.includes(parent.number)) return undefined;
       const stacks = await github(
         "github.stack.read",
         `${api}/stacks?pull_request=${parent.number}`,

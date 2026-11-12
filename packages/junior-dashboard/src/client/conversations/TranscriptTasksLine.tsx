@@ -1,6 +1,7 @@
 import { ChevronRight } from "lucide-react";
 
 import { statusDotToneClass } from "../components/StatusDot";
+import { Button } from "../components/ui/button";
 import { formatElapsedDuration } from "../format";
 import { cn } from "../styles";
 import type { TranscriptViewSubagentPart } from "../types";
@@ -125,27 +126,29 @@ export function TranscriptTasksLine(props: {
       return <div className={cn(lineClass, "cursor-default")}>{text}</div>;
     }
     return (
-      <button
+      <Button
         aria-label={`Open ${taskLabel(single.part)} transcript`}
         className={lineClass}
         onClick={() => props.onOpenTranscript?.(single.part)}
-        type="button"
+        size="bare"
+        variant="ghost"
       >
         {text}
-      </button>
+      </Button>
     );
   }
 
   return (
     <div className="min-w-0">
-      <button
+      <Button
         aria-expanded={open}
         className={lineClass}
         onClick={() => setOpen(!open)}
-        type="button"
+        size="bare"
+        variant="ghost"
       >
         {text}
-      </button>
+      </Button>
       {open ? (
         <ul className="m-0 mt-1 grid max-w-[37.5rem] list-none gap-0.5 p-0">
           {props.entries.map((entry) => (

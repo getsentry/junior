@@ -33,7 +33,7 @@ import {
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
 import { readProxyProperty } from "../fixtures/proxy-property";
-import { testViewer } from "../fixtures/user";
+import { signedInViewer } from "../fixtures/user";
 
 mockAcpDashboardConfig();
 
@@ -113,7 +113,7 @@ describe("remote ACP recovery", () => {
       completeAcpAuthorization({
         state: harness.state,
         transactionId,
-        user: testViewer(harness.actor.email),
+        user: await signedInViewer(harness.actor.email),
         userCode:
           userCode === "0000-0000-0000" ? "1111-1111-1111" : "0000-0000-0000",
       }),
@@ -149,7 +149,7 @@ describe("remote ACP recovery", () => {
       completeAcpAuthorization({
         state: harness.state,
         transactionId,
-        user: testViewer(harness.actor.email),
+        user: await signedInViewer(harness.actor.email),
         userCode,
       }),
     ).resolves.toBe("expired");
@@ -302,7 +302,7 @@ describe("remote ACP recovery", () => {
       completeAcpAuthorization({
         state: harness.state,
         transactionId,
-        user: testViewer(harness.actor.email),
+        user: await signedInViewer(harness.actor.email),
         userCode: verificationCodeFromElicitation(params),
       }),
     ).resolves.toBe("completed");
@@ -765,7 +765,7 @@ describe("remote ACP recovery", () => {
       state: harness.state,
     });
     const conversationId = `local:acp:${"1".repeat(32)}`;
-    const user = testViewer(harness.actor.email);
+    const user = await signedInViewer(harness.actor.email);
     await conversations.create({ conversationId, user });
     const first = await conversations.prompt({
       conversationId,

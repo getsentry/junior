@@ -10,6 +10,7 @@ import {
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
+import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { ChartContainer, ChartTooltip } from "../../components/ui/chart";
 import type { MemoryDay } from "./memoryDashboard";
 
@@ -34,9 +35,11 @@ export function MemoryTimeline(props: {
   return (
     <Card className="min-h-[17rem] p-4 sm:p-5">
       <div>
-        <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
-          Activity over time
-        </h2>
+        <AnchorHeading
+          anchor="activity"
+          className="m-0 font-display text-xl font-medium text-dashboard-text"
+          title="Activity over time"
+        />
         <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
           {bucketUnit === "hour"
             ? "Memories created each hour."

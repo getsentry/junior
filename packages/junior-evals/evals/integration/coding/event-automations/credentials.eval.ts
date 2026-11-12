@@ -37,7 +37,7 @@ function credentialMode(call: ToolCall | undefined): unknown {
 }
 
 describe("Event automation credentials", () => {
-  test("when event work may need user-bound authorization, use the creator default", async ({
+  test("when the creator does not ask for their credentials, use the system default", async ({
     run,
   }) => {
     const conversation = await run(
@@ -50,7 +50,7 @@ describe("Event automation credentials", () => {
       rubric({
         pass: [
           "The event automation is created without asking for separate confirmation to use credentials needed for the requested work.",
-          "The reply may accurately say the event automation can use the creator's connected GitHub access; credential access alone does not mean the task executes as the user.",
+          "The reply does not say the event automation will use the creator's connected GitHub access.",
         ],
         fail: [
           "Do not require the user to separately authorize routine connected credential use.",
@@ -69,7 +69,7 @@ describe("Event automation credentials", () => {
         match: { repo: "getsentry/junior", pull_request: 691 },
       },
     });
-    expect([undefined, "creator"]).toContain(credentialMode(creates[0]));
+    expect([undefined, "system"]).toContain(credentialMode(creates[0]));
   });
 
   test("when another channel member requests creator credentials, explain who can enable them", async ({

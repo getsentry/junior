@@ -30,6 +30,7 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
 } from "./format";
+import { useDesktopTopBar } from "./navLayout";
 import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { useDashboardServerVersion } from "./dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
@@ -67,11 +68,6 @@ import type { DashboardCoreData } from "./types";
 const RepositoryPage = lazy(() =>
   import("./pages/code/RepositoryPage").then((module) => ({
     default: module.RepositoryPage,
-  })),
-);
-const BoardPage = lazy(() =>
-  import("./pages/board/BoardPage").then((module) => ({
-    default: module.BoardPage,
   })),
 );
 const CodePage = lazy(() =>
@@ -232,8 +228,11 @@ export function DashboardShell() {
   const serverVersion = useDashboardServerVersion(data?.config.version);
   const userPages = userPagesQuery.data ?? [];
   const loading = !data && !query.error;
-  const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
+  // With auth off, the server still resolves the local viewer for every API
+  // read, so that viewer counts as signed in.
+  const loggedIn = Boolean(data?.me.user.email);
   const personalSpendQuery = usePersonalSpendData(loggedIn);
+  const desktopTopBar = useDesktopTopBar();
   const primaryUserPages = loggedIn
     ? userPages.filter((page) => page.navigation === "primary")
     : [];
@@ -308,21 +307,23 @@ export function DashboardShell() {
           onOpenChange={setCommandPaletteOpen}
           open={commandPaletteOpen}
         />
-        <NavRail
-          navItems={primaryNavItems}
-          onSearch={openCommandPalette}
-          profile={
-            loggedIn ? (
-              <ProfileMenu
-                identity={data!.me}
-                onSignOut={signOut}
-                spend={personalSpendQuery.data}
-                pages={profileNavItems}
-              />
-            ) : undefined
-          }
-          workspaceActive={workspace}
-        />
+        {desktopTopBar ? null : (
+          <NavRail
+            navItems={primaryNavItems}
+            onSearch={openCommandPalette}
+            profile={
+              loggedIn ? (
+                <ProfileMenu
+                  identity={data!.me}
+                  onSignOut={signOut}
+                  spend={personalSpendQuery.data}
+                  pages={profileNavItems}
+                />
+              ) : undefined
+            }
+            workspaceActive={workspace}
+          />
+        )}
         <VisualViewportShell
           className="min-w-0 flex-1 bg-dashboard-bg"
           enabled={
@@ -334,6 +335,7 @@ export function DashboardShell() {
           }
         >
           <DashboardChrome
+            desktopTopBar={desktopTopBar}
             banner={
               <>
                 <VersionDriftBanner serverVersion={serverVersion} />
@@ -342,6 +344,7 @@ export function DashboardShell() {
             }
             header={
               <DashboardHeader
+                desktopTopBar={desktopTopBar}
                 mobileBackTo={conversationId ? "/" : undefined}
                 mobileTitle={mobileConversationTitle}
                 mobileNavigationOpen={mobileNavigationOpen}
@@ -442,7 +445,6 @@ export function DashboardShell() {
                       description="Newest runs across your automations and automations in public destinations."
                       label="Loading automation runs"
                       title="Runs"
-                      variant="list"
                     />
                   </AutomationsPageLayout>
                 ) : loggedIn ? (
@@ -456,24 +458,7 @@ export function DashboardShell() {
               path="/automations/runs"
             />
             <Route
-              element={
-                loading ? (
-                  <AutomationsPageLayout>
-                    <AutomationsRouteLoading
-                      description="Find and manage automations across your linked workspaces."
-                      label="Loading automations"
-                      title="All automations"
-                      variant="list"
-                    />
-                  </AutomationsPageLayout>
-                ) : loggedIn ? (
-                  <AutomationsPageLayout>
-                    <AutomationsPage enabled={loggedIn} view="list" />
-                  </AutomationsPageLayout>
-                ) : (
-                  <Navigate replace to="/" />
-                )
-              }
+              element={<LegacyAutomationListRedirect />}
               path="/automations/list"
             />
             <Route
@@ -491,15 +476,13 @@ export function DashboardShell() {
                 loading ? (
                   <AutomationsPageLayout>
                     <AutomationsRouteLoading
-                      description="Scheduled and event-driven work created by users."
                       label="Loading automations"
                       title="Automations"
-                      variant="stats"
                     />
                   </AutomationsPageLayout>
                 ) : loggedIn ? (
                   <AutomationsPageLayout>
-                    <AutomationsPage enabled={loggedIn} view="overview" />
+                    <AutomationsPage enabled={loggedIn} />
                   </AutomationsPageLayout>
                 ) : (
                   <Navigate replace to="/" />
@@ -568,8 +551,6 @@ export function DashboardShell() {
               }
               path="/review"
             />
-            {/* The Board is an experiment, so no navigation links to it. */}
-            <Route element={<BoardPage />} path="/board" />
             <Route element={<CodePage />} path="/code" />
             {codeRepositoryTabs.map((tab) => (
               <Route
@@ -813,6 +794,14 @@ function LegacyAutomationsRedirect() {
       replace
       to={`/automations${suffix}${location.search}${location.hash}`}
     />
+  );
+}
+
+/** The list became the Automations landing page. */
+function LegacyAutomationListRedirect() {
+  const location = useLocation();
+  return (
+    <Navigate replace to={`/automations${location.search}${location.hash}`} />
   );
 }
 

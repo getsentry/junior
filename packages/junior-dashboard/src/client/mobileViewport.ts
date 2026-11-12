@@ -1,6 +1,7 @@
 import { useEffect, type RefObject } from "react";
 
 import { acquireBodyScrollLock, releaseBodyScrollLock } from "./bodyScrollLock";
+import { MOBILE_LAYOUT_QUERY } from "./layoutMedia";
 
 const viewportHeightProperty = "--dashboard-viewport-height";
 const viewportOffsetTopProperty = "--dashboard-viewport-offset-top";
@@ -129,7 +130,7 @@ export function useMobileViewportHeight(
     const root = rootRef.current;
     if (!enabled || !root || typeof window === "undefined") return;
 
-    const mobile = window.matchMedia("(max-width: 767px)");
+    const mobile = window.matchMedia(MOBILE_LAYOUT_QUERY);
     const viewport = window.visualViewport;
     let frame: number | undefined;
     let lastHeight = "";

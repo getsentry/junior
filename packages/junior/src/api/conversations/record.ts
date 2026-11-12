@@ -120,6 +120,9 @@ export function conversationFromRecordRow(
     ...(value.stoppedAt
       ? { stoppedAtMs: value.stoppedAt.getTime() }
       : undefined),
+    ...(value.deliveryPausedAt
+      ? { deliveryPausedAtMs: value.deliveryPausedAt.getTime() }
+      : undefined),
   };
 }
 

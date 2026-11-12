@@ -66,7 +66,7 @@ describe("User Memory", () => {
       rubric({
         pass: [
           "The assistant uses the remembered San Francisco / Pacific Time preference from memory.",
-          "The final answer reports the user's current local time in Pacific Time without asking for their location or timezone.",
+          "The final response reports the user's current local time in Pacific Time without asking for their location or timezone.",
         ],
         fail: [
           "Do not answer only with UTC or the server's timezone.",

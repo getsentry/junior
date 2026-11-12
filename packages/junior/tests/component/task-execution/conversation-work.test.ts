@@ -71,6 +71,7 @@ function failingMetadataStore(): ConversationStore {
     get: vi.fn(async () => undefined),
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
+    claimProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
     recordDestinationVisibility: vi.fn(),
     getRunMetrics: vi.fn(async () => undefined),
@@ -89,6 +90,7 @@ function metadataEventsStore(events: string[]): ConversationStore {
     get: vi.fn(async () => undefined),
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
+    claimProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
     recordDestinationVisibility: vi.fn(),
     getRunMetrics: vi.fn(async () => undefined),
@@ -1665,6 +1667,30 @@ describe("conversation work execution", () => {
         delivery: "defer",
       }),
     ]);
+  });
+
+  it("gives each message with no known author its own attempt", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    for (const id of ["n1", "n2"]) {
+      await appendInboundMessage({
+        message: inboundMessage(id, { input: { text: id } }),
+        nowMs: 1_000,
+      });
+    }
+    const attempts: string[][] = [];
+    await processConversationWork(conversationQueueMessage(), {
+      queue,
+      run: async (context) => {
+        attempts.push(
+          context.attempt.messages.map((message) => message.inboundMessageId),
+        );
+        await context.attempt.ack();
+        return { status: "completed" };
+      },
+    });
+
+    // Neither message can show that it has the other's Actor.
+    expect(attempts).toEqual([["n1"], ["n2"]]);
   });
 
   it("resumes a yielded Turn before a newly steered web message", async () => {

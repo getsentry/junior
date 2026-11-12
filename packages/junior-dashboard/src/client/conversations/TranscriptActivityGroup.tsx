@@ -9,7 +9,6 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { formatMs } from "../format";
-import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import { isMemoryCaptureEvent } from "./conversationMemory";
 import {
   isAgentInvocationResultMessage,
@@ -41,10 +40,6 @@ export function isCollapsibleActivityEntry(
   }
   // A Turn's captured memories stay visible, so the reader sees what it saved.
   if (entry.kind === "structured_event" && isMemoryCaptureEvent(entry.part)) {
-    return false;
-  }
-  // A review card stays visible where the agent added the item.
-  if (entry.kind === "tool" && reviewItemIdFromToolCall(entry.part)) {
     return false;
   }
   return true;

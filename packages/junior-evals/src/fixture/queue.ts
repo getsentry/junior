@@ -28,7 +28,10 @@ type Consume = (
 
 /** Queue that the fixture gives to `createApp({ conversationWorkQueue })`. */
 export interface InProcessQueue extends ConversationWorkQueue {
-  /** Bind the app's worker. `createApp()` calls this once. */
+  /**
+   * Bind the worker of an app. Each `createApp()` call binds its own worker,
+   * and later deliveries run on the last one, as after a deploy.
+   */
   connect(consume: Consume): ConversationWorkQueue;
   /** Deliveries that are waiting for their delay or running. */
   pending(): Promise<void>[];

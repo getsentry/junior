@@ -102,7 +102,9 @@ async function saveReminder(): Promise<ScheduledAutomation> {
     status: "active",
     nextRunAtMs: Date.now() + 86_400_000,
     task: {
-      text: "Remind me to drink water.\n\n- Keep the reminder brief.\n- Include **one** useful tip.",
+      kind: "instruction",
+      instruction:
+        "Remind me to drink water.\n\n- Keep the reminder brief.\n- Include **one** useful tip.",
     },
   };
   await saveScheduledAutomation(getDb(), task);
@@ -274,7 +276,8 @@ describe("Slack Work Object details", () => {
             {
               key: "description",
               label: "Instruction",
-              value: task.task.text,
+              value:
+                "Remind me to drink water.\n\n- Keep the reminder brief.\n- Include **one** useful tip.",
               format: "markdown",
             },
             { key: "trigger", value: "Every day at noon" },
@@ -302,7 +305,7 @@ describe("Slack Work Object details", () => {
       title: "Updated reminder",
       status: "blocked",
       nextRunAtMs: undefined,
-      task: { text: "Updated instruction." },
+      task: { kind: "instruction", instruction: "Updated instruction." },
       outcomes: [{ action: "send_message", destination: task.destination }],
     });
     await getConversationStore().recordActivity({
@@ -382,7 +385,7 @@ describe("Slack Work Object details", () => {
       destination: { platform: "slack", teamId: "T123", channelId: "C123" },
       destinationVisibility: "public",
       outcomes: [],
-      task: { text: "Summarize the closed issue." },
+      task: { kind: "instruction", instruction: "Summarize the closed issue." },
       trigger: {
         namespace: "linear",
         resourceType: "issue",
