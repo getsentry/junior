@@ -100,8 +100,8 @@ export function pullRequestSections(
 /**
  * Read the Pull requests view: the viewer's open code changes from their
  * person Code overview, grouped with the pull request asks. The overview
- * lists at most 100 changes, open ones first, so past 100 open changes the
- * view shows the first 100. It has no paging.
+ * lists at most 100 changes, open ones first and the longest idle first, so
+ * past 100 open changes the view leaves out the freshest. It has no paging.
  */
 export function usePullRequestSections(
   itemRows: readonly InboxBundle[],

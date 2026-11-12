@@ -15,27 +15,29 @@ import { cn } from "../styles";
 import { SidebarAnnotationIcon } from "./ConversationMeta";
 import { IdleText, lastActivity } from "./codeChangeIdle";
 import { HomeDayStrip } from "./HomeDayStrip";
+import { HomeMergeDelta } from "./HomeMergeDelta";
 
 const WEEK_DAYS = 7;
 /** Open code changes shown before the reader expands the list. */
 const OPEN_LIMIT = 3;
 
 // Sums the last 7 UTC day buckets and the 7 before them.
-function weeklyMerges(days: CodeActivityDay[]) {
+function rollingMerges(days: CodeActivityDay[]) {
   const recent = days.slice(-2 * WEEK_DAYS);
   const sum = (values: CodeActivityDay[]) =>
     values.reduce((total, day) => total + day.merged, 0);
   return {
     days: recent.slice(-WEEK_DAYS),
-    lastWeek: sum(recent.slice(0, -WEEK_DAYS)),
-    thisWeek: sum(recent.slice(-WEEK_DAYS)),
+    previousDays: recent.slice(0, -WEEK_DAYS),
+    previous7Days: sum(recent.slice(0, -WEEK_DAYS)),
+    last7Days: sum(recent.slice(-WEEK_DAYS)),
   };
 }
 
 /**
- * Show the viewer's week under the home composer: merges, open code changes,
- * and Review items that wait on them. Counts only code changes that Junior
- * opened in Conversations that the viewer started.
+ * Show the viewer's last 7 days under the home composer: merges, open code
+ * changes, and Review items that wait on them. Counts only code changes that
+ * Junior opened in Conversations that the viewer started.
  */
 export function HomeSummary() {
   const email = useDashboardCoreData().data?.me.user.email;
@@ -47,7 +49,7 @@ export function HomeSummary() {
   if (!code.data) return null;
 
   const nowMs = Date.parse(code.data.generatedAt);
-  const merges = weeklyMerges(code.data.activityDays);
+  const merges = rollingMerges(code.data.activityDays);
   // Longest idle first: a PR that nobody touched needs a nudge, however old.
   const open = code.data.changes
     .filter((change) => change.state === "open")
@@ -58,7 +60,7 @@ export function HomeSummary() {
   const idleCount = code.data.summary.idle;
   const needsViewer = reviewCount.data?.needsViewer ?? 0;
   if (
-    merges.thisWeek + merges.lastWeek === 0 &&
+    merges.last7Days + merges.previous7Days === 0 &&
     openCount === 0 &&
     needsViewer === 0
   ) {
@@ -71,15 +73,20 @@ export function HomeSummary() {
         <SummaryCard
           aside={
             <HomeDayStrip
-              // Open changes first, then by last update, so the week's
-              // changes fit in the report's limit.
               changes={code.data.changes}
               days={merges.days}
+              previousDays={merges.previousDays}
             />
           }
-          detail={<MergeDelta {...merges} />}
-          label="Merged this week"
-          value={merges.thisWeek}
+          detail={
+            <HomeMergeDelta
+              current={merges.last7Days}
+              period="the 7 days before"
+              previous={merges.previous7Days}
+            />
+          }
+          label="Merged"
+          value={merges.last7Days}
         />
         <SummaryCard
           detail={
@@ -162,24 +169,6 @@ function StatusText(props: { children: ReactNode; tone: string }) {
   );
 }
 
-function MergeDelta(props: { lastWeek: number; thisWeek: number }) {
-  const delta = props.thisWeek - props.lastWeek;
-  if (delta === 0) return <>same as last week</>;
-  return (
-    <>
-      <span
-        className={cn(
-          "font-medium",
-          delta > 0 ? "text-emerald-300" : "text-dashboard-text",
-        )}
-      >
-        {delta > 0 ? `+${delta}` : `−${-delta}`}
-      </span>{" "}
-      vs last week
-    </>
-  );
-}
-
 /**
  * Open code changes, longest idle first. The label row holds the only control, a
  * sort toggle, so the list has no table header. The last row expands it.
@@ -245,7 +234,11 @@ function OpenChangeRow(props: {
   nowMs: number;
 }) {
   const change = props.change;
-  const title = change.title ?? `${change.repository} #${change.number}`;
+  // Changes recorded before titles were stored have none. The repository and
+  // number already show on the right, so don't repeat them here.
+  const title = change.title ?? (
+    <span className="text-dashboard-text-muted">Untitled</span>
+  );
   return (
     <li className={rowClass}>
       <div className="flex min-w-0 items-center gap-2.5 font-sans text-sm text-dashboard-text">

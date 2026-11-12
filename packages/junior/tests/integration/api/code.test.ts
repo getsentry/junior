@@ -249,8 +249,8 @@ describe("code API", () => {
       );
       expect(person.summary.open).toBe(105);
       expect(person.changes).toHaveLength(100);
-      // The idle change is not listed, and the summary still counts it.
-      expect(person.changes.map((listed) => listed.number)).not.toContain(1);
+      // Longest idle first, so the limit drops the freshest open changes.
+      expect(person.changes[0]).toMatchObject({ number: 1, state: "open" });
       expect(person.summary.idle).toBe(1);
     } finally {
       vi.useRealTimers();
