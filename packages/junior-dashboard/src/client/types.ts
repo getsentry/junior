@@ -11,6 +11,7 @@ import type {
 import type {
   ActorIdentity,
   ConversationReportMessageEvent,
+  ConversationFeedItem,
   ConversationStatsReport,
   ReplyTimeSegmentsReport,
   ConversationSummaryReport,
@@ -167,13 +168,13 @@ export type ConversationTranscript = ConversationDetailReport;
 
 export type Conversation = {
   activityPreview?: ConversationSummaryReport["activityPreview"];
+  /** The latest Brief's status, summary, and intent, when visible. */
+  brief?: ConversationFeedItem["brief"];
   annotations?: ConversationSummaryReport["annotations"];
   sidebarAnnotations?: ConversationSummaryReport["sidebarAnnotations"];
   archivedAt?: string | null;
   pinnedAt?: string | null;
   pinPosition?: number;
-  /** Idle with activity after the viewer last acted on it. Server-owned. */
-  unread?: boolean;
   auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
   channel?: string;
   channelName?: string;
@@ -185,6 +186,8 @@ export type Conversation = {
   id: string;
   /** The viewer takes part, so they can pin, archive, rename, and mark it. */
   isParticipant: boolean;
+  /** Newest true user Message or shown Junior reply. Feed rows only. */
+  lastMessageAt?: string;
   lastProgressAt: string;
   lastSeenAt: string;
   locationId?: string;
@@ -201,7 +204,6 @@ export type Conversation = {
   parentConversationId?: string;
   /** Visible Threads under this row, newest first. */
   threads?: Conversation[];
-  unfinishedWork?: boolean;
   /** A Turn waits on a person to finish an authorization. Server-owned. */
   awaitingAuthorization?: boolean;
   visibility?: ConversationSummaryReport["visibility"];

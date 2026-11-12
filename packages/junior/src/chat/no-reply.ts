@@ -53,3 +53,8 @@ const LEGACY_NO_REPLY_MARKERS: readonly string[] = [
 export function isLegacyNoReplyMarker(text: string): boolean {
   return LEGACY_NO_REPLY_MARKERS.includes(text.trim());
 }
+
+/** Return the first legacy no-reply marker that the text contains. */
+export function findLegacyNoReplyMarker(text: string): string | undefined {
+  return LEGACY_NO_REPLY_MARKERS.find((marker) => text.includes(marker));
+}

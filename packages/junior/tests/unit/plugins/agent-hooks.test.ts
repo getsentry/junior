@@ -45,6 +45,7 @@ import {
   getPluginTools,
   setPlugins,
 } from "@/chat/plugins/agent-hooks";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { createTools } from "@/chat/tools";
 import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -57,7 +58,6 @@ import type {
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 const demoToolResultSchema = pluginToolOutputSchema.extend({
@@ -2170,5 +2170,20 @@ describe("getPluginTools channel resolution", () => {
     expect(ctx.destination).toEqual(LOCAL_DESTINATION);
     expect(ctx.source).toEqual(LOCAL_SOURCE);
     expect(ctx.slack).toBeUndefined();
+  });
+
+  it("exposes the dashboard conversation link outside Slack", () => {
+    const previous = setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+    try {
+      const ctx = capturePluginContext();
+      expect(ctx.slack).toBeUndefined();
+      expect(ctx.conversationLink).toEqual({
+        url: `https://junior.example.com/conversations/${encodeURIComponent(LOCAL_DESTINATION.conversationId)}`,
+      });
+    } finally {
+      setDashboardConversationLinkOptions(previous);
+    }
   });
 });

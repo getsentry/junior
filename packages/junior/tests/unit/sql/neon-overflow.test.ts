@@ -3,16 +3,26 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createNeonJuniorSqlExecutor } from "@/db/neon";
 import { juniorConversations } from "@/db/schema";
+import { ErrorEvent } from "undici";
+import { logException, logWarn } from "@/chat/logging";
 import { mswServer } from "../../msw/server";
 
 const CONNECTION_STRING =
   "postgresql://junior:secret@ep-overflow-test.test.aws.neon.tech/neondb";
 
+vi.mock("@/chat/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/logging")>()),
+  logException: vi.fn(),
+  logWarn: vi.fn(),
+}));
+
 const wire = vi.hoisted(() => ({
   clientsOpened: 0,
   clientsReady: 0,
   clientsClosed: 0,
+  clients: [] as Array<{ emit(event: string, error: unknown): boolean }>,
   failNextConnect: false,
+  connectError: undefined as unknown,
   websocketQueries: [] as string[],
   httpQueries: [] as string[],
 }));
@@ -25,13 +35,14 @@ vi.mock("@neondatabase/serverless", async (importOriginal) => {
   class FakeClient extends EventEmitter {
     _queryable = true;
     _ending = false;
-    connect(callback: (error?: Error) => void) {
+    connect(callback: (error?: unknown) => void) {
       wire.clientsOpened++;
+      wire.clients.push(this);
       const failed = wire.failNextConnect;
       wire.failNextConnect = false;
       setImmediate(() => {
         if (failed) {
-          callback(new Error("connection refused"));
+          callback(wire.connectError ?? new Error("connection refused"));
           return;
         }
         wire.clientsReady++;
@@ -79,7 +90,7 @@ function createExecutor() {
   });
 }
 
-const POOL_IDLE_TIMEOUT_MS = 60_000;
+const POOL_IDLE_TIMEOUT_MS = 300_000;
 
 describe("Neon pool overflow", () => {
   let executor: ReturnType<typeof createNeonJuniorSqlExecutor>;
@@ -88,7 +99,11 @@ describe("Neon pool overflow", () => {
     wire.clientsOpened = 0;
     wire.clientsReady = 0;
     wire.clientsClosed = 0;
+    wire.clients.length = 0;
     wire.failNextConnect = false;
+    wire.connectError = undefined;
+    vi.mocked(logException).mockClear();
+    vi.mocked(logWarn).mockClear();
     wire.websocketQueries.length = 0;
     wire.httpQueries.length = 0;
     // The driver sends HTTP queries to the regional API host.
@@ -174,7 +189,12 @@ describe("Neon pool overflow", () => {
 
   it("keeps a failed background connect from failing queries", async () => {
     await executor.query("select 'warm'");
+    // A socket that closes during the handshake fails with a bare TypeError.
     wire.failNextConnect = true;
+    wire.connectError = new ErrorEvent("error", {
+      message: "",
+      error: new TypeError(""),
+    });
 
     const [first, second] = await Promise.all([
       executor.query<{ transport: string }>("select 1"),
@@ -185,11 +205,38 @@ describe("Neon pool overflow", () => {
       "http",
     ]);
     await vi.waitFor(() => expect(wire.clientsOpened).toBe(2));
+    await vi.waitFor(() =>
+      expect(logWarn).toHaveBeenCalledWith("db.pool.client.connect_failed", {
+        "app.db.driver": "neon",
+        "error.type": "Error",
+        "exception.message": "WebSocket connect failed: TypeError (no message)",
+      }),
+    );
+    expect(logException).not.toHaveBeenCalled();
 
     // The pool still serves queries, and the next overflow grows it again.
     await Promise.all([executor.query("select 3"), executor.query("select 4")]);
     await vi.waitFor(() => expect(wire.clientsReady).toBe(2));
     expect(wire.clientsOpened).toBe(3);
+  });
+
+  it("reports a failed idle client as a readable warning", async () => {
+    await executor.query("select 'warm'");
+    const cause = new Error("Connection terminated unexpectedly");
+    wire.clients[0]?.emit(
+      "error",
+      new ErrorEvent("error", { message: "", error: cause }),
+    );
+
+    expect(logWarn).toHaveBeenCalledWith("db.pool.client.failed", {
+      "app.db.driver": "neon",
+      "error.type": "Error",
+      "exception.message": `WebSocket idle client failed: ${cause.message}`,
+    });
+    expect(logException).not.toHaveBeenCalled();
+    // The pool replaces the failed client.
+    await executor.query("select 1");
+    expect(wire.clientsOpened).toBe(2);
   });
 
   it("opens one client again after every client idles out", async () => {
@@ -198,7 +245,11 @@ describe("Neon pool overflow", () => {
     await Promise.all([executor.query("select 1"), executor.query("select 2")]);
     await vi.waitFor(() => expect(wire.clientsReady).toBe(2));
 
-    vi.advanceTimersByTime(POOL_IDLE_TIMEOUT_MS);
+    // Clients that a burst opened stay open past one minute.
+    const oneMinuteMs = 60_000;
+    vi.advanceTimersByTime(oneMinuteMs);
+    expect(wire.clientsClosed).toBe(0);
+    vi.advanceTimersByTime(POOL_IDLE_TIMEOUT_MS - oneMinuteMs);
 
     expect(wire.clientsClosed).toBe(2);
     await vi.waitFor(() => expect(wire.clientsReady).toBe(3));

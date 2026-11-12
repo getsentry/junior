@@ -34,6 +34,7 @@ import type { JuniorDestinationKind } from "@/db/schema/destination-kind";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import {
   bindProviderConversation,
+  claimProviderConversationOwner,
   getConversationIdByProviderConversation,
   type ProviderConversationBinding,
   type ProviderConversationReference,
@@ -48,7 +49,10 @@ import {
   locationFromRow,
   visibilityFromLocationRow,
 } from "./location";
-import { conversationKindFromRow } from "./conversation-row";
+import {
+  conversationKindFromRow,
+  ensureConversationRow,
+} from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
 import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 type ConversationRow = typeof juniorConversations.$inferSelect;
@@ -180,13 +184,11 @@ function destinationUpsertFromDestination(args: {
     metadata: { platform: "local" },
   };
 }
-// TODO(dcramer): Remove the awaiting_resume name after the release that stops
-// writing it is the oldest deployed worker. Migration 0089 renamed older rows.
 function executionStatusFromValue(value: unknown): ConversationStatus {
-  if (value === "awaiting_resume" || value === "paused") return "paused";
   if (
     value === "failed" ||
     value === "idle" ||
+    value === "paused" ||
     value === "pending" ||
     value === "running"
   ) {
@@ -309,6 +311,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
 function emptyConversation(args: {
   conversationId: string;
   destination?: Destination;
+  kind?: "root" | "automation";
   nowMs: number;
   source?: ConversationSource;
   sessionSource?: SessionSource;
@@ -317,7 +320,7 @@ function emptyConversation(args: {
     schemaVersion: 1,
     conversationId: args.conversationId,
     createdAtMs: args.nowMs,
-    kind: "root",
+    kind: args.kind ?? "root",
     lastActivityAtMs: args.nowMs,
     updatedAtMs: args.nowMs,
     ...(args.destination ? { destination: args.destination } : undefined),
@@ -360,6 +363,18 @@ export class SqlStore implements ConversationStore {
     args: ProviderConversationBinding,
   ): Promise<void> {
     await bindProviderConversation(this.executor, args);
+  }
+
+  async claimProviderConversation(
+    args: ProviderConversationBinding & { atMs: number },
+  ): Promise<string> {
+    const { atMs, ...binding } = args;
+    return await this.executor.transaction(async () => {
+      await ensureConversationRow(this.executor, binding.conversationId, atMs, {
+        activity: "preserve",
+      });
+      return await claimProviderConversationOwner(this.executor, binding);
+    });
   }
 
   async createChild(args: {
@@ -450,6 +465,7 @@ export class SqlStore implements ConversationStore {
     sessionSource?: Source;
     title?: string;
     visibility?: ConversationPrivacy;
+    kind?: "root" | "automation";
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
     const activityAtMs = args.activityAtMs ?? nowMs;
@@ -470,6 +486,7 @@ export class SqlStore implements ConversationStore {
         emptyConversation({
           conversationId: args.conversationId,
           destination: args.destination,
+          kind: args.kind,
           nowMs,
           source: args.source,
           ...(sessionSource ? { sessionSource } : undefined),

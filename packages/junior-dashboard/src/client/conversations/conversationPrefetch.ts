@@ -5,9 +5,9 @@ import {
   conversationDetailQueryKey,
   conversationDetailQueryOptions,
   readConversationData,
-  refreshSideReadsOnChange,
   type ConversationSnapshot,
 } from "./queries";
+import { refreshSideReadsOnChange } from "./conversationSideReads";
 import { readConversationStartPosition } from "./transcriptReadPosition";
 
 // Long enough that a pointer moving across the list fetches nothing.

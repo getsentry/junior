@@ -21,7 +21,6 @@ import {
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 async function seedSlackUser(args: {

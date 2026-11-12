@@ -17,7 +17,6 @@ import {
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 async function executeTool<TInput>(tool: any, input: TInput) {
@@ -766,6 +765,35 @@ describe("userLookup", () => {
       });
 
       expect(result).toMatchObject({ count: 0, users: [] });
+    });
+
+    it("lists the linked GitHub handle on a Slack lookup", async () => {
+      await seedLinkedIdentities({
+        githubId: "12345",
+        githubHandle: "dcramer",
+        slackUserId: "U039RR91S",
+        slackHandle: "david",
+      });
+      queueSlackApiResponse("users.info", {
+        body: usersInfoOk({ userId: "U039RR91S", userName: "david" }),
+      });
+      queueSlackApiResponse("users.info", {
+        body: usersInfoOk({ userId: "U0UNLINKED", userName: "unlinked" }),
+      });
+
+      await expect(
+        executeTool(lookupTool(), { provider: "slack", query: "U039RR91S" }),
+      ).resolves.toMatchObject({
+        user: {
+          id: "U039RR91S",
+          linked_identities: [{ provider: "github", handle: "dcramer" }],
+        },
+      });
+      const unlinked = await executeTool(lookupTool(), {
+        provider: "slack",
+        query: "U0UNLINKED",
+      });
+      expect(unlinked.user).not.toHaveProperty("linked_identities");
     });
   });
 

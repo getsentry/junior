@@ -16,7 +16,6 @@ import { setPlugins } from "@/chat/plugins/agent-hooks";
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 const noopSandbox = {} as any;
 const actionToken = readSlackActionToken({
@@ -346,7 +345,6 @@ describe("Slack tool registration", () => {
       turnTools: turnBehavior({
         kind: "task",
         personInput: false,
-        automationRun: false,
       }).tools,
     } as ToolRuntimeContext);
     expect(childTools.addReviewItem?.disabledReason).toContain("reportBlocked");
@@ -426,7 +424,6 @@ describe("agent tool binding", () => {
     const agents = turnBehavior({
       kind: "thread",
       personInput: true,
-      automationRun: false,
     }).tools.agents;
 
     expect(agents).toBe("none");

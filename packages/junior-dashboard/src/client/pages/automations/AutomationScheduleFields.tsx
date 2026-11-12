@@ -8,7 +8,13 @@ import {
 } from "@sentry/junior/api/schema";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { Field, FieldDescription, FieldLabel } from "../../components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "../../components/ui/field";
 import { NativeSelect } from "../../components/ui/native-select";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { post, DashboardApiError } from "../../http";
@@ -136,8 +142,10 @@ export function AutomationScheduleFields(props: {
       {value.kind === "recurring" ? (
         <>
           {value.frequency === "weekly" ? (
-            <fieldset>
-              <legend className="mb-2 text-sm font-semibold">On</legend>
+            <FieldSet className="gap-0">
+              <FieldLegend className="mb-2" variant="label">
+                On
+              </FieldLegend>
               <ToggleGroup
                 className="grid grid-cols-7 gap-1.5"
                 multiple
@@ -157,7 +165,7 @@ export function AutomationScheduleFields(props: {
                   </ToggleGroupItem>
                 ))}
               </ToggleGroup>
-            </fieldset>
+            </FieldSet>
           ) : null}
           <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
             <Field>
@@ -293,7 +301,10 @@ export function AutomationScheduleFields(props: {
             <>
               <span className="text-rose-300">{issue}</span>
               {preview.error ? (
-                <Button onClick={() => void preview.refetch()}>
+                <Button
+                  variant="outline"
+                  onClick={() => void preview.refetch()}
+                >
                   Try again
                 </Button>
               ) : null}
@@ -319,7 +330,11 @@ export function AutomationScheduleFields(props: {
         </div>
       </div>
       {props.value ? (
-        <Button className="w-fit" onClick={() => props.onChange(undefined)}>
+        <Button
+          variant="outline"
+          className="w-fit"
+          onClick={() => props.onChange(undefined)}
+        >
           Keep saved schedule
         </Button>
       ) : null}

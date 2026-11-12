@@ -8,7 +8,7 @@ import {
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
-import { getDb, getSqlExecutor } from "@/chat/db";
+import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity } from "@/chat/identities/sql";
 import {
   getDispatchConversationId,
@@ -202,6 +202,9 @@ describe("scheduled automation heartbeat", () => {
     expect(running?.conversationId).toBe(
       getDispatchConversationId({ id: running!.dispatchId! }),
     );
+    await expect(
+      getConversationStore().get({ conversationId: running!.conversationId! }),
+    ).resolves.toMatchObject({ kind: "automation" });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(conversationWorkQueue.sentRecords()).toHaveLength(1);
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);

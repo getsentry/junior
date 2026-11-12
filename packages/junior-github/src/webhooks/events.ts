@@ -340,7 +340,7 @@ const pullRequestEventDataSchema = commentAuthorDataSchema
     openerEmail: z.string().min(1).optional(),
     openerUsername: z.string().min(1).optional(),
     commentId: z.number().optional(),
-    commentKind: z.enum(["conversation", "review"]).optional(),
+    commentKind: z.enum(["conversation", "review", "review_body"]).optional(),
   })
   .strict();
 
@@ -572,6 +572,9 @@ const pullRequestReviewWebhookSchema = z.object({
   repository: repositorySchema,
   review: z.object({
     body: z.string().optional().nullable(),
+    // Only the feedback reaction needs the id, so a review without one is
+    // still delivered.
+    id: z.number().optional(),
     state: z.string(),
     user: z.object({ login: z.string().optional() }).optional(),
   }),
@@ -617,7 +620,12 @@ function normalizePullRequestReviewEvent(
           : `${resource.label} received a review comment${reviewer ? ` from ${reviewer}` : ""}.`,
     ...gitHubDoneBy(reviewer),
     data: pullRequestEventData({
-      comment: commentAuthorData({ botEmail, sender, text: review.body }),
+      comment: {
+        ...(review.id !== undefined && nonBlank(review.body)
+          ? { commentId: review.id, commentKind: "review_body" as const }
+          : undefined),
+        ...commentAuthorData({ botEmail, sender, text: review.body }),
+      },
       pullRequest,
       repo,
     }),
@@ -680,7 +688,6 @@ function normalizePullRequestEvent(
     eventType: string;
     isDraft?: false;
     occurredAtMs: number;
-    terminal?: true;
     trustedSummary: string;
     untrustedText?: string;
   }): EventInput[] =>
@@ -690,7 +697,6 @@ function normalizePullRequestEvent(
         eventType: event.eventType,
         occurredAtMs: event.occurredAtMs,
         identifier: resource.identifier,
-        ...(event.terminal ? { terminal: true } : undefined),
         trustedSummary: event.trustedSummary,
         data: event.isDraft === false ? readyData : data,
         ...(event.untrustedText
@@ -734,22 +740,49 @@ function normalizePullRequestEvent(
     });
   }
 
-  if (parsed.data.action !== "closed") return [];
-  const eventType = pullRequest.merged
+  return gitHubPullRequestTerminalEvents(body);
+}
+
+/**
+ * Build the merged or closed_unmerged events of one closed pull request.
+ * The webhook and the daily reconcile both publish them. The key names the
+ * close, not the webhook delivery, so a Watch gets the close once.
+ */
+export function gitHubPullRequestTerminalEvents(body: unknown): EventInput[] {
+  const parsed = pullRequestWebhookSchema.safeParse(body);
+  if (!parsed.success || parsed.data.action !== "closed") return [];
+  const { pull_request: pullRequest } = parsed.data;
+  const repo = parsed.data.repository.full_name;
+  const resource = gitHubPullRequestResource({
+    number: pullRequest.number,
+    repo,
+  });
+  const merged = pullRequest.merged === true;
+  const eventType = merged
     ? "pull_request.merged"
     : "pull_request.closed_unmerged";
-  return lifecycleEvents({
-    eventType,
-    occurredAtMs:
-      providerTime(
-        pullRequest.merged ? pullRequest.merged_at : pullRequest.closed_at,
-      ) ?? Date.now(),
-    terminal: true,
-    trustedSummary:
-      eventType === "pull_request.merged"
+  const occurredAtMs =
+    providerTime(merged ? pullRequest.merged_at : pullRequest.closed_at) ??
+    providerTime(pullRequest.updated_at) ??
+    Date.now();
+  return pullRequestTargets(
+    {
+      // A pull request merges once. It can close, reopen, and close again,
+      // so the key of a close also has its time.
+      eventKey: merged
+        ? `github:${resource.identifier}:${eventType}`
+        : `github:${resource.identifier}:${eventType}:${occurredAtMs}`,
+      eventType,
+      occurredAtMs,
+      identifier: resource.identifier,
+      terminal: true,
+      trustedSummary: merged
         ? `${resource.label} was merged.`
         : `${resource.label} was closed without being merged.`,
-  });
+      data: pullRequestEventData({ pullRequest, repo }),
+    },
+    repo,
+  );
 }
 
 const releaseWebhookSchema = z

@@ -150,6 +150,18 @@ export interface ConversationStore {
     providerTenantId: string;
     providerConversationId: string;
   }): Promise<void>;
+  /**
+   * Claim one provider conversation for the Conversation that starts in it,
+   * unless another Conversation started there first. Return the owner.
+   */
+  claimProviderConversation(args: {
+    atMs: number;
+    conversationId: string;
+    provider: string;
+    providerDestinationId: string;
+    providerTenantId: string;
+    providerConversationId: string;
+  }): Promise<string>;
   /** Read confirmed public/private visibility for one destination. */
   getDestinationVisibility(args: {
     provider: string;
@@ -188,6 +200,11 @@ export interface ConversationStore {
     /** Source normalized to a stable session locator; set-once when absent. */
     sessionSource?: Source;
     title?: string;
+    /**
+     * Kind of a new Conversation. Default `root`. An existing Conversation
+     * keeps its kind.
+     */
+    kind?: "root" | "automation";
     /**
      * Current visibility from its owner, such as a Slack event channel type. It
      * replaces the visibility of the shared Destination row. Omit it for saved

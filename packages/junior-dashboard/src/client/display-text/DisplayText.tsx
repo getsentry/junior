@@ -7,6 +7,8 @@ import { parseMarkdownBlocks } from "./codeBlocks";
 import { MarkdownText } from "./markdown";
 import { MentionPeopleProvider } from "./mentions";
 
+export { KnownObjectsProvider, useTextShowsObjectCard } from "./ObjectLinks";
+
 const NO_MENTIONS: readonly ActorIdentity[] = [];
 
 /**

@@ -22,6 +22,7 @@ import {
 } from "../components/ui/empty";
 import { Card } from "../components/layout/Card";
 import { formatTime, unavailableTranscriptLabel } from "../format";
+import { KnownObjectsProvider } from "../display-text/DisplayText";
 import { ConversationBrief } from "./ConversationBrief";
 import { transcriptMessagesFromEvents } from "./eventTranscript";
 import type {
@@ -192,17 +193,19 @@ export const ConversationTranscriptView = memo(
           conversationId={props.conversation.conversationId}
           messages={messages}
         >
-          <section className="min-w-0 pt-1">
-            <SegmentEvents
-              onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-              conversation={props.conversation}
-              messages={messages}
-              responding={props.responding}
-              revealSeq={props.revealSeq}
-              scrollAnchorKey={props.scrollAnchorKey}
-              unread={props.unread}
-            />
-          </section>
+          <KnownObjectsProvider annotations={annotations}>
+            <section className="min-w-0 pt-1">
+              <SegmentEvents
+                onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+                conversation={props.conversation}
+                messages={messages}
+                responding={props.responding}
+                revealSeq={props.revealSeq}
+                scrollAnchorKey={props.scrollAnchorKey}
+                unread={props.unread}
+              />
+            </section>
+          </KnownObjectsProvider>
         </TranscriptImagesProvider>
       </TranscriptTimestampProvider>
     );
@@ -361,7 +364,11 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
             kind="event"
             objectType={entry.message.eventObjectType}
           >
-            <TranscriptEventView message={entry.message} openKey={entry.key} />
+            <TranscriptEventView
+              conversationId={props.conversation.conversationId}
+              message={entry.message}
+              openKey={entry.key}
+            />
             <TranscriptRecalledMemories
               className="mt-1"
               message={entry.message}
@@ -427,7 +434,11 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
       }
       renderReasoning={renderReasoningEntry}
       renderTool={(entry) => (
-        <TranscriptToolView part={entry.part} timestamp={entry.timestamp} />
+        <TranscriptToolView
+          conversationId={props.conversation.conversationId}
+          part={entry.part}
+          timestamp={entry.timestamp}
+        />
       )}
     />
   );
@@ -775,7 +786,11 @@ function RedactedTranscriptView(
             kind="event"
             objectType={entry.message.eventObjectType}
           >
-            <TranscriptEventView message={entry.message} openKey={entry.key} />
+            <TranscriptEventView
+              conversationId={props.conversation.conversationId}
+              message={entry.message}
+              openKey={entry.key}
+            />
           </TranscriptRailEvent>
         ) : entry.message.context ? (
           <TranscriptRailEvent kind="message_context">
@@ -821,7 +836,11 @@ function RedactedTranscriptView(
       }
       renderReasoning={renderReasoningEntry}
       renderTool={(entry) => (
-        <TranscriptToolView part={entry.part} timestamp={entry.timestamp} />
+        <TranscriptToolView
+          conversationId={props.conversation.conversationId}
+          part={entry.part}
+          timestamp={entry.timestamp}
+        />
       )}
     />
   );

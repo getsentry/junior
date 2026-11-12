@@ -5,8 +5,6 @@ import {
   ArchiveRestore,
   Bell,
   BellOff,
-  Mail,
-  MailOpen,
   MessageSquareShare,
   MessagesSquare,
   Pencil,
@@ -17,7 +15,7 @@ import {
 } from "lucide-react";
 
 import { useCopyText } from "../components/CopyButton";
-import { isIdleConversation, visualStatusForConversation } from "../format";
+import { visualStatusForConversation } from "../format";
 import type { Conversation } from "../types";
 import { SlackMark } from "./SlackMark";
 import { useShareConversationLink } from "./useShareConversationLink";
@@ -48,7 +46,6 @@ export type ConversationMenu = {
     delivery(paused: boolean): void;
     eventLog(): void;
     pin(pinned: boolean): void;
-    read(unread: boolean): void;
     rename(): void;
     subscription(subscribed: boolean): void;
   };
@@ -74,7 +71,6 @@ export type ConversationMenu = {
     archive: boolean;
     delivery: boolean;
     pin: boolean;
-    read: boolean;
     subscription: boolean;
   };
 };
@@ -96,7 +92,6 @@ export function useConversationMenuItems(
   const { actions, conversation, detail, pending } = menu;
   const archived = Boolean(conversation?.archivedAt);
   const pinned = Boolean(conversation?.pinnedAt);
-  const unread = Boolean(conversation?.unread);
   // The API takes these changes only from participants.
   const participant = Boolean(
     conversation && (detail?.isParticipant ?? conversation.isParticipant),
@@ -160,20 +155,7 @@ export function useConversationMenuItems(
     });
   }
 
-  const viewerItems: ConversationMenuItem[] = [
-    {
-      // Unread tracks idle conversations only.
-      disabled:
-        !participant ||
-        pending.read ||
-        (!unread && !(conversation && isIdleConversation(conversation))),
-      icon: unread ? MailOpen : Mail,
-      key: "read",
-      label: unread ? "Mark as read" : "Mark as unread",
-      onClick: () => actions.read(!unread),
-      toggle: true,
-    },
-  ];
+  const viewerItems: ConversationMenuItem[] = [];
   // A pin restores an archived conversation for everyone, so archived
   // conversations restore first.
   if (!archived) {

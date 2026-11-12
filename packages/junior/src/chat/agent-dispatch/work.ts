@@ -71,6 +71,14 @@ type DispatchRoutingContext = Pick<
   "credentialContext" | "dispatch" | "surface"
 > & { actor: DispatchRecord["actor"] };
 
+/** Return whether a dispatch is a Scheduled or Event automation run. */
+function isAutomationRun(dispatch: Pick<DispatchRecord, "source">): boolean {
+  return (
+    dispatch.source.kind === "scheduled_automation" ||
+    dispatch.source.kind === "event_automation"
+  );
+}
+
 /** Restore the exact actor, credential, and dispatch routing for every slice. */
 export function buildDispatchRoutingContext(
   dispatch: DispatchRecord,
@@ -89,10 +97,7 @@ export function buildDispatchRoutingContext(
       replyAttribution: dispatch.replyAttribution,
       outcomes: dispatch.outcomes,
       ...(dispatch.skill ? { skill: dispatch.skill } : undefined),
-      ...(dispatch.source.kind === "scheduled_automation" ||
-      dispatch.source.kind === "event_automation"
-        ? { declaresResult: true }
-        : undefined),
+      ...(isAutomationRun(dispatch) ? { declaresResult: true } : undefined),
     },
     surface: "api",
   };
@@ -162,15 +167,32 @@ export async function enqueueAgentDispatch(
   if (!claimedDispatch) {
     return;
   }
-  await (options.conversationStore ?? getConversationStore()).recordActivity({
+  const conversationStore = options.conversationStore ?? getConversationStore();
+  const conversationId = getDispatchConversationId(claimedDispatch);
+  const destination = claimedDispatch.destination;
+  await conversationStore.recordActivity({
     activityAtMs: claimedDispatch.createdAtMs,
-    conversationId: getDispatchConversationId(claimedDispatch),
-    destination: claimedDispatch.destination,
+    conversationId,
+    destination,
+    kind: isAutomationRun(claimedDispatch) ? "automation" : "root",
     nowMs,
     source: "plugin",
     sessionSource: claimedDispatch.source,
     ...(claimedDispatch.title ? { title: claimedDispatch.title } : undefined),
   });
+  // A run that starts in a thread owns it, so a person's reply there joins
+  // the run before its first reply. A thread that another Conversation
+  // started in stays with that Conversation.
+  if (destination.platform === "slack" && destination.threadTs) {
+    await conversationStore.claimProviderConversation({
+      atMs: nowMs,
+      conversationId,
+      provider: "slack",
+      providerDestinationId: destination.channelId,
+      providerTenantId: destination.teamId,
+      providerConversationId: destination.threadTs,
+    });
+  }
   await appendAndEnqueueInboundMessage({
     message: buildAgentDispatchInboundMessage(
       claimedDispatch,

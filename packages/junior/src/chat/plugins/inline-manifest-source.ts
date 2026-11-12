@@ -145,7 +145,6 @@ function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {
   );
   setDefined(result, "allowed-tools", mcp.allowedTools);
   setDefined(result, "wrapped-tools", mcp.wrappedTools);
-  setDefined(result, "audit-tools", mcp.auditTools);
   return result;
 }
 

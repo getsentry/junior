@@ -305,3 +305,37 @@ export async function deleteScheduledAutomation(
     return deleted;
   });
 }
+
+/**
+ * Block a Scheduled automation outside the settle step of a run, such as from
+ * a Watch Event Turn of its run. An active automation becomes blocked. A
+ * paused automation stays paused and keeps the reason, so resume returns it
+ * to blocked. Returns true only when this call set it to blocked.
+ */
+export async function blockScheduledAutomation(
+  db: JuniorDatabase,
+  id: string,
+  reason: string,
+  nowMs = Date.now(),
+): Promise<boolean> {
+  return await withScheduledAutomationLock(db, id, async (tx) => {
+    const current = await readScheduledAutomation(tx, id);
+    if (current?.status !== "active" && current?.status !== "paused") {
+      return false;
+    }
+    const blocked = current.status === "active";
+    await writeScheduledAutomation(
+      tx,
+      requireStoredTask({
+        ...current,
+        ...(blocked
+          ? { nextRunAtMs: undefined, runNowAtMs: undefined, status: "blocked" }
+          : undefined),
+        statusReason: reason,
+        updatedAtMs: nowMs,
+      }),
+      current,
+    );
+    return blocked;
+  });
+}

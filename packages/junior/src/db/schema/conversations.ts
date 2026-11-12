@@ -56,6 +56,11 @@ export const juniorConversations = pgTable(
     title: text("title"),
     createdAt: timestamptz("created_at").notNull(),
     lastActivityAt: timestamptz("last_activity_at").notNull(),
+    /**
+     * The newest Message that a reader would notice (`refreshLastMessageAt`).
+     * Null until the Conversation has one.
+     */
+    lastMessageAt: timestamptz("last_message_at"),
     updatedAt: timestamptz("updated_at").notNull(),
     executionUpdatedAt: timestamptz("execution_updated_at"),
     executionStatus: text("execution_status")

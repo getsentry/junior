@@ -80,7 +80,13 @@ describe("event automation blocking", () => {
   });
 
   it("blocks an event automation after a blocked run and tells its creator once", async () => {
-    const { automation } = await createTask("Add the release-train label.");
+    const { automation } = await createTask(
+      "Add the release-train label.",
+      undefined,
+      undefined,
+      undefined,
+      "creator",
+    );
     const reason = "This run needs a connected github account.";
     const db = fixture.sql.db();
     const read = async () => (await getEventAutomation(db, automation.id))!;

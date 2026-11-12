@@ -406,7 +406,7 @@ describe("plugin heartbeat", () => {
       getConversationStore().get({
         conversationId: getDispatchConversationId({ id: result.id }),
       }),
-    ).resolves.toMatchObject({ title: "Nightly sync" });
+    ).resolves.toMatchObject({ kind: "root", title: "Nightly sync" });
   });
 
   it("keeps plugin state isolated when plugin names and keys contain delimiters", async () => {

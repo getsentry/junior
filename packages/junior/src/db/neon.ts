@@ -14,7 +14,7 @@ import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
 import { forwardInfoMessages } from "./info-messages";
 import { applyMigrations, waitForMigrationLock } from "./migrate";
 import { juniorSqlSchema } from "./schema";
-import { logException } from "@/chat/logging";
+import { logWarn } from "@/chat/logging";
 import * as Sentry from "@/chat/sentry";
 
 type QueryClient = Pool | PoolClient | Client;
@@ -27,6 +27,43 @@ type PlainQuery = {
 };
 
 const POOL_MAX = 10;
+
+// The WebSocket reports a failure as an `ErrorEvent`, which is not an
+// `Error`. Its `message` is often empty, and the reason is in `error`. When a
+// socket closes during the handshake, `error` is a `TypeError` with no
+// message, so its name is the only clue.
+function toWebSocketError(error: unknown, failure: string): Error {
+  if (error instanceof Error) {
+    return error;
+  }
+  const event = (error ?? {}) as {
+    type?: unknown;
+    message?: unknown;
+    error?: unknown;
+  };
+  const cause = event.error instanceof Error ? event.error : undefined;
+  const reason =
+    (typeof event.message === "string" && event.message) ||
+    cause?.message ||
+    (cause && `${cause.name} (no message)`) ||
+    (typeof event.type === "string" && event.type) ||
+    String(error);
+  return new Error(
+    `WebSocket ${failure}: ${reason}`,
+    event.error === undefined ? undefined : { cause: event.error },
+  );
+}
+
+// No query waits on the failed client, so this is a warning and not an
+// exception.
+function warnWebSocketFailure(name: string, error: unknown, failure: string) {
+  const reported = toWebSocketError(error, failure);
+  logWarn(name, {
+    "app.db.driver": "neon",
+    "error.type": reported.name,
+    "exception.message": reported.message,
+  });
+}
 
 /**
  * Sends a pool query over Neon's SQL-over-HTTP endpoint when no idle
@@ -59,10 +96,12 @@ class OverflowPool extends Pool {
       // conversation list alone can hold three connections for seconds. With
       // a smaller pool, the other requests wait for a free connection.
       max: POOL_MAX,
-      // The pg default closes a client after 10s idle, which is also the
-      // dashboard poll interval, so most polls and page loads opened new
-      // WebSockets. Idle clients to the Neon pooler hold no Postgres backend.
-      idleTimeoutMillis: 60_000,
+      // Keeps clients that a burst opened warm for the next burst. Idle
+      // clients to the Neon pooler hold no Postgres backend, and neither
+      // Neon's proxy nor its PgBouncer closes them on a timer. The driver
+      // sends no keepalive, so stay under common NAT idle limits (about
+      // 350 s), which drop a silent connection without closing it.
+      idleTimeoutMillis: 300_000,
       // Keeps the client that `reconnectWhenEmpty()` opens. Alone, `min` does
       // not keep a client open after a burst.
       min: 1,
@@ -133,15 +172,18 @@ class OverflowPool extends Pool {
     });
   }
 
+  // The query that needed this client already ran over HTTP.
   private openClient() {
     this.connect((error, client) => {
       if (client) {
         client.release();
         return;
       }
-      logException(error, "db.pool.client.connect_failed", {
-        "app.db.driver": "neon",
-      });
+      warnWebSocketFailure(
+        "db.pool.client.connect_failed",
+        error,
+        "connect failed",
+      );
     });
   }
 
@@ -370,9 +412,9 @@ export function createNeonJuniorSqlExecutor(args: {
   const dispatcher = new Agent({ allowH2: true });
   const pool = new OverflowPool({ ...poolArgs, dispatcher });
   // An idle client can fail when the server closes it. The pool replaces the
-  // client, so report the error instead of crashing the process.
-  pool.on("error", (error: Error) => {
-    logException(error, "db.pool.client.failed", { "app.db.driver": "neon" });
+  // client, so this must not crash.
+  pool.on("error", (error: unknown) => {
+    warnWebSocketFailure("db.pool.client.failed", error, "idle client failed");
   });
   // Messages from SQL-over-HTTP queries do not arrive. Migrations run in a
   // transaction on a WebSocket client, so their messages do.

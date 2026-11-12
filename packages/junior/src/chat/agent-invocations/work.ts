@@ -24,7 +24,6 @@ import {
   AgentRunError,
   executeTurn,
   finishTurn,
-  type SavedTurnResult,
 } from "@/chat/runtime/turn-execution";
 import {
   getPersistedSandboxState,
@@ -54,16 +53,11 @@ import {
 import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { isTurnExecutionLimitExceededError } from "@/chat/services/turn-limit";
-import { getAssistantReplyText } from "@/chat/services/assistant-reply";
-import { getTerminalAssistantMessages } from "@/chat/pi/transcript";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { SandboxRef } from "@/chat/sandbox/ref";
-import { supersedeOpenPersonTurn } from "./thread-turn";
-import {
-  agentTypeInstructions,
-  agentTypeStartsWithParentHistory,
-} from "./agent-types";
-import { loadForkHistory } from "./fork-history";
+import { supersedeOpenMailboxTurn } from "./thread-turn";
+import { agentTypeInstructions } from "./agent-types";
+import { FORK_INSTRUCTIONS, loadForkHistory } from "./fork-history";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import {
   appendAndEnqueueInboundMessage,
@@ -97,9 +91,13 @@ import type {
   TerminalAgentInvocation,
 } from "./types";
 import { recordSubagentEnded, recordSubagentStarted } from "./markers";
+import {
+  agentInvocationTurnEnd,
+  savedTurnEnd,
+  type SendReply,
+} from "./turn-end";
 import { stopChildAgentsOf } from "./stop";
 import { resumeStoppedConversationTree } from "@/chat/conversations/session-stop";
-import { readBlockedReport } from "./blocked-report";
 
 const agentInvocationMailboxMetadataSchema = z
   .object({
@@ -200,6 +198,12 @@ export async function createAndEnqueueAgentInvocation(
 }
 
 /** Require one invocation metadata reference for one leased mailbox attempt. */
+/** Return whether one mailbox input is a parent task or message for an agent invocation. */
+export function isAgentInvocationInput(message: InboundMessage): boolean {
+  return agentInvocationMailboxMetadataSchema.safeParse(message.input.metadata)
+    .success;
+}
+
 function invocationIdFromMessages(
   messages: readonly InboundMessage[],
 ): string | undefined {
@@ -239,14 +243,20 @@ function invocationIdFromMessages(
  * child's own child agents already have their own tag.
  */
 export function agentInvocationInputText(
-  invocation: Pick<AgentInvocation, "agentType" | "input" | "parentToolCallId">,
+  invocation: Pick<
+    AgentInvocation,
+    "agentType" | "fork" | "input" | "parentToolCallId"
+  >,
 ): string {
   if (!invocation.parentToolCallId) {
     return invocation.input;
   }
-  const typeInstructions = agentTypeInstructions(invocation.agentType);
+  const instructions = [
+    invocation.fork ? FORK_INSTRUCTIONS : undefined,
+    agentTypeInstructions(invocation.agentType),
+  ].filter((text) => text !== undefined);
   return renderTag("parent-agent-task", {}, [
-    ...(typeInstructions ? [escapeClosingTags(typeInstructions), ""] : []),
+    ...instructions.flatMap((text) => [escapeClosingTags(text), ""]),
     escapeClosingTags(invocation.input),
   ]);
 }
@@ -263,18 +273,18 @@ function agentInvocationProvenance(
     : contextProvenance;
 }
 
-/** Resolve invocation execution from mailbox input or durable active state. */
+/**
+ * Resolve the agent invocation that owns this work: the one named by its
+ * mailbox input, or for an empty wake the open one. Other work has none.
+ */
 export async function resolveAgentInvocationId(
   context: ConversationWorkerContext,
 ): Promise<string | undefined> {
   const mailboxInvocationId = invocationIdFromMessages(
     context.attempt.messages,
   );
-  if (mailboxInvocationId) {
+  if (mailboxInvocationId || context.attempt.messages.length > 0) {
     return mailboxInvocationId;
-  }
-  if (context.attempt.messages.length > 0) {
-    return undefined;
   }
   const active = await getActiveAgentInvocationForConversation(
     context.conversationId,
@@ -282,15 +292,20 @@ export async function resolveAgentInvocationId(
   if (active) {
     return active.invocationId;
   }
-  // A child Conversation never runs on a root worker. A wake after its last
-  // agent invocation ended, such as a late stop request, goes to that agent
-  // invocation, which only repeats its idempotent finish. A paused Turn of an
-  // ended agent invocation can have an event Source, and a root worker would
-  // try to resume it.
+  // An agent invocation can end, such as by a stop, while its Turn stays
+  // paused. Its wake goes to that agent invocation, which ends the Turn.
   const latest = await getLatestAgentInvocationForConversation(
     context.conversationId,
   );
-  return latest?.invocationId;
+  const turn = latest
+    ? await getTurnRecord(
+        context.conversationId,
+        getAgentInvocationTurnId(latest.invocationId),
+      )
+    : undefined;
+  return turn?.state === "paused" || turn?.state === "running"
+    ? latest?.invocationId
+    : undefined;
 }
 
 /**
@@ -392,34 +407,6 @@ function createAgentMessageSteeringDrain(
   };
 }
 
-/**
- * How a terminal agent invocation ends its child Turn. The live save and the
- * recovery paths both use this, so a status cannot end the Turn two ways.
- */
-function agentInvocationTurnEnd(
-  terminal: TerminalAgentInvocation,
-): SavedTurnResult {
-  const finishedAtMs = terminal.terminalAtMs;
-  switch (terminal.status) {
-    case "completed":
-      return {
-        finishedAtMs,
-        outcome: terminal.result.trim() ? "success" : "no_reply",
-      };
-    case "stopped":
-      return { finishedAtMs, outcome: "cancelled" };
-    // A blocked child reported what it needs. That is a result, not a failure.
-    case "blocked":
-      return { finishedAtMs, outcome: "blocked" };
-    case "failed":
-      return {
-        failureCode: "model_execution_failed",
-        finishedAtMs,
-        outcome: "failed",
-      };
-  }
-}
-
 /** Project the terminal invocation into the idempotent turn lifecycle. */
 async function persistTerminalLifecycle(
   terminal: TerminalAgentInvocation,
@@ -485,37 +472,21 @@ async function projectTerminalTurn(
       return undefined;
     }
   }
-  if (turn.state === "paused") {
+  const end = savedTurnEnd(turn);
+  if (!end) {
     return undefined;
   }
-  const result = getTerminalAssistantMessages(turn.piMessages)
-    .map(getAssistantReplyText)
-    .filter((text): text is string => text !== undefined)
-    .join("\n\n");
-  const failed = turn.state !== "completed" || Boolean(turn.errorMessage);
-  // Read the report only from this Turn. A Turn record without a start index
-  // cannot tell this Turn from earlier history of a named child.
-  const blocked =
-    turn.turnStartMessageIndex === undefined
-      ? undefined
-      : readBlockedReport(turn.piMessages.slice(turn.turnStartMessageIndex));
+  if (turn.state === "paused") {
+    // Its saved `reply` ended the task, so nothing may resume the Turn.
+    await abandonTurnRecord({
+      conversationId: turn.conversationId,
+      turnId: turn.turnId,
+    });
+  }
   return await completeAgentInvocation({
     ...completeOptions,
     invocationId: invocation.invocationId,
-    ...(failed
-      ? {
-          errorMessage: turn.errorMessage ?? "Agent invocation failed",
-          status: "failed" as const,
-        }
-      : blocked
-        ? {
-            errorMessage: blocked.missing,
-            status: "blocked" as const,
-          }
-        : {
-            result,
-            status: "completed" as const,
-          }),
+    ...end,
   });
 }
 
@@ -608,14 +579,22 @@ function isInvocationInputCommitLost(error: unknown): boolean {
   return isTurnInputCommitLostError(cause);
 }
 
-/** Save one completed agent result on its child agent invocation. */
+/**
+ * Save one completed agent result on its child agent invocation. A `reply`
+ * goes to the parent before the Turn is saved, so a lost worker cannot save
+ * the Turn and drop its reply.
+ */
 async function saveAgentInvocationResult(args: {
   invocation: AgentInvocation;
   result: AgentRunResult;
   sandboxRef?: SandboxRef;
+  sendReply?: SendReply;
   turnId: string;
 }) {
   const failed = args.result.diagnostics.outcome !== "success";
+  if (args.result.reply) {
+    await args.sendReply?.(args.invocation, args.result.reply);
+  }
   await persistThreadStateById(args.invocation.childConversationId, {
     sandboxRef: args.result.sandboxRef ?? args.sandboxRef,
   });
@@ -672,7 +651,9 @@ async function saveAgentInvocationResult(args: {
             status: "blocked" as const,
           }
         : {
-            result: args.result.text || (args.result.noReply?.note ?? ""),
+            // The reply already reached the parent. The stored text gives the
+            // Turn its outcome.
+            result: args.result.reply?.text ?? "",
             status: "completed" as const,
           }),
   });
@@ -696,6 +677,7 @@ export function createAgentInvocationWorker(
   options: {
     enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>;
     maxAgentDepth?: number;
+    sendReply?: SendReply;
   } = {},
 ) {
   // Every child has depth 1 or more, so with 0 no child can spawn. With more,
@@ -803,7 +785,7 @@ export function createAgentInvocationWorker(
           "This task was not resumed. Newer work for this child agent started, so this task ended without a result.",
         exceptInvocationId: invocation.invocationId,
       });
-      await supersedeOpenPersonTurn(invocation.childConversationId);
+      await supersedeOpenMailboxTurn(invocation.childConversationId);
       invocation =
         (await markAgentInvocationRunning(invocation.invocationId)) ??
         invocation;
@@ -830,11 +812,10 @@ export function createAgentInvocationWorker(
         }),
       ]);
       sandboxRef = getPersistedSandboxState(persisted);
-      // Some types start with the parent's history. Later agent invocations
+      // A fork starts with the parent's history. Later agent invocations
       // read it from the child's own Conversation.
       history =
-        agentTypeStartsWithParentHistory(invocation.agentType) &&
-        projection.messages.length === 0
+        invocation.fork && projection.messages.length === 0
           ? await loadForkHistory(invocation)
           : projection.messages;
       location = child?.location;
@@ -900,6 +881,7 @@ export function createAgentInvocationWorker(
             onInputCommitted: acknowledge,
             shouldYield: context.shouldYield,
             checkIn: context.checkIn,
+            checkStop: context.checkStop,
             onSandboxRefChanged: async (nextSandboxRef) => {
               sandboxRef = nextSandboxRef;
               await persistThreadStateById(invocation.childConversationId, {
@@ -908,13 +890,20 @@ export function createAgentInvocationWorker(
             },
           },
         },
-        async (result) =>
-          await saveAgentInvocationResult({
+        async (result) => {
+          // A stop aborts the run, which then reads as failed. It ends as
+          // stopped instead.
+          if (result.diagnostics.outcome !== "success") {
+            stopSignal?.throwIfAborted();
+          }
+          return await saveAgentInvocationResult({
             invocation,
             result,
             sandboxRef,
+            sendReply: options.sendReply,
             turnId,
-          }),
+          });
+        },
       );
     } catch (error) {
       // A save error has no AgentRunError wrapper. On the final attempt it
