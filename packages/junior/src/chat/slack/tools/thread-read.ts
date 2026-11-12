@@ -40,13 +40,18 @@ interface ThreadReadAttachmentDeps {
   storage?: AttachmentStorage;
 }
 
-/** Private file URLs get the bot token, so only send it to Slack hosts. */
+/**
+ * Private file URLs get the bot token, and an app can put any URL in message
+ * attachments. Send the token only to Slack's private file path, never to
+ * Web API hosts such as `slack.com/api`.
+ */
 function isSlackFileUrl(value: string): boolean {
   try {
     const url = new URL(value);
     return (
       url.protocol === "https:" &&
-      (url.hostname === "slack.com" || url.hostname.endsWith(".slack.com"))
+      url.hostname === "files.slack.com" &&
+      url.pathname.startsWith("/files-pri/")
     );
   } catch {
     return false;
@@ -59,17 +64,22 @@ function isSlackFileUrl(value: string): boolean {
  * Slack attaches a linked file after the message event, and a file can be in
  * a message that started no Turn. Storing it here gives the model an
  * `attachment_id` for `loadAttachment`. A file that fails to download stays
- * metadata-only, the same as a failed download at turn start. Callers pass
- * only files with a Slack `url_private`.
+ * metadata-only, the same as a failed download at turn start. It does not
+ * use one of the `limit` slots, so a file that keeps failing cannot block the
+ * files after it. Callers pass only files with a Slack `url_private`.
  */
 async function storeThreadFiles(args: {
   conversationId: string;
   db: JuniorSqlDatabase;
   files: SlackFileRef[];
+  limit: number;
   storage: AttachmentStorage;
-}): Promise<Array<readonly [string, string]>> {
+}): Promise<{ stored: Array<readonly [string, string]>; tried: number }> {
   const stored: Array<readonly [string, string]> = [];
+  let tried = 0;
   for (const file of args.files) {
+    if (stored.length >= args.limit) break;
+    tried += 1;
     const url = file.url_private;
     if (!file.id || !url) continue;
     const filename = file.name ?? "attachment";
@@ -97,7 +107,7 @@ async function storeThreadFiles(args: {
       });
     }
   }
-  return stored;
+  return { stored, tried };
 }
 
 /**
@@ -399,16 +409,15 @@ export function createSlackThreadReadTool(
         ];
         // One read stores at most as many files as a Turn gives the model.
         // A later read stores the rest, because stored files match first.
-        unstoredFileCount = Math.max(
-          0,
-          unstored.length - MAX_MODEL_ATTACHMENTS,
-        );
-        for (const [fileId, attachmentId] of await storeThreadFiles({
+        const { stored, tried } = await storeThreadFiles({
           conversationId: attachmentDeps.conversationId,
           db: attachmentDeps.db,
-          files: unstored.slice(0, MAX_MODEL_ATTACHMENTS),
+          files: unstored,
+          limit: MAX_MODEL_ATTACHMENTS,
           storage: attachmentDeps.storage,
-        })) {
+        });
+        unstoredFileCount = unstored.length - tried;
+        for (const [fileId, attachmentId] of stored) {
           attachmentIdsBySlackFileId.set(fileId, attachmentId);
         }
       }

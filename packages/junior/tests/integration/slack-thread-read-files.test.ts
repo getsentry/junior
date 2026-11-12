@@ -264,7 +264,7 @@ describe("files in the current Conversation's thread", () => {
     expect(result.messages[0].files[0].attachment_id).toBe(stored.id);
   });
 
-  it("keeps files metadata-only in other threads, for non-Slack URLs, and when a download fails", async () => {
+  it("keeps files metadata-only in other threads, for non-file URLs, and when a download fails", async () => {
     const { tool } = await setup();
     const file = (id: string, url: string) => ({
       id,
@@ -309,10 +309,15 @@ describe("files in the current Conversation's thread", () => {
             ],
           },
         ],
+        // Failed downloads use no cap slot, so the file after them is stored.
         files: [
+          // A Slack Web API URL would run as the bot.
           file(
-            "F0FAIL001",
-            "https://files.slack.com/files-pri/T123-F0FAIL001/x.csv",
+            "F0EVIL002",
+            "https://slack.com/api/conversations.history?channel=C0SECRET",
+          ),
+          ...["F0FAIL001", "F0FAIL002", "F0FAIL003", "F0GOOD001"].map((id) =>
+            file(id, `https://files.slack.com/files-pri/T123-${id}/x.csv`),
           ),
         ],
       },
@@ -323,16 +328,34 @@ describe("files in the current Conversation's thread", () => {
         offSlackRequests.push(request.url);
         return new HttpResponse("stolen");
       }),
+      http.get("https://slack.com/api/:method", ({ request }) => {
+        offSlackRequests.push(request.url);
+        return HttpResponse.json({ ok: true, messages: [] });
+      }),
     );
-    queueSlackPrivateFileDownload({ status: 403, body: "" });
+    for (let i = 0; i < 3; i += 1) {
+      queueSlackPrivateFileDownload({ status: 403, body: "" });
+    }
+    queueSlackPrivateFileDownload({ body: "a,b\n" });
     const current = await executeTool(tool, {
       channel_id: "C0CURRENT",
       slack_ts: THREAD_TS,
     });
+    const noAttachment = expect.not.objectContaining({
+      attachment_id: expect.anything(),
+    });
     expect(current.messages[0].files).toEqual([
-      expect.not.objectContaining({ attachment_id: expect.anything() }),
-      expect.not.objectContaining({ attachment_id: expect.anything() }),
+      noAttachment,
+      noAttachment,
+      noAttachment,
+      noAttachment,
+      expect.objectContaining({
+        id: "F0GOOD001",
+        attachment_id: expect.any(String),
+      }),
+      noAttachment,
     ]);
+    expect(current).not.toHaveProperty("unstored_file_count");
     expect(offSlackRequests).toEqual([]);
   });
 });
