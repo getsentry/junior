@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, ne, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, ne, or } from "drizzle-orm";
 import type { StateAdapter } from "chat";
 import {
   getConversationStoppedAtMs,
@@ -11,15 +11,11 @@ import {
   getConversationWorkState,
   stopConversationWork,
 } from "@/chat/task-execution/store";
-import { juniorAgentInvocations } from "@/db/schema";
+import { juniorAgentInvocations, juniorConversations } from "@/db/schema";
 import { recordSubagentEnded } from "./markers";
 import { isChildAgentSessionStopped } from "./list";
-import {
-  getChildAgentLockName,
-  parseAgentInvocationResultMessageId,
-  parseAgentReplyMessageId,
-  parseTurnReplyMessageId,
-} from "./ids";
+import { getChildAgentLockName } from "./ids";
+import { ownAgentInvocation, readChildMessageSender } from "./child-message";
 import { SENT_PARENT_MAILBOX_STATUSES } from "./statuses";
 import {
   getLatestAgentInvocationForConversation,
@@ -42,16 +38,16 @@ export async function stopChildAgent(args: {
   parentConversationId: string;
   state?: StateAdapter;
 }): Promise<{ stopped: boolean } | undefined> {
-  const latest = await getLatestAgentInvocationForConversation(
-    args.childConversationId,
-  );
-  const wasStopped =
-    latest !== undefined &&
-    (latest.status === "stopped" ||
-      isChildAgentSessionStopped(
-        latest,
-        await getConversationStoppedAtMs(args.childConversationId),
-      ));
+  const [latest, stoppedAtMs] = await Promise.all([
+    getLatestAgentInvocationForConversation(args.childConversationId),
+    getConversationStoppedAtMs(args.childConversationId),
+  ]);
+  // A child that no Agent invocation names is stopped until new input clears
+  // its stop.
+  const wasStopped = latest
+    ? latest.status === "stopped" ||
+      isChildAgentSessionStopped(latest, stoppedAtMs)
+    : stoppedAtMs !== undefined;
   const tree = await stopChildAgentInvocations(args);
   if (!tree) {
     return undefined;
@@ -164,14 +160,14 @@ async function skipUnreadResults(
   // A child's `reply` is its result, so a stop skips it too. A reply from a
   // Turn on the Conversation loop names no work of its own:
   // `dropUnreadLoopReplies` drops it instead.
-  const invocationIds = messages.flatMap((message) => {
-    const invocationId =
-      parseAgentInvocationResultMessageId(message.inboundMessageId) ??
-      (parseTurnReplyMessageId(message.inboundMessageId) === undefined
-        ? parseAgentReplyMessageId(message.inboundMessageId)
-        : undefined);
-    return invocationId ? [invocationId] : [];
-  });
+  const invocationIds: string[] = [];
+  for (const message of messages) {
+    const sender = await readChildMessageSender(message);
+    const invocation = sender && ownAgentInvocation(sender);
+    if (invocation) {
+      invocationIds.push(invocation);
+    }
+  }
   if (invocationIds.length === 0) {
     return;
   }
@@ -188,11 +184,10 @@ async function skipUnreadResults(
 
 /**
  * Drop the unread replies that Turns on the Conversation loop of the stopped
- * Conversations left in each mailbox of `mailboxIds`. Such a reply names the
- * sender's newest finished agent invocation, not work that the stop skips,
- * so the stop drops it by its message id. A reply sent after the stop is
- * dropped when it is read, while the sender is stopped. Call this after the
- * stop is stored.
+ * Conversations left in each mailbox of `mailboxIds`. Such a reply names
+ * no work that the stop skips, so the stop drops it by its sender fields.
+ * A reply sent after the stop is dropped when it is read, while the sender
+ * is stopped. Call this after the stop is stored.
  *
  * A reply that a running Turn already took leaves the mailbox like one that
  * it read: the Turn's own ack removes nothing more.
@@ -207,39 +202,17 @@ async function dropUnreadLoopReplies(
     const messages =
       (await getConversationWorkState({ conversationId, state }))?.messages ??
       [];
-    const replies = messages.flatMap((message) => {
-      const invocationId =
-        parseTurnReplyMessageId(message.inboundMessageId) === undefined
-          ? undefined
-          : parseAgentReplyMessageId(message.inboundMessageId);
-      return invocationId
-        ? [{ invocationId, messageId: message.inboundMessageId }]
-        : [];
-    });
-    if (replies.length === 0) {
-      continue;
+    const inboundMessageIds: string[] = [];
+    for (const message of messages) {
+      const sender = await readChildMessageSender(message);
+      if (
+        sender &&
+        !ownAgentInvocation(sender) &&
+        stopped.has(sender.conversationId)
+      ) {
+        inboundMessageIds.push(message.inboundMessageId);
+      }
     }
-    const senders = await getSqlExecutor()
-      .db()
-      .select({
-        childConversationId: juniorAgentInvocations.childConversationId,
-        invocationId: juniorAgentInvocations.invocationId,
-      })
-      .from(juniorAgentInvocations)
-      .where(
-        inArray(
-          juniorAgentInvocations.invocationId,
-          replies.map((reply) => reply.invocationId),
-        ),
-      );
-    const stoppedSenders = new Set(
-      senders
-        .filter((sender) => stopped.has(sender.childConversationId))
-        .map((sender) => sender.invocationId),
-    );
-    const inboundMessageIds = replies
-      .filter((reply) => stoppedSenders.has(reply.invocationId))
-      .map((reply) => reply.messageId);
     if (inboundMessageIds.length > 0) {
       await dropPendingMessages({ conversationId, inboundMessageIds, state });
     }
@@ -258,11 +231,11 @@ export async function dropOwnUnreadLoopReplies(
   // A child agent has one parent, so this finds at most one mailbox.
   const parents = await getSqlExecutor()
     .db()
-    .selectDistinct({ id: juniorAgentInvocations.parentConversationId })
-    .from(juniorAgentInvocations)
-    .where(eq(juniorAgentInvocations.childConversationId, conversationId));
+    .select({ id: juniorConversations.parentConversationId })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, conversationId));
   await dropUnreadLoopReplies(
-    parents.map((parent) => parent.id),
+    parents.flatMap((parent) => (parent.id ? [parent.id] : [])),
     [conversationId],
     state,
   );
@@ -314,9 +287,22 @@ async function lockAgentConversationTree(
       })
       .from(juniorAgentInvocations)
       .where(inArray(juniorAgentInvocations.parentConversationId, parents));
-    parents = rows
-      .map((row) => row.childConversationId)
-      .filter((id) => !conversationIds.includes(id));
+    // A child agent that no agent invocation names stores its agent config.
+    const withoutInvocations = await executor
+      .db()
+      .select({ childConversationId: juniorConversations.conversationId })
+      .from(juniorConversations)
+      .where(
+        and(
+          inArray(juniorConversations.parentConversationId, parents),
+          isNotNull(juniorConversations.agentConfig),
+        ),
+      );
+    parents = [
+      ...new Set(
+        [...rows, ...withoutInvocations].map((row) => row.childConversationId),
+      ),
+    ].filter((id) => !conversationIds.includes(id));
     conversationIds.push(...parents);
   }
   return conversationIds;
@@ -349,9 +335,28 @@ async function withChildAgentsTaskedAfter(
         ),
       ),
     );
+  // A child agent that no agent invocation names was tasked when it was
+  // created.
+  const withoutInvocations = await getSqlExecutor()
+    .db()
+    .select({
+      childConversationId: juniorConversations.conversationId,
+      parentConversationId: juniorConversations.parentConversationId,
+    })
+    .from(juniorConversations)
+    .where(
+      and(
+        inArray(juniorConversations.parentConversationId, [...conversationIds]),
+        isNotNull(juniorConversations.agentConfig),
+        or(
+          ne(juniorConversations.parentConversationId, conversationId),
+          gt(juniorConversations.createdAt, new Date(taskedAfterMs)),
+        ),
+      ),
+    );
   const kept = [conversationId];
   for (let index = 0; index < kept.length; index += 1) {
-    for (const link of links) {
+    for (const link of [...links, ...withoutInvocations]) {
       if (
         link.parentConversationId === kept[index] &&
         !kept.includes(link.childConversationId)
@@ -373,24 +378,40 @@ export async function stopChildAgentInvocations(args: {
   nowMs?: number;
   parentConversationId: string;
 }): Promise<StoppedAgentTree | undefined> {
-  const owned = await getSqlExecutor()
-    .db()
-    .select({ invocationId: juniorAgentInvocations.invocationId })
-    .from(juniorAgentInvocations)
-    .where(
-      and(
-        eq(
-          juniorAgentInvocations.parentConversationId,
-          args.parentConversationId,
+  const db = getSqlExecutor().db();
+  const [owned, child] = await Promise.all([
+    db
+      .select({ invocationId: juniorAgentInvocations.invocationId })
+      .from(juniorAgentInvocations)
+      .where(
+        and(
+          eq(
+            juniorAgentInvocations.parentConversationId,
+            args.parentConversationId,
+          ),
+          eq(
+            juniorAgentInvocations.childConversationId,
+            args.childConversationId,
+          ),
         ),
-        eq(
-          juniorAgentInvocations.childConversationId,
-          args.childConversationId,
+      )
+      .limit(1),
+    // A child agent that no agent invocation names stores its agent config.
+    db
+      .select({ conversationId: juniorConversations.conversationId })
+      .from(juniorConversations)
+      .where(
+        and(
+          eq(juniorConversations.conversationId, args.childConversationId),
+          eq(
+            juniorConversations.parentConversationId,
+            args.parentConversationId,
+          ),
+          isNotNull(juniorConversations.agentConfig),
         ),
       ),
-    )
-    .limit(1);
-  if (owned.length === 0) {
+  ]);
+  if (owned.length === 0 && child.length === 0) {
     return undefined;
   }
   return await stopAgentInvocationTree(args.childConversationId, args.nowMs);

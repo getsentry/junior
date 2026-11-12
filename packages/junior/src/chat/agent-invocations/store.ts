@@ -6,11 +6,20 @@ import {
   getConversationWorkState,
   type InboundMessage,
 } from "@/chat/task-execution/store";
-import { AGENT_INVOCATION_EVENT_NAMESPACE } from "./result-event-type";
 import {
-  getAgentInvocationResultMessageId,
-  isAgentReplyMessageId,
-} from "./ids";
+  AGENT_INVOCATION_EVENT_NAMESPACE,
+  AGENT_PARENT_MESSAGE_EVENT_TYPE,
+} from "./result-event-type";
+import { getAgentInvocationResultMessageId } from "./ids";
+import {
+  hasAgentInvocationReply,
+  listChildMessages,
+  readChildMessageSender,
+  type ChildMessage,
+} from "./child-message";
+import { readChildConversationSender } from "./child-input";
+import { listOpenChildAgentsWithoutAgentInvocations } from "./list";
+import { readAgentConfig } from "@/chat/conversations/agent-config";
 import {
   SENT_PARENT_MAILBOX_STATUSES,
   type AgentInvocationParentMailboxStatus,
@@ -150,6 +159,8 @@ export async function getLatestAgentInvocationForConversation(
  * the child have no title, so an agent invocation with a title comes first.
  * Each agent invocation keeps the child's agent type, but only the one that
  * started a fork has `fork` set, so the flag reads every agent invocation.
+ * A child that no Agent invocation names reads its binding, title, and
+ * agent config.
  */
 export async function getChildAgentLabel(childConversationId: string) {
   const [row] = await getSqlExecutor()
@@ -167,7 +178,21 @@ export async function getChildAgentLabel(childConversationId: string) {
       desc(juniorAgentInvocations.createdAt),
     )
     .limit(1);
-  return row;
+  if (row) {
+    return row;
+  }
+  const [sender, options] = await Promise.all([
+    readChildConversationSender(childConversationId),
+    readAgentConfig(childConversationId),
+  ]);
+  return sender && options
+    ? {
+        agentName: sender.agentName ?? null,
+        agentType: options.agentType ?? null,
+        fork: options.fork ?? false,
+        title: sender.title ?? null,
+      }
+    : undefined;
 }
 
 /**
@@ -200,16 +225,17 @@ export async function listOpenAgentInvocations(
 /**
  * Return whether a terminal agent invocation sends its result to the parent.
  * A child's final response stays in its Conversation, and a `reply` that
- * reached the parent (its id is in `parentInboundMessageIds`) answered for
- * the invocation. A failure after that, such as a lost worker before the
+ * reached the parent (one of `parentMessages`) answered for the Agent
+ * invocation. A failure after that, such as a lost worker before the
  * Turn was saved, is not sent either.
  */
 export function sendsResultToParent(
   invocation: { invocationId: string; result?: string | null; status: string },
-  parentInboundMessageIds: readonly string[],
+  parentMessages: readonly ChildMessage[],
 ): boolean {
-  const replied = parentInboundMessageIds.some((messageId) =>
-    isAgentReplyMessageId(messageId, invocation.invocationId),
+  const replied = hasAgentInvocationReply(
+    parentMessages,
+    invocation.invocationId,
   );
   switch (invocation.status) {
     case "completed":
@@ -227,13 +253,28 @@ export function sendsResultToParent(
 /**
  * Return whether a child Conversation has work that will start another agent
  * invocation on it: another open agent invocation, an open child agent, or a
- * child agent result that is sent but still waits in its mailbox.
+ * child agent result that is sent but still waits in its mailbox. A child
+ * agent that no Agent invocation names is open as `searchAgents` shows it,
+ * and its unread result or reply also waits.
  */
 async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
   const conversationId = invocation.childConversationId;
   const open = await listOpenAgentInvocations(conversationId);
-  if (open.some((row) => row.invocationId !== invocation.invocationId)) {
+  if (
+    open.some((row) => row.invocationId !== invocation.invocationId) ||
+    (await listOpenChildAgentsWithoutAgentInvocations(conversationId)).length >
+      0
+  ) {
     return true;
+  }
+  // An unread reply or result from a child that no Agent invocation names
+  // waits. One from a child with a row counts as on `main`.
+  const work = await getConversationWorkState({ conversationId });
+  for (const message of work?.messages ?? []) {
+    const sender = await readChildMessageSender(message);
+    if (sender && !sender.agentInvocationId) {
+      return true;
+    }
   }
   // A `replaced` child result is never sent. A later agent invocation of
   // that child agent sends its report instead.
@@ -258,13 +299,16 @@ async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
   if (marked.length === 0) {
     return false;
   }
-  const work = await getConversationWorkState({ conversationId });
   const unread = new Set(
     work?.messages.map((message) => message.inboundMessageId),
   );
+  const parentMessages = await listChildMessages(
+    work?.execution.inboundMessageIds ?? [],
+    work?.execution.messageSenders ?? {},
+  );
   return marked.some(
     (row) =>
-      sendsResultToParent(row, work?.execution.inboundMessageIds ?? []) &&
+      sendsResultToParent(row, parentMessages) &&
       (row.parentMailboxStatus === "pending" ||
         unread.has(getAgentInvocationResultMessageId(row.invocationId))),
   );
@@ -399,12 +443,14 @@ export async function reportReplacedWithoutOpenWork(
   return await reportReplacedAgentInvocation(latest.invocationId, nowMs);
 }
 
-// Results, replies, and messages from a child's own child agents.
+// Results, replies, and messages from a child's own child agents. A message
+// from the child's parent is not one.
 function isChildAgentInputMessage(message: InboundMessage): boolean {
   const metadata = message.input.metadata;
   return (
     isEventMailboxMetadata(metadata) &&
-    metadata.event.namespace === AGENT_INVOCATION_EVENT_NAMESPACE
+    metadata.event.namespace === AGENT_INVOCATION_EVENT_NAMESPACE &&
+    metadata.event.eventType !== AGENT_PARENT_MESSAGE_EVENT_TYPE
   );
 }
 

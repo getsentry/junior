@@ -58,21 +58,20 @@ function editTool(
       },
     },
     new SkillSandbox([], []),
-    {},
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    createPluginHookRunner({
-      toolRun: {
-        conversationId: CONVERSATION_ID,
-        turnId: TURN_ID,
-        sandbox: () => ({
-          workspace: sandboxWorkspace,
-          workspaceId,
-        }),
-      },
-    }),
+    {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+      agentHooks: createPluginHookRunner({
+        toolRun: {
+          conversationId: CONVERSATION_ID,
+          turnId: TURN_ID,
+          sandbox: () => ({
+            workspace: sandboxWorkspace,
+            workspaceId,
+          }),
+        },
+      }),
+    },
   );
   return { execute, tool: tool! };
 }
@@ -249,25 +248,21 @@ describe("afterToolExecute plugin hooks", () => {
         },
       } as never,
       new SkillSandbox([], []),
-      {},
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      createPluginHookRunner({
-        toolRun: {
-          conversationId: CONVERSATION_ID,
-          turnId: TURN_ID,
-          sandbox: () => ({
-            workspace: fakeSandbox(""),
-            workspaceId: () => undefined,
-          }),
-        },
-      }),
-      undefined,
-      undefined,
-      undefined,
-      { countToolCall: () => 1 },
+      {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        agentHooks: createPluginHookRunner({
+          toolRun: {
+            conversationId: CONVERSATION_ID,
+            turnId: TURN_ID,
+            sandbox: () => ({
+              workspace: fakeSandbox(""),
+              workspaceId: () => undefined,
+            }),
+          },
+        }),
+        codeMode: { countToolCall: () => 1 },
+      },
     );
     const codemode = tools.find((tool) => tool.name === CODEMODE_TOOL_NAME)!;
 

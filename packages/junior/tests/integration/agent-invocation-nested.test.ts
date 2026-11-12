@@ -3,6 +3,7 @@ import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import {
   getAgentInvocationIdForResult,
   getAgentInvocationResultMessageId,
+  getAgentInvocationTurnId,
 } from "@/chat/agent-invocations/ids";
 import {
   completeAgentInvocation,
@@ -240,6 +241,7 @@ describe("nested agent invocations", () => {
         messageKey: "call-reply",
         queue,
         sender: busyReplied!,
+        turnId: getAgentInvocationTurnId(busyReplied!.invocationId),
         state,
       });
       for (const [invocation, result] of [
