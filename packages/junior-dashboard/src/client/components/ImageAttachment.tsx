@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, ExternalLink, X } from "lucide-react";
 import {
   type MouseEvent,
   type PointerEvent,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -282,10 +283,21 @@ function ZoomableImage(props: {
     gesture.current = gestureAt(
       [...pointers.current.values()],
       from,
-      zoom,
       image.current!,
     );
   };
+
+  /**
+   * Stop a click or double-tap animation at the zoom it shows now, so input
+   * that interrupts it starts from what the reader sees. Returns that zoom.
+   */
+  const interruptZoom = useCallback((): Zoom => {
+    if (!animate) return zoom;
+    const shown = renderedZoom(image.current!);
+    setAnimate(false);
+    setZoom(shown);
+    return shown;
+  }, [animate, zoom]);
 
   /**
    * Zoom in on the image point under `point`, or zoom out to fit. An unzoomed
@@ -300,7 +312,7 @@ function ZoomableImage(props: {
       zoom.scale > 1
         ? NO_ZOOM
         : zoomAt(
-            gestureAt([point], zoom, zoom, element),
+            gestureAt([point], zoom, element),
             point,
             detailZoom(element),
             element,
@@ -317,8 +329,8 @@ function ZoomableImage(props: {
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       const point = { x: event.clientX, y: event.clientY };
-      const start = gestureAt([point], zoom, zoom, image.current!);
-      setAnimate(false);
+      const from = interruptZoom();
+      const start = gestureAt([point], from, image.current!);
       // Trackpad pinches and ctrl+wheel zoom. A mouse wheel notch is about
       // 100, so clamp it to keep one notch from jumping too far.
       if (event.ctrlKey) {
@@ -327,17 +339,17 @@ function ZoomableImage(props: {
           zoomAt(
             start,
             point,
-            zoom.scale * Math.exp(-delta * 0.01),
+            from.scale * Math.exp(-delta * 0.01),
             image.current!,
           ),
         );
-      } else if (zoom.scale > 1) {
+      } else if (from.scale > 1) {
         // Other wheel input scrolls the zoomed image, like a page.
         setZoom(
           zoomAt(
             start,
             { x: point.x - event.deltaX, y: point.y - event.deltaY },
-            zoom.scale,
+            from.scale,
             image.current!,
           ),
         );
@@ -345,7 +357,7 @@ function ZoomableImage(props: {
     };
     element.addEventListener("wheel", onWheel, { passive: false });
     return () => element.removeEventListener("wheel", onWheel);
-  }, [zoom]);
+  }, [interruptZoom]);
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     const mouse = event.pointerType === "mouse";
@@ -357,6 +369,7 @@ function ZoomableImage(props: {
     // A mouse drag only pans. Swipes to page or dismiss are for touch.
     swipeAxis.current = mouse || pointers.current.size > 1 ? "none" : undefined;
     if (swipe) setSwipe(undefined);
+    const from = interruptZoom();
     click.current = mouse ? point : undefined;
     // A mouse zooms on one click, in onPointerEnd. Touch needs a double tap,
     // because one tap also starts a swipe or a pan.
@@ -366,13 +379,13 @@ function ZoomableImage(props: {
       event.timeStamp - lastTapAt.current < DOUBLE_TAP_MS
     ) {
       lastTapAt.current = 0;
-      startGesture(toggleZoom(point) ?? zoom);
+      startGesture(toggleZoom(point) ?? from);
       return;
     }
     if (!mouse && pointers.current.size === 1) {
       lastTapAt.current = event.timeStamp;
     }
-    startGesture(zoom);
+    startGesture(from);
   };
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
@@ -391,6 +404,8 @@ function ZoomableImage(props: {
       lastTapAt.current = 0;
       click.current = undefined;
     }
+    // A mouse press pans only once it is a drag, so a click stays a click.
+    if (click.current) return;
     if (
       points.length === 1 &&
       start.zoom.scale === 1 &&
@@ -409,7 +424,6 @@ function ZoomableImage(props: {
       points.length > 1 && start.distance > 0
         ? (start.zoom.scale * pointDistance(points)) / start.distance
         : start.zoom.scale;
-    setAnimate(false);
     setZoom(zoomAt(start, midpoint(points), scale, image.current!));
   };
 
@@ -483,26 +497,32 @@ function ZoomableImage(props: {
   );
 }
 
-/**
- * Start a gesture at `points` from zoom `from`. `rendered` is the zoom the
- * image shows now, which differs from `from` right after a double tap.
- */
+/** Start a gesture at `points` from zoom `from`. */
 function gestureAt(
   points: readonly Point[],
   from: Zoom,
-  rendered: Zoom,
   element: HTMLElement,
 ): Gesture {
+  // Read the shown transform, not zoom state: it can differ for one render
+  // after a double tap, or for a whole animation. The transform scales around
+  // the center, so only its translation moves it.
   const rect = element.getBoundingClientRect();
+  const shown = renderedZoom(element);
   return {
     center: {
-      x: rect.left + rect.width / 2 - rendered.x,
-      y: rect.top + rect.height / 2 - rendered.y,
+      x: rect.left + rect.width / 2 - shown.x,
+      y: rect.top + rect.height / 2 - shown.y,
     },
     distance: pointDistance(points),
     start: midpoint(points),
     zoom: from,
   };
+}
+
+/** Read the zoom that the image shows now, also partway through a transition. */
+function renderedZoom(element: HTMLElement): Zoom {
+  const matrix = new DOMMatrixReadOnly(getComputedStyle(element).transform);
+  return { scale: matrix.a, x: matrix.e, y: matrix.f };
 }
 
 /** Zoom that shows the image at its natural size, and at least DETAIL_ZOOM. */
