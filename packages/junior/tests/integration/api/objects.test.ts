@@ -33,6 +33,9 @@ async function viewerApi(email: string) {
     const query = new URLSearchParams(urls.map((url) => ["url", url]));
     const response = await app.request(`http://localhost/api/objects?${query}`);
     expect(response.status).toBe(200);
+    // The browser may keep a card as long as the server cache does.
+    expect(response.headers.get("cache-control")).toBe("private, max-age=60");
+    expect(response.headers.get("vary")).toBe("Authorization, Cookie");
     const body = await response.text();
     return {
       body,
@@ -128,6 +131,12 @@ describe("object links API", () => {
       provider: "github",
       providerSubjectId: "1001",
     });
+    await upsertLinkedIdentity(getSqlExecutor(), alice.id, {
+      avatarUrl: "https://lh3.googleusercontent.com/a/alice",
+      kind: "user",
+      provider: "google",
+      providerSubjectId: "g-alice",
+    });
     await linkSlackUser("carol@example.com", "UCAROL");
     const personUrl = `${DASHBOARD}/people/${encodeURIComponent("alice@example.com")}`;
     const unlinkedUrl = `${DASHBOARD}/people/${encodeURIComponent("carol@example.com")}`;
@@ -144,6 +153,7 @@ describe("object links API", () => {
     const person = {
       facts: {
         email: "alice@example.com",
+        avatarUrl: expect.stringMatching(/^\/api\/people\/avatars\//),
         githubHandle: "alice-gh",
         type: "person",
       },
