@@ -43,7 +43,8 @@ export function knownObjectsFromAnnotations(
   return objects;
 }
 
-const STANDALONE_URL_RE = /^<?(https?:\/\/[^\s<>]+?)>?$/;
+// Four spaces of indent make a code block, so they do not count.
+const STANDALONE_URL_RE = /^ {0,3}<?(https?:\/\/[^\s<>]+?)>?\s*$/;
 
 /**
  * Return whether a bare URL for `url` is alone in a paragraph of display
@@ -62,7 +63,9 @@ export function textHasStandaloneUrl(text: string, url: string): boolean {
         slackLinksToMarkdown(block.code)
           .split(/\n[ \t]*\n/)
           .some((paragraph) => {
-            const bare = STANDALONE_URL_RE.exec(paragraph.trim())?.[1];
+            const bare = STANDALONE_URL_RE.exec(
+              paragraph.replace(/^\n+/, ""),
+            )?.[1];
             return bare !== undefined && objectUrlKey(bare) === key;
           }),
     )

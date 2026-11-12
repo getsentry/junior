@@ -227,5 +227,7 @@ describe("display text object links", () => {
     expect(textHasStandaloneUrl(`Ready: ${PR}`, PR)).toBe(false);
     expect(textHasStandaloneUrl(`[PR](${PR})`, PR)).toBe(false);
     expect(textHasStandaloneUrl("```\n" + PR + "\n```", PR)).toBe(false);
+    expect(textHasStandaloneUrl(`Ready.\n\n    ${PR}`, PR)).toBe(false);
+    expect(textHasStandaloneUrl(`Ready.\n\n\t${PR}`, PR)).toBe(false);
   });
 });
