@@ -19,6 +19,7 @@ import type {
   Conversation,
   ConversationExecution,
   ConversationRunMetrics,
+  ChildConversationKind,
   ConversationSource,
   ConversationStatus,
   ConversationStore,
@@ -29,11 +30,11 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import { conversationReadColumns } from "@/db/schema/conversations";
 import type { JuniorDestinationKind } from "@/db/schema/destination-kind";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import {
   bindProviderConversation,
+  claimProviderConversationOwner,
   getConversationIdByProviderConversation,
   type ProviderConversationBinding,
   type ProviderConversationReference,
@@ -48,11 +49,13 @@ import {
   locationFromRow,
   visibilityFromLocationRow,
 } from "./location";
+import {
+  conversationKindFromRow,
+  ensureConversationRow,
+} from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
-type ConversationRow = Omit<
-  typeof juniorConversations.$inferSelect,
-  "legacyArchivedAt"
->;
+import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
+type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
 interface ConversationReadRow {
@@ -181,24 +184,17 @@ function destinationUpsertFromDestination(args: {
     metadata: { platform: "local" },
   };
 }
-// TODO(dcramer): Remove awaiting_resume mapping after every SQL row uses paused
-// and no supported worker writes the legacy status.
 function executionStatusFromValue(value: unknown): ConversationStatus {
-  if (value === "awaiting_resume" || value === "paused") return "paused";
   if (
     value === "failed" ||
     value === "idle" ||
+    value === "paused" ||
     value === "pending" ||
     value === "running"
   ) {
     return value;
   }
   throw new Error("Conversation record execution status is invalid");
-}
-function executionStatusToSql(status: ConversationStatus): ConversationStatus {
-  return (
-    status === "paused" ? "awaiting_resume" : status
-  ) as ConversationStatus;
 }
 
 function destinationFromRow(
@@ -285,8 +281,12 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
       ...(row.metricRunId ? { runId: row.metricRunId } : undefined),
       ...(row.executionUsage ? { usage: row.executionUsage } : undefined),
     },
+    kind: conversationKindFromRow(row),
     ...(row.parentConversationId
       ? { parentConversationId: row.parentConversationId }
+      : undefined),
+    ...(row.archivedAt
+      ? { archivedAtMs: row.archivedAt.getTime() }
       : undefined),
     ...(destination ? { destination } : undefined),
     ...(location ? { location } : undefined),
@@ -298,6 +298,12 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(msFromDate(row.transcriptPurgedAt) !== undefined
       ? { transcriptPurgedAtMs: msFromDate(row.transcriptPurgedAt) }
       : undefined),
+    ...(msFromDate(row.stoppedAt) !== undefined
+      ? { stoppedAtMs: msFromDate(row.stoppedAt) }
+      : undefined),
+    ...(msFromDate(row.deliveryPausedAt) !== undefined
+      ? { deliveryPausedAtMs: msFromDate(row.deliveryPausedAt) }
+      : undefined),
     ...(visibility ? { visibility } : undefined),
   };
 }
@@ -305,6 +311,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
 function emptyConversation(args: {
   conversationId: string;
   destination?: Destination;
+  kind?: "root" | "automation";
   nowMs: number;
   source?: ConversationSource;
   sessionSource?: SessionSource;
@@ -313,6 +320,7 @@ function emptyConversation(args: {
     schemaVersion: 1,
     conversationId: args.conversationId,
     createdAtMs: args.nowMs,
+    kind: args.kind ?? "root",
     lastActivityAtMs: args.nowMs,
     updatedAtMs: args.nowMs,
     ...(args.destination ? { destination: args.destination } : undefined),
@@ -357,11 +365,25 @@ export class SqlStore implements ConversationStore {
     await bindProviderConversation(this.executor, args);
   }
 
+  async claimProviderConversation(
+    args: ProviderConversationBinding & { atMs: number },
+  ): Promise<string> {
+    const { atMs, ...binding } = args;
+    return await this.executor.transaction(async () => {
+      await ensureConversationRow(this.executor, binding.conversationId, atMs, {
+        activity: "preserve",
+      });
+      return await claimProviderConversationOwner(this.executor, binding);
+    });
+  }
+
   async createChild(args: {
     childConversationId: string;
+    kind: ChildConversationKind;
     parentConversationId: string;
     nowMs?: number;
     source?: ConversationSource;
+    title?: string;
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
     await this.withConversationMutation(args.parentConversationId, async () => {
@@ -377,25 +399,39 @@ export class SqlStore implements ConversationStore {
                 `Conversation parent changed for ${args.childConversationId}`,
               );
             }
+            if (existing.kind !== args.kind) {
+              throw new Error(
+                `Conversation kind changed for ${args.childConversationId}`,
+              );
+            }
             return;
           }
-          const parent = await this.get({
-            conversationId: args.parentConversationId,
-          });
-          if (!parent) {
+          const parentRow = await this.readConversationRow(
+            args.parentConversationId,
+          );
+          if (!parentRow) {
             throw new Error(
               `Conversation parent is missing for ${args.childConversationId}`,
             );
           }
+          // A child stores its parent's Destination row and Location, so it
+          // reads visibility and Location from its own row, the same as a root.
+          const { location } = conversationFromRow(parentRow);
           const child: Conversation = {
             ...emptyConversation({
               conversationId: args.childConversationId,
               nowMs,
               source: args.source,
             }),
+            kind: args.kind,
             parentConversationId: args.parentConversationId,
+            ...(location ? { location } : undefined),
+            ...(args.title ? { title: args.title } : undefined),
           };
-          await this.upsertConversation({ conversation: child });
+          await this.upsertConversation({
+            conversation: child,
+            destinationId: parentRow.conversation.destinationId ?? undefined,
+          });
         },
       );
     });
@@ -429,6 +465,7 @@ export class SqlStore implements ConversationStore {
     sessionSource?: Source;
     title?: string;
     visibility?: ConversationPrivacy;
+    kind?: "root" | "automation";
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
     const activityAtMs = args.activityAtMs ?? nowMs;
@@ -449,6 +486,7 @@ export class SqlStore implements ConversationStore {
         emptyConversation({
           conversationId: args.conversationId,
           destination: args.destination,
+          kind: args.kind,
           nowMs,
           source: args.source,
           ...(sessionSource ? { sessionSource } : undefined),
@@ -481,6 +519,7 @@ export class SqlStore implements ConversationStore {
     });
   }
   async recordExecution(args: {
+    actorIdentityId?: string;
     channelName?: string;
     conversationId: string;
     createdAtMs: number;
@@ -541,6 +580,7 @@ export class SqlStore implements ConversationStore {
           schemaVersion: 1,
           conversationId: args.conversationId,
           createdAtMs: args.createdAtMs,
+          kind: existing?.kind ?? "root",
           lastActivityAtMs: args.lastActivityAtMs,
           updatedAtMs: args.updatedAtMs,
           ...(existing?.parentConversationId
@@ -558,6 +598,7 @@ export class SqlStore implements ConversationStore {
       });
       if (args.metrics && args.execution.runId) {
         await replaceConversationMetrics(this.executor, {
+          actorIdentityId: args.actorIdentityId,
           conversationId: args.conversationId,
           runId: args.execution.runId,
           occurredAtMs: args.createdAtMs,
@@ -588,7 +629,7 @@ export class SqlStore implements ConversationStore {
     const rows = await this.executor
       .db()
       .select({
-        conversation: conversationReadColumns(),
+        conversation: juniorConversations,
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
@@ -723,7 +764,7 @@ export class SqlStore implements ConversationStore {
     const rows = await this.executor
       .db()
       .select({
-        conversation: conversationReadColumns(),
+        conversation: juniorConversations,
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
@@ -745,8 +786,17 @@ export class SqlStore implements ConversationStore {
   /** Upsert the conversation row while preserving previously discovered nullable metadata fields. */
   private async upsertConversation(args: {
     conversation: Conversation;
+    /** A new child's Destination row, copied from its parent. */
+    destinationId?: string;
   }): Promise<void> {
     const { conversation } = args;
+    if (
+      isTopLevelKind(conversation.kind) !== !conversation.parentConversationId
+    ) {
+      throw new Error(
+        `Conversation ${conversation.conversationId} kind does not match its parent`,
+      );
+    }
     // Root Conversations set Destination on first write. A Conversation with a
     // parent can omit Destination. Later updates may omit Destination because
     // onConflict keeps the existing destination_id.
@@ -763,7 +813,7 @@ export class SqlStore implements ConversationStore {
     const incomingExecutionVersion = sql`coalesce(excluded.execution_updated_at, excluded.updated_at)`;
     const currentExecutionVersion = sql`coalesce(${juniorConversations.executionUpdatedAt}, ${juniorConversations.updatedAt})`;
     const incomingExecutionIsFresh = sql`${incomingExecutionVersion} >= ${currentExecutionVersion}`;
-    const destinationId = await this.upsertDestination(
+    const upsertedDestinationId = await this.upsertDestination(
       destinationUpsertFromDestination({
         channelName: conversation.channelName,
         conversationId: conversation.conversationId,
@@ -774,6 +824,7 @@ export class SqlStore implements ConversationStore {
       }),
       conversation.updatedAtMs,
     );
+    const destinationId = upsertedDestinationId ?? args.destinationId;
     const location = locationForWrite({
       destination: conversation.destination,
       destinationId,
@@ -815,7 +866,7 @@ export class SqlStore implements ConversationStore {
           conversation.execution.updatedAtMs === undefined
             ? null
             : dateFromMs(conversation.execution.updatedAtMs),
-        executionStatus: executionStatusToSql(conversation.execution.status),
+        executionStatus: conversation.execution.status,
         runId: conversation.execution.runId ?? null,
         lastCheckpointAt:
           conversation.execution.lastCheckpointAtMs === undefined
@@ -826,6 +877,7 @@ export class SqlStore implements ConversationStore {
             ? null
             : dateFromMs(conversation.execution.lastEnqueuedAtMs),
         parentConversationId: conversation.parentConversationId ?? null,
+        kind: conversation.kind,
         rootConversationId,
       })
       .onConflictDoUpdate({
@@ -851,6 +903,8 @@ export class SqlStore implements ConversationStore {
           lastCheckpointAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_checkpoint_at, ${juniorConversations.lastCheckpointAt}) else ${juniorConversations.lastCheckpointAt} end`,
           lastEnqueuedAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_enqueued_at, ${juniorConversations.lastEnqueuedAt}) else ${juniorConversations.lastEnqueuedAt} end`,
           rootConversationId: sql`coalesce(${juniorConversations.rootConversationId}, excluded.root_conversation_id)`,
+          // Set once. This also fills a null kind left by an older deploy.
+          kind: sql`coalesce(${juniorConversations.kind}, excluded.kind)`,
           detailVersion: nextDetailVersion,
         },
       })
@@ -863,7 +917,16 @@ export class SqlStore implements ConversationStore {
     if (!row?.rootConversationId) {
       throw new Error("Conversation parent is missing its persisted root");
     }
-    // Root actors stay in the personal feed even before they author a message.
+    // A conflict keeps the stored parent. A history append can create the row
+    // first under the event lock, so a new child can find a root row here.
+    if (
+      row.parentConversationId !== (conversation.parentConversationId ?? null)
+    ) {
+      throw new Error(
+        `Conversation parent changed for ${conversation.conversationId}`,
+      );
+    }
+    // The root Actor is a Participant before they author a message.
     if (row.actorIdentityId && row.parentConversationId === null) {
       await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,

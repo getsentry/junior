@@ -35,7 +35,7 @@ import { startActiveTurn, markTurnFailed } from "@/chat/runtime/turn";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
-  buildConversationContext,
+  latestConversationMessageSeq,
   markConversationMessage,
   normalizeConversationText,
   recordDeliveredAssistantMessage,
@@ -51,6 +51,7 @@ import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
 import type {
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
@@ -239,6 +240,7 @@ async function runLocalAgentTurnInContext(
     createdAtMs: Date.now(),
     inputMessageIds: [userMessageId],
     surface: "internal",
+    threadContextThroughSeq: latestConversationMessageSeq(conversation),
     turnId,
   });
   startActiveTurn({
@@ -327,8 +329,12 @@ async function runLocalAgentTurnInContext(
         runId: currentRunId,
         instruction: {
           text,
-          context: buildConversationContext(conversation, {
+          context: await buildTurnThreadContext({
+            conversation,
+            conversationId: input.conversationId,
             excludeMessageIds: [userMessageId],
+            hasHistory: Boolean(messages?.length),
+            turnId,
           }),
         },
         history: messages,

@@ -69,6 +69,8 @@ import {
   type CodeModeToolOptions,
 } from "@/chat/codemode/tool";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
+import { capToolResult } from "@/chat/tool-support/result-cap";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 
 /**
  * How long a preempted tool may take to return its own aborted result. Keep it
@@ -150,6 +152,8 @@ export interface ToolPipelineOptions {
   conversationPrivacy?: ConversationPrivacy;
   onToolResult?: (report: ToolExecutionReport) => void | Promise<void>;
   actionReview?: ToolActionReview;
+  /** Keeps the full text of a model-facing result that was cut. */
+  workspace?: Pick<SandboxWorkspace, "writeFiles">;
 }
 
 /** One tool call that a Code Mode script made. */
@@ -219,6 +223,7 @@ export function createToolPipeline(options: ToolPipelineOptions) {
     conversationPrivacy,
     onToolResult,
     actionReview,
+    workspace,
   } = options;
   const shouldTrace = shouldEmitDevAgentTrace();
   const effectiveConversationPrivacy = conversationPrivacy ?? "private";
@@ -353,9 +358,6 @@ export function createToolPipeline(options: ToolPipelineOptions) {
             toolName,
             input: sandboxInput,
             ...(signal ? { signal } : undefined),
-            ...(toolName === "grep" || toolName === "findFiles"
-              ? { setToolCallSpanAttributes: setSpanAttributes }
-              : undefined),
           })
         : Promise.resolve(
             // `prepareCall` checked that the executor exists.
@@ -463,7 +465,13 @@ export function createToolPipeline(options: ToolPipelineOptions) {
       signal: args.signal,
       setSpanAttributes: args.setSpanAttributes,
     });
-    return withToolResultNudges(result, nudges);
+    // Only model calls take this path, so scripts read full results. This is
+    // the only place that cuts tool output.
+    const capped = await capToolResult(result, {
+      toolCallId: args.toolCallId,
+      workspace,
+    });
+    return withToolResultNudges(capped, nudges);
   };
   const reportStatus = async (
     executionToolName: string,
@@ -773,7 +781,10 @@ export function createPiAgentTools(
   conversationPrivacy?: ConversationPrivacy,
   onToolResult?: (report: ToolExecutionReport) => void | Promise<void>,
   actionReview?: ToolActionReview,
-  codeMode?: Pick<CodeModeToolOptions, "countToolCall" | "workspace">,
+  codeMode?: Pick<CodeModeToolOptions, "countToolCall"> & {
+    /** Keeps the full text of a model-facing result that was cut. */
+    workspace?: Pick<SandboxWorkspace, "writeFiles">;
+  },
 ): AgentTool[] {
   const plannedTools = planToolExposure(tools);
   const visibleTools: Record<string, AnyToolDefinition> = {
@@ -803,10 +814,18 @@ export function createPiAgentTools(
     conversationPrivacy,
     onToolResult,
     actionReview,
+    workspace: codeMode?.workspace,
   });
   if (codeMode) {
+    const modelOnlyTools = [
+      ...Object.keys(visibleTools).filter(
+        (name) => !Object.hasOwn(plannedTools.scriptTools, name),
+      ),
+      CODEMODE_TOOL_NAME,
+    ];
     visibleTools[CODEMODE_TOOL_NAME] = createCodeModeTool({
-      ...codeMode,
+      countToolCall: codeMode.countToolCall,
+      modelOnlyTools,
       pipeline,
       scriptTools: plannedTools.scriptTools,
     });

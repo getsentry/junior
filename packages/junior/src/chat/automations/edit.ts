@@ -4,6 +4,7 @@
  */
 import { getFirstRunAtMs } from "@/chat/scheduled-automations/cadence";
 import { AutomationEditError, requireCredentialStart } from "./edit-rules";
+import { requireAutomationTaskText } from "./instruction-references";
 import type { AutomationEditFields } from "./edit-schema";
 import type { TaskOutcome, User } from "@sentry/junior-plugin-api";
 import type { AutomationEdit, AutomationUpdate } from "@/api/schema/automation";
@@ -51,7 +52,7 @@ type OwnedAutomation =
   | { kind: "scheduled"; task: ScheduledAutomation }
   | { kind: "event"; task: StoredEventAutomation };
 
-/** Owners and public Destination readers can manage. Others get not found. */
+/** Creators and public Destination readers can manage. Others get not found. */
 async function requireEditableAutomation(
   user: User,
   id: string,
@@ -95,7 +96,7 @@ function editView(
     id: task.id,
     revision: automationRevision(task),
     title: task.title ?? null,
-    instruction: task.task.text,
+    task: task.task,
     credentialMode: task.credentialMode,
     outcomes: task.outcomes,
     destination: task.destination,
@@ -140,6 +141,13 @@ export async function updateViewerAutomation(
   if (input.kind !== current.kind)
     throw new AutomationEditError("The trigger type cannot change.", "kind");
   requireAutomationRevision(current.task, input.revision);
+  if (input.task) {
+    requireAutomationTaskText(input.task, {
+      creator: current.task.createdBy,
+      requester: automationEditor(user, current),
+      current: current.task.task,
+    });
+  }
   return saveViewerEdit(user, current, input);
 }
 
@@ -274,8 +282,8 @@ export async function activateViewerAutomationVersion(
     );
   }
   const fields: AutomationEditFields = {};
-  if (definition.instruction !== current.task.task.text)
-    fields.instruction = definition.instruction;
+  if (!sameDefinitionValue(definition.task, current.task.task))
+    fields.task = definition.task;
   if (definition.credentialMode !== current.task.credentialMode)
     fields.credentialMode = definition.credentialMode;
   if (!sameDefinitionValue(definition.outcomes, current.task.outcomes))

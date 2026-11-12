@@ -354,14 +354,12 @@ describe("Slack webhook persistence contract", () => {
             }),
           }),
         ],
-        compaction: undefined,
         historyFromSeq: expect.any(Number),
       });
       await expect(
         getConversationEventStore().loadMessageHistory(threadId),
       ).resolves.toEqual({
         events: [],
-        compaction: undefined,
         historyFromSeq: expect.any(Number),
       });
     } finally {
@@ -369,7 +367,7 @@ describe("Slack webhook persistence contract", () => {
     }
   });
 
-  it("unsubscribes a stopped thread without enqueuing mailbox work when passive routing is off", async () => {
+  it("keeps a stopped thread subscribed without enqueuing mailbox work when passive routing is off", async () => {
     setExperimentalFeatures(undefined);
     try {
       const queue = createConversationWorkQueueTestAdapter();
@@ -381,12 +379,8 @@ describe("Slack webhook persistence contract", () => {
       await state.subscribe(canonicalThreadId);
 
       for (const message of [
-        { text: "<@UOTHER> stop", ts: "1712345.000811", subscribed: true },
-        {
-          text: `<@${SLACK_BOT_USER_ID}> stop`,
-          ts: "1712345.000812",
-          subscribed: false,
-        },
+        { text: "<@UOTHER> stop", ts: "1712345.000811" },
+        { text: `<@${SLACK_BOT_USER_ID}> stop`, ts: "1712345.000812" },
       ]) {
         const response = await handleSlackWebhookAndFlush({
           request: slackWebhookRequest(
@@ -405,13 +399,10 @@ describe("Slack webhook persistence contract", () => {
           },
         });
         expect(response.status).toBe(200);
-        await expect(state.isSubscribed(canonicalThreadId)).resolves.toBe(
-          message.subscribed,
-        );
+        await expect(state.isSubscribed(canonicalThreadId)).resolves.toBe(true);
       }
       // Stop is control flow, not a mailbox message: it never enters the
-      // durable Run queue, so a mention-route stop cannot resubscribe the
-      // thread by starting a new Turn.
+      // durable Run queue, so the stop starts no Turn.
       expect(queue.queuedMessages()).toEqual([]);
     } finally {
       setExperimentalFeatures({ "passive-routing": true });

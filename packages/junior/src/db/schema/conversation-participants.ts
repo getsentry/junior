@@ -1,13 +1,22 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+} from "drizzle-orm/pg-core";
 import { juniorConversations } from "./conversations";
 import { juniorUsers } from "./users";
 import { timestamptz } from "./timestamps";
 
 /**
- * Materialized personal-feed membership for one linked user on one root
- * conversation. Rows come from the root actor and from the authors of Turn
- * input messages. Thread context authors do not get a row.
+ * One Participant: a linked user on one root conversation. Rows come from
+ * Turn Actors: the root Actor and the authors of Turn input messages, and
+ * the root Actor again when their Identity gets its User later. Thread
+ * context authors do not get a row. Access and feeds read only these rows.
+ * An unsubscribed row keeps access but leaves the active feed.
  */
 export const juniorConversationParticipants = pgTable(
   "junior_conversation_participants",
@@ -19,13 +28,27 @@ export const juniorConversationParticipants = pgTable(
       .notNull()
       .references(() => juniorConversations.conversationId),
     lastMessageAt: timestamptz("last_message_at").notNull(),
-    archivedAt: timestamptz("archived_at"),
+    // Archive moved to `junior_conversations.archived_at`. Runtime code must
+    // not read or write this column. A later migration drops it.
+    legacyArchivedAt: timestamptz("archived_at"),
     pinnedAt: timestamptz("pinned_at"),
+    /**
+     * The viewer's place for this pin in the Pinned section, from a drag
+     * reorder. Null until the first reorder, and cleared on unpin and
+     * re-pin. Null pins sort first, by activity.
+     */
+    pinPosition: integer("pin_position"),
     /**
      * Per-conversation auto-archive choice for this user. Null uses the
      * user's `autoArchiveDefault`.
      */
     autoArchive: boolean("auto_archive"),
+    /**
+     * Set when this user left the conversation. It stays out of their
+     * active feed until they mention Junior in it again, subscribe, or pin
+     * it. The row keeps its access, so it is not deleted.
+     */
+    unsubscribedAt: timestamptz("unsubscribed_at"),
   },
   (table) => [
     primaryKey({
@@ -43,11 +66,11 @@ export const juniorConversationParticipants = pgTable(
     // conversation without reading every participant row.
     index("junior_conversation_participants_auto_archive_idx")
       .on(table.userId)
-      .where(sql`${table.autoArchive} and ${table.archivedAt} is null`),
-    // The auto-archive sweep pages one user's unarchived rows older than the
-    // cutoff. Archived rows build up over time, so the index leaves them out.
-    index("junior_conversation_participants_unarchived_activity_idx")
-      .on(table.userId, table.lastMessageAt, table.rootConversationId)
-      .where(sql`${table.archivedAt} is null`),
+      .where(sql`${table.autoArchive}`),
+    // The active feed excludes a person's unsubscribed roots with an
+    // anti-join. Few rows are unsubscribed, so this index stays small.
+    index("junior_conversation_participants_unsubscribed_idx")
+      .on(table.userId, table.rootConversationId)
+      .where(sql`${table.unsubscribedAt} is not null`),
   ],
 );

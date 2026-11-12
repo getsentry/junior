@@ -1,5 +1,6 @@
 import { createPluginCache } from "@/chat/plugins/cache";
 import type {
+  EventPublisher,
   HeartbeatHookContext,
   PluginRegistration,
 } from "@sentry/junior-plugin-api";
@@ -8,7 +9,9 @@ import {
   bindScheduledAutomationCredentialSubject,
   bindSlackDirectCredentialSubject,
 } from "@/chat/credentials/subject";
+import { createCodeChangePublisher } from "@/chat/code/publisher";
 import { getDb } from "@/chat/db";
+import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginEmbedder } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
@@ -90,6 +93,8 @@ async function dispatch(args: {
 /** Build the plugin-scoped heartbeat context that gates durable dispatch access. */
 export function createHeartbeatContext(args: {
   conversationWorkQueue: ConversationWorkQueue;
+  /** Already bound to the plugin. */
+  events: EventPublisher;
   nowMs: number;
   plugin: string | PluginRegistration;
 }): HeartbeatHookContext {
@@ -98,10 +103,20 @@ export function createHeartbeatContext(args: {
   let dispatchCount = 0;
   return {
     plugin: { name: pluginName },
+    annotations: {
+      forConversation: (conversationId) =>
+        createPluginAnnotations({
+          conversationId,
+          db: getDb(),
+          plugin: pluginName,
+        }),
+    },
     cache: createPluginCache(pluginName),
+    codeChanges: createCodeChangePublisher(pluginName),
     nowMs: args.nowMs,
     db: getDb(),
     embedder: createPluginEmbedder(pluginName),
+    events: args.events,
     state: createPluginState(pluginName),
     log: createPluginLogger(pluginName),
     agent: {
@@ -148,7 +163,8 @@ export async function dispatchEventAutomation(args: {
   };
 }) {
   const plugin = "junior";
-  const { credentialSubject, outcomes, ...unboundOptions } = args.options;
+  const { credentialSubject, outcomes, skill, ...unboundOptions } =
+    args.options;
   validateDispatchOptions({ ...unboundOptions });
   const boundSubject = credentialSubject
     ? bindEventAutomationCredentialSubject({
@@ -162,6 +178,7 @@ export async function dispatchEventAutomation(args: {
   const options: BoundDispatchOptions = {
     ...unboundOptions,
     ...(outcomes !== undefined ? { outcomes } : undefined),
+    ...(skill ? { skill } : undefined),
     ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
     source: {
       kind: "event_automation",
@@ -195,7 +212,8 @@ export async function dispatchScheduledAutomation(args: {
   // Also the signed credential binding label. A rename breaks existing task
   // credentials.
   const plugin = "scheduler";
-  const { credentialSubject, outcomes, ...unboundOptions } = args.options;
+  const { credentialSubject, outcomes, skill, ...unboundOptions } =
+    args.options;
   validateDispatchOptions({ ...unboundOptions });
   const boundSubject = credentialSubject
     ? bindScheduledAutomationCredentialSubject({
@@ -209,6 +227,7 @@ export async function dispatchScheduledAutomation(args: {
   const options: BoundDispatchOptions = {
     ...unboundOptions,
     ...(outcomes !== undefined ? { outcomes } : undefined),
+    ...(skill ? { skill } : undefined),
     ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
     source: {
       kind: "scheduled_automation",

@@ -1,4 +1,12 @@
-import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  sql,
+  type SQLWrapper,
+} from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import type { ConversationActivityPreview } from "../schema/conversation";
@@ -36,6 +44,34 @@ function latestMessage(
     )
     .limit(1)
     .as(`latest_${role}`);
+}
+
+/**
+ * Return a query for the seq of the newest Message with one role in one
+ * outer Conversation. The feed row's preview and participants come from
+ * Messages, so it moves when they can change. It walks the same index as
+ * the preview read, with no text check.
+ */
+export function latestMessageSeqQuery(
+  db: JuniorDatabase,
+  role: ConversationActivityPreview["role"],
+  conversationId: SQLWrapper,
+) {
+  return db
+    .select({ seq: juniorConversationEvents.seq })
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(juniorConversationEvents.conversationId, conversationId),
+        eq(juniorConversationEvents.type, "message"),
+        sql`${juniorConversationEvents.payload}->>'role' = ${role}`,
+      ),
+    )
+    .orderBy(
+      desc(juniorConversationEvents.createdAt),
+      desc(juniorConversationEvents.seq),
+    )
+    .limit(1);
 }
 
 /** Read one recent assistant message, or the latest user message, for each conversation. */

@@ -1,6 +1,6 @@
 import {
-  Boxes,
   ChevronDown,
+  ChevronsUpDown,
   LogOut,
   Settings,
   ShieldCheck,
@@ -9,25 +9,35 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import type { PersonalSpendReport } from "@sentry/junior/api/schema";
-import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { formatCostSummary, peoplePath } from "../format";
-import { pluginUserPagePath } from "../pages/user/pluginUserPageRoutes";
 import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
+import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
+import { navItemIcon } from "./layout/navIcons";
+import { NavLayoutSwitcher } from "./NavLayoutSwitcher";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
-import { Button, buttonVariants } from "./ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLinkItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
+import { SidebarMenuButton, SidebarMenuItem } from "./ui/sidebar";
 
 type ProfileMenuProps = {
   identity: Identity;
   onSignOut(): Promise<void>;
   spend?: PersonalSpendReport;
-  userPages: PluginUserPageLink[];
+  /** Pages that live in this menu instead of the primary nav. */
+  pages: DashboardHeaderNavItem[];
   /**
-   * `popover` is the avatar control at the bottom of the desktop nav rail.
-   * `top-bar` is the spend and avatar control in the tall desktop top bar.
+   * `popover` is the profile row at the bottom of the desktop nav sidebar.
+   * It shows only the avatar while the sidebar is collapsed.
+   * `top-bar` is the spend and avatar control in the desktop top bar.
    * `sheet-spend` is the vertical spend callout at the top of the mobile sheet.
    * `sheet-links` is plain account destinations for the mobile nav sheet.
    * `sheet-identity` is the quiet signed-in strip at the bottom of that sheet.
@@ -132,14 +142,12 @@ function SpendAmount({ value }: { value?: number }) {
   );
 }
 
-const profileLinkClass = buttonVariants({ size: "menu" });
-
 /** Group the signed-in identity, personal profile, and session actions. */
 export function ProfileMenu({
   identity,
   onSignOut,
   spend,
-  userPages,
+  pages,
   variant = "popover",
 }: ProfileMenuProps) {
   const [open, setOpen] = useState(false);
@@ -151,12 +159,10 @@ export function ProfileMenu({
   const thirtyDaySpend = spend
     ? formatCostSummary({ total: spend.thirtyDaysUsd })
     : "—";
-  const profilePages = userPages.filter(
-    (page) => page.navigation === "profile",
-  );
 
+  // Plain content, not a group label: it names no menu items.
   const identityBlock = (
-    <div className="border-b border-dashboard-border-strong px-2.5 py-2.5">
+    <div className="px-2 py-1.5">
       <div className="flex min-w-0 items-center gap-2.5">
         <ProfileAvatar className="size-8" user={identity.user} />
         <div className="min-w-0">
@@ -191,47 +197,35 @@ export function ProfileMenu({
     </div>
   );
 
-  const menuLinks = (close: () => void) => (
+  const menuLinks = (
     <>
-      <Link
-        className={cn(profileLinkClass, "mt-1")}
-        onClick={close}
-        to={peoplePath(email)}
-      >
-        <UserRound aria-hidden="true" size={16} strokeWidth={2} />
+      <DropdownMenuLinkItem render={<Link to={peoplePath(email)} />}>
+        <UserRound aria-hidden="true" />
         My profile
-      </Link>
-      <Link className={profileLinkClass} onClick={close} to="/settings">
-        <Settings aria-hidden="true" size={16} strokeWidth={2} />
+      </DropdownMenuLinkItem>
+      <DropdownMenuLinkItem render={<Link to="/settings" />}>
+        <Settings aria-hidden="true" />
         Settings
-      </Link>
+      </DropdownMenuLinkItem>
+      {pages.map((page) => {
+        const Icon = navItemIcon(page.key);
+        return (
+          <DropdownMenuLinkItem key={page.key} render={<Link to={page.to} />}>
+            <Icon aria-hidden="true" />
+            {page.label}
+          </DropdownMenuLinkItem>
+        );
+      })}
       {identity.user.isAdmin ? (
-        <Link className={profileLinkClass} onClick={close} to="/admin">
-          <ShieldCheck aria-hidden="true" size={16} strokeWidth={2} />
+        <DropdownMenuLinkItem render={<Link to="/admin" />}>
+          <ShieldCheck aria-hidden="true" />
           Admin
-        </Link>
+        </DropdownMenuLinkItem>
       ) : null}
-      {profilePages.map((page) => (
-        <Link
-          className={profileLinkClass}
-          key={`${page.pluginName}:${page.id}`}
-          onClick={close}
-          to={pluginUserPagePath(page.pluginName, page.id)}
-        >
-          <Boxes aria-hidden="true" size={16} strokeWidth={2} />
-          {page.label}
-        </Link>
-      ))}
-      <Button
-        onClick={() => {
-          close();
-          void onSignOut();
-        }}
-        size="menu"
-      >
-        <LogOut aria-hidden="true" size={16} strokeWidth={2} />
+      <DropdownMenuItem onClick={() => void onSignOut()}>
+        <LogOut aria-hidden="true" />
         Log out
-      </Button>
+      </DropdownMenuItem>
     </>
   );
 
@@ -273,20 +267,16 @@ export function ProfileMenu({
         <Link className={sheetItemClass} to="/settings">
           Settings
         </Link>
+        {pages.map((page) => (
+          <Link className={sheetItemClass} key={page.key} to={page.to}>
+            {page.label}
+          </Link>
+        ))}
         {identity.user.isAdmin ? (
           <Link className={sheetItemClass} to="/admin">
             Admin
           </Link>
         ) : null}
-        {profilePages.map((page) => (
-          <Link
-            className={sheetItemClass}
-            key={`${page.pluginName}:${page.id}`}
-            to={pluginUserPagePath(page.pluginName, page.id)}
-          >
-            {page.label}
-          </Link>
-        ))}
         <button
           className={cn(sheetItemClass, "w-full cursor-pointer")}
           data-mobile-nav-dismiss
@@ -325,8 +315,15 @@ export function ProfileMenu({
 
   const topBar = variant === "top-bar";
   const menuLabel = `${open ? "Close" : "Open"} profile menu for ${name}`;
+  const hoverTrigger = {
+    closeDelay: HOVER_CLOSE_DELAY_MS,
+    delay: HOVER_OPEN_DELAY_MS,
+    openOnHover: true,
+  };
   return (
-    <Popover
+    // Not modal, so the page keeps scrolling while the menu is open.
+    <DropdownMenu
+      modal={false}
       onOpenChange={(nextOpen, details) => {
         // A mouse click always keeps the menu open, also after hover opened it.
         // A keyboard press (detail 0) still toggles it.
@@ -339,24 +336,15 @@ export function ProfileMenu({
       }}
       open={open}
     >
-      <PopoverTrigger
-        aria-label={
-          topBar
-            ? `${menuLabel}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`
-            : menuLabel
-        }
-        className={cn(
-          "cursor-pointer rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
-          topBar
-            ? "group flex h-10 items-center gap-2 px-1.5"
-            : "grid size-10 place-items-center",
-          open && "bg-dashboard-fill-hover text-dashboard-text",
-        )}
-        closeDelay={HOVER_CLOSE_DELAY_MS}
-        delay={HOVER_OPEN_DELAY_MS}
-        openOnHover
-      >
-        {topBar ? (
+      {topBar ? (
+        <DropdownMenuTrigger
+          aria-label={`${menuLabel}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`}
+          className={cn(
+            "group flex h-10 cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-1.5 text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+            open && "bg-dashboard-fill-hover text-dashboard-text",
+          )}
+          {...hoverTrigger}
+        >
           <span className="flex items-center gap-2">
             <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
               <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
@@ -379,9 +367,7 @@ export function ProfileMenu({
               </span>
             </span>
           </span>
-        ) : null}
-        <ProfileAvatar user={identity.user} />
-        {topBar ? (
+          <ProfileAvatar user={identity.user} />
           <ChevronDown
             aria-hidden="true"
             className={cn(
@@ -391,18 +377,46 @@ export function ProfileMenu({
             size={14}
             strokeWidth={2}
           />
-        ) : null}
-      </PopoverTrigger>
-      <PopoverContent
+        </DropdownMenuTrigger>
+      ) : (
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            aria-label={menuLabel}
+            className={cn(
+              // The collapsed nav sidebar shows only the avatar.
+              "h-10 gap-2.5 rounded-lg px-1.5 group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! [&_svg]:size-3.5",
+              open && "bg-sidebar-accent",
+            )}
+            render={<DropdownMenuTrigger {...hoverTrigger} />}
+          >
+            <ProfileAvatar user={identity.user} />
+            <span className="min-w-0 flex-1 truncate font-medium group-data-[collapsible=icon]:hidden">
+              {name}
+            </span>
+            <ChevronsUpDown
+              aria-hidden="true"
+              className="text-dashboard-text-muted group-data-[collapsible=icon]:hidden"
+              strokeWidth={2}
+            />
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      )}
+      <DropdownMenuContent
         align="end"
         side={topBar ? "bottom" : "right"}
-        className="w-64 rounded-xl border-0 bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl"
+        sideOffset={8}
+        className="w-64"
         id="profile-popover"
       >
         {identityBlock}
-        <ThemeSwitcher className="border-b border-dashboard-border-strong px-2.5 py-2" />
-        {menuLinks(() => setOpen(false))}
-      </PopoverContent>
-    </Popover>
+        <DropdownMenuSeparator />
+        <div className="grid gap-1 px-2 py-1.5">
+          <ThemeSwitcher menu />
+          <NavLayoutSwitcher menu />
+        </div>
+        <DropdownMenuSeparator />
+        {menuLinks}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

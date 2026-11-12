@@ -5,7 +5,7 @@ import {
   encodeConversationCursor,
 } from "@/api/conversations/cursor";
 import { readConversationEventPage } from "@/api/conversations/event-page";
-import { readConversationRecordFromSql } from "@/api/conversations/list";
+import { readConversationRecordFromSql } from "@/api/conversations/record";
 import { getSqlExecutor } from "@/chat/db";
 import {
   mcpConversationIdSchema,

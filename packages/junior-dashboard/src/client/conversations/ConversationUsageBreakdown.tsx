@@ -133,11 +133,21 @@ function BreakdownTable(props: {
           </TableHead>
         </TableRow>
       </TableHeader>
-      {props.rows.map((row) => {
-        const padding = row.parts ? "pt-2 pb-0.5" : "py-2";
+      {props.rows.map((row, index, rows) => {
+        // A row with token types is a group with a border. Rows without
+        // token types stack as a dense list, like the token types of a model.
+        const padding = row.parts
+          ? "pt-2 pb-0.5"
+          : cn(
+              index === 0 ? "pt-2" : "pt-0",
+              index === rows.length - 1 ? "pb-2" : "pb-0",
+            );
         return (
           <TableBody
-            className="border-b border-dashboard-border-subtle last-of-type:border-b-0"
+            className={cn(
+              row.parts &&
+                "border-b border-dashboard-border-subtle last-of-type:border-b-0",
+            )}
             key={row.key}
           >
             {/* The tbody draws the group border, so its rows have none. */}
@@ -328,7 +338,7 @@ export function ConversationUsageBreakdown(props: {
               cost: formatCost(subagentCost),
               count: formatTokens(subagentTokens),
               key: "subagents",
-              label: `${formatCompactNumber(childAgentTotals.count)} subagent${childAgentTotals.count === 1 ? "" : "s"}`,
+              label: `${formatCompactNumber(childAgentTotals.count)} child conversation${childAgentTotals.count === 1 ? "" : "s"}`,
             },
           ]}
           total={{
@@ -412,7 +422,9 @@ export function ConversationUsageBreakdown(props: {
       ) : null}
       <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted">
         Estimated costs.
-        {childAgentTotals ? " Totals include subagents at any depth." : null}
+        {childAgentTotals
+          ? " Totals include child conversations at any depth."
+          : null}
         {compactions
           ? ` ${formatCompactNumber(compactions)} compaction${compactions === 1 ? "" : "s"}.`
           : null}

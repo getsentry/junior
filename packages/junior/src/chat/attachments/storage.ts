@@ -11,12 +11,31 @@ export interface AttachmentWrite {
   key: string;
 }
 
+/** Inclusive byte offsets inside one stored object. */
+export interface ByteRange {
+  start: number;
+  end: number;
+}
+
+/** Build the HTTP `Range` request header value for one byte range. */
+export function rangeHeader(range: ByteRange): string {
+  return `bytes=${range.start}-${range.end}`;
+}
+
 /** Small object-storage capability used by conversation attachments. */
 export interface AttachmentStorage {
   readonly provider: string;
   put(input: AttachmentWrite): Promise<void>;
-  /** Return live object bytes, or null when the key is missing. */
-  get(key: string): Promise<ReadableStream<Uint8Array> | null>;
+  /**
+   * Return live object bytes, or null when the key is missing.
+   *
+   * With a range, return only those bytes. The caller checks the range
+   * against the object size first.
+   */
+  get(
+    key: string,
+    range?: ByteRange,
+  ): Promise<ReadableStream<Uint8Array> | null>;
   delete(keys: string[]): Promise<void>;
 }
 

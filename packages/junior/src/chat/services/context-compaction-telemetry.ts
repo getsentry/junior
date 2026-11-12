@@ -4,7 +4,7 @@
  * Each compaction gets one `agent.context_compaction` span. The span and its
  * children, such as the summary `gen_ai.chat` span, carry
  * `app.compaction.mode`. The `chat.turn` span sums the time that the Turn
- * waited on compaction.
+ * waited on compaction, with summary calls and prepared-summary swaps apart.
  *
  * Attribute keys do not contain "token": Sentry data scrubbing removes the
  * values of keys that match it.
@@ -19,15 +19,21 @@ import { withSpan, type SetSpanAttributes } from "@/chat/logging";
  */
 export type CompactionMode = "blocking" | "active" | "background";
 
-interface TurnCompactionWait {
-  ms: number;
-}
+/**
+ * `summary` may call the model. `swap` only checks for a prepared summary,
+ * waits for a running one, and swaps it in, so its wait is apart from summary
+ * calls.
+ */
+type CompactionWork = "summary" | "swap";
+
+type TurnCompactionWait = Record<CompactionWork, number>;
 
 const turnCompactionWait = new AsyncLocalStorage<TurnCompactionWait>();
 
 /** Run one compaction in its span and add its time to the Turn wait. */
 export async function withCompactionSpan<T>(
   mode: CompactionMode,
+  work: CompactionWork,
   callback: () => Promise<T>,
 ): Promise<T> {
   const startedAtMs = performance.now();
@@ -44,7 +50,7 @@ export async function withCompactionSpan<T>(
     // A background job runs outside a Turn, so it has no Turn wait.
     const wait = turnCompactionWait.getStore();
     if (wait) {
-      wait.ms += performance.now() - startedAtMs;
+      wait[work] += performance.now() - startedAtMs;
     }
   }
 }
@@ -54,14 +60,59 @@ export async function measureTurnCompactionWait<T>(
   setTurnAttributes: SetSpanAttributes,
   callback: () => Promise<T>,
 ): Promise<T> {
-  const wait: TurnCompactionWait = { ms: 0 };
+  const wait: TurnCompactionWait = { summary: 0, swap: 0 };
   try {
     return await turnCompactionWait.run(wait, callback);
   } finally {
-    if (wait.ms > 0) {
-      setTurnAttributes({
-        "app.turn.compaction_wait_ms": Math.round(wait.ms),
-      });
-    }
+    setTurnAttributes({
+      ...(wait.summary > 0
+        ? { "app.turn.compaction_wait_ms": Math.round(wait.summary) }
+        : undefined),
+      ...(wait.swap > 0
+        ? { "app.turn.compaction_swap_wait_ms": Math.round(wait.swap) }
+        : undefined),
+    });
   }
+}
+
+/** Span attributes of the first model request after a replacement. */
+type NextInputAttributes = {
+  "app.compaction.mode": CompactionMode;
+  "app.compaction.next_input.size": number;
+  "app.compaction.next_input.over_threshold": boolean;
+  "app.compaction.threshold": number;
+};
+
+/**
+ * Track the replacement that waits for the provider-reported input of the
+ * next model request. That request's `gen_ai.chat` span shows whether the
+ * replacement got the history below the threshold. Production drops info
+ * logs, so this is a span attribute.
+ */
+export function createNextInputTracker(): {
+  replaced: (mode: CompactionMode, threshold: number) => void;
+  attributes: (
+    inputSize: number | undefined,
+  ) => NextInputAttributes | undefined;
+} {
+  let pending: { mode: CompactionMode; threshold: number } | undefined;
+  return {
+    replaced(mode, threshold) {
+      pending = { mode, threshold };
+    },
+    // A failed or aborted request reports no input, so the next one counts.
+    attributes(inputSize) {
+      if (!pending || !inputSize) {
+        return undefined;
+      }
+      const { mode, threshold } = pending;
+      pending = undefined;
+      return {
+        "app.compaction.mode": mode,
+        "app.compaction.next_input.size": inputSize,
+        "app.compaction.next_input.over_threshold": inputSize > threshold,
+        "app.compaction.threshold": threshold,
+      };
+    },
+  };
 }

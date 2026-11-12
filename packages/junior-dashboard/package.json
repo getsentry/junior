@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-dashboard",
-  "version": "0.281.0",
+  "version": "0.298.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -35,12 +35,15 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
     "@sentry/browser": "catalog:",
     "@sentry/junior-plugin-api": "workspace:*",
     "@tanstack/react-query": "^5.100.14",
     "@tanstack/react-virtual": "^3.14.26",
     "@uidotdev/usehooks": "2.4.1",
     "class-variance-authority": "^0.7.1",
+    "cmdk": "^1.1.1",
     "cn": "^0.5.0",
     "hono": "^4.13.11",
     "lucide-react": "^1.17.0",

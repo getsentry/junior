@@ -7,6 +7,8 @@ import { parseMarkdownBlocks } from "./codeBlocks";
 import { MarkdownText } from "./markdown";
 import { MentionPeopleProvider } from "./mentions";
 
+export { KnownObjectsProvider, useTextShowsObjectCard } from "./ObjectLinks";
+
 const NO_MENTIONS: readonly ActorIdentity[] = [];
 
 /**
@@ -23,6 +25,8 @@ export const DisplayText = memo(function DisplayText(props: {
   chat?: boolean;
   /** Keep body line height compact in narrow panels. */
   compact?: boolean;
+  /** Read a Markdown file, not a chat message. */
+  document?: boolean;
   inline?: boolean;
   /**
    * Link people to their page. Set false inside a button, which cannot hold
@@ -40,6 +44,9 @@ export const DisplayText = memo(function DisplayText(props: {
     >
       {props.inline ? (
         <MarkdownText inline text={props.text} />
+      ) : props.document ? (
+        // One tree, so reference links and footnotes resolve across fences.
+        <MarkdownText document text={props.text} />
       ) : (
         <DisplayTextBlocks
           chat={props.chat}
@@ -73,6 +80,10 @@ function DisplayTextBlocks(props: {
         return (
           <div
             className="group/code relative min-w-0 overflow-hidden rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel py-2.5 pl-3 pr-10"
+            // A quote of selected text reads it for the code fence.
+            data-code-language={
+              block.language === "markdown" ? undefined : block.language
+            }
             key={index}
           >
             <HighlightedCode code={block.code} language={block.language} />

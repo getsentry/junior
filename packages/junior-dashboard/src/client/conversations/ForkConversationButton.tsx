@@ -12,11 +12,7 @@ import {
   DialogTitle,
 } from "../components/ui/dialog";
 import { useSheet } from "../components/ui/useSheet";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
+import { MessageAction } from "../components/ui/message";
 import { DashboardApiError } from "../http";
 import { conversationPath } from "./conversationRoutes";
 import { useForkConversation } from "./queries";
@@ -28,20 +24,12 @@ export function ForkConversationButton(props: ForkTarget) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              size="icon"
-              aria-label="Fork after this message"
-              onClick={() => setOpen(true)}
-            >
-              <GitFork size={14} aria-hidden="true" />
-            </Button>
-          }
-        />
-        <TooltipContent size="compact">Fork after this message</TooltipContent>
-      </Tooltip>
+      <MessageAction
+        label="Fork after this message"
+        onClick={() => setOpen(true)}
+      >
+        <GitFork size={14} aria-hidden="true" />
+      </MessageAction>
       {open ? (
         <ForkConversationDialog {...props} onClose={() => setOpen(false)} />
       ) : null}
@@ -124,10 +112,10 @@ function ForkConversationDialog(props: ForkTarget & { onClose(): void }) {
           <DialogFooter>
             <DialogClose
               disabled={fork.isPending}
-              render={<Button>Cancel</Button>}
+              render={<Button variant="outline">Cancel</Button>}
             />
             <Button
-              variant="primary"
+              variant="default"
               type="submit"
               disabled={!message.trim() || fork.isPending}
             >

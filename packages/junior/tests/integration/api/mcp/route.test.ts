@@ -354,6 +354,7 @@ describe("remote MCP HTTP", () => {
       "searchReviewItems",
       "sendMessage",
       "setConversationAutoArchive",
+      "setConversationSubscription",
       "stopConversation",
     ]);
     expect(await toolNames(readOnly)).toEqual([

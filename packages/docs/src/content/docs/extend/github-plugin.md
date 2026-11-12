@@ -76,7 +76,7 @@ If Junior should receive events or report PR/issue outcomes, also:
 2. Set the webhook secret to the same value as `GITHUB_WEBHOOK_SECRET`.
 3. Subscribe the App to: Check suite, Deployment, Deployment status, Issues,
    Issue comment, Pull request, Pull request review, Pull request review
-   comment, and Release.
+   comment, Push, and Release.
 
 Keep the App writable if Junior should create issues, push branches, or open
 pull requests. Junior scopes write tokens to the target repository and still
@@ -171,17 +171,39 @@ export const plugins = defineJuniorPlugins([
 ```
 
 - **Define:** `githubPlugin({ pullRequestEvents: { ... } })` in `plugins.ts`
-- **Default:** Off. Junior only watches a new pull request when asked, or when a tool result includes a subscribable resource and the model chooses to watch it.
+- **Default:** On when GitHub webhooks are enabled. After it creates a pull request, Junior watches review feedback, failed checks, and an unmerged close. It replies on GitHub to review comments and questions and pushes scoped fixes without asking first. Set `subscribeAfterCreate` to replace that Watch, or to `false` to turn it off.
 - **Required:** No
 - **Environment override:** None
 
 `subscribeAfterCreate` creates a temporary watch after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host watches, and only when GitHub webhooks are enabled. Forced events are removed from the tool result's suggested events so the model does not re-watch them. The watch still expires normally.
 
-This watch always includes `pull_request.review.approved` and `pull_request.merged`, even when `events` omits them. When the pull request is approved or merged, Junior mentions the people involved in the thread. These are the pull request author and assignees, the commit authors, and the people in `Co-authored-by` commit trailers. Junior only mentions people whose GitHub account or email links to a Slack user. When the reviewer or commenter links to a Slack user, Junior knows that the GitHub login and the Slack user are the same person, so it does not name them twice. When the merged pull request is in a stack, Junior also restacks the open pull requests above it whose branches it pushed, and resolves conflicts. GitHub rebases the next pull request in a stack after a merge, but it stops at a conflict and sends no event for it.
+This watch always includes `pull_request.review.approved` and `pull_request.merged`, even when `events` omits them. When the pull request is approved or merged, Junior mentions the people involved in the thread. These are the pull request author and assignees, the commit authors, and the people in `Co-authored-by` commit trailers. Junior only mentions people whose GitHub account or email links to a Slack user. When the reviewer or commenter links to a Slack user, Junior knows that the GitHub login and the Slack user are the same person, so it does not name them twice.
 
-When the base of a new pull request is the head branch of another open pull request in the same repository, `github_createPullRequest` links it into a GitHub stack. It adds the pull request to the stack of the pull request below, or creates a stack from the chain of base branches down to the trunk. A stack merges as one group, and GitHub rebases it after each merge. When the repository has no stacked pull requests, or the pull request below is not on top of its stack, the pull request stays unstacked.
+When the base of a new pull request is the head branch of another open pull request in the same repository, `github_createPullRequest` links it into a GitHub stack. It adds the pull request to the stack of the pull request below, or creates a stack from the chain of base branches down to the trunk. A stack merges as one group, and GitHub rebases it after each merge. The pull request stays unstacked when the repository has no stacked pull requests, the pull request below is not on top of its stack, the head is the default branch, or the chain of base branches loops.
 
 `guidance` adds short app guidance when a matching pull request event reaches the agent. It applies within the watch or event automation instruction. It cannot replace or expand that instruction, grant credentials, or bypass action review. Keep each value short.
+
+</details>
+
+<details class="plugin-config">
+<summary><code>experimental</code></summary>
+
+Turns on GitHub plugin behavior that is still being tested.
+
+```ts title="plugins.ts"
+export const plugins = defineJuniorPlugins([
+  githubPlugin({
+    experimental: { pullRequestDescriptionChecks: true },
+  }),
+]);
+```
+
+- **Define:** `githubPlugin({ experimental: { ... } })` in `plugins.ts`
+- **Default:** Off
+- **Required:** No
+- **Environment override:** None
+
+`pullRequestDescriptionChecks` checks the description before `github_createPullRequest` or `github_updatePullRequest` writes it. The decision model answers a few yes/no questions about it. The tool rejects a description that has check results, a test plan or test coverage notes, a work log, or talk about the request, or that does not say why the change is needed. The agent gets the fixes and sends the description again.
 
 </details>
 
@@ -284,13 +306,13 @@ Webhook signing secret for events and PR or issue outcome reporting.
 
 </details>
 
-## Run migrations
+## Migrations
 
-```bash
-pnpm exec junior upgrade
-```
+The next Vercel deploy applies this plugin's migrations, because the scaffolded
+build runs [junior upgrade](/cli/upgrade/). For a local database, run
+`pnpm exec junior upgrade` yourself.
 
-This creates the `junior_github_pull_requests` and `junior_github_issues`
+The migrations create the `junior_github_pull_requests` and `junior_github_issues`
 projections used by webhook ingestion and outcome tracking. Opened pull
 requests also publish native code-change records for the dashboard Code page
 and person profiles.
@@ -342,8 +364,9 @@ lowercase. The filter does not check that the creator can see the repository,
 so a broad deployment automation can post private repository names in its
 channel. See [Automations](/concepts/automations/).
 
-To always watch selected events after Junior creates a pull request in this
-app, set `pullRequestEvents.subscribeAfterCreate` in `plugins.ts`. That watch
+Junior watches each pull request that it creates. To change the events or
+the instruction of that watch, set `pullRequestEvents.subscribeAfterCreate` in
+`plugins.ts`, or set it to `false` to turn it off. That watch
 also always gets `pull_request.review.approved`, `pull_request.merged`, and
 `pull_request.merge_conflict`. To add short
 app guidance for one pull request event type, set
@@ -439,6 +462,13 @@ The issue was reopened.
 
 </details>
 
+<details class="event">
+<summary><code>issue.updated</code></summary>
+
+The title or body was edited, or a label, assignee, or milestone was added or removed. The trusted summary names the change and who made it. Trusted data includes `change`, the webhook action such as `labeled`, and `senderId` and `senderLogin` for who made it. On `labeled` and `unlabeled`, trusted data also includes `label`, the lowercase label name. Event automations can match these keys. To run on one label that only some people add, match `change`, `label`, and `senderId`. Milestone names stay untrusted content. Updates that the App makes do not publish this event. Issue watches suggest this event. Repository watches support it but do not suggest it, because updates are frequent across a repository.
+
+</details>
+
 #### `pull_request`
 
 One pull request: `owner/repo#number`. Every pull request event has `repo` and
@@ -510,14 +540,17 @@ An inline review comment was added. Trusted data includes `senderId`, `senderLog
 <details class="event">
 <summary><code>pull_request.merged</code></summary>
 
-The pull request was merged.
+The pull request was merged. For a pull request that Junior opened, when
+GitHub does not send this webhook, Junior finds the merge within about two
+days and sends this event then. A Watch gets each merge once.
 
 </details>
 
 <details class="event">
 <summary><code>pull_request.closed_unmerged</code></summary>
 
-The pull request closed without merging.
+The pull request closed without merging. Junior finds a missed close the
+same way as a missed merge.
 
 </details>
 
@@ -532,8 +565,13 @@ webhook includes mergeability, so Junior uses it when GitHub knows it. Review,
 comment, and check webhooks do not include it, so Junior reads the pull
 request. If GitHub reports a conflict, Junior publishes this event. Each head commit publishes once. GitHub
 calculates mergeability only when someone reads the pull request, so the first
-read can be unknown, and a later event reads it again. A pull request that gets
-no other events is not checked. Trusted data includes `base_branch`, `head_sha`,
+read can be unknown, and a later event reads it again. A push to the default
+branch of a repository with open pull requests that Junior opened also starts a
+check. The push webhook only saves the check. About two minutes later, the
+heartbeat finds those pull requests with one GraphQL search, which includes
+their mergeability, so many pushes in a short time give one search. When an answer is
+unknown, the heartbeat searches again one minute later. A pull request that Junior
+did not open and that gets no other events is not checked. Trusted data includes `base_branch`, `head_sha`,
 and `url`. Filters can match only `repo` and `pull_request`. The watch that
 Junior creates after it opens a pull request always gets this event, and the
 default guidance tells the agent to merge the base branch, not rebase. For a
@@ -597,9 +635,10 @@ A local `git commit` does not call GitHub. The write happens on push. Grant
   or event automation first. A webhook alone does not create either one.
 - Missing repository context: include `owner/repo`, or set a thread default
   repository.
-- A `403` that names `github_createIssue`, `github_updateIssue`,
-  `github_createPullRequest`, or `github_updatePullRequest` is a Junior routing
-  denial. Retry with the named tool.
+- A `403` that names `github_createIssue`, `github_getIssue`,
+  `github_updateIssue`, `github_createPullRequest`, or
+  `github_updatePullRequest` is a Junior routing denial. Retry with the named
+  tool.
 - Private OAuth prompt for a personal operation: complete the private
   authorization prompt. Do not paste personal access tokens into chat.
 - Permission failures on issue or PR workflows: update App permissions or the

@@ -66,7 +66,6 @@ function buildPlugin(
   name = "demo",
   options: {
     allowedTools?: string[];
-    auditTools?: string[];
     wrappedTools?: string[];
   } = {},
 ): PluginDefinition {
@@ -86,9 +85,6 @@ function buildPlugin(
           : undefined),
         ...(options.wrappedTools
           ? { wrappedTools: options.wrappedTools }
-          : undefined),
-        ...(options.auditTools
-          ? { auditTools: options.auditTools }
           : undefined),
       },
     },
@@ -266,7 +262,7 @@ describe("McpToolManager", () => {
     await manager.close();
   });
 
-  it("middle-truncates oversized MCP output before exposing it to the model", async () => {
+  it("keeps the full MCP text for the model and bounds wrapped-tool content", async () => {
     const plugin = buildPlugin();
     const manager = new McpToolManager([plugin]);
     await manager.activateProvider("demo");
@@ -278,9 +274,10 @@ describe("McpToolManager", () => {
     });
 
     const result = await manager.getResolvedActiveTools()[0]!.execute({});
-    const text = result.content[0];
 
-    expect(text).toMatchObject({ type: "text" });
+    // The tool pipeline cuts the model-facing text and saves the full text.
+    expect(result.content).toEqual([{ type: "text", text: `${head}${tail}` }]);
+    const text = result.providerContent?.[0];
     if (text?.type !== "text") {
       throw new Error("expected bounded text content");
     }
@@ -334,6 +331,9 @@ describe("McpToolManager", () => {
       content: [{ type: "text", text: "Authorization pending." }],
     });
     expect(onAuthorizationRequiredMock).toHaveBeenCalledTimes(1);
+
+    await manager.close();
+    expect(closeMock).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces MCP authorization challenges during tool discovery", async () => {
@@ -579,8 +579,8 @@ describe("McpToolManager", () => {
     await manager.close();
   });
 
-  it("records audit events only for successful calls to audit tools", async () => {
-    const plugin = buildPlugin("demo", { auditTools: ["save_issue"] });
+  it("records an audit event for every successful tool call", async () => {
+    const plugin = buildPlugin("demo");
     listToolsMock.mockResolvedValue(
       ["ping", "save_issue"].map((name) => ({
         name,
@@ -592,7 +592,13 @@ describe("McpToolManager", () => {
     const unregister = registerLogRecordSink((record) => {
       records.push(record);
     });
-    const manager = new McpToolManager([plugin]);
+    const manager = new McpToolManager([plugin], {
+      auditAttributes: {
+        "app.source.kind": "scheduled_automation",
+        "app.task.id": "auto-1",
+        "app.task.run.id": "run-1",
+      },
+    });
     try {
       await manager.activateProvider("demo");
       const [ping, saveIssue] = manager.getResolvedActiveTools();
@@ -611,16 +617,25 @@ describe("McpToolManager", () => {
     const audits = records.filter(
       (record) => record.attributes["app.log.audit"] === true,
     );
-    expect(audits).toHaveLength(1);
-    expect(audits[0]).toMatchObject({
+    expect(
+      audits.map((record) => record.attributes["gen_ai.tool.name"]),
+    ).toEqual(["mcp__demo__ping", "mcp__demo__save_issue"]);
+    expect(audits[1]).toMatchObject({
       eventName: "mcp.tool_call.completed",
       attributes: {
         "app.credential.account": "actor",
         "app.plugin.name": "demo",
+        "app.source.kind": "scheduled_automation",
+        "app.task.id": "auto-1",
+        "app.task.run.id": "run-1",
         "gen_ai.tool.call.id": "call-1",
-        "gen_ai.tool.name": "mcp__demo__save_issue",
       },
     });
+    // A provider-side failure is a warning with the same run facts.
+    expect(
+      records.find((record) => record.eventName === "mcp.tool_call.failed")
+        ?.attributes,
+    ).toMatchObject({ "app.task.run.id": "run-1" });
   });
 
   it("hides wrapped tools from discovery but keeps them callable", async () => {

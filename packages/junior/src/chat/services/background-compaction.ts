@@ -24,6 +24,7 @@ import {
   CONTEXT_COMPACTION_PROMPT_NAME,
   ContextSummaryError,
   requestContextSummary,
+  type ContextSummary,
 } from "@/chat/agent/context-summary";
 import {
   runWithConversationPrivacy,
@@ -31,12 +32,7 @@ import {
 } from "@/chat/conversation-privacy";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { getConversationEventStore } from "@/chat/db";
-import {
-  logInfo,
-  logWarn,
-  setSpanAttributes,
-  withLogContext,
-} from "@/chat/logging";
+import { logWarn, setSpanAttributes, withLogContext } from "@/chat/logging";
 import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
@@ -52,8 +48,7 @@ import {
 } from "./background-compaction-queue";
 
 /**
- * Failed or discarded attempts for one History version before background
- * tries stop.
+ * Failed attempts for one History version before background tries stop.
  */
 const MAX_FAILED_ATTEMPTS = 2;
 /**
@@ -83,7 +78,9 @@ function snapshotKey(message: BackgroundCompactionMessage): string {
 }
 
 /** Provider-reported input of the last model request, cache included. */
-function lastRequestInputSize(messages: AgentMessage[]): number | undefined {
+export function lastRequestInputSize(
+  messages: AgentMessage[],
+): number | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]!;
     if (message.role === "assistant") {
@@ -96,34 +93,21 @@ function lastRequestInputSize(messages: AgentMessage[]): number | undefined {
 
 /**
  * Return whether a Turn may request a background summary for this History
- * version. It may not while a request is pending, while a ready summary is
- * still unused, or after the attempt limit.
- *
- * A Turn swaps a ready summary in before its first model request. A swap
- * makes a new History version. So a ready summary of this version that was
- * prepared before the Turn started was discarded, for example because the
- * history after its mark is too large now. It counts as a failed attempt, so
- * a new request can replace it.
+ * version. It may not while a request is pending, while a ready summary
+ * waits for the compaction threshold, or after the attempt limit.
  */
 function mayRequest(
   events: ConversationEvent[],
   historyVersion: number,
   nowMs: number,
-  turnStartedAtMs: number,
 ): boolean {
-  const outcomes = new Map<
-    number,
-    { outcome: "ready" | "failed"; createdAtMs: number }
-  >();
+  const outcomes = new Map<number, "ready" | "failed">();
   for (const event of events) {
     if (
       event.data.type === "compaction_prepared" &&
       event.data.historyVersion === historyVersion
     ) {
-      outcomes.set(event.data.markSeq, {
-        outcome: event.data.outcome,
-        createdAtMs: event.createdAtMs,
-      });
+      outcomes.set(event.data.markSeq, event.data.outcome);
     }
   }
   let failed = 0;
@@ -135,10 +119,7 @@ function mayRequest(
       continue;
     }
     const prepared = outcomes.get(event.data.markSeq);
-    if (
-      prepared?.outcome === "ready" &&
-      prepared.createdAtMs >= turnStartedAtMs
-    ) {
+    if (prepared === "ready") {
       return false;
     }
     if (prepared || nowMs - event.createdAtMs >= REQUEST_TIMEOUT_MS) {
@@ -171,23 +152,16 @@ export async function loadLatestBackgroundCompaction(conversationId: string) {
 }
 
 /**
- * Return whether the newest fact is a pending request or a summary that
- * became ready in this execution slice. Then `mayRequest` is false too, so a
- * Turn can skip the full history load. Only one request is pending at a time,
- * so the newest fact decides it.
+ * Return whether the newest fact is a pending request or a ready summary.
+ * Then `mayRequest` is false too, so a Turn can skip the other reads.
+ * Only one request is pending at a time, so the newest fact decides it.
  */
-function waitsForUse(
-  event: ConversationEvent,
-  nowMs: number,
-  turnStartedAtMs: number,
-): boolean {
+function waitsForUse(event: ConversationEvent, nowMs: number): boolean {
   if (event.data.type === "compaction_requested") {
     return nowMs - event.createdAtMs < REQUEST_TIMEOUT_MS;
   }
   return (
-    event.data.type === "compaction_prepared" &&
-    event.data.outcome === "ready" &&
-    event.createdAtMs >= turnStartedAtMs
+    event.data.type === "compaction_prepared" && event.data.outcome === "ready"
   );
 }
 
@@ -196,12 +170,10 @@ function waitsForUse(
  * or above the mark.
  *
  * The agent runs it after each model request, so a long Turn gets a summary
- * before the compaction threshold. `turnStartedAtMs` is when this execution
- * slice started, before its first model request. Without a queue or below the
- * mark, it does nothing. A failure here leaves blocking compaction as the
- * fallback, so it is logged and does not fail the Turn. When the send fails
- * after the request is written, the request times out and counts as a
- * failed attempt.
+ * before the compaction threshold. Without a queue or below the mark, it does
+ * nothing. A failure here leaves blocking compaction as the fallback, so it
+ * is logged and does not fail the Turn. When the send fails after the request
+ * is written, the request times out and counts as a failed attempt.
  */
 export async function requestBackgroundCompaction(args: {
   agent: Agent;
@@ -209,7 +181,6 @@ export async function requestBackgroundCompaction(args: {
   conversationPrivacy: ConversationPrivacy | undefined;
   modelId: string;
   queue: BackgroundCompactionQueue | undefined;
-  turnStartedAtMs: number;
 }): Promise<void> {
   if (!args.queue) {
     return;
@@ -237,21 +208,34 @@ async function requestAboveMark(args: {
   inputSize: number;
   modelId: string;
   queue: BackgroundCompactionQueue;
-  turnStartedAtMs: number;
 }): Promise<void> {
   const nowMs = Date.now();
-  // Each later model request of a large Turn checks again. Read only the
-  // newest fact while a request waits.
-  const latest = await loadLatestBackgroundCompaction(args.conversationId);
-  if (latest && waitsForUse(latest.event, nowMs, args.turnStartedAtMs)) {
-    return;
-  }
   const eventStore = getConversationEventStore();
+  // Each later model request of a large Turn checks again. Read only the
+  // newest fact while a request waits, and only background compaction facts
+  // to count failed attempts. Without a fact of this History version, no
+  // attempt exists yet.
+  const latest = await loadLatestBackgroundCompaction(args.conversationId);
+  if (latest) {
+    if (waitsForUse(latest.event, nowMs)) {
+      return;
+    }
+    const facts = await Promise.all([
+      eventStore.loadEventsOfType(args.conversationId, "compaction_requested"),
+      eventStore.loadEventsOfType(args.conversationId, "compaction_prepared"),
+    ]);
+    if (!mayRequest(facts.flat(), latest.historyVersion, nowMs)) {
+      return;
+    }
+  }
+  // Load the full history only to write a request: the mark comes from its
+  // projection. Check again on it, because another Turn or a replacement
+  // can write between the reads.
   const events = await eventStore.loadCurrentHistory(args.conversationId);
   const historyVersion = events[0]?.historyVersion;
   if (
     historyVersion === undefined ||
-    !mayRequest(events, historyVersion, nowMs, args.turnStartedAtMs)
+    !mayRequest(events, historyVersion, nowMs)
   ) {
     return;
   }
@@ -318,11 +302,6 @@ async function requestAboveMark(args: {
     return;
   }
   await args.queue.send(message);
-  logInfo("context_compaction.background.requested", {
-    "app.compaction.mark_seq": markSeq,
-    "app.compaction.history_version": historyVersion,
-    "app.compaction.input.size": args.inputSize,
-  });
 }
 
 /** A fixed label for a failed summary. Never raw exception text. */
@@ -330,13 +309,21 @@ function failureLabel(error: unknown, signal: AbortSignal): string {
   if (signal.aborted) {
     return "timeout";
   }
-  if (error instanceof ContextSummaryError) {
+  if (
+    error instanceof ContextSummaryError &&
+    error.failure !== "request_failed"
+  ) {
     return error.failure;
   }
   const providerError = findProviderError(error);
   return providerError ? `provider_${providerError.kind}` : "summary_error";
 }
 
+/**
+ * `app.compaction.outcome` of a job. `stale`: the History was replaced before
+ * the job ran. `duplicate`: the request already has a result. Both write
+ * nothing. A `failed` job sets `error.type` to its failure label.
+ */
 type JobOutcome = "ready" | "failed" | "stale" | "duplicate";
 
 /**
@@ -353,7 +340,7 @@ export async function processBackgroundCompaction(
 ): Promise<void> {
   const startedAtMs = Date.now();
   await withLogContext({ conversationId: message.conversationId }, () =>
-    withCompactionSpan("background", async () => {
+    withCompactionSpan("background", "summary", async () => {
       setSpanAttributes({
         "app.compaction.mark_seq": message.markSeq,
         "app.compaction.history_version": message.historyVersion,
@@ -409,8 +396,8 @@ async function prepareSummary(
   // `historyVersion`, so that event is never used.
   const writePrepared = async (
     result:
-      | { outcome: "ready"; summary: string }
-      | { outcome: "failed"; errorType: string },
+      | { outcome: "ready"; summary: string; costUsd?: number }
+      | { outcome: "failed"; errorType: string; costUsd?: number },
   ): Promise<JobOutcome> => {
     const currentVersion = await eventStore.loadCurrentHistoryVersion(
       message.conversationId,
@@ -460,7 +447,7 @@ async function prepareSummary(
   });
 
   const signal = AbortSignal.timeout(remainingMs);
-  let summary: string;
+  let summary: ContextSummary;
   try {
     summary = await runWithConversationPrivacy(
       snapshot.conversationPrivacy,
@@ -498,12 +485,15 @@ async function prepareSummary(
     return await writePrepared({
       outcome: "failed",
       errorType: failureLabel(error, signal),
+      ...(error instanceof ContextSummaryError && error.costUsd !== undefined
+        ? { costUsd: error.costUsd }
+        : undefined),
     });
   }
-  const outcome = await writePrepared({ outcome: "ready", summary });
+  const outcome = await writePrepared({ outcome: "ready", ...summary });
   if (outcome === "ready") {
     setSpanAttributes({
-      "app.compaction.summary_chars": summary.length,
+      "app.compaction.summary_chars": summary.summary.length,
       "app.compaction.ready_ms": Date.now() - request.createdAtMs,
     });
   }

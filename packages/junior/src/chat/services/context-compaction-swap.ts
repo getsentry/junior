@@ -3,12 +3,19 @@
  *
  * A background job writes `compaction_prepared` with a summary of the history
  * up to `markSeq`. The Turn swaps it in without a model call: retained user
- * messages, the summary, then every message after the mark. Turn start swaps
- * a ready summary at once. Between model calls, a swap runs only above the
- * compaction threshold, in place of a blocking summary call. A summary that
- * no longer matches the history is discarded, and the Turn carries on as if
- * none existed.
+ * messages, the summary, then every message after the mark. A swap runs only
+ * above the compaction threshold, at Turn start or between model calls, in
+ * place of a blocking summary call. Below it, a swap would only rewrite the
+ * provider's prompt cache. A summary that no longer matches the history is
+ * discarded, and the Turn carries on as if none existed.
+ *
+ * A summary that is still running replaces the blocking summary too, for a
+ * limited time from its request. Below the input limit, the Turn defers: the
+ * next model call gets the full history, and a later check swaps the summary
+ * in. At the input limit, the Turn polls for it. The time counts from the
+ * durable request, so a yield or a new request does not reset it.
  */
+import { setTimeout as sleep } from "node:timers/promises";
 import { isDeepStrictEqual } from "node:util";
 import { getConversationEventStore } from "@/chat/db";
 import type { ConversationEvent } from "@/chat/conversations/history";
@@ -21,6 +28,7 @@ import { setSpanAttributes } from "@/chat/logging";
 import { loadLatestBackgroundCompaction } from "@/chat/services/background-compaction";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { ContextSummary } from "@/chat/agent/context-summary";
 import { trimTrailingAssistantMessages } from "@/chat/pi/transcript";
 import {
   calculateContextCompactionTargetTokens,
@@ -42,11 +50,24 @@ import { withCompactionSpan } from "@/chat/services/context-compaction-telemetry
 import { appendOpenPlan } from "@/chat/services/plan-continuation";
 import { trimToolResults } from "@/chat/services/tool-result-trimming";
 
+/** How long after its request a running summary replaces a blocking one. */
+const RUNNING_SUMMARY_WAIT_MS = 45_000;
+const RUNNING_SUMMARY_POLL_MS = 1_000;
+
+type LatestBackgroundCompaction = NonNullable<
+  Awaited<ReturnType<typeof loadLatestBackgroundCompaction>>
+>;
+
 type PreparedCompaction = Extract<
   ConversationEvent["data"],
   { type: "compaction_prepared"; outcome: "ready" }
 >;
 
+/**
+ * Why a ready summary was not used (`app.compaction.discard_reason`).
+ * `conflict`: another replacement committed first. `split_tool_call`: the
+ * mark falls between a tool call and its result.
+ */
 type DiscardReason =
   | "conflict"
   | "history_version_changed"
@@ -97,26 +118,55 @@ function discard(reason: DiscardReason): CompactContextResult {
 }
 
 /**
- * Swap a ready prepared summary into history, or run today's capacity
- * compaction when none can be used.
+ * Swap a ready prepared summary into history, defer to one that is still
+ * running, or run today's capacity compaction when none can be used.
  */
 export async function compactWithPreparedSummary(
   args: ActiveContextCompactionArgs,
-  summarize: (messages: PiMessage[], signal?: AbortSignal) => Promise<string>,
+  summarize: (
+    messages: PiMessage[],
+    signal?: AbortSignal,
+  ) => Promise<ContextSummary>,
 ): Promise<CompactContextResult> {
   const swapped = await swapPreparedCompaction(args);
   // After a conflict the active messages are stale. A blocking summary
-  // would write them over the other replacement.
-  if (swapped.compacted || swapped.reason === "history_conflict") {
+  // would write them over the other replacement. A deferred swap waits for
+  // the running summary instead.
+  if (
+    swapped.compacted ||
+    swapped.reason === "history_conflict" ||
+    swapped.reason === "deferred"
+  ) {
     return swapped;
   }
   return await compactActiveContextIfNeeded(args, summarize);
 }
 
 /**
- * Replace history with a ready prepared summary. Turn start swaps whenever
- * one is ready. Between model calls, swap only above the compaction
- * threshold.
+ * Poll until the running summary of `request` has a result, the History
+ * changes, or the wait ends. Return the newest fact at that time.
+ */
+async function waitForRunningSummary(
+  conversationId: string,
+  request: LatestBackgroundCompaction,
+  waitUntilMs: number,
+  signal: AbortSignal | undefined,
+): Promise<LatestBackgroundCompaction | undefined> {
+  let latest: LatestBackgroundCompaction | undefined = request;
+  while (latest?.event.seq === request.event.seq && Date.now() < waitUntilMs) {
+    await sleep(
+      Math.min(RUNNING_SUMMARY_POLL_MS, waitUntilMs - Date.now()),
+      undefined,
+      { signal },
+    );
+    latest = await loadLatestBackgroundCompaction(conversationId);
+  }
+  return latest;
+}
+
+/**
+ * Replace history above the compaction threshold with a ready prepared
+ * summary, or defer to one that is still running.
  */
 async function swapPreparedCompaction(
   args: ActiveContextCompactionArgs,
@@ -127,33 +177,77 @@ async function swapPreparedCompaction(
     ...pendingMessages.map((entry) => entry.message),
   ];
   const triggerTokens = getAgentContextCompactionTriggerTokens(args.modelId);
-  const estimatedTokens = estimateHistoryTokens(sourceMessages);
-  if (args.mode !== "blocking" && estimatedTokens <= triggerTokens) {
+  const estimatedTokens = estimateHistoryTokens(
+    sourceMessages,
+    args.modelId,
+    args.requestOverheadTokens,
+  );
+  if (estimatedTokens <= triggerTokens) {
     return { compacted: false, reason: "below_threshold" };
   }
-  const latest = await loadLatestBackgroundCompaction(args.conversationId);
-  if (!latest) {
+  const first = await loadLatestBackgroundCompaction(args.conversationId);
+  if (!first) {
     return { compacted: false };
   }
-  return await withCompactionSpan(args.mode, async () => {
-    const { event, historyVersion } = latest;
+  return await withCompactionSpan(args.mode, "swap", async () => {
+    let latest: LatestBackgroundCompaction | undefined = first;
+    if (first.event.data.type === "compaction_requested") {
+      const waitUntilMs = first.event.createdAtMs + RUNNING_SUMMARY_WAIT_MS;
+      setSpanAttributes({
+        "app.compaction.request.age_ms": Math.max(
+          0,
+          Date.now() - first.event.createdAtMs,
+        ),
+      });
+      if (Date.now() < waitUntilMs) {
+        if (estimatedTokens < getAgentContextInputLimitTokens(args.modelId)) {
+          setSpanAttributes({ "app.compaction.outcome": "deferred" });
+          return { compacted: false, reason: "deferred" };
+        }
+        await args.onCompactionStart?.();
+        latest = await waitForRunningSummary(
+          args.conversationId,
+          first,
+          waitUntilMs,
+          args.signal,
+        );
+        setSpanAttributes({
+          "app.compaction.wait.timed_out":
+            latest?.event.seq === first.event.seq,
+        });
+        // Another replacement committed during the wait, so the active
+        // messages are stale. A swap or a blocking summary would write them
+        // over the newer history.
+        if (latest?.historyVersion !== first.historyVersion) {
+          return {
+            ...discard("history_version_changed"),
+            reason: "history_conflict",
+          };
+        }
+      }
+    }
+    const prepared = latest?.event.data;
     if (
-      event.data.type !== "compaction_prepared" ||
-      event.data.outcome !== "ready"
+      !latest ||
+      prepared?.type !== "compaction_prepared" ||
+      prepared.outcome !== "ready"
     ) {
+      // The request is older than the wait, the job failed, or the wait
+      // ended. A blocking compaction can still follow at the threshold.
       setSpanAttributes({ "app.compaction.outcome": "not_ready" });
       return { compacted: false };
     }
+    const { event, historyVersion } = latest;
     setSpanAttributes({
       "app.compaction.prepared.age_ms": Math.max(
         0,
         Date.now() - event.createdAtMs,
       ),
     });
-    if (event.data.historyVersion !== historyVersion) {
+    if (prepared.historyVersion !== historyVersion) {
       return discard("history_version_changed");
     }
-    return await applyPreparedSummary(args, event.data, {
+    return await applyPreparedSummary(args, prepared, {
       estimatedTokens,
       historyVersion,
       triggerTokens,
@@ -230,6 +324,7 @@ async function applyPreparedSummary(
   const messages = replacement.map((entry) => entry.message);
   const replacementTokens = estimateReplacementTokens(
     messages,
+    args.modelId,
     args.requestOverheadTokens,
   );
   const targetTokens = calculateContextCompactionTargetTokens(
@@ -242,6 +337,7 @@ async function applyPreparedSummary(
     "app.compaction.carried_messages": kept.length,
     "app.compaction.carried.estimate": estimateReplacementTokens(
       trimmedEntries.map((entry) => entry.message),
+      args.modelId,
     ),
     "app.compaction.trimmed_results": trimming.trimmedResults,
     "app.compaction.trimmed_chars": trimming.removedChars,

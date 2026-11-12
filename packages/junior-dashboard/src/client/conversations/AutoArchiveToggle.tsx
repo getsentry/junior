@@ -2,6 +2,7 @@ import { useId } from "react";
 import { CircleHelp } from "lucide-react";
 
 import { Checkbox } from "../components/ui/checkbox";
+import { Field, FieldLabel } from "../components/ui/field";
 import { InlineError } from "../components/InlineError";
 import {
   Popover,
@@ -12,7 +13,7 @@ import {
 import { useSetConversationAutoArchive } from "./autoArchiveQueries";
 
 const AUTO_ARCHIVE_HELP =
-  "Archive this conversation for you when its linked work is merged or closed and nobody replies during your wait time.";
+  "Archive this conversation for everyone when its linked work is merged or closed and nobody replies during your wait time.";
 
 /** Let a participant turn auto-archive on or off for this conversation. */
 export function AutoArchiveToggle(props: {
@@ -20,21 +21,19 @@ export function AutoArchiveToggle(props: {
   conversationId: string;
 }) {
   const update = useSetConversationAutoArchive(props.conversationId);
+  const checkboxId = useId();
   const helpId = useId();
   return (
     <div className="grid gap-1">
-      <div className="flex items-center gap-1.5">
-        <label className="flex cursor-pointer items-center gap-2.5">
-          <Checkbox
-            aria-describedby={helpId}
-            checked={props.autoArchive}
-            disabled={update.isPending}
-            onCheckedChange={(checked) => update.mutate(checked)}
-          />
-          <span className="font-semibold text-dashboard-text">
-            Auto archive
-          </span>
-        </label>
+      <Field className="w-fit" orientation="horizontal">
+        <Checkbox
+          aria-describedby={helpId}
+          checked={props.autoArchive}
+          disabled={update.isPending}
+          id={checkboxId}
+          onCheckedChange={(checked) => update.mutate(checked)}
+        />
+        <FieldLabel htmlFor={checkboxId}>Auto archive</FieldLabel>
         {/* A popover, not a tooltip: touch screens open it with a tap. */}
         <Popover>
           <PopoverTrigger
@@ -62,7 +61,7 @@ export function AutoArchiveToggle(props: {
         <span className="sr-only" id={helpId}>
           {AUTO_ARCHIVE_HELP}
         </span>
-      </div>
+      </Field>
       {update.isError ? (
         <InlineError>Could not save auto-archive. Try again.</InlineError>
       ) : null}

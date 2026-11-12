@@ -4,6 +4,7 @@ import {
   sourceSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import type { ChildConversationKind } from "@/chat/conversations/store";
 import { credentialContextSchema } from "@/chat/credentials/context";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { agentTypeSchema } from "./agent-types";
@@ -19,6 +20,16 @@ const exactStringSchema = z
   .refine((value) => value === value.trim());
 
 export const agentNameSchema = exactStringSchema.max(64);
+
+/**
+ * Kind of a new child Conversation. A Thread is a child that people can
+ * message; a Task is one that only its parent messages.
+ */
+export const CHILD_AGENT_KINDS = [
+  "thread",
+  "task",
+] as const satisfies readonly ChildConversationKind[];
+export type ChildAgentKind = (typeof CHILD_AGENT_KINDS)[number];
 
 /** `messageAgent` target for the parent of a child agent. */
 export const PARENT_AGENT_TARGET = "parent";
@@ -53,6 +64,8 @@ const agentInvocationBaseSchema = z
     parentConversationId: exactStringSchema,
     parentToolCallId: exactStringSchema.optional(),
     agentType: agentTypeSchema.optional(),
+    /** The child starts with its parent's history. */
+    fork: z.literal(true).optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
     source: sourceSchema,
     title: exactStringSchema.optional(),
@@ -86,9 +99,11 @@ export const createAgentInvocationSchema = z
     destination: destinationSchema,
     idempotencyKey: exactStringSchema,
     input: exactStringSchema,
+    kind: z.enum(CHILD_AGENT_KINDS).default("task"),
     parentConversationId: exactStringSchema,
     parentToolCallId: exactStringSchema.optional(),
     agentType: agentTypeSchema.optional(),
+    fork: z.literal(true).optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
     title: exactStringSchema.optional(),
   })
@@ -112,9 +127,12 @@ export type ChildAgentResult = (typeof CHILD_AGENT_RESULTS)[number];
 /** Current state of one child agent, read from its agent invocations. */
 export type ChildAgent = {
   agentName?: string;
+  /** Set while the child Conversation is archived. */
+  archivedAtMs?: number;
   childConversationId: string;
   /** Error of the latest agent invocation when the child is blocked, failed, or stopped. */
   errorMessage?: string;
+  kind: ChildAgentKind;
   /** Result of the newest agent invocation that finished without a stop. */
   lastResult?: ChildAgentResult;
   status: AgentInvocationStatus;

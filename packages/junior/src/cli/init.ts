@@ -126,7 +126,10 @@ jobs:
           cache: pnpm
       - run: pnpm install
       - run: pnpm check
+      # Snapshot warmup needs Vercel OIDC, so the Vercel deploy build runs it.
       - run: pnpm build
+        env:
+          JUNIOR_SKIP_SNAPSHOT: "1"
 `,
   );
 }
@@ -222,6 +225,8 @@ export async function runInit(
     `SLACK_BOT_TOKEN=
 SLACK_SIGNING_SECRET=
 JUNIOR_SECRET=
+JUNIOR_ENCRYPTION_KEYS=
+JUNIOR_ENCRYPTION_KEY_ID=
 JUNIOR_BOT_NAME=
 AI_MODEL=
 AI_FAST_MODEL=

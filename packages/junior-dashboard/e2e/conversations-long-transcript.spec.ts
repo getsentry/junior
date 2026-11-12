@@ -27,6 +27,7 @@ async function mockLongConversation(
     cumulativeDurationMs: 1_000,
     displayTitle: "Long transcript",
     isParticipant: true,
+    kind: "root",
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
@@ -102,7 +103,9 @@ async function mockLongConversation(
   await page.route(
     `**/api/conversations/${conversationId}/read-position`,
     async (route) => {
-      await route.fulfill({ json: route.request().postDataJSON() });
+      await route.fulfill({
+        json: route.request().postDataJSON(),
+      });
     },
   );
   await page.route(
@@ -120,6 +123,20 @@ async function mockLongConversation(
           ? aroundRange(Number(around))
           : [Math.max(0, Number(before) - PAGE_SIZE), Number(before) - 1];
       await route.fulfill({ json: eventPage(from, to) });
+    },
+  );
+  await page.route(
+    `**/api/conversations/${conversationId}/outline`,
+    async (route) => {
+      await route.fulfill({
+        json: {
+          items: events(0, lastSeq).flatMap(({ data, seq }) =>
+            data.type === "message" && data.role === "user"
+              ? [{ seq, text: data.text }]
+              : [],
+          ),
+        },
+      });
     },
   );
   await page.route(
@@ -238,11 +255,99 @@ test("mounts only the rows near the viewport of a long transcript", async ({
   await page.keyboard.press("Escape");
 
   // Search finds rows that are not mounted.
-  await page.getByRole("button", { name: "Search transcript" }).click();
-  await page
-    .getByPlaceholder("Search transcript…")
-    .fill("Transcript message 1234 with");
-  await expect(transcript.getByText("Transcript message 1234 ")).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+f");
+  const search = page.getByPlaceholder("Search transcript…");
+  await expect(search).toBeFocused();
+  await search.fill("Transcript message 123");
+  await expect(page.getByText("1/11", { exact: true })).toBeVisible();
+  // Enter goes to the next match. Shift+Enter goes back and wraps around.
+  await search.press("Enter");
+  await expect(page.getByText("2/11", { exact: true })).toBeVisible();
+  await expect(
+    transcript.getByText("Transcript message 1230 "),
+  ).toBeInViewport();
+  await search.press("Shift+Enter");
+  await search.press("Shift+Enter");
+  await expect(page.getByText("11/11", { exact: true })).toBeVisible();
+  await expect(
+    transcript.getByText("Transcript message 1239 "),
+  ).toBeInViewport();
+
+  // A second press goes to the browser's find.
+  await page.evaluate(() => {
+    window.addEventListener(
+      "keydown",
+      (event) => {
+        document.body.dataset.findPrevented = String(event.defaultPrevented);
+      },
+      { once: true },
+    );
+  });
+  await page.keyboard.press("ControlOrMeta+f");
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-find-prevented",
+    "false",
+  );
+
+  // Escape closes the search, not the details panel.
+  await search.press("Escape");
+  await expect(search).toHaveCount(0);
+  await expect(details).toBeVisible();
+});
+
+test("keeps a Reply rating while its row unmounts", async ({
+  page,
+  dashboard,
+}) => {
+  const feedback: unknown[] = [];
+  await page.addInitScript(() => {
+    Object.assign(window, {
+      __JUNIOR_DASHBOARD_SENTRY__: {
+        dsn: "https://public@sentry.example/1",
+        tracesSampleRate: 0,
+      },
+    });
+  });
+  await page.route("https://sentry.example/**", async (route) => {
+    const item = route.request().postData()?.split("\n").at(-1) ?? "";
+    if (item.includes('"type":"feedback"')) feedback.push(JSON.parse(item));
+    await route.fulfill({ json: {} });
+  });
+  await page.clock.install();
+  await page.setViewportSize(desktop);
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: false,
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  const reply = row(transcript, EVENT_COUNT - 1);
+  const good = reply.getByRole("button", { name: "Good reply" });
+  const bad = reply.getByRole("button", { name: "Bad reply" });
+  const scrollTo = (place: "top" | "bottom") =>
+    transcript.evaluate(
+      (element, top) => element.scrollTo({ top }),
+      place === "top" ? 0 : 1e9,
+    );
+  await good.hover();
+  await good.click();
+
+  // A pending Good stays pending while its row unmounts, then sends once.
+  await scrollTo("top");
+  await expect(reply).toHaveCount(0);
+  await scrollTo("bottom");
+  await expect(good).toHaveAttribute("aria-pressed", "true");
+  await expect(bad).toBeVisible();
+  await scrollTo("top");
+  await expect(reply).toHaveCount(0);
+  await page.clock.runFor(5000);
+  await expect.poll(() => feedback.length).toBe(1);
+  await scrollTo("bottom");
+  await expect(good).toHaveAttribute("aria-pressed", "true");
+  await expect(bad).toHaveCount(0);
+  await good.click();
+  await page.clock.runFor(5000);
+  expect(feedback).toHaveLength(1);
 });
 
 test("jumps to a far message from the outline", async ({ page, dashboard }) => {
@@ -250,7 +355,7 @@ test("jumps to a far message from the outline", async ({ page, dashboard }) => {
   await page.setViewportSize({ height: 900, width: 1920 });
   const mock = await mockLongConversation(page, {
     lastReadSeq: EVENT_COUNT - 1,
-    paged: false,
+    paged: true,
   });
   await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
   const transcript = page.getByLabel("Conversation transcript");
@@ -260,6 +365,8 @@ test("jumps to a far message from the outline", async ({ page, dashboard }) => {
   await expect(
     transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
   ).toBeInViewport();
+  // The outline lists every person message, not only the loaded page.
+  await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
   await expect(row(transcript, 1_234)).toHaveCount(0);
 
   const item = outline.getByRole("button", {
@@ -271,6 +378,61 @@ test("jumps to a far message from the outline", async ({ page, dashboard }) => {
   await expect(row(transcript, 1_233)).not.toBeInViewport({ ratio: 0.5 });
   await expect(item).toHaveAttribute("aria-current", "location");
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
+});
+
+test("points at the outline item under a still pointer while the list scrolls", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 1920 });
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: true,
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const outline = page.getByRole("navigation", {
+    name: "Conversation outline",
+  });
+  await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
+  // The list scrolls to the active item near its end, so a wheel up has
+  // room to scroll.
+  await expect(outline.locator("button[aria-current]")).toBeInViewport();
+  await outline.getByRole("list").hover({ position: { x: 4, y: 200 } });
+  const pointed = outline.locator("button[data-highlighted]");
+  const title = page.locator('[data-slot="message-outline-preview-title"]');
+  const before = (await pointed.getAttribute("aria-label"))!;
+  await expect(title).toHaveText(before);
+
+  // A wheel scrolls the list without a pointer move. The pointed item and
+  // its preview follow the item that is now under the pointer.
+  await page.mouse.wheel(0, -400);
+  await expect(pointed).not.toHaveAttribute("aria-label", before);
+  await expect(title).toHaveText((await pointed.getAttribute("aria-label"))!);
+});
+
+test("points at the outline item under the pointer with a larger font size", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 2560 });
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: true,
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  // A browser font size or a text-only zoom changes rem.
+  await page.addStyleTag({ content: "html { font-size: 20px; }" });
+  const outline = page.getByRole("navigation", {
+    name: "Conversation outline",
+  });
+  await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
+  const item = outline.getByRole("button", {
+    name: "Transcript message 1990 with",
+  });
+  await item.hover();
+  await expect(
+    page.locator('[data-slot="message-outline-preview-title"]'),
+  ).toHaveText((await item.getAttribute("aria-label"))!);
 });
 
 test("holds the top row while earlier pages load above it", async ({
@@ -317,6 +479,44 @@ test("holds the top row while earlier pages load above it", async ({
   expect(mock.pageRequests).toEqual(
     [1, 2, 3, 4].map((load) => `?before=${EVENT_COUNT - PAGE_SIZE * load}`),
   );
+});
+
+test("keeps the current search match while earlier pages load", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: true,
+  });
+  let release = () => {};
+  mock.holdEarlier = new Promise((resolve) => {
+    release = resolve;
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  await expect(
+    transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
+  ).toBeInViewport();
+
+  await page.keyboard.press("ControlOrMeta+f");
+  const search = page.getByPlaceholder("Search transcript…");
+  // The latest page holds 1969, 1979, 1989, and 1999.
+  await search.fill("9 with");
+  await expect(page.getByText("1/4", { exact: true })).toBeVisible();
+  await search.press("Enter");
+  await expect(page.getByText("2/4", { exact: true })).toBeVisible();
+
+  // The earlier page adds four matches before 1979, which stays current.
+  mock.holdEarlier = new Promise(() => {});
+  release();
+  await expect(page.getByText("6/8", { exact: true })).toBeVisible();
+  await search.press("Enter");
+  await expect(page.getByText("7/8", { exact: true })).toBeVisible();
+  await expect(
+    transcript.getByText("Transcript message 1989 "),
+  ).toBeInViewport();
 });
 
 test("opens far behind at the marker and jumps to the latest", async ({

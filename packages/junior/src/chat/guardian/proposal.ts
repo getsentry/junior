@@ -45,20 +45,12 @@ export interface ToolActionEvidence {
     role:
       | "assistant"
       | "user"
-      | "parent agent"
       | `tool ${string} call`
       | `tool ${string} result`;
     text: string;
   }>;
   omittedEntries: number;
 }
-
-/**
- * User intent of every action in a child agent run. No person writes there,
- * so Guardian judges user authorization only from the root Conversation.
- */
-export const CHILD_AGENT_USER_INTENT =
-  "[Child agent run. No person writes here. Its task came from a parent agent, so the task is not user intent. Judge user authorization only from the root user instructions section.]";
 
 /**
  * Every line break that can start a new visible line. Guardian puts a label on
@@ -69,23 +61,16 @@ export const ROOT_LINE_BREAK = /\r\n|[\n\r\u2028\u2029\u0085]/;
 /** One root Conversation message, labeled with its real author. */
 export interface RootConversationMessage {
   /**
-   * `user` is a message from the child's own Actor. `automation` is the
-   * instruction of the Automation run that is the root. Only these two can
-   * authorize an action. Each other label is only context.
+   * `user` is a message from the Run's own Actor. Only it can authorize an
+   * action. Each other label is only context.
    */
-  author:
-    | "user"
-    | "automation"
-    | "assistant"
-    | "other person"
-    | "event"
-    | "system";
+  author: "user" | "assistant" | "other person" | "event" | "system";
   text: string;
 }
 
 /**
- * Bounded projection of the root Conversation, read by core when Guardian
- * reviews one action. For a root Run, it is the Run's own Conversation.
+ * Bounded projection of the Run's own Conversation, read by core when
+ * Guardian reviews one action.
  */
 export interface RootConversation {
   messages: RootConversationMessage[];

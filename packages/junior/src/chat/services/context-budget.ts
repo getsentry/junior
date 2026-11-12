@@ -1,4 +1,3 @@
-import type { Tool } from "@earendil-works/pi-ai";
 import { botConfig } from "@/chat/config";
 import { resolveGatewayModel } from "@/chat/pi/client";
 
@@ -7,7 +6,7 @@ const CONTEXT_INPUT_LIMIT_RATIO = 0.95;
 const COMPACTION_TARGET_RATIO = 0.8;
 // Share of the compaction threshold where a background summary starts, so it
 // is ready before blocking compaction would run.
-const BACKGROUND_COMPACTION_MARK_RATIO = 0.7;
+const BACKGROUND_COMPACTION_MARK_RATIO = 0.85;
 const FALLBACK_CONTEXT_WINDOW_TOKENS = 400_000;
 
 export interface ModelContextBudget {
@@ -16,24 +15,6 @@ export interface ModelContextBudget {
 
 function positiveInteger(value: number, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
-}
-
-/** Estimate text tokens with the shared coarse heuristic used for local budgets. */
-export function estimateTextTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
-
-/** Estimate the tokens that the system prompt and tool definitions add to a model request. */
-export function estimateRequestOverheadTokens(
-  systemPrompt: string,
-  tools: readonly Pick<Tool, "description" | "name" | "parameters">[],
-): number {
-  const definitions = tools.map(({ name, description, parameters }) => ({
-    name,
-    description,
-    parameters,
-  }));
-  return estimateTextTokens(systemPrompt + JSON.stringify(definitions));
 }
 
 /** Derive the automatic compaction threshold from model context capacity. */

@@ -1,14 +1,22 @@
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 
-test("opens a registered plugin page from primary navigation", async ({
+test("opens a registered plugin page from the profile menu", async ({
   page,
   dashboard,
 }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   await page.goto(dashboard.baseURL);
 
-  const memoriesLink = page.getByRole("link", { name: "Memories" });
+  await page
+    .getByRole("button", {
+      name: "Open profile menu for Dashboard User",
+      exact: true,
+    })
+    .click();
+  const memoriesLink = page
+    .locator("#profile-popover")
+    .getByRole("menuitem", { name: "Memories" });
   await expect(memoriesLink).toHaveAttribute("href", "/memories");
   await memoriesLink.click();
 
@@ -73,9 +81,6 @@ test("opens a registered plugin page from primary navigation", async ({
     }),
   ).toBeVisible();
   await screenshot(page, "memories-library");
-  await expect(
-    page.getByRole("navigation", { name: "Primary" }).getByRole("link").last(),
-  ).toHaveAccessibleName("System");
 });
 
 test("opens memory details beside the library", async ({ page, dashboard }) => {

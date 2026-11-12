@@ -12,23 +12,23 @@ test("opens conversation details beside the chat", async ({
 
   await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
   await expect(page).toHaveTitle("Junior");
-  await expect(
-    page.getByRole("region", { name: "Conversations" }),
-  ).toBeVisible();
-  const privateConversation = page
-    .getByRole("listitem")
-    .filter({ has: page.getByRole("heading", { name: "Direct Message" }) });
+  const sidebar = page.getByRole("navigation", {
+    name: "Your conversations",
+  });
+  const privateConversation = sidebar.getByRole("link", {
+    name: /Direct Message/,
+  });
   await expect(
     privateConversation.getByLabel("Private conversation"),
   ).toBeVisible();
-  const publicConversation = page.getByRole("listitem").filter({
-    has: page.getByRole("heading", { name: "Checkout latency triage" }),
+  const publicConversation = sidebar.getByRole("link", {
+    name: /Checkout latency triage/,
   });
   await expect(
     publicConversation.getByLabel("Private conversation"),
   ).toHaveCount(0);
-  const runningConversation = page.getByRole("listitem").filter({
-    has: page.getByRole("heading", { name: "Investigate checkout latency" }),
+  const runningConversation = sidebar.getByRole("link", {
+    name: /Investigate checkout latency/,
   });
   await expect(
     runningConversation.getByRole("status", { name: "Running" }),
@@ -36,7 +36,7 @@ test("opens conversation details beside the chat", async ({
   await expect(
     publicConversation.getByRole("status", { name: "Running" }),
   ).toHaveCount(0);
-  await publicConversation.getByText("41 minutes ago", { exact: true }).click();
+  await publicConversation.click();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
   );
@@ -106,15 +106,17 @@ test("opens conversation details beside the chat", async ({
     });
   });
   await page.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Share", exact: true }).click();
   await expect(
     page.getByRole("status").filter({ hasText: "Could not copy the link" }),
   ).toBeAttached();
   await page.evaluate(() =>
     Reflect.deleteProperty(navigator.clipboard, "writeText"),
   );
-  await page.getByRole("button", { name: "Copy failed — retry" }).click();
-  await expect(page.getByRole("button", { name: "Link copied" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Copy failed — retry" }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Link copied" }),
+  ).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     conversationUrl,
   );
@@ -153,12 +155,12 @@ test("opens conversation details beside the chat", async ({
   await expect(details).toBeVisible();
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await expect(
-    page.getByRole("button", { name: "Open event log", exact: true }),
+    page.getByRole("menuitem", { name: "Open event log", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Share", exact: true }).focus();
+  await page.getByRole("menuitem", { name: "Share", exact: true }).focus();
   await page.keyboard.press("Escape");
   await expect(
-    page.getByRole("button", { name: "Open event log", exact: true }),
+    page.getByRole("menuitem", { name: "Open event log", exact: true }),
   ).toBeHidden();
   await expect(
     page.getByRole("button", { name: "Conversation menu" }),
@@ -170,8 +172,10 @@ test("opens conversation details beside the chat", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await screenshot(page, "conversation-share-menu", { view: "mobile" });
-  await page.getByRole("button", { name: "Share", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Link copied" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Share", exact: true }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Link copied" }),
+  ).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     conversationUrl,
   );

@@ -86,6 +86,10 @@ function continueAgentRun(args: {
   );
 }
 
+const EVENT_TASK = ["<task>", "subscribed PR checks failed", "</task>"].join(
+  "\n",
+);
+
 describe("paused turn Slack integration", () => {
   beforeEach(async () => {
     queue = createConversationWorkQueueTestAdapter();
@@ -157,7 +161,6 @@ describe("paused turn Slack integration", () => {
     await threadStateModule.persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "msg.1",
@@ -356,7 +359,6 @@ describe("paused turn Slack integration", () => {
     await threadStateModule.persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "msg.8",
@@ -543,7 +545,6 @@ describe("paused turn Slack integration", () => {
     await threadStateModule.persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "msg.9",
@@ -600,7 +601,6 @@ describe("paused turn Slack integration", () => {
     await threadStateModule.persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "msg.7",
@@ -647,7 +647,7 @@ describe("paused turn Slack integration", () => {
     expect(agentRuns).toEqual([]);
   });
 
-  it("resumes event turns with the rebuilt system actor", async () => {
+  it("resumes event turns with the rebuilt system actor and runtime input", async () => {
     const conversationId = "slack:C123:1712345.0012";
     const sessionId = "turn_event-msg_12";
     const storedSource = slackSource("1712345.0012");
@@ -673,12 +673,11 @@ describe("paused turn Slack integration", () => {
     await threadStateModule.persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "event-msg.12",
             role: "user",
-            text: "subscribed PR checks failed",
+            text: EVENT_TASK,
             createdAtMs: 1,
             author: {
               userId: "UJRNEVENT",
@@ -712,6 +711,11 @@ describe("paused turn Slack integration", () => {
       destination: SLACK_DESTINATION,
       source: storedSource,
     });
+    // The saved Event is runtime input, not words in <current-instruction>.
+    expect(agentRuns[0]?.instruction).toMatchObject({
+      inputs: [{ kind: "runtime", text: EVENT_TASK }],
+      text: EVENT_TASK,
+    });
   });
 
   it("rebuilds the resume actor from the message author when redis has no actor", async () => {
@@ -742,7 +746,6 @@ describe("paused turn Slack integration", () => {
     await threadStateModule.persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "msg.10",
@@ -820,7 +823,6 @@ describe("paused turn Slack integration", () => {
     await threadStateModule.persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "msg.11",

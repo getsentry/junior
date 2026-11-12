@@ -10,6 +10,7 @@ import {
 } from "@/chat/automations/tool-support";
 import type { EventCatalog } from "@/chat/events/catalog";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
 
 /**
  * Create the tool that searches scheduled and event Automations with the
@@ -21,6 +22,8 @@ export function createSearchAutomationsTool(
   catalog: EventCatalog,
 ) {
   return zodTool({
+    exposure: "deferred",
+    source: AUTOMATIONS_TOOL_SOURCE,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

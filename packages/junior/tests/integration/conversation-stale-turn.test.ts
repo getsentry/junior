@@ -8,6 +8,10 @@ import {
 } from "@/chat/conversations/web-input";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
 import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
+import type { AgentRun } from "@/chat/agent/types";
+import { createEventInboundMessage } from "@/chat/events/notification";
+import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
+import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import {
   getTurnRecord,
   saveTurnCheckpoint,
@@ -17,6 +21,8 @@ import {
   createConversationFixture,
   emptyConversationTurnAttempt,
 } from "../fixtures/conversation";
+import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
+import { createModelStream } from "../fixtures/model-stream";
 
 describe("Conversation mailbox Turn after a stopped Turn", () => {
   afterEach(async () => {
@@ -103,4 +109,86 @@ describe("Conversation mailbox Turn after a stopped Turn", () => {
       }),
     ).resolves.toBeUndefined();
   });
+
+  // JUNIOR-9M root cause: the last failed attempt marked the Turn failed in
+  // the Conversation but left its Turn record running, so the next wake with
+  // no new input ran the failed Turn again.
+  it("fails the Turn record when the last attempt fails", async () => {
+    const { conversationStore, queue, state } =
+      await createConversationFixture();
+    const conversationId = "slack:C9M";
+    const destination = {
+      platform: "slack" as const,
+      teamId: "T123",
+      channelId: "C9M",
+    };
+    await conversationStore.recordActivity({
+      conversationId,
+      destination,
+      nowMs: 1,
+      source: "slack",
+    });
+    const message = createEventInboundMessage({
+      event: {
+        eventKey: "checks-failed-last-attempt",
+        eventType: "pull_request.checks.failed",
+        identifier: "getsentry/junior#1563",
+        namespace: "github",
+        occurredAtMs: 2,
+        trustedSummary: "Code change checks failed",
+      },
+      receivedAtMs: 2,
+      subscription: {
+        conversationId,
+        id: "resource-subscription-last-attempt",
+      },
+      text: "Code change checks failed",
+    });
+    await appendAndEnqueueInboundMessage({
+      conversationStore,
+      message,
+      queue,
+      state,
+    });
+    const turnId = conversationTurnIdForMessage(message.inboundMessageId);
+    const agentRuns: AgentRun[] = [];
+    // The Turn saves a step, then Slack rejects the reply.
+    const worker = createConversationTurnWorker(
+      createModelAgentRunnerForRun((run) => {
+        agentRuns.push(run);
+        return createModelStream([
+          { type: "toolCall", name: "systemTime", arguments: {} },
+          { type: "text", text: "Checks failed on lint." },
+        ]);
+      }),
+      async () => {
+        throw new Error("Slack is unavailable");
+      },
+    );
+    const wake = (
+      messages: ConversationWorkerContext["attempt"]["messages"],
+    ) => ({
+      attempt: {
+        ...emptyConversationTurnAttempt({ conversationId, destination }),
+        isFinalAttempt: true,
+        messages,
+      },
+      checkIn: async () => true,
+      conversationId,
+      destination,
+      shouldYield: () => false,
+    });
+
+    const resolved = await resolveMailboxTurnWork(wake([message]));
+    if (!resolved) throw new Error("Expected Conversation mailbox work");
+    await expect(worker(wake([message]), resolved)).resolves.toEqual({
+      status: "completed",
+    });
+
+    expect(agentRuns).toHaveLength(1);
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      state: "failed",
+    });
+    await expect(resolveMailboxTurnWork(wake([]))).resolves.toBeUndefined();
+  }, 10_000);
 });

@@ -68,6 +68,8 @@ export function eventLogSummary(data: ConversationReportEventData): string {
       return data.attachments
         .map((attachment) => attachment.filename)
         .join(", ");
+    case "reply_posted":
+      return `${data.plugin} · ${data.url ?? data.text}`;
     case "compaction":
       return data.summary ?? "Agent history compacted";
     case "subagent":

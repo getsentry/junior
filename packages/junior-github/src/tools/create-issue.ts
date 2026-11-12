@@ -332,7 +332,7 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
             conversationId,
             parsedInput,
             ctx,
-            ctx.slack?.conversationLink?.url,
+            ctx.conversationLink?.url,
           );
           const pendingState: CreateIssueState = {
             status: "pending",

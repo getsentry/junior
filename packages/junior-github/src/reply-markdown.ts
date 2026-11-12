@@ -94,7 +94,10 @@ function linkifyLine(line: string): string {
       continue;
     }
 
-    if (line.startsWith("https://", index) || line.startsWith("http://", index)) {
+    if (
+      line.startsWith("https://", index) ||
+      line.startsWith("http://", index)
+    ) {
       const match = /^https?:\/\/\S+/.exec(line.slice(index));
       if (match) {
         output += match[0];

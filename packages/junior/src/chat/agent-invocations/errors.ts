@@ -16,6 +16,19 @@ export class AgentInvocationLimitError extends Error {
   }
 }
 
+/**
+ * The Conversation that calls spawnAgent is too deep to start child agents,
+ * or its parent chain does not end at a root.
+ */
+export class AgentDepthLimitError extends Error {
+  constructor(maxAgentDepth: number) {
+    super(
+      `This agent cannot start child agents: only ${maxAgentDepth} level(s) of child agents can start their own`,
+    );
+    this.name = "AgentDepthLimitError";
+  }
+}
+
 /** A child agent already has the maximum number of open tasks. */
 export class AgentMessageQueueFullError extends Error {
   constructor(limit: number) {

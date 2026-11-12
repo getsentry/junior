@@ -1,5 +1,6 @@
 import { bodyLimit } from "hono/body-limit";
 import { Hono } from "hono";
+import { getDb } from "@/chat/db";
 import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
@@ -9,15 +10,16 @@ import {
   conversationAttachmentParamsSchema,
   conversationDetailQuerySchema,
   CONVERSATION_DETAIL_VERSION_HEADER,
+  CONVERSATION_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationEventsQuerySchema,
   conversationFeedQuerySchema,
-  conversationFeedSchema,
   conversationParamsSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
+import { conversationFeedSchema } from "../schema/conversation-feed";
 import {
   conversationCatchUpBodySchema,
   conversationCatchUpSchema,
@@ -25,7 +27,17 @@ import {
 import {
   pinConversationBodySchema,
   pinConversationResponseSchema,
+  reorderPinnedConversationsBodySchema,
+  reorderPinnedConversationsResponseSchema,
 } from "../schema/conversation-pin";
+import {
+  conversationDeliveryBodySchema,
+  conversationDeliveryResponseSchema,
+} from "../schema/conversation-delivery";
+import {
+  conversationSubscriptionBodySchema,
+  conversationSubscriptionResponseSchema,
+} from "../schema/conversation-subscription";
 import {
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
@@ -42,24 +54,36 @@ import {
   conversationUnchangedDetailWithMailboxSchema,
 } from "../schema/conversation-pending-messages";
 import { conversationReadPositionSchema } from "../schema/conversation-read-position";
+import {
+  renameConversationBodySchema,
+  renameConversationResponseSchema,
+} from "../schema/conversation-title";
+import { conversationOutlineSchema } from "../schema/conversation-outline";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
+import {
+  continueConversationInSlackBodySchema,
+  continueConversationInSlackResponseSchema,
+} from "../schema/conversation-continue-in-slack";
 import { conversationChildAgentsReportSchema } from "../schema/child-agent";
 import { conversationWatchesReportSchema } from "../schema/watch";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
+import { createConversationAccessReader } from "./access";
+import { reportConversationRead } from "./read-position";
 import { archiveConversation } from "./archive";
 import { catchUpOnConversation } from "./catch-up";
-import { pinConversation } from "./pin";
+import { pinConversation, reorderPinnedConversations } from "./pin";
+import { setConversationSubscription } from "./subscription";
+import { setConversationDeliveryForViewer } from "./delivery";
+import { renameConversation } from "./rename";
 import {
   archiveViewerDoneConversations,
   setConversationAutoArchive,
 } from "./auto-archive";
 import { requireConversationChildAgents } from "./child-agents";
-import {
-  conversationAttachmentHeaders,
-  requireConversationAttachment,
-} from "./attachments";
+import { continueConversationInSlackForViewer } from "./continue-in-slack";
+import { conversationAttachmentResponse } from "./attachments";
 import {
   appendConversationMessageForViewer,
   createConversationForViewer,
@@ -70,7 +94,7 @@ import { readConversationDetailEtag } from "./detail-etag";
 import { forkConversationForViewer, keepQuickQuestionForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
-import { markConversationRead } from "./read-position";
+import { readConversationOutline } from "./outline";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
 import { steerConversationPendingMessagesForViewer } from "./steer-pending-messages";
 import { requireConversationPendingMessages } from "./pending-messages";
@@ -98,7 +122,7 @@ export function createConversationRoutes(
       "Invalid query parameters.",
     ),
     async (context) => {
-      const { actorEmail, codeRepositoryId, q, status } =
+      const { actorEmail, codeRepositoryId, cursor, q, status } =
         context.req.valid("query");
       const viewer = context.get("viewer");
       return jsonResponse(
@@ -106,6 +130,7 @@ export function createConversationRoutes(
         await readConversationFeed({
           ...(actorEmail ? { actorEmail } : undefined),
           ...(codeRepositoryId ? { codeRepositoryId } : undefined),
+          ...(cursor ? { cursor } : undefined),
           ...(q ? { q } : undefined),
           status,
           ...(viewer ? { viewer } : undefined),
@@ -183,6 +208,30 @@ export function createConversationRoutes(
         await stopConversationTurnForViewer(viewer, conversationId, options),
       );
     },
+  );
+
+  app.post(
+    "/:conversationId/continue-in-slack",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      continueConversationInSlackBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        continueConversationInSlackResponseSchema,
+        await continueConversationInSlackForViewer(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
   );
 
   app.post(
@@ -273,6 +322,78 @@ export function createConversationRoutes(
       ),
   );
 
+  app.patch(
+    "/:conversationId/delivery",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      conversationDeliveryBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        conversationDeliveryResponseSchema,
+        await setConversationDeliveryForViewer(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
+  );
+
+  app.patch(
+    "/:conversationId/subscription",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      conversationSubscriptionBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        conversationSubscriptionResponseSchema,
+        await setConversationSubscription(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
+  );
+
+  app.patch(
+    "/:conversationId/title",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      renameConversationBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        renameConversationResponseSchema,
+        await renameConversation(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
+  );
+
   app.put(
     "/:conversationId/read-position",
     requireViewer,
@@ -292,9 +413,27 @@ export function createConversationRoutes(
       const body = context.req.valid("json");
       return jsonResponse(
         conversationReadPositionSchema,
-        await markConversationRead(viewer, conversationId, body),
+        await reportConversationRead(viewer, conversationId, body),
       );
     },
+  );
+
+  app.put(
+    "/pin-order",
+    requireViewer,
+    validateRequest(
+      "json",
+      reorderPinnedConversationsBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        reorderPinnedConversationsResponseSchema,
+        await reorderPinnedConversations(
+          context.get("viewer"),
+          context.req.valid("json"),
+        ),
+      ),
   );
 
   app.post("/archive-done", requireViewer, async (context) =>
@@ -374,6 +513,25 @@ export function createConversationRoutes(
       });
       if (!report) throwApiError(404, "Conversation not found.");
       return jsonResponse(conversationEventPageSchema, report);
+    },
+  );
+
+  app.get(
+    "/:conversationId/outline",
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const { conversationId } = context.req.valid("param");
+      const viewer = context.get("viewer");
+      const outline = await readConversationOutline(
+        conversationId,
+        viewer ? { viewer } : undefined,
+      );
+      if (!outline) throwApiError(404, "Conversation not found.");
+      return jsonResponse(conversationOutlineSchema, outline);
     },
   );
 
@@ -496,18 +654,12 @@ export function createConversationRoutes(
     async (context) => {
       const { attachmentId, conversationId } = context.req.valid("param");
       const viewer = context.get("viewer");
-      const opened = await requireConversationAttachment({
+      return await conversationAttachmentResponse({
         attachmentId,
         conversationId,
+        range: context.req.header("range"),
         storage: options.attachmentStorage,
         ...(viewer ? { viewer } : undefined),
-      });
-      return new Response(opened.body, {
-        headers: conversationAttachmentHeaders({
-          bytes: opened.attachment.bytes,
-          contentType: opened.attachment.contentType,
-          filename: opened.attachment.filename,
-        }),
       });
     },
   );
@@ -532,11 +684,17 @@ export function createConversationRoutes(
       const sentVersion = context.req.header(
         CONVERSATION_DETAIL_VERSION_HEADER,
       );
+      // The mailbox and the detail state share one access read.
+      const readAccess = createConversationAccessReader(getDb(), viewer);
       const readMailbox = () =>
-        requireConversationPendingMessages(conversationId, viewerOptions);
+        requireConversationPendingMessages(conversationId, {
+          readAccess,
+          ...viewerOptions,
+        });
       const readVersion = () =>
         readConversationDetailEtag(conversationId, {
           limit: query.limit,
+          readAccess,
           ...viewerOptions,
         });
       // Read the mailbox before history, as two separate reads would, so
@@ -556,6 +714,7 @@ export function createConversationRoutes(
         ? {
             "cache-control": "private, no-store",
             [CONVERSATION_DETAIL_VERSION_HEADER]: version.etag,
+            [CONVERSATION_VERSION_HEADER]: version.version,
           }
         : undefined;
       if (version && sentVersion === version.etag) {
@@ -569,7 +728,9 @@ export function createConversationRoutes(
       }
       const report = await readConversationDetail(conversationId, {
         ...query,
-        ...(version ? { state: version.state } : undefined),
+        ...(version
+          ? { stored: { record: version.record, state: version.state } }
+          : undefined),
         ...viewerOptions,
       });
       if (!report) throwApiError(404, "Conversation not found.");

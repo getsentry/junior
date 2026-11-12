@@ -18,6 +18,8 @@ Read the reference files at the end when your work touches their area.
 - Core owns the runtime and provider-neutral plugin contracts. Plugins own
   provider routes, API fields, permissions, errors, and formatting.
 - No mutable runtime globals. No test-only singleton mutation APIs.
+- Query tables with the Drizzle query builder. Use `sql` only for
+  expressions inside a builder query, or for statements without a table.
 - Group files by feature. No feature-directory barrels.
 - Exported functions get a brief JSDoc that states intent.
 - Docs use ASD-STE100 English: common words, active voice, short sentences.
@@ -61,7 +63,7 @@ Split long files at a feature boundary. Do not compress formatting to pass.
 - `TERMINOLOGY.md`: canonical words for code and docs.
 - `TELEMETRY.md`: span, metric, and attribute names.
 - `policies/correctness-complexity.md`: how much design a fix needs.
-- `policies/interface-design.md`: function and module shape.
+- `policies/interface-design.md`: function and module shape, lifecycle state.
 - `policies/error-handling.md`: where failures are caught or retried.
 - `policies/runtime-boundary-schemas.md`: validating data at runtime edges.
 - `policies/provider-boundaries.md`: what belongs in core vs. a plugin.

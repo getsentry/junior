@@ -1,0 +1,20 @@
+id: no-direct-core-model-calls
+language: TypeScript
+severity: error
+message: Call completeText, completeObject, and completeDecision from @/chat/core-model. It makes each call name its operation and record its cost.
+files:
+  - packages/junior/src/**/*.ts
+  - packages/junior/src/**/*.tsx
+ignores:
+  - packages/junior/src/chat/core-model.ts
+  - packages/junior/src/chat/plugins/model.ts
+rule:
+  kind: import_statement
+  all:
+    - has:
+        kind: string
+        regex: '^["'']@/chat/pi/client["'']$'
+    - has:
+        stopBy: end
+        kind: import_specifier
+        regex: '\b(completeText|completeObject|completeDecision)\b'

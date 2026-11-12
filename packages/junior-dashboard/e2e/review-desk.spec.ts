@@ -112,7 +112,10 @@ const migration = {
   title: "Pick the billing migration window",
 };
 
-async function mockReviewItems(page: Page, options: { open?: unknown[] } = {}) {
+async function mockReviewItems(
+  page: Page,
+  options: { open?: unknown[]; pageSize?: number } = {},
+) {
   const actions: { body: unknown; id: string }[] = [];
   const open = (options.open ?? [
     rollout,
@@ -129,19 +132,31 @@ async function mockReviewItems(page: Page, options: { open?: unknown[] } = {}) {
     if (path === "/count") return route.fulfill({ json: { needsViewer: 3 } });
     if (path === "" || path === "/") {
       const q = url.searchParams.get("q")?.toLowerCase() ?? "";
+      const linked = url.searchParams.get("conversationId");
       // A search also finds archived items, after the open ones.
-      const list = q ? [...open, ...archived] : open;
+      const list = (q ? [...open, ...archived] : open).filter(
+        (i) =>
+          i.title.toLowerCase().includes(q) &&
+          (!linked || i.conversationIds.includes(linked)),
+      );
+      // The cursor is the index of the first item of the page.
+      const start = Number(url.searchParams.get("cursor") ?? 0);
+      const end = start + (options.pageSize ?? list.length);
       return route.fulfill({
-        json: { items: list.filter((i) => i.title.toLowerCase().includes(q)) },
+        json: {
+          items: list.slice(start, end),
+          ...(end < list.length ? { nextCursor: String(end) } : undefined),
+        },
       });
     }
     const action = path.match(/^\/([^/]+)\/actions$/);
     if (action) {
-      actions.push({
-        body: route.request().postDataJSON(),
-        id: decodeURIComponent(action[1]!),
-      });
-      return route.fulfill({ json: { ok: true } });
+      const id = decodeURIComponent(action[1]!);
+      actions.push({ body: route.request().postDataJSON(), id });
+      const acted = items.find((i) => i.id === id);
+      return acted
+        ? route.fulfill({ json: acted })
+        : route.fulfill({ json: { error: "Not found" }, status: 404 });
     }
     const item = items.find((i) => i.id === decodeURIComponent(path.slice(1)));
     return item
@@ -223,7 +238,8 @@ test("each review item gets a fresh answer form", async ({
   await expect(detail.getByLabel("Anything else?")).toBeFocused();
   await page.keyboard.type("Wait for the EU canary first.");
   await screenshot(page, "review-desk-other", { view: "desktop" });
-  await detail.getByRole("button", { name: "Send" }).click();
+  // Every text box sends its form on Ctrl+Enter or Cmd+Enter.
+  await page.keyboard.press("ControlOrMeta+Enter");
   await expect.poll(() => actions.length).toBe(3);
   expect(actions[2]).toMatchObject({
     body: {
@@ -459,20 +475,28 @@ test("an empty inbox hides archived items", async ({ dashboard, page }) => {
   await screenshot(page, "review-desk-empty", { view: "desktop" });
 });
 
-test("a message asks before it drops unsent picks", async ({
+test("Send sends docked picks and asks before a message drops others", async ({
   dashboard,
   page,
 }) => {
-  const actions = await mockReviewItems(page);
-  const messages: string[] = [];
+  // A notice fills the first page, so the question docks from the second.
+  const actions = await mockReviewItems(page, {
+    open: [{ ...prReady, conversationIds: [conversationId] }, migration],
+    pageSize: 1,
+  });
+  // Each message records how many answers were sent before it.
+  const messages: { answersBefore: number; message: string }[] = [];
   const path = `**/api/conversations/${encodeURIComponent(conversationId)}`;
   await page.route(`${path}/messages`, async (route) => {
-    messages.push(route.request().postDataJSON().message);
+    messages.push({
+      answersBefore: actions.length,
+      message: route.request().postDataJSON().message,
+    });
     await route.fulfill({
       json: { conversationId, messageId: "reply", status: "accepted" },
     });
   });
-  // Show the tool call that added the item, so its card is in the transcript.
+  // Show the tool call that added the item, as a live Turn does.
   await page.route(`${path}*`, async (route) => {
     const response = await route.fetch({
       headers: {
@@ -512,30 +536,62 @@ test("a message asks before it drops unsent picks", async ({
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
-  const card = page.getByRole("region", {
-    name: `Review item: ${migration.title}`,
+  const question = page.getByRole("region", {
+    name: `Question: ${migration.title}`,
   });
-  await card.getByRole("radio", { name: "Approve" }).click();
   const composer = page.getByLabel("Continue this conversation");
-  await composer.fill("Thursday works.");
-  await composer.press("Enter");
 
-  // Go back keeps the draft and the picks.
+  // Picks in the details panel do not go with a message.
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  const details = page.getByRole("region", { name: "Needs you" });
+  await details.getByRole("button", { name: migration.title }).click();
+  await details.getByRole("radio", { name: "Reject" }).click();
+
+  // The message box sends the docked picks. With an empty draft no message
+  // goes, so nothing asks about the details-panel picks.
+  await expect(
+    question.getByRole("textbox", { name: /Anything else/ }),
+  ).toHaveCount(0);
+  await expect(question.getByRole("button", { name: "Send" })).toHaveCount(0);
+  await question.getByRole("radio", { name: "Approve" }).click();
+  await composer.press("Enter");
+  await expect
+    .poll(() => actions)
+    .toEqual([
+      {
+        body: {
+          action: "submit",
+          answer: { values: { decision: ["Approve"] } },
+        },
+        id: migration.id,
+      },
+    ]);
   const confirm = page.getByRole("alertdialog", {
     name: "Send without your answers?",
   });
+  await expect(confirm).toHaveCount(0);
+  expect(messages).toEqual([]);
+
+  // A message drops the details-panel picks, so it asks first.
+  await composer.fill("Friday works.");
+  await composer.press("Enter");
   await expect(confirm).toContainText(migration.title);
-  await screenshot(page, "conversation-unsent-answers");
+  // A mobile view would close the details panel and its picks.
+  await screenshot(page, "conversation-unsent-answers", { view: "desktop" });
+  // Go back keeps the draft and the picks.
   await confirm.getByRole("button", { name: "Go back" }).click();
   await expect(confirm).toBeHidden();
-  await expect(composer).toHaveValue("Thursday works.");
-  await expect(card.getByRole("radio", { name: "Approve" })).toBeChecked();
+  await expect(composer).toHaveValue("Friday works.");
+  await expect(details.getByRole("radio", { name: "Reject" })).toBeChecked();
   expect(messages).toEqual([]);
 
   // The reader can send the message anyway.
-  await composer.press("Enter");
+  await composer.press("ControlOrMeta+Enter");
   await confirm.getByRole("button", { name: "Send message" }).click();
-  await expect.poll(() => messages).toEqual(["Thursday works."]);
-  await expect(composer).toHaveValue("");
-  expect(actions).toEqual([]);
+  await expect
+    .poll(() => messages)
+    .toEqual([{ answersBefore: 1, message: "Friday works." }]);
+  expect(actions).toHaveLength(1);
 });

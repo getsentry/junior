@@ -17,8 +17,14 @@ export interface HeartbeatHookContext extends PluginContext {
     dispatch(options: DispatchOptions): Promise<DispatchResult>;
     get(id: string): Promise<Dispatch | undefined>;
   };
+  /** Conversation annotations, as from a plugin route. */
+  annotations: PluginConversationAnnotations;
+  /** Junior's native code index, as from a plugin route. */
+  codeChanges: CodeChangePublisher;
   /** Host embedder bound to the configured embedding model. */
   embedder: PluginEmbedder;
+  /** Publish events, as from a plugin route. */
+  events: EventPublisher;
   nowMs: number;
   state: PluginState;
 }
@@ -28,7 +34,10 @@ export interface HeartbeatResult {
 }
 
 export interface UnfinishedWorkHookContext extends PluginContext {
-  /** Bounded conversation candidates selected by the host. */
+  /**
+   * Bounded conversation candidates selected by the host, with the child
+   * conversations of candidate roots. Work in a child counts for its root.
+   */
   conversationIds: string[];
 }
 
@@ -167,6 +176,8 @@ export interface RouteRegistrationHookContext extends PluginContext {
   events: EventPublisher;
   /** Review desk items that the plugin adds and closes from its events. */
   reviewItems: PluginConversationReviewItems;
+  /** Plugin-namespaced state, the same as in heartbeats. */
+  state: PluginState;
   users: {
     /**
      * Read one stored identity and the user it links to now, with every

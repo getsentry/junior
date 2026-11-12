@@ -43,6 +43,7 @@ import {
   validatePlugins,
 } from "@/chat/plugins/agent-hooks";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { readObjectLinkTypes } from "@/api/objects/resolve";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import {
   validatePluginEgressCredentialHooks,
@@ -72,6 +73,7 @@ import {
 import { POST as slackWebhookPOST } from "@/handlers/slack-webhook";
 import {
   JUNIOR_AUTO_ARCHIVE_ROUTE,
+  JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
@@ -96,6 +98,11 @@ import {
   type PluginTaskQueueMessage,
 } from "@/chat/plugins/task-queue";
 import { processPluginTask } from "@/chat/plugins/task-runner";
+import {
+  cacheWarmupQueueConsumer,
+  createVercelCacheWarmupCallback,
+  registerVercelCacheWarmupDevConsumer,
+} from "@/chat/cache-warming/queue";
 import {
   createVercelWorkspaceSnapshotJobCallback,
   registerVercelWorkspaceSnapshotJobDevConsumer,
@@ -577,6 +584,8 @@ export async function createApp(
     });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
+      // Fail at load when two link types claim the same URLs.
+      readObjectLinkTypes(plugins);
     }
   } catch (error) {
     restoreRuntimeConfig();
@@ -822,6 +831,7 @@ export async function createApp(
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();
     registerVercelWorkspaceSnapshotJobDevConsumer();
+    registerVercelCacheWarmupDevConsumer();
     registerVercelBackgroundCompactionDevConsumer();
   }
   app.post("/api/internal/agent/continue", (c) => {
@@ -841,6 +851,13 @@ export async function createApp(
     workspaceSnapshotJobPOST ??= createVercelWorkspaceSnapshotJobCallback();
     return workspaceSnapshotJobPOST(c.req.raw);
   });
+  let cacheWarmupPOST:
+    | ReturnType<typeof createVercelCacheWarmupCallback>
+    | undefined;
+  app.post(JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE, (c) => {
+    cacheWarmupPOST ??= createVercelCacheWarmupCallback();
+    return cacheWarmupPOST(c.req.raw);
+  });
   let backgroundCompactionPOST:
     | ReturnType<typeof createVercelBackgroundCompactionCallback>
     | undefined;
@@ -850,7 +867,10 @@ export async function createApp(
   });
 
   app.get("/api/internal/heartbeat", (c) => {
-    return heartbeatGET(c.req.raw, waitUntil, { conversationWorkQueue });
+    return heartbeatGET(c.req.raw, waitUntil, {
+      conversationWorkQueue,
+      events,
+    });
   });
 
   app.get("/api/internal/retention", (c) => {
@@ -878,6 +898,7 @@ export async function createApp(
           conversationWorkQueueConsumer(getConversationWorkOptions()),
           pluginTaskQueueConsumer(),
           workspaceSnapshotJobQueueConsumer(),
+          cacheWarmupQueueConsumer(),
           backgroundCompactionQueueConsumer(),
         ],
         backgroundWork,

@@ -1,4 +1,5 @@
 import type { FileUpload } from "chat";
+import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
 import type {
   AgentInvocationSource,
   EventAutomationSource,
@@ -38,7 +39,6 @@ export interface ImageGenerateToolDeps {
 export interface WebFetchToolDeps {
   execute?: (input: {
     url: string;
-    max_chars?: number;
   }) => Promise<JuniorToolOutput> | JuniorToolOutput;
 }
 
@@ -73,11 +73,6 @@ export interface ToolHooks {
 
 interface BaseToolRuntimeContext {
   attachmentStorage?: AttachmentStorage;
-  /** Present only for Scheduled automation and Event automation runs. */
-  automation?: {
-    /** True when a successful run sends a message to stored Destinations. */
-    sendsMessage: boolean;
-  };
   /** Queue of the app. Without it, Review item tools use the Vercel queue. */
   conversationWorkQueue?: ConversationWorkQueue;
   messageAgent?: MessageAgent;
@@ -91,7 +86,9 @@ interface BaseToolRuntimeContext {
   conversationId: string;
   /** Turn that runs this tool call. */
   turnId?: string;
-  /** Parent of a child agent Conversation. Unset for a root Conversation. */
+  /** Tools that this Turn's kind and opener allow, from `turnBehavior`. */
+  turnTools: TurnBehavior["tools"];
+  /** Parent Conversation. Unset for a root. Use it only as the tree edge. */
   parentConversationId?: string;
   /** Location associated with this Conversation. */
   location?: Location;

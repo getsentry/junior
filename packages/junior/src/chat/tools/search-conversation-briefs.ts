@@ -7,7 +7,6 @@ import {
   searchConversationBriefs,
   type ConversationBriefSearchFilters,
   type ConversationBriefSearchResult,
-  type ConversationBriefSearchScope,
 } from "@/chat/briefs/search";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
@@ -111,7 +110,6 @@ async function resolveSearchFilters(
 
 /** Create a deferred tool that searches the latest public Conversation Briefs. */
 export function createSearchConversationBriefsTool(
-  scope: ConversationBriefSearchScope,
   currentConversationId: string,
   provider?: ConversationBriefSearchPort,
 ) {
@@ -186,7 +184,6 @@ export function createSearchConversationBriefsTool(
         currentConversationId,
         filters,
         limit: input.limit ?? DEFAULT_LIMIT,
-        scope,
       });
       const outputMatches = await Promise.all(
         matches.map(async (match) => {

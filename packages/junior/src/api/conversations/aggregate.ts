@@ -6,6 +6,7 @@ interface ConversationAggregateSource {
   conversationId: AnyPgColumn;
   durationMs: AnyPgColumn;
   executionStatus: AnyPgColumn;
+  stoppedAt: AnyPgColumn;
   usage: AnyPgColumn;
 }
 
@@ -88,8 +89,9 @@ export function conversationAggregateColumns(sources?: {
     >`SUM(${usageTokenValue(metrics, "cacheCreationTokens")})::double precision`,
     costUsd: sql<number | null>`SUM(${costValue(metrics)})::double precision`,
     durationMs: sql<number>`COALESCE(SUM(${metrics.durationMs}), 0)::double precision`,
+    // A stopped Conversation reports `stopped`, not `failed`.
     failed: sql<number>`${conversationCount} FILTER (
-      WHERE ${roots.executionStatus} = 'failed'
+      WHERE ${roots.executionStatus} = 'failed' AND ${roots.stoppedAt} IS NULL
     )::integer`,
     inputTokens: sql<
       number | null

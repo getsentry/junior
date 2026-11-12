@@ -1,10 +1,11 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
   juniorIdentities,
 } from "@/db/schema";
+import { touchConversationDetail } from "./detail-version";
 
 /** Resolve the root conversation id that owns personal-feed membership. */
 export async function resolveRootConversationId(
@@ -22,9 +23,28 @@ export async function resolveRootConversationId(
   return row?.rootConversationId ?? conversationId;
 }
 
+/** True when the root of this conversation is archived. */
+export async function rootConversationIsArchived(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+): Promise<boolean> {
+  const rootConversationId = await resolveRootConversationId(
+    executor,
+    conversationId,
+  );
+  const [row] = await executor
+    .db()
+    .select({ archivedAt: juniorConversations.archivedAt })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, rootConversationId))
+    .limit(1);
+  return Boolean(row?.archivedAt);
+}
+
 /**
  * Upsert one linked user as a participant on a root conversation.
- * No-ops when the identity is missing, unlinked, or not a user.
+ * No-ops and returns false when the identity is missing, unlinked, or not a
+ * user. `resubscribe` ends an unsubscribe: the user addressed Junior again.
  */
 export async function recordConversationParticipant(
   executor: JuniorSqlDatabase,
@@ -32,9 +52,9 @@ export async function recordConversationParticipant(
     actorIdentityId: string;
     conversationId: string;
     atMs: number;
-    restoreArchive?: boolean;
+    resubscribe?: boolean;
   },
-): Promise<void> {
+): Promise<boolean> {
   const [identity] = await executor
     .db()
     .select({
@@ -45,7 +65,7 @@ export async function recordConversationParticipant(
     .where(eq(juniorIdentities.id, args.actorIdentityId))
     .limit(1);
   if (!identity?.userId || identity.kind !== "user") {
-    return;
+    return false;
   }
 
   const rootConversationId = await resolveRootConversationId(
@@ -72,9 +92,53 @@ export async function recordConversationParticipant(
       ],
       set: {
         lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, excluded.last_message_at)`,
-        ...(args.restoreArchive ? { archivedAt: null } : undefined),
+        ...(args.resubscribe ? { unsubscribedAt: null } : undefined),
       },
     });
+  return true;
+}
+
+/**
+ * Add a User as a Participant of each root that their Identity started,
+ * when that Identity gets its User after the roots exist. The root write
+ * adds a Participant only for an Identity that already has a User.
+ */
+export async function recordStartedConversationParticipants(
+  executor: JuniorSqlDatabase,
+  args: { identityId: string; userId: string },
+): Promise<void> {
+  const roots = await executor
+    .db()
+    .select({
+      conversationId: juniorConversations.conversationId,
+      lastActivityAt: juniorConversations.lastActivityAt,
+    })
+    .from(juniorConversations)
+    .where(
+      and(
+        eq(juniorConversations.actorIdentityId, args.identityId),
+        isNull(juniorConversations.parentConversationId),
+      ),
+    );
+  if (roots.length === 0) return;
+  const added = await executor
+    .db()
+    .insert(juniorConversationParticipants)
+    .values(
+      roots.map((root) => ({
+        userId: args.userId,
+        rootConversationId: root.conversationId,
+        lastMessageAt: root.lastActivityAt,
+      })),
+    )
+    .onConflictDoNothing()
+    .returning({
+      rootConversationId: juniorConversationParticipants.rootConversationId,
+    });
+  await touchConversationDetail(
+    executor.db(),
+    added.map((row) => row.rootConversationId),
+  );
 }
 
 /** Find which of the supplied root conversations include the linked user. */

@@ -7,6 +7,7 @@ import { buildSentryConversationUrl } from "@/chat/sentry-links";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readConversationModelUsageFromSql } from "@/chat/pi/sql-model-usage";
 import { decodeConversationCursor, encodeConversationCursor } from "./cursor";
+import { readConversationAgentTree } from "./agent-tree";
 import { readFirstHumanMessageTexts } from "./first-message";
 import {
   readConversationEventPage,
@@ -15,15 +16,17 @@ import {
 } from "./event-page";
 import { conversationEventPageReport } from "./event-list";
 import { attachConversationMentions } from "./mentions";
-import { readConversationRecordFromSql } from "./list";
 import {
   conversationEventHistory,
   conversationSummaryFromStoredConversation,
 } from "./projection";
-import type { ConversationAccess } from "./access";
+import {
+  createConversationAccessReader,
+  type ConversationAccess,
+} from "./access";
 import {
   readConversationDetailState,
-  type ConversationDetailState,
+  type DetailStateRead,
 } from "./detail-etag";
 import {
   childAgentTotalsReport,
@@ -40,6 +43,8 @@ import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationAuthors } from "./participants";
+import { canContinueInSlack } from "@/chat/slack/continue-in-slack";
+import { canPauseConversationDelivery } from "@/chat/conversations/delivery-pause";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
@@ -47,7 +52,6 @@ function projectConversationDetail(args: {
   appendCursor?: string;
   /** Events hold only the events after the request's `after` cursor. */
   appended?: boolean;
-  archivedAtMs?: number;
   pinnedAtMs?: number;
   automationTitle?: string;
   auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"];
@@ -81,7 +85,6 @@ function projectConversationDetail(args: {
   return {
     ...conversationSummaryFromStoredConversation({
       access: args.access,
-      archivedAtMs: args.archivedAtMs,
       pinnedAtMs: args.pinnedAtMs,
       automationTitle: args.automationTitle,
       auxiliaryCosts: args.auxiliaryCosts,
@@ -143,16 +146,19 @@ async function readConversationDetailFromSql(
     after?: string;
     latestTurns?: number;
     limit: number;
-    state?: ConversationDetailState;
+    stored?: DetailStateRead;
     unreadPage?: boolean;
     viewer?: User;
   },
 ): Promise<ConversationDetailReport | undefined> {
-  const [record, state] = await Promise.all([
-    readConversationRecordFromSql(conversationId),
-    options.state ??
-      readConversationDetailState(conversationId, options.viewer),
-  ]);
+  const readAccess = createConversationAccessReader(getDb(), options.viewer);
+  const { record, state } =
+    options.stored ??
+    (await readConversationDetailState(
+      conversationId,
+      options.viewer,
+      readAccess,
+    ));
   if (!record) return undefined;
   const { access, readPosition } = state;
   const canExposePayload = access?.canViewPrivateContent ?? false;
@@ -197,6 +203,7 @@ async function readConversationDetailFromSql(
   };
   // Access is known, so the event page reads beside the metadata.
   const [
+    agentTree,
     annotations,
     automationTitleByConversation,
     auxiliaryCostsByConversation,
@@ -209,6 +216,15 @@ async function readConversationDetailFromSql(
     teamDomainByTeamId,
     page,
   ] = await Promise.all([
+    readConversationAgentTree(
+      {
+        conversationId,
+        ...(record.conversation.parentConversationId
+          ? { parentConversationId: record.conversation.parentConversationId }
+          : undefined),
+      },
+      readAccess,
+    ),
     listConversationAnnotations(getDb(), conversationId),
     readAutomationTitlesByConversationId([record.conversation]),
     readConversationAuxiliaryCostsFromSql(getDb(), [conversationId]),
@@ -337,9 +353,21 @@ async function readConversationDetailFromSql(
   return {
     ...report,
     ...state.forks,
-    ...(state.agentTree ? { agentTree: state.agentTree } : undefined),
+    ...(agentTree ? { agentTree } : undefined),
     ...(report.isParticipant && state.autoArchive !== undefined
       ? { autoArchive: state.autoArchive }
+      : undefined),
+    ...(report.isParticipant && state.subscribed !== undefined
+      ? { subscribed: state.subscribed }
+      : undefined),
+    ...(canContinueInSlack(record.conversation, access)
+      ? { canContinueInSlack: true as const }
+      : undefined),
+    ...(report.isParticipant &&
+    canPauseConversationDelivery(record.conversation)
+      ? {
+          deliveryPaused: record.conversation.deliveryPausedAtMs !== undefined,
+        }
       : undefined),
   };
 }
@@ -357,8 +385,8 @@ export async function readConversationDetail(
     /** An `appendCursor`: return only newer events when it still applies. */
     after?: string;
     limit?: number;
-    /** The state that the route already read for the ETag. */
-    state?: ConversationDetailState;
+    /** The record and state that the route already read for the ETag. */
+    stored?: DetailStateRead;
     /** Also read the page around the read position. */
     unreadPage?: boolean;
     viewer?: User;

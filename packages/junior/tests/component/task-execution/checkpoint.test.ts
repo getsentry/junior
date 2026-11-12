@@ -67,6 +67,7 @@ function failingConversationStore(): ConversationStore {
     get: vi.fn(),
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
+    claimProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
     recordDestinationVisibility: vi.fn(),
     getRunMetrics: vi.fn(async () => undefined),
@@ -593,6 +594,7 @@ describe("turn checkpoint", () => {
       get: vi.fn(),
       getConversationIdByProviderConversation: vi.fn(async () => undefined),
       bindProviderConversation: vi.fn(),
+      claimProviderConversation: vi.fn(),
       getDestinationVisibility: vi.fn(async () => undefined),
       recordDestinationVisibility: vi.fn(),
       getRunMetrics: vi.fn(async () => undefined),
@@ -676,8 +678,15 @@ describe("turn checkpoint", () => {
       await import("@/chat/task-execution/turn-cursor");
     const { turnCursorKey } =
       await import("@/chat/task-execution/turn-cursor-keys");
+    const { getSqlExecutor } = await import("@/chat/db");
+    const { resolveActorIdentityId } = await import("@/chat/identities/actor");
     const conversationId = "slack:C123:cursor-unknown-fields";
     const turnId = "turn-unknown-fields";
+    // The Identity id a newer worker saved. It is not this Actor's own id.
+    const savedIdentityId = await resolveActorIdentityId(getSqlExecutor(), {
+      ...SLACK_ACTOR,
+      userId: "U-saved",
+    });
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     await stateAdapter.set(
@@ -701,7 +710,7 @@ describe("turn checkpoint", () => {
           teamId: "T123",
           userId: "U123",
         },
-        actorIdentityId: "identity-1",
+        actorIdentityId: savedIdentityId,
         deprecatedFlag: true,
         resumeReason: "timeout",
       },
@@ -730,7 +739,7 @@ describe("turn checkpoint", () => {
     expect(record).not.toHaveProperty("destination");
     expect(record).toMatchObject({
       actor: SLACK_ACTOR,
-      actorIdentityId: "identity-1",
+      actorIdentityId: savedIdentityId,
       source: SLACK_SOURCE,
     });
     expect(record).not.toHaveProperty("deprecatedFlag");
@@ -749,7 +758,7 @@ describe("turn checkpoint", () => {
     await expect(
       stateAdapter.get(turnCursorKey(conversationId, turnId)),
     ).resolves.toMatchObject({
-      actorIdentityId: "identity-1",
+      actorIdentityId: savedIdentityId,
       sliceId: 2,
     });
   });
@@ -1133,6 +1142,19 @@ describe("turn checkpoint", () => {
       actor: alice,
       trailingMessageProvenance: [{ authority: "instruction", actor: bob }],
     });
+    // JUNIOR-PM: a redelivered worker saves input that is already committed.
+    // It must keep the committed provenance instead of failing every retry.
+    await expect(
+      saveTurnCheckpoint({
+        mode: "running",
+        conversationId: "conversation-multi-actor",
+        turnId: "turn-multi-actor",
+        sliceId: 2,
+        messages: [aliceMessage, bobMessage],
+        actor: alice,
+        trailingMessageProvenance: [{ authority: "instruction", actor: alice }],
+      }),
+    ).resolves.toBeDefined();
 
     // getTurnRecord re-materializes from the stored record and the
     // committed provenance, so this is also the continuation/materialization
@@ -1723,6 +1745,115 @@ describe("turn checkpoint", () => {
       }),
     ).resolves.toBeUndefined();
 
+    expect(logException).not.toHaveBeenCalled();
+  });
+
+  it("checks a checkpoint against history written after its turn record was read", async () => {
+    const { getTurnRecord, upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
+    const { loadProjection, recordAuthorizationCompleted } =
+      await import("@/chat/conversations/projection");
+    const { getConversationEventStore } = await import("@/chat/db");
+    const conversationId = "conversation-stale-read";
+    const turnId = "turn-stale-read";
+    const request = userMessage("help me");
+    const reply = assistantMessage("done", request.timestamp + 1);
+    const summary = userMessage("summary");
+    const followup = userMessage("follow up");
+    const save = (
+      piMessages: PiMessage[],
+      read: Awaited<ReturnType<typeof getTurnRecord>>,
+    ) =>
+      upsertTurnRecord({
+        conversationId,
+        turnId,
+        sliceId: 1,
+        state: "running",
+        piMessages,
+        storedProjection: read?.storedProjection,
+      });
+
+    await save([request], undefined);
+    const read = await getTurnRecord(conversationId, turnId);
+    // Another writer adds model history after the checkpoint read its record.
+    await recordAuthorizationCompleted({
+      conversationId,
+      kind: "mcp",
+      provider: "notion",
+      actorId: "U123",
+      authorizationId: "authorization-stale-read",
+    });
+    const [, authObservation] = await loadProjection({ conversationId });
+
+    await expect(save([request], read)).rejects.toThrow(
+      "changed before its committed boundary",
+    );
+    await expect(
+      save([request, authObservation!, reply], read),
+    ).resolves.toMatchObject({ piMessages: [request, authObservation, reply] });
+
+    // A history replacement after the read makes the commit read the new
+    // history version.
+    await getConversationEventStore().replaceHistory(conversationId, {
+      createdAtMs: summary.timestamp,
+      data: {
+        type: "compaction",
+        modelId: "test/model",
+        replacementHistory: [
+          { item: historyItemFromPiMessage(summary, { authority: "context" }) },
+        ],
+      },
+    });
+    await expect(
+      save([request, authObservation!, reply, followup], read),
+    ).rejects.toThrow("changed before its committed boundary");
+    await expect(save([summary, followup], read)).resolves.toMatchObject({
+      piMessages: [summary, followup],
+    });
+  });
+
+  it("keeps a completed turn completed when a late worker saves progress", async () => {
+    const logException = vi.fn();
+    vi.doMock("@/chat/logging", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/chat/logging")>();
+      return { ...actual, logException };
+    });
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
+    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
+    const committed = [userMessage("done")];
+    const late = [...committed, userMessage("late")];
+
+    await saveTurnCheckpoint({
+      mode: "completed",
+      conversationId: "conversation-late-worker",
+      turnId: "turn-late-worker",
+      sliceId: 1,
+      messages: committed,
+    });
+    await expect(
+      saveTurnCheckpoint({
+        mode: "running",
+        conversationId: "conversation-late-worker",
+        turnId: "turn-late-worker",
+        sliceId: 1,
+        messages: late,
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      saveTurnCheckpoint({
+        mode: "paused",
+        reason: "timeout",
+        conversationId: "conversation-late-worker",
+        turnId: "turn-late-worker",
+        sliceId: 1,
+        messages: late,
+      }),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      getTurnRecord("conversation-late-worker", "turn-late-worker"),
+    ).resolves.toMatchObject({ piMessages: committed, state: "completed" });
     expect(logException).not.toHaveBeenCalled();
   });
 

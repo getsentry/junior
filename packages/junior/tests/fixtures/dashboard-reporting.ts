@@ -271,6 +271,8 @@ export async function appendVisibleHistory(
 /** Create a child conversation under a recorded root for reporting tests. */
 export async function createChild(args: {
   childConversationId: string;
+  /** Defaults to a Task. */
+  kind?: "task" | "thread";
   parentConversationId: string;
 }): Promise<void> {
   const { getConversationEventStore, getDb } = await import("@/chat/db");
@@ -280,15 +282,18 @@ export async function createChild(args: {
     .from(juniorConversations)
     .where(eq(juniorConversations.conversationId, args.parentConversationId));
   if (!parent?.rootConversationId) throw new Error("Missing conversation root");
-  await getDb().insert(juniorConversations).values({
-    conversationId: args.childConversationId,
-    parentConversationId: args.parentConversationId,
-    rootConversationId: parent.rootConversationId,
-    createdAt: at,
-    lastActivityAt: at,
-    updatedAt: at,
-    executionStatus: "idle",
-  });
+  await getDb()
+    .insert(juniorConversations)
+    .values({
+      conversationId: args.childConversationId,
+      kind: args.kind ?? "task",
+      parentConversationId: args.parentConversationId,
+      rootConversationId: parent.rootConversationId,
+      createdAt: at,
+      lastActivityAt: at,
+      updatedAt: at,
+      executionStatus: "idle",
+    });
   await getConversationEventStore().append(args.parentConversationId, [
     {
       data: {

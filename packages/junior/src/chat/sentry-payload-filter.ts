@@ -1,4 +1,5 @@
 import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
+import { isPushServiceHost } from "@/chat/notifications/push-endpoint";
 import { redactSandboxEgressProxyPath } from "@/chat/sandbox/egress/proxy-path";
 import { promoteHttpRouteName } from "@/chat/sentry-route-name";
 import { consumePrivateTraceResultMarker } from "@/chat/tool-support/private-trace-result";
@@ -64,9 +65,17 @@ const SDK_REQUEST_HEADER_PREFIX = "http.request.header.";
 // are rewritten.
 const URL_SPAN_NAME = /^([A-Z]+ )((?:https?:\/\/|\/)\S*)$/;
 
-/** Drop the query and fragment, and hide the sandbox egress credential token. */
+/**
+ * Drop the query and fragment, hide the sandbox egress credential token, and
+ * keep only the host of a push endpoint.
+ */
 function scrubUrl(value: string): string {
-  return redactSandboxEgressProxyPath(value.split(/[?#]/, 1)[0] ?? value);
+  const url = value.split(/[?#]/, 1)[0] ?? value;
+  const host = url.includes("://") ? urlHost(url) : undefined;
+  if (host && isPushServiceHost(host)) {
+    return `https://${host}`;
+  }
+  return redactSandboxEgressProxyPath(url);
 }
 
 function scrubSpanName(name: string): string {
@@ -92,27 +101,45 @@ function isSecretHeaderAttribute(key: string): boolean {
   );
 }
 
-function isSlackFileRequest(attributes: AttributeMap): boolean {
-  return (
-    attributes["server.address"] === SLACK_FILE_HOST ||
-    [...URL_ATTRIBUTE_KEYS].some((key) => {
-      const value = attributes[key];
-      return (
-        typeof value === "string" && value.includes(`//${SLACK_FILE_HOST}/`)
-      );
-    })
-  );
+function urlHost(value: string): string | undefined {
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return undefined;
+  }
 }
 
-/** Keep only the host of private Slack file URLs, which name the workspace and file. */
-function scrubSlackFileUrls(attributes: AttributeMap): void {
+/**
+ * The URL path of a private Slack file names the workspace and file. The URL
+ * path of a push endpoint identifies one browser. Keep only their host.
+ */
+function isHostOnly(host: string): boolean {
+  return host === SLACK_FILE_HOST || isPushServiceHost(host);
+}
+
+function hostOnlyRequestHost(attributes: AttributeMap): string | undefined {
+  const address = attributes["server.address"];
+  if (typeof address === "string" && isHostOnly(address)) {
+    return address;
+  }
+  for (const key of URL_ATTRIBUTE_KEYS) {
+    const value = attributes[key];
+    const host = typeof value === "string" ? urlHost(value) : undefined;
+    if (host && isHostOnly(host)) {
+      return host;
+    }
+  }
+  return undefined;
+}
+
+function keepOnlyHost(attributes: AttributeMap, host: string): void {
   for (const key of URL_ATTRIBUTE_KEYS) {
     const value = attributes[key];
     if (typeof value !== "string") {
       continue;
     }
     if (value.includes("://")) {
-      attributes[key] = `https://${SLACK_FILE_HOST}`;
+      attributes[key] = `https://${host}`;
     } else {
       delete attributes[key];
     }
@@ -137,8 +164,9 @@ function scrubSensitiveUrlAttributes(
       delete attributes[key];
     }
   }
-  if (isSlackFileRequest(attributes)) {
-    scrubSlackFileUrls(attributes);
+  const hostOnly = hostOnlyRequestHost(attributes);
+  if (hostOnly) {
+    keepOnlyHost(attributes, hostOnly);
     return;
   }
   for (const key of URL_ATTRIBUTE_KEYS) {

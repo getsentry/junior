@@ -1,10 +1,12 @@
 import {
   boolean,
   integer,
+  jsonb,
   text,
   pgTable,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { NotificationSchedule } from "@/chat/notifications/schedule";
 import { timestamptz } from "./timestamps";
 
 /** Hours auto-archive waits when the user has not picked a grace period. */
@@ -20,6 +22,10 @@ export const juniorUsers = pgTable(
     timezone: text("timezone"),
     /** Text the user saved to change how Junior replies to them. */
     customization: text("customization"),
+    /** Push notification hours. Null means the default schedule. */
+    notificationSchedule: jsonb(
+      "notification_schedule",
+    ).$type<NotificationSchedule>(),
     /** Junior-wide admin role. Only the `junior admin` CLI changes it. */
     isAdmin: boolean("is_admin").notNull().default(false),
     /** Auto-archive this user's conversations when their work is done. */

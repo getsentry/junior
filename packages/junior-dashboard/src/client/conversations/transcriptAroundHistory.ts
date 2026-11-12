@@ -35,6 +35,7 @@ import {
   buildUnreadConversationTranscript,
   conversationHistoryVersion,
 } from "./transcript";
+import { turnStartedEventSeq } from "./conversationRoutes";
 
 /** The transcript to show and how to load more of it. */
 export type TranscriptHistory = {
@@ -251,4 +252,23 @@ function readConversationEventsFrom(
     }
     return page;
   });
+}
+
+/** A linked event seq or Turn id. */
+export type ConversationLink = { event: number } | { turn: string };
+
+/** The page to open for a link, or nothing when `events` hold its row. */
+export function unheldLinkStart(
+  events: readonly ConversationReportEvent[] | undefined,
+  link: ConversationLink,
+): HistoryStart | undefined {
+  const seq =
+    "event" in link ? link.event : turnStartedEventSeq(events, link.turn);
+  const held =
+    seq !== undefined &&
+    events !== undefined &&
+    seq >= (events[0]?.seq ?? Infinity) &&
+    seq <= (events.at(-1)?.seq ?? -Infinity);
+  if (held) return undefined;
+  return "event" in link ? { event: String(link.event) } : { turn: link.turn };
 }

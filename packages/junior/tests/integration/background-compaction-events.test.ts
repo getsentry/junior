@@ -5,7 +5,7 @@ import {
   type Context,
 } from "@earendil-works/pi-ai";
 import { Type } from "@sinclair/typebox";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildAgentModelRequest } from "@/chat/agent/context-summary";
 import { botConfig } from "@/chat/config";
 import { getConversationEventStore } from "@/chat/db";
@@ -155,7 +155,7 @@ describe("background compaction events", () => {
 
 const MODEL_ID = botConfig.modelId;
 
-function assistant(text: string, input = 0): AssistantMessage {
+function assistant(text: string, input = 0, costUsd = 0): AssistantMessage {
   return {
     role: "assistant",
     content: [{ type: "text", text }],
@@ -168,20 +168,44 @@ function assistant(text: string, input = 0): AssistantMessage {
       cacheRead: 0,
       cacheWrite: 0,
       totalTokens: input,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      cost: {
+        input: 0,
+        output: costUsd,
+        cacheRead: 0,
+        cacheWrite: 0,
+        total: costUsd,
+      },
     },
     stopReason: "stop",
     timestamp: 0,
   };
 }
 
-/** A model stream that answers each call with the next text. */
-function replies(texts: string[]): { calls: Context[]; streamFn: StreamFn } {
+/**
+ * A model stream that answers each call with the next text, at $0.001. An
+ * `{ error }` entry is a provider error with no cost.
+ */
+function replies(texts: Array<string | { error: string }>): {
+  calls: Context[];
+  streamFn: StreamFn;
+} {
   const calls: Context[] = [];
   const streamFn: StreamFn = (_model, context) => {
-    const message = assistant(texts[calls.length]!);
+    const reply = texts[calls.length]!;
     calls.push({ ...context, messages: [...context.messages] });
     const stream = createAssistantMessageEventStream();
+    if (typeof reply !== "string") {
+      const error: AssistantMessage = {
+        ...assistant(""),
+        stopReason: "error",
+        errorMessage: reply.error,
+      };
+      queueMicrotask(() => {
+        stream.push({ type: "error", reason: "error", error });
+      });
+      return stream;
+    }
+    const message = assistant(reply, 0, 0.001);
     queueMicrotask(() => {
       stream.push({ type: "start", partial: message });
       stream.push({ type: "done", reason: "stop", message });
@@ -217,13 +241,9 @@ function liveAgent(inputSize: number): Agent {
   });
 }
 
-/**
- * Complete a Turn. The default start is before every event, so no ready
- * summary was passed over at its start.
- */
+/** Complete a Turn and return the background jobs that it sent. */
 async function completeTurn(
   agent: Agent,
-  turnStartedAtMs = 0,
 ): Promise<BackgroundCompactionMessage[]> {
   const sent: BackgroundCompactionMessage[] = [];
   await requestBackgroundCompaction({
@@ -232,7 +252,6 @@ async function completeTurn(
     conversationPrivacy: "private",
     modelId: MODEL_ID,
     queue: { send: async (message) => void sent.push(message) },
-    turnStartedAtMs,
   });
   return sent;
 }
@@ -300,12 +319,13 @@ describe("background compaction job", () => {
       {
         type: "compaction_prepared",
         ...request,
+        costUsd: 0.001,
         outcome: "ready",
         summary: "The person picked blue.",
       },
     ]);
 
-    // A summary that became ready during the Turn waits for the next Turn.
+    // A ready summary waits for the compaction threshold.
     await expect(completeTurn(liveAgent(mark))).resolves.toEqual([]);
     // A repeated delivery writes nothing.
     await processBackgroundCompaction(sent[0]!, { streamFn: model.streamFn });
@@ -328,55 +348,55 @@ describe("background compaction job", () => {
     ]);
     const [secondJob] = await completeTurn(liveAgent(mark));
     await processBackgroundCompaction(secondJob!, {
-      streamFn: replies(["No tags.", "Still no tags."]).streamFn,
+      streamFn: replies(["No tags.", { error: "Internal server error" }])
+        .streamFn,
     });
     await events.append(CONVERSATION_ID, [
       { createdAtMs: 3, data: userMessage("Third question.", 3) },
     ]);
 
+    // The attempt check reads only compaction facts, not the full history.
+    const loadCurrentHistory = vi.spyOn(events, "loadCurrentHistory");
     await expect(completeTurn(liveAgent(mark))).resolves.toEqual([]);
+    expect(loadCurrentHistory).not.toHaveBeenCalled();
+    loadCurrentHistory.mockRestore();
     const prepared = (await bookkeeping()).filter(
       (event) => event.type === "compaction_prepared",
     );
+    // A failed nudge request keeps the cost of the first request.
     expect(prepared).toMatchObject([
-      { outcome: "failed", errorType: "missing_summary" },
-      { outcome: "failed", errorType: "missing_summary" },
+      { outcome: "failed", errorType: "missing_summary", costUsd: 0.002 },
+      { outcome: "failed", errorType: "provider_server", costUsd: 0.001 },
     ]);
   });
 
-  it("requests again when a Turn started after a ready summary and did not swap it in", async () => {
+  it("keeps a ready summary for later Turns below the threshold", async () => {
     const events = getConversationEventStore();
     await events.append(CONVERSATION_ID, [
       { createdAtMs: 1, data: userMessage("First question.", 1) },
     ]);
     const mark = getAgentBackgroundCompactionMarkTokens(MODEL_ID);
-    const ready = async (job: BackgroundCompactionMessage | undefined) =>
-      await processBackgroundCompaction(job!, {
-        streamFn: replies(["<summary>Earlier work.</summary>"]).streamFn,
-      });
+    const [job] = await completeTurn(liveAgent(mark));
+    await processBackgroundCompaction(job!, {
+      streamFn: replies(["<summary>Earlier work.</summary>"]).streamFn,
+    });
 
-    await ready((await completeTurn(liveAgent(mark)))[0]);
-    await events.append(CONVERSATION_ID, [
-      { createdAtMs: 2, data: userMessage("Second question.", 2) },
-    ]);
-    // The History version is the same, so this Turn discarded the summary,
-    // for example because the history after its mark is too large now.
-    const [second] = await completeTurn(liveAgent(mark), Date.now());
-    expect(second).toBeDefined();
-    await ready(second);
-    await events.append(CONVERSATION_ID, [
-      { createdAtMs: 3, data: userMessage("Third question.", 3) },
-    ]);
-
-    // Two passed-over summaries reach the attempt limit.
-    await expect(completeTurn(liveAgent(mark), Date.now())).resolves.toEqual(
-      [],
-    );
+    // Later Turns at the mark stay below the threshold, so the summary is
+    // not swapped in yet. They do not pay for another summary.
+    for (const [seq, text] of [
+      [2, "Second question."],
+      [3, "Third question."],
+    ] as const) {
+      await events.append(CONVERSATION_ID, [
+        { createdAtMs: seq, data: userMessage(text, seq) },
+      ]);
+      await expect(completeTurn(liveAgent(mark))).resolves.toEqual([]);
+    }
     expect(
       (await bookkeeping()).filter(
         (event) => event.type === "compaction_requested",
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
   });
 
   it("writes nothing when the history was replaced before the job ran", async () => {

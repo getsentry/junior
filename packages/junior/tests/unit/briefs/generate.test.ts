@@ -364,7 +364,7 @@ describe("generateBrief", () => {
     );
   });
 
-  it("scales output caps for medium and large records", async () => {
+  it("scales output caps for medium and large records and indexes every link", async () => {
     const cases = [
       {
         userMessages: 4,
@@ -390,6 +390,21 @@ describe("generateBrief", () => {
           createdAtMs: index,
           turnId: `turn-${index}`,
         })),
+        codeChanges: Array.from({ length: 45 }, (_, index) => ({
+          repository: "getsentry/junior",
+          number: index + 1,
+          title: `Change ${index + 1}`,
+          url: `https://github.com/getsentry/junior/pull/${index + 1}`,
+          state: "merged" as const,
+          openedAt: "2026-01-01T00:00:00.000Z",
+        })),
+        resources: [
+          {
+            label: "getsentry/junior#99 · Isolate shared module state",
+            url: "https://github.com/getsentry/junior/issues/99",
+            status: "open",
+          },
+        ],
       };
       const generation = await generateBrief({
         input: sizedInput,
@@ -434,6 +449,11 @@ describe("generateBrief", () => {
         facts: generation.brief.facts.length,
         keywords: generation.brief.keywords.length,
       }).toEqual(testCase.caps);
+      // Stored links stop at the cap, but search still finds the issue.
+      expect(generation.brief.links).toHaveLength(40);
+      expect(generation.searchText).toContain(
+        "getsentry/junior#99 · Isolate shared module state",
+      );
     }
   });
 });

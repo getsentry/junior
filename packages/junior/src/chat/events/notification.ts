@@ -14,7 +14,6 @@ import type {
   ConversationMessageEvent,
   ConversationMessageMeta,
 } from "@/chat/state/conversation";
-import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   appendAndEnqueueInboundMessage,
@@ -206,16 +205,18 @@ function readEventTaskFacts(
 }
 
 /**
- * Write the agent input for an Event batch.
+ * Write the agent inputs for an Event batch, one prompt content part each.
  *
- * One Event keeps its own text. Several Watch Events become one task message
+ * One Event keeps its own text. Several Watch Events become one `<task>`
  * with one group per Watch, so shared instructions appear once. Entries
- * without task facts, such as child agent results, keep their own text after
- * the task message.
+ * without task facts, such as child agent results, keep their own text as
+ * their own inputs after the task. `rendered` replaces the text of an entry
+ * by inbound message id, such as a person change to a Review item.
  */
-export function renderEventBatchText(
+export function renderEventBatchInputs(
   messages: readonly InboundMessage[],
-): string {
+  rendered: ReadonlyMap<string, string> = new Map(),
+): string[] {
   const groups = new Map<
     string,
     {
@@ -249,6 +250,7 @@ export function renderEventBatchText(
     group.events.push({
       eventType: metadata.event.eventType,
       guidance: facts.guidance,
+      source: metadata.event.namespace,
       trustedSummary: facts.trustedSummary,
       verifiedDetails: facts.verifiedDetails,
       externalText: facts.externalText,
@@ -256,16 +258,16 @@ export function renderEventBatchText(
     });
   }
 
+  const ownText = (message: InboundMessage) =>
+    rendered.get(message.inboundMessageId) ?? message.input.text.trim();
   const taskCount = messages.length - others.length;
   if (taskCount < 2) {
-    return joinMailboxText(messages);
+    return messages.map(ownText).filter(Boolean);
   }
   return [
     renderTaskBatchInput({ groups: [...groups.values()] }),
-    joinMailboxText(others),
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+    ...others.map(ownText).filter(Boolean),
+  ];
 }
 
 /** Return the conversation message entry for one Event input. */
@@ -290,18 +292,19 @@ function messageEvent(message: InboundMessage): ConversationMessageEvent[] {
 /**
  * Return the saved Message fields for the Event inputs of one Turn.
  *
- * A relay of a person change to a Review item is not one of the Message's
- * own Events: its record goes to `reviewItemChanges`, and the dashboard shows
- * it as a change row. The Message's own Event is its first Watch Event, the
+ * A person change to a Review item is not one of the Message's own Events:
+ * its record goes to `reviewItemChanges`, and the dashboard shows it as a
+ * change row. The Message's own Event is its first Watch Event, the
  * kind the task message counts, or else its first other input, such as an
  * agent result. `events` lists the Watch Events when several arrived. When
- * relays share the Message with one own Event, `events` lists that Event, so
+ * changes share the Message with one own Event, `events` lists that Event, so
  * a reader can tell it from a Message that only records changes.
  */
 export function eventBatchMessageMeta(
   messages: readonly InboundMessage[],
 ): Pick<
   ConversationMessageMeta,
+  | "eventNamespace"
   | "eventObjectType"
   | "eventType"
   | "events"
@@ -324,6 +327,7 @@ export function eventBatchMessageMeta(
         : [];
   return {
     eventType: metadata.event.eventType,
+    eventNamespace: metadata.event.namespace,
     eventObjectType: metadata.event.objectType,
     ...(metadata.event.trustedSummary
       ? { trustedSummary: metadata.event.trustedSummary }
@@ -435,7 +439,11 @@ export async function enqueueEventNotification(args: {
         id: args.subscription.id,
       },
       task,
-      text: renderTaskInput(task),
+      text: renderTaskInput({
+        ...task,
+        event: args.event.eventType,
+        source: args.event.namespace,
+      }),
     }),
     queue: args.queue,
     queueDelayMs: EVENT_WAIT_MS,

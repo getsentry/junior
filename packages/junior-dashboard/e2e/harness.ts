@@ -28,6 +28,27 @@ export function withRequestedMailbox<T extends { conversationId: string }>(
     : report;
 }
 
+/**
+ * Answer the versions poll with a tree token for the open Conversation, so
+ * a mocked detail that sends the same token refreshes when it moves, as on
+ * the server. The other tokens stay fixed.
+ */
+export async function routeConversationVersion(
+  page: Page,
+  conversationVersion: () => string,
+): Promise<void> {
+  await page.route("**/api/versions*", (route) =>
+    route.fulfill({
+      json: {
+        conversation: conversationVersion(),
+        conversations: "mock",
+        reviewItems: "mock",
+        spend: "mock",
+      },
+    }),
+  );
+}
+
 export type DashboardE2eServer = {
   baseURL: string;
   close(): Promise<void>;
@@ -44,6 +65,8 @@ export type DashboardE2eServer = {
  */
 export async function resetDashboardMockState(): Promise<void> {
   process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
+  process.env.JUNIOR_ENCRYPTION_KEYS ??=
+    "e2e:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
   const { resetMockDashboardState } = await import("../dist/app.js");
   resetMockDashboardState();
 }
@@ -83,9 +106,11 @@ async function writeResponse(res: ServerResponse, response: Response) {
 
 /** Starts the built dashboard with mock conversations for a browser spec. */
 export async function startDashboardE2eServer(
-  options: { basePath?: string } = {},
+  options: { authRequired?: boolean; basePath?: string } = {},
 ): Promise<DashboardE2eServer> {
   process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
+  process.env.JUNIOR_ENCRYPTION_KEYS ??=
+    "e2e:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
   const { createDashboardApp } = await import("../dist/app.js");
   const app = createDashboardApp({
     allowedDomains: ["example.com"],
@@ -106,6 +131,7 @@ export async function startDashboardE2eServer(
         return Response.redirect("https://accounts.google.com", 302);
       },
     },
+    authRequired: options.authRequired,
     basePath: options.basePath,
     mockConversations: true,
   });
@@ -159,7 +185,7 @@ export async function mockDashboardApis(
           description: "Public memories Junior can use across conversations.",
           id: "memories",
           label: "Memories",
-          navigation: "primary",
+          navigation: "profile",
           pluginDisplayName: "Memory",
           pluginName: "memory",
         },
@@ -346,10 +372,13 @@ export async function mockDashboardApis(
         visibility: "public" as const,
       },
       id,
-      instruction:
-        kind === "scheduled"
-          ? "Send the weekly project summary"
-          : "Summarize the closed issue",
+      task: {
+        kind: "instruction" as const,
+        instruction:
+          kind === "scheduled"
+            ? "Send the weekly project summary"
+            : "Summarize the closed issue",
+      },
       kind,
       credentialMode: "creator",
       ownedByViewer: true,
@@ -378,6 +407,8 @@ export async function mockDashboardApis(
         kind === "scheduled"
           ? "Weekly project summary"
           : "Closed issue summary",
+      recentRuns: [],
+      totalCostUsd: kind === "scheduled" ? 18.62 : 0.84,
       totalRuns: kind === "scheduled" ? 48 : 7,
       ...(kind === "scheduled"
         ? {
@@ -404,6 +435,7 @@ export async function mockDashboardApis(
       return {
         blocked: index % 13 === 0 ? 1 : 0,
         completed: index % 4 === 0 ? 2 : index % 2 === 0 ? 1 : 0,
+        costUsd: index % 2 === 0 ? 0.21 : 0,
         date,
         failed: index % 9 === 0 ? 1 : 0,
       };

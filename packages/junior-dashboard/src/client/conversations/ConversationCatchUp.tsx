@@ -47,15 +47,19 @@ export function ConversationCatchUpCard() {
   const cardRef = useRef<HTMLDivElement>(null);
   const shown = state?.data ? "data" : state?.pending ? "pending" : undefined;
   // The transcript holds the row below the reader's place, so the card grows
-  // up, out of view. Bring it back after that scroll fix runs.
+  // up, out of view. Bring it back after that scroll fix runs. The fix runs
+  // in a ResizeObserver callback, which comes after animation frame callbacks
+  // in the same frame, so wait for the next frame.
   useEffect(() => {
     if (!shown) return;
-    const frame = requestAnimationFrame(() => {
-      // Keep the "New" marker above the card in view too.
-      const marker = cardRef.current?.closest(
-        "[data-transcript-unread-marker]",
-      );
-      marker?.scrollIntoView({ block: "nearest" });
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        // Keep the "New" marker above the card in view too.
+        const marker = cardRef.current?.closest(
+          "[data-transcript-unread-marker]",
+        );
+        marker?.scrollIntoView({ block: "nearest" });
+      });
     });
     return () => cancelAnimationFrame(frame);
   }, [shown]);
@@ -87,7 +91,7 @@ export function ConversationCatchUpCard() {
           <Button
             className="-mb-1 h-7 justify-self-center gap-1.5 px-2 text-xs"
             onClick={jumpToLatest}
-            variant="quiet"
+            variant="ghost"
           >
             <ArrowDown aria-hidden="true" size={14} strokeWidth={2} />
             Jump to latest
