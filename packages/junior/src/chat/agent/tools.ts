@@ -52,6 +52,7 @@ import {
 } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { planToolExposure } from "@/chat/tool-exposure";
+import { renderScriptTools } from "@/chat/codemode/tool";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { getWorkspace } from "@/chat/workspaces/store";
 import { getDb } from "@/chat/db";
@@ -325,6 +326,8 @@ export interface ToolWiring {
   close(): Promise<void>;
   /** Tools this Turn cannot run. They stay in the tool list. */
   disabledTools: DisabledToolPromptContext[];
+  /** The tools that a Code Mode script can call, for `<script-tools>`. */
+  scriptTools: string;
   toolGuidance: Array<{
     name: string;
     promptGuidelines: AnyToolDefinition["promptGuidelines"];
@@ -707,6 +710,7 @@ export async function wireAgentTools(
       }
     },
     disabledTools,
+    scriptTools: renderScriptTools(plannedToolExposure.scriptTools),
     toolGuidance,
     toolRuntimeContext,
   };

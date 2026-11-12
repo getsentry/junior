@@ -9,6 +9,13 @@ export const TURN_CONTEXT_TAG = "runtime-turn-context";
 export const SESSION_CONTEXT_SECTION_TAG = "runtime";
 
 /**
+ * Turn context section with the tools a Code Mode script can call. A Turn
+ * adds it only when it differs from the latest copy in history, and context
+ * compaction keeps only that latest copy.
+ */
+export const SCRIPT_TOOLS_SECTION_TAG = "script-tools";
+
+/**
  * Turn context sections that are true only for the Turn that received them.
  * Context compaction removes them from the context of earlier Turns.
  */

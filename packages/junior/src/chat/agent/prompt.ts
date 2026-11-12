@@ -16,6 +16,7 @@ import {
   sandboxSkillPathResolution,
 } from "@/chat/sandbox/paths";
 import {
+  buildScriptToolsSection,
   buildTurnContextPrompt,
   type DisabledToolPromptContext,
 } from "@/chat/prompt";
@@ -32,6 +33,7 @@ import {
 } from "@/chat/repository-instructions";
 import {
   hasRuntimeTurnContext,
+  latestTurnContextSection,
   retainRuntimeTurnContext,
   stripRuntimeTurnContext,
 } from "@/chat/pi/transcript";
@@ -42,6 +44,7 @@ import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
+import { SCRIPT_TOOLS_SECTION_TAG } from "@/chat/turn-context-tag";
 import { escapeXml } from "@/chat/xml";
 import { listWorkspaces } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
@@ -625,6 +628,8 @@ export async function assemblePrompt(args: {
   >;
   spanContext: LogContext;
   disabledTools: DisabledToolPromptContext[];
+  /** The tools that a Code Mode script can call, from `renderScriptTools`. */
+  scriptTools: string;
   toolGuidance: Array<{
     name: string;
     promptGuidelines: AnyToolDefinition["promptGuidelines"];
@@ -673,8 +678,19 @@ export async function assemblePrompt(args: {
     workspaces,
   } = args.turnContext;
   const disabledTools = loadsTurnContext ? args.disabledTools : [];
+  // Send the script tools again only when they changed. Context compaction
+  // keeps the latest copy, so this also holds after a compaction.
+  const scriptTools =
+    loadsTurnContext &&
+    latestTurnContextSection(
+      promptHistoryMessages,
+      SCRIPT_TOOLS_SECTION_TAG,
+    ) !== buildScriptToolsSection(args.scriptTools)
+      ? args.scriptTools
+      : undefined;
   const turnContextPrompt =
     needsBootstrapContextForPrompt ||
+    scriptTools ||
     pluginUserPromptContributions.length > 0 ||
     (conversationNotes?.length ?? 0) > 0 ||
     disabledTools.length > 0 ||
@@ -686,6 +702,7 @@ export async function assemblePrompt(args: {
           disabledTools,
           includeSessionContext: needsBootstrapContextForPrompt,
           pluginPromptContributions: pluginUserPromptContributions,
+          scriptTools,
           toolGuidance: args.toolGuidance,
           userCustomization,
           workspaces,

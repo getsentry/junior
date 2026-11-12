@@ -88,6 +88,12 @@ describe("model message history", () => {
     const after = requests[2]!;
     expect(JSON.stringify(after.system)).toBe(JSON.stringify(before.system));
     expect(JSON.stringify(after.tools)).toBe(JSON.stringify(before.tools));
+    // The first Turn sends the script tools. The same tools are not sent
+    // again.
+    const scriptToolsCount = (messages: unknown) =>
+      JSON.stringify(messages).split("<script-tools>\\n").length - 1;
+    expect(scriptToolsCount(requests[0]!.messages)).toBe(1);
+    expect(scriptToolsCount(after.messages)).toBe(1);
     // Do not sort in the assertion: the real provider bytes must already match.
     expect(
       JSON.stringify(

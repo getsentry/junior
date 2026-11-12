@@ -31,6 +31,7 @@ import { getConversationEventStore } from "@/chat/db";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
   isStandaloneRuntimeContextMessage,
+  latestTurnContextSection,
   retainRuntimeTurnContext,
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
@@ -46,6 +47,7 @@ import {
 } from "@/chat/services/context-compaction-marker";
 import {
   REQUEST_CONTEXT_SECTION_TAG,
+  SCRIPT_TOOLS_SECTION_TAG,
   SESSION_CONTEXT_SECTION_TAG,
   TURN_CONTEXT_TAG,
 } from "@/chat/turn-context-tag";
@@ -208,9 +210,8 @@ function isSessionTurnContext(text: string | undefined): text is string {
   );
 }
 
-/** Remove the sections that only the Turn that received them can use. */
-function withoutRequestContext(text: string): string {
-  return Object.values(REQUEST_CONTEXT_SECTION_TAG).reduce(
+function withoutSections(text: string, tags: string[]): string {
+  return tags.reduce(
     (result, tag) =>
       result.replace(
         new RegExp(`\\n\\n<${tag}>\\n[\\s\\S]*?\\n</${tag}>`, "g"),
@@ -218,6 +219,44 @@ function withoutRequestContext(text: string): string {
       ),
     text,
   );
+}
+
+/** Remove the sections that only the Turn that received them can use. */
+function withoutRequestContext(text: string): string {
+  return withoutSections(text, Object.values(REQUEST_CONTEXT_SECTION_TAG));
+}
+
+/**
+ * Put one copy of the latest `<script-tools>` in the first Turn context part
+ * and remove the others. Pass none when kept history already has the latest.
+ */
+function withLatestScriptTools(
+  content: unknown[],
+  scriptTools: string | undefined,
+): unknown[] {
+  const closingTag = `\n</${TURN_CONTEXT_TAG}>`;
+  let added = !scriptTools;
+  const result = content.map((part) => {
+    const text = textPart(part);
+    if (!text?.startsWith(`<${TURN_CONTEXT_TAG}>`)) {
+      return part;
+    }
+    let stripped = withoutSections(text, [SCRIPT_TOOLS_SECTION_TAG]);
+    if (!added && stripped.endsWith(closingTag)) {
+      stripped = `${stripped.slice(0, -closingTag.length)}\n\n${scriptTools}${closingTag}`;
+      added = true;
+    }
+    return { ...(part as object), text: stripped };
+  });
+  return added
+    ? result
+    : [
+        {
+          type: "text",
+          text: `<${TURN_CONTEXT_TAG}>\n\n${scriptTools}${closingTag}`,
+        },
+        ...result,
+      ];
 }
 
 /** Find the latest session context and keep only its session sections. */
@@ -250,12 +289,17 @@ function effectiveRuntimeContext(messages: PiMessage[]): {
   }
   const effectiveMessages =
     latestBootstrapIndex < 0 ? messages : messages.slice(latestBootstrapIndex);
-  return runtimeContextContent(effectiveMessages, effectiveMessages);
+  return runtimeContextContent(
+    effectiveMessages,
+    effectiveMessages,
+    latestTurnContextSection(messages, SCRIPT_TOOLS_SECTION_TAG),
+  );
 }
 
 function runtimeContextContent(
   messages: PiMessage[],
   agentsMessages: PiMessage[],
+  scriptTools: string | undefined,
 ): {
   content: unknown[];
   timestamp: number;
@@ -264,8 +308,11 @@ function runtimeContextContent(
   const firstAgentsIndex = allContent.findIndex(
     (part) => textPart(part)?.startsWith("# AGENTS.md instructions") === true,
   );
-  const content = allContent.filter(
-    (part) => textPart(part)?.startsWith("# AGENTS.md instructions") !== true,
+  const content = withLatestScriptTools(
+    allContent.filter(
+      (part) => textPart(part)?.startsWith("# AGENTS.md instructions") !== true,
+    ),
+    scriptTools,
   );
   const visibleAgents = findVisibleAgentsInstructions(agentsMessages);
   if (visibleAgents?.active === true) {
@@ -318,7 +365,7 @@ function runtimeContextMessage(
  *
  * Request context, such as plugin context and disabled tools, is true only for
  * the Turn that received it. From earlier Turns, keep only the latest session
- * context and AGENTS.md instructions.
+ * context, `<script-tools>`, and AGENTS.md instructions.
  */
 function turnRuntimeContextMessage(
   messages: PiMessage[],
@@ -343,6 +390,10 @@ function turnRuntimeContextMessage(
     runtimeContextContent(
       sessionContext ? [sessionContext, ...turnContext] : turnContext,
       [...earlierContext, ...turnContext],
+      latestTurnContextSection(
+        [...earlierContext, ...turnContext],
+        SCRIPT_TOOLS_SECTION_TAG,
+      ),
     ),
     timestamp,
   );
@@ -350,8 +401,8 @@ function turnRuntimeContextMessage(
 
 /**
  * Build the runtime context of summarized history that the kept history
- * does not carry: the latest session context and the AGENTS.md
- * instructions. Request context of earlier Turns is left out.
+ * does not carry: the latest session context, `<script-tools>`, and the
+ * AGENTS.md instructions. Request context of earlier Turns is left out.
  */
 export function summarizedRuntimeContextMessage(
   summarized: PiMessage[],
@@ -368,6 +419,9 @@ export function summarizedRuntimeContextMessage(
     runtimeContextContent(
       sessionContext ? [sessionContext] : [],
       findVisibleAgentsInstructions(kept) ? [] : earlierContext,
+      latestTurnContextSection(keptContext, SCRIPT_TOOLS_SECTION_TAG)
+        ? undefined
+        : latestTurnContextSection(earlierContext, SCRIPT_TOOLS_SECTION_TAG),
     ),
   );
 }
