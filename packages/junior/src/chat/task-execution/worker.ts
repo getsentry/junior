@@ -41,6 +41,7 @@ import {
   requestAnotherSlice,
   startConversationWork,
   type AttemptFailure,
+  type BeforeWorkStops,
   type ConversationWorkState,
   type InboundMessage,
 } from "./store";
@@ -106,6 +107,7 @@ export interface ConversationWorkProcessResult {
 }
 
 export interface ProcessConversationWorkOptions {
+  beforeWorkStops?: BeforeWorkStops;
   checkInIntervalMs?: number;
   conversationStore?: ConversationStore;
   /** Slack installation lookup for work that runs after the Run ends. */
@@ -141,6 +143,7 @@ async function requestLostLeaseRecovery(args: {
     state: args.options.state,
   });
   const retry = await recordConversationRetry({
+    beforeWorkStops: args.options.beforeWorkStops,
     conversationId: args.conversationId,
     leaseToken: args.leaseToken,
     conversationStore: args.options.conversationStore,
@@ -933,6 +936,7 @@ async function processConversationWorkInContext(
         const retry = failure
           ? failure.status
           : await recordConversationRetry({
+              beforeWorkStops: options.beforeWorkStops,
               conversationId,
               leaseToken: lease.leaseToken,
               conversationStore: options.conversationStore,

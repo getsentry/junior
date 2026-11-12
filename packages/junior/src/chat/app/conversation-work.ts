@@ -14,6 +14,7 @@ import { createPausedTurns } from "@/chat/task-execution/turn-wake";
 import {
   buildDispatchRoutingContext,
   createAgentDispatchConversationWorker,
+  failStoppedDispatch,
   resolveAgentDispatchId,
 } from "@/chat/agent-dispatch/work";
 import {
@@ -252,6 +253,7 @@ export function createConversationWork(
     return result;
   };
   return {
+    beforeWorkStops: failStoppedDispatch,
     conversationStore: options.conversationStore,
     getSlackAdapter: options.getSlackAdapter,
     queue: options.queue,

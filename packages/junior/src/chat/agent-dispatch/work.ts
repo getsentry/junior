@@ -37,6 +37,7 @@ import {
   claimDispatchMailboxAppend,
   confirmDispatchMailboxAppend,
   getDispatchConversationId,
+  getDispatchIdForConversation,
   getDispatchInputMessageId,
   getDispatchRecord,
   getDispatchTurnId,
@@ -556,4 +557,20 @@ export function createAgentDispatchConversationWorker(
       return { status: "completed" };
     }
   };
+}
+
+/**
+ * Fail the dispatch of stopped Conversation work, so the Automation run that
+ * waits on it settles instead of blocking later runs.
+ */
+export async function failStoppedDispatch(
+  conversationId: string,
+): Promise<void> {
+  const dispatchId = getDispatchIdForConversation(conversationId);
+  if (dispatchId) {
+    await markDispatchFailed(
+      dispatchId,
+      "Dispatch work stopped after repeated failed attempts.",
+    );
+  }
 }
