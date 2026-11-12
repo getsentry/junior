@@ -13,6 +13,7 @@ function body(name: string): string {
 
 const CHECKS = "check results";
 const WORK_LOG = "work log";
+const FILE_LIST = "file list";
 const CONVERSATION = "conversation";
 const REASON = "why the change is needed";
 
@@ -26,10 +27,10 @@ describeEval(
       await run({ body: body("pr-2420-draft"), reject: [WORK_LOG, CHECKS] });
     });
 
-    it("when a draft lists every changed path and its checks, it rejects the checks", async ({
+    it("when a draft lists every changed path and its checks, it rejects the file list and the checks", async ({
       run,
     }) => {
-      await run({ body: body("pr-2461-draft"), reject: [CHECKS] });
+      await run({ body: body("pr-2461-draft"), reject: [FILE_LIST, CHECKS] });
     });
 
     it("when a draft explains how a tool name was chosen, it rejects the work log", async ({
