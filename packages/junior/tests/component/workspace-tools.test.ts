@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
   createLocalSource,
   createSlackSource,
@@ -24,6 +25,11 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { createWorkspaceTools } from "@/chat/workspaces/tools";
 import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
 import { readStats } from "@/stats";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
 
 const { sendNextWorkspaceSnapshotJob, sendWorkspaceSnapshotJob } = vi.hoisted(
   () => ({
@@ -106,6 +112,7 @@ describe("Workspace tools", () => {
         conversationId: conversationId!,
       } as const;
       const workspaceTools = createWorkspaceTools({
+        turnTools: rootTurnTools,
         conversationId: conversationId!,
         destination,
         egress: { fetch: async () => new Response("ok") },
@@ -371,6 +378,7 @@ describe("Workspace tools", () => {
           activeWorkspaceId: () => undefined,
           switch: switchWorkspace,
         },
+        turnTools: rootTurnTools,
       } satisfies ToolRuntimeContext;
 
       const tools = createWorkspaceTools(context);
@@ -443,6 +451,7 @@ describe("Workspace tools", () => {
           activeWorkspaceId: () => undefined,
           switch: switchWorkspace,
         },
+        turnTools: rootTurnTools,
       } satisfies ToolRuntimeContext;
 
       const tools = createWorkspaceTools(context);
@@ -507,6 +516,7 @@ describe("Workspace tools", () => {
         activeWorkspaceId: () => undefined,
         switch: vi.fn(),
       },
+      turnTools: rootTurnTools,
     } satisfies ToolRuntimeContext;
 
     const tools = createWorkspaceTools(context);
@@ -567,6 +577,7 @@ describe("Workspace tools", () => {
         activeWorkspaceId: () => undefined,
         switch: switchWorkspace,
       },
+      turnTools: rootTurnTools,
     } satisfies ToolRuntimeContext;
 
     let subscribedBeforeSend = false;

@@ -79,7 +79,7 @@ async function sendParentMessage(harness: Harness, toolCallId: string) {
       state: harness.state,
     })!,
   ).execute!(
-    { text: "Also check the retry path.", to: "researcher" },
+    { text: "Also check the retry path.", to: harness.agentName },
     {
       toolCallId,
     },
@@ -269,11 +269,11 @@ describe("Thread input", () => {
         agentInvocationId: expect.any(String),
       });
       // The person's Turn uses the Thread's own Destination and Location,
-      // copies of its root's, and cannot start or message child agents.
+      // copies of its root's. Tool wiring reads its agent tools from
+      // `turnBehavior`.
       expect(personRun).toMatchObject({
         actor: webTestActor,
         destination: slackDestination,
-        disabledFeatures: ["subagents"],
         // Not a Slack run: only a root delivers to its Location.
         surface: "api",
       });
@@ -295,12 +295,13 @@ describe("Thread input", () => {
         destination: slackDestination,
         kind: "thread",
       });
-      // Only the Agent invocation reports to the parent.
+      // A person's Turn sends nothing to the parent, and a completed Agent
+      // invocation without a `reply` sends nothing either.
       const parentWork = await getConversationWorkState({
         conversationId: slackParentConversationId,
         state: harness.state,
       });
-      expect(parentWork?.messages).toHaveLength(1);
+      expect(parentWork?.messages ?? []).toEqual([]);
     } finally {
       await harness.close();
     }

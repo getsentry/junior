@@ -1,3 +1,4 @@
+import { Bot } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -6,17 +7,18 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import type {
   ConversationDetailReport,
   ConversationFeed,
+  ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "./queries";
 import { ConversationSidePanelLayout } from "./ConversationSidePanelLayout";
+import { useDetailsDefaultOpen } from "./conversationSidebarLayout";
 import {
   applyPendingArchiveUpdate,
   useArchiveConversation,
@@ -25,27 +27,31 @@ import {
 } from "./conversationArchive";
 import { usePinConversation } from "./usePinConversation";
 import { useConversationSubscription } from "./useConversationSubscription";
-import { useMarkConversationUnread } from "./useMarkConversationUnread";
+import { useConversationDelivery } from "./useConversationDelivery";
+import { useRenameConversation } from "./useRenameConversation";
+import { RenameConversationDialog } from "./RenameConversationDialog";
 import { conversationIsResponding, isChildConversation } from "./transcript";
 import {
   ConversationCatchUpContext,
   useConversationCatchUp,
 } from "./conversationCatchUpState";
 import { buildConversationMarkdown } from "../markdownExport";
-import { CopyButton } from "../components/CopyButton";
 import {
   CONVERSATION_EVENT_PARAM,
   CONVERSATION_REVIEW_OPEN,
   CONVERSATION_REVIEW_PARAM,
   CONVERSATION_TURN_PARAM,
   parseConversationEventSeq,
-  requestsReplyFocus,
+  readOpenEventLog,
+  readReplyFocus,
   turnStartedEventSeq,
 } from "./conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
 import { ContinueInSlackDialog } from "./ContinueInSlackDialog";
 import { ConversationPageDock } from "./ConversationPageDock";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
+import { readDetailsOpen, saveDetailsOpen } from "./conversationSidebarLayout";
+import { useDetailsPanel } from "../components/DetailsPanel";
 import {
   ConversationMemoryContext,
   memoryAnchorKey,
@@ -70,7 +76,6 @@ import {
   type TurnContextPanel,
   type TurnContextSelection,
 } from "./TranscriptTurnContextView";
-import { cn } from "../styles";
 import { DashboardApiError } from "../http";
 import { ConversationForkLinks } from "./ConversationForkLinks";
 import {
@@ -78,6 +83,7 @@ import {
   childConversationStatus,
 } from "./ChildConversationStatus";
 import { useWaitingConversations } from "../review-desk/queries";
+import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import { conversationContextTags } from "./ConversationContextTags";
 import { conversationLinks } from "./ConversationLinkedWork";
 import {
@@ -90,14 +96,17 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
   conversationFromDetail,
-  isIdleConversation,
   visualStatusForConversation,
 } from "../format";
 import { useDocumentTitle } from "../documentTitle";
 import { Card } from "../components/layout/Card";
 import { useRegisterMobileHeaderBack } from "../components/layout/DashboardChrome";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
-import { ChatLayout } from "./ChatLayout";
+import {
+  ChatLayout,
+  TranscriptColumn,
+  transcriptScrollClassName,
+} from "./ChatLayout";
 import type { ConversationComposerHandle } from "./ConversationComposer";
 import { ConversationOutline } from "./ConversationOutline";
 import {
@@ -106,6 +115,7 @@ import {
   useQuickQuestionThread,
 } from "./QuickQuestion";
 import { Transcript } from "./TranscriptView";
+import type { TranscriptAskReveal } from "./ConversationTranscript";
 import {
   readConversationStartPosition,
   useMarkConversationRead,
@@ -121,23 +131,15 @@ import {
 } from "./transcriptAroundHistory";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import {
-  SubagentTranscriptDrawer,
-  type SubagentTranscriptTarget,
-} from "./SubagentTranscriptDrawer";
+  ConversationDrawer,
+  type ConversationDrawerTarget,
+} from "./ConversationDrawer";
 import type {
   ConversationTranscript,
   TranscriptViewSubagentPart,
 } from "../types";
 
 export { liveModelId } from "./ConversationMeta";
-
-const detailsDefaultOpenQuery = "(min-width: 1440px)";
-
-function subscribeToDetailsLayout(onChange: () => void) {
-  const media = window.matchMedia(detailsDefaultOpenQuery);
-  media.addEventListener("change", onChange);
-  return () => media.removeEventListener("change", onChange);
-}
 
 /** Render the selected conversation transcript inside the workspace. */
 export function ConversationPage(props: {
@@ -151,17 +153,13 @@ export function ConversationPage(props: {
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
   sidebarToggle?: ReactNode;
 }) {
-  const detailsDefaultOpen = useSyncExternalStore(
-    subscribeToDetailsLayout,
-    () => window.matchMedia(detailsDefaultOpenQuery).matches,
-    () => false,
-  );
+  const detailsDefaultOpen = useDetailsDefaultOpen();
   const pageRef = useRef<HTMLDivElement>(null);
   const replyRef = useRef<Pick<ConversationComposerHandle, "appendText">>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const focusDetailsOnOpen = useRef(false);
   const [subagentTarget, setSubagentTarget] =
-    useState<SubagentTranscriptTarget>();
+    useState<ConversationDrawerTarget>();
   const [searchParams, setSearchParams] = useSearchParams();
   // The URL owns the open event log entry so readers can share that link.
   const selectedEventSeq = parseConversationEventSeq(
@@ -185,9 +183,18 @@ export function ConversationPage(props: {
   useEffect(() => {
     if (reviewOpen) setDetailsChoice(true);
   }, [reviewOpen]);
-  const detailsOpen = detailsChoice ?? (reviewOpen || detailsDefaultOpen);
+  const panelFits = useDetailsPanel();
+  const [savedDetailsOpen] = useState(readDetailsOpen);
+  // A saved open choice applies only beside the transcript, so a narrow
+  // screen does not load into a bottom sheet.
+  const detailsDefault =
+    savedDetailsOpen === undefined
+      ? detailsDefaultOpen
+      : savedDetailsOpen && panelFits;
+  const detailsOpen = detailsChoice ?? (reviewOpen || detailsDefault);
   const closeDetails = useCallback(() => {
     setDetailsChoice(false);
+    saveDetailsOpen(false);
     setSearchParams(
       (current) => {
         if (!current.has(CONVERSATION_REVIEW_PARAM)) return current;
@@ -206,6 +213,11 @@ export function ConversationPage(props: {
   // memory or outline jump stay mounted, so the jump finds its row and the
   // popover keeps it.
   const [revealSeq, setRevealSeq] = useState<number>();
+  // The docked question whose transcript row shows, and the Turn that
+  // asked it, so a row outside the loaded pages can load.
+  const [askReveal, setAskReveal] = useState<
+    TranscriptAskReveal & { turnId?: string }
+  >();
   // The page stays mounted across Conversations. Memory state belongs to one.
   const [memoryConversationId, setMemoryConversationId] = useState(
     props.conversationId,
@@ -215,6 +227,7 @@ export function ConversationPage(props: {
     setMemoryPopover(undefined);
     setMemoryJump(undefined);
     setRevealSeq(undefined);
+    setAskReveal(undefined);
   }
   const quickQuestion = useQuickQuestionThread(props.conversationId);
   // Event details and turn context also show over a Quick question.
@@ -230,9 +243,18 @@ export function ConversationPage(props: {
       ?.querySelector<HTMLButtonElement>('[data-slot="details-panel-close"]')
       ?.focus({ preventScroll: true });
   }, [showDetails]);
+  // A sidebar row menu opens the event log with navigation state. The page
+  // can be open already, so each new navigation asks once.
+  const location = useLocation();
+  const eventLogRequested = readOpenEventLog(location.state);
   const [viewState, setView] = useState<TranscriptViewMode>(() =>
-    eventOpen ? "raw" : "rich",
+    eventOpen || eventLogRequested ? "raw" : "rich",
   );
+  const [eventLogLocationKey, setEventLogLocationKey] = useState(location.key);
+  if (eventLogRequested && eventLogLocationKey !== location.key) {
+    setEventLogLocationKey(location.key);
+    setView("raw");
+  }
   const view = eventOpen ? "raw" : viewState;
   const [search, setSearch] = useState("");
   const searchMatch = useTranscriptSearchMatch(search);
@@ -302,7 +324,9 @@ export function ConversationPage(props: {
   };
   const pin = usePinConversation(conversationId);
   const subscription = useConversationSubscription(conversationId);
-  const markUnread = useMarkConversationUnread(conversationId);
+  const delivery = useConversationDelivery(conversationId);
+  const rename = useRenameConversation(conversationId);
+  const [renaming, setRenaming] = useState(false);
   const markRead = useMarkConversationRead(conversationId);
   // Focus or a click in the composer counts as reading, like transcript input.
   const [composerEngaged, setComposerEngaged] = useState(false);
@@ -383,7 +407,6 @@ export function ConversationPage(props: {
     conversationFromDetail(detail.data) ?? feedConversation,
     props.pendingArchiveUpdate,
   );
-  const unread = Boolean(conversation?.unread);
   const conversationDetail = detail.data;
   const links = conversationLinks(conversationDetail);
   const title =
@@ -391,18 +414,19 @@ export function ConversationPage(props: {
     conversationDisplayTitle(conversation);
   useDocumentTitle(detail.data || conversation ? title : undefined);
   // A Task takes input only from its parent agent, and it runs without
-  // interactive auth, so it has no approval to show.
+  // interactive auth, so it has no approval to show. Anyone can join a public
+  // Conversation by posting in it (`canAddConversationMessages` in the API).
   const canReply =
     view === "rich" &&
-    detail.data?.isParticipant &&
+    (detail.data?.isParticipant || detail.data?.visibility === "public") &&
     detail.data.kind !== "task";
   // A navigation can ask for the reply box. Ask the footer once for it, so
   // coming back from the event log does not focus it again.
-  const location = useLocation();
   const [replyFocusDoneKey, setReplyFocusDoneKey] = useState<string>();
+  const replyFocus = readReplyFocus(location.state);
   const replyFocusRequest =
-    requestsReplyFocus(location.state) && location.key !== replyFocusDoneKey
-      ? location.key
+    replyFocus && location.key !== replyFocusDoneKey
+      ? { draftFrom: replyFocus.draftFrom, key: location.key }
       : undefined;
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
@@ -413,11 +437,15 @@ export function ConversationPage(props: {
     transcript?.eventHistory.status === "available"
       ? transcript.events
       : undefined;
-  const selectOutlineItem = useCallback((seq: number) => {
+  const selectOutlineItem = (seq: number) => {
     // Search can hide the row.
     setSearch("");
     setRevealSeq(seq);
-  }, []);
+    // The outline lists messages that the loaded rows do not hold. Then the
+    // transcript opens at the page around the message.
+    const start = unheldLinkStart(history.data?.events, { event: seq });
+    if (start) setLinkStart(start);
+  };
   const selectedEvent =
     transcript?.eventHistory.status === "expired"
       ? undefined
@@ -469,6 +497,39 @@ export function ConversationPage(props: {
     if (start) setLinkStart(start);
     return Boolean(start);
   });
+  const showQuestion = useCallback(
+    (item: ReviewItemPayload, arrived: boolean) =>
+      setAskReveal((current) => ({
+        arrived,
+        itemId: item.id,
+        // A child Conversation can add an item to this one. Its Turn is not
+        // in this transcript.
+        turnId:
+          item.addedByConversationId === conversationId
+            ? item.addedByTurnId
+            : undefined,
+        version: (current?.version ?? 0) + 1,
+      })),
+    [conversationId],
+  );
+  // A question that the reader moves to can sit outside the loaded rows.
+  // Then the transcript opens at the page around its Turn, like a link. A
+  // question that arrives by itself is at the latest, so it needs no page.
+  const openAskTurn = useEffectEvent((itemId: string, turnId: string) => {
+    const held = history.data?.events.some(
+      (event) =>
+        event.data.type === "tool_calls" &&
+        event.data.calls.some(
+          (call) => reviewItemIdFromToolCall(call) === itemId,
+        ),
+    );
+    if (!held) openLink({ turn: turnId });
+  });
+  useEffect(() => {
+    if (askReveal?.turnId && !askReveal.arrived) {
+      openAskTurn(askReveal.itemId, askReveal.turnId);
+    }
+  }, [askReveal]);
   useEffect(() => {
     if (linkedTurnId !== undefined) openLink({ turn: linkedTurnId });
     else if (selectedEventSeq !== undefined) {
@@ -642,18 +703,21 @@ export function ConversationPage(props: {
             <ConversationHeader
               agentTree={conversationDetail?.agentTree}
               contextTags={conversationContextTags(conversation)}
-              conversationId={conversationId}
-              continueInSlack={
-                detail.data?.canContinueInSlack
-                  ? {
-                      // The API refuses while a Turn runs.
-                      disabled: live,
-                      onClick: () => setContinueInSlackOpen(true),
-                    }
-                  : undefined
-              }
               cost={conversationCost(conversation, conversationDetail, "below")}
               detailsOpen={showDetails}
+              errors={[
+                // A refused restore names the archived ancestor to restore
+                // first.
+                archive.error
+                  ? (archive.error instanceof DashboardApiError &&
+                      archive.error.apiError) ||
+                    "Could not update archive state."
+                  : "",
+                pin.error ? "Could not update pin." : "",
+                rename.error ? "Could not rename." : "",
+                subscription.error ? "Could not update subscription." : "",
+                delivery.error ? "Could not change Slack updates." : "",
+              ].filter(Boolean)}
               onDetailsClick={() => {
                 if (eventOpen) setSelectedEventSeq(undefined);
                 setTurnContext(undefined);
@@ -663,6 +727,7 @@ export function ConversationPage(props: {
                 } else {
                   focusDetailsOnOpen.current = true;
                   setDetailsChoice(true);
+                  saveDetailsOpen(true);
                 }
               }}
               forks={
@@ -677,69 +742,44 @@ export function ConversationPage(props: {
                   />
                 ) : null
               }
-              copyAction={
-                <CopyButton
-                  label="Copy as Markdown"
-                  copyingLabel="Preparing Markdown"
-                  key={conversationDetail?.conversationId ?? "loading"}
-                  layout="menu"
-                  getText={
-                    conversationDetail
-                      ? async () =>
-                          buildConversationMarkdown(
-                            await detail.loadCompleteTranscript(),
-                            conversation,
-                          )
-                      : undefined
-                  }
-                />
-              }
               linkedWork={
                 links.length ? <ConversationAnnotations links={links} /> : null
               }
-              pin={{
-                // The API lets only participants pin a root, the same as
-                // archive. A child page has an agent tree.
-                disabled:
-                  !conversation ||
-                  !detail.data?.isParticipant ||
-                  isChildConversation(conversationDetail) ||
-                  pin.isPending,
-                error: Boolean(pin.error),
-                onClick: () => pin.mutate(!conversation?.pinnedAt),
-                pinned: Boolean(conversation?.pinnedAt),
-              }}
-              read={{
-                // Unread tracks idle conversations only, like the sidebar row.
-                disabled:
-                  !conversation ||
-                  !detail.data?.isParticipant ||
-                  markUnread.isPending ||
-                  (!unread && !isIdleConversation(conversation)),
-                error: Boolean(markUnread.error),
-                onClick: () => markUnread.mutate(!unread),
-                unread,
-              }}
-              archive={{
-                archived: Boolean(conversation?.archivedAt),
-                disabled: !conversation || archive.isPending,
-                // A refused restore names the archived ancestor to restore
-                // first.
-                error: archive.error
-                  ? (archive.error instanceof DashboardApiError &&
-                      archive.error.apiError) ||
-                    "Could not update archive state."
-                  : undefined,
-                onClick: () => {
-                  if (conversation?.archivedAt) {
-                    setArchived(false);
-                  } else if (conversation!.kind === "root") {
-                    setArchived(true);
-                  } else {
-                    setConfirmChildArchive(true);
-                  }
+              menu={{
+                actions: {
+                  archive: () => {
+                    if (conversation?.archivedAt) {
+                      setArchived(false);
+                    } else if (!conversation!.parentConversationId) {
+                      setArchived(true);
+                    } else {
+                      setConfirmChildArchive(true);
+                    }
+                  },
+                  continueInSlack: () => setContinueInSlackOpen(true),
+                  delivery: (paused) => delivery.mutate(paused),
+                  eventLog: () => onViewChange(view === "raw" ? "rich" : "raw"),
+                  pin: (pinned) => pin.mutate(pinned),
+                  rename: () => setRenaming(true),
+                  subscription: (subscribed) => subscription.mutate(subscribed),
                 },
-                pending: archive.isPending,
+                conversation,
+                conversationId,
+                detail: conversationDetail,
+                eventLogOpen: view === "raw",
+                getMarkdown: conversationDetail
+                  ? async () =>
+                      buildConversationMarkdown(
+                        await detail.loadCompleteTranscript(),
+                        conversation,
+                      )
+                  : undefined,
+                pending: {
+                  archive: archive.isPending,
+                  delivery: delivery.isPending,
+                  pin: pin.isPending,
+                  subscription: subscription.isPending,
+                },
               }}
               onSearchChange={setSearch}
               onViewChange={onViewChange}
@@ -750,7 +790,6 @@ export function ConversationPage(props: {
               }
               search={search}
               searchMatch={searchMatch}
-              sentryConversationUrl={detail.data?.sentryConversationUrl}
               sidebarToggle={props.sidebarToggle}
               status={
                 isChildConversation(conversationDetail) && conversation ? (
@@ -759,16 +798,6 @@ export function ConversationPage(props: {
                   />
                 ) : null
               }
-              subscription={{
-                // Only participants have a subscription. A child uses its
-                // root's.
-                disabled:
-                  detail.data?.subscribed === undefined ||
-                  subscription.isPending,
-                error: Boolean(subscription.error),
-                onClick: () => subscription.mutate(!detail.data?.subscribed),
-                subscribed: detail.data?.subscribed ?? false,
-              }}
               title={title}
               view={view}
             />
@@ -776,6 +805,7 @@ export function ConversationPage(props: {
           overlay={
             view === "rich" && !transcriptPending && outlineEvents ? (
               <ConversationOutline
+                conversationId={conversationId}
                 events={outlineEvents}
                 onSelect={selectOutlineItem}
                 scrollRef={scrollRef}
@@ -785,81 +815,73 @@ export function ConversationPage(props: {
           scrollMinTall
           scrollAriaLabel="Conversation transcript"
           scrollRef={scrollRef}
-          scrollClassName={cn(
-            "thin-scrollbar",
-            view !== "raw" && "px-4 pb-4 md:px-7 md:pb-6",
-          )}
+          scrollClassName={
+            view === "raw" ? "thin-scrollbar" : transcriptScrollClassName
+          }
           scroll={
-            <section className="min-w-0">
-              <div
-                className={
-                  view === "raw"
-                    ? "w-full"
-                    : "mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7"
-                }
-              >
-                {transcriptPending ? (
-                  view === "raw" ? (
-                    <ConversationEventLogLoading />
-                  ) : (
-                    <TranscriptLoading />
-                  )
-                ) : detail.error && !detail.data ? (
-                  <Card className="border-dashboard-border bg-dashboard-fill-soft p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
-                    {detail.error.message}
-                  </Card>
+            <TranscriptColumn full={view === "raw"}>
+              {transcriptPending ? (
+                view === "raw" ? (
+                  <ConversationEventLogLoading />
                 ) : (
-                  <>
-                    {detail.error ? (
-                      <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
-                        Transcript refresh failed. Showing the latest available
-                        data.
-                      </div>
-                    ) : null}
-                    <ConversationMemoryContext value={memoryState}>
-                      <ConversationCatchUpContext value={catchUp}>
-                        <Transcript
-                          hasPreviousPage={history.hasPreviousPage}
-                          historyError={history.historyError}
-                          historyVersion={history.historyVersion}
-                          lastReadSeq={detail.data?.readPosition?.lastReadSeq}
-                          live={live}
-                          loadingPreviousPage={history.isLoadingPreviousPage}
-                          newerHistory={history.newer}
-                          onLoadPreviousPage={history.loadPreviousPage}
-                          onRead={holdShown ? undefined : markRead}
-                          readEngaged={composerEngaged}
-                          onSelectedEventSeqChange={setSelectedEventSeq}
-                          // Sends and the thinking row belong after the latest event.
-                          pendingMessages={
-                            history.newer ? undefined : detail.inlineMessages
-                          }
-                          pinRequestVersion={pinRequestVersion}
-                          revealSeq={revealSeq}
-                          responding={
-                            !detail.error &&
-                            !history.newer &&
-                            conversationIsResponding(detail.data)
-                          }
-                          onOpenSubagentTranscript={onOpenSubagentTranscript}
-                          search={search}
-                          onSearchChange={setSearch}
-                          searchMatch={searchMatch.index}
-                          onSearchMatches={searchMatch.setMatches}
-                          selectedEventSeq={selectedEventSeq}
-                          startAtLink={startAtLink}
-                          startAtUnread={startAtUnread}
-                          transcript={transcript}
-                          turnContextPanel={turnContextPanel}
-                          unread={holdShown ? undefined : readAtOpen.unread}
-                          view={view}
-                        />
-                      </ConversationCatchUpContext>
-                    </ConversationMemoryContext>
-                  </>
-                )}
-              </div>
-            </section>
+                  <TranscriptLoading />
+                )
+              ) : detail.error && !detail.data ? (
+                <Card className="border-dashboard-border bg-dashboard-fill-soft p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
+                  {detail.error.message}
+                </Card>
+              ) : (
+                <>
+                  {detail.error ? (
+                    <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
+                      Transcript refresh failed. Showing the latest available
+                      data.
+                    </div>
+                  ) : null}
+                  <ConversationMemoryContext value={memoryState}>
+                    <ConversationCatchUpContext value={catchUp}>
+                      <Transcript
+                        hasPreviousPage={history.hasPreviousPage}
+                        historyError={history.historyError}
+                        historyVersion={history.historyVersion}
+                        lastReadSeq={detail.data?.readPosition?.lastReadSeq}
+                        live={live}
+                        loadingPreviousPage={history.isLoadingPreviousPage}
+                        newerHistory={history.newer}
+                        onLoadPreviousPage={history.loadPreviousPage}
+                        onRead={holdShown ? undefined : markRead}
+                        readEngaged={composerEngaged}
+                        onSelectedEventSeqChange={setSelectedEventSeq}
+                        // Sends and the thinking row belong after the latest event.
+                        pendingMessages={
+                          history.newer ? undefined : detail.inlineMessages
+                        }
+                        pinRequestVersion={pinRequestVersion}
+                        revealAsk={askReveal}
+                        revealSeq={revealSeq}
+                        responding={
+                          !detail.error &&
+                          !history.newer &&
+                          conversationIsResponding(detail.data)
+                        }
+                        onOpenSubagentTranscript={onOpenSubagentTranscript}
+                        search={search}
+                        onSearchChange={setSearch}
+                        searchMatch={searchMatch.index}
+                        onSearchMatches={searchMatch.setMatches}
+                        selectedEventSeq={selectedEventSeq}
+                        startAtLink={startAtLink}
+                        startAtUnread={startAtUnread}
+                        transcript={transcript}
+                        turnContextPanel={turnContextPanel}
+                        unread={holdShown ? undefined : readAtOpen.unread}
+                        view={view}
+                      />
+                    </ConversationCatchUpContext>
+                  </ConversationMemoryContext>
+                </>
+              )}
+            </TranscriptColumn>
           }
           dock={
             canReply ? (
@@ -876,6 +898,7 @@ export function ConversationPage(props: {
                   live={live}
                   onFocusRequestDone={setReplyFocusDoneKey}
                   onPinRequest={requestPin}
+                  onShowQuestion={showQuestion}
                   ref={replyRef}
                 />
               </div>
@@ -904,10 +927,25 @@ export function ConversationPage(props: {
         }
         rootRef={pageRef}
       />
-      <SubagentTranscriptDrawer
+      <ConversationDrawer
+        icon={
+          <Bot
+            aria-hidden="true"
+            className="shrink-0 text-cyan-300"
+            size={16}
+            strokeWidth={2}
+          />
+        }
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
+      {renaming ? (
+        <RenameConversationDialog
+          onClose={() => setRenaming(false)}
+          onSave={(next) => rename.mutate(next)}
+          title={title}
+        />
+      ) : null}
       {continueInSlackOpen ? (
         <ContinueInSlackDialog
           conversationId={conversationId}

@@ -9,6 +9,7 @@ import {
 } from "@/db/schema";
 import { throwApiError } from "../http";
 import type { ConversationReadPosition } from "../schema/conversation-read-position";
+import { readConversationAccessFromSql } from "./access";
 
 /**
  * Read how far the viewer has read one Conversation, if they have read it.
@@ -108,4 +109,27 @@ export async function markConversationRead(
     });
   // Return what detail reads, so the cached detail opens at the same place.
   return (await readConversationReadPosition(viewer, conversationId))!;
+}
+
+/**
+ * Store a read report from the dashboard.
+ *
+ * Only a viewer who may read the transcript can report: a participant, or
+ * anyone for a public Conversation. Others get the same 404 as a missing
+ * Conversation.
+ */
+export async function reportConversationRead(
+  viewer: User,
+  conversationId: string,
+  body: ConversationReadPosition,
+): Promise<ConversationReadPosition> {
+  const access = await readConversationAccessFromSql(
+    getDb(),
+    [conversationId],
+    viewer,
+  );
+  if (!access.get(conversationId)?.canViewPrivateContent) {
+    throwApiError(404, "Conversation not found.");
+  }
+  return markConversationRead(viewer, conversationId, body);
 }

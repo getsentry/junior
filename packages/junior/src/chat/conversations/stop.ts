@@ -1,75 +1,20 @@
 import type { StateAdapter } from "chat";
-import { stopChildAgentsBelow } from "@/chat/agent-invocations/stop";
+import {
+  dropOwnUnreadLoopReplies,
+  stopChildAgentsBelow,
+} from "@/chat/agent-invocations/stop";
 import { markConversationsStopped } from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { getAuthPausedConversationTurnId } from "@/chat/task-execution/mailbox-turn";
+import { cancelSignInWait } from "@/chat/task-execution/turn-cancel";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { InboundMessageClaim } from "@/chat/task-execution/state";
 import {
   claimInboundMessage,
   ensureConversationWake,
-  getConversation,
   releaseInboundMessage,
-  requestConversationWork,
   stopConversationWork,
   type StopConversationWorkResult,
 } from "@/chat/task-execution/store";
-
-/** Stop the current Conversation Turn and wake an idle resume when needed. */
-export async function stopConversationTurn(args: {
-  conversationId: string;
-  conversationStore?: ConversationStore;
-  nowMs?: number;
-  /** Runs once the stop request is saved. */
-  onStopSaved?: () => void;
-  queue: ConversationWorkQueue;
-  /** Stop only person input sent at or before this time. */
-  sentAtOrBeforeMs?: number;
-  state?: StateAdapter;
-}): Promise<StopConversationWorkResult> {
-  const nowMs = args.nowMs ?? Date.now();
-  const stop = async (): Promise<StopConversationWorkResult> =>
-    await stopConversationWork({
-      conversationId: args.conversationId,
-      conversationStore: args.conversationStore,
-      nowMs,
-      onStopSaved: args.onStopSaved,
-      sentAtOrBeforeMs: args.sentAtOrBeforeMs,
-      state: args.state,
-    });
-  let result = await stop();
-
-  if (
-    result.status === "no_work" &&
-    (await getAuthPausedConversationTurnId(args.conversationId))
-  ) {
-    const conversation = await getConversation({
-      conversationId: args.conversationId,
-      state: args.state,
-    });
-    await requestConversationWork({
-      conversationId: args.conversationId,
-      conversationStore: args.conversationStore,
-      destination: conversation?.destination,
-      nowMs,
-      state: args.state,
-    });
-    result = await stop();
-  }
-
-  if (result.status === "requested") {
-    await ensureConversationWake({
-      conversationId: args.conversationId,
-      conversationStore: args.conversationStore,
-      idempotencyKey: `conversation-stop:${args.conversationId}:${result.runId}`,
-      nowMs,
-      queue: args.queue,
-      replaceExistingWake: true,
-      state: args.state,
-    });
-  }
-  return result;
-}
 
 /**
  * The message or button press that asked for a stop. Its id dedupes
@@ -85,8 +30,9 @@ export type StopConversationResult =
 /**
  * Stop a Conversation for a person, on every stop path. Every child agent
  * below it stops, then it and they are stopped Conversations until a person
- * sends input, and then its Turn stops. Their Watch Events are saved and
- * start no Turn. Nothing above it changes: a stopped child agent's worker
+ * sends input, and then its Turn stops. A Turn that waits for sign-in ends
+ * too, so a later sign-in does not resume it. Their Watch Events are saved
+ * and start no Turn. Nothing above it changes: a stopped child agent's worker
  * reports the stop to its parent.
  *
  * A stop that comes from a message or a button press, such as the Slack
@@ -144,14 +90,30 @@ export async function stopConversation(args: {
       nowMs: stoppedAtMs,
       state: args.state,
     });
-    return await stopConversationTurn({
-      ...args,
+    await dropOwnUnreadLoopReplies(args.conversationId, args.state);
+    await cancelSignInWait(args.conversationId);
+    const result = await stopConversationWork({
+      conversationId: args.conversationId,
+      conversationStore: args.conversationStore,
       nowMs,
-      sentAtOrBeforeMs: args.message ? stoppedAtMs : undefined,
       onStopSaved: () => {
         stopSaved = true;
       },
+      sentAtOrBeforeMs: args.message ? stoppedAtMs : undefined,
+      state: args.state,
     });
+    if (result.status === "requested") {
+      await ensureConversationWake({
+        conversationId: args.conversationId,
+        conversationStore: args.conversationStore,
+        idempotencyKey: `conversation-stop:${args.conversationId}:${result.runId}`,
+        nowMs,
+        queue: args.queue,
+        replaceExistingWake: true,
+        state: args.state,
+      });
+    }
+    return result;
   } catch (error) {
     if (args.message && !stopSaved) {
       await releaseInboundMessage({

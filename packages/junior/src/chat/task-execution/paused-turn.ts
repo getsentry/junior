@@ -6,6 +6,7 @@
  * generation; started continues must durably record success, failure, auth
  * pause, or another safe pause boundary.
  */
+import { instructionActorFor } from "@/chat/agent/prompt";
 import { savedInputInstruction } from "@/chat/review-items/prompt-input";
 import {
   buildTurnFailureResponse,
@@ -72,7 +73,7 @@ import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
 import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { buildDispatchRoutingContext } from "@/chat/agent-dispatch/work";
-import { postsRunNotices } from "@/chat/automation-result";
+import { postsRunNotices } from "@/chat/conversations/kind-behavior";
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import {
   createSlackActor,
@@ -88,13 +89,12 @@ import {
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { executeTurn } from "@/chat/runtime/turn-execution";
-import type { AgentRun } from "@/chat/agent/types";
+import type { AgentDurability, AgentRun } from "@/chat/agent/types";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
   clearPendingAuth,
   isPendingAuthFor,
   setPendingAuth,
-  wasPendingAuthStopped,
 } from "@/chat/services/pending-auth";
 import { requireSlackDestination } from "@/chat/destination";
 import {
@@ -121,6 +121,10 @@ export interface PausedTurnOptions {
 
 /** Per-worker controls for one paused turn. */
 export interface PausedTurnRunOptions {
+  /** Builds the steering drain of the resumed Run for its Turn. */
+  drainSteeringMessages?: (
+    turn: TurnRecord,
+  ) => AgentDurability["drainSteeringMessages"];
   shouldYield?: () => boolean;
   checkIn?: () => Promise<boolean>;
   /** Aborts the resumed Run when someone stops the Conversation. */
@@ -516,11 +520,10 @@ async function runPausedTurnInContext(
           const pendingAuth = conversation.processing.pendingAuth;
           if (
             pendingAuth &&
-            (!isPendingAuthFor(pendingAuth, {
+            !isPendingAuthFor(pendingAuth, {
               ...authorization,
               turnId: turn.turnId,
-            }) ||
-              wasPendingAuthStopped(conversation, pendingAuth))
+            })
           ) {
             await abandonTurnRecord({
               conversationId: payload.conversationId,
@@ -608,14 +611,17 @@ async function runPausedTurnInContext(
           });
         };
 
+        const messageTs = getTurnUserSlackMessageTs(userMessage);
+        const instructionActor = instructionActorFor(actor, messageTs);
         return {
           messageText: userMessage.text,
           sliceId: activeTurn.sliceId,
-          messageTs: getTurnUserSlackMessageTs(userMessage),
+          messageTs,
           inputMessageIds: [userMessage.id],
           initialStatus: latestProgressStatus(turnMessages),
           run: {
             instruction: {
+              ...(instructionActor ? { actor: instructionActor } : undefined),
               // Attachment fields come from the turn user message context helper.
               ...getTurnUserReplyAttachmentContext(userMessage),
               ...(await savedInputInstruction({
@@ -655,6 +661,8 @@ async function runPausedTurnInContext(
               sandboxRef,
             },
             durability: {
+              drainSteeringMessages:
+                runOptions.drainSteeringMessages?.(activeTurn),
               shouldYield: runOptions.shouldYield,
               checkIn: runOptions.checkIn,
               recordPendingAuth: async (nextPendingAuth) => {

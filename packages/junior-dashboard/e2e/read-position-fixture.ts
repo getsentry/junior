@@ -95,7 +95,7 @@ export async function mockReadPositionConversation(
       state.reported.push(lastReadSeq);
       stored = Math.max(stored, lastReadSeq);
       await route.fulfill({
-        json: { lastReadSeq: stored, unreadReply: false },
+        json: { lastReadSeq: stored },
       });
     },
   );

@@ -7,12 +7,21 @@
 import type { PluginCache } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
+  GitHubRequestError,
   githubRequest,
   issueInstallationToken,
 } from "../credential-support.js";
 import {
+  ADD_REVIEW_REACTION,
+  OPEN_PULL_REQUEST_MERGEABILITY,
+  pullRequestLifecycles,
+} from "../graphql-documents.js";
+import { githubErrorMessage } from "../tool-support/github-api.js";
+import {
+  graphqlReactionContent,
   pullRequestCommentReactionsPath,
   pullRequestFeedbackReactionContent,
+  pullRequestReviewPath,
 } from "../tools/update-pull-request-feedback.js";
 
 /** Environment variable names for the GitHub App installation. */
@@ -73,12 +82,135 @@ export async function loadPullRequest(
   );
 }
 
-/** Add the "reviewing" reaction to one pull request feedback comment. */
+/** GitHub cannot reach a repository: it is gone, or the installation lost it. */
+export class GitHubRepositoryUnreachableError extends Error {
+  constructor(repositoryId: number) {
+    super(`GitHub repository ${repositoryId} is not reachable`);
+    this.name = "GitHubRepositoryUnreachableError";
+  }
+}
+
+// GitHub answers a token request for a repository that the installation
+// cannot reach with 422 and this message.
+const UNREACHABLE_REPOSITORY_MESSAGE = /does not exist or is not accessible/i;
+
+/**
+ * Read the lifecycle of some pull requests of one repository in one GraphQL
+ * query, with a read-only token. Each pull request has the alias `pr<index>`.
+ * The repository is found by its id, because a rename changes its name.
+ */
+export async function loadPullRequestLifecycles(
+  env: GitHubInstallationEnv,
+  input: { numbers: number[]; repositoryId: number },
+): Promise<unknown> {
+  let token: { token: string };
+  try {
+    token = await issueInstallationToken({
+      ...env,
+      permissions: { pull_requests: "read" },
+      repositoryIds: [input.repositoryId],
+    });
+  } catch (error) {
+    if (
+      error instanceof GitHubRequestError &&
+      error.status === 422 &&
+      UNREACHABLE_REPOSITORY_MESSAGE.test(error.message)
+    ) {
+      throw new GitHubRepositoryUnreachableError(input.repositoryId);
+    }
+    throw error;
+  }
+  const repository = z
+    .object({ full_name: z.string().min(1) })
+    .parse(
+      await githubRequest(
+        "https://api.github.com",
+        `/repositories/${input.repositoryId}`,
+        { token: token.token },
+      ),
+    );
+  const { owner, name } = splitRepository(
+    repository.full_name,
+    "pull request lifecycle",
+  );
+  return await githubRequest("https://api.github.com", "/graphql", {
+    body: {
+      ...pullRequestLifecycles(input.numbers.length),
+      variables: {
+        name,
+        owner,
+        ...Object.fromEntries(
+          input.numbers.map((number, index) => [`n${index}`, number]),
+        ),
+      },
+    },
+    method: "POST",
+    token: token.token,
+  });
+}
+
+/**
+ * Read one page of a repository's open pull requests by one author, with
+ * their mergeability, through GraphQL search and a read-only token.
+ */
+export async function searchOpenPullRequestMergeability(
+  env: GitHubInstallationEnv,
+  input: { after?: string; author: string; repositoryFullName: string },
+): Promise<unknown> {
+  const { name } = splitRepository(
+    input.repositoryFullName,
+    "pull request mergeability",
+  );
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { pull_requests: "read" },
+    repositories: [name],
+  });
+  return await githubRequest("https://api.github.com", "/graphql", {
+    body: {
+      ...OPEN_PULL_REQUEST_MERGEABILITY,
+      variables: {
+        after: input.after ?? null,
+        query: `repo:${input.repositoryFullName} is:pr is:open author:${input.author}`,
+      },
+    },
+    method: "POST",
+    token: token.token,
+  });
+}
+
+/** Ask people to review one pull request, with a pull request write token. */
+export async function requestPullRequestReviewers(
+  env: GitHubInstallationEnv,
+  input: { number: number; repositoryFullName: string; reviewers: string[] },
+): Promise<void> {
+  const { owner, name } = splitRepository(
+    input.repositoryFullName,
+    "pull request review request",
+  );
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { pull_requests: "write" },
+    repositories: [name],
+  });
+  await githubRequest(
+    "https://api.github.com",
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${input.number}/requested_reviewers`,
+    {
+      body: { reviewers: input.reviewers },
+      method: "POST",
+      token: token.token,
+    },
+  );
+}
+
+/** Add the "reviewing" reaction to one pull request comment or review body. */
 export async function markPullRequestFeedbackReviewing(
   env: GitHubInstallationEnv,
   target: {
     commentId: number;
-    commentKind: "conversation" | "review";
+    commentKind: "conversation" | "review" | "review_body";
+    pullRequest: number;
     repo: string;
   },
 ): Promise<void> {
@@ -87,6 +219,42 @@ export async function markPullRequestFeedbackReviewing(
     ...env,
     repositories: [name],
   });
+  const content = pullRequestFeedbackReactionContent("reviewing");
+  if (target.commentKind === "review_body") {
+    // A review body has no REST reactions endpoint, so react to its node.
+    const review = z.object({ node_id: z.string().min(1) }).parse(
+      await githubRequest(
+        "https://api.github.com",
+        pullRequestReviewPath({
+          owner,
+          name,
+          pullRequest: target.pullRequest,
+          reviewId: target.commentId,
+        }),
+        { token: token.token },
+      ),
+    );
+    // GraphQL reports errors with HTTP 200.
+    const result = z.object({ errors: z.array(z.unknown()).optional() }).parse(
+      await githubRequest("https://api.github.com", "/graphql", {
+        body: {
+          ...ADD_REVIEW_REACTION,
+          variables: {
+            content: graphqlReactionContent(content),
+            subjectId: review.node_id,
+          },
+        },
+        method: "POST",
+        token: token.token,
+      }),
+    );
+    if (result.errors?.length) {
+      throw new Error(
+        `GitHub review reaction failed: ${githubErrorMessage(result)}`,
+      );
+    }
+    return;
+  }
   await githubRequest(
     "https://api.github.com",
     pullRequestCommentReactionsPath({
@@ -96,7 +264,7 @@ export async function markPullRequestFeedbackReviewing(
       commentId: target.commentId,
     }),
     {
-      body: { content: pullRequestFeedbackReactionContent("reviewing") },
+      body: { content },
       method: "POST",
       token: token.token,
     },

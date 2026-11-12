@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createResumeState } from "@/chat/agent/resume";
 import { commitMessages } from "@/chat/conversations/projection";
@@ -18,12 +19,18 @@ import { createToolPipeline } from "@/chat/tool-support/pi-tool-adapter";
 import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
+
 const CURRENT_CONVERSATION_ID = "slack:C123:1700000000.100000";
 const CODEMODE_CALL_ID = "call-codemode";
 const SOURCE = { kind: "scheduled_automation" } as const;
 
 function context(): ToolRuntimeContext {
   return {
+    turnTools: rootTurnTools,
     conversationId: CURRENT_CONVERSATION_ID,
     destination: { platform: "slack", teamId: "T123", channelId: "C123" },
     location: {
@@ -78,6 +85,7 @@ async function runScript(source: string) {
   const { scriptTools } = planToolExposure(createTools([], {}, context()));
   const result = await runCodeModeScript({
     countToolCall: resume.countToolCall,
+    modelOnlyTools: [],
     pipeline: createToolPipeline({
       actionReview,
       catalogTools: {},

@@ -150,12 +150,11 @@ import {
   type ScheduleSessionCompletedPluginTasksOptions,
 } from "@/chat/plugins/task-runner";
 import type { AgentRunResult } from "@/chat/services/turn-result";
+import { finishedRunReply, runDispatchOutcome } from "@/chat/automation-result";
 import {
-  finishedRunReply,
-  postsRunNotices,
-  runDispatchOutcome,
   deliversFinalText,
-} from "@/chat/automation-result";
+  postsRunNotices,
+} from "@/chat/conversations/kind-behavior";
 import type {
   DispatchTurnContext,
   DispatchTurnResult,
@@ -477,7 +476,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           return await Promise.all(
             queuedMessages.map(async (queued) => {
               const attachments = queued.message.attachments;
-              // An answer or a dismiss steers in as its Review item tag.
+              // An answer steers in as its Review item tag.
               const reviewItemInput = await loadReviewItemInput(
                 getMessageReviewItemChange(queued.message),
               );
@@ -764,13 +763,13 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           threadTs: assistantThreadContext?.threadTs,
           getSlackAdapter: deps.getSlackAdapter,
         });
-        let persistedAtLeastOnce = false;
-        let shouldPersistFailureState = true;
-        // Once model output is settled, later commit errors must not trigger a
-        // second visible failure reply.
-        let runResultHandled = false;
-        let assistantMessageDelivered = false;
-        let acceptedDeliveryId: string | undefined;
+        // `running`: an error fails the Turn. `settled`: the result is
+        // delivered or chosen silent, so a later error only logs and never
+        // posts a second, failure reply. `released`: this Run saved the end of
+        // the Turn, or another owner finishes it. The cast keeps all three
+        // values, because `saveResult` sets `settled` inside a callback.
+        let runState = "running" as "running" | "settled" | "released";
+        let acceptedReply: { slackTs?: string } | undefined;
         let turnCompletionNotified = false;
         const recordDispatchOutcome = async (
           dispatchOutcome: "blocked" | "completed" | "failed",
@@ -787,8 +786,8 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             destinationVisibility,
             dispatchId,
             dispatchOutcome,
-            ...(acceptedDeliveryId
-              ? { resultMessageId: acceptedDeliveryId }
+            ...(acceptedReply?.slackTs
+              ? { resultMessageId: acceptedReply.slackTs }
               : undefined),
             turnId: turnId,
             sliceId: 1,
@@ -843,10 +842,12 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   threadTs: outcome.destination.threadTs,
                 });
                 slackMessageTs.push(...messageIds);
+                // A thread reply binds the thread, so replies there reach
+                // this Conversation.
                 messageDestinations.push(
                   ...messageIds.map((messageId) => ({
                     destination: outcome.destination,
-                    messageId,
+                    messageId: outcome.destination.threadTs ?? messageId,
                   })),
                 );
               }
@@ -883,8 +884,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             });
           }
           const slackTs = slackMessageTs.at(-1);
-          assistantMessageDelivered = true;
-          acceptedDeliveryId = slackTs;
+          acceptedReply = { slackTs };
           options.onTurnDeliveryAccepted?.(slackTs);
           const recordedMessageId = recordDeliveredAssistantMessage({
             cards,
@@ -988,7 +988,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           ) {
             // A resumed Run is saving the same history. Keep this mailbox
             // delivery pending and do not start without the saved messages.
-            shouldPersistFailureState = false;
             throw new TurnInputDeferredError();
           }
           if (batchedSteeringMessages.length > 0) {
@@ -1192,8 +1191,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               await deliverAssistantMessage(reply);
             }
             const turnResult = runDispatchOutcome(finalResult);
-            runResultHandled = true;
-            shouldPersistFailureState = false;
+            runState = "settled";
             boundaryFailureCode = "agent_run_failed";
 
             const completedState = buildDeliveredTurnStatePatch({
@@ -1224,8 +1222,8 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   ...(options.execution?.dispatch && turnResult.errorMessage
                     ? { errorMessage: turnResult.errorMessage }
                     : undefined),
-                  ...(acceptedDeliveryId
-                    ? { resultMessageId: acceptedDeliveryId }
+                  ...(acceptedReply?.slackTs
+                    ? { resultMessageId: acceptedReply.slackTs }
                     : undefined),
                   messages: finalResult.piMessages,
                   actor: executionActor,
@@ -1249,8 +1247,8 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   surface: options.execution?.surface ?? "slack",
                   dispatchId: options.execution?.dispatch?.id,
                   dispatchOutcome: turnResult.outcome,
-                  ...(acceptedDeliveryId
-                    ? { resultMessageId: acceptedDeliveryId }
+                  ...(acceptedReply?.slackTs
+                    ? { resultMessageId: acceptedReply.slackTs }
                     : undefined),
                   traceId: getActiveTraceId(),
                 });
@@ -1288,7 +1286,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               );
             }
             preparedState.conversation = completedState.conversation;
-            persistedAtLeastOnce = true;
             options.onTurnOutcome?.(turnResult);
             completedResult = finalResult;
 
@@ -1303,7 +1300,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             }
             if (finalResult.diagnostics.outcome === "success") {
               return {
-                outcome: assistantMessageDelivered
+                outcome: acceptedReply
                   ? ("success" as const)
                   : ("no_reply" as const),
               };
@@ -1347,8 +1344,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   turnId,
                 });
               }
-              persistedAtLeastOnce = true;
-              shouldPersistFailureState = false;
+              runState = "released";
               return;
             }
             await postAuthPauseNotice(
@@ -1362,8 +1358,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             await persistThreadStateById(conversationId, {
               conversation: preparedState.conversation,
             });
-            persistedAtLeastOnce = true;
-            shouldPersistFailureState = false;
+            runState = "released";
             return;
           }
           if (outcome.status === "suspended") {
@@ -1376,7 +1371,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               options.shouldYield &&
               (options.shouldYield() || outcome.reason === "timeout")
             ) {
-              shouldPersistFailureState = false;
               throw new CooperativeTurnYieldError();
             }
             if (!destination || !conversationId) {
@@ -1391,7 +1385,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 turnId: turnId,
                 expectedVersion: outcome.resumeVersion,
               });
-              shouldPersistFailureState = false;
+              runState = "released";
             } catch (scheduleError) {
               logException(scheduleError, "agent.continue.schedule.failed", {
                 ...(messageTs
@@ -1399,7 +1393,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   : undefined),
                 "app.ai.resume_session_version": outcome.resumeVersion,
               });
-              shouldPersistFailureState = true;
               throw scheduleError;
             }
             return;
@@ -1438,14 +1431,13 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             }
           }
         } catch (error) {
-          if (runResultHandled) {
+          if (runState === "settled") {
             // Errors after the completed run produced output or intentional
             // silence (redundant-ack cleanup, completion callbacks) must not
             // fail the turn or trigger the visible failure fallback.
             // Still mark the turn completed so processing reactions run the
             // complete lifecycle (remove thinking + add done), including for
             // reaction-only / no-reply turns with no thread post.
-            shouldPersistFailureState = false;
             logException(
               error,
               "slack.reply.post_delivery_commit.failed",
@@ -1463,25 +1455,24 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             return;
           }
           if (error instanceof CooperativeTurnYieldError) {
-            shouldPersistFailureState = false;
+            runState = "released";
             throw error;
           }
           if (error instanceof TurnInputDeferredError) {
-            shouldPersistFailureState = false;
+            runState = "released";
             throw error;
           }
           // Another worker holds the Lease and owns this Turn's outcome.
           const leaseLoss =
             error instanceof AgentRunError ? error.cause : error;
           if (isTurnInputCommitLostError(leaseLoss)) {
-            shouldPersistFailureState = false;
+            runState = "released";
             throw leaseLoss;
           }
-          shouldPersistFailureState = true;
           const runFailure =
             error instanceof AgentRunError ? error.cause : error;
           if (options.stopSignal?.aborted) {
-            shouldPersistFailureState = false;
+            runState = "released";
             await abandonTurnRecord({
               conversationId,
               turnId,
@@ -1532,7 +1523,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             failureCode,
           });
         } finally {
-          if (!persistedAtLeastOnce && shouldPersistFailureState) {
+          if (runState === "running") {
             markTurnFailed({
               conversation: preparedState.conversation,
               sessionId: turnId,

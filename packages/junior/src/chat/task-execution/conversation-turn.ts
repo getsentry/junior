@@ -1,15 +1,20 @@
+import { isDeepStrictEqual } from "node:util";
 /** Run a mailbox Turn and store its assistant Messages. */
+import { blockRunAutomation } from "@/chat/automations/block-run";
+import {
+  isPersonInput,
+  isTopLevelKind,
+  turnBehavior,
+} from "@/chat/conversations/kind-behavior";
 import {
   readMessageAttachments,
   type MessageAttachment,
 } from "@/chat/attachments/input";
+import { isConversationDeliveryPaused } from "@/chat/conversations/delivery-pause";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { createHash } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import {
-  createWebAuthorization,
-  deleteWebAuthorization,
-} from "@/chat/conversations/web-authorization";
+import { createWebAuthorization } from "@/chat/conversations/web-authorization";
 import { loadProjection } from "@/chat/conversations/projection";
 import {
   hydrateConversationMessages,
@@ -43,14 +48,13 @@ import {
 import {
   getConversationTurnBoundaryError,
   isTurnInputCommitLostError,
-  markTurnClosed,
   markTurnFailed,
   startActiveTurn,
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import { getTurnUserMessage } from "@/chat/runtime/turn-user-message";
-import { decideReply } from "@/chat/services/assistant-reply";
+import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { botConfig } from "@/chat/config";
 import {
   latestConversationMessageSeq,
@@ -61,15 +65,13 @@ import {
 import { recordFinishedTurnForAutomatedLimit } from "@/chat/services/automated-turn-limit";
 import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
-import { clearPendingAuth, setPendingAuth } from "@/chat/services/pending-auth";
+import { setPendingAuth } from "@/chat/services/pending-auth";
 import {
   coerceThreadConversationState,
   type ConversationMessage,
-  type ThreadConversationState,
 } from "@/chat/state/conversation";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
-  abandonTurnRecord,
   failTurnRecord,
   getTurnRecord,
   saveTurnCheckpoint,
@@ -84,10 +86,12 @@ import {
 } from "@/chat/plugins/task-runner";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { supersedeOpenMailboxTurns } from "@/chat/task-execution/supersede-turns";
+import { completeCancelledConversationTurn } from "@/chat/task-execution/turn-cancel";
 import {
   getEventBatchDelayMs,
   sourceFromTurnInput,
   turnInputFactsFromConversationMessage,
+  type MailboxTurnInput,
   type MailboxTurnWork,
   type TurnInputFacts,
 } from "@/chat/task-execution/mailbox-turn";
@@ -96,7 +100,7 @@ import {
   webConversationMessage,
   webTurnInputs,
 } from "@/chat/task-execution/mailbox-input";
-import { instructionForInputs } from "@/chat/agent/prompt";
+import { instructionActorFor, instructionForInputs } from "@/chat/agent/prompt";
 import type { AgentInstructionInput } from "@/chat/agent/types";
 import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
@@ -110,6 +114,8 @@ import { isEventConversationMessage } from "@/chat/events/actor";
 import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { CredentialSubject } from "@/chat/credentials/context";
+import type { Actor } from "@sentry/junior-plugin-api";
+import type { Reply } from "@/chat/turn-answer";
 import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 
 function stableHex(...parts: string[]): string {
@@ -153,91 +159,24 @@ function resumedTimerWatchCredentialSubject(
     : undefined;
 }
 
+// The delegated subject that every input of a batch carries, if any.
+function sharedDelegatedSubject(
+  batch: readonly MailboxTurnInput[],
+): CredentialSubject | undefined {
+  const subjects = batch.map((entry) =>
+    entry.credentialContext && "subject" in entry.credentialContext
+      ? entry.credentialContext.subject
+      : undefined,
+  );
+  const first = subjects[0];
+  return first && subjects.every((subject) => isDeepStrictEqual(subject, first))
+    ? first
+    : undefined;
+}
+
 function hasLostTurnInputCommit(error: unknown): boolean {
   const cause = getConversationTurnBoundaryError(error)?.cause ?? error;
   return isTurnInputCommitLostError(error) || isTurnInputCommitLostError(cause);
-}
-
-async function completeCancelledConversationTurn(args: {
-  acknowledge(): Promise<void>;
-  conversation: ThreadConversationState;
-  conversationId: string;
-  sandboxRef?: SandboxRef;
-  turnId: string;
-  userMessageId: string | undefined;
-}): Promise<void> {
-  const pendingAuthorization =
-    args.conversation.processing.pendingAuth?.sessionId === args.turnId
-      ? args.conversation.processing.pendingAuth
-      : undefined;
-  await abandonTurnRecord({
-    conversationId: args.conversationId,
-    turnId: args.turnId,
-    errorMessage: "Turn cancelled",
-  });
-  clearPendingAuth(args.conversation, args.turnId);
-  markConversationMessage(args.conversation, args.userMessageId, {
-    replied: false,
-    skippedReason: "turn cancelled",
-  });
-  markTurnClosed({
-    conversation: args.conversation,
-    sessionId: args.turnId,
-  });
-  if (pendingAuthorization) {
-    await deleteWebAuthorization({
-      actorId: pendingAuthorization.actorId,
-      conversationId: args.conversationId,
-    });
-  }
-  await persistThreadStateById(args.conversationId, {
-    conversation: args.conversation,
-    sandboxRef: args.sandboxRef,
-  });
-  await new ConversationTurnLifecycleService(
-    getConversationEventStore(),
-  ).complete({
-    conversationId: args.conversationId,
-    createdAtMs: Date.now(),
-    outcome: "cancelled",
-    turnId: args.turnId,
-  });
-  await args.acknowledge();
-}
-
-/**
- * Cancel a Turn that waits for sign-in outside its worker, with the same
- * cleanup as a stopped resume. A tree stop calls this, because its stop wake
- * can go to queued input before the paused Turn.
- */
-export async function cancelSignInPausedTurn(args: {
-  conversationId: string;
-  turnId: string;
-}): Promise<void> {
-  // Claim the Turn first. If a worker resumed it, the worker owns its end.
-  const claimed = await abandonTurnRecord({
-    conversationId: args.conversationId,
-    errorMessage: "Turn cancelled",
-    onlyIfAuthPaused: true,
-    turnId: args.turnId,
-  });
-  if (!claimed) return;
-  const conversation = coerceThreadConversationState(
-    await getPersistedThreadState(args.conversationId),
-  );
-  await hydrateConversationMessages({
-    conversation,
-    conversationId: args.conversationId,
-  });
-  await completeCancelledConversationTurn({
-    // No worker holds this Turn's input.
-    acknowledge: async () => {},
-    conversation,
-    conversationId: args.conversationId,
-    turnId: args.turnId,
-    // A stranded Turn can lack its Message; the stop still ends the Turn.
-    userMessageId: getTurnUserMessage(conversation, args.turnId)?.id,
-  });
 }
 
 /**
@@ -254,11 +193,33 @@ function sharedAuthorIdentityId(
 }
 
 /**
- * Create the shared mailbox worker for web and event Turns.
+ * What one child agent Turn sends its parent agent: its `reply`, or a
+ * blocked or failed result.
+ */
+export type ParentResult =
+  | { kind: "reply"; reply: Reply }
+  | { kind: "blocked" | "failed"; text: string };
+
+/**
+ * Send one child agent Turn's result to the parent agent. `actor` is the
+ * Actor of the Turn. Repeat calls for one result are safe.
+ */
+export type DeliverToParent = (args: {
+  actor: Actor;
+  result: ParentResult;
+  conversationId: string;
+  turnId: string;
+}) => Promise<void>;
+
+/**
+ * Create the shared mailbox worker for web and event Turns of every
+ * Conversation kind. `deliverMessage` posts to a Location, and
+ * `deliverToParent` sends a child agent's results to its parent.
  */
 export function createConversationTurnWorker(
   agentRunner: AgentRunner,
   deliverMessage?: DeliverMessage,
+  deliverToParent?: DeliverToParent,
 ) {
   return async (
     context: ConversationWorkerContext,
@@ -292,12 +253,12 @@ export function createConversationTurnWorker(
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
     });
-    const isThread = storedConversation?.kind === "thread";
-    // The parent's task can carry the root's private content, so a Thread
+    const kind = storedConversation?.kind ?? "root";
+    // The parent's task can carry the root's private content, so a child
     // with missing visibility runs as private.
-    const visibility = isThread
-      ? (storedConversation.visibility ?? "private")
-      : storedConversation?.visibility;
+    const visibility = isTopLevelKind(kind)
+      ? storedConversation?.visibility
+      : (storedConversation?.visibility ?? "private");
     const mailboxDestination =
       resolved.kind === "mailbox"
         ? resolved.batch[0]?.message.destination
@@ -400,15 +361,21 @@ export function createConversationTurnWorker(
     const { actor, author } = turnInputFacts;
     const instructionInputs = instructionForInputs(inputs);
     const { text } = instructionInputs;
-    // A timer Turn stays system-acted but may use its creator's grants.
+    const instructionActor = instructionActorFor(actor);
+    // A timer Turn stays system-acted but may use its creator's grants. So
+    // does the result of a child agent that a timer Turn spawned.
     let credentialSubject: CredentialSubject | undefined;
     if (actor.platform === "system") {
       credentialSubject =
         resolved.kind === "mailbox"
-          ? timerWatchCredentialSubject(
+          ? (timerWatchCredentialSubject(
               context.conversationId,
               resolved.batch.map((entry) => entry.message),
-            )
+            ) ??
+            resumedTimerWatchCredentialSubject(
+              context.conversationId,
+              sharedDelegatedSubject(resolved.batch),
+            ))
           : resumedTimerWatchCredentialSubject(
               context.conversationId,
               savedTurn?.credentialSubject,
@@ -419,13 +386,6 @@ export function createConversationTurnWorker(
       source: turnInputFacts.source,
       visibility,
     });
-    const webActor = actor.platform === "web" ? actor : undefined;
-    // A person's Turn in a Thread does not start or message child agents:
-    // their results would report to the parent as the wrong Actor.
-    const disabledFeatures: AgentFeature[] = [
-      ...(webActor ? [] : ["interactive-auth" as const]),
-      ...(isThread ? ["subagents" as const] : []),
-    ];
     const conversationLocation = storedConversation?.location;
     // TODO(dcramer): Remove the saved Message check after every deployed Turn
     // cursor stores Event Source.
@@ -433,17 +393,38 @@ export function createConversationTurnWorker(
     // Turn lifecycle stores assistant Messages and web and Event work
     // each supplies optional provider Delivery. Source must not select Delivery.
     const isEventTurn = source.kind === "event" || savedMessageIsEvent;
-    // Only a root delivers to its Location. A child keeps a copy of its
-    // root's Location, but its output goes back to its parent.
-    // TODO(dcramer): This root check is temporary. Remove it when each Run
-    // gets explicit Delivery, so a child Run gets none.
+    // Only an Event Turn delivers here, and an Event has no person.
+    const postsToProvider = Boolean(conversationLocation) && isEventTurn;
+    const behavior = turnBehavior({
+      kind,
+      personInput: isPersonInput(source.kind),
+    });
+    const webActor = actor.platform === "web" ? actor : undefined;
+    // A child agent's Turn cannot wait for a person to sign in, even when it
+    // runs as the web user who started it; missing auth blocks it instead.
+    const signInActor =
+      behavior.promptMode === "child_agent" ? undefined : webActor;
+    const disabledFeatures: AgentFeature[] = signInActor
+      ? []
+      : ["interactive-auth"];
     const deliverToProvider =
-      Boolean(conversationLocation) &&
-      isEventTurn &&
-      storedConversation?.kind === "root";
+      postsToProvider && behavior.delivery === "location";
+    const sendToParent = async (result: ParentResult): Promise<void> => {
+      if (!deliverToParent) {
+        throw new Error(
+          `Conversation ${context.conversationId} cannot reach its parent agent`,
+        );
+      }
+      await deliverToParent({
+        actor,
+        result,
+        conversationId: context.conversationId,
+        turnId,
+      });
+    };
     // TODO(dcramer): Stop deriving surface from Delivery after active Turn
     // lookup and reporting read Source for web and Event Turns.
-    const surface = deliverToProvider ? ("slack" as const) : ("api" as const);
+    const surface = postsToProvider ? ("slack" as const) : ("api" as const);
 
     // Input timing applies to new input. A resumed slice continues the trace
     // of its first slice.
@@ -578,15 +559,11 @@ export function createConversationTurnWorker(
 
         const deliverAssistantMessage = async (
           value: AssistantMessage | string,
+          options?: { quiet?: true; reply?: true },
         ): Promise<void> => {
           const agentMessage = typeof value === "string" ? undefined : value;
-          const decision = agentMessage ? decideReply(agentMessage) : undefined;
           const replyText =
-            typeof value === "string"
-              ? value
-              : decision?.kind === "deliver"
-                ? decision.text
-                : undefined;
+            typeof value === "string" ? value : getAssistantReplyText(value);
           if (!replyText?.trim()) {
             return;
           }
@@ -595,12 +572,15 @@ export function createConversationTurnWorker(
           // Only Event Turns may be quiet: a person who asked always gets the
           // reply. A card means someone must look, so it always delivers.
           const quiet =
-            decision?.kind === "deliver" &&
-            decision.quiet === true &&
-            isEventTurn &&
-            cards.length === 0;
+            options?.quiet === true && isEventTurn && cards.length === 0;
           let deliveryResult: DeliveryResult | undefined;
-          if (deliverToProvider && !quiet) {
+          // Read the pause at reply time: a person can pause Delivery while
+          // this Turn runs.
+          if (
+            (options?.reply ? postsToProvider : deliverToProvider) &&
+            !quiet &&
+            !(await isConversationDeliveryPaused(context.conversationId))
+          ) {
             if (!conversationLocation || !deliverMessage) {
               throw new Error(
                 `Conversation ${context.conversationId} cannot deliver to its Location`,
@@ -667,10 +647,17 @@ export function createConversationTurnWorker(
             agentRunner,
             {
               conversationId: context.conversationId,
+              ...(storedConversation?.parentConversationId
+                ? {
+                    parentConversationId:
+                      storedConversation.parentConversationId,
+                  }
+                : undefined),
               turnId,
               runId: currentRunId,
               instruction: {
                 ...instructionInputs,
+                ...(instructionActor ? { actor: instructionActor } : undefined),
                 storedAttachments: attachments,
                 context: await buildTurnThreadContext({
                   conversation,
@@ -695,10 +682,10 @@ export function createConversationTurnWorker(
                 : undefined),
               surface,
               ...(stopSignal ? { signal: stopSignal } : undefined),
-              ...(webActor
+              ...(signInActor
                 ? {
                     authorization: createWebAuthorization({
-                      actorId: webActor.userId,
+                      actorId: signInActor.userId,
                       conversationId: context.conversationId,
                     }),
                   }
@@ -726,6 +713,7 @@ export function createConversationTurnWorker(
                 onInputCommitted: acknowledge,
                 shouldYield: context.shouldYield,
                 checkIn: context.checkIn,
+                checkStop: context.checkStop,
                 onSandboxRefChanged: async (nextSandboxRef) => {
                   sandboxRef = nextSandboxRef;
                   await persistThreadStateById(context.conversationId, {
@@ -759,8 +747,37 @@ export function createConversationTurnWorker(
               const modelFailureReason = finalized.failureReason;
               const reply = finalized.reply;
               modelFailureEventId = finalized.eventId;
+              // An answer for the parent is sent before the Turn is saved, so a
+              // lost worker cannot save the Turn and drop the answer.
               if (reply.diagnostics.outcome !== "success") {
                 await deliverAssistantMessage(reply.text);
+                if (behavior.failureNotice === "parent") {
+                  await sendToParent({
+                    kind: "failed",
+                    text: reply.diagnostics.errorMessage ?? reply.text,
+                  });
+                }
+              } else if (reply.reply && behavior.tools.reply === "parent") {
+                await sendToParent({ kind: "reply", reply: reply.reply });
+              } else if (reply.reply) {
+                await deliverAssistantMessage(reply.reply.text, {
+                  reply: true,
+                });
+              } else if (
+                reply.blocked &&
+                behavior.tools.reportBlocked === "parent"
+              ) {
+                await sendToParent({
+                  kind: "blocked",
+                  text: reply.blocked.missing,
+                });
+              } else if (reply.blocked) {
+                await blockRunAutomation(context.conversationId, reply.blocked);
+              } else if (reply.noReply?.note && isEventTurn) {
+                // The note of a no-reply Event Turn is its Quiet message.
+                await deliverAssistantMessage(reply.noReply.note, {
+                  quiet: true,
+                });
               }
 
               const completedState = buildDeliveredTurnStatePatch({
@@ -849,8 +866,7 @@ export function createConversationTurnWorker(
             await acknowledge();
             return { status: "paused" };
           }
-          // Memory is public, so only a root captures it; a Thread is a child.
-          if (completedSuccessfully && !isThread) {
+          if (completedSuccessfully && behavior.sessionTasks) {
             try {
               await scheduleSessionCompletedPluginTasks(
                 {
@@ -962,6 +978,13 @@ export function createConversationTurnWorker(
             failureCode,
             turnId,
           });
+          if (behavior.failureNotice === "parent") {
+            await sendToParent({
+              kind: "failed",
+              text:
+                failure instanceof Error ? failure.message : String(failure),
+            });
+          }
           await acknowledge();
           return { status: "completed" };
         }

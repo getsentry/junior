@@ -9,7 +9,7 @@ export const NOTIFICATION_TARGET_CACHE = "junior-notification-target";
 export const NOTIFICATION_TARGET_KEY = "/_junior/dashboard/notification-target";
 
 /**
- * The service worker only shows phone notifications. It has no `fetch`
+ * The service worker only shows push notifications. It has no `fetch`
  * handler, so it never caches or changes dashboard requests. Its one cache
  * entry holds the last tapped notification URL for the page to open.
  *
@@ -63,6 +63,8 @@ self.addEventListener("push", (event) => {
     (async () => {
       const payload = readPayload(event);
       const url = targetUrl(payload.url);
+      const tag =
+        typeof payload.tag === "string" && payload.tag ? payload.tag : undefined;
       const windows = await self.clients.matchAll({
         includeUncontrolled: true,
         type: "window",
@@ -79,9 +81,10 @@ self.addEventListener("push", (event) => {
           body: typeof payload.body === "string" ? payload.body : "",
           data: { url: url.href },
           icon: "/_junior/dashboard/icon-512.png",
-          renotify: !viewing,
+          // showNotification() throws when renotify is set without a tag.
+          renotify: Boolean(tag) && !viewing,
           silent: viewing,
-          tag: typeof payload.tag === "string" ? payload.tag : undefined,
+          tag,
         },
       );
       await updateBadge();

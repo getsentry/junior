@@ -6,6 +6,7 @@ import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import {
   appendInboundMessage,
   drainConversationMailbox,
+  requestAnotherSlice,
   startConversationWork,
 } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
@@ -761,7 +762,7 @@ describe("conversation SQL store", () => {
     }
   }, 15_000);
 
-  it("fills missing actor identity from later observations and keeps it across event writes", async () => {
+  it("keeps the root actor identity across later writes", async () => {
     const fixture = await createJuniorSqlFixture();
 
     try {
@@ -779,6 +780,8 @@ describe("conversation SQL store", () => {
         source: "slack",
         nowMs: 1_000,
       });
+      // A later write does not save the root Actor's Identity again. The
+      // person's own Turns save their Slack profile on that Identity.
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("identity-fill").destination,
@@ -807,14 +810,12 @@ describe("conversation SQL store", () => {
       await expect(store.listByActivity({ limit: 5 })).resolves.toMatchObject([
         {
           conversationId: CONVERSATION_ID,
-          actor: {
-            email: "casey@example.com",
-            fullName: "Casey Example",
-            slackUserId: "U123",
-          },
+          actor: { platform: "slack", slackUserId: "U123", teamId: "T123" },
           source: "slack",
         },
       ]);
+      const [stored] = await store.listByActivity({ limit: 5 });
+      expect(stored?.actor?.email).toBeUndefined();
     } finally {
       await fixture.close();
     }
@@ -1617,6 +1618,51 @@ ORDER BY metric
       await expect(running).resolves.toEqual({ status: "completed" });
     } finally {
       vi.useRealTimers();
+      await disconnectStateAdapter();
+      await fixture.close();
+    }
+  });
+
+  it("stores a paused execution as paused", async () => {
+    const fixture = await createJuniorSqlFixture();
+
+    try {
+      await disconnectStateAdapter();
+      const state = getStateAdapter();
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+      const message = inboundMessage("slice");
+      await appendInboundMessage({
+        message,
+        conversationStore: store,
+        nowMs: 1_000,
+        state,
+      });
+      const lease = await startConversationWork({
+        conversationId: CONVERSATION_ID,
+        conversationStore: store,
+        nowMs: 2_000,
+        state,
+      });
+      if (lease.status !== "acquired") {
+        throw new Error("expected a lease");
+      }
+      await requestAnotherSlice({
+        conversationId: CONVERSATION_ID,
+        conversationStore: store,
+        destination: message.destination,
+        leaseToken: lease.leaseToken,
+        nowMs: 3_000,
+        state,
+      });
+
+      const [row] = await fixture.sql
+        .db()
+        .select({ executionStatus: juniorConversations.executionStatus })
+        .from(juniorConversations)
+        .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+      expect(row?.executionStatus).toBe("paused");
+    } finally {
       await disconnectStateAdapter();
       await fixture.close();
     }

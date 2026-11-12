@@ -34,7 +34,7 @@ const TooltipDescriptionContext = createContext<string | undefined>(undefined);
  * screens, a tooltip can cover the menu that its trigger opens.
  */
 const TOOLTIP_MEDIA_QUERY =
-  "(min-width: 768px) and (hover: hover) and (pointer: fine)";
+  "(min-width: 48rem) and (hover: hover) and (pointer: fine)";
 
 function subscribeToTooltipMedia(onChange: () => void) {
   const media = window.matchMedia(TOOLTIP_MEDIA_QUERY);
@@ -97,15 +97,15 @@ function TooltipTrigger({
 }
 
 const tooltipContentVariants = cva(
-  "z-50 select-text rounded-md border border-dashboard-border-emphasis bg-dashboard-surface-raised font-sans text-xs shadow-2xl shadow-black/70 outline-none",
+  "z-50 select-text rounded-md border border-input bg-secondary font-sans text-xs shadow-2xl shadow-black/70 outline-none",
   {
     variants: {
       size: {
         /** Selectable detail cards, such as chart buckets and metric breakdowns. */
         default:
-          "min-w-36 max-w-lg px-3 py-2 leading-relaxed text-dashboard-text-muted",
+          "min-w-36 max-w-lg px-3 py-2 leading-relaxed text-muted-foreground",
         /** One short label for an icon-only control. */
-        compact: "px-2.5 py-1.5 leading-none text-dashboard-text",
+        compact: "px-2.5 py-1.5 leading-none text-foreground",
       },
     },
     defaultVariants: { size: "default" },
@@ -152,7 +152,7 @@ function TooltipContent({
 function TooltipTitle({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
-      className={cn("mb-1 font-semibold text-dashboard-text-muted", className)}
+      className={cn("mb-1 font-semibold text-muted-foreground", className)}
       {...props}
     />
   );

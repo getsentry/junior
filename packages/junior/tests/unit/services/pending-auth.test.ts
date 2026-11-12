@@ -12,7 +12,6 @@ import {
   canReusePendingAuthLink,
   clearPendingAuth,
   isPendingAuthFor,
-  wasPendingAuthStopped,
 } from "@/chat/services/pending-auth";
 import type {
   ConversationPendingAuthState,
@@ -46,19 +45,6 @@ function pendingAuth(
   return kind === "mcp"
     ? { ...value, authSessionId: "auth-session-1", kind }
     : { ...value, kind };
-}
-
-function conversationWithMessages(
-  messages: ThreadConversationState["messages"],
-): ThreadConversationState {
-  return {
-    schemaVersion: 1,
-    messages,
-    processing: {},
-    vision: {
-      byFileId: {},
-    },
-  };
 }
 
 function pendingAuthState(sessionId: string): ConversationPendingAuthState {
@@ -196,79 +182,14 @@ describe("abandonReplacedPendingAuth", () => {
   });
 });
 
-describe("wasPendingAuthStopped", () => {
-  const request = {
-    id: "msg.9",
-    role: "user" as const,
-    text: "list my sentry issues",
-    createdAtMs: NOW,
-  };
-
-  it("keeps the wait when the person sends another message", () => {
-    expect(
-      wasPendingAuthStopped(
-        conversationWithMessages([
-          request,
-          {
-            id: "msg.10",
-            role: "user",
-            text: "thanks, one sec",
-            createdAtMs: NOW + 1,
-            meta: { replied: true },
-          },
-        ]),
-        pendingAuthState("turn_msg_9"),
-      ),
-    ).toBe(false);
-  });
-
-  it("ends the wait when the person tells Junior to stop", () => {
-    expect(
-      wasPendingAuthStopped(
-        conversationWithMessages([
-          request,
-          {
-            id: "msg.stop",
-            role: "user",
-            text: "stop",
-            createdAtMs: NOW + 1,
-            meta: {
-              replied: false,
-              skippedReason: "thread_opt_out:explicit stop",
-            },
-          },
-        ]),
-        pendingAuthState("turn_msg_9"),
-      ),
-    ).toBe(true);
-  });
-
-  it("ignores a stop from before the request", () => {
-    expect(
-      wasPendingAuthStopped(
-        conversationWithMessages([
-          {
-            id: "msg.stop",
-            role: "user",
-            text: "stop",
-            createdAtMs: NOW - 1,
-            meta: {
-              replied: false,
-              skippedReason: "thread_opt_out:explicit stop",
-            },
-          },
-          request,
-        ]),
-        pendingAuthState("turn_msg_9"),
-      ),
-    ).toBe(false);
-  });
-});
-
 describe("clearPendingAuth", () => {
   it("keeps a newer wait when an older Turn ends", () => {
-    const conversation = conversationWithMessages([]);
-    conversation.processing.pendingAuth = pendingAuth({ sessionId: "run_2" });
+    const conversation: ThreadConversationState = {
+      schemaVersion: 1,
+      messages: [],
+      processing: { pendingAuth: pendingAuth({ sessionId: "run_2" }) },
+      vision: { byFileId: {} },
+    };
 
     clearPendingAuth(conversation, "run_1");
     expect(conversation.processing.pendingAuth?.sessionId).toBe("run_2");

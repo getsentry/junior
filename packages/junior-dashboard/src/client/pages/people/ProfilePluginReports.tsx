@@ -1,6 +1,7 @@
 import type { PluginOperationalReport } from "@sentry/junior/api/schema";
 
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import { anchorTitleId } from "../../components/layout/AnchorHeading";
 import { SectionIntro } from "../../components/layout/SectionIntro";
 import { cn } from "../../styles";
 import { PluginBarChart } from "../system/PluginBarChart";
@@ -44,15 +45,10 @@ function ProfilePluginReport(props: {
   const recordSets = props.report.recordSets ?? [];
   if (!metrics.length && !widgets.length && !recordSets.length) return null;
 
+  const anchor = `plugin-${props.report.pluginName}`;
   return (
-    <section
-      aria-labelledby={`profile-plugin-${props.report.pluginName}-title`}
-      className="grid gap-4"
-    >
-      <SectionIntro
-        id={`profile-plugin-${props.report.pluginName}-title`}
-        title={title}
-      />
+    <section aria-labelledby={anchorTitleId(anchor)} className="grid gap-4">
+      <SectionIntro anchor={anchor} title={title} />
       {metrics.length ? (
         <div
           className={cn(

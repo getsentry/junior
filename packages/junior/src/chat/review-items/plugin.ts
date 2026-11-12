@@ -92,7 +92,8 @@ export function createPluginReviewItems(args: {
         conversationIds: [
           ...new Set([conversationId, ...(existing?.conversationIds ?? [])]),
         ],
-        kind: "notice",
+        // An item that waits on its assignees is an action: it needs them.
+        kind: notice.waitsOnAssignees ? "action" : "notice",
         title: notice.title,
         visibility: isPrivate ? "private" : "public",
         ...(notice.subject ? { subject: notice.subject } : undefined),
