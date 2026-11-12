@@ -92,8 +92,8 @@ When a person wants to open the UI that you changed, send a preview URL:
 Rules:
 
 - Serve mock data only. Do not give the server provider credentials. A viewer
-  can choose **Use live data** in the banner and enter their own personal
-  token. Never ask for a token, and never put one in the Sandbox.
+  can choose **Use live data** in the banner and connect it to their account.
+  Never ask for a token, and never put one in the Sandbox.
 - Live data uses the API of the live deployment. When the change touches an
   API, tell the person that only mock data shows it.
 - After more edits, run the `curl` check first. If it returns `200`, do not
