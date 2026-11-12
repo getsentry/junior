@@ -196,7 +196,12 @@ function byConversation(
     )
     .map(([conversationId, group]) => ({
       key: `c:${conversationId}`,
-      label: titleOf(conversationId) ?? group[0]!.newest.title,
+      // The rows lead with their item titles, so the heading never falls
+      // back to one.
+      label:
+        titleOf(conversationId) ??
+        group[0]!.newest.subject?.title ??
+        "Untitled",
       rows: group,
     }));
 }
@@ -268,4 +273,19 @@ export function sweepOf(
     .filter(
       (item) => item.status === "open" && item.kind === "notice" && item.canAct,
     );
+}
+
+/**
+ * The second line of a row for one item: what it is about, then its
+ * Conversation. A part that repeats the item title drops out, and with no
+ * part left the row has no second line.
+ */
+export function itemRowSubtitle(
+  item: Pick<ReviewItemPayload, "subject" | "title">,
+  conversationTitle: string | undefined,
+): string | undefined {
+  const parts = [...new Set([item.subject?.title, conversationTitle])].filter(
+    (part): part is string => Boolean(part) && part !== item.title,
+  );
+  return parts.length > 0 ? parts.join(" · ") : undefined;
 }

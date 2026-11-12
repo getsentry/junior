@@ -34,7 +34,11 @@ import {
   ConversationCast,
   useConversationDensity,
 } from "../conversations/conversationDensity";
-import { ConversationSidebarAnnotations } from "../conversations/ConversationMeta";
+import {
+  ATTENTION_TONE_CLASS,
+  ConversationSidebarAnnotations,
+  OPEN_TONE_CLASS,
+} from "../conversations/ConversationMeta";
 import { usePrefetchConversation } from "../conversations/conversationPrefetch";
 import { useConversationActionToasts } from "../conversations/conversationActionToasts";
 import { conversationPath } from "../conversations/conversationRoutes";
@@ -249,6 +253,8 @@ type InboxRowProps = {
   expanded: boolean;
   /** A row for one item leads with the item title. */
   itemTitle?: string;
+  /** The second line of a row for one item (`itemRowSubtitle`). */
+  itemSubtitle?: string;
   onDone?(): void;
   /** Runs before a row action that can move rows, so its result shows. */
   onRowAction?(): void;
@@ -474,9 +480,11 @@ function InboxRowBody(
               {props.itemTitle ?? props.title}
             </span>
             {props.itemTitle ? (
-              <span className="min-w-0 truncate text-xs text-dashboard-text-muted">
-                {props.title}
-              </span>
+              props.itemSubtitle ? (
+                <span className="min-w-0 truncate text-xs text-dashboard-text-muted">
+                  {props.itemSubtitle}
+                </span>
+              ) : null
             ) : summary ? (
               <span className="flex min-w-0 items-start gap-1.5 text-xs leading-snug text-dashboard-text-muted">
                 {summary.status ? (
@@ -608,16 +616,6 @@ function ExpandedActions(props: {
         <ArrowUpRight aria-hidden="true" size={15} />
         Open conversation
       </Link>
-      {props.canDone && props.onDone ? (
-        <Button
-          disabled={props.donePending}
-          onClick={props.onDone}
-          variant="ghost"
-        >
-          <Check aria-hidden="true" size={15} />
-          Done
-        </Button>
-      ) : null}
       {props.conversation?.isParticipant ? (
         <ExpandedPin conversation={props.conversation} />
       ) : null}
@@ -632,7 +630,11 @@ function ExpandedActions(props: {
           <PopoverTrigger
             render={
               <Button variant="ghost">
-                <Clock3 aria-hidden="true" size={15} />
+                <Clock3
+                  aria-hidden="true"
+                  className={ATTENTION_TONE_CLASS}
+                  size={15}
+                />
                 Snooze
               </Button>
             }
@@ -654,6 +656,17 @@ function ExpandedActions(props: {
             ))}
           </PopoverContent>
         </Popover>
+      ) : null}
+      {/* The main action is the right-most one. */}
+      {props.canDone && props.onDone ? (
+        <Button
+          disabled={props.donePending}
+          onClick={props.onDone}
+          variant="outline"
+        >
+          <Check aria-hidden="true" className={OPEN_TONE_CLASS} size={15} />
+          Done
+        </Button>
       ) : null}
     </div>
   );

@@ -184,7 +184,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/junior/pull/2201",
-        title: "getsentry/junior#2201",
+        title: "Update Junior to 0.288.0",
         url: "https://github.com/getsentry/junior/pull/2201",
       },
       title: "Ready to merge · #2201",
@@ -198,7 +198,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/payments/pull/91",
-        title: "getsentry/payments#91",
+        title: "Pin the release train to payments 4.2",
         url: "https://github.com/getsentry/payments/pull/91",
       },
       title: "Review requested · #91",
@@ -242,7 +242,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/junior/pull/3052",
-        title: "getsentry/junior#3052",
+        title: "Tabs in the dashboard sidebar",
         url: "https://github.com/getsentry/junior/pull/3052",
       },
       title: "Review requested · #3052",
@@ -257,7 +257,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/junior/pull/3037",
-        title: "getsentry/junior#3037",
+        title: "Fix the stable list order",
         url: "https://github.com/getsentry/junior/pull/3037",
       },
       title: "Merged · #3037",

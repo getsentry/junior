@@ -176,9 +176,6 @@ export function InboxNav(props: {
       view={view}
     />
   );
-  const pinnedShown = data.inFlight.filter(
-    (conversation) => conversation.pinnedAt,
-  );
   return (
     <nav
       aria-label="Inbox"
@@ -219,9 +216,11 @@ export function InboxNav(props: {
               {data.inFlightCount}
             </span>
           </h2>
-          {/* Every pin shows, so a drop can place them all. */}
+          {/* Every pin shows, so a drop can place them all. Running pins
+              show first, so a drop moves the pin within the stored order,
+              and the other pins keep theirs. */}
           <PinnedConversationOrder
-            conversations={pinnedShown}
+            conversations={data.pinned}
             onError={onReorderError}
             reorder={reorderPins}
           >

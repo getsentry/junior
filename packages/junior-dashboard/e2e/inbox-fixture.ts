@@ -135,7 +135,7 @@ export const prMerge = {
   kind: "action" as const,
   subject: {
     id: "https://github.com/getsentry/payments/pull/42",
-    title: "getsentry/payments#42",
+    title: "Retry checkout writes after lock timeouts",
     url: "https://github.com/getsentry/payments/pull/42",
   },
   title: "Ready to merge · #42",
@@ -151,7 +151,7 @@ export const prReview = {
   id: "item-pr-review",
   subject: {
     id: "https://github.com/getsentry/payments/pull/91",
-    title: "getsentry/payments#91",
+    title: "Pin the release train",
     url: "https://github.com/getsentry/payments/pull/91",
   },
   title: "Review requested · #91",

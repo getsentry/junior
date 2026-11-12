@@ -600,3 +600,118 @@ test("a click expands a row in place, and Open opens its Conversation", async ({
   await openRow(head);
   await expect(page).toHaveURL(/\/conversations\//);
 });
+
+test("a drag in In flight moves only that pin in the stored order", async ({
+  dashboard,
+  page,
+}) => {
+  await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
+    const response = await route.fetch();
+    const feed = await response.json();
+    const pin = (index: number, displayTitle: string, status: string) => ({
+      ...feed.conversations[0],
+      conversationId: `slack:CPINS:${1770000000 + index}.000100`,
+      displayTitle,
+      isParticipant: true,
+      pinnedAt: "2026-08-07T10:00:00.000Z",
+      pinPosition: index,
+      status,
+    });
+    return route.fulfill({
+      response,
+      json: {
+        ...feed,
+        // Stored order Alpha, Bravo, Charlie. Charlie runs, so In flight
+        // shows it first.
+        conversations: [
+          pin(0, "Alpha pin", "completed"),
+          pin(1, "Bravo pin", "completed"),
+          pin(2, "Charlie pin", "active"),
+        ],
+        nextCursor: undefined,
+      },
+    });
+  });
+  await mockReviewItems(page, { open: [] });
+  await page.goto(`${dashboard.baseURL}/`);
+  const inFlight = page.getByRole("list", { name: "In flight" });
+  await expect(inFlight.getByRole("listitem")).toHaveText([
+    /Charlie pin/,
+    /Alpha pin/,
+    /Bravo pin/,
+  ]);
+  const save = page.waitForRequest(
+    (request) =>
+      request.method() === "PUT" &&
+      request.url().includes("/api/conversations/pin-order"),
+  );
+  await inFlight.getByRole("link", { name: /Bravo pin/ }).focus();
+  await page.keyboard.press("Alt+ArrowUp");
+  expect((await save).postDataJSON()).toEqual({
+    conversationIds: [
+      "slack:CPINS:1770000001.000100",
+      "slack:CPINS:1770000000.000100",
+      "slack:CPINS:1770000002.000100",
+    ],
+  });
+});
+
+test("every pin shows on the first feed page, and a reorder saves them all", async ({
+  dashboard,
+  page,
+}) => {
+  // The server's first feed page has every pin, before the page by activity
+  // (`readConversationFeedFromSql`). Here the pins are idle for weeks, and
+  // more pages follow.
+  await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
+    const response = await route.fetch();
+    const feed = await response.json();
+    const row = (index: number, displayTitle: string, pinned: boolean) => ({
+      ...feed.conversations[0],
+      conversationId: `slack:CFEED:${1770000000 + index}.000100`,
+      displayTitle,
+      isParticipant: true,
+      lastMessageAt: pinned
+        ? "2026-07-01T10:00:00.000Z"
+        : "2026-08-07T10:00:00.000Z",
+      pinnedAt: pinned ? "2026-07-01T10:00:00.000Z" : null,
+      pinPosition: pinned ? index : undefined,
+      status: "completed",
+    });
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    return route.fulfill({
+      response,
+      json: cursor
+        ? { ...feed, conversations: [], nextCursor: undefined }
+        : {
+            ...feed,
+            conversations: [
+              ...Array.from({ length: 4 }, (_, index) =>
+                row(index, `Old pin ${index + 1}`, true),
+              ),
+              row(4, "Recent conversation", false),
+            ],
+            nextCursor: "page-2",
+          },
+    });
+  });
+  await mockReviewItems(page, { open: [] });
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
+  const inFlight = page.getByRole("list", { name: "In flight" });
+  await expect(inFlight.getByRole("listitem")).toHaveCount(4);
+  const pinned = page.getByRole("region", { name: "Pinned" });
+  await expect(pinned.locator("[data-inbox-row]")).toHaveCount(4);
+
+  const save = page.waitForRequest(
+    (request) =>
+      request.method() === "PUT" &&
+      request.url().includes("/api/conversations/pin-order"),
+  );
+  await rowHead(pinned, "Old pin 2").focus();
+  await page.keyboard.press("Alt+ArrowUp");
+  expect((await save).postDataJSON()).toEqual({
+    conversationIds: [1, 0, 2, 3].map(
+      (index) => `slack:CFEED:${1770000000 + index}.000100`,
+    ),
+  });
+});

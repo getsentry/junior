@@ -37,6 +37,7 @@ import {
   automationSections,
   INBOX_VIEW_LABELS,
   inboxViewPath,
+  itemRowSubtitle,
   sweepOf,
   TIME_SECTIONS,
   timeSectionAt,
@@ -76,6 +77,27 @@ function SweepControl(props: {
   );
 }
 
+/** A failed read, with Try again. */
+function RetryRow(props: {
+  children: string;
+  loading: boolean;
+  onRetry(): void;
+}) {
+  return (
+    <div className="flex items-center justify-center gap-2 py-3 text-xs">
+      <InlineError className="w-auto">{props.children}</InlineError>
+      <Button
+        className="h-7 px-2 text-xs"
+        disabled={props.loading}
+        onClick={props.onRetry}
+        variant="ghost"
+      >
+        Try again
+      </Button>
+    </div>
+  );
+}
+
 /**
  * The end of a paged list. While it shows, it asks for more, and asks again
  * whenever `progress` changes. After a failed read it shows Try again
@@ -105,17 +127,9 @@ function PageEnd(props: {
   }, [active, props.progress]);
   if (props.failed)
     return (
-      <div className="flex items-center justify-center gap-2 py-3 text-xs">
-        <InlineError className="w-auto">Could not load more.</InlineError>
-        <Button
-          className="h-7 px-2 text-xs"
-          disabled={props.loading}
-          onClick={props.onRetry}
-          variant="ghost"
-        >
-          Try again
-        </Button>
-      </div>
+      <RetryRow loading={props.loading} onRetry={props.onRetry}>
+        Could not load more.
+      </RetryRow>
     );
   if (!props.more) return null;
   return (
@@ -401,6 +415,11 @@ export function InboxList(props: {
         drag={options.drag}
         expanded={state.expandedKey === key}
         itemTitle={options.itemRow ? row.newest.title : undefined}
+        itemSubtitle={
+          options.itemRow
+            ? itemRowSubtitle(row.newest, titleOf(row.conversationId))
+            : undefined
+        }
         key={key}
         onDone={() => void markDone(row)}
         onSnooze={
@@ -477,10 +496,9 @@ export function InboxList(props: {
           : view === "done"
             ? [donePages]
             : [];
-  // To do pages its asks on its own while it shows fewer than its count,
-  // and shows its own Try again, so the stream does not repeat it.
-  const todoMore =
-    data.signedIn && data.todoLoaded < data.todoCount && data.itemPages.hasMore;
+  // To do pages its asks on its own until the server has no more, and shows
+  // its own Try again, so the stream does not repeat it.
+  const todoMore = data.signedIn && data.itemPages.hasMore;
   const todoPaging = view === "inbox" && todoMore && !todoCollapsed;
   // A failed page read stops only new reads. Rows already loaded still
   // show as the reader scrolls, and Try again shows once they all do.
@@ -526,7 +544,7 @@ export function InboxList(props: {
       more={todoMore}
       onRetry={data.itemPages.retry}
       onShow={data.itemPages.loadMore}
-      progress={[data.todoLoaded, data.itemPages.loadingMore].join()}
+      progress={[data.awake.length, data.itemPages.loadingMore].join()}
     />
   );
 
@@ -547,7 +565,9 @@ export function InboxList(props: {
           onError={(conversation) =>
             showActionError(conversation, "Could not reorder")
           }
-          reorder={pinned.length === data.pinnedCount ? reorderPins : undefined}
+          reorder={
+            pinned.length === data.pinned.length ? reorderPins : undefined
+          }
         >
           <InboxSection
             collapsed={collapsed.has("pinned")}
@@ -658,21 +678,30 @@ export function InboxList(props: {
       ))
     );
   } else if (view === "done") {
-    body = !done.query.data ? (
-      <RowsLoading />
-    ) : doneItems.length === 0 ? (
-      <EmptyState label="Nothing done yet" />
-    ) : (
-      <InboxDoneView
-        collapsed={collapsed}
-        expandedKey={state.expandedKey}
-        items={doneItems}
-        nowMs={nowMs}
-        onToggle={toggle}
-        onToggleSection={toggleSection}
-        titleOf={titleOf}
-      />
-    );
+    // A failed first read has no rows to page, so it shows its own retry.
+    body =
+      done.query.isError && !done.query.data ? (
+        <RetryRow
+          loading={done.query.isFetching}
+          onRetry={() => void done.query.refetch()}
+        >
+          Could not load Done.
+        </RetryRow>
+      ) : !done.query.data ? (
+        <RowsLoading />
+      ) : doneItems.length === 0 ? (
+        <EmptyState label="Nothing done yet" />
+      ) : (
+        <InboxDoneView
+          collapsed={collapsed}
+          expandedKey={state.expandedKey}
+          items={doneItems}
+          nowMs={nowMs}
+          onToggle={toggle}
+          onToggleSection={toggleSection}
+          titleOf={titleOf}
+        />
+      );
   } else if (view === "snoozed") {
     body =
       data.snoozedRows.length === 0 ? (

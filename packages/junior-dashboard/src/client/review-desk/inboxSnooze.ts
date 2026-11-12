@@ -1,9 +1,12 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
+import { useEffect, useReducer } from "react";
 
 import type { InboxBundle } from "./reviewItemFormat";
 
 const STORAGE_KEY = "junior:inbox:snoozed";
 const HOUR_MS = 60 * 60 * 1000;
+/** The longest delay `setTimeout` keeps; a longer one fires at once. */
+const MAX_TIMER_MS = 2 ** 31 - 1;
 
 /** One snoozed row: until when, and its newest item at the snooze. */
 type Snooze = { newestItemId: string; untilMs: number };
@@ -48,6 +51,21 @@ export function useInboxSnoozes(nowMs: number) {
     STORAGE_KEY,
     {},
   );
+  // Render again when the next snooze ends, so its row wakes on time.
+  const [, wakeUp] = useReducer((count: number) => count + 1, 0);
+  const nextWakeMs = Math.min(
+    ...Object.values(snoozes)
+      .map((snooze) => snooze.untilMs)
+      .filter((untilMs) => untilMs > nowMs),
+  );
+  useEffect(() => {
+    if (!Number.isFinite(nextWakeMs)) return;
+    const timer = setTimeout(
+      wakeUp,
+      Math.min(MAX_TIMER_MS, Math.max(0, nextWakeMs - Date.now())),
+    );
+    return () => clearTimeout(timer);
+  }, [nextWakeMs]);
   /** True while `key` sleeps and `newestItemId` is still its newest item. */
   const sleeps = (key: string, newestItemId: string) => {
     const snooze = snoozes[key];

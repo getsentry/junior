@@ -20,11 +20,7 @@ import {
   useReviewItemsData,
   scrollPages,
 } from "./queries";
-import {
-  inboxBundles,
-  itemNeedsViewer,
-  type InboxBundle,
-} from "./reviewItemFormat";
+import { inboxBundles, type InboxBundle } from "./reviewItemFormat";
 import { useInboxSweep } from "./useInboxSweep";
 
 /** A Conversation row, with what it asks of the viewer when it asks. */
@@ -104,8 +100,9 @@ function useBuildInboxData(input: {
     [linked, loaded],
   );
   const attention = useAutomationAttentionData(signedIn);
-  // The server counts what waits on the viewer, so the tab badge and To do
-  // read the same number.
+  // The server counts what waits on the viewer for the tab badge. To do
+  // pages on its own reads, so a count that is pending or failed cannot
+  // stop it.
   const todoCount = useInboxTodoCount(signedIn) ?? 0;
   const automations = attention.data?.automations ?? [];
   const nowMs = Date.now();
@@ -152,11 +149,6 @@ function useBuildInboxData(input: {
     bundles.map((bundle) => [bundle.conversationId, bundle]),
   );
   const todoRows = bundles.filter((bundle) => bundle.needsYou);
-  // What To do has loaded of what the count counts: the asks that wait on
-  // the viewer, and the Automations that need their attention.
-  const todoLoaded =
-    todoRows.flatMap((row) => row.items).filter(itemNeedsViewer).length +
-    automations.length;
   const snoozedRows = inboxBundles(live.filter(asleep));
 
   // Every Conversation, pinned first in the viewer's order, then newest
@@ -226,14 +218,14 @@ function useBuildInboxData(input: {
     // Signed out, there are no asks to wait for.
     itemsLoaded: !signedIn || Boolean(itemsQuery.data),
     nowMs,
-    pinnedCount: pinned.length,
+    /** Every pin, in the viewer's stored order. */
+    pinned,
     signedIn,
     snoozedRows,
     snoozes,
     sweeper,
     titleOf,
     todoCount,
-    todoLoaded,
     todoRows,
   };
 }

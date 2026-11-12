@@ -668,3 +668,88 @@ test("an open row's notice leaves Dismiss and its title to the row", async ({
       .getByRole("heading", { name: prReady.title }),
   ).toBeVisible();
 });
+
+test("To do pages to its end when the count or the Automations fail", async ({
+  dashboard,
+  page,
+}) => {
+  const asks = Array.from({ length: 30 }, (_, index) => ({
+    ...license,
+    addedByConversationId: `slack:CTODO:17700${String(index).padStart(5, "0")}.000100`,
+    conversationIds: [],
+    createdAt: new Date(NOW_MS - index * 60_000).toISOString(),
+    id: `item-todo-${index}`,
+    title: `Approve rollout step ${index}`,
+  }));
+  await mockReviewItems(page, { open: asks, pageSize: 10 });
+  // The count only feeds the badge, so its failure cannot stop To do.
+  await page.route("**/api/review-items/count**", (route) =>
+    route.fulfill({ json: { error: "Count failed" }, status: 500 }),
+  );
+  await page.route(/\/api\/automations\?scope=attention/, (route) =>
+    route.fulfill({ json: { error: "Automations failed" }, status: 500 }),
+  );
+  await page.goto(`${dashboard.baseURL}/`);
+  const rows = page
+    .getByRole("region", { name: "To do" })
+    .locator("[data-inbox-row]");
+  await expect(rows).toHaveCount(10);
+  await expect(async () => {
+    await rows.last().scrollIntoViewIfNeeded();
+    await expect(rows).toHaveCount(30, { timeout: 1_000 });
+  }).toPass();
+});
+
+test("Done shows Try again when its first read fails", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page);
+  let fail = true;
+  await page.route(/\/api\/review-items\?.*status=done/, async (route) => {
+    if (!fail) return route.fallback();
+    fail = false;
+    return route.fulfill({ json: { error: "Read failed" }, status: 500 });
+  });
+  await page.goto(`${dashboard.baseURL}/?view=done`);
+  await expect(page.getByText("Could not load Done.")).toBeVisible();
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(
+    page.getByRole("button", { name: new RegExp(answered.title) }),
+  ).toBeVisible();
+});
+
+test("a snoozed row wakes at its time without a reload", async ({
+  dashboard,
+  page,
+}) => {
+  await page.clock.install({ time: NOW_MS });
+  await mockReviewItems(page, { open: [license, rollout] });
+  await page.goto(`${dashboard.baseURL}/`);
+  const todo = page.getByRole("region", { name: "To do" });
+  await rowHead(todo, checkout).click();
+  await page.getByRole("button", { name: "Snooze" }).click();
+  await page.getByRole("button", { name: "3 hours" }).click();
+  await expect(rowHead(todo, checkout)).toHaveCount(0);
+  await page.clock.fastForward("03:00:01");
+  await expect(rowHead(todo, checkout)).toBeVisible();
+});
+
+test("an item row's second line names its subject, not its own title", async ({
+  dashboard,
+  page,
+}) => {
+  // The Conversation that added the item is not in the feed, and its title
+  // does not load.
+  await mockReviewItems(page, { open: [prReview] });
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(prReview.addedByConversationId)}**`,
+    (route) => route.fulfill({ json: { error: "Not found" }, status: 404 }),
+  );
+  await page.goto(`${dashboard.baseURL}/?view=prs`);
+  const row = page
+    .locator("[data-inbox-row]")
+    .filter({ hasText: prReview.title });
+  await expect(row).toContainText(prReview.subject.title);
+  await expect(row.getByText(prReview.title, { exact: true })).toHaveCount(1);
+});
