@@ -27,7 +27,7 @@ import {
   parseSlackMessageReference,
   type SlackMessageReference,
 } from "@/chat/slack/tool-support/slack-message-url";
-import { lookupSlackUserNames } from "@/chat/slack/user";
+import { lookupSlackUser, lookupSlackUserNames } from "@/chat/slack/user";
 import { messageObjectCard } from "./cards";
 
 /** Slack permalinks, such as `acme.slack.com/archives/C123/p1712345000000100`. */
@@ -65,10 +65,14 @@ async function readMessageCard(args: {
     if (isHiddenError(error)) return undefined;
     throw error;
   }
-  // A public channel is public to the workspace. Any other channel, DM, or
-  // group DM resolves only for its members.
+  // A public channel is open to full workspace members. A guest sees only
+  // the channels they are in, so a guest, a person Slack does not describe,
+  // and any other channel, DM, or group DM need membership.
+  const openToViewer =
+    isPublicSlackChannel(info) &&
+    (await lookupSlackUser(args.teamId, args.slackUserId))?.isGuest === false;
   if (
-    !isPublicSlackChannel(info) &&
+    !openToViewer &&
     !(await isConversationMember(channelId, args.slackUserId))
   ) {
     return undefined;

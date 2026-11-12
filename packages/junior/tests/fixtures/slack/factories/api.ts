@@ -501,6 +501,8 @@ export function usersInfoOk(
     statusEmoji?: string;
     isBot?: boolean;
     deleted?: boolean;
+    /** A multi-channel guest. */
+    isRestricted?: boolean;
     tz?: string;
     /** Whether the person set their own photo instead of Slack's default. */
     isCustomImage?: boolean;
@@ -518,6 +520,8 @@ export function usersInfoOk(
       real_name: input.realName ?? "Test User",
       deleted: input.deleted ?? false,
       is_bot: input.isBot ?? false,
+      is_restricted: input.isRestricted ?? false,
+      is_ultra_restricted: false,
       tz: input.tz ?? "America/Los_Angeles",
       profile: {
         display_name: input.displayName ?? "Test User",

@@ -259,8 +259,12 @@ describe("object links API", () => {
       "https://example.slack.com/archives/C0PRIVATE/p1712345000000200?thread_ts=1712345000.000100&cid=C0PRIVATE";
 
     // Public channel that the bot has not joined: the card has no text.
-    queueSlackApiResponse("conversations.info", {
+    const publicInfo = {
       body: conversationsInfoOk({ channelId: "C0PUBLIC", name: "proj-launch" }),
+    };
+    queueSlackApiResponse("conversations.info", publicInfo);
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ userId: "UALICE" }),
     });
     queueSlackApiResponse("conversations.replies", {
       body: slackError({ error: "not_in_channel" }),
@@ -279,6 +283,18 @@ describe("object links API", () => {
       title: "Message in #proj-launch",
       url: publicUrl,
     });
+
+    // A guest sees a public channel only when they are in it.
+    queueSlackApiResponse("conversations.info", publicInfo);
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ isRestricted: true, userId: "UBOB" }),
+    });
+    queueSlackApiResponse("conversations.members", {
+      body: conversationsMembersPage({ members: ["UALICE"] }),
+    });
+    const guest = await bob(publicUrl);
+    expect(guest.objects.size).toBe(0);
+    expect(guest.body).not.toContain("proj-launch");
 
     // A private channel resolves for a member, with a short snippet.
     const privateInfo = {
