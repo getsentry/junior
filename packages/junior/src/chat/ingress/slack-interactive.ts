@@ -1,6 +1,6 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type { Message, StateAdapter } from "chat";
-import { parseActorUserId } from "@/chat/actor";
+import { createSlackActor, parseActorUserId } from "@/chat/actor";
 import { AUTOMATION_CONNECT_ACTION_ID } from "@/chat/automations/blocked-notice";
 import { isConnectableProvider } from "@/chat/credentials/connections";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
@@ -76,16 +76,27 @@ async function handleAppHomeDisconnect(args: {
 }
 
 // Start a new OAuth flow for the person who clicked, so the link they get
-// has not expired. The flow connects only the clicker's own account.
+// has not expired. The flow connects only the clicker's own account. The
+// Slack actor lets the callback link the provider account to that person,
+// and the notice ts gets the connected confirmation as a reply to it.
 async function handleAutomationConnectClick(args: {
-  channelId: string | undefined;
+  payload: SlackInteractivePayload;
   provider: string;
-  userId: string;
 }): Promise<void> {
   if (!isConnectableProvider(args.provider)) return;
+  const userId = requireSlackPayloadUserId(
+    args.payload.user?.id,
+    "Slack automation connect payload",
+  );
   const result = await startOAuthFlow(args.provider, {
-    actorId: args.userId,
-    channelId: args.channelId,
+    actorId: userId,
+    actor: createSlackActor(
+      args.payload.team?.id ?? args.payload.user?.team_id ?? "",
+      userId,
+      undefined,
+    ),
+    channelId: args.payload.channel?.id,
+    threadTs: args.payload.message?.ts,
   });
   if (!result.ok) {
     logWarn("automation.connect.failed", {
@@ -181,12 +192,8 @@ export async function handleSlackInteractivePayload(args: {
       spanAttributes,
       () =>
         handleAutomationConnectClick({
-          channelId: args.payload.channel?.id,
+          payload: args.payload,
           provider: connect.value!,
-          userId: requireSlackPayloadUserId(
-            args.payload.user?.id,
-            "Slack automation connect payload",
-          ),
         }),
     );
     return;
