@@ -50,7 +50,10 @@ import {
   SystemRouteLoading,
 } from "./pages/system/SystemPageLayout";
 import { hasWorkspaceDetailsFrame } from "./pages/system/SystemNavigation";
-import { systemPluginsPath } from "./pages/system/SystemPlugins";
+import {
+  normalizeSystemPath,
+  systemPluginsPath,
+} from "./pages/system/SystemPlugins";
 import {
   locationsHeader,
   PEOPLE_DEFAULT_RANGE,
@@ -866,11 +869,16 @@ function SectionRoute(props: {
 
 /** Load a `/system/*` page under the header text that page shows. */
 function SystemRouteFallback() {
-  const { pathname } = useLocation();
-  const plugins = pathname.startsWith(systemPluginsPath);
+  const pathname = normalizeSystemPath(useLocation().pathname);
+  const header = systemRouteLoadingHeader(pathname);
+  // Match the loading state SystemPage shows for each route.
+  if (pathname.startsWith(`${systemPluginsPath}/`)) {
+    return <SystemRouteLoading {...header} label="Loading plugin" />;
+  }
+  const plugins = pathname === systemPluginsPath;
   return (
     <SystemRouteLoading
-      {...systemRouteLoadingHeader(pathname)}
+      {...header}
       label={plugins ? "Loading plugins" : "Loading system"}
       variant={plugins ? "list" : "overview"}
     />
