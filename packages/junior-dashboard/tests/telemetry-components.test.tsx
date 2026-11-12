@@ -485,10 +485,10 @@ describe("dashboard canonical-event components", () => {
         <Transcript live transcript={working} />
       </QueryClientProvider>,
     );
+    // The reasoning shows above the announced step line.
     const step = workingHtml.match(
-      /aria-live="polite"[^]*?sentry-cli spans query/,
+      /Compare the serializer spans\.[^]*?aria-live="polite"[^]*?sentry-cli spans query/,
     )?.[0];
-    expect(step).toContain("Compare the serializer spans.");
     expect(step).toContain("Running");
     expect(workingHtml).toContain("Working for");
     expect(workingHtml).not.toContain("Junior is thinking…");

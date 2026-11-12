@@ -211,7 +211,7 @@ describe("transcript activity group", () => {
     const first = thought("r1", "Read the PR.");
     const second = thought("r2", "Compare the spans.");
     expect(liveActivityStep([first, tool("1"), second])).toEqual({
-      reasoning: "Compare the spans.",
+      reasoning: { key: "r2", text: "Compare the spans." },
       tool: undefined,
     });
     // A finished tool call means Junior is thinking about the next step.

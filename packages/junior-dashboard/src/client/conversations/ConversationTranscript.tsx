@@ -668,9 +668,8 @@ function TranscriptEntryList(
     ],
   );
 
-  // The running Turn shows its progress in its last activity row. Its Tasks
-  // row comes after it, at the end of the Turn. Otherwise the thinking row
-  // shows.
+  // The running Turn shows its progress in its last activity row. Otherwise
+  // the thinking row shows.
   const liveIndex =
     props.responding && !search.active ? liveActivityIndex(rows) : undefined;
   const thinking =

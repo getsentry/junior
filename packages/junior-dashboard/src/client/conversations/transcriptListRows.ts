@@ -113,8 +113,10 @@ export function transcriptListRows(input: {
           : Math.max(rowSeq, taskSeq);
       const last = rows.at(-1);
       if (last?.kind === "entry" && isReplyEntry(last.entry)) {
-        // The Tasks sit under the reply text, before its actions.
-        rows[rows.length - 1] = { ...last, seq, tasks: visible };
+        // The Tasks sit under the reply text, before its actions. The reply
+        // goes back through pushRow, so unread Tasks still get the marker.
+        rows.pop();
+        pushRow({ ...last, seq, tasks: visible });
       } else {
         pushRow({
           kind: "tasks",
@@ -193,15 +195,18 @@ export function transcriptListRows(input: {
 }
 
 /**
- * Find the activity row of the running Turn: the last row, or the row
- * before the Turn's Tasks row.
+ * Find the activity row of the running Turn: its last activity row after the
+ * last message. Tasks, Thread cards, asks, and the "New" marker can follow it.
  */
 export function liveActivityIndex(
   rows: readonly TranscriptListRow[],
 ): number | undefined {
-  const last = rows.length - 1;
-  const index = rows[last]?.kind === "tasks" ? last - 1 : last;
-  return rows[index]?.kind === "activity" ? index : undefined;
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index]!;
+    if (row.kind === "activity") return index;
+    if (row.kind === "entry" && row.entry.kind === "message") return undefined;
+  }
+  return undefined;
 }
 
 function askedItemId(entry: RenderedTranscriptEntry): string | undefined {

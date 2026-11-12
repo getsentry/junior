@@ -14,7 +14,7 @@ import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
  * call, Junior is between steps.
  */
 export function liveActivityStep(entries: readonly RenderedTranscriptEntry[]): {
-  reasoning?: string;
+  reasoning?: { key: string; text: string };
   tool?: TranscriptViewToolCallPart;
 } {
   let tool: TranscriptViewToolCallPart | undefined;
@@ -26,7 +26,7 @@ export function liveActivityStep(entries: readonly RenderedTranscriptEntry[]): {
     }
     if (entry.kind !== "reasoning") continue;
     const text = entry.part.redacted ? "" : entry.part.text.trim();
-    if (text) return { reasoning: text, tool };
+    if (text) return { reasoning: { key: entry.key, text }, tool };
   }
   return { tool };
 }
@@ -52,18 +52,23 @@ export function LiveActivityStep(props: {
   const preview = tool ? toolCallPreview(tool.name, tool.input) : null;
   const Icon = action?.icon;
   return (
-    <div aria-live="polite" className="mt-1.5 grid min-w-0 gap-1.5">
+    <div className="mt-1.5 grid min-w-0 gap-1.5">
       {reasoning ? (
         // A new step replaces the text, so it fades in instead of jumping.
+        // Streamed text grows the same step, so it keeps the node.
         <div
           className="line-clamp-3 text-sm leading-relaxed text-dashboard-text-muted motion-safe:animate-in motion-safe:fade-in-0"
-          key={reasoning}
+          key={reasoning.key}
         >
-          <DisplayText inline links={false} text={reasoning} />
+          <DisplayText inline links={false} text={reasoning.text} />
         </div>
       ) : null}
-      {/* The tool call takes the place of "Thinking" while it runs. */}
-      <div className="flex min-w-0 items-center gap-1.5 text-sm leading-6 text-dashboard-text-muted">
+      {/* The tool call takes the place of "Thinking" while it runs. Only
+          this line is announced, so streamed reasoning does not repeat. */}
+      <div
+        aria-live="polite"
+        className="flex min-w-0 items-center gap-1.5 text-sm leading-6 text-dashboard-text-muted"
+      >
         {Icon ? (
           <Icon
             aria-hidden="true"

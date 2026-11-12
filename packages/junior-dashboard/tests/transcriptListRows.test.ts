@@ -143,6 +143,8 @@ describe("transcriptListRows", () => {
     // A running Turn keeps its activity live above its Tasks row.
     expect(liveActivityIndex(rows.slice(0, 2))).toBe(1);
     expect(liveActivityIndex([...rows.slice(0, 2), rows.at(-1)!])).toBe(1);
+    // A Thread card at the end of the running Turn does not hide it.
+    expect(liveActivityIndex(rows.slice(0, 3))).toBe(1);
   });
 
   it("moves a question that Junior asked to the end of its Turn", () => {
@@ -189,6 +191,21 @@ describe("transcriptListRows", () => {
       { keys: ["2:message:0"], kind: "entry", seq: 2 },
       { keys: undefined, kind: "unread_marker", seq: undefined },
       { keys: ["3:tool:0"], kind: "entry", seq: 2 },
+    ]);
+  });
+
+  it("puts the New marker before a read reply whose Tasks are unread", () => {
+    const rows = transcriptListRows({
+      entries: [messageEntry(1, "user"), messageEntry(2), subagentEntry(3)],
+      keyPrefix: "c",
+      knownActivityKeys: new Map(),
+      unread: { afterSeq: 2, throughSeq: 3 },
+    });
+
+    expect(rowSummary(rows)).toEqual([
+      { keys: ["1:message:0"], kind: "entry", seq: 1 },
+      { keys: undefined, kind: "unread_marker", seq: undefined },
+      { keys: ["2:message:0"], kind: "entry", seq: 3 },
     ]);
   });
 });
