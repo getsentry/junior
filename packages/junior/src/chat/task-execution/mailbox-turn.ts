@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import {
   createEventSource,
   createLocalSource,
@@ -13,9 +14,12 @@ import type {
   ConversationMessage,
 } from "@/chat/state/conversation";
 import {
+  getStoredTurnFields,
   getTurnRecord,
   listTurnSummaries,
+  type StoredTurnFields,
   type TurnRecord,
+  type TurnSummary,
 } from "@/chat/task-execution/checkpoint";
 import {
   isEventConversationMessage,
@@ -29,6 +33,8 @@ import {
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
+
+const MAILBOX_TURN_READ_CONCURRENCY = 8;
 
 /** Mailbox Message with the Actor and Source facts needed to start a Turn. */
 export type MailboxTurnInput = {
@@ -160,30 +166,79 @@ export async function listActiveMailboxTurns(
   conversationId: string,
 ): Promise<TurnRecord[]> {
   const summaries = await listTurnSummaries(conversationId);
-  // TODO(dcramer): Remove the legacy surface and Actor checks after deployed
-  // Turn cursors all store Source.kind.
   return (
     await Promise.all(
       summaries
-        .filter(
-          (summary) =>
-            !summary.dispatchId &&
-            (summary.state === "paused" || summary.state === "running"),
-        )
+        .filter(isOpenTurnSummary)
         .map((summary) => getTurnRecord(conversationId, summary.turnId)),
     )
   ).filter(
     (record): record is TurnRecord =>
-      record !== undefined &&
-      !record.dispatchId &&
-      // An Agent invocation Turn is never a mailbox Turn, even with a web or
-      // Event Source.
-      record.surface !== "internal" &&
-      (record.source?.kind === "web" ||
-        record.source?.kind === "event" ||
-        (!record.source &&
-          (record.surface === "api" || hasEventActor(record.actors)))) &&
-      (record.state === "paused" || record.state === "running"),
+      record !== undefined && isActiveMailboxTurn(record),
+  );
+}
+
+/**
+ * List the Source of each active mailbox Turn of several Conversations. It
+ * reads the stored Turn cursors and not their Turn history, so unlike
+ * `listActiveMailboxTurns` it keeps a Turn whose history was deleted.
+ */
+export async function listActiveMailboxTurnSources(
+  conversationIds: readonly string[],
+): Promise<Map<string, Array<Source | undefined>>> {
+  const limit = pLimit(MAILBOX_TURN_READ_CONCURRENCY);
+  const summaries = (
+    await Promise.all(
+      conversationIds.map((conversationId) =>
+        limit(() => listTurnSummaries(conversationId)),
+      ),
+    )
+  ).flatMap((list) => list.filter(isOpenTurnSummary));
+  const stored = await getStoredTurnFields(summaries);
+  const sources = new Map<string, Array<Source | undefined>>(
+    conversationIds.map((conversationId) => [conversationId, []]),
+  );
+  await Promise.all(
+    summaries.map((summary, index) =>
+      limit(async () => {
+        const fields = stored[index];
+        // Only a legacy cursor with no Source needs its Actors, which come
+        // from Turn history.
+        const turn =
+          fields && !fields.source && fields.surface !== "api"
+            ? await getTurnRecord(summary.conversationId, summary.turnId)
+            : fields;
+        if (turn && isActiveMailboxTurn(turn)) {
+          sources.get(summary.conversationId)?.push(turn.source);
+        }
+      }),
+    ),
+  );
+  return sources;
+}
+
+function isOpenTurnSummary(summary: TurnSummary): boolean {
+  return (
+    !summary.dispatchId &&
+    (summary.state === "paused" || summary.state === "running")
+  );
+}
+
+// TODO(dcramer): Remove the legacy surface and Actor checks after deployed
+// Turn cursors all store Source.kind.
+function isActiveMailboxTurn(
+  record: StoredTurnFields & Partial<Pick<TurnRecord, "actors">>,
+): boolean {
+  return (
+    !record.dispatchId &&
+    // An Agent invocation Turn is never a mailbox Turn, even with a web or
+    // Event Source.
+    record.surface !== "internal" &&
+    (record.source?.kind === "web" ||
+      record.source?.kind === "event" ||
+      (!record.source &&
+        (record.surface === "api" || hasEventActor(record.actors)))) &&
+    (record.state === "paused" || record.state === "running")
   );
 }
 
