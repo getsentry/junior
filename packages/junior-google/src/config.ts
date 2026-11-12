@@ -9,10 +9,7 @@ export const GOOGLE_CLIENT_ID_ENV = "GOOGLE_CLIENT_ID";
 export const GOOGLE_CLIENT_SECRET_ENV = "GOOGLE_CLIENT_SECRET";
 export const GOOGLE_ACCOUNT_EMAIL_ENV = "GOOGLE_WORKSPACE_ACCOUNT_EMAIL";
 export const GOOGLE_ALLOWED_DOMAINS_ENV = "GOOGLE_WORKSPACE_ALLOWED_DOMAINS";
-/**
- * Set to `true` to register `searchGoogleFiles`. Leave it unset until
- * `junior google verify-search` passes against live fixture files.
- */
+/** Set to `true` to register `searchGoogleFiles`. */
 export const GOOGLE_DRIVE_SEARCH_ENV = "GOOGLE_DRIVE_SEARCH_ENABLED";
 
 /**

@@ -1,9 +1,6 @@
 /**
  * Admin CLI for the Google account that Junior acts as.
  *
- * `verify-search` checks live Drive search against fixture files before an
- * admin turns search on.
- *
  * `connect` is the out-of-band alternative to the web setup page. It opens no
  * Slack surface and never prints tokens. The browser returns the
  * authorization code to a one-time loopback listener on this machine.
@@ -29,7 +26,6 @@ import {
   googleAuthorizationUrl,
 } from "./oauth";
 import { getGoogleAccount, googleAccountStatus, type GoogleDb } from "./store";
-import { runVerifySearch } from "./verify-search";
 
 const DEFAULT_LOOPBACK_PORT = 8765;
 const SIGN_IN_TIMEOUT_MS = 5 * 60 * 1000;
@@ -215,27 +211,6 @@ export function createGoogleCliCommand(): PluginCliCommandDefinition {
         .command("status")
         .description("Show whether Junior's Google account is connected")
         .action(junior.action(async (ctx) => await runStatus(ctx)));
-      command
-        .command("verify-search")
-        .description(
-          "Check that Drive search shows the requester only files they could find",
-        )
-        .requiredOption(
-          "--fixtures <path>",
-          "JSON file with the fixture marker and file ids",
-        )
-        .requiredOption("--requester <email>", "Requester named on fixtures")
-        .action(
-          junior.action(async (ctx, options) => {
-            const config = await requireConfig(ctx);
-            if (!config) return 1;
-            return await runVerifySearch(
-              ctx,
-              config,
-              options as { fixtures: string; requester: string },
-            );
-          }),
-        );
     },
   };
 }

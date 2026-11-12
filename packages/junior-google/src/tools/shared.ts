@@ -104,7 +104,7 @@ const googleErrorSchema = z.object({
  * returned as text.
  */
 export async function googleApiRequest(
-  ctx: Pick<GoogleToolContext, "egress">,
+  ctx: GoogleToolContext,
   input: {
     body?: unknown;
     headers?: Record<string, string>;

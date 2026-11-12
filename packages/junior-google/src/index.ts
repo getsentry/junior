@@ -94,7 +94,7 @@ export function googlePlugin(): PluginRegistration {
           readMeetingTranscript: createReadMeetingTranscriptTool(toolContext),
           updateCalendarEvent: createUpdateCalendarEventTool(toolContext),
         };
-        // Off until `junior google verify-search` passes on live fixtures.
+        // Off by default until the search filter is verified live.
         if (config.driveSearch) {
           tools.searchGoogleFiles = createSearchGoogleFilesTool(toolContext);
         }

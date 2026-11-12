@@ -123,7 +123,7 @@ function isShown(
 }
 
 async function listDriveFiles(
-  ctx: Pick<GoogleToolContext, "egress">,
+  ctx: GoogleToolContext,
   q: string,
   pageSize: number,
 ) {
@@ -155,8 +155,8 @@ async function listDriveFiles(
  * name them, and files that anyone in an allowed domain can find. Returns
  * undefined when Google rejects a query.
  */
-export async function searchFindableFiles(
-  ctx: Pick<GoogleToolContext, "allowedDomains" | "egress">,
+async function searchFindableFiles(
+  ctx: GoogleToolContext,
   input: {
     maxResults: number;
     query: string;
