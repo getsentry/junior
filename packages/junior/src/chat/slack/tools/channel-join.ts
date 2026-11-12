@@ -6,14 +6,17 @@ import {
   slackChannelRefParam,
 } from "@/chat/slack/tool-support/channel-target";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
-import { z } from "zod";
+import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
 /** Create a tool that joins one public Slack channel. */
 export function createSlackChannelJoinTool(context: SlackToolContext) {
   return zodTool({
+    exposure: "deferred",
+    source: SLACK_TOOL_SOURCE,
     description: "Join a public Slack channel.",
     annotations: {
       destructiveHint: false,

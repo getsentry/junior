@@ -1,5 +1,6 @@
 import type { CodeModeErrorKind } from "@/chat/codemode/telemetry";
 import type { ToolActionRejectionMarker } from "@/chat/guardian/history";
+import type { ToolResultNudge } from "@/chat/plugins/after-tool-hooks";
 
 /**
  * Name of the tool that runs a Code Mode script. Nested calls use it as
@@ -19,6 +20,18 @@ export type CodeModeCallStatus =
   | "interrupted"
   | "not_started";
 
+/**
+ * How the `codemode` result text names each call status. The eval harness
+ * reads script calls back from this text.
+ */
+export const CODE_MODE_CALL_STATUS_TEXT: Record<CodeModeCallStatus, string> = {
+  ok: "ok",
+  error: "failed",
+  rejected: "rejected by action review",
+  interrupted: "interrupted, outcome unknown",
+  not_started: "not started",
+};
+
 /** One tool call that a script made. */
 export interface CodeModeCall {
   /** `<codemode call id>/c<n>`, where `n` is the VM number for the call. */
@@ -32,6 +45,8 @@ export interface CodeModeCall {
    * `deny`). `guardian/history.ts` restores it at the start of a Run.
    */
   guardianActionRejection?: ToolActionRejectionMarker;
+  /** Guidance from `afterToolExecute` hooks about this call. */
+  nudges?: ToolResultNudge[];
 }
 
 /**
@@ -41,14 +56,12 @@ export interface CodeModeCall {
 export interface CodeModeResult {
   /** True when the script returned or called `exit()`. */
   ok: boolean;
-  /** Return value of the script. A value cut to the output limit is a string. */
+  /** Return value of the script. */
   value?: unknown;
   /** Why the script did not return. */
   error?: { kind: CodeModeErrorKind; message: string };
-  /** Text from `text()` and `console.*`, cut to the output limit. */
+  /** Text from `text()` and `console.*`. */
   output: string;
-  /** True when `output` or `value` was cut to the output limit. */
-  truncated: boolean;
   /** Every nested call, in the order the script made them. */
   calls: CodeModeCall[];
 }

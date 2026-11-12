@@ -1,5 +1,5 @@
 import type { EventInput } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { linearIssueResource, linearTeamResource } from "../events/issue.js";
 
 const issueWebhookSchema = z

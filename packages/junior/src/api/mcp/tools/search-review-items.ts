@@ -1,7 +1,10 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import * as z from "zod";
 import { getDb } from "@/chat/db";
-import { reviewItemReaderForUser } from "@/chat/review-items/access";
+import {
+  reviewItemReaderForUser,
+  reviewItemReaderForUserInConversation,
+} from "@/chat/review-items/access";
 import { searchReviewItems } from "@/chat/review-items/store";
 import { mcpReviewItem, mcpReviewItemSchema } from "../review-item";
 import { mcpToolResult, type McpToolContext } from "../tool-context";
@@ -53,7 +56,9 @@ export function registerSearchReviewItemsTool(
       // Read one more item than the limit to learn whether more match.
       const items = await searchReviewItems(
         getDb(),
-        reviewItemReaderForUser(user),
+        conversationId
+          ? await reviewItemReaderForUserInConversation(user, conversationId)
+          : reviewItemReaderForUser(user),
         {
           ...(conversationId ? { conversationId } : undefined),
           limit: limit + 1,

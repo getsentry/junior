@@ -5,7 +5,7 @@ import {
   type SlackChannelId,
   type SlackTeamId,
 } from "@/chat/slack/ids";
-import { z } from "zod";
+import * as z from "zod";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 export interface ResolvedSlackChannelTarget {
@@ -65,7 +65,7 @@ export async function resolveSlackChannelRef(input: {
   }
 
   throw new ToolInputError(
-    `Unknown \`${input.field}\` \`${trimmed}\`. Use a channel id (\`C123\`), a Slack mention (\`<#C123>\`), a link, or a channel name you already saw in this workspace. Public search can discover channels; plain names are not scanned from Slack.`,
+    `Unknown \`${input.field}\` \`${trimmed}\`. Use a channel id (\`C123\`), a Slack mention (\`<#C123>\`), a link, or a channel name you already saw in this workspace. Plain names are not scanned from Slack.`,
   );
 }
 

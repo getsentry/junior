@@ -17,13 +17,11 @@ import {
 import { test } from "@junior-evals/fixture/test";
 
 describe("User Memory", () => {
-  test("when explicitly asked to remember a first-person preference, store one private memory", async ({
+  test("when explicitly asked to remember a first-person preference, store one memory", async ({
     run,
   }) => {
     const asked = await run(
-      slackMention("Please remember that I prefer terse PR summaries.", {
-        channelType: "im",
-      }),
+      slackMention("Please remember that I prefer terse PR summaries."),
     );
     const recalled = await asked.continue(
       slackMention("What do you remember about how I like PR summaries?"),
@@ -46,7 +44,7 @@ describe("User Memory", () => {
     expect(await readMemories()).toEqual([
       expect.objectContaining({
         content: expect.stringMatching(/terse/i),
-        scope: "private",
+        scope: "public",
         subjectType: "user",
       }),
     ]);
@@ -60,15 +58,7 @@ describe("User Memory", () => {
   }) => {
     // Use short SF/PT wording without an IANA token or "current time" phrase.
     const timezone = "Located in San Francisco and uses Pacific Time (PT).";
-    await insertMemory({ content: timezone, visibility: "private" });
-    // New public memory with the word "time" fills the public search window.
-    for (let index = 0; index < 50; index += 1) {
-      await insertMemory({
-        content: `Recent workspace time note ${index} about deploy time windows`,
-        kind: "knowledge",
-        subjectType: "conversation",
-      });
-    }
+    await insertMemory({ content: timezone });
 
     const conversation = await run(slackMention("what time is it"));
     await expect(conversation).toSatisfyJudge(
@@ -76,7 +66,7 @@ describe("User Memory", () => {
       rubric({
         pass: [
           "The assistant uses the remembered San Francisco / Pacific Time preference from memory.",
-          "The final answer reports the user's current local time in Pacific Time without asking for their location or timezone.",
+          "The final response reports the user's current local time in Pacific Time without asking for their location or timezone.",
         ],
         fail: [
           "Do not answer only with UTC or the server's timezone.",
@@ -89,7 +79,7 @@ describe("User Memory", () => {
     expect(await readMemories()).toContainEqual(
       expect.objectContaining({
         content: timezone,
-        scope: "private",
+        scope: "public",
         subjectType: "user",
       }),
     );
@@ -107,9 +97,7 @@ describe("User Memory", () => {
     run,
   }) => {
     const asked = await run(
-      slackMention("ok remember that i think types in python are bad", {
-        channelType: "im",
-      }),
+      slackMention("ok remember that i think types in python are bad"),
     );
     const conversation = await asked.continue(
       slackMention("What do you remember about my opinion on Python types?"),
@@ -132,7 +120,7 @@ describe("User Memory", () => {
     expect(await readMemories()).toEqual([
       expect.objectContaining({
         content: expect.stringMatching(/python/i),
-        scope: "private",
+        scope: "public",
         subjectType: "user",
       }),
     ]);
@@ -142,12 +130,11 @@ describe("User Memory", () => {
     run,
   }) => {
     const existing = "Prefers PR summaries with risks first.";
-    await insertMemory({ content: existing, visibility: "private" });
+    await insertMemory({ content: existing });
 
     const conversation = await run(
       slackMention(
         "Please remember that I want risk notes at the start of PR summaries.",
-        { channelType: "im" },
       ),
     );
     await expect(conversation).toSatisfyJudge(
@@ -167,7 +154,7 @@ describe("User Memory", () => {
     expect(await readMemories()).toEqual([
       expect.objectContaining({
         content: existing,
-        scope: "private",
+        scope: "public",
         subjectType: "user",
       }),
     ]);

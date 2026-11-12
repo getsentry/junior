@@ -47,7 +47,11 @@ describe("submitPullRequestReview", () => {
       target: "submitPullRequestReview",
       repo: "getsentry/junior",
       number: 691,
-      reviewId: 42,
+      reply: {
+        text: "No findings.",
+        url: "https://github.com/getsentry/junior/pull/691#pullrequestreview-42",
+      },
+      review_id: 42,
       state: "COMMENTED",
       url: "https://github.com/getsentry/junior/pull/691#pullrequestreview-42",
     });

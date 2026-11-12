@@ -38,7 +38,11 @@ export async function postAutomatedTurnLimitNoticeForConversation(args: {
     const conversation = await getConversationStore().get({
       conversationId: args.conversationId,
     });
-    const location = conversation?.location;
+    // A child posts nothing to Slack. Its Location is only a copy of its
+    // root's.
+    const location = conversation?.parentConversationId
+      ? undefined
+      : conversation?.location;
     if (!location || location.provider !== "slack") {
       logWarn("automated_turn_limit.notice_skipped", {
         conversationId: args.conversationId,

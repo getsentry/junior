@@ -29,6 +29,7 @@ import {
 } from "./turnContext";
 import { cn } from "../styles";
 import { DetailsCard } from "./DetailsList";
+import { MemoryLinkIcons } from "./MemoryIcons";
 import { HighlightText } from "./transcriptSearch";
 
 /** What one turn context view shows: who spoke, when, and the context. */
@@ -90,6 +91,7 @@ export function TranscriptTurnContextView(
           closeOnClick
           render={
             <Button
+              variant="ghost"
               aria-haspopup={panel ? undefined : "dialog"}
               aria-expanded={expanded}
               aria-label="View turn context"
@@ -270,17 +272,20 @@ function TurnContextCard(props: { context: TranscriptViewTurnContext }) {
   );
 }
 
-// Each row links to the memory's page, which shows its details.
+// Each row shows the full memory and links to the memory's page.
 function MemoryRecall(props: { memories: MemoryRecallContent["memories"] }) {
   return (
-    <ul className="-mx-1.5 -mb-1.5 -mt-1 grid list-none gap-0.5 p-0">
+    <ul className="-mx-1.5 -mb-1.5 -mt-1 grid list-none divide-y divide-dashboard-border-subtle p-0">
       {props.memories.map((memory) => (
-        <li key={memory.id}>
+        <li className="py-1 first:pt-0 last:pb-0" key={memory.id}>
           <Link
-            className="line-clamp-2 rounded-md px-1.5 py-1.5 text-sm leading-5 text-dashboard-text no-underline transition-colors hover:bg-dashboard-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+            className="group grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-md px-1.5 py-1.5 no-underline transition-colors hover:bg-dashboard-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
             to={memoryPath(memory.id)}
           >
-            <HighlightText text={memory.content} />
+            <span className="whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text">
+              <HighlightText text={memory.content} />
+            </span>
+            <MemoryLinkIcons private={memory.scope === "personal"} />
           </Link>
         </li>
       ))}

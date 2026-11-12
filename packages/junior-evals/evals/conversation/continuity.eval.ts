@@ -15,6 +15,26 @@ const BUILD_LOG = Array.from(
   (_, index) =>
     `2026-03-01T04:${String(index % 60).padStart(2, "0")}:00Z step ${String(index + 1).padStart(4, "0")} ok checksum ${checksum(index + 1)} region iad1`,
 ).join("\n");
+// This CI log is about 51,000 tokens. The answer must come from the summary.
+const CI_LOG = Array.from(
+  { length: 1_800 },
+  (_, index) =>
+    `2026-03-02T09:${String(index % 60).padStart(2, "0")}:00Z [integration (postgres)] vitest worker ${index % 8} passed tests/integration/case-${String(index + 1).padStart(4, "0")}.test.ts in ${100 + (index % 900)}ms`,
+).join("\n");
+const LONG_THREAD = [
+  slackMention(
+    "CI on getsentry/junior#4821 is red since the queue refactor. Can you find out why?",
+  ),
+  reply(
+    "The `integration (postgres)` job fails in tests/integration/durable-queue.test.ts with `TypeError: Cannot read properties of undefined (reading 'seq')`. It started with commit 9f3c2ab.",
+  ),
+  slackMention("Paste the full log of that job."),
+  reply(`Log of the integration (postgres) job:\n${CI_LOG}`),
+  slackMention(
+    "ok. when you fix it, also add a regression test for the empty queue case and ping Dana on the PR",
+  ),
+  reply("Will do. I'll start with the fix for the failing test."),
+];
 
 describe("Thread Continuity", () => {
   test("when a follow-up asks about the prior turn, recall the earlier budget context", async ({
@@ -76,4 +96,36 @@ describe("Thread Continuity", () => {
       checksum(42),
     );
   });
+
+  test.for([
+    {
+      probe: "In one sentence, what did I ask you to do that is still open?",
+      pass: "The reply names the regression test for the empty queue case or pinging Dana on the PR.",
+    },
+    {
+      probe: "In one sentence, which PR are we working on?",
+      pass: "The reply names getsentry/junior#4821 or PR 4821.",
+    },
+    {
+      probe: "In one sentence, what failed?",
+      pass: "The reply says the integration (postgres) job or durable-queue test fails with a TypeError about reading 'seq'.",
+    },
+  ])(
+    "when a long thread was compacted, answer $probe from the summary",
+    async ({ probe, pass }, { agent }) => {
+      const { run } = await agent({
+        limits: { contextWindowTokens: SMALL_CONTEXT_WINDOW_TOKENS },
+      });
+      const conversation = await run(slackMention(probe), {
+        history: LONG_THREAD,
+      });
+      await expect(conversation).toSatisfyJudge(
+        RubricJudge,
+        rubric({ pass: [pass] }),
+      );
+
+      expect(conversation.compactions).toBeGreaterThan(0);
+      expect(conversation.replies).toHaveLength(1);
+    },
+  );
 });

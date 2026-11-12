@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import * as z from "zod";
 import { readConversationFeed } from "@/api/conversations/list";
 import { conversationFeedQuerySchema } from "@/api/schema/conversation";
 import { mcpConversation, mcpConversationSchema } from "../conversation";
@@ -21,7 +21,7 @@ export function registerSearchConversationsTool(
       inputSchema: {
         q: feedQuery.q.describe("Text to search for in titles and Briefs."),
         status: feedQuery.status.describe(
-          "Return conversations that you have not archived (default) or that you archived. A search ignores this filter.",
+          "Return conversations that are not archived (default) or that are archived. A search ignores this filter.",
         ),
       },
       // The SDK checks `structuredContent` against this schema.

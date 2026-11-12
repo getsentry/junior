@@ -6,6 +6,7 @@ import type { JuniorApiEnv } from "@/api/route";
 import {
   forkConversationResponseSchema,
   conversationDetailReportSchema,
+  versionsSchema,
 } from "@/api/schema";
 import {
   getConversationEventStore,
@@ -63,7 +64,12 @@ function assistantMessage(
 /** Store one answered web turn and return its delivered reply id. */
 async function storeAnsweredTurn(
   conversationId: string,
-  args: { answer: string; question: string; turn: string },
+  args: {
+    answer: string;
+    question: string;
+    turn: string;
+    visibility?: "private" | "public";
+  },
 ): Promise<string> {
   const store = getConversationStore();
   if (!(await store.get({ conversationId }))) {
@@ -72,7 +78,7 @@ async function storeAnsweredTurn(
       destination: { platform: "local", conversationId },
       actor: { email: OWNER_EMAIL },
       source: "web",
-      visibility: "private",
+      visibility: args.visibility ?? "private",
     });
   }
   const events = getConversationEventStore();
@@ -162,7 +168,6 @@ describe("conversation forks", () => {
       createdAtMs: Date.now(),
       data: {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "test-model",
         replacementHistory: [
           {
@@ -262,6 +267,26 @@ describe("conversation forks", () => {
     expect(
       (await readDetail(nested.conversationId)).modelUsage,
     ).toBeUndefined();
+
+    // A fork after the compaction also copies the transcript before it.
+    const laterReply = await storeAnsweredTurn(source, {
+      question: "Now compare the red option.",
+      answer: "Second answer.",
+      turn: "later",
+    });
+    const later = forkConversationResponseSchema.parse(
+      await (await app.request(url, forkRequest(laterReply, "fork-3"))).json(),
+    );
+    expect(visibleEvents(await readDetail(later.conversationId))).toEqual([
+      "user: Remember the blue option.",
+      "turn",
+      "assistant: First answer.",
+      "turn",
+      "user: Now compare the red option.",
+      "turn",
+      "assistant: Second answer.",
+      "turn",
+    ]);
   });
 
   it("keeps private forks private and rejects inaccessible or unfinished cutoffs without creating roots", async () => {
@@ -324,6 +349,7 @@ describe("conversation forks", () => {
     expect(hidden.canFork).toBe(false);
     const child = "local:web:private-child";
     await store.createChild({
+      kind: "task",
       childConversationId: child,
       parentConversationId: source,
     });
@@ -359,5 +385,88 @@ describe("conversation forks", () => {
       (await owner.request(url, forkRequest("unfinished", "bad-boundary")))
         .status,
     ).toBe(409);
+  });
+
+  it("starts a hidden read-only Quick question and keeps it as a fork", async () => {
+    const source = "local:web:quick-question-source";
+    const reply = await storeAnsweredTurn(source, {
+      question: "Which option?",
+      answer: "Use the blue option.",
+      turn: "first",
+      visibility: "public",
+    });
+    const owner = await authenticatedApi(OWNER_EMAIL);
+    // A reader of a public Conversation asks in a fork of their own.
+    const reader = await authenticatedApi("reader@example.com");
+    // The feed change token covers the same rows as the feed.
+    const feedToken = async () =>
+      versionsSchema.parse(await (await reader.request("/api/versions")).json())
+        .conversations;
+    const emptyFeedToken = await feedToken();
+    const quote = "blue <option>";
+    const response = await reader.request(
+      `/api/conversations/${encodeURIComponent(source)}/forks`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          messageId: reply,
+          idempotencyKey: "quick-1",
+          quickQuestion: { quote },
+        }),
+      },
+    );
+    expect(response.status).toBe(200);
+    const { conversationId } = forkConversationResponseSchema.parse(
+      await response.json(),
+    );
+    expect(await getConversationStore().get({ conversationId })).toMatchObject({
+      visibility: "private",
+    });
+
+    // The model reads the source history and then one note. The Turn itself
+    // keeps the normal system prompt, tools, and model.
+    const notes = JSON.stringify(
+      (await getConversationEventStore().loadHistory(conversationId)).find(
+        (event) => event.idempotencyKey === "fork:note",
+      ),
+    );
+    expect(notes).toContain("blue &lt;option&gt;");
+    expect(notes).toContain("read-only");
+
+    const listed = async (api: Hono<JuniorApiEnv>) => {
+      const feed = (await (await api.request("/api/conversations")).json()) as {
+        conversations: Array<{ conversationId: string }>;
+      };
+      return feed.conversations.map((item) => item.conversationId);
+    };
+    const sourceForks = async () =>
+      conversationDetailReportSchema.parse(
+        await (
+          await reader.request(
+            `/api/conversations/${encodeURIComponent(source)}`,
+          )
+        ).json(),
+      ).forks;
+    expect(await listed(reader)).not.toContain(conversationId);
+    expect(await feedToken()).toBe(emptyFeedToken);
+    expect(await sourceForks()).toEqual([]);
+
+    const keep = (api: Hono<JuniorApiEnv>) =>
+      api.request(
+        `/api/conversations/${encodeURIComponent(conversationId)}/quick-question/keep`,
+        { method: "POST" },
+      );
+    expect((await keep(owner)).status).toBe(404);
+    expect((await keep(reader)).status).toBe(200);
+    expect((await keep(reader)).status).toBe(200);
+    expect(await listed(reader)).toContain(conversationId);
+    expect(await feedToken()).not.toBe(emptyFeedToken);
+    expect(await sourceForks()).toEqual([conversationId]);
+    expect(
+      (await getConversationEventStore().loadHistory(conversationId)).filter(
+        (event) => event.idempotencyKey === "fork:quick-question-kept",
+      ),
+    ).toHaveLength(1);
   });
 });

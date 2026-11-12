@@ -13,17 +13,27 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import { Checkbox } from "../../components/ui/checkbox";
-import { Field, FieldDescription, FieldLabel } from "../../components/ui/field";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldLabel,
+} from "../../components/ui/field";
 import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import {
   useConversationStartPosition,
   type ConversationStartPosition,
 } from "../../conversations/transcriptReadPosition";
 import { useComposerAutocorrect } from "../../conversations/composerAutocorrect";
+import { navLayoutChoices } from "../../components/NavLayoutSwitcher";
+import { useNavLayoutChoice, type NavLayoutChoice } from "../../navLayout";
 import { InlineError } from "../../components/InlineError";
+import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { Card } from "../../components/layout/Card";
+import { NotificationSettingsCard } from "../../notifications/NotificationSettingsCard";
 import { DashboardApiError, fetchDashboardJson, patch, put } from "../../http";
 import type { DashboardCoreData } from "../../types";
+import { AutoArchiveSettings } from "./AutoArchiveSettings";
 import { SettingsPageLayout } from "./SettingsPageLayout";
 
 const dashboardCoreQueryKey = ["dashboard", "core"] as const;
@@ -72,7 +82,11 @@ export function SettingsPage({ identity }: SettingsPageProps) {
     >
       <form onSubmit={submit}>
         <Card className="mb-0" padding="md" variant="raised">
-          <h2 className="m-0 text-lg font-bold">Profile</h2>
+          <AnchorHeading
+            anchor="profile"
+            className="m-0 text-lg font-bold"
+            title="Profile"
+          />
           <Field className="mt-5">
             <FieldLabel htmlFor="display-name">Display name</FieldLabel>
             <Input
@@ -92,7 +106,7 @@ export function SettingsPage({ identity }: SettingsPageProps) {
             </FieldDescription>
           </Field>
           <div className="mt-5 flex items-center gap-3">
-            <Button disabled={!canSave} type="submit">
+            <Button variant="outline" disabled={!canSave} type="submit">
               {updateProfile.isPending ? "Saving…" : "Save changes"}
             </Button>
             {updateProfile.isSuccess ? (
@@ -106,10 +120,54 @@ export function SettingsPage({ identity }: SettingsPageProps) {
           </div>
         </Card>
       </form>
+      <NavLayoutSetting />
       <ConversationStartSetting />
       <ComposerAutocorrectSetting />
+      <AutoArchiveSettings identity={identity} />
+      <NotificationSettingsCard />
       <CustomizationForm />
     </SettingsPageLayout>
+  );
+}
+
+/** Let the user choose desktop navigation on this browser. Phones skip it. */
+function NavLayoutSetting() {
+  const [choice, setChoice] = useNavLayoutChoice();
+  return (
+    <Card className="mt-6 mb-0 hidden md:block" padding="md" variant="raised">
+      <AnchorHeading
+        anchor="navigation"
+        className="m-0 text-lg font-bold"
+        title="Navigation"
+      />
+      <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
+        This choice applies to this browser.
+      </p>
+      <RadioGroup<NavLayoutChoice>
+        aria-label="Navigation"
+        className="grid gap-3"
+        onValueChange={setChoice}
+        value={choice}
+      >
+        {navLayoutChoices.map((option) => (
+          <Field key={option.value} orientation="horizontal">
+            <RadioGroupItem
+              aria-describedby={`nav-layout-${option.value}-help`}
+              id={`nav-layout-${option.value}`}
+              value={option.value}
+            />
+            <FieldContent>
+              <FieldLabel htmlFor={`nav-layout-${option.value}`}>
+                {option.label}
+              </FieldLabel>
+              <FieldDescription id={`nav-layout-${option.value}-help`}>
+                {option.description}
+              </FieldDescription>
+            </FieldContent>
+          </Field>
+        ))}
+      </RadioGroup>
+    </Card>
   );
 }
 
@@ -135,36 +193,39 @@ function ConversationStartSetting() {
   const [startPosition, setStartPosition] = useConversationStartPosition();
   return (
     <Card className="mt-6 mb-0" padding="md" variant="raised">
-      <fieldset className="m-0 min-w-0 border-0 p-0">
-        <legend className="m-0 p-0 text-lg font-bold">
-          Open conversations at
-        </legend>
-        <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
-          Junior keeps your place in each conversation on all your devices. This
-          choice applies to this browser.
-        </p>
-        <RadioGroup<ConversationStartPosition>
-          aria-label="Open conversations at"
-          className="grid gap-3"
-          onValueChange={setStartPosition}
-          value={startPosition}
-        >
-          {startPositionOptions.map((option) => (
-            <label
-              className="flex cursor-pointer items-start gap-3"
-              key={option.value}
-            >
-              <RadioGroupItem className="mt-0.5" value={option.value} />
-              <span className="grid gap-0.5">
-                <span className="text-sm font-medium">{option.label}</span>
-                <span className="text-xs text-dashboard-text-muted">
-                  {option.description}
-                </span>
-              </span>
-            </label>
-          ))}
-        </RadioGroup>
-      </fieldset>
+      <AnchorHeading
+        anchor="open-conversations-at"
+        className="m-0 text-lg font-bold"
+        title="Open conversations at"
+      />
+      <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
+        Junior keeps your place in each conversation on all your devices. This
+        choice applies to this browser.
+      </p>
+      <RadioGroup<ConversationStartPosition>
+        aria-label="Open conversations at"
+        className="grid gap-3"
+        onValueChange={setStartPosition}
+        value={startPosition}
+      >
+        {startPositionOptions.map((option) => (
+          <Field key={option.value} orientation="horizontal">
+            <RadioGroupItem
+              aria-describedby={`start-position-${option.value}-help`}
+              id={`start-position-${option.value}`}
+              value={option.value}
+            />
+            <FieldContent>
+              <FieldLabel htmlFor={`start-position-${option.value}`}>
+                {option.label}
+              </FieldLabel>
+              <FieldDescription id={`start-position-${option.value}-help`}>
+                {option.description}
+              </FieldDescription>
+            </FieldContent>
+          </Field>
+        ))}
+      </RadioGroup>
     </Card>
   );
 }
@@ -174,22 +235,27 @@ function ComposerAutocorrectSetting() {
   const [autocorrect, setAutocorrect] = useComposerAutocorrect();
   return (
     <Card className="mt-6 mb-0" padding="md" variant="raised">
-      <h2 className="m-0 text-lg font-bold">Message box</h2>
-      <label className="mt-4 flex cursor-pointer items-start gap-3">
+      <AnchorHeading
+        anchor="message-box"
+        className="m-0 text-lg font-bold"
+        title="Message box"
+      />
+      <Field className="mt-4" orientation="horizontal">
         <Checkbox
+          aria-describedby="composer-autocorrect-help"
           checked={autocorrect}
-          className="mt-0.5"
+          id="composer-autocorrect"
           onCheckedChange={setAutocorrect}
         />
-        <span className="grid gap-0.5">
-          <span className="text-sm font-medium">Autocorrect</span>
-          <span className="text-xs text-dashboard-text-muted">
+        <FieldContent>
+          <FieldLabel htmlFor="composer-autocorrect">Autocorrect</FieldLabel>
+          <FieldDescription id="composer-autocorrect-help">
             Let your keyboard correct spelling and capitalize sentences as you
             type. This can change ids, paths, and code. This choice applies to
             this browser.
-          </span>
-        </span>
-      </label>
+          </FieldDescription>
+        </FieldContent>
+      </Field>
     </Card>
   );
 }
@@ -246,7 +312,11 @@ function CustomizationForm() {
   return (
     <form onSubmit={submit}>
       <Card className="mb-0" padding="md" variant="raised">
-        <h2 className="m-0 text-lg font-bold">Customization</h2>
+        <AnchorHeading
+          anchor="customization"
+          className="m-0 text-lg font-bold"
+          title="Customization"
+        />
         <Field className="mt-5">
           <FieldLabel htmlFor="user-customization">
             How should replies to you change?
@@ -267,7 +337,7 @@ function CustomizationForm() {
           </FieldDescription>
         </Field>
         <div className="mt-5 flex items-center gap-3">
-          <Button disabled={!canSave} type="submit">
+          <Button variant="outline" disabled={!canSave} type="submit">
             {save.isPending ? "Saving…" : "Save customization"}
           </Button>
           {save.isSuccess ? (

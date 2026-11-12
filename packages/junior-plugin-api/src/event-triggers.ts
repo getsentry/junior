@@ -7,6 +7,7 @@
  * editor, so all of them use the same rules.
  */
 import {
+  agentEventMatchKey,
   type EventMatch,
   type EventMatchFields,
   type EventReach,
@@ -86,6 +87,11 @@ function kindWords(kind: EventMatchField["kind"]): string {
   if (kind === "boolean") return "true or false";
   if (kind === "number") return "a number";
   return "text";
+}
+
+/** Name filters as the agent writes them when messages are for tool input. */
+function filterKeyName(options: { inputKeys?: boolean }) {
+  return (key: string) => (options.inputKeys ? agentEventMatchKey(key) : key);
 }
 
 /** Return the selected events that never set one filter field. */
@@ -185,7 +191,8 @@ export function eventTriggerChoices(
  * A selection with no resource type can use only events whose reach is not
  * `"resource"`, with the filters of every resource type, and must set one of
  * the filters that the reach of each selected event names.
- * Set `inputKeys` for the agent, so messages name the `match.<key>` input.
+ * Set `inputKeys` for the agent, so messages name the snake_case
+ * `match.<key>` input.
  */
 export function eventTriggerProblems(
   source: EventTriggerSource,
@@ -202,8 +209,11 @@ export function eventTriggerProblems(
   }
   const scope = selectionScope(source, selection);
   if ("reason" in scope) return [scope];
+  const name = filterKeyName(options);
   const filterName = (key: string) =>
-    options.inputKeys ? `Filter "${key}" (match.${key})` : `Filter "${key}"`;
+    options.inputKeys
+      ? `Filter "${name(key)}" (match.${name(key)})`
+      : `Filter "${key}"`;
   const problems: EventTriggerProblem[] = [];
   const events = selection.events.filter((eventType) =>
     scope.events.includes(eventType),
@@ -225,7 +235,7 @@ export function eventTriggerProblems(
           },
     );
   }
-  const fieldNames = Object.keys(scope.fields);
+  const fieldNames = Object.keys(scope.fields).map(name);
   for (const [key, value] of Object.entries(selection.match ?? {})) {
     const filter = filterName(key);
     const field = scope.fields[key];
@@ -280,15 +290,16 @@ function requiredFilterProblems(
     entry.events.push(eventType);
     missing.set(key, entry);
   }
+  const name = filterKeyName(options);
   const inputKey = (filter: string) =>
-    options.inputKeys ? ` (match.${filter})` : "";
+    options.inputKeys ? ` (match.${name(filter)})` : "";
   return [...missing.values()].map(({ anyOf, events: requiredBy }) => ({
     reason: "filter_required",
     field: anyOf[0],
     message:
       anyOf.length === 1
-        ? `This trigger needs a "${anyOf[0]}" filter${inputKey(anyOf[0]!)}, because ${quoted(requiredBy)} cannot run for every resource.`
-        : `This trigger needs one of these filters: ${anyOf.map((filter) => `"${filter}"${inputKey(filter)}`).join(", ")}, because ${quoted(requiredBy)} cannot run for every resource.`,
+        ? `This trigger needs a "${name(anyOf[0]!)}" filter${inputKey(anyOf[0]!)}, because ${quoted(requiredBy)} cannot run for every resource.`
+        : `This trigger needs one of these filters: ${anyOf.map((filter) => `"${name(filter)}"${inputKey(filter)}`).join(", ")}, because ${quoted(requiredBy)} cannot run for every resource.`,
   }));
 }
 

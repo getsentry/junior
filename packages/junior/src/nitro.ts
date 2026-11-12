@@ -4,25 +4,31 @@ import { sentryOrchestrionPlugin } from "@sentry/server-utils/orchestrion/rollup
 import type { Nitro } from "nitro/types";
 import { applyRolldownTreeshakeWorkaround } from "@/build/rolldown-workarounds";
 import {
-  copyDashboardAssets,
   copyIncludedFiles,
   copyRuntimeContent,
+  resolveDashboardPublicAssetsDir,
 } from "@/build/copy-build-content";
 import {
   injectVirtualConfig,
   type RuntimePluginModule,
 } from "@/build/virtual-config";
+import { CACHE_WARMUP_QUEUE_TOPIC } from "@/chat/cache-warming/queue";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC } from "@/chat/sandbox/snapshot/job-queue";
+import { BACKGROUND_COMPACTION_QUEUE_TOPIC } from "@/chat/services/background-compaction-queue";
 import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
 import {
+  JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
+  JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
+  JUNIOR_AUTO_ARCHIVE_ROUTE,
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
   JUNIOR_HEARTBEAT_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_RETENTION_CRON_SCHEDULE,
   JUNIOR_RETENTION_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
+  JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
   getDeploymentServiceVersion,
 } from "@/deployment";
 import {
@@ -181,86 +187,72 @@ function configureVercelDeployment(
       schedule: JUNIOR_RETENTION_CRON_SCHEDULE,
     });
   }
+  if (
+    !nitro.options.vercel.config.crons.some(
+      (cron) => cron.path === JUNIOR_AUTO_ARCHIVE_ROUTE,
+    )
+  ) {
+    nitro.options.vercel.config.crons.push({
+      path: JUNIOR_AUTO_ARCHIVE_ROUTE,
+      schedule: JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
+    });
+  }
 
   nitro.options.vercel.functions ??= {};
   nitro.options.vercel.functions.maxDuration = defaultMaxDuration;
 
   nitro.options.vercel.functionRules ??= {};
-  const existingRule =
-    nitro.options.vercel.functionRules[
-      JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE
-    ] ?? {};
-  const existingTriggers = Array.isArray(existingRule.experimentalTriggers)
-    ? existingRule.experimentalTriggers
-    : [];
-  const otherTriggers = existingTriggers.filter(
-    (trigger) => trigger.type !== VERCEL_QUEUE_TRIGGER_TYPE,
-  );
-
-  nitro.options.vercel.functionRules[JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE] =
-    {
+  const functionRules = nitro.options.vercel.functionRules;
+  // Each queue topic pushes to one callback route. Keep the other triggers of
+  // that route.
+  const addQueueTrigger = (route: string, topic: string) => {
+    const existingRule = functionRules[route] ?? {};
+    const existingTriggers = Array.isArray(existingRule.experimentalTriggers)
+      ? existingRule.experimentalTriggers
+      : [];
+    functionRules[route] = {
       ...existingRule,
       maxDuration: defaultMaxDuration,
       experimentalTriggers: [
-        ...otherTriggers,
-        {
-          type: VERCEL_QUEUE_TRIGGER_TYPE,
-          topic: queueTopic,
-        },
+        ...existingTriggers.filter(
+          (trigger) => trigger.type !== VERCEL_QUEUE_TRIGGER_TYPE,
+        ),
+        { type: VERCEL_QUEUE_TRIGGER_TYPE, topic },
       ],
     };
-
-  const existingPluginTaskRule =
-    nitro.options.vercel.functionRules[JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE] ?? {};
-  const existingPluginTaskTriggers = Array.isArray(
-    existingPluginTaskRule.experimentalTriggers,
-  )
-    ? existingPluginTaskRule.experimentalTriggers
-    : [];
-  const otherPluginTaskTriggers = existingPluginTaskTriggers.filter(
-    (trigger) => trigger.type !== VERCEL_QUEUE_TRIGGER_TYPE,
-  );
-
-  nitro.options.vercel.functionRules[JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE] = {
-    ...existingPluginTaskRule,
-    maxDuration: defaultMaxDuration,
-    experimentalTriggers: [
-      ...otherPluginTaskTriggers,
-      {
-        type: VERCEL_QUEUE_TRIGGER_TYPE,
-        topic: PLUGIN_TASK_QUEUE_TOPIC,
-      },
-    ],
   };
-
-  const existingSnapshotJobRule =
-    nitro.options.vercel.functionRules[
-      JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE
-    ] ?? {};
-  const existingSnapshotJobTriggers = Array.isArray(
-    existingSnapshotJobRule.experimentalTriggers,
-  )
-    ? existingSnapshotJobRule.experimentalTriggers
-    : [];
-  const otherSnapshotJobTriggers = existingSnapshotJobTriggers.filter(
-    (trigger) => trigger.type !== VERCEL_QUEUE_TRIGGER_TYPE,
+  addQueueTrigger(JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE, queueTopic);
+  addQueueTrigger(JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE, PLUGIN_TASK_QUEUE_TOPIC);
+  addQueueTrigger(
+    JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
+    WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC,
   );
+  addQueueTrigger(JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE, CACHE_WARMUP_QUEUE_TOPIC);
 
-  nitro.options.vercel.functionRules[
-    JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE
-  ] = {
-    ...existingSnapshotJobRule,
-    maxDuration: defaultMaxDuration,
-    experimentalTriggers: [
-      ...otherSnapshotJobTriggers,
-      {
-        type: VERCEL_QUEUE_TRIGGER_TYPE,
-        topic: WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC,
-      },
-    ],
-  };
+  addQueueTrigger(
+    JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
+    BACKGROUND_COMPACTION_QUEUE_TOPIC,
+  );
 
   return defaultMaxDuration;
+}
+
+// Apps route `/**` to `./server.ts`, and Nitro also detects `server.ts` as
+// its server entry. With both, a 404 from the app runs the app again with the
+// same Request, whose body the first run may already have read.
+function dropRoutedServerEntry(nitro: Nitro): void {
+  const serverEntry = nitro.options.serverEntry;
+  if (!serverEntry) {
+    return;
+  }
+  const routed = Object.values(nitro.options.routes).some(
+    (route) =>
+      (typeof route === "string" ? route : route.handler) ===
+      serverEntry.handler,
+  );
+  if (routed) {
+    nitro.options.serverEntry = false;
+  }
 }
 
 /** Nitro module that configures deployment wiring and copies app/plugin content into the Vercel build output. */
@@ -279,7 +271,20 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           options,
         );
 
+        dropRoutedServerEntry(nitro);
         applyRolldownTreeshakeWorkaround(nitro);
+        if (dashboardEnabled(options.dashboard)) {
+          // Nitro resolves configured public assets before modules run, so
+          // this entry must already have its final shape. The dashboard
+          // package serves the same files from `/_junior/dashboard/assets/*`
+          // when no static file matches.
+          nitro.options.publicAssets.push({
+            baseURL: "/_junior/dashboard/assets",
+            dir: resolveDashboardPublicAssetsDir(cwd),
+            fallthrough: false,
+            maxAge: 31_536_000,
+          });
+        }
         nitro.options.traceDeps = [
           ...(nitro.options.traceDeps ?? []),
           ...CODEMODE_TRACE_DEPS,
@@ -330,9 +335,6 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
             nitro.options.output.serverDir,
             compiledPluginCatalogConfig?.packages,
           );
-          if (dashboardEnabled(options.dashboard)) {
-            copyDashboardAssets(cwd, nitro.options.output.serverDir);
-          }
           copyIncludedFiles(
             cwd,
             nitro.options.output.serverDir,

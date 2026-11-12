@@ -90,7 +90,7 @@ function agentSplitLines(
     { value: "By agent", valueStyle: "heading" },
     { label: "this agent", value: format(total - subagents) },
     {
-      label: plural("subagent", childAgentTotals.count),
+      label: plural("child conversation", childAgentTotals.count),
       value: format(subagents),
     },
   ];
@@ -328,11 +328,22 @@ export function auxiliaryOperationLabel(
   operation: ConversationAuxiliaryCosts["operations"][number],
 ): string {
   const knownLabels: Readonly<Record<string, string>> = {
+    "junior/cache_warmup": "Cache warmup",
+    "junior/compaction": "Compaction",
+    "junior/conversation_catch_up": "Catch-up",
+    "junior/conversation_title": "Conversation title",
     "junior/guardian_action_reviewed": "Guardian",
+    "junior/image_prompt_enrichment": "Image prompt",
     "junior/passive_reply_routed": "Passive reply routing",
+    "junior/review_item_reply_match": "Review reply matching",
+    "junior/run_title": "Run title",
+    "junior/task_title": "Task title",
     "junior/turn_routed": "Thinking routing",
+    "junior/vision_summary": "Image summary",
     "memory/memories_captured": "Memory extraction",
     "memory/memories_recalled": "Memory recall",
+    "memory/task_model_called": "Memory extraction",
+    "memory/user_prompt_model_called": "Memory recall",
   };
   const key = `${operation.namespace}/${operation.name}`;
   return (
@@ -350,6 +361,7 @@ export function CostMetric(props: {
   liveModelId?: string;
   modelUsage?: ConversationModelUsage[];
   summary: CostUsageSummary | undefined;
+  tooltipPlacement?: "above" | "below";
 }) {
   // Model history can include calls not yet counted in saved Run totals.
   const summary = summarizeModelCost(props.modelUsage) ?? props.summary;
@@ -369,7 +381,7 @@ export function CostMetric(props: {
   return (
     <MetricValue
       align={props.align}
-      tooltipPlacement="above"
+      tooltipPlacement={props.tooltipPlacement ?? "above"}
       tooltip={
         !card && props.liveModelId
           ? [modelHeading(props.liveModelId, props.liveModelId)]
@@ -455,7 +467,7 @@ export function SubagentsMetric(props: {
   childAgentTotals: ConversationChildAgentTotals | undefined;
 }) {
   if (!props.childAgentTotals) return null;
-  const label = plural("subagent", props.childAgentTotals.count);
+  const label = plural("child conversation", props.childAgentTotals.count);
   return (
     <MetricValue
       tooltip={[

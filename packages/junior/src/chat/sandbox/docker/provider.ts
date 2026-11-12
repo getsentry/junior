@@ -12,6 +12,7 @@ import {
   waitForDetachedCommand,
 } from "@/chat/sandbox/docker/exec";
 import { ensureRuntimeImage } from "@/chat/sandbox/docker/runtime-image";
+import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import {
   adaptSession,
   commitSnapshot,
@@ -34,7 +35,7 @@ async function createSession(
 ): Promise<SandboxSession> {
   const image =
     input.snapshotId ??
-    (await ensureRuntimeImage(input.runtime ?? "node22", input.signal));
+    (await ensureRuntimeImage(input.runtime ?? SANDBOX_RUNTIME, input.signal));
   const container = await createContainer(
     {
       name: input.name ?? newSandboxName(),

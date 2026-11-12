@@ -1,5 +1,5 @@
 import type { Button, KnownBlock, ModalView } from "@slack/types";
-import { z } from "zod";
+import * as z from "zod";
 import { getDashboardReviewItemLink } from "@/chat/dashboard-link";
 import {
   REVIEW_ITEM_REPLIED_REASON,
@@ -48,11 +48,33 @@ function assigneeText(item: ReviewItem): string {
   return names.length ? `For ${names.join(", ")}` : "Not assigned";
 }
 
+/**
+ * Link the title to the subject. A plugin rewrite skips text in a link, so
+ * it cannot guess another URL for a reference in the title, such as an
+ * issue URL for a pull request.
+ */
+function titleText(item: ReviewItem): string {
+  const href = safeLinkUrl(item.subject?.url);
+  if (!href) return `**${item.title}**`;
+  const label = item.title.replace(/[[\]\\]/g, "\\$&");
+  return `**[${label}](${href.replaceAll("(", "%28").replaceAll(")", "%29")})**`;
+}
+
+// Agents and plugins supply the subject URL, and URL parsing also accepts
+// `javascript:` and `data:` URLs.
+function safeLinkUrl(url: string | undefined): string | undefined {
+  if (!url || !URL.canParse(url)) return undefined;
+  const href = new URL(url);
+  return href.protocol === "https:" || href.protocol === "http:"
+    ? href.href
+    : undefined;
+}
+
 /** The title, body, and question of an item, in Slack markdown. */
 function itemText(item: ReviewItem): string {
   return normalizeSlackReplyMarkdown(
     [
-      `**${item.title}**`,
+      titleText(item),
       truncate(item.body, MAX_BODY_CHARS),
       ...(item.request ? [slackUserInputText(item.request)] : []),
     ].join("\n\n"),

@@ -87,7 +87,7 @@ When adding a new package under this repository's `packages/` directory:
 - For JS plugin packages, include the factory entrypoint and optional `skills` in `package.json` `files`.
 - Add a package README if users need setup or verification steps.
 - Keep package version aligned with the monorepo release process.
-- Keep release package lists aligned across `.craft.yml`, `scripts/bump-release-versions.mjs`, `.github/workflows/ci.yml`, `README.md`, and release docs.
+- Keep release package lists aligned across `scripts/bump-release-versions.mjs`, `.github/workflows/ci.yml`, `README.md`, and release docs.
 - Run `pnpm release:check` after release-list changes.
 
 ## Packaged plugin discovery

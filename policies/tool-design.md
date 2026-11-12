@@ -25,6 +25,10 @@ contradictory or unsafe requests.
   or a discovery tool. Do not paginate provider inventory to resolve names.
 - Keep runtime authority, destination, actor, credentials, and durable context
   out of model arguments. See `runtime-boundary-schemas.md`.
+- Input and output schema keys are snake_case, so each value has one name in
+  arguments and results. Card fields that the dashboard reads
+  (`objectCards`, `objectAnnotations`, `removedCards`) are the exception.
+  `tool-key-casing:check` enforces this.
 
 ### Authoring
 
@@ -50,6 +54,10 @@ contradictory or unsafe requests.
   Files under `tools` are concrete tools only, one tool per file.
 - Prefer direct imports over injected ports. Inject only when production needs
   more than one implementation.
+- Make a tool direct only when many Conversations use it or the system prompt
+  names it. Each direct tool adds its schema to every Turn. Give other tools
+  `exposure: "deferred"` and a `source`, so `searchTools` lists the source.
+  Core tools are direct when `exposure` is not set.
 
 ### Descriptions and params
 

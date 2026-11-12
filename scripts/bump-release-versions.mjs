@@ -26,9 +26,11 @@ const files = [
   "packages/junior-notion/package.json",
   "packages/junior-octolens/package.json",
   "packages/junior-pagerduty/package.json",
+  "packages/junior-restream/package.json",
   "packages/junior-maintenance/package.json",
   "packages/junior-sentry/package.json",
   "packages/junior-vercel/package.json",
+  "packages/junior-xdotcom/package.json",
 ];
 
 for (const relativePath of files) {

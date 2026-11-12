@@ -1,117 +1,110 @@
-import { useCallback, useState } from "react";
-import { Archive, ArchiveRestore } from "lucide-react";
+import { useCallback } from "react";
+import {
+  Archive,
+  ArchiveRestore,
+  LockKeyhole,
+  MessageSquare,
+} from "lucide-react";
 import { Link } from "react-router";
 
 import {
   conversationDisplayTitle,
-  formatRelativeTime,
-  slackLocationLabel,
+  formatTime,
   visualStatusForConversation,
 } from "../format";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Skeleton } from "../components/ui/skeleton";
+import { Spinner } from "../components/ui/spinner";
 import {
   conversationParticipants,
   ParticipantAvatarStack,
 } from "../components/ParticipantAvatarStack";
 import { cn } from "../styles";
+import type { WaitingConversation } from "../review-desk/queries";
 import type { Conversation } from "../types";
-import { ConversationSidebarAnnotations } from "./ConversationMeta";
-import { ConversationArchiveNotices } from "./ConversationArchiveNotices";
-import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
-import { conversationPath } from "./conversationRoutes";
-import { useArchiveConversation } from "./queries";
-import { DisplayText } from "../display-text/DisplayText";
+import { useConversationActionToasts } from "./conversationActionToasts";
+import { formatActivityDay } from "./conversationAge";
+import { conversationCardTags } from "./ConversationContextTags";
 import {
-  attentionConversationIds,
-  buildConversationSections,
-  type ConversationSection,
-} from "./conversationSections";
+  ConversationListStatusIcon,
+  ConversationStatusText,
+} from "./ConversationListStatusIcon";
+import { conversationPath } from "./conversationRoutes";
+import { useArchiveConversation } from "./conversationArchive";
+import { DisplayText } from "../display-text/DisplayText";
+import type { ConversationSection } from "./conversationSections";
+import { ConversationSectionList } from "./ConversationSectionList";
 import { ConversationSectionHeading } from "./ConversationSectionHeading";
+import { usePrefetchConversation } from "./conversationPrefetch";
 import { useCollapsedConversationSections } from "./useCollapsedConversationSections";
+import {
+  usePinnedRowDrag,
+  type PinnedRowDrag,
+} from "./PinnedConversationOrder";
+import type { ReorderPins } from "./useReorderPinnedConversations";
 
 /** Render grouped conversation cards on the dashboard home page. */
 export function ConversationHomeList(props: {
   conversations: Conversation[];
   emptyLabel?: string;
-  finishedConversationIds: ReadonlySet<string>;
   loading?: boolean;
+  /** Leave unset when the list shows only some pins. */
+  onReorderPins?: ReorderPins;
   timeZone: string;
-  waitingConversationIds: ReadonlySet<string>;
+  waitingConversations: ReadonlyMap<string, WaitingConversation>;
 }) {
   const { collapsedKeys, toggle: toggleSection } =
     useCollapsedConversationSections();
-  const [archivedConversation, setArchivedConversation] =
-    useState<Conversation>();
-  const [archiveError, setArchiveError] = useState<{
-    conversation: Conversation;
-    wasArchiving: boolean;
-  }>();
-  const handleArchiveError = useCallback(
-    (conversation: Conversation, wasArchiving: boolean) => {
-      setArchiveError({ conversation, wasArchiving });
-    },
-    [],
-  );
-  const handleArchived = useCallback((conversation: Conversation) => {
-    setArchiveError((current) =>
-      current?.conversation.id === conversation.id ? undefined : current,
-    );
-    setArchivedConversation(conversation);
-  }, []);
-  const notices = (
-    <ConversationArchiveNotices
-      archivedConversation={archivedConversation}
-      archiveError={archiveError}
-      className="fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-30 sm:left-auto sm:w-96"
-      onDismissError={() => setArchiveError(undefined)}
-      onRestored={() => setArchivedConversation(undefined)}
-    />
+  const { showActionError, showArchiveError, showArchived } =
+    useConversationActionToasts();
+  const handleReorderError = useCallback(
+    (conversation: Conversation) =>
+      showActionError(conversation, "Could not reorder"),
+    [showActionError],
   );
 
-  if (props.loading && props.conversations.length === 0) {
-    return <ConversationHomeListLoading label="Loading conversations" />;
-  }
-
-  if (props.conversations.length === 0) {
-    return (
-      <>
-        <div className="rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint p-4">
-          <EmptyTelemetry>
-            {props.emptyLabel ?? "No conversations match this view."}
-          </EmptyTelemetry>
-        </div>
-        {notices}
-      </>
-    );
-  }
-
-  const sections = buildConversationSections(props.conversations, {
-    attentionIds: attentionConversationIds(
-      props.waitingConversationIds,
-      props.finishedConversationIds,
-    ),
-    nowMs: Date.now(),
-    timeZone: props.timeZone,
-  });
+  // The list stays mounted through the first load, so a pointer that rests
+  // on it then still holds the order.
   return (
-    <>
-      <div aria-label="Your conversations" className="grid gap-5" role="list">
-        {sections.map((section) => (
-          <ConversationCardSection
-            collapsed={collapsedKeys.has(section.key)}
-            finishedConversationIds={props.finishedConversationIds}
-            key={section.key}
-            onArchiveError={handleArchiveError}
-            onArchived={handleArchived}
-            onToggle={() => toggleSection(section.key)}
-            waitingConversationIds={props.waitingConversationIds}
-            section={section}
-          />
-        ))}
-      </div>
-      {notices}
-    </>
+    <ConversationSectionList
+      conversations={props.conversations}
+      loading={props.loading ?? false}
+      onReorderError={handleReorderError}
+      onReorderPins={props.onReorderPins}
+      timeZone={props.timeZone}
+      waitingConversations={props.waitingConversations}
+    >
+      {({ releaseHold, sections }) =>
+        props.loading && props.conversations.length === 0 ? (
+          <ConversationHomeListLoading label="Loading conversations" />
+        ) : props.conversations.length === 0 ? (
+          <div className="rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint p-4">
+            <EmptyTelemetry>
+              {props.emptyLabel ?? "No conversations match this view."}
+            </EmptyTelemetry>
+          </div>
+        ) : (
+          <div
+            aria-label="Your conversations"
+            className="grid gap-5"
+            role="list"
+          >
+            {sections.map((section) => (
+              <ConversationCardSection
+                collapsed={collapsedKeys.has(section.key)}
+                key={section.key}
+                onArchiveError={showArchiveError}
+                onArchived={showArchived}
+                onRowAction={releaseHold}
+                onToggle={() => toggleSection(section.key)}
+                waitingConversations={props.waitingConversations}
+                section={section}
+              />
+            ))}
+          </div>
+        )
+      }
+    </ConversationSectionList>
   );
 }
 
@@ -149,46 +142,53 @@ export function ConversationHomeListLoading(props: { label?: string }) {
 
 function ConversationCardLoading(props: { index: number }) {
   return (
-    <div className="grid min-w-0 gap-2 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-4 md:px-5">
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_max-content] items-start gap-3">
-        <div className="flex min-w-0 items-start gap-2.5">
-          <Skeleton className="mt-1.5 size-3 shrink-0 rounded-full" />
+    <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-2.5 sm:px-4">
+      <Skeleton className="mt-0.5 size-8 rounded-md" />
+      <div className="grid min-w-0">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-6 min-w-0 flex-1 items-center">
+            <Skeleton
+              className={cn(
+                "h-3.5",
+                props.index % 2 === 0 ? "w-56 max-w-4/5" : "w-44 max-w-3/5",
+              )}
+            />
+          </div>
+          <Skeleton className="h-3 w-14 opacity-70" />
+          <Skeleton className="size-4" />
+        </div>
+        <div className="flex h-5 min-w-0 items-center">
           <Skeleton
             className={cn(
-              "h-4",
-              props.index % 2 === 0 ? "w-56 max-w-4/5" : "w-44 max-w-3/5",
+              "h-3 opacity-70",
+              props.index % 2 === 0 ? "w-full max-w-xl" : "w-1/2 max-w-md",
             )}
           />
         </div>
-        <div className="flex items-start gap-3">
-          <Skeleton className="h-3 w-16 opacity-70" />
-          <Skeleton className="size-4" />
-        </div>
+        <Skeleton className="mt-1 h-6 w-28 rounded-md opacity-70" />
       </div>
-      <div className="grid gap-1.5">
-        <Skeleton className="h-3 w-full max-w-3xl opacity-70" />
-        {props.index % 2 === 0 ? (
-          <Skeleton className="h-3 w-2/3 max-w-xl opacity-70" />
-        ) : null}
-      </div>
-      <Skeleton className="h-3 w-64 max-w-4/5 opacity-70" />
     </div>
   );
 }
 
 function ConversationCardSection(props: {
   collapsed: boolean;
-  finishedConversationIds: ReadonlySet<string>;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
+  onRowAction(): void;
   onToggle(): void;
   section: ConversationSection;
-  waitingConversationIds: ReadonlySet<string>;
+  waitingConversations: ReadonlyMap<string, WaitingConversation>;
 }) {
   return (
     <section aria-labelledby={`conversation-section-${props.section.key}`}>
       <ConversationSectionHeading
-        className={cn("px-1", !props.collapsed && "mb-2")}
+        // The label stays at the top while its cards scroll under it, like a
+        // native grouped list. The fill covers the cards that pass below.
+        className={cn(
+          "sticky top-0 z-10 -mx-1 bg-dashboard-bg px-2 py-1.5",
+          !props.collapsed && "mb-0.5",
+        )}
         collapsed={props.collapsed}
         count={props.section.conversations.length}
         id={`conversation-section-${props.section.key}`}
@@ -197,34 +197,45 @@ function ConversationCardSection(props: {
       />
       {props.collapsed ? null : (
         <div className="grid gap-2">
-          {props.section.conversations.map((conversation) => (
-            <ConversationCard
-              conversation={conversation}
-              finishedSinceSeen={props.finishedConversationIds.has(
-                conversation.id,
-              )}
-              key={conversation.id}
-              onArchiveError={props.onArchiveError}
-              onArchived={props.onArchived}
-              waitingOnViewer={props.waitingConversationIds.has(
-                conversation.id,
-              )}
-            />
-          ))}
+          {props.section.conversations.map((conversation) => {
+            const card = {
+              conversation,
+              onArchiveError: props.onArchiveError,
+              onArchived: props.onArchived,
+              onRowAction: props.onRowAction,
+              waitingOnViewer: props.waitingConversations.has(conversation.id),
+            };
+            return conversation.pinnedAt ? (
+              <PinnedConversationCard {...card} key={conversation.id} />
+            ) : (
+              <ConversationCard {...card} key={conversation.id} />
+            );
+          })}
         </div>
       )}
     </section>
   );
 }
 
-function ConversationCard(props: {
+type ConversationCardProps = {
   conversation: Conversation;
-  finishedSinceSeen: boolean;
+  /** Set on pinned cards, which drag to reorder. */
+  drag?: PinnedRowDrag;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
+  /** Lets the list show the result of a row action at once. */
+  onRowAction(): void;
   waitingOnViewer: boolean;
-}) {
+};
+
+function PinnedConversationCard(props: Omit<ConversationCardProps, "drag">) {
+  const drag = usePinnedRowDrag(props.conversation.id);
+  return <ConversationCard {...props} drag={drag} />;
+}
+
+function ConversationCard(props: ConversationCardProps) {
   const conversation = props.conversation;
+  const drag = props.drag;
   const archive = useArchiveConversation(conversation.id, {
     onError: () =>
       props.onArchiveError(conversation, archive.variables?.archived ?? true),
@@ -234,50 +245,106 @@ function ConversationCard(props: {
   });
   const status = visualStatusForConversation(conversation);
   const title = conversationDisplayTitle(conversation);
-  const location = slackLocationLabel(conversation, { includeId: false });
   const participants = conversationParticipants(conversation);
   const isPrivate = conversation.visibility === "private";
+  const tags = conversationCardTags(conversation, title);
+  const prefetch = usePrefetchConversation(conversation.id);
+  const VisibilityIcon = isPrivate ? LockKeyhole : MessageSquare;
+  // Only a wait on the viewer gets a badge. A running card shows its spinner
+  // in place of the time, and failed and stopped are text beside the time.
+  const showStatus = props.waitingOnViewer && status !== "active";
+  const activityAt = conversation.lastMessageAt ?? conversation.lastSeenAt;
   return (
     <article
-      className="group relative grid min-w-0 gap-2 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-4 transition-colors hover:border-dashboard-border hover:bg-dashboard-fill-soft md:px-5"
+      {...prefetch}
+      {...drag?.listeners}
+      className={cn(
+        "group relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-2.5 transition-[background-color,border-color,scale] duration-100 ease-out hover:border-dashboard-border hover:bg-dashboard-fill-soft has-[>a:active]:scale-[0.99] has-[>a:active]:bg-dashboard-fill-soft motion-reduce:has-[>a:active]:scale-100 sm:px-4",
+        drag?.dragging && "opacity-40",
+      )}
+      onKeyDown={drag?.onKeyDown}
+      ref={drag?.setNodeRef}
       role="listitem"
     >
       <Link
+        aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
         aria-label={`Open ${title}`}
-        className="absolute inset-0 z-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-dashboard-focus"
+        className={cn(
+          "absolute inset-0 z-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-dashboard-focus",
+          // A long press drags the card instead of opening the link menu.
+          drag && "[-webkit-touch-callout:none]",
+        )}
+        // The browser's own link drag would take the pointer from the reorder.
+        draggable={drag ? false : undefined}
         to={conversationPath(conversation.id)}
       />
-      <div className="relative z-[1] grid min-w-0 grid-cols-[minmax(0,1fr)_max-content] items-start gap-3 pointer-events-none">
-        <div className="flex min-w-0 items-start gap-2.5">
-          <span className="mt-1.5 grid size-3 shrink-0 place-items-center">
+      <span className="pointer-events-none relative z-[1] mt-0.5 grid size-8 place-items-center rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel text-dashboard-text-muted">
+        <VisibilityIcon
+          aria-label={
+            isPrivate ? "Private conversation" : "Public conversation"
+          }
+          role="img"
+          size={15}
+        />
+        {showStatus ? (
+          <span className="absolute -bottom-1 -right-1 grid size-3.5 place-items-center rounded-full bg-dashboard-surface-panel">
             <ConversationListStatusIcon
-              finishedSinceSeen={props.finishedSinceSeen}
-              isPrivate={isPrivate}
               status={status}
               waitingOnViewer={props.waitingOnViewer}
             />
           </span>
-          <h4 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
+        ) : null}
+      </span>
+      <div className="grid min-w-0">
+        <div className="flex min-w-0 items-center gap-3">
+          <h4 className="pointer-events-none relative z-[1] m-0 min-w-0 flex-1 truncate font-display text-sm font-medium leading-6 text-dashboard-text">
             {title}
           </h4>
-        </div>
-        <div className="flex items-start gap-3">
-          <Link
-            className="pointer-events-auto whitespace-nowrap font-sans text-xs tabular-nums text-dashboard-text-muted hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus"
-            to={conversationPath(conversation.id)}
-          >
-            {formatRelativeTime(conversation.lastSeenAt)}
-          </Link>
+          {participants.length > 0 ? (
+            <span className="pointer-events-none relative z-[1] hidden sm:inline-flex">
+              <ParticipantAvatarStack participants={participants} size="list" />
+            </span>
+          ) : null}
+          {status === "active" ? (
+            // Like the sidebar row: a running row shows that it runs, not
+            // when its last Event came, so the feed token can skip it.
+            <span className="pointer-events-none relative z-[1] flex min-w-14 justify-end">
+              <Spinner
+                aria-label="Running"
+                className="size-3.5 text-dashboard-text-muted"
+              />
+            </span>
+          ) : (
+            <>
+              {/* The tile already shows the lock. */}
+              <ConversationStatusText
+                className="pointer-events-none relative z-[1]"
+                isPrivate={false}
+                status={status}
+              />
+              <time
+                className="pointer-events-none relative z-[1] min-w-14 whitespace-nowrap text-right font-sans text-xs tabular-nums text-dashboard-text-muted"
+                dateTime={activityAt}
+                title={formatTime(activityAt, {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}
+              >
+                {formatActivityDay(activityAt)}
+              </time>
+            </>
+          )}
           <button
             aria-label={`${conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
-            className="pointer-events-auto relative shrink-0 cursor-pointer border-0 bg-transparent p-0 text-dashboard-text-muted transition before:absolute before:-inset-2 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus focus:ring-offset-2 focus:ring-offset-dashboard-canvas disabled:cursor-not-allowed disabled:opacity-50"
+            className="relative z-[1] shrink-0 cursor-pointer border-0 bg-transparent p-0 text-dashboard-text-muted transition before:absolute before:-inset-2 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus focus:ring-offset-2 focus:ring-offset-dashboard-canvas disabled:cursor-not-allowed disabled:opacity-50"
             disabled={archive.isPending}
-            onClick={() =>
+            onClick={() => {
+              props.onRowAction();
               archive.mutate({
                 archived: !conversation.archivedAt,
                 lastSeenAt: conversation.lastSeenAt,
-              })
-            }
+              });
+            }}
             type="button"
           >
             {conversation.archivedAt ? (
@@ -287,31 +354,32 @@ function ConversationCard(props: {
             )}
           </button>
         </div>
-      </div>
-      {conversation.activityPreview ? (
-        <p className="relative z-[1] m-0 line-clamp-2 font-sans text-sm leading-relaxed text-dashboard-text-subtle pointer-events-none">
-          <DisplayText
-            inline
-            mentions={conversation.activityPreview.mentions}
-            text={conversation.activityPreview.text}
-          />
-        </p>
-      ) : (
-        <p className="relative z-[1] m-0 font-sans text-sm leading-relaxed text-dashboard-text-muted pointer-events-none">
-          {status === "active" ? "Working…" : "No recent message"}
-        </p>
-      )}
-      <div className="relative z-[1] flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 font-sans text-xs text-dashboard-text-muted pointer-events-none">
-        {location ? <span className="truncate">{location}</span> : null}
-        {location && participants.length > 0 ? (
-          <span aria-hidden="true">·</span>
+        {conversation.activityPreview || status === "active" ? (
+          <p
+            className={cn(
+              "pointer-events-none relative z-[1] m-0 min-w-0 truncate font-sans text-sm leading-5",
+              conversation.activityPreview
+                ? "text-dashboard-text-subtle"
+                : "text-dashboard-text-muted",
+            )}
+          >
+            {conversation.activityPreview ? (
+              <DisplayText
+                inline
+                mentions={conversation.activityPreview.mentions}
+                text={conversation.activityPreview.text}
+              />
+            ) : (
+              "Working…"
+            )}
+          </p>
         ) : null}
-        {participants.length > 0 ? (
-          <ParticipantAvatarStack participants={participants} size="list" />
+        {tags ? (
+          // Only the tag links take clicks. The gaps open the card.
+          <div className="pointer-events-none relative z-[1] mt-1 min-w-0 overflow-hidden [&_a]:pointer-events-auto">
+            {tags}
+          </div>
         ) : null}
-        <ConversationSidebarAnnotations
-          annotations={conversation.sidebarAnnotations}
-        />
       </div>
     </article>
   );

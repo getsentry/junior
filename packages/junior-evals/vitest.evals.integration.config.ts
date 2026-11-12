@@ -27,6 +27,11 @@ loadJuniorTestEnvFiles({
 });
 
 process.env.JUNIOR_SECRET = "junior-test-secret";
+// Run agent Turns on Luna at high reasoning to keep eval cost down. Prod
+// defaults to Opus; set AI_MODEL to eval another model. `||=` because
+// apps/example/.env.example sets both to an empty string.
+process.env.AI_MODEL ||= "openai/gpt-6-luna";
+process.env.AI_REASONING_LEVEL ||= "high";
 process.env.JUNIOR_BASE_URL ??= "https://junior.example.com";
 // The agent test fixture calls the heartbeat route with this secret.
 process.env.JUNIOR_SCHEDULER_SECRET ??= "junior-test-scheduler-secret";
@@ -70,7 +75,8 @@ const projectTest = {
     path.resolve(__dirname, "src/setup.ts"),
     path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
     path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
-    path.resolve(__dirname, "src/recording-setup.ts"),
+    "@sentry/roach/vitest/setup",
+    path.resolve(__dirname, "src/fetch-setup.ts"),
     path.resolve(__dirname, "src/eval-cleanup.ts"),
   ],
   testTimeout: EVAL_TEST_TIMEOUT_MS,
@@ -87,9 +93,13 @@ export default defineConfig({
   resolve,
   test: {
     fileParallelism: false,
-    // Projects do not extend this config, so this global setup runs one time
-    // and every project reads what it provides.
-    globalSetup: [path.resolve(__dirname, "global-setup.ts")],
+    // Projects do not extend this config, so these global setups run one
+    // time and every project reads what they provide. Roach starts first, so
+    // the eval global setup already uses its proxy (`roach.json`).
+    globalSetup: [
+      "@sentry/roach/vitest",
+      path.resolve(__dirname, "global-setup.ts"),
+    ],
     maxWorkers: 1,
     outputFile: { json: evalReportPath },
     reporters: [new DefaultEvalReporter(), "json"],

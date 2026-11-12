@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Navigate, Route, Routes, useLocation, useParams } from "react-router";
+import { lazy, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Navigate, Route, useLocation, useParams } from "react-router";
 
 import {
   useConversationsData,
@@ -20,6 +20,7 @@ import {
   DashboardChrome,
   DashboardChromeProvider,
 } from "./components/layout/DashboardChrome";
+import { CommandPalette } from "./components/CommandPalette";
 import { DashboardHeader } from "./components/layout/DashboardHeader";
 import { NavRail, NavRailProvider } from "./components/layout/NavRail";
 import { VisualViewportShell } from "./components/layout/VisualViewportShell";
@@ -29,54 +30,136 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
 } from "./format";
+import { useDesktopTopBar } from "./navLayout";
 import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { useDashboardServerVersion } from "./dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
 import { useConversationData } from "./conversations/queries";
+import { readConversationStartPosition } from "./conversations/transcriptReadPosition";
 import { codeRepositoryTabs } from "./pages/code/codeRepositoryRoutes";
-import { RepositoryPage } from "./pages/code/RepositoryPage";
-import { CodePage } from "./pages/code/CodePage";
-import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
-import { LocationsPage } from "./pages/locations/LocationsPage";
-import { PeoplePage } from "./pages/people/PeoplePage";
-import { PersonProfilePage } from "./pages/people/PersonProfilePage";
-import { ConnectionsPage } from "./pages/settings/ConnectionsPage";
-import { McpSettingsPage } from "./pages/settings/McpSettingsPage";
-import { PersonalTokensPage } from "./pages/settings/PersonalTokensPage";
-import { SettingsPage } from "./pages/settings/SettingsPage";
 import { SettingsPageLayout } from "./pages/settings/SettingsPageLayout";
-import { SystemPage } from "./pages/system/SystemPage";
 import {
   SystemPageLayout,
   SystemRouteLoading,
 } from "./pages/system/SystemPageLayout";
-import { WorkspaceFormPage } from "./pages/system/WorkspaceFormPage";
-import { WorkspacesPage } from "./pages/system/WorkspacesPage";
+import { hasWorkspaceDetailsFrame } from "./pages/system/SystemNavigation";
 import {
   isMemoryLibraryPath,
   MemoryRouteLoading,
 } from "./pages/memory/MemoryPageLayout";
-import { AutomationPage } from "./pages/automations/AutomationPage";
-import { AutomationRunsPage } from "./pages/automations/AutomationRunsPage";
-import { AutomationsPage } from "./pages/automations/AutomationsPage";
 import {
   AutomationsPageLayout,
   hasAutomationDetailsFrame,
   AutomationsRouteLoading,
 } from "./pages/automations/AutomationsPageLayout";
-import {
-  MemoryPermalinkRoute,
-  PluginUserPageRoute,
-} from "./pages/user/PluginUserPage";
-import { AdminPage } from "./pages/admin/AdminPage";
-import { buildPrimaryNavItems } from "./primaryNav";
+import { buildPrimaryNavItems, buildProfileNavItems } from "./primaryNav";
+import { TracedRoutes } from "./TracedRoutes";
 import {
   ReviewDeskLoading,
   ReviewDeskPage,
 } from "./review-desk/ReviewDeskPage";
 import { useReviewItemCountData } from "./review-desk/queries";
+import { useVersionsPoll } from "./versions";
 import type { DashboardCoreData } from "./types";
+
+// Pages outside the conversation workspace load on first visit, so the
+// workspace's first paint skips their code and the chart library.
+const RepositoryPage = lazy(() =>
+  import("./pages/code/RepositoryPage").then((module) => ({
+    default: module.RepositoryPage,
+  })),
+);
+const CodePage = lazy(() =>
+  import("./pages/code/CodePage").then((module) => ({
+    default: module.CodePage,
+  })),
+);
+const LocationDetailPage = lazy(() =>
+  import("./pages/locations/LocationDetailPage").then((module) => ({
+    default: module.LocationDetailPage,
+  })),
+);
+const LocationsPage = lazy(() =>
+  import("./pages/locations/LocationsPage").then((module) => ({
+    default: module.LocationsPage,
+  })),
+);
+const PeoplePage = lazy(() =>
+  import("./pages/people/PeoplePage").then((module) => ({
+    default: module.PeoplePage,
+  })),
+);
+const PersonProfilePage = lazy(() =>
+  import("./pages/people/PersonProfilePage").then((module) => ({
+    default: module.PersonProfilePage,
+  })),
+);
+const ConnectionsPage = lazy(() =>
+  import("./pages/settings/ConnectionsPage").then((module) => ({
+    default: module.ConnectionsPage,
+  })),
+);
+const McpSettingsPage = lazy(() =>
+  import("./pages/settings/McpSettingsPage").then((module) => ({
+    default: module.McpSettingsPage,
+  })),
+);
+const PersonalTokensPage = lazy(() =>
+  import("./pages/settings/PersonalTokensPage").then((module) => ({
+    default: module.PersonalTokensPage,
+  })),
+);
+const SettingsPage = lazy(() =>
+  import("./pages/settings/SettingsPage").then((module) => ({
+    default: module.SettingsPage,
+  })),
+);
+const SystemPage = lazy(() =>
+  import("./pages/system/SystemPage").then((module) => ({
+    default: module.SystemPage,
+  })),
+);
+const WorkspaceFormPage = lazy(() =>
+  import("./pages/system/WorkspaceFormPage").then((module) => ({
+    default: module.WorkspaceFormPage,
+  })),
+);
+const WorkspacesPage = lazy(() =>
+  import("./pages/system/WorkspacesPage").then((module) => ({
+    default: module.WorkspacesPage,
+  })),
+);
+const AutomationPage = lazy(() =>
+  import("./pages/automations/AutomationPage").then((module) => ({
+    default: module.AutomationPage,
+  })),
+);
+const AutomationRunsPage = lazy(() =>
+  import("./pages/automations/AutomationRunsPage").then((module) => ({
+    default: module.AutomationRunsPage,
+  })),
+);
+const AutomationsPage = lazy(() =>
+  import("./pages/automations/AutomationsPage").then((module) => ({
+    default: module.AutomationsPage,
+  })),
+);
+const MemoryPermalinkRoute = lazy(() =>
+  import("./pages/user/PluginUserPage").then((module) => ({
+    default: module.MemoryPermalinkRoute,
+  })),
+);
+const PluginUserPageRoute = lazy(() =>
+  import("./pages/user/PluginUserPage").then((module) => ({
+    default: module.PluginUserPageRoute,
+  })),
+);
+const AdminPage = lazy(() =>
+  import("./pages/admin/AdminPage").then((module) => ({
+    default: module.AdminPage,
+  })),
+);
 
 const dashboardNoise = {
   backgroundImage:
@@ -137,14 +220,19 @@ const settingsRoutes: {
 export function DashboardShell() {
   const location = useLocation();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const openCommandPalette = () => setCommandPaletteOpen(true);
   const query = useDashboardCoreData();
   const userPagesQuery = usePluginUserPagesData();
   const data = query.data;
   const serverVersion = useDashboardServerVersion(data?.config.version);
   const userPages = userPagesQuery.data ?? [];
   const loading = !data && !query.error;
-  const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
+  // With auth off, the server still resolves the local viewer for every API
+  // read, so that viewer counts as signed in.
+  const loggedIn = Boolean(data?.me.user.email);
   const personalSpendQuery = usePersonalSpendData(loggedIn);
+  const desktopTopBar = useDesktopTopBar();
   const primaryUserPages = loggedIn
     ? userPages.filter((page) => page.navigation === "primary")
     : [];
@@ -154,8 +242,14 @@ export function DashboardShell() {
     location.pathname.startsWith("/conversations/");
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
-  // Detail query shares the page cache so titles outside the top-50 feed stay accurate.
-  const conversationDetail = useConversationData(conversationId);
+  // The shell owns the open Conversation's data, and the page reads it. On a
+  // direct load, this fetch runs beside the dashboard core reads, before the
+  // page mounts. One fetch for each visit also brings the unread page.
+  const conversationDetail = useConversationData(conversationId, {
+    unreadPageAtOpen: readConversationStartPosition() === "unread",
+    versionsPoll: true,
+  });
+  useVersionsPoll(conversationId, Boolean(data));
   const mobileConversation = useMemo(() => {
     if (!conversationId) return undefined;
     return buildConversations(
@@ -175,8 +269,12 @@ export function DashboardShell() {
     pathname: location.pathname,
     primaryUserPages,
     reviewCount: reviewCountQuery.data?.needsViewer,
-    userPagesPending: userPagesQuery.isPending,
   });
+  const profileNavItems = loggedIn
+    ? buildProfileNavItems(
+        userPages.filter((page) => page.navigation === "profile"),
+      )
+    : [];
 
   useEffect(() => {
     setMobileNavigationOpen(false);
@@ -203,30 +301,41 @@ export function DashboardShell() {
   return (
     <DashboardChromeProvider>
       <NavRailProvider>
-        <NavRail
-          navItems={primaryNavItems}
-          profile={
-            loggedIn ? (
-              <ProfileMenu
-                identity={data!.me}
-                onSignOut={signOut}
-                spend={personalSpendQuery.data}
-                userPages={userPages}
-              />
-            ) : undefined
-          }
-          workspaceActive={workspace}
+        <CommandPalette
+          currentConversationId={conversationId}
+          navItems={[...primaryNavItems, ...profileNavItems]}
+          onOpenChange={setCommandPaletteOpen}
+          open={commandPaletteOpen}
         />
+        {desktopTopBar ? null : (
+          <NavRail
+            navItems={primaryNavItems}
+            onSearch={openCommandPalette}
+            profile={
+              loggedIn ? (
+                <ProfileMenu
+                  identity={data!.me}
+                  onSignOut={signOut}
+                  spend={personalSpendQuery.data}
+                  pages={profileNavItems}
+                />
+              ) : undefined
+            }
+            workspaceActive={workspace}
+          />
+        )}
         <VisualViewportShell
           className="min-w-0 flex-1 bg-dashboard-bg"
           enabled={
             workspace ||
             location.pathname === "/review" ||
             hasAutomationDetailsFrame(location.pathname) ||
+            hasWorkspaceDetailsFrame(location.pathname) ||
             isMemoryLibraryPath(location.pathname)
           }
         >
           <DashboardChrome
+            desktopTopBar={desktopTopBar}
             banner={
               <>
                 <VersionDriftBanner serverVersion={serverVersion} />
@@ -235,18 +344,31 @@ export function DashboardShell() {
             }
             header={
               <DashboardHeader
+                desktopTopBar={desktopTopBar}
                 mobileBackTo={conversationId ? "/" : undefined}
                 mobileTitle={mobileConversationTitle}
                 mobileNavigationOpen={mobileNavigationOpen}
                 navItems={primaryNavItems}
                 onMobileNavigationOpenChange={setMobileNavigationOpen}
+                onSearch={openCommandPalette}
+                profile={
+                  loggedIn ? (
+                    <ProfileMenu
+                      identity={data!.me}
+                      onSignOut={signOut}
+                      spend={personalSpendQuery.data}
+                      pages={profileNavItems}
+                      variant="top-bar"
+                    />
+                  ) : undefined
+                }
                 mobileIdentity={
                   loggedIn ? (
                     <ProfileMenu
                       identity={data!.me}
                       onSignOut={signOut}
                       spend={personalSpendQuery.data}
-                      userPages={userPages}
+                      pages={profileNavItems}
                       variant="sheet-identity"
                     />
                   ) : undefined
@@ -257,7 +379,7 @@ export function DashboardShell() {
                       identity={data!.me}
                       onSignOut={signOut}
                       spend={personalSpendQuery.data}
-                      userPages={userPages}
+                      pages={profileNavItems}
                       variant="sheet-links"
                     />
                   ) : undefined
@@ -268,7 +390,7 @@ export function DashboardShell() {
                       identity={data!.me}
                       onSignOut={signOut}
                       spend={personalSpendQuery.data}
-                      userPages={userPages}
+                      pages={profileNavItems}
                       variant="sheet-spend"
                     />
                   ) : undefined
@@ -278,7 +400,7 @@ export function DashboardShell() {
               />
             }
           />
-          <Routes>
+          <TracedRoutes fallback={<LoadingView label="Loading page" />}>
             <Route element={<LegacyAutomationsRedirect />} path="/tasks" />
             <Route element={<LegacyAutomationsRedirect />} path="/tasks/*" />
             <Route
@@ -323,7 +445,6 @@ export function DashboardShell() {
                       description="Newest runs across your automations and automations in public destinations."
                       label="Loading automation runs"
                       title="Runs"
-                      variant="list"
                     />
                   </AutomationsPageLayout>
                 ) : loggedIn ? (
@@ -337,24 +458,7 @@ export function DashboardShell() {
               path="/automations/runs"
             />
             <Route
-              element={
-                loading ? (
-                  <AutomationsPageLayout>
-                    <AutomationsRouteLoading
-                      description="Find and manage automations across your linked workspaces."
-                      label="Loading automations"
-                      title="All automations"
-                      variant="list"
-                    />
-                  </AutomationsPageLayout>
-                ) : loggedIn ? (
-                  <AutomationsPageLayout>
-                    <AutomationsPage enabled={loggedIn} view="list" />
-                  </AutomationsPageLayout>
-                ) : (
-                  <Navigate replace to="/" />
-                )
-              }
+              element={<LegacyAutomationListRedirect />}
               path="/automations/list"
             />
             <Route
@@ -372,15 +476,13 @@ export function DashboardShell() {
                 loading ? (
                   <AutomationsPageLayout>
                     <AutomationsRouteLoading
-                      description="Scheduled and event-driven work created by users."
                       label="Loading automations"
                       title="Automations"
-                      variant="stats"
                     />
                   </AutomationsPageLayout>
                 ) : loggedIn ? (
                   <AutomationsPageLayout>
-                    <AutomationsPage enabled={loggedIn} view="overview" />
+                    <AutomationsPage enabled={loggedIn} />
                   </AutomationsPageLayout>
                 ) : (
                   <Navigate replace to="/" />
@@ -428,7 +530,7 @@ export function DashboardShell() {
                 loading ? (
                   <ConversationWorkspaceLoading detail={false} />
                 ) : data ? (
-                  <ConversationWorkspace />
+                  <ConversationWorkspace detail={conversationDetail} />
                 ) : (
                   <LoadingView
                     label={query.error?.message ?? "Dashboard unavailable"}
@@ -470,7 +572,7 @@ export function DashboardShell() {
                 loading ? (
                   <ConversationWorkspaceLoading detail />
                 ) : data ? (
-                  <ConversationWorkspace />
+                  <ConversationWorkspace detail={conversationDetail} />
                 ) : (
                   <LoadingView
                     label={query.error?.message ?? "Dashboard unavailable"}
@@ -659,7 +761,7 @@ export function DashboardShell() {
               path="/admin"
             />
             <Route element={<Navigate replace to="/" />} path="*" />
-          </Routes>
+          </TracedRoutes>
           <span
             aria-hidden="true"
             className="pointer-events-none fixed inset-0 z-50 block opacity-[0.018]"
@@ -692,6 +794,14 @@ function LegacyAutomationsRedirect() {
       replace
       to={`/automations${suffix}${location.search}${location.hash}`}
     />
+  );
+}
+
+/** The list became the Automations landing page. */
+function LegacyAutomationListRedirect() {
+  const location = useLocation();
+  return (
+    <Navigate replace to={`/automations${location.search}${location.hash}`} />
   );
 }
 

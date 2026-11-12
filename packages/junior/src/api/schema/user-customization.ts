@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 /** Longest customization text one user can save. */
 export const USER_CUSTOMIZATION_MAX_CHARS = 1_000;

@@ -1,5 +1,8 @@
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
-import { estimateTextTokens } from "@/chat/services/context-budget";
+import {
+  estimateTextTokens,
+  textCharsForTokens,
+} from "@/chat/services/token-estimate";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import {
   buildSubscribedReplyRouterQuestions,
@@ -199,7 +202,7 @@ function truncateEvidenceText(text: string, maxTokens: number): string {
   if (tokenCount <= maxTokens) {
     return text;
   }
-  const maxChars = maxTokens * 4;
+  const maxChars = textCharsForTokens(maxTokens);
   const omittedTokens = Math.max(1, tokenCount - maxTokens);
   const marker = `<truncated omitted_approx_tokens="${omittedTokens}" />`;
   if (maxChars <= marker.length) {
@@ -428,7 +431,8 @@ export async function decideSubscribedThreadReply(args: {
     state: string;
     questions: SubscribedReplyRouterQuestions;
     metadata: Record<string, string>;
-    promptName: string;
+    operation: "passive_reply_route";
+    cost: { owner: "caller" };
   }) => Promise<{
     answers: {
       route: { choice: string; probabilities?: Record<string, number> };
@@ -517,7 +521,9 @@ export async function decideSubscribedThreadReply(args: {
         actorId: args.input.context.actorId ?? "",
         runId: args.input.context.runId ?? "",
       },
-      promptName: "junior.passive_reply_route",
+      operation: "passive_reply_route",
+      // `passive_reply_routed` stores the cost.
+      cost: { owner: "caller" },
     });
     return {
       ...(result.costUsd !== undefined

@@ -10,6 +10,7 @@ import {
 } from "./authorized-turn";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { ConversationStore } from "@/chat/conversations/store";
+import { getConversationStore } from "@/chat/db";
 import {
   resolveTurnSessionRouting,
   type RequiredTurnSessionRouting,
@@ -25,6 +26,7 @@ import {
   requestConversationWork,
 } from "@/chat/task-execution/store";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 
 export interface PausedTurnRequest {
   conversationId: string;
@@ -35,6 +37,7 @@ export interface PausedTurnRequest {
 }
 
 interface TurnWakeOptions {
+  conversationStore?: ConversationStore;
   nowMs?: number;
   queue?: ConversationWorkQueue;
   state?: StateAdapter;
@@ -102,9 +105,16 @@ export async function wakePausedTurn(
   options: TurnWakeOptions = {},
 ): Promise<void> {
   const nowMs = options.nowMs ?? Date.now();
+  const conversation = await (
+    options.conversationStore ?? getConversationStore()
+  ).get({ conversationId: request.conversationId });
   await requestConversationWork({
     conversationId: request.conversationId,
-    destination: request.destination,
+    // A child's work keeps no Destination. Its workers read the Conversation.
+    destination:
+      conversation && !isTopLevelKind(conversation.kind)
+        ? undefined
+        : request.destination,
     nowMs,
     state: options.state,
   });
@@ -125,9 +135,7 @@ export async function wakePausedTurn(
 }
 
 /** Create paused Turn operations for one app. */
-export function createPausedTurns(
-  options: TurnWakeOptions & { conversationStore?: ConversationStore } = {},
-): PausedTurns {
+export function createPausedTurns(options: TurnWakeOptions = {}): PausedTurns {
   return {
     get: (args) =>
       getPausedTurnRequest({

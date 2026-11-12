@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import * as z from "zod";
 import { archiveConversation } from "@/api/conversations/archive";
 import { mcpConversationIdSchema } from "../conversation";
 import {
@@ -8,7 +8,10 @@ import {
   type McpToolContext,
 } from "../tool-context";
 
-/** Register `archiveConversation`, which archives or restores for the user. */
+/**
+ * Register `archiveConversation`. It archives or restores one Conversation,
+ * and optionally its children, for everyone.
+ */
 export function registerArchiveConversationTool(
   server: McpServer,
   { user }: McpToolContext,
@@ -18,13 +21,19 @@ export function registerArchiveConversationTool(
     {
       title: "Archive conversation",
       description:
-        "Archive one of your conversations, or restore it. Archiving hides it only for you, and new activity restores it.",
+        "Archive one of your conversations, or restore it, for everyone in it. Archiving a conversation hides it and its child conversations. A restore fails while a conversation above it is archived. A new message from a person restores the conversation and the archived conversations above it.",
       inputSchema: {
         conversationId: mcpConversationIdSchema,
         archived: z
           .boolean()
           .default(true)
           .describe("False restores an archived conversation."),
+        applyToChildren: z
+          .boolean()
+          .default(false)
+          .describe(
+            "On archive, true also archives every child of this conversation at any depth; without it, the archive fails while any of its children is not archived. On restore, true also restores the children that were archived with this conversation.",
+          ),
         lastSeenAt: z
           .string()
           .datetime()
@@ -32,7 +41,12 @@ export function registerArchiveConversationTool(
             "`lastSeenAt` from searchConversations or getConversation. The archive fails when the conversation has newer activity.",
           ),
       },
-      outputSchema: { archivedAt: z.string().nullable() },
+      outputSchema: {
+        archivedAt: z
+          .string()
+          .nullable()
+          .describe("Null when the conversation is not archived."),
+      },
       annotations: {
         destructiveHint: false,
         idempotentHint: true,
@@ -40,10 +54,11 @@ export function registerArchiveConversationTool(
         readOnlyHint: false,
       },
     },
-    async ({ archived, conversationId, lastSeenAt }) => {
+    async ({ applyToChildren, archived, conversationId, lastSeenAt }) => {
       try {
         return mcpToolResult(
           await archiveConversation(user, conversationId, {
+            applyToChildren,
             archived,
             lastSeenAt,
           }),

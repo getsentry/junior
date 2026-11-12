@@ -1,6 +1,7 @@
 import type { CodeChangeSummaryReport } from "@sentry/junior/api/schema";
 
 import { StatusChip } from "../../components/StatusChip";
+import { OutboundLink } from "../../components/OutboundLink";
 
 function stateTone(state: CodeChangeSummaryReport["state"]) {
   if (state === "merged") return "success" as const;
@@ -17,14 +18,13 @@ export function CodeChangeRow(props: { change: CodeChangeSummaryReport }) {
       <div className="min-w-0">
         <div className="truncate font-display text-sm text-dashboard-text">
           {change.url ? (
-            <a
-              className="text-inherit no-underline hover:text-dashboard-accent-text"
+            // Truncate the title, not the link, so the outbound icon stays.
+            <OutboundLink
+              className="inline-flex max-w-full items-center text-inherit no-underline hover:text-dashboard-accent-text"
               href={change.url}
-              rel="noreferrer"
-              target="_blank"
             >
-              {title}
-            </a>
+              <span className="truncate">{title}</span>
+            </OutboundLink>
           ) : (
             title
           )}

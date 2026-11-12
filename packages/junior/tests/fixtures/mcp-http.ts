@@ -111,7 +111,12 @@ export async function openMcpConsentPage(
   app: Hono,
   consentUrl: string,
   email: string,
-): Promise<{ csrf?: string; html: string; status: number }> {
+): Promise<{
+  csrf?: string;
+  html: string;
+  referrerPolicy: string | null;
+  status: number;
+}> {
   const response = await app.request(consentUrl, {
     headers: { cookie: viewerCookie(email) },
   });
@@ -119,21 +124,31 @@ export async function openMcpConsentPage(
   return {
     csrf: html.match(/name="csrf" value="([^"]+)"/)?.[1],
     html,
+    referrerPolicy: response.headers.get("referrer-policy"),
     status: response.status,
   };
 }
 
-/** Approve consent as the viewer who opened the page. */
+/**
+ * Approve consent as the viewer who opened the page. The `Origin` header
+ * follows the page's referrer policy the way a browser form POST does: under
+ * `no-referrer`, browsers send `Origin: null`.
+ */
 export async function approveMcpConsent(
   app: Hono,
-  args: { consentUrl: string; csrf: string; email: string },
+  args: {
+    consentUrl: string;
+    csrf: string;
+    email: string;
+    referrerPolicy: string | null;
+  },
 ): Promise<Response> {
   return await app.request(args.consentUrl, {
     method: "POST",
     headers: {
       "content-type": "application/x-www-form-urlencoded",
       cookie: viewerCookie(args.email),
-      origin: MCP_TEST_ORIGIN,
+      origin: args.referrerPolicy === "no-referrer" ? "null" : MCP_TEST_ORIGIN,
     },
     body: new URLSearchParams({ action: "approve", csrf: args.csrf }),
   });
@@ -172,6 +187,7 @@ export async function approveMcpClient(
     consentUrl,
     csrf: page.csrf ?? "",
     email,
+    referrerPolicy: page.referrerPolicy,
   });
   const code = new URL(approved.headers.get("location") ?? "").searchParams.get(
     "code",
@@ -225,10 +241,18 @@ export async function callMcpTool(
 
 /**
  * Connect one viewer to a new app and return a function that calls one
- * tool as that viewer. An empty scope asks for every scope.
+ * tool as that viewer. An empty scope asks for every scope. `appOptions`
+ * can swap in test services, such as in-process Conversation work.
  */
-export async function connectMcpTools(email = MCP_TEST_VIEWER, scope = "") {
-  const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
+export async function connectMcpTools(
+  email = MCP_TEST_VIEWER,
+  scope = "",
+  appOptions: Parameters<typeof createApp>[0] = {},
+) {
+  const app = await createApp({
+    ...appOptions,
+    allowedDomains: MCP_TEST_ALLOWED_DOMAINS,
+  });
   const token = await connectMcpClient(app, email, scope);
   return (name: string, args: Record<string, unknown> = {}) =>
     callMcpTool(app, token, name, args);

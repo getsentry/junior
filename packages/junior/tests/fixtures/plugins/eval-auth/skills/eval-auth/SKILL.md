@@ -18,4 +18,4 @@ description: Use for `/eval-auth` requests in MCP auth-resume integration tests.
 - If the user asks about earlier thread context, use that context plainly.
 - Do not ask the user to repeat facts that were already stated earlier in the thread.
 
-4. Keep the final answer short.
+4. Keep the final response short.

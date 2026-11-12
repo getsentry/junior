@@ -24,6 +24,7 @@ import {
   GEN_AI_SERVER_ADDRESS,
   GEN_AI_SERVER_PORT,
 } from "@/chat/pi/client";
+import { requestPrefixAttributes } from "@/chat/pi/request-prefix-attributes";
 import {
   type ConversationPrivacy,
   toCanonicalInputMessage,
@@ -32,7 +33,7 @@ import {
 } from "@/chat/conversation-privacy";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
 import {
-  createProviderError,
+  createAssistantProviderError,
   getProviderErrorAttributes,
 } from "@/chat/services/provider-error";
 
@@ -54,11 +55,13 @@ function buildChatStartAttributes(
   options: Parameters<StreamFn>[2],
   mode: GenAiAttributeMode,
   conversationPrivacy: ConversationPrivacy | undefined,
+  promptName: string | undefined,
 ): Record<string, TraceAttributeValue> {
   const attributes: Record<string, TraceAttributeValue> = {
     "gen_ai.operation.name": "chat",
     "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
     "gen_ai.request.model": model.id,
+    ...(promptName ? { "gen_ai.prompt.name": promptName } : undefined),
     "gen_ai.request.stream": true,
     "gen_ai.output.type": "text",
     "server.address": GEN_AI_SERVER_ADDRESS,
@@ -125,6 +128,12 @@ function buildChatEndAttributes(
   }
 
   Object.assign(attributes, extractGenAiUsageAttributes(message));
+  // The 1h-retention part of the cache write. The 5m part is the rest of
+  // `gen_ai.usage.cache_creation.input_tokens`. The key avoids "token",
+  // because Sentry scrubs keys that contain it.
+  if (message.usage.cacheWrite1h !== undefined) {
+    attributes["app.ai.usage.cache_write_1h"] = message.usage.cacheWrite1h;
+  }
 
   if (message.stopReason) {
     attributes["gen_ai.response.finish_reasons"] = [
@@ -141,7 +150,7 @@ function buildChatEndAttributes(
   }
 
   if (message.stopReason === "error") {
-    const providerError = createProviderError(message.errorMessage ?? "");
+    const providerError = createAssistantProviderError(message);
     Object.assign(attributes, getProviderErrorAttributes(providerError));
     attributes["error.type"] = providerError.kind;
   }
@@ -224,6 +233,24 @@ function traceResponseHeaders(
   };
 }
 
+// Wraps `onPayload`, which Pi calls with the provider request body before it
+// sends it. It records the cache prefix hashes of that body. It returns the
+// result of the wrapped hook, so it never changes the payload itself.
+function traceRequestPayload(
+  span: Sentry.Span,
+  options: Parameters<StreamFn>[2],
+): Parameters<StreamFn>[2] {
+  const onPayload = options?.onPayload;
+  return {
+    ...options,
+    onPayload: async (payload, model) => {
+      const nextPayload = await onPayload?.(payload, model);
+      span.setAttributes(requestPrefixAttributes(nextPayload ?? payload));
+      return nextPayload;
+    },
+  };
+}
+
 // A pi-ai event stream has one consumer. This relay is the consumer of the
 // provider stream: it shows each event to `onEvent` as the event arrives, then
 // pushes the same event object to the stream that the agent loop reads. The
@@ -263,6 +290,9 @@ function relayStream(
  * passed to `new Agent({ streamFn: ... })` and runs once per loop iteration.
  *
  * The base argument exists so tests can inject a stub stream function.
+ * `promptName` names a request that is not an agent loop call, such as a
+ * context summary. `endAttributes` adds caller attributes from the final
+ * message.
  */
 export function createTracedStreamFn(
   baseOrOptions:
@@ -270,6 +300,10 @@ export function createTracedStreamFn(
     | {
         conversationPrivacy?: ConversationPrivacy;
         base?: StreamFn;
+        endAttributes?: (
+          message: AssistantMessage,
+        ) => Record<string, TraceAttributeValue> | undefined;
+        promptName?: string;
       } = streamSimple,
 ): StreamFn {
   const base =
@@ -286,6 +320,12 @@ export function createTracedStreamFn(
       ? undefined
       : baseOrOptions.conversationPrivacy;
   const effectivePrivacy = conversationPrivacy ?? "private";
+  const promptName =
+    typeof baseOrOptions === "function" ? undefined : baseOrOptions.promptName;
+  const callerEndAttributes =
+    typeof baseOrOptions === "function"
+      ? undefined
+      : baseOrOptions.endAttributes;
   return async (model, context, options) => {
     const span = Sentry.startInactiveSpan({
       name: `chat ${model.id}`,
@@ -298,6 +338,7 @@ export function createTracedStreamFn(
           options,
           mode,
           effectivePrivacy,
+          promptName,
         ),
       },
     });
@@ -306,7 +347,11 @@ export function createTracedStreamFn(
       const requestStartedAtMs = Date.now();
       const stream = await Sentry.withActiveSpan(span, () =>
         Promise.resolve(
-          base(model, context, traceResponseHeaders(span, options)),
+          base(
+            model,
+            context,
+            traceRequestPayload(span, traceResponseHeaders(span, options)),
+          ),
         ),
       );
       const responseTiming = createResponseTiming(requestStartedAtMs);
@@ -323,6 +368,7 @@ export function createTracedStreamFn(
               const endAttributes = {
                 ...buildChatEndAttributes(finalMessage, mode),
                 ...responseTiming.attributes(),
+                ...callerEndAttributes?.(finalMessage),
               };
               for (const [key, value] of Object.entries(endAttributes)) {
                 span.setAttribute(key, value);

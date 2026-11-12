@@ -1,10 +1,7 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type { User } from "@sentry/junior-plugin-api";
 import type { Message, StateAdapter } from "chat";
-import { createSlackActor, parseActorUserId } from "@/chat/actor";
-import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
 import { logException } from "@/chat/logging";
-import { readActorIdentity } from "@/chat/plugins/viewer";
 import { canActOnReviewItem } from "@/chat/review-items/access";
 import {
   actOnReviewItem,
@@ -17,7 +14,10 @@ import {
   deliverReviewItemChange,
   type ReviewItemDelivery,
 } from "@/chat/review-items/changes";
-import { renderReviewItemMessage } from "@/chat/review-items/messages";
+import {
+  renderReviewItemMessage,
+  reviewItemChangeRecord,
+} from "@/chat/review-items/messages";
 import type { ReviewItem } from "@/chat/review-items/store";
 import { parseSlackChannelId } from "@/chat/slack/ids";
 import {
@@ -45,14 +45,21 @@ import {
   buttonUserInputField,
   type UserInputAnswer,
 } from "@/chat/tools/runtime/user-input-request";
-import { buildSlackInteractionInput } from "./slack-interaction-input";
+import { resolveSlackActingUser } from "./slack-acting-user";
+import {
+  buildSlackInteractionInput,
+  type SlackInteractionInputFacts,
+} from "./slack-interaction-input";
 import type { SlackInteractivePayload } from "./slack-payload";
 
 /** What a Review item interaction handler needs from Slack ingress. */
 export interface SlackReviewItemServices {
   adapter: SlackAdapter;
   isAuthorAllowed: (userId: string) => Promise<boolean>;
-  persistMessage: (message: Message) => Promise<void>;
+  persistMessage: (
+    message: Message,
+    facts?: SlackInteractionInputFacts,
+  ) => Promise<void>;
   queue: ConversationWorkQueue;
   state: StateAdapter;
 }
@@ -76,42 +83,17 @@ async function tellPerson(
   });
 }
 
-/**
- * Resolve the Junior User of the person who acted. An action starts a Turn
- * as that person, so it needs the same workspace and allowed domain checks
- * as a Slack mention.
- */
-async function resolveActingUser(
+function resolveActingUser(
   services: SlackReviewItemServices,
   payload: SlackInteractivePayload,
   target: CardTarget,
-): Promise<{ slackUserId: string; user: User } | undefined> {
-  const slackUserId = parseActorUserId(payload.user?.id);
-  const teamId = payload.team?.id ?? payload.user?.team_id;
-  if (!slackUserId || !teamId) {
-    throw new Error("Slack review item payload is missing a user or team");
-  }
-  if (
-    !(await isSlackWorkspaceMember(
-      { user: slackUserId, user_team: payload.user?.team_id },
-      services.state,
-    )) ||
-    !(await services.isAuthorAllowed(slackUserId))
-  ) {
-    return undefined;
-  }
-  const user = (
-    await readActorIdentity(createSlackActor(teamId, slackUserId, undefined))
-  )?.user;
-  if (!user) {
-    await tellPerson(
-      target,
-      slackUserId,
-      "Junior does not know your account yet. Sign in to the Junior dashboard, then try again.",
-    );
-    return undefined;
-  }
-  return { slackUserId, user };
+) {
+  return resolveSlackActingUser({
+    isAuthorAllowed: services.isAuthorAllowed,
+    payload,
+    state: services.state,
+    tell: (userId, text) => tellPerson(target, userId, text),
+  });
 }
 
 /** Show the current state of an item, such as after a click on a stale card. */
@@ -129,11 +111,12 @@ async function refreshCards(
 }
 
 /**
- * Do one person action from a Slack card. The thread of the card gets the
- * action as Slack input from the person, like a typed reply. The other
- * linked Conversations get messages from
- * `actOnReviewItem`. An expected failure, such as an item that is already
- * closed, goes to the person as an ephemeral message.
+ * Do one person action from a Slack card. The thread of the card gets an
+ * answer as Slack input from the person, like a typed reply. A dismiss
+ * starts no Turn, so the thread gets the same recorded Message as the other
+ * linked Conversations, from `actOnReviewItem`. An expected failure, such as
+ * an item that is already closed, goes to the person as an ephemeral
+ * message.
  */
 async function act(args: {
   action: ReviewItemAction;
@@ -157,12 +140,13 @@ async function act(args: {
     queue: services.queue,
     show: createSlackReviewItemShow(() => services.adapter),
   };
+  const recordOnly = args.action === "dismiss";
   let item: ReviewItem;
   try {
     const current = await readReviewItemForUser(actor.user, args.itemId);
     item = await actOnReviewItem({
       action: args.action,
-      exceptConversationId: conversationId,
+      ...(recordOnly ? undefined : { exceptConversationId: conversationId }),
       // Two clicks can both see an open item. Only the click that closes it
       // adds the input to this thread, so one action adds one Turn.
       firstCloseOnly: true,
@@ -177,7 +161,7 @@ async function act(args: {
     await refreshCards(services, actor.user, args.itemId);
     return;
   }
-  if (!item.conversationIds.includes(conversationId)) return;
+  if (recordOnly || !item.conversationIds.includes(conversationId)) return;
   const change = reviewItemChange(args.action, actor.user);
   try {
     await services.persistMessage(
@@ -192,6 +176,7 @@ async function act(args: {
         threadTs: target.threadTs,
         userId: actor.slackUserId,
       }),
+      { reviewItemChange: reviewItemChangeRecord(item, change) },
     );
   } catch (error) {
     // The item is already closed, so the thread must still learn about it.

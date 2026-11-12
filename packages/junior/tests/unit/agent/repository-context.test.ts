@@ -21,17 +21,18 @@ describe("createRepositoryInstructionsContext", () => {
       commit: async () => {},
       hasSandbox: () => true,
       promptContextContentParts: [],
+      promptHistoryMessages: [],
       setMessages() {},
       shouldPromptAgent: true,
     });
 
-    await context.applyUpdate(undefined, {
+    await context.applyUpdate({
       messages: [],
       systemPrompt: "system",
       tools: [],
     });
     current = instructions("v2", "Use the new formatter.");
-    const update = await context.applyUpdate(undefined, {
+    const update = await context.applyUpdate({
       messages: [],
       systemPrompt: "system",
       tools: [],
@@ -50,17 +51,18 @@ describe("createRepositoryInstructionsContext", () => {
       commit: async () => {},
       hasSandbox: () => true,
       promptContextContentParts: [],
+      promptHistoryMessages: [],
       setMessages() {},
       shouldPromptAgent: true,
     });
 
-    await context.applyUpdate(undefined, {
+    await context.applyUpdate({
       messages: [],
       systemPrompt: "system",
       tools: [],
     });
     current = undefined;
-    const update = await context.applyUpdate(undefined, {
+    const update = await context.applyUpdate({
       messages: [],
       systemPrompt: "system",
       tools: [],
@@ -114,13 +116,14 @@ describe("createRepositoryInstructionsContext", () => {
         commit: async () => {},
         hasSandbox: () => true,
         promptContextContentParts: [],
+        promptHistoryMessages: [],
         setMessages() {},
         shouldPromptAgent: true,
       });
 
       for (const next of sequence) {
         current = next;
-        await context.applyUpdate(undefined, {
+        await context.applyUpdate({
           messages: [],
           systemPrompt: "system",
           tools: [],

@@ -5,7 +5,7 @@
  * and refresh does not extend it.
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { z } from "zod";
+import * as z from "zod";
 import { logWarn } from "@/chat/logging";
 import { mcpScopeValueSchema, parseMcpScopes, type McpScope } from "./scopes";
 import { mcpStateKey, readRecord, sha256Hex, type McpState } from "./state";

@@ -59,7 +59,20 @@ For dashboard visual QA without generating real Slack traffic, replace conversat
 JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev
 ```
 
-The fixtures are read-only dashboard data; mock mode does not query or merge real conversation records.
+Mock mode does not query or merge real conversation records. Messages that you send get a fixed reply after 2 seconds, and no agent runs. They stay until the dev server restarts.
+
+To check a frontend change against live data, also set the origin of a live deployment:
+
+```bash
+JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true JUNIOR_DASHBOARD_LIVE_ORIGIN=https://junior.example.com pnpm dev
+```
+
+The dashboard shows mock data and a banner with a **Use live data** link. The link opens a page with two choices:
+
+- **Connect**: the API Tokens page of the live deployment creates a personal token and sends it to the Preview. This works only for a Preview that Junior made for you with `createPreview`. Junior records each Preview with the email of the person who asked for it, for 24 hours.
+- **Paste a token**: create a personal token on the live deployment and paste it. Use this for other servers, such as `localhost`.
+
+The browser keeps the token in an HttpOnly cookie, and the dev server forwards dashboard API reads to the live deployment. The server does not store the token. Live data is read-only, because the live deployment accepts personal tokens only for `GET` and `HEAD`. API changes in your branch do not apply to live data. Only the example app knows about live data: `apps/example/live-preview.ts` wraps the app when this variable is set. The app refuses to start when dashboard auth is also on.
 
 ## Run sandboxes in local Docker
 

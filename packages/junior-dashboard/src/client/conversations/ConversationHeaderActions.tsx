@@ -1,110 +1,125 @@
-import type { ReactNode, Ref } from "react";
 import {
-  Archive,
-  ArchiveRestore,
-  Info,
-  MessagesSquare,
-  ScrollText,
-  Search,
-  X,
-} from "lucide-react";
+  Fragment,
+  useRef,
+  type ComponentProps,
+  type ReactNode,
+  type Ref,
+  type RefObject,
+} from "react";
+import { Info, MessagesSquare, ScrollText, Search, X } from "lucide-react";
 
-import { Button, buttonVariants } from "../components/ui/button";
+import { Button } from "../components/ui/button";
+import {
+  DropdownMenuItem,
+  DropdownMenuLinkItem,
+  DropdownMenuSeparator,
+} from "../components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
+import { Kbd } from "../components/ui/kbd";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
+import { platformShortcut } from "../keyboard";
 import { cn } from "../styles";
+import { useTranscriptFindShortcut } from "./transcriptSearch";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
-import { ShareConversationButton } from "./ShareConversationButton";
-
-export type ConversationArchiveAction = {
-  archived: boolean;
-  disabled: boolean;
-  error: boolean;
-  onClick(): void;
-  pending: boolean;
-};
+import { OutboundLink } from "../components/OutboundLink";
+import {
+  useConversationMenuItems,
+  type ConversationMenu,
+  type ConversationMenuItem,
+} from "./conversationMenuItems";
 
 /**
- * Show conversation actions in the `⋯` menu. On desktop the title bar shows
- * search, share, and details, so the menu leaves them out.
+ * Render the conversation `⋯` menu rows, with search and details there on
+ * mobile too. A toggle or a row whose label shows its result keeps the menu
+ * open. Every other row closes it.
  */
 export function ConversationHeaderActions(props: {
-  archive: ConversationArchiveAction;
-  conversationId: string;
-  copyAction?: ReactNode;
-  detailsOpen: boolean;
+  /** Turn every row off, such as before the Conversation exists. */
+  disabled?: boolean;
+  menu: ConversationMenu;
   onDetailsClick(): void;
   onSearchClick(): void;
-  onViewChange(value: TranscriptViewMode): void;
   placement: "desktop" | "mobile";
   searchOpen: boolean;
-  sentryConversationUrl?: string;
-  view: TranscriptViewMode;
 }) {
+  const groups = useConversationMenuItems(props.menu);
   const mobile = props.placement === "mobile";
+  // Search, details, and the app menu need the page, so the sidebar row menu
+  // does not show them. Every other row comes from `useConversationMenuItems`.
   return (
-    <div className="grid gap-0.5">
-      {mobile && props.view === "rich" ? (
-        <MenuActionButton
-          label={props.searchOpen ? "Hide search" : "Search transcript"}
+    <>
+      {mobile && !props.menu.eventLogOpen ? (
+        <DropdownMenuItem
+          disabled={props.disabled}
           onClick={props.onSearchClick}
-          pressed={props.searchOpen}
         >
           {props.searchOpen ? (
-            <X aria-hidden="true" size={16} strokeWidth={2} />
+            <X aria-hidden="true" />
           ) : (
-            <Search aria-hidden="true" size={16} strokeWidth={2} />
+            <Search aria-hidden="true" />
           )}
-        </MenuActionButton>
-      ) : null}
-      <MenuActionButton
-        label="Conversation"
-        onClick={() => props.onViewChange("rich")}
-        pressed={props.view === "rich"}
-      >
-        <MessagesSquare aria-hidden="true" size={16} strokeWidth={2} />
-      </MenuActionButton>
-      <MenuActionButton
-        label="Event log"
-        onClick={() => props.onViewChange("raw")}
-        pressed={props.view === "raw"}
-      >
-        <ScrollText aria-hidden="true" size={16} strokeWidth={2} />
-      </MenuActionButton>
-      {mobile ? (
-        <ShareConversationButton
-          key={props.conversationId}
-          conversationId={props.conversationId}
-          layout="menu"
-        />
-      ) : null}
-      {props.copyAction}
-      <ArchiveConversationButton {...props.archive} />
-      {props.sentryConversationUrl ? (
-        <a
-          className={buttonVariants({ size: "menu" })}
-          href={props.sentryConversationUrl}
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          <SentryGlyph />
-          Open in Sentry
-        </a>
+          {props.searchOpen ? "Hide search" : "Search transcript"}
+        </DropdownMenuItem>
       ) : null}
       {mobile ? (
-        <MenuActionButton
-          label="Conversation details"
+        <DropdownMenuItem
+          disabled={props.disabled}
           onClick={props.onDetailsClick}
-          pressed={props.detailsOpen}
         >
-          <Info aria-hidden="true" size={16} strokeWidth={2} />
-        </MenuActionButton>
+          <Info aria-hidden="true" />
+          Conversation details
+        </DropdownMenuItem>
       ) : null}
-    </div>
+      {groups.map((items, index) => (
+        <Fragment key={index}>
+          {index > 0 ? <DropdownMenuSeparator /> : null}
+          {items.map((item) => (
+            <ConversationMenuRow
+              disabled={props.disabled}
+              item={item}
+              key={item.key}
+            />
+          ))}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
+function ConversationMenuRow(props: {
+  disabled?: boolean;
+  item: ConversationMenuItem;
+}) {
+  const { item } = props;
+  // A link row needs the loaded detail, so `disabled` never applies to it.
+  if (item.href) {
+    return (
+      <DropdownMenuLinkItem render={<OutboundLink href={item.href} />}>
+        <item.icon aria-hidden="true" />
+        {item.label}
+      </DropdownMenuLinkItem>
+    );
+  }
+  return (
+    <>
+      <DropdownMenuItem
+        closeOnClick={!item.stayOpen && !item.toggle}
+        disabled={props.disabled || item.disabled}
+        onClick={item.onClick}
+      >
+        <item.icon aria-hidden="true" />
+        {item.label}
+      </DropdownMenuItem>
+      {item.feedback === undefined ? null : (
+        <span className="sr-only" role="status">
+          {item.feedback}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -155,50 +170,91 @@ function ViewModeItem(props: {
   );
 }
 
-/** Shared icon control used by conversation and subagent transcript headers. */
-export function HeaderIconButton(props: {
+/**
+ * Shared icon control used by conversation and subagent transcript headers.
+ * Other props go to the button, so a menu trigger can render it.
+ */
+export function HeaderIconButton({
+  children,
+  className,
+  controls,
+  expanded,
+  keyShortcuts,
+  label,
+  pressed,
+  shortcut,
+  tooltipDisabled,
+  ...buttonProps
+}: Omit<ComponentProps<typeof Button>, "children" | "size"> & {
   children: ReactNode;
-  ref?: Ref<HTMLButtonElement>;
+  controls?: string;
+  expanded?: boolean;
+  /** `aria-keyshortcuts` value for the shortcut. */
+  keyShortcuts?: string;
   label: string;
-  onClick(): void;
   pressed?: boolean;
+  ref?: Ref<HTMLButtonElement>;
+  /** Shortcut text shown in the tooltip, such as `⌘F`. */
+  shortcut?: string;
   /** Hide the tooltip, such as while the menu this button opens covers it. */
   tooltipDisabled?: boolean;
 }) {
   return (
-    <Tooltip disabled={props.tooltipDisabled}>
+    <Tooltip disabled={tooltipDisabled}>
       <TooltipTrigger
         render={
           <Button
-            ref={props.ref}
-            aria-label={props.label}
-            aria-pressed={props.pressed}
+            aria-controls={controls}
+            aria-expanded={expanded}
+            aria-keyshortcuts={keyShortcuts}
+            aria-label={label}
+            aria-pressed={pressed}
             className={cn(
-              "text-dashboard-text-muted",
-              props.pressed && "bg-dashboard-fill-strong text-dashboard-text",
+              "text-dashboard-text-muted data-popup-open:bg-dashboard-fill-strong data-popup-open:text-dashboard-text",
+              pressed && "bg-dashboard-fill-strong text-dashboard-text",
+              className,
             )}
-            onClick={props.onClick}
             size="icon"
+            variant="ghost"
+            {...buttonProps}
           >
-            {props.children}
+            {children}
           </Button>
         }
       />
-      <TooltipContent size="compact">{props.label}</TooltipContent>
+      <TooltipContent size="compact">
+        {label}
+        {shortcut ? (
+          <Kbd className="ml-1.5" variant="plain">
+            {shortcut}
+          </Kbd>
+        ) : null}
+      </TooltipContent>
     </Tooltip>
   );
 }
 
-/** Toggle transcript search visibility with the shared header icon control. */
+/** Toggle transcript search with the header icon control or ⌘F / Ctrl+F. */
 export function TranscriptSearchToggle(props: {
+  inputRef: RefObject<HTMLInputElement | null>;
   onClick(): void;
   open: boolean;
 }) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  useTranscriptFindShortcut({
+    anchorRef: buttonRef,
+    inputRef: props.inputRef,
+    onOpen: props.onClick,
+    open: props.open,
+  });
   return (
     <HeaderIconButton
+      ref={buttonRef}
+      keyShortcuts={props.open ? undefined : "Meta+F Control+F"}
       label={props.open ? "Hide search" : "Search transcript"}
       onClick={props.onClick}
       pressed={props.open}
+      shortcut={props.open ? undefined : platformShortcut("f")}
     >
       {props.open ? (
         <X aria-hidden="true" size={15} strokeWidth={2} />
@@ -206,59 +262,5 @@ export function TranscriptSearchToggle(props: {
         <Search aria-hidden="true" size={15} strokeWidth={2} />
       )}
     </HeaderIconButton>
-  );
-}
-
-function MenuActionButton(props: {
-  children: ReactNode;
-  label: string;
-  onClick(): void;
-  pressed?: boolean;
-}) {
-  return (
-    <Button
-      aria-label={props.label}
-      aria-pressed={props.pressed}
-      className={props.pressed ? "bg-dashboard-fill-strong" : undefined}
-      onClick={props.onClick}
-      size="menu"
-    >
-      {props.children}
-      <span>{props.label}</span>
-    </Button>
-  );
-}
-
-function ArchiveConversationButton(props: ConversationArchiveAction) {
-  const label = props.pending
-    ? "Saving archive state"
-    : props.archived
-      ? "Unarchive"
-      : "Archive";
-  const Icon = props.archived ? ArchiveRestore : Archive;
-  return (
-    <Button
-      aria-label={label}
-      disabled={props.disabled}
-      onClick={props.onClick}
-      size="menu"
-    >
-      <Icon aria-hidden="true" size={16} strokeWidth={2} />
-      <span>{label}</span>
-    </Button>
-  );
-}
-
-/** Draw the Sentry glyph in the current text color, sized like a menu icon. */
-function SentryGlyph() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="size-4 shrink-0"
-      fill="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path d="M13.91 2.505c-.873-1.448-2.972-1.448-3.844 0L6.904 7.92a15.478 15.478 0 0 1 8.53 12.811h-2.221A13.301 13.301 0 0 0 5.784 9.814l-2.926 5.06a7.65 7.65 0 0 1 4.435 5.848H2.194a.365.365 0 0 1-.298-.534l1.413-2.402a5.16 5.16 0 0 0-1.614-.913L.296 19.275a2.182 2.182 0 0 0 .812 2.999 2.24 2.24 0 0 0 1.086.288h6.983a9.322 9.322 0 0 0-3.845-8.318l1.11-1.922a11.47 11.47 0 0 1 4.95 10.24h5.915a17.242 17.242 0 0 0-7.885-15.28l2.244-3.845a.37.37 0 0 1 .504-.13c.255.14 9.75 16.708 9.928 16.9a.365.365 0 0 1-.327.543h-2.287c.029.612.029 1.223 0 1.831h2.297a2.206 2.206 0 0 0 1.922-3.31z" />
-    </svg>
   );
 }

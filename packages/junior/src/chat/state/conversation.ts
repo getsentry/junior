@@ -2,6 +2,7 @@ import type { ObjectType } from "@sentry/junior-plugin-api";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import type { MessageCard, MessageCardRef } from "@/chat/conversations/cards";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
+import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 
 type ConversationRole = "assistant" | "system" | "user";
 
@@ -32,8 +33,14 @@ export interface ConversationMessageMeta {
   source?: "slack" | "web";
   /** First Event of the batch. Marks the message as an Event message. */
   eventType?: string;
+  /** Namespace of the first Event, such as `github`. */
+  eventNamespace?: string;
   eventObjectType?: ObjectType;
-  /** Every Event when several arrived together. Omitted for one Event. */
+  /**
+   * The Watch Events when several arrived together. A Message that also
+   * records Review item changes lists its own Event here even when it has
+   * one. Omitted otherwise.
+   */
   events?: ConversationMessageEvent[];
   explicitMention?: boolean;
   /** Short summary supplied by the Event publisher. */
@@ -41,7 +48,11 @@ export interface ConversationMessageMeta {
   imageAttachmentCount?: number;
   imageFileIds?: string[];
   imagesHydrated?: boolean;
+  /** Quiet message: stored, but not delivered to the Location. */
+  quiet?: true;
   replied?: boolean;
+  /** Person changes to Review items that this Message records. */
+  reviewItemChanges?: ReviewItemChangeRecord[];
   slackTs?: string;
   skippedReason?: string;
 }
@@ -54,14 +65,9 @@ export interface ConversationMessage {
   id: string;
   meta?: ConversationMessageMeta;
   role: ConversationRole;
+  /** Event seq of the saved Message. Missing until it is saved and loaded. */
+  seq?: number;
   text: string;
-}
-
-export interface ConversationCompaction {
-  coveredMessageCount: number;
-  createdAtMs: number;
-  id: string;
-  summary: string;
 }
 
 export interface ConversationProcessingState {
@@ -98,7 +104,8 @@ export interface ConversationVisionState {
 }
 
 export interface ThreadConversationState {
-  compactions: ConversationCompaction[];
+  /** Seq where the loaded Message window starts, after older Messages were trimmed. */
+  historyFromSeq?: number;
   messages: ConversationMessage[];
   processing: ConversationProcessingState;
   schemaVersion: 1;
@@ -109,7 +116,6 @@ function defaultConversationState(): ThreadConversationState {
   return {
     schemaVersion: 1,
     messages: [],
-    compactions: [],
     processing: {},
     vision: {
       byFileId: {},
@@ -169,7 +175,6 @@ export function coerceThreadConversationState(
   // Conversation history lives in SQL. The operator upgrade reads any old
   // thread-state history; live code starts empty and hydrates canonical events.
   const messages: ConversationMessage[] = [];
-  const compactions: ConversationCompaction[] = [];
 
   const rawProcessing = isRecord(rawConversation.processing)
     ? rawConversation.processing
@@ -202,7 +207,6 @@ export function coerceThreadConversationState(
   return {
     schemaVersion: 1,
     messages,
-    compactions,
     processing,
     vision: {
       backfillCompletedAtMs: toOptionalNumber(rawVision.backfillCompletedAtMs),

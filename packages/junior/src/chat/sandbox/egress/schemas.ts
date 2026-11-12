@@ -1,4 +1,5 @@
-import { z } from "zod";
+import * as z from "zod";
+import { credentialAuditSourceSchema } from "@/chat/credentials/audit";
 import { credentialContextSchema } from "@/chat/credentials/context";
 import {
   pluginAuthorizationSchema,
@@ -22,6 +23,8 @@ export const sandboxEgressCredentialContextSchema = z
     egressId: z.string().min(1),
     expiresAtMs: finiteNumberSchema,
     contextId: z.string().min(1),
+    /** Run Source that write audit events name. Telemetry only; it grants nothing. */
+    source: credentialAuditSourceSchema.optional(),
   })
   .strict();
 
@@ -59,7 +62,7 @@ export const sandboxEgressAuthRequiredSignalSchema = z
     }
   });
 
-export const sandboxEgressPermissionDeniedSignalSchema = z
+const sandboxEgressUpstreamPermissionDeniedSignalSchema = z
   .object({
     account: pluginProviderAccountSchema.optional(),
     grant: sandboxEgressGrantSchema,
@@ -72,6 +75,27 @@ export const sandboxEgressPermissionDeniedSignalSchema = z
     createdAtMs: finiteNumberSchema,
   })
   .strict();
+
+/** A request that Junior's egress policy refused before it chose a credential. */
+const sandboxEgressPolicyDeniedSignalSchema = z
+  .object({
+    message: z.string().min(1),
+    method: z.string().min(1),
+    provider: providerNameSchema,
+    source: z.literal("policy"),
+    upstreamHost: z.string().min(1),
+    upstreamPath: z.string().min(1),
+    createdAtMs: finiteNumberSchema,
+  })
+  .strict();
+
+export const sandboxEgressPermissionDeniedSignalSchema = z.discriminatedUnion(
+  "source",
+  [
+    sandboxEgressUpstreamPermissionDeniedSignalSchema,
+    sandboxEgressPolicyDeniedSignalSchema,
+  ],
+);
 
 export const sandboxEgressSignalsResponseSchema = z
   .object({

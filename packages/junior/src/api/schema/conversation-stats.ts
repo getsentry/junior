@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 // Conversation stats report schemas. Conversation detail and event schemas
 // live in `conversation.ts`.
@@ -29,6 +29,17 @@ export const conversationMetricDaySchema = z
     date: conversationMetricBucketSchema,
     durationMs: z.number(),
     inputTokens: z.number().optional(),
+    /** Conversation cost split to `mergedCodeChanges`. */
+    mergedCodeChangeCostUsd: z.number().optional(),
+    /** Code changes merged in this bucket. They are also `outcomes`. */
+    mergedCodeChanges: z.number().optional(),
+    /** Conversation cost of `outcomes`. */
+    outcomeCostUsd: z.number().optional(),
+    /**
+     * Merged code changes, plus root Conversations without code changes
+     * whose latest Brief is `done` or `answered`.
+     */
+    outcomes: z.number().optional(),
     tokens: z.number().optional(),
   })
   .strict();

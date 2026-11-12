@@ -1,5 +1,5 @@
 import { defineConversationEvent } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { MEMORY_KINDS, MEMORY_SCOPES } from "./types";
 import type { MemoryRecord } from "./store";
 
@@ -33,6 +33,7 @@ const legacyCapturedMemoriesSchema = z
 const capturedMemoriesSchema = z
   .object({
     memories: z.array(capturedMemorySchema).max(100),
+    // Only events stored before Junior recorded plugin model cost have it.
     costUsd: z.number().finite().nonnegative().optional(),
   })
   .strict();
@@ -41,6 +42,7 @@ const recalledMemoriesSchema = z
   .object({
     // Matches the automatic-recall candidate window; admission packs by char budget.
     memories: z.array(z.string().min(1)).max(20),
+    // Only events stored before Junior recorded plugin model cost have it.
     costUsd: z.number().finite().nonnegative().optional(),
   })
   .strict();
@@ -63,7 +65,7 @@ function renderCapturedMemories(event: {
   if (count === 0) return undefined;
   return {
     icon: "brain" as const,
-    title: `${count} ${count === 1 ? "memory" : "memories"} captured`,
+    title: `Captured ${count} ${count === 1 ? "memory" : "memories"}`,
     details: event.memories.map((memory) => ({
       title: memory.content,
       metadata: [memory.kind, currentScope(memory.scope)],
@@ -111,6 +113,17 @@ export function parseCapturedMemories(
   }
   if (version === memoriesCapturedEvent.version) {
     return capturedMemoriesSchema.parse(content).memories;
+  }
+  return [];
+}
+
+/** Parse the memory ids from one supported stored recall event. */
+export function parseRecalledMemoryIds(
+  version: number,
+  content: unknown,
+): string[] {
+  if (version === memoriesRecalledEvent.version) {
+    return recalledMemoriesSchema.parse(content).memories;
   }
   return [];
 }

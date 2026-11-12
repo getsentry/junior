@@ -1,8 +1,8 @@
 // Ingress rules for Slack messages that reach a thread. Steering behavior
 // that needs the agent lives in the agent test fixture evals:
 // packages/junior-evals/evals/integration/conversation/steering.eval.ts
-import { ThreadImpl } from "chat";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import {
   SLACK_BOT_USER_ID,
   createConversationWorkQueueTestAdapter,
@@ -12,24 +12,129 @@ import {
   slackEnvelope,
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
+import {
+  expectChildAgentStopped,
+  startRunningChildAgent,
+} from "../../fixtures/agent-invocations";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { createSlackRuntime } from "@/chat/app/factory";
-import { SLACK_SESSION_STOP_ACK } from "@/chat/ingress/slack-webhook";
+import { getConversationStore } from "@/chat/db";
+import type { ConversationStore } from "@/chat/conversations/store";
+import { SLACK_STOP_ACK } from "@/chat/ingress/slack-stop";
+import {
+  isConversationDeliveryPaused,
+  pauseConversationDelivery,
+} from "@/chat/conversations/delivery-pause";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { hasConversationStop } from "@/chat/task-execution/state";
-import { subscribeSlackThreadForMessage } from "@/chat/slack/thread-stop";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import type { StateAdapter } from "chat";
+import { readProxyProperty } from "../../fixtures/proxy-property";
 
 const CHANNEL_ID = "CSTEER";
 const THREAD_TS = "1712345.000100";
 const CONVERSATION_ID = `slack:${CHANNEL_ID}:${THREAD_TS}`;
 
-function ingress() {
+/** Fail the first write of a Conversation's stop request. */
+function failFirstStopRequest(state: StateAdapter): StateAdapter {
+  let failed = false;
+  return new Proxy(state, {
+    get(target, prop) {
+      if (prop === "set") {
+        return async (key: string, value: unknown, ttlMs?: number) => {
+          if (
+            !failed &&
+            key === `junior:conversation:v2:stop:${CONVERSATION_ID}`
+          ) {
+            failed = true;
+            throw new Error("transient stop write failure");
+          }
+          return target.set(key, value, ttlMs);
+        };
+      }
+      const value = readProxyProperty(target, prop);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as StateAdapter;
+}
+
+/**
+ * Fail the next read of a Conversation's work state, or let its next write
+ * land and then fail, once armed.
+ */
+function failNextConversationRecord(state: StateAdapter) {
+  const key = `junior:conversation:v2:${CONVERSATION_ID}`;
+  let armed: "read" | "write" | undefined;
+  return {
+    failNextRead: () => {
+      armed = "read";
+    },
+    failNextWriteAfterSave: () => {
+      armed = "write";
+    },
+    state: new Proxy(state, {
+      get(target, prop) {
+        if (prop === "get") {
+          return async (getKey: string) => {
+            if (armed === "read" && getKey === key) {
+              armed = undefined;
+              throw new Error("transient work state read failure");
+            }
+            return target.get(getKey);
+          };
+        }
+        if (prop === "set") {
+          return async (setKey: string, value: unknown, ttlMs?: number) => {
+            await target.set(setKey, value, ttlMs);
+            if (armed === "write" && setKey === key) {
+              armed = undefined;
+              throw new Error("transient work state write failure");
+            }
+          };
+        }
+        const value = readProxyProperty(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as StateAdapter,
+  };
+}
+
+/** Fail the next execution metadata write once `failNext` is called. */
+function failNextExecutionWrite(store: ConversationStore) {
+  let armed = false;
+  return {
+    failNext: () => {
+      armed = true;
+    },
+    store: new Proxy(store, {
+      get(target, prop) {
+        if (prop === "recordExecution") {
+          return async (
+            ...args: Parameters<ConversationStore["recordExecution"]>
+          ) => {
+            if (armed) {
+              armed = false;
+              throw new Error("transient metadata write failure");
+            }
+            return await target.recordExecution(...args);
+          };
+        }
+        const value = readProxyProperty(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as ConversationStore,
+  };
+}
+
+function ingress(
+  state: StateAdapter = getStateAdapter(),
+  conversationStore?: ConversationStore,
+) {
   const adapter = createSlackAdapterFixture();
   const queue = createConversationWorkQueueTestAdapter();
-  const state = getStateAdapter();
   const services = {
+    conversationStore,
     getSlackAdapter: () => adapter,
     queue,
     runtime: createSlackRuntime({ getSlackAdapter: () => adapter }),
@@ -52,16 +157,16 @@ function ingress() {
       ),
       services,
     });
-  const sendSessionStop = () =>
+  const sendSessionStop = (eventTs: string) =>
     handleSlackWebhookAndFlush({
       request: slackWebhookRequest({
         type: "event_callback",
         team_id: "T123",
-        event_id: "Ev_SESSION_STOP",
+        event_id: `Ev_SESSION_STOP_${eventTs}`,
         event: {
           type: "agent_session_stopped",
           channel: CHANNEL_ID,
-          event_ts: "1712345.000900",
+          event_ts: eventTs,
           streaming_message_ts: [],
           thread_ts: THREAD_TS,
           user: "U123",
@@ -69,7 +174,79 @@ function ingress() {
       }),
       services,
     });
-  return { adapter, queue, send, sendSessionStop, state };
+  return { queue, send, sendSessionStop, state };
+}
+
+function statusClears() {
+  return slackApiOutbox
+    .calls("assistant.threads.setStatus")
+    .filter(
+      (call) =>
+        call.params.channel_id === CHANNEL_ID &&
+        call.params.thread_ts === THREAD_TS &&
+        call.params.status === "",
+    );
+}
+
+function stopAcks() {
+  return slackApiOutbox
+    .messages()
+    .filter((call) => call.params.text === SLACK_STOP_ACK);
+}
+
+/** Start a queued mention Turn with a running child agent in the thread. */
+async function startThreadWork(harness: ReturnType<typeof ingress>) {
+  const { queue, send, state } = harness;
+  await send({
+    eventType: "app_mention",
+    text: `<@${SLACK_BOT_USER_ID}> start the incident summary`,
+    ts: THREAD_TS,
+  });
+  await state.subscribe(CONVERSATION_ID);
+  expect(queue.queuedMessages()).toHaveLength(1);
+  return await startRunningChildAgent({
+    conversationStore: getConversationStore(),
+    idempotencyKey: "slack-stop-child",
+    parentConversationId: CONVERSATION_ID,
+    queue,
+    state,
+  });
+}
+
+/** Expect a Slack stop that stopped the work and kept the thread. */
+async function expectThreadWorkStopped(
+  child: Awaited<ReturnType<typeof startThreadWork>>,
+  state: ReturnType<typeof ingress>["state"],
+) {
+  const work = await getConversationWorkState({
+    conversationId: CONVERSATION_ID,
+    state,
+  });
+  await expect(
+    hasConversationStop({
+      conversationId: CONVERSATION_ID,
+      runId: work?.execution.runId ?? "",
+      state,
+    }),
+  ).resolves.toBe(true);
+  // Only the mention waits, for the worker to drop it. A stop message never
+  // enters the mailbox.
+  expect(work?.execution.pendingMessages).toHaveLength(1);
+  expect(slackApiOutbox.reactionRemovals()).toHaveLength(1);
+  expect(stopAcks()).toEqual([
+    expect.objectContaining({
+      params: expect.objectContaining({
+        channel: CHANNEL_ID,
+        thread_ts: THREAD_TS,
+      }),
+    }),
+  ]);
+  await expectChildAgentStopped(child, state);
+  await expect(
+    getConversationStoppedAtMs(CONVERSATION_ID),
+  ).resolves.toBeDefined();
+  // A stop does not opt out: the next person message ends it.
+  await expect(state.isSubscribed(CONVERSATION_ID)).resolves.toBe(true);
 }
 
 describe("Slack ingress: thread messages", () => {
@@ -105,91 +282,178 @@ describe("Slack ingress: thread messages", () => {
     expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
   });
 
-  it("stops the active Turn from Slack's native stop button and keeps the thread", async () => {
-    const { queue, send, sendSessionStop, state } = ingress();
-    const statusClears = () =>
-      slackApiOutbox
-        .calls("assistant.threads.setStatus")
-        .filter(
-          (call) =>
-            call.params.channel_id === CHANNEL_ID &&
-            call.params.thread_ts === THREAD_TS &&
-            call.params.status === "",
-        );
-    const stopAcks = () =>
-      slackApiOutbox
-        .messages()
-        .filter((call) => call.params.text === SLACK_SESSION_STOP_ACK);
-
+  it("stops the active Turn and its child agents from Slack's native stop button and keeps the thread", async () => {
+    const harness = ingress();
     // Slack leaves the session in `processing` until the app changes it, so
     // an idle stop still clears the status but has nothing to confirm.
-    await expect(sendSessionStop()).resolves.toMatchObject({ status: 200 });
+    await expect(
+      harness.sendSessionStop("1712345.000900"),
+    ).resolves.toMatchObject({ status: 200 });
     expect(statusClears()).toHaveLength(1);
     expect(stopAcks()).toHaveLength(0);
 
-    await send({
-      eventType: "app_mention",
-      text: `<@${SLACK_BOT_USER_ID}> start the incident summary`,
-      ts: THREAD_TS,
-    });
-    await state.subscribe(CONVERSATION_ID);
-    expect(queue.queuedMessages()).toHaveLength(1);
-
-    await expect(sendSessionStop()).resolves.toMatchObject({ status: 200 });
-
-    const work = await getConversationWorkState({
-      conversationId: CONVERSATION_ID,
-      state,
-    });
+    const child = await startThreadWork(harness);
     await expect(
-      hasConversationStop({
-        conversationId: CONVERSATION_ID,
-        runId: work?.execution.runId ?? "",
-        state,
-      }),
-    ).resolves.toBe(true);
-    expect(slackApiOutbox.reactionRemovals()).toHaveLength(1);
-    expect(statusClears()).toHaveLength(2);
-    expect(stopAcks()).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: CHANNEL_ID,
-          thread_ts: THREAD_TS,
-        }),
-      }),
-    ]);
-    // Unlike the `stop` keyword, the native button does not opt out.
-    await expect(state.isSubscribed(CONVERSATION_ID)).resolves.toBe(true);
-  });
-
-  it("ignores a late stop that arrives after a newer mention subscribed the thread", async () => {
-    const { adapter, queue, send, state } = ingress();
-    // The worker subscribes the thread for the mention at THREAD_TS.
-    await subscribeSlackThreadForMessage({
-      messageCreatedAtMs: Number(THREAD_TS) * 1000,
-      state,
-      thread: new ThreadImpl({
-        adapter,
-        channelId: `slack:${CHANNEL_ID}`,
-        id: CONVERSATION_ID,
-        isDM: false,
-        stateAdapter: state,
-      }),
-    });
-
-    // A "stop" timestamped before that mention arrives out of order.
+      harness.sendSessionStop("1712345.000950"),
+    ).resolves.toMatchObject({ status: 200 });
+    const stoppedAtMs = await getConversationStoppedAtMs(CONVERSATION_ID);
+    // Slack's retry of the same press stops nothing more.
     await expect(
-      send({ eventType: "message", text: "stop", ts: "1712344.000100" }),
+      harness.sendSessionStop("1712345.000950"),
     ).resolves.toMatchObject({ status: 200 });
 
-    await expect(state.isSubscribed(CONVERSATION_ID)).resolves.toBe(true);
-    expect(queue.hasQueuedMessages()).toBe(false);
-    expect(
-      slackApiOutbox
-        .messages()
-        .some((call) =>
-          String(call.params.text ?? "").includes("stay out of this thread"),
-        ),
-    ).toBe(false);
+    expect(statusClears()).toHaveLength(2);
+    await expectThreadWorkStopped(child, harness.state);
+    // The press time is the stop time.
+    expect(stoppedAtMs).toBe(1_712_345_000);
+    await expect(getConversationStoppedAtMs(CONVERSATION_ID)).resolves.toBe(
+      stoppedAtMs,
+    );
+  });
+
+  it("stops the active Turn and its child agents from the `stop` keyword the same way, once per message", async () => {
+    const harness = ingress(failFirstStopRequest(getStateAdapter()));
+    const child = await startThreadWork(harness);
+    const stop = {
+      text: `<@${SLACK_BOT_USER_ID}> stop`,
+      ts: "1712345.000200",
+    };
+    // A stop that fails asks Slack to retry, and the retry stops the work.
+    await expect(
+      harness.send({ ...stop, eventType: "message" }),
+    ).resolves.toMatchObject({ status: 503 });
+    expect(stopAcks()).toHaveLength(0);
+    await expect(
+      harness.send({ ...stop, eventType: "message" }),
+    ).resolves.toMatchObject({ status: 200 });
+    const stoppedAtMs = await getConversationStoppedAtMs(CONVERSATION_ID);
+    // Slack sends a mention as both `message` and `app_mention`.
+    await expect(
+      harness.send({ ...stop, eventType: "app_mention" }),
+    ).resolves.toMatchObject({ status: 200 });
+
+    // The failed stop and its retry each clear the status.
+    expect(statusClears()).toHaveLength(2);
+    await expectThreadWorkStopped(child, harness.state);
+    await expect(getConversationStoppedAtMs(CONVERSATION_ID)).resolves.toBe(
+      stoppedAtMs,
+    );
+  });
+
+  it("keeps a mention sent after a `stop` that Slack retries", async () => {
+    const harness = ingress(failFirstStopRequest(getStateAdapter()));
+    await startThreadWork(harness);
+    // Each message is sent at least 1 ms apart, the precision of a send time.
+    const stop = {
+      eventType: "message" as const,
+      text: `<@${SLACK_BOT_USER_ID}> stop`,
+      ts: "1712345.0020",
+    };
+    await expect(harness.send(stop)).resolves.toMatchObject({ status: 503 });
+    await harness.send({
+      eventType: "app_mention",
+      text: `<@${SLACK_BOT_USER_ID}> check the logs`,
+      ts: "1712345.0030",
+    });
+    await expect(harness.send(stop)).resolves.toMatchObject({ status: 200 });
+
+    // The stop is as old as its message, so the retry drops only the mention
+    // sent before it. The worker runs the newer mention.
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state: harness.state,
+    });
+    const [first, newer] = work?.execution.pendingMessages ?? [];
+    expect(newer?.createdAtMs).toBe(1_712_345_003);
+    await expect(
+      harness.state.get(`junior:conversation:v2:stop:${CONVERSATION_ID}`),
+    ).resolves.toMatchObject({
+      inboundMessageIds: [first?.inboundMessageId],
+    });
+    expect(stopAcks()).toHaveLength(1);
+  });
+
+  it("lets Slack retry a `stop` keyword whose claim fails to save", async () => {
+    const record = failNextConversationRecord(getStateAdapter());
+    const metadata = failNextExecutionWrite(getConversationStore());
+    const harness = ingress(record.state, metadata.store);
+    const child = await startThreadWork(harness);
+    const stop = {
+      eventType: "message" as const,
+      text: `<@${SLACK_BOT_USER_ID}> stop`,
+      ts: "1712345.000200",
+    };
+    // The claim record lands, then its write fails.
+    record.failNextWriteAfterSave();
+    await expect(harness.send(stop)).resolves.toMatchObject({ status: 503 });
+    expect(stopAcks()).toHaveLength(0);
+
+    // The claim lands, then its metadata write fails.
+    metadata.failNext();
+    await expect(harness.send(stop)).resolves.toMatchObject({ status: 503 });
+    expect(stopAcks()).toHaveLength(0);
+
+    // Each failed claim is released, so the retry stops the work.
+    await expect(harness.send(stop)).resolves.toMatchObject({ status: 200 });
+    await expectThreadWorkStopped(child, harness.state);
+  });
+
+  it("keeps a `stop` keyword's claim when the stop fails after it landed", async () => {
+    const record = failNextConversationRecord(getStateAdapter());
+    const harness = ingress(record.state);
+    const child = await startThreadWork(harness);
+    const stop = {
+      eventType: "message" as const,
+      text: `<@${SLACK_BOT_USER_ID}> stop`,
+      ts: "1712345.000200",
+    };
+    // The stop request is saved, then its wake fails.
+    harness.queue.rejectSends();
+    await expect(harness.send(stop)).resolves.toMatchObject({ status: 503 });
+    harness.queue.allowSends();
+    const stoppedAtMs = await getConversationStoppedAtMs(CONVERSATION_ID);
+    expect(stoppedAtMs).toBeDefined();
+    await expectChildAgentStopped(child, harness.state);
+
+    // A redelivery whose claim check fails keeps the saved claim.
+    record.failNextRead();
+    await expect(harness.send(stop)).resolves.toMatchObject({ status: 503 });
+
+    // The next redelivery is a duplicate, so it cannot stop newer work.
+    await expect(harness.send(stop)).resolves.toMatchObject({ status: 200 });
+    expect(stopAcks()).toHaveLength(0);
+    await expect(getConversationStoppedAtMs(CONVERSATION_ID)).resolves.toBe(
+      stoppedAtMs,
+    );
+  });
+
+  it("attaches a detached Conversation again on the next mention", async () => {
+    const { send } = ingress();
+    await send({
+      eventType: "app_mention",
+      text: `<@${SLACK_BOT_USER_ID}> watch the deploy`,
+      ts: THREAD_TS,
+    });
+    await expect(pauseConversationDelivery(CONVERSATION_ID)).resolves.toBe(
+      true,
+    );
+    // A message that does not mention Junior keeps it detached.
+    await send({
+      eventType: "message",
+      text: "looks fine to me",
+      ts: "1712345.000200",
+    });
+    await expect(isConversationDeliveryPaused(CONVERSATION_ID)).resolves.toBe(
+      true,
+    );
+
+    await send({
+      eventType: "app_mention",
+      text: `<@${SLACK_BOT_USER_ID}> anything new?`,
+      ts: "1712345.000300",
+    });
+    await expect(isConversationDeliveryPaused(CONVERSATION_ID)).resolves.toBe(
+      false,
+    );
   });
 });

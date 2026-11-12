@@ -20,4 +20,4 @@ Rules:
 - After the identity check succeeds, answer the user's real question directly in that same turn.
 - Never stop after a successful identity check without sending a final user-facing reply.
 - Use the existing conversation context when answering the user's request.
-- Keep the final answer short.
+- Keep the final response short.

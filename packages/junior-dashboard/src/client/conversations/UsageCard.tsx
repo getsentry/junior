@@ -66,13 +66,13 @@ export function UsageCard(props: UsageCardProps) {
         )}
       >
         <span className="flex items-baseline justify-between gap-3">
-          <span className="min-w-0 truncate">
+          <span className="min-w-0 truncate font-medium text-dashboard-text">
             {props.title}
             {props.note ? (
               <span className="text-dashboard-text-faint"> · {props.note}</span>
             ) : null}
           </span>
-          <span className="whitespace-nowrap text-lg font-semibold tabular-nums text-dashboard-text">
+          <span className="whitespace-nowrap text-base font-semibold tabular-nums text-dashboard-text">
             {props.total}
           </span>
         </span>
@@ -101,7 +101,8 @@ export function UsageCard(props: UsageCardProps) {
               </span>
               <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                 <Swatch className={SUBAGENT_FILL} />
-                {props.split.count} subagent{props.split.count === 1 ? "" : "s"}
+                {props.split.count} child conversation
+                {props.split.count === 1 ? "" : "s"}
                 <span className="font-medium text-dashboard-text">
                   {props.split.subagents}
                 </span>
@@ -124,7 +125,7 @@ export function UsageCard(props: UsageCardProps) {
               <span
                 className={cn(
                   "flex min-w-0 items-baseline gap-2",
-                  row.code && "font-mono text-dashboard-text",
+                  row.code && "font-mono",
                 )}
               >
                 <span className="min-w-0 truncate" title={row.label}>

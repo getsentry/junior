@@ -1,4 +1,5 @@
-import { Children, type ReactNode } from "react";
+import { Children, type ReactNode, type RefCallback } from "react";
+import type { OwnedObjectAnnotation } from "@sentry/junior/api/schema";
 import Markdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -18,6 +19,18 @@ import {
 import { cn } from "../styles";
 import { ANCHOR_CLASS, safeHref, slackLinksToMarkdown } from "./links";
 import { renderTextTokens } from "./mentions";
+import { OutboundLink } from "../components/OutboundLink";
+import { ObjectCard } from "../conversations/ObjectCard";
+import {
+  ObjectLinkChip,
+  ObjectLinkPreview,
+  useKnownObject,
+} from "./ObjectLinks";
+import {
+  resolvableUrl,
+  useResolvedObject,
+  useWhenVisible,
+} from "./resolvedObjects";
 
 /**
  * Render display text Markdown as readable prose.
@@ -26,15 +39,26 @@ import { renderTextTokens } from "./mentions";
  * replies also use Slack-style `•` bullets, `<url|label>` links, and
  * bold-only section labels, so those render as lists, links, and headings
  * too. Inline mode keeps only inline formatting, so the text fits in one
- * line or in a button.
+ * line or in a button. Document mode reads a Markdown file: plain CommonMark
+ * plus GFM, where a newline in a paragraph does not break the line.
+ *
+ * A link to a known object (`KnownObjectsProvider`) previews its card on
+ * hover. Other links ask the API for a card when they scroll into view or
+ * the reader hovers them, and stay plain links until a card arrives.
+ * Outside document mode, a bare URL in running text shows as a chip, and a
+ * bare URL alone in a top-level paragraph shows the full card.
  */
 export function MarkdownText(props: {
   chat?: boolean;
+  compact?: boolean;
+  document?: boolean;
   inline?: boolean;
   text: string;
 }): ReactNode {
   if (!props.text.trim()) return null;
-  const source = normalizeSlackBullets(slackLinksToMarkdown(props.text));
+  const source = props.document
+    ? props.text
+    : normalizeSlackBullets(slackLinksToMarkdown(props.text));
 
   if (props.inline) {
     return (
@@ -54,18 +78,24 @@ export function MarkdownText(props: {
         "min-w-0 break-words text-dashboard-text [overflow-wrap:anywhere]",
         props.chat
           ? "font-sans text-base leading-relaxed"
-          : "font-sans text-sm leading-6 md:leading-7",
+          : "font-sans text-sm leading-6",
+        !props.chat && !props.compact && "md:leading-7",
       )}
     >
       <div className={cn("grid min-w-0", props.chat ? "gap-3" : "gap-2")}>
         <Markdown
           components={COMPONENTS}
-          remarkPlugins={[
-            remarkGfm,
-            remarkBreaks,
-            remarkBareUrlStops,
-            remarkSectionLabels,
-          ]}
+          remarkPlugins={
+            props.document
+              ? [remarkGfm]
+              : [
+                  remarkGfm,
+                  remarkBreaks,
+                  remarkBareUrlStops,
+                  remarkSectionLabels,
+                  remarkObjectLinks,
+                ]
+          }
           urlTransform={safeHref}
         >
           {source}
@@ -82,6 +112,7 @@ function normalizeSlackBullets(text: string): string {
 
 type MarkdownNode = {
   children?: MarkdownNode[];
+  data?: { hProperties?: Record<string, unknown> };
   depth?: number;
   position?: { start: { offset?: number } };
   type: string;
@@ -150,12 +181,46 @@ function splitSectionLabel(node: MarkdownNode): MarkdownNode[] {
     : [heading];
 }
 
+/**
+ * Mark each top-level paragraph that holds only a bare URL, so the paragraph
+ * can show the full card of a known object. A bare URL in a list, a quote,
+ * or a sentence stays inline.
+ */
+function remarkObjectLinks() {
+  return (tree: MarkdownNode) => {
+    for (const node of tree.children ?? []) {
+      const [link, ...rest] = node.children ?? [];
+      if (node.type !== "paragraph" || rest.length > 0) continue;
+      if (link?.type !== "link" || !isBareLink(link)) continue;
+      node.data = {
+        ...node.data,
+        hProperties: { ...node.data?.hProperties, dataObjectUrl: link.url },
+      };
+    }
+  };
+}
+
+// A bare URL is a link whose text is its URL, such as an autolink.
+function isBareLink(link: MarkdownNode): boolean {
+  const [text, ...rest] = link.children ?? [];
+  return rest.length === 0 && text?.type === "text" && text.value === link.url;
+}
+
 const HEADING_CLASS =
   "m-0 min-w-0 font-semibold tracking-[-0.01em] text-dashboard-text [&:not(:first-child)]:mt-1 [&+*]:-mt-1";
 
 const COMPONENTS: Components = {
-  a: ({ children, href }) => (
-    <TranscriptAnchor href={href}>{children}</TranscriptAnchor>
+  a: ({ children, href, node }) => (
+    <TranscriptAnchor
+      bare={
+        node?.children.length === 1 &&
+        node.children[0]?.type === "text" &&
+        node.children[0].value === href
+      }
+      href={href}
+    >
+      {children}
+    </TranscriptAnchor>
   ),
   blockquote: ({ children }) => (
     <blockquote className="m-0 grid min-w-0 gap-2 border-l-2 border-dashboard-border pl-3 text-dashboard-text-muted">
@@ -222,8 +287,8 @@ const COMPONENTS: Components = {
       {children}
     </ol>
   ),
-  p: ({ children }) => (
-    <p className="m-0 min-w-0 whitespace-normal">{renderText(children)}</p>
+  p: ({ children, node }) => (
+    <Paragraph objectUrl={node?.properties.dataObjectUrl}>{children}</Paragraph>
   ),
   pre: ({ children }) => (
     <pre className="m-0 min-w-0 overflow-x-auto rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 font-mono text-sm [&>code]:bg-transparent [&>code]:p-0">
@@ -332,24 +397,141 @@ function alignClass(align: unknown): string | undefined {
   return undefined;
 }
 
-function TranscriptAnchor(props: { children: ReactNode; href?: string }) {
+function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
+  const known = useKnownObject(
+    typeof props.objectUrl === "string" ? props.objectUrl : undefined,
+  );
+  if (known) return <ObjectCard card={known} />;
+  if (typeof props.objectUrl === "string" && resolvableUrl(props.objectUrl)) {
+    return (
+      <ResolvedParagraph objectUrl={props.objectUrl}>
+        {props.children}
+      </ResolvedParagraph>
+    );
+  }
+  return <PlainParagraph>{props.children}</PlainParagraph>;
+}
+
+// The link in the paragraph asks for the card. This reads the same entry.
+function ResolvedParagraph(props: { children: ReactNode; objectUrl: string }) {
+  const { card } = useResolvedObject(props.objectUrl);
+  if (card) return <ObjectCard card={card} live />;
+  return <PlainParagraph>{props.children}</PlainParagraph>;
+}
+
+function PlainParagraph(props: { children: ReactNode }) {
+  return (
+    <p className="m-0 min-w-0 whitespace-normal">
+      {renderText(props.children)}
+    </p>
+  );
+}
+
+function TranscriptAnchor(props: {
+  bare?: boolean;
+  children: ReactNode;
+  href?: string;
+}) {
+  const card = useKnownObject(props.href);
   // `safeHref` removes unsafe destinations. Keep their label text.
   if (!props.href) return <>{renderText(props.children)}</>;
+  const label =
+    typeof props.children === "string" ? (
+      <SearchAwareLinkLabel href={props.href} label={props.children} />
+    ) : (
+      props.children
+    );
+  if (card) {
+    return (
+      <ObjectAnchor bare={props.bare} card={card} href={props.href}>
+        {label}
+      </ObjectAnchor>
+    );
+  }
+  if (resolvableUrl(props.href)) {
+    return (
+      <ResolvedAnchor bare={props.bare} href={props.href}>
+        {label}
+      </ResolvedAnchor>
+    );
+  }
+  return <PlainAnchor href={props.href}>{label}</PlainAnchor>;
+}
 
-  const opensNewTab = /^https?:/i.test(props.href);
+// A link without a saved object asks the API for a card when it scrolls
+// into view or the reader hovers it.
+function ResolvedAnchor(props: {
+  bare?: boolean;
+  children: ReactNode;
+  href: string;
+}) {
+  const { card, request } = useResolvedObject(props.href);
+  const observe = useWhenVisible(request);
+  if (card) {
+    return (
+      <ObjectAnchor bare={props.bare} card={card} href={props.href} live>
+        {props.children}
+      </ObjectAnchor>
+    );
+  }
   return (
-    <a
+    <PlainAnchor href={props.href} observe={observe} onPointerEnter={request}>
+      {props.children}
+    </PlainAnchor>
+  );
+}
+
+function ObjectAnchor(props: {
+  bare?: boolean;
+  card: OwnedObjectAnnotation;
+  children: ReactNode;
+  href: string;
+  live?: boolean;
+}) {
+  if (props.bare) {
+    return (
+      <ObjectLinkChip card={props.card} href={props.href} live={props.live} />
+    );
+  }
+  return (
+    <ObjectLinkPreview
+      card={props.card}
       className={ANCHOR_CLASS}
       href={props.href}
-      rel={opensNewTab ? "noreferrer" : undefined}
-      target={opensNewTab ? "_blank" : undefined}
+      live={props.live}
     >
-      {typeof props.children === "string" ? (
-        <SearchAwareLinkLabel href={props.href} label={props.children} />
-      ) : (
-        props.children
-      )}
-    </a>
+      {props.children}
+    </ObjectLinkPreview>
+  );
+}
+
+function PlainAnchor(props: {
+  children: ReactNode;
+  href: string;
+  observe?: RefCallback<HTMLAnchorElement>;
+  onPointerEnter?: () => void;
+}) {
+  if (!/^https?:/i.test(props.href)) {
+    return (
+      <a
+        className={ANCHOR_CLASS}
+        href={props.href}
+        onPointerEnter={props.onPointerEnter}
+        ref={props.observe}
+      >
+        {props.children}
+      </a>
+    );
+  }
+  return (
+    <OutboundLink
+      className={ANCHOR_CLASS}
+      href={props.href}
+      onPointerEnter={props.onPointerEnter}
+      ref={props.observe}
+    >
+      {props.children}
+    </OutboundLink>
   );
 }
 
@@ -364,7 +546,7 @@ function SearchAwareLinkLabel(props: { href: string; label: string }) {
   if (hrefMatches && !labelMatches) {
     return (
       <mark
-        className="rounded-[2px] bg-amber-400/20 px-0.5 text-inherit not-italic"
+        className="rounded-[2px] bg-amber-400/20 text-inherit not-italic"
         title={`Matched URL: ${props.href}`}
       >
         {props.label}

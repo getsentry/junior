@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { PluginContext } from "./context";
 import { nonBlankStringSchema, pluginCredentialSubjectSchema } from "./schemas";
 
@@ -47,10 +47,21 @@ export const pluginStoredTokensSchema = z
   })
   .strict();
 
+/**
+ * Provider facts for egress audit events, such as the target repository.
+ * Keys use the plugin's `app.<provider>.*` names. Telemetry only.
+ */
+export const pluginAuditAttributesSchema = z.record(
+  z.string().regex(/^app\.[a-z0-9_]+(?:\.[a-z0-9_]+)+$/),
+  z.union([z.string(), z.boolean(), z.array(z.string())]),
+);
+
 /** Runtime schema for a plugin-defined outbound credential grant. */
 export const pluginGrantSchema = z
   .object({
     access: pluginGrantAccessSchema,
+    /** Provider facts for the write audit event. */
+    auditAttributes: pluginAuditAttributesSchema.optional(),
     leaseScope: nonBlankStringSchema.optional(),
     name: pluginGrantNameSchema,
     reason: nonBlankStringSchema.optional(),
@@ -129,11 +140,25 @@ export class EgressAuthRequired extends Error {
 
 /** Deny provider egress before Junior issues credentials for a disallowed operation. */
 export class EgressPolicyDenied extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
+  /** Provider facts for the policy denial event. */
+  readonly auditAttributes?: PluginAuditAttributes;
+
+  constructor(
+    message: string,
+    options?: { auditAttributes?: PluginAuditAttributes; cause?: unknown },
+  ) {
     super(message, { cause: options?.cause });
     this.name = "EgressPolicyDenied";
+    if (options?.auditAttributes) {
+      this.auditAttributes = options.auditAttributes;
+    }
   }
 }
+
+/** Provider facts for egress audit events. */
+export type PluginAuditAttributes = z.output<
+  typeof pluginAuditAttributesSchema
+>;
 
 /** Provider account identity resolved by a plugin OAuth hook. */
 export type PluginProviderAccount = z.output<
@@ -143,10 +168,96 @@ export type PluginProviderAccount = z.output<
 /** Plugin-defined grant required before Junior can forward one outbound request. */
 export type PluginGrant = z.output<typeof pluginGrantSchema>;
 
+/** One ref update command in a Git push. */
+export interface PluginGitRefUpdate {
+  /** True when the push deletes the ref: its new object id is all zeros. */
+  deletes: boolean;
+  /** Full ref name, such as `refs/heads/main`. */
+  ref: string;
+}
+
+/** Why the host could not read the ref updates of a Git push. */
+export type PluginGitPushUnreadableReason =
+  | "gzip"
+  | "malformed"
+  | "signed"
+  | "unterminated";
+
+/**
+ * Ref updates of a Git smart HTTP push (`git-receive-pack`), which the host
+ * reads from the body before the pack data. An `unreadable` push changes
+ * refs that the host cannot name.
+ */
+export type PluginGitPush =
+  | { kind: "commands"; updates: PluginGitRefUpdate[] }
+  | { kind: "unreadable"; reason: PluginGitPushUnreadableReason };
+
+/** One field that a GraphQL operation selects. */
+export interface PluginGraphqlField {
+  /** Names of the arguments that the field passes. */
+  arguments: string[];
+  /** Schema field name. An alias does not replace it. */
+  name: string;
+}
+
+/** The GraphQL operation that one request runs. */
+export interface PluginGraphqlOperation {
+  /**
+   * Each distinct field that the operation selects at any depth, also through
+   * fragments.
+   */
+  fields: PluginGraphqlField[];
+  name?: string;
+  /**
+   * Field names at the operation root, also through fragments. There is one
+   * entry for each field selection, so an aliased repeat shows twice.
+   */
+  rootFields: string[];
+  type: "mutation" | "query" | "subscription";
+}
+
+/**
+ * Why the host could not read the operation of a GraphQL request:
+ *
+ * - `document`: the query does not parse, or it spreads a fragment that it
+ *   does not define.
+ * - `gzip`: the body is compressed.
+ * - `json`: the body is not a JSON object or a JSON array of objects.
+ * - `operation`: `operationName` names no operation, or the document has more
+ *   than one operation and no `operationName`.
+ * - `query`: the body has no `query` string, such as a persisted query hash.
+ * - `too-large`: the body is larger than the host reads before it issues
+ *   credentials.
+ */
+export type PluginGraphqlUnreadableReason =
+  | "document"
+  | "gzip"
+  | "json"
+  | "operation"
+  | "query"
+  | "too-large";
+
+/**
+ * The operations of a GraphQL POST, which the host reads from the JSON body.
+ * A `batch` is a JSON array of requests. An `unreadable` request can run any
+ * operation, mutations included.
+ */
+export type PluginGraphqlRequest =
+  | { kind: "batch"; operations: PluginGraphqlOperation[] }
+  | { kind: "operation"; operation: PluginGraphqlOperation }
+  | { kind: "unreadable"; reason: PluginGraphqlUnreadableReason };
+
 /** Request details available while selecting the grant for sandbox egress. */
 export interface PluginEgressRequest {
-  /** Capped request body text when the host exposes it for provider-specific grant classification. */
+  /**
+   * Capped request body text when the host exposes it for provider-specific
+   * grant classification.
+   */
   bodyText?: string;
+  /** Set for every Git `git-receive-pack` POST. */
+  gitPush?: PluginGitPush;
+  /** Set for every POST to a URL path that ends in `/graphql`. */
+  graphql?: PluginGraphqlRequest;
   method: string;
   /** Plugin-declared operation this request performs, used for grant classification and diagnostics. */
   operation?: string;
@@ -167,7 +278,7 @@ export interface PluginEgressResponse {
 export interface EgressResponseHookContext extends PluginContext {
   grant: PluginGrant;
   permissionDenied(message: string): void;
-  request: Omit<PluginEgressRequest, "bodyText">;
+  request: Omit<PluginEgressRequest, "bodyText" | "gitPush" | "graphql">;
   response: PluginEgressResponse;
 }
 

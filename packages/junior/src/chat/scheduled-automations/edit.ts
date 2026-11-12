@@ -3,13 +3,13 @@ import { scheduledAutomationEditSchema } from "@/chat/automations/edit-schema";
 import { isDeepStrictEqual } from "node:util";
 import {
   AutomationEditError,
+  changesAutomationTask,
   editAutomationFields,
-  requireCredentialStart,
 } from "@/chat/automations/edit-rules";
 import { compileScheduleIntent, ScheduleIntentError } from "./schedule-intent";
 import { defaultTimezone } from "@/chat/identities/timezone";
 import type { ScheduledAutomation } from "./types";
-import type { z } from "zod";
+import type * as z from "zod";
 
 /** Build an edit without restarting completed work or changing creator identity. */
 export async function editScheduledAutomation(
@@ -37,24 +37,9 @@ export async function editScheduledAutomation(
       throw error;
     }
   }
-  const nextRunAtMs = compiled?.nextRunAtMs ?? current.nextRunAtMs;
-  if (input.status === "active" && !nextRunAtMs) {
-    throw new AutomationEditError(
-      "Active scheduled automations require a schedule with a future occurrence.",
-      "schedule",
-    );
-  }
-  if (current.status === "paused" && input.status !== undefined) {
-    throw new AutomationEditError(
-      "Use Resume in the Automation settings to resume paused work.",
-      "status",
-    );
-  }
-  const status = input.status ?? current.status;
   // A new Schedule changes when creator credentials are used.
   const changesExecution =
-    (input.instruction !== undefined &&
-      input.instruction !== current.task.text) ||
+    changesAutomationTask(current.task, input) ||
     (compiled !== undefined &&
       !isDeepStrictEqual(compiled.schedule, current.schedule));
   const fields = await editAutomationFields(
@@ -63,25 +48,13 @@ export async function editScheduledAutomation(
     isCreator,
     changesExecution,
   );
-  if (status === "active" && current.status !== "active")
-    requireCredentialStart({ ...current, ...fields }, isCreator);
   return {
     ...current,
     ...fields,
     updatedAtMs: nowMs,
     schedule: compiled?.schedule ?? current.schedule,
-    nextRunAtMs,
-    // Metadata edits must not clear a pending occurrence or a blocked reason.
-    ...(compiled !== undefined || input.status !== undefined
-      ? {
-          runNowAtMs:
-            status === "active" && !compiled ? current.runNowAtMs : undefined,
-          statusReason:
-            status === "blocked" || status === "paused"
-              ? current.statusReason
-              : undefined,
-        }
-      : undefined),
-    status,
+    nextRunAtMs: compiled?.nextRunAtMs ?? current.nextRunAtMs,
+    // A new Schedule replaces a pending run-now occurrence.
+    ...(compiled !== undefined ? { runNowAtMs: undefined } : undefined),
   };
 }

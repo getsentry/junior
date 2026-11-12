@@ -1,4 +1,10 @@
-import { logAudit, logException, logInfo, logWarn } from "@/chat/logging";
+import {
+  credentialAccount,
+  credentialAuditAttributes,
+} from "@/chat/credentials/audit";
+import { isGitReceivePack, readGitPush } from "@/chat/egress/git-push";
+import { isGraphqlPost, readGraphqlRequest } from "@/chat/egress/graphql";
+import { logAudit, logException, logWarn } from "@/chat/logging";
 import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
 import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress/policy";
 import {
@@ -8,9 +14,10 @@ import {
   selectSandboxEgressGrant,
   type SandboxEgressGrantSelection,
 } from "@/chat/sandbox/egress/credentials";
+import { redactSandboxEgressProxyPath } from "@/chat/sandbox/egress/proxy-path";
+import { SANDBOX_EGRESS_AUTH_REQUIRED_MARKER } from "@/chat/sandbox/egress/signals";
 import {
   clearSandboxEgressCredentialLease,
-  SANDBOX_EGRESS_PROXY_PATH,
   setSandboxEgressAuthRequiredSignal,
   setSandboxEgressPermissionDeniedSignal,
   type SandboxEgressCredentialContext,
@@ -23,6 +30,7 @@ import {
 import {
   EgressAuthRequired,
   EgressPolicyDenied,
+  pluginAuditAttributesSchema,
 } from "@sentry/junior-plugin-api";
 
 // Module overview: own credentialed provider forwarding after a caller has
@@ -86,17 +94,7 @@ export type CredentialedEgressHttpInterceptor = (input: {
 
 /** Runtime dependencies for the credentialed provider forwarding step. */
 export interface CredentialedEgressDeps {
-  clearCredentialLease?: (
-    provider: string,
-    grant: SandboxEgressCredentialLease["grant"],
-    credentialContext: SandboxEgressCredentialContext,
-  ) => Promise<void>;
   fetch?: typeof fetch;
-  issueCredentialLease?: (
-    provider: string,
-    selection: SandboxEgressGrantSelection,
-    credentialContext: SandboxEgressCredentialContext,
-  ) => Promise<SandboxEgressCredentialLease>;
   interceptHttp?: CredentialedEgressHttpInterceptor;
   recordAuthRequired?: (input: {
     authorization?: SandboxEgressCredentialLease["authorization"];
@@ -105,14 +103,6 @@ export interface CredentialedEgressDeps {
     kind?: "auth_required" | "unavailable";
     message: string;
     provider: string;
-  }) => Promise<void>;
-  recordPermissionDenied?: (input: {
-    credentialContext: SandboxEgressCredentialContext;
-    lease: SandboxEgressCredentialLease;
-    message: string;
-    provider: string;
-    upstream: Response;
-    upstreamUrl: URL;
   }) => Promise<void>;
   tracePropagation?: SandboxEgressTracePropagationConfig;
 }
@@ -123,7 +113,7 @@ function authRequiredResponse(input: {
   provider: string;
 }): Response {
   return new Response(
-    `junior-auth-required provider=${input.provider} grant=${input.grant.name} access=${input.grant.access} 401 unauthorized\n${input.message}`,
+    `${SANDBOX_EGRESS_AUTH_REQUIRED_MARKER} provider=${input.provider} grant=${input.grant.name} access=${input.grant.access} 401 unauthorized\n${input.message}`,
     {
       status: 401,
       headers: {
@@ -146,16 +136,20 @@ function policyDeniedResponse(error: EgressPolicyDenied): Response {
   );
 }
 
-function shouldLogSandboxEgressInfo(): boolean {
-  const environment = (
-    process.env.SENTRY_ENVIRONMENT ??
-    process.env.VERCEL_ENV ??
-    process.env.NODE_ENV ??
-    ""
-  )
-    .trim()
-    .toLowerCase();
-  return environment !== "production";
+/**
+ * Name the egress decision on every outcome event, so one query over
+ * `app.egress.policy.decision` gives the full trail for a request.
+ */
+export function egressDecisionAttributes(
+  decision: "allowed" | "denied",
+  reason?: string,
+): Record<string, string> {
+  return reason
+    ? {
+        "app.egress.policy.decision": decision,
+        "app.sandbox.egress.policy.reason": reason,
+      }
+    : { "app.egress.policy.decision": decision };
 }
 
 function egressAttributes(input: {
@@ -190,20 +184,15 @@ function egressAttributes(input: {
   };
 }
 
-function redactedProxyPath(pathname: string): string {
-  if (pathname.startsWith(`${SANDBOX_EGRESS_PROXY_PATH}/`)) {
-    return `${SANDBOX_EGRESS_PROXY_PATH}/<token>`;
-  }
-  return pathname;
-}
-
 function routingAttributes(
   request: Request,
   upstreamUrl?: URL,
 ): Record<string, unknown> {
   const proxyUrl = new URL(request.url);
   const attributes: Record<string, unknown> = {
-    "app.sandbox.egress.proxy_path": redactedProxyPath(proxyUrl.pathname),
+    "app.sandbox.egress.proxy_path": redactSandboxEgressProxyPath(
+      proxyUrl.pathname,
+    ),
   };
   if (upstreamUrl) {
     attributes["app.sandbox.egress.upstream_path"] = upstreamUrl.pathname;
@@ -251,31 +240,25 @@ function isEgressPolicyDenied(error: unknown): error is EgressPolicyDenied {
 }
 
 /**
- * Record one forwarded provider request. Write-grant requests are audit
- * events, so they reach Sentry in production. Other requests log only outside
- * production.
+ * Record one forwarded provider request as an audit event, so Sentry keeps
+ * reads and writes in production.
  */
 function logSandboxEgressUpstreamRequest(input: {
+  credentialContext: SandboxEgressCredentialContext;
   egressId: string;
-  grantAccess?: "read" | "write";
-  grantName: string;
-  grantReason?: string;
+  lease: SandboxEgressCredentialLease;
   provider: string;
   request: Request;
   upstream: Response;
   upstreamUrl: URL;
 }): void {
-  const isWrite = input.grantAccess === "write";
-  if (!isWrite && !shouldLogSandboxEgressInfo()) {
-    return;
-  }
-
-  (isWrite ? logAudit : logInfo)("sandbox.egress.upstream.requested", {
+  const { grant } = input.lease;
+  logAudit("sandbox.egress.upstream.requested", {
     ...egressAttributes({
       egressId: input.egressId,
-      grantAccess: input.grantAccess,
-      grantName: input.grantName,
-      grantReason: input.grantReason,
+      grantAccess: grant.access,
+      grantName: grant.name,
+      grantReason: grant.reason,
       host: input.upstreamUrl.hostname,
       method: input.request.method,
       path: input.upstreamUrl.pathname,
@@ -283,6 +266,13 @@ function logSandboxEgressUpstreamRequest(input: {
       status: input.upstream.status,
     }),
     ...routingAttributes(input.request, input.upstreamUrl),
+    ...credentialAuditAttributes(input.credentialContext.source),
+    ...grant.auditAttributes,
+    "app.credential.account": credentialAccount(
+      input.lease,
+      input.credentialContext.credentials,
+    ),
+    ...egressDecisionAttributes("allowed"),
     "app.sandbox.egress.upstream_ok": input.upstream.ok,
   });
 }
@@ -319,63 +309,34 @@ function unreadableBodyResponse(eventId: string | undefined): Response {
   );
 }
 
-type GitHubBodyInspection = "graphql" | "pull-request-review";
-
-/** Identify GitHub writes whose body determines whether a grant is safe. */
-function githubBodyInspection(input: {
+/** Identify GitHub review writes whose body decides whether a grant is safe. */
+function isGitHubPullRequestReviewPost(input: {
   provider: string;
   requestMethod: string;
   upstreamUrl: URL;
-}): GitHubBodyInspection | undefined {
-  if (
-    input.provider !== "github" ||
-    input.requestMethod.toUpperCase() !== "POST" ||
-    input.upstreamUrl.hostname.toLowerCase() !== "api.github.com"
-  ) {
-    return undefined;
-  }
-  const pathname = input.upstreamUrl.pathname.toLowerCase();
-  if (pathname.endsWith("/graphql")) {
-    return "graphql";
-  }
-  return /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews(?:\/[^/]+\/events)?$/.test(
-    pathname,
-  )
-    ? "pull-request-review"
-    : undefined;
+}): boolean {
+  return (
+    input.provider === "github" &&
+    input.requestMethod.toUpperCase() === "POST" &&
+    input.upstreamUrl.hostname.toLowerCase() === "api.github.com" &&
+    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews(?:\/[^/]+\/events)?$/.test(
+      input.upstreamUrl.pathname.toLowerCase(),
+    )
+  );
 }
 
-function grantSelectionBodyTooLargeMessage(
-  inspection: GitHubBodyInspection,
-): string {
-  return inspection === "graphql"
-    ? "GitHub GraphQL request body is too large to inspect before issuing credentials."
-    : "GitHub pull request review request body is too large to inspect before issuing credentials.";
-}
-
-function grantSelectionBodyText(input: {
-  body: ArrayBuffer | undefined;
-  provider: string;
-  request: Request;
-  upstreamUrl: URL;
-}): string | undefined {
-  if (input.body === undefined) {
+function grantSelectionBodyText(
+  body: ArrayBuffer | undefined,
+): string | undefined {
+  if (body === undefined) {
     return undefined;
   }
-  if (input.body.byteLength > GRANT_SELECTION_BODY_TEXT_LIMIT_BYTES) {
-    const inspection = githubBodyInspection({
-      provider: input.provider,
-      requestMethod: input.request.method,
-      upstreamUrl: input.upstreamUrl,
-    });
-    if (inspection) {
-      throw new EgressPolicyDenied(
-        grantSelectionBodyTooLargeMessage(inspection),
-      );
-    }
-    return undefined;
+  if (body.byteLength > GRANT_SELECTION_BODY_TEXT_LIMIT_BYTES) {
+    throw new EgressPolicyDenied(
+      "GitHub pull request review request body is too large to inspect before issuing credentials.",
+    );
   }
-  return new TextDecoder().decode(input.body);
+  return new TextDecoder().decode(body);
 }
 
 function responseContentLength(upstream: Response): number | undefined {
@@ -573,6 +534,23 @@ async function recordSandboxPermissionDenied(input: {
   });
 }
 
+async function recordSandboxPolicyDenied(input: {
+  credentialContext: SandboxEgressCredentialContext;
+  message: string;
+  provider: string;
+  request: Request;
+  upstreamUrl: URL;
+}): Promise<void> {
+  await setSandboxEgressPermissionDeniedSignal(input.credentialContext, {
+    message: input.message,
+    method: input.request.method.toUpperCase(),
+    provider: input.provider,
+    source: "policy",
+    upstreamHost: input.upstreamUrl.hostname,
+    upstreamPath: displayedUpstreamPath(input.upstreamUrl),
+  });
+}
+
 /**
  * Forward one verified sandbox egress request with host-managed credentials.
  *
@@ -618,25 +596,27 @@ export async function executeCredentialedEgressRequest(input: {
           status: 500,
         }),
         ...routingAttributes(request, upstreamUrl),
+        ...credentialAuditAttributes(credentialContext.source),
+        ...egressDecisionAttributes("denied", "request body is unreadable"),
       }),
     );
   }
-  const bodyForGrantSelection = githubBodyInspection({
-    provider,
-    requestMethod: request.method,
-    upstreamUrl,
-  })
-    ? body
-    : undefined;
   let grantSelection: SandboxEgressGrantSelection;
   try {
     grantSelection = await selectSandboxEgressGrant({
-      bodyText: grantSelectionBodyText({
-        body: bodyForGrantSelection,
+      ...(isGitHubPullRequestReviewPost({
         provider,
-        request,
+        requestMethod: request.method,
         upstreamUrl,
-      }),
+      })
+        ? { bodyText: grantSelectionBodyText(body) }
+        : undefined),
+      ...(isGitReceivePack(request.method, upstreamUrl)
+        ? { gitPush: readGitPush(body) }
+        : undefined),
+      ...(isGraphqlPost(request.method, upstreamUrl)
+        ? { graphql: await readGraphqlRequest(body) }
+        : undefined),
       ...(operation ? { operation } : undefined),
       provider,
       method: request.method,
@@ -654,26 +634,30 @@ export async function executeCredentialedEgressRequest(input: {
           status: 403,
         }),
         ...routingAttributes(request, upstreamUrl),
-        "app.sandbox.egress.policy.reason": error.message,
+        ...credentialAuditAttributes(credentialContext.source),
+        ...pluginAuditAttributesSchema.safeParse(error.auditAttributes).data,
+        ...egressDecisionAttributes("denied", error.message),
+      });
+      // Sandbox commands read this signal. Host plugin tools read the 403.
+      await recordSandboxPolicyDenied({
+        credentialContext,
+        message: error.message,
+        provider,
+        request,
+        upstreamUrl,
       });
       return policyDeniedResponse(error);
     }
     throw error;
   }
-  const issueCredentialLease =
-    deps.issueCredentialLease ?? sandboxEgressCredentialLease;
-  const clearCredentialLease =
-    deps.clearCredentialLease ?? clearSandboxEgressCredentialLease;
   const recordAuthRequired =
     deps.recordAuthRequired ?? recordSandboxAuthRequired;
-  const recordPermissionDenied =
-    deps.recordPermissionDenied ?? recordSandboxPermissionDenied;
 
   async function resolveLease(): Promise<
     SandboxEgressCredentialLease | Response
   > {
     try {
-      return await issueCredentialLease(
+      return await sandboxEgressCredentialLease(
         provider,
         grantSelection,
         credentialContext,
@@ -708,6 +692,8 @@ export async function executeCredentialedEgressRequest(input: {
             status: 401,
           }),
           ...routingAttributes(request, upstreamUrl),
+          ...credentialAuditAttributes(credentialContext.source),
+          ...egressDecisionAttributes("denied", error.message),
         },
       );
       return authRequiredResponse({
@@ -740,6 +726,11 @@ export async function executeCredentialedEgressRequest(input: {
   if (!hasSandboxEgressLeaseTransformForHost(lease, upstreamUrl.hostname)) {
     logWarn("sandbox.egress.transform.missing", {
       ...attributes(lease, 403),
+      ...credentialAuditAttributes(credentialContext.source),
+      ...egressDecisionAttributes(
+        "denied",
+        "credential lease does not cover forwarded host",
+      ),
       "app.sandbox.egress.transform_domains": lease.headerTransforms.map(
         (transform) => transform.domain,
       ),
@@ -801,7 +792,11 @@ export async function executeCredentialedEgressRequest(input: {
       if (!isEgressAuthRequired(error)) {
         throw error;
       }
-      await clearCredentialLease(provider, lease.grant, credentialContext);
+      await clearSandboxEgressCredentialLease(
+        provider,
+        lease.grant,
+        credentialContext,
+      );
       await recordAuthRequired({
         credentialContext,
         provider,
@@ -820,10 +815,9 @@ export async function executeCredentialedEgressRequest(input: {
       });
     }
     logSandboxEgressUpstreamRequest({
+      credentialContext,
       egressId: activeEgressId,
-      grantAccess: lease.grant.access,
-      grantName: lease.grant.name,
-      grantReason: lease.grant.reason,
+      lease,
       provider,
       request,
       upstream,
@@ -841,7 +835,11 @@ export async function executeCredentialedEgressRequest(input: {
         "app.sandbox.egress.www_authenticate":
           upstream.headers.get("www-authenticate") ?? undefined,
       });
-      await clearCredentialLease(provider, lease.grant, credentialContext);
+      await clearSandboxEgressCredentialLease(
+        provider,
+        lease.grant,
+        credentialContext,
+      );
       await recordAuthRequired({
         credentialContext,
         provider,
@@ -863,7 +861,11 @@ export async function executeCredentialedEgressRequest(input: {
       logWarn("sandbox.egress.upstream_auth.rejected", {
         ...attributes(lease, upstream.status),
       });
-      await clearCredentialLease(provider, lease.grant, credentialContext);
+      await clearSandboxEgressCredentialLease(
+        provider,
+        lease.grant,
+        credentialContext,
+      );
       await upstream.body?.cancel().catch(() => undefined);
       logWarn("sandbox.egress.upstream_auth.retrying", {
         ...attributes(lease, upstream.status),
@@ -880,8 +882,12 @@ export async function executeCredentialedEgressRequest(input: {
       logWarn("sandbox.egress.upstream_auth.rejected", {
         ...attributes(lease, upstream.status),
       });
-      await clearCredentialLease(provider, lease.grant, credentialContext);
-      await recordPermissionDenied({
+      await clearSandboxEgressCredentialLease(
+        provider,
+        lease.grant,
+        credentialContext,
+      );
+      await recordSandboxPermissionDenied({
         credentialContext,
         provider,
         lease,
@@ -904,7 +910,7 @@ export async function executeCredentialedEgressRequest(input: {
     }
 
     if (pluginPermissionDenied) {
-      await recordPermissionDenied({
+      await recordSandboxPermissionDenied({
         credentialContext,
         provider,
         lease,

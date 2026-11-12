@@ -1,7 +1,7 @@
 import { readMessageAttachments } from "@/chat/attachments/input";
 import type { User } from "@sentry/junior-plugin-api";
-import { z } from "zod";
-import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
+import * as z from "zod";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import { loadConversationSlackTenantIds } from "@/chat/conversations/sql/event-actor";
 import { parseContent } from "@/chat/slack/message/content";
 import { lookupSlackUser } from "@/chat/slack/user";
@@ -11,14 +11,17 @@ import {
 } from "@/chat/task-execution/store";
 import { throwApiError } from "../http";
 import { resolveMentions } from "../mentions";
+import { type ActorIdentity } from "../schema/conversation";
 import {
   conversationPendingMessagesReportSchema,
-  type ActorIdentity,
   type ConversationPendingMessage,
   type ConversationPendingMessagesReport,
-} from "../schema/conversation";
-import { readConversationAccessFromSql } from "./access";
-import { webActorFromEmail } from "@/chat/conversations/web-input";
+} from "../schema/conversation-pending-messages";
+import {
+  createConversationAccessReader,
+  type ConversationAccessReader,
+} from "./access";
+import { webActorUserIds } from "@/chat/conversations/legacy-web-actor-id";
 import { getWebAuthorization } from "@/chat/conversations/web-authorization";
 import {
   legacyWebMailboxMetadataSchema,
@@ -127,6 +130,9 @@ async function projectPendingMessage(
             actorIdentity: actorIdentityFromWebMetadata(metadata.data),
             text,
             ...(attachments.length ? { attachments } : undefined),
+            ...(message.input.reviewItemChange
+              ? { reviewItemChange: message.input.reviewItemChange }
+              : undefined),
           }
         : { redacted: true as const }),
     };
@@ -170,6 +176,9 @@ async function projectPendingMessage(
       role: "user",
       source: "slack",
       ...(actorIdentity ? { actorIdentity } : undefined),
+      ...(message.input.reviewItemChange
+        ? { reviewItemChange: message.input.reviewItemChange }
+        : undefined),
       text,
     };
   }
@@ -199,6 +208,21 @@ async function attachPendingMentions(
   );
 }
 
+/** Read the viewer's pending authorization, also one saved before a deploy. */
+async function findViewerWebAuthorization(
+  conversationId: string,
+  viewer: User,
+) {
+  for (const actorId of webActorUserIds(viewer)) {
+    const authorization = await getWebAuthorization({
+      actorId,
+      conversationId,
+    });
+    if (authorization) return authorization;
+  }
+  return undefined;
+}
+
 /**
  * Read accepted mailbox messages that have not reached durable history yet.
  *
@@ -207,26 +231,21 @@ async function attachPendingMentions(
  */
 export async function readConversationPendingMessages(
   conversationId: string,
-  options: { viewer?: User } = {},
+  options: { readAccess?: ConversationAccessReader; viewer?: User } = {},
 ): Promise<ConversationPendingMessagesReport | undefined> {
-  const conversation = await getConversationStore().get({ conversationId });
-  if (!conversation) return undefined;
+  // A detail request passes its reader, so it reads access only once.
+  const readAccess =
+    options.readAccess ??
+    createConversationAccessReader(getDb(), options.viewer);
+  // Access has an entry only for a stored Conversation.
+  const access = (await readAccess([conversationId])).get(conversationId);
+  if (!access) return undefined;
 
-  const access = (
-    await readConversationAccessFromSql(
-      getDb(),
-      [conversationId],
-      options.viewer,
-    )
-  ).get(conversationId);
-  const canExposePayload = access?.canViewPrivateContent ?? false;
-  const isParticipant = access?.isParticipant ?? false;
-  const actorId = options.viewer?.email
-    ? webActorFromEmail(options.viewer.email).userId
-    : undefined;
+  const canExposePayload = access.canViewPrivateContent;
+  const isParticipant = access.isParticipant;
   const authorization =
-    isParticipant && actorId
-      ? await getWebAuthorization({ actorId, conversationId })
+    isParticipant && options.viewer
+      ? await findViewerWebAuthorization(conversationId, options.viewer)
       : undefined;
 
   const work = await getConversation({ conversationId });
@@ -268,7 +287,7 @@ export async function readConversationPendingMessages(
 /** Load pending mailbox messages or throw a standard API not-found error. */
 export async function requireConversationPendingMessages(
   conversationId: string,
-  options: { viewer?: User } = {},
+  options: { readAccess?: ConversationAccessReader; viewer?: User } = {},
 ): Promise<ConversationPendingMessagesReport> {
   const report = await readConversationPendingMessages(conversationId, options);
   if (!report) throwApiError(404, "Conversation not found.");

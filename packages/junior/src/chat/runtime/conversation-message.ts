@@ -1,3 +1,4 @@
+import { getMessageReviewItemChange } from "@/chat/review-items/message-change";
 import { getSlackFileId } from "@/chat/slack/attachments";
 import type { Message } from "chat";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
@@ -46,6 +47,7 @@ export function toConversationMessage(
   const authorIdentityId = args.entry.author.isMe
     ? undefined
     : getMessageAuthorIdentityId(args.entry);
+  const reviewItemChange = getMessageReviewItemChange(args.entry);
 
   return {
     id: args.entry.id,
@@ -72,6 +74,9 @@ export function toConversationMessage(
       imageAttachmentCount:
         imageAttachmentCount > 0 ? imageAttachmentCount : undefined,
       imagesHydrated: !messageHasPotentialImageAttachment,
+      ...(reviewItemChange
+        ? { reviewItemChanges: [reviewItemChange] }
+        : undefined),
       source: "slack",
       ...(slackTs ? { slackTs } : undefined),
     },

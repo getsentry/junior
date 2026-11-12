@@ -5,7 +5,7 @@ import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { dashboardContainerClass } from "../../styles";
-import { pluginUserPagePath } from "../user/PluginUserPage";
+import { pluginUserPagePath } from "../user/pluginUserPageRoutes";
 import {
   ServiceAccountsSection,
   useServiceAccounts,

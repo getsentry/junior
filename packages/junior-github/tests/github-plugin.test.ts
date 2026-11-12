@@ -228,8 +228,7 @@ async function prepareCommitMsgHookFixture(initialMessage: string) {
     hookPath,
     juniorRoot: dir,
     messagePath,
-    runHook: () =>
-      spawnSync("bash", [hookPath, messagePath], { cwd: dir, env }),
+    runHook: () => spawnSync("sh", [hookPath, messagePath], { cwd: dir, env }),
   };
 }
 
@@ -420,7 +419,7 @@ function githubToolsContext(input?: {
     },
     embedder: {},
     ...(input?.conversationLink
-      ? { slack: { conversationLink: { url: input.conversationLink } } }
+      ? { conversationLink: { url: input.conversationLink } }
       : undefined),
     egress: {
       async fetch(request: {
@@ -654,7 +653,7 @@ describe("github plugin", () => {
       },
       "pull_request.comment.created": {
         guidance: expect.stringContaining(
-          "exact repo, commentId, and commentKind from Verified details",
+          "exact repo, pull_request, comment_id, and comment_kind from Verified details",
         ),
       },
       "pull_request.review_comment.created": {
@@ -782,6 +781,7 @@ describe("github plugin", () => {
     expect(
       await grantForEgress({
         method: "GET",
+        operation: "github.issue.get",
         url: "https://api.github.com/repos/getsentry/junior/issues/449",
       }),
     ).toMatchObject({
@@ -967,11 +967,12 @@ describe("github plugin", () => {
         namespace: "github",
         identifier: "getsentry/junior#660",
         type: "issue",
-        supportedEvents: [
+        supported_events: [
           "issue.comment.created",
           "issue.opened",
           "issue.closed",
           "issue.reopened",
+          "issue.updated",
         ],
       },
       url: "https://github.com/getsentry/junior/issues/660",
@@ -1488,22 +1489,25 @@ Conversation: \`local:test:old-conversation\`
           { status: 201 },
         ),
     });
-    const plugin = githubPlugin();
+    // With the default Watch off, every pull request event stays suggested.
+    const plugin = githubPlugin({
+      pullRequestEvents: { subscribeAfterCreate: false },
+    });
     const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
 
-    await expect(
-      tool?.execute?.(
-        {
-          repo: "getsentry/junior",
-          title: "Typed PR",
-          head: "dcramer/gh-660-pr-create",
-          base: "main",
-          body: "PR body",
-          draft: true,
-        },
-        { toolCallId: "call-create-pull-request" },
-      ),
-    ).resolves.toMatchObject({
+    const result = await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "dcramer/gh-660-pr-create",
+        base: "main",
+        body: "PR body",
+        draft: true,
+      },
+      { toolCallId: "call-create-pull-request" },
+    );
+    expect(result).not.toHaveProperty("subscription");
+    expect(result).toMatchObject({
       objectAnnotations: [
         {
           kind: "object",
@@ -1520,7 +1524,7 @@ Conversation: \`local:test:old-conversation\`
         label: "GitHub PR getsentry/junior#691",
         namespace: "github",
         identifier: "getsentry/junior#691",
-        suggestedEvents: [
+        suggested_events: [
           "pull_request.checks.failed",
           "pull_request.comment.created",
           "pull_request.ready_for_review",
@@ -1531,7 +1535,7 @@ Conversation: \`local:test:old-conversation\`
           "pull_request.closed_unmerged",
           "pull_request.merge_conflict",
         ],
-        supportedEvents: [
+        supported_events: [
           "pull_request.checks.failed",
           "pull_request.checks.recovered",
           "pull_request.comment.created",
@@ -1609,7 +1613,7 @@ Conversation: \`local:test:old-conversation\`
       ),
     ).resolves.toMatchObject({
       subscribable: {
-        suggestedEvents: expect.not.arrayContaining([
+        suggested_events: expect.not.arrayContaining([
           "pull_request.checks.failed",
           "pull_request.review.changes_requested",
         ]),
@@ -1627,8 +1631,7 @@ Conversation: \`local:test:old-conversation\`
     });
     // Merge conflicts always reach the Watch, so Junior keeps its pull
     // request ready to merge. Approval and merge always reach the people
-    // involved, so the Watch stores guidance for those outcomes. A merge
-    // restacks the open pull requests above it first.
+    // involved, so the Watch stores guidance for those outcomes.
     expect(subscribe).toHaveBeenCalledWith({
       events: [
         "pull_request.checks.failed",
@@ -1641,8 +1644,8 @@ Conversation: \`local:test:old-conversation\`
         "pull_request.review.approved": expect.stringContaining(
           "Mention each person in People involved",
         ),
-        "pull_request.merged": expect.stringMatching(
-          /gh stack sync[\s\S]*mention each person in People involved/,
+        "pull_request.merged": expect.stringContaining(
+          "Mention each person in People involved",
         ),
       },
       intent: "Report failed checks and requested changes.",
@@ -1651,6 +1654,71 @@ Conversation: \`local:test:old-conversation\`
         type: "pull_request",
       }),
     });
+  });
+
+  it("gives the Watch of a draft its passing checks", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const subscribe = vi.fn(async ({ events }) => ({
+      events,
+      id: "subscription-1",
+    }));
+    const ctx = githubToolsContext({ subscribe });
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "feature",
+        base: "main",
+        draft: true,
+      },
+      { toolCallId: "call-create-draft-pull-request-watch" },
+    );
+    // Junior marks its draft ready when the required checks pass.
+    expect(subscribe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        events: expect.arrayContaining(["pull_request.checks.recovered"]),
+        guidance: expect.objectContaining({
+          "pull_request.checks.recovered": expect.stringContaining(
+            "mark it ready with github_updatePullRequest and draft false",
+          ),
+        }),
+      }),
+    );
+  });
+
+  it("subscribes the default maintenance Watch when the app configures none", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const subscribe = vi.fn(async ({ events }) => ({
+      events,
+      id: "subscription-1",
+    }));
+    const ctx = githubToolsContext({ subscribe });
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "feature",
+        base: "main",
+      },
+      { toolCallId: "call-create-pull-request-default-watch" },
+    );
+    expect(subscribe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        events: expect.arrayContaining([
+          "pull_request.checks.failed",
+          "pull_request.review_comment.created",
+          "pull_request.closed_unmerged",
+          "pull_request.merged",
+        ]),
+        intent: expect.stringContaining(
+          "Reply on GitHub to review comments and questions",
+        ),
+      }),
+    );
   });
 
   it("returns the created pull request when subscribe-after-create fails", async () => {
@@ -1683,7 +1751,9 @@ Conversation: \`local:test:old-conversation\`
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
       subscribable: {
-        suggestedEvents: expect.arrayContaining(["pull_request.checks.failed"]),
+        suggested_events: expect.arrayContaining([
+          "pull_request.checks.failed",
+        ]),
       },
     });
     expect(result).not.toHaveProperty("subscription");
@@ -1753,6 +1823,7 @@ Conversation: \`local:test:old-conversation\`
       { toolCallId: "call-create-identity-pull-request" },
     );
 
+    // A draft gets no review request until it is ready for review.
     expect(ctx.egressRequests()).toHaveLength(2);
     const assignment = ctx.egressRequests()[1];
     expect(assignment).toMatchObject({
@@ -1771,6 +1842,235 @@ Conversation: \`local:test:old-conversation\`
       body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer_sentry.\n<!-- junior-request-attribution:end -->",
     });
   });
+
+  it("asks the named reviewers and keeps the requester as the assignee", async () => {
+    const ctx = githubToolsContext({
+      actor: { platform: "slack", teamId: "T1", userId: "U1" },
+      resolveActor: async () => ({
+        identity: {
+          id: "slack-id",
+          provider: "slack",
+          providerSubjectId: "U1",
+        },
+        user: {
+          id: "user-1",
+          identities: [
+            {
+              id: "github-id",
+              provider: "github",
+              providerSubjectId: "1473041",
+              handle: "dcramer",
+            },
+          ],
+        },
+      }),
+      egressFetch: async ({ operation }) =>
+        operation === "github.pull.create"
+          ? Response.json(
+              {
+                number: 693,
+                html_url: "https://github.com/getsentry/junior/pull/693",
+              },
+              { status: 201 },
+            )
+          : Response.json({}),
+    });
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "feature",
+        base: "main",
+        reviewers: ["@octocat", "jane"],
+      },
+      { toolCallId: "call-create-pull-request-reviewers" },
+    );
+
+    expect(ctx.egressRequests().map(({ operation }) => operation)).toEqual([
+      "github.pull.create",
+      "github.pull.assign",
+      "github.pull.request_reviewers",
+    ]);
+    await expect(ctx.egressRequests()[1].request.json()).resolves.toEqual({
+      assignees: ["dcramer"],
+    });
+    const reviewRequest = ctx.egressRequests()[2].request;
+    expect(reviewRequest.url).toBe(
+      "https://api.github.com/repos/getsentry/junior/pulls/693/requested_reviewers",
+    );
+    await expect(reviewRequest.json()).resolves.toEqual({
+      reviewers: ["octocat", "jane"],
+    });
+  });
+
+  it("rejects an invalid reviewer before it opens the pull request", async () => {
+    const ctx = githubToolsContext();
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Typed PR",
+          head: "feature",
+          base: "main",
+          reviewers: ["not a login"],
+        },
+        { toolCallId: "call-create-pull-request-bad-reviewer" },
+      ),
+    ).rejects.toThrow("Invalid GitHub reviewer login: not a login");
+    expect(ctx.egressRequests()).toEqual([]);
+  });
+
+  it.each([
+    {
+      name: "creates a stack with the pull request below",
+      stacks: [],
+      write: {
+        operation: "github.stack.create",
+        url: "https://api.github.com/repos/getsentry/junior/stacks",
+        pullRequests: [700, 701],
+      },
+      stack: [700, 701],
+    },
+    {
+      name: "adds to the stack whose top is the pull request below",
+      stacks: [
+        { number: 9, pull_requests: [{ number: 699 }, { number: 700 }] },
+      ],
+      write: {
+        operation: "github.stack.add",
+        url: "https://api.github.com/repos/getsentry/junior/stacks/9/add",
+        pullRequests: [701],
+      },
+      stack: [699, 700, 701],
+    },
+  ])(
+    "links a pull request based on another pull request branch: $name",
+    async ({ stack, stacks, write }) => {
+      const repo = { default_branch: "main", full_name: "getsentry/junior" };
+      const ctx = githubToolsContext({
+        egressFetch: async ({ operation, request }) => {
+          if (operation === "github.pull.create") {
+            return Response.json(
+              {
+                number: 701,
+                html_url: "https://github.com/getsentry/junior/pull/701",
+                head: { ref: "feat/top", repo },
+                base: { ref: "feat/bottom", repo },
+              },
+              { status: 201 },
+            );
+          }
+          if (operation === "github.pull.list") {
+            // An open sync pull request from main must not join the stack.
+            const head = new URL(request.url).searchParams.get("head");
+            if (head === "getsentry:main") {
+              return Response.json([
+                { number: 600, base: { ref: "feat/long-lived" } },
+              ]);
+            }
+            return Response.json(
+              head === "getsentry:feat/bottom"
+                ? [{ number: 700, base: { ref: "main" } }]
+                : [],
+            );
+          }
+          if (operation === "github.stack.read") return Response.json(stacks);
+          return Response.json({
+            number: 9,
+            pull_requests: stack.map((number) => ({ number })),
+          });
+        },
+      });
+      const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+      await expect(
+        tool?.execute?.(
+          {
+            repo: "getsentry/junior",
+            title: "Top of the stack",
+            head: "feat/top",
+            base: "feat/bottom",
+          },
+          { toolCallId: "call-create-stacked-pull-request" },
+        ),
+      ).resolves.toMatchObject({
+        number: 701,
+        stack: { number: 9, pull_requests: stack },
+      });
+      const stackWrite = ctx.egressRequests().at(-1)!;
+      expect(stackWrite).toMatchObject({ operation: write.operation });
+      expect(stackWrite.request.method).toBe("POST");
+      expect(stackWrite.request.url).toBe(write.url);
+      await expect(stackWrite.request.json()).resolves.toEqual({
+        pull_requests: write.pullRequests,
+      });
+    },
+  );
+
+  it.each([
+    { name: "a sync from the trunk", head: "main", bottomBase: "main" },
+    { name: "base branches that loop", head: "feat/a", bottomBase: "feat/a" },
+  ])(
+    "does not stack a pull request on a loop of base branches: $name",
+    async ({ head, bottomBase }) => {
+      const repo = { default_branch: "main", full_name: "getsentry/junior" };
+      const ctx = githubToolsContext({
+        egressFetch: async ({ operation, request }) => {
+          if (operation === "github.pull.create") {
+            return Response.json(
+              {
+                number: 701,
+                html_url: "https://github.com/getsentry/junior/pull/701",
+                head: { ref: head, repo },
+                base: { ref: "feat/long-lived", repo },
+              },
+              { status: 201 },
+            );
+          }
+          if (operation === "github.pull.list") {
+            // Pull request 700 merges feat/long-lived into the head of 701.
+            const branch = new URL(request.url).searchParams.get("head");
+            if (branch === "getsentry:feat/long-lived") {
+              return Response.json([
+                { number: 700, base: { ref: bottomBase } },
+              ]);
+            }
+            return Response.json(
+              branch === `getsentry:${head}`
+                ? [{ number: 701, base: { ref: "feat/long-lived" } }]
+                : [],
+            );
+          }
+          if (operation === "github.stack.read") return Response.json([]);
+          return Response.json({ number: 9, pull_requests: [] });
+        },
+      });
+      const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+      const result = await tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Update long-lived branch",
+          head,
+          base: "feat/long-lived",
+        },
+        { toolCallId: "call-create-looped-pull-request" },
+      );
+
+      expect(result).toMatchObject({ number: 701 });
+      expect(result).not.toHaveProperty("stack");
+      expect(
+        ctx
+          .egressRequests()
+          .filter(({ request }) => request.method === "POST")
+          .map(({ operation }) => operation),
+      ).not.toContainEqual(expect.stringMatching(/^github\.stack\./));
+    },
+  );
 
   it("omits requester attribution when identity and actor names are unresolved", async () => {
     const ctx = githubToolsContext({
@@ -1959,7 +2259,7 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it.each(["rejected", "ignored", "network", "auth"])(
-    "returns and replays the created pull request after %s assignment",
+    "returns and replays the created pull request after %s assignment and review request",
     async (failure) => {
       process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
       let handle = "dcramer";
@@ -1985,7 +2285,10 @@ Conversation: \`local:test:old-conversation\`
           },
         }),
         egressFetch: async ({ operation }) => {
-          if (operation === "github.pull.assign") {
+          if (
+            operation === "github.pull.assign" ||
+            operation === "github.pull.request_reviewers"
+          ) {
             if (failure === "network") throw new Error("network unavailable");
             if (failure === "auth")
               throw new EgressAuthRequired("GitHub authorization required.", {
@@ -2041,7 +2344,8 @@ Conversation: \`local:test:old-conversation\`
         },
         url: "https://github.com/getsentry/junior/pull/691",
       });
-      // A replay must not try assignment again, even if the requester changes.
+      // A replay must not try assignment or the review request again, even if
+      // the requester changes.
       handle = "someone-else";
       await expect(
         tool?.execute?.(
@@ -2070,10 +2374,10 @@ Conversation: \`local:test:old-conversation\`
         url: "https://github.com/getsentry/junior/pull/691",
       });
 
-      expect(ctx.egressRequests()).toHaveLength(2);
       expect(ctx.egressRequests().map(({ operation }) => operation)).toEqual([
         "github.pull.create",
         "github.pull.assign",
+        "github.pull.request_reviewers",
       ]);
       const assignment = ctx.egressRequests()[1].request;
       expect(assignment.url).toBe(
@@ -2081,6 +2385,13 @@ Conversation: \`local:test:old-conversation\`
       );
       await expect(assignment.json()).resolves.toEqual({
         assignees: ["dcramer"],
+      });
+      const reviewRequest = ctx.egressRequests()[2].request;
+      expect(reviewRequest.url).toBe(
+        "https://api.github.com/repos/getsentry/junior/pulls/691/requested_reviewers",
+      );
+      await expect(reviewRequest.json()).resolves.toEqual({
+        reviewers: ["dcramer"],
       });
     },
   );
@@ -2178,9 +2489,11 @@ Conversation: \`local:test:old-conversation\`
         },
         { toolCallId: "call-invalid-pr-base" },
       ),
-    ).rejects.toThrow(
-      "GitHub pull request creation failed with HTTP 422: Validation Failed: resource=PullRequest field=base code=invalid",
-    );
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message:
+        "GitHub pull request creation failed with HTTP 422: Validation Failed: resource=PullRequest field=base code=invalid",
+    });
 
     await expect(
       tool?.execute?.(
@@ -2271,184 +2584,12 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("treats GitHub GraphQL GET as read and denies ambiguous POST", async () => {
-    expect(
-      await grantForEgress({
-        method: "GET",
-        url: "https://api.github.com/graphql",
-      }),
-    ).toMatchObject({
-      name: "installation-read",
-      access: "read",
-      reason: "github.graphql-read",
-    });
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-      }),
-    ).rejects.toThrow("GraphQL mutations are not enabled");
-  });
-
-  it("selects installation-read for GitHub GraphQL read operations", async () => {
-    expect(
-      await grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          query: `query IssueList {
-            repository(owner: "getsentry", name: "junior-prod") {
-              issues(first: 20) { nodes { number title } }
-            }
-          }`,
-        }),
-      }),
-    ).toMatchObject({
-      name: "installation-read",
-      access: "read",
-      reason: "github.graphql-read",
-    });
-    expect(
-      await grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          query: "{ viewer { login } }",
-        }),
-      }),
-    ).toMatchObject({
-      name: "installation-read",
-      access: "read",
-      reason: "github.graphql-read",
-    });
-    expect(
-      await grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          query:
-            'query SearchIssues { search(query: "mutation subscription", type: ISSUE, first: 1) { nodes { ... on Issue { number } } } }',
-        }),
-      }),
-    ).toMatchObject({
-      name: "installation-read",
-      access: "read",
-      reason: "github.graphql-read",
-    });
-    expect(
-      await grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          operationName: "ReadIssues",
-          query:
-            'query ReadIssues { repository(owner: "getsentry", name: "junior-prod") { issues(first: 1) { nodes { number } } } } mutation CreateIssue { createIssue(input: {repositoryId: "repo", title: "test"}) { issue { number } } }',
-        }),
-      }),
-    ).toMatchObject({
-      name: "installation-read",
-      access: "read",
-      reason: "github.graphql-read",
-    });
-  });
-
-  it("allows only the typed resolveReviewThread mutation with repository scope", async () => {
-    const bodyText = JSON.stringify({
-      operationName: "ResolveReviewThread",
-      query:
-        "mutation ResolveReviewThread($threadId: ID!) { resolveReviewThread(input: {threadId: $threadId}) { thread { id isResolved } } }",
-      variables: { threadId: "PRRT_kwDOthread" },
-    });
-    await expect(
-      grantForEgress({
-        method: "POST",
-        operation: "github.pull.review-thread.resolve:getsentry/junior",
-        url: "https://api.github.com/graphql",
-        bodyText,
-      }),
-    ).resolves.toMatchObject({
-      name: "installation-write",
-      access: "write",
-      reason: "github.installation-write",
-    });
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText,
-      }),
-    ).rejects.toThrow("GraphQL mutations are not enabled");
-    await expect(
-      grantForEgress({
-        method: "POST",
-        operation: "github.pull.review-thread.resolve:getsentry/junior",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          operationName: "AddIssueComment",
-          query:
-            'mutation AddIssueComment { addComment(input: {subjectId: "I_kwDO", body: "test"}) { clientMutationId } }',
-        }),
-      }),
-    ).rejects.toThrow("GraphQL mutations are not enabled");
-  });
-
-  it.each([
-    ["MarkPullRequestReadyForReview", "markPullRequestReadyForReview"],
-    ["ConvertPullRequestToDraft", "convertPullRequestToDraft"],
-  ])(
-    "allows only the typed %s mutation with repository scope",
-    async (operationName, field) => {
-      const bodyText = JSON.stringify({
-        operationName,
-        query: `mutation ${operationName}($id: ID!) { ${field}(input: {pullRequestId: $id}) { pullRequest { isDraft } } }`,
-        variables: { id: "PR_kwDO" },
-      });
-      await expect(
-        grantForEgress({
-          method: "POST",
-          operation: "github.pull.draft.update:getsentry/junior",
-          url: "https://api.github.com/graphql",
-          bodyText,
-        }),
-      ).resolves.toMatchObject({
-        name: "installation-write",
-        access: "write",
-      });
-      await expect(
-        grantForEgress({
-          method: "POST",
-          url: "https://api.github.com/graphql",
-          bodyText,
-        }),
-      ).rejects.toThrow("GraphQL mutations are not enabled");
-      await expect(
-        grantForEgress({
-          method: "POST",
-          operation: "github.pull.review-thread.resolve:getsentry/junior",
-          url: "https://api.github.com/graphql",
-          bodyText,
-        }),
-      ).rejects.toThrow("GraphQL mutations are not enabled");
-    },
-  );
-
   it("routes pull request review and feedback writes to typed tools", async () => {
     await expect(
       grantForEgress({
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews",
         bodyText: JSON.stringify({ event: "COMMENT", body: "review" }),
-      }),
-    ).rejects.toThrow("must use the github_submitPullRequestReview tool");
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          operationName: "AddPullRequestReview",
-          query:
-            "mutation AddPullRequestReview($input: AddPullRequestReviewInput!) { addPullRequestReview(input: $input) { pullRequestReview { id } } }",
-        }),
       }),
     ).rejects.toThrow("must use the github_submitPullRequestReview tool");
     await expect(
@@ -2471,87 +2612,40 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("denies GitHub GraphQL mutations and unparseable bodies", async () => {
+  it("routes issue comment edits and issue reactions to typed tools", async () => {
+    await expect(
+      grantForEgress({
+        method: "PATCH",
+        url: "https://api.github.com/repos/getsentry/junior/issues/comments/99",
+      }),
+    ).rejects.toThrow("must use the github_updateIssueComment tool");
+    await expect(
+      grantForEgress({
+        method: "PATCH",
+        operation: "github.issue.comment.update",
+        url: "https://api.github.com/repos/getsentry/junior/issues/comments/99",
+      }),
+    ).resolves.toMatchObject({ name: "installation-write", access: "write" });
     await expect(
       grantForEgress({
         method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          query: `mutation AddIssueComment {
-            addComment(input: {subjectId: "I_kwDO", body: "test"}) {
-              clientMutationId
-            }
-          }`,
-        }),
+        url: "https://api.github.com/repos/getsentry/junior/issues/3037/reactions",
       }),
-    ).rejects.toThrow("GraphQL mutations are not enabled");
+    ).rejects.toThrow("must use the github_reactToIssue tool");
     await expect(
       grantForEgress({
         method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          query:
-            "fragment prFields on PullRequest { number } mutation UpdatePullRequest($input: UpdatePullRequestInput!) { updatePullRequest(input: $input) { pullRequest { ...prFields } } }",
-        }),
+        operation: "github.issue.reaction.create",
+        url: "https://api.github.com/repos/getsentry/junior/issues/3037/reactions",
       }),
-    ).rejects.toThrow("must use the github_updatePullRequest tool");
+    ).resolves.toMatchObject({ name: "installation-write", access: "write" });
     await expect(
       grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: "{",
+        method: "DELETE",
+        operation: "github.issue.comment.update",
+        url: "https://api.github.com/repos/getsentry/junior/issues/comments/99",
       }),
-    ).rejects.toThrow("GraphQL mutations are not enabled");
-  });
-
-  it("denies GraphQL createIssue mutations from raw egress", async () => {
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          operationName: "CreateIssue",
-          query:
-            'query ReadIssues { repository(owner: "getsentry", name: "junior-prod") { issues(first: 1) { nodes { number } } } } mutation CreateIssue { createIssue(input: {repositoryId: "repo", title: "test"}) { issue { number } } }',
-        }),
-      }),
-    ).rejects.toThrow("must use the github_createIssue tool");
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          operationName: "CreateIssue",
-          query:
-            'fragment createIssueFields on Mutation { createIssue(input: {repositoryId: "repo", title: "test"}) { issue { number } } } mutation CreateIssue { ...createIssueFields }',
-        }),
-      }),
-    ).rejects.toThrow("must use the github_createIssue tool");
-  });
-
-  it("denies GraphQL createPullRequest mutations from raw egress", async () => {
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          operationName: "OpenPullRequest",
-          query:
-            'query ReadPulls { repository(owner: "getsentry", name: "junior") { pullRequests(first: 1) { nodes { number } } } } mutation OpenPullRequest($input: CreatePullRequestInput!) { createPullRequest(input: $input) { pullRequest { number } } }',
-        }),
-      }),
-    ).rejects.toThrow("must use the github_createPullRequest tool");
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          operationName: "OpenPullRequest",
-          query:
-            'fragment createPullRequestFields on Mutation { createPullRequest(input: {repositoryId: "repo", title: "test", headRefName: "branch", baseRefName: "main"}) { pullRequest { number } } } mutation OpenPullRequest { ...createPullRequestFields }',
-        }),
-      }),
-    ).rejects.toThrow("must use the github_createPullRequest tool");
+    ).rejects.toThrow("This GitHub write request is not supported.");
   });
 
   it("denies raw issue and pull request metadata updates", async () => {
@@ -2574,6 +2668,28 @@ Conversation: \`local:test:old-conversation\`
         url: "https://api.github.com/repos/getsentry/junior/pulls/780",
       }),
     ).rejects.toThrow("must use the github_updatePullRequest tool");
+  });
+
+  it("routes raw issue reads to github_getIssue", async () => {
+    await expect(
+      grantForEgress({
+        method: "GET",
+        url: "https://api.github.com/repos/getsentry/junior/issues/2768",
+      }),
+    ).rejects.toThrow("Use github_getIssue");
+    await expect(
+      grantForEgress({
+        method: "GET",
+        operation: "github.issue.get",
+        url: "https://api.github.com/repos/getsentry/junior/issues/2768",
+      }),
+    ).resolves.toMatchObject({ access: "read" });
+    await expect(
+      grantForEgress({
+        method: "GET",
+        url: "https://api.github.com/repos/getsentry/junior/issues/2768/comments",
+      }),
+    ).resolves.toMatchObject({ access: "read" });
   });
 
   it("keeps unsupported repository writes outside the allowlist", async () => {
@@ -2643,6 +2759,13 @@ Conversation: \`local:test:old-conversation\`
     await expect(
       grantForEgress({
         method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/comments/42/replies",
+      }),
+    ).rejects.toThrow("must use the github_commentOnPullRequest tool");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        operation: "github.pull.comment.create",
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/comments/42/replies",
       }),
     ).resolves.toMatchObject({
@@ -4091,6 +4214,140 @@ Conversation: \`local:test:old-conversation\`
     }
   });
 
+  it("keeps existing co-authors and authors when a run with no human actor rewrites commits", async () => {
+    const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { spawnSync } = await import("node:child_process");
+
+    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
+    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+
+    const hook = await prepareCommitMsgHookFixture("unused\n");
+    const human = beforeToolContext({
+      email: "david@example.com",
+      fullName: "David Cramer",
+      userId: "U039RR91S",
+      userName: "dcramer",
+    });
+    human.ctx.juniorRoot = hook.juniorRoot;
+    await githubPlugin().hooks?.beforeToolExecute?.(human.ctx as never);
+    // A PR follow-up run, such as a failed check or review comment event.
+    const event = beforeToolContext({ platform: "system", name: "event" });
+    event.ctx.juniorRoot = hook.juniorRoot;
+    await githubPlugin().hooks?.beforeToolExecute?.(event.ctx as never);
+    expect(event.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe("");
+
+    const repoDir = mkdtempSync(join(tmpdir(), "junior-github-rewrite-"));
+    const git = (env: Record<string, string>, ...args: string[]) =>
+      spawnSync(
+        "git",
+        [
+          "-c",
+          "commit.gpgsign=false",
+          "-c",
+          "init.defaultBranch=main",
+          ...args,
+        ],
+        { cwd: repoDir, env: { ...process.env, ...env } },
+      );
+    const ok = (env: Record<string, string>, ...args: string[]) => {
+      const result = git(env, ...args);
+      expect(result.stderr.toString()).not.toContain("error");
+      expect(result.status).toBe(0);
+      return result.stdout.toString();
+    };
+    const coauthors = (rev = "HEAD") =>
+      ok(
+        {},
+        "log",
+        "-1",
+        "--format=%(trailers:key=Co-authored-by,valueonly)",
+        rev,
+      ).trim();
+    // A person pushes their own commit, outside Junior's hooks.
+    const pushAsPerson = (...args: string[]) =>
+      ok(
+        {
+          GIT_AUTHOR_NAME: "Pat Pusher",
+          GIT_AUTHOR_EMAIL: "pat@example.com",
+          GIT_COMMITTER_NAME: "Pat Pusher",
+          GIT_COMMITTER_EMAIL: "pat@example.com",
+        },
+        "-c",
+        "core.hooksPath=/dev/null",
+        ...args,
+      );
+
+    try {
+      ok(human.env, "init", "-q");
+      writeFileSync(join(repoDir, "base.txt"), "base\n");
+      ok(human.env, "add", ".");
+      ok(human.env, "commit", "-q", "-m", "chore: base");
+      ok(human.env, "checkout", "-q", "-b", "feature");
+      writeFileSync(join(repoDir, "feature.txt"), "feature\n");
+      ok(human.env, "add", ".");
+      ok(human.env, "commit", "-q", "-m", "feat(x): Add feature");
+      writeFileSync(join(repoDir, "shared.txt"), "pat\n");
+      ok(human.env, "add", ".");
+      // A squash-style message with co-authors in two trailer paragraphs.
+      pushAsPerson(
+        "commit",
+        "-q",
+        "-m",
+        "fix(x): Tweak shared file\n\n" +
+          "fix: first\n\n" +
+          "Co-authored-by: Ann Early <ann@example.com>\n\n" +
+          "fix: second\n\n" +
+          "Co-authored-by: Ben Late <ben@example.com>",
+      );
+      ok(human.env, "checkout", "-q", "main");
+      writeFileSync(join(repoDir, "shared.txt"), "main\n");
+      ok(human.env, "add", ".");
+      ok(human.env, "commit", "-q", "-m", "chore: move main");
+      ok(human.env, "checkout", "-q", "feature");
+
+      // Rebase onto the moved base, resolving a conflict on Pat's commit.
+      expect(git(event.env, "rebase", "-q", "main").status).not.toBe(0);
+      writeFileSync(join(repoDir, "shared.txt"), "resolved\n");
+      ok(event.env, "add", "shared.txt");
+      ok({ ...event.env, GIT_EDITOR: "true" }, "rebase", "--continue");
+      expect(coauthors("HEAD~1")).toBe("David Cramer <david@example.com>");
+      expect(coauthors()).toBe(
+        "Ann Early <ann@example.com>\nBen Late <ben@example.com>",
+      );
+      expect(ok({}, "log", "-1", "--format=%an <%ae>")).toBe(
+        "Pat Pusher <pat@example.com>\n",
+      );
+
+      ok(event.env, "reset", "-q", "--hard", "HEAD~1");
+      ok(event.env, "commit", "-q", "--amend", "--no-edit");
+      expect(coauthors()).toBe("David Cramer <david@example.com>");
+      ok(event.env, "commit", "-q", "--amend", "-m", "feat(x): Reword");
+      expect(coauthors()).toBe("David Cramer <david@example.com>");
+
+      writeFileSync(join(repoDir, "feature.txt"), "fixed\n");
+      ok(event.env, "commit", "-q", "-a", "--fixup=HEAD");
+      ok(
+        { ...event.env, GIT_SEQUENCE_EDITOR: "true" },
+        "rebase",
+        "-q",
+        "-i",
+        "--autosquash",
+        "main",
+      );
+      expect(coauthors()).toBe("David Cramer <david@example.com>");
+
+      const feature = ok({}, "rev-parse", "HEAD").trim();
+      ok(event.env, "checkout", "-q", "main");
+      ok(event.env, "cherry-pick", feature);
+      expect(coauthors()).toBe("David Cramer <david@example.com>");
+    } finally {
+      rmSync(hook.dir, { recursive: true, force: true });
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     ["simple-git-hooks in .git/hooks", ".git/hooks", false],
     ["husky in a repository core.hooksPath", ".husky/_", true],
@@ -4420,6 +4677,46 @@ Conversation: \`local:test:old-conversation\`
         "Signed-off-by: Reviewer <reviewer@example.com>\n" +
         "Co-Authored-By: Bob Steer <bob@example.com>\n" +
         "Co-Authored-By: Carol Steer <carol@example.com>\n",
+    ],
+    [
+      "never extends a one-line subject that looks like a trailer",
+      "chore: update deps\n",
+      "chore: update deps\n" +
+        "\n" +
+        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
+        "Co-Authored-By: Carol Steer <carol@example.com>\n",
+    ],
+    [
+      "removes co-authors from every trailer paragraph, as in a squash message",
+      "feat: first\n" +
+        "\n" +
+        "Co-Authored-By: Model Supplied <model@example.com>\n" +
+        "\n" +
+        "feat: second\n" +
+        "\n" +
+        "Co-authored-by: Other Model <other@example.com>\n",
+      "feat: first\n" +
+        "\n" +
+        "feat: second\n" +
+        "\n" +
+        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
+        "Co-Authored-By: Carol Steer <carol@example.com>\n",
+    ],
+    [
+      "adds trailers before the comment block Git adds for an editor",
+      "initial commit message\n" + "\n" + "# Conflicts:\n" + "#\tREADME.md\n",
+      "initial commit message\n" +
+        "\n" +
+        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
+        "Co-Authored-By: Carol Steer <carol@example.com>\n" +
+        "\n" +
+        "# Conflicts:\n" +
+        "#\tREADME.md\n",
+    ],
+    [
+      "leaves a message of only co-authors empty so Git aborts the commit",
+      "Co-Authored-By: Model Supplied <model@example.com>\n",
+      "\n",
     ],
   ])("%s", async (_name, initialMessage, expectedMessage) => {
     const { readFileSync, rmSync } = await import("node:fs");

@@ -6,7 +6,7 @@ import {
   listConnections,
   startConnection,
 } from "@/chat/credentials/connections";
-import { webActorFromEmail } from "@/chat/conversations/web-input";
+import { webActorFromUser } from "@/chat/conversations/web-input";
 import { logInfo } from "@/chat/logging";
 import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
@@ -21,16 +21,18 @@ import { requireViewer } from "../viewer";
 
 /**
  * Create authenticated routes that list, connect, and disconnect the viewer's
- * plugin accounts. Connections belong to the viewer's web actor, which is the
- * credential subject for the viewer's web Conversations.
+ * plugin accounts. Connections belong to the viewer's User id, which is the
+ * web Actor id and the credential subject for the viewer's web Conversations.
  */
 export function createConnectionRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
 
   app.get("/", requireViewer, async (context) => {
-    const actor = webActorFromEmail(context.get("viewer").email);
     return jsonResponse(connectionListSchema, {
-      connections: await listConnections(actor.userId, createUserTokenStore()),
+      connections: await listConnections(
+        context.get("viewer").id,
+        createUserTokenStore(),
+      ),
     });
   });
 
@@ -43,14 +45,9 @@ export function createConnectionRoutes(): Hono<JuniorApiEnv> {
       if (!isConnectableProvider(provider)) {
         throwApiError(404, "Connection not found.");
       }
-      const viewer = context.get("viewer");
       const result = await startConnection(
         provider,
-        webActorFromEmail(viewer.email, {
-          ...(viewer.displayName
-            ? { fullName: viewer.displayName }
-            : undefined),
-        }),
+        webActorFromUser(context.get("viewer")),
       );
       if (!result.ok) {
         throwApiError(503, result.error);
@@ -70,13 +67,10 @@ export function createConnectionRoutes(): Hono<JuniorApiEnv> {
       if (!isConnectableProvider(provider)) {
         throwApiError(404, "Connection not found.");
       }
-      const viewer = context.get("viewer");
-      const actor = webActorFromEmail(viewer.email);
       await disconnectConnection(
-        actor.userId,
+        context.get("viewer").id,
         provider,
         createUserTokenStore(),
-        viewer.id,
       );
       logInfo("dashboard.credential.unlinked", {
         "app.credential.provider": provider,

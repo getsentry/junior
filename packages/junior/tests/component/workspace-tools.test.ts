@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
   createLocalSource,
   createSlackSource,
@@ -24,6 +25,11 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { createWorkspaceTools } from "@/chat/workspaces/tools";
 import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
 import { readStats } from "@/stats";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
 
 const { sendNextWorkspaceSnapshotJob, sendWorkspaceSnapshotJob } = vi.hoisted(
   () => ({
@@ -106,6 +112,7 @@ describe("Workspace tools", () => {
         conversationId: conversationId!,
       } as const;
       const workspaceTools = createWorkspaceTools({
+        turnTools: rootTurnTools,
         conversationId: conversationId!,
         destination,
         egress: { fetch: async () => new Response("ok") },
@@ -224,6 +231,7 @@ describe("Workspace tools", () => {
 
       const delivered: LocalAgentReply[] = [];
       const results: LocalToolResult[] = [];
+      let firstRequestText = "";
 
       await runLocalAgentTurn(
         {
@@ -233,7 +241,14 @@ describe("Workspace tools", () => {
         {
           agentRunner: createModelAgentRunner(
             createModelStream([
-              { type: "toolCall", name: "listWorkspaces", arguments: {} },
+              {
+                type: "toolCall",
+                name: "listWorkspaces",
+                arguments: {},
+                onRequest: (context) => {
+                  firstRequestText = JSON.stringify(context.messages);
+                },
+              },
               {
                 type: "toolCall",
                 name: "switchWorkspace",
@@ -300,6 +315,11 @@ describe("Workspace tools", () => {
       expect(delivered).toEqual([
         { text: "The missing Workspace was not found." },
       ]);
+      // The context message names each Workspace and its repositories, so the
+      // agent can switch without a rejected clone or a listWorkspaces call.
+      expect(firstRequestText).toContain("<workspaces>");
+      expect(firstRequestText).toContain("- relay: getsentry/relay");
+      expect(firstRequestText).toContain("- sentry-web: getsentry/sentry");
       await expect(
         deleteTool.execute!(
           { id: workspace.id },
@@ -358,6 +378,7 @@ describe("Workspace tools", () => {
           activeWorkspaceId: () => undefined,
           switch: switchWorkspace,
         },
+        turnTools: rootTurnTools,
       } satisfies ToolRuntimeContext;
 
       const tools = createWorkspaceTools(context);
@@ -430,6 +451,7 @@ describe("Workspace tools", () => {
           activeWorkspaceId: () => undefined,
           switch: switchWorkspace,
         },
+        turnTools: rootTurnTools,
       } satisfies ToolRuntimeContext;
 
       const tools = createWorkspaceTools(context);
@@ -494,6 +516,7 @@ describe("Workspace tools", () => {
         activeWorkspaceId: () => undefined,
         switch: vi.fn(),
       },
+      turnTools: rootTurnTools,
     } satisfies ToolRuntimeContext;
 
     const tools = createWorkspaceTools(context);
@@ -554,6 +577,7 @@ describe("Workspace tools", () => {
         activeWorkspaceId: () => undefined,
         switch: switchWorkspace,
       },
+      turnTools: rootTurnTools,
     } satisfies ToolRuntimeContext;
 
     let subscribedBeforeSend = false;

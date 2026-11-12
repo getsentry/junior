@@ -1,5 +1,19 @@
-import { afterAll, afterEach, beforeAll } from "vitest";
+import {
+  cleanupPostgresWorkerDatabases,
+  getPostgresWorkerDatabaseUrl,
+  parsePostgresHarnessConfig,
+  resetPostgresTestDatabase,
+} from "@sentry/junior-testing/postgres";
+import pg from "pg";
+import { afterAll, afterEach, beforeAll, beforeEach, inject } from "vitest";
 import { mswServer, rejectUnhandledExternalRequest } from "./msw";
+
+const resetPool = new pg.Pool({
+  connectionString: await getPostgresWorkerDatabaseUrl(
+    parsePostgresHarnessConfig(inject("githubPostgresHarness")),
+  ),
+  max: 1,
+});
 
 beforeAll(() => {
   mswServer.listen({
@@ -9,10 +23,16 @@ beforeAll(() => {
   });
 });
 
+beforeEach(async () => {
+  await resetPostgresTestDatabase(resetPool);
+});
+
 afterEach(() => {
   mswServer.resetHandlers();
 });
 
-afterAll(() => {
+afterAll(async () => {
   mswServer.close();
+  await resetPool.end();
+  await cleanupPostgresWorkerDatabases();
 });

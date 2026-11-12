@@ -6,7 +6,7 @@
  */
 import type { Source } from "@sentry/junior-plugin-api";
 import type { Lock, StateAdapter } from "chat";
-import { z } from "zod";
+import * as z from "zod";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 

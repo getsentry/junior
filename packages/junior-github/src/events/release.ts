@@ -2,7 +2,7 @@ import {
   eventMatchFieldsSchema,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { gitHubRepoDataSchema, gitHubRepoMatchFields } from "./scope.js";
 
 export const GITHUB_RELEASE_EVENTS = ["release.published"] as const;
@@ -76,8 +76,8 @@ export function gitHubReleaseSourceSubscribable(input: {
       repo: gitHubRepoDataSchema.parse(input.repo),
       ...(tag ? { tag: gitHubReleaseTagDataSchema.parse(tag) } : undefined),
     },
-    suggestedEvents: GITHUB_RELEASE_SUGGESTED_EVENTS,
-    supportedEvents: [...GITHUB_RELEASE_EVENTS],
+    suggested_events: GITHUB_RELEASE_SUGGESTED_EVENTS,
+    supported_events: [...GITHUB_RELEASE_EVENTS],
     type: "release_source",
   };
 }

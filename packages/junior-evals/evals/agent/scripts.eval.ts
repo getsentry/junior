@@ -1,7 +1,17 @@
 import { describe, expect } from "vitest";
 import { slackMention } from "@junior-evals/fixture/inputs";
-import { completedToolCalls, toolCallsOf } from "@junior-evals/fixture/results";
+import {
+  completedToolCalls,
+  toolCallsOf,
+  type ToolCall,
+} from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
+import { mockWebPages, mockWebSearchResults } from "@junior-evals/fixture/web";
+
+/** Calls of a tool that the model made itself, not in a script. */
+function directCalls(name: string, result: { toolCalls: ToolCall[] }): number {
+  return result.toolCalls.filter((call) => call.name === name).length;
+}
 
 // The user never names codemode. These cases measure whether Junior picks a
 // script when one call per item would be many calls, and skips it for one
@@ -20,7 +30,44 @@ describe("Code Mode Scripts", () => {
       0,
     );
     // The script makes the lookups, so few of them are direct calls.
-    expect(toolCallsOf("systemTime", conversation).length).toBeLessThan(8);
+    expect(directCalls("systemTime", conversation)).toBeLessThan(8);
+    expect(conversation.replies).toHaveLength(1);
+  });
+
+  test("when a search selects the pages to read, read them in one script", async ({
+    run,
+  }) => {
+    const releases = ["3.0", "3.1", "3.2", "3.3"].map((version) => ({
+      version,
+      url: `https://example.com/acme-cli/releases/${version}`,
+    }));
+    // The excerpts leave out the answer, so each page must be read.
+    mockWebSearchResults(
+      releases.map(({ version, url }) => ({
+        title: `Acme CLI ${version} release notes`,
+        url,
+        excerpt: `Release notes for Acme CLI ${version}.`,
+      })),
+    );
+    mockWebPages(
+      Object.fromEntries(
+        releases.map(({ version, url }) => [
+          url,
+          `<html><body><h1>Acme CLI ${version}</h1><p>Breaking change: ${version} removes the --legacy-${version} flag.</p></body></html>`,
+        ]),
+      ),
+    );
+    const conversation = await run(
+      slackMention(
+        "Look up the Acme CLI 3.x release notes on the web and tell me the breaking change in each release. One line per release.",
+      ),
+    );
+
+    expect(completedToolCalls("codemode", conversation).length).toBeGreaterThan(
+      0,
+    );
+    // The script reads the pages, so few of them are direct calls.
+    expect(directCalls("webFetch", conversation)).toBeLessThan(releases.length);
     expect(conversation.replies).toHaveLength(1);
   });
 
