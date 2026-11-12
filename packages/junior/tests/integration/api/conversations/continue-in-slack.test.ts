@@ -36,7 +36,7 @@ import {
   chatPostMessageOk,
   conversationsInfoOk,
 } from "../../../fixtures/slack/factories/api";
-import { testViewer } from "../../../fixtures/user";
+import { signedInViewer } from "../../../fixtures/user";
 import { queueSlackApiResponse } from "../../../msw/handlers/slack-api";
 
 const THREAD_TS = "1712345.0100";
@@ -50,7 +50,7 @@ const SLACK_DESTINATION = {
 function viewerApp(fixture: ConversationFixture) {
   const app = new Hono<{ Variables: JuniorApiVariables }>();
   app.use("*", async (context, next) => {
-    context.set("viewer", testViewer(fixture.actor.email));
+    context.set("viewer", await signedInViewer(fixture.actor.email));
     await next();
   });
   app.route("/", createJuniorApi({ conversationWorkQueue: fixture.queue }));

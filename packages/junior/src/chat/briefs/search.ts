@@ -4,7 +4,6 @@ import {
   eq,
   gt,
   gte,
-  isNull,
   lt,
   ne,
   notExists,
@@ -14,6 +13,7 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
 import { hasAnnotationKey } from "@/chat/conversations/sql/annotation-filter";
+import { listedConversation } from "@/chat/conversations/sql/listed";
 import {
   juniorConversationBriefs,
   juniorConversations,
@@ -93,9 +93,7 @@ export async function searchConversationBriefs(
           ),
         ),
     ),
-    isNull(juniorConversations.parentConversationId),
-    // An unkept Quick question is a private side thread.
-    isNull(juniorConversations.quickQuestionAt),
+    listedConversation(),
     ne(juniorConversations.conversationId, args.currentConversationId),
     eq(juniorDestinations.visibility, "public"),
   ];

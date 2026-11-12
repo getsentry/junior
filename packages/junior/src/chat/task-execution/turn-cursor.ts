@@ -28,11 +28,12 @@ import {
 import {
   commitMessages,
   loadTurnProjection,
+  type StoredProjection,
 } from "@/chat/conversations/projection";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import type { AgentTurnUsage } from "@/chat/usage";
-import { getStateAdapter } from "@/chat/state/adapter";
+import { getStateAdapter, getStateValues } from "@/chat/state/adapter";
 import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
 import {
   getConversationEventStore,
@@ -168,6 +169,12 @@ export interface TurnRecord {
   piMessages: PiMessage[];
   /** Per-message provenance aligned one-to-one with `piMessages`. */
   piMessageProvenance: ConversationMessageProvenance[];
+  /**
+   * Event-store projection this record was read from. Absent on records that
+   * a write returns. A checkpoint passes it so its commit reads only later
+   * events.
+   */
+  storedProjection?: StoredProjection;
   /**
    * All distinct actors annotated on this run's committed instruction-authority
    * messages, in first-seen order. Derived from committed provenance so a
@@ -387,6 +394,8 @@ async function appendTurnSummary(
 async function recordConversationActivityMetadata(args: {
   /** Live execution actor for SQL dual-write only; never stored in Redis. */
   actor?: Actor;
+  /** Identity of the Turn Actor, for the Turn's metric rows. */
+  actorIdentityId?: string;
   conversationStore?: ConversationStore;
   destination?: Destination;
   /** Confirmed destination visibility; omit when unavailable. */
@@ -446,6 +455,7 @@ async function recordConversationActivityMetadata(args: {
     visibility: hasParent ? undefined : args.destinationVisibility,
   });
   await conversationStore.recordExecution({
+    actorIdentityId: args.actorIdentityId,
     channelName: args.summary.channelName,
     conversationId: args.summary.conversationId,
     createdAtMs: args.summary.startedAtMs,
@@ -526,6 +536,30 @@ async function getStoredTurnRecord(
   return value == null ? undefined : parseTurnRecord(value);
 }
 
+/** The fields of a stored Turn cursor that need no Turn history. */
+export type StoredTurnFields = Pick<
+  StoredTurnRecord,
+  "dispatchId" | "source" | "state" | "surface"
+>;
+
+/**
+ * Read several stored Turn cursors in one state read, without their Turn
+ * history. A missing cursor gives `undefined`.
+ */
+export async function getStoredTurnFields(
+  turns: ReadonlyArray<{ conversationId: string; turnId: string }>,
+): Promise<Array<StoredTurnFields | undefined>> {
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  const values = await getStateValues(
+    stateAdapter,
+    turns.map((turn) => turnCursorKey(turn.conversationId, turn.turnId)),
+  );
+  return values.map((value) =>
+    value == null ? undefined : parseTurnRecord(value),
+  );
+}
+
 /** Read a materialized turn cursor for resume and history loading. */
 async function materializeStoredTurnRecord(
   conversationId: string,
@@ -573,11 +607,19 @@ async function materializeStoredTurnRecord(
     conversation,
     turnId,
   );
-  return materializeTurnRecord(parsed, piProjection, turnStartMessageIndex, {
-    channelName: conversation?.channelName,
-    cumulativeDurationMs: executionMetrics?.durationMs,
-    cumulativeUsage: executionMetrics?.usage,
-  });
+  const record = materializeTurnRecord(
+    parsed,
+    piProjection,
+    turnStartMessageIndex,
+    {
+      channelName: conversation?.channelName,
+      cumulativeDurationMs: executionMetrics?.durationMs,
+      cumulativeUsage: executionMetrics?.usage,
+    },
+  );
+  return followsReplacement
+    ? record
+    : { ...record, storedProjection: pinnedProjection };
 }
 
 /** Read a turn record pinned to the history version containing its checkpoint. */
@@ -690,6 +732,7 @@ async function setStoredRecord(args: {
   await args.fence();
   await recordConversationActivityMetadata({
     actor: args.actor,
+    actorIdentityId: storedRecord.actorIdentityId,
     conversationStore: args.conversationStore,
     destination: args.destination,
     destinationVisibility: args.destinationVisibility,
@@ -821,6 +864,8 @@ export async function upsertTurnRecord(args: {
   state: TurnStatus;
   surface?: AgentTurnSurface;
   piMessages: PiMessage[];
+  /** Projection from the record read before this write; see `TurnRecord`. */
+  storedProjection?: StoredProjection;
   /** Provenance for trailing newly committed messages, such as steering. */
   trailingMessageProvenance?: ConversationMessageProvenance[];
   actor?: Actor;
@@ -892,6 +937,9 @@ async function upsertTurnRecordLocked(
       : undefined),
     ...(args.trailingMessageProvenance
       ? { trailingMessageProvenance: args.trailingMessageProvenance }
+      : undefined),
+    ...(args.storedProjection
+      ? { storedProjection: args.storedProjection }
       : undefined),
     ...(args.turnContexts && args.turnContexts.length > 0
       ? {
@@ -1094,9 +1142,16 @@ async function recordTurnSummaryOwned(
       surface: args.surface ?? existing?.surface,
     }),
   };
+  // As on a checkpoint, the Turn keeps the Identity of its starting Actor.
+  const actorIdentityId =
+    stored?.actorIdentityId ??
+    (args.actor
+      ? await resolveActorIdentityId(getSqlExecutor(), args.actor)
+      : undefined);
   await fence();
   await recordConversationActivityMetadata({
     actor: args.actor,
+    actorIdentityId,
     conversationStore,
     destination: args.destination,
     destinationVisibility: args.destinationVisibility,

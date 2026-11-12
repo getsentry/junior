@@ -20,7 +20,7 @@ export function AlertDialogContent({
         data-dashboard-modal=""
         data-slot="alert-dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid grid-cols-1 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-raised p-5 text-dashboard-text shadow-lg outline-none transition-[opacity,scale] duration-180 motion-reduce:transition-none data-ending-style:opacity-0 data-starting-style:opacity-0 data-ending-style:scale-95 data-starting-style:scale-95",
+          "fixed top-1/2 left-1/2 z-50 grid grid-cols-1 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-xl border border-input bg-secondary p-5 text-foreground shadow-lg outline-none transition-[opacity,scale] duration-180 motion-reduce:transition-none data-ending-style:opacity-0 data-starting-style:opacity-0 data-ending-style:scale-95 data-starting-style:scale-95",
           className,
         )}
         {...props}
@@ -50,7 +50,7 @@ export function AlertDialogDescription({
   return (
     <AlertDialogPrimitive.Description
       className={cn(
-        "m-0 break-words text-sm leading-relaxed text-dashboard-text-muted",
+        "m-0 break-words text-sm leading-relaxed text-muted-foreground",
         className,
       )}
       {...props}
@@ -74,7 +74,12 @@ export function AlertDialogFooter({
 /** Run the confirmed action; its owner decides when the dialog can close. */
 export function AlertDialogAction(props: ComponentProps<typeof Button>) {
   return (
-    <Button data-slot="alert-dialog-action" className="min-h-11" {...props} />
+    <Button
+      data-slot="alert-dialog-action"
+      className="min-h-11"
+      variant="outline"
+      {...props}
+    />
   );
 }
 
@@ -82,7 +87,7 @@ export function AlertDialogAction(props: ComponentProps<typeof Button>) {
 export function AlertDialogCancel(props: AlertDialogPrimitive.Close.Props) {
   return (
     <AlertDialogPrimitive.Close
-      render={<Button className="min-h-11" />}
+      render={<Button className="min-h-11" variant="outline" />}
       {...props}
     />
   );

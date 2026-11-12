@@ -1,4 +1,8 @@
 import { ActivityTooltipRows } from "../../components/charts/ActivityChart";
+import {
+  contributionLevel,
+  contributionLevelClass,
+} from "../../components/charts/contributionLevel";
 import { formatDuration } from "../../components/Duration";
 import {
   Tooltip,
@@ -91,7 +95,9 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
                         aria-label={`${day.date}: ${day.conversations} conversations, ${activityRuntime(day)}, ${formatCostSummary({ total: day.costUsd ?? 0 })} spend, ${formatCompactNumber(day.tokens ?? 0)} tokens`}
                         className={cn(
                           "size-3 border border-dashboard-overlay outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus",
-                          activityClass(day.conversations, max),
+                          contributionLevelClass(
+                            contributionLevel(day.conversations, max),
+                          ),
                         )}
                         role="listitem"
                         tabIndex={0}
@@ -125,16 +131,12 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
         </div>
         <div className="mt-3 flex items-center gap-1 text-xs font-semibold leading-none text-dashboard-text-muted">
           <span>Less</span>
-          {[0, 1, 2, 3, 4].map((level) => (
+          {([0, 1, 2, 3, 4] as const).map((level) => (
             <span
               aria-hidden="true"
               className={cn(
                 "size-3 border border-dashboard-overlay",
-                level === 0 && "bg-dashboard-surface-hover",
-                level === 1 && "bg-[#133225] light:bg-[#9be9a8]",
-                level === 2 && "bg-[#176a4a] light:bg-[#40c463]",
-                level === 3 && "bg-[#22a06b] light:bg-[#30a14e]",
-                level === 4 && "bg-[#8bdc97] light:bg-[#216e39]",
+                contributionLevelClass(level),
               )}
               key={level}
             />
@@ -158,13 +160,4 @@ function formatDate(date: string): string {
 function activityRuntime(day: ContributionDay): string {
   if (day.durationMs <= 0 && day.conversations > 0) return "unknown";
   return formatDuration(day.durationMs);
-}
-
-function activityClass(count: number, max: number): string {
-  if (count <= 0) return "bg-dashboard-surface-hover";
-  const ratio = count / max;
-  if (ratio >= 0.75) return "bg-[#8bdc97] light:bg-[#216e39]";
-  if (ratio >= 0.45) return "bg-[#22a06b] light:bg-[#30a14e]";
-  if (ratio >= 0.2) return "bg-[#176a4a] light:bg-[#40c463]";
-  return "bg-[#133225] light:bg-[#9be9a8]";
 }

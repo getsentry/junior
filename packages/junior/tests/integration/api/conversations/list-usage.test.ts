@@ -41,6 +41,20 @@ describe("conversation list API usage rollup", () => {
           executionStatus: "idle",
           usage: { outputTokens: 5 },
         });
+      // A parent link to the root with another root is not part of its tree.
+      await fixture.sql
+        .db()
+        .insert(juniorConversations)
+        .values({
+          conversationId: "advisor:stray-child",
+          parentConversationId: "slack:C1:root",
+          rootConversationId: "advisor:stray-child",
+          createdAt: childAt,
+          lastActivityAt: childAt,
+          updatedAt: childAt,
+          executionStatus: "idle",
+          usage: { outputTokens: 7 },
+        });
       await fixture.sql
         .db()
         .insert(juniorConversationEvents)

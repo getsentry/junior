@@ -45,4 +45,11 @@ export function loadJuniorTestEnvFiles(options: JuniorTestEnvOptions): void {
       applyEnvFile(absolutePath);
     }
   }
+
+  // Set after env files, like JUNIOR_SECRET, so a local key cannot change the
+  // key ids that tests use. `test-old` lets tests read values from a key that
+  // is not active.
+  process.env.JUNIOR_ENCRYPTION_KEYS =
+    "test:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI,test-old:yzdMjBLutb3SqjtwO1Lm3Cr2wN7FSGG8tzlRjvJc8Xg";
+  process.env.JUNIOR_ENCRYPTION_KEY_ID = "test";
 }

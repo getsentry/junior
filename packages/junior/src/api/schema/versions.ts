@@ -20,7 +20,11 @@ export const versionsSchema = z
      * not exist.
      */
     conversation: z.string().min(1).optional(),
-    /** The viewer's Conversation feed. */
+    /**
+     * The viewer's Conversation feed. It lists a short token for each
+     * feed-row input as `name:token`, separated by spaces, so the dashboard
+     * can record which inputs moved it.
+     */
     conversations: z.string().min(1),
     /** Open Review items that need the viewer. */
     reviewItems: z.string().min(1),

@@ -36,8 +36,9 @@ export type AgentInvocationParentMailboxStatus =
   (typeof AGENT_INVOCATION_PARENT_MAILBOX_STATUSES)[number];
 
 /**
- * Parent mailbox statuses of a result that goes, or went, to the parent. Only
- * these results count as a result of the child agent.
+ * Parent mailbox statuses of a result that is not replaced, skipped, or
+ * steered. Only these results count as a result of the child agent. A `reply`
+ * can still answer for one, so it is not sent (see `sendsResultToParent`).
  */
 export const SENT_PARENT_MAILBOX_STATUSES = [
   "pending",

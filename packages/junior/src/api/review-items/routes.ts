@@ -21,6 +21,7 @@ import {
   canActOnReviewItem,
   isOnlyAssignee,
   reviewItemReaderForUser,
+  reviewItemReaderForUserInConversation,
 } from "@/chat/review-items/access";
 import {
   actOnReviewItem,
@@ -179,7 +180,13 @@ export function createReviewItemRoutes(services: {
         );
       }
       const db = getDb();
-      const reader = reviewItemReaderForUser(viewer);
+      // A person in the Conversation sees every item linked to it.
+      const reader = filters.conversationId
+        ? await reviewItemReaderForUserInConversation(
+            viewer,
+            filters.conversationId,
+          )
+        : reviewItemReaderForUser(viewer);
       // Read one more item than a page to learn whether more follow.
       const open = await searchReviewItems(db, reader, {
         ...filters,

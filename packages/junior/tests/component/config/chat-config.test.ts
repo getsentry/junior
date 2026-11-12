@@ -133,6 +133,18 @@ describe("chat config", () => {
     expect(botConfig.webSearchModelId).toBe("anthropic/claude-sonnet-4.6");
   });
 
+  it("leaves the refusal fallback model unset by default", async () => {
+    const { botConfig } = await loadConfig();
+    expect(botConfig.refusalFallbackModelId).toBeUndefined();
+  });
+
+  it("uses AI_REFUSAL_FALLBACK_MODEL when configured", async () => {
+    process.env.AI_REFUSAL_FALLBACK_MODEL = " openai/gpt-6-astra ";
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.refusalFallbackModelId).toBe("openai/gpt-6-astra");
+  });
+
   it("throws when AI_WEB_SEARCH_MODEL is not a registered gateway model id", async () => {
     process.env.AI_WEB_SEARCH_MODEL = "openai/search-model-not-real";
 
@@ -293,6 +305,15 @@ describe("chat config", () => {
     process.env.JUNIOR_CONVERSATION_WORK_ENABLED = "false";
     const { getChatConfig } = await loadConfig();
     expect(getChatConfig().conversationWorkEnabled).toBe(false);
+  });
+
+  it("enables cache warming unless its kill switch is off", async () => {
+    delete process.env.JUNIOR_CACHE_WARMING_ENABLED;
+    expect((await loadConfig()).getChatConfig().cacheWarmingEnabled).toBe(true);
+    process.env.JUNIOR_CACHE_WARMING_ENABLED = "false";
+    expect((await loadConfig()).getChatConfig().cacheWarmingEnabled).toBe(
+      false,
+    );
   });
 
   it("rejects an invalid conversation work switch", async () => {

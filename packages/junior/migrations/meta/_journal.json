@@ -624,6 +624,118 @@
       "when": 1794165567814,
       "tag": "0088_conversation_unsubscribe",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1794190578909,
+      "tag": "0089_conversation_paused_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1794222953219,
+      "tag": "0090_guardian_review_time_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1794245490321,
+      "tag": "0091_conversation_participant_unsubscribed_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1794248406305,
+      "tag": "0092_turn_metric_actor",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1794256116275,
+      "tag": "0093_participant_root_actor_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1794266800377,
+      "tag": "0094_conversation_delivery_paused_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1794312577586,
+      "tag": "0095_web_linked_slack_identity_repair",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1794333504935,
+      "tag": "0096_automation_task_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1794344562301,
+      "tag": "0097_conversation_kind_automation",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1794349592269,
+      "tag": "0098_review_item_plugin_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1794351117170,
+      "tag": "0099_conversation_last_message_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1794360831303,
+      "tag": "0100_automation_task_kind_repair",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1794414686731,
+      "tag": "0101_drop_legacy_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1794416510222,
+      "tag": "0102_code_change_last_activity",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1794424481991,
+      "tag": "0103_agent_invocation_fork",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1794493721940,
+      "tag": "0104_code_change_draft",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { Skeleton } from "../components/ui/skeleton";
 import { dashboardContainerClass, cn } from "../styles";
 import { ChatLayout } from "./ChatLayout";
+import { composerDockClass } from "./ComposerDock";
 import { ConversationHomeListLoading } from "./ConversationHomeList";
 import { ConversationRowSkeletons } from "./ConversationSidebar";
 import {
@@ -64,13 +65,22 @@ function ConversationSidebarLoading() {
 }
 
 // Wide screens show only the create view beside the list. Narrow screens
-// stack the create view above the home list.
+// show the home list with the create composer docked below it.
 function ConversationHomeLoading() {
   return (
-    <div className="h-full min-h-0 w-full overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6 md:grid md:place-items-center md:py-13">
-      <div className="mx-auto grid w-full max-w-6xl gap-8">
+    <div className="grid h-full min-h-0 w-full grid-rows-[minmax(0,1fr)_auto] overflow-hidden md:grid-rows-[minmax(0,1fr)]">
+      <section className="grid min-h-0 content-start gap-3 overflow-hidden px-4 pb-3 pt-4 sm:px-6 md:hidden">
+        <Skeleton className="h-9 w-full rounded-lg border border-dashboard-border bg-dashboard-overlay-soft sm:ml-auto sm:w-72" />
+        <ConversationHomeListLoading />
+      </section>
+      <div
+        className={cn(
+          composerDockClass,
+          "border-t border-dashboard-border-subtle sm:px-6 md:grid md:max-h-none md:place-items-center md:border-t-0 md:px-6 md:pb-13 md:pt-13",
+        )}
+      >
         <section className="mx-auto grid w-full max-w-3xl gap-3">
-          <Skeleton className="mx-auto h-8 w-56" />
+          <Skeleton className="mx-auto hidden h-8 w-56 md:block" />
           <div className="w-full rounded-xl border border-dashboard-border-subtle bg-dashboard-surface-raised p-3">
             <Skeleton className="h-20 w-full bg-dashboard-fill-faint" />
             <div className="mt-3 flex justify-between">
@@ -78,10 +88,6 @@ function ConversationHomeLoading() {
               <Skeleton className="size-8 rounded-md" />
             </div>
           </div>
-        </section>
-        <section className="grid gap-3 md:hidden">
-          <Skeleton className="h-9 w-full rounded-lg border border-dashboard-border bg-dashboard-overlay-soft sm:ml-auto sm:w-72" />
-          <ConversationHomeListLoading />
         </section>
       </div>
     </div>
