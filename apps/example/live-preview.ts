@@ -16,7 +16,7 @@
  */
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
-import { exampleDashboardAuthRequired } from "./dashboard";
+import { exampleDashboardAuthRequired } from "./dashboard.ts";
 
 /** An app that serves requests, such as the Hono app from `createApp()`. */
 export interface FetchApp<Rest extends unknown[]> {
