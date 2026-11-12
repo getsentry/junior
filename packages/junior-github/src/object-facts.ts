@@ -1,5 +1,11 @@
-import type { ObjectAnnotation } from "@sentry/junior-plugin-api";
+import {
+  OBJECT_FACTS_MAX_BYTES,
+  objectFactsBytes,
+  type ObjectAnnotation,
+  type ObjectFacts,
+} from "@sentry/junior-plugin-api";
 import { lexer, walkTokens } from "marked";
+import { type DefaultTreeAdapterMap, parseFragment } from "parse5";
 import * as z from "zod";
 
 const person = z.object({ login: z.string() });
@@ -43,10 +49,25 @@ function description(body: string | null | undefined): string | undefined {
   return text.length > 4000 ? `${text.slice(0, 3999)}…` : text;
 }
 
-// An HTML block can hold more than one image.
-const HTML_IMAGE_SRC = /<img\b[^>]*?\ssrc\s*=\s*["']?([^"'\s>]+)/gi;
-// Facts must fit in 4 KiB, with the other code change facts.
-const MAX_PREVIEW_IMAGES = 4;
+type HtmlNode =
+  | DefaultTreeAdapterMap["parentNode"]
+  | DefaultTreeAdapterMap["childNode"];
+
+// Read `<img src>` with an HTML parser, so a `src=` inside another attribute
+// value is not read as the image.
+function htmlImageSources(html: string): string[] {
+  const sources: string[] = [];
+  const visit = (node: HtmlNode) => {
+    if ("tagName" in node && node.tagName === "img") {
+      const src = node.attrs.find((attr) => attr.name === "src")?.value;
+      if (src) sources.push(src);
+    }
+    if ("childNodes" in node) node.childNodes.forEach(visit);
+    if ("content" in node) visit(node.content);
+  };
+  visit(parseFragment(html));
+  return sources;
+}
 
 /**
  * Keep only images that the dashboard can load without GitHub auth. GitHub
@@ -84,24 +105,38 @@ function publicArtifactUrl(value: string): string | undefined {
  */
 export function githubPreviewImageUrls(
   body: string | null | undefined,
-): string[] | undefined {
+): string[] {
   const sources: string[] = [];
   walkTokens(lexer(visibleBody(body), { gfm: true }), (token) => {
     if (token.type === "image") sources.push(token.href);
-    if (token.type === "html") {
-      for (const match of token.raw.matchAll(HTML_IMAGE_SRC)) {
-        sources.push(match[1]!);
-      }
-    }
+    if (token.type === "html") sources.push(...htmlImageSources(token.raw));
   });
-  const urls = [
+  return [
     ...new Set(
       sources
         .map(publicArtifactUrl)
         .filter((url): url is string => url !== undefined),
     ),
   ];
-  return urls.length > 0 ? urls.slice(0, MAX_PREVIEW_IMAGES) : undefined;
+}
+
+type CodeChangeFacts = Extract<ObjectFacts, { type: "code_change" }>;
+
+/**
+ * Add preview images in body order while the facts stay in the 4 KiB limit.
+ * Images that do not fit are left out.
+ */
+export function withGitHubPreviewImages(
+  facts: Omit<CodeChangeFacts, "previewImageUrls">,
+  urls: readonly string[],
+): CodeChangeFacts {
+  const previewImageUrls: string[] = [];
+  for (const url of urls) {
+    const next = { ...facts, previewImageUrls: [...previewImageUrls, url] };
+    if (objectFactsBytes(next) > OBJECT_FACTS_MAX_BYTES) break;
+    previewImageUrls.push(url);
+  }
+  return previewImageUrls.length > 0 ? { ...facts, previewImageUrls } : facts;
 }
 
 /** Select card facts from GitHub REST responses; never infer reviews or checks. */
@@ -118,21 +153,23 @@ export function githubObjectFacts(
     description: description(data.body),
     facts:
       type === "code_change"
-        ? {
-            type,
-            author: short(data.user?.login),
-            reviewers: data.requested_reviewers
-              ?.slice(0, 5)
-              .map((user) => short(user.login)!)
-              .filter(Boolean),
-            sourceBranch: short(data.head?.ref),
-            targetBranch: short(data.base?.ref),
-            mergeable: data.mergeable ?? undefined,
-            changedFiles: data.changed_files,
-            additions: data.additions,
-            deletions: data.deletions,
-            previewImageUrls: githubPreviewImageUrls(data.body),
-          }
+        ? withGitHubPreviewImages(
+            {
+              type,
+              author: short(data.user?.login),
+              reviewers: data.requested_reviewers
+                ?.slice(0, 5)
+                .map((user) => short(user.login)!)
+                .filter(Boolean),
+              sourceBranch: short(data.head?.ref),
+              targetBranch: short(data.base?.ref),
+              mergeable: data.mergeable ?? undefined,
+              changedFiles: data.changed_files,
+              additions: data.additions,
+              deletions: data.deletions,
+            },
+            githubPreviewImageUrls(data.body),
+          )
         : {
             type,
             assignees: data.assignees

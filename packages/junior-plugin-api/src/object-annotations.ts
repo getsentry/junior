@@ -12,6 +12,14 @@ export function objectFactsMatchType(
     : facts.type === objectType;
 }
 
+/** The largest size of object facts, in UTF-8 bytes of their JSON. */
+export const OBJECT_FACTS_MAX_BYTES = 4096;
+
+/** Return the size that the object facts limit counts. */
+export function objectFactsBytes(facts: ObjectFacts): number {
+  return new TextEncoder().encode(JSON.stringify(facts)).length;
+}
+
 /**
  * Verified facts shared by Conversation annotations and Message cards.
  * Plugins select small facts from responses they already have. Each surface owns
@@ -44,8 +52,7 @@ export const objectAnnotationSchema = z
     sourceUpdatedAt: z.iso.datetime({ offset: true }).optional(),
     facts: objectFactsSchema
       .refine(
-        (facts) =>
-          new TextEncoder().encode(JSON.stringify(facts)).length <= 4096,
+        (facts) => objectFactsBytes(facts) <= OBJECT_FACTS_MAX_BYTES,
         "Object facts must not exceed 4 KiB",
       )
       .optional(),
