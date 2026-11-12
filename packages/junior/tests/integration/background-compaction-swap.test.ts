@@ -6,6 +6,7 @@ import {
 } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
 import type { PiMessage } from "@/chat/pi/messages";
+import { buildScriptToolsSection, buildTurnContextPrompt } from "@/chat/prompt";
 import { renderCompactionSummary } from "@/chat/services/context-compaction";
 import { compactWithPreparedSummary } from "@/chat/services/context-compaction-swap";
 import { closeConversationFixture } from "../fixtures/conversation";
@@ -222,6 +223,83 @@ describe("background compaction swap", () => {
       (await loadConversationProjection({ conversationId })).messages,
     ).toEqual([...messages, reply]);
   });
+
+  it.each([
+    { case: "summarized history", keptScriptTools: undefined },
+    { case: "kept history", keptScriptTools: "tools.c" },
+  ])(
+    "keeps one copy of the latest script tools from $case",
+    async ({ keptScriptTools }) => {
+      const conversationId = `local:web:swap-script-tools-${keptScriptTools ?? "summarized"}`;
+      const sessionContext = buildTurnContextPrompt({
+        availableSkills: [],
+        runtime: { conversationId },
+        scriptTools: "tools.a",
+      })!;
+      const changedContext = buildTurnContextPrompt({
+        availableSkills: [],
+        includeSessionContext: false,
+        scriptTools: "tools.b",
+      })!;
+      const summarized = [
+        user(sessionContext, 1),
+        ...firstTurn,
+        user(changedContext, 5),
+        user("<current-instruction>Read the log.</current-instruction>", 5),
+        assistant("Read it.", 6),
+      ];
+      await prepareSummary(conversationId, summarized);
+      const kept = [
+        ...(keptScriptTools
+          ? [
+              user(
+                buildTurnContextPrompt({
+                  availableSkills: [],
+                  includeSessionContext: false,
+                  scriptTools: keptScriptTools,
+                })!,
+                7,
+              ),
+            ]
+          : []),
+        user("<current-instruction>And the rollback?</current-instruction>", 7),
+        assistant("Read that too.", 8),
+      ];
+      await commitMessages({
+        conversationId,
+        messages: [...summarized, ...kept],
+      });
+
+      const result = await compactWithPreparedSummary(
+        {
+          conversationId,
+          mode: "blocking",
+          modelId: MODEL_ID,
+          pendingMessages: [
+            {
+              message: user(
+                "<current-instruction>Done?</current-instruction>",
+                9,
+              ),
+              provenance: { authority: "instruction" },
+            },
+          ],
+          piMessages: [...summarized, ...kept],
+        },
+        vi.fn(),
+      );
+
+      expect(result.compacted).toBe(true);
+      const texts = result.piMessages!.map(textOf);
+      expect(texts[0]).toContain(`- gen_ai.conversation.id: ${conversationId}`);
+      // A Turn compares its tools with the latest copy, so that copy must
+      // stay byte for byte, once.
+      const latest = buildScriptToolsSection(keptScriptTools ?? "tools.b");
+      expect(texts.join("\n").split("<script-tools>").length - 1).toBe(1);
+      expect(texts.join("\n")).toContain(latest);
+      expect(texts[0]!.includes(latest)).toBe(!keptScriptTools);
+    },
+  );
 
   it("swaps between model calls only above the threshold, without a summary call", async () => {
     const conversationId = "local:web:swap-active";

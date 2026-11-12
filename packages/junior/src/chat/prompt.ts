@@ -13,6 +13,7 @@ import path from "node:path";
 import { botConfig } from "@/chat/config";
 import {
   REQUEST_CONTEXT_SECTION_TAG,
+  SCRIPT_TOOLS_SECTION_TAG,
   SESSION_CONTEXT_SECTION_TAG,
   TURN_CONTEXT_TAG,
 } from "@/chat/turn-context-tag";
@@ -600,6 +601,22 @@ function buildCapabilitiesSection(params: {
   return blocks.join("\n\n");
 }
 
+/**
+ * Context message, `<script-tools>`: the tools that a Code Mode script can
+ * call, from `renderScriptTools`. The `codemode` description stays fixed, so
+ * a change of tools does not change a tool definition. The text is runtime
+ * declarations and goes in raw, like a tool description.
+ */
+export function buildScriptToolsSection(scriptTools: string): string {
+  return renderTagBlock(
+    SCRIPT_TOOLS_SECTION_TAG,
+    scriptTools.replaceAll(
+      `</${SCRIPT_TOOLS_SECTION_TAG}>`,
+      `&lt;/${SCRIPT_TOOLS_SECTION_TAG}>`,
+    ),
+  );
+}
+
 function buildPluginPromptContributionsSection(
   contributions: PluginPromptContributionContext[] | undefined,
 ): string | null {
@@ -723,6 +740,8 @@ type TurnContextPromptInput = {
   conversationNotes?: string[];
   disabledTools?: DisabledToolPromptContext[];
   pluginPromptContributions?: PluginPromptContributionContext[];
+  /** From `renderScriptTools`. Set it only when history lacks this copy. */
+  scriptTools?: string;
   toolGuidance?: ToolPromptContext[];
   /** Text the current actor saved to change how Junior replies to them. */
   userCustomization?: string;
@@ -808,6 +827,7 @@ export function buildTurnContextPrompt(
   // carry only the user's input and request-scoped context.
   if (
     !includeSessionContext &&
+    !params.scriptTools &&
     !pluginPromptContributions &&
     !conversationNotes &&
     !disabledTools &&
@@ -829,6 +849,7 @@ export function buildTurnContextPrompt(
           workspaces: params.workspaces,
         })
       : null,
+    params.scriptTools ? buildScriptToolsSection(params.scriptTools) : null,
     pluginPromptContributions,
     conversationNotes,
     disabledTools,

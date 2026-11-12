@@ -74,6 +74,9 @@ content of a block. It must not add or move a block. `<tool-call-style>`,
 - Do not change earlier transcript messages. Only context compaction can.
 - Put one-request facts in a request-scoped tag. See
   `REQUEST_CONTEXT_SECTION_TAG` in `packages/junior/src/chat/turn-context-tag.ts`.
+- Put the tools that a Code Mode script can call in `<script-tools>`, not in
+  the `codemode` description. A Turn adds it only when it differs from the
+  latest copy in history. Context compaction keeps that copy.
 
 ### Changes
 
