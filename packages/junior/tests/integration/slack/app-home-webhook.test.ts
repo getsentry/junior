@@ -8,7 +8,7 @@ import { createApp, defineJuniorPlugins } from "@/app";
 import { AUTOMATION_CONNECT_ACTION_ID } from "@/chat/automations/blocked-notice";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getSqlExecutor } from "@/chat/db";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { juniorIdentities } from "@/db/schema";
@@ -427,6 +427,7 @@ describe("Slack webhook: App Home events", () => {
         type: "block_actions",
         team: { id: "T123" },
         channel: { id: "D123" },
+        message: { ts: "1700000000.000100" },
         user: { id: "U123", team_id: "T123", username: "alice" },
         actions: [{ action_id: AUTOMATION_CONNECT_ACTION_ID, value: "github" }],
       }),
@@ -458,9 +459,23 @@ describe("Slack webhook: App Home events", () => {
         text: expect.stringContaining("Connect your GitHub account"),
       },
     ]);
-    expect(slackApiOutbox.messages()[0]!.params.text).toContain(
-      "client_id=github-client-id",
+    const link = /<(https:\/\/github\.com[^|>]+)/.exec(
+      String(slackApiOutbox.messages()[0]!.params.text),
+    )?.[1];
+    expect(link).toContain("client_id=github-client-id");
+    // The callback links the GitHub account to this Slack person and posts
+    // the connected confirmation as a reply to the blocked notice.
+    const oauthState = new URL(link!.replaceAll("&amp;", "&")).searchParams.get(
+      "state",
     );
+    await expect(
+      getStateAdapter().get(`oauth-state:${oauthState}`),
+    ).resolves.toMatchObject({
+      actor: { platform: "slack", teamId: "T123", userId: "U123" },
+      channelId: "D123",
+      threadTs: "1700000000.000100",
+      userId: "U123",
+    });
   });
 
   it("does not unlink App Home credentials for synthetic unknown users", async () => {
