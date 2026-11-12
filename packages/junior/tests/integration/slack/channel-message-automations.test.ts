@@ -62,6 +62,13 @@ const WORKSPACE_CHANNEL = {
   is_ext_shared_channel: false,
 };
 
+// Envelope fields of a channel in workspace T123 of Enterprise Grid org E123.
+const ENTERPRISE_CHANNEL = {
+  ...WORKSPACE_CHANNEL,
+  context_enterprise_id: "E123",
+  enterprise_id: "E123",
+};
+
 async function postChannelMessage(input: {
   blocks?: unknown[];
   botId?: string;
@@ -315,7 +322,8 @@ describe("Slack channel-message automations", () => {
 
     // Another bot, a channel shared with another organization, an envelope
     // without the workspace fields, another workspace or enterprise context,
-    // and a mention of Junior in the text or in a section block run nothing.
+    // an Enterprise Grid channel for a bot with no bot user, and a mention of
+    // Junior in the text or in a section block run nothing.
     const rejected = [
       { botId: "B888", envelope: WORKSPACE_CHANNEL },
       {
@@ -329,8 +337,9 @@ describe("Slack channel-message automations", () => {
       },
       {
         botId: "B777",
-        envelope: { ...WORKSPACE_CHANNEL, context_enterprise_id: "E123" },
+        envelope: { ...ENTERPRISE_CHANNEL, enterprise_id: "E999" },
       },
+      { botId: "B777", envelope: ENTERPRISE_CHANNEL },
       {
         botId: "B777",
         envelope: WORKSPACE_CHANNEL,
@@ -402,7 +411,7 @@ describe("Slack channel-message automations", () => {
           { action: "send_message", destination: "current_conversation" },
         ],
         trigger: trigger({
-          user_id: ["B701", "B702", "B703", "B704", "B705", "B706"],
+          user_id: ["B701", "B702", "B703", "B704", "B705", "B706", "B707"],
         }),
       },
     );
@@ -410,13 +419,14 @@ describe("Slack channel-message automations", () => {
       botId: string,
       ts: string,
       botProfile?: { deleted: boolean; team_id: string },
+      envelope: Record<string, unknown> = WORKSPACE_CHANNEL,
     ) =>
       postChannelMessage({
         botId,
         ...(botProfile
           ? { botProfile: { id: botId, app_id: "A123", ...botProfile } }
           : undefined),
-        envelope: WORKSPACE_CHANNEL,
+        envelope,
         noUser: true,
         ts,
       });
@@ -449,7 +459,14 @@ describe("Slack channel-message automations", () => {
       body: usersInfoOk({ userId: "U706", isBot: true }),
     });
     await post("B706", "1712349.0006");
-    expect(queue.sentRecords()).toHaveLength(2);
+    // On Enterprise Grid, a bot_profile from this workspace is enough.
+    await post(
+      "B707",
+      "1712349.0007",
+      { team_id: TEAM_ID, deleted: false },
+      ENTERPRISE_CHANNEL,
+    );
+    expect(queue.sentRecords()).toHaveLength(3);
     expect(
       getCapturedSlackApiCalls("bots.info").map((call) => call.params.bot),
     ).toEqual(["B703", "B704", "B706"]);

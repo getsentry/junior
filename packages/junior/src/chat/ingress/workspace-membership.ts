@@ -89,6 +89,10 @@ export async function isSlackWorkspaceMember(
 
 type BotProfile = NonNullable<GenericMessageEvent["bot_profile"]>;
 
+// What bots.info shows about a bot: a live bot with a bot user in this
+// workspace, a live classic integration with no bot user, or neither.
+type WorkspaceBot = "bot_user" | "classic" | "none";
+
 // A post with a bot ID and no user. Posts from current Slack apps carry
 // bot_profile; posts from classic integrations do not.
 // https://docs.slack.dev/reference/events/message/bot_message
@@ -108,9 +112,10 @@ const botPostSchema = z.object({
 
 /**
  * Return the bot ID of a post from an app in this workspace that has a bot ID
- * and no user, or nothing. The channel must be one that only this workspace
- * can post in. When Slack names the bot's workspace, in `bot_profile` or
- * through the bot user of `bots.info`, it must be this workspace.
+ * and no user, or nothing. The channel must not be shared outside this
+ * workspace or its Enterprise Grid org. When Slack names the bot's workspace,
+ * in `bot_profile` or through the bot user of `bots.info`, it must be this
+ * workspace. On Enterprise Grid, Slack must name it.
  */
 export async function slackWorkspaceBotId(
   raw: unknown,
@@ -118,7 +123,12 @@ export async function slackWorkspaceBotId(
   state: StateAdapter,
 ): Promise<SlackBotId | undefined> {
   const workspaceTeamId = getWorkspaceTeamId();
-  if (!workspaceTeamId || channelScope !== "workspace") return undefined;
+  if (
+    !workspaceTeamId ||
+    (channelScope !== "workspace" && channelScope !== "enterprise")
+  ) {
+    return undefined;
+  }
   const parsed = botPostSchema.safeParse(raw);
   if (!parsed.success) return undefined;
   const botId = parsed.data.bot_id;
@@ -131,32 +141,35 @@ export async function slackWorkspaceBotId(
       : undefined;
   }
   const cache = createCache(state, "core");
-  const verified = await cache.getOrLoad(
+  const verified = await cache.getOrLoad<WorkspaceBot>(
     `slack:workspace-bot:${workspaceTeamId}:${botId}`,
     async () => {
       const bot = await lookupSlackBot(botId);
-      if (!bot) return { value: false, ttlMs: NON_MEMBER_TTL_MS };
+      if (!bot) return { value: "none", ttlMs: NON_MEMBER_TTL_MS };
       // Do not cache incomplete responses.
-      if (bot.id !== botId) return { value: false };
-      let member = !bot.deleted;
-      // A classic integration has no bot user. Its post is accepted on the
-      // channel scope alone.
-      if (member && bot.user_id !== undefined) {
-        const userId = parseSlackUserId(bot.user_id);
-        if (!userId) return { value: false };
-        const user = await lookupSlackUserProfile(userId);
-        const authorTeam = parseSlackTeamId(user.team_id);
-        if (user.id !== userId || !authorTeam) return { value: false };
-        member =
-          user.is_bot && authorTeam === workspaceTeamId && !user.is_deleted;
+      if (bot.id !== botId) return { value: "none" };
+      if (bot.deleted) return { value: "none", ttlMs: NON_MEMBER_TTL_MS };
+      if (bot.user_id === undefined) {
+        return { value: "classic", ttlMs: MEMBER_TTL_MS };
       }
-      return {
-        value: member,
-        ttlMs: member ? MEMBER_TTL_MS : NON_MEMBER_TTL_MS,
-      };
+      const userId = parseSlackUserId(bot.user_id);
+      if (!userId) return { value: "none" };
+      const user = await lookupSlackUserProfile(userId);
+      const authorTeam = parseSlackTeamId(user.team_id);
+      if (user.id !== userId || !authorTeam) return { value: "none" };
+      return user.is_bot && authorTeam === workspaceTeamId && !user.is_deleted
+        ? { value: "bot_user", ttlMs: MEMBER_TTL_MS }
+        : { value: "none", ttlMs: NON_MEMBER_TTL_MS };
     },
   );
-  return verified ? botId : undefined;
+  // A classic integration has no bot user, so Slack does not name its
+  // workspace. Its post is accepted on a workspace-only channel alone. On
+  // Enterprise Grid, a bot of another workspace in the org could post in an
+  // org-shared channel, so such a post runs nothing.
+  const accepted =
+    verified === "bot_user" ||
+    (verified === "classic" && channelScope === "workspace");
+  return accepted ? botId : undefined;
 }
 
 async function lookupSlackBot(botId: string) {

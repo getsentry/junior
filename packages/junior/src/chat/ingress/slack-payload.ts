@@ -140,14 +140,22 @@ export type SlackInboundEvent = z.output<typeof slackEventSchema>;
 /**
  * Where an event happened, from the signed envelope. `external` is a channel
  * shared with another organization. `workspace` is a channel that only the
- * receiving workspace can post in. Other envelopes are `unknown`.
+ * receiving workspace can post in. `enterprise` is a channel in this
+ * workspace of an Enterprise Grid org, which other workspaces of the org can
+ * also post in when the channel is shared across the org. Other envelopes
+ * are `unknown`.
  */
-export type SlackChannelScope = "workspace" | "external" | "unknown";
+export type SlackChannelScope =
+  | "workspace"
+  | "enterprise"
+  | "external"
+  | "unknown";
 
 // https://docs.slack.dev/apis/events-api#callback-field
 const workspaceChannelSchema = z.object({
-  context_enterprise_id: z.null().optional(),
+  context_enterprise_id: z.string().nullish(),
   context_team_id: slackTeamIdSchema,
+  enterprise_id: z.string().optional(),
   is_ext_shared_channel: z.literal(false),
   team_id: slackTeamIdSchema,
 });
@@ -156,9 +164,12 @@ const workspaceChannelSchema = z.object({
 export function slackChannelScope(body: SlackEventEnvelope): SlackChannelScope {
   if (body.is_ext_shared_channel === true) return "external";
   const parsed = workspaceChannelSchema.safeParse(body);
-  return parsed.success && parsed.data.context_team_id === parsed.data.team_id
-    ? "workspace"
-    : "unknown";
+  if (!parsed.success || parsed.data.context_team_id !== parsed.data.team_id) {
+    return "unknown";
+  }
+  const enterpriseId = parsed.data.context_enterprise_id;
+  if (enterpriseId == null) return "workspace";
+  return enterpriseId === parsed.data.enterprise_id ? "enterprise" : "unknown";
 }
 
 // Keep these fields loose. Each handler validates the fields it needs, so
