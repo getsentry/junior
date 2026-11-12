@@ -1783,7 +1783,7 @@ async function executeAgentRunInPrivacyContext(
     }
     // The caller aborted the run, such as when a person stops the Turn. The
     // caller owns that outcome; it is not a reply failure to report.
-    if (!signal?.aborted || runError !== signal.reason) {
+    if (!signal?.aborted || error !== signal.reason) {
       const providerError = findProviderError(error);
       logException(
         error,
