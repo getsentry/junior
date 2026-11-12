@@ -181,4 +181,27 @@ describeEval("Pull Request Descriptions", pullRequestDescriptionEvals, (it) => {
       }),
     );
   });
+
+  it("when the context changes a tool input without saying why or what breaks, the writer reports gaps instead of guessing", async ({
+    run,
+  }) => {
+    const result = await run({
+      title: "ref(slack): Rename the channel lookup input",
+      context:
+        "Rename the `channel_name` input of `slackChannelLookup` to `channel`. It now also accepts a channel ID.",
+      mustInclude: ["`channel_name`", "`channel`"],
+      expectGaps: true,
+    });
+    await expect(result).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The description says the `channel_name` input is renamed to `channel` and now also accepts a channel ID.",
+        ],
+        fail: [
+          "The description states a reason for the rename, or says whether existing callers break, because the context gives neither.",
+        ],
+      }),
+    );
+  });
 });

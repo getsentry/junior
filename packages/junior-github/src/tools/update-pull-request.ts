@@ -111,11 +111,13 @@ const pullRequestSchema = z.object({
 });
 type PullRequest = z.output<typeof pullRequestSchema>;
 interface Result extends PluginToolOutput, PullRequest {
+  description_gaps?: string[];
   target: "updatePullRequest";
   subscribable?: SubscribableResource;
 }
 const outputSchema = pluginToolOutputSchema.merge(
   pullRequestSchema.extend({
+    description_gaps: z.array(z.string()).optional(),
     target: z.literal("updatePullRequest"),
   }),
 );
@@ -202,7 +204,7 @@ export function createGitHubUpdatePullRequestTool(ctx: {
               path: `${repoPath(repo)}/pulls/${update.number}`,
             })
           : undefined;
-      const description =
+      const written =
         update.description_context !== undefined
           ? await writePullRequestDescription(ctx.model, {
               context: update.description_context,
@@ -212,11 +214,11 @@ export function createGitHubUpdatePullRequestTool(ctx: {
           : undefined;
       const payload = {
         ...(update.title !== undefined ? { title: update.title } : undefined),
-        ...(description !== undefined
+        ...(written !== undefined
           ? {
               body: appendGitHubFooter(
                 appendGitHubRequesterAttribution(
-                  description,
+                  written.description,
                   ctx,
                   requester,
                   currentBody,
@@ -312,6 +314,9 @@ export function createGitHubUpdatePullRequestTool(ctx: {
         ],
         target: "updatePullRequest",
         ...data,
+        ...(written?.gaps.length
+          ? { description_gaps: written.gaps }
+          : undefined),
       };
     },
   });

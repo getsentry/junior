@@ -24,11 +24,14 @@ interface PullRequestDescriptionEvalInput {
   mustNotInclude?: string[];
   /** Longest allowed description, for notes that reviewers called too long. */
   maxChars?: number;
+  /** The notes leave out a fact a reviewer needs, so the writer must report a gap. */
+  expectGaps?: boolean;
   title?: string;
 }
 
 interface PullRequestDescriptionEvalOutput extends Record<string, JsonValue> {
   description: string;
+  gaps: string[];
 }
 
 // The runtime appends attribution and the footer, and the workflow rules
@@ -51,7 +54,7 @@ export const pullRequestDescriptionHarness = createHarness<
 >({
   name: "pull-request-description",
   run: async ({ input }) => {
-    const description = await writePullRequestDescription(
+    const { description, gaps } = await writePullRequestDescription(
       createPluginModel("github"),
       {
         context: input.context,
@@ -73,12 +76,13 @@ export const pullRequestDescriptionHarness = createHarness<
       ...(input.maxChars && description.length > input.maxChars
         ? [`is ${description.length} characters, over ${input.maxChars}`]
         : []),
+      ...(input.expectGaps && gaps.length === 0 ? ["reported no gaps"] : []),
     ];
     if (problems.length > 0) {
       throw new Error(`Description ${problems.join("; ")}:\n${description}`);
     }
     return {
-      output: { description },
+      output: { description, gaps },
       events: [
         {
           type: "message",

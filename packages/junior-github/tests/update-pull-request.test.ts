@@ -76,7 +76,10 @@ describe("updatePullRequest", () => {
   it("updates mutable pull request fields and preserves runtime-owned body metadata", async () => {
     const model = {
       completeObject: vi.fn(async () => ({
-        object: { body: "Updated body" },
+        object: {
+          body: "Updated body",
+          gaps: ["Does the base change affect release builds?"],
+        },
       })),
     };
     const { fetch, tool } = toolContext(undefined, {
@@ -101,6 +104,8 @@ describe("updatePullRequest", () => {
       number: 691,
       state: "open",
       objectAnnotations: [{ status: "open", description: "Updated body" }],
+      // The writer cannot see the diff, so it hands missing facts back to the agent.
+      description_gaps: ["Does the base change affect release builds?"],
       target: "updatePullRequest",
       title: "Updated title",
       subscribable: {

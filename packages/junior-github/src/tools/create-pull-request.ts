@@ -143,6 +143,7 @@ interface GitHubPullRequestResult {
 }
 
 interface GitHubPullRequestToolResult extends GitHubPullRequestResult {
+  description_gaps?: string[];
   stack?: GitHubPullRequestStack;
   subscribable?: SubscribableResource;
   subscription?: WatchResult;
@@ -165,6 +166,7 @@ const gitHubPullRequestDataSchema = z.object({
 
 const gitHubPullRequestOutputSchema = pluginToolOutputSchema.merge(
   gitHubPullRequestDataSchema.extend({
+    description_gaps: z.array(z.string()).optional(),
     target: z.literal("createPullRequest"),
   }),
 );
@@ -499,14 +501,17 @@ export function createGitHubPullRequestTool(
           }
           const requester = await resolveGitHubRequester(ctx);
           const identityId = requester?.identity?.id;
-          const description = await writePullRequestDescription(ctx.model, {
-            context: nonEmptyString(
-              parsedInput.description_context,
-              "description_context",
-            ),
-            repo: parsedInput.repo,
-            title: nonEmptyString(parsedInput.title, "title"),
-          });
+          const { description, gaps } = await writePullRequestDescription(
+            ctx.model,
+            {
+              context: nonEmptyString(
+                parsedInput.description_context,
+                "description_context",
+              ),
+              repo: parsedInput.repo,
+              title: nonEmptyString(parsedInput.title, "title"),
+            },
+          );
           const request = createGitHubPullRequestRequest(
             conversationId,
             parsedInput,
@@ -569,13 +574,16 @@ export function createGitHubPullRequestTool(
           const stack = stackTarget
             ? await stackGitHubPullRequest(ctx, stackTarget)
             : undefined;
-          return await gitHubPullRequestStructuredResult(
+          const structured = await gitHubPullRequestStructuredResult(
             ctx,
             parsedInput,
             result,
             subscriptionConfig,
             stack,
           );
+          return gaps.length > 0
+            ? { ...structured, description_gaps: gaps }
+            : structured;
         },
       );
     },

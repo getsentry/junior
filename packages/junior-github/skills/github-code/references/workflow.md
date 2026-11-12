@@ -44,7 +44,7 @@ Open this when making repository edits, not for read-only inspection.
 4. Resolve the actual default branch.
 5. Update an existing PR for the branch with `github_updatePullRequest`, or create with `github_createPullRequest` (`draft: true` only when work, checks, or decisions remain; otherwise ready for review).
 6. PR title matches the current dominant change, same conventional form as commits.
-7. PR description: pass `description_context`, not a finished description. Give what changed and why, plus context the diff cannot show: motivation, whether anything breaks, a before/after example for interface or config changes, screenshot links for UI changes, risks, linked issues, open questions. The tool writes the description.
+7. PR description: pass `description_context`, not a finished description. Give what changed and why, plus context the diff cannot show: motivation, whether anything breaks, a before/after example for interface or config changes, screenshot links for UI changes, risks, linked issues, open questions. The tool writes the description. It sees only this context, not the diff or commits. If the result lists `description_gaps` that you can answer, update the PR with fuller context.
 8. After material follow-up commits, refresh the title, and pass full `description_context` for the current diff.
 9. Never put customer data, PII, secrets, or sensitive thread context in public PR text.
 10. If PR create/update is blocked, report the exact failure and leave the committed branch intact.
