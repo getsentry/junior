@@ -53,9 +53,10 @@ export class SlackActionError extends Error {
       detail?: string;
       detailLine?: number;
       detailRule?: string;
+      cause?: unknown;
     } = {},
   ) {
-    super(message);
+    super(message, { cause: options.cause });
     this.name = "SlackActionError";
     this.code = code;
     this.apiError = options.apiError;
@@ -283,6 +284,7 @@ function mapSlackError(error: unknown): SlackActionError {
   const message = candidate.message ?? "Slack action failed";
   const baseOptions = {
     apiError,
+    cause: error,
     statusCode: candidate.statusCode,
     requestId: getHeaderString(candidate.headers, "x-slack-req-id"),
     errorData: serializeSlackErrorData(candidate.data),
@@ -410,6 +412,12 @@ function findNetworkErrorCode(error: unknown, depth = 0): string | undefined {
     findNetworkErrorCode(candidate.original, depth + 1) ??
     findNetworkErrorCode(candidate.cause, depth + 1)
   );
+}
+
+/** Report whether a Slack call failed because its request deadline elapsed. */
+export function isSlackRequestTimeout(error: unknown): boolean {
+  const networkCode = findNetworkErrorCode(error);
+  return networkCode !== undefined && TIMEOUT_ERROR_CODES.has(networkCode);
 }
 
 function hasSocketHangUpMessage(error: unknown): boolean {
