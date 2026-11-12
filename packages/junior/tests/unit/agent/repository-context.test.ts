@@ -21,6 +21,7 @@ describe("createRepositoryInstructionsContext", () => {
       commit: async () => {},
       hasSandbox: () => true,
       promptContextContentParts: [],
+      promptHistoryMessages: [],
       setMessages() {},
       shouldPromptAgent: true,
     });
@@ -50,6 +51,7 @@ describe("createRepositoryInstructionsContext", () => {
       commit: async () => {},
       hasSandbox: () => true,
       promptContextContentParts: [],
+      promptHistoryMessages: [],
       setMessages() {},
       shouldPromptAgent: true,
     });
@@ -114,6 +116,7 @@ describe("createRepositoryInstructionsContext", () => {
         commit: async () => {},
         hasSandbox: () => true,
         promptContextContentParts: [],
+        promptHistoryMessages: [],
         setMessages() {},
         shouldPromptAgent: true,
       });

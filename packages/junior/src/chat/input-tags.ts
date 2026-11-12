@@ -13,6 +13,7 @@ const RUNTIME_INPUT_TAGS = [
   "agent-message",
   "parent-agent-task",
   "review-item-answer",
+  // Saved Turns from before a dismiss stopped starting a Turn have it.
   "review-item-dismissed",
   "relayed-review-item-answer",
   "relayed-review-item-dismissed",

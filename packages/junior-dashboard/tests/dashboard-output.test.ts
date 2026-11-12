@@ -57,13 +57,24 @@ export default defineConfig({
     path.join(root, "server.ts"),
     `import { createApp, defineJuniorPlugins } from "@sentry/junior";
 
-export default await createApp({
+const app = await createApp({
   dashboard: {
     authRequired: false,
     allowedDomains: ["sentry.io"],
   },
   plugins: defineJuniorPlugins([]),
 });
+
+export default {
+  async fetch(request: Request, context?: unknown): Promise<Response> {
+    // Like sandbox egress, this route reads the body and can answer 404.
+    if (new URL(request.url).pathname === "/read-body-not-found") {
+      await request.text();
+      return new Response(null, { status: 404 });
+    }
+    return app.fetch(request, context);
+  },
+};
 `,
   );
 
@@ -205,6 +216,16 @@ describe.sequential("dashboard Nitro production output", () => {
       const html = await page.text();
       expect(html).toContain("dashboard-root");
       expect(html).toContain(`src="/_junior/dashboard/assets/${clientFile}"`);
+
+      // Nitro must run server.ts once. A second run would read the used body.
+      const notFound = await app.fetch(
+        new Request("http://localhost/read-body-not-found", {
+          body: "{}",
+          method: "POST",
+        }),
+        {},
+      );
+      expect(notFound.status).toBe(404);
     } finally {
       process.chdir(originalCwd);
       fs.rmSync(root, { force: true, recursive: true });

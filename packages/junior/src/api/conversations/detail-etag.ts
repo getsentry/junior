@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
@@ -11,7 +11,6 @@ import {
 import { slackAttachmentsVersionQuery } from "@/chat/slack/attachments";
 import {
   juniorConversationParticipants,
-  juniorConversationReadPositions,
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
@@ -19,7 +18,6 @@ import {
 } from "@/db/schema";
 import { JUNIOR_VERSION } from "@/version";
 import type { ConversationAccess, ConversationAccessReader } from "./access";
-import { readConversationAgentTree } from "./agent-tree";
 import { readConversationForks } from "./fork";
 import {
   viewerMarksFromParticipant,
@@ -32,12 +30,29 @@ import {
   conversationRecordJoins,
   type ConversationRecord,
 } from "./record";
-import { unreadReplySql } from "./unread";
 import type { ConversationReadPosition } from "../schema/conversation-read-position";
 
 const detailViewer = alias(juniorUsers, "detail_viewer");
 const forkSource = alias(juniorConversations, "detail_fork_source");
 const fork = alias(juniorConversations, "detail_fork");
+const agentTreeRoot = alias(juniorConversations, "detail_agent_tree_root");
+
+/**
+ * Return the root fields that label the agent tree of a child: its title and
+ * channel name. The other labels cannot change once the child exists. An
+ * agent invocation keeps its title and agent name after insert, and only the
+ * spawn sets a title. Access to each node comes from the shared root, so the
+ * viewer's access covers it. This keeps the recursive lineage read out of
+ * every poll.
+ */
+function agentTreeRootLabel(db: JuniorDatabase, rootConversationId: SQL) {
+  return db
+    .select({
+      label: sql<string>`row(${agentTreeRoot.title}, ${agentTreeRoot.channelName})::text`,
+    })
+    .from(agentTreeRoot)
+    .where(eq(agentTreeRoot.conversationId, rootConversationId));
+}
 
 /**
  * Sum the detail versions of a Conversation and its child agents. Child
@@ -171,7 +186,7 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
     )
     .orderBy(asc(fork.createdAt))
     .limit(50);
-  // Marks, the auto-archive choice, and unread live on the root.
+  // Marks and the auto-archive choice live on the root.
   const viewerParticipant = viewer
     ? and(
         eq(juniorConversationParticipants.userId, viewer.id),
@@ -184,6 +199,10 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
   const [row] = await db
     .select({
       ...conversationRecordColumns,
+      // A root Conversation has no agent tree.
+      agentTreeRootLabel: sql<
+        string | null
+      >`case when ${juniorConversations.parentConversationId} is null then null else (${agentTreeRootLabel(db, rootConversationId)}) end`,
       attachmentsVersion: sql<string>`(${slackAttachmentsVersionQuery(db, conversationId)})`,
       autoArchive: juniorConversationParticipants.autoArchive,
       autoArchiveDefault: detailViewer.autoArchiveDefault,
@@ -198,25 +217,6 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
       pinnedAt: juniorConversationParticipants.pinnedAt,
       pinPosition: juniorConversationParticipants.pinPosition,
       rootConversationId,
-      unreadReply: viewer
-        ? unreadReplySql(
-            db,
-            viewer.id,
-            rootConversationId,
-            sql`(${db
-              .select({ seq: juniorConversationReadPositions.lastReadSeq })
-              .from(juniorConversationReadPositions)
-              .where(
-                and(
-                  eq(juniorConversationReadPositions.userId, viewer.id),
-                  eq(
-                    juniorConversationReadPositions.conversationId,
-                    rootConversationId,
-                  ),
-                ),
-              )})`,
-          )
-        : sql<boolean>`false`,
       unsubscribedAt: juniorConversationParticipants.unsubscribedAt,
       version: sql<
         string | null
@@ -244,11 +244,10 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
 
 /**
  * Viewer state (access, marks, read position, auto-archive choice) and data
- * that other Conversations own (forks, agent tree labels).
+ * that other Conversations own (forks).
  */
 export type ConversationDetailState = {
   access?: ConversationAccess;
-  agentTree?: Awaited<ReturnType<typeof readConversationAgentTree>>;
   autoArchive?: boolean;
   forks: Awaited<ReturnType<typeof readConversationForks>>;
   readPosition?: ConversationReadPosition;
@@ -259,8 +258,6 @@ export type ConversationDetailState = {
    * so an `appendCursor` from before it cannot extend them.
    */
   transcriptVersion: string;
-  /** The root has a visible Junior reply after the viewer's read position. */
-  unreadReply?: boolean;
   viewerMarks?: ConversationViewerMarks;
 };
 
@@ -270,12 +267,14 @@ async function readDetailState(
   readAccess: ConversationAccessReader,
 ): Promise<
   DetailStateRead & {
+    /** `agentTreeRootLabel` of a child, or undefined for a root. */
+    agentTreeRootLabel: string | undefined;
     /** `conversationVersionQuery` token, or undefined when missing. */
     version: string | undefined;
   }
 > {
   const rowRead = readDetailStateRow(conversationId, viewer);
-  const [accessById, row, forks, agentTree] = await Promise.all([
+  const [accessById, row, forks] = await Promise.all([
     readAccess([conversationId]),
     rowRead,
     rowRead.then((stored) =>
@@ -296,17 +295,6 @@ async function readDetailState(
         readAccess,
       ),
     ),
-    rowRead.then((stored) =>
-      readConversationAgentTree(
-        {
-          conversationId,
-          ...(stored?.conversation.parentConversationId
-            ? { parentConversationId: stored.conversation.parentConversationId }
-            : undefined),
-        },
-        readAccess,
-      ),
-    ),
   ]);
   const access = accessById.get(conversationId);
   // Stored events only grow. Their projection changes with the viewer's
@@ -323,10 +311,10 @@ async function readDetailState(
     .digest("base64url");
   const viewerMarks = row ? viewerMarksFromParticipant(row) : undefined;
   return {
+    agentTreeRootLabel: row?.agentTreeRootLabel ?? undefined,
     record: row ? conversationRecordFromRow(row) : undefined,
     state: {
       access,
-      agentTree,
       // The viewer's choice for the root, else their default.
       ...(viewer
         ? { autoArchive: row?.autoArchive ?? row?.autoArchiveDefault ?? false }
@@ -337,7 +325,6 @@ async function readDetailState(
         : undefined),
       ...(viewer ? { subscribed: !row?.unsubscribedAt } : undefined),
       transcriptVersion,
-      ...(viewer && row ? { unreadReply: row.unreadReply } : undefined),
       ...(viewerMarks ? { viewerMarks } : undefined),
     },
     version: row?.version ?? undefined,
@@ -398,24 +385,22 @@ export async function readConversationDetailEtag(
     })
   | undefined
 > {
-  const { record, state, version } = await readDetailState(
+  const { agentTreeRootLabel, record, state, version } = await readDetailState(
     conversationId,
     options.viewer,
     options.readAccess,
   );
   if (!version) return undefined;
   const basis = JSON.stringify({
+    // The report reads the agent tree itself. Its access is in `access`.
     access: state.access ?? null,
-    agentTree: state.agentTree ?? null,
+    agentTree: agentTreeRootLabel ?? null,
     autoArchive: state.autoArchive ?? null,
     forks: state.forks,
     junior: JUNIOR_VERSION,
     limit: options.limit ?? null,
     subscribed: state.subscribed ?? null,
     version,
-    // The read position is not hashed, but whether it leaves a reply unread
-    // is, so the next poll after a read or a mark shows the new state.
-    unreadReply: state.unreadReply ?? false,
     viewerMarks: state.viewerMarks ?? null,
   });
   return {

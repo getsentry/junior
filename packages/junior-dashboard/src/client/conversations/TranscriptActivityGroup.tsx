@@ -9,7 +9,6 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { formatMs } from "../format";
-import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import { isMemoryCaptureEvent } from "./conversationMemory";
 import {
   isAgentInvocationResultMessage,
@@ -20,6 +19,7 @@ import { useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptActivityNesting } from "./TranscriptRailEvent";
 import { useTranscriptRowOpen } from "./TranscriptRows";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
+import { LiveActivityStep, useWorkingTime } from "./TranscriptLiveStep";
 
 function countLabel(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : `${count} ${plural}`;
@@ -42,10 +42,6 @@ export function isCollapsibleActivityEntry(
   }
   // A Turn's captured memories stay visible, so the reader sees what it saved.
   if (entry.kind === "structured_event" && isMemoryCaptureEvent(entry.part)) {
-    return false;
-  }
-  // A review card stays visible where the agent added the item.
-  if (entry.kind === "tool" && reviewItemIdFromToolCall(entry.part)) {
     return false;
   }
   return true;
@@ -97,6 +93,18 @@ function entryEndMs(entry: RenderedTranscriptEntry): number | undefined {
   }
   if (entry.kind === "message") return entry.message.timestamp;
   return entry.timestamp;
+}
+
+function activityGroupStartMs(
+  entries: readonly RenderedTranscriptEntry[],
+): number | undefined {
+  const starts = entries
+    .map(entryStartMs)
+    .filter(
+      (start): start is number =>
+        typeof start === "number" && Number.isFinite(start),
+    );
+  return starts.length > 0 ? Math.min(...starts) : undefined;
 }
 
 /** Span one activity group from the earliest start to the latest end. */
@@ -192,6 +200,11 @@ function hasLiveActivity(entries: RenderedTranscriptEntry[]): boolean {
 /** Collapse completed non-message activity so chat messages stay primary. */
 export function TranscriptActivityGroup(props: {
   entries: RenderedTranscriptEntry[];
+  /**
+   * The activity of the running Turn. Closed, it also shows the latest step,
+   * so the reader can follow along without opening it.
+   */
+  live?: boolean;
   /** Keeps the group open while it unmounts outside the viewport. */
   openKey?: string;
   renderEntry: (entry: RenderedTranscriptEntry) => ReactNode;
@@ -202,9 +215,17 @@ export function TranscriptActivityGroup(props: {
   const rows = props.entries.map((entry) => (
     <Fragment key={entry.key}>{props.renderEntry(entry)}</Fragment>
   ));
-  const label = activityGroupLabel(props.entries);
+  // A running Turn counts its time up, like a stopwatch.
+  const workingTime = useWorkingTime(
+    props.live ? activityGroupStartMs(props.entries) : undefined,
+  );
+  const label = workingTime
+    ? `Working for ${workingTime}`
+    : activityGroupLabel(props.entries);
   const summary = activityGroupSummary(props.entries);
-  const live = hasLiveActivity(props.entries);
+  // The running Turn's step line is the one thing that shimmers, so its
+  // "Working for" time stays still.
+  const shimmer = !props.live && hasLiveActivity(props.entries);
 
   if (searchActive) {
     return (
@@ -220,7 +241,7 @@ export function TranscriptActivityGroup(props: {
         flush
         className={cn(
           "group/activity-run flex items-center gap-1 text-xs leading-tight text-dashboard-text-muted",
-          live && "text-dashboard-accent-text/80",
+          shimmer && "text-dashboard-accent-text/80",
         )}
       >
         <Tooltip>
@@ -230,8 +251,8 @@ export function TranscriptActivityGroup(props: {
             }
           >
             <span className="min-w-0 truncate">
-              <ShimmerText active={live}>
-                {open ? `Hide ${label}` : label}
+              <ShimmerText active={shimmer}>
+                {open && !workingTime ? `Hide ${label}` : label}
               </ShimmerText>
             </span>
             <ChevronRight
@@ -243,6 +264,9 @@ export function TranscriptActivityGroup(props: {
           <TooltipContent>{summary}</TooltipContent>
         </Tooltip>
       </TranscriptSummaryTrigger>
+      {props.live && !open ? (
+        <LiveActivityStep entries={props.entries} />
+      ) : null}
       {/* Closed rows stay in the page, so browser find can open the group. */}
       <CollapsibleContent hiddenUntilFound>
         <TranscriptActivityNesting.Provider value>

@@ -10,8 +10,9 @@ import {
   MAX_CONTENT_CHARS,
   parseFileReference,
   readGoogleFile,
+  resourceKeyHeaders,
 } from "./files";
-import type { GoogleToolContext } from "./shared";
+import { googleApiRequest, type GoogleToolContext } from "./shared";
 
 const inputSchema = z
   .object({
@@ -23,6 +24,12 @@ const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("readGoogleDoc"),
   content: z.string().describe("Doc text as Markdown."),
   document_id: z.string(),
+  revision_id: z
+    .string()
+    .optional()
+    .describe(
+      "Revision of the Doc that this content comes from. Pass it to the Doc edit tools, which refuse the edit if the Doc changed after this read. Missing when the Docs API is not available; then the Doc cannot be edited.",
+    ),
   modified_at: z.string().optional(),
   title: z.string(),
   truncated: z
@@ -33,11 +40,13 @@ const outputSchema = pluginToolOutputSchema.extend({
   url: z.string().optional(),
 });
 
+const revisionSchema = z.object({ revisionId: z.string() });
+
 /**
  * Read one Google Doc as Markdown.
  *
- * Drive exports the Doc, so this needs no Docs API. Comments are not in the
- * export; `listGoogleFileComments` reads them.
+ * Drive exports the text. The Docs API gives the revision that the edit tools
+ * check. Comments are not in the export; `listGoogleFileComments` reads them.
  */
 export function createReadGoogleDocTool(ctx: GoogleToolContext) {
   return definePluginTool({
@@ -54,6 +63,21 @@ export function createReadGoogleDocTool(ctx: GoogleToolContext) {
     async execute(input) {
       const ref = parseFileReference(input.document);
       const file = await readGoogleFile(ctx, ref, ["document"]);
+      // Read the revision before the text. If the Doc changes in between, the
+      // text is newer than the revision, and an edit is refused, not misplaced.
+      // Reading needs only Drive. When the Docs API fails, for example before
+      // an admin enables it, the text is still returned without a revision,
+      // and the edit tools cannot run.
+      const revision = await googleApiRequest(ctx, {
+        headers: resourceKeyHeaders(ref),
+        operation: "google.docs.document.get",
+        path: `/v1/documents/${ref.fileId}`,
+        query: { fields: "revisionId" },
+      });
+      const revisionId =
+        revision.status === 200
+          ? revisionSchema.safeParse(revision.body).data?.revisionId
+          : undefined;
       const response = await googleFileRequest(ctx, ref, {
         headers: { Accept: "text/markdown" },
         operation: "google.drive.file.export",
@@ -65,6 +89,7 @@ export function createReadGoogleDocTool(ctx: GoogleToolContext) {
         target: "readGoogleDoc" as const,
         content: content.slice(0, MAX_CONTENT_CHARS),
         document_id: file.id,
+        ...(revisionId ? { revision_id: revisionId } : undefined),
         ...fileOutputFields(file),
         title: file.name,
         truncated: content.length > MAX_CONTENT_CHARS,

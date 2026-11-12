@@ -79,7 +79,6 @@ export async function generateShortTitle(args: {
     const result = await args.completeText({
       signal: args.signal,
       modelId: botConfig.fastModelId,
-      temperature: 0,
       operation: `${args.kind}_title`,
       cost: args.cost,
       messages: [

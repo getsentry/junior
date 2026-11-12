@@ -6,6 +6,7 @@ import type { JuniorApiEnv } from "@/api/route";
 import {
   forkConversationResponseSchema,
   conversationDetailReportSchema,
+  versionsSchema,
 } from "@/api/schema";
 import {
   getConversationEventStore,
@@ -397,6 +398,11 @@ describe("conversation forks", () => {
     const owner = await authenticatedApi(OWNER_EMAIL);
     // A reader of a public Conversation asks in a fork of their own.
     const reader = await authenticatedApi("reader@example.com");
+    // The feed change token covers the same rows as the feed.
+    const feedToken = async () =>
+      versionsSchema.parse(await (await reader.request("/api/versions")).json())
+        .conversations;
+    const emptyFeedToken = await feedToken();
     const quote = "blue <option>";
     const response = await reader.request(
       `/api/conversations/${encodeURIComponent(source)}/forks`,
@@ -443,6 +449,7 @@ describe("conversation forks", () => {
         ).json(),
       ).forks;
     expect(await listed(reader)).not.toContain(conversationId);
+    expect(await feedToken()).toBe(emptyFeedToken);
     expect(await sourceForks()).toEqual([]);
 
     const keep = (api: Hono<JuniorApiEnv>) =>
@@ -454,6 +461,7 @@ describe("conversation forks", () => {
     expect((await keep(reader)).status).toBe(200);
     expect((await keep(reader)).status).toBe(200);
     expect(await listed(reader)).toContain(conversationId);
+    expect(await feedToken()).not.toBe(emptyFeedToken);
     expect(await sourceForks()).toEqual([conversationId]);
     expect(
       (await getConversationEventStore().loadHistory(conversationId)).filter(

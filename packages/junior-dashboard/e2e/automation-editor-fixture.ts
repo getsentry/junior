@@ -18,7 +18,7 @@ export async function mockAutomationEditor(
     id: summary.id,
     revision: "a".repeat(64),
     title: summary.title,
-    instruction: summary.instruction,
+    task: summary.task,
     credentialMode: "creator",
     outcomes: summary.outcomes,
     destination: {

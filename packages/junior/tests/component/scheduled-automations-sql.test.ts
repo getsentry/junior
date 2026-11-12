@@ -50,7 +50,7 @@ function createTask(
       timezone: "UTC",
     },
     status: "active",
-    task: { text: "Post a digest." },
+    task: { kind: "instruction", instruction: "Post a digest." },
     updatedAtMs: TEST_RUN_AT_MS,
     ...overrides,
   };

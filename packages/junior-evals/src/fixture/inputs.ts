@@ -82,8 +82,8 @@ export interface AppHomeUnlinkInput {
 /** A dashboard message through `POST /api/conversations`. */
 export interface WebMessageInput {
   kind: "web_message";
-  /** Images that the person added to the message. */
-  images?: FileInput[];
+  /** Files that the person added to the message. */
+  files?: FileInput[];
   /** After the post, the person steers the queued message into the running turn. */
   steer?: boolean;
   text: string;
@@ -235,7 +235,7 @@ export function appHomeUnlink(
 /** Send a message from the dashboard. */
 export function webMessage(
   text: string,
-  options: { images?: FileInput[]; steer?: boolean } = {},
+  options: { files?: FileInput[]; steer?: boolean } = {},
 ): WebMessageInput {
   return { kind: "web_message", text, ...options };
 }
@@ -253,7 +253,7 @@ export function reviewItemDismiss(item: ReviewDeskItem): ReviewItemActionInput {
   return { kind: "review_item_action", action: "dismiss", item };
 }
 
-/** A file for `files` or `images`. A string is the text of the file. */
+/** A file for `files`. A string is the text of the file. */
 export function file(
   name: string,
   mimeType: string,

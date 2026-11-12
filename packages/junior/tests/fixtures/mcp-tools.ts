@@ -154,7 +154,7 @@ export async function seedMcpAutomation(args: {
       timezone: "UTC",
     },
     status: "active",
-    task: { text: args.instruction },
+    task: { kind: "instruction", instruction: args.instruction },
     title: args.title,
     updatedAtMs: nowMs,
   });

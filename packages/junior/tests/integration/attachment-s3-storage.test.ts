@@ -101,6 +101,35 @@ describe("S3 attachment storage", () => {
     },
   );
 
+  it("signs a browser upload that only fits the declared size and type", async () => {
+    const storage = s3Storage();
+    const key = `uploads/${Date.now()}`;
+    const body = Buffer.from("deploy failed");
+    const target = await storage.createUploadTarget!({
+      bytes: body.byteLength,
+      contentType: "text/plain",
+      expiresAtMs: Date.now() + 60_000,
+      key,
+    });
+    const send = (data: Buffer, contentType = "text/plain") =>
+      fetch(target.url, {
+        body: new Uint8Array(data),
+        headers: { ...target.headers, "content-type": contentType },
+        method: target.method,
+      }).then(async (response) => {
+        await response.arrayBuffer();
+        return response.status;
+      });
+
+    expect(await send(Buffer.from("other size"))).toBe(403);
+    expect(await send(body, "text/html")).toBe(403);
+    expect(await send(body)).toBe(200);
+    expect(await send(Buffer.from("other bytes!!"))).toBe(412);
+    const stored = await storage.get(key);
+    expect(await new Response(stored).text()).toBe("deploy failed");
+    await storage.delete([key]);
+  });
+
   it("serves stored attachments and deletes them during garbage collection", async () => {
     const conversationId = "slack:CS3:attachment";
     await recordPublicConversation(conversationId);

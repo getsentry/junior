@@ -346,6 +346,39 @@ test("reuses the fresh conversation feed after window focus", async ({
   expect(requests).toBe(1);
 });
 
+test("loads more conversations as the list scrolls and retries a failed page", async ({
+  page,
+  dashboard,
+}) => {
+  let failNextPage = true;
+  await page.route("**/api/conversations?*cursor=*", async (route) => {
+    if (failNextPage) {
+      failNextPage = false;
+      await route.abort();
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto(dashboard.baseURL);
+  const list = page.getByRole("navigation", { name: "Your conversations" });
+  const firstRow = list
+    .getByRole("link", { name: /Investigate checkout latency/ })
+    .first();
+  const lastRow = list.getByRole("link", { name: /SDK changelog summary 64/ });
+  await expect(firstRow).toBeVisible();
+  await expect(lastRow).toHaveCount(0);
+
+  // A failed page keeps the loaded rows and waits for Retry.
+  await list.getByRole("link").last().scrollIntoViewIfNeeded();
+  await expect(page.getByText("Could not load more.")).toBeVisible();
+  await expect(firstRow).toBeAttached();
+
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(lastRow.first()).toBeAttached();
+  await expect(page.getByText("Could not load more.")).toHaveCount(0);
+});
+
 test("keeps cached conversation and draft available through reconnect", async ({
   context,
   page,
@@ -518,8 +551,10 @@ test("scrolls long conversation and transcript panes independently", async ({
   ).toBeVisible();
 
   const conversationList = page
-    .getByRole("navigation", { name: "Your conversations" })
-    .locator("..");
+    .locator('[data-slot="scroll-area-viewport"]')
+    .filter({
+      has: page.getByRole("navigation", { name: "Your conversations" }),
+    });
   const transcript = page.getByLabel("Conversation transcript");
   const geometry = await page.evaluate(() => ({
     documentHeight: document.documentElement.scrollHeight,
@@ -598,24 +633,26 @@ test("shows personal spend and groups profile and session actions", async ({
   await expect(popover).toContainText("7d $0.46");
   await expect(popover).toContainText("30d $0.46");
   await expect(
-    popover.getByRole("link", { name: "My profile" }),
+    popover.getByRole("menuitem", { name: "My profile" }),
   ).toHaveAttribute("href", "/people/dev%40example.com");
   await expect(
-    popover.getByRole("link", { name: "Settings", exact: true }),
+    popover.getByRole("menuitem", { name: "Settings", exact: true }),
   ).toHaveAttribute("href", "/settings");
   // Low-traffic pages live here instead of the primary nav.
   await expect(
-    popover.getByRole("link", { name: "Code", exact: true }),
+    popover.getByRole("menuitem", { name: "Code", exact: true }),
   ).toHaveAttribute("href", "/code");
   await expect(
-    popover.getByRole("link", { name: "System", exact: true }),
+    popover.getByRole("menuitem", { name: "System", exact: true }),
   ).toHaveAttribute("href", "/system");
   await expect(
     rail
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: /^(Code|System)$/ }),
   ).toHaveCount(0);
-  await expect(popover.getByRole("button", { name: "Log out" })).toBeVisible();
+  await expect(
+    popover.getByRole("menuitem", { name: "Log out" }),
+  ).toBeVisible();
 
   await page.keyboard.press("Escape");
   await expect(popover).toHaveCount(0);
@@ -627,7 +664,7 @@ test("shows personal spend and groups profile and session actions", async ({
       request.url().endsWith("/api/auth/sign-out") &&
       request.method() === "POST",
   );
-  await page.getByRole("button", { name: "Log out" }).click();
+  await page.getByRole("menuitem", { name: "Log out" }).click();
   // Better Auth returns 415 for a sign-out body without a JSON content type.
   expect((await signOutRequest).headers()["content-type"]).toBe(
     "application/json",
@@ -667,23 +704,19 @@ test("inspects and copies a child agent transcript", async ({
   await expect(
     page.getByRole("heading", { name: "Dashboard QA edge cases" }),
   ).toBeVisible();
-  // A run of Tasks collapses to one line that says what needs attention.
-  const tasksLine = page.getByRole("button", { name: /^2 Tasks/ });
-  await expect(tasksLine).toContainText("1 blocked");
+  // The Tasks of a Turn sit under its reply, one chip each with its status.
   const planner = page.getByRole("button", {
-    name: "Open Review the dashboard plan transcript",
+    name: "Open Review the dashboard plan transcript (completed)",
   });
   const reviewer = page.getByRole("button", {
-    name: "Open reviewer transcript",
+    name: "Open reviewer transcript (blocked)",
   });
-  await expect(planner).toBeHidden();
-  // The line already shows the result, so its Event row does not render.
+  await expect(planner).toBeVisible();
+  await expect(reviewer).toBeVisible();
+  // The chip already shows the result, so its Event row does not render.
   await expect(
     page.getByText('Child agent "reviewer" is blocked.'),
   ).toBeHidden();
-  await tasksLine.click();
-  await expect(reviewer).toContainText("blocked");
-  await expect(planner).toContainText("completed");
   await screenshot(page, "conversation-child-agents");
 
   // Details lists Tasks with the runtime status.
@@ -831,7 +864,7 @@ test("inspects and copies a child agent transcript", async ({
   );
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await expect(
-    page.getByRole("button", { name: "Pin", exact: true }),
+    page.getByRole("menuitem", { name: "Pin", exact: true }),
   ).toBeDisabled();
 });
 

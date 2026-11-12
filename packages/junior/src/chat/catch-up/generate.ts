@@ -126,7 +126,6 @@ export async function generateCatchUp(args: {
     operation: "conversation_catch_up",
     cost: args.cost,
     system: CATCH_UP_PROMPT,
-    temperature: 0,
   });
   const catchUp = parseCatchUp(result.text);
   if (!catchUp) throw new Error("The catch-up model returned no summary");

@@ -32,7 +32,7 @@ import { downloadPrivateSlackFile } from "@/chat/slack/client";
 import { storeAttachment } from "@/chat/attachments/store";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { logWarn } from "@/chat/logging";
-import { MAX_USER_ATTACHMENTS } from "@/chat/slack/vision-context";
+import { MAX_MODEL_ATTACHMENTS } from "@/chat/attachments/model-input";
 
 interface ThreadReadAttachmentDeps {
   conversationId: string;
@@ -192,7 +192,7 @@ export function createSlackThreadReadTool(
   attachmentDeps?: ThreadReadAttachmentDeps,
 ) {
   return zodTool({
-    description: `Read a Slack thread, including message reaction users, from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels. Returns \`conversation_ids\` when you took part in the thread; pass one to \`searchConversationEvents\`. In the current conversation's thread, stores up to ${MAX_USER_ATTACHMENTS} new files per call and returns their \`attachment_id\` for \`loadAttachment\`; \`unstored_file_count\` counts the files left for a later call.`,
+    description: `Read a Slack thread, including message reaction users, from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels. Returns \`conversation_ids\` when you took part in the thread; pass one to \`searchConversationEvents\`. In the current conversation's thread, stores up to ${MAX_MODEL_ATTACHMENTS} new files per call and returns their \`attachment_id\` for \`loadAttachment\`; \`unstored_file_count\` counts the files left for a later call.`,
     // Not read-only: it stores files of the current thread as Conversation
     // attachments. Reading again stores nothing new for the same files.
     annotations: {
@@ -399,11 +399,14 @@ export function createSlackThreadReadTool(
         ];
         // One read stores at most as many files as a Turn gives the model.
         // A later read stores the rest, because stored files match first.
-        unstoredFileCount = Math.max(0, unstored.length - MAX_USER_ATTACHMENTS);
+        unstoredFileCount = Math.max(
+          0,
+          unstored.length - MAX_MODEL_ATTACHMENTS,
+        );
         for (const [fileId, attachmentId] of await storeThreadFiles({
           conversationId: attachmentDeps.conversationId,
           db: attachmentDeps.db,
-          files: unstored.slice(0, MAX_USER_ATTACHMENTS),
+          files: unstored.slice(0, MAX_MODEL_ATTACHMENTS),
           storage: attachmentDeps.storage,
         })) {
           attachmentIdsBySlackFileId.set(fileId, attachmentId);

@@ -6,6 +6,8 @@ import {
   type ConversationWorkQueue,
 } from "./queue";
 import * as workState from "./state";
+
+export type { RenderInboundText } from "./state";
 export {
   CONVERSATION_ACTIVE_INDEX_KEY,
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
@@ -27,7 +29,7 @@ export {
   type AppendAndEnqueueInboundMessageResult,
   type AppendInboundMessageResult,
   type CompleteConversationStopResult,
-  type Conversation,
+  type ConversationExecutionState,
   type ConversationExecution,
   type ConversationStop,
   type ConversationWorkLease,
@@ -48,7 +50,7 @@ import type {
   AppendAndEnqueueExclusiveInboundMessageResult,
   AppendAndEnqueueInboundMessageResult,
   AppendExclusiveInboundMessageResult,
-  Conversation,
+  ConversationExecutionState,
   InboundMessage,
 } from "@/chat/task-execution/state";
 import {
@@ -82,7 +84,7 @@ function duplicateInboundNudgeIdempotencyKey(
 }
 
 function hasRecentEnqueueMarker(
-  conversation: Conversation,
+  conversation: ConversationExecutionState,
   nowMs: number,
 ): boolean {
   const lastEnqueuedAtMs = conversation.execution.lastEnqueuedAtMs;
@@ -143,6 +145,13 @@ export async function getConversationWorkState(args: {
   state?: StateAdapter;
 }) {
   return await workState.getConversationWorkState(args);
+}
+
+/** Return the persisted work records of several Conversations in one read. */
+export async function getConversationWorkStates(
+  conversationIds: readonly string[],
+) {
+  return await workState.getConversationWorkStates(conversationIds);
 }
 
 /** Count one failed conversation execution and persist its terminal retry state. */
@@ -342,6 +351,8 @@ export async function appendAndEnqueueInboundMessage(args: {
   nowMs?: number;
   queue: ConversationWorkQueue;
   queueDelayMs?: number;
+  /** Render the message text under the mailbox lock. */
+  renderText?: workState.RenderInboundText;
   replaceExistingWake?: true;
   state?: StateAdapter;
 }): Promise<AppendAndEnqueueInboundMessageResult> {
@@ -351,6 +362,7 @@ export async function appendAndEnqueueInboundMessage(args: {
     appendResult: await workState.appendInboundMessage({
       message: args.message,
       nowMs,
+      renderText: args.renderText,
       state: args.state,
     }),
     nowMs,
@@ -543,6 +555,21 @@ export async function cancelHumanFacingPendingMessages(args: {
     await recordExecutionMetadata(args);
   }
   return result;
+}
+
+/** Drop pending mailbox rows by id without requiring a worker lease. */
+export async function dropPendingMessages(args: {
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const dropped = await workState.dropPendingMessages(args);
+  if (dropped.length > 0) {
+    await recordExecutionMetadata(args);
+  }
+  return dropped;
 }
 
 /** Mark one author's queued web messages as interrupts. */

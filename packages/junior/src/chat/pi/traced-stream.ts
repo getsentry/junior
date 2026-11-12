@@ -33,7 +33,7 @@ import {
 } from "@/chat/conversation-privacy";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
 import {
-  createProviderError,
+  createAssistantProviderError,
   getProviderErrorAttributes,
 } from "@/chat/services/provider-error";
 
@@ -150,7 +150,7 @@ function buildChatEndAttributes(
   }
 
   if (message.stopReason === "error") {
-    const providerError = createProviderError(message.errorMessage ?? "");
+    const providerError = createAssistantProviderError(message);
     Object.assign(attributes, getProviderErrorAttributes(providerError));
     attributes["error.type"] = providerError.kind;
   }
@@ -291,7 +291,8 @@ function relayStream(
  *
  * The base argument exists so tests can inject a stub stream function.
  * `promptName` names a request that is not an agent loop call, such as a
- * context summary.
+ * context summary. `endAttributes` adds caller attributes from the final
+ * message.
  */
 export function createTracedStreamFn(
   baseOrOptions:
@@ -299,6 +300,9 @@ export function createTracedStreamFn(
     | {
         conversationPrivacy?: ConversationPrivacy;
         base?: StreamFn;
+        endAttributes?: (
+          message: AssistantMessage,
+        ) => Record<string, TraceAttributeValue> | undefined;
         promptName?: string;
       } = streamSimple,
 ): StreamFn {
@@ -318,6 +322,10 @@ export function createTracedStreamFn(
   const effectivePrivacy = conversationPrivacy ?? "private";
   const promptName =
     typeof baseOrOptions === "function" ? undefined : baseOrOptions.promptName;
+  const callerEndAttributes =
+    typeof baseOrOptions === "function"
+      ? undefined
+      : baseOrOptions.endAttributes;
   return async (model, context, options) => {
     const span = Sentry.startInactiveSpan({
       name: `chat ${model.id}`,
@@ -360,6 +368,7 @@ export function createTracedStreamFn(
               const endAttributes = {
                 ...buildChatEndAttributes(finalMessage, mode),
                 ...responseTiming.attributes(),
+                ...callerEndAttributes?.(finalMessage),
               };
               for (const [key, value] of Object.entries(endAttributes)) {
                 span.setAttribute(key, value);

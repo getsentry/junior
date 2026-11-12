@@ -1,4 +1,3 @@
-import type { InputImage } from "@sentry/junior/api/schema";
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -31,7 +30,7 @@ import { Transcript } from "./TranscriptView";
 export type PendingNewConversation = {
   createdAt: string;
   idempotencyKey: string;
-  images?: InputImage[];
+  files?: File[];
   message: string;
   visibility: "private" | "public";
 };
@@ -46,6 +45,25 @@ const detailsTitle = (
 
 // The page shows the server's title when it opens.
 const PENDING_TITLE = "New conversation";
+
+// The header is inert until the Conversation exists.
+const PENDING_MENU_ACTIONS = {
+  archive: noop,
+  continueInSlack: noop,
+  delivery: noop,
+  eventLog: noop,
+  pin: noop,
+  read: noop,
+  rename: noop,
+  subscription: noop,
+};
+const PENDING_MENU_STATE = {
+  archive: false,
+  delivery: false,
+  pin: false,
+  read: false,
+  subscription: false,
+};
 
 /**
  * The draft of the reply box shown while a new Conversation is created. The
@@ -141,42 +159,25 @@ export function NewConversationPending(props: {
         <ChatLayout
           header={
             <ConversationHeader
-              archive={{
-                archived: false,
-                disabled: true,
-                onClick: noop,
-                pending: false,
-              }}
-              conversationId={pending.idempotencyKey}
               detailsOpen={showDetails}
+              errors={[]}
+              menu={{
+                actions: PENDING_MENU_ACTIONS,
+                conversation: undefined,
+                conversationId: pending.idempotencyKey,
+                detail: undefined,
+                pending: PENDING_MENU_STATE,
+              }}
               pending
               onDetailsClick={noop}
               onSearchChange={noop}
               onViewChange={noop}
-              pin={{
-                disabled: true,
-                error: false,
-                onClick: noop,
-                pinned: false,
-              }}
               privacy={
                 <ConversationPrivacyChip visibility={pending.visibility} />
               }
-              read={{
-                disabled: true,
-                error: false,
-                onClick: noop,
-                unread: false,
-              }}
               search=""
               searchMatch={searchMatch}
               sidebarToggle={props.sidebarToggle}
-              subscription={{
-                disabled: true,
-                error: false,
-                onClick: noop,
-                subscribed: false,
-              }}
               title={PENDING_TITLE}
               view="rich"
             />

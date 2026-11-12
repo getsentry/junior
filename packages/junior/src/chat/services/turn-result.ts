@@ -6,7 +6,7 @@ import {
   type NoReply,
 } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
-import { createProviderError } from "@/chat/services/provider-error";
+import { createAssistantProviderError } from "@/chat/services/provider-error";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type { AgentTurnUsage } from "@/chat/usage";
 import type { SandboxRef } from "@/chat/sandbox/ref";
@@ -22,10 +22,7 @@ import {
   decideReply,
   sanitizeAssistantText,
 } from "@/chat/services/assistant-reply";
-import {
-  readAutomationResult,
-  type AutomationResult,
-} from "@/chat/automation-result";
+import type { Reply, TurnAnswer } from "@/chat/turn-answer";
 import {
   readBlockedReport,
   type BlockedReport,
@@ -50,11 +47,11 @@ export interface AgentTurnDiagnostics {
 export interface AgentRunResult {
   /**
    * Sanitized terminal text for diagnostics and failure fallback, not success
-   * delivery. An Automation run that declared `send_message` carries that text.
+   * delivery. A gated Turn that called `reply` carries that text.
    */
   text: string;
-  /** Declared result of a Scheduled automation or Event automation run. */
-  automation?: AutomationResult;
+  /** Text of the `reply` call of a gated Turn. The runtime posts it. */
+  reply?: Reply;
   /** Blocked report of a child agent run. */
   blocked?: BlockedReport;
   /** Set when the run ended with no reply. */
@@ -77,14 +74,22 @@ export interface TurnResultInput {
   reasoningLevel: TurnReasoningLevel;
   assistantUserName?: string;
   modelId: string;
-  /** Automation runs succeed only with one declared result. */
-  requireAutomationResult?: boolean;
+  /**
+   * Answer of a gated Turn, or `missing` when it ended without one. Absent
+   * for a Turn that is not gated.
+   */
+  answer?: TurnAnswer | "missing";
+  /**
+   * The error that fails a gated Turn without an answer. Without it, the Turn
+   * stays quiet.
+   */
+  missingAnswerError?: string;
 }
 
 /** Process raw agent messages into a structured AgentRunResult. */
 export function buildTurnResult(input: TurnResultInput): AgentRunResult {
-  if (input.requireAutomationResult) {
-    return buildAutomationTurnResult(input);
+  if (input.answer) {
+    return buildGatedTurnResult(input, input.answer);
   }
   const { newMessages, sandboxRef, shouldTrace } = input;
 
@@ -215,6 +220,9 @@ function buildDiagnostics(
   },
 ): AgentTurnDiagnostics {
   const { outcome, errorMessage, lastAssistant } = result;
+  const assistant = isAssistantMessage(lastAssistant)
+    ? lastAssistant
+    : undefined;
   const toolResults = input.newMessages.filter(isToolResultMessage);
   return {
     outcome,
@@ -232,55 +240,79 @@ function buildDiagnostics(
     errorMessage,
     providerError:
       outcome === "provider_error" && errorMessage
-        ? createProviderError(errorMessage, {
-            modelId: input.modelId,
-            retryable:
-              isAssistantMessage(lastAssistant) &&
-              isRetryableAssistantError(lastAssistant),
-          })
+        ? createAssistantProviderError(
+            { errorMessage, rawStopReason: assistant?.rawStopReason },
+            {
+              modelId: input.modelId,
+              retryable: assistant
+                ? isRetryableAssistantError(assistant)
+                : false,
+            },
+          )
         : undefined,
   };
 }
 
+/** Name of a Turn answer in telemetry. */
+function answerName(answer: TurnAnswer | "missing"): string {
+  if (answer === "missing") return "missing";
+  if ("reply" in answer) return "reply";
+  if ("noReply" in answer) return "noReply";
+  return "reportBlocked";
+}
+
 /**
- * Build the result of an Automation run from its declared result. Final
- * assistant text is not used. A run without a declared result fails.
+ * Build the result of a gated Turn from its answer. Final assistant text is
+ * not used. A Turn without an answer posts nothing.
  */
-function buildAutomationTurnResult(input: TurnResultInput): AgentRunResult {
+function buildGatedTurnResult(
+  input: TurnResultInput,
+  answer: TurnAnswer | "missing",
+): AgentRunResult {
   const lastAssistant = input.newMessages.filter(isAssistantMessage).at(-1);
   const stopReason = lastAssistant?.stopReason;
-  const automation = readAutomationResult(
-    input.piMessages ?? input.newMessages,
-  );
-  // A declared result decides the outcome, even when a later slice errs.
-  const outcome: AgentTurnDiagnostics["outcome"] = automation
+  const answered = answer !== "missing";
+  // An answer decides the outcome, even when a later slice errs.
+  const outcome: AgentTurnDiagnostics["outcome"] = answered
     ? "success"
     : stopReason === "error"
       ? "provider_error"
-      : "execution_failure";
+      : input.missingAnswerError
+        ? "execution_failure"
+        : "success";
   const errorMessage =
     outcome === "provider_error"
       ? lastAssistant?.errorMessage
       : outcome === "execution_failure"
-        ? "Automation run ended without a declared result."
+        ? input.missingAnswerError
         : undefined;
+  const reply = answered && "reply" in answer ? answer.reply : undefined;
 
+  if (!answered && stopReason !== "error") {
+    logWarn("agent.turn.answer.missing", {});
+  }
   if (input.shouldTrace) {
     logInfo("agent.message.generated", {
-      "app.message.kind": "automation_result",
+      "app.message.kind": "turn_answer",
       "app.ai.outcome": outcome,
-      "app.automation.result": automation?.result ?? "missing",
+      "app.turn.answer": answerName(answer),
     });
   }
 
   return {
-    text: automation?.result === "send_message" ? automation.message : "",
-    ...(automation ? { automation } : undefined),
+    text: reply?.text ?? "",
+    ...(reply ? { reply } : undefined),
+    ...(answered && "noReply" in answer
+      ? { noReply: answer.noReply }
+      : undefined),
+    ...(answered && "blocked" in answer
+      ? { blocked: answer.blocked }
+      : undefined),
     sandboxRef: input.sandboxRef,
     piMessages: input.piMessages,
     diagnostics: buildDiagnostics(input, {
       outcome,
-      usedPrimaryText: automation?.result === "send_message",
+      usedPrimaryText: Boolean(reply),
       stopReason,
       errorMessage,
       lastAssistant,

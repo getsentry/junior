@@ -92,6 +92,9 @@ function ContextMenuLabel({
   );
 }
 
+const CONTEXT_MENU_ITEM_CLASS =
+  "group/context-menu-item relative flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7.5 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-muted-foreground [&_svg:not([class*='size-'])]:size-3.5 data-[variant=destructive]:[&_svg]:text-destructive";
+
 /** Run one menu action. */
 function ContextMenuItem({
   className,
@@ -107,10 +110,21 @@ function ContextMenuItem({
       data-slot="context-menu-item"
       data-inset={inset}
       data-variant={variant}
-      className={cn(
-        "group/context-menu-item relative flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7.5 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-muted-foreground [&_svg:not([class*='size-'])]:size-3.5 data-[variant=destructive]:[&_svg]:text-destructive",
-        className,
-      )}
+      className={cn(CONTEXT_MENU_ITEM_CLASS, className)}
+      {...props}
+    />
+  );
+}
+
+/** Open one link from the menu. */
+function ContextMenuLinkItem({
+  className,
+  ...props
+}: ContextMenuPrimitive.LinkItem.Props) {
+  return (
+    <ContextMenuPrimitive.LinkItem
+      data-slot="context-menu-item"
+      className={cn(CONTEXT_MENU_ITEM_CLASS, className)}
       {...props}
     />
   );
@@ -270,6 +284,7 @@ export {
   ContextMenuTrigger,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuLinkItem,
   ContextMenuCheckboxItem,
   ContextMenuRadioItem,
   ContextMenuLabel,

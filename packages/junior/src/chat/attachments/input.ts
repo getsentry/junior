@@ -1,25 +1,31 @@
-import { INPUT_IMAGE_TYPES } from "./media";
 import * as z from "zod";
 
-/** Bound JSON image input below the hosting platform's request size limit. */
-export const MAX_INPUT_IMAGE_BYTES = 3 * 1024 * 1024;
-export const MAX_INPUT_IMAGES = 3;
+/**
+ * Largest file that a web Message can carry.
+ *
+ * `loadAttachment` reads the whole file into memory before it writes the file
+ * to the sandbox, and the message request reads each upload once to check it.
+ * Keep this well below function memory.
+ */
+export const MAX_INPUT_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+/** Most files on one web Message, as in one Slack message. */
+export const MAX_INPUT_ATTACHMENTS = 10;
 
-/** Image bytes accepted with a web message, never stored in its mailbox row. */
-export const inputImageSchema = z
+/** File facts that a browser declares before it uploads the bytes. */
+export const inputFileSchema = z
   .object({
     filename: z.string().trim().min(1).max(255),
-    contentType: z.enum(INPUT_IMAGE_TYPES),
-    data: z
+    contentType: z
       .string()
-      .min(4)
-      .max((MAX_INPUT_IMAGE_BYTES * 4) / 3)
-      .regex(/^[A-Za-z0-9+/]*={0,2}$/)
-      .refine((data) => data.length % 4 === 0),
+      .trim()
+      .toLowerCase()
+      .max(127)
+      .regex(/^[a-z0-9][\w.+-]*\/[a-z0-9][\w.+-]*$/),
+    bytes: z.number().int().min(1).max(MAX_INPUT_ATTACHMENT_BYTES),
   })
   .strict();
 
-export type InputImage = z.output<typeof inputImageSchema>;
+export type InputFile = z.output<typeof inputFileSchema>;
 
 /** Safe attachment facts shared by mailbox input and transcript messages. */
 export const messageAttachmentSchema = z

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 import {
   createdPersonalTokenSchema,
   personalTokenListSchema,
@@ -8,19 +9,41 @@ import {
 } from "@sentry/junior/api/schema";
 import { deleteDashboardResource, fetchDashboardJson, post } from "../../http";
 import { getDashboardAgentName } from "../../agentName";
+import { CopyButton } from "../../components/CopyButton";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { InlineError } from "../../components/InlineError";
 import { Card } from "../../components/layout/Card";
 import { SettingsPageLayout } from "./SettingsPageLayout";
+import { parsePreviewOrigin, PreviewTokenHandoff } from "./PreviewTokenHandoff";
 
 const personalTokensQueryKey = ["dashboard", "personal-tokens"] as const;
+// Matches `createPersonalTokenBodySchema`.
+const MAX_TOKEN_NAME_LENGTH = 80;
 
-/** Create and revoke personal API tokens for local clients. */
+// A blank name gets the creation time, so tokens stay distinguishable.
+function defaultTokenName(now = new Date()): string {
+  return `Token from ${now.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  })}`;
+}
+
+/**
+ * Create and revoke personal API tokens for local clients. `?name=` prefills
+ * the token name, for example from a link that asks for a token. `?preview=`
+ * offers to send a new token to that Preview.
+ */
 export function PersonalTokensPage() {
   const queryClient = useQueryClient();
   const createTokenStarted = useRef(false);
-  const [name, setName] = useState("Local agent");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const previewOrigin = parsePreviewOrigin(searchParams.get("preview"));
+  const [name, setName] = useState(
+    () =>
+      searchParams.get("name")?.trim().slice(0, MAX_TOKEN_NAME_LENGTH) ?? "",
+  );
+  const [autoCopied, setAutoCopied] = useState(false);
   const cancelTokenListRefetch = () =>
     queryClient.cancelQueries({
       exact: true,
@@ -42,9 +65,19 @@ export function PersonalTokensPage() {
       post(createdPersonalTokenSchema, "/api/personal-tokens", {
         name: tokenName,
       }),
-    onMutate: () => cancelTokenListRefetch(),
+    onMutate: () => {
+      setAutoCopied(false);
+      return cancelTokenListRefetch();
+    },
     onSuccess: async (created) => {
       const { token: _token, ...metadata } = created;
+      // The server shows the token once, so copy it right away. Some
+      // browsers refuse a write this long after the click, and insecure
+      // origins have no Clipboard API; the copy button stays available.
+      Promise.resolve()
+        .then(() => navigator.clipboard.writeText(created.token))
+        .then(() => setAutoCopied(true))
+        .catch(() => undefined);
       await cancelTokenListRefetch();
       queryClient.setQueryData<{ tokens: PersonalTokenMetadata[] }>(
         personalTokensQueryKey,
@@ -87,7 +120,7 @@ export function PersonalTokensPage() {
   const tokens = tokensQuery.data?.tokens ?? [];
   const loading = tokensQuery.isPending;
   const busy = createTokenMutation.isPending || revokeTokenMutation.isPending;
-  const canCreate = !loading && !busy && Boolean(name.trim());
+  const canCreate = !loading && !busy;
   const displayedError =
     (createTokenMutation.isError
       ? "Could not create the API token. Try again."
@@ -108,19 +141,30 @@ export function PersonalTokensPage() {
       }
       title="API Tokens"
     >
-      {createdToken ? (
+      {previewOrigin ? (
+        <PreviewTokenHandoff
+          onCancel={() => setSearchParams({}, { replace: true })}
+          previewOrigin={previewOrigin}
+        />
+      ) : createdToken ? (
         <div className="rounded-md border border-emerald-400/40 bg-emerald-400/5 p-3">
           <p className="mt-0 mb-2 text-sm font-semibold">
-            Copy this token now. It won't be shown again.
+            {autoCopied
+              ? "Copied to your clipboard. It won't be shown again."
+              : "Copy this token now. It won't be shown again."}
           </p>
-          <code className="block overflow-x-auto rounded-md bg-dashboard-ink p-2 text-xs text-emerald-300">
-            {createdToken.token}
-          </code>
+          <div className="flex items-center gap-2">
+            <code className="block min-w-0 flex-1 overflow-x-auto rounded-md bg-dashboard-ink p-2 text-xs text-emerald-300">
+              {createdToken.token}
+            </code>
+            <CopyButton getText={() => createdToken.token} label="Copy token" />
+          </div>
           <Button
+            variant="outline"
             className="mt-3"
             onClick={() => {
               createTokenMutation.reset();
-              setName("Local agent");
+              setName("");
             }}
           >
             Create another token
@@ -134,17 +178,18 @@ export function PersonalTokensPage() {
             if (!canCreate || createTokenStarted.current) return;
             revokeTokenMutation.reset();
             createTokenStarted.current = true;
-            createTokenMutation.mutate(name);
+            createTokenMutation.mutate(name.trim() || defaultTokenName());
           }}
         >
           <Input
             aria-label="Token name"
             className="min-w-0 flex-1"
-            maxLength={80}
+            maxLength={MAX_TOKEN_NAME_LENGTH}
             onChange={(event) => setName(event.target.value)}
+            placeholder="Token name (optional)"
             value={name}
           />
-          <Button disabled={!canCreate} type="submit">
+          <Button variant="outline" disabled={!canCreate} type="submit">
             Create token
           </Button>
         </form>
@@ -185,7 +230,7 @@ export function PersonalTokensPage() {
                     revokeTokenMutation.mutate(token);
                   }}
                   size="icon"
-                  variant="danger"
+                  variant="destructive"
                   type="button"
                 >
                   <Trash2 size={16} />

@@ -1,4 +1,4 @@
-import { and, eq, lte, ne, sql } from "drizzle-orm";
+import { and, eq, lt, lte, ne, sql } from "drizzle-orm";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import {
@@ -14,6 +14,8 @@ const githubPullRequestOutcomeInputSchema = z
     candidateOwned: z.boolean(),
     closedAt: z.date().optional(),
     commitComposition: githubPullRequestCommitCompositionSchema.optional(),
+    /** When omitted, the stored draft state does not change. */
+    draft: z.boolean().optional(),
     mergedAt: z.date().optional(),
     number: z.number().int().positive(),
     openedAt: z.date(),
@@ -68,6 +70,7 @@ function projectionValues(input: GitHubPullRequestOutcomeInput) {
     ...(input.commitComposition
       ? { commitComposition: input.commitComposition }
       : undefined),
+    ...(input.draft !== undefined ? { draft: input.draft } : undefined),
     mergedAt: input.mergedAt ?? null,
     number: input.number,
     openedAt: input.openedAt,
@@ -221,6 +224,35 @@ export async function listGitHubFinishedWork(
   );
 }
 
+/**
+ * Return the open Junior pull requests whose last lifecycle change is
+ * before `before`, oldest first. The daily reconcile checks these against
+ * GitHub.
+ */
+export async function listGitHubStaleOpenPullRequests(
+  db: GitHubDb,
+  before: Date,
+): Promise<
+  Array<{
+    draft: boolean;
+    number: number;
+    repositoryFullName: string;
+    repositoryId: string;
+  }>
+> {
+  const t = juniorGitHubPullRequests;
+  return await db
+    .select({
+      draft: t.draft,
+      number: t.number,
+      repositoryFullName: t.repositoryFullName,
+      repositoryId: t.repositoryId,
+    })
+    .from(t)
+    .where(and(eq(t.state, "open"), lt(t.updatedAt, before)))
+    .orderBy(t.updatedAt);
+}
+
 /** Return candidate conversations linked to any Junior-owned pull request. */
 export async function listGitHubAssignedWork(
   db: GitHubDb,
@@ -238,6 +270,19 @@ export async function listGitHubAssignedWork(
       sql`${juniorGitHubPullRequests.conversationIds} && ARRAY[${values}]::text[]`,
     );
   return conversationIdsForPullRequests(rows, conversationIds);
+}
+
+/** Return the conversations linked to one Junior-owned pull request. */
+export async function readGitHubPullRequestConversationIds(
+  db: GitHubDb,
+  pullRequestId: string,
+): Promise<string[]> {
+  const [row] = await db
+    .select({ conversationIds: juniorGitHubPullRequests.conversationIds })
+    .from(juniorGitHubPullRequests)
+    .where(eq(juniorGitHubPullRequests.pullRequestId, pullRequestId))
+    .limit(1);
+  return row?.conversationIds ?? [];
 }
 
 /** Append native conversation ids to an existing Junior-owned PR projection. */

@@ -13,7 +13,11 @@ import { completeText } from "@/chat/core-model";
 import type { CacheRetention, ThinkingLevel } from "@/chat/pi/sdk";
 import { captureMessage } from "@/chat/sentry";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { MINUTE_MS, warmupFailureCountsAsMiss, warmupMarginMs } from "./model";
+import {
+  MINUTE_MS,
+  WARMUP_MARGIN_MS,
+  warmupFailureCountsAsMiss,
+} from "./model";
 
 export const KEY_PREFIX = "junior:cache_warming";
 // While warming is on, the recorder sets this retention on agent requests, so
@@ -125,13 +129,12 @@ export function cachedPrefixTokens(message: AssistantMessage): number {
  */
 export function warmupTiming(
   requestStartedAtMs: number,
-  prefixTokens: number,
   ttlMs: number,
 ): { cacheExpiresAtMs: number; delayMs: number } {
   const cacheExpiresAtMs = requestStartedAtMs + ttlMs;
   return {
     cacheExpiresAtMs,
-    delayMs: cacheExpiresAtMs - warmupMarginMs(prefixTokens) - Date.now(),
+    delayMs: cacheExpiresAtMs - WARMUP_MARGIN_MS - Date.now(),
   };
 }
 

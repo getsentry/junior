@@ -149,12 +149,11 @@ import {
   type ScheduleSessionCompletedPluginTasksOptions,
 } from "@/chat/plugins/task-runner";
 import type { AgentRunResult } from "@/chat/services/turn-result";
+import { finishedRunReply, runDispatchOutcome } from "@/chat/automation-result";
 import {
-  finishedRunReply,
-  postsRunNotices,
-  runDispatchOutcome,
   deliversFinalText,
-} from "@/chat/automation-result";
+  postsRunNotices,
+} from "@/chat/conversations/kind-behavior";
 import type {
   DispatchTurnContext,
   DispatchTurnResult,
@@ -476,7 +475,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           return await Promise.all(
             queuedMessages.map(async (queued) => {
               const attachments = queued.message.attachments;
-              // An answer or a dismiss steers in as its Review item tag.
+              // An answer steers in as its Review item tag.
               const reviewItemInput = await loadReviewItemInput(
                 getMessageReviewItemChange(queued.message),
               );
@@ -844,10 +843,12 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   threadTs: outcome.destination.threadTs,
                 });
                 slackMessageTs.push(...messageIds);
+                // A thread reply binds the thread, so replies there reach
+                // this Conversation.
                 messageDestinations.push(
                   ...messageIds.map((messageId) => ({
                     destination: outcome.destination,
-                    messageId,
+                    messageId: outcome.destination.threadTs ?? messageId,
                   })),
                 );
               }
