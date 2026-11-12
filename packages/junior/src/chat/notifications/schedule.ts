@@ -12,7 +12,12 @@ const clockTimePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
 /** Saved notification hours. Weekdays use 0 for Sunday, like `Date#getDay`. */
 export const notificationScheduleSchema = z
   .object({
-    /** When false, Junior sends phone notifications at any time. */
+    /**
+     * Follow the linked Slack user's notification schedule. The fields below
+     * apply only when Junior cannot read it. Absent means on.
+     */
+    followSlack: z.boolean().optional(),
+    /** When false, Junior sends push notifications at any time. */
     workingHoursOnly: z.boolean(),
     days: z
       .array(z.number().int().min(0).max(6))
@@ -40,8 +45,12 @@ export const notificationScheduleSchema = z
 
 export type NotificationSchedule = z.output<typeof notificationScheduleSchema>;
 
-/** Default hours when a user has not saved a schedule: 09:00–18:00, Mon–Fri. */
+/**
+ * Default when a user has not saved a schedule: follow Slack, else
+ * 09:00–18:00, Mon–Fri.
+ */
 export const DEFAULT_NOTIFICATION_SCHEDULE: NotificationSchedule = {
+  followSlack: true,
   workingHoursOnly: true,
   days: [1, 2, 3, 4, 5],
   start: "09:00",

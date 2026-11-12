@@ -3,7 +3,6 @@ import type { ObjectType } from "@sentry/junior-plugin-api";
 import { ObjectIcon } from "../components/ObjectIcon";
 import {
   Activity,
-  Bot,
   Brain,
   Calendar,
   Check,
@@ -12,6 +11,7 @@ import {
   KeyRound,
   Link,
   MessageSquareText,
+  MessagesSquare,
   Minimize2,
   Paperclip,
   Sparkles,
@@ -30,7 +30,7 @@ type TranscriptRailEventKind =
   | "message_context"
   | "event"
   | "structured_event"
-  | "subagent";
+  | "thread";
 
 /**
  * True inside an activity group. Grouped rows use the narrow activity icon
@@ -66,7 +66,7 @@ export function TranscriptRailEvent(props: {
           "grid h-6 place-items-center",
           // Card rows: center the icon on the card's first line.
           !nested &&
-            (props.kind === "subagent" || props.kind === "message_context") &&
+            (props.kind === "thread" || props.kind === "message_context") &&
             "mt-1.5",
           marker.className,
         )}
@@ -110,10 +110,10 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
       icon: Activity,
     };
   }
-  if (kind === "subagent") {
+  if (kind === "thread") {
     return {
       className: "text-cyan-200",
-      icon: Bot,
+      icon: MessagesSquare,
     };
   }
   return {

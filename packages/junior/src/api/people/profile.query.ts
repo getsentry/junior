@@ -1,14 +1,8 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, gte, sql } from "drizzle-orm";
+import { eq, gte, sql } from "drizzle-orm";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { getDb } from "@/chat/db";
-import {
-  juniorConversations,
-  juniorDestinations,
-  juniorIdentities,
-  juniorUsers,
-} from "@/db/schema";
-import { conversationActiveDaysColumn } from "../conversations/aggregate";
+import { juniorDestinations } from "@/db/schema";
 import {
   slackLocationLabel,
   summaryFromRow,
@@ -28,22 +22,23 @@ import {
   activityDays,
   activityHours,
   activitySixHours,
+  emptyActivityDay,
   emptyTotals,
   normalizeEmail,
-  peopleTreeAggregateColumns,
-  peopleTreeConversation,
-  peopleTreeMetricsJoin,
+  personTurns,
   recentActorRows,
-  slackActorColumns,
   statsItems,
-  verifiedActorWhere,
+  turnAggregateColumns,
+  turnBucket,
+  turnPersonColumns,
+  turnRoot,
+  turnRootJoin,
 } from "./shared";
 import { trailingUtcHourWindow } from "../reporting-window";
 
 type AggregateRow = {
   active: number;
   conversations: number;
-  costUsd: number | null;
   durationMs: number;
   failed: number;
   tokens: number | null;
@@ -90,17 +85,21 @@ function addAggregate(
   map.set(label, item);
 }
 
-function surfaceExpression() {
+function surfaceExpression(table: typeof turnRoot) {
   return sql<string>`CASE
-    WHEN ${juniorConversations.source} IN ('api', 'scheduler', 'slack')
-      THEN ${juniorConversations.source}
+    WHEN ${table.source} IN ('api', 'scheduler', 'slack')
+      THEN ${table.source}
     -- Dashboard web conversations share the product api surface label.
-    WHEN ${juniorConversations.source} = 'web' THEN 'api'
-    WHEN ${juniorConversations.conversationId} LIKE 'slack:%' THEN 'slack'
-    WHEN ${juniorConversations.conversationId} LIKE 'scheduler:%' THEN 'scheduler'
-    WHEN ${juniorConversations.conversationId} LIKE 'api:%' THEN 'api'
+    WHEN ${table.source} = 'web' THEN 'api'
+    WHEN ${table.conversationId} LIKE 'slack:%' THEN 'slack'
+    WHEN ${table.conversationId} LIKE 'scheduler:%' THEN 'scheduler'
+    WHEN ${table.conversationId} LIKE 'api:%' THEN 'api'
     ELSE 'internal'
   END`;
+}
+
+function channelExpression(table: typeof turnRoot) {
+  return sql<string>`SPLIT_PART(${table.conversationId}, ':', 2)`;
 }
 
 function locationLabel(row: {
@@ -120,6 +119,22 @@ function locationLabel(row: {
   );
 }
 
+function activityBuckets(
+  rows: (AggregateRow & { costUsd: number | null; date: string })[],
+): Map<string, ActorActivityDayReport> {
+  return new Map(
+    rows.map(({ costUsd, tokens, ...row }) => [
+      row.date,
+      {
+        ...emptyActivityDay(row.date),
+        ...row,
+        ...(costUsd !== null ? { costUsd } : undefined),
+        ...(tokens !== null ? { tokens } : undefined),
+      },
+    ]),
+  );
+}
+
 /** Load one complete person profile while bounding only its recent-conversation list. */
 export async function readPeopleProfileFromSql(
   email: string,
@@ -133,146 +148,73 @@ export async function readPeopleProfileFromSql(
   end.setUTCHours(0, 0, 0, 0);
   const start = new Date(end);
   start.setUTCDate(start.getUTCDate() - (ACTIVITY_DAYS - 1));
-  const where = verifiedActorWhere(normalizedEmail);
-  const metricsJoin = peopleTreeMetricsJoin();
-  const surface = surfaceExpression();
-  const activityDate = sql<string>`TO_CHAR(
-    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
-    'YYYY-MM-DD'
-  )`;
-  const activityHour = sql<string>`TO_CHAR(
-    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
-    'YYYY-MM-DD"T"HH24'
-  )`;
-  const channel = sql<string>`SPLIT_PART(${juniorConversations.conversationId}, ':', 2)`;
+  const turns = personTurns(normalizedEmail);
+  const aggregate = turnAggregateColumns(turns);
+  const surface = surfaceExpression(turnRoot);
+  const channel = channelExpression(turnRoot);
+  const day = turnBucket(turns, "day");
+  const hour = turnBucket(turns, "hour");
   const hourWindow = trailingUtcHourWindow(nowMs, 7 * 24);
-
   const [totalsRows, dayRows, hourRows, locationRows, surfaceRows, recentRows] =
     await Promise.all([
       getDb()
-        .select({
-          email: juniorUsers.primaryEmailNormalized,
-          fullName: juniorUsers.displayName,
-          ...slackActorColumns(),
-          activeDays: conversationActiveDaysColumn(),
-          ...peopleTreeAggregateColumns,
-        })
-        .from(juniorConversations)
-        .innerJoin(
-          juniorIdentities,
-          eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-        )
-        .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-        .leftJoin(peopleTreeConversation, metricsJoin)
-        .where(where)
-        .groupBy(juniorUsers.primaryEmailNormalized, juniorUsers.displayName),
+        .select({ ...turnPersonColumns(turns), ...aggregate })
+        .from(turns)
+        .innerJoin(turnRoot, turnRootJoin(turns))
+        .groupBy(turns.email, turns.fullName),
       getDb()
-        .select({
-          date: activityDate,
-          ...peopleTreeAggregateColumns,
-        })
-        .from(juniorConversations)
-        .innerJoin(
-          juniorIdentities,
-          eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-        )
-        .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-        .leftJoin(peopleTreeConversation, metricsJoin)
-        .where(and(where, gte(juniorConversations.lastActivityAt, start)))
-        .groupBy(activityDate),
+        .select({ date: day, ...aggregate })
+        .from(turns)
+        .innerJoin(turnRoot, turnRootJoin(turns))
+        .where(gte(turns.occurredAt, start))
+        .groupBy(day),
       getDb()
-        .select({
-          date: activityHour,
-          ...peopleTreeAggregateColumns,
-        })
-        .from(juniorConversations)
-        .innerJoin(
-          juniorIdentities,
-          eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-        )
-        .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-        .leftJoin(peopleTreeConversation, metricsJoin)
-        .where(
-          and(where, gte(juniorConversations.lastActivityAt, hourWindow.start)),
-        )
-        .groupBy(activityHour),
+        .select({ date: hour, ...aggregate })
+        .from(turns)
+        .innerJoin(turnRoot, turnRootJoin(turns))
+        .where(gte(turns.occurredAt, hourWindow.start))
+        .groupBy(hour),
       getDb()
         .select({
           channel,
-          channelName: juniorConversations.channelName,
+          channelName: turnRoot.channelName,
           destinationVisibility: juniorDestinations.visibility,
           surface,
-          ...peopleTreeAggregateColumns,
+          ...aggregate,
         })
-        .from(juniorConversations)
-        .innerJoin(
-          juniorIdentities,
-          eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-        )
-        .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-        .leftJoin(peopleTreeConversation, metricsJoin)
+        .from(turns)
+        .innerJoin(turnRoot, turnRootJoin(turns))
         .leftJoin(
           juniorDestinations,
-          eq(juniorDestinations.id, juniorConversations.destinationId),
+          eq(juniorDestinations.id, turnRoot.destinationId),
         )
-        .where(where)
         .groupBy(
           channel,
-          juniorConversations.channelName,
+          turnRoot.channelName,
           juniorDestinations.visibility,
           surface,
         ),
       getDb()
-        .select({ surface, ...peopleTreeAggregateColumns })
-        .from(juniorConversations)
-        .innerJoin(
-          juniorIdentities,
-          eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-        )
-        .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-        .leftJoin(peopleTreeConversation, metricsJoin)
-        .where(where)
+        .select({ surface, ...aggregate })
+        .from(turns)
+        .innerJoin(turnRoot, turnRootJoin(turns))
         .groupBy(surface),
       recentActorRows(normalizedEmail),
     ]);
 
-  const totalsRow = totalsRows[0];
-  if (!totalsRow) return emptyProfile(normalizedEmail, nowMs);
+  const person = totalsRows[0];
+  if (!person) return emptyProfile(normalizedEmail, nowMs);
 
   const actor: ActorIdentity & { email: string } = {
-    email: totalsRow.email,
-    ...(totalsRow.fullName ? { fullName: totalsRow.fullName } : undefined),
-    ...(totalsRow.slackUserId
-      ? { slackUserId: totalsRow.slackUserId }
-      : undefined),
-    ...(totalsRow.slackUserName
-      ? { slackUserName: totalsRow.slackUserName }
+    email: person.email,
+    ...(person.fullName ? { fullName: person.fullName } : undefined),
+    ...(person.slackUserId ? { slackUserId: person.slackUserId } : undefined),
+    ...(person.slackUserName
+      ? { slackUserName: person.slackUserName }
       : undefined),
   };
-  const days = new Map<string, ActorActivityDayReport>();
-  for (const row of dayRows) {
-    days.set(row.date, {
-      active: row.active,
-      conversations: row.conversations,
-      ...(row.costUsd !== null ? { costUsd: row.costUsd } : undefined),
-      date: row.date,
-      durationMs: row.durationMs,
-      failed: row.failed,
-      ...(row.tokens !== null ? { tokens: row.tokens } : undefined),
-    });
-  }
-  const hours = new Map<string, ActorActivityDayReport>();
-  for (const row of hourRows) {
-    hours.set(row.date, {
-      active: row.active,
-      conversations: row.conversations,
-      ...(row.costUsd !== null ? { costUsd: row.costUsd } : undefined),
-      date: row.date,
-      durationMs: row.durationMs,
-      failed: row.failed,
-      ...(row.tokens !== null ? { tokens: row.tokens } : undefined),
-    });
-  }
+  const days = activityBuckets(dayRows);
+  const hours = activityBuckets(hourRows);
   const locations = new Map<string, ConversationStatsItem>();
   for (const row of locationRows) {
     addAggregate(locations, locationLabel(row), row);
@@ -322,12 +264,12 @@ export async function readPeopleProfileFromSql(
     source: "conversation_index",
     surfaces: statsItems(surfaces),
     totals: {
-      active: totalsRow.active,
-      activeDays: totalsRow.activeDays,
-      conversations: totalsRow.conversations,
-      durationMs: totalsRow.durationMs,
-      failed: totalsRow.failed,
-      ...(totalsRow.tokens !== null ? { tokens: totalsRow.tokens } : undefined),
+      active: person.active,
+      activeDays: person.activeDays,
+      conversations: person.conversations,
+      durationMs: person.durationMs,
+      failed: person.failed,
+      ...(person.tokens !== null ? { tokens: person.tokens } : undefined),
     },
     windowEnd: end.toISOString(),
     windowStart: start.toISOString(),

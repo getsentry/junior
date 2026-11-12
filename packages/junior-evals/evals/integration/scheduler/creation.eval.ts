@@ -76,7 +76,7 @@ describe("Schedule Creation", () => {
     expect(creates[0]!.input).not.toHaveProperty("nextRunAt");
   });
 
-  test("when a reminder posts to the channel, save it without conversation references", async ({
+  test("when a reminder posts to the channel, save it without saying where it posts", async ({
     run,
   }) => {
     const conversation = await run(
@@ -89,8 +89,11 @@ describe("Schedule Creation", () => {
     expect(creates).toHaveLength(1);
     // The run does not see this request, so "this channel" would mean nothing.
     // `createAutomation` rejects it, so a saved instruction never has it.
+    // The outcomes already post to this channel, so the instruction does not
+    // name it either.
     const { instruction } = creates[0]!.input as { instruction?: string };
     expect(instruction).not.toMatch(/\bthis channel\b/i);
+    expect(instruction).not.toMatch(/<#[CG][A-Z0-9]+/);
   });
 
   test("when asked to tell the channel something later, preserve the future work in the schedule", async ({

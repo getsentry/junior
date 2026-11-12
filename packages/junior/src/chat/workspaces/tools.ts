@@ -361,6 +361,7 @@ export function createWorkspaceTools(
     }),
     switchWorkspace: zodTool({
       executionMode: "sequential",
+      exposure: "modelOnly",
       annotations: {
         destructiveHint: true,
         idempotentHint: true,

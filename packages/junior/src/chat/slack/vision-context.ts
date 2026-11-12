@@ -1,13 +1,19 @@
 import { getSlackFileId } from "./attachments";
 import type { Attachment } from "chat";
 import { botConfig } from "@/chat/config";
-import { resolveGatewayModel, type completeText } from "@/chat/pi/client";
+import type { completeText, ConversationModelCost } from "@/chat/core-model";
+import { resolveGatewayModel } from "@/chat/pi/client";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { getSqlExecutor } from "@/chat/db";
 import {
   detectImageMediaType,
   isVisionImageMediaType,
 } from "@/chat/attachments/media";
+import {
+  buildStoredAttachmentPromptText,
+  MAX_MODEL_ATTACHMENT_BYTES,
+  MAX_MODEL_ATTACHMENTS,
+} from "@/chat/attachments/model-input";
 import { storeAttachment } from "@/chat/attachments/store";
 import {
   readAttachmentVisionSummary,
@@ -50,8 +56,6 @@ interface VisionThreadReply {
   files?: VisionThreadFile[];
 }
 
-const MAX_USER_ATTACHMENTS = 3;
-const MAX_USER_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const MAX_MESSAGE_IMAGE_ATTACHMENTS = 3;
 const MAX_VISION_SUMMARY_CHARS = 500;
 
@@ -72,6 +76,7 @@ export interface VisionContextService {
   hydrateConversationVisionContext: (
     conversation: ThreadConversationState,
     context: {
+      conversationId?: string;
       threadId?: string;
       channelId?: string;
       actorId?: string;
@@ -198,8 +203,15 @@ function buildAttachmentResolutionFailurePromptText(args: {
   ].join("\n");
 }
 
+// Without a stored Conversation, such as a local run, the cost stays on the
+// span.
+function visionCost(conversationId: string | undefined): ConversationModelCost {
+  return conversationId ? { conversationId } : { owner: "none" };
+}
+
 async function summarizeImageWithVision(args: {
   completeText: typeof completeText;
+  cost: ConversationModelCost;
   imageData: Buffer;
   mimeType: string;
   maxTokens: number;
@@ -213,9 +225,9 @@ async function summarizeImageWithVision(args: {
 
   const result = await args.completeText({
     modelId: visionModelId,
-    temperature: 0,
     maxTokens: args.maxTokens,
-    promptName: "junior.vision_summary",
+    operation: "vision_summary",
+    cost: args.cost,
     messages: [
       {
         role: "user",
@@ -244,21 +256,6 @@ async function summarizeImageWithVision(args: {
 
 function truncateVisionSummary(summary: string): string {
   return summary.slice(0, MAX_VISION_SUMMARY_CHARS);
-}
-
-function buildStoredAttachmentPromptText(args: {
-  attachmentId: string;
-  filename?: string;
-  mediaType: string;
-}): string {
-  return [
-    "<attachment>",
-    `filename: ${args.filename ?? "unnamed"}`,
-    `media_type: ${args.mediaType}`,
-    `attachment_id: ${args.attachmentId}`,
-    "Use loadAttachment with this id to access the original file.",
-    "</attachment>",
-  ].join("\n");
 }
 
 function getCachedImageSummaries(args: {
@@ -327,7 +324,7 @@ async function resolveUserAttachmentsWithDeps(
       // The user really did attach a file; only its bytes are unreachable.
       // Tell the model that instead of dropping the attachment silently, so
       // Junior does not falsely claim no attachment was sent.
-      if (results.length < MAX_USER_ATTACHMENTS) {
+      if (results.length < MAX_MODEL_ATTACHMENTS) {
         results.push({
           mediaType,
           filename: attachment.name,
@@ -371,7 +368,7 @@ async function resolveUserAttachmentsWithDeps(
     }
 
     if (
-      results.length >= MAX_USER_ATTACHMENTS ||
+      results.length >= MAX_MODEL_ATTACHMENTS ||
       (attachment.type !== "image" && attachment.type !== "file")
     ) {
       continue;
@@ -382,7 +379,7 @@ async function resolveUserAttachmentsWithDeps(
       mediaType,
       filename: attachment.name,
     };
-    if (data.byteLength > MAX_USER_ATTACHMENT_BYTES) {
+    if (data.byteLength > MAX_MODEL_ATTACHMENT_BYTES) {
       logWarn("attachment.size_limit.skipped", {
         "file.size": data.byteLength,
         "app.file.mime_type": mediaType,
@@ -439,6 +436,7 @@ async function resolveUserAttachmentsWithDeps(
       try {
         const summary = await summarizeImageWithVision({
           completeText: deps.completeText,
+          cost: visionCost(context.conversationId),
           imageData: data,
           mimeType: mediaType,
           maxTokens: 220,
@@ -521,6 +519,7 @@ async function summarizeConversationImage(
     mimeType: string;
     fileId: string;
     context: {
+      conversationId?: string;
       threadId?: string;
       channelId?: string;
       actorId?: string;
@@ -537,6 +536,7 @@ async function summarizeConversationImage(
   try {
     const summary = await summarizeImageWithVision({
       completeText: deps.completeText,
+      cost: visionCost(args.context.conversationId),
       imageData: args.imageData,
       mimeType: args.mimeType,
       maxTokens: 220,
@@ -572,6 +572,7 @@ async function summarizeConversationImage(
 async function hydrateConversationVisionContextWithDeps(
   conversation: ThreadConversationState,
   context: {
+    conversationId?: string;
     threadId?: string;
     channelId?: string;
     actorId?: string;
@@ -694,7 +695,7 @@ async function hydrateConversationVisionContextWithDeps(
         typeof file.size === "number" && Number.isFinite(file.size)
           ? file.size
           : undefined;
-      if (fileSize && fileSize > MAX_USER_ATTACHMENT_BYTES) {
+      if (fileSize && fileSize > MAX_MODEL_ATTACHMENT_BYTES) {
         logWarn("conversation.image.size_limit.skipped", {
           "app.file.id": fileId,
           "file.size": fileSize,
@@ -723,7 +724,7 @@ async function hydrateConversationVisionContextWithDeps(
         continue;
       }
 
-      if (imageData.byteLength > MAX_USER_ATTACHMENT_BYTES) {
+      if (imageData.byteLength > MAX_MODEL_ATTACHMENT_BYTES) {
         logWarn("conversation.image.size_limit.skipped", {
           "app.file.id": fileId,
           "file.size": imageData.byteLength,

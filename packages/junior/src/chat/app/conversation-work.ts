@@ -18,6 +18,7 @@ import {
 } from "@/chat/agent-dispatch/work";
 import {
   createChildConversationWorker,
+  createDeliverToParent,
   enqueueAgentInvocationResult,
   withAgentInvocationResultActors,
 } from "@/chat/agent-invocations/result";
@@ -25,9 +26,8 @@ import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import { botConfig } from "@/chat/config";
 import { logException } from "@/chat/logging";
 import { skipInputAfterConversationStop } from "@/chat/conversations/session-stop";
-import { resolveThreadTurnWork } from "@/chat/agent-invocations/thread-turn";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
-import { endActiveAgentInvocations } from "@/chat/agent-invocations/work";
+import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
 import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
 import {
@@ -151,19 +151,21 @@ export function createConversationWork(
       queue: options.queue,
       state: options.state,
     });
-  const childWorker = createChildConversationWorker(options.agentRunner, {
-    enqueueResult,
-    maxAgentDepth: botConfig.maxAgentDepth,
-    queue: options.queue,
-    state: options.state,
-  });
   const conversationTurnWorker = createConversationTurnWorker(
     options.agentRunner,
     createSlackSystemTurnDelivery({
       getSlackAdapter: options.getSlackAdapter,
       state: options.state,
     }),
+    createDeliverToParent({ queue: options.queue, state: options.state }),
   );
+  const childWorker = createChildConversationWorker(options.agentRunner, {
+    enqueueResult,
+    maxAgentDepth: botConfig.maxAgentDepth,
+    queue: options.queue,
+    runTurn: conversationTurnWorker,
+    state: options.state,
+  });
   // A Slack Destination uses the Slack worker. All other root work must have
   // been selected above this function.
   const destinationWorker = async (
@@ -211,29 +213,11 @@ export function createConversationWork(
     }
     const { context } = stopped;
     // The stored kind decides the worker, so child work never reaches a root
-    // worker. A child Turn can have any Source. A person's Turn in a Thread
-    // runs like a web Turn on a root. Agent invocations, their input, and
-    // watch Events keep the child worker.
+    // worker. A child Turn can have any Source.
     const conversation = await options.conversationStore.get({
       conversationId: context.conversationId,
     });
-    if (conversation?.kind === "thread") {
-      const threadTurn = await resolveThreadTurnWork(context);
-      if (!threadTurn) {
-        return await childWorker(context);
-      }
-      // A person's new input supersedes an open Agent invocation, as new
-      // input does on a root. It waits behind a running or yielded one.
-      if (threadTurn.kind === "mailbox") {
-        await endActiveAgentInvocations(context.conversationId, {
-          enqueueResult,
-          errorMessage:
-            "A person sent a Message in this Thread, so this task ended without a result. Send messageAgent again if you still need this work.",
-        });
-      }
-      return await conversationTurnWorker(context, threadTurn);
-    }
-    if (conversation?.parentConversationId) {
+    if (!isTopLevelKind(conversation?.kind ?? "root")) {
       return await childWorker(context);
     }
     // A root's run can see its stop late. Then it stops the child agents that
@@ -269,6 +253,7 @@ export function createConversationWork(
   };
   return {
     conversationStore: options.conversationStore,
+    getSlackAdapter: options.getSlackAdapter,
     queue: options.queue,
     run,
     runtime,

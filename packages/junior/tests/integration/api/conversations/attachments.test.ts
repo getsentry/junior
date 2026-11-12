@@ -1,3 +1,4 @@
+import { MAX_INPUT_ATTACHMENT_BYTES } from "@/chat/attachments/input";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
@@ -14,7 +15,7 @@ import {
   getConversationEventStore,
 } from "@/chat/db";
 import { juniorAttachments } from "@/db/schema";
-import { testViewer } from "../../../fixtures/user";
+import { signedInViewer } from "../../../fixtures/user";
 
 function apiWithViewer(
   email: string | undefined,
@@ -23,7 +24,7 @@ function apiWithViewer(
   const app = new Hono<JuniorApiEnv>();
   if (email) {
     app.use("*", async (context, next) => {
-      context.set("viewer", testViewer(email));
+      context.set("viewer", await signedInViewer(email));
       await next();
     });
   }
@@ -236,19 +237,15 @@ describe("conversation attachment API", () => {
     const rejectedWrite = await apiWithViewer(
       "outsider@example.com",
       storage,
-    ).request(`${detailPath}/messages`, {
+    ).request("/api/conversations/attachment-uploads", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        message: "Upload",
+        bytes: 8,
+        contentType: "image/png",
+        conversationId,
+        filename: "image.png",
         idempotencyKey: "outsider-upload",
-        images: [
-          {
-            filename: "image.png",
-            contentType: "image/png",
-            data: "iVBORw0KGgo=",
-          },
-        ],
       }),
     });
     expect(rejectedWrite.status).toBe(403);
@@ -277,54 +274,53 @@ describe("conversation attachment API", () => {
     expect(await participant.text()).toBe("secret");
   });
 
-  it("rejects unauthenticated, unsupported, and oversized image input before storage", async () => {
+  it("rejects unauthenticated, oversized, and empty input before storage", async () => {
     const storage = createMemoryAttachmentStorage();
-    const body = {
-      message: "",
+    const upload = {
+      bytes: 8,
+      contentType: "image/png",
+      filename: "image.png",
       idempotencyKey: "upload",
-      images: [
-        {
-          filename: "image.png",
-          contentType: "image/png",
-          data: Buffer.from("not an image").toString("base64"),
-        },
-      ],
     };
     const request = (value: unknown) => ({
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(value),
     });
+    const uploadPath = "/api/conversations/attachment-uploads";
     expect(
       (
         await apiWithViewer(undefined, storage).request(
-          "/api/conversations",
-          request(body),
+          uploadPath,
+          request(upload),
         )
       ).status,
     ).toBe(401);
     const app = apiWithViewer("participant@example.com", storage);
-    const invalid = await app.request("/api/conversations", request(body));
-    expect(invalid.status).toBe(400);
-    expect(await invalid.json()).toEqual({
-      error: "Use PNG, JPEG, GIF, or WebP image files.",
+    expect(
+      (
+        await app.request(
+          uploadPath,
+          request({ ...upload, bytes: MAX_INPUT_ATTACHMENT_BYTES + 1 }),
+        )
+      ).status,
+    ).toBe(400);
+    const oversized = await app.request(
+      `${uploadPath}/${crypto.randomUUID()}`,
+      {
+        body: new Uint8Array(MAX_INPUT_ATTACHMENT_BYTES + 1),
+        method: "PUT",
+      },
+    );
+    expect(oversized.status).toBe(413);
+    expect(await oversized.json()).toEqual({
+      error: "Files must be 25 MB or less.",
     });
     expect(
       (
         await app.request(
           "/api/conversations",
-          request({
-            ...body,
-            images: [{ ...body.images[0], data: "a".repeat(4_450_001) }],
-          }),
-        )
-      ).status,
-    ).toBe(413);
-    expect(
-      (
-        await app.request(
-          "/api/conversations",
-          request({ ...body, images: [] }),
+          request({ message: "", idempotencyKey: "upload", uploadIds: [] }),
         )
       ).status,
     ).toBe(400);

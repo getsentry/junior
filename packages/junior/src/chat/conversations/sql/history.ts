@@ -24,11 +24,13 @@ import {
   type ConversationEventData,
   type HistoryReplacement,
   type HistoryReplacementResult,
+  type KnownConversationEventType,
   type MessageHistory,
   type MessagesSummarizedEvent,
   type NewConversationEvent,
 } from "../history";
 import { ensureConversationRow } from "./conversation-row";
+import { refreshLastMessageAt } from "./last-message";
 import {
   resolveEventActorIdentityId,
   stripPayloadAuthorIdentityId,
@@ -39,7 +41,10 @@ import { encodeHistoryPayload } from "../history-payload";
 import { restoreArchivedPath } from "./conversation-tree";
 import { conversationDetailTouch } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
-import { recordConversationParticipant } from "./participants";
+import {
+  recordConversationParticipant,
+  rootConversationIsArchived,
+} from "./participants";
 
 type ConversationEventRow = typeof juniorConversationEvents.$inferSelect;
 type ConversationEventInsert = typeof juniorConversationEvents.$inferInsert;
@@ -56,6 +61,17 @@ const messageHistoryEventTypes = [
 ] as const;
 
 const HUMAN_INSTRUCTION_PLATFORMS = new Set(["slack", "local", "web"]);
+
+/**
+ * True when a Turn input message is addressed to Junior, which subscribes its
+ * author again (contract: `api/conversations/subscription.ts`). A Slack
+ * message in a subscribed thread that does not mention Junior is marked
+ * `explicitMention: false`. Other Sources, such as the dashboard and Slack
+ * mentions and DMs, always address Junior.
+ */
+function eventAddressesJunior(data: ConversationEventData): boolean {
+  return data.type === "message" && data.meta?.explicitMention !== false;
+}
 
 /**
  * Whether one event should restore an archived conversation to the feed.
@@ -249,6 +265,15 @@ class SqlConversationEventStore implements ConversationEventStore {
           .with(conversationDetailTouch(db, [conversationId]))
           .insert(juniorConversationEvents)
           .values(rows);
+        if (
+          pending.some(
+            (event) =>
+              event.data.type === "message" ||
+              event.data.type === "user_message",
+          )
+        ) {
+          await refreshLastMessageAt(this.executor, conversationId);
+        }
         for (const event of pending) {
           if (event.data.type === "turn_started") {
             await this.recordTurnInputParticipants(
@@ -288,16 +313,25 @@ class SqlConversationEventStore implements ConversationEventStore {
           ),
         ),
       );
+    // A person who restores an archived root also subscribes again, so a
+    // restored root is never left in no feed (contract:
+    // `api/conversations/subscription.ts`).
+    const rootArchived = await rootConversationIsArchived(
+      this.executor,
+      conversationId,
+    );
     let restores = false;
     for (const row of rows) {
       const { data } = eventFromRow(row);
       if (!row.actorIdentityId || data.type !== "message") continue;
+      const unarchives = eventUnarchivesConversation(data);
       const isPerson = await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,
         conversationId,
         atMs: row.createdAt.getTime(),
+        resubscribe: eventAddressesJunior(data) || (rootArchived && unarchives),
       });
-      restores ||= isPerson && eventUnarchivesConversation(data);
+      restores ||= isPerson && unarchives;
     }
     // Archive is shared, so any person's message restores it for everyone.
     if (restores) {
@@ -354,18 +388,21 @@ class SqlConversationEventStore implements ConversationEventStore {
   async loadCurrentHistory(
     conversationId: string,
   ): Promise<ConversationEvent[]> {
-    const cursor = await this.readCursor(conversationId);
-    if (cursor.maxHistoryVersion === null) {
-      return [];
-    }
-    const rows = await this.executor
-      .db()
+    const db = this.executor.db();
+    // One statement: the current version and its events come from one snapshot.
+    const currentHistoryVersion = db
+      .select({
+        historyVersion: sql<number>`max(${juniorConversationEvents.historyVersion})`,
+      })
+      .from(juniorConversationEvents)
+      .where(eq(juniorConversationEvents.conversationId, conversationId));
+    const rows = await db
       .select()
       .from(juniorConversationEvents)
       .where(
         and(
           eq(juniorConversationEvents.conversationId, conversationId),
-          eq(juniorConversationEvents.historyVersion, cursor.maxHistoryVersion),
+          eq(juniorConversationEvents.historyVersion, currentHistoryVersion),
         ),
       )
       .orderBy(asc(juniorConversationEvents.seq));
@@ -390,24 +427,10 @@ class SqlConversationEventStore implements ConversationEventStore {
     return row ? eventFromRow(row) : undefined;
   }
 
-  async loadHistoryContaining(
+  async loadEventsAfter(
     conversationId: string,
-    seq: number,
-    throughSeq?: number,
-  ): Promise<ConversationEvent[] | undefined> {
-    const [boundary] = await this.executor
-      .db()
-      .select({ historyVersion: juniorConversationEvents.historyVersion })
-      .from(juniorConversationEvents)
-      .where(
-        and(
-          eq(juniorConversationEvents.conversationId, conversationId),
-          eq(juniorConversationEvents.seq, seq),
-        ),
-      )
-      .limit(1);
-    if (!boundary) return undefined;
-
+    afterSeq: number,
+  ): Promise<ConversationEvent[]> {
     const rows = await this.executor
       .db()
       .select()
@@ -415,14 +438,47 @@ class SqlConversationEventStore implements ConversationEventStore {
       .where(
         and(
           eq(juniorConversationEvents.conversationId, conversationId),
-          eq(juniorConversationEvents.historyVersion, boundary.historyVersion),
-          throughSeq === undefined
-            ? undefined
-            : lte(juniorConversationEvents.seq, throughSeq),
+          gt(juniorConversationEvents.seq, afterSeq),
         ),
       )
       .orderBy(asc(juniorConversationEvents.seq));
     return rows.map(eventFromRow);
+  }
+
+  async loadHistoryContaining(
+    conversationId: string,
+    seq: number,
+    throughSeq?: number,
+  ): Promise<ConversationEvent[] | undefined> {
+    const db = this.executor.db();
+    const boundaryHistoryVersion = db
+      .select({ historyVersion: juniorConversationEvents.historyVersion })
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.seq, seq),
+        ),
+      );
+    // One statement. The range always includes the boundary row, so no rows
+    // means the boundary does not exist.
+    const rows = await db
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.historyVersion, boundaryHistoryVersion),
+          throughSeq === undefined
+            ? undefined
+            : lte(juniorConversationEvents.seq, Math.max(seq, throughSeq)),
+        ),
+      )
+      .orderBy(asc(juniorConversationEvents.seq));
+    if (rows.length === 0) return undefined;
+    return rows
+      .filter((row) => throughSeq === undefined || row.seq <= throughSeq)
+      .map(eventFromRow);
   }
 
   async loadLatestStructuredEvent(
@@ -503,6 +559,24 @@ class SqlConversationEventStore implements ConversationEventStore {
       .select()
       .from(juniorConversationEvents)
       .where(eq(juniorConversationEvents.conversationId, conversationId))
+      .orderBy(asc(juniorConversationEvents.seq));
+    return rows.map(eventFromRow);
+  }
+
+  async loadEventsOfType(
+    conversationId: string,
+    type: KnownConversationEventType,
+  ): Promise<ConversationEvent[]> {
+    const rows = await this.executor
+      .db()
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.type, type),
+        ),
+      )
       .orderBy(asc(juniorConversationEvents.seq));
     return rows.map(eventFromRow);
   }

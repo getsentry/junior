@@ -662,6 +662,40 @@ export function findVisibleAgentsInstructions(
   return undefined;
 }
 
+/** Whether the visible AGENTS.md state already shows these instructions. */
+export function showsAgentsInstructions(
+  visible: VisibleAgentsInstructions | undefined,
+  instructions: RepositoryInstructions,
+): boolean {
+  return (
+    visible?.active === true &&
+    visible.directory === instructions.directory &&
+    visible.text === instructions.text
+  );
+}
+
+/**
+ * Render the AGENTS.md block that a new prompt adds. Return nothing when the
+ * latest copy in history already shows these instructions, so a Turn does
+ * not repeat an unchanged block.
+ */
+export function renderAgentsInstructionsForPrompt(
+  history: PiMessage[],
+  instructions: RepositoryInstructions,
+): string | undefined {
+  const visible = findVisibleAgentsInstructions(history);
+  if (showsAgentsInstructions(visible, instructions)) {
+    return undefined;
+  }
+  return renderAgentsInstructions({
+    directory: instructions.directory,
+    text:
+      visible?.active === true
+        ? `${AGENTS_REPLACEMENT_NOTICE}\n\n${instructions.text}`
+        : instructions.text,
+  });
+}
+
 /** Whether one message is a generated AGENTS.md context update. */
 export function isAgentsInstructionsMessage(message: PiMessage): boolean {
   return Boolean(findVisibleAgentsInstructions([message]));

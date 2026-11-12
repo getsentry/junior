@@ -1,5 +1,6 @@
 import type { MessageAttachment } from "@/chat/attachments/input";
 /** Input for one Run through Junior's agent. */
+import type { AgentTools } from "@/chat/conversations/kind-behavior";
 import type {
   Destination,
   ReplyAttribution,
@@ -25,6 +26,7 @@ import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-rep
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type { AgentType } from "@/chat/agent-invocations/agent-types";
+import type { ChildAgentKind } from "@/chat/agent-invocations/types";
 import type {
   ImageGenerateToolDeps,
   ViewImageToolDeps,
@@ -68,13 +70,17 @@ export type AgentSteeringMessage = {
   text: string;
   timestampMs?: number;
   attachments?: AgentAttachment[];
-  /** Stored images that the agent runner loads into `attachments`. */
+  /** Stored files that the agent runner loads into `attachments`. */
   storedAttachments?: readonly MessageAttachment[];
 };
 
 /** Model-safe input for one asynchronously delegated child-agent task. */
 export type SpawnAgentInput = {
   agentType?: AgentType;
+  /** The child starts with the parent's history. */
+  fork?: boolean;
+  /** Omitted means a Task. */
+  kind?: ChildAgentKind;
   name?: string;
   reasoningLevel?: TurnReasoningLevel;
   task: string;
@@ -151,7 +157,7 @@ export type AgentInstruction = {
    */
   provenance?: ConversationMessageProvenance;
   attachments?: readonly AgentAttachment[];
-  /** Durable web image references, resolved by the host before execution. */
+  /** Durable web file references, resolved by the host before execution. */
   storedAttachments?: readonly MessageAttachment[];
   inboundAttachmentCount?: number;
   omittedImageAttachmentCount?: number;
@@ -170,8 +176,13 @@ export type AgentDispatch = {
   /** Visible effects after successful work. */
   outcomes?: TaskOutcome[];
   /**
-   * The run ends with one declared Automation result. It gets no Delivery,
-   * and only a declared message posts. The dispatch layer sets this once.
+   * Skill that an Automation in skill mode runs. The run invokes it like an
+   * explicit skill, so a skill with `disable-model-invocation` loads too.
+   */
+  skill?: string;
+  /**
+   * The run is an Automation run. It gets no Delivery, and only the text of
+   * its `reply` call posts. The dispatch layer sets this once.
    */
   declaresResult?: boolean;
 };
@@ -211,10 +222,6 @@ export class RetryableDeliveryError extends Error {
 
 /** Durable-worker ports that commit or update resumable run state. */
 export type AgentDurability = {
-  /** Schedule delegated work with authority bound by the active parent run. */
-  spawnAgent?: SpawnAgent;
-  /** Message the parent, a child, or a top-level agent from this run. */
-  messageAgent?: MessageAgent;
   onInputCommitted?: () => void | Promise<void>;
   /** Return true when the durable worker should pause at the next Pi boundary. */
   shouldYield?: () => boolean;
@@ -223,6 +230,11 @@ export type AgentDurability = {
    * Lease. The run checks it before each saved step and each reply.
    */
   checkIn?: () => Promise<boolean>;
+  /**
+   * Read the stored stop of the Conversation and abort the Run's signal when
+   * it stopped. The run calls it before each later model step.
+   */
+  checkStop?: () => Promise<void>;
   drainSteeringMessages?: (
     accept: (messages: AgentSteeringMessage[]) => Promise<void>,
   ) => Promise<AgentSteeringMessage[]>;
@@ -251,6 +263,16 @@ export type AgentEnvironment = {
   configuration?: Record<string, unknown>;
   /** Queue of the app, for tools that wake other Conversations. */
   conversationWorkQueue?: ConversationWorkQueue;
+  /**
+   * Bind spawnAgent to a Run, with the authority of that Run. Tool wiring
+   * binds it only when the Turn's behavior gives it agent tools.
+   */
+  bindSpawnAgent?: (run: AgentRun) => SpawnAgent | undefined;
+  /** Bind messageAgent to a Run, for the agent tools that its Turn gets. */
+  bindMessageAgent?: (
+    run: AgentRun,
+    agents: AgentTools,
+  ) => MessageAgent | undefined;
   locationConfiguration?: LocationConfigurationService;
   skillDirs?: string[];
   /** Per-slice override for app-owned sandbox egress trace propagation. */
@@ -276,9 +298,8 @@ export type AgentRun = {
   conversationId: string;
   /**
    * Agent invocation that this Run advances. Only the Agent invocation worker
-   * sets it. Its input is agent-written, and its final reply goes to the
-   * parent. Behavior that depends on that reads this field, not the
-   * Conversation kind: a person's Turn in a Thread has no Agent invocation.
+   * sets it. It names the invocation and selects no behavior: `turnBehavior`
+   * does that from the Conversation kind and the Source.
    */
   agentInvocationId?: string;
   /** Parent Conversation. Unset for a root. Use it only as the tree edge. */

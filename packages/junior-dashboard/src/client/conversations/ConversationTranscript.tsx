@@ -1,5 +1,7 @@
 import {
+  createContext,
   memo,
+  use,
   useCallback,
   useEffect,
   useMemo,
@@ -7,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { History, Network } from "lucide-react";
+import { History } from "lucide-react";
 import { cn } from "../styles";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 
@@ -20,6 +22,7 @@ import {
 } from "../components/ui/empty";
 import { Card } from "../components/layout/Card";
 import { formatTime, unavailableTranscriptLabel } from "../format";
+import { KnownObjectsProvider } from "../display-text/DisplayText";
 import { ConversationBrief } from "./ConversationBrief";
 import { transcriptMessagesFromEvents } from "./eventTranscript";
 import type {
@@ -27,8 +30,8 @@ import type {
   TranscriptViewMessage,
   TranscriptViewSubagentPart,
 } from "../types";
-import { TranscriptSubagentGroup } from "./TranscriptSubagentGroup";
-import { TranscriptSubagentView } from "./TranscriptSubagentView";
+import { TranscriptTasksLine } from "./TranscriptTasksLine";
+import { TranscriptThreadCard } from "./TranscriptThreadCard";
 import { TranscriptContextEventView } from "./TranscriptContextEventView";
 import { TranscriptActivityGroup } from "./TranscriptActivityGroup";
 import { TranscriptToolView } from "./TranscriptToolView";
@@ -69,7 +72,9 @@ import {
   TranscriptUnreadMarker,
 } from "./TranscriptRows";
 import {
+  askRowIndex,
   defaultTranscriptRowSize,
+  liveActivityIndex,
   rowIndexForSeq,
   transcriptListRows,
   transcriptRowSizeClass,
@@ -97,6 +102,28 @@ type TranscriptReasoningEntry = Extract<TranscriptEntry, { kind: "reasoning" }>;
 type TranscriptSubagentEntry = Extract<TranscriptEntry, { kind: "subagent" }>;
 type TranscriptToolEntry = Extract<TranscriptEntry, { kind: "tool" }>;
 
+/** How long the row of a shown question stays marked. */
+const ASK_HIGHLIGHT_MS = 1_600;
+
+/**
+ * Show the transcript row of a question that Junior asked. `version`
+ * changes on each request, so the same question can show again. `arrived`
+ * means the question came by itself, not by an action of the reader.
+ */
+export type TranscriptAskReveal = {
+  arrived: boolean;
+  itemId: string;
+  version: number;
+};
+
+/** The current ask request, and the scroll owner that shows its row. */
+export const TranscriptAskRevealContext = createContext<
+  | (TranscriptAskReveal & {
+      showRow(row: Element, options: { arrived: boolean }): boolean;
+    })
+  | undefined
+>(undefined);
+
 function renderReasoningEntry(entry: TranscriptReasoningEntry): ReactNode {
   return (
     <TranscriptReasoningView
@@ -107,19 +134,23 @@ function renderReasoningEntry(entry: TranscriptReasoningEntry): ReactNode {
   );
 }
 
-function renderSubagentGroupEntries(
+function renderThreadEntry(entry: TranscriptSubagentEntry): ReactNode {
+  return (
+    <TranscriptRailEvent kind="thread">
+      <TranscriptThreadCard part={entry.part} timestamp={entry.timestamp} />
+    </TranscriptRailEvent>
+  );
+}
+
+function renderTaskEntries(
   entries: TranscriptSubagentEntry[],
-  openKey: string,
   onOpenTranscript: (part: TranscriptViewSubagentPart) => void,
 ): ReactNode {
   return (
-    <TranscriptRailEvent icon={Network} kind="subagent">
-      <TranscriptSubagentGroup
-        entries={entries}
-        onOpenTranscript={onOpenTranscript}
-        openKey={openKey}
-      />
-    </TranscriptRailEvent>
+    <TranscriptTasksLine
+      entries={entries}
+      onOpenTranscript={onOpenTranscript}
+    />
   );
 }
 
@@ -159,17 +190,19 @@ export const ConversationTranscriptView = memo(
           conversationId={props.conversation.conversationId}
           messages={messages}
         >
-          <section className="min-w-0 pt-1">
-            <SegmentEvents
-              onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-              conversation={props.conversation}
-              messages={messages}
-              responding={props.responding}
-              revealSeq={props.revealSeq}
-              scrollAnchorKey={props.scrollAnchorKey}
-              unread={props.unread}
-            />
-          </section>
+          <KnownObjectsProvider annotations={annotations}>
+            <section className="min-w-0 pt-1">
+              <SegmentEvents
+                onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+                conversation={props.conversation}
+                messages={messages}
+                responding={props.responding}
+                revealSeq={props.revealSeq}
+                scrollAnchorKey={props.scrollAnchorKey}
+                unread={props.unread}
+              />
+            </section>
+          </KnownObjectsProvider>
         </TranscriptImagesProvider>
       </TranscriptTimestampProvider>
     );
@@ -195,14 +228,18 @@ function SegmentEvents(
   return (
     <TranscriptRows>
       {props.conversation.eventHistory.status === "expired" ? (
-        <ExpiredTranscriptView
-          brief={props.conversation.brief}
-          expiredAt={props.conversation.eventHistory.expiredAt}
-        />
+        <>
+          <ExpiredTranscriptView
+            brief={props.conversation.brief}
+            expiredAt={props.conversation.eventHistory.expiredAt}
+          />
+          {props.responding ? <TranscriptThinkingRow /> : null}
+        </>
       ) : props.conversation.eventHistory.status === "available" ? (
         <VisibleTranscriptEntries
           {...placement}
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+          responding={props.responding}
           transcript={props.messages}
           conversation={props.conversation}
           unread={props.unread}
@@ -214,25 +251,33 @@ function SegmentEvents(
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           conversation={props.conversation}
           messages={props.messages}
+          responding={props.responding}
         />
       ) : props.messages.length > 0 ? (
         <VisibleTranscriptEntries
           {...placement}
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+          responding={props.responding}
           transcript={props.messages}
           conversation={props.conversation}
         />
       ) : (
-        <EmptyTelemetry>
-          {unavailableTranscriptLabel(props.conversation)}
-        </EmptyTelemetry>
+        <>
+          <EmptyTelemetry>
+            {unavailableTranscriptLabel(props.conversation)}
+          </EmptyTelemetry>
+          {props.responding ? <TranscriptThinkingRow /> : null}
+        </>
       )}
-      {props.responding ? (
-        <TranscriptRow indent>
-          <TranscriptTypingIndicator />
-        </TranscriptRow>
-      ) : null}
     </TranscriptRows>
+  );
+}
+
+function TranscriptThinkingRow() {
+  return (
+    <TranscriptRow indent>
+      <TranscriptTypingIndicator />
+    </TranscriptRow>
   );
 }
 
@@ -278,6 +323,7 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
       part: TranscriptViewSubagentPart;
       conversation: ConversationTranscript;
     }) => void;
+    responding?: boolean;
     transcript: TranscriptViewMessage[];
     conversation: ConversationTranscript;
     unread?: TranscriptUnreadRange;
@@ -293,6 +339,7 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
       // Open rows and row sizes belong to one Conversation.
       key={props.conversation.conversationId}
       keyPrefix={props.conversation.conversationId}
+      responding={props.responding}
       revealSeq={props.revealSeq}
       scrollAnchorKey={props.scrollAnchorKey}
       unread={props.unread}
@@ -313,7 +360,7 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
           timestamp={entry.timestamp}
         />
       )}
-      renderMessage={(entry) =>
+      renderMessage={(entry, footer) =>
         props.conversation.sourceTask &&
         isAutomationTriggerMessage(props.conversation, entry.message) ? (
           <div className="grid min-w-0 gap-2">
@@ -328,7 +375,11 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
             kind="event"
             objectType={entry.message.eventObjectType}
           >
-            <TranscriptEventView message={entry.message} openKey={entry.key} />
+            <TranscriptEventView
+              conversationId={props.conversation.conversationId}
+              message={entry.message}
+              openKey={entry.key}
+            />
             <TranscriptRecalledMemories
               className="mt-1"
               message={entry.message}
@@ -347,6 +398,7 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
           </TranscriptRailEvent>
         ) : (
           <TranscriptMessageView
+            footer={footer}
             message={entry.message}
             conversation={props.conversation}
           />
@@ -383,22 +435,9 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
           )}
         </TranscriptRailEvent>
       )}
-      renderSubagent={(entry) => (
-        <TranscriptRailEvent kind="subagent">
-          <TranscriptSubagentView
-            onOpenTranscript={(part: TranscriptViewSubagentPart) =>
-              props.onOpenSubagentTranscript?.({
-                part,
-                conversation: props.conversation,
-              })
-            }
-            part={entry.part}
-            timestamp={entry.timestamp}
-          />
-        </TranscriptRailEvent>
-      )}
-      renderSubagentGroup={(entries, openKey) =>
-        renderSubagentGroupEntries(entries, openKey, (part) =>
+      renderThread={renderThreadEntry}
+      renderTasks={(entries) =>
+        renderTaskEntries(entries, (part) =>
           props.onOpenSubagentTranscript?.({
             part,
             conversation: props.conversation,
@@ -407,7 +446,11 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
       }
       renderReasoning={renderReasoningEntry}
       renderTool={(entry) => (
-        <TranscriptToolView part={entry.part} timestamp={entry.timestamp} />
+        <TranscriptToolView
+          conversationId={props.conversation.conversationId}
+          part={entry.part}
+          timestamp={entry.timestamp}
+        />
       )}
     />
   );
@@ -419,14 +462,15 @@ type TranscriptEntryRenderers = {
   ) => ReactNode;
   renderContext: (entry: TranscriptContextEntry) => ReactNode;
   renderFailure: (entry: TranscriptFailureEntry) => ReactNode;
-  renderMessage: (entry: TranscriptMessageEntry) => ReactNode;
+  /** `footer` goes under the message text, such as the Turn's Tasks. */
+  renderMessage: (
+    entry: TranscriptMessageEntry,
+    footer?: ReactNode,
+  ) => ReactNode;
   renderStructuredEvent: (entry: TranscriptStructuredEventEntry) => ReactNode;
   renderReasoning: (entry: TranscriptReasoningEntry) => ReactNode;
-  renderSubagent: (entry: TranscriptSubagentEntry) => ReactNode;
-  renderSubagentGroup: (
-    entries: TranscriptSubagentEntry[],
-    openKey: string,
-  ) => ReactNode;
+  renderThread: (entry: TranscriptSubagentEntry) => ReactNode;
+  renderTasks: (entries: TranscriptSubagentEntry[]) => ReactNode;
   renderTool: (entry: TranscriptToolEntry) => ReactNode;
 };
 
@@ -434,14 +478,16 @@ type TranscriptEntryRenderers = {
  * Render transcript entries as list rows. Only the rows near the viewport
  * mount. These rows also stay mounted, because the scroll owner and the
  * page find them in the DOM: the row that holds the reader's place, the
- * "New" marker and the row after it, the rows around `revealSeq`, and the
- * current search match.
+ * "New" marker and the row after it, the rows around `revealSeq`, the
+ * current search match, and the row of a shown question.
  */
 function TranscriptEntryList(
   props: TranscriptEntryRenderers &
     TranscriptListPlacement & {
       entries: TranscriptEntry[];
       keyPrefix: string;
+      /** A Turn is running, so the list ends with its progress. */
+      responding?: boolean;
       unread?: TranscriptUnreadRange;
     },
 ) {
@@ -505,6 +551,57 @@ function TranscriptEntryList(
       ?.querySelector(`[data-index="${current}"]`)
       ?.scrollIntoView({ block: "center" });
   }, [indexByKey, match, matchCount, onMatches, rows, searchQuery]);
+  // The row of a shown question stays mounted, so it can scroll into view
+  // and get its mark. A search can drop the row. Then nothing moves.
+  const askReveal = use(TranscriptAskRevealContext);
+  const askItemId = askReveal?.itemId;
+  const askIndex = useMemo(
+    () => (askItemId === undefined ? undefined : askRowIndex(rows, askItemId)),
+    [askItemId, rows],
+  );
+  const shownAskVersion = useRef<number>(undefined);
+  const askHighlight = useRef<{ record: Element; timer: number }>(undefined);
+  useEffect(() => {
+    const list = listRef.current;
+    if (
+      !list ||
+      !askReveal ||
+      askIndex === undefined ||
+      shownAskVersion.current === askReveal.version
+    ) {
+      return;
+    }
+    // The row mounts, and its record loads its item, after the request.
+    // Wait until the record is in the DOM, so the scroll sees its place.
+    const show = () => {
+      const row = list.querySelector(`[data-index="${askIndex}"]`);
+      const record = row?.querySelector("[data-review-item-ask]");
+      if (!row || !record) return false;
+      shownAskVersion.current = askReveal.version;
+      if (!askReveal.showRow(row, { arrived: askReveal.arrived })) return true;
+      const previous = askHighlight.current;
+      if (previous) {
+        window.clearTimeout(previous.timer);
+        previous.record.removeAttribute("data-highlighted");
+      }
+      record.setAttribute("data-highlighted", "");
+      askHighlight.current = {
+        record,
+        timer: window.setTimeout(() => {
+          record.removeAttribute("data-highlighted");
+          askHighlight.current = undefined;
+        }, ASK_HIGHLIGHT_MS),
+      };
+      return true;
+    };
+    if (show()) return;
+    const observer = new MutationObserver(() => {
+      if (show()) observer.disconnect();
+    });
+    observer.observe(list, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [askIndex, askReveal]);
+  useEffect(() => () => window.clearTimeout(askHighlight.current?.timer), []);
   const anchorKey = props.scrollAnchorKey?.();
   const markerIndex = indexByKey.get(UNREAD_MARKER_KEY);
   // A memory row can sit at its event or on the message before it.
@@ -527,6 +624,7 @@ function TranscriptEntryList(
       revealIndex,
       revealIndex === undefined ? undefined : revealIndex - 1,
       matchCount === 0 ? undefined : match,
+      askIndex,
     ],
     listRef,
     sizeClass: (index) => transcriptRowSizeClass(rows[index]!),
@@ -539,13 +637,15 @@ function TranscriptEntryList(
     renderMessage,
     renderReasoning,
     renderStructuredEvent,
-    renderSubagent,
-    renderSubagentGroup,
+    renderThread,
+    renderTasks,
     renderTool,
   } = props;
   const renderEntry = useCallback(
-    (entry: TranscriptEntry): ReactNode => {
-      if (entry.kind === "subagent") return renderSubagent(entry);
+    (entry: TranscriptEntry, tasks?: TranscriptSubagentEntry[]): ReactNode => {
+      // Only a Thread has an entry row. Tasks come under a reply or as a
+      // Tasks row.
+      if (entry.kind === "subagent") return renderThread(entry);
       if (entry.kind === "context") return renderContext(entry);
       if (entry.kind === "attachments_delivered") {
         return renderAttachmentsDelivered(entry);
@@ -556,7 +656,7 @@ function TranscriptEntryList(
       if (entry.kind === "failure") return renderFailure(entry);
       if (entry.kind === "reasoning") return renderReasoning(entry);
       if (entry.kind === "tool") return renderTool(entry);
-      return renderMessage(entry);
+      return renderMessage(entry, tasks ? renderTasks(tasks) : undefined);
     },
     [
       renderAttachmentsDelivered,
@@ -565,38 +665,57 @@ function TranscriptEntryList(
       renderMessage,
       renderReasoning,
       renderStructuredEvent,
-      renderSubagent,
+      renderTasks,
+      renderThread,
       renderTool,
     ],
   );
 
+  // The running Turn shows its progress in its last activity row. Otherwise
+  // the thinking row shows.
+  const liveIndex =
+    props.responding && !search.active ? liveActivityIndex(rows) : undefined;
+  const thinking =
+    props.responding && liveIndex === undefined ? (
+      <TranscriptThinkingRow />
+    ) : null;
+
   if (search.active && rows.length === 0) {
-    return <EmptyTelemetry>No events match your search.</EmptyTelemetry>;
+    return (
+      <>
+        <EmptyTelemetry>No events match your search.</EmptyTelemetry>
+        {thinking}
+      </>
+    );
   }
 
   return (
-    <TranscriptOpenRows value={openRows}>
-      <TranscriptReplyRatings value={replyRatings}>
-        <div
-          className="relative min-w-0"
-          ref={listRef}
-          style={{ height: virtualizer.getTotalSize() }}
-        >
-          {virtualizer.getVirtualItems().map((item) => (
-            <VirtualTranscriptRow
-              current={matchCount > 0 && item.index === match}
-              index={item.index}
-              key={item.key}
-              measure={virtualizer.measureElement}
-              offset={item.start - virtualizer.options.scrollMargin}
-              renderEntry={renderEntry}
-              renderSubagentGroup={renderSubagentGroup}
-              row={rows[item.index]!}
-            />
-          ))}
-        </div>
-      </TranscriptReplyRatings>
-    </TranscriptOpenRows>
+    <>
+      <TranscriptOpenRows value={openRows}>
+        <TranscriptReplyRatings value={replyRatings}>
+          <div
+            className="relative min-w-0"
+            ref={listRef}
+            style={{ height: virtualizer.getTotalSize() }}
+          >
+            {virtualizer.getVirtualItems().map((item) => (
+              <VirtualTranscriptRow
+                current={matchCount > 0 && item.index === match}
+                index={item.index}
+                key={item.key}
+                live={item.index === liveIndex}
+                measure={virtualizer.measureElement}
+                offset={item.start - virtualizer.options.scrollMargin}
+                renderEntry={renderEntry}
+                renderTasks={renderTasks}
+                row={rows[item.index]!}
+              />
+            ))}
+          </div>
+        </TranscriptReplyRatings>
+      </TranscriptOpenRows>
+      {thinking}
+    </>
   );
 }
 
@@ -616,10 +735,15 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
   /** The current search match. */
   current: boolean;
   index: number;
+  /** The activity row of the running Turn. */
+  live: boolean;
   measure: (element: HTMLElement | null) => void;
   offset: number;
-  renderEntry: (entry: TranscriptEntry) => ReactNode;
-  renderSubagentGroup: TranscriptEntryRenderers["renderSubagentGroup"];
+  renderEntry: (
+    entry: TranscriptEntry,
+    tasks?: TranscriptSubagentEntry[],
+  ) => ReactNode;
+  renderTasks: TranscriptEntryRenderers["renderTasks"];
   row: TranscriptListRow;
 }) {
   const { row } = props;
@@ -639,17 +763,18 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
         <TranscriptRow anchorKey={row.key} indent seq={row.seq}>
           <TranscriptActivityGroup
             entries={row.entries}
+            live={props.live}
             openKey={row.key}
             renderEntry={props.renderEntry}
           />
         </TranscriptRow>
-      ) : row.kind === "subagents" ? (
-        <TranscriptRow anchorKey={row.key} seq={row.seq}>
-          {props.renderSubagentGroup(row.entries, row.key)}
+      ) : row.kind === "tasks" ? (
+        <TranscriptRow anchorKey={row.key} indent seq={row.seq}>
+          {props.renderTasks(row.entries)}
         </TranscriptRow>
       ) : (
         <TranscriptRow anchorKey={row.key} seq={row.seq}>
-          {props.renderEntry(row.entry)}
+          {props.renderEntry(row.entry, row.tasks)}
         </TranscriptRow>
       )}
     </div>
@@ -664,6 +789,7 @@ function RedactedTranscriptView(
     }) => void;
     conversation: ConversationTranscript;
     messages: TranscriptViewMessage[];
+    responding?: boolean;
   },
 ) {
   return (
@@ -671,6 +797,7 @@ function RedactedTranscriptView(
       entries={groupTranscriptMessages(props.messages)}
       key={props.conversation.conversationId}
       keyPrefix={`${props.conversation.conversationId}:redacted`}
+      responding={props.responding}
       revealSeq={props.revealSeq}
       scrollAnchorKey={props.scrollAnchorKey}
       renderContext={(entry) => (
@@ -690,7 +817,7 @@ function RedactedTranscriptView(
           timestamp={entry.timestamp}
         />
       )}
-      renderMessage={(entry) =>
+      renderMessage={(entry, footer) =>
         props.conversation.sourceTask &&
         isAutomationTriggerMessage(props.conversation, entry.message) ? (
           <TranscriptAutomationTriggerView
@@ -702,7 +829,11 @@ function RedactedTranscriptView(
             kind="event"
             objectType={entry.message.eventObjectType}
           >
-            <TranscriptEventView message={entry.message} openKey={entry.key} />
+            <TranscriptEventView
+              conversationId={props.conversation.conversationId}
+              message={entry.message}
+              openKey={entry.key}
+            />
           </TranscriptRailEvent>
         ) : entry.message.context ? (
           <TranscriptRailEvent kind="message_context">
@@ -714,6 +845,7 @@ function RedactedTranscriptView(
           </TranscriptRailEvent>
         ) : (
           <RedactedMessageView
+            footer={footer}
             message={entry.message}
             conversation={props.conversation}
           />
@@ -737,22 +869,9 @@ function RedactedTranscriptView(
           />
         </TranscriptRailEvent>
       )}
-      renderSubagent={(entry) => (
-        <TranscriptRailEvent kind="subagent">
-          <TranscriptSubagentView
-            onOpenTranscript={(part: TranscriptViewSubagentPart) =>
-              props.onOpenSubagentTranscript?.({
-                part,
-                conversation: props.conversation,
-              })
-            }
-            part={entry.part}
-            timestamp={entry.timestamp}
-          />
-        </TranscriptRailEvent>
-      )}
-      renderSubagentGroup={(entries, openKey) =>
-        renderSubagentGroupEntries(entries, openKey, (part) =>
+      renderThread={renderThreadEntry}
+      renderTasks={(entries) =>
+        renderTaskEntries(entries, (part) =>
           props.onOpenSubagentTranscript?.({
             part,
             conversation: props.conversation,
@@ -761,7 +880,11 @@ function RedactedTranscriptView(
       }
       renderReasoning={renderReasoningEntry}
       renderTool={(entry) => (
-        <TranscriptToolView part={entry.part} timestamp={entry.timestamp} />
+        <TranscriptToolView
+          conversationId={props.conversation.conversationId}
+          part={entry.part}
+          timestamp={entry.timestamp}
+        />
       )}
     />
   );

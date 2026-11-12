@@ -1,6 +1,9 @@
 import type { AttachmentStorage } from "@/chat/attachments/storage";
-import { decodeInputImages } from "@/chat/attachments/images";
-import type { InputImage } from "@/chat/attachments/input";
+import {
+  AttachmentUploadError,
+  type AttachmentUploadScope,
+  verifyAttachmentUploads,
+} from "@/chat/attachments/uploads";
 import type { User } from "@sentry/junior-plugin-api";
 import type { WebActor } from "@/chat/actor";
 import {
@@ -8,9 +11,10 @@ import {
   webActorFromUser,
   appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
+  createConversationId,
 } from "@/chat/conversations/web-input";
 import { webMessageId } from "@/chat/conversations/web-message-id";
-import { getConversationStore, getDb } from "@/chat/db";
+import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getProductionSlackAdapter } from "@/chat/app/production";
@@ -23,18 +27,68 @@ import type {
   CreateConversationBody,
   CreateConversationMessageBody,
 } from "../schema/conversation";
-import { readConversationAccessFromSql } from "./access";
+import {
+  canAddConversationMessages,
+  readConversationAccessFromSql,
+} from "./access";
 
-/** Turn image validation failures into request errors before accepting work. */
-function parseImages(images: InputImage[] | undefined) {
+/** Check uploads before accepting work. A bad upload is a request error. */
+async function verifyUploads(
+  scope: AttachmentUploadScope,
+  uploadIds: string[] | undefined,
+  storage: AttachmentStorage,
+) {
   try {
-    return decodeInputImages(images ?? []);
+    return await verifyAttachmentUploads({
+      db: getSqlExecutor(),
+      scope,
+      storage,
+      uploadIds: uploadIds ?? [],
+    });
   } catch (error) {
+    if (error instanceof AttachmentUploadError) {
+      throwApiError(400, error.message);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Return the Conversation that a viewer's web Message goes to.
+ *
+ * Without an id, it is the new root that the Message idempotency key names.
+ * An existing Conversation must accept web Messages from this viewer.
+ */
+export async function requireWebMessageConversation(
+  viewer: User,
+  conversationId: string | undefined,
+  idempotencyKey: string,
+): Promise<string> {
+  if (!conversationId) {
+    return createConversationId({ actorEmail: viewer.email, idempotencyKey });
+  }
+  const conversation = await getConversationStore().get({
+    conversationId,
+  });
+  if (!conversation) {
+    throwApiError(404, "Conversation not found.");
+  }
+  if (!acceptsWebMessages(conversation)) {
+    throwApiError(409, "Conversation does not accept web messages.");
+  }
+
+  const access = await readConversationAccessFromSql(
+    getDb(),
+    [conversationId],
+    viewer,
+  );
+  if (!canAddConversationMessages(access.get(conversationId))) {
     throwApiError(
-      400,
-      error instanceof Error ? error.message : "Unable to read images.",
+      403,
+      "Only participants can add messages to a private conversation.",
     );
   }
+  return conversationId;
 }
 
 function actorFromViewer(viewer: User): WebActor {
@@ -56,14 +110,27 @@ export async function createConversationForViewer(
   body: CreateConversationBody,
   services: WebInputServices,
 ): Promise<AcceptedConversationMessage> {
-  const images = parseImages(body.images);
+  const uploads = await verifyUploads(
+    {
+      conversationId: await requireWebMessageConversation(
+        viewer,
+        undefined,
+        body.idempotencyKey,
+      ),
+      idempotencyKey: body.idempotencyKey,
+      userId: viewer.id,
+    },
+    body.uploadIds,
+    services.attachmentStorage,
+  );
   try {
     return await createAndEnqueueConversation(
       {
         actor: actorFromViewer(viewer),
         idempotencyKey: body.idempotencyKey,
         message: body.message,
-        images,
+        uploads,
+        ...(body.title ? { title: body.title } : undefined),
         ...(body.visibility ? { visibility: body.visibility } : undefined),
       },
       {
@@ -84,26 +151,16 @@ export async function appendConversationMessageForViewer(
   body: CreateConversationMessageBody,
   services: WebInputServices,
 ): Promise<AcceptedConversationMessage> {
-  const conversation = await getConversationStore().get({
-    conversationId,
-  });
-  if (!conversation) {
-    throwApiError(404, "Conversation not found.");
-  }
-  if (!acceptsWebMessages(conversation)) {
-    throwApiError(409, "Conversation does not accept web messages.");
-  }
-
-  const access = await readConversationAccessFromSql(
-    getDb(),
-    [conversationId],
+  await requireWebMessageConversation(
     viewer,
+    conversationId,
+    body.idempotencyKey,
   );
-  if (!access.get(conversationId)?.isParticipant) {
-    throwApiError(403, "Only conversation participants can add messages.");
-  }
-
-  const images = parseImages(body.images);
+  const uploads = await verifyUploads(
+    { conversationId, idempotencyKey: body.idempotencyKey, userId: viewer.id },
+    body.uploadIds,
+    services.attachmentStorage,
+  );
   const actor = actorFromViewer(viewer);
   const append = () =>
     appendAndEnqueueWebMessage(
@@ -112,7 +169,7 @@ export async function appendConversationMessageForViewer(
         conversationId,
         idempotencyKey: body.idempotencyKey,
         message: body.message,
-        images,
+        uploads,
       },
       {
         conversationStore: getConversationStore(),

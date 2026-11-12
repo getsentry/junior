@@ -63,6 +63,9 @@ importers:
       '@ast-grep/cli':
         specifier: ^0.43.0
         version: 0.43.0
+      '@octokit/graphql-schema':
+        specifier: ^15.26.1
+        version: 15.26.1
       '@oxlint/plugins':
         specifier: 1.79.0
         version: 1.79.0
@@ -75,6 +78,9 @@ importers:
       agent-browser:
         specifier: ^0.27.0
         version: 0.27.0
+      libpg-query:
+        specifier: 18.2.2
+        version: 18.2.2
       lint-staged:
         specifier: ^17.0.5
         version: 17.0.5
@@ -93,6 +99,9 @@ importers:
       simple-git-hooks:
         specifier: ^2.13.1
         version: 2.13.1
+      squawk-cli:
+        specifier: 2.72.0
+        version: 2.72.0
       tsx:
         specifier: ^4.22.3
         version: 4.22.3
@@ -274,6 +283,9 @@ importers:
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(pg@8.21.0)
+      graphql:
+        specifier: ^16.14.0
+        version: 16.14.0
       hono:
         specifier: ^4.13.11
         version: 4.13.11
@@ -298,6 +310,9 @@ importers:
       sharp:
         specifier: ^0.35.3
         version: 0.35.3(@types/node@25.9.1)
+      undici:
+        specifier: 7.30.1
+        version: 7.30.1
       web-push:
         specifier: ^3.6.7
         version: 3.6.7
@@ -322,7 +337,7 @@ importers:
         version: 1.79.0
       '@sentry/junior-github':
         specifier: workspace:*
-        version: file:packages/junior-github(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
+        version: file:packages/junior-github(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(graphql@16.14.0)(pg@8.21.0)
       '@sentry/junior-memory':
         specifier: workspace:*
         version: file:packages/junior-memory(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
@@ -598,6 +613,9 @@ importers:
 
   packages/junior-github:
     dependencies:
+      '@0no-co/graphql.web':
+        specifier: ^1.3.4
+        version: 1.3.4(graphql@16.14.0)
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api
@@ -606,10 +624,13 @@ importers:
         version: 0.34.49
       drizzle-orm:
         specifier: 'catalog:'
-        version: 0.45.2
+        version: 0.45.2(@types/pg@8.15.6)(pg@8.21.0)
       marked:
         specifier: ^18.1.2
         version: 18.1.2
+      parse5:
+        specifier: ^7.3.0
+        version: 7.3.0
       zod:
         specifier: 'catalog:'
         version: 4.5.4
@@ -623,15 +644,24 @@ importers:
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1
+      '@types/pg':
+        specifier: ^8.15.6
+        version: 8.15.6
       drizzle-kit:
         specifier: 'catalog:'
         version: 0.31.10
+      graphql:
+        specifier: ^16.14.0
+        version: 16.14.0
       msw:
         specifier: ^2.14.6
         version: 2.14.6(@types/node@25.9.1)(typescript@7.0.2)
       oxlint:
         specifier: ^1.79.0
         version: 1.79.0
+      pg:
+        specifier: ^8.16.3
+        version: 8.21.0
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(tsx@4.22.3)(typescript@7.0.2)
@@ -882,6 +912,14 @@ importers:
   packages/junior-xdotcom: {}
 
 packages:
+
+  '@0no-co/graphql.web@1.3.4':
+    resolution: {integrity: sha512-imSwulOeDQodRy/olQmVEo2PiY6ntjkZ9eiGdw6lMYylh/tay9b7MusyJBmEnkL8GiKRKr6ltr+D42mY5bd8Bg==}
+    peerDependencies:
+      graphql: ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0
+    peerDependenciesMeta:
+      graphql:
+        optional: true
 
   '@agentclientprotocol/sdk@1.3.0':
     resolution: {integrity: sha512-i3h/efaeuMUFAO1HSfo97QZQnnvMd7wWBYtBsdL6UMZg3a78sk3Ffya5Xu7C7tYsXomXoDXJBAzQF2PcFKAhIQ==}
@@ -3140,6 +3178,9 @@ packages:
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
 
+  '@octokit/graphql-schema@15.26.1':
+    resolution: {integrity: sha512-RFDC2MpRBd4AxSRvUeBIVeBU7ojN/SxDfALUd7iVYOSeEK3gZaqR2MGOysj4Zh2xj2RY5fQAUT+Oqq7hWTraMA==}
+
   '@open-draft/deferred-promise@2.2.0':
     resolution: {integrity: sha512-CecwLWx3rhxVQF6V4bAgPS5t+So2sTbPgAzafKkVizyi7tlwpcFpdFqq+wqF2OwNBmqFuu6tOyouTuxgpMfzmA==}
 
@@ -3679,6 +3720,9 @@ packages:
   '@parcel/watcher@2.5.6':
     resolution: {integrity: sha512-tmmZ3lQxAe/k/+rNnXQRawJ4NjxO2hqiOLTHvWchtGZULp4RyFeh6aU4XdOYBFe2KE1oShQTv4AblOs2iOrNnQ==}
     engines: {node: '>= 10.0.0'}
+
+  '@pgsql/types@18.0.0':
+    resolution: {integrity: sha512-jtAY4JU7jdVYZ/Vv3zlZqVP+FRWZokyCLKPPCnAApiaJAElpyyiMC3HRiquBu29kSrVs+rkqZD50SUIb/zyEGw==}
 
   '@playwright/test@1.60.0':
     resolution: {integrity: sha512-O71yZIbAh/PxDMNGns37GHBIfrVkEVyn+AXyIa5dOTfb4/xNvRWV+Vv/NMbNCtODB/pO7vLlF2OTmMVLhmr7Ag==}
@@ -4584,6 +4628,45 @@ packages:
   '@smithy/util-utf8@2.3.0':
     resolution: {integrity: sha512-R8Rdn8Hy72KKcebgLiv8jQcQkXoLMOGGv5uI1/k0l+snqkOzQ1R0ChUBCxWMlBsFMekWjq0wRudIweFs7sKT5A==}
     engines: {node: '>=14.0.0'}
+
+  '@squawk-cli/darwin-arm64@2.72.0':
+    resolution: {integrity: sha512-x9GbT+MpokUApC0hTO3aiZGXIk9NQRHIgilENX3078OVWtYQZ8K+nvZ8Fx3Hs2L3tDMVpK+G3ZO8eF7+vm+uIw==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@squawk-cli/darwin-x64@2.72.0':
+    resolution: {integrity: sha512-U49fefGycKA6/ClFvG1N2XsVubKCKXXAWya2fizDi64wmKc+9khNEkniHwLb12Xr/0gd9cJTLF7pXCPhba4TDg==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@squawk-cli/linux-arm64-musl@2.72.0':
+    resolution: {integrity: sha512-unIaLzFKyDaSyOIXXKBBsXgHehr9/DqQvTNKKKMjVlNMOOsHlCHASwPQDmlfjnlRgcL0dGPGZ9j+jJqUhNbCYQ==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@squawk-cli/linux-arm64@2.72.0':
+    resolution: {integrity: sha512-Nb1SKgcrwnM+PWDFEn6Q1I0jYWdATicvbpkryiJcSGnr1SwwRKKEcM23qPNzjyxJvjQeE8GoAQ4O22J23ULWwQ==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@squawk-cli/linux-x64-musl@2.72.0':
+    resolution: {integrity: sha512-VS5Lste4yQyrwrXJ1TuRO40BZlq898MZtRTb49X9KDQl0yj6ZrQ8KD8K00bZUzH2m/iv9QQtSNLynyMt533Xbw==}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@squawk-cli/linux-x64@2.72.0':
+    resolution: {integrity: sha512-7M2tL5E8EhI9aCAFiUQe5jfMcdSBk3aSboep1U16ZqRQo6fXLUVfvpATdEXj0c4J8e9AcavTAMXSc2rQnNBRVA==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@squawk-cli/win32-x64@2.72.0':
+    resolution: {integrity: sha512-PeSXhOZIlB7n4eMApujqDF1jGrTPDBnMAYohL95RZ5IoYvr9TSDqoH23rpdguj+TBDxfA9GA3KSO2fXB5NwwBw==}
+    cpu: [x64]
+    os: [win32]
 
   '@stablelib/base64@1.0.1':
     resolution: {integrity: sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==}
@@ -6934,6 +7017,12 @@ packages:
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
 
+  graphql-tag@2.12.7:
+    resolution: {integrity: sha512-xnE/NFzy+0eIesvAsREJZ284zTl/wYuBAvpsFSDhRGRdRHdnE90M21Q3xAWyYInb0J756c6x0pIQ62+vtvOs1Q==}
+    engines: {node: '>=10'}
+    peerDependencies:
+      graphql: ^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0 || ^0.13.0 || ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0
+
   graphql@16.14.0:
     resolution: {integrity: sha512-BBvQ/406p+4CZbTpCbVPSxfzrZrbnuWSP1ELYgyS6B+hNeKzgrdB4JczCa5VZUBQrDa9hUngm0KnexY6pJRN5Q==}
     engines: {node: ^12.22.0 || ^14.16.0 || ^16.0.0 || >=17.0.0}
@@ -7437,6 +7526,9 @@ packages:
   levn@0.4.1:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
     engines: {node: '>= 0.8.0'}
+
+  libpg-query@18.2.2:
+    resolution: {integrity: sha512-BOKY0X05vnxkFe+FD8JH71sSO560UKoSRv9Fsy67zapmryhqcew+4Hq0Phu8a6mcENklK7LiHJi0d0j8DbIb4A==}
 
   lightningcss-android-arm64@1.32.0:
     resolution: {integrity: sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg==}
@@ -9248,6 +9340,10 @@ packages:
   sql.js@1.14.1:
     resolution: {integrity: sha512-gcj8zBWU5cFsi9WUP+4bFNXAyF1iRpA3LLyS/DP5xlrNzGmPIizUeBggKa8DbDwdqaKwUcTEnChtd2grWo/x/A==}
 
+  squawk-cli@2.72.0:
+    resolution: {integrity: sha512-4vKiq4quUG8lMBZvzh19NBsqPgoB5CFNAhZwFLFk3exFLJD58viyKR9Jd8jyvRdJ6Y4GBGp23upirSPRMI5WlQ==}
+    hasBin: true
+
   srvx@0.11.16:
     resolution: {integrity: sha512-bp07zRuycfTY43IjAvvTFnmnJi8ikW0VFiHwOhhYcVW/L4xQ1XY4PAd4Nuum1rsA17C39zL7x+CDhrn5AL32Rw==}
     engines: {node: '>=20.16.0'}
@@ -10387,6 +10483,12 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
+
+  '@0no-co/graphql.web@1.3.4': {}
+
+  '@0no-co/graphql.web@1.3.4(graphql@16.14.0)':
+    optionalDependencies:
+      graphql: 16.14.0
 
   '@agentclientprotocol/sdk@1.3.0(zod@4.5.4)':
     dependencies:
@@ -12591,6 +12693,11 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.1
 
+  '@octokit/graphql-schema@15.26.1':
+    dependencies:
+      graphql: 16.14.0
+      graphql-tag: 2.12.7(graphql@16.14.0)
+
   '@open-draft/deferred-promise@2.2.0': {}
 
   '@open-draft/deferred-promise@3.0.0': {}
@@ -12881,6 +12988,8 @@ snapshots:
       '@parcel/watcher-win32-arm64': 2.5.6
       '@parcel/watcher-win32-ia32': 2.5.6
       '@parcel/watcher-win32-x64': 2.5.6
+
+  '@pgsql/types@18.0.0': {}
 
   '@playwright/test@1.60.0':
     dependencies:
@@ -13501,6 +13610,7 @@ snapshots:
 
   '@sentry/junior-github@file:packages/junior-github':
     dependencies:
+      '@0no-co/graphql.web': 1.3.4
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sinclair/typebox': 0.34.52
       drizzle-orm: 0.45.2
@@ -13528,6 +13638,7 @@ snapshots:
       - bun-types
       - expo-sqlite
       - gel
+      - graphql
       - knex
       - kysely
       - mysql2
@@ -13537,8 +13648,9 @@ snapshots:
       - sql.js
       - sqlite3
 
-  '@sentry/junior-github@file:packages/junior-github(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)':
+  '@sentry/junior-github@file:packages/junior-github(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(graphql@16.14.0)(pg@8.21.0)':
     dependencies:
+      '@0no-co/graphql.web': 1.3.4(graphql@16.14.0)
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sinclair/typebox': 0.34.52
       drizzle-orm: 0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
@@ -13566,6 +13678,7 @@ snapshots:
       - bun-types
       - expo-sqlite
       - gel
+      - graphql
       - knex
       - kysely
       - mysql2
@@ -13761,14 +13874,17 @@ snapshots:
       commander: 14.0.3
       diff: 8.0.4
       drizzle-orm: 0.45.2(@neondatabase/serverless@1.1.0)(pg@8.21.0)
+      graphql: 16.14.0
       hono: 4.13.11
       jiti: 2.7.0
       jose: 6.2.3
       just-bash: 3.0.1
       nitro: 3.0.260522-beta(jiti@2.7.0)
       node-html-markdown: 2.0.0
+      p-limit: 7.3.1
       pg: 8.21.0
       sharp: 0.35.3(@types/node@25.9.1)
+      undici: 7.30.1
       web-push: 3.6.7
       yaml: 2.9.0
       zod: 4.5.4
@@ -13861,14 +13977,17 @@ snapshots:
       commander: 14.0.3
       diff: 8.0.4
       drizzle-orm: 0.45.2(@neondatabase/serverless@1.1.0)(pg@8.21.0)
+      graphql: 16.14.0
       hono: 4.13.11
       jiti: 2.7.0
       jose: 6.2.3
       just-bash: 3.0.1
       nitro: 3.0.260522-beta
       node-html-markdown: 2.0.0
+      p-limit: 7.3.1
       pg: 8.21.0
       sharp: 0.35.3(@types/node@25.9.1)
+      undici: 7.30.1
       web-push: 3.6.7
       yaml: 2.9.0
       zod: 4.5.4
@@ -13961,13 +14080,16 @@ snapshots:
       commander: 14.0.3
       diff: 8.0.4
       drizzle-orm: 0.45.2(@neondatabase/serverless@1.1.0)(pg@8.21.0)
+      graphql: 16.14.0
       hono: 4.13.11
       jiti: 2.7.0
       jose: 6.2.3
       just-bash: 3.0.1
       node-html-markdown: 2.0.0
+      p-limit: 7.3.1
       pg: 8.21.0
       sharp: 0.35.3
+      undici: 7.30.1
       web-push: 3.6.7
       yaml: 2.9.0
       zod: 4.5.4
@@ -14298,6 +14420,27 @@ snapshots:
     dependencies:
       '@smithy/util-buffer-from': 2.2.0
       tslib: 2.8.1
+
+  '@squawk-cli/darwin-arm64@2.72.0':
+    optional: true
+
+  '@squawk-cli/darwin-x64@2.72.0':
+    optional: true
+
+  '@squawk-cli/linux-arm64-musl@2.72.0':
+    optional: true
+
+  '@squawk-cli/linux-arm64@2.72.0':
+    optional: true
+
+  '@squawk-cli/linux-x64-musl@2.72.0':
+    optional: true
+
+  '@squawk-cli/linux-x64@2.72.0':
+    optional: true
+
+  '@squawk-cli/win32-x64@2.72.0':
+    optional: true
 
   '@stablelib/base64@1.0.1': {}
 
@@ -16224,6 +16367,11 @@ snapshots:
       '@neondatabase/serverless': 1.1.0
       pg: 8.21.0
 
+  drizzle-orm@0.45.2(@types/pg@8.15.6)(pg@8.21.0):
+    optionalDependencies:
+      '@types/pg': 8.15.6
+      pg: 8.21.0
+
   dset@3.1.4: {}
 
   dts-resolver@3.0.0: {}
@@ -17027,6 +17175,11 @@ snapshots:
 
   graceful-fs@4.2.11: {}
 
+  graphql-tag@2.12.7(graphql@16.14.0):
+    dependencies:
+      graphql: 16.14.0
+      tslib: 2.8.1
+
   graphql@16.14.0: {}
 
   h3@1.15.11:
@@ -17585,6 +17738,10 @@ snapshots:
     dependencies:
       prelude-ls: 1.2.1
       type-check: 0.4.0
+
+  libpg-query@18.2.2:
+    dependencies:
+      '@pgsql/types': 18.0.0
 
   lightningcss-android-arm64@1.32.0:
     optional: true
@@ -20172,6 +20329,16 @@ snapshots:
   sprintf-js@1.1.3: {}
 
   sql.js@1.14.1: {}
+
+  squawk-cli@2.72.0:
+    optionalDependencies:
+      '@squawk-cli/darwin-arm64': 2.72.0
+      '@squawk-cli/darwin-x64': 2.72.0
+      '@squawk-cli/linux-arm64': 2.72.0
+      '@squawk-cli/linux-arm64-musl': 2.72.0
+      '@squawk-cli/linux-x64': 2.72.0
+      '@squawk-cli/linux-x64-musl': 2.72.0
+      '@squawk-cli/win32-x64': 2.72.0
 
   srvx@0.11.16: {}
 

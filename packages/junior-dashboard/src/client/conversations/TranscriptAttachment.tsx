@@ -1,22 +1,41 @@
 import {
   INLINE_VIDEO_TYPES,
   INPUT_IMAGE_TYPES,
-  type InputImage,
   type MessageAttachment,
 } from "@sentry/junior/api/schema";
 import { Download, FileText } from "lucide-react";
-import { type ReactNode, createContext, useContext, useMemo } from "react";
+import {
+  type ReactNode,
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import {
   ImageAttachment,
   type PreviewImage,
 } from "../components/ImageAttachment";
 import type { TranscriptViewMessage } from "../types";
+import { TextAttachmentPreview } from "./TextAttachmentPreview";
+import { textPreviewLanguage } from "./textPreview";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
-/** Build a data URL that previews an image before the server stores it. */
-export function inputImageSrc(image: InputImage): string {
-  return `data:${image.contentType};base64,${image.data}`;
+/** True for a local file that the transcript can show as an image. */
+export function isImageFile(file: File): boolean {
+  return INPUT_IMAGE_TYPES.some((type) => type === file.type);
+}
+
+/** Object URL that previews a local file while the component shows it. */
+export function useFileUrl(file: File): string | undefined {
+  const [url, setUrl] = useState<string>();
+  useEffect(() => {
+    const next = URL.createObjectURL(file);
+    setUrl(next);
+    return () => URL.revokeObjectURL(next);
+  }, [file]);
+  return url;
 }
 
 /** Build the private read route for one stored conversation attachment. */
@@ -27,7 +46,8 @@ export function conversationAttachmentUrl(
   return `/api/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(attachmentId)}`;
 }
 
-function formatAttachmentBytes(bytes: number): string {
+/** Short size label, such as `3.2 MB`. */
+export function formatAttachmentBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -169,25 +189,58 @@ export function TranscriptAttachments(props: {
   );
 }
 
-/** Show the images of a send before the server stores them. */
-export function TranscriptLocalImages(props: { images: InputImage[] }) {
+/** Show the files of a send before the server stores them. */
+export function TranscriptLocalFiles(props: { files: File[] }) {
+  const entries = props.files.map((file, index) => ({
+    file,
+    key: `${file.name}:${index}`,
+  }));
+  const images = entries.filter((entry) => isImageFile(entry.file));
+  const files = entries.filter((entry) => !isImageFile(entry.file));
   return (
-    <div className={MEDIA_GRID_CLASS}>
-      {props.images.map((image, index) => (
-        <figure
-          className="grid min-w-0 gap-1"
-          key={`${image.filename}:${index}`}
-        >
-          <ImageAttachment
-            filename={image.filename}
-            imageClassName={TRANSCRIPT_IMAGE_CLASS}
-            src={inputImageSrc(image)}
-            triggerClassName={TRANSCRIPT_IMAGE_TRIGGER_CLASS}
-          />
-          <MediaCaption filename={image.filename} />
-        </figure>
-      ))}
+    <div className="grid min-w-0 gap-2">
+      {images.length > 0 ? (
+        <div className={MEDIA_GRID_CLASS}>
+          {images.map((entry) => (
+            <TranscriptLocalImage file={entry.file} key={entry.key} />
+          ))}
+        </div>
+      ) : null}
+      {files.length > 0 ? (
+        <div className={FILE_GRID_CLASS}>
+          {files.map((entry) => (
+            <div className={FILE_ROW_BASE_CLASS} key={entry.key}>
+              <FileRowLabel
+                filename={entry.file.name}
+                meta={[
+                  entry.file.type || "file",
+                  formatAttachmentBytes(entry.file.size),
+                ].join(" · ")}
+              />
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function TranscriptLocalImage(props: { file: File }) {
+  const src = useFileUrl(props.file);
+  return (
+    <figure className="grid min-w-0 gap-1">
+      {src ? (
+        <ImageAttachment
+          filename={props.file.name}
+          imageClassName={TRANSCRIPT_IMAGE_CLASS}
+          src={src}
+          triggerClassName={TRANSCRIPT_IMAGE_TRIGGER_CLASS}
+        />
+      ) : (
+        <div className={MEDIA_FRAME_CLASS} />
+      )}
+      <MediaCaption bytes={props.file.size} filename={props.file.name} />
+    </figure>
   );
 }
 
@@ -275,26 +328,70 @@ function TranscriptMediaTile(props: {
   );
 }
 
-/** Render one stored file as a download row. */
+// Every file row shares this look. A stored file is a preview button or a
+// download link; a file that is still sending is neither.
+const FILE_ROW_BASE_CLASS =
+  "grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-3 py-2 text-left font-sans no-underline";
+const FILE_ROW_CLASS = `${FILE_ROW_BASE_CLASS} cursor-pointer transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus`;
+
+/** Render one stored file as a row that previews text or downloads the file. */
 function TranscriptFileRow(props: {
   attachment: MessageAttachment;
   conversationId: string;
 }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
   const href = conversationAttachmentUrl(
     props.conversationId,
     props.attachment.id,
   );
   const meta = attachmentMeta(props.attachment);
-  // `target="_blank"`: an installed iOS home screen app has no back button.
-  // Opening a file in the same window traps the user in the iOS file preview.
+  const language = textPreviewLanguage(props.attachment);
+  const label = (
+    <FileRowLabel filename={props.attachment.filename} meta={meta} />
+  );
+
+  if (!language) {
+    // `target="_blank"`: an installed iOS home screen app has no back button.
+    // Opening a file in the same window traps the user in the iOS file preview.
+    return (
+      <a
+        className={FILE_ROW_CLASS}
+        download={props.attachment.filename}
+        href={href}
+        rel="noreferrer"
+        target="_blank"
+      >
+        {label}
+      </a>
+    );
+  }
+
   return (
-    <a
-      className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-3 py-2 no-underline transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-      download={props.attachment.filename}
-      href={href}
-      rel="noreferrer"
-      target="_blank"
-    >
+    <>
+      <button
+        aria-haspopup="dialog"
+        className={FILE_ROW_CLASS}
+        onClick={() => setPreviewOpen(true)}
+        type="button"
+      >
+        {label}
+      </button>
+      {previewOpen ? (
+        <TextAttachmentPreview
+          attachment={props.attachment}
+          href={href}
+          language={language}
+          meta={meta}
+          onClose={() => setPreviewOpen(false)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function FileRowLabel(props: { filename: string; meta: string }) {
+  return (
+    <>
       <span
         aria-hidden="true"
         className="grid size-6 place-items-center text-dashboard-text-muted"
@@ -303,12 +400,12 @@ function TranscriptFileRow(props: {
       </span>
       <div className="min-w-0">
         <div className="truncate font-mono text-xs text-dashboard-text">
-          <HighlightText text={props.attachment.filename} />
+          <HighlightText text={props.filename} />
         </div>
         <div className="truncate font-mono text-xs text-dashboard-text-muted">
-          <HighlightText text={meta} />
+          <HighlightText text={props.meta} />
         </div>
       </div>
-    </a>
+    </>
   );
 }

@@ -10,7 +10,6 @@ import { DetailsPanel, useDetailsPanel } from "../components/DetailsPanel";
 import { formatRelativeTime, formatTime } from "../format";
 import { ConversationReviewItems } from "../review-desk/ConversationReviewItems";
 import { Button } from "../components/ui/button";
-import type { Conversation } from "../types";
 import { ConversationBrief } from "./ConversationBrief";
 import {
   ConversationTasks,
@@ -36,7 +35,7 @@ import {
   useConversationWatches,
 } from "./ConversationWatches";
 import { DetailsCard, DetailsRow } from "./DetailsList";
-import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
+import type { ConversationDrawerTarget } from "./ConversationDrawer";
 
 type Brief = NonNullable<ConversationDetailReport["brief"]>;
 
@@ -50,15 +49,13 @@ export function ConversationDetails(props: {
   autoArchive: ReactNode;
   brief?: Brief;
   conversationId: string;
-  /** The loaded feed. Its Threads carry their own titles. */
-  feedConversations: readonly Conversation[];
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;
   identity: ReactNode;
   links: ConversationLink[];
   onClose(): void;
   /** Open one Task transcript. A details sheet closes first. */
-  onOpenSubagent(target: SubagentTranscriptTarget): void;
+  onOpenSubagent(target: ConversationDrawerTarget): void;
   /** Show one memory where its Turn recalled or captured it. */
   onSelectMemory(entry: ConversationMemoryEntry & { turnId: string }): void;
   overview: ReactNode;
@@ -105,6 +102,7 @@ export function ConversationDetails(props: {
         title={
           <div className="-ml-2 flex min-w-0 items-center gap-1">
             <Button
+              variant="ghost"
               aria-label="Back to details"
               onClick={() => setMemoriesOpen(false)}
               size="icon"
@@ -182,12 +180,7 @@ export function ConversationDetails(props: {
             <ConversationBrief brief={props.brief} variant="summary" />
           </div>
         ) : null}
-        {threads.length > 0 ? (
-          <ConversationThreads
-            feedConversations={props.feedConversations}
-            threads={threads}
-          />
-        ) : null}
+        {threads.length > 0 ? <ConversationThreads threads={threads} /> : null}
         {props.links.length > 0 || watches.length > 0 ? (
           // A Watch waits on something. It shows with linked work, so the
           // work and what Junior waits on read as one list.

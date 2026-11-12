@@ -15,11 +15,17 @@ import {
   conversationEventPageSchema,
   conversationEventsQuerySchema,
   conversationFeedQuerySchema,
-  conversationFeedSchema,
   conversationParamsSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
+import { MAX_INPUT_ATTACHMENT_BYTES } from "@/chat/attachments/input";
+import {
+  attachmentUploadParamsSchema,
+  attachmentUploadSchema,
+  createAttachmentUploadBodySchema,
+} from "../schema/conversation-attachment-upload";
+import { conversationFeedSchema } from "../schema/conversation-feed";
 import {
   conversationCatchUpBodySchema,
   conversationCatchUpSchema,
@@ -31,9 +37,13 @@ import {
   reorderPinnedConversationsResponseSchema,
 } from "../schema/conversation-pin";
 import {
-  conversationUnreadSchema,
-  markConversationUnreadBodySchema,
-} from "../schema/conversation-unread";
+  conversationDeliveryBodySchema,
+  conversationDeliveryResponseSchema,
+} from "../schema/conversation-delivery";
+import {
+  conversationSubscriptionBodySchema,
+  conversationSubscriptionResponseSchema,
+} from "../schema/conversation-subscription";
 import {
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
@@ -49,14 +59,12 @@ import {
   conversationPendingMessagesReportSchema,
   conversationUnchangedDetailWithMailboxSchema,
 } from "../schema/conversation-pending-messages";
-import {
-  conversationReadPositionSchema,
-  conversationReadReportSchema,
-} from "../schema/conversation-read-position";
+import { conversationReadPositionSchema } from "../schema/conversation-read-position";
 import {
   renameConversationBodySchema,
   renameConversationResponseSchema,
 } from "../schema/conversation-title";
+import { conversationOutlineSchema } from "../schema/conversation-outline";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
 import {
@@ -68,10 +76,12 @@ import { conversationWatchesReportSchema } from "../schema/watch";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { createConversationAccessReader } from "./access";
+import { reportConversationRead } from "./read-position";
 import { archiveConversation } from "./archive";
 import { catchUpOnConversation } from "./catch-up";
 import { pinConversation, reorderPinnedConversations } from "./pin";
-import { markConversationUnread, reportConversationRead } from "./unread";
+import { setConversationSubscription } from "./subscription";
+import { setConversationDeliveryForViewer } from "./delivery";
 import { renameConversation } from "./rename";
 import {
   archiveViewerDoneConversations,
@@ -80,6 +90,10 @@ import {
 import { requireConversationChildAgents } from "./child-agents";
 import { continueConversationInSlackForViewer } from "./continue-in-slack";
 import { conversationAttachmentResponse } from "./attachments";
+import {
+  createAttachmentUploadForViewer,
+  writeAttachmentUploadForViewer,
+} from "./attachment-uploads";
 import {
   appendConversationMessageForViewer,
   createConversationForViewer,
@@ -90,6 +104,7 @@ import { readConversationDetailEtag } from "./detail-etag";
 import { forkConversationForViewer, keepQuickQuestionForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
+import { readConversationOutline } from "./outline";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
 import { steerConversationPendingMessagesForViewer } from "./steer-pending-messages";
 import { requireConversationPendingMessages } from "./pending-messages";
@@ -102,12 +117,9 @@ export function createConversationRoutes(
   options: WebInputServices,
 ): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
-  const messageBodyLimit = bodyLimit({
-    maxSize: 4_450_000,
-    onError: () => {
-      throwApiError(413, "Images must total 3 MB or less.");
-    },
-  });
+  // Files go to attachment storage first, so a Message body holds only text
+  // and upload ids.
+  const messageBodyLimit = bodyLimit({ maxSize: 262_144 });
 
   app.get(
     "/",
@@ -117,7 +129,7 @@ export function createConversationRoutes(
       "Invalid query parameters.",
     ),
     async (context) => {
-      const { actorEmail, codeRepositoryId, q, status } =
+      const { actorEmail, codeRepositoryId, cursor, q, status } =
         context.req.valid("query");
       const viewer = context.get("viewer");
       return jsonResponse(
@@ -125,6 +137,7 @@ export function createConversationRoutes(
         await readConversationFeed({
           ...(actorEmail ? { actorEmail } : undefined),
           ...(codeRepositoryId ? { codeRepositoryId } : undefined),
+          ...(cursor ? { cursor } : undefined),
           ...(q ? { q } : undefined),
           status,
           ...(viewer ? { viewer } : undefined),
@@ -153,6 +166,51 @@ export function createConversationRoutes(
         acceptedConversationMessageSchema,
         await createConversationForViewer(viewer, body, options),
       );
+    },
+  );
+
+  app.post(
+    "/attachment-uploads",
+    requireViewer,
+    bodyLimit({ maxSize: 8_192 }),
+    validateRequest(
+      "json",
+      createAttachmentUploadBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        attachmentUploadSchema,
+        await createAttachmentUploadForViewer(
+          context.get("viewer"),
+          context.req.valid("json"),
+          options.attachmentStorage,
+        ),
+      ),
+  );
+
+  app.put(
+    "/attachment-uploads/:uploadId",
+    requireViewer,
+    bodyLimit({
+      maxSize: MAX_INPUT_ATTACHMENT_BYTES,
+      onError: () => {
+        throwApiError(413, "Files must be 25 MB or less.");
+      },
+    }),
+    validateRequest(
+      "param",
+      attachmentUploadParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      await writeAttachmentUploadForViewer({
+        readBody: () => context.req.arrayBuffer(),
+        storage: options.attachmentStorage,
+        uploadId: context.req.valid("param").uploadId,
+        viewer: context.get("viewer"),
+      });
+      return context.body(null, 204);
     },
   );
 
@@ -317,7 +375,7 @@ export function createConversationRoutes(
   );
 
   app.patch(
-    "/:conversationId/unread",
+    "/:conversationId/delivery",
     requireViewer,
     validateRequest(
       "param",
@@ -326,13 +384,37 @@ export function createConversationRoutes(
     ),
     validateRequest(
       "json",
-      markConversationUnreadBodySchema,
+      conversationDeliveryBodySchema,
       "Invalid request body.",
     ),
     async (context) =>
       jsonResponse(
-        conversationUnreadSchema,
-        await markConversationUnread(
+        conversationDeliveryResponseSchema,
+        await setConversationDeliveryForViewer(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
+  );
+
+  app.patch(
+    "/:conversationId/subscription",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      conversationSubscriptionBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        conversationSubscriptionResponseSchema,
+        await setConversationSubscription(
           context.get("viewer"),
           context.req.valid("param").conversationId,
           context.req.valid("json"),
@@ -382,7 +464,7 @@ export function createConversationRoutes(
       const { conversationId } = context.req.valid("param");
       const body = context.req.valid("json");
       return jsonResponse(
-        conversationReadReportSchema,
+        conversationReadPositionSchema,
         await reportConversationRead(viewer, conversationId, body),
       );
     },
@@ -483,6 +565,25 @@ export function createConversationRoutes(
       });
       if (!report) throwApiError(404, "Conversation not found.");
       return jsonResponse(conversationEventPageSchema, report);
+    },
+  );
+
+  app.get(
+    "/:conversationId/outline",
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const { conversationId } = context.req.valid("param");
+      const viewer = context.get("viewer");
+      const outline = await readConversationOutline(
+        conversationId,
+        viewer ? { viewer } : undefined,
+      );
+      if (!outline) throwApiError(404, "Conversation not found.");
+      return jsonResponse(conversationOutlineSchema, outline);
     },
   );
 
@@ -679,7 +780,9 @@ export function createConversationRoutes(
       }
       const report = await readConversationDetail(conversationId, {
         ...query,
-        ...(version ? { state: version.state } : undefined),
+        ...(version
+          ? { stored: { record: version.record, state: version.state } }
+          : undefined),
         ...viewerOptions,
       });
       if (!report) throwApiError(404, "Conversation not found.");

@@ -20,7 +20,7 @@ describe("CLI package build contract", () => {
     );
     const loadedCliEntries = [
       ...new Set(
-        [...binScript.matchAll(/loadCliFunction\(\s*"([^"]+)"/g)].map(
+        [...binScript.matchAll(/loadCliModule\(\s*"([^"]+)"/g)].map(
           ([, moduleName]) => `cli/${moduleName}`,
         ),
       ),

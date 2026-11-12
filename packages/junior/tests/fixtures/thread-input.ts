@@ -1,14 +1,14 @@
+import { randomUUID } from "node:crypto";
 import { createWebSource } from "@sentry/junior-plugin-api";
-import { eq } from "drizzle-orm";
 import {
   completeAgentInvocation,
   getActiveAgentInvocationForConversation,
 } from "@/chat/agent-invocations/store";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { assertRunConsistency, type AgentRun } from "@/chat/agent/types";
+import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
 import { appendAndEnqueueWebMessage } from "@/chat/conversations/web-input";
-import { getDb } from "@/chat/db";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
@@ -16,7 +16,6 @@ import {
   listTurnSummaries,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
-import { juniorConversations } from "@/db/schema";
 import {
   prepareSlackParentConversation,
   slackDestination,
@@ -31,6 +30,9 @@ import { expect } from "vitest";
 /** Compose production Conversation work with a Slack root. */
 export async function createHarness() {
   const { conversationStore, fixture } = await prepareSlackParentConversation();
+  // The name keys the Thread's Conversation id. Work that an earlier test
+  // left running can still write that Conversation, so each test has its own.
+  const agentName = `researcher-${randomUUID().slice(0, 8)}`;
   // Integration tests do not run the agent. The runner checks each run as
   // the agent does first, reads it, and stops it. The test finishes each
   // Agent invocation itself, or ends its runs with `onInvocationRun`.
@@ -39,6 +41,7 @@ export async function createHarness() {
   // starts lands here.
   const otherOpenTurns: string[] = [];
   let onInvocationRun: (() => Promise<never>) | undefined;
+  let onPersonRun: ((run: AgentRun) => Promise<AgentRunOutcome>) | undefined;
   const work = await createConversationWorkHarness({
     run: async (run) => {
       assertRunConsistency(
@@ -59,6 +62,9 @@ export async function createHarness() {
       if (run.agentInvocationId && onInvocationRun) {
         await onInvocationRun();
       }
+      if (!run.agentInvocationId && onPersonRun) {
+        return await onPersonRun(run);
+      }
       throw new Error("stop after reading the run");
     },
   });
@@ -66,6 +72,7 @@ export async function createHarness() {
   const process = async (conversationId: string) =>
     await work.process(work.queue.takeMessageFor(conversationId));
   return {
+    agentName,
     close: async () => await fixture.close(),
     conversationStore,
     /** Run every queued wake of one Conversation, as the queue does. */
@@ -97,6 +104,13 @@ export async function createHarness() {
     onInvocationRun: (fn: () => Promise<never>) => {
       onInvocationRun = fn;
     },
+    /**
+     * Run `fn` in each later run on the Conversation loop. The run ends as
+     * `fn` returns or throws.
+     */
+    onPersonRun: (fn: (run: AgentRun) => Promise<AgentRunOutcome>) => {
+      onPersonRun = fn;
+    },
     otherOpenTurns,
     process,
     queue: work.queue,
@@ -115,9 +129,10 @@ export async function finishInvocation(
   const invocation =
     await getActiveAgentInvocationForConversation(childConversationId);
   if (!invocation) throw new Error("Expected an open Agent invocation");
+  // A Turn that ended without a `reply` saves no result text.
   await completeAgentInvocation({
     invocationId: invocation.invocationId,
-    result: "Found it.",
+    result: "",
     status: "completed",
   });
   await expect(harness.process(childConversationId)).resolves.toMatchObject({
@@ -125,22 +140,23 @@ export async function finishInvocation(
   });
 }
 
-/**
- * Start a named child agent and store it as a Thread. Spawn creates only
- * Tasks until Threads have their own entry point.
- */
+/** Start a named child agent, a Thread unless `kind` says otherwise. */
 export async function startThread(
   harness: Harness,
   idempotencyKey: string,
   input: Partial<
-    Pick<CreateAgentInvocationInput, "destination" | "parentConversationId">
+    Pick<
+      CreateAgentInvocationInput,
+      "destination" | "kind" | "parentConversationId"
+    >
   > = {},
 ) {
   const created = await createAndEnqueueAgentInvocation(
     {
       ...slackInvocationInput,
+      kind: "thread",
       ...input,
-      agentName: "researcher",
+      agentName: harness.agentName,
       idempotencyKey,
     },
     {
@@ -149,10 +165,6 @@ export async function startThread(
       state: harness.state,
     },
   );
-  await getDb()
-    .update(juniorConversations)
-    .set({ kind: "thread" })
-    .where(eq(juniorConversations.conversationId, created.childConversationId));
   return created.childConversationId;
 }
 

@@ -121,11 +121,39 @@ function accountText(value: unknown): string | undefined {
   return id && id !== label ? `${label} (${id})` : label;
 }
 
-function upstreamPermissionDeniedText(value: unknown): string | undefined {
+function policyDeniedText(
+  value: Record<string, unknown>,
+  signal: Record<string, unknown>,
+): string | undefined {
+  const message = stringField(signal, "message");
+  const method = stringField(signal, "method");
+  const upstreamHost = stringField(signal, "upstreamHost");
+  const upstreamPath = stringField(signal, "upstreamPath");
+  if (!message || !method || !upstreamHost || !upstreamPath) {
+    return undefined;
+  }
+  const command = stringField(value, "command");
+  const stderr = stringField(value, "stderr").trim();
+  return [
+    "The runtime egress policy denied the request. It did not reach the provider.",
+    message,
+    "",
+    `Request: ${method} ${upstreamHost}${upstreamPath}`,
+    ...(command ? [`Command: ${command}`] : []),
+    "",
+    "Do not retry the same request, and do not ask for more permissions or a new credential. Follow the policy message.",
+    ...(stderr ? ["", `stderr:\n${stderr}`] : []),
+  ].join("\n");
+}
+
+function permissionDeniedText(value: unknown): string | undefined {
   if (!isRecord(value) || !isRecord(value.permission_denied)) {
     return undefined;
   }
   const signal = value.permission_denied;
+  if (signal.source === "policy") {
+    return policyDeniedText(value, signal);
+  }
   if (signal.source !== "upstream") {
     return undefined;
   }
@@ -196,7 +224,7 @@ export function normalizeToolResult(
 
   if (isStructuredToolExecutionResult(unwrapped)) {
     const normalized = normalizeDetails(unwrapped.details, options);
-    const permissionText = upstreamPermissionDeniedText(normalized.details);
+    const permissionText = permissionDeniedText(normalized.details);
     if (!permissionText && normalized.details === unwrapped.details) {
       return unwrapped;
     }
@@ -231,7 +259,7 @@ export function normalizeToolResult(
       {
         type: "text",
         text:
-          upstreamPermissionDeniedText(normalized.details) ??
+          permissionDeniedText(normalized.details) ??
           toToolContentText(normalized.details),
       },
     ],

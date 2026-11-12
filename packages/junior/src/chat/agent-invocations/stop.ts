@@ -1,23 +1,21 @@
-import { and, eq, gt, inArray, ne, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, ne, or } from "drizzle-orm";
 import type { StateAdapter } from "chat";
 import {
   getConversationStoppedAtMs,
   markConversationsStopped,
 } from "@/chat/conversations/session-stop";
 import { getSqlExecutor } from "@/chat/db";
-import { cancelSignInPausedTurn } from "@/chat/task-execution/conversation-turn";
-import { getAuthPausedConversationTurnId } from "@/chat/task-execution/mailbox-turn";
+import { cancelSignInWait } from "@/chat/task-execution/turn-cancel";
 import {
+  dropPendingMessages,
   getConversationWorkState,
   stopConversationWork,
 } from "@/chat/task-execution/store";
-import { juniorAgentInvocations } from "@/db/schema";
+import { juniorAgentInvocations, juniorConversations } from "@/db/schema";
 import { recordSubagentEnded } from "./markers";
 import { isChildAgentSessionStopped } from "./list";
-import {
-  getChildAgentLockName,
-  parseAgentInvocationResultMessageId,
-} from "./ids";
+import { getChildAgentLockName } from "./ids";
+import { ownAgentInvocation, readChildMessageSender } from "./child-message";
 import {
   getLatestAgentInvocationForConversation,
   invocationFromRow,
@@ -40,16 +38,16 @@ export async function stopChildAgent(args: {
   parentConversationId: string;
   state?: StateAdapter;
 }): Promise<{ stopped: boolean } | undefined> {
-  const latest = await getLatestAgentInvocationForConversation(
-    args.childConversationId,
-  );
-  const wasStopped =
-    latest !== undefined &&
-    (latest.status === "stopped" ||
-      isChildAgentSessionStopped(
-        latest,
-        await getConversationStoppedAtMs(args.childConversationId),
-      ));
+  const [latest, stoppedAtMs] = await Promise.all([
+    getLatestAgentInvocationForConversation(args.childConversationId),
+    getConversationStoppedAtMs(args.childConversationId),
+  ]);
+  // A child that no Agent invocation names is stopped until new input clears
+  // its stop.
+  const wasStopped = latest
+    ? latest.status === "stopped" ||
+      isChildAgentSessionStopped(latest, stoppedAtMs)
+    : stoppedAtMs !== undefined;
   const tree = await stopChildAgentInvocations(args);
   if (!tree) {
     return undefined;
@@ -58,6 +56,11 @@ export async function stopChildAgent(args: {
     cancelWatches: true,
     state: args.state,
   });
+  await dropUnreadLoopReplies(
+    [args.parentConversationId, ...tree.conversationIds],
+    tree.conversationIds,
+    args.state,
+  );
   return { stopped: tree.stopped.length > 0 || !wasStopped };
 }
 
@@ -97,11 +100,14 @@ export async function stopChildAgentsOf(
   await skipUnreadResults(conversationId, nowMs, state);
   // They take the stop of this Conversation, so input that ends it ends
   // theirs too.
-  await finishStoppedTree(
-    tree,
-    tree.conversationIds.filter((id) => id !== conversationId),
-    { cancelWatches: false, nowMs: stoppedAtMs, state },
-  );
+  const stoppedIds = tree.conversationIds.filter((id) => id !== conversationId);
+  await finishStoppedTree(tree, stoppedIds, {
+    cancelWatches: false,
+    nowMs: stoppedAtMs,
+    state,
+  });
+  await dropUnreadLoopReplies(tree.conversationIds, stoppedIds, state);
+  await dropOwnUnreadLoopReplies(conversationId, state);
 }
 
 /**
@@ -124,23 +130,25 @@ export async function stopChildAgentsBelow(
     includeRoot: false,
   });
   await skipUnreadResults(conversationId, nowMs, state);
-  await finishStoppedTree(
-    tree,
-    tree.conversationIds.filter((id) => id !== conversationId),
-    { cancelWatches: false, nowMs: stoppedAtMs, state },
-  );
+  const stoppedIds = tree.conversationIds.filter((id) => id !== conversationId);
+  await finishStoppedTree(tree, stoppedIds, {
+    cancelWatches: false,
+    nowMs: stoppedAtMs,
+    state,
+  });
+  await dropUnreadLoopReplies(tree.conversationIds, stoppedIds, state);
 }
 
 /**
- * Skip the `appended` results that still wait in a Conversation's mailbox, so
- * they start no Turn. A result that the Conversation already read keeps its
+ * Skip the `appended` results and replies that still wait in a Conversation's
+ * mailbox, so they start no Turn. A result that the Conversation already read keeps its
  * status. Call this after the tree stop: it skipped each `pending` result and
  * stopped each child agent, so no result becomes `appended` after this read.
  *
  * The mailbox read is not atomic with the parent worker. A worker that takes
- * a result before this update holds the work lease, so the
- * `stopConversationTurn` that each caller runs next stops its Turn. A result
- * that such a Turn took but did not ack yet is marked `skipped`.
+ * a result before this update holds the work lease, so the stop request of
+ * the Conversation stops its Turn. A result that such a Turn took but did not
+ * ack yet is marked `skipped`.
  */
 async function skipUnreadResults(
   conversationId: string,
@@ -149,12 +157,17 @@ async function skipUnreadResults(
 ): Promise<void> {
   const messages =
     (await getConversationWorkState({ conversationId, state }))?.messages ?? [];
-  const invocationIds = messages.flatMap((message) => {
-    const invocationId = parseAgentInvocationResultMessageId(
-      message.inboundMessageId,
-    );
-    return invocationId ? [invocationId] : [];
-  });
+  // A child's `reply` is its result, so a stop skips it too. A reply from a
+  // Turn on the Conversation loop names no work of its own:
+  // `dropUnreadLoopReplies` drops it instead.
+  const invocationIds: string[] = [];
+  for (const message of messages) {
+    const sender = await readChildMessageSender(message);
+    const invocation = sender && ownAgentInvocation(sender);
+    if (invocation) {
+      invocationIds.push(invocation);
+    }
+  }
   if (invocationIds.length === 0) {
     return;
   }
@@ -172,6 +185,65 @@ async function skipUnreadResults(
 }
 
 /**
+ * Drop the unread replies that Turns on the Conversation loop of the stopped
+ * Conversations left in each mailbox of `mailboxIds`. Such a reply names
+ * no work that the stop skips, so the stop drops it by its sender fields.
+ * A reply sent after the stop is dropped when it is read, while the sender
+ * is stopped. Call this after the stop is stored.
+ *
+ * A reply that a running Turn already took leaves the mailbox like one that
+ * it read: the Turn's own ack removes nothing more.
+ */
+async function dropUnreadLoopReplies(
+  mailboxIds: readonly string[],
+  stoppedIds: readonly string[],
+  state: StateAdapter | undefined,
+): Promise<void> {
+  const stopped = new Set(stoppedIds);
+  for (const conversationId of mailboxIds) {
+    const messages =
+      (await getConversationWorkState({ conversationId, state }))?.messages ??
+      [];
+    const inboundMessageIds: string[] = [];
+    for (const message of messages) {
+      const sender = await readChildMessageSender(message);
+      if (
+        sender &&
+        !ownAgentInvocation(sender) &&
+        stopped.has(sender.conversationId)
+      ) {
+        inboundMessageIds.push(message.inboundMessageId);
+      }
+    }
+    if (inboundMessageIds.length > 0) {
+      await dropPendingMessages({ conversationId, inboundMessageIds, state });
+    }
+  }
+}
+
+/**
+ * Drop the unread loop replies that a Conversation that a person stopped
+ * left in its parent's mailbox, outside its tree. Call this after its stop
+ * is stored: the parent mailbox lock then drops a later reply.
+ */
+export async function dropOwnUnreadLoopReplies(
+  conversationId: string,
+  state?: StateAdapter,
+): Promise<void> {
+  // A child agent has one parent, so this finds at most one mailbox.
+  const parents = await getSqlExecutor()
+    .db()
+    .select({ id: juniorConversations.parentConversationId })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, conversationId));
+  await dropUnreadLoopReplies(
+    parents.flatMap((parent) => (parent.id ? [parent.id] : [])),
+    [conversationId],
+    state,
+  );
+}
+
+/**
  * A Thread can hold a person's Turn that waits for sign-in. The stop ends
  * that Turn here, because no worker holds it. Then a later sign-in callback
  * cannot resume a stopped Thread.
@@ -186,10 +258,7 @@ async function finishStoppedTree(
   }
   await markConversationsStopped(conversationIdsToStop, options);
   for (const conversationId of conversationIdsToStop) {
-    const pausedTurnId = await getAuthPausedConversationTurnId(conversationId);
-    if (pausedTurnId) {
-      await cancelSignInPausedTurn({ conversationId, turnId: pausedTurnId });
-    }
+    await cancelSignInWait(conversationId);
     await stopConversationWork({ conversationId, state: options.state });
   }
 }
@@ -220,9 +289,22 @@ async function lockAgentConversationTree(
       })
       .from(juniorAgentInvocations)
       .where(inArray(juniorAgentInvocations.parentConversationId, parents));
-    parents = rows
-      .map((row) => row.childConversationId)
-      .filter((id) => !conversationIds.includes(id));
+    // A child agent that no agent invocation names stores its agent config.
+    const withoutInvocations = await executor
+      .db()
+      .select({ childConversationId: juniorConversations.conversationId })
+      .from(juniorConversations)
+      .where(
+        and(
+          inArray(juniorConversations.parentConversationId, parents),
+          isNotNull(juniorConversations.agentConfig),
+        ),
+      );
+    parents = [
+      ...new Set(
+        [...rows, ...withoutInvocations].map((row) => row.childConversationId),
+      ),
+    ].filter((id) => !conversationIds.includes(id));
     conversationIds.push(...parents);
   }
   return conversationIds;
@@ -255,9 +337,30 @@ async function withChildAgentsTaskedAfter(
         ),
       ),
     );
+  // A child agent that no agent invocation names was tasked when it was
+  // created.
+  const withoutInvocations = await getSqlExecutor()
+    .db()
+    .select({
+      childConversationId: juniorConversations.conversationId,
+      parentConversationId: juniorConversations.parentConversationId,
+    })
+    .from(juniorConversations)
+    .where(
+      and(
+        inArray(juniorConversations.parentConversationId, [
+          ...conversationIds,
+        ]),
+        isNotNull(juniorConversations.agentConfig),
+        or(
+          ne(juniorConversations.parentConversationId, conversationId),
+          gt(juniorConversations.createdAt, new Date(taskedAfterMs)),
+        ),
+      ),
+    );
   const kept = [conversationId];
   for (let index = 0; index < kept.length; index += 1) {
-    for (const link of links) {
+    for (const link of [...links, ...withoutInvocations]) {
       if (
         link.parentConversationId === kept[index] &&
         !kept.includes(link.childConversationId)
@@ -279,24 +382,40 @@ export async function stopChildAgentInvocations(args: {
   nowMs?: number;
   parentConversationId: string;
 }): Promise<StoppedAgentTree | undefined> {
-  const owned = await getSqlExecutor()
-    .db()
-    .select({ invocationId: juniorAgentInvocations.invocationId })
-    .from(juniorAgentInvocations)
-    .where(
-      and(
-        eq(
-          juniorAgentInvocations.parentConversationId,
-          args.parentConversationId,
+  const db = getSqlExecutor().db();
+  const [owned, child] = await Promise.all([
+    db
+      .select({ invocationId: juniorAgentInvocations.invocationId })
+      .from(juniorAgentInvocations)
+      .where(
+        and(
+          eq(
+            juniorAgentInvocations.parentConversationId,
+            args.parentConversationId,
+          ),
+          eq(
+            juniorAgentInvocations.childConversationId,
+            args.childConversationId,
+          ),
         ),
-        eq(
-          juniorAgentInvocations.childConversationId,
-          args.childConversationId,
+      )
+      .limit(1),
+    // A child agent that no agent invocation names stores its agent config.
+    db
+      .select({ conversationId: juniorConversations.conversationId })
+      .from(juniorConversations)
+      .where(
+        and(
+          eq(juniorConversations.conversationId, args.childConversationId),
+          eq(
+            juniorConversations.parentConversationId,
+            args.parentConversationId,
+          ),
+          isNotNull(juniorConversations.agentConfig),
         ),
       ),
-    )
-    .limit(1);
-  if (owned.length === 0) {
+  ]);
+  if (owned.length === 0 && child.length === 0) {
     return undefined;
   }
   return await stopAgentInvocationTree(args.childConversationId, args.nowMs);

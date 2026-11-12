@@ -15,6 +15,11 @@ import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { createSlackDestination } from "@/chat/destination";
 import { createEventAutomation } from "@/chat/event-automations/store";
 import { createWatch } from "@/chat/events/store";
+import {
+  gitHubPullRequestCreateWatch,
+  gitHubPullRequestSubscription,
+} from "../../../junior-github/src/events/pull-request";
+import type { AutomationTask } from "@/chat/automations/task";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { createPluginEmbedder } from "@/chat/plugins/model";
@@ -169,7 +174,8 @@ export async function insertScheduledAutomation(args: {
    * An empty list stores no outcomes, so a successful run posts nothing.
    */
   sendTo?: SlackChannel[];
-  task: string;
+  /** An instruction, or the task of a skill run. */
+  task: string | AutomationTask;
 }): Promise<{ id: string }> {
   const author = resolveAuthor(args.createdBy);
   const identity = await insertSlackIdentity(author);
@@ -212,7 +218,10 @@ export async function insertScheduledAutomation(args: {
           timezone: "America/Los_Angeles",
         },
     status: "active",
-    task: { text: args.task },
+    task:
+      typeof args.task === "string"
+        ? { kind: "instruction", instruction: args.task }
+        : args.task,
     updatedAtMs: nowMs - 60_000,
   };
   await insertCreationThread(args.destination);
@@ -248,7 +257,7 @@ export async function insertEventAutomation(args: {
     destination: args.destination,
     destinationVisibility: "public",
     outcomes: [{ action: "send_message", destination: args.destination }],
-    task: { text: args.task },
+    task: { kind: "instruction", instruction: args.task },
     trigger: args.trigger,
   });
   return { id };
@@ -331,6 +340,7 @@ export async function insertWebReviewItem(args: {
 export async function insertWatch(args: {
   conversation: { conversationId: string };
   events: string[];
+  guidance?: Partial<Record<string, string>>;
   identifier: string;
   intent: string;
   label: string;
@@ -343,6 +353,7 @@ export async function insertWatch(args: {
       conversationId: args.conversation.conversationId,
       events: args.events,
       expiresAtMs: nowMs + 14 * 24 * 60 * 60 * 1000,
+      guidance: args.guidance,
       identifier: args.identifier,
       intent: args.intent,
       label: args.label,
@@ -352,6 +363,27 @@ export async function insertWatch(args: {
     { nowMs },
   );
   return { id: watch.id };
+}
+
+/**
+ * Add the Watch that the GitHub plugin adds after Junior opens a draft pull
+ * request, with the default intent and the draft guidance.
+ */
+export async function insertGitHubDraftWatch(args: {
+  conversation: { conversationId: string };
+  pullRequest: string;
+}): Promise<{ id: string }> {
+  const watch = gitHubPullRequestCreateWatch(
+    gitHubPullRequestSubscription(undefined)!,
+    { draft: true },
+  );
+  return await insertWatch({
+    conversation: args.conversation,
+    ...watch,
+    identifier: args.pullRequest,
+    label: `GitHub PR ${args.pullRequest}`,
+    resourceType: "pull_request",
+  });
 }
 
 /**
