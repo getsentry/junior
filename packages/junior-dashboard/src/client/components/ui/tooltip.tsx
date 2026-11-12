@@ -34,7 +34,7 @@ const TooltipDescriptionContext = createContext<string | undefined>(undefined);
  * screens, a tooltip can cover the menu that its trigger opens.
  */
 const TOOLTIP_MEDIA_QUERY =
-  "(min-width: 768px) and (hover: hover) and (pointer: fine)";
+  "(min-width: 48rem) and (hover: hover) and (pointer: fine)";
 
 function subscribeToTooltipMedia(onChange: () => void) {
   const media = window.matchMedia(TOOLTIP_MEDIA_QUERY);

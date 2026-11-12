@@ -18,8 +18,27 @@ function ResizablePanelGroup({
   );
 }
 
+/** A panel size that follows the reader's font size, as the text inside does. */
+type RemSize = `${number}rem`;
+
+/**
+ * A rem or percent size, or 0 for a collapsed panel. A px size does not grow
+ * with the browser font size, so it stops fitting the rem-sized content.
+ */
+type PanelSize = RemSize | `${number}%` | 0;
+
+type PanelProps = Omit<
+  ResizablePrimitive.PanelProps,
+  "collapsedSize" | "defaultSize" | "maxSize" | "minSize"
+> & {
+  collapsedSize?: PanelSize;
+  defaultSize?: PanelSize;
+  maxSize?: PanelSize;
+  minSize?: PanelSize;
+};
+
 /** Hold one resizable region inside a panel group. */
-function ResizablePanel({ ...props }: ResizablePrimitive.PanelProps) {
+function ResizablePanel({ ...props }: PanelProps) {
   return <ResizablePrimitive.Panel data-slot="resizable-panel" {...props} />;
 }
 
@@ -48,3 +67,4 @@ function ResizableHandle({
 }
 
 export { ResizableHandle, ResizablePanel, ResizablePanelGroup };
+export type { RemSize };

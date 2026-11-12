@@ -19,6 +19,11 @@ const UTILITY_ASSERTION_PATTERN =
 // leave fixed shells under the browser chrome. Prefer dvh or the dashboard
 // viewport CSS variables.
 const CLASSIC_VIEWPORT_HEIGHT_PATTERN = /(?<!\w)100vh\b/;
+// A px breakpoint ignores the browser font size, but the rem-sized layout
+// it guards grows with it. Matches `(min-width: 1280px)`, `width >= 768px`,
+// and Tailwind `min-[900px]:` or `@max-[448px]/name:` variants.
+const PX_BREAKPOINT_PATTERN =
+  /\(\s*(?:(?:min-|max-)?(?:width|height)\s*(?::|[<>]=?)\s*\d+(?:\.\d+)?px\b|\d+(?:\.\d+)?px\s*[<>]=?\s*(?:width|height)\b)|(?<![\w-])@?(?:min|max)-\[\d+(?:\.\d+)?px\]/;
 // Stacking padding + safe-area recreates the composer gap. Prefer max().
 const ADDITIVE_SAFE_AREA_PATTERN =
   /calc\((?:(?!\)[\s"'`]).)*?(?:\+\s*env\(safe-area-inset-(?:top|right|bottom|left)\)|env\(safe-area-inset-(?:top|right|bottom|left)\)\s*\+)/;
@@ -106,6 +111,18 @@ export function findClassicViewportHeights(files) {
     file.contents.split("\n").flatMap((line, index) => {
       if (isCommentOnlyLine(line)) return [];
       return CLASSIC_VIEWPORT_HEIGHT_PATTERN.test(line)
+        ? [`${file.path}:${index + 1}: ${line.trim()}`]
+        : [];
+    }),
+  );
+}
+
+/** Report media and container query breakpoints in px instead of rem. */
+export function findPxBreakpoints(files) {
+  return files.flatMap((file) =>
+    file.contents.split("\n").flatMap((line, index) => {
+      if (isCommentOnlyLine(line)) return [];
+      return PX_BREAKPOINT_PATTERN.test(line)
         ? [`${file.path}:${index + 1}: ${line.trim()}`]
         : [];
     }),
@@ -247,6 +264,10 @@ function main() {
     {
       fix: "Use dvh or the visualViewport variables from layout/VisualViewportShell instead of 100vh.",
       lines: findClassicViewportHeights(files),
+    },
+    {
+      fix: "Write breakpoints in rem, like layoutMedia.ts and the Tailwind breakpoints, so they move with the browser font size as the layout does.",
+      lines: findPxBreakpoints(files),
     },
     {
       fix: "Use max(<padding>, env(safe-area-inset-*)) instead of adding padding to the safe-area inset.",
