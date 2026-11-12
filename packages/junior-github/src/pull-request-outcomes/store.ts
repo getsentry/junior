@@ -14,6 +14,8 @@ const githubPullRequestOutcomeInputSchema = z
     candidateOwned: z.boolean(),
     closedAt: z.date().optional(),
     commitComposition: githubPullRequestCommitCompositionSchema.optional(),
+    /** When omitted, the stored draft state does not change. */
+    draft: z.boolean().optional(),
     mergedAt: z.date().optional(),
     number: z.number().int().positive(),
     openedAt: z.date(),
@@ -68,6 +70,7 @@ function projectionValues(input: GitHubPullRequestOutcomeInput) {
     ...(input.commitComposition
       ? { commitComposition: input.commitComposition }
       : undefined),
+    ...(input.draft !== undefined ? { draft: input.draft } : undefined),
     mergedAt: input.mergedAt ?? null,
     number: input.number,
     openedAt: input.openedAt,
@@ -230,11 +233,17 @@ export async function listGitHubStaleOpenPullRequests(
   db: GitHubDb,
   before: Date,
 ): Promise<
-  Array<{ number: number; repositoryFullName: string; repositoryId: string }>
+  Array<{
+    draft: boolean;
+    number: number;
+    repositoryFullName: string;
+    repositoryId: string;
+  }>
 > {
   const t = juniorGitHubPullRequests;
   return await db
     .select({
+      draft: t.draft,
       number: t.number,
       repositoryFullName: t.repositoryFullName,
       repositoryId: t.repositoryId,
