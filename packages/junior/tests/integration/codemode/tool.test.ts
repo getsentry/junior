@@ -118,18 +118,22 @@ describe("codemode tool", () => {
         ]);
         text("watches: " + watches.subscriptions.length);
         await tools.post({ channel: "#team", text: "done" }).catch(() => {});
+        await tools
+          .executeTool({ tool_name: "systemTime", arguments: {} })
+          .catch(() => {});
         return { hasTime: typeof time.unix_ms === "number" };
       `,
     })) as AgentToolResult<unknown>;
 
-    // Each nested call takes the normal path, so its hooks run.
+    // Each nested call takes the normal path, so its hooks run. The
+    // redirected executeTool call never runs.
     expect(started).toEqual([
       CODEMODE_TOOL_NAME,
       "systemTime",
       "listWatches",
       "post",
     ]);
-    // The 3 nested calls count toward the Turn's tool-call total.
+    // The 3 nested calls that ran count toward the Turn's tool-call total.
     expect(resume.countToolCall()).toBe(4);
     expect(result.details).toMatchObject({
       ok: true,
@@ -139,12 +143,17 @@ describe("codemode tool", () => {
         { id: `${CODEMODE_CALL_ID}/c1`, toolName: "systemTime", status: "ok" },
         { id: `${CODEMODE_CALL_ID}/c2`, toolName: "listWatches", status: "ok" },
         { id: `${CODEMODE_CALL_ID}/c3`, toolName: "post", status: "rejected" },
+        {
+          id: `${CODEMODE_CALL_ID}/c4`,
+          toolName: "executeTool",
+          status: "error",
+        },
       ],
     });
     const [content] = result.content as Array<{ text: string }>;
     expect(content!.text).toMatchInlineSnapshot(`
       "Script completed.
-      Tool calls (3):
+      Tool calls (4):
       1. systemTime: ok
       2. listWatches: ok
       3. post: rejected by action review
@@ -153,6 +162,8 @@ describe("codemode tool", () => {
          If the reason is missing or withheld authorization and exact confirmation could make the action allowable, ask for that confirmation now, the way your instructions say to ask. Name the exact action, target, and material side effects.
          Proceed only with a materially safer alternative. Otherwise, explain the specific risk the way your instructions say to report, without mentioning Guardian or internal review mechanics.
          Reason: The user did not ask for a post.
+      4. executeTool: failed
+         executeTool does not run in a script. Call tools.systemTime(arguments) directly, with only the object from the executeTool arguments field.
       Action review rejected 1 of these calls. Follow the instructions of each rejected call.
       Output:
       watches: 0

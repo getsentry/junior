@@ -68,6 +68,11 @@ export interface CodeModeScriptRun {
   source: string;
   /** Tools the script may call: `scriptTools` from `planToolExposure`. */
   tools: Record<string, AnyToolDefinition>;
+  /**
+   * Model tools that are not script tools. The VM declares them, and a call
+   * gets the call to make instead (`codemode/redirect.ts`).
+   */
+  modelOnlyTools: readonly string[];
   pipeline: Pick<ToolPipeline, "callFromScript" | "reviewScriptCalls">;
   /** Charge one call to the Turn's durable tool-call total; return the total. */
   countToolCall(): number;
@@ -229,9 +234,12 @@ export async function runCodeModeScript(
   let runningCalls = 0;
   let pauseError: unknown;
 
+  const modelOnly = new Set(run.modelOnlyTools);
   const redirectOf = (host: CodemodeHostCall) => {
     const redirect =
-      host.target === "tool" && !Object.hasOwn(run.tools, host.name)
+      host.target === "tool" &&
+      modelOnly.has(host.name) &&
+      !Object.hasOwn(run.tools, host.name)
         ? scriptRedirect(host.name, host.args, run.tools)
         : undefined;
     // Each call reaches this once: when its drain starts, or at the end.
@@ -372,9 +380,9 @@ export async function runCodeModeScript(
         toolName: host.name,
       };
       calls.push(call);
-      // The VM declares script tools and the redirected dispatchers. Check
-      // again, so no other tool runs from a script. A redirected
-      // dispatcher only gets its error.
+      // The VM declares script tools and the `modelOnly` tools. Check again,
+      // so no other tool runs from a script. A `modelOnly` tool only gets
+      // its redirect error.
       const tool =
         host.target === "tool" && Object.hasOwn(run.tools, host.name)
           ? run.tools[host.name]
@@ -482,7 +490,7 @@ export async function runCodeModeScript(
           name,
           description: tool.description,
         })),
-        ...redirectDeclarations(run.tools),
+        ...redirectDeclarations(run.modelOnlyTools, run.tools),
       ],
       signal: controller.signal,
       timeoutMs: CODE_MODE_SCRIPT_TIMEOUT_MS,
@@ -514,7 +522,7 @@ export async function runCodeModeScript(
       }
     }
     // Calls of the last drain never reached an idle, so they did not start.
-    // A redirected dispatcher keeps its error, so the model still sees it.
+    // A `modelOnly` tool keeps its redirect error, so the model still sees it.
     for (const host of drain) {
       const error = redirectOf(host);
       calls.push({
