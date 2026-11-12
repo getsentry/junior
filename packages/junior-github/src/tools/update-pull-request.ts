@@ -47,7 +47,7 @@ const inputSchema = z
       .string()
       .optional()
       .describe(
-        "Replacement pull request body. The runtime appends requester attribution and the conversation footer. It is rejected when it has check results, a test plan, a work log, a file list, or chat talk, or does not say why.",
+        "Replacement pull request body. The runtime appends requester attribution and the conversation footer. It is rejected when it has check results, a test plan, a work log, or chat talk, or does not say why.",
       ),
     base: z
       .string()

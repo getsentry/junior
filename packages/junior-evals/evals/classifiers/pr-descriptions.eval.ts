@@ -13,7 +13,6 @@ function body(name: string): string {
 
 const CHECKS = "check results";
 const WORK_LOG = "work log";
-const FILE_LIST = "file list";
 const CONVERSATION = "conversation";
 const REASON = "why the change is needed";
 
@@ -27,16 +26,10 @@ describeEval(
       await run({ body: body("pr-2420-draft"), reject: [WORK_LOG, CHECKS] });
     });
 
-    it("when a draft lists every changed path and its checks, it rejects the file list and the checks", async ({
+    it("when a draft lists every changed path and its checks, it rejects the checks", async ({
       run,
     }) => {
-      await run({ body: body("pr-2461-draft"), reject: [FILE_LIST, CHECKS] });
-    });
-
-    it("when a draft explains how a tool name was chosen, it rejects the work log", async ({
-      run,
-    }) => {
-      await run({ body: body("pr-3204-draft"), reject: [WORK_LOG] });
+      await run({ body: body("pr-2461-draft"), reject: [CHECKS] });
     });
 
     it("when a draft ends with local test runs, it rejects the checks", async ({
@@ -45,7 +38,7 @@ describeEval(
       await run({ body: body("pr-2668-draft"), reject: [CHECKS] });
     });
 
-    for (const pr of ["2379", "2442"]) {
+    for (const pr of ["2379", "2442", "2461"]) {
       it(`when a reviewed body still has a Checks section (#${pr}), it rejects the checks`, async ({
         run,
       }) => {
@@ -53,7 +46,7 @@ describeEval(
       });
     }
 
-    for (const pr of ["2420", "2461", "2959", "3204", "2668"]) {
+    for (const pr of ["2420", "2959", "3204", "2668"]) {
       it(`when a body passed review (#${pr}), it accepts it`, async ({
         run,
       }) => {

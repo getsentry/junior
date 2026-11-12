@@ -75,7 +75,7 @@ const createPullRequestInputSchema = Type.Object(
     body: Type.Optional(
       Type.String({
         description:
-          "Pull request body. The runtime appends the conversation footer. It is rejected when it has check results, a test plan, a work log, a file list, or chat talk, or does not say why.",
+          "Pull request body. The runtime appends the conversation footer. It is rejected when it has check results, a test plan, a work log, or chat talk, or does not say why.",
       }),
     ),
     draft: Type.Optional(
@@ -97,7 +97,7 @@ const createPullRequestToolInputSchema = z
     body: z
       .string()
       .describe(
-        "Pull request body. The runtime appends the conversation footer. It is rejected when it has check results, a test plan, a work log, a file list, or chat talk, or does not say why.",
+        "Pull request body. The runtime appends the conversation footer. It is rejected when it has check results, a test plan, a work log, or chat talk, or does not say why.",
       )
       .optional(),
     draft: z

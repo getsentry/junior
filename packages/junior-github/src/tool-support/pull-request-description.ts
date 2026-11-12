@@ -11,18 +11,13 @@ import {
 const DESCRIPTION_CHECKS = [
   {
     question:
-      "Does the description say that the author ran tests, lint, typecheck, or CI and give the outcome, or have a test plan section? Text about what the product does with such commands does not count.",
+      "Does the description say that the author ran tests, lint, typecheck, or CI and give the outcome, or have a test plan section? Text about what the product does with such commands, or a note about what has no test coverage, does not count.",
     fix: "Remove check results, test plans, and commands. Reviewers see checks on the pull request.",
   },
   {
     question:
       "Does the description narrate the author's own work session, such as what the author investigated, approaches or names the author tried first and dropped, or how many runs the author looked at? Old behavior compared with new behavior does not count.",
     fix: "Remove the work log. Describe the change as it is now.",
-  },
-  {
-    question:
-      "Is most of the description a list of file paths, each with what changed in it?",
-    fix: "Replace the file list with what changed and why, in plain words.",
   },
   {
     question:
