@@ -19,6 +19,12 @@ import { cn } from "../styles";
 import { ANCHOR_CLASS, safeHref, slackLinksToMarkdown } from "./links";
 import { renderTextTokens } from "./mentions";
 import { OutboundLink } from "../components/OutboundLink";
+import { ObjectCard } from "../conversations/ObjectCard";
+import {
+  ObjectLinkChip,
+  ObjectLinkPreview,
+  useKnownObject,
+} from "./ObjectLinks";
 
 /**
  * Render display text Markdown as readable prose.
@@ -29,6 +35,10 @@ import { OutboundLink } from "../components/OutboundLink";
  * too. Inline mode keeps only inline formatting, so the text fits in one
  * line or in a button. Document mode reads a Markdown file: plain CommonMark
  * plus GFM, where a newline in a paragraph does not break the line.
+ *
+ * Outside document mode, a link to a known object (`KnownObjectsProvider`)
+ * previews its card on hover. A bare URL in running text shows as a chip,
+ * and a bare URL alone in a top-level paragraph shows the full card.
  */
 export function MarkdownText(props: {
   chat?: boolean;
@@ -75,6 +85,7 @@ export function MarkdownText(props: {
                   remarkBreaks,
                   remarkBareUrlStops,
                   remarkSectionLabels,
+                  remarkObjectLinks,
                 ]
           }
           urlTransform={safeHref}
@@ -93,6 +104,7 @@ function normalizeSlackBullets(text: string): string {
 
 type MarkdownNode = {
   children?: MarkdownNode[];
+  data?: { hProperties?: Record<string, unknown> };
   depth?: number;
   position?: { start: { offset?: number } };
   type: string;
@@ -161,12 +173,46 @@ function splitSectionLabel(node: MarkdownNode): MarkdownNode[] {
     : [heading];
 }
 
+/**
+ * Mark each top-level paragraph that holds only a bare URL, so the paragraph
+ * can show the full card of a known object. A bare URL in a list, a quote,
+ * or a sentence stays inline.
+ */
+function remarkObjectLinks() {
+  return (tree: MarkdownNode) => {
+    for (const node of tree.children ?? []) {
+      const [link, ...rest] = node.children ?? [];
+      if (node.type !== "paragraph" || rest.length > 0) continue;
+      if (link?.type !== "link" || !isBareLink(link)) continue;
+      node.data = {
+        ...node.data,
+        hProperties: { ...node.data?.hProperties, dataObjectUrl: link.url },
+      };
+    }
+  };
+}
+
+// A bare URL is a link whose text is its URL, such as an autolink.
+function isBareLink(link: MarkdownNode): boolean {
+  const [text, ...rest] = link.children ?? [];
+  return rest.length === 0 && text?.type === "text" && text.value === link.url;
+}
+
 const HEADING_CLASS =
   "m-0 min-w-0 font-semibold tracking-[-0.01em] text-dashboard-text [&:not(:first-child)]:mt-1 [&+*]:-mt-1";
 
 const COMPONENTS: Components = {
-  a: ({ children, href }) => (
-    <TranscriptAnchor href={href}>{children}</TranscriptAnchor>
+  a: ({ children, href, node }) => (
+    <TranscriptAnchor
+      bare={
+        node?.children.length === 1 &&
+        node.children[0]?.type === "text" &&
+        node.children[0].value === href
+      }
+      href={href}
+    >
+      {children}
+    </TranscriptAnchor>
   ),
   blockquote: ({ children }) => (
     <blockquote className="m-0 grid min-w-0 gap-2 border-l-2 border-dashboard-border pl-3 text-dashboard-text-muted">
@@ -233,8 +279,8 @@ const COMPONENTS: Components = {
       {children}
     </ol>
   ),
-  p: ({ children }) => (
-    <p className="m-0 min-w-0 whitespace-normal">{renderText(children)}</p>
+  p: ({ children, node }) => (
+    <Paragraph objectUrl={node?.properties.dataObjectUrl}>{children}</Paragraph>
   ),
   pre: ({ children }) => (
     <pre className="m-0 min-w-0 overflow-x-auto rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 font-mono text-sm [&>code]:bg-transparent [&>code]:p-0">
@@ -343,9 +389,29 @@ function alignClass(align: unknown): string | undefined {
   return undefined;
 }
 
-function TranscriptAnchor(props: { children: ReactNode; href?: string }) {
+function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
+  const card = useKnownObject(
+    typeof props.objectUrl === "string" ? props.objectUrl : undefined,
+  );
+  if (card) return <ObjectCard card={card} />;
+  return (
+    <p className="m-0 min-w-0 whitespace-normal">
+      {renderText(props.children)}
+    </p>
+  );
+}
+
+function TranscriptAnchor(props: {
+  bare?: boolean;
+  children: ReactNode;
+  href?: string;
+}) {
+  const card = useKnownObject(props.href);
   // `safeHref` removes unsafe destinations. Keep their label text.
   if (!props.href) return <>{renderText(props.children)}</>;
+  if (card && props.bare) {
+    return <ObjectLinkChip card={card} href={props.href} />;
+  }
 
   const label =
     typeof props.children === "string" ? (
@@ -358,6 +424,13 @@ function TranscriptAnchor(props: { children: ReactNode; href?: string }) {
       <a className={ANCHOR_CLASS} href={props.href}>
         {label}
       </a>
+    );
+  }
+  if (card) {
+    return (
+      <ObjectLinkPreview card={card} className={ANCHOR_CLASS} href={props.href}>
+        {label}
+      </ObjectLinkPreview>
     );
   }
   return (

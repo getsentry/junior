@@ -1,7 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { DisplayText } from "../src/client/display-text/DisplayText";
+import {
+  DisplayText,
+  KnownObjectsProvider,
+} from "../src/client/display-text/DisplayText";
+import { textHasStandaloneUrl } from "../src/client/display-text/knownObjects";
 import { displayPlainText } from "../src/client/display-text/plainText";
 
 function renderedLinks(text: string) {
@@ -144,5 +148,84 @@ describe("display text tokens", () => {
     expect(displayPlainText(text, mentions)).toBe(
       "Done 😄 @Junior see the PR 👋🏼 :custom_parrot:",
     );
+  });
+});
+
+describe("display text object links", () => {
+  const PR = "https://github.com/acme/app/pull/7";
+  const annotations = [
+    {
+      createdAt: "2026-08-07T08:00:00.000Z",
+      displayType: "Pull request",
+      key: "acme/app#7",
+      kind: "object" as const,
+      label: "acme/app#7",
+      objectType: "code_change" as const,
+      plugin: "github",
+      status: "open",
+      title: "Retry checkout writes",
+      updatedAt: "2026-08-07T08:00:00.000Z",
+      url: PR,
+    },
+  ];
+
+  function render(text: string) {
+    return renderToStaticMarkup(
+      <KnownObjectsProvider annotations={annotations}>
+        <DisplayText text={text} />
+      </KnownObjectsProvider>,
+    );
+  }
+
+  it("shows a bare URL in a sentence or a list as a chip", () => {
+    for (const text of [`Opened ${PR} for review.`, `- ${PR}`, `> ${PR}`]) {
+      const html = render(text);
+      expect(html).toContain(`href="${PR}"`);
+      expect(html).toContain("acme/app#7");
+      expect(html).toContain("· Open");
+      expect(html).not.toContain(">Retry checkout writes<");
+      expect(html).not.toContain(`>${PR}<`);
+    }
+  });
+
+  it("shows a bare URL alone in a paragraph as the full card", () => {
+    for (const text of [`Done.\n\n${PR}/\n\nThanks.`, `<${PR}>`]) {
+      const html = render(text);
+      expect(html).toContain(
+        'aria-label="Pull request: Retry checkout writes"',
+      );
+      expect(html).toContain("Latest saved state");
+    }
+  });
+
+  it("keeps the text of a labeled link", () => {
+    const html = render(`See [the fix](${PR}).`);
+    expect(html).toMatch(
+      /<a [^>]*href="https:\/\/github.com\/acme\/app\/pull\/7"[^>]*>the fix/,
+    );
+    expect(html).not.toContain("acme/app#7");
+    expect(html).not.toContain("Latest saved state");
+  });
+
+  it("leaves links to unknown objects and other pages plain", () => {
+    for (const url of [
+      "https://github.com/acme/app/pull/8",
+      `${PR}#discussion_r1`,
+      `${PR}/files`,
+    ]) {
+      for (const text of [`See ${url} now.`, url]) {
+        const html = render(text);
+        expect(html).toContain(`>${url}<`);
+        expect(html).not.toContain("acme/app#7");
+      }
+    }
+  });
+
+  it("finds a bare URL alone in a paragraph outside code fences", () => {
+    expect(textHasStandaloneUrl(`Ready.\n\n${PR}`, PR)).toBe(true);
+    expect(textHasStandaloneUrl(`<${PR}/>`, PR)).toBe(true);
+    expect(textHasStandaloneUrl(`Ready: ${PR}`, PR)).toBe(false);
+    expect(textHasStandaloneUrl(`[PR](${PR})`, PR)).toBe(false);
+    expect(textHasStandaloneUrl("```\n" + PR + "\n```", PR)).toBe(false);
   });
 });
