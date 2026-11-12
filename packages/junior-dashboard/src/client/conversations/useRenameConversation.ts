@@ -1,11 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type {
-  ConversationDetailReport,
-  ConversationFeed,
-} from "@sentry/junior/api/schema";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import { renameConversationResponseSchema } from "@sentry/junior/api/schema";
 
 import { patch } from "../http";
+import {
+  mapConversationFeedCache,
+  type ConversationFeedCache,
+} from "./conversationFeedCache";
 import { conversationDetailQueryKey } from "./queries";
 
 type DetailCache = ConversationDetailReport & { detailEtag?: string };
@@ -22,16 +23,15 @@ export function useRenameConversation(
   const feeds = { queryKey: ["dashboard", "conversations"] };
   const detailQueryKey = conversationDetailQueryKey(conversationId);
   const setTitle = (displayTitle: string) => {
-    queryClient.setQueriesData<ConversationFeed>(feeds, (feed) =>
+    queryClient.setQueriesData<ConversationFeedCache>(feeds, (feed) =>
       feed
-        ? {
-            ...feed,
-            conversations: feed.conversations.map((conversation) =>
+        ? mapConversationFeedCache(feed, (conversations) =>
+            conversations.map((conversation) =>
               conversation.conversationId === conversationId
                 ? { ...conversation, displayTitle }
                 : conversation,
             ),
-          }
+          )
         : feed,
     );
     // Clear the etag so the next read gets a full body, not a 304 that keeps
@@ -54,7 +54,7 @@ export function useRenameConversation(
       ]);
       const previous = {
         detail: queryClient.getQueryData<DetailCache>(detailQueryKey),
-        feeds: queryClient.getQueriesData<ConversationFeed>(feeds),
+        feeds: queryClient.getQueriesData<ConversationFeedCache>(feeds),
       };
       setTitle(title);
       return previous;

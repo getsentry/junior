@@ -35,22 +35,31 @@ import {
   abandonTurnRecord,
   failTurnRecord,
   getTurnRecord,
+  getStoredTurnFields,
   getTurnRecordForResume,
   listTurnSummaries,
   recordTurnSummary,
   TurnAlreadyFinishedError,
   upsertTurnRecord,
   type AgentDispatchOutcome,
+  type StoredTurnFields,
   type TurnPauseReason,
   type TurnRecord,
   type TurnSummary,
   type AgentTurnSurface,
 } from "./turn-cursor";
 
-export type { AgentDispatchOutcome, TurnRecord, TurnSummary, AgentTurnSurface };
+export type {
+  AgentDispatchOutcome,
+  StoredTurnFields,
+  TurnRecord,
+  TurnSummary,
+  AgentTurnSurface,
+};
 export {
   abandonTurnRecord,
   failTurnRecord,
+  getStoredTurnFields,
   getTurnRecord,
   listTurnSummaries,
   recordTurnSummary,
@@ -247,6 +256,7 @@ async function saveRunning(
     return await upsertTurnRecord({
       ...sharedWrite(args, traceContext, latest),
       ...definedProps({
+        storedProjection: latest?.storedProjection,
         trailingMessageProvenance: args.trailingMessageProvenance,
         turnContexts: args.turnContexts,
       }),

@@ -42,7 +42,6 @@ const plugin: PluginDefinition = {
       transport: "http",
       url: SERVICE_ACCOUNT_MCP_URL,
       allowedTools: ["search", "create"],
-      auditTools: ["search"],
     },
     accounts: { serviceAccount: { tools: ["search"] } },
   },

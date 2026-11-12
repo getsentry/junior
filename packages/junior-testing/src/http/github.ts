@@ -1,4 +1,8 @@
 import { interceptTestGitHubChecksHttp } from "./github-checks";
+import {
+  interceptTestGitHubDraftsHttp,
+  resetTestGitHubDraftFixtures,
+} from "./github-drafts";
 
 const GITHUB_API_HOST = "api.github.com";
 
@@ -25,6 +29,7 @@ const textEncoder = new TextEncoder();
 export function resetTestGitHubHttpFixtures(): void {
   nextIssueNumber = 101;
   issues.clear();
+  resetTestGitHubDraftFixtures();
 }
 
 function base64(input: string): string {
@@ -419,6 +424,11 @@ export async function interceptTestGitHubHttp(input: {
     input.upstreamUrl,
   );
   if (checks) return checks;
+  const drafts = await interceptTestGitHubDraftsHttp(
+    input.request,
+    input.upstreamUrl,
+  );
+  if (drafts) return drafts;
   if (input.upstreamUrl.hostname !== GITHUB_API_HOST) return undefined;
   return await githubResponse(input.request, input.upstreamUrl);
 }

@@ -22,6 +22,10 @@ import { isRecord } from "@/chat/coerce";
 import { logWarn } from "@/chat/logging";
 import { McpAuthorizationRequiredError } from "@/chat/mcp/client";
 import type { PluginDefinition } from "@/chat/plugins/types";
+import {
+  createEncryptedState,
+  readEncryptedState,
+} from "@/chat/encryption/state";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
 
@@ -79,13 +83,15 @@ function serviceAccountKey(provider: string): string {
   return `${SERVICE_ACCOUNT_KEY_PREFIX}:${provider}`;
 }
 
+function updateLockKey(provider: string): string {
+  return `${serviceAccountKey(provider)}:update`;
+}
+
 function parseAccount(value: unknown): McpServiceAccount | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(value) as unknown;
+    // Plaintext values from before encryption are JSON strings.
+    parsed = typeof value === "string" ? JSON.parse(value) : value;
   } catch {
     return undefined;
   }
@@ -143,7 +149,37 @@ function isConnection(
 export async function getMcpServiceAccount(
   provider: string,
 ): Promise<McpServiceAccount | undefined> {
-  return parseAccount(await getStateAdapter().get(serviceAccountKey(provider)));
+  const stored = await readEncryptedState(
+    getStateAdapter(),
+    serviceAccountKey(provider),
+  );
+  const account = parseAccount(stored?.value);
+  if (account && stored?.stale) {
+    await saveStaleAccount(provider);
+  }
+  return account;
+}
+
+/**
+ * Save a stale account again with the active key. It keeps the stored value
+ * and runs only when the update lock is free, so it cannot write back a
+ * value that a transition replaced.
+ */
+async function saveStaleAccount(provider: string): Promise<void> {
+  const state = getStateAdapter();
+  await withLock(
+    state,
+    updateLockKey(provider),
+    async (lock) => {
+      const key = serviceAccountKey(provider);
+      const current = await readEncryptedState(state, key);
+      const account = parseAccount(current?.value);
+      if (!current?.stale || !account) return;
+      await fenceLock(state, lock);
+      await createEncryptedState(state).set(key, account);
+    },
+    { ttlMs: MUTATION_LOCK_TTL_MS },
+  );
 }
 
 function nextAccount(
@@ -173,7 +209,7 @@ function nextAccount(
 /**
  * Apply one change to a plugin's service account and return the stored result.
  *
- * This is the only writer of the account. It reads and writes under one
+ * This is the only writer that changes the account. It reads and writes under one
  * lock, so a racing refresh cannot undo a Disconnect, a revocation, or a new
  * sign-in. It ignores an update or a revocation for a connection that is no
  * longer stored.
@@ -186,16 +222,18 @@ export async function transitionMcpServiceAccount(
   const key = serviceAccountKey(provider);
   const result = await withLock(
     state,
-    `${key}:update`,
+    updateLockKey(provider),
     async (lock) => {
-      const current = parseAccount(await state.get(key));
+      const current = parseAccount(
+        (await readEncryptedState(state, key))?.value,
+      );
       const next = nextAccount(current, change);
       if (next === current) {
         return current;
       }
       await fenceLock(state, lock);
       if (next) {
-        await state.set(key, JSON.stringify(next));
+        await createEncryptedState(state).set(key, next);
       } else {
         await state.delete(key);
       }
@@ -355,39 +393,30 @@ function signInKey(state: string): string {
 }
 
 function parseSignIn(value: unknown): McpServiceAccountSignIn | undefined {
-  if (typeof value !== "string") {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.clientInformation) ||
+    typeof value.codeVerifier !== "string" ||
+    typeof value.provider !== "string" ||
+    typeof value.redirectUrl !== "string"
+  ) {
     return undefined;
   }
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (
-      !isRecord(parsed) ||
-      !isRecord(parsed.clientInformation) ||
-      typeof parsed.codeVerifier !== "string" ||
-      typeof parsed.provider !== "string" ||
-      typeof parsed.redirectUrl !== "string"
-    ) {
-      return undefined;
-    }
-    return {
-      clientInformation:
-        parsed.clientInformation as OAuthClientInformationMixed,
-      codeVerifier: parsed.codeVerifier,
-      ...(isRecord(parsed.discoveryState)
-        ? {
-            // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-            discoveryState: parsed.discoveryState as OAuthDiscoveryState,
-          }
-        : undefined),
-      provider: parsed.provider,
-      redirectUrl: parsed.redirectUrl,
-      ...(typeof parsed.startedBy === "string"
-        ? { startedBy: parsed.startedBy }
-        : undefined),
-    };
-  } catch {
-    return undefined;
-  }
+  return {
+    clientInformation: value.clientInformation as OAuthClientInformationMixed,
+    codeVerifier: value.codeVerifier,
+    ...(isRecord(value.discoveryState)
+      ? {
+          // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+          discoveryState: value.discoveryState as OAuthDiscoveryState,
+        }
+      : undefined),
+    provider: value.provider,
+    redirectUrl: value.redirectUrl,
+    ...(typeof value.startedBy === "string"
+      ? { startedBy: value.startedBy }
+      : undefined),
+  };
 }
 
 /** Result of finishing a sign-in. A failure message is safe to show the Admin. */
@@ -478,16 +507,16 @@ export async function startMcpServiceAccountSignIn(input: {
   if (!authorizationUrl || !clientInformation || !codeVerifier) {
     throw new Error(`${provider} did not return an authorization URL`);
   }
-  await getStateAdapter().set(
+  await createEncryptedState(getStateAdapter()).set(
     signInKey(state),
-    JSON.stringify({
+    {
       clientInformation,
       codeVerifier,
       ...(discoveryState ? { discoveryState } : undefined),
       provider,
       redirectUrl: input.redirectUrl,
       ...(input.startedBy ? { startedBy: input.startedBy } : undefined),
-    } satisfies McpServiceAccountSignIn),
+    } satisfies McpServiceAccountSignIn,
     SIGN_IN_TTL_MS,
   );
   return { authorizationUrl };
@@ -513,7 +542,9 @@ export async function finishMcpServiceAccountSignIn(input: {
   const provider = input.plugin.manifest.name;
   const state = input.callback.get("state");
   const pending = state
-    ? parseSignIn(await getStateAdapter().get(signInKey(state)))
+    ? parseSignIn(
+        await createEncryptedState(getStateAdapter()).get(signInKey(state)),
+      )
     : undefined;
   if (
     !state ||

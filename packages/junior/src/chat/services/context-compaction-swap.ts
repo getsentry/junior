@@ -63,6 +63,11 @@ type PreparedCompaction = Extract<
   { type: "compaction_prepared"; outcome: "ready" }
 >;
 
+/**
+ * Why a ready summary was not used (`app.compaction.discard_reason`).
+ * `conflict`: another replacement committed first. `split_tool_call`: the
+ * mark falls between a tool call and its result.
+ */
 type DiscardReason =
   | "conflict"
   | "history_version_changed"
@@ -227,6 +232,8 @@ async function swapPreparedCompaction(
       prepared?.type !== "compaction_prepared" ||
       prepared.outcome !== "ready"
     ) {
+      // The request is older than the wait, the job failed, or the wait
+      // ended. A blocking compaction can still follow at the threshold.
       setSpanAttributes({ "app.compaction.outcome": "not_ready" });
       return { compacted: false };
     }

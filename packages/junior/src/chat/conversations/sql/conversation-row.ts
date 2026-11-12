@@ -50,6 +50,13 @@ export async function ensureConversationRow(
   });
 }
 
+const CONVERSATION_KINDS: ReadonlySet<string> = new Set<ConversationKind>([
+  "root",
+  "automation",
+  "thread",
+  "task",
+]);
+
 /** Decode a stored kind. A null kind comes from a writer of an older deploy. */
 export function conversationKindFromRow(row: {
   kind: ConversationKind | null;
@@ -57,7 +64,7 @@ export function conversationKindFromRow(row: {
 }): ConversationKind {
   // TODO(dcramer): Read `kind` as stored after the NOT NULL contract.
   const kind = row.kind ?? (row.parentConversationId ? "task" : "root");
-  if (kind !== "root" && kind !== "thread" && kind !== "task") {
+  if (!CONVERSATION_KINDS.has(kind)) {
     throw new Error("Conversation record kind is invalid");
   }
   return kind;

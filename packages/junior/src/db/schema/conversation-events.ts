@@ -72,6 +72,10 @@ export const juniorConversationEvents = pgTable(
         table.createdAt,
       )
       .where(sql`${table.type} = 'structured_event'`),
+    // Guardian review counts over a time window, across all Conversations.
+    index("junior_conversation_events_guardian_review_time_idx")
+      .on(table.createdAt)
+      .where(sql`${table.type} = 'guardian_action_reviewed'`),
     // Reads of one plugin event in one Conversation. Postgres ignores the
     // statistics of partial expression indexes, so without this index it
     // reads the plugin_report_idx rows of every Conversation.

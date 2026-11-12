@@ -126,6 +126,8 @@ describe("Slack inbound telemetry", () => {
       "app.slack.user_team": "invalid",
       "app.slack.source_team": "E123",
       "app.slack.event_team": "missing",
+      "app.slack.context_team_id": "missing",
+      "app.slack.context_enterprise_id": "missing",
       "app.slack.is_ext_shared_channel": "invalid",
     });
   });

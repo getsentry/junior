@@ -1,7 +1,10 @@
-import { and, eq, inArray, isNotNull, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { User } from "@sentry/junior-plugin-api";
-import type { ConversationEvent } from "./history";
+import {
+  KNOWN_CONVERSATION_EVENT_TYPES,
+  type ConversationEvent,
+} from "./history";
 import { loadTurnProjection } from "./projection";
 import { contextProvenance } from "./provenance";
 import { nextDetailVersion } from "./sql/detail-version";
@@ -60,6 +63,11 @@ export const UNCOPIED_EVENT_TYPES: ReadonlySet<string> = new Set<
   "structured_event",
   "unknown",
 ]);
+
+// Unknown types decode as `unknown`, which a fork does not copy.
+const COPIED_EVENT_TYPES = KNOWN_CONVERSATION_EVENT_TYPES.filter(
+  (type) => !UNCOPIED_EVENT_TYPES.has(type),
+);
 
 const FORK_NOTE =
   "This Conversation is a fork. The earlier messages are copied from another Conversation. Sandbox files, active work, approvals, credentials, Watches, Automations, and the delivery location were not copied. Earlier file paths and runtime context belong to the source Conversation. Verify files in the current Sandbox before you use them.";
@@ -192,7 +200,6 @@ export async function forkConversation(input: {
       await copyForkEvents({
         sourceConversationId: source.conversationId,
         conversationId,
-        events: await events.loadHistory(source.conversationId),
         boundarySeq: boundary.seq,
         messageId: input.messageId,
       });
@@ -261,75 +268,100 @@ export async function keepQuickQuestion(conversationId: string): Promise<void> {
  * transcript and event log, and seq references in compactions stay valid.
  * Later updates of copied Messages and the end of copied Turns are also
  * copied, so that no copied item stays open in the fork.
+ *
+ * The copy spans every history version, because the transcript does. Only
+ * the columns that pick rows are read; the insert copies payloads in SQL.
  */
 async function copyForkEvents(args: {
   sourceConversationId: string;
   conversationId: string;
-  events: readonly ConversationEvent[];
   boundarySeq: number;
   messageId: string;
 }): Promise<void> {
-  const reply = args.events.find(
-    (event) =>
-      event.data.type === "message" &&
-      event.data.role === "assistant" &&
-      event.data.messageId === args.messageId,
+  const e = juniorConversationEvents;
+  // Message and Turn events store these fields as plain JSON keys.
+  const rows = await getSqlExecutor()
+    .db()
+    .select({
+      seq: e.seq,
+      historyVersion: e.historyVersion,
+      type: e.type,
+      idempotencyKey: e.idempotencyKey,
+      messageId: sql<string | null>`${e.payload}->>'messageId'`,
+      turnId: sql<string | null>`${e.payload}->>'turnId'`,
+      role: sql<string | null>`${e.payload}->>'role'`,
+    })
+    .from(e)
+    .where(
+      and(
+        eq(e.conversationId, args.sourceConversationId),
+        inArray(e.type, COPIED_EVENT_TYPES),
+      ),
+    )
+    .orderBy(asc(e.seq));
+  const reply = rows.find(
+    (row) =>
+      row.type === "message" &&
+      row.role === "assistant" &&
+      row.messageId === args.messageId,
   );
   const cutoffSeq = Math.max(args.boundarySeq, reply?.seq ?? -1);
-  const messageIds = new Set<string>();
-  const turnIds = new Set<string>();
+  const messageIds = new Set<string | null>();
+  const turnIds = new Set<string | null>();
   const seqs: number[] = [];
   let historyVersion = 0;
-  for (const event of args.events) {
-    const data = event.data;
-    if (UNCOPIED_EVENT_TYPES.has(data.type)) continue;
+  for (const row of rows) {
     // A fork of a fork writes its own note. The source note would take its key.
     if (
-      event.idempotencyKey === FORK_NOTE_KEY ||
-      event.idempotencyKey === QUICK_QUESTION_KEPT_NOTE_KEY
+      row.idempotencyKey === FORK_NOTE_KEY ||
+      row.idempotencyKey === QUICK_QUESTION_KEPT_NOTE_KEY
     )
       continue;
-    if (event.seq <= cutoffSeq) {
-      if (data.type === "message") messageIds.add(data.messageId);
-      if (data.type === "turn_started") turnIds.add(data.turnId);
-      historyVersion = Math.max(historyVersion, event.historyVersion);
-      seqs.push(event.seq);
+    if (row.seq <= cutoffSeq) {
+      if (row.type === "message") messageIds.add(row.messageId);
+      if (row.type === "turn_started") turnIds.add(row.turnId);
+      historyVersion = Math.max(historyVersion, row.historyVersion);
+      seqs.push(row.seq);
     } else if (
-      ((data.type === "message_updated" || data.type === "message_handled") &&
-        messageIds.has(data.messageId)) ||
-      ((data.type === "turn_completed" || data.type === "turn_failed") &&
-        turnIds.has(data.turnId))
+      ((row.type === "message_updated" || row.type === "message_handled") &&
+        messageIds.has(row.messageId)) ||
+      ((row.type === "turn_completed" || row.type === "turn_failed") &&
+        turnIds.has(row.turnId))
     ) {
-      seqs.push(event.seq);
+      seqs.push(row.seq);
     }
   }
   if (!seqs.length) return;
 
   // Later rows keep the history version of the fork point. A later source
   // compaction is not copied, so its version must not become current.
-  const e = juniorConversationEvents;
-  await getSqlExecutor()
-    .db()
-    .execute(
-      sql`insert into ${e} (${sql.join(
-        [
-          e.conversationId,
-          e.seq,
-          e.historyVersion,
-          e.schemaVersion,
-          e.idempotencyKey,
-          e.type,
-          e.payload,
-          e.actorIdentityId,
-          e.createdAt,
-        ].map((column) => sql.identifier(column.name)),
-        sql`, `,
-      )})
-      select ${args.conversationId}, ${e.seq}, least(${e.historyVersion}, ${historyVersion}), ${e.schemaVersion}, ${e.idempotencyKey}, ${e.type}, ${e.payload}, ${e.actorIdentityId}, ${e.createdAt}
-      from ${e}
-      where ${e.conversationId} = ${args.sourceConversationId}
-        and ${inArray(e.seq, seqs)}`,
-    );
+  const db = getSqlExecutor().db();
+  await db.insert(e).select(
+    db
+      .select({
+        conversationId: sql<string>`${args.conversationId}`.as(
+          "conversation_id",
+        ),
+        seq: e.seq,
+        historyVersion:
+          sql<number>`least(${e.historyVersion}, ${historyVersion})`.as(
+            "history_version",
+          ),
+        schemaVersion: e.schemaVersion,
+        idempotencyKey: e.idempotencyKey,
+        type: e.type,
+        payload: e.payload,
+        actorIdentityId: e.actorIdentityId,
+        createdAt: e.createdAt,
+      })
+      .from(e)
+      .where(
+        and(
+          eq(e.conversationId, args.sourceConversationId),
+          inArray(e.seq, seqs),
+        ),
+      ),
+  );
 }
 
 function hasUnfinishedToolCalls(messages: readonly PiMessage[]): boolean {

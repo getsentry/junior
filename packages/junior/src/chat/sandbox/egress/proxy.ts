@@ -2,6 +2,7 @@ import { credentialLogContext } from "@/chat/credentials/context";
 import type { LogContext } from "@/chat/log-context";
 import { logWarn, setSentryUser, withSpan } from "@/chat/logging";
 import {
+  egressDecisionAttributes,
   executeCredentialedEgressRequest,
   type CredentialedEgressHttpInterceptor,
 } from "@/chat/egress/credentialed";
@@ -183,6 +184,7 @@ export async function executeSandboxEgressRequest(
         status: 403,
       }),
       ...sandboxEgressRoutingAttributes(request, upstreamUrl),
+      ...egressDecisionAttributes("denied", "no provider owns forwarded host"),
     });
     return jsonError("No provider owns forwarded host", 403);
   }
@@ -204,6 +206,10 @@ export async function executeSandboxEgressRequest(
         status: 403,
       }),
       ...sandboxEgressRoutingAttributes(request, upstreamUrl),
+      ...egressDecisionAttributes(
+        "denied",
+        "credential context is not authorized",
+      ),
     });
     return jsonError(
       "Sandbox egress credential context is not authorized",

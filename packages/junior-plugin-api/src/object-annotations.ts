@@ -1,6 +1,16 @@
 import * as z from "zod";
-import { objectFactsSchema } from "./object-facts";
-import { objectTypeSchema } from "./object-presentation";
+import { type ObjectFacts, objectFactsSchema } from "./object-facts";
+import { type ObjectType, objectTypeSchema } from "./object-presentation";
+
+/** Return whether facts fit an object type. Deployment facts also fit an item. */
+export function objectFactsMatchType(
+  facts: ObjectFacts,
+  objectType: ObjectType,
+): boolean {
+  return facts.type === "deployment"
+    ? objectType === "deployment" || objectType === "item"
+    : facts.type === objectType;
+}
 
 /**
  * Verified facts shared by Conversation annotations and Message cards.
@@ -44,10 +54,7 @@ export const objectAnnotationSchema = z
   .refine(
     (annotation) =>
       !annotation.facts ||
-      (annotation.facts.type === "deployment"
-        ? annotation.objectType === "deployment" ||
-          annotation.objectType === "item"
-        : annotation.facts.type === annotation.objectType),
+      objectFactsMatchType(annotation.facts, annotation.objectType),
     "Object facts must match the object type",
   );
 export type ObjectAnnotation = z.output<typeof objectAnnotationSchema>;

@@ -53,6 +53,12 @@ export function useVirtualRows(input: {
   rowInput.current = input;
   const estimateSize = useCallback((index: number) => {
     const key = rowInput.current.getItemKey(index);
+    // The virtualizer keeps a measurement only when it differs from the
+    // row's estimate. A row that measured at its estimate would take a new
+    // estimate after the next scroll, and the rows after it would move off
+    // its real bottom. So a measured row keeps its measured size.
+    const row = rowSizes.current.get(key);
+    if (row) return row.size;
     const current = estimates.current.get(key);
     if (current !== undefined) return current;
     const sizeClass = rowInput.current.sizeClass(index);

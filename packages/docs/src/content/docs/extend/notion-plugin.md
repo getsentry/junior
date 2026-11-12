@@ -119,7 +119,7 @@ admin connects the account again.
 - Database deletion, schema redesign, and other broad administrative operations stay out of scope.
 - Permission failures remain user-scoped. Junior can only act on Notion content the authenticated user can access.
 - With a service account, anyone who can talk to Junior can read what that account can read, and create or update pages where that account can edit.
-- Each successful create, update, or move emits the `mcp.tool_call.completed` audit event. `app.credential.account` shows whether the service account or the person's own account made the call. See [Audit tools](/extend/build-a-plugin/#audit-tools) to change the list.
+- Each successful tool call emits the `mcp.tool_call.completed` audit event. `app.credential.account` shows whether the service account or the person's own account made the call. See [Audit events](/extend/build-a-plugin/#audit-events).
 
 ## Verify
 

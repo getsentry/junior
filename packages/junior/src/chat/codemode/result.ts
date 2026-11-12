@@ -20,6 +20,18 @@ export type CodeModeCallStatus =
   | "interrupted"
   | "not_started";
 
+/**
+ * How the `codemode` result text names each call status. The eval harness
+ * reads script calls back from this text.
+ */
+export const CODE_MODE_CALL_STATUS_TEXT: Record<CodeModeCallStatus, string> = {
+  ok: "ok",
+  error: "failed",
+  rejected: "rejected by action review",
+  interrupted: "interrupted, outcome unknown",
+  not_started: "not started",
+};
+
 /** One tool call that a script made. */
 export interface CodeModeCall {
   /** `<codemode call id>/c<n>`, where `n` is the VM number for the call. */

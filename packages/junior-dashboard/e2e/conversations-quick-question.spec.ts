@@ -132,9 +132,17 @@ test("asks a quick question about selected reply text", async ({
     },
   );
   const messages: Array<{ role: "assistant" | "user"; text: string }> = [];
+  // Hold the first ask, to check the panel while it is sent.
+  let acceptFirstAsk!: () => void;
+  const firstAskAccepted = new Promise<void>((resolve) => {
+    acceptFirstAsk = resolve;
+  });
+  let asks = 0;
   await page.route(
     `**/api/conversations/${encodeURIComponent(forkId)}/messages`,
     async (route) => {
+      asks += 1;
+      if (asks === 1) await firstAskAccepted;
       const { message } = route.request().postDataJSON();
       messages.push(
         { role: "user", text: message },
@@ -181,6 +189,11 @@ test("asks a quick question about selected reply text", async ({
   const composer = panel.getByRole("textbox", { name: "Quick question" });
   await composer.fill("Why?");
   await composer.press("Enter");
+  // The held question stays in the composer. Thinking waits for it.
+  await expect.poll(() => asks).toBe(1);
+  await expect(composer).toHaveValue("Why?");
+  await expect(panel.getByText("Thinking…")).toBeHidden();
+  acceptFirstAsk();
   await expect(panel.getByText("Answer 1.")).toBeVisible();
   await expect(composer).toHaveAttribute("placeholder", "Ask a follow-up…");
   await composer.fill("And then?");
