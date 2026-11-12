@@ -307,10 +307,12 @@ function SidebarAnnotationGroupChip(props: {
           annotation.objectType ? (
             <ObjectIcon
               {...annotation}
+              // Rem, like the row: a fixed 14px icon is clipped in the row at
+              // a smaller browser font size.
+              className="size-3.5"
               objectType={annotation.objectType}
               key={annotation.key}
               decorative
-              size={14}
             />
           ) : annotation.icon ? (
             <SidebarAnnotationIcon
