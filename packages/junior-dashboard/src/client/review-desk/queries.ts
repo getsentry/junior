@@ -120,19 +120,20 @@ export function useConversationReviewItemData(
 ) {
   const { items, query } = useReviewItemsData({ conversationId });
   const listed = items.find((item) => item.id === id);
-  // An item that closes leaves the list. Its row keeps the listed item
-  // until its own read finishes, so the row does not blank.
-  const lastListed = useRef(listed);
-  if (listed) lastListed.current = listed;
+  // An item that closes leaves the list, and a list read that starts again,
+  // such as Try again after a failed page, turns the item read off. The row
+  // keeps the last item until a read finishes, so it does not blank.
+  const lastShown = useRef(listed);
   // Wait for this Conversation's list before reading the item by itself.
   const waiting = query.isPending || query.isPlaceholderData;
   const direct = useReviewItemData(
     listed || waiting ? undefined : id,
-    lastListed.current,
+    lastShown.current,
   );
-  return listed
-    ? { data: listed, isError: false }
-    : { data: direct.data, isError: direct.isError };
+  const data =
+    listed ?? direct.data ?? (waiting ? lastShown.current : undefined);
+  if (data) lastShown.current = data;
+  return { data, isError: listed ? false : direct.isError };
 }
 
 /**

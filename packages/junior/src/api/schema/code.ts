@@ -51,6 +51,8 @@ export const codeRepositorySummarySchema = z
 export const codeChangeSummaryReportSchema = z
   .object({
     closedAt: z.string().optional(),
+    /** Whether the code change is a draft. Readers ignore it unless open. */
+    draft: z.boolean(),
     id: z.string().uuid(),
     /**
      * Latest push, review, or comment by a person. Absent when the code

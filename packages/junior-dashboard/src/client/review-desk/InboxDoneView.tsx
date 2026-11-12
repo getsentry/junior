@@ -14,6 +14,7 @@ import {
 import { InboxSection } from "./InboxSection";
 import { doneSections } from "./inboxModel";
 import { ReviewItemActions } from "./ReviewItemActions";
+import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
 import { answerLine } from "./reviewItemFormat";
 
@@ -98,13 +99,15 @@ function DoneRow(props: {
               <ArrowUpRight aria-hidden="true" size={14} />
             </Link>
           </div>
-          <DisplayText
-            text={
-              item.kind === "notice" || !item.request
-                ? item.body
-                : item.request.question
-            }
-          />
+          <ReviewItemObjects conversationId={item.addedByConversationId}>
+            <DisplayText
+              text={
+                item.kind === "notice" || !item.request
+                  ? item.body
+                  : item.request.question
+              }
+            />
+          </ReviewItemObjects>
           {item.subject ? (
             <ReviewItemSubjectPreview
               conversationId={item.addedByConversationId}

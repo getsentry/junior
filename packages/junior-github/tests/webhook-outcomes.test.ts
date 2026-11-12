@@ -2,6 +2,7 @@ import { createHmac, generateKeyPairSync } from "node:crypto";
 import {
   conversationAnnotationInputSchema,
   eventMatches,
+  type CodeChangeInput,
   type ConversationAnnotationInput,
   type EventInput,
   type EventMatch,
@@ -284,6 +285,7 @@ function webhookRoute(
     typeof createGitHubWebhookRoute
   >[0]["markFeedbackReviewing"] = async () => {},
   hasMatch: () => Promise<boolean> = async () => true,
+  codeChanges: CodeChangeInput[] = [],
 ) {
   return createGitHubWebhookRoute({
     annotations: {
@@ -305,7 +307,9 @@ function webhookRoute(
     codeChanges: {
       async associateConversations() {},
       async recordActivity() {},
-      async record() {},
+      async record(input) {
+        codeChanges.push(input);
+      },
     },
     db: fixture.db(),
     installationId: () => "456",
@@ -3299,6 +3303,70 @@ describe("GitHub-owned pull request outcomes", () => {
           identifier: "getsentry/junior",
         }),
       ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("stores the draft state from opens and draft changes", async () => {
+    const fixture = await createGitHubFixture();
+    const codeChanges: CodeChangeInput[] = [];
+    try {
+      const route = webhookRoute(
+        fixture,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        [],
+        undefined,
+        undefined,
+        codeChanges,
+      );
+      const opened = pullRequestPayload();
+      const deliver = async (action: string, updatedAt: string, draft = {}) =>
+        await route.handler(
+          signedRequest(
+            pullRequestPayload({
+              action,
+              pull_request: {
+                ...(opened.pull_request as Record<string, unknown>),
+                ...draft,
+                updated_at: updatedAt,
+              },
+            }),
+          ),
+        );
+      const storedDraft = async () =>
+        (await fixture.db().select().from(juniorGitHubPullRequests))[0]?.draft;
+
+      await deliver("opened", "2026-07-01T12:00:00.000Z", { draft: true });
+      expect(await storedDraft()).toBe(true);
+      await deliver("ready_for_review", "2026-07-02T12:00:00.000Z", {
+        draft: false,
+      });
+      expect(await storedDraft()).toBe(false);
+      // A late delivery cannot move the draft state back.
+      await deliver("converted_to_draft", "2026-07-01T18:00:00.000Z", {
+        draft: true,
+      });
+      expect(await storedDraft()).toBe(false);
+      await deliver("converted_to_draft", "2026-07-03T12:00:00.000Z", {
+        draft: true,
+      });
+      expect(await storedDraft()).toBe(true);
+      // A close keeps the draft state.
+      await deliver("closed", "2026-07-04T12:00:00.000Z", { draft: false });
+      expect(await storedDraft()).toBe(true);
+
+      expect(codeChanges.map((change) => [change.state, change.draft])).toEqual(
+        [
+          ["open", true],
+          ["open", false],
+          ["open", true],
+          ["closed", undefined],
+        ],
+      );
     } finally {
       await fixture.close();
     }

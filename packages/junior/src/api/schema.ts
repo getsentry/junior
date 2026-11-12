@@ -27,6 +27,7 @@ export type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 export type { AutomationCard } from "../chat/automations/card";
 export type { AutomationTask } from "../chat/automations/task";
 export {
+  annotationCard,
   messageCardText,
   resolveMessageCards,
 } from "../chat/conversations/cards";

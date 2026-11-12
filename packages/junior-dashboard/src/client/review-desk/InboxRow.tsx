@@ -54,6 +54,7 @@ import { inboxItemKind } from "./inboxModel";
 import { inboxCardClass } from "./inboxRowStyles";
 import { snoozeChoices, type SnoozeChoice } from "./inboxSnooze";
 import { ReviewItemActions } from "./ReviewItemActions";
+import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
 
@@ -159,7 +160,9 @@ function RowItem(props: {
       </div>
       {showBody ? (
         <ClampedPreview className="leading-6" label={item.title} lines={4}>
-          <DisplayText text={item.body} />
+          <ReviewItemObjects conversationId={item.addedByConversationId}>
+            <DisplayText text={item.body} />
+          </ReviewItemObjects>
         </ClampedPreview>
       ) : null}
       {item.subject ? (

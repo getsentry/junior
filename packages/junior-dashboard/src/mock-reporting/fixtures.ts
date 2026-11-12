@@ -74,6 +74,7 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
     activityDays,
     changes: [
       {
+        draft: false,
         id: "00000000-0000-4000-8000-000000000001",
         number: 42,
         openedAt: new Date(nowMs - 2 * 86_400_000).toISOString(),
@@ -84,6 +85,7 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
         url: "https://github.com/getsentry/payments/pull/42",
       },
       {
+        draft: false,
         id: "00000000-0000-4000-8000-000000000002",
         mergedAt: new Date(nowMs - 4 * 86_400_000).toISOString(),
         number: 781,
@@ -1403,7 +1405,16 @@ function longConversation(nowMs: number): ConversationDetailReport {
       type: "message",
       messageId: "release-assistant",
       role: "assistant",
-      text: "Released the package.\nOpened the update pull request.\nDeployment is ready.",
+      // Links to the Annotations below show as a chip, a hover card, and a
+      // full card.
+      text: [
+        "Released the package.",
+        "Opened the update pull request https://github.com/getsentry/junior/pull/2201. The [relay fix](https://github.com/getsentry/relay/pull/44) is merged.",
+        "",
+        "https://github.com/getsentry/payments/pull/91",
+        "",
+        "Deployment is ready.",
+      ].join("\n"),
     }),
   );
   return detail(nowMs, {
@@ -3697,6 +3708,7 @@ export function readMockPeopleCode(
     days: number,
     idleHours?: number,
   ) => ({
+    draft: false,
     id: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
     lastActivityAt:
       idleHours === undefined ? undefined : daysAgo(idleHours / 24),

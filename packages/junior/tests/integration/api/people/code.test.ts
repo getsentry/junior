@@ -101,6 +101,7 @@ describe("people code API", () => {
       // Updated last, but opened after the stale change's latest activity.
       const aliceFreshChange = {
         ...aliceStaleChange,
+        draft: true,
         number: 13,
         openedAt: new Date("2026-08-24T08:00:00.000Z"),
         providerId: "change-alice-fresh",
@@ -142,11 +143,12 @@ describe("people code API", () => {
       // Open changes come first, longest idle first, by activity or opening.
       expect(report.changes).toEqual([
         expect.objectContaining({
+          draft: false,
           lastActivityAt: "2026-08-23T09:00:00.000Z",
           number: 10,
           state: "open",
         }),
-        expect.objectContaining({ number: 13, state: "open" }),
+        expect.objectContaining({ draft: true, number: 13, state: "open" }),
         expect.objectContaining({
           number: 11,
           repository: "getsentry/junior",

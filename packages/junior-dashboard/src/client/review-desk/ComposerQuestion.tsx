@@ -16,6 +16,7 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { InlineError } from "../components/InlineError";
+import { MessageCard } from "../components/MessageCard";
 import {
   UserInputForm,
   type UserInputFormHandle,
@@ -245,11 +246,11 @@ export function ComposerQuestion(props: {
   }
 
   return (
-    <section
+    <MessageCard
       aria-label={`Question: ${item.title}`}
       // Esc here dismisses the question, so it does not leave the page.
       data-escape-scope=""
-      className="mb-2 grid min-w-0 gap-2 rounded-xl border border-dashboard-accent/30 bg-dashboard-surface-panel px-3 py-2.5 font-sans text-sm text-dashboard-text outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus/50 md:max-h-[50vh] md:overflow-y-auto md:px-4 md:py-3"
+      className="mb-2 grid gap-2 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus/50 md:max-h-[50vh] md:overflow-y-auto md:px-5"
       onKeyDown={onKeyDown}
       ref={(node) => {
         sectionRef.current = node;
@@ -308,7 +309,7 @@ export function ComposerQuestion(props: {
           />
         </div>
       ))}
-    </section>
+    </MessageCard>
   );
 }
 
