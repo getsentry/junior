@@ -18,6 +18,7 @@ import type {
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import { gitHubPullRequestTerminalEvents } from "../webhooks/events.js";
+import { GitHubRepositoryUnreachableError } from "../webhooks/installation-requests.js";
 import {
   loadGitHubPullRequestPeople,
   withGitHubPullRequestPeople,
@@ -87,12 +88,15 @@ interface ReconcileArgs {
   loadCommitPages(
     target: GitHubPullRequestTarget,
   ): Promise<GitHubCommitPageLoader>;
-  /** Read the lifecycle of some pull requests with one GraphQL query. */
+  /**
+   * Read the lifecycle of some pull requests with one GraphQL query. Throws
+   * `GitHubRepositoryUnreachableError` when GitHub cannot reach the repository.
+   */
   loadLifecycles(input: {
     numbers: number[];
-    repositoryFullName: string;
+    repositoryId: number;
   }): Promise<unknown>;
-  log: Pick<PluginLogger, "error">;
+  log: Pick<PluginLogger, "error" | "warn">;
   nowMs: number;
   state: PluginState;
 }
@@ -134,7 +138,7 @@ function closedWebhookBody(
 
 async function reconcileRepository(
   args: ReconcileArgs,
-  repositoryFullName: string,
+  repositoryId: number,
   numbers: number[],
 ): Promise<void> {
   for (
@@ -146,7 +150,7 @@ async function reconcileRepository(
       lifecyclesResponseSchema.parse(
         await args.loadLifecycles({
           numbers: numbers.slice(start, start + PULL_REQUESTS_PER_QUERY),
-          repositoryFullName,
+          repositoryId,
         }),
       ).data.repository;
     for (const pullRequest of Object.values(pullRequests)) {
@@ -197,34 +201,51 @@ async function reconcileRepository(
 export async function reconcileGitHubPullRequests(
   args: ReconcileArgs,
 ): Promise<void> {
-  const numbersByRepository = new Map<string, number[]>();
+  // Group by the repository id. A rename changes the name, not the id, so
+  // rows with an old name stay in one group.
+  const repositories = new Map<string, { name: string; numbers: number[] }>();
   for (const row of await listGitHubStaleOpenPullRequests(
     args.db,
     new Date(args.nowMs - RECONCILE_MS),
   )) {
-    const numbers = numbersByRepository.get(row.repositoryFullName) ?? [];
-    numbers.push(row.number);
-    numbersByRepository.set(row.repositoryFullName, numbers);
+    const repository = repositories.get(row.repositoryId) ?? {
+      name: row.repositoryFullName,
+      numbers: [],
+    };
+    repository.numbers.push(row.number);
+    repositories.set(row.repositoryId, repository);
   }
   let reconciled = 0;
-  for (const [repositoryFullName, numbers] of numbersByRepository) {
+  for (const [
+    repositoryId,
+    { name: repositoryFullName, numbers },
+  ] of repositories) {
     if (reconciled >= REPOSITORY_LIMIT) break;
     // Claim before the GitHub reads. A failed reconcile, such as one that
     // GitHub rate limits, runs again when the claim ends.
     const claimed = await args.state.setIfNotExists(
-      `pull-request-reconcile:${repositoryFullName}`,
+      `pull-request-reconcile:${repositoryId}`,
       args.nowMs,
       RECONCILE_MS,
     );
     if (!claimed) continue;
     reconciled += 1;
     try {
-      await reconcileRepository(args, repositoryFullName, numbers);
+      await reconcileRepository(args, Number(repositoryId), numbers);
     } catch (error) {
-      args.log.error("GitHub pull request reconcile failed", {
-        errorType: error instanceof Error ? error.name : "UnknownError",
-        repository: repositoryFullName,
-      });
+      if (error instanceof GitHubRepositoryUnreachableError) {
+        // The repository is gone, or the installation lost it. The rows
+        // stay open, and the check tries again the next day.
+        args.log.warn("GitHub pull request reconcile skipped a repository", {
+          repository: repositoryFullName,
+          repositoryId,
+        });
+      } else {
+        args.log.error("GitHub pull request reconcile failed", {
+          errorType: error instanceof Error ? error.name : "UnknownError",
+          repository: repositoryFullName,
+        });
+      }
     }
   }
 }
