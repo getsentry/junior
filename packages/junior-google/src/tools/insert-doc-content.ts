@@ -14,6 +14,9 @@ import {
   markdownContentSchema,
   readDocBody,
   requireEditableDoc,
+  requireRevision,
+  revisionAfterUpdate,
+  revisionIdSchema,
 } from "./doc-edits";
 import type { GoogleToolContext } from "./shared";
 
@@ -21,6 +24,7 @@ const inputSchema = z
   .object({
     document: docReferenceSchema,
     content: markdownContentSchema,
+    revision_id: revisionIdSchema,
     position: z
       .enum(["end", "start"])
       .default("end")
@@ -55,6 +59,7 @@ export function createInsertGoogleDocContentTool(ctx: GoogleToolContext) {
       const converted = convertDocMarkdown(input.content);
       const doc = await requireEditableDoc(ctx, input.document);
       const body = await readDocBody(ctx, doc.ref);
+      requireRevision(doc, body.revisionId, input.revision_id);
       if (input.position === "start" && !body.first) {
         throw new PluginToolInputError(
           `"${doc.title}" starts with a table, and Google Docs cannot add text before it. Use position "end" instead.`,
@@ -73,10 +78,17 @@ export function createInsertGoogleDocContentTool(ctx: GoogleToolContext) {
               prefix: isEmptyParagraph(body.last) ? "" : "\n",
               suffix: "",
             });
-      await batchUpdateDoc(ctx, doc.ref, requests, body.revisionId);
+      const reply = await batchUpdateDoc(
+        ctx,
+        doc.ref,
+        requests,
+        input.revision_id,
+      );
+      const revisionId = revisionAfterUpdate(reply);
       return {
         target: "insertGoogleDocContent" as const,
         document_id: doc.ref.fileId,
+        ...(revisionId ? { revision_id: revisionId } : undefined),
         title: doc.title,
         url: doc.url,
       };

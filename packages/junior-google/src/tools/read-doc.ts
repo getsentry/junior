@@ -23,6 +23,11 @@ const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("readGoogleDoc"),
   content: z.string().describe("Doc text as Markdown."),
   document_id: z.string(),
+  revision_id: z
+    .string()
+    .describe(
+      "Revision of the Doc that this content comes from. Pass it to the Doc edit tools, which refuse the edit if the Doc changed after this read.",
+    ),
   modified_at: z.string().optional(),
   title: z.string(),
   truncated: z
@@ -33,11 +38,13 @@ const outputSchema = pluginToolOutputSchema.extend({
   url: z.string().optional(),
 });
 
+const revisionSchema = z.object({ revisionId: z.string() });
+
 /**
  * Read one Google Doc as Markdown.
  *
- * Drive exports the Doc, so this needs no Docs API. Comments are not in the
- * export; `listGoogleFileComments` reads them.
+ * Drive exports the text. The Docs API gives the revision that the edit tools
+ * check. Comments are not in the export; `listGoogleFileComments` reads them.
  */
 export function createReadGoogleDocTool(ctx: GoogleToolContext) {
   return definePluginTool({
@@ -54,6 +61,13 @@ export function createReadGoogleDocTool(ctx: GoogleToolContext) {
     async execute(input) {
       const ref = parseFileReference(input.document);
       const file = await readGoogleFile(ctx, ref, ["document"]);
+      // Read the revision before the text. If the Doc changes in between, the
+      // text is newer than the revision, and an edit is refused, not misplaced.
+      const revision = await googleFileRequest(ctx, ref, {
+        operation: "google.docs.document.get",
+        path: `/v1/documents/${ref.fileId}`,
+        query: { fields: "revisionId" },
+      });
       const response = await googleFileRequest(ctx, ref, {
         headers: { Accept: "text/markdown" },
         operation: "google.drive.file.export",
@@ -65,6 +79,7 @@ export function createReadGoogleDocTool(ctx: GoogleToolContext) {
         target: "readGoogleDoc" as const,
         content: content.slice(0, MAX_CONTENT_CHARS),
         document_id: file.id,
+        revision_id: revisionSchema.parse(revision.body).revisionId,
         ...fileOutputFields(file),
         title: file.name,
         truncated: content.length > MAX_CONTENT_CHARS,

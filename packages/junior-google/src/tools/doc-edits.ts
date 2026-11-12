@@ -34,9 +34,43 @@ export const markdownContentSchema = z
 /** Output fields shared by the tools that write one Doc. */
 export const docOutputFields = {
   document_id: z.string(),
+  revision_id: z
+    .string()
+    .optional()
+    .describe(
+      "Revision after this edit. Pass it as revision_id to edit the Doc again without reading it first.",
+    ),
   title: z.string(),
   url: z.string(),
 };
+
+/** The revision of the Doc that the agent read, required by each edit. */
+export const revisionIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .describe(
+    "revision_id from readGoogleDoc, or from your last edit of this Doc. The edit is refused if someone changed the Doc after that.",
+  );
+
+/**
+ * Refuse an edit when the Doc changed after the agent read it.
+ *
+ * The agent plans an edit from the text it read. If the Doc changed since,
+ * the edit can delete or rewrite text that the agent never saw.
+ */
+export function requireRevision(
+  doc: { title: string },
+  current: string,
+  expected: string,
+): void {
+  if (current !== expected) {
+    throw new PluginToolInputError(
+      `"${doc.title}" changed after you read it. Read it again with readGoogleDoc, check that the edit still fits, and retry with the new revision_id.`,
+    );
+  }
+}
 
 /** Return the editor link of a Doc. */
 export function docUrl(documentId: string): string {
@@ -308,10 +342,22 @@ export function insertMarkdownRequests(
   return requests;
 }
 
+const batchUpdateReplySchema = z.object({
+  writeControl: z
+    .object({ requiredRevisionId: z.string().optional() })
+    .optional(),
+});
+
+/** Return the revision of a Doc after a batch update, when Google sends it. */
+export function revisionAfterUpdate(body: unknown): string | undefined {
+  return batchUpdateReplySchema.safeParse(body).data?.writeControl
+    ?.requiredRevisionId;
+}
+
 /**
  * Apply Docs requests. A known revision makes Google refuse the edit when
- * someone changed the Doc after it was read, because the indices would be
- * wrong.
+ * someone changed the Doc after it was read, so the edit never lands on text
+ * that the agent did not see.
  */
 export async function batchUpdateDoc(
   ctx: GoogleToolContext,

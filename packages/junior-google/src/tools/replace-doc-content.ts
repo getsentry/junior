@@ -12,6 +12,9 @@ import {
   markdownContentSchema,
   readDocBody,
   requireEditableDoc,
+  requireRevision,
+  revisionAfterUpdate,
+  revisionIdSchema,
 } from "./doc-edits";
 import type { GoogleToolContext } from "./shared";
 
@@ -19,6 +22,7 @@ const inputSchema = z
   .object({
     document: docReferenceSchema,
     content: markdownContentSchema,
+    revision_id: revisionIdSchema,
   })
   .strict();
 
@@ -47,9 +51,10 @@ export function createReplaceGoogleDocContentTool(ctx: GoogleToolContext) {
       const converted = convertDocMarkdown(input.content);
       const doc = await requireEditableDoc(ctx, input.document);
       const body = await readDocBody(ctx, doc.ref);
+      requireRevision(doc, body.revisionId, input.revision_id);
       // The body starts at index 1, and its final newline cannot be deleted.
       const deleteEnd = body.endIndex - 1;
-      await batchUpdateDoc(
+      const reply = await batchUpdateDoc(
         ctx,
         doc.ref,
         [
@@ -68,11 +73,13 @@ export function createReplaceGoogleDocContentTool(ctx: GoogleToolContext) {
             suffix: "",
           }),
         ],
-        body.revisionId,
+        input.revision_id,
       );
+      const revisionId = revisionAfterUpdate(reply);
       return {
         target: "replaceGoogleDocContent" as const,
         document_id: doc.ref.fileId,
+        ...(revisionId ? { revision_id: revisionId } : undefined),
         title: doc.title,
         url: doc.url,
       };

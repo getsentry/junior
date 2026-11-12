@@ -9,6 +9,9 @@ import {
   docOutputFields,
   docReferenceSchema,
   requireEditableDoc,
+  requireRevision,
+  revisionAfterUpdate,
+  revisionIdSchema,
 } from "./doc-edits";
 import { googleFileRequest } from "./files";
 import type { GoogleToolContext } from "./shared";
@@ -16,6 +19,7 @@ import type { GoogleToolContext } from "./shared";
 const inputSchema = z
   .object({
     document: docReferenceSchema,
+    revision_id: revisionIdSchema,
     find: z
       .string()
       .min(1)
@@ -55,6 +59,7 @@ const replySchema = z.object({
 });
 
 const tabsSchema = z.object({
+  revisionId: z.string(),
   tabs: z
     .array(z.object({ tabProperties: z.object({ tabId: z.string() }) }))
     .default([]),
@@ -78,28 +83,32 @@ export function createReplaceGoogleDocTextTool(ctx: GoogleToolContext) {
     outputSchema,
     async execute(input) {
       const doc = await requireEditableDoc(ctx, input.document);
-      // Without tabsCriteria, replaceAllText changes every tab. The other
-      // edit tools change only the first tab, so this one does too.
-      const { tabs } = tabsSchema.parse(
+      // Read the revision to check, and the first tab. Without tabsCriteria,
+      // replaceAllText changes every tab. The other edit tools change only
+      // the first tab, so this one does too.
+      const { revisionId, tabs } = tabsSchema.parse(
         (
           await googleFileRequest(ctx, doc.ref, {
             operation: "google.docs.document.get",
             path: `/v1/documents/${doc.ref.fileId}`,
             query: {
-              fields: "tabs(tabProperties(tabId))",
+              fields: "revisionId,tabs(tabProperties(tabId))",
               includeTabsContent: "true",
             },
           })
         ).body,
       );
+      requireRevision(doc, revisionId, input.revision_id);
       const tabId = tabs[0]?.tabProperties.tabId;
       if (!tabId) {
         throw new PluginToolInputError(
           `Google did not return the tabs of "${doc.title}", so the text was not replaced.`,
         );
       }
-      const body = replySchema.parse(
-        await batchUpdateDoc(ctx, doc.ref, [
+      const reply = await batchUpdateDoc(
+        ctx,
+        doc.ref,
+        [
           {
             replaceAllText: {
               containsText: { matchCase: input.match_case, text: input.find },
@@ -107,13 +116,17 @@ export function createReplaceGoogleDocTextTool(ctx: GoogleToolContext) {
               tabsCriteria: { tabIds: [tabId] },
             },
           },
-        ]),
+        ],
+        input.revision_id,
       );
+      const after = revisionAfterUpdate(reply);
       return {
         target: "replaceGoogleDocText" as const,
         document_id: doc.ref.fileId,
         occurrences_changed:
-          body.replies[0]?.replaceAllText?.occurrencesChanged ?? 0,
+          replySchema.parse(reply).replies[0]?.replaceAllText
+            ?.occurrencesChanged ?? 0,
+        ...(after ? { revision_id: after } : undefined),
         title: doc.title,
         url: doc.url,
       };

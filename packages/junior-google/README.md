@@ -36,4 +36,8 @@ Junior cannot read or edit that Doc again unless the requester shares it back.
 This only works for requesters in the same Workspace organization as Junior's
 account.
 
+Each edit of an existing Doc needs the `revision_id` that `readGoogleDoc` or
+the last edit returned. If someone changed the Doc after that, the edit is
+refused, so Junior never changes text that it did not read.
+
 Plugin setup: https://junior.sentry.dev/extend/

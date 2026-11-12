@@ -139,6 +139,7 @@ describe("Google Docs write tools", () => {
     const result = await run("insertGoogleDocContent", {
       content: "## Agenda\n\n- Plan\n- Ship",
       document: DOC_LINK,
+      revision_id: "rev-1",
     });
 
     const [, list, , update] = await calls();
@@ -243,12 +244,17 @@ describe("Google Docs write tools", () => {
       tableFirst,
     ]);
 
-    await run("insertGoogleDocContent", { content: "Hi", document: DOC_ID });
+    await run("insertGoogleDocContent", {
+      content: "Hi",
+      document: DOC_ID,
+      revision_id: "rev-1",
+    });
     await expect(
       run("insertGoogleDocContent", {
         content: "Hi",
         document: DOC_ID,
         position: "start",
+        revision_id: "rev-1",
       }),
     ).rejects.toThrow('"Rethinking" starts with a table');
 
@@ -267,6 +273,7 @@ describe("Google Docs write tools", () => {
       driveFile(),
       permissions({ role: "writer", type: "anyone" }),
       Response.json({
+        revisionId: "rev-2",
         tabs: [
           { tabProperties: { tabId: "t.0" } },
           { tabProperties: { tabId: "t.1" } },
@@ -281,11 +288,13 @@ describe("Google Docs write tools", () => {
     await run("replaceGoogleDocContent", {
       content: "New",
       document: DOC_ID,
+      revision_id: "rev-1",
     });
     const replaced = await run("replaceGoogleDocText", {
       document: DOC_ID,
       find: "Q3",
       replace: "Q4",
+      revision_id: "rev-2",
     });
 
     const all = await calls();
@@ -309,6 +318,7 @@ describe("Google Docs write tools", () => {
           },
         },
       ],
+      writeControl: { requiredRevisionId: "rev-2" },
     });
     expect(replaced).toMatchObject({ occurrences_changed: 3 });
   });
@@ -405,7 +415,7 @@ describe("Google Docs write tools", () => {
     );
   });
 
-  it("refuses an edit Junior's account or the requester cannot make", async () => {
+  it("refuses an edit Junior's account or the requester cannot make, or of a Doc that changed", async () => {
     const { calls, run } = docTools([
       driveFile(false),
       driveFile(),
@@ -413,8 +423,16 @@ describe("Google Docs write tools", () => {
         { emailAddress: "eng@example.com", role: "writer", type: "group" },
         { emailAddress: REQUESTER, role: "commenter", type: "user" },
       ),
+      driveFile(),
+      permissions({ emailAddress: REQUESTER, role: "writer", type: "user" }),
+      docBody("Someone else's edit\n"),
     ]);
-    const input = { document: DOC_ID, find: "a", replace: "b" };
+    const input = {
+      document: DOC_ID,
+      find: "a",
+      replace: "b",
+      revision_id: "rev-1",
+    };
 
     const readOnly = run("replaceGoogleDocText", input);
     await expect(readOnly).rejects.toThrow(PluginToolInputError);
@@ -424,6 +442,14 @@ describe("Google Docs write tools", () => {
     await expect(run("replaceGoogleDocText", input)).rejects.toThrow(
       `${REQUESTER} is not an editor`,
     );
+    // The Doc is at rev-1 now, so an edit planned from rev-0 is refused.
+    await expect(
+      run("replaceGoogleDocContent", {
+        content: "New",
+        document: DOC_ID,
+        revision_id: "rev-0",
+      }),
+    ).rejects.toThrow('"Rethinking" changed after you read it');
     expect(
       (await calls()).some(
         (call) => call.operation === "google.docs.document.batchUpdate",
