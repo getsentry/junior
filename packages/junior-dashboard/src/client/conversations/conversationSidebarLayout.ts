@@ -72,11 +72,14 @@ function readWidth(key: string, limits: WidthLimits): RemSize {
   return `${Math.min(limits.max, Math.max(limits.min, saved))}rem`;
 }
 
+// Round to whole px before the rem conversion. The saved px is a little
+// over the panel width, and a finer rounding keeps that extra, so the panel
+// grows a little on each load.
 function writeWidth(key: string, px: number) {
   const rootPx = parseFloat(
     getComputedStyle(document.documentElement).fontSize,
   );
-  writeStorage(key, String(Math.round((px / rootPx) * 100) / 100));
+  writeStorage(key, String(Math.round(px) / rootPx));
 }
 
 /** Report whether the viewport has room for the list beside the transcript. */
