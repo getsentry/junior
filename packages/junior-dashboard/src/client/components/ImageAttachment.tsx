@@ -337,6 +337,13 @@ function ZoomableImage(props: {
       y: event.clientY,
     });
     const points = [...pointers.current.values()];
+    // A drag, pan, or swipe is not the first tap of a double tap.
+    if (
+      points.length === 1 &&
+      pointDistance([points[0]!, start.start]) >= SWIPE_LOCK_PX
+    ) {
+      lastTapAt.current = 0;
+    }
     if (
       points.length === 1 &&
       start.zoom.scale === 1 &&
@@ -347,8 +354,6 @@ function ZoomableImage(props: {
       const axis = swipeAxis.current ?? lockSwipeAxis(dx, dy, props.pageable);
       swipeAxis.current = axis;
       if (axis === "x" || axis === "y") {
-        // A swipe is not the first tap of a double tap.
-        lastTapAt.current = 0;
         setSwipe({ axis, offset: axis === "x" ? dx : Math.max(dy, 0) });
       }
       return;
