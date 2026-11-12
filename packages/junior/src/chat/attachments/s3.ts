@@ -90,6 +90,30 @@ export function createS3AttachmentStorage(
       });
       await expectOk(response, "put");
     },
+    async createUploadTarget(input) {
+      const url = new URL(objectUrl(config, input.key));
+      url.searchParams.set(
+        "X-Amz-Expires",
+        String(Math.max(1, Math.ceil((input.expiresAtMs - Date.now()) / 1000))),
+      );
+      const browserHeaders = {
+        "content-type": input.contentType,
+        // Write the key once. A sent file cannot change after the check.
+        "if-none-match": "*",
+      };
+      // Sign the size and type headers too. S3 then rejects a PUT of any
+      // other size or type. The browser sends `content-length` itself.
+      const signed = await client.sign(url.toString(), {
+        aws: { allHeaders: true, signQuery: true },
+        headers: { ...browserHeaders, "content-length": String(input.bytes) },
+        method: "PUT",
+      });
+      return {
+        headers: browserHeaders,
+        method: "PUT",
+        url: signed.url,
+      };
+    },
     async get(key, range) {
       const response = await client.fetch(
         objectUrl(config, key),
