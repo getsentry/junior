@@ -145,7 +145,7 @@ export async function skipInputAfterConversationStop(
   }
   const saved = messages.filter(isWatchEvent);
   const live = messages.filter(
-    (message) => !isWatchEvent(message) && message.receivedAtMs > stoppedAtMs,
+    (message) => !isSkippedAfterConversationStop(message, stoppedAtMs),
   );
   if (live.length > 0 && saved.length > 0) {
     // Events of all Watches debounce in one batch. Wait out the window of the
@@ -173,6 +173,22 @@ export async function skipInputAfterConversationStop(
   }
   await context.attempt.ack();
   return { skipped: { status: "completed" } };
+}
+
+/**
+ * Return whether a session stop at `stoppedAtMs` keeps one Event from
+ * starting a Turn: a Watch Event is saved, and another Event received at or
+ * before the stop is dropped. Input from a person is never skipped.
+ */
+export function isSkippedAfterConversationStop(
+  message: InboundMessage,
+  stoppedAtMs: number | undefined,
+): boolean {
+  return (
+    stoppedAtMs !== undefined &&
+    isEventInput(message) &&
+    (isWatchEvent(message) || message.receivedAtMs <= stoppedAtMs)
+  );
 }
 
 function isEventInput(message: InboundMessage): boolean {
