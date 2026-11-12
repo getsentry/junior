@@ -12,9 +12,11 @@ import type { TranscriptTurnFooter } from "./transcriptListRows";
  */
 export function TranscriptTurnFooterView(props: {
   footer: TranscriptTurnFooter;
+  /** The history is redacted, so memories show only their titles. */
+  redacted?: boolean;
   tasks: ReactNode;
 }) {
-  const chips = useTurnMemoryChips(props.footer);
+  const chips = useTurnMemoryChips(props.footer, props.redacted);
   const hasTasks = props.footer.tasks.length > 0;
   if (chips.length === 0 && !hasTasks) return null;
   return (

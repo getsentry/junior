@@ -205,12 +205,15 @@ type TurnMemoryChip = {
 /**
  * List the memory chips of the reply that ends a Turn: what its prompt
  * recalled, then what the Turn captured. Without memory state, such as in a
- * nested transcript, a capture keeps its event title and opens nothing.
+ * nested transcript, a capture keeps its event title and opens nothing. A
+ * redacted history shows only capture titles, so no memory text shows.
  */
 export function useTurnMemoryChips(
   footer: TranscriptTurnFooter,
+  redacted = false,
 ): TurnMemoryChip[] {
-  const state = useConversationMemoryState();
+  const memoryState = useConversationMemoryState();
+  const state = redacted ? undefined : memoryState;
   const recalled = [
     ...new Set(
       footer.prompt?.message.contexts

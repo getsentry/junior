@@ -489,6 +489,8 @@ function TranscriptEntryList(
     TranscriptListPlacement & {
       entries: TranscriptEntry[];
       keyPrefix: string;
+      /** The history is redacted, so memories show only their titles. */
+      redacted?: boolean;
       /** A Turn is running, so the list ends with its progress. */
       responding?: boolean;
       unread?: TranscriptUnreadRange;
@@ -650,6 +652,7 @@ function TranscriptEntryList(
   });
   // Rows render again only when the renderers change, not on each scroll.
   const {
+    redacted,
     renderAttachmentsDelivered,
     renderContext,
     renderFailure,
@@ -680,12 +683,14 @@ function TranscriptEntryList(
         footer ? (
           <TranscriptTurnFooterView
             footer={footer}
+            redacted={redacted}
             tasks={renderTasks(footer.tasks)}
           />
         ) : undefined,
       );
     },
     [
+      redacted,
       renderAttachmentsDelivered,
       renderContext,
       renderFailure,
@@ -838,6 +843,7 @@ function RedactedTranscriptView(
       entries={groupTranscriptMessages(props.messages)}
       key={props.conversation.conversationId}
       keyPrefix={`${props.conversation.conversationId}:redacted`}
+      redacted
       responding={props.responding}
       revealSeq={props.revealSeq}
       scrollAnchorKey={props.scrollAnchorKey}
