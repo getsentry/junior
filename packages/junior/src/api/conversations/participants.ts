@@ -68,7 +68,7 @@ function participantKey(row: { identityId: string; userId: string | null }) {
   return row.userId ? `user:${row.userId}` : `identity:${row.identityId}`;
 }
 
-// Read the root actor and each message author, in first-appearance order.
+// Read the root Actor and each message author, in first-appearance order.
 async function readParticipantRows(
   db: JuniorDatabase,
   conversationIds: readonly string[],

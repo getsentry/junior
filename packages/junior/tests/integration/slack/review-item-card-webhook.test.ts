@@ -5,7 +5,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
-import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import { projectConversationMessages } from "@/chat/conversations/message-projection";
+import {
+  closeDb,
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { actOnReviewItem } from "@/chat/review-items/actions";
@@ -357,6 +363,16 @@ describe("Slack webhook: Review item cards", () => {
       kind: "submitted",
       reviewItemId: item.id,
     });
+    // The click starts input in a thread no Conversation claimed, so it
+    // claims the thread for this one.
+    await expect(
+      getConversationStore().getConversationIdByProviderConversation({
+        provider: "slack",
+        providerConversationId: "1712345.0001",
+        providerDestinationId: "C123",
+        providerTenantId: "T123",
+      }),
+    ).resolves.toBe(THREAD);
     // The other linked thread learns about it once, from the person.
     const other = await getConversationWorkState({
       conversationId: OTHER_THREAD,
@@ -594,14 +610,18 @@ describe("Slack webhook: Review item cards", () => {
     expect(JSON.stringify(blocksOf(updates[0]))).toContain(
       "ana@example.com dismissed this",
     );
-    // The thread input records the dismiss.
+    // A dismiss starts no Turn. The thread saves it as a handled Message.
     const work = await getConversationWorkState({
       conversationId: THREAD,
       state,
     });
-    expect(
-      work?.messages.map((message) => message.input.reviewItemChange),
-    ).toEqual([{ kind: "dismissed", reviewItemId: item.id }]);
+    expect(work?.messages ?? []).toEqual([]);
+    const saved = projectConversationMessages(
+      await getConversationEventStore().loadMessageHistory(THREAD),
+    );
+    expect(saved.map((message) => message.meta?.reviewItemChanges)).toEqual([
+      [{ kind: "dismissed", reviewItemId: item.id }],
+    ]);
   });
 
   // Which open question a reply answers is a decision model choice, so the

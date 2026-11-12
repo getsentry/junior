@@ -36,6 +36,13 @@ function removeExampleOnlyServerConfig(source: string): string {
         "",
       )
       .replace('  import("./dashboard.ts"),\n', "")
+      // Only the example app can show live data in a Preview.
+      .replace("  { withExampleLivePreview },\n", "")
+      .replace('  import("./live-preview.ts"),\n', "")
+      .replace(
+        "export default withExampleLivePreview(app);",
+        "export default app;",
+      )
       // The example deployment allows Sentry; the scaffold uses a placeholder.
       .replace(
         'allowedDomains: ["sentry.io"]',

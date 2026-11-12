@@ -171,14 +171,19 @@ function PopOutView(props: {
           aria-expanded={switching}
           className="min-w-0 flex-1 justify-start"
           onClick={() => setSwitching((open) => !open)}
-          variant="quiet"
+          variant="ghost"
         >
           <span className="min-w-0 truncate">
             {conversationDetailTitle(snapshot) ?? "Conversation"}
           </span>
           <ChevronsUpDown aria-hidden="true" className="shrink-0" size={14} />
         </Button>
-        <Button aria-label="Open in tab" onClick={openInTab} size="icon">
+        <Button
+          aria-label="Open in tab"
+          onClick={openInTab}
+          size="icon"
+          variant="outline"
+        >
           <ExternalLink aria-hidden="true" size={15} />
         </Button>
       </header>

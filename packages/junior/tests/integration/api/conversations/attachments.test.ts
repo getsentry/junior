@@ -14,7 +14,7 @@ import {
   getConversationEventStore,
 } from "@/chat/db";
 import { juniorAttachments } from "@/db/schema";
-import { testViewer } from "../../../fixtures/user";
+import { signedInViewer } from "../../../fixtures/user";
 
 function apiWithViewer(
   email: string | undefined,
@@ -23,7 +23,7 @@ function apiWithViewer(
   const app = new Hono<JuniorApiEnv>();
   if (email) {
     app.use("*", async (context, next) => {
-      context.set("viewer", testViewer(email));
+      context.set("viewer", await signedInViewer(email));
       await next();
     });
   }

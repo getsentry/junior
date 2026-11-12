@@ -115,15 +115,27 @@ export async function readUserAvatarUrls(
         isNotNull(juniorIdentities.avatarUrl),
       ),
     );
+  return userAvatarUrlsFromIdentities(rows);
+}
+
+/**
+ * Pick the photo path of each user from their user Identities, for a caller
+ * that already read them: the Slack photo, then the Google photo.
+ */
+export function userAvatarUrlsFromIdentities(
+  rows: readonly (AvatarIdentityRow & { provider: string; updatedAt: Date })[],
+): Map<string, string> {
   const rank = (row: (typeof rows)[number]) =>
     AVATAR_PROVIDERS.indexOf(row.provider);
-  rows.sort(
-    (left, right) =>
-      rank(left) - rank(right) ||
-      right.updatedAt.getTime() - left.updatedAt.getTime(),
-  );
+  const ranked = rows
+    .filter((row) => rank(row) >= 0)
+    .sort(
+      (left, right) =>
+        rank(left) - rank(right) ||
+        right.updatedAt.getTime() - left.updatedAt.getTime(),
+    );
   const avatars = new Map<string, string>();
-  for (const row of rows) {
+  for (const row of ranked) {
     if (row.userId && row.avatarUrl && !avatars.has(row.userId)) {
       avatars.set(row.userId, avatarPath(row.identityId, row.avatarUrl));
     }

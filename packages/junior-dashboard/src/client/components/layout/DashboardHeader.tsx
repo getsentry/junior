@@ -9,6 +9,8 @@ import {
 } from "../CommandPalette";
 import { JuniorLogo } from "../JuniorLogo";
 import { Button } from "../ui/button";
+import { Badge } from "../ui/badge";
+import { Kbd } from "../ui/kbd";
 import { Sheet, SheetClose, SheetContent } from "../ui/sheet";
 import { useSheet } from "../ui/useSheet";
 import {
@@ -35,9 +37,9 @@ const mobileBackClass =
 function NavCount(props: { count?: number }) {
   if (!props.count) return null;
   return (
-    <span className="ml-1.5 rounded-full bg-violet-300/20 px-1.5 py-0.5 text-xs text-violet-200">
+    <Badge className="ml-1.5 py-0.5" variant="highlight">
       {props.count.toLocaleString("en-US")}
-    </span>
+    </Badge>
   );
 }
 
@@ -71,12 +73,13 @@ export function DashboardHeader(props: {
   const closeRef = useRef<HTMLButtonElement>(null);
   const onOpenChangeRef = useRef(props.onMobileNavigationOpenChange);
   onOpenChangeRef.current = props.onMobileNavigationOpenChange;
-  // Conversation chrome is path-driven. Undefined title keeps the loading
+  // Conversation chrome is path-driven, or set by a registered back for a
+  // Conversation that has no route yet. Undefined title keeps the loading
   // fallback; explicit empty string means no title (create compose).
-  const conversationMode = Boolean(props.mobileBackTo);
   const mobileBack = useMobileHeaderBack();
-  const mobileTitle =
-    props.mobileTitle === undefined ? "Conversation" : props.mobileTitle.trim();
+  const conversationMode = Boolean(props.mobileBackTo || mobileBack);
+  const title = props.mobileTitle ?? mobileBack?.title;
+  const mobileTitle = title === undefined ? "Conversation" : title.trim();
 
   useRegisterOpenMobileNavigation(() => {
     onOpenChangeRef.current(true);
@@ -153,6 +156,7 @@ export function DashboardHeader(props: {
             </nav>
           </div>
           <Button
+            variant="outline"
             aria-keyshortcuts="Meta+K Control+K"
             className="w-full font-normal text-dashboard-text-faint hover:text-dashboard-text-muted"
             onClick={props.onSearch}
@@ -163,9 +167,9 @@ export function DashboardHeader(props: {
                 {COMMAND_PALETTE_LABEL}…
               </span>
             </span>
-            <kbd className="font-sans text-xs max-xl:hidden">
+            <Kbd className="text-xs max-xl:hidden" variant="plain">
               {COMMAND_PALETTE_SHORTCUT}
-            </kbd>
+            </Kbd>
           </Button>
           <div className="flex items-center gap-3 justify-self-end">
             {props.profile}
@@ -178,8 +182,9 @@ export function DashboardHeader(props: {
             aria-label={mobileBack.label}
             className={cn(
               mobileBackClass,
-              "cursor-pointer border-0 bg-transparent",
+              "cursor-pointer border-0 bg-transparent disabled:cursor-default",
             )}
+            disabled={!mobileBack.onClick}
             onClick={mobileBack.onClick}
             type="button"
           >
@@ -259,6 +264,7 @@ export function DashboardHeader(props: {
               ) : null}
               <nav aria-label="Primary" className="grid gap-1">
                 <Button
+                  variant="ghost"
                   className={cn(sheetLinkClass({ isActive: false }), "gap-2")}
                   data-mobile-nav-dismiss=""
                   onClick={props.onSearch}

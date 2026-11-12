@@ -15,12 +15,12 @@ import {
   closeConversationFixture,
   createConversationFixture,
 } from "../../../fixtures/conversation";
-import { testViewer } from "../../../fixtures/user";
+import { signedInViewer } from "../../../fixtures/user";
 
 function apiFor(email: string) {
   const app = new Hono<{ Variables: JuniorApiVariables }>();
   app.use("*", async (context, next) => {
-    context.set("viewer", testViewer(email));
+    context.set("viewer", await signedInViewer(email));
     await next();
   });
   app.route("/", createJuniorApi());

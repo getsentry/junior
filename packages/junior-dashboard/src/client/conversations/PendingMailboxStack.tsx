@@ -127,7 +127,7 @@ function PendingActionButton(props: {
   onClick(): void;
   pending: boolean;
   tooltip: string;
-  variant?: "danger";
+  variant?: "destructive";
 }) {
   const Icon = props.icon;
   return (
@@ -143,7 +143,7 @@ function PendingActionButton(props: {
             onClick={props.onClick}
             size="icon"
             type="button"
-            variant={props.variant}
+            variant={props.variant ?? "ghost"}
           >
             {props.pending ? (
               <Spinner aria-hidden="true" className="size-3.25" />
@@ -230,7 +230,7 @@ function PendingMetaIcons(props: {
               ? "Could not delete. Try again."
               : "Delete from the queue"
           }
-          variant="danger"
+          variant="destructive"
         />
       ) : null}
     </TranscriptHeadingMeta>
@@ -355,8 +355,9 @@ function PendingRow(props: {
                 className="m-0 min-w-0 truncate font-sans text-sm leading-snug text-dashboard-text-subtle"
                 title={displayPlainText(text, mentions)}
               >
-                {props.message.reviewItemChange ? (
+                {props.message.reviewItemChange && props.conversationId ? (
                   <ReviewItemChangeLabel
+                    conversationId={props.conversationId}
                     fallback={
                       <DisplayText inline mentions={mentions} text={text} />
                     }
@@ -400,13 +401,13 @@ function PendingRow(props: {
           <p className="m-0 font-sans text-xs text-red-300/80">
             Could not send.
           </p>
-          <button
-            className="cursor-pointer border-0 bg-transparent p-0 font-sans text-xs font-medium text-dashboard-accent-text/90 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+          <Button
+            className="text-xs font-medium text-dashboard-accent-text/90 underline-offset-2 focus-visible:outline-offset-1"
             onClick={() => props.onRetry?.(props.message)}
-            type="button"
+            variant="link"
           >
             Retry
-          </button>
+          </Button>
         </div>
       ) : null}
       {props.cancelError ? (

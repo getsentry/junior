@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { createAutomationTool } from "@/chat/automations/tools/create";
 import type { EventCatalog } from "@/chat/events/catalog";
 import { createUpdateAutomationTool } from "@/chat/automations/tools/update";
@@ -49,6 +50,11 @@ import {
   conversationsInfoOk,
   usersInfoOk,
 } from "../fixtures/slack/factories/api";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
@@ -148,6 +154,7 @@ function createContext(
     destination: { platform: "slack", teamId, channelId },
     actor,
     userText: "schedule this weekly",
+    turnTools: rootTurnTools,
   } as ToolRuntimeContext;
   return {
     ...automationToolContext(runtime),
@@ -432,11 +439,14 @@ describe("Scheduled automation tools", () => {
           audience: "channel",
           visibility: "public",
         },
-        credential_mode: "creator",
+        credential_mode: "system",
         outcomes: [],
         status: "active",
-        instruction:
-          "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+        task: {
+          kind: "instruction",
+          instruction:
+            "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+        },
         recurrence: {
           frequency: "weekly",
           interval: 1,
@@ -459,8 +469,11 @@ describe("Scheduled automation tools", () => {
     expect(listed).toMatchObject({
       automations: [
         {
-          instruction:
-            "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+          task: {
+            kind: "instruction",
+            instruction:
+              "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+          },
           schedule: "Every week on Monday at 09:00 (America/Los_Angeles)",
         },
       ],
@@ -475,8 +488,11 @@ describe("Scheduled automation tools", () => {
     expect(sameChannelOtherThread).toMatchObject({
       automations: [
         {
-          instruction:
-            "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+          task: {
+            kind: "instruction",
+            instruction:
+              "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+          },
           schedule: "Every week on Monday at 09:00 (America/Los_Angeles)",
         },
       ],
@@ -504,7 +520,7 @@ describe("Scheduled automation tools", () => {
         outcomes: [],
       }),
     ).resolves.toMatchObject({
-      automation: { credential_mode: "creator", is_creator: true },
+      automation: { credential_mode: "system", is_creator: true },
     });
   });
 
@@ -531,8 +547,11 @@ describe("Scheduled automation tools", () => {
       automation: {
         schedule: "Every week on Monday at 09:00 (America/Los_Angeles)",
         status: "active",
-        instruction:
-          "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+        task: {
+          kind: "instruction",
+          instruction:
+            "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+        },
       },
     });
     await expect(
@@ -765,7 +784,10 @@ describe("Scheduled automation tools", () => {
         next_run_at: "2026-05-27T00:25:23.000Z",
         schedule: "In 1 minute",
         status: "active",
-        instruction: "Wash hands reminder: Remind David to wash his hands.",
+        task: {
+          kind: "instruction",
+          instruction: "Wash hands reminder: Remind David to wash his hands.",
+        },
       },
       objectCards: [
         {
@@ -781,7 +803,7 @@ describe("Scheduled automation tools", () => {
           audience: "direct",
           visibility: "private",
         },
-        credentialMode: "creator",
+        credentialMode: "system",
         destination: { channelId: "D123" },
         nextRunAtMs: Date.parse("2026-05-27T00:25:23.000Z"),
         status: "active",
@@ -911,8 +933,11 @@ describe("Scheduled automation tools", () => {
       automation: {
         id: taskId,
         next_run_at: "2026-05-26T17:00:00.000Z",
-        instruction:
-          "Tuesday scheduler digest: Summarize open scheduler issues.",
+        task: {
+          kind: "instruction",
+          instruction:
+            "Tuesday scheduler digest: Summarize open scheduler issues.",
+        },
         schedule: "Every week on Tuesday at 10:00 (America/Los_Angeles)",
       },
     });
@@ -951,7 +976,11 @@ describe("Scheduled automation tools", () => {
   it("treats a null update schedule as omitted", async () => {
     const context = createContext();
     const created = (await createTask(context)) as {
-      automation: { id: string; next_run_at: string; instruction: string };
+      automation: {
+        id: string;
+        next_run_at: string;
+        task: { instruction: string };
+      };
     };
 
     const updated = await executeTool(
@@ -959,7 +988,7 @@ describe("Scheduled automation tools", () => {
       {
         automation_id: created.automation.id,
         trigger: null,
-        instruction: `${created.automation.instruction} (edited)`,
+        instruction: `${created.automation.task.instruction} (edited)`,
       },
     );
 
@@ -968,7 +997,10 @@ describe("Scheduled automation tools", () => {
         id: created.automation.id,
         next_run_at: created.automation.next_run_at,
         status: "active",
-        instruction: `${created.automation.instruction} (edited)`,
+        task: {
+          kind: "instruction",
+          instruction: `${created.automation.task.instruction} (edited)`,
+        },
       },
     });
   });
@@ -1060,7 +1092,9 @@ describe("Scheduled automation tools", () => {
   });
 
   it("lets anyone in the workspace manage a public-channel task from another channel", async () => {
-    const created = (await createTask(createContext())) as {
+    const created = (await createTask(createContext(), {
+      credential_mode: "creator",
+    })) as {
       automation: { id: string };
     };
     const automationId = created.automation.id;
@@ -1159,7 +1193,10 @@ describe("Scheduled automation tools", () => {
     ).resolves.toMatchObject({
       automation: {
         credential_mode: "system",
-        instruction: "Team digest: Summarize open scheduler issues.",
+        task: {
+          kind: "instruction",
+          instruction: "Team digest: Summarize open scheduler issues.",
+        },
       },
     });
     for (const status of ["paused", "active"] as const) {
@@ -1317,7 +1354,10 @@ describe("Scheduled automation tools", () => {
     expect(updated).toMatchObject({
       automation: {
         id: created.automation.id,
-        instruction: "Team-owned digest: Summarize open scheduler issues.",
+        task: {
+          kind: "instruction",
+          instruction: "Team-owned digest: Summarize open scheduler issues.",
+        },
       },
     });
     expect(deleted).toMatchObject({
@@ -1335,23 +1375,24 @@ describe("Scheduled automation tools", () => {
         name: "scheduled-automation",
       },
       task: {
-        text: "Team-owned digest: Summarize open scheduler issues.",
+        kind: "instruction",
+        instruction: "Team-owned digest: Summarize open scheduler issues.",
       },
     });
   });
 
-  it("stores creator credential mode by default in channels", async () => {
+  it("stores system credential mode by default in channels", async () => {
     const created = await createTask(createContext());
 
     expect(created).toMatchObject({
-      automation: { credential_mode: "creator" },
+      automation: { credential_mode: "system" },
     });
     await expect(
       listScheduledAutomationsForTeam(TEST_TEAM_ID),
     ).resolves.toMatchObject([
       {
         createdBy: { slackUserId: "U123" },
-        credentialMode: "creator",
+        credentialMode: "system",
         destination: { channelId: "C123" },
       },
     ]);
@@ -1375,8 +1416,9 @@ describe("Scheduled automation tools", () => {
       credential_mode: "creator" as const,
     };
 
-    expect(tool.prepareArguments?.(input)).not.toHaveProperty(
+    expect(tool.prepareArguments?.(input)).toHaveProperty(
       "credential_mode",
+      "creator",
     );
     expect(
       tool.prepareArguments?.({ ...input, credential_mode: null }),
@@ -1393,7 +1435,9 @@ describe("Scheduled automation tools", () => {
 
   it("keeps creator credentials to runs the creator authorized", async () => {
     const context = createContext();
-    const created = (await createTask(context)) as {
+    const created = (await createTask(context, {
+      credential_mode: "creator",
+    })) as {
       automation: { id: string };
     };
     const automationId = created.automation.id;
@@ -1443,7 +1487,7 @@ describe("Scheduled automation tools", () => {
 
   it("updates credential availability and allows only the creator to enable it", async () => {
     const context = createContext();
-    const created = await createTask(context);
+    const created = await createTask(context, { credential_mode: "creator" });
     expect(created).toMatchObject({
       automation: { credential_mode: "creator" },
     });
@@ -1511,7 +1555,9 @@ describe("Scheduled automation tools", () => {
   });
 
   it("makes creator credentials available in private group conversations", async () => {
-    const result = await createTask(createContext({ channelId: "G123" }));
+    const result = await createTask(createContext({ channelId: "G123" }), {
+      credential_mode: "creator",
+    });
 
     expect(result).toMatchObject({
       automation: {
@@ -1719,7 +1765,10 @@ describe("Scheduled automation tools", () => {
 
     expect(updated).toMatchObject({
       automation: {
-        instruction: "Renamed issue digest: Summarize open scheduler issues.",
+        task: {
+          kind: "instruction",
+          instruction: "Renamed issue digest: Summarize open scheduler issues.",
+        },
       },
     });
     await expect(
@@ -1966,7 +2015,10 @@ describe("Scheduled automation tools", () => {
         {
           id: mine.automation.id,
           destination: { channel: "CSOURCE" },
-          instruction: "Weekly planning reminder: post the agenda here.",
+          task: {
+            kind: "instruction",
+            instruction: "Weekly planning reminder: post the agenda here.",
+          },
         },
       ],
       truncated: false,
@@ -2045,10 +2097,13 @@ describe("Scheduled automation tools", () => {
     expect(movedPublic).toMatchObject({
       automation: {
         id: created.automation.id,
-        instruction: "Weekly planning reminder: post the agenda here.",
+        task: {
+          kind: "instruction",
+          instruction: "Weekly planning reminder: post the agenda here.",
+        },
         schedule: created.automation.schedule,
         next_run_at: created.automation.next_run_at,
-        credential_mode: "creator",
+        credential_mode: "system",
         destination: { channel: "CTARGET" },
         conversation_access: {
           audience: "channel",
@@ -2092,7 +2147,7 @@ describe("Scheduled automation tools", () => {
           audience: "group",
           visibility: "private",
         },
-        credential_mode: "creator",
+        credential_mode: "system",
         next_run_at: created.automation.next_run_at,
       },
     });
@@ -2225,6 +2280,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
         [],
         {},
         {
+          turnTools: rootTurnTools,
           conversationId: `slack:DDM:1700000000.100000`,
           source: createSlackSource({
             teamId: TEAM_ID,
@@ -2284,7 +2340,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
         destination: { channelId: "DDM", teamId: TEAM_ID },
         conversationAccess: { audience: "direct", visibility: "private" },
       });
-      expect(stored?.credentialMode).toBe("creator");
+      expect(stored?.credentialMode).toBe("system");
     } finally {
       await fixture.close();
       vi.restoreAllMocks();
@@ -2332,6 +2388,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
       // A dashboard Turn in a Conversation with a Slack Location delivers to
       // that channel. The creator is the person's linked Slack account there.
       const located = createTools([], {}, {
+        turnTools: rootTurnTools,
         ...webTurn("slack:DDM:1700000000.100000"),
         location: {
           id: `location:${TEAM_ID}:C123`,
@@ -2371,6 +2428,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
       // cannot create one.
       const conversationId = "test:schedule-cards";
       const unlocated = createTools([], {}, {
+        turnTools: rootTurnTools,
         ...webTurn(conversationId),
         destination: { platform: "local", conversationId },
       } as ToolRuntimeContext);
@@ -2387,7 +2445,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
           title: "Weekly digest",
         }),
       ).resolves.toMatchObject({
-        automation: { title: "Weekly digest", credential_mode: "creator" },
+        automation: { title: "Weekly digest", credential_mode: "system" },
       });
       await expect(
         executeRegisteredTool(unlocated.createAutomation!, {
@@ -2427,6 +2485,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
         [],
         {},
         {
+          turnTools: rootTurnTools,
           conversationId: "slack:C123:1700000000.100000",
           location: {
             id: `location:${TEAM_ID}:C123`,

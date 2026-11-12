@@ -33,7 +33,7 @@ import {
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import type { AgentTurnUsage } from "@/chat/usage";
-import { getStateAdapter } from "@/chat/state/adapter";
+import { getStateAdapter, getStateValues } from "@/chat/state/adapter";
 import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
 import {
   getConversationEventStore,
@@ -394,6 +394,8 @@ async function appendTurnSummary(
 async function recordConversationActivityMetadata(args: {
   /** Live execution actor for SQL dual-write only; never stored in Redis. */
   actor?: Actor;
+  /** Identity of the Turn Actor, for the Turn's metric rows. */
+  actorIdentityId?: string;
   conversationStore?: ConversationStore;
   destination?: Destination;
   /** Confirmed destination visibility; omit when unavailable. */
@@ -453,6 +455,7 @@ async function recordConversationActivityMetadata(args: {
     visibility: hasParent ? undefined : args.destinationVisibility,
   });
   await conversationStore.recordExecution({
+    actorIdentityId: args.actorIdentityId,
     channelName: args.summary.channelName,
     conversationId: args.summary.conversationId,
     createdAtMs: args.summary.startedAtMs,
@@ -531,6 +534,30 @@ async function getStoredTurnRecord(
   await stateAdapter.connect();
   const value = await stateAdapter.get(turnCursorKey(conversationId, turnId));
   return value == null ? undefined : parseTurnRecord(value);
+}
+
+/** The fields of a stored Turn cursor that need no Turn history. */
+export type StoredTurnFields = Pick<
+  StoredTurnRecord,
+  "dispatchId" | "source" | "state" | "surface"
+>;
+
+/**
+ * Read several stored Turn cursors in one state read, without their Turn
+ * history. A missing cursor gives `undefined`.
+ */
+export async function getStoredTurnFields(
+  turns: ReadonlyArray<{ conversationId: string; turnId: string }>,
+): Promise<Array<StoredTurnFields | undefined>> {
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  const values = await getStateValues(
+    stateAdapter,
+    turns.map((turn) => turnCursorKey(turn.conversationId, turn.turnId)),
+  );
+  return values.map((value) =>
+    value == null ? undefined : parseTurnRecord(value),
+  );
 }
 
 /** Read a materialized turn cursor for resume and history loading. */
@@ -705,6 +732,7 @@ async function setStoredRecord(args: {
   await args.fence();
   await recordConversationActivityMetadata({
     actor: args.actor,
+    actorIdentityId: storedRecord.actorIdentityId,
     conversationStore: args.conversationStore,
     destination: args.destination,
     destinationVisibility: args.destinationVisibility,
@@ -1114,9 +1142,16 @@ async function recordTurnSummaryOwned(
       surface: args.surface ?? existing?.surface,
     }),
   };
+  // As on a checkpoint, the Turn keeps the Identity of its starting Actor.
+  const actorIdentityId =
+    stored?.actorIdentityId ??
+    (args.actor
+      ? await resolveActorIdentityId(getSqlExecutor(), args.actor)
+      : undefined);
   await fence();
   await recordConversationActivityMetadata({
     actor: args.actor,
+    actorIdentityId,
     conversationStore,
     destination: args.destination,
     destinationVisibility: args.destinationVisibility,

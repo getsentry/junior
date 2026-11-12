@@ -20,7 +20,7 @@ import {
   closeConversationFixture,
   createConversationFixture,
 } from "../../../fixtures/conversation";
-import { testViewer } from "../../../fixtures/user";
+import { signedInViewer } from "../../../fixtures/user";
 import {
   createConversationWorkSlackHarness,
   CONVERSATION_ID,
@@ -50,7 +50,7 @@ describe("conversation cancel pending messages API", () => {
     await harness.send();
     expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
     const result = await cancelConversationPendingMessagesForViewer(
-      testViewer("alice@example.com"),
+      await signedInViewer("alice@example.com"),
       conversationId,
     );
     expect(result.cancelledCount).toBe(1);
@@ -103,7 +103,7 @@ describe("conversation cancel pending messages API", () => {
 
     const app = new Hono<{ Variables: JuniorApiVariables }>();
     app.use("*", async (context, next) => {
-      context.set("viewer", testViewer(actor.email));
+      context.set("viewer", await signedInViewer(actor.email));
       await next();
     });
     app.route("/", createJuniorApi());
@@ -171,7 +171,7 @@ describe("conversation cancel pending messages API", () => {
 
     const app = new Hono<{ Variables: JuniorApiVariables }>();
     app.use("*", async (context, next) => {
-      context.set("viewer", testViewer(actor.email));
+      context.set("viewer", await signedInViewer(actor.email));
       await next();
     });
     app.route("/", createJuniorApi());
@@ -220,7 +220,7 @@ describe("conversation cancel pending messages API", () => {
 
     const app = new Hono<{ Variables: JuniorApiVariables }>();
     app.use("*", async (context, next) => {
-      context.set("viewer", testViewer("stranger@example.com"));
+      context.set("viewer", await signedInViewer("stranger@example.com"));
       await next();
     });
     app.route("/", createJuniorApi());
@@ -279,7 +279,7 @@ describe("conversation cancel pending messages API", () => {
 
     const app = new Hono<{ Variables: JuniorApiVariables }>();
     app.use("*", async (context, next) => {
-      context.set("viewer", testViewer(actor.email));
+      context.set("viewer", await signedInViewer(actor.email));
       await next();
     });
     app.route("/", createJuniorApi());
@@ -312,7 +312,7 @@ describe("conversation cancel pending messages API", () => {
     await createConversationFixture();
     const app = new Hono<{ Variables: JuniorApiVariables }>();
     app.use("*", async (context, next) => {
-      context.set("viewer", testViewer("owner@example.com"));
+      context.set("viewer", await signedInViewer("owner@example.com"));
       await next();
     });
     app.route("/", createJuniorApi());
