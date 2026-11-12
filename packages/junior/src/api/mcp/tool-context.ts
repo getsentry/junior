@@ -2,12 +2,14 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { HTTPException } from "hono/http-exception";
 import type { User } from "@sentry/junior-plugin-api";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { getDb } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 
 /** Services and the authenticated user for one MCP request. */
 export interface McpToolContext {
+  attachmentStorage: AttachmentStorage;
   queue: ConversationWorkQueue;
   user: User;
 }

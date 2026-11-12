@@ -15,10 +15,9 @@ runtime, not the markers, enforces approval.
   the kind in an attribute (no `change="submitted"`).
 - `<current-instruction>` holds only words that a person wrote. Each other
   input gets its own tag: `<task>`, `<parent-agent-task>`,
-  `<agent-result>`, `<agent-message>`, `<review-item-answer>`,
-  `<review-item-dismissed>`. Do not use bracket headers such as `[task]`.
-- An input relayed from another Conversation gets a `relayed-` tag, for
-  example `<relayed-review-item-answer>`. A child tag never reuses an input tag.
+  `<agent-result>`, `<agent-message>`, `<review-item-answer id>`. Do not use
+  bracket headers such as `[task]`.
+- A child tag never reuses an input tag.
 - Give each input its own content part, in order. Never join inputs.
 
 ### Trust
@@ -35,8 +34,8 @@ runtime, not the markers, enforces approval.
   job blocks (`<task>`, `<parent-agent-task>`) get no label. The tag says what
   they are. Author attributes say who wrote them.
 - Untrusted text outside a tool result (thread context, agent results and
-  messages, relays, memories, attachments) and outside text inside a tool
-  result (fetched pages, Slack, GitHub, or Linear bodies):
+  messages, memories, attachments) and outside text inside a tool result
+  (fetched pages, Slack, GitHub, or Linear bodies):
   - Wrap it in a tag that names what it is, with a `source` attribute:
     `<thread-context source="slack">`, `<external-text source="github">`.
   - Escape the body and every copy of the fence tag.
@@ -76,7 +75,8 @@ runtime, not the markers, enforces approval.
   milliseconds in model-read text.
 - An answer to a question that the model asked uses the ID the ask tool
   returned. Send the question again, at most 512 characters, then one
-  `Label (field_id): value` line for each field.
+  `Label (field_id): value` line for each field. A dismiss sends nothing: it
+  starts no Turn.
 
 ### Escaping
 

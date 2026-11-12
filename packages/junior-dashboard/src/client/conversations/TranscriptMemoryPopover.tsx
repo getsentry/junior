@@ -9,6 +9,7 @@ import {
 } from "../components/ui/popover";
 import { formatMessageTimestamp, memoryPath } from "../format";
 import { cn } from "../styles";
+import { Button } from "../components/ui/button";
 import type { TranscriptViewMessage } from "../types";
 import {
   anchorMemories,
@@ -18,6 +19,7 @@ import {
   type ConversationMemoryState,
   type MemoryAnchor,
 } from "./conversationMemory";
+import { MemoryLinkIcons } from "./MemoryIcons";
 import { memoryRecallContent } from "./turnContext";
 
 function memoryCount(count: number): string {
@@ -54,32 +56,26 @@ function MemoryPopover(props: {
         aria-label={props.label}
         className="max-h-[min(28rem,var(--available-height))] w-96 p-1.5"
       >
-        <ul className="m-0 grid list-none gap-0.5 p-0">
+        <ul className="m-0 grid list-none divide-y divide-dashboard-border-subtle p-0">
           {props.memories.map((memory) => (
-            <li
-              className={cn(
-                "grid gap-1.5 rounded-md px-2.5 py-2",
-                memory.id === highlightId && "bg-dashboard-fill-strong",
-              )}
-              key={memory.id}
-              ref={
-                memory.id === highlightId
-                  ? (node) => node?.scrollIntoView({ block: "nearest" })
-                  : undefined
-              }
-            >
-              <p className="m-0 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text">
-                {memory.content}
-              </p>
-              <div className="flex items-center gap-3 text-xs text-dashboard-text-muted">
-                {memory.visibility === "private" ? <span>Private</span> : null}
-                <Link
-                  className="text-dashboard-text-muted no-underline hover:text-dashboard-text hover:underline"
-                  to={memoryPath(memory.id)}
-                >
-                  Open
-                </Link>
-              </div>
+            <li className="py-1 first:pt-0 last:pb-0" key={memory.id}>
+              <Link
+                className={cn(
+                  "group grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-md px-2.5 py-2 no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+                  memory.id === highlightId && "bg-dashboard-fill-strong",
+                )}
+                ref={
+                  memory.id === highlightId
+                    ? (node) => node?.scrollIntoView({ block: "nearest" })
+                    : undefined
+                }
+                to={memoryPath(memory.id)}
+              >
+                <p className="m-0 line-clamp-4 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text">
+                  {memory.content}
+                </p>
+                <MemoryLinkIcons private={memory.visibility === "private"} />
+              </Link>
             </li>
           ))}
         </ul>
@@ -121,13 +117,14 @@ export function TranscriptRecalledMemories(props: {
             memories={memories}
             state={state}
             trigger={
-              <button
-                className="inline-flex h-6 cursor-pointer items-center gap-1.5 rounded-md border border-dashboard-border-subtle bg-transparent px-2 font-sans text-xs text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus aria-expanded:bg-dashboard-fill-strong aria-expanded:text-dashboard-text"
-                type="button"
+              <Button
+                className="inline-flex h-6 items-center gap-1.5 rounded-md border border-dashboard-border-subtle px-2 text-xs hover:bg-dashboard-fill-hover focus-visible:-outline-offset-2 aria-expanded:bg-dashboard-fill-strong aria-expanded:text-dashboard-text"
+                size="bare"
+                variant="ghost"
               >
                 <Brain aria-hidden="true" size={13} strokeWidth={1.8} />
                 {label}
-              </button>
+              </Button>
             }
           />
         );
@@ -160,9 +157,10 @@ export function TranscriptCapturedMemories(props: {
       memories={memories}
       state={state}
       trigger={
-        <button
-          className="-mx-2 -my-1.5 grid w-[calc(100%+1rem)] cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-start gap-2 rounded-md border-0 bg-transparent px-2 py-1.5 text-left font-sans transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus aria-expanded:bg-dashboard-fill-hover max-md:grid-cols-[minmax(0,1fr)]"
-          type="button"
+        <Button
+          className="-mx-2 -my-1.5 grid w-[calc(100%+1rem)] grid-cols-[minmax(0,1fr)_auto] items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-dashboard-fill-hover focus-visible:-outline-offset-2 aria-expanded:bg-dashboard-fill-hover max-md:grid-cols-[minmax(0,1fr)]"
+          size="bare"
+          variant="ghost"
         >
           <span className="text-sm font-medium leading-6 text-dashboard-text">
             {label}
@@ -172,7 +170,7 @@ export function TranscriptCapturedMemories(props: {
               {timestamp}
             </span>
           ) : null}
-        </button>
+        </Button>
       }
     />
   );

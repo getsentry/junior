@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { getSqlExecutor } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -16,7 +16,6 @@ export const OPERATOR_TOOL_SOURCE = {
 
 const DEFAULT_ROW_LIMIT = 50;
 const MAX_ROW_LIMIT = 200;
-const MAX_OUTPUT_CHARS = 40_000;
 
 const paramSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 
@@ -31,18 +30,6 @@ function findSqlState(
     }
   }
   return undefined;
-}
-
-/** Keep the tool result small enough for the model context. */
-function limitRows(rows: unknown[], rowLimit: number) {
-  const limited = rows.slice(0, rowLimit);
-  while (
-    limited.length > 0 &&
-    JSON.stringify(limited).length > MAX_OUTPUT_CHARS
-  ) {
-    limited.pop();
-  }
-  return limited;
 }
 
 /**
@@ -108,7 +95,7 @@ export function createOperatorTools(context: ToolRuntimeContext): ToolRegistry {
             { cause: error },
           );
         }
-        const returned = limitRows(rows, input.row_limit ?? DEFAULT_ROW_LIMIT);
+        const returned = rows.slice(0, input.row_limit ?? DEFAULT_ROW_LIMIT);
         return {
           row_count: rows.length,
           rows: returned,

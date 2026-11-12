@@ -10,9 +10,8 @@ import { botConfig } from "@/chat/config";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { getSqlExecutor } from "@/chat/db";
-import { defaultModelId } from "@/chat/model-profile";
-import { completeObject } from "@/chat/pi/client";
-import { briefUpdatedEvent } from "./events";
+import { completeObject } from "@/chat/core-model";
+import { briefUpdatedEvent, briefUpdatedEventV1 } from "./events";
 import { generateBrief } from "./generate";
 import { briefInputFromSql } from "./input";
 import { buildBriefsOperationalReport } from "./operational-report";
@@ -81,7 +80,6 @@ async function emitBriefUpdated(
         ? { costUsd: stored.costUsd }
         : undefined),
       decisions: stored.content.decisions.length,
-      openDecisions: stored.content.openDecisions.length,
       links: stored.content.links.length,
     }),
   );
@@ -104,8 +102,8 @@ export async function updateConversationBrief(
   const conversation = await createSqlStore(executor).get({
     conversationId: run.conversationId,
   });
-  if (conversation?.parentConversationId) {
-    logSkip(context, run.conversationId, "child_conversation");
+  if (conversation?.kind === "task") {
+    logSkip(context, run.conversationId, "task_conversation");
     return;
   }
   if (conversation?.transcriptPurgedAtMs !== undefined) {
@@ -155,15 +153,18 @@ export async function updateConversationBrief(
         run.conversationId,
         terminalSeq,
       );
-      // Same request as `junior briefs run`, so the tuned prompt and
-      // temperature apply in production.
-      const modelId = defaultModelId(botConfig);
+      // Same request as `junior briefs run`, so the tuned prompt applies in
+      // production. Briefs run after the reply and share no prompt prefix
+      // with the Turn, so the main model's cache cannot help.
+      const modelId = botConfig.fastModelId;
       const generation = await generateBrief({
         completeObject: (request) =>
           completeObject({
             ...request,
             modelId,
-            promptName: "junior.brief_update",
+            operation: "brief_update",
+            // `brief_updated` stores the cost.
+            cost: { owner: "caller" },
           }),
         input,
         previous: previous?.content,
@@ -196,7 +197,7 @@ export const briefsTaskRegistration: PluginRegistration = {
     displayName: "Briefs",
     description: "Durable Conversation Brief generation",
   },
-  conversationEvents: [briefUpdatedEvent],
+  conversationEvents: [briefUpdatedEventV1, briefUpdatedEvent],
   hooks: {
     async operationalReport(context) {
       const briefDays = await context.eventStats.costsByDay({

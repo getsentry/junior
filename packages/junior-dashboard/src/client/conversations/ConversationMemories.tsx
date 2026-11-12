@@ -1,12 +1,13 @@
-import { ChevronRight } from "lucide-react";
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import { ArrowRight, BookmarkPlus, Brain, ChevronRight } from "lucide-react";
 
+import { Button } from "../components/ui/button";
 import { dashboardDisclosureChevronClass } from "../styles";
 import type {
   ConversationMemoryEntry,
   ConversationMemoryList,
 } from "./conversationMemory";
 import { DetailsCard } from "./DetailsList";
+import { PrivateMemoryIcon } from "./MemoryIcons";
 
 /** Count the distinct memories that a Conversation recalled and captured. */
 function conversationMemoryCounts(list: ConversationMemoryList) {
@@ -33,43 +34,55 @@ export function ConversationMemoryCard(props: {
     .join(" · ");
   return (
     <DetailsCard title="Memories">
-      <button
-        className="group -mx-1.5 -my-1 flex min-h-8 w-[calc(100%+0.75rem)] items-center justify-between gap-2.5 rounded-md px-1.5 py-1.5 text-left text-sm tabular-nums text-dashboard-text transition-colors hover:bg-dashboard-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+      <Button
+        className="group -mx-1.5 -my-1 flex min-h-8 w-[calc(100%+0.75rem)] items-center justify-between gap-2.5 rounded-md px-1.5 py-1.5 text-left text-sm tabular-nums text-foreground focus-visible:-outline-offset-2"
         onClick={props.onOpen}
-        type="button"
+        variant="ghost"
+        size="bare"
       >
         {summary}
         <ChevronRight
           aria-hidden="true"
           className={dashboardDisclosureChevronClass}
         />
-      </button>
+      </Button>
     </DetailsCard>
   );
 }
 
-/**
- * Map each loaded Turn to the prompt that started it, so a memory can say
- * where it came from. A Turn starts from its last user input message.
- */
-export function turnPrompts(
-  events: ConversationDetailReport["events"] | undefined,
-): Map<string, string> {
-  const texts = new Map<string, string>();
-  const prompts = new Map<string, string>();
-  for (const { data } of events ?? []) {
-    if (data.type === "message" && data.role === "user" && data.text) {
-      texts.set(data.messageId, data.text);
-    }
-    if (data.type === "turn_lifecycle" && data.state === "started") {
-      const prompt = data.inputMessageIds
-        ?.map((id) => texts.get(id))
-        .filter((text) => text !== undefined)
-        .at(-1);
-      if (prompt) prompts.set(data.turnId, prompt);
-    }
-  }
-  return prompts;
+/** One memory with its full text, its visibility, and a jump to its Turn. */
+function MemoryCard(props: {
+  entry: ConversationMemoryEntry;
+  onSelect(entry: ConversationMemoryEntry & { turnId: string }): void;
+}) {
+  const { entry } = props;
+  const { turnId } = entry;
+  return (
+    <li className="grid overflow-hidden rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel">
+      {/* Break long URLs so the card keeps the panel width. */}
+      <p className="m-0 whitespace-pre-wrap px-3 py-2.5 text-sm leading-relaxed text-dashboard-text [overflow-wrap:anywhere]">
+        {entry.memory.content}
+      </p>
+      <div className="flex min-h-8 items-center justify-between gap-2 border-t border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-1 text-xs text-dashboard-text-muted">
+        {entry.memory.visibility === "private" ? (
+          <PrivateMemoryIcon />
+        ) : (
+          <span />
+        )}
+        {turnId ? (
+          <Button
+            className="-mr-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium hover:bg-dashboard-fill-hover focus-visible:-outline-offset-2"
+            onClick={() => props.onSelect({ ...entry, turnId })}
+            size="bare"
+            variant="ghost"
+          >
+            Go to message
+            <ArrowRight aria-hidden="true" size={13} />
+          </Button>
+        ) : null}
+      </div>
+    </li>
+  );
 }
 
 /**
@@ -79,52 +92,39 @@ export function turnPrompts(
 export function ConversationMemoryEntries(props: {
   entries: ConversationMemoryEntry[];
   onSelect(entry: ConversationMemoryEntry & { turnId: string }): void;
-  prompts: Map<string, string>;
 }) {
+  const groups = (["recalled", "captured"] as const)
+    .map((source) => ({
+      entries: props.entries.filter((entry) => entry.source === source),
+      source,
+    }))
+    .filter((group) => group.entries.length > 0);
   return (
-    <ol className="m-0 grid list-none gap-2 p-0">
-      {props.entries.map((entry) => {
-        const { turnId } = entry;
-        const prompt = turnId ? props.prompts.get(turnId) : undefined;
-        const source =
-          entry.source === "recalled"
-            ? prompt
-              ? `Recalled for “${prompt}”`
-              : "Recalled"
-            : prompt
-              ? `Captured after “${prompt}”`
-              : "Captured";
-        const body = (
-          <>
-            <p className="m-0 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text">
-              {entry.memory.content}
-            </p>
-            <span className="flex min-w-0 items-center gap-2 text-xs text-dashboard-text-muted">
-              <span className="min-w-0 truncate">{source}</span>
-              {entry.memory.visibility === "private" ? (
-                <span className="shrink-0">· Private</span>
-              ) : null}
-            </span>
-          </>
-        );
-        const className =
-          "grid w-full gap-1.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 text-left font-sans";
-        return (
-          <li key={`${entry.source}:${entry.memory.id}`}>
-            {turnId ? (
-              <button
-                className={`${className} cursor-pointer transition-colors hover:bg-dashboard-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus`}
-                onClick={() => props.onSelect({ ...entry, turnId })}
-                type="button"
-              >
-                {body}
-              </button>
+    <div className="grid gap-5">
+      {groups.map((group) => (
+        <section className="grid gap-2" key={group.source}>
+          <h3 className="m-0 flex items-center gap-1.5 font-sans text-xs font-semibold text-dashboard-text">
+            {group.source === "recalled" ? (
+              <Brain aria-hidden="true" size={13} strokeWidth={1.8} />
             ) : (
-              <div className={className}>{body}</div>
+              <BookmarkPlus aria-hidden="true" size={13} strokeWidth={1.8} />
             )}
-          </li>
-        );
-      })}
-    </ol>
+            {group.source === "recalled" ? "Recalled" : "Captured"}
+            <span className="font-normal tabular-nums text-dashboard-text-muted">
+              {group.entries.length}
+            </span>
+          </h3>
+          <ol className="m-0 grid list-none gap-2 p-0">
+            {group.entries.map((entry) => (
+              <MemoryCard
+                entry={entry}
+                key={`${entry.source}:${entry.memory.id}`}
+                onSelect={props.onSelect}
+              />
+            ))}
+          </ol>
+        </section>
+      ))}
+    </div>
   );
 }

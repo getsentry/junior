@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { normalizeOAuthScope } from "@/chat/credentials/oauth-scope";
 
 const DEFAULT_TOKEN_CONTENT_TYPE = "application/x-www-form-urlencoded";

@@ -1,5 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
+import { appendConversationBrief } from "@/chat/briefs/store";
+import { recordCodeChange } from "@/chat/code/store";
 import { conversationStatsReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -9,6 +11,7 @@ import {
   buildJuniorSqlConversation,
   createConfiguredJuniorSqlFixture,
 } from "../../../fixtures/sql";
+import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
 
 describe("conversation stats API", () => {
   test("aggregates normalized SQL conversation dimensions", async () => {
@@ -138,6 +141,16 @@ describe("conversation stats API", () => {
         updatedAt: childAt,
         executionStatus: "idle",
       });
+      // A stop after a failed Turn reports `stopped`, so it is not failed.
+      await fixture.sql.db().insert(juniorConversations).values({
+        conversationId: "slack:C1:stopped",
+        rootConversationId: "slack:C1:stopped",
+        createdAt: childAt,
+        lastActivityAt: childAt,
+        updatedAt: childAt,
+        executionStatus: "failed",
+        stoppedAt: childAt,
+      });
       await store.recordExecution({
         conversationId: "advisor:child",
         createdAtMs: childAt.getTime(),
@@ -245,6 +258,39 @@ describe("conversation stats API", () => {
         ]);
       }
 
+      // Two merged code changes split the cost of their conversation tree.
+      for (const [number, mergedAt] of [
+        [7, "2026-06-15T11:58:00.000Z"],
+        [8, "2026-06-15T12:10:00.000Z"],
+      ] as const) {
+        await recordCodeChange(fixture.sql.db(), "github", {
+          conversationIds: ["slack:C1:recent"],
+          mergedAt: new Date(mergedAt),
+          number,
+          openedAt: new Date("2026-06-15T11:52:00.000Z"),
+          providerId: `change-${number}`,
+          repository: { name: "getsentry/junior", providerId: "repository-1" },
+          state: "merged",
+          updatedAt: new Date(mergedAt),
+        });
+      }
+      // Only a root without code changes counts its finished Brief. An
+      // unfinished Brief counts nothing.
+      for (const [conversationId, status] of [
+        ["slack:C1:recent", "done"],
+        ["slack:D1:failed", "answered"],
+        ["local:test:current-hour", "in_progress"],
+      ] as const) {
+        await appendConversationBrief(fixture.sql.db(), {
+          content: conversationBriefFixture({ status }),
+          conversationId,
+          modelId: "test-model",
+          searchText: "test",
+          throughSeq: 1,
+          turnId: `brief-${conversationId}`,
+        });
+      }
+
       const response = await createJuniorApi().request(
         "http://localhost/api/conversations/stats",
       );
@@ -255,7 +301,7 @@ describe("conversation stats API", () => {
         active: 1,
         cachedInputTokens: 300,
         cacheCreationTokens: 7,
-        conversations: 6,
+        conversations: 7,
         costUsd: 0.0075,
         durationMs: 2_304,
         failed: 1,
@@ -361,11 +407,15 @@ describe("conversation stats API", () => {
         expect.objectContaining({
           cachedInputTokens: 300,
           cacheCreationTokens: 7,
-          conversations: 4,
+          conversations: 5,
           costUsd: 0.004,
           date: "2026-06-15",
           durationMs: 1_604,
           inputTokens: 100,
+          mergedCodeChangeCostUsd: 0.003,
+          mergedCodeChanges: 2,
+          outcomeCostUsd: 0.0045,
+          outcomes: 3,
           tokens: 444,
         }),
       );
@@ -393,7 +443,13 @@ describe("conversation stats API", () => {
         durationMs: 100,
         tokens: 10,
       });
-      expect(report.metricHours?.at(-1)?.date).toBe("2026-06-15T12");
+      expect(report.metricHours?.at(-1)).toMatchObject({
+        date: "2026-06-15T12",
+        mergedCodeChangeCostUsd: 0.0015,
+        mergedCodeChanges: 1,
+        outcomeCostUsd: 0.0015,
+        outcomes: 1,
+      });
       expect(
         report.metricHours?.find((hour) => hour.date === "2026-06-14T23"),
       ).toEqual(
@@ -411,11 +467,15 @@ describe("conversation stats API", () => {
         expect.objectContaining({
           cachedInputTokens: 300,
           cacheCreationTokens: 7,
-          conversations: 2,
+          conversations: 3,
           costUsd: 0.003,
           date: "2026-06-15T11",
           durationMs: 1_504,
           inputTokens: 100,
+          mergedCodeChangeCostUsd: 0.0015,
+          mergedCodeChanges: 1,
+          outcomeCostUsd: 0.003,
+          outcomes: 2,
           tokens: 434,
         }),
       );
@@ -423,7 +483,7 @@ describe("conversation stats API", () => {
         report.metricHours
           ?.filter((hour) => hour.conversations > 0)
           .reduce((sum, hour) => sum + hour.conversations, 0),
-      ).toBe(5);
+      ).toBe(6);
     } finally {
       vi.useRealTimers();
       await fixture.close();

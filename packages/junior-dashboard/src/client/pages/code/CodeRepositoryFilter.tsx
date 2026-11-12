@@ -2,7 +2,8 @@ import { X } from "lucide-react";
 import { Link } from "react-router";
 
 import { codeRepositorySearch } from "../../api";
-import { FilterBar, FilterGroup } from "../../components/FilterBar";
+import { FilterGroup } from "../../components/FilterBar";
+import { Card } from "../../components/layout/Card";
 import { buttonVariants } from "../../components/ui/button";
 import { toggleVariants } from "../../components/ui/toggle";
 import { cn } from "../../styles";
@@ -12,7 +13,7 @@ export function CodeRepositoryFilter(props: {
   repositories: readonly string[];
 }) {
   return (
-    <FilterBar>
+    <Card padding="md">
       <FilterGroup label="Repositories">
         {props.repositories.map((repository) => (
           <Link
@@ -33,12 +34,12 @@ export function CodeRepositoryFilter(props: {
           </Link>
         ))}
         <Link
-          className={cn(buttonVariants({ variant: "quiet" }), "h-auto py-1")}
+          className={cn(buttonVariants({ variant: "ghost" }), "h-auto py-1")}
           to={{ search: "" }}
         >
           Clear
         </Link>
       </FilterGroup>
-    </FilterBar>
+    </Card>
   );
 }

@@ -14,6 +14,9 @@ ignores:
   - packages/junior/src/handlers/oauth-callback.ts
   # DM to the Automation creator, not Turn output.
   - packages/junior/src/chat/automations/blocked-notice.ts
+  # First message of a dashboard conversation that moves to a Slack thread.
+  # It is not Turn output.
+  - packages/junior/src/chat/slack/continue-in-slack.ts
   # Review item cards. They are Block Kit controls that change in place, not
   # reply text, and the thread comes from resolveSlackReplyTarget.
   - packages/junior/src/chat/slack/review-item-card-sync.ts
@@ -34,7 +37,7 @@ rule:
               field: arguments
               has:
                 kind: identifier
-                regex: ^(THREAD_OPTOUT_ACK|SLACK_SESSION_STOP_ACK)$
+                regex: ^(THREAD_OPTOUT_ACK|SLACK_STOP_ACK)$
 constraints:
   THREAD:
     regex: (^|\.)thread$

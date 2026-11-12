@@ -3,21 +3,23 @@ import { eq, inArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { canExposeConversationPayload } from "@/chat/conversation-privacy";
 import type { JuniorDatabase } from "@/db/db";
-import {
-  juniorConversations,
-  juniorDestinations,
-  juniorIdentities,
-} from "@/db/schema";
+import { juniorConversations, juniorDestinations } from "@/db/schema";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import { conversationIdsWithParticipantUser } from "./membership";
 
 const rootConversation = alias(juniorConversations, "access_root_conversation");
 const rootDestination = alias(juniorDestinations, "access_root_destination");
-const rootIdentity = alias(juniorIdentities, "access_root_identity");
 
 export interface ConversationAccess {
   canViewPrivateContent: boolean;
+  /**
+   * Destination of the root, such as one Slack channel. Missing when the
+   * stored tree is invalid or the root has no Destination.
+   */
+  destinationId?: string;
   isParticipant: boolean;
+  /** Root of the Conversation tree. Missing when the stored tree is invalid. */
+  rootConversationId?: string;
   /** Provider tenant of the root Location, such as a Slack workspace. */
   tenant?: ProviderTenant;
   visibility: JuniorDestinationVisibility | null;
@@ -36,7 +38,6 @@ export async function readConversationAccessFromSql(
   viewer?: User,
 ): Promise<Map<string, ConversationAccess>> {
   if (conversationIds.length === 0) return new Map();
-  const normalizedViewerEmail = viewer?.email.trim().toLowerCase() || undefined;
 
   const rows = await db
     .select({
@@ -46,12 +47,10 @@ export async function readConversationAccessFromSql(
       rootConversationId: rootConversation.conversationId,
       rootParentConversationId: rootConversation.parentConversationId,
       rootRootConversationId: rootConversation.rootConversationId,
+      destinationId: rootDestination.id,
       visibility: rootDestination.visibility,
       provider: rootDestination.provider,
       providerTenantId: rootDestination.providerTenantId,
-      rootEmailNormalized: rootIdentity.emailNormalized,
-      rootEmailVerified: rootIdentity.emailVerified,
-      rootUserId: rootIdentity.userId,
     })
     .from(juniorConversations)
     .leftJoin(
@@ -64,10 +63,6 @@ export async function readConversationAccessFromSql(
     .leftJoin(
       rootDestination,
       eq(rootDestination.id, rootConversation.destinationId),
-    )
-    .leftJoin(
-      rootIdentity,
-      eq(rootIdentity.id, rootConversation.actorIdentityId),
     )
     .where(inArray(juniorConversations.conversationId, [...conversationIds]));
 
@@ -101,18 +96,13 @@ export async function readConversationAccessFromSql(
         : undefined;
       const visibility =
         validRootConversationId === undefined ? null : row.visibility;
-      const isRootActor =
-        validRootConversationId !== undefined &&
-        viewer !== undefined &&
-        (row.rootUserId === viewer.id ||
-          (normalizedViewerEmail !== undefined &&
-            row.rootEmailVerified === true &&
-            row.rootEmailNormalized === normalizedViewerEmail));
-      const isMaterializedParticipant =
-        participantRootIds.has(row.conversationId) ||
+      // Participant rows belong to roots, so a row with a parent never
+      // matches its own id. That keeps a forged cycle from granting access.
+      const isParticipant =
+        (row.parentConversationId === null &&
+          participantRootIds.has(row.conversationId)) ||
         (validRootConversationId !== undefined &&
           participantRootIds.has(validRootConversationId));
-      const isParticipant = isRootActor || isMaterializedParticipant;
       const canViewPrivateContent =
         isParticipant ||
         (validRootConversationId !== undefined &&
@@ -123,7 +113,13 @@ export async function readConversationAccessFromSql(
         row.conversationId,
         {
           canViewPrivateContent,
+          ...(validRootConversationId !== undefined && row.destinationId
+            ? { destinationId: row.destinationId }
+            : undefined),
           isParticipant,
+          ...(validRootConversationId !== undefined
+            ? { rootConversationId: validRootConversationId }
+            : undefined),
           visibility,
           ...(validRootConversationId !== undefined &&
           row.provider !== null &&
@@ -139,4 +135,87 @@ export async function readConversationAccessFromSql(
       ];
     }),
   );
+}
+
+/**
+ * Whether the viewer may add a Message to a Conversation. A signed-in person
+ * joins a public Conversation by posting in it, the same as a public Slack
+ * thread: their first Turn adds their Participant row. A private one takes
+ * Messages only from its Participants.
+ */
+export function canAddConversationMessages(
+  access: ConversationAccess | undefined,
+): boolean {
+  return Boolean(access?.isParticipant || access?.visibility === "public");
+}
+
+/** Read viewer access for a bounded set of Conversations. */
+export type ConversationAccessReader = (
+  conversationIds: readonly string[],
+) => Promise<Map<string, ConversationAccess>>;
+
+/**
+ * Read access for one request. Each id is read at most once, so the parts of
+ * one response that need the same Conversation share a query.
+ */
+export function createConversationAccessReader(
+  db: JuniorDatabase,
+  viewer?: User,
+): ConversationAccessReader {
+  const byId = new Map<string, Promise<ConversationAccess | undefined>>();
+  return async (conversationIds) => {
+    const missing = [...new Set(conversationIds)].filter((id) => !byId.has(id));
+    if (missing.length > 0) {
+      const read = readConversationAccessFromSql(db, missing, viewer);
+      for (const id of missing) {
+        byId.set(
+          id,
+          read.then((access) => access.get(id)),
+        );
+      }
+    }
+    const entries = await Promise.all(
+      conversationIds.map(async (id) => [id, await byId.get(id)] as const),
+    );
+    return new Map(
+      entries.flatMap(([id, access]) => (access ? [[id, access]] : [])),
+    );
+  };
+}
+
+/** The fields of a Conversation that decide access from another one. */
+export type ConversationReach = Pick<
+  ConversationAccess,
+  "destinationId" | "rootConversationId" | "visibility"
+>;
+
+/**
+ * Apply `policies/conversation-access.md`: whether work in the `requester`
+ * Conversation may read or find the data of the `target` Conversation. The
+ * person of the Turn does not change the result. A public Conversation is
+ * reachable from any Conversation, on any surface and in any provider tenant.
+ * A private Conversation is reachable only from its own tree and from
+ * Conversations at the same Destination, which have the same audience.
+ */
+export function canAccessConversation(args: {
+  requester: ConversationReach;
+  target: ConversationReach;
+}): boolean {
+  const { requester, target } = args;
+  if (
+    requester.rootConversationId !== undefined &&
+    requester.rootConversationId === target.rootConversationId
+  ) {
+    return true;
+  }
+  // Conversations share a Destination only when they have the same
+  // audience, so no data leaves that audience. No provider check belongs here.
+  if (
+    requester.destinationId !== undefined &&
+    requester.destinationId === target.destinationId
+  ) {
+    return true;
+  }
+  // Missing or unknown visibility is private.
+  return target.visibility === "public";
 }

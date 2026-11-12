@@ -4,8 +4,10 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import {
+  conversationDetailReportSchema,
   conversationPendingMessagesReportSchema,
   type ConversationPendingMessagesReport,
+  type ConversationReportStatus,
 } from "@/api/schema";
 import type { WebActor } from "@/chat/actor";
 import { executeAgentRun } from "@/chat/agent";
@@ -17,6 +19,7 @@ import {
   createConversationWork,
   type ConversationWorkCallbackOptions,
 } from "@/chat/app/conversation-work";
+import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   closeDb,
@@ -64,8 +67,11 @@ export async function createConversationFixture(): Promise<ConversationFixture> 
   const queue = createConversationWorkQueueTestAdapter();
   const state = getStateAdapter();
   await state.connect();
+  // Sign in like the dashboard and ACP, so the web Actor id is the User id.
+  const viewer = await resolveViewerUser(webTestActor.email);
+  if (!viewer) throw new Error("Expected a web test viewer");
   return {
-    actor: webTestActor,
+    actor: { ...webTestActor, userId: viewer.id },
     conversationStore,
     queue,
     state,
@@ -121,6 +127,8 @@ export type ConversationWebHarness = {
   ) => Promise<ConversationPendingMessagesReport>;
   /** Load durable assistant/user history for one conversation. */
   historyTexts: (conversationId: string) => Promise<string[]>;
+  /** Read the status that the dashboard API reports for one conversation. */
+  status: (conversationId: string) => Promise<ConversationReportStatus>;
 };
 
 /**
@@ -230,6 +238,17 @@ export async function createConversationWebHarness(
         await response.json(),
       );
     },
+    status: async (conversationId) => {
+      const response = await app.request(
+        `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+      );
+      if (response.status !== 200) {
+        throw new Error(
+          `conversation detail failed: ${response.status} ${await response.text()}`,
+        );
+      }
+      return conversationDetailReportSchema.parse(await response.json()).status;
+    },
     historyTexts: async (conversationId) => {
       const history =
         await getConversationEventStore().loadMessageHistory(conversationId);
@@ -242,4 +261,15 @@ export async function createConversationWebHarness(
         .filter(Boolean);
     },
   };
+}
+
+/** Return the texts of Messages that saved Events for a stopped Conversation. */
+export async function stoppedConversationMessageTexts(
+  conversationId: string,
+): Promise<string[]> {
+  const history =
+    await getConversationEventStore().loadMessageHistory(conversationId);
+  return projectConversationMessages(history)
+    .filter((message) => message.meta?.skippedReason === "stopped conversation")
+    .map((message) => message.text);
 }

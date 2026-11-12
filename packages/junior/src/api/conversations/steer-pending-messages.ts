@@ -6,7 +6,7 @@ import { throwApiError } from "../http";
 import type {
   SteerConversationPendingMessagesBody,
   SteerConversationPendingMessagesResponse,
-} from "../schema/conversation";
+} from "../schema/conversation-pending-messages";
 import { readConversationAccessFromSql } from "./access";
 
 /**

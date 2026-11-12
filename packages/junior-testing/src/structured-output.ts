@@ -1,4 +1,5 @@
-import { z, type ZodType } from "zod";
+import * as z from "zod";
+import type { ZodType } from "zod";
 
 // OpenAI strict structured outputs accept only these string formats.
 const STRICT_STRING_FORMATS = new Set([

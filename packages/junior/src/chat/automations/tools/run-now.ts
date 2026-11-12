@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { requireCredentialStart } from "@/chat/automations/edit-rules";
 import { automationRevision } from "@/chat/automations/revision";
 import {
@@ -15,6 +15,7 @@ import type { EventCatalog } from "@/chat/events/catalog";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
 
 /** Create the tool that marks an active scheduled Automation due now. */
 export function createRunAutomationNowTool(
@@ -22,6 +23,8 @@ export function createRunAutomationNowTool(
   catalog: EventCatalog,
 ) {
   return zodTool({
+    exposure: "deferred",
+    source: AUTOMATIONS_TOOL_SOURCE,
     approvalMode: "review",
     annotations: {
       destructiveHint: false,

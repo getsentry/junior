@@ -3,7 +3,7 @@ import {
   defineConversationEvent,
   defineJuniorPlugin,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { projectConversationReportEventPage } from "@/api/conversations/events";
 import {
   conversationDetailReportSchema,
@@ -757,6 +757,7 @@ describe("conversation report event projection", () => {
           role: "user",
           text: "event details",
           meta: {
+            eventNamespace: "github",
             eventType: "pull_request.merged",
             trustedSummary: "David merged PR #42.",
             provider: "private-provider",
@@ -772,6 +773,7 @@ describe("conversation report event projection", () => {
       role: "user",
       source: "web",
       eventType: "pull_request.merged",
+      eventNamespace: "github",
       trustedSummary: "David merged PR #42.",
       text: "event details",
     });
@@ -997,7 +999,6 @@ describe("conversation report event projection", () => {
     const events = [
       event(1, {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "openai/gpt-5.4",
         summary: "Continue monitoring CI.",
         replacementHistory: [
@@ -1019,6 +1020,7 @@ describe("conversation report event projection", () => {
           },
         ],
       }),
+      // Stored by retired model handoff; the report skips it.
       event(2, {
         type: "handoff",
         modelProfile: "handoff",
@@ -1059,21 +1061,15 @@ describe("conversation report event projection", () => {
     ).toEqual([
       {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "openai/gpt-5.4",
         summary: "Continue monitoring CI.",
-      },
-      {
-        type: "handoff",
-        modelProfile: "handoff",
-        modelId: "openai/gpt-5.6-sol",
-        summary: "Fix the remaining test.",
       },
       {
         type: "subagent",
         startedSeq: 3,
         startedAt: "1970-01-01T00:00:03.000Z",
         childConversationId: "child-conversation-1",
+        childKind: "task",
         subagentKind: "agent",
         agentName: "release-checker",
         task: "Check the private release notes.",
@@ -1106,6 +1102,7 @@ describe("conversation report event projection", () => {
           inputMessageIds: ["private-input-id"],
           surface: "slack",
         }),
+        // Retired Turn router and model handoff rows are skipped.
         event(2, {
           type: "turn_routed",
           turnId: "turn-1",
@@ -1117,7 +1114,6 @@ describe("conversation report event projection", () => {
         }),
         event(3, {
           type: "compaction",
-          modelProfile: "standard",
           modelId: "private-model-id",
           details: {
             reason: "capacity",
@@ -1191,7 +1187,7 @@ describe("conversation report event projection", () => {
     });
 
     expect(projected.map(({ seq }) => seq)).toEqual([
-      1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 13,
+      1, 3, 4, 7, 8, 9, 10, 11, 13,
     ]);
     expect(projected.map(({ data }) => data)).toEqual([
       {
@@ -1201,17 +1197,7 @@ describe("conversation report event projection", () => {
         inputMessageIds: ["private-input-id"],
       },
       {
-        type: "turn_routed",
-        turnId: "turn-1",
-        modelProfile: "handoff",
-        modelId: "private-routed-model-id",
-        reasoningLevel: "high",
-        confidence: 0.93,
-        source: "router",
-      },
-      {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "private-model-id",
         details: {
           reason: "capacity",
@@ -1236,13 +1222,6 @@ describe("conversation report event projection", () => {
         ],
       },
       {
-        type: "handoff",
-        modelProfile: "fast",
-        modelId: "private-handoff-model-id",
-        reasoningLevel: "high",
-        triggeringToolCallId: "private-handoff-tool-call-id",
-      },
-      {
         type: "turn_lifecycle",
         turnId: "turn-1",
         state: "failed",
@@ -1265,6 +1244,7 @@ describe("conversation report event projection", () => {
         startedSeq: 9,
         startedAt: "1970-01-01T00:00:09.000Z",
         childConversationId: "child-conversation-1",
+        childKind: "task",
         subagentKind: "advisor",
         agentName: "reviewer",
         task: "Review the plan.",
@@ -1276,6 +1256,7 @@ describe("conversation report event projection", () => {
         startedSeq: 9,
         startedAt: "1970-01-01T00:00:09.000Z",
         childConversationId: "child-conversation-1",
+        childKind: "task",
         subagentKind: "advisor",
         agentName: "reviewer",
         task: "Review the plan.",
@@ -1287,6 +1268,7 @@ describe("conversation report event projection", () => {
         startedSeq: 11,
         startedAt: "1970-01-01T00:00:11.000Z",
         childConversationId: "legacy-child-conversation",
+        childKind: "task",
         subagentKind: "advisor",
         status: "running",
       },
@@ -1375,6 +1357,7 @@ describe("conversation report event projection", () => {
           startedSeq: 1,
           startedAt: "2026-07-15T12:00:00.000Z",
           childConversationId: "child-1",
+          childKind: "task",
           subagentKind: "advisor",
           status: "running",
         },
@@ -1388,6 +1371,7 @@ describe("conversation report event projection", () => {
         startedSeq: 1,
         startedAt: "2026-07-15T12:00:00.000Z",
         childConversationId: "child-1",
+        childKind: "task",
         subagentKind: "advisor",
         status: "completed",
       },
@@ -1483,6 +1467,7 @@ describe("conversation report event projection", () => {
       displayTitle: "Report",
       cumulativeDurationMs: 0,
       conversationId: "conversation-1",
+      kind: "root" as const,
       status: "completed" as const,
       startedAt: "2026-07-15T12:00:00.000Z",
       lastSeenAt: "2026-07-15T12:00:00.000Z",
@@ -1527,6 +1512,7 @@ describe("conversation report event projection", () => {
       displayTitle: "Report",
       cumulativeDurationMs: 0,
       conversationId: "conversation-privacy",
+      kind: "root" as const,
       status: "completed" as const,
       startedAt: "2026-07-15T12:00:00.000Z",
       lastSeenAt: "2026-07-15T12:00:00.000Z",

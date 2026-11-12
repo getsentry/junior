@@ -8,9 +8,11 @@ import {
   type PluginToolOutput,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
+import { PULL_REQUEST_CHECKS } from "../graphql-documents.js";
+import { githubApi, parseRepo, repoPath } from "../tool-support/github-api.js";
 
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
 const inputSchema = z
@@ -19,8 +21,42 @@ const inputSchema = z
     number: z.number().int().positive().describe("Pull request number."),
   })
   .strict();
+const checksSchema = z.object({
+  required: z
+    .enum(["passing", "failing", "pending", "not_reported"])
+    .describe(
+      "State of the required checks on the head commit. not_reported means no required check has reported yet; it does not mean that none are required.",
+    ),
+  failing: z.array(z.string()).describe("Required checks that failed."),
+  pending: z
+    .array(z.string())
+    .describe("Required checks that have not finished."),
+  passing: z.array(z.string()).describe("Required checks that passed."),
+  incomplete: z
+    .literal(true)
+    .optional()
+    .describe(
+      "Set when the head commit has more than 100 checks, so some required checks are not listed.",
+    ),
+  merge_state: z
+    .string()
+    .describe(
+      "GitHub mergeStateStatus, such as CLEAN, BLOCKED, BEHIND, DIRTY, UNSTABLE, DRAFT, or UNKNOWN. BLOCKED while the listed required checks pass means a required check that has not started, a review, or another rule blocks the merge.",
+    ),
+  review_decision: z
+    .string()
+    .nullable()
+    .describe(
+      "GitHub reviewDecision: APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, or null when no review is required.",
+    ),
+  auto_merge: z
+    .boolean()
+    .describe("true when auto-merge is on for the pull request."),
+});
+type Checks = z.output<typeof checksSchema>;
 const pullRequestSchema = z.object({
   base: z.string(),
+  checks: checksSchema,
   draft: z.boolean(),
   head: z.string(),
   head_sha: commitShaSchema,
@@ -41,21 +77,119 @@ const outputSchema = pluginToolOutputSchema.merge(
     target: z.literal("getPullRequest"),
   }),
 );
-function parseRepo(value: string) {
-  const parts = value.split("/").map((part) => part.trim());
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
+const checkContextSchema = z.union([
+  z.object({
+    __typename: z.literal("CheckRun"),
+    conclusion: z.string().nullable(),
+    isRequired: z.boolean(),
+    name: z.string(),
+    status: z.string(),
+  }),
+  z.object({
+    __typename: z.literal("StatusContext"),
+    context: z.string(),
+    isRequired: z.boolean(),
+    state: z.string(),
+  }),
+]);
+const checksResponseSchema = z.object({
+  data: z.object({
+    repository: z.object({
+      pullRequest: z.object({
+        autoMergeRequest: z.object({}).passthrough().nullable(),
+        commits: z.object({
+          nodes: z.array(
+            z.object({
+              commit: z.object({
+                statusCheckRollup: z
+                  .object({
+                    contexts: z.object({
+                      nodes: z.array(checkContextSchema),
+                      pageInfo: z.object({ hasNextPage: z.boolean() }),
+                    }),
+                  })
+                  .nullable(),
+              }),
+            }),
+          ),
+        }),
+        mergeStateStatus: z.string(),
+        reviewDecision: z.string().nullable(),
+      }),
+    }),
+  }),
+});
+type CheckContext = z.output<typeof checkContextSchema>;
+
+// A check run that completed with one of these conclusions does not block a
+// merge. Every other conclusion does.
+const PASSING_CONCLUSIONS = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
+
+function contextState(
+  context: CheckContext,
+): "passing" | "failing" | "pending" {
+  if (context.__typename === "CheckRun") {
+    if (context.status !== "COMPLETED") return "pending";
+    return PASSING_CONCLUSIONS.has(context.conclusion ?? "")
+      ? "passing"
+      : "failing";
   }
-  return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
+  if (context.state === "SUCCESS") return "passing";
+  return context.state === "PENDING" || context.state === "EXPECTED"
+    ? "pending"
+    : "failing";
 }
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
+
+/** Read the required checks and merge state of one pull request. */
+async function readPullRequestChecks(
+  egress: PluginEgress,
+  repo: { name: string; owner: string },
+  number: number,
+): Promise<Checks> {
+  const response = await githubApi(egress, {
+    operation: "github.pull.checks.get",
+    method: "POST",
+    path: "/graphql",
+    body: {
+      ...PULL_REQUEST_CHECKS,
+      variables: { name: repo.name, number, owner: repo.owner },
+    },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `GitHub pull request checks lookup failed with HTTP ${response.status}`,
+    );
   }
+  const pullRequest = checksResponseSchema.parse(response.body).data.repository
+    .pullRequest;
+  const rollup = pullRequest.commits.nodes[0]?.commit.statusCheckRollup;
+  const checks = { failing: [], pending: [], passing: [] } as Record<
+    "failing" | "pending" | "passing",
+    string[]
+  >;
+  for (const context of rollup?.contexts.nodes ?? []) {
+    if (!context.isRequired) continue;
+    checks[contextState(context)].push(
+      context.__typename === "CheckRun" ? context.name : context.context,
+    );
+  }
+  return {
+    required:
+      checks.failing.length > 0
+        ? "failing"
+        : checks.pending.length > 0
+          ? "pending"
+          : checks.passing.length > 0
+            ? "passing"
+            : "not_reported",
+    ...checks,
+    ...(rollup?.contexts.pageInfo.hasNextPage
+      ? { incomplete: true as const }
+      : undefined),
+    merge_state: pullRequest.mergeStateStatus,
+    review_decision: pullRequest.reviewDecision,
+    auto_merge: pullRequest.autoMergeRequest !== null,
+  };
 }
 
 /** Read one PR and expose its stable subscription identity when webhooks are enabled. */
@@ -71,25 +205,15 @@ export function createGitHubGetPullRequestTool(ctx: {
       readOnlyHint: true,
     },
     description:
-      "Get a GitHub pull request. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
+      "Get a GitHub pull request with its required checks and merge state. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
       const repo = parseRepo(input.repo);
-      const response = await ctx.egress.fetch({
-        provider: "github",
+      const response = await githubApi(ctx.egress, {
         operation: "github.pull.get",
-        request: new Request(
-          `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/pulls/${input.number}`,
-          {
-            headers: {
-              Accept: "application/vnd.github+json",
-              "X-GitHub-Api-Version": "2022-11-28",
-            },
-          },
-        ),
+        path: `${repoPath(repo)}/pulls/${input.number}`,
       });
-      const parsed = await readJson(response);
       if (!response.ok) {
         const message = `GitHub pull request lookup failed with HTTP ${response.status}`;
         // Missing PR/repo is model-repairable. Auth, rate limit, and 5xx stay system errors.
@@ -109,7 +233,12 @@ export function createGitHubGetPullRequestTool(ctx: {
           state: z.string(),
           title: z.string(),
         })
-        .parse(parsed);
+        .parse(response.body);
+      const checks = await readPullRequestChecks(
+        ctx.egress,
+        repo,
+        providerResult.number,
+      );
       const subscribable = gitHubPullRequestSubscribable({
         canSubscribe: ctx.events.canSubscribe,
         number: providerResult.number,
@@ -117,6 +246,7 @@ export function createGitHubGetPullRequestTool(ctx: {
       });
       const data: PullRequest = {
         base: providerResult.base.ref,
+        checks,
         draft: providerResult.draft,
         head: providerResult.head.ref,
         head_sha: providerResult.head.sha.toLowerCase(),
@@ -140,7 +270,7 @@ export function createGitHubGetPullRequestTool(ctx: {
               : data.state === "open" && data.draft
                 ? "draft"
                 : data.state,
-            ...githubObjectFacts("code_change", parsed),
+            ...githubObjectFacts("code_change", response.body),
           }),
         ],
         target: "getPullRequest",

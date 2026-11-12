@@ -2,6 +2,7 @@ import type { WebActor } from "@/chat/actor";
 import type { AgentSteeringMessage } from "@/chat/agent/types";
 import {
   buildSteeringPiMessage,
+  instructionActorFor,
   withoutSavedSteeringMessages,
 } from "@/chat/agent/prompt";
 import { readMessageAttachments } from "@/chat/attachments/input";
@@ -14,22 +15,25 @@ import type {
   ThreadConversationState,
 } from "@/chat/state/conversation";
 import { getTurnRecord } from "@/chat/task-execution/checkpoint";
+import { loadReviewItemInput } from "@/chat/review-items/prompt-input";
 import { webConversationMessage } from "@/chat/task-execution/mailbox-input";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 
-function steeringMessageFromWeb(
+async function steeringMessageFromWeb(
   message: InboundMessage,
   actor: WebActor,
-): AgentSteeringMessage {
+): Promise<AgentSteeringMessage> {
   const storedAttachments = readMessageAttachments(message.input.attachments);
+  // An answer steers in as its Review item tag.
+  const reviewItemInput = await loadReviewItemInput(
+    message.input.reviewItemChange,
+  );
   return {
-    actor: {
-      authorId: actor.userId,
-      ...(actor.fullName ? { authorName: actor.fullName } : undefined),
-    },
+    actor: instructionActorFor(actor),
+    ...(reviewItemInput ? { kind: "runtime" as const } : undefined),
     provenance: instructionProvenanceFor(actor),
-    text: message.input.text.trim(),
+    text: reviewItemInput ?? message.input.text.trim(),
     timestampMs: message.createdAtMs,
     ...(storedAttachments.length ? { storedAttachments } : undefined),
   };
@@ -84,7 +88,9 @@ export function createWebSteeringDrain(args: {
         (await getTurnRecord(context.conversationId, turnId))?.piMessages ?? [];
       const messages = withoutSavedSteeringMessages(
         saved,
-        joining.map((message) => steeringMessageFromWeb(message, actor)),
+        await Promise.all(
+          joining.map((message) => steeringMessageFromWeb(message, actor)),
+        ),
         buildSteeringPiMessage,
       );
       if (messages.length > 0) {

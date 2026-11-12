@@ -13,7 +13,7 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 | `github.actions.read`        | `gh run list`, `gh run view`, `gh run watch`, `gh workflow list`, `gh workflow view` |
 | `github.actions.write`       | `gh workflow run`, `gh run rerun`, `gh run cancel`                                   |
 | `github.contents.read`       | `github_cloneRepository`, `git fetch`                                                |
-| `github.contents.write`      | Git smart-HTTP `git push` only                                                       |
+| `github.contents.write`      | Git smart-HTTP `git push` to branches other than the default branch only             |
 | `github.workflows.write`     | Workflow-file changes on push                                                        |
 | `github.pull-requests.read`  | `gh pr view`, `gh pr list`, `gh pr diff`, `gh pr checks`                             |
 | `github.pull-requests.write` | GitHub tools and supported REST writes                                               |
@@ -42,10 +42,12 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 | Unstack                 | `gh stack unstack STACK_NUMBER`                                                                 |
 | Submit review           | `github_submitPullRequestReview`                                                                |
 | Set feedback status     | `github_updatePullRequestFeedback`                                                              |
+| PR comment / reply      | `github_commentOnPullRequest` (`in_reply_to` for a thread reply)                                |
 | Resolve review thread   | `github_resolvePullRequestReviewThread`                                                         |
 | Inline review comment   | `gh api repos/owner/repo/pulls/NUMBER/comments --method POST --input comment.json`              |
 | View PR / checks        | `gh pr view NUMBER --repo owner/repo` / `gh pr checks NUMBER --repo owner/repo`                 |
-| PR mergeability         | `gh pr view NUMBER --repo owner/repo --json mergeable,baseRefName`                              |
+| PR merge state          | `gh pr view NUMBER --repo owner/repo --json mergeStateStatus,reviewDecision,autoMergeRequest`   |
+| Branch merge rules      | `gh api repos/owner/repo/rules/branches/BRANCH`                                                 |
 | Diff PR                 | `gh pr diff NUMBER --repo owner/repo`                                                           |
 | List runs               | `gh run list -R owner/repo --workflow WORKFLOW`                                                 |
 | View / watch run        | `gh run view RUN_ID -R owner/repo` / `gh run watch RUN_ID -R owner/repo --exit-status`          |
@@ -59,5 +61,5 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 - Stacks: open each PR with `github_createPullRequest`, based on the branch below. When its base is the head of another open PR, the tool links it into a GitHub stack and returns `stack`; do not run `gh stack link` for it. No `stack` means GitHub could not stack it. Without local stack state, run `gh stack checkout STACK_NUMBER` first. Do not pass `--open`.
 - Junior does not support merges, forks, repository administration, REST content or Git database writes, direct PR update or review writes, auto-merge, or GraphQL mutations.
 - Reviews and inline comments use the App bot.
-- PR comments/labels/assignees use issue endpoints; load `github-issues` for those.
+- PR labels/assignees use issue endpoints; load `github-issues` for those.
 - Embed local images with `publishImage` first (public URL). Do not use private Slack file links.

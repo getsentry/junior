@@ -7,10 +7,14 @@ import {
   reply,
   webMessage,
 } from "@junior-evals/fixture/inputs";
-import { rejectNextModelRequest } from "@junior-evals/fixture/gateway";
+import {
+  rejectNextModelRequest,
+  rejectNextModelRequestAsTooLong,
+} from "@junior-evals/fixture/gateway";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import {
   completedMcpToolCalls,
+  completedToolCalls,
   toolOutput,
 } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
@@ -38,6 +42,13 @@ const DEPLOY_LOG = Array.from(
   (_, index) =>
     `2026-03-01T04:${String(index % 60).padStart(2, "0")}:00Z step ${String(index + 1).padStart(4, "0")} ok checksum ${String(index * 7919).padStart(12, "0")} region iad1`,
 ).join("\n");
+// 30,000 CJK characters. Junior estimates them by size at about 7,500
+// tokens, so the history is under the compaction limit at Turn start. The
+// provider counts about 57,000 tokens, so the measured usage of the next model
+// call is over it.
+const CJK_EXPORT = Array.from({ length: 30_000 }, (_, index) =>
+  String.fromCodePoint(0x4e00 + ((index * 7919) % 20_000)),
+).join("");
 
 describe("Lifecycle and Resilience", () => {
   test("when the first human message lands, store a conversation title", async ({
@@ -116,13 +127,15 @@ describe("Lifecycle and Resilience", () => {
     },
   );
 
-  test("when the final reply puts the context over the compaction limit, reply once without compacting", async ({
+  test("when the final response puts the context over the compaction limit, reply once without compacting", async ({
     agent,
   }) => {
-    // An 8,000 token context window sets the compaction limit at 7,200 tokens.
-    // The message history is small, so the turn starts without compaction.
-    // The measured usage of the reply also counts the system prompt and tools,
-    // which puts it over the limit. No model request follows the reply.
+    // An 8,000 token context window sets the compaction limit at 7,200 tokens
+    // and the input limit at 7,600 tokens. The system prompt and tools alone
+    // are over the input limit, so the context is over it at Turn start. A
+    // summary replaces only the message history and cannot get under it, so
+    // the Turn sends the request without one. The measured usage of the reply
+    // is over the limit too. No model request follows the reply.
     const { run } = await agent({ limits: { contextWindowTokens: 8_000 } });
     const conversation = await run(
       slackMention("In one short sentence, what is the capital of France?"),
@@ -130,8 +143,66 @@ describe("Lifecycle and Resilience", () => {
 
     expect(conversation.replies).toHaveLength(1);
     expect(conversation.compactions).toBe(0);
+    expect(conversation.statuses).not.toContainEqual(
+      expect.stringMatching(/compact/i),
+    );
     expect(conversation.turns.map((turn) => turn.status)).toEqual([
       "succeeded",
+    ]);
+  });
+
+  test("when a noReply call puts the context over the compaction limit, end the Turn without compacting", async ({
+    agent,
+  }) => {
+    // Pi also prepares a next step after a batch that ends the run. A
+    // compaction there drops the noReply call, and a retry calls the model
+    // again.
+    const { run } = await agent({
+      limits: { contextWindowTokens: SMALL_CONTEXT_WINDOW_TOKENS },
+    });
+    const conversation = await run(
+      slackMention(
+        "That was the whole export. Nothing for you to do with it, so stay silent.",
+      ),
+      {
+        history: [
+          slackMention(`Glossary export for the thread record:\n${CJK_EXPORT}`),
+          reply("Noted."),
+        ],
+      },
+    );
+
+    expect(completedToolCalls("noReply", conversation)).toHaveLength(1);
+    expect(conversation.replies).toHaveLength(0);
+    expect(conversation.compactions).toBe(0);
+    expect(conversation.turns.map((turn) => turn.status)).toEqual(["no_reply"]);
+  });
+
+  test("when the provider rejects a context over the input limit, skip the summary and post a safe failure reply", async ({
+    agent,
+  }) => {
+    // The same 8,000 token context window: the context is over the input
+    // limit at Turn start, so the Turn sends the request without a summary.
+    // Injected fault: the provider rejects the request as too long.
+    rejectNextModelRequestAsTooLong();
+    const { run } = await agent({ limits: { contextWindowTokens: 8_000 } });
+    const conversation = await run(
+      slackMention("In one short sentence, what is the capital of France?"),
+    );
+
+    expect(conversation.compactions).toBe(0);
+    expect(conversation.statuses).not.toContainEqual(
+      expect.stringMatching(/compact/i),
+    );
+    expect(conversation.turns.map((turn) => turn.status)).toEqual(["failed"]);
+    // The fixed copy of a rejected request. It does not yet say that the
+    // conversation is too large for the model.
+    expect(
+      conversation.replies.map((reply) =>
+        reply.text.replace(/event_id=[0-9a-f]{32}/, "event_id=<id>"),
+      ),
+    ).toEqual([
+      "The model provider rejected this request as invalid. Please revise the request or ask an administrator to check the model configuration. Reference: `event_id=<id>`.",
     ]);
   });
 
@@ -151,8 +222,7 @@ describe("Lifecycle and Resilience", () => {
     const { run } = await agent({
       plugins: defineJuniorPlugins([evalOperation]),
       limits: {
-        turnTimeoutMs:
-          process.env.VITEST_EVALS_REPLAY_MODE === "replay" ? 10_000 : 30_000,
+        turnTimeoutMs: process.env.ROACH_MODE === "replay" ? 10_000 : 30_000,
       },
     });
     let sentWhilePaused = false;
@@ -175,7 +245,7 @@ describe("Lifecycle and Resilience", () => {
       RubricJudge,
       rubric({
         pass: [
-          "The final reply reports that the remote release status is shipped.",
+          "The final response reports that the remote release status is shipped.",
           "The assistant continues after the interrupted push and bases the answer on the observed remote state.",
         ],
         fail: [
@@ -219,8 +289,7 @@ describe("Lifecycle and Resilience", () => {
     const { run } = await agent({
       plugins: defineJuniorPlugins([evalOperation]),
       limits: {
-        turnTimeoutMs:
-          process.env.VITEST_EVALS_REPLAY_MODE === "replay" ? 10_000 : 30_000,
+        turnTimeoutMs: process.env.ROACH_MODE === "replay" ? 10_000 : 30_000,
       },
     });
     let paused = false;
@@ -249,7 +318,7 @@ describe("Lifecycle and Resilience", () => {
     // continued run ignores the stop, succeeds, and posts the release status.
     expect(conversation.turns.map((turn) => turn.status)).toEqual(["no_reply"]);
     expect(conversation.replies.map((reply) => reply.text)).toEqual([
-      expect.stringContaining("stay out of this thread"),
+      "Stopped.",
     ]);
     expect(
       completedMcpToolCalls(

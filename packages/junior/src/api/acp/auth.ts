@@ -7,7 +7,7 @@ import {
 } from "node:crypto";
 import * as acp from "@agentclientprotocol/sdk";
 import { userSchema, type User } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { resolvePublicOrigin } from "@/api/public-origin";
 import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
 import type { AcpState } from "./state";

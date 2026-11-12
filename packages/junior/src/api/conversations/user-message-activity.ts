@@ -1,6 +1,12 @@
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorConversationEvents, juniorIdentities } from "@/db/schema";
+import { juniorConversations } from "@/db/schema";
+import { userMessageQueries } from "@/chat/conversations/sql/last-message";
+
+function latestIso(times: Array<Date | null>): string | undefined {
+  const ms = times.flatMap((at) => (at ? [at.getTime()] : []));
+  return ms.length > 0 ? new Date(Math.max(...ms)).toISOString() : undefined;
+}
 
 /** Read the latest true user message time for each selected conversation. */
 export async function readLastUserMessageAtByConversation(
@@ -9,43 +15,24 @@ export async function readLastUserMessageAtByConversation(
 ): Promise<Map<string, string>> {
   if (conversationIds.length === 0) return new Map();
 
-  const authority = sql<string>`${juniorConversationEvents.payload}->'provenance'->>'authority'`;
-  const actorPlatform = sql<string>`${juniorConversationEvents.payload}->'provenance'->'actor'->>'platform'`;
-  const role = sql<string>`${juniorConversationEvents.payload}->>'role'`;
+  const queries = userMessageQueries(db);
+  const instruction = queries.instruction.as("latest_instruction");
+  const message = queries.message.as("latest_user_message");
   const rows = await db
     .select({
-      conversationId: juniorConversationEvents.conversationId,
-      lastUserMessageAt: sql<Date>`max(${juniorConversationEvents.createdAt})`,
+      conversationId: juniorConversations.conversationId,
+      instructionAt: instruction.createdAt,
+      messageAt: message.createdAt,
     })
-    .from(juniorConversationEvents)
-    .leftJoin(
-      juniorIdentities,
-      eq(juniorIdentities.id, juniorConversationEvents.actorIdentityId),
-    )
-    .where(
-      and(
-        inArray(juniorConversationEvents.conversationId, conversationIds),
-        or(
-          and(
-            eq(juniorConversationEvents.type, "user_message"),
-            eq(authority, "instruction"),
-            sql`${actorPlatform} in ('slack', 'local', 'web')`,
-          ),
-          and(
-            eq(juniorConversationEvents.type, "message"),
-            eq(role, "user"),
-            // System Messages, such as events, carry the system Identity.
-            eq(juniorIdentities.kind, "user"),
-          ),
-        ),
-      ),
-    )
-    .groupBy(juniorConversationEvents.conversationId);
+    .from(juniorConversations)
+    .leftJoinLateral(instruction, sql`true`)
+    .leftJoinLateral(message, sql`true`)
+    .where(inArray(juniorConversations.conversationId, conversationIds));
 
-  return new Map(
-    rows.map((row) => [
-      row.conversationId,
-      new Date(row.lastUserMessageAt).toISOString(),
-    ]),
-  );
+  const result = new Map<string, string>();
+  for (const { conversationId, instructionAt, messageAt } of rows) {
+    const at = latestIso([instructionAt, messageAt]);
+    if (at) result.set(conversationId, at);
+  }
+  return result;
 }

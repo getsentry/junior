@@ -1,16 +1,19 @@
 /**
- * Own the MCP OAuth scopes. Each scope unlocks a fixed set of tools. No
- * scope lets a client send a message or start a Turn.
+ * Own the MCP OAuth scopes. Each scope unlocks a fixed set of tools. Only
+ * `conversations:write` lets a client send a message, which starts agent
+ * work as the user. It is a separate scope so a grant without it can never
+ * start a Turn.
  *
  * A grant stores its scopes as one space-separated string (RFC 6749 section
  * 3.3), so grants from before the scope split still parse.
  */
-import { z } from "zod";
+import * as z from "zod";
 
 /** Every scope, in the order that the consent page shows it. */
 export const MCP_SCOPES = [
   "conversations:read",
   "conversations:manage",
+  "conversations:write",
   "review_items:read",
   "automations:read",
 ] as const;
@@ -21,7 +24,10 @@ export type McpScope = (typeof MCP_SCOPES)[number];
 export const MCP_SCOPE_DESCRIPTIONS: Record<McpScope, string> = {
   "conversations:read":
     "List and read the conversations that you started or take part in",
-  "conversations:manage": "Archive your conversations and stop a running Turn",
+  "conversations:manage":
+    "Archive, pin, and mark your conversations read, stop a running Turn, and cancel queued messages",
+  "conversations:write":
+    "Start conversations and send messages as you. Junior runs agent work for each message",
   "review_items:read": "List and read your review items",
   "automations:read": "List and read the automations that you can see",
 };

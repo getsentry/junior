@@ -2,13 +2,15 @@
 
 ## Summary
 
-Every root Conversation has one Owner. Every new user Message has one author
-Identity. Junior resolves each Identity one time, at ingress, and stores its
-id. Later code reads the stored id. It does not guess the Identity again from
-platform strings, the Source, the Location, or id patterns.
+Every root Conversation has one root Actor. Every new user Message has one
+author Identity. Junior resolves each Identity one time, at ingress, and stores
+its id. Later code reads the stored id. It does not guess the Identity again
+from platform strings, the Source, the Location, or id patterns.
 
-The Owner is the existing `junior_conversations.actor_identity_id` column.
-Code and docs call it the Owner.
+The root Actor is the existing `junior_conversations.actor_identity_id` column.
+Code and docs call it the root Actor. It is attribution, such as spend. A
+Conversation has no owner: access, feeds, and defaults use Participants
+(`TERMINOLOGY.md`).
 
 Junior migrates an old data shape only when special code exists because of
 it, and only with a rule that a read-only dry run proves. Then Junior deletes
@@ -28,36 +30,36 @@ gaps.
   a human who replies can replace the system Identity of an automation
   Conversation (#2431). #2436 fixed one case in app code. #2482 makes the
   write keep the first value.
-- The Conversation Identity column does four jobs: the root that the
-  dashboard shows, private access, spend, and the personal feed. Each job
-  must read the root Owner. Today a child row has its own copy, so child
-  spend can go to the child's own Identity.
+- The Conversation Identity column does four jobs: the root that the dashboard
+  shows, private access, spend, and the personal feed. Each job must read the
+  root Actor. Today a child row has its own copy, so child spend can go to the
+  child's own Identity.
 - No inbound event Message has an author Identity.
 - Old rows have data shapes that only special code can read. That code stays
   until the data migrates.
 
 ## Scope
 
-- One Owner per root Conversation, in the existing Conversation Identity
+- One root Actor per root Conversation, in the existing Conversation Identity
   column. Junior sets it one time.
 - One system Identity.
 - A required author Identity on each new user Message.
 - The Identity of web users, bots, and event authors.
-- Every reader of the Owner uses the root Owner.
+- Every reader of the root Actor reads the root's value. Access and feeds do not
+  read it.
 - One data migration for the old data shapes that have special code.
-- A separate repair of old Owner damage (#2431), only for rules that a dry
+- A separate repair of old root Actor damage (#2431), only for rules that a dry
   run proves.
 
 ## Non-Goals
 
-- Add a new Owner column, or rename the existing column.
+- Add a new root Actor column, or rename the existing column.
 - Key user credentials by User. Connections stay keyed per platform. This is a
   separate change.
 - Change `SystemActor` names or the `Actor` schema.
 - Name the human who uses the local CLI. The CLI keeps one shared user id.
-- Change how Guardian labels authors, or which credentials a Turn uses.
-  #2181 and #2260 own those. This plan only widens which event authors
-  #2260 trusts.
+- Change how Guardian labels authors, or which credentials a Turn uses. #2181
+  and #2260 own those. This plan only widens which event authors #2260 trusts.
 - Change visibility. #2382 owns it.
 - Migrate legacy `junior/<email>` web Identities.
 - Migrate Redis or Turn checkpoint data. Junior waits for it to expire.
@@ -68,8 +70,14 @@ gaps.
 
 These are David Cramer's answers in the Slack thread for #2439.
 
-- The Owner is the person who started the Conversation, or the system for an
-  automation. Owners never transfer.
+- The root Actor is the person who started the Conversation, or the system for
+  an automation. It never changes.
+- There is no Conversation owner: "There are participants which are people who
+  have engaged directly with junior, but there is not an owner of a
+  conversation." Each Turn has one Actor Identity. Participants are the sum of
+  the Actors in a Conversation, and they are active or inactive through the
+  subscription. "things that are focused on the owner should likely be focused
+  on active participants instead."
 - There should be no unknown actors on any Message from now on.
 - The local CLI user can be the system Identity.
 - A web user is the User they sign in with, through the normal User and
@@ -77,7 +85,8 @@ These are David Cramer's answers in the Slack thread for #2439.
 - The schema should be normalized.
 - Assistant output is just an event. It needs no author Identity.
 - Web users always have an Identity. The mock viewer mocks one.
-- Child spend rolls up to the root Owner.
+- Spend belongs to the Actor of each Turn: "spend should be coupled to the
+  turn, not the conversation".
 - Slack bots: "they have an identity, but not a user (does that make
   sense?) its still an actor"
 - For an inbound event, Junior finds the correct Identity. It verifies that
@@ -125,7 +134,7 @@ His answers to the 14 earlier proposals:
 | 4   | Event author upserts never change `kind` or `user_id`       | "correct"                                                            |
 | 5   | An event changes only the Message author                    | "yes but an event _is_ a message so"                                 |
 | 6   | `trustedAuthors` logins compared without case               | "yes"                                                                |
-| 7   | Owner repair on old rows                                    | "sure defer to you but needs to be correct"                          |
+| 7   | Root Actor repair on old rows                               | "sure defer to you but needs to be correct"                          |
 | 8   | Locations group by User                                     | "yep"                                                                |
 | 9   | `kind` and `provider` in the dashboard author shape         | "yep. and users have many identities associated to them"             |
 | 10  | System Identity key                                         | "thats meaningless to me, make sure its good arch and ill trust you" |
@@ -134,14 +143,14 @@ His answers to the 14 earlier proposals:
 | 13  | "creator" for the Automation's "owner" in `TERMINOLOGY.md`  | "sure, we dont really have "owners" on automations anyways"          |
 | 14  | #2260's instruction record keeps the author Identity id     | "ok"                                                                 |
 
-His answers to the three questions on old data and the Owner column. The
+His answers to the three questions on old data and the root Actor column. The
 topic column gives the plan's proposal. The quote is his exact reply.
 
-| #   | Topic                                                             | His words                                                                                                              |
-| --- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| 1   | Old event Messages get the system Identity as their author        | "(1) yes"                                                                                                              |
-| 2   | Old user Messages whose author cannot be proven                   | "(2), why not just make them system? if they dont have an author just make them without an author? should be uncommon" |
-| 3   | Keep `junior_conversations.actor_identity_id` as the Owner column | "(3) i guess? usually theres just like one actor.. everything else is metadata"                                        |
+| #   | Topic                                                                  | His words                                                                                                              |
+| --- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 1   | Old event Messages get the system Identity as their author             | "(1) yes"                                                                                                              |
+| 2   | Old user Messages whose author cannot be proven                        | "(2), why not just make them system? if they dont have an author just make them without an author? should be uncommon" |
+| 3   | Keep `junior_conversations.actor_identity_id` as the root Actor column | "(3) i guess? usually theres just like one actor.. everything else is metadata"                                        |
 
 ### Delegated Decisions
 
@@ -152,12 +161,12 @@ Each one is a current proposal. The step that builds it confirms it.
   bypass writes, so it can never match a production User. The dashboard
   refuses the bypass on a production deploy. _Why:_ the bypass has no Google
   sign-in, but its Messages still need an author. Confirm in step 4.
-- **Owner repair (7).** Junior repairs an old root only when a dry run proves
-  the rule. Every other row keeps its current Owner. `design.md`, Owner
-  Repair, gives the rules. Confirm in step 7.
-- **System Identity key (10).** One system Identity, with a key that no
-  plugin or OAuth link can write. #2443 (step 1) built the one entry point.
-  #2482 (step 2) gives the system Identity the fixed id `system`.
+- **Root Actor repair (7).** Junior repairs an old root only when a dry run
+  proves the rule. Every other row keeps its current root Actor. `design.md`,
+  Root Actor Repair, gives the rules. Confirm in step 7.
+- **System Identity key (10).** One system Identity, with a key that no plugin
+  or OAuth link can write. #2443 (step 1) built the one entry point. #2482
+  (step 2) gives the system Identity the fixed id `system`.
 - **Mock viewer key (12).** The mock viewer gets an Identity in memory only.
   Mock reporting writes no rows today, so it cannot collide with a real row.
   Confirm in step 4.
@@ -167,16 +176,18 @@ Each one is a current proposal. The step that builds it confirms it.
 These follow from the answers above. They are the target. Where a bullet says
 "plan reading", it is how the plan reads David's words.
 
-- **Owners.** Slack, web, and fork Conversations have a human Owner.
-  Scheduled automations, event automations, plugin dispatch, and the local
-  CLI have the system Identity as Owner. Plugin dispatch runs each dispatch in
+- **Root Actors.** Slack, web, and fork Conversations have a human root Actor.
+  Scheduled automations, event automations, plugin dispatch, and the local CLI
+  have the system Identity as root Actor. Plugin dispatch runs each dispatch in
   its own Conversation, so it is system work.
-- Junior sets the Owner one time, at insert. A reply never changes it.
-- A child Conversation stores no Owner. It reads the Owner of its root.
-- **The Owner column.** The existing `junior_conversations.actor_identity_id`
-  column is the Owner (answer 3 on old data). Code and docs call it the
-  Owner. There is no new Owner column and no rename. #2482 makes the
-  Conversation write keep the first value, which is the Owner rule.
+- Junior sets the root Actor one time, at insert. A reply never changes it.
+- A child Conversation stores no root Actor. It reads the root Actor of its
+  root.
+- **The root Actor column.** The existing
+  `junior_conversations.actor_identity_id` column is the root Actor (answer 3 on
+  old data). Code and docs call it the root Actor. There is no new root Actor
+  column and no rename. #2482 makes the Conversation write keep the first value,
+  which is the root Actor rule.
 - **One system Identity.** "Which system" is provenance: the Source and the
   Automation or dispatch record (#2211). `SystemActor.name` stays as runtime
   provenance.
@@ -192,10 +203,10 @@ These follow from the answers above. They are the target. Where a bullet says
   the `Actor`.
 - **No unknown authors.** Every new user Message has an author Identity.
   Assistant output has none.
-- **Normalized schema.** The Owner is the existing Conversation Identity
-  column. The two unused Conversation Identity columns
-  (`creator_identity_id`, `credential_subject_identity_id`) and the stored
-  Actor JSON (`actor_json`) go away.
+- **Normalized schema.** The root Actor is the existing Conversation Identity
+  column. The two unused Conversation Identity columns (`creator_identity_id`,
+  `credential_subject_identity_id`) and the stored Actor JSON (`actor_json`) go
+  away.
 - **Legacy data rule.** Junior migrates an old data shape only when special
   code exists because of it, and only with a rule that a read-only dry run
   proves. Then Junior deletes that code. `design.md`, Legacy Data, lists the
@@ -214,14 +225,14 @@ These follow from the answers above. They are the target. Where a bullet says
 - **Redis and Turn checkpoint data.** No migration is needed. Junior waits
   for the data to expire. Redis work state expires after 7 days. The plan
   waits 14 days.
-- **Owner repair is separate from the migration.** It fixes wrong data, not
-  a code path. It runs only for the rules that the dry run proves
-  (`design.md`, Owner Repair).
+- **Root Actor repair is separate from the migration.** It fixes wrong data, not
+  a code path. It runs only for the rules that the dry run proves (`design.md`,
+  Root Actor Repair).
 - **Participants are users.** Only Identities of kind `user` with a User get
   participant rows. The dashboard participant list uses the same rule.
 - **An event is a user Message.** Its author is the Identity of the person or
-  bot who wrote the content, or the system Identity for a system event
-  (answer 5). An event never changes the Owner or the Turn Actor.
+  bot who wrote the content, or the system Identity for a system event (answer
+  5). An event never changes the root Actor or the Turn Actor.
 - **The event author is never the Turn Actor.** David agreed. Event Turns
   stay system-acted, as on `main` today. A Turn's credentials come only from
   the Watch or the Automation's own grant, never from the event author.
@@ -273,8 +284,8 @@ These follow from the answers above. They are the target. Where a bullet says
   `trustedAuthors`. Core gets only a provider-neutral "trusted" result. Core
   does not read GitHub logins (`policies/provider-boundaries.md`).
 - **Locations group by User** (answer 8).
-- **Automation creator.** An Automation has a creator, not an owner
-  (answer 13). "Owner" means only the Owner of a Conversation.
+- **Automation creator.** An Automation has a creator, not an owner (answer 13).
+  A Conversation has no owner either.
 
 ## Open Questions
 
@@ -288,16 +299,16 @@ Resolved:
   adds no separate path to deliver or hide them.
 - **Cursor Bugbot on `trustedAuthors`.** David: "yeah Bugbot and sentry will
   end up on trusted actors" (Plan Decisions).
-- **Old data and the Owner column.** David answered the three questions in
+- **Old data and the root Actor column.** David answered the three questions in
   the second table above (Plan Decisions).
 
 ## Behavior Changes
 
-- Automation-run spend leaves personal spend. A system Owner has no User.
+- Automation-run spend leaves personal spend. A system root Actor has no User.
 - A human who replies to an automation Conversation gets access as a
-  participant, not as Owner.
-- Child spend rolls up to the root Owner. Today it can go to the child's own
-  Identity.
+  participant, not as root Actor.
+- People counts and spend belong to the Actor of each Turn, not to the root
+  Actor.
 - A web user's new Messages and Conversations use their sign-in Identity.
   People still groups them with the same User as the old `junior/<email>`
   rows.
@@ -312,12 +323,12 @@ Resolved:
 
 ## Risks
 
-- The Owner repair changes access, the feed, People, and spend. It runs only
-  for the rules that the dry run proves, and only after David's OK. Humans
-  who lose the root keep access as participants.
-- Until #2482 runs on every worker, a human Turn can still replace the Owner
-  of a system root. So damage can keep happening until then. The repair runs
-  after that point.
+- The Root Actor repair changes People and spend. It runs only for the rules
+  that the dry run proves, and only after David's OK. Humans who lose the root
+  keep access as participants.
+- Until #2482 runs on every worker, a human Turn can still replace the root
+  Actor of a system root. So damage can keep happening until then. The repair
+  runs after that point.
 - Old workers keep running during a deploy. They can reject new fields,
   write rows without new values, and select old columns. `tasks.md`, Release
   Rules, gives the rules.

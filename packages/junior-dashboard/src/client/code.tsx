@@ -1,34 +1,12 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { BundledLanguage } from "shiki/bundle/web";
-import {
-  createBundledHighlighter,
-  createSingletonShorthands,
-  guessEmbeddedLanguages,
-} from "shiki/core";
 
 import { cn } from "./styles";
-import { dashboardCodeLanguages } from "./code-languages";
 import {
   buildSearchDecorations,
   useTranscriptSearch,
 } from "./conversations/transcriptSearch";
-
-// Split themes, language grammars, and the engine into on-demand chunks.
-const { codeToHtml } = createSingletonShorthands(
-  createBundledHighlighter({
-    langs: dashboardCodeLanguages,
-    themes: {
-      "github-dark": () => import("shiki/themes/github-dark.mjs"),
-      "github-light": () => import("shiki/themes/github-light.mjs"),
-    },
-    engine: async () => {
-      const { createOnigurumaEngine } = await import("shiki/engine/oniguruma");
-      return createOnigurumaEngine(import("shiki/wasm"));
-    },
-  }),
-  { guessEmbeddedLanguages },
-);
 
 declare const shikiHtmlBrand: unique symbol;
 
@@ -51,6 +29,8 @@ export function HighlightedCode(props: {
       const decorations = normalizedQuery
         ? buildSearchDecorations(props.code, normalizedQuery)
         : [];
+      // Shiki loads on the first code block, not with the dashboard entry.
+      const { codeToHtml } = await import("./code-highlighter");
       return (await codeToHtml(props.code, {
         decorations: decorations.length ? decorations : undefined,
         lang: props.language,
@@ -89,7 +69,10 @@ export function HighlightedCodeFallback(props: {
   );
 }
 
-/** Render trusted Shiki HTML with transcript-safe responsive wrapping. */
+/**
+ * Render trusted Shiki HTML with transcript-safe responsive wrapping. A blank
+ * line keeps its height, so blank lines in a file do not collapse.
+ */
 export function HighlightedCodeHtml(props: {
   html: ShikiHtml;
   variant?: "code" | "prose";
@@ -97,7 +80,7 @@ export function HighlightedCodeHtml(props: {
   return (
     <div
       className={cn(
-        "min-w-0 overflow-hidden [&_.line]:block [&_.line]:max-w-full [&_.line]:whitespace-pre-wrap [&_.line]:break-words [&_.line]:[overflow-wrap:anywhere] [&_code]:block [&_code]:max-w-full [&_code]:whitespace-normal [&_code]:break-words [&_code]:[overflow-wrap:anywhere] [&_pre]:!m-0 [&_pre]:!max-w-full [&_pre]:!overflow-hidden [&_pre]:!bg-transparent [&_pre]:!p-0 [&_pre]:whitespace-normal [&_pre]:break-words [&_pre]:[overflow-wrap:anywhere] [&_span]:whitespace-pre-wrap [&_span]:break-words [&_span]:[overflow-wrap:anywhere] [&_mark.search-match]:bg-amber-400/20 [&_mark.search-match]:rounded-[2px] [&_mark.search-match]:text-inherit [&_mark.search-match]:not-italic light:[&_pre]:!text-(--shiki-light) light:[&_span]:!text-(--shiki-light)",
+        "min-w-0 overflow-hidden [&_.line]:block [&_.line]:min-h-[1lh] [&_.line]:max-w-full [&_.line]:whitespace-pre-wrap [&_.line]:break-words [&_.line]:[overflow-wrap:anywhere] [&_code]:block [&_code]:max-w-full [&_code]:whitespace-normal [&_code]:break-words [&_code]:[overflow-wrap:anywhere] [&_pre]:!m-0 [&_pre]:!max-w-full [&_pre]:!overflow-hidden [&_pre]:!bg-transparent [&_pre]:!p-0 [&_pre]:whitespace-normal [&_pre]:break-words [&_pre]:[overflow-wrap:anywhere] [&_span]:whitespace-pre-wrap [&_span]:break-words [&_span]:[overflow-wrap:anywhere] [&_mark.search-match]:bg-amber-400/20 [&_mark.search-match]:rounded-[2px] [&_mark.search-match]:text-inherit [&_mark.search-match]:not-italic light:[&_pre]:!text-(--shiki-light) light:[&_span]:!text-(--shiki-light)",
         props.variant === "prose"
           ? "[&_pre]:font-display [&_pre]:text-base [&_pre]:leading-7"
           : "[&_pre]:font-mono [&_pre]:text-sm [&_pre]:leading-relaxed",

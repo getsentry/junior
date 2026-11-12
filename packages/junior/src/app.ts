@@ -12,14 +12,12 @@ import {
   resetRuntimeConfig,
   restoreRuntimeConfig as restoreChatRuntimeConfig,
   setBotModelConfig,
-  setProfiles,
   setRuntimeLimits,
   snapshotRuntimeConfig,
   type BotModelConfig,
   type RuntimeLimits,
   setSlackReactionConfig,
 } from "@/chat/config";
-import type { ModelProfileInput } from "@/chat/model-profile";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
 import { executeAgentRun } from "@/chat/agent";
@@ -45,6 +43,7 @@ import {
   validatePlugins,
 } from "@/chat/plugins/agent-hooks";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { readObjectLinkTypes } from "@/api/objects/resolve";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import {
   validatePluginEgressCredentialHooks,
@@ -63,6 +62,7 @@ import {
 import { GET as healthGET } from "@/handlers/health";
 import { GET as heartbeatGET } from "@/handlers/heartbeat";
 import { GET as retentionGET } from "@/handlers/retention";
+import { GET as autoArchiveGET } from "@/handlers/auto-archive";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
 import { handleSandboxEgressRoute } from "@/handlers/sandbox-egress-route";
@@ -72,6 +72,8 @@ import {
 } from "@/handlers/sandbox-egress-signals";
 import { POST as slackWebhookPOST } from "@/handlers/slack-webhook";
 import {
+  JUNIOR_AUTO_ARCHIVE_ROUTE,
+  JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
@@ -96,6 +98,11 @@ import {
   type PluginTaskQueueMessage,
 } from "@/chat/plugins/task-queue";
 import { processPluginTask } from "@/chat/plugins/task-runner";
+import {
+  cacheWarmupQueueConsumer,
+  createVercelCacheWarmupCallback,
+  registerVercelCacheWarmupDevConsumer,
+} from "@/chat/cache-warming/queue";
 import {
   createVercelWorkspaceSnapshotJobCallback,
   registerVercelWorkspaceSnapshotJobDevConsumer,
@@ -170,7 +177,6 @@ export type {
   JuniorPluginSet,
   JuniorPluginSetOptions,
 } from "./plugins";
-export type { ModelProfileInput } from "@/chat/model-profile";
 export type { JuniorDashboardOptions } from "./dashboard-routes";
 export interface JuniorAppOptions extends BotModelConfig {
   /**
@@ -194,14 +200,6 @@ export interface JuniorAppOptions extends BotModelConfig {
    * you are deliberately dogfooding a pre-stable surface.
    */
   experimental?: ExperimentalFeaturesConfig;
-  /** Profile used for new conversations. Configure with `profiles`. */
-  defaultProfile?: string;
-  /**
-   * Named profiles available to the router and `handoff` tool. Configure with
-   * `defaultProfile`. Each value may be a model id string or an object with
-   * `modelId` and optional `description` and `reasoningLevel` settings.
-   */
-  profiles?: Readonly<Record<string, ModelProfileInput>>;
   /** Turn and conversation limits. Unset limits keep their defaults. */
   limits?: RuntimeLimits;
   /** Slack-specific overrides applied after env parsing. */
@@ -552,11 +550,8 @@ export async function createApp(
     setConfigDefaults(options?.configDefaults);
     warnUnregisteredConfigDefaults(options?.configDefaults);
     // Start from the defaults so this app cannot inherit an earlier app's
-    // models, profiles, limits, or Slack settings.
+    // models, limits, or Slack settings.
     resetRuntimeConfig(virtualConfig?.functionMaxDurationSeconds);
-    if (options?.profiles || options?.defaultProfile) {
-      setProfiles(options.profiles, options.defaultProfile);
-    }
     setBotModelConfig(options ?? {});
     setRuntimeLimits(options?.limits);
     setSlackReactionConfig(options?.slack ?? {});
@@ -589,6 +584,8 @@ export async function createApp(
     });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
+      // Fail at load when two link types claim the same URLs.
+      readObjectLinkTypes(plugins);
     }
   } catch (error) {
     restoreRuntimeConfig();
@@ -746,7 +743,7 @@ export async function createApp(
     return c.text("Internal Server Error", 500);
   });
 
-  app.use("*", async (c, next) => {
+  app.use("*", async function sandboxEgress(c, next) {
     return await handleSandboxEgressRoute(
       c.req.raw,
       sandboxEgressTracePropagationDomains,
@@ -763,6 +760,7 @@ export async function createApp(
       handleMcpRequest ??= createMcpHttpHandler({
         allowedDomains,
         baseURL: resolvePublicBaseURL(dashboard),
+        attachmentStorage,
         queue: conversationWorkQueue,
         state: getMcpState(),
       });
@@ -832,6 +830,7 @@ export async function createApp(
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();
     registerVercelWorkspaceSnapshotJobDevConsumer();
+    registerVercelCacheWarmupDevConsumer();
     registerVercelBackgroundCompactionDevConsumer();
   }
   app.post("/api/internal/agent/continue", (c) => {
@@ -851,6 +850,13 @@ export async function createApp(
     workspaceSnapshotJobPOST ??= createVercelWorkspaceSnapshotJobCallback();
     return workspaceSnapshotJobPOST(c.req.raw);
   });
+  let cacheWarmupPOST:
+    | ReturnType<typeof createVercelCacheWarmupCallback>
+    | undefined;
+  app.post(JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE, (c) => {
+    cacheWarmupPOST ??= createVercelCacheWarmupCallback();
+    return cacheWarmupPOST(c.req.raw);
+  });
   let backgroundCompactionPOST:
     | ReturnType<typeof createVercelBackgroundCompactionCallback>
     | undefined;
@@ -860,11 +866,18 @@ export async function createApp(
   });
 
   app.get("/api/internal/heartbeat", (c) => {
-    return heartbeatGET(c.req.raw, waitUntil, { conversationWorkQueue });
+    return heartbeatGET(c.req.raw, waitUntil, {
+      conversationWorkQueue,
+      events,
+    });
   });
 
   app.get("/api/internal/retention", (c) => {
     return retentionGET(c.req.raw);
+  });
+
+  app.get(JUNIOR_AUTO_ARCHIVE_ROUTE, (c) => {
+    return autoArchiveGET(c.req.raw);
   });
 
   app.post("/api/webhooks/slack", (c) => {
@@ -884,6 +897,7 @@ export async function createApp(
           conversationWorkQueueConsumer(getConversationWorkOptions()),
           pluginTaskQueueConsumer(),
           workspaceSnapshotJobQueueConsumer(),
+          cacheWarmupQueueConsumer(),
           backgroundCompactionQueueConsumer(),
         ],
         backgroundWork,

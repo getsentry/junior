@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { createContext, useContext } from "react";
-import { z } from "zod";
+import * as z from "zod";
 
 import { fetchDashboardJson } from "../http";
+import { conversationSideReadQueryKey } from "./conversationSideReads";
 
 const conversationMemoryListSchema = z
   .object({
@@ -10,6 +11,7 @@ const conversationMemoryListSchema = z
       z
         .object({
           memoryIds: z.array(z.string().min(1)).min(1),
+          seq: z.number().int().min(0),
           source: z.enum(["captured", "recalled"]),
           turnId: z.string().min(1).optional(),
         })
@@ -45,7 +47,7 @@ export function useConversationMemories(conversationId: string) {
         `/api/plugins/memory/conversations/${encodeURIComponent(conversationId)}/memories`,
         signal,
       ),
-    queryKey: ["conversation", conversationId, "memories"],
+    queryKey: conversationSideReadQueryKey(conversationId, "memories"),
     retry: false,
   });
 }
@@ -75,6 +77,8 @@ export function anchorMemories(
 /** One row of the Conversation memory list. */
 export type ConversationMemoryEntry = {
   memory: ConversationMemory;
+  /** The recall or capture event, where the transcript opens. */
+  seq: number;
   source: MemorySource;
   turnId?: string;
 };
@@ -98,6 +102,7 @@ export function conversationMemoryEntries(
       seen.add(key);
       entries.push({
         memory,
+        seq: event.seq,
         source: event.source,
         ...(event.turnId ? { turnId: event.turnId } : undefined),
       });
@@ -108,6 +113,9 @@ export function conversationMemoryEntries(
 
 /** The open memory popover, and the memory it highlights. */
 export type OpenMemoryPopover = MemoryAnchor & { memoryId?: string };
+
+/** A memory chosen in details, and the event where the transcript opens. */
+export type MemoryJump = OpenMemoryPopover & { seq: number };
 
 /** Shared memory popover state for one Conversation page. */
 export type ConversationMemoryState = {

@@ -507,6 +507,7 @@ describe("Pi tool adapter", () => {
     }));
     const pluginHooks = {
       afterMcpTool: vi.fn(async () => []),
+      afterToolExecute: vi.fn(async () => []),
       beforeToolExecute: vi.fn(async () => ({
         input: {
           reportId: "monthly",
@@ -599,7 +600,7 @@ describe("Pi tool adapter", () => {
     await expect(
       demoTool!.execute("tool-demo", { cadence: "weekly" }),
     ).rejects.toThrow(
-      "Stop tool use for this turn and respond to the user now with a direct, concise confirmation question that names the exact action, target, and material side effects.",
+      "Ask for that confirmation now, the way your instructions say to ask. Name the exact action, target, and material side effects.",
     );
     expect(execute).not.toHaveBeenCalled();
     expect(
@@ -617,9 +618,9 @@ describe("Pi tool adapter", () => {
     expect(onToolResult).toHaveBeenCalledWith({
       error: [
         "The action was not executed because explicit user confirmation is required.",
-        "Stop tool use for this turn and respond to the user now with a direct, concise confirmation question that names the exact action, target, and material side effects.",
+        "Do not retry it, or get the same outcome another way, until the user explicitly confirms this exact action.",
+        "Ask for that confirmation now, the way your instructions say to ask. Name the exact action, target, and material side effects.",
         "Do not mention Guardian, the runtime, policy, or internal review mechanics.",
-        "Do not call another tool or retry until the user explicitly confirms this exact action.",
         "Reason: Recurring work should be confirmed.",
       ].join("\n"),
       ok: false,

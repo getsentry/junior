@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { z } from "zod";
+import * as z from "zod";
 import type { CodeChangeInput } from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
 import {
@@ -15,10 +15,14 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import {
   juniorCodeChanges,
   juniorCodeRepositories,
+  juniorConversations,
   juniorWorkspaceRepos,
   juniorWorkspaces,
 } from "@/db/schema";
-import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
+import {
+  buildJuniorSqlConversation,
+  createConfiguredJuniorSqlFixture,
+} from "../../fixtures/sql";
 
 describe("code API", () => {
   test("reports code changes across hosting services", async () => {
@@ -44,6 +48,22 @@ describe("code API", () => {
       } satisfies CodeChangeInput;
       await recordCodeChange(fixture.sql.db(), "github", codeChange);
       await recordCodeChange(fixture.sql.db(), "github", codeChange);
+      // A change costs its whole linked tree, child Conversations included.
+      await fixture.sql
+        .db()
+        .insert(juniorConversations)
+        .values([
+          buildJuniorSqlConversation({
+            conversationId: "conversation-1",
+            usage: { cost: { total: 0.5 } },
+          }),
+          buildJuniorSqlConversation({
+            conversationId: "conversation-1-child",
+            parentConversationId: "conversation-1",
+            rootConversationId: "conversation-1",
+            usage: { cost: { input: 0.1, output: 0.15 } },
+          }),
+        ]);
 
       const repositories = await fixture.sql
         .db()
@@ -69,8 +89,9 @@ describe("code API", () => {
       const report = codeOverviewReportSchema.parse(await response.json());
       expect(report.summary).toEqual({
         closed: 0,
-        costUsd: 0,
+        costUsd: 0.75,
         created: 1,
+        medianCostUsd: 0.75,
         medianMergeTimeMs: 2 * 24 * 60 * 60 * 1_000,
         merged: 1,
         mergeRate: 1,
@@ -89,6 +110,10 @@ describe("code API", () => {
         date: "2026-08-20",
         merged: 0,
       });
+      expect(report.activityHours).toHaveLength(7 * 24);
+      expect(
+        report.activityHours?.find((hour) => hour.date === "2026-08-22T12"),
+      ).toEqual({ closed: 0, created: 0, date: "2026-08-22T12", merged: 1 });
       expect(report.repositories).toEqual([
         expect.objectContaining({
           created: 1,
@@ -97,7 +122,7 @@ describe("code API", () => {
           provider: "github",
         }),
       ]);
-      expect(report.repositories[0]?.medianCostUsd).toBeUndefined();
+      expect(report.repositories[0]?.medianCostUsd).toBe(0.75);
       expect(report.changes).toEqual([
         expect.objectContaining({
           number: 42,

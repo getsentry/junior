@@ -31,6 +31,7 @@ function sandbox(files: Record<string, Buffer> = {}): SandboxWorkspace {
 
 const defaultImageOptions = {
   modelId: "openai/gpt-image-2",
+  promptCost: { owner: "none" } as const,
   sandbox: sandbox(),
 };
 
@@ -86,7 +87,7 @@ describe("createImageGenerateTool", () => {
           return writeGeneratedArtifacts(files);
         },
       },
-      { modelId: "openai/gpt-image-1.5", sandbox: sandbox() },
+      { ...defaultImageOptions, modelId: "openai/gpt-image-1.5" },
       { fetch: fetchMock },
     );
 
@@ -154,7 +155,11 @@ describe("createImageGenerateTool", () => {
 
     const tool = createImageGenerateTool(
       { writeGeneratedArtifacts },
-      { modelId: "google/gemini-3-pro-image", sandbox: sandbox() },
+      {
+        modelId: "google/gemini-3-pro-image",
+        promptCost: { owner: "none" },
+        sandbox: sandbox(),
+      },
       { fetch: fetchMock },
     );
     await expect(

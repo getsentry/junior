@@ -1,6 +1,7 @@
-import { getTableColumns, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
+  check,
   index,
   integer,
   jsonb,
@@ -16,6 +17,7 @@ import type { Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
 import type {
+  ConversationKind,
   ConversationSource,
   ConversationStatus,
 } from "@/chat/conversations/store";
@@ -54,6 +56,11 @@ export const juniorConversations = pgTable(
     title: text("title"),
     createdAt: timestamptz("created_at").notNull(),
     lastActivityAt: timestamptz("last_activity_at").notNull(),
+    /**
+     * The newest Message that a reader would notice (`refreshLastMessageAt`).
+     * Null until the Conversation has one.
+     */
+    lastMessageAt: timestamptz("last_message_at"),
     updatedAt: timestamptz("updated_at").notNull(),
     executionUpdatedAt: timestamptz("execution_updated_at"),
     executionStatus: text("execution_status")
@@ -67,6 +74,20 @@ export const juniorConversations = pgTable(
     parentConversationId: text("parent_conversation_id").references(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
+    // `root` or `automation` exactly when parent_conversation_id is null. Set
+    // once at create.
+    // The checks below enforce this. A writer of an older deploy leaves it null.
+    // TODO(dcramer): After every deployed writer sets kind, rerun the
+    // `kind IS NULL` backfill, add NOT NULL, and drop the `kind is null or`
+    // arm of junior_conversations_kind_parent_check.
+    kind: text("kind").$type<ConversationKind>(),
+    // Archive applies to everyone, on a root or a child. A Conversation shows
+    // only while it and every ancestor are unarchived.
+    archivedAt: timestamptz("archived_at"),
+    // The old child archive, copied into `archived_at`. Runtime code must not
+    // read or write it. A later migration drops it, so the release before
+    // still reads it while it rolls out.
+    legacyChildArchivedAt: timestamptz("child_archived_at"),
     // Forks are independent roots. This edge supports source/fork lookup and
     // does not affect root ownership or child conversation traversal.
     forkedFromConversationId: text("forked_from_conversation_id").references(
@@ -82,17 +103,36 @@ export const juniorConversations = pgTable(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
     transcriptPurgedAt: timestamptz("transcript_purged_at"),
-    /** Latest session stop. Automated input received before it is dropped. */
+    /**
+     * Set while the Conversation is stopped. Its Watch Events are then saved
+     * as Messages that start no Turn. A person's later input, or new work
+     * from its parent, clears it.
+     */
     stoppedAt: timestamptz("stopped_at"),
+    /**
+     * Set while a root's Event Turn replies stay out of its Location. Junior
+     * still stores them. A person's next mention in the Location clears it.
+     */
+    deliveryPausedAt: timestamptz("delivery_paused_at"),
     durationMs: integer("duration_ms").notNull().default(0),
     usage: jsonb("usage_json").$type<AgentTurnUsage>(),
     executionDurationMs: integer("execution_duration_ms").notNull().default(0),
     executionUsage: jsonb("execution_usage_json").$type<AgentTurnUsage>(),
     metricRunId: text("metric_run_id"),
-    // Keep the legacy column in the schema. Runtime code must not read or write it.
-    legacyArchivedAt: timestamptz("archived_at"),
+    // Bumped by every write that changes this Conversation's detail report.
+    // Detail reads compare it before they build the report. The
+    // `junior/touch-conversation-detail` lint rule enforces the bump.
+    detailVersion: integer("detail_version").notNull().default(0),
   },
   (table) => [
+    check(
+      "junior_conversations_kind_check",
+      sql`${table.kind} in ('root', 'automation', 'thread', 'task')`,
+    ),
+    check(
+      "junior_conversations_kind_parent_check",
+      sql`${table.kind} is null or ((${table.kind} in ('root', 'automation')) = (${table.parentConversationId} is null))`,
+    ),
     index("junior_conversations_last_activity_idx").on(
       table.lastActivityAt.desc(),
       table.conversationId,
@@ -119,10 +159,3 @@ export const juniorConversations = pgTable(
     index("junior_conversations_root_idx").on(table.rootConversationId),
   ],
 );
-
-/** Select runtime conversation fields without reading the legacy archive column. */
-export function conversationReadColumns() {
-  const { legacyArchivedAt, ...columns } = getTableColumns(juniorConversations);
-  void legacyArchivedAt;
-  return columns;
-}

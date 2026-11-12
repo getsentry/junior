@@ -6,7 +6,10 @@ import {
   isToolResultMessage,
   normalizeToolNameFromResult,
 } from "@/chat/pi/transcript";
-import { estimateTextTokens } from "@/chat/services/context-budget";
+import {
+  estimateTextTokens,
+  textCharsForTokens,
+} from "@/chat/services/token-estimate";
 import type { ToolActionEvidence } from "@/chat/guardian/proposal";
 
 const MAX_MESSAGE_TRANSCRIPT_TOKENS = 10_000;
@@ -26,7 +29,7 @@ function truncateText(text: string, maxTokens: number): string {
   if (tokenCount <= maxTokens) {
     return text;
   }
-  const maxChars = maxTokens * 4;
+  const maxChars = textCharsForTokens(maxTokens);
   const omittedTokens = Math.max(1, tokenCount - maxTokens);
   const marker = `<truncated omitted_approx_tokens="${omittedTokens}" />`;
   if (maxChars <= marker.length) {
@@ -70,7 +73,10 @@ function contentText(content: unknown): string {
     .join("\n");
 }
 
-function assistantEntries(message: PiMessage): EvidenceEntry[] {
+function assistantEntries(
+  message: PiMessage,
+  finishedCallIds: ReadonlySet<string>,
+): EvidenceEntry[] {
   if (!isAssistantMessage(message)) {
     return [];
   }
@@ -89,13 +95,19 @@ function assistantEntries(message: PiMessage): EvidenceEntry[] {
     }
     const record = part as {
       arguments?: unknown;
+      id?: unknown;
       name?: unknown;
       type?: unknown;
     };
+    // A call without a result has not run yet. It is the call under review
+    // or a call of the same model step, so it must not read as an earlier
+    // event.
     if (
       record.type !== "toolCall" ||
       typeof record.name !== "string" ||
-      !record.name
+      !record.name ||
+      typeof record.id !== "string" ||
+      !finishedCallIds.has(record.id)
     ) {
       continue;
     }
@@ -110,6 +122,11 @@ function assistantEntries(message: PiMessage): EvidenceEntry[] {
 function collectEvidenceEntries(
   messages: readonly PiMessage[],
 ): EvidenceEntry[] {
+  const finishedCallIds = new Set(
+    messages.flatMap((message) =>
+      isToolResultMessage(message) ? [message.toolCallId] : [],
+    ),
+  );
   const entries: EvidenceEntry[] = [];
   for (const message of messages) {
     if (message.role === "user") {
@@ -120,7 +137,7 @@ function collectEvidenceEntries(
       continue;
     }
     if (isAssistantMessage(message)) {
-      entries.push(...assistantEntries(message));
+      entries.push(...assistantEntries(message, finishedCallIds));
       continue;
     }
     if (isToolResultMessage(message)) {
@@ -138,13 +155,10 @@ function collectEvidenceEntries(
 
 /**
  * Project the Codex Guardian transcript selection into structured evidence.
- * In a child agent, no person writes a message: each user-role message is a
- * parent agent task or another agent's output, so it gets the `parent agent`
- * role.
+ * It holds only tool calls that have a result.
  */
 export function buildToolActionEvidence(
   messages: readonly PiMessage[],
-  options: { childAgent?: boolean } = {},
 ): ToolActionEvidence {
   const candidates = collectEvidenceEntries(messages).map((entry) => {
     const text = truncateText(
@@ -216,13 +230,7 @@ export function buildToolActionEvidence(
 
   return {
     entries: candidates.flatMap(({ entry }, index) =>
-      included[index]
-        ? [
-            options.childAgent && entry.role === "user"
-              ? { ...entry, role: "parent agent" as const }
-              : entry,
-          ]
-        : [],
+      included[index] ? [entry] : [],
     ),
     omittedEntries: included.filter((value) => !value).length,
   };

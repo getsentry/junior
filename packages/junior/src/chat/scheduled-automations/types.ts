@@ -3,7 +3,8 @@ import {
   actorUserIdSchema,
   slackDestinationSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
+import { automationTaskSchema } from "@/chat/automations/task";
 
 const scheduledAutomationStatusSchema = z.enum([
   "active",
@@ -107,7 +108,7 @@ export const scheduledAutomationSchema = z
     statusReason: z.string().optional(),
     /** Explicit visible effects after successful work. An empty list is silent. */
     outcomes: z.array(scheduledAutomationOutcomeSchema).max(5),
-    task: z.object({ text: z.string() }).strict(),
+    task: automationTaskSchema,
     /** SQL-backed short display title generated from the task instruction. */
     title: z.string().optional(),
     updatedAtMs: z.number(),

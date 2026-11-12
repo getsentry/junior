@@ -15,9 +15,9 @@ function iso(offsetMs: number): string {
 
 /**
  * Return the active Watches of one mock Conversation. The dashboard QA
- * Conversation has one Watch of each common shape: a pull request with a
- * match filter, a deployment, a timer, a redacted Watch, and one that a child
- * agent created.
+ * Conversation has one Watch of each common shape: a pull request that is
+ * also linked work, a deployment with a match filter, a timer, a redacted
+ * Watch, and one that a child agent created.
  */
 export function readMockConversationWatches(
   conversationId: string,
@@ -40,10 +40,10 @@ export function readMockConversationWatches(
         id: "watch-pr",
         intent:
           "Fix failing checks and address requested changes on the dashboard PR.",
-        label: "getsentry/junior#2383",
+        label: "getsentry/getsentry#21572",
         namespace: "github",
         resourceType: "pull_request",
-        url: "https://github.com/getsentry/junior/pull/2383",
+        url: "https://github.com/getsentry/getsentry/pull/21572",
       },
       {
         createdAt: iso(-2 * HOUR_MS),

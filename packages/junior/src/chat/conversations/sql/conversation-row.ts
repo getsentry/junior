@@ -1,6 +1,8 @@
 import { sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
+import type { ConversationKind } from "@/chat/conversations/store";
 import { juniorConversations } from "@/db/schema";
+import { nextDetailVersion } from "./detail-version";
 
 /**
  * Establish the conversation metadata row on first contact for content writes
@@ -28,6 +30,8 @@ export async function ensureConversationRow(
     lastActivityAt: at,
     updatedAt: at,
     executionStatus: "idle",
+    // A first-contact row has no parent, and a parent cannot be added later.
+    kind: "root",
   });
   if (options.activity === "preserve") {
     await insert.onConflictDoNothing({
@@ -41,6 +45,27 @@ export async function ensureConversationRow(
       lastActivityAt: sql`greatest(${juniorConversations.lastActivityAt}, excluded.last_activity_at)`,
       updatedAt: sql`greatest(${juniorConversations.updatedAt}, excluded.updated_at)`,
       transcriptPurgedAt: null,
+      detailVersion: nextDetailVersion,
     },
   });
+}
+
+const CONVERSATION_KINDS: ReadonlySet<string> = new Set<ConversationKind>([
+  "root",
+  "automation",
+  "thread",
+  "task",
+]);
+
+/** Decode a stored kind. A null kind comes from a writer of an older deploy. */
+export function conversationKindFromRow(row: {
+  kind: ConversationKind | null;
+  parentConversationId: string | null;
+}): ConversationKind {
+  // TODO(dcramer): Read `kind` as stored after the NOT NULL contract.
+  const kind = row.kind ?? (row.parentConversationId ? "task" : "root");
+  if (!CONVERSATION_KINDS.has(kind)) {
+    throw new Error("Conversation record kind is invalid");
+  }
+  return kind;
 }

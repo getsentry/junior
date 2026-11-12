@@ -1,16 +1,10 @@
 import { NodeHtmlMarkdown } from "node-html-markdown";
-import {
-  DEFAULT_MAX_CHARS,
-  MAX_FETCH_BYTES,
-  MAX_FETCH_CHARS,
-} from "@/chat/tools/web/constants";
+import { MAX_FETCH_BYTES } from "@/chat/tools/web/constants";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { readResponseBytes } from "@/chat/tools/web/network";
 
-export { MAX_FETCH_CHARS };
-
 // ---------------------------------------------------------------------------
-// Content extraction (HTML → markdown, JSON formatting, truncation)
+// Content extraction (HTML → markdown, JSON formatting)
 // ---------------------------------------------------------------------------
 
 const htmlToMarkdownConverter = new NodeHtmlMarkdown({
@@ -22,11 +16,7 @@ const htmlToMarkdownConverter = new NodeHtmlMarkdown({
 
 export interface WebFetchResponseContent {
   content: string;
-  /** All extracted text before the character limit. */
-  fullContent: string;
   title?: string;
-  truncated: boolean;
-  extractedChars: number;
 }
 
 export type WebFetchResponse = {
@@ -35,10 +25,8 @@ export type WebFetchResponse = {
   title?: string;
   content_type: string;
   source_bytes: number;
-  extracted_chars: number;
+  /** The page was over the byte limit, so the content stops early. */
   truncated: boolean;
-  /** The page was over the byte limit, so all extracted text stops early. */
-  source_truncated?: true;
 } & Record<string, unknown>;
 
 function normalizeWhitespace(text: string): string {
@@ -46,32 +34,6 @@ function normalizeWhitespace(text: string): string {
     .replace(/\r\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-}
-
-function truncateAtWordBoundary(
-  text: string,
-  maxChars: number,
-): { content: string; truncated: boolean } {
-  if (text.length <= maxChars) {
-    return { content: text, truncated: false };
-  }
-  const shortened = text.slice(0, maxChars);
-  const lastSpace = shortened.lastIndexOf(" ");
-  if (lastSpace > maxChars * 0.8) {
-    return {
-      content: `${shortened.slice(0, lastSpace).trimEnd()}...`,
-      truncated: true,
-    };
-  }
-  return { content: `${shortened.trimEnd()}...`, truncated: true };
-}
-
-/** Apply the web-fetch character limit to already extracted text content. */
-export function truncateWebFetchContent(
-  content: string,
-  maxChars: number,
-): { content: string; truncated: boolean } {
-  return truncateAtWordBoundary(content, maxChars);
 }
 
 function decodeHtmlEntities(value: string): string {
@@ -160,7 +122,6 @@ function extractMainHtml(html: string): string {
 export function extractContentDetails(
   body: string,
   contentType: string,
-  maxChars: number,
 ): WebFetchResponseContent {
   const loweredContentType = contentType.toLowerCase();
   const normalizedBody = body.trim();
@@ -169,14 +130,9 @@ export function extractContentDetails(
     try {
       const sourceHtml = extractMainHtml(normalizedBody);
       const markdown = htmlToMarkdownConverter.translate(sourceHtml);
-      const normalizedMarkdown = normalizeWhitespace(markdown);
-      const truncated = truncateWebFetchContent(normalizedMarkdown, maxChars);
       return {
-        content: truncated.content,
-        fullContent: normalizedMarkdown,
+        content: normalizeWhitespace(markdown),
         title: extractTitle(normalizedBody),
-        truncated: truncated.truncated,
-        extractedChars: normalizedMarkdown.length,
       };
     } catch {
       // Fall back to plain text extraction below.
@@ -185,44 +141,20 @@ export function extractContentDetails(
 
   if (loweredContentType.includes("json")) {
     try {
-      const parsed = JSON.parse(normalizedBody);
-      const formatted = JSON.stringify(parsed, null, 2);
-      const truncated = truncateWebFetchContent(formatted, maxChars);
       return {
-        content: truncated.content,
-        fullContent: formatted,
-        truncated: truncated.truncated,
-        extractedChars: formatted.length,
+        content: JSON.stringify(JSON.parse(normalizedBody), null, 2),
       };
     } catch {
-      const normalizedText = normalizeWhitespace(normalizedBody);
-      const truncated = truncateWebFetchContent(normalizedText, maxChars);
-      return {
-        content: truncated.content,
-        fullContent: normalizedText,
-        truncated: truncated.truncated,
-        extractedChars: normalizedText.length,
-      };
+      // Fall back to plain text extraction below.
     }
   }
 
-  const normalizedText = normalizeWhitespace(normalizedBody);
-  const truncated = truncateWebFetchContent(normalizedText, maxChars);
-  return {
-    content: truncated.content,
-    fullContent: normalizedText,
-    truncated: truncated.truncated,
-    extractedChars: normalizedText.length,
-  };
+  return { content: normalizeWhitespace(normalizedBody) };
 }
 
 /** Extract readable content from a fetched response body, converting HTML to markdown. */
-export function extractContent(
-  body: string,
-  contentType: string,
-  maxChars: number,
-): string {
-  return extractContentDetails(body, contentType, maxChars).content;
+export function extractContent(body: string, contentType: string): string {
+  return extractContentDetails(body, contentType).content;
 }
 
 // ---------------------------------------------------------------------------
@@ -231,16 +163,12 @@ export function extractContent(
 
 /**
  * Extract text content from a web fetch response, validating content type and
- * size. Also return all extracted text, so the caller can keep the part that
- * the character limit removed.
+ * size. The tool pipeline cuts long content for the model.
  */
 export async function extractWebFetchResponse(
   url: URL,
   response: Response,
-  maxChars = DEFAULT_MAX_CHARS,
-): Promise<{ result: WebFetchResponse; fullContent: string }> {
-  const safeMaxChars = Math.max(500, Math.min(maxChars, MAX_FETCH_CHARS));
-
+): Promise<WebFetchResponse> {
   if (!response.ok) {
     await response.body?.cancel();
     const message = `fetch failed: ${response.status}`;
@@ -272,18 +200,13 @@ export async function extractWebFetchResponse(
     MAX_FETCH_BYTES,
   );
   const body = new TextDecoder().decode(bytes);
-  const extracted = extractContentDetails(body, contentType, safeMaxChars);
+  const extracted = extractContentDetails(body, contentType);
   return {
-    result: {
-      url: url.toString(),
-      content: extracted.content,
-      ...(extracted.title ? { title: extracted.title } : undefined),
-      content_type: contentType || "unknown",
-      source_bytes: bytes.byteLength,
-      extracted_chars: extracted.extractedChars,
-      truncated: extracted.truncated || sourceTruncated,
-      ...(sourceTruncated ? { source_truncated: true } : undefined),
-    },
-    fullContent: extracted.fullContent,
+    url: url.toString(),
+    content: extracted.content,
+    ...(extracted.title ? { title: extracted.title } : undefined),
+    content_type: contentType || "unknown",
+    source_bytes: bytes.byteLength,
+    truncated: sourceTruncated,
   };
 }

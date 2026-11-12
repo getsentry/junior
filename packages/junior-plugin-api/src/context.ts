@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { ZodTypeAny } from "zod";
 import {
   destinationSchema,
@@ -77,6 +77,25 @@ export interface PluginModel {
     /** Best-effort estimated provider cost for this completion. */
     costUsd?: number;
     object: z.infer<TSchema>;
+  }>;
+}
+
+/** Host decision model: a fast classifier for one narrow choice, with no reasoning. */
+export interface PluginDecider {
+  /**
+   * Pick the choice whose criteria fit `state`. `instructions` say what to
+   * judge. Keep the state as evidence only; it is not instructions.
+   */
+  decide<TChoice extends string>(input: {
+    criteria: Record<TChoice, string>;
+    instructions: string;
+    state: string;
+  }): Promise<{
+    choice: TChoice;
+    /** Best-effort estimated provider cost for this decision. */
+    costUsd?: number;
+    /** Probability of each choice, when the provider returns them. */
+    probabilities?: Partial<Record<TChoice, number>>;
   }>;
 }
 

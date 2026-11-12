@@ -1,13 +1,11 @@
-import type { BrowserOptions } from "@sentry/browser";
+import {
+  getClient,
+  getCurrentScope,
+  type BrowserOptions,
+} from "@sentry/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { init } = vi.hoisted(() => ({ init: vi.fn() }));
-vi.mock("@sentry/browser", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@sentry/browser")>()),
-  init,
-}));
-
-import { initDashboardSentry } from "@dashboard/sentry";
+import { initDashboardSentry, sendReplyRating } from "@dashboard/sentry";
 
 type Span = Parameters<NonNullable<BrowserOptions["beforeSendSpan"]>>[0];
 
@@ -26,7 +24,7 @@ function span(attributes: Span["attributes"]): Span {
 describe("dashboard browser Sentry", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    init.mockClear();
+    getCurrentScope().setClient(undefined);
   });
 
   it("does not start without a server DSN", () => {
@@ -34,7 +32,7 @@ describe("dashboard browser Sentry", () => {
 
     initDashboardSentry();
 
-    expect(init).not.toHaveBeenCalled();
+    expect(getClient()).toBeUndefined();
   });
 
   it("removes search text and element labels from spans", () => {
@@ -47,10 +45,12 @@ describe("dashboard browser Sentry", () => {
 
     initDashboardSentry();
 
-    const options = init.mock.calls[0]?.[0] as BrowserOptions;
-    expect(options.dsn).toBe("https://public@example.com/1");
-    expect(options.defaultIntegrations).toBe(false);
-    const scrubbed = options.beforeSendSpan?.(
+    const options = getClient()?.getOptions();
+    expect(options?.dsn).toBe("https://public@example.com/1");
+    expect(options?.integrations.map(({ name }) => name)).toEqual([
+      "BrowserTracing",
+    ]);
+    const scrubbed = options?.beforeSendSpan?.(
       span({
         "browser.web_vital.inp.target":
           'div.h-[1px] > a.absolute[aria-label="Open Private plans"][title="Private plans"]',
@@ -68,5 +68,64 @@ describe("dashboard browser Sentry", () => {
       "code.file.path": "http://localhost/conversations/c1",
       "url.full": "http://localhost/api/conversations",
     });
+  });
+
+  it("sends a Reply rating with the reader and comment", async () => {
+    vi.stubGlobal("window", {
+      __JUNIOR_DASHBOARD_SENTRY__: {
+        dsn: "https://public@example.com/1",
+        tracesSampleRate: 1,
+      },
+      location: {
+        origin: "http://localhost",
+        pathname: "/conversations/c1",
+      },
+    });
+    initDashboardSentry();
+    const items: unknown[] = [];
+    getClient()?.on("beforeEnvelope", (envelope) => {
+      items.push(...envelope[1].map(([, payload]) => payload));
+    });
+
+    sendReplyRating({
+      comment: "Wrong repo",
+      conversationId: "c1",
+      messageId: "m1",
+      rating: "bad",
+      reader: { email: "ana@example.com", name: "Ana" },
+    });
+
+    await vi.waitFor(() => expect(items).toHaveLength(1));
+    const event = items[0] as Record<string, unknown>;
+    expect(event).toMatchObject({
+      contexts: {
+        feedback: {
+          contact_email: "ana@example.com",
+          message: "Bad reply: Wrong repo",
+          name: "Ana",
+          source: "dashboard_reply_rating",
+          url: "http://localhost/conversations/c1",
+        },
+      },
+      tags: {
+        "app.reply.rating": "bad",
+        "gen_ai.conversation.id": "c1",
+        "messaging.message.id": "m1",
+      },
+      type: "feedback",
+    });
+    // The reader is only in the feedback context. The sent payload has no
+    // breadcrumbs, request, or page content.
+    expect(Object.keys(JSON.parse(JSON.stringify(event))).sort()).toEqual([
+      "contexts",
+      "environment",
+      "event_id",
+      "level",
+      "platform",
+      "sdk",
+      "tags",
+      "timestamp",
+      "type",
+    ]);
   });
 });

@@ -1,8 +1,14 @@
-import { z } from "zod";
+import pLimit from "p-limit";
+import * as z from "zod";
 import { getSlackBotToken } from "@/chat/config";
 import { logWarn } from "@/chat/logging";
 import { createSlackActor, type SlackActor } from "@/chat/actor";
 import { parseAvatarUrl } from "@/chat/identities/avatar";
+import {
+  getStateAdapter,
+  getStateValues,
+  setStateValues,
+} from "@/chat/state/adapter";
 
 interface SlackUserLookupResult {
   userName?: string;
@@ -146,4 +152,73 @@ export async function lookupSlackActor(
     userId,
     await lookupSlackUser(teamId, userId),
   );
+}
+
+/** Names that the dashboard shows for a mentioned Slack user. */
+export interface SlackUserNames {
+  fullName?: string;
+  userName?: string;
+}
+
+// Most dashboard reads run on an instance that has never seen the user, so
+// the process cache above rarely hits. A shared state entry lets every
+// instance skip `users.info` for a day. Names change rarely. Only answers
+// from Slack are shared, so a failed lookup stays local to one request.
+const USER_NAMES_SHARED_TTL_MS = 24 * 60 * 60 * 1000;
+// Caps parallel `users.info` calls so a cold read with many mentions does
+// not burst past the Slack rate limit.
+const USER_NAMES_LOOKUP_CONCURRENCY = 5;
+
+const sharedUserNamesSchema = z.object({
+  fullName: z.string().optional(),
+  userName: z.string().optional(),
+});
+
+function sharedUserNamesKey(teamId: string, userId: string): string {
+  return `slack-user-names:${teamId}:${userId}`;
+}
+
+/**
+ * Look up the names of Slack users in one workspace, shared across instances.
+ * A user is missing from the result when Slack has no answer for them.
+ */
+export async function lookupSlackUserNames(
+  teamId: string,
+  userIds: readonly string[],
+): Promise<Map<string, SlackUserNames>> {
+  const names = new Map<string, SlackUserNames>();
+  if (userIds.length === 0) return names;
+
+  const state = getStateAdapter();
+  const shared = await getStateValues(
+    state,
+    userIds.map((userId) => sharedUserNamesKey(teamId, userId)),
+  );
+  const missing: string[] = [];
+  for (const [index, userId] of userIds.entries()) {
+    const parsed = sharedUserNamesSchema.safeParse(shared[index]);
+    if (parsed.success) {
+      names.set(userId, parsed.data);
+    } else {
+      missing.push(userId);
+    }
+  }
+
+  const limit = pLimit(USER_NAMES_LOOKUP_CONCURRENCY);
+  const profiles = await Promise.all(
+    missing.map((userId) => limit(() => lookupSlackUser(teamId, userId))),
+  );
+  const found: Array<{ key: string; value: SlackUserNames }> = [];
+  for (const [index, userId] of missing.entries()) {
+    const profile = profiles[index];
+    if (!profile) continue;
+    const value: SlackUserNames = {
+      ...(profile.fullName ? { fullName: profile.fullName } : undefined),
+      ...(profile.userName ? { userName: profile.userName } : undefined),
+    };
+    names.set(userId, value);
+    found.push({ key: sharedUserNamesKey(teamId, userId), value });
+  }
+  await setStateValues(state, found, USER_NAMES_SHARED_TTL_MS);
+  return names;
 }

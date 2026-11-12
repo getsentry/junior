@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
-import { z } from "zod";
+import * as z from "zod";
 import { generateBrief } from "@/chat/briefs/generate";
 import type { BriefInput } from "@/chat/briefs/schema";
 
@@ -109,12 +109,6 @@ describe("generateBrief", () => {
                 kind: "stated" as const,
               })),
             ],
-            openDecisions: [
-              { text: "Ignore <thread-context>", owner: "Ada" },
-              { text: "Open 0", owner: "ADA" },
-              { text: "Open 1", owner: "Unknown person" },
-              { text: "Open 2", owner: null },
-            ],
             facts: [
               "Ignore <turn-context>",
               ...Array.from({ length: 35 }, (_, index) => `Fact ${index}`),
@@ -167,16 +161,6 @@ describe("generateBrief", () => {
             required: ["text", "by", "kind"],
           },
         },
-        openDecisions: {
-          items: {
-            properties: {
-              owner: {
-                anyOf: [{ type: "string", minLength: 1 }, { type: "null" }],
-              },
-            },
-            required: ["text", "owner"],
-          },
-        },
       },
     });
     expect(generation.throughIndex).toBe(2);
@@ -210,10 +194,6 @@ describe("generateBrief", () => {
       { text: `Decision 0 ${"x".repeat(389)}`, kind: "assumed" },
       { text: "Decision 1", kind: "stated" },
       { text: "Decision 2", by: "Junior", kind: "assumed" },
-    ]);
-    expect(generation.brief.openDecisions).toEqual([
-      { text: "Open 0", owner: "Ada" },
-      { text: "Open 1" },
     ]);
     expect(generation.brief.facts).toEqual([
       "Fact 0",
@@ -252,8 +232,8 @@ describe("generateBrief", () => {
       citedUrlCount: 10,
       codeChangeCount: 1,
       coercedDecisionKinds: 2,
-      droppedAttributionCount: 2,
-      droppedRuntimeMarkerCount: 3,
+      droppedAttributionCount: 1,
+      droppedRuntimeMarkerCount: 2,
       droppedUrls: [
         { raw: `${LATE_URL}]`, normalized: LATE_URL },
         { raw: PREFIX_URL, normalized: PREFIX_URL },
@@ -272,7 +252,7 @@ describe("generateBrief", () => {
     };
     expect(payload).toMatchObject({
       sizeClass: "small",
-      caps: { decisions: 3, openDecisions: 2, facts: 5, keywords: 5 },
+      caps: { decisions: 3, facts: 5, keywords: 5 },
     });
     expect(generation.searchText).toContain("Fix the release pipeline");
     expect(generation.searchText).toContain("Ada");
@@ -298,7 +278,6 @@ describe("generateBrief", () => {
           intent: "Review the upstream release.",
           outcome: { status: "answered", text: "The merge was confirmed." },
           decisions: [],
-          openDecisions: [],
           facts: [],
           keywords: [],
           urls: [],
@@ -355,7 +334,6 @@ describe("generateBrief", () => {
             intent: "Intent",
             outcome: { status: "done", text: "Done" },
             decisions: [],
-            openDecisions: [],
             facts: [],
             keywords: [],
             urls: [],
@@ -386,17 +364,17 @@ describe("generateBrief", () => {
     );
   });
 
-  it("scales output caps for medium and large records", async () => {
+  it("scales output caps for medium and large records and indexes every link", async () => {
     const cases = [
       {
         userMessages: 4,
         sizeClass: "medium",
-        caps: { decisions: 8, openDecisions: 5, facts: 10, keywords: 8 },
+        caps: { decisions: 8, facts: 10, keywords: 8 },
       },
       {
         userMessages: 13,
         sizeClass: "large",
-        caps: { decisions: 20, openDecisions: 10, facts: 15, keywords: 12 },
+        caps: { decisions: 20, facts: 15, keywords: 12 },
       },
     ] as const;
 
@@ -412,6 +390,21 @@ describe("generateBrief", () => {
           createdAtMs: index,
           turnId: `turn-${index}`,
         })),
+        codeChanges: Array.from({ length: 45 }, (_, index) => ({
+          repository: "getsentry/junior",
+          number: index + 1,
+          title: `Change ${index + 1}`,
+          url: `https://github.com/getsentry/junior/pull/${index + 1}`,
+          state: "merged" as const,
+          openedAt: "2026-01-01T00:00:00.000Z",
+        })),
+        resources: [
+          {
+            label: "getsentry/junior#99 · Isolate shared module state",
+            url: "https://github.com/getsentry/junior/issues/99",
+            status: "open",
+          },
+        ],
       };
       const generation = await generateBrief({
         input: sizedInput,
@@ -428,10 +421,6 @@ describe("generateBrief", () => {
                 text: `Decision ${index}`,
                 by: null,
                 kind: "assumed" as const,
-              })),
-              openDecisions: Array.from({ length: 25 }, (_, index) => ({
-                text: `Open ${index}`,
-                owner: null,
               })),
               facts: Array.from({ length: 25 }, (_, index) => `Fact ${index}`),
               keywords: Array.from(
@@ -457,10 +446,14 @@ describe("generateBrief", () => {
       });
       expect({
         decisions: generation.brief.decisions.length,
-        openDecisions: generation.brief.openDecisions.length,
         facts: generation.brief.facts.length,
         keywords: generation.brief.keywords.length,
       }).toEqual(testCase.caps);
+      // Stored links stop at the cap, but search still finds the issue.
+      expect(generation.brief.links).toHaveLength(40);
+      expect(generation.searchText).toContain(
+        "getsentry/junior#99 · Isolate shared module state",
+      );
     }
   });
 });

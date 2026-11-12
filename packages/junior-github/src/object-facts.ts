@@ -1,5 +1,5 @@
 import type { ObjectAnnotation } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 
 const person = z.object({ login: z.string() });
 const responseSchema = z.object({

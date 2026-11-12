@@ -1,14 +1,13 @@
 import type { BundledLanguage } from "shiki/bundle/web";
-import { dashboardCodeLanguages } from "./code-languages";
 import type {
   ActorIdentity,
   ConversationAuxiliaryCosts,
+  ConversationFeedItem,
   ConversationModelUsage,
   ConversationSummaryReport,
   ConversationUsage,
 } from "@sentry/junior/api/schema";
 import type {
-  CodeBlock,
   Conversation,
   ConversationTranscript,
   TranscriptViewMessage,
@@ -41,6 +40,13 @@ export function isFailedConversationSummary(
 
 function isActiveConversation(conversation: Conversation): boolean {
   return conversation.status === "active";
+}
+
+/** Whether no work runs: the Conversation finished or a person stopped it. */
+export function isIdleConversation(conversation: Conversation): boolean {
+  return (
+    conversation.status === "completed" || conversation.status === "stopped"
+  );
 }
 
 function isFailedConversation(conversation: Conversation): boolean {
@@ -371,9 +377,10 @@ export function transcriptMessageActorLabel(
   const kind = transcriptRoleKind(message.role);
   if (kind === "assistant") return getDashboardAgentName();
   if (kind === "user") {
-    // The conversation actor started the child agent but did not write its
-    // input, so do not fall back to that actor here.
-    if (message.agentInvocationId) return "Agent invocation";
+    // The parent agent wrote this input, and the Turn it starts reports back
+    // to the parent. The conversation actor started the child but did not
+    // write it, so do not fall back to that actor here.
+    if (message.agentInvocationId) return "Parent agent";
     // Show the person's name, not their email. A web send carries both, and
     // its durable Message carries only the name.
     const actor = transcriptMessageActor(conversation, message);
@@ -666,18 +673,17 @@ function compareTimeDesc(a: string | undefined, b: string | undefined): number {
 }
 
 /**
- * Return the title of a loaded Conversation. A child agent Conversation uses
- * its agent label from the agent tree, because it has no title of its own.
+ * Return the title of a loaded Conversation. A Thread has its own title. A
+ * Task uses its agent label from the agent tree, because it has no title.
  */
 export function conversationDetailTitle(
   detail:
-    | Pick<ConversationTranscript, "agentTree" | "displayTitle">
+    | Pick<ConversationTranscript, "agentTree" | "displayTitle" | "kind">
     | undefined,
 ): string | undefined {
-  return (
-    detail?.agentTree?.at(-1)?.label ??
-    (detail?.displayTitle?.trim() || undefined)
-  );
+  const title = detail?.displayTitle?.trim() || undefined;
+  const label = detail?.agentTree?.at(-1)?.label;
+  return detail?.kind === "thread" ? (title ?? label) : (label ?? title);
 }
 
 /** Return the display title prepared by the reporting API. */
@@ -697,22 +703,22 @@ export function actorLabel(
   return email ?? fullName ?? slackUserName ?? actor?.slackUserId;
 }
 
-/** Derive the conversation owner label from structured actor identity. */
+/** Derive the label of the root Actor, the person who started the conversation. */
 export function conversationActorLabel(
   conversation: Conversation | undefined,
 ): string | undefined {
   return actorLabel(conversation?.actorIdentity);
 }
 
-/** Format the owner and permalink id line shared by conversation rows and headers. */
+/** Format the root Actor and permalink id line shared by conversation rows and headers. */
 export function conversationIdentityMeta(
   conversation: Conversation | undefined,
   conversationId: string | undefined,
 ): string {
   const id = conversationId ?? conversation?.id;
-  const owner = conversationActorLabel(conversation);
-  if (!id) return owner ?? "";
-  return owner ? `${owner} · ${id}` : id;
+  const actor = conversationActorLabel(conversation);
+  if (!id) return actor ?? "";
+  return actor ? `${actor} · ${id}` : id;
 }
 
 /** Convert Slack channel ids and names into user-facing location labels. */
@@ -754,6 +760,7 @@ export function visualStatusForSummary(
 ): VisualStatus {
   if (isFailedConversationSummary(summary)) return "failed";
   if (isActiveSummary(summary)) return "active";
+  if (summary.status === "stopped") return "stopped";
   return "idle";
 }
 
@@ -763,6 +770,7 @@ export function visualStatusForConversation(
 ): VisualStatus {
   if (isActiveConversation(conversation)) return "active";
   if (isFailedConversation(conversation)) return "failed";
+  if (conversation.status === "stopped") return "stopped";
   return "idle";
 }
 
@@ -815,28 +823,6 @@ export function automationPath(
   return tab === "overview" ? base : `${base}/${tab}`;
 }
 
-function normalizeLanguage(language: string | undefined): BundledLanguage {
-  const normalized = language?.trim().toLowerCase();
-  if (!normalized) return "markdown";
-  const aliases: Record<string, BundledLanguage> = {
-    console: "shellscript",
-    htm: "html",
-    js: "javascript",
-    jsonl: "json",
-    md: "markdown",
-    ndjson: "json",
-    sh: "shellscript",
-    text: "markdown",
-    txt: "markdown",
-    xml: "xml",
-    yml: "yaml",
-  };
-  const candidate = aliases[normalized] ?? normalized;
-  return Object.hasOwn(dashboardCodeLanguages, candidate)
-    ? (candidate as BundledLanguage)
-    : "markdown";
-}
-
 function prettyJson(text: string): string | undefined {
   const trimmed = text.trim();
   if (!trimmed) return undefined;
@@ -863,12 +849,9 @@ function prettyJsonl(text: string): string | undefined {
   return formatted.join("\n");
 }
 
-function prettyJsonData(text: string): string | undefined {
+/** Pretty-print JSON or JSONL text, or return undefined for other text. */
+export function prettyJsonData(text: string): string | undefined {
   return prettyJson(text) ?? prettyJsonl(text);
-}
-
-function formatCodeBlock(code: string, language: BundledLanguage): string {
-  return language === "json" ? (prettyJsonData(code) ?? code) : code;
 }
 
 /**
@@ -889,54 +872,19 @@ export function detectOutputLanguage(text: string): BundledLanguage {
   return "markdown";
 }
 
-/** Parse transcript prose as Markdown or JSON while preserving fenced code. */
-export function parseMarkdownBlocks(text: string): CodeBlock[] {
-  const blocks: CodeBlock[] = [];
-  const fence = /```([A-Za-z0-9_-]+)?\n([\s\S]*?)```/g;
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-  while ((match = fence.exec(text))) {
-    const prose = text.slice(cursor, match.index).trim();
-    if (prose) {
-      const language = detectOutputLanguage(prose);
-      blocks.push({
-        code: formatCodeBlock(prose, language),
-        fenced: false,
-        language,
-      });
-    }
-    const language = normalizeLanguage(match[1]);
-    blocks.push({
-      code: formatCodeBlock(match[2] ?? "", language),
-      fenced: true,
-      language,
-    });
-    cursor = match.index + match[0].length;
-  }
-  const rest = text.slice(cursor).trim();
-  if (rest) {
-    const language = detectOutputLanguage(rest);
-    blocks.push({
-      code: formatCodeBlock(rest, language),
-      fenced: false,
-      language,
-    });
-  }
-  if (blocks.length > 0) return blocks;
-  const language = detectOutputLanguage(text);
-  return [{ code: formatCodeBlock(text, language), fenced: false, language }];
-}
-
 /** Convert SQL conversation summaries into dashboard rows. */
 export function buildConversations(
-  summaries: ConversationSummaryReport[],
+  summaries: ConversationFeedItem[],
 ): Conversation[] {
   return summaries
     .map((summary) => ({
       activityPreview: summary.activityPreview,
+      brief: summary.brief,
       annotations: summary.annotations,
       sidebarAnnotations: summary.sidebarAnnotations,
       archivedAt: summary.archivedAt,
+      pinnedAt: summary.pinnedAt,
+      pinPosition: summary.pinPosition,
       auxiliaryCosts: summary.auxiliaryCosts,
       channel: summary.channel,
       channelName: summary.channelName,
@@ -946,6 +894,8 @@ export function buildConversations(
       cumulativeUsage: summary.cumulativeUsage,
       displayTitle: summary.displayTitle,
       id: summary.conversationId,
+      isParticipant: summary.isParticipant,
+      lastMessageAt: summary.lastMessageAt,
       lastProgressAt: summary.lastProgressAt,
       lastSeenAt: summary.lastSeenAt,
       locationId: summary.locationId,
@@ -958,7 +908,10 @@ export function buildConversations(
       surface: summary.surface,
       traceId: summary.traceId,
       isPriority: summary.isPriority,
-      unfinishedWork: summary.unfinishedWork,
+      kind: summary.kind,
+      parentConversationId: summary.parentConversationId,
+      threads: summary.threads && buildConversations(summary.threads),
+      awaitingAuthorization: summary.awaitingAuthorization,
       visibility: summary.visibility,
     }))
     .sort((a, b) => compareTimeDesc(a.lastSeenAt, b.lastSeenAt));
@@ -969,7 +922,22 @@ export function conversationFromDetail(
   detail: ConversationTranscript | undefined,
 ): Conversation | undefined {
   if (!detail) return undefined;
-  const conversation = buildConversations([detail])[0];
+  // The detail carries the whole Brief; a row keeps the feed's short form.
+  const { brief, ...summary } = detail;
+  const conversation = buildConversations([
+    {
+      ...summary,
+      ...(brief
+        ? {
+            brief: {
+              intent: brief.content.intent,
+              status: brief.content.outcome.status,
+              summary: brief.content.summary,
+            },
+          }
+        : undefined),
+    },
+  ])[0];
   return conversation
     ? { ...conversation, displayTitle: detail.displayTitle }
     : undefined;

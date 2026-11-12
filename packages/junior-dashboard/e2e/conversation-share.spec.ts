@@ -35,12 +35,9 @@ for (const touch of [false, true]) {
               ).recordShare(data),
           });
         });
-        // Share sits in the title bar on a tablet and in the menu on a phone.
-        if (!touch) {
-          await page.getByRole("button", { name: "Conversation menu" }).click();
-        }
+        await page.getByRole("button", { name: "Conversation menu" }).click();
         await page.evaluate(() => navigator.clipboard.writeText("unchanged"));
-        const shareButton = page.getByRole("button", {
+        const shareButton = page.getByRole("menuitem", {
           name: "Share",
           exact: true,
         });
@@ -79,7 +76,7 @@ for (const touch of [false, true]) {
           });
           await shareButton.click();
           await expect(
-            page.getByRole("button", { name: "Share failed — retry" }),
+            page.getByRole("menuitem", { name: "Share failed — retry" }),
           ).toBeEnabled();
           expect(
             await page.evaluate(() => navigator.clipboard.readText()),
@@ -93,13 +90,13 @@ for (const touch of [false, true]) {
             });
           });
           await page
-            .getByRole("button", { name: "Share failed — retry" })
+            .getByRole("menuitem", { name: "Share failed — retry" })
             .click();
         } else {
           expect(shared).toEqual([]);
         }
         await expect(
-          page.getByRole("button", { name: "Link copied" }),
+          page.getByRole("menuitem", { name: "Link copied" }),
         ).toBeVisible();
         const copied = await page.evaluate(() =>
           navigator.clipboard.readText(),

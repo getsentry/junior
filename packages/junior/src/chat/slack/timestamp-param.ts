@@ -2,7 +2,7 @@ import {
   parseSlackMessageTs,
   type SlackMessageTs,
 } from "@/chat/slack/timestamp";
-import { z } from "zod";
+import * as z from "zod";
 
 type SlackTimestampParamResult =
   | { ok: true; value: SlackMessageTs | undefined }

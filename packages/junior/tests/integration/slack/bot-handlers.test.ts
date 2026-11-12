@@ -21,7 +21,6 @@ import {
   type ConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
 import { mockTitleModel } from "../../fixtures/title-model";
-import { mockTurnRouterModel } from "../../fixtures/turn-router-model";
 
 const emptyThreadReplies = async () => [];
 const ORIGINAL_AI_GATEWAY_API_KEY = process.env.AI_GATEWAY_API_KEY;
@@ -70,7 +69,6 @@ function createAwaitingContinuationState(args: {
   return {
     conversation: {
       schemaVersion: 1,
-      compactions: [],
       piMessages: [],
       messages: [
         {
@@ -108,7 +106,6 @@ function turnPiMessages(text: string) {
 describe("bot handlers (integration)", () => {
   beforeEach(async () => {
     process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
-    mockTurnRouterModel();
     mockTitleModel("Test conversation");
     resetConversationTitleStateForTests();
     resetAssistantTitleProjectionForTests();

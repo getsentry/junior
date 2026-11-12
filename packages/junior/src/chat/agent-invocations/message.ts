@@ -10,9 +10,10 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { findChildAgentConversationId } from "./bindings";
 import { AgentMessageTargetError } from "./errors";
 import { enqueueAgentMessageToParent } from "./result";
+import { createAgentInvocationForMessage } from "./create";
 import {
-  createAgentInvocationForMessage,
   getActiveAgentInvocationForConversation,
+  getLatestAgentInvocationForConversation,
 } from "./store";
 import { enqueueTopLevelAgentMessage } from "./top-level-message";
 import { PARENT_AGENT_TARGET } from "./types";
@@ -46,15 +47,18 @@ export function bindMessageAgent(
     const queue =
       typeof options.queue === "function" ? options.queue() : options.queue;
     if (input.to === PARENT_AGENT_TARGET) {
-      const sender = await getActiveAgentInvocationForConversation(
-        run.conversationId,
-      );
+      // A Turn on the Conversation loop has no open agent
+      // invocation. Its newest one names the child for the parent.
+      const sender =
+        (await getActiveAgentInvocationForConversation(run.conversationId)) ??
+        (await getLatestAgentInvocationForConversation(run.conversationId));
       if (!sender) {
         throw new AgentMessageTargetError(
           "This conversation has no parent agent",
         );
       }
       await enqueueAgentMessageToParent({
+        actor,
         messageKey: `${run.turnId}:${call.toolCallId}`,
         queue,
         sender,
@@ -72,7 +76,6 @@ export function bindMessageAgent(
     });
     if (!childConversationId) {
       await enqueueTopLevelAgentMessage({
-        actor,
         messageKey: `${run.turnId}:${call.toolCallId}`,
         queue,
         senderConversationId: run.conversationId,

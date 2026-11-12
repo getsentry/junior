@@ -19,7 +19,7 @@ import { readPeopleCode } from "./code";
 import { readPeopleList } from "./list";
 import { readPeoplePluginReports } from "./plugin-reports";
 import { readPeopleProfile } from "./profile";
-import { createPersonalSpendReader } from "./spend";
+import { readPersonalSpendFromSql } from "./spend.query";
 
 // A versioned photo path never changes its bytes. `private` keeps photos out
 // of shared caches, because the route needs a signed-in viewer.
@@ -28,7 +28,6 @@ const AVATAR_IMMUTABLE_CACHE_CONTROL = "private, max-age=31536000, immutable";
 /** Create the HTTP routes owned by the People API. */
 export function createPeopleRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
-  const readPersonalSpend = createPersonalSpendReader();
 
   // Serve profile photos from Junior, so browsers never load them from
   // Slack or Google. A photo path has the version of its photo, so the
@@ -71,7 +70,7 @@ export function createPeopleRoutes(): Hono<JuniorApiEnv> {
     const viewer = context.get("viewer");
     return jsonResponse(
       personalSpendReportSchema,
-      await readPersonalSpend(viewer.email),
+      await readPersonalSpendFromSql(viewer.email),
     );
   });
 

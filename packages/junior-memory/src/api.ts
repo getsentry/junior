@@ -1,9 +1,9 @@
 /**
  * Authenticated REST access to memory.
  *
- * The signed-in User can read public memory and private memory that they own.
+ * The signed-in User can read and forget public memory.
  */
-import { z } from "zod";
+import * as z from "zod";
 import {
   pluginApiRouteRequestContextSchema,
   type PluginConversationEventReader,
@@ -14,7 +14,6 @@ import {
 import type { MemoryDb } from "./store";
 import {
   archiveMemory,
-  countMemories,
   getMemories,
   getMemory,
   getMemoryStats,
@@ -26,6 +25,12 @@ import {
   type MemoryView,
 } from "./viewer";
 import { parseCapturedMemories, parseRecalledMemoryIds } from "./events";
+import {
+  extractionCostFlow,
+  memoryCostsByDay,
+  memoryCostsByHour,
+  recallCostFlow,
+} from "./model-cost";
 import { MEMORY_SOURCE_PLATFORMS } from "./types";
 
 export const memoryApiSchema = z
@@ -38,7 +43,6 @@ export const memoryApiSchema = z
     observedAt: z.iso.datetime(),
     origin: z.enum(["automatic", "explicit", "other"]),
     sourcePlatform: z.enum(MEMORY_SOURCE_PLATFORMS),
-    visibility: z.enum(["private", "public"]),
   })
   .strict();
 
@@ -61,6 +65,8 @@ export const conversationMemorySchema = z
 const conversationMemoryEventSchema = z
   .object({
     memoryIds: z.array(z.string().min(1)).min(1),
+    /** The event's seq, so the dashboard can open the transcript there. */
+    seq: z.number().int().min(0),
     source: z.enum(["captured", "recalled"]),
     turnId: z.string().min(1).optional(),
   })
@@ -81,9 +87,8 @@ const memoryBucketSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
 
 const memoryDashboardDaySchema = z
   .object({
+    count: z.number().int().min(0),
     date: memoryBucketSchema,
-    personal: z.number().int().min(0),
-    public: z.number().int().min(0),
   })
   .strict();
 
@@ -112,21 +117,10 @@ export const memoryDashboardResponseSchema = z
         embedded: z.number().int().min(0),
         explicit: z.number().int().min(0),
         knowledge: z.number().int().min(0),
-        personal: z.number().int().min(0),
         preference: z.number().int().min(0),
         procedure: z.number().int().min(0),
-        public: z.number().int().min(0),
       })
       .strict(),
-  })
-  .strict();
-
-/** Active memory totals for one search query, split by visibility. */
-export const memoryCountsResponseSchema = z
-  .object({
-    active: z.number().int().min(0),
-    personal: z.number().int().min(0),
-    public: z.number().int().min(0),
   })
   .strict();
 
@@ -135,7 +129,6 @@ export type MemoryDashboardResponse = z.output<
   typeof memoryDashboardResponseSchema
 >;
 export type MemoryListResponse = z.output<typeof memoryListResponseSchema>;
-export type MemoryCountsResponse = z.output<typeof memoryCountsResponseSchema>;
 
 const memoryListQuerySchema = z
   .object({
@@ -143,10 +136,6 @@ const memoryListQuerySchema = z
     limit: z.coerce.number().int().min(1).max(50).default(25),
     q: z.string().trim().max(200).optional(),
   })
-  .strict();
-
-const memoryCountsQuerySchema = z
-  .object({ q: z.string().trim().max(200).optional() })
   .strict();
 
 interface MemoryApiOptions {
@@ -177,7 +166,6 @@ function apiMemory(memory: MemoryView): z.output<typeof memoryApiSchema> {
     observedAt: new Date(memory.observedAtMs).toISOString(),
     origin: memory.origin,
     sourcePlatform: memory.sourcePlatform,
-    visibility: memory.visibility,
   };
 }
 
@@ -230,15 +218,15 @@ async function conversationMemories(args: {
       });
     }
     return {
-      createdAt: event.createdAt,
       memoryIds: eventMemories.map((memory) => memory.id),
+      seq: event.seq,
       source: "captured" as const,
       turnId: event.turnId,
     };
   });
   const recalledEvents = recalled.map((event) => ({
-    createdAt: event.createdAt,
     memoryIds: parseRecalledMemoryIds(event.version, event.content),
+    seq: event.seq,
     source: "recalled" as const,
     turnId: event.turnId,
   }));
@@ -246,7 +234,7 @@ async function conversationMemories(args: {
   // A recall shows only memories the viewer can read in the store now, even
   // when the same memory is in a capture snapshot.
   const recalledIds = new Set<string>();
-  for (const memory of await getMemories(args.db, args.viewer.id, [
+  for (const memory of await getMemories(args.db, [
     ...new Set(recalledEvents.flatMap((event) => event.memoryIds)),
   ])) {
     recalledIds.add(memory.id);
@@ -254,21 +242,20 @@ async function conversationMemories(args: {
     memories.set(memory.id, {
       content: memory.content,
       id: memory.id,
-      visibility: memory.visibility,
+      visibility: "public",
     });
   }
 
-  // ISO timestamps sort as text. Recall runs before its Turn replies and
-  // capture runs after, so a stable sort keeps one Turn in that order.
   const events = [...recalledEvents, ...capturedEvents]
-    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-    .flatMap(({ memoryIds, source, turnId }) => {
+    .sort((left, right) => left.seq - right.seq)
+    .flatMap(({ memoryIds, seq, source, turnId }) => {
       const shown = source === "captured" ? capturedIds : recalledIds;
       const visibleIds = memoryIds.filter((id) => shown.has(id));
       if (visibleIds.length === 0) return [];
       return [
         {
           memoryIds: visibleIds,
+          seq,
           source,
           ...(turnId ? { turnId } : undefined),
         },
@@ -296,14 +283,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
       );
       const isCollection = url.pathname === "/memories";
       const isDashboard = url.pathname === "/dashboard";
-      const isCounts = url.pathname === "/counts";
-      if (
-        !isCollection &&
-        !isDashboard &&
-        !isCounts &&
-        !memoryPath &&
-        !conversationPath
-      ) {
+      if (!isCollection && !isDashboard && !memoryPath && !conversationPath) {
         return json({ error: "Not found." }, 404);
       }
       const isRead = request.method === "GET" || request.method === "HEAD";
@@ -313,7 +293,6 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
 
       const viewer = await options.users.resolve(email);
       if (!viewer) return json({ error: "Authentication required." }, 401);
-      const userId = viewer.id;
 
       try {
         if (isDashboard && isRead) {
@@ -326,64 +305,23 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
             recallDays,
             recallHours,
           ] = await Promise.all([
-            getMemoryStats(options.db, userId),
-            getMemoryTimeline(options.db, userId, 90),
-            getMemoryTimelineHours(options.db, userId, 7 * 24),
-            options.eventStats.costsByDay({
-              days: 90,
-              eventName: "memories_captured",
-            }),
-            options.eventStats.costsByHour({
-              eventName: "memories_captured",
-              hours: 7 * 24,
-            }),
-            options.eventStats.costsByDay({
-              days: 90,
-              eventName: "memories_recalled",
-            }),
-            options.eventStats.costsByHour({
-              eventName: "memories_recalled",
-              hours: 7 * 24,
-            }),
+            getMemoryStats(options.db),
+            getMemoryTimeline(options.db, 90),
+            getMemoryTimelineHours(options.db, 7 * 24),
+            memoryCostsByDay(options.eventStats, extractionCostFlow, 90),
+            memoryCostsByHour(options.eventStats, extractionCostFlow, 7 * 24),
+            memoryCostsByDay(options.eventStats, recallCostFlow, 90),
+            memoryCostsByHour(options.eventStats, recallCostFlow, 7 * 24),
           ]);
-          const { private: personal, ...dashboardStats } = stats;
           const body = memoryDashboardResponseSchema.parse({
-            days: days.map(({ private: personal, ...day }) => ({
-              ...day,
-              personal,
-            })),
+            days,
             extractionDays,
             extractionHours,
             generatedAt: new Date().toISOString(),
-            hours: hours.map(({ private: personal, ...day }) => ({
-              ...day,
-              personal,
-            })),
+            hours,
             recallDays,
             recallHours,
-            stats: { ...dashboardStats, personal },
-          });
-          return request.method === "HEAD"
-            ? new Response(null, {
-                headers: { "cache-control": "no-store" },
-                status: 200,
-              })
-            : json(body);
-        }
-
-        if (isCounts && isRead) {
-          const query = memoryCountsQuerySchema.parse({
-            q: url.searchParams.get("q") ?? undefined,
-          });
-          const counts = await countMemories(
-            options.db,
-            userId,
-            query.q || undefined,
-          );
-          const body = memoryCountsResponseSchema.parse({
-            active: counts.active,
-            personal: counts.private,
-            public: counts.public,
+            stats,
           });
           return request.method === "HEAD"
             ? new Response(null, {
@@ -415,7 +353,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
             limit: url.searchParams.get("limit") ?? undefined,
             q: url.searchParams.get("q") ?? undefined,
           });
-          const page = await listMemories(options.db, userId, {
+          const page = await listMemories(options.db, {
             cursor: query.cursor,
             limit: query.limit,
             ...(query.q ? { query: query.q } : undefined),
@@ -435,7 +373,6 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
         if (memoryPath && isRead) {
           const memory = await getMemory(
             options.db,
-            userId,
             decodeURIComponent(memoryPath[1]!),
           );
           const body = memoryApiSchema.parse(apiMemory(memory));
@@ -449,7 +386,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
 
         if (memoryPath && request.method === "DELETE") {
           const id = decodeURIComponent(memoryPath[1]!);
-          await archiveMemory(options.db, userId, id);
+          await archiveMemory(options.db, id);
           return new Response(null, {
             headers: { "cache-control": "no-store" },
             status: 204,

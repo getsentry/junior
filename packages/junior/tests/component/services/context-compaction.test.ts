@@ -139,7 +139,6 @@ describe("context compaction projection reset", () => {
       {
         conversationId,
         modelId: "openai/gpt-5.4",
-        modelProfile: "standard",
         pendingMessages: [
           { message: prompt, provenance: { authority: "instruction" } },
         ],
@@ -147,7 +146,10 @@ describe("context compaction projection reset", () => {
         runtimeContextMessages: [...history, context, prompt],
         mode: "blocking",
       },
-      async () => "Open: migration approval and rollback plan.",
+      async () => ({
+        summary: "Open: migration approval and rollback plan.",
+        costUsd: 0.002,
+      }),
     );
 
     expect(result.compacted).toBe(true);
@@ -161,6 +163,12 @@ describe("context compaction projection reset", () => {
     const projection = await loadConversationProjection({ conversationId });
     expect(projection.messages).toEqual(result.piMessages);
     expect(projection.provenance[1]).toEqual(askProvenance);
+    const { getConversationEventStore } = await import("@/chat/db");
+    const events =
+      await getConversationEventStore().loadCurrentHistory(conversationId);
+    expect(
+      events.find((event) => event.data.type === "compaction")?.data,
+    ).toMatchObject({ costUsd: 0.002 });
   });
 
   it("counts retained runtime context in the replacement hard limit", async () => {
@@ -178,7 +186,6 @@ describe("context compaction projection reset", () => {
           conversationId,
           mode: "active",
           modelId: "openai/gpt-5.4",
-          modelProfile: "standard",
           pendingMessages: [
             {
               message: {
@@ -186,7 +193,9 @@ describe("context compaction projection reset", () => {
                 content: [
                   {
                     type: "text",
-                    text: `<runtime-turn-context>\n${"y".repeat(1_600_000)}\n</runtime-turn-context>`,
+                    // Below the 380k input limit alone, over it with the
+                    // summary.
+                    text: `<runtime-turn-context>\n${"y".repeat(1_400_000)}\n</runtime-turn-context>`,
                   },
                   {
                     type: "text",
@@ -210,7 +219,7 @@ describe("context compaction projection reset", () => {
             } as PiMessage,
           ],
         },
-        async () => "Short summary.",
+        async () => ({ summary: "s".repeat(200_000) }),
       ),
     ).rejects.toBeInstanceOf(ContextInputLimitExceededError);
     await expect(loadProjection({ conversationId })).resolves.toEqual(original);
@@ -219,18 +228,36 @@ describe("context compaction projection reset", () => {
   it("retains split host context during active compaction", async () => {
     const { compactActiveContextIfNeeded } =
       await import("@/chat/services/context-compaction");
-    const { buildTurnContextPrompt } = await import("@/chat/prompt");
+    const { buildScriptToolsSection, buildTurnContextPrompt } =
+      await import("@/chat/prompt");
     const conversationId = "conversation-active-split-context";
+    const skill = (name: string) => ({
+      name,
+      description: `Use ${name}.`,
+      skillPath: `/skills/${name}`,
+    });
+    const catalogs = [{ provider: "notion", available_tool_count: 3 }];
+    const section = (text: string, tag: string) =>
+      text.match(new RegExp(`<${tag}>\\n[\\s\\S]*?\\n</${tag}>`))![0];
+    const count = (text: string, tag: string) =>
+      text.split(`<${tag}>\n`).length - 1;
     // An earlier Turn sent session context. A later Turn that no person
-    // started got request context. Neither request context applies now.
+    // started got request context, changed script tools, and a new skill.
+    // Neither request context applies now.
     const sessionContext = buildTurnContextPrompt({
-      availableSkills: [],
-      activeMcpCatalogs: [],
+      availableSkills: [skill("skill-a")],
+      activeMcpCatalogs: catalogs,
       disabledTools: [{ name: "firstTurnTool", reason: "First Turn only." }],
       runtime: { conversationId },
+      scriptTools: "tools.a",
     })!;
     const earlierRequestContext = buildTurnContextPrompt({
-      availableSkills: [],
+      availableSkills: [skill("skill-a"), skill("skill-b")],
+      activeMcpCatalogs: catalogs,
+      latestCapabilitySections: {
+        "available-skills": section(sessionContext, "available-skills"),
+        "active-mcp-catalogs": section(sessionContext, "active-mcp-catalogs"),
+      },
       includeSessionContext: false,
       disabledTools: [
         { name: "createAutomation", reason: "No person started it." },
@@ -238,6 +265,7 @@ describe("context compaction projection reset", () => {
       pluginPromptContributions: [
         { pluginName: "memory", id: "userPrompt:0", text: "Earlier memory." },
       ],
+      scriptTools: "tools.b",
     })!;
     const earlierTurns = [
       user(sessionContext, 1),
@@ -285,37 +313,38 @@ describe("context compaction projection reset", () => {
       timestamp: 4,
     });
 
-    const result = await compactActiveContextIfNeeded(
-      {
-        conversationId,
-        mode: "active",
-        modelId: "openai/gpt-5.4",
-        modelProfile: "standard",
-        pendingMessages: [
-          { message: instruction, provenance: { authority: "instruction" } },
-        ],
-        piMessages: [
-          ...earlierTurns,
-          {
-            role: "toolResult",
-            toolCallId: "tool-1",
-            toolName: "oversized",
-            content: [{ type: "text", text: "x".repeat(1_600_000) }],
-            isError: false,
-            timestamp: 2,
-          } as PiMessage,
-          contextMessage,
-        ],
-        runtimeContextMessages: [
-          ...earlierTurns,
-          contextMessage,
-          instruction,
-          agents,
-        ],
-        turnStartMessageIndex: earlierTurns.length,
-      },
-      async () => "Short summary.",
-    );
+    const compact = (currentContext: PiMessage) =>
+      compactActiveContextIfNeeded(
+        {
+          conversationId,
+          mode: "active",
+          modelId: "openai/gpt-5.4",
+          pendingMessages: [
+            { message: instruction, provenance: { authority: "instruction" } },
+          ],
+          piMessages: [
+            ...earlierTurns,
+            {
+              role: "toolResult",
+              toolCallId: "tool-1",
+              toolName: "oversized",
+              content: [{ type: "text", text: "x".repeat(1_600_000) }],
+              isError: false,
+              timestamp: 2,
+            } as PiMessage,
+            currentContext,
+          ],
+          runtimeContextMessages: [
+            ...earlierTurns,
+            currentContext,
+            instruction,
+            agents,
+          ],
+          turnStartMessageIndex: earlierTurns.length,
+        },
+        async () => ({ summary: "Short summary." }),
+      );
+    const result = await compact(contextMessage);
 
     expect(result.compacted).toBe(true);
     expect(result.piMessages?.map(textOf)).toEqual([
@@ -333,6 +362,39 @@ describe("context compaction projection reset", () => {
     expect(context).toContain("Use the new formatter.");
     expect(context).not.toContain("Use the old formatter.");
     expect(context).not.toContain(AGENTS_REPLACEMENT_NOTICE);
+    // A Turn sends script tools only when they differ from the latest copy,
+    // so exactly that copy stays.
+    const scriptToolsCount = (text: string) =>
+      text.split("<script-tools>").length - 1;
+    expect(scriptToolsCount(context)).toBe(1);
+    expect(context).toContain(buildScriptToolsSection("tools.b"));
+    // The same holds for each capability section: the newer skills and the
+    // MCP catalogs that did not change.
+    expect(count(earlierRequestContext, "active-mcp-catalogs")).toBe(0);
+    expect(count(context, "available-skills")).toBe(1);
+    expect(context).toContain(
+      section(earlierRequestContext, "available-skills"),
+    );
+    expect(count(context, "active-mcp-catalogs")).toBe(1);
+    expect(context).toContain(section(sessionContext, "active-mcp-catalogs"));
+
+    const changed = await compact({
+      ...contextMessage,
+      content: [
+        {
+          type: "text",
+          text: buildTurnContextPrompt({
+            availableSkills: [],
+            includeSessionContext: false,
+            scriptTools: "tools.c",
+          })!,
+        },
+        ...(contextMessage as { content: unknown[] }).content,
+      ],
+    } as PiMessage);
+    const changedContext = textOf(changed.piMessages![0]!);
+    expect(scriptToolsCount(changedContext)).toBe(1);
+    expect(changedContext).toContain(buildScriptToolsSection("tools.c"));
   });
 
   it("blocks the next provider request when hard-limit compaction fails", async () => {
@@ -350,7 +412,6 @@ describe("context compaction projection reset", () => {
           conversationId,
           mode: "active",
           modelId: "openai/gpt-5.4",
-          modelProfile: "standard",
           piMessages: [
             ...original,
             {
@@ -369,281 +430,5 @@ describe("context compaction projection reset", () => {
       ),
     ).rejects.toBeInstanceOf(ContextInputLimitExceededError);
     await expect(loadProjection({ conversationId })).resolves.toEqual(original);
-  });
-
-  it("handoff binds its named profile", async () => {
-    const { compactContextForHandoff } =
-      await import("@/chat/services/context-compaction");
-    const { commitMessages, loadConversationProjection, loadProjection } =
-      await import("@/chat/conversations/projection");
-    const { getConversationEventStore } = await import("@/chat/db");
-    const { botConfig } = await import("@/chat/config");
-    const conversationId = "conversation-handoff";
-    const priorMessages = [
-      user("Implement the multi-file change.", 1),
-      {
-        ...assistant("", 2),
-        content: [
-          {
-            type: "toolCall",
-            id: "plan-handoff",
-            name: "updatePlan",
-            arguments: {
-              plan: [
-                { step: "Edit both modules", status: "in_progress" },
-                { step: "Run focused tests", status: "pending" },
-              ],
-            },
-          },
-        ],
-        stopReason: "toolUse",
-      } as PiMessage,
-      {
-        role: "toolResult",
-        toolCallId: "plan-handoff",
-        toolName: "updatePlan",
-        content: [{ type: "text", text: "Plan updated" }],
-        isError: false,
-        timestamp: 3,
-      } as PiMessage,
-    ];
-    await commitMessages({
-      conversationId,
-      messages: priorMessages,
-    });
-
-    const runtimeContext = [
-      user(
-        "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
-        3,
-      ),
-    ];
-    const handoffMessages = await compactContextForHandoff(
-      {
-        conversationId,
-        piMessages: priorMessages,
-        runtimeContext,
-        triggeringToolCallId: "handoff-call-1",
-        target: {
-          modelId: botConfig.profiles.handoff!.modelId,
-          modelProfile: "handoff",
-        },
-      },
-      {
-        completeText: async () =>
-          ({ text: "Continue the multi-file implementation." }) as never,
-      },
-    );
-
-    expect(handoffMessages).toHaveLength(2);
-    expect(textOf(handoffMessages[0]!)).toContain(
-      "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
-    );
-    expect(textOf(handoffMessages[0]!)).not.toContain("<current-instruction>");
-    expect(textOf(handoffMessages[1]!)).toContain(
-      "Another language model started to solve this problem",
-    );
-    expect(textOf(handoffMessages[1]!)).toContain(
-      "Continue the multi-file implementation.",
-    );
-    expect(textOf(handoffMessages[1]!)).toContain(
-      '<open-plan>\n[{"step":"Edit both modules","status":"in_progress"},{"step":"Run focused tests","status":"pending"}]\n</open-plan>',
-    );
-    const durableHandoffMessages = handoffMessages;
-    await expect(loadProjection({ conversationId })).resolves.toEqual(
-      durableHandoffMessages,
-    );
-    expect(
-      (await loadConversationProjection({ conversationId })).modelProfile,
-    ).toBe("handoff");
-    const marker = (
-      await getConversationEventStore().loadHistory(conversationId)
-    )
-      .map((event) => event.data)
-      .find((entry) => entry.type === "handoff");
-    expect(marker).toEqual({
-      type: "handoff",
-      modelProfile: "handoff",
-      modelId: botConfig.profiles.handoff!.modelId,
-      triggeringToolCallId: "handoff-call-1",
-      summary: "Continue the multi-file implementation.",
-      replacementHistory: durableHandoffMessages.map((message) => ({
-        item: {
-          type: "user_message",
-          content: (message as { content: unknown[] }).content,
-          timestamp: expect.any(Number),
-          provenance: { authority: "context" },
-        },
-      })),
-    });
-
-    await expect(
-      commitMessages({
-        conversationId,
-        messages: [user("Replacement safe boundary.", 3)],
-      }),
-    ).rejects.toThrow("changed before its committed boundary");
-    expect(
-      (await loadConversationProjection({ conversationId })).modelProfile,
-    ).toBe("handoff");
-  });
-
-  it("leaves the standard projection untouched when handoff summarization fails", async () => {
-    const { compactContextForHandoff } =
-      await import("@/chat/services/context-compaction");
-    const { commitMessages, loadConversationProjection, loadProjection } =
-      await import("@/chat/conversations/projection");
-    const conversationId = "conversation-failed-handoff";
-    const priorMessages = [user("Implement the change.", 1)];
-    await commitMessages({
-      conversationId,
-      messages: priorMessages,
-    });
-
-    await expect(
-      compactContextForHandoff(
-        {
-          conversationId,
-          piMessages: priorMessages,
-          runtimeContext: [
-            user(
-              "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
-            ),
-          ],
-          triggeringToolCallId: "failed-handoff-call",
-          target: {
-            modelId: "test/handoff",
-            modelProfile: "handoff",
-          },
-        },
-        {
-          completeText: async () => {
-            throw new Error("summary unavailable");
-          },
-        },
-      ),
-    ).rejects.toThrow("summary unavailable");
-    await expect(loadProjection({ conversationId })).resolves.toEqual(
-      priorMessages,
-    );
-    expect(
-      (await loadConversationProjection({ conversationId })).modelProfile,
-    ).toBe("standard");
-  });
-
-  it("uses the latest runtime context and supports AGENTS-only context", async () => {
-    const { compactContextForHandoff } =
-      await import("@/chat/services/context-compaction");
-    const completeText = async () => ({ text: "Continue safely." }) as never;
-    const target = {
-      modelId: "test/handoff",
-      modelProfile: "handoff" as const,
-    };
-
-    const agents = buildAgentsInstructionsMessage({
-      directory: "/vercel/sandbox/repo",
-      text: "Use pnpm.",
-      timestamp: 3,
-    });
-    const messages = await compactContextForHandoff(
-      {
-        conversationId: "conversation-latest-runtime-context",
-        piMessages: [user("Implement the change.")],
-        runtimeContext: [
-          user(
-            "<runtime-turn-context>\nStale runtime context\n</runtime-turn-context>",
-          ),
-          user(
-            "<runtime-turn-context>\nCurrent runtime context\n</runtime-turn-context>",
-          ),
-          agents,
-        ],
-        triggeringToolCallId: "latest-context-handoff-call",
-        target,
-      },
-      { completeText },
-    );
-
-    expect(messages).toHaveLength(2);
-    expect(textOf(messages[0]!)).toContain("Current runtime context");
-    expect(textOf(messages[0]!)).toContain("Use pnpm.");
-    expect(textOf(messages[0]!)).not.toContain("Stale runtime context");
-    expect(textOf(messages[1]!)).not.toContain("<current-instruction>");
-
-    const agentsOnlyMessages = await compactContextForHandoff(
-      {
-        conversationId: "conversation-agents-only-runtime-context",
-        piMessages: [user("Implement the change.")],
-        runtimeContext: [agents],
-        triggeringToolCallId: "agents-only-context-handoff-call",
-        target,
-      },
-      { completeText },
-    );
-    expect(agentsOnlyMessages).toHaveLength(2);
-    expect(textOf(agentsOnlyMessages[0]!)).toContain("Use pnpm.");
-    expect(textOf(agentsOnlyMessages[1]!)).not.toContain(
-      "<current-instruction>",
-    );
-
-    await expect(
-      compactContextForHandoff(
-        {
-          conversationId: "conversation-missing-runtime-context",
-          piMessages: [user("Implement the change.")],
-          runtimeContext: [],
-          triggeringToolCallId: "missing-context-handoff-call",
-          target,
-        },
-        { completeText },
-      ),
-    ).rejects.toThrow("Handoff requires the current runtime turn context");
-  });
-
-  it("does not start handoff persistence when abort is observed after summarization", async () => {
-    const { compactContextForHandoff } =
-      await import("@/chat/services/context-compaction");
-    const { commitMessages, loadConversationProjection, loadProjection } =
-      await import("@/chat/conversations/projection");
-    const conversationId = "conversation-aborted-handoff";
-    const priorMessages = [user("Implement the change.", 1)];
-    const controller = new AbortController();
-    await commitMessages({
-      conversationId,
-      messages: priorMessages,
-    });
-
-    await expect(
-      compactContextForHandoff(
-        {
-          conversationId,
-          piMessages: priorMessages,
-          runtimeContext: [
-            user(
-              "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
-            ),
-          ],
-          signal: controller.signal,
-          triggeringToolCallId: "aborted-handoff-call",
-          target: {
-            modelId: "test/handoff",
-            modelProfile: "handoff",
-          },
-        },
-        {
-          completeText: async (params) => {
-            expect(params.signal).toBe(controller.signal);
-            controller.abort(new Error("turn aborted"));
-            return { text: "This summary must not commit." } as never;
-          },
-        },
-      ),
-    ).rejects.toThrow("turn aborted");
-    await expect(loadProjection({ conversationId })).resolves.toEqual(
-      priorMessages,
-    );
-    expect(
-      (await loadConversationProjection({ conversationId })).modelProfile,
-    ).toBe("standard");
   });
 });

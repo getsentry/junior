@@ -1,33 +1,55 @@
 import { ChevronRight } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { Link } from "react-router";
 
+import { CollapsibleTrigger } from "../components/ui/collapsible";
+import { Button } from "../components/ui/button";
+import { Item, ItemContent, ItemMedia } from "../components/ui/item";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
+import { OutboundIcon } from "../components/OutboundLink";
 
 /**
  * Group one kind of detail in a compact card. Conversation details and event
  * details share it, so both panels read the same way. A `label` names the
- * card as a region.
+ * card as a region. An `action` sits at the end of the title row.
  */
 export function DetailsCard(props: {
+  action?: ReactNode;
   children: ReactNode;
   count?: number;
+  flat?: boolean;
   label?: string;
   title?: string;
 }) {
   return (
     <section
       aria-label={props.label}
-      className="grid min-w-0 gap-2.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel p-3"
+      className={cn(
+        "grid min-w-0 border-dashboard-border-subtle",
+        props.flat
+          ? "gap-1.5 border-t px-1 pt-3 pb-1"
+          : "gap-2.5 rounded-lg border bg-dashboard-surface-panel p-3",
+      )}
     >
       {props.title ? (
-        <h3 className="m-0 flex min-w-0 items-center gap-1.5 break-words font-sans text-xs font-medium text-dashboard-text-muted">
-          {props.title}
-          {props.count ? (
-            <span className="tabular-nums text-dashboard-text-faint">
-              {props.count.toLocaleString("en-US")}
-            </span>
-          ) : null}
-        </h3>
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <h3
+            className={cn(
+              "m-0 flex min-w-0 items-center gap-1.5 break-words font-sans text-xs",
+              props.flat
+                ? "font-semibold text-dashboard-text"
+                : "font-medium text-dashboard-text-muted",
+            )}
+          >
+            {props.title}
+            {props.count ? (
+              <span className="font-normal tabular-nums text-dashboard-text-faint">
+                {props.count.toLocaleString("en-US")}
+              </span>
+            ) : null}
+          </h3>
+          {props.action}
+        </div>
       ) : null}
       <div className="min-w-0 break-words font-sans text-xs leading-relaxed text-dashboard-text-muted">
         {props.children}
@@ -64,11 +86,12 @@ export function DetailsList<T>(props: {
       ))}
       {hidden > 0 ? (
         <li>
-          <button
+          <Button
             aria-expanded={expanded}
-            className="group flex min-h-8 w-full items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left text-xs font-medium leading-4 text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+            className="group flex min-h-8 w-full items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left text-xs font-medium leading-4 focus-visible:-outline-offset-2"
             onClick={() => setExpanded((value) => !value)}
-            type="button"
+            variant="ghost"
+            size="bare"
           >
             <span className="grid size-5 shrink-0 place-items-center">
               <ChevronRight
@@ -77,7 +100,7 @@ export function DetailsList<T>(props: {
               />
             </span>
             {expanded ? "Show fewer" : `Show ${hidden} more`}
-          </button>
+          </Button>
         </li>
       ) : null}
     </ul>
@@ -87,70 +110,56 @@ export function DetailsList<T>(props: {
 /**
  * Lay out one details list row: an icon, a title, and short trailing text on
  * the first line, then optional lines under the title. A row with `href`
- * opens that link in a new tab. A row with `onToggle` is a disclosure button
- * that shows or hides content the caller renders under it.
+ * opens that link in a new tab, and a row with `to` opens a dashboard page.
+ * An `onClick` row is a button. A `disclosure` row is the trigger of the
+ * enclosing `Collapsible`, so it shows or hides the content under it.
  */
 export function DetailsRow(props: {
   children?: ReactNode;
-  expanded?: boolean;
+  disclosure?: boolean;
   href?: string;
   icon: ReactNode;
   meta?: ReactNode;
-  onToggle?(): void;
+  onClick?(): void;
   title: ReactNode;
+  to?: string;
   /** Native hover text with detail that the row does not show. */
   tooltip?: string;
 }) {
-  const interactive = props.href !== undefined || props.onToggle !== undefined;
-  const className = cn(
-    "grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2.5 gap-y-1 rounded-md px-1.5 py-1.5 text-left text-inherit no-underline",
-    interactive &&
-      "group transition-colors hover:bg-dashboard-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
-  );
-  const content = (
-    <>
-      <span className="grid size-5 shrink-0 place-items-center text-dashboard-text-muted">
-        {props.icon}
-      </span>
-      <span className="min-w-0 truncate text-sm font-medium leading-5 text-dashboard-text">
-        {props.title}
-      </span>
-      <span className="shrink-0 text-xs leading-5 tabular-nums text-dashboard-text-muted">
-        {props.meta}
-      </span>
-      {props.children}
-    </>
-  );
-  if (props.href) {
-    return (
-      <a
-        className={className}
-        href={props.href}
-        rel="noreferrer"
-        target="_blank"
-        title={props.tooltip}
-      >
-        {content}
-      </a>
-    );
-  }
-  if (props.onToggle) {
-    return (
-      <button
-        aria-expanded={props.expanded ?? false}
-        className={className}
-        onClick={props.onToggle}
-        title={props.tooltip}
-        type="button"
-      >
-        {content}
-      </button>
-    );
-  }
+  const interactive =
+    props.href !== undefined ||
+    props.to !== undefined ||
+    props.onClick !== undefined ||
+    props.disclosure === true;
+  const render = props.href ? (
+    <a href={props.href} rel="noreferrer" target="_blank" />
+  ) : props.to ? (
+    <Link to={props.to} />
+  ) : props.onClick ? (
+    <button onClick={props.onClick} type="button" />
+  ) : props.disclosure ? (
+    <CollapsibleTrigger />
+  ) : undefined;
   return (
-    <div className={className} title={props.tooltip}>
-      {content}
-    </div>
+    <Item
+      className={cn(interactive && "group")}
+      render={render}
+      title={props.tooltip}
+    >
+      <ItemMedia>{props.icon}</ItemMedia>
+      <ItemContent>
+        <span className="flex min-w-0 items-start gap-2.5">
+          <span className="flex min-w-0 flex-1 items-center text-sm font-medium leading-5 text-dashboard-text">
+            <span className="truncate">{props.title}</span>
+            {props.href ? <OutboundIcon /> : null}
+          </span>
+          <span className="shrink-0 text-xs leading-5 tabular-nums text-dashboard-text-muted">
+            {props.meta}
+          </span>
+        </span>
+        {props.children}
+      </ItemContent>
+    </Item>
   );
 }
 
@@ -162,7 +171,7 @@ export function DetailsRowLine(props: {
   return (
     <div
       className={cn(
-        "col-start-2 col-end-4 min-w-0 text-xs leading-4 text-dashboard-text-muted",
+        "min-w-0 text-xs leading-4 text-dashboard-text-muted",
         props.className,
       )}
     >

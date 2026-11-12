@@ -3,7 +3,7 @@ import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command"
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { z } from "zod";
+import * as z from "zod";
 
 /** Maximum single file size accepted by model-facing upload tools. */
 export const MAX_SANDBOX_FILE_UPLOAD_BYTES = 10 * 1024 * 1024;

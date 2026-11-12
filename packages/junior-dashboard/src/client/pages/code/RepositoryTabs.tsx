@@ -16,16 +16,15 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { ConversationHomeList } from "../../conversations/ConversationHomeList";
-import { attentionFirst } from "../../conversations/conversationSections";
+import { pinnedAndWaitingFirst } from "../../conversations/conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../../format";
 import { useDebouncedValue } from "../../debouncedValue";
-import { useWaitingConversationIds } from "../../review-desk/queries";
+import { useWaitingConversations } from "../../review-desk/queries";
 import { CodeActivityChart } from "./CodeActivityChart";
 import { CodeChangeRow } from "./CodeChangeRow";
 import { repositoryActivity } from "./RepositorySections";
 
 const PAGE_SIZE = 25;
-const noFinishedConversations = new Set<string>();
 
 /** Conversations linked to the repository, in the home list layout. */
 export function RepositoryConversationsTab(props: { repositoryId: string }) {
@@ -34,7 +33,7 @@ export function RepositoryConversationsTab(props: { repositoryId: string }) {
   const search = useDebouncedValue(query.trim());
   const feed = useCodeRepositoryConversationsData(props.repositoryId, search);
   const conversations = buildConversations(feed.data?.conversations ?? []);
-  const waitingConversationIds = useWaitingConversationIds();
+  const waitingConversations = useWaitingConversations();
   useEffect(() => {
     setPage(1);
   }, [search]);
@@ -54,7 +53,7 @@ export function RepositoryConversationsTab(props: { repositoryId: string }) {
       ) : (
         <ConversationHomeList
           conversations={pageItems(
-            attentionFirst(conversations, waitingConversationIds),
+            pinnedAndWaitingFirst(conversations, waitingConversations),
             page,
             PAGE_SIZE,
           )}
@@ -63,10 +62,9 @@ export function RepositoryConversationsTab(props: { repositoryId: string }) {
               ? "No conversations match this search."
               : "No conversations are linked to this repository yet."
           }
-          finishedConversationIds={noFinishedConversations}
           loading={!feed.data}
           timeZone={getDashboardTimeZone()}
-          waitingConversationIds={waitingConversationIds}
+          waitingConversations={waitingConversations}
         />
       )}
       <PagePagination

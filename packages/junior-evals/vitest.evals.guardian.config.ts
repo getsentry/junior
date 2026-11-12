@@ -57,13 +57,17 @@ export default defineConfig({
   test: {
     environment: "node",
     fileParallelism: false,
-    globalSetup: [path.resolve(__dirname, "guardian-global-setup.ts")],
+    // Cases only need AI Gateway access through Roach (`roach.json`).
+    globalSetup: ["@sentry/roach/vitest"],
     include: ["evals/guardian/**/*.eval.ts"],
     maxWorkers: 1,
+    // `fetch-setup.ts` must run after the Roach setup file.
+    sequence: { setupFiles: "list" },
     setupFiles: [
       path.resolve(__dirname, "src/stable-setup.ts"),
       path.resolve(__dirname, "src/guardian-setup.ts"),
-      path.resolve(__dirname, "src/recording-setup.ts"),
+      "@sentry/roach/vitest/setup",
+      path.resolve(__dirname, "src/fetch-setup.ts"),
     ],
     outputFile: { json: evalReportPath },
     reporters: [new DefaultEvalReporter(), "json"],

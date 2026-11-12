@@ -7,10 +7,14 @@ const alertVariants = cva(
   {
     variants: {
       variant: {
-        default:
-          "border-dashboard-border-strong bg-dashboard-surface-raised text-dashboard-text",
+        default: "border-dashboard-border-strong bg-secondary text-foreground",
         destructive:
           "border-rose-300/20 bg-rose-300/[0.08] text-rose-100 *:data-[slot=alert-description]:text-rose-100/70 *:[svg]:text-rose-300",
+        warning:
+          "border-amber-300/25 bg-amber-300/5 text-foreground *:[svg]:text-amber-300",
+        /** Full-width strip at the edge of the page. Callers set its tone colors. */
+        banner:
+          "flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-none border-0 border-t px-3 py-1.5 text-center font-sans text-xs",
       },
     },
     defaultVariants: {
@@ -40,7 +44,7 @@ function AlertTitle({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="alert-title"
       className={cn(
-        "font-medium group-has-[>svg]/alert:col-start-2 [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-dashboard-text",
+        "font-medium group-has-[>svg]/alert:col-start-2 [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground",
         className,
       )}
       {...props}
@@ -53,7 +57,7 @@ function AlertDescription({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="alert-description"
       className={cn(
-        "text-sm text-balance text-dashboard-text-muted md:text-pretty [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-dashboard-text [&_p:not(:last-child)]:mb-4",
+        "text-sm text-balance text-muted-foreground md:text-pretty [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground [&_p:not(:last-child)]:mb-4",
         className,
       )}
       {...props}

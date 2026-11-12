@@ -31,7 +31,7 @@ Documentation is linked and summarized, not copied as a bundled upstream manual.
 - **Adopted:** inspect output after timeouts; check actual attachment bytes. One render completed despite a tool timeout. A large master needed a smaller delivery copy.
 - **Adopted:** standard-library WAV measurement fallback. FFmpeg was available while FFprobe was not. No extra audio package was needed.
 - **Rejected:** shipping the one-off composition, fixtures, assets, or hardcoded browser path. Those are project choices, not reusable skill policy.
-- **Adopted:** hand off to an implementation profile for composition. The requester asked for the stronger profile, and the polish pass ran on it. The skill names no model, because profiles change.
+- **Removed:** hand off to an implementation profile for composition. getsentry/junior#2681 removed the `handoff` tool and model profiles, so every Turn runs on one model.
 - **Adopted:** ASR word alignment, cue lookup by phrase, and DOM-measured boxes. These replaced word-count captions and guessed coordinates, which caused cut phrases and misplaced highlights.
 - **Adopted:** still-grid review with a defect table. The listed defects were found and fixed during the polish pass.
 - **Adopted, conditional:** music only from supplied or licensed tracks, ducked under narration. The user asked for music guidance; no music was used in the observed runs, so the mix values are a starting point, not a measured result.

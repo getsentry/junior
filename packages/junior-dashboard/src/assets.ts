@@ -1,6 +1,8 @@
-export const dashboardClientAsset = "";
-export const dashboardClientChunks: Readonly<Record<string, string>> = {};
-export const dashboardTailwindAsset = "";
+import type { DashboardClientManifest } from "./public-assets";
+
+export const dashboardClientManifest: DashboardClientManifest | undefined =
+  undefined;
+export const dashboardPublicAssets: Readonly<Record<string, string>> = {};
 export const dashboardAvatarHeaderAsset = "";
 export const dashboardInstallIconAsset = "";
 export const dashboardFaviconAsset = "";

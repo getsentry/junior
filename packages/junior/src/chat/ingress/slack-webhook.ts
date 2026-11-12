@@ -2,11 +2,16 @@ import { presentSlackAnnotationDetails } from "@/chat/slack/annotation-details";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import {
   slackAssistantThreadSchema,
+  slackChannelScope,
   slackEventEnvelopeSchema,
   type SlackEventEnvelope,
   type SlackInboundEvent,
 } from "./slack-payload";
+import { unfurlDashboardConversationLinks } from "./slack-conversation-unfurl";
 import { handleSlackForm } from "./slack-form";
+import { saveSkippedSlackMessage } from "./slack-skipped-message";
+import { resumeConversationDelivery } from "@/chat/conversations/delivery-pause";
+import { handleSlackStop, slackStopButtonRequest } from "./slack-stop";
 import type { SlackInteractionInputFacts } from "./slack-interaction-input";
 import { shouldIgnoreMessageSubtype } from "./slack-message-subtypes";
 import {
@@ -15,29 +20,21 @@ import {
 } from "./slack-channel-created";
 import { ThreadImpl, type Message, type StateAdapter } from "chat";
 import type { SlackTurnRuntime } from "@/chat/providers/slack/runtime";
-import { THREAD_OPTOUT_ACK } from "@/chat/providers/slack/runtime";
 import {
   startProcessingReaction,
   type ProcessingReaction,
 } from "@/chat/providers/slack/processing-reaction";
 import type { ConversationStore } from "@/chat/conversations/store";
-import {
-  getConversationEventStore,
-  getConversationStore,
-  getSqlExecutor,
-} from "@/chat/db";
-import { appendConversationMessages } from "@/chat/conversations/messages";
-import { stopConversationTurn } from "@/chat/conversations/stop";
-import { stopConversationSession } from "@/chat/agent-invocations/stop";
+import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   appendAndEnqueueInboundMessage,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
+import type { InboundMessage } from "@/chat/task-execution/state";
 import { withLock } from "@/chat/state/locks";
 import {
   buildSlackInboundMessage,
-  clearSlackPendingReactions,
   type SlackConversationRoute,
 } from "@/chat/task-execution/slack-work";
 import {
@@ -45,31 +42,29 @@ import {
   verifySlackSignature,
   type SlackInstallationContext,
 } from "@/chat/slack/adapter-context";
-import { textMentionsBot } from "@/chat/ingress/bot-mention";
+import { eventMentionsBot } from "@/chat/ingress/bot-mention";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import {
   SLACK_EVENT_NAMESPACE,
   slackChannelMessageEvent,
+  type SlackChannelMessageAuthor,
 } from "@/chat/slack/channel-message-events";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { botConfig } from "@/chat/config";
-import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-message";
 import {
   getThreadStopDecision,
   SubscribedReplyReason,
 } from "@/chat/services/subscribed-decision";
-import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { parseContent } from "@/chat/slack/message/content";
 import { stripLeadingBotMention } from "@/chat/runtime/thread-context";
-import {
-  isSlackMessageStopped,
-  stopSlackThread,
-} from "@/chat/slack/thread-stop";
 import {
   normalizeIncomingSlackThreadId,
   withNormalizedThreadId,
 } from "@/chat/ingress/message-router";
-import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
+import {
+  isSlackWorkspaceMember,
+  slackWorkspaceBotId,
+} from "@/chat/ingress/workspace-membership";
 import { isSlackAuthorDomainAllowed } from "@/chat/ingress/slack-allowed-domain";
 import { slackMessageAttributes } from "./slack-message-telemetry";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
@@ -87,7 +82,6 @@ import { publishAppHomeView } from "@/chat/slack/app-home";
 import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
 import { presentSlackAutomationDetails } from "@/chat/slack/automation-details";
 import { getSlackClient } from "@/chat/slack/client";
-import { createSlackWebApiStatusSender } from "@/chat/slack/assistant-thread/status-send";
 import {
   logException,
   setSpanAttributes,
@@ -233,6 +227,8 @@ function shouldPersistBeforeAck(body: SlackEventEnvelope): boolean {
 
 async function resolveSlackConversationId(args: {
   canonicalThreadId: string;
+  /** Claim an unowned thread for the Conversation this message starts. */
+  claimAtMs?: number;
   conversationStore?: ConversationStore;
   installation: SlackInstallationContext;
 }): Promise<string> {
@@ -241,14 +237,57 @@ async function resolveSlackConversationId(args: {
   if (!providerThread) {
     return args.canonicalThreadId;
   }
-  return (
-    (await conversationStore.getConversationIdByProviderConversation({
-      provider: "slack",
-      providerDestinationId: providerThread.channelId,
-      providerTenantId: args.installation.teamId ?? "",
-      providerConversationId: providerThread.threadTs,
-    })) ?? args.canonicalThreadId
-  );
+  const thread = {
+    provider: "slack",
+    providerDestinationId: providerThread.channelId,
+    providerTenantId: args.installation.teamId ?? "",
+    providerConversationId: providerThread.threadTs,
+  };
+  const ownerId =
+    await conversationStore.getConversationIdByProviderConversation(thread);
+  if (ownerId) {
+    return ownerId;
+  }
+  if (args.claimAtMs === undefined || !args.installation.teamId) {
+    return args.canonicalThreadId;
+  }
+  // Claim the thread now, not at the first reply. Otherwise another
+  // Conversation that posts here first takes the thread, and later replies
+  // split between the two.
+  return await conversationStore.claimProviderConversation({
+    ...thread,
+    atMs: args.claimAtMs,
+    conversationId: args.canonicalThreadId,
+  });
+}
+
+/**
+ * Build the mailbox input for one Slack message. A message and a `stop` get
+ * the same `inboundMessageId`, so each Slack message is handled once.
+ */
+async function buildSlackInput(args: {
+  adapter: SlackAdapter;
+  conversationId: string;
+  facts?: SlackInteractionInputFacts;
+  installation: SlackInstallationContext;
+  message: Message;
+  receivedAtMs: number;
+  route: SlackConversationRoute;
+  state: StateAdapter;
+}): Promise<{ inbound: InboundMessage; thread: ThreadImpl }> {
+  const thread = await buildThread(args);
+  return {
+    inbound: buildSlackInboundMessage({
+      conversationId: args.conversationId,
+      installation: args.installation,
+      reviewItemChange: args.facts?.reviewItemChange,
+      message: args.message,
+      receivedAtMs: args.receivedAtMs,
+      route: args.route,
+      thread,
+    }),
+    thread,
+  };
 }
 
 async function persistSlackMessage(args: {
@@ -271,18 +310,15 @@ async function persistSlackMessage(args: {
     args.conversationId ??
     (await resolveSlackConversationId({
       canonicalThreadId,
+      ...(args.route === "mention"
+        ? { claimAtMs: args.receivedAtMs }
+        : undefined),
       conversationStore: args.conversationStore,
       installation: args.installation,
     }));
-  const thread = await buildThread(args);
-  const inbound = buildSlackInboundMessage({
+  const { inbound, thread } = await buildSlackInput({
+    ...args,
     conversationId,
-    installation: args.installation,
-    reviewItemChange: args.facts?.reviewItemChange,
-    message: args.message,
-    receivedAtMs: args.receivedAtMs,
-    route: args.route,
-    thread,
   });
   const work = await getConversationWorkState({
     conversationId,
@@ -291,12 +327,7 @@ async function persistSlackMessage(args: {
   let receipt: ProcessingReaction | undefined;
   if (
     args.route === "mention" &&
-    !work?.execution.inboundMessageIds.includes(inbound.inboundMessageId) &&
-    !(await isSlackMessageStopped({
-      messageCreatedAtMs: args.message.metadata.dateSent.getTime(),
-      state: args.state,
-      threadId: canonicalThreadId,
-    }))
+    !work?.execution.inboundMessageIds.includes(inbound.inboundMessageId)
   ) {
     // Ingress is serialized per thread. React before publishing new input so
     // neither a fast worker nor a duplicate delivery can leave a stale reaction.
@@ -328,131 +359,6 @@ async function persistSlackMessage(args: {
   });
 }
 
-/**
- * Interrupt the active Run, stop the session, unsubscribe, and record
- * the stop message in history. Stop input never enters the mailbox, so a
- * mention-route stop cannot resubscribe the thread by starting a new Turn.
- *
- * A late or stale stop that a newer mention already superseded is a no-op:
- * cancelling the Turn or posting the ack here would clobber that mention.
- */
-async function handleSlackThreadStop(args: {
-  adapter: SlackAdapter;
-  canonicalThreadId: string;
-  conversationStore?: ConversationStore;
-  installation: SlackInstallationContext;
-  message: Message;
-  queue: ConversationWorkQueue;
-  route: SlackConversationRoute;
-  state: StateAdapter;
-  stopReason: string;
-}): Promise<void> {
-  const thread = await buildThread(args);
-  const conversationId = await resolveSlackConversationId({
-    canonicalThreadId: args.canonicalThreadId,
-    conversationStore: args.conversationStore,
-    installation: args.installation,
-  });
-  // Capture receipts before the watermark lets a worker discard stale input.
-  // The ingress lock prevents another Slack message from arriving meanwhile.
-  const work = await getConversationWorkState({
-    conversationId,
-    state: args.state,
-  });
-  const { applied } = await stopSlackThread({
-    state: args.state,
-    stoppedAtMs: args.message.metadata.dateSent.getTime(),
-    thread,
-  });
-  if (!applied) {
-    return;
-  }
-
-  await stopConversationTurn({
-    conversationId,
-    conversationStore: args.conversationStore,
-    queue: args.queue,
-    state: args.state,
-  });
-  await clearSlackPendingReactions({
-    getSlackAdapter: () => args.adapter,
-    messages: work?.execution.pendingMessages ?? [],
-    state: args.state,
-  });
-  await stopConversationSession({ conversationId, state: args.state });
-
-  await bindSlackAuthorIdentity(args.message, args.installation);
-  const content = parseContent(args.message);
-  const conversation = coerceThreadConversationState(undefined);
-  recordSkippedConversationMessage({
-    conversation,
-    message: args.message,
-    skippedReason: `${SubscribedReplyReason.ThreadOptOut}:${args.stopReason}`,
-    text: content.text,
-  });
-  await appendConversationMessages(getConversationEventStore(), {
-    conversation,
-    conversationId,
-  });
-
-  await thread.post(THREAD_OPTOUT_ACK);
-}
-
-/** Acknowledge a native Slack stop that interrupted active work. */
-export const SLACK_SESSION_STOP_ACK = "Stopped.";
-
-/**
- * Stop the active Turn when a user clicks Slack's native agent stop button.
- *
- * Unlike the `stop` keyword, this only interrupts current work. The thread
- * stays subscribed and resource watches stay active. Slack does not leave the
- * `processing` status by itself, so clear the status even when no work runs.
- * https://docs.slack.dev/reference/events/agent_session_stopped
- */
-async function handleSlackSessionStop(args: {
-  adapter: SlackAdapter;
-  channelId: string;
-  conversationStore?: ConversationStore;
-  installation: SlackInstallationContext;
-  queue: ConversationWorkQueue;
-  state: StateAdapter;
-  threadTs: string;
-}): Promise<void> {
-  const canonicalThreadId = `slack:${args.channelId}:${args.threadTs}`;
-  const conversationId = await resolveSlackConversationId({
-    canonicalThreadId,
-    conversationStore: args.conversationStore,
-    installation: args.installation,
-  });
-  const stopped = await stopConversationTurn({
-    conversationId,
-    conversationStore: args.conversationStore,
-    queue: args.queue,
-    state: args.state,
-  });
-  await createSlackWebApiStatusSender({
-    channelId: args.channelId,
-    threadTs: args.threadTs,
-  })("");
-  if (stopped.status !== "requested") {
-    return;
-  }
-
-  await clearSlackPendingReactions({
-    getSlackAdapter: () => args.adapter,
-    messages: stopped.pendingMessages,
-    state: args.state,
-  });
-  const thread = new ThreadImpl({
-    adapter: args.adapter,
-    stateAdapter: args.state,
-    id: canonicalThreadId,
-    channelId: args.adapter.channelIdFromThreadId(canonicalThreadId),
-    isDM: args.adapter.isDM(canonicalThreadId),
-  });
-  await thread.post(SLACK_SESSION_STOP_ACK);
-}
-
 async function routeParsedMessage(args: {
   adapter: SlackAdapter;
   event: SlackInboundEvent;
@@ -474,20 +380,7 @@ async function routeParsedMessage(args: {
   const normalized = normalizeMessageThreadId(args.message);
   const message = normalized.message;
   const canonicalThreadId = normalized.threadId;
-  // Slack still emits app_mention for tokens inside code spans/blocks. Only
-  // count mentions that sit outside code as activations.
-  const botUserId = args.adapter.botUserId;
-  const isMention = Boolean(
-    botUserId &&
-    (textMentionsBot(args.event.text ?? "", botUserId) ||
-      args.event.blocks?.some(
-        (block) =>
-          block.type === "section" &&
-          typeof block.text === "object" &&
-          block.text.type === "mrkdwn" &&
-          textMentionsBot(block.text.text, botUserId),
-      )),
-  );
+  const isMention = eventMentionsBot(args.event, args.adapter.botUserId);
   if (isMention) {
     message.isMention = true;
   }
@@ -504,27 +397,12 @@ async function routeParsedMessage(args: {
         ? "subscribed"
         : undefined;
   if (!route) {
-    // A new top-level message can run Event automations for this channel.
-    // Use only `message`: Slack also sends `app_mention` for a mention in code.
-    const channelMessage =
-      args.event.type === "message" && args.event.channel && args.event.ts
-        ? slackChannelMessageEvent({
-            botId: args.event.bot_id,
-            channelId: args.event.channel,
-            subtype: args.event.subtype,
-            text: args.event.text,
-            threadTs: args.event.thread_ts,
-            ts: args.event.ts,
-            userId: message.author.userId,
-          })
-        : undefined;
-    const teamId = args.installation.teamId;
-    if (channelMessage && teamId) {
-      await ingestEventAutomations(
-        { ...channelMessage, namespace: SLACK_EVENT_NAMESPACE },
-        { queue: args.queue, teamId },
-      );
-    }
+    await ingestChannelMessage({
+      author: { kind: "user", userId: message.author.userId },
+      event: args.event,
+      queue: args.queue,
+      teamId: args.installation.teamId,
+    });
     return;
   }
 
@@ -534,21 +412,6 @@ async function routeParsedMessage(args: {
     text: args.event.text ?? "",
     isExplicitMention: isMention,
   });
-  if (stopDecision) {
-    await handleSlackThreadStop({
-      adapter: args.adapter,
-      canonicalThreadId,
-      conversationStore: args.conversationStore,
-      installation: args.installation,
-      message,
-      queue: args.queue,
-      route,
-      state: args.state,
-      stopReason: stopDecision.reasonDetail ?? stopDecision.reason,
-    });
-    return;
-  }
-
   const isAuthorDomainAllowed = () =>
     isSlackAuthorDomainAllowed({
       allowedBotUserIds: args.allowedBotUserIds,
@@ -557,33 +420,65 @@ async function routeParsedMessage(args: {
       teamId: args.installation.teamId,
       user: args.event.user,
     });
-  // Passive thread messages are not checked for the allowed domains yet.
-  if (route === "mention" && !(await isAuthorDomainAllowed())) {
+  // Passive thread messages and stops are not checked for the allowed domains.
+  if (
+    !stopDecision &&
+    route === "mention" &&
+    !(await isAuthorDomainAllowed())
+  ) {
     return;
   }
 
   await bindSlackAuthorIdentity(message, args.installation);
   const conversationId = await resolveSlackConversationId({
     canonicalThreadId,
+    ...(route === "mention" && !stopDecision
+      ? { claimAtMs: args.receivedAtMs }
+      : undefined),
     conversationStore: args.conversationStore,
     installation: args.installation,
   });
+
+  if (stopDecision) {
+    const { inbound } = await buildSlackInput({
+      adapter: args.adapter,
+      conversationId,
+      installation: args.installation,
+      message,
+      receivedAtMs: args.receivedAtMs,
+      route,
+      state: args.state,
+    });
+    await handleSlackStop({
+      adapter: args.adapter,
+      canonicalThreadId,
+      conversationId,
+      conversationStore: args.conversationStore,
+      queue: args.queue,
+      request: inbound,
+      slackThread: parseSlackThreadId(canonicalThreadId),
+      state: args.state,
+      stopMessage: {
+        message,
+        stopReason: stopDecision.reasonDetail ?? stopDecision.reason,
+      },
+    });
+    return;
+  }
+
+  // A mention in the thread attaches a detached Conversation again.
+  if (route === "mention") {
+    await resumeConversationDelivery(conversationId);
+  }
 
   // Keep non-mention thread messages as Conversation history without waking a
   // worker when passive routing is off. Later explicit mentions still need them.
   // Write to the Conversation that owns the thread, which mention Turns read.
   if (isSubscribed && !isExperimentalFeatureEnabled("passive-routing")) {
-    const content = parseContent(message);
-    const conversation = coerceThreadConversationState(undefined);
-    recordSkippedConversationMessage({
-      conversation,
+    await saveSkippedSlackMessage({
+      conversationId,
       message,
       skippedReason: `${SubscribedReplyReason.PassiveDisabled}:passive-routing`,
-      text: content.text,
-    });
-    await appendConversationMessages(getConversationEventStore(), {
-      conversation,
-      conversationId,
     });
     return;
   }
@@ -643,6 +538,37 @@ async function routeParsedMessage(args: {
   args.runAfterUnlock(closeAnswered);
 }
 
+/**
+ * Run the channel-message automations of the channel for a new message or
+ * thread reply.
+ */
+async function ingestChannelMessage(args: {
+  author: SlackChannelMessageAuthor;
+  event: SlackInboundEvent;
+  queue: ConversationWorkQueue;
+  teamId?: string;
+}): Promise<void> {
+  // Use only `message`: Slack also sends `app_mention` for a mention in code.
+  const { event } = args;
+  if (event.type !== "message" || !event.channel || !event.ts || !args.teamId) {
+    return;
+  }
+  const channelMessage = slackChannelMessageEvent({
+    author: args.author,
+    botId: event.bot_id,
+    channelId: event.channel,
+    subtype: event.subtype,
+    text: event.text,
+    threadTs: event.thread_ts,
+    ts: event.ts,
+  });
+  if (!channelMessage) return;
+  await ingestEventAutomations(
+    { ...channelMessage, namespace: SLACK_EVENT_NAMESPACE },
+    { queue: args.queue, teamId: args.teamId },
+  );
+}
+
 async function handleSlackEvent(args: {
   body: SlackEventEnvelope;
   services: SlackWebhookServices;
@@ -656,6 +582,7 @@ async function handleSlackEvent(args: {
   const state = args.services.state ?? getStateAdapter();
   await state.connect();
   const installation = installationFromEnvelope(args.body);
+  const channelScope = slackChannelScope(args.body);
   const receivedAtMs = Date.now();
 
   async function publishAppHomeViewBestEffort(userId: string): Promise<void> {
@@ -721,6 +648,16 @@ async function handleSlackEvent(args: {
           return;
         }
 
+        if (event.type === "link_shared") {
+          await unfurlDashboardConversationLinks({
+            event,
+            channelScope,
+            state,
+            teamId: installation.teamId,
+          });
+          return;
+        }
+
         if (event.type === "app_home_opened" && event.user) {
           await publishAppHomeViewBestEffort(event.user);
           return;
@@ -737,16 +674,31 @@ async function handleSlackEvent(args: {
           const routed = await withLock(
             state,
             `slack:ingress:slack:${channelId}:${threadTs}`,
-            () =>
-              handleSlackSessionStop({
-                adapter,
-                channelId,
+            async () => {
+              const canonicalThreadId = `slack:${channelId}:${threadTs}`;
+              const conversationId = await resolveSlackConversationId({
+                canonicalThreadId,
                 conversationStore: args.services.conversationStore,
                 installation,
+              });
+              await handleSlackStop({
+                adapter,
+                canonicalThreadId,
+                conversationId,
+                conversationStore: args.services.conversationStore,
                 queue: args.services.queue,
+                request: event.event_ts
+                  ? slackStopButtonRequest({
+                      channelId,
+                      conversationId,
+                      eventTs: event.event_ts,
+                      installation,
+                    })
+                  : undefined,
+                slackThread: { channelId, threadTs },
                 state,
-                threadTs,
-              }),
+              });
+            },
             { keepAlive: true, waitMs: 10_000 },
           );
           if (!routed.acquired) {
@@ -761,6 +713,24 @@ async function handleSlackEvent(args: {
           event.channel &&
           event.ts
         ) {
+          // A post with a bot ID and no user, such as from an app
+          // integration, runs only channel-message automations that name the
+          // bot. It never starts a Turn. A post that mentions Junior runs
+          // nothing, the same as a mention from a person.
+          if (event.user === undefined && event.bot_id !== undefined) {
+            const botId = await slackWorkspaceBotId(event, channelScope, state);
+            setSpanAttributes({
+              "app.slack.membership": botId ? "verified" : "unverified",
+            });
+            if (!botId || eventMentionsBot(event, adapter.botUserId)) return;
+            await ingestChannelMessage({
+              author: { kind: "bot", botId },
+              event,
+              queue: args.services.queue,
+              teamId: installation.teamId,
+            });
+            return;
+          }
           const member = await isSlackWorkspaceMember(event, state);
           setSpanAttributes({
             "app.slack.membership": member ? "verified" : "unverified",

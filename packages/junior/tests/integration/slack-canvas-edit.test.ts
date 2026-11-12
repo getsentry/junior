@@ -21,11 +21,15 @@ function createState(): ToolState {
   };
 }
 
-function queueCanvasRead(canvasId: string, body: string): void {
+function queueCanvasRead(
+  canvasId: string,
+  body: string,
+  title = "Reference Canvas",
+): void {
   queueSlackApiResponse("files.info", {
     body: filesInfoOk({
       fileId: canvasId,
-      title: "Reference Canvas",
+      title,
       permalink: `https://sentry.slack.com/docs/T000/${canvasId}`,
       urlPrivate: `https://files.slack.com/files-pri/T000-${canvasId}/canvas.md`,
     }),
@@ -82,6 +86,50 @@ describe("Slack canvas file-like tools", () => {
     });
     expect((result as { diff: string }).diff).toContain("-3 Old summary");
     expect((result as { diff: string }).diff).toContain("+3 New summary");
+  });
+
+  it("edits a canvas served as Quip HTML and writes Markdown back", async () => {
+    queueCanvasRead(
+      "F0PREVIOUS",
+      '<div class="quip-canvas-content"><h1 id="temp:C:T">Q4 [draft] notes_v1 &amp; more</h1>' +
+        '<h2 id="temp:C:A">Rows</h2>' +
+        '<div data-section-style="5"><ul id="temp:C:B"><li id="temp:C:C">' +
+        '<span><lnk href="https://linear.app/getsentry/issue/NET-625">NET-625</lnk>' +
+        " — <code>Docs</code> fix</span><br/></li></ul></div>" +
+        '<div data-section-style="7"><ul id="temp:C:E">' +
+        '<li id="temp:C:F" class="checked"><span>Done</span><br/></li>' +
+        '<li id="temp:C:G" class=""><span>Open</span><br/></li></ul></div>' +
+        '<p id="temp:C:D" class="line">Old summary</p></div>',
+      "Q4 [draft] notes_v1 & more",
+    );
+    queueSlackApiResponse("canvases.edit", {
+      body: canvasesEditOk(),
+    });
+    const tool = createSlackCanvasEditTool(createState());
+
+    if (typeof tool.execute !== "function") {
+      throw new Error("slackCanvasEdit execute function missing");
+    }
+
+    await tool.execute(
+      {
+        canvas: "F0PREVIOUS",
+        edits: [{ old_text: "Old summary", new_text: "New summary" }],
+      },
+      {} as never,
+    );
+
+    const editCalls = getCapturedSlackApiCalls("canvases.edit");
+    expect(editCalls[0]?.params).toMatchObject({
+      changes: [
+        {
+          document_content: {
+            markdown:
+              "## Rows\n\n- [NET-625](https://linear.app/getsentry/issue/NET-625) — `Docs` fix\n\n- [x] Done\n- [ ] Open\n\nNew summary",
+          },
+        },
+      ],
+    });
   });
 
   it("applies multiple edits against the original canvas content in one write", async () => {

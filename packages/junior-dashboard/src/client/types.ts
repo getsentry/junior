@@ -11,7 +11,9 @@ import type {
 import type {
   ActorIdentity,
   ConversationReportMessageEvent,
+  ConversationFeedItem,
   ConversationStatsReport,
+  ReplyTimeSegmentsReport,
   ConversationSummaryReport,
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
@@ -43,6 +45,8 @@ export type TranscriptViewToolCallPart = {
 export type TranscriptViewSubagentPart = {
   agentName?: string;
   childConversationId: string;
+  /** A Thread renders as a link to its page; Tasks collapse to one line. */
+  childKind: "thread" | "task";
   /** When the child reached its current terminal status. */
   finishedTimestamp?: number;
   id: string;
@@ -56,32 +60,22 @@ export type TranscriptViewSubagentPart = {
 export type TranscriptViewContextEventPart = {
   /** People mentioned in the summary, resolved by the API. */
   mentions?: ActorIdentity[];
-  event:
-    | {
-        createdAt: string;
-        type: "compaction";
-        modelId?: string;
-        modelProfile?: string;
-        summary?: string;
-        details?: {
-          reason: "capacity";
-          estimatedInputTokens: number;
-          replacementInputTokens?: number;
-          triggerTokens: number;
-          inputLimitTokens: number;
-          inputMessageCount: number;
-          retainedMessageCount: number;
-          summaryChars: number;
-        };
-      }
-    | {
-        createdAt: string;
-        modelId: string;
-        modelProfile: string;
-        reasoningLevel?: string;
-        summary?: string;
-        type: "handoff";
-      };
+  event: {
+    createdAt: string;
+    type: "compaction";
+    modelId?: string;
+    summary?: string;
+    details?: {
+      reason: "capacity";
+      estimatedInputTokens: number;
+      replacementInputTokens?: number;
+      triggerTokens: number;
+      inputLimitTokens: number;
+      inputMessageCount: number;
+      retainedMessageCount: number;
+      summaryChars: number;
+    };
+  };
   type: "context_event";
 };
 
@@ -131,6 +125,8 @@ export type TranscriptViewMessage = {
   /** Mailbox delivery mode while the message is still pending history commit. */
   delivery?: "defer" | "interrupt";
   eventType?: string;
+  /** Namespace of the first Event, such as `github`. */
+  eventNamespace?: string;
   eventObjectType?: ObjectType;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
@@ -138,6 +134,10 @@ export type TranscriptViewMessage = {
   events?: ConversationReportMessageEvent[];
   /** Whether the source message addressed Junior directly. */
   explicitMention?: boolean;
+  /** Quiet message: stored, but not delivered to the Location. */
+  quiet?: true;
+  /** Event message whose Turn ended without a reply. */
+  noReply?: true;
   /** Person changes to Review items that this message records. */
   reviewItemChanges?: ReviewItemChangeRecord[];
   /** People mentioned in the event text, resolved by the API. */
@@ -148,13 +148,6 @@ export type TranscriptViewMessage = {
   messageId?: string;
   /** True while the message is accepted in the mailbox but not yet in history. */
   pending?: boolean;
-  route?: {
-    confidence?: number;
-    modelId: string;
-    modelProfile: string;
-    reasoningLevel: string;
-    source: "configured" | "inherited" | "router";
-  };
   eventId?: string;
   failureCode?: ConversationTurnFailureCode;
   failureReason?: ConversationTurnFailureReason;
@@ -163,6 +156,8 @@ export type TranscriptViewMessage = {
   /** Local images of a pending send that the server has not stored yet. */
   images?: InputImage[];
   parts: TranscriptViewPart[];
+  /** Plugin whose tool posted this Junior reply, such as `github`. */
+  postedTo?: string;
   role: "assistant" | "system" | "tool" | "user";
   source?: "slack" | "web";
   sourceSeq: number;
@@ -173,9 +168,13 @@ export type ConversationTranscript = ConversationDetailReport;
 
 export type Conversation = {
   activityPreview?: ConversationSummaryReport["activityPreview"];
+  /** The latest Brief's status, summary, and intent, when visible. */
+  brief?: ConversationFeedItem["brief"];
   annotations?: ConversationSummaryReport["annotations"];
   sidebarAnnotations?: ConversationSummaryReport["sidebarAnnotations"];
   archivedAt?: string | null;
+  pinnedAt?: string | null;
+  pinPosition?: number;
   auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
   channel?: string;
   channelName?: string;
@@ -185,6 +184,10 @@ export type Conversation = {
   cumulativeUsage?: ConversationSummaryReport["cumulativeUsage"];
   displayTitle: string;
   id: string;
+  /** The viewer takes part, so they can pin, archive, rename, and mark it. */
+  isParticipant: boolean;
+  /** Newest true user Message or shown Junior reply. Feed rows only. */
+  lastMessageAt?: string;
   lastProgressAt: string;
   lastSeenAt: string;
   locationId?: string;
@@ -197,7 +200,12 @@ export type Conversation = {
   surface: ConversationSummaryReport["surface"];
   traceId?: string;
   isPriority?: boolean;
-  unfinishedWork?: boolean;
+  kind: ConversationSummaryReport["kind"];
+  parentConversationId?: string;
+  /** Visible Threads under this row, newest first. */
+  threads?: Conversation[];
+  /** A Turn waits on a person to finish an authorization. Server-owned. */
+  awaitingAuthorization?: boolean;
   visibility?: ConversationSummaryReport["visibility"];
 };
 
@@ -217,10 +225,12 @@ export type SystemData = DashboardCoreData & {
   pluginReports?: PluginOperationalReportFeed;
   pluginReportsLoading: boolean;
   plugins: Plugin[];
+  replyTimes?: ReplyTimeSegmentsReport;
+  replyTimesError: boolean;
   skills: SkillReport[];
 };
 
-export type VisualStatus = "active" | "failed" | "idle";
+export type VisualStatus = "active" | "failed" | "idle" | "stopped";
 
 export type CodeBlock = {
   code: string;

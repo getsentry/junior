@@ -8,8 +8,20 @@
       "specifier": "../../tools/oxlint/anti-slop/index.ts"
     },
     {
+      "name": "junior",
+      "specifier": "../../tools/oxlint/junior/index.ts"
+    },
+    {
       "name": "display-text",
       "specifier": "./oxlint/display-text.ts"
+    },
+    {
+      "name": "text-control",
+      "specifier": "./oxlint/text-control.ts"
+    },
+    {
+      "name": "px-geometry",
+      "specifier": "./oxlint/px-geometry.ts"
     }
   ],
   "ignorePatterns": [
@@ -27,6 +39,7 @@
     "tools/oxlint/anti-slop/**"
   ],
   "rules": {
+    "junior/zod-namespace-import": "error",
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
     "react/preserve-manual-memoization": "off",
@@ -56,9 +69,18 @@
     "anti-slop/no-unsafe-dictionary-type": "off",
     "anti-slop/require-safety-comment-for-type-assertion": "off",
     "display-text/no-raw-display-text": "error",
+    "text-control/no-raw-text-control": "error",
+    "px-geometry/px-constant-sizes-element": "error",
     "no-restricted-imports": [
       "error",
       {
+        "paths": [
+          {
+            "name": "@sentry/browser",
+            "importNames": ["init"],
+            "message": "init() bundles every default integration. Build a BrowserClient, as in client/sentry.ts."
+          }
+        ],
         "patterns": [
           {
             "group": [
@@ -77,6 +99,15 @@
               "!**/display-text/plainText"
             ],
             "message": "Import only DisplayText or displayPlainText from client/display-text."
+          },
+          {
+            "group": ["**/conversationSections"],
+            "importNames": ["buildConversationSections"],
+            "message": "Render a conversation list through ConversationSectionList, so every list groups, sorts, and holds its rows the same way."
+          },
+          {
+            "group": ["**/heldListOrder"],
+            "message": "Render a conversation list through ConversationSectionList, so every list groups, sorts, and holds its rows the same way."
           }
         ]
       }
@@ -84,9 +115,21 @@
   },
   "overrides": [
     {
+      "files": ["src/client/components/ui/**"],
+      "rules": {
+        "text-control/no-raw-text-control": "off"
+      }
+    },
+    {
       "files": ["src/client/display-text/**"],
       "rules": {
         "display-text/no-raw-display-text": "off",
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["src/client/conversations/ConversationSectionList.tsx"],
+      "rules": {
         "no-restricted-imports": "off"
       }
     }

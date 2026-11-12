@@ -8,7 +8,7 @@ import {
   type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
 import { afterEach, expect, it } from "vitest";
-import { z } from "zod";
+import * as z from "zod";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import {
   createPluginAnnotations,
@@ -447,7 +447,7 @@ it("saves plugin object results once per reply, leaves background updates silent
           name: "executeTool",
           arguments: { tool_name: "objects_save", arguments: {} },
         },
-        { type: "text", text: "[[NO_REPLY]]" },
+        { type: "toolCall", name: "noReply", arguments: {} },
       ]),
     );
     await harness.continue({
