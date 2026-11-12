@@ -16,7 +16,8 @@ import {
   recordGitHubPullRequestOutcome,
 } from "./store.js";
 
-function githubCodeChange(
+/** Write a pull request outcome as a code change in Junior's code index. */
+export function githubCodeChange(
   outcome: GitHubPullRequestOutcomeInput,
   conversationIds: string[],
 ): CodeChangeInput {
