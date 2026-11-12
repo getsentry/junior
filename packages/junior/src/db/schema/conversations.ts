@@ -56,6 +56,11 @@ export const juniorConversations = pgTable(
     title: text("title"),
     createdAt: timestamptz("created_at").notNull(),
     lastActivityAt: timestamptz("last_activity_at").notNull(),
+    /**
+     * The newest Message that a reader would notice (`refreshLastMessageAt`).
+     * Null until the Conversation has one.
+     */
+    lastMessageAt: timestamptz("last_message_at"),
     updatedAt: timestamptz("updated_at").notNull(),
     executionUpdatedAt: timestamptz("execution_updated_at"),
     executionStatus: text("execution_status")
@@ -69,7 +74,8 @@ export const juniorConversations = pgTable(
     parentConversationId: text("parent_conversation_id").references(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
-    // `root` exactly when parent_conversation_id is null. Set once at create.
+    // `root` or `automation` exactly when parent_conversation_id is null. Set
+    // once at create.
     // The checks below enforce this. A writer of an older deploy leaves it null.
     // TODO(dcramer): After every deployed writer sets kind, rerun the
     // `kind IS NULL` backfill, add NOT NULL, and drop the `kind is null or`
@@ -103,6 +109,11 @@ export const juniorConversations = pgTable(
      * from its parent, clears it.
      */
     stoppedAt: timestamptz("stopped_at"),
+    /**
+     * Set while a root's Event Turn replies stay out of its Location. Junior
+     * still stores them. A person's next mention in the Location clears it.
+     */
+    deliveryPausedAt: timestamptz("delivery_paused_at"),
     durationMs: integer("duration_ms").notNull().default(0),
     usage: jsonb("usage_json").$type<AgentTurnUsage>(),
     executionDurationMs: integer("execution_duration_ms").notNull().default(0),
@@ -116,11 +127,11 @@ export const juniorConversations = pgTable(
   (table) => [
     check(
       "junior_conversations_kind_check",
-      sql`${table.kind} in ('root', 'thread', 'task')`,
+      sql`${table.kind} in ('root', 'automation', 'thread', 'task')`,
     ),
     check(
       "junior_conversations_kind_parent_check",
-      sql`${table.kind} is null or ((${table.kind} = 'root') = (${table.parentConversationId} is null))`,
+      sql`${table.kind} is null or ((${table.kind} in ('root', 'automation')) = (${table.parentConversationId} is null))`,
     ),
     index("junior_conversations_last_activity_idx").on(
       table.lastActivityAt.desc(),

@@ -27,7 +27,6 @@ import {
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
-import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
 import { startLocalOAuthCallbackServer } from "@/chat/local/oauth-callback-server";
 import { createLocalOAuthState } from "@/chat/local/oauth-relay";
@@ -353,7 +352,9 @@ describe("local agent runner", () => {
       { conversationId: conversationId!, message: "react only" },
       {
         agentRunner: createModelAgentRunnerForRun(() =>
-          createModelStream([{ type: "text", text: NO_REPLY_MARKER }]),
+          createModelStream([
+            { type: "toolCall", name: "noReply", arguments: {} },
+          ]),
         ),
         deliverReply,
       },

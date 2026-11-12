@@ -2,6 +2,10 @@ import {
   readAttachmentStorageConfig,
   type AttachmentStorageConfig,
 } from "@/chat/attachments/config";
+import {
+  readEncryptionKeyring,
+  type EncryptionKeyring,
+} from "@/chat/encryption/keyring";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { readQueueConfig, type QueueConfig } from "@/chat/queue/config";
 import { resolveGatewayModel } from "@/chat/pi/client";
@@ -92,6 +96,8 @@ export interface BotModelConfig {
   visionModelId?: string;
   /** Model used for web search. */
   webSearchModelId?: string;
+  /** Model that continues an agent Turn after the main model refuses it. Unset by default. */
+  refusalFallbackModelId?: string;
 }
 
 export interface BotConfig {
@@ -105,6 +111,7 @@ export interface BotConfig {
   loadingMessages: string[];
   modelId: string;
   reasoningLevel: TurnReasoningLevel;
+  refusalFallbackModelId?: string;
   visionModelId?: string;
   maxAgentDepth: number;
   maxSlicesPerTurn: number;
@@ -129,6 +136,8 @@ export interface ChatConfig {
   cacheWarmingEnabled: boolean;
   conversationWorkEnabled: boolean;
   conversationWorkSoftYieldAfterMs: number;
+  /** Keys for secrets at rest. Startup fails when they are missing or invalid. */
+  encryption: EncryptionKeyring;
   sql: {
     databaseUrl: string;
     driver: SqlDriver;
@@ -332,6 +341,9 @@ function readBotConfig(
     rerankingModelId:
       toOptionalTrimmed(env.AI_RERANKING_MODEL) ?? DEFAULT_RERANKING_MODEL_ID,
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
+    refusalFallbackModelId: validateGatewayModelId(
+      env.AI_REFUSAL_FALLBACK_MODEL,
+    ),
     visionModelId:
       env.AI_VISION_MODEL === undefined
         ? DEFAULT_VISION_MODEL_ID
@@ -427,6 +439,7 @@ export function readChatConfig(
     conversationWorkSoftYieldAfterMs: resolveConversationWorkSoftYieldAfterMs(
       resolvedFunctionMaxDurationSeconds,
     ),
+    encryption: readEncryptionKeyring(env),
     sql: {
       databaseUrl,
       driver: readSqlDriver(env, databaseUrl),
@@ -718,6 +731,13 @@ export function setBotModelConfig(config: BotModelConfig): void {
     botConfig.visionModelId = requireModelId(
       "visionModelId",
       config.visionModelId,
+      validateGatewayModelId,
+    );
+  }
+  if (config.refusalFallbackModelId !== undefined) {
+    botConfig.refusalFallbackModelId = requireModelId(
+      "refusalFallbackModelId",
+      config.refusalFallbackModelId,
       validateGatewayModelId,
     );
   }

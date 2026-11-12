@@ -1,9 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SlackActionError, withSlackRetries } from "@/chat/slack/client";
+import { logWarn } from "@/chat/logging";
+import {
+  isSlackRequestTimeout,
+  SlackActionError,
+  withSlackRetries,
+} from "@/chat/slack/client";
+
+vi.mock("@/chat/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/logging")>()),
+  logWarn: vi.fn(),
+}));
 
 describe("withSlackRetries", () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.mocked(logWarn).mockClear();
   });
 
   it("retries rate-limited calls using Slack retryAfter", async () => {
@@ -110,14 +121,16 @@ describe("withSlackRetries", () => {
       original: { code: "ETIMEDOUT" },
     });
 
-    await expect(
-      withSlackRetries(task, 3, { action: "chat.postMessage" }),
-    ).rejects.toEqual(
+    const error = await withSlackRetries(task, 3, {
+      action: "chat.postMessage",
+    }).catch((caught: unknown) => caught);
+    expect(error).toEqual(
       expect.objectContaining<Partial<SlackActionError>>({
         name: "SlackActionError",
         code: "internal_error",
       }),
     );
+    expect(isSlackRequestTimeout(error)).toBe(true);
     expect(task).toHaveBeenCalledTimes(1);
   });
 
@@ -284,6 +297,24 @@ describe("withSlackRetries", () => {
       }),
     );
     expect(task).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not log a failure for an error code that the caller expects", async () => {
+    const task = vi.fn<() => Promise<string>>().mockRejectedValue({
+      data: { error: "already_reacted" },
+      message: "An API error occurred: already_reacted",
+    });
+
+    await expect(
+      withSlackRetries(task, 3, {
+        action: "reactions.add",
+        expectedErrorCodes: ["already_reacted"],
+      }),
+    ).rejects.toMatchObject({ code: "already_reacted" });
+    await expect(
+      withSlackRetries(task, 3, { action: "reactions.add" }),
+    ).rejects.toMatchObject({ code: "already_reacted" });
+    expect(logWarn).toHaveBeenCalledTimes(1);
   });
 
   it("maps no_reaction as a dedicated Slack action error", async () => {

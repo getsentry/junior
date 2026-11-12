@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
   createLocalSource,
   defineJuniorPlugin,
@@ -41,6 +42,10 @@ function runtimeContext() {
     destination: LOCAL_DESTINATION,
     egress: TEST_EGRESS,
     source: LOCAL_SOURCE,
+    turnTools: turnBehavior({
+      kind: "root",
+      personInput: true,
+    }).tools,
     workspace: {} as any,
   };
 }
@@ -287,13 +292,26 @@ describe("Pi tool adapter integration", () => {
         tool_name: "hiddenDemo",
         arguments: {},
       }),
-    ).rejects.toThrow("can only call catalog tools");
+    ).rejects.toThrow(
+      /^executeTool can only call catalog tools returned by searchTools: hiddenDemo\.$/,
+    );
     await expect(
       executeTool.execute("tool-missing", {
         tool_name: "missingDemo",
         arguments: {},
       }),
-    ).rejects.toThrow("can only call catalog tools");
+    ).rejects.toThrow(
+      /^executeTool can only call catalog tools returned by searchTools: missingDemo\.$/,
+    );
+    // A close name gets a hint, never a guessed call.
+    await expect(
+      executeTool.execute("tool-misspelled", {
+        tool_name: "catalog_only_demo",
+        arguments: {},
+      }),
+    ).rejects.toThrow(
+      "executeTool can only call catalog tools returned by searchTools: catalog_only_demo. Did you mean `catalogOnlyDemo`?",
+    );
   });
 
   it("keeps model-only runtime tools out of the tool catalog", async () => {
@@ -304,17 +322,23 @@ describe("Pi tool adapter integration", () => {
       {},
       {
         ...runtimeContext(),
-        automation: { sendsMessage: false },
         messageAgent,
-        agentInvocationId: "invocation-1",
         parentConversationId: "local:test:parent",
         spawnAgent,
+        // Every model-only tool at once, as an agent Turn on a child loads.
+        turnTools: {
+          ...runtimeContext().turnTools,
+          reply: "parent",
+          noReply: true,
+          reportBlocked: "parent",
+        },
       },
     );
     const tools = createPiAgentTools(registry, new SkillSandbox([], []), {});
     const modelOnlyTools = [
-      "finishAutomationRun",
       "messageAgent",
+      "noReply",
+      "reply",
       "reportBlocked",
       "spawnAgent",
     ];

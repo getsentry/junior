@@ -50,19 +50,21 @@ jobs:
           permission-pull-requests: write
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           token: ${{ steps.token.outputs.token }}
+          # Craft pushes the release branch with git.
+          persist-credentials: true
           fetch-depth: 0
           fetch-tags: true
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24.22.1"
 
       - name: Prepare release
-        uses: getsentry/craft@v3
+        uses: getsentry/craft@9567926a606072678ef367b02445c4f99f374795 # 3.11.2
         env:
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         with:

@@ -265,6 +265,15 @@ export async function readReviewItemAgentScope(
  */
 export const PLUGIN_REVIEW_ITEM_KEY_PREFIX = "plugin:";
 
+/** Return the plugin that owns a dedupe key, or undefined for an agent's key. */
+export function reviewItemPlugin(dedupeKey: string): string | undefined {
+  if (!dedupeKey.startsWith(PLUGIN_REVIEW_ITEM_KEY_PREFIX)) return undefined;
+  const plugin = dedupeKey
+    .slice(PLUGIN_REVIEW_ITEM_KEY_PREFIX.length)
+    .split(":", 1)[0];
+  return plugin || undefined;
+}
+
 /**
  * Whether an agent can change an item. Only an agent in the tenant of the
  * item can change it. A public item changes only from a public

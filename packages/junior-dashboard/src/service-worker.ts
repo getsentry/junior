@@ -63,6 +63,8 @@ self.addEventListener("push", (event) => {
     (async () => {
       const payload = readPayload(event);
       const url = targetUrl(payload.url);
+      const tag =
+        typeof payload.tag === "string" && payload.tag ? payload.tag : undefined;
       const windows = await self.clients.matchAll({
         includeUncontrolled: true,
         type: "window",
@@ -79,9 +81,10 @@ self.addEventListener("push", (event) => {
           body: typeof payload.body === "string" ? payload.body : "",
           data: { url: url.href },
           icon: "/_junior/dashboard/icon-512.png",
-          renotify: !viewing,
+          // showNotification() throws when renotify is set without a tag.
+          renotify: Boolean(tag) && !viewing,
           silent: viewing,
-          tag: typeof payload.tag === "string" ? payload.tag : undefined,
+          tag,
         },
       );
       await updateBadge();

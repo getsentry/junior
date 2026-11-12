@@ -26,6 +26,7 @@ import {
 } from "@/chat/sandbox/egress/signals";
 import { formatSandboxCommandResult } from "@/chat/sandbox/command-result";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
+import type { CredentialAuditSource } from "@/chat/credentials/audit";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { throwSandboxOperationError } from "@/chat/sandbox/errors";
 import { getSandboxProvider } from "@/chat/sandbox/provider";
@@ -100,6 +101,8 @@ export interface SandboxOptions {
   /** Conversation that sandbox egress records for its credentialed requests. */
   conversationId?: string;
   credentialEgress?: CredentialContext;
+  /** Run Source that sandbox egress records for its credentialed writes. */
+  credentialAuditSource?: CredentialAuditSource;
   egressSignals?: SandboxEgressSignalTransport;
   prepare?: (workspace: SandboxWorkspace) => void | Promise<void>;
   prepareWorkspace?: (
@@ -188,6 +191,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       conversationId: options.conversationId,
       credentials: credentialEgress,
       egressId,
+      source: options.credentialAuditSource,
       ttlMs: sandboxEgressTokenTtlMs,
     });
     sandboxEgressCredentialTokens.set(egressId, {

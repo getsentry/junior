@@ -1,5 +1,7 @@
+import { findLegacyNoReplyMarker } from "@/chat/no-reply";
 import { slackMention } from "@/chat/slack/mrkdwn";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { AutomationEditError } from "./edit-rules";
+import { automationTaskText, type AutomationTask } from "./task";
 
 /** A person account in the workspace of the Automation Destination. */
 type InstructionPerson = { slackUserId: string; fullName?: string };
@@ -22,57 +24,73 @@ function refersTo(text: string, person: InstructionPerson): boolean {
 }
 
 /**
- * Reject an instruction with a reference that the run cannot use.
+ * Return why the text cannot run later, or undefined.
  *
  * An Automation runs later without the request. So "this channel" means
- * nothing to the run; the instruction names the channel instead. Each run
- * reads "the Automation creator" as its creator, so the instruction calls the
- * creator that. Every other requester needs their Slack mention, because a
- * display name does not notify the person and it can match another person. A
- * reference that the previous instruction already had stays allowed, so an
- * edit does not have to rewrite text that the requester did not change.
+ * nothing to the run. Its outcomes already say where it posts, so the text
+ * names the channel only where the run reads or acts on it. Each run reads
+ * "the Automation creator" as its creator, so the text calls the creator
+ * that. Every other requester needs their Slack mention, because a display
+ * name does not notify the person and it can match another person. A run
+ * ends with `reply`, `noReply`, or `reportBlocked`, so a legacy no-reply
+ * marker does nothing. A problem that the previous text already had stays
+ * allowed, so an edit does not have to rewrite text that the requester did
+ * not change.
  */
-export function requireInstructionReferences(
-  instruction: string,
+function taskTextProblem(
+  text: string,
   references: {
     creator: InstructionPerson;
-    destinationChannelId: string;
     requester?: InstructionPerson;
-    previousInstruction?: string;
+    previousText: string;
+    /** "instruction" or "context". */
+    label: string;
   },
-): void {
-  const {
-    creator,
-    destinationChannelId,
-    requester,
-    previousInstruction = "",
-  } = references;
-  const conversationReference = CONVERSATION_REFERENCE.exec(instruction)?.[0];
-  if (
-    conversationReference &&
-    !CONVERSATION_REFERENCE.test(previousInstruction)
-  ) {
-    throw new ToolInputError(
-      `The run does not see this conversation. Write <#${destinationChannelId}> instead of "${conversationReference}".`,
-    );
+): string | undefined {
+  const { creator, requester, previousText, label } = references;
+  const conversationReference = CONVERSATION_REFERENCE.exec(text)?.[0];
+  if (conversationReference && !CONVERSATION_REFERENCE.test(previousText)) {
+    return `The run does not see this conversation, and its outcomes already set where it posts. Remove "${conversationReference}" and do not say where to post. Where the run reads or changes a channel, name it with a channel mention.`;
   }
-  if (
-    refersTo(instruction, creator) &&
-    !refersTo(previousInstruction, creator)
-  ) {
+  const marker = findLegacyNoReplyMarker(text);
+  if (marker && !previousText.includes(marker)) {
+    return `Remove "${marker}". Say when the run posts nothing; it then ends without a message.`;
+  }
+  if (refersTo(text, creator) && !refersTo(previousText, creator)) {
     const reference = creator.fullName ?? slackMention(creator.slackUserId);
-    throw new ToolInputError(
-      `The instruction names ${reference}, the Automation creator. Write "the Automation creator" for this person; each run knows who that is.`,
-    );
+    return `The ${label} names ${reference}, the Automation creator. Write "the Automation creator" for this person; each run knows who that is.`;
   }
   if (!requester?.fullName || requester.slackUserId === creator.slackUserId) {
-    return;
+    return undefined;
   }
   const mention = slackMention(requester.slackUserId);
-  if (instruction.includes(mention)) return;
-  if (namesPerson(instruction, requester.fullName)) {
-    throw new ToolInputError(
-      `The instruction names ${requester.fullName} without a Slack mention. Write ${mention} for this person.`,
-    );
+  if (text.includes(mention) || !namesPerson(text, requester.fullName)) {
+    return undefined;
   }
+  return `The ${label} names ${requester.fullName} without a Slack mention. Write ${mention} for this person.`;
+}
+
+/**
+ * Reject task text that a later run cannot use. The Automation tools and the
+ * dashboard edit API call this. Restoring a saved version does not, because
+ * that text was accepted when it was saved. Text that the current task
+ * already had is not checked again.
+ */
+export function requireAutomationTaskText(
+  task: AutomationTask,
+  references: {
+    creator: InstructionPerson;
+    /** The person who edits the task, when it is not a new Automation. */
+    requester?: InstructionPerson;
+    /** The task before this edit. Unset for a new Automation. */
+    current?: AutomationTask;
+  },
+): void {
+  const text = automationTaskText(task);
+  const previousText =
+    (references.current && automationTaskText(references.current)) ?? "";
+  if (text === undefined || text === previousText) return;
+  const label = task.kind === "instruction" ? "instruction" : "context";
+  const problem = taskTextProblem(text, { ...references, previousText, label });
+  if (problem) throw new AutomationEditError(problem, `task.${label}`);
 }

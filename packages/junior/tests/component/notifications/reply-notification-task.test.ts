@@ -235,14 +235,11 @@ describe("reply notification task", () => {
     expect(after?.deviceCount).toBe(1);
 
     // A Turn with no reply, or with a Quiet message, notifies nobody.
-    await completeDashboardTurn("[[NO_REPLY]]", null);
-    await completeDashboardTurn(
-      "Fixed the lint failure and pushed. [[QUIET]]",
-      {
-        text: "Fixed the lint failure and pushed.",
-        quiet: true,
-      },
-    );
+    await completeDashboardTurn("Nothing to send.", null);
+    await completeDashboardTurn("Fixed the lint failure and pushed.", {
+      text: "Fixed the lint failure and pushed.",
+      quiet: true,
+    });
     expect(pushes).toHaveLength(1);
   });
 

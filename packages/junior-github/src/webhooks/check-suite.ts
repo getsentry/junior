@@ -1,7 +1,7 @@
 /**
  * GitHub check suite events.
  */
-import type { EventInput } from "@sentry/junior-plugin-api";
+import type { EventInput, PluginLogger } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
   githubRequest,
@@ -20,6 +20,7 @@ import {
   gitHubEventKey,
   pullRequestTargets,
 } from "./event-targets.js";
+import { logFailOpenFailure } from "./fail-open-log.js";
 
 /** Match keys that need a pull request API load on check suite events. */
 const CHECK_SUITE_PULL_REQUEST_MATCH_KEYS = new Set([
@@ -636,7 +637,7 @@ export async function loadCheckSuiteFacts(args: {
   /** Open or recent githubstatus.com incidents, shared through a cache. */
   loadGitHubIncidents?(): Promise<GitHubStatusIncident[]>;
   loadPullRequestFacts?: boolean;
-  log?: { error(message: string, metadata?: Record<string, unknown>): void };
+  log?: Pick<PluginLogger, "error" | "warn">;
   privateKeyEnv: string;
 }): Promise<GitHubCheckSuiteFacts | undefined> {
   const target = parseCheckSuiteFactsTarget(args.body, {
@@ -666,9 +667,8 @@ export async function loadCheckSuiteFacts(args: {
       });
       if (failing.length > 0) facts.failingChecks = failing;
     } catch (error) {
-      args.log?.error("GitHub check suite load failed", {
+      logFailOpenFailure(args.log, "GitHub check suite load failed", error, {
         checkSuiteId: target.checkSuiteId,
-        errorType: error instanceof Error ? error.name : "UnknownError",
         repository: `${target.owner}/${target.repoName}`,
       });
     }
@@ -680,9 +680,7 @@ export async function loadCheckSuiteFacts(args: {
       const incidents = await args.loadGitHubIncidents();
       if (incidents.length > 0) facts.githubIncidents = incidents;
     } catch (error) {
-      args.log?.error("GitHub status load failed", {
-        errorType: error instanceof Error ? error.name : "UnknownError",
-      });
+      logFailOpenFailure(args.log, "GitHub status load failed", error, {});
     }
   }
 
@@ -708,11 +706,15 @@ export async function loadCheckSuiteFacts(args: {
           } catch (error) {
             // 404 is expected when the suite lists a stale PR number.
             if (!isGitHubNotFoundError(error)) {
-              args.log?.error("GitHub pull request data load failed", {
-                errorType: error instanceof Error ? error.name : "UnknownError",
-                pullRequest: number,
-                repository: `${target.owner}/${target.repoName}`,
-              });
+              logFailOpenFailure(
+                args.log,
+                "GitHub pull request data load failed",
+                error,
+                {
+                  pullRequest: number,
+                  repository: `${target.owner}/${target.repoName}`,
+                },
+              );
             }
             return undefined;
           }
@@ -730,11 +732,15 @@ export async function loadCheckSuiteFacts(args: {
         facts.pullRequestFactsByNumber = pullRequestFactsByNumber;
       }
     } catch (error) {
-      args.log?.error("GitHub check suite pull request data load failed", {
-        checkSuiteId: target.checkSuiteId,
-        errorType: error instanceof Error ? error.name : "UnknownError",
-        repository: `${target.owner}/${target.repoName}`,
-      });
+      logFailOpenFailure(
+        args.log,
+        "GitHub check suite pull request data load failed",
+        error,
+        {
+          checkSuiteId: target.checkSuiteId,
+          repository: `${target.owner}/${target.repoName}`,
+        },
+      );
     }
   }
 

@@ -10,6 +10,8 @@
     "resolveJsonModule": true,
     "allowJs": false,
     "noEmit": true,
+    // Tests import the example app, which runs its `.ts` files in Node.
+    "allowImportingTsExtensions": true,
     "paths": {
       "@sentry/junior": ["../junior/src/app.ts"],
       "@sentry/junior/api": ["../junior/src/api.ts"],

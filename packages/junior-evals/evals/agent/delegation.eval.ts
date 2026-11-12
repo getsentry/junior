@@ -1,8 +1,17 @@
 import { describe, expect } from "vitest";
 import { mockDatabaseDocs } from "@junior-evals/fixture/database-docs";
 import { slackMention } from "@junior-evals/fixture/inputs";
-import { completedToolCalls } from "@junior-evals/fixture/results";
+import {
+  completedToolCalls,
+  type ToolCall,
+} from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
+
+type SpawnInput = { fork?: boolean | null; kind?: string | null };
+
+function spawnInput(call: ToolCall): SpawnInput {
+  return (call.input as SpawnInput | undefined) ?? {};
+}
 
 // The user never names spawnAgent here. These cases measure whether Junior
 // decides on its own when delegation pays for itself.
@@ -23,11 +32,11 @@ describe("Implicit Delegation", () => {
     const spawned = completedToolCalls("spawnAgent", conversation);
     expect(spawned.length).toBeGreaterThanOrEqual(2);
     // Research that only the parent reads is background work: a Task.
-    expect(
-      spawned.map(
-        (call) => (call.input as { kind?: string } | undefined)?.kind,
-      ),
-    ).not.toContain("thread");
+    expect(spawned.map((call) => spawnInput(call).kind)).not.toContain(
+      "thread",
+    );
+    // A brief can carry each track, so no child needs this conversation.
+    expect(spawned.map((call) => spawnInput(call).fork)).not.toContain(true);
   });
 
   test("when a request needs only a few direct tool calls, do the work without a child agent", async ({

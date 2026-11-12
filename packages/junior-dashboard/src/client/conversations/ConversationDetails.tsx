@@ -35,7 +35,7 @@ import {
   useConversationWatches,
 } from "./ConversationWatches";
 import { DetailsCard, DetailsRow } from "./DetailsList";
-import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
+import type { ConversationDrawerTarget } from "./ConversationDrawer";
 
 type Brief = NonNullable<ConversationDetailReport["brief"]>;
 
@@ -55,7 +55,7 @@ export function ConversationDetails(props: {
   links: ConversationLink[];
   onClose(): void;
   /** Open one Task transcript. A details sheet closes first. */
-  onOpenSubagent(target: SubagentTranscriptTarget): void;
+  onOpenSubagent(target: ConversationDrawerTarget): void;
   /** Show one memory where its Turn recalled or captured it. */
   onSelectMemory(entry: ConversationMemoryEntry & { turnId: string }): void;
   overview: ReactNode;
@@ -102,6 +102,7 @@ export function ConversationDetails(props: {
         title={
           <div className="-ml-2 flex min-w-0 items-center gap-1">
             <Button
+              variant="ghost"
               aria-label="Back to details"
               onClick={() => setMemoriesOpen(false)}
               size="icon"

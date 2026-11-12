@@ -3,6 +3,7 @@ import { useCallback, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 
 import { getDashboardAgentName } from "../agentName";
+import { Button } from "../components/ui/button";
 import { useToastManager } from "../components/ui/toast";
 import {
   currentPushSubscription,
@@ -41,13 +42,13 @@ function markTipShown(): void {
 // navigate through the hook's router.
 function ToastLink(props: { children: ReactNode; onClick: () => void }) {
   return (
-    <button
-      className="cursor-pointer border-0 bg-transparent p-0 font-medium text-dashboard-text underline underline-offset-2"
+    <Button
+      className="font-medium text-dashboard-text underline underline-offset-2"
       onClick={props.onClick}
-      type="button"
+      variant="link"
     >
       {props.children}
-    </button>
+    </Button>
   );
 }
 

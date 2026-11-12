@@ -38,15 +38,30 @@ const GAP_BIN_EDGES_MS: readonly number[] = [
 ];
 const GAP_BIN_COUNT = GAP_BIN_EDGES_MS.length;
 
-/** Gaps a conversation needs before its own gaps replace the global gaps. */
+/**
+ * Gaps that a segment needs before its gaps replace its parent segment's
+ * gaps (`parentGapSegment`, or the segment of a `waitingGapSegment`). A new
+ * or rare segment starts with its parent's return chances, so it can warm
+ * before it has gaps of its own.
+ */
 const BLEND_PSEUDOCOUNT = 20;
 
 /**
- * Gaps that a decision needs in total. With fewer, one gap sets the return
- * chance for each Conversation of the segment, such as at launch or after
- * the gap lists expire.
+ * Gaps that a Conversation needs before its gaps replace its segment's gaps.
+ * One Conversation has few gaps, and a few unusual replies say little about
+ * its next one. A backtest of time-ordered decisions showed that a weight
+ * this slow predicts returns better than both a faster weight and no
+ * Conversation weight at all.
  */
-const MIN_GAP_SAMPLES = 20;
+const CONVERSATION_BLEND_PSEUDOCOUNT = 100;
+
+/**
+ * Gaps that a decision needs in total, from the Conversation, its segment,
+ * and the parents of a thin segment. With fewer, one gap sets the return
+ * chance for each Conversation of the segment, such as at launch or after the
+ * gap lists expire.
+ */
+export const MIN_GAP_SAMPLES = 20;
 
 /** Below this prefix size, one cache miss costs too little to warm for. */
 export const MIN_WARMUP_PREFIX_TOKENS = 50_000;
@@ -74,16 +89,37 @@ export function warmupFailureCountsAsMiss(error: unknown): boolean {
   return !isProviderRetryError(error);
 }
 
+/**
+ * Time from a timer's due time to the request of its Turn: the heartbeat
+ * fires due timers once a minute, and the Turn then starts.
+ */
+export const TIMER_START_DELAY_MS = 2 * MINUTE_MS;
+
+/**
+ * Latest timer due time, as idle time, that the timer floor warms for. A
+ * warmup costs one cache read, and a miss costs one write minus one read, so
+ * the floor sends fewer warmups than the miss costs in reads. The cache of
+ * the last warmup must last until the timer's Turn starts. A later timer
+ * changes nothing: warming for it costs more than it saves.
+ */
+export function timerFloorMaxDueIdleMs(prices: {
+  cacheReadPrice: number;
+  cacheWritePrice: number;
+  cacheTtlMs: number;
+}): number {
+  const savedPerReturn = prices.cacheWritePrice - prices.cacheReadPrice;
+  // Without a read price or a saving, the floor cannot pay.
+  if (prices.cacheReadPrice <= 0 || savedPerReturn <= 0) return 0;
+  const maxWarmups = Math.ceil(savedPerReturn / prices.cacheReadPrice) - 1;
+  return (
+    prices.cacheTtlMs +
+    maxWarmups * (prices.cacheTtlMs - WARMUP_MARGIN_MS) -
+    TIMER_START_DELAY_MS
+  );
+}
+
 /** Gap that Junior records for an idle period with no reply in the horizon. */
 export const NO_REPLY_GAP_MS = 24 * 60 * MINUTE_MS;
-
-// Warmup margin values from Lore. 0.27 ms per token gives a prefix of about
-// 164K tokens 44 seconds more, which matches the warmup round trip and TTL
-// jitter that Lore saw on large prefixes. The cap applies from about 333K
-// tokens, so the largest margin is 135 seconds.
-const BASE_WARMUP_MARGIN_MS = 45_000;
-const MARGIN_PER_PREFIX_TOKEN_MS = 0.27;
-const MAX_SIZE_MARGIN_MS = 90_000;
 
 interface GapHistogram {
   counts: number[];
@@ -102,22 +138,24 @@ function histogramOf(gapsMs: readonly number[]): GapHistogram {
   return { counts, total: gapsMs.length };
 }
 
-// A conversation with few gaps leans on the global gaps. Each conversation
-// gap moves the weight by 1/BLEND_PSEUDOCOUNT. The two histograms are mixed as
-// shares, so the much larger global list does not hide the conversation gaps.
+// A list with few gaps leans on a larger prior list: a Conversation on its
+// segment, or a thin segment on its parent. Each own gap moves the weight by
+// 1/pseudocount. The two histograms are mixed as shares, so a much larger
+// prior list does not hide the own gaps.
 function blendHistograms(
-  conversation: GapHistogram,
-  global: GapHistogram,
+  own: GapHistogram,
+  prior: GapHistogram,
+  pseudocount: number,
 ): GapHistogram {
-  if (conversation.total === 0 || global.total === 0) {
-    return conversation.total === 0 ? global : conversation;
+  if (own.total === 0 || prior.total === 0) {
+    return own.total === 0 ? prior : own;
   }
-  const weight = Math.min(conversation.total / BLEND_PSEUDOCOUNT, 1);
+  const weight = Math.min(own.total / pseudocount, 1);
   return {
-    counts: conversation.counts.map(
+    counts: own.counts.map(
       (count, index) =>
-        (weight * count) / conversation.total +
-        ((1 - weight) * global.counts[index]!) / global.total,
+        (weight * count) / own.total +
+        ((1 - weight) * prior.counts[index]!) / prior.total,
     ),
     total: 1,
   };
@@ -154,20 +192,30 @@ function returnProbability(
 }
 
 /**
- * Return how long before cache expiry to send a warmup. The warmup refreshes
- * the cache only if the provider reads the whole prefix before it expires. A
- * larger prefix takes longer to send and read, and its cache blocks were
- * written at slightly different times. So the margin grows with the prefix up
- * to a fixed cap.
+ * How long before cache expiry Junior sends a warmup. A warmup reads each
+ * cache block of the prefix in one request, so the provider refreshes all
+ * blocks together. A margin that grows with the prefix size gains nothing.
+ * The margin covers only the queue delay and the time of the warmup request.
  */
-export function warmupMarginMs(prefixTokens: number): number {
-  return (
-    BASE_WARMUP_MARGIN_MS +
-    Math.min(
-      Math.max(0, prefixTokens) * MARGIN_PER_PREFIX_TOKEN_MS,
-      MAX_SIZE_MARGIN_MS,
-    )
-  );
+export const WARMUP_MARGIN_MS = 45_000;
+
+/**
+ * Plugin work of a Conversation when its idle period starts. `open`: a plugin
+ * reports unfinished work, so an event, such as a CI result, can still come.
+ * `done`: all reported work finished and no person wrote after it finished.
+ * `none`: no reported work, a person wrote after it finished, or a plugin
+ * hook failed.
+ */
+export type WorkState = "open" | "done" | "none";
+
+/** What Junior knows about a Conversation when its idle period starts. */
+export interface GapSegmentInput {
+  /** A person started the Turn that ended. */
+  userActor: boolean;
+  /** Turns of the Conversation that ended before this one. */
+  endedTurns: number;
+  workState: WorkState;
+  archived: boolean;
 }
 
 /**
@@ -176,10 +224,101 @@ export function warmupMarginMs(prefixTokens: number): number {
  * Turns that no person started rarely get a quick reply. In 30 days of
  * production data, segments by these two keys saved more than one histogram.
  * Local time of day did not improve the result, so it is not a key.
+ *
+ * The work state lets the histograms learn how often anything returns after
+ * the work is done. An event does not restore an archived Conversation, so
+ * most returns to one are events, not people. Its segment has only the work
+ * state, which keeps the number of segments small.
  */
-export function gapSegment(userActor: boolean, endedTurns: number): string {
-  const depth = endedTurns === 0 ? "1" : endedTurns < 3 ? "2-3" : "4+";
-  return `${userActor ? "user" : "system"}:${depth}`;
+export function gapSegment(input: GapSegmentInput): string {
+  if (input.archived) return `archived:${input.workState}`;
+  const depth =
+    input.endedTurns === 0 ? "1" : input.endedTurns < 3 ? "2-3" : "4+";
+  return `${input.userActor ? "user" : "system"}:${depth}:${input.workState}`;
+}
+
+/** Each segment that `gapSegment` returns, in display order. */
+export const GAP_SEGMENTS: readonly string[] = [
+  ...[true, false].flatMap((userActor) =>
+    [0, 1, 3].flatMap((endedTurns) =>
+      (["open", "done", "none"] as const).map((workState) =>
+        gapSegment({ userActor, endedTurns, workState, archived: false }),
+      ),
+    ),
+  ),
+  ...(["open", "done", "none"] as const).map((workState) =>
+    gapSegment({ userActor: false, endedTurns: 0, workState, archived: true }),
+  ),
+];
+
+/**
+ * Count gaps in the bins that `decideWarmup` uses, for reports. A gap at or
+ * after `IDLE_HORIZON_MS` is a no-reply gap, as the recorder stores it. The
+ * bins after the horizon never get a gap, so they are left out.
+ */
+export function gapHistogramReport(gapsMs: readonly number[]): {
+  /** Gaps from `startMs` to before `endMs`. */
+  bins: Array<{ startMs: number; endMs: number; count: number }>;
+  noReply: number;
+  total: number;
+} {
+  const { counts } = histogramOf(
+    gapsMs.filter((gapMs) => gapMs < IDLE_HORIZON_MS),
+  );
+  const bins: Array<{ startMs: number; endMs: number; count: number }> = [];
+  for (const [index, endMs] of GAP_BIN_EDGES_MS.entries()) {
+    const startMs = index > 0 ? GAP_BIN_EDGES_MS[index - 1]! : 0;
+    if (startMs >= IDLE_HORIZON_MS) break;
+    bins.push({
+      startMs,
+      endMs: Math.min(endMs, IDLE_HORIZON_MS),
+      count: counts[index]!,
+    });
+  }
+  return {
+    bins,
+    noReply: gapsMs.filter((gapMs) => gapMs >= IDLE_HORIZON_MS).length,
+    total: gapsMs.length,
+  };
+}
+
+/**
+ * Segment whose gaps a thin segment leans on: the `none` segment with the
+ * same Actor and Turn depth. The backfill and most traffic keep the `none`
+ * segments full. A `none` segment that is not archived has no parent.
+ */
+export function parentGapSegment(input: GapSegmentInput): string | undefined {
+  if (!input.archived && input.workState === "none") return undefined;
+  return gapSegment({ ...input, workState: "none", archived: false });
+}
+
+/**
+ * What else an idle period waits for when it starts. `child`: a child agent
+ * still runs, and its result starts a Turn. `review`: the Turn asked a
+ * Review item. `watch`: an Automation run has an active Watch, such as a
+ * timer or a pull request Watch, and no child agent.
+ */
+export type WaitingOn = "child" | "review" | "watch";
+
+// Only an Automation run waits on a Watch, so its child is named for it.
+const WAITING_SEGMENT_SUFFIXES: Record<WaitingOn, string> = {
+  child: "child",
+  review: "review",
+  watch: "automation",
+};
+
+/**
+ * Child of a segment for an idle period that waits on a child agent, a
+ * Review item, or a Watch (`:automation`). Its parent is the segment, so a
+ * thin child leans on the segment, and a thin segment on its own parent.
+ */
+export function waitingGapSegment(segment: string, waitingOn: WaitingOn) {
+  return `${segment}:${WAITING_SEGMENT_SUFFIXES[waitingOn]}`;
+}
+
+/** Whether a segment has too few gaps to stand without its parent. */
+export function segmentNeedsParent(segmentGaps: number): boolean {
+  return segmentGaps < BLEND_PSEUDOCOUNT;
 }
 
 /** Inputs for one warmup decision. Prices use one unit, such as $/MTok. */
@@ -190,10 +329,16 @@ export interface WarmupDecisionInput {
    */
   conversationGapsMs: readonly number[];
   /**
-   * Recent reply gaps (ms) of the same `gapSegment` across all
-   * conversations, recorded the same way.
+   * Recent reply gaps (ms) of the same segment across all conversations,
+   * recorded the same way.
    */
   globalGapsMs: readonly number[];
+  /**
+   * Gaps of the segments that a thin segment leans on, nearest parent first.
+   * Each list counts only while the list before it is thin
+   * (`segmentNeedsParent`).
+   */
+  priorGapsMs?: readonly (readonly number[])[];
   /** Time since the cached request started. */
   idleMs: number;
   /**
@@ -206,6 +351,11 @@ export interface WarmupDecisionInput {
   prefixTokens: number;
   cacheReadPrice: number;
   cacheWritePrice: number;
+  /**
+   * Idle time at which a timer of the Conversation is due, when it is due
+   * within `timerFloorMaxDueIdleMs`.
+   */
+  timerDueIdleMs?: number;
 }
 
 /** Result of one warmup decision. */
@@ -213,6 +363,7 @@ export interface WarmupDecision {
   warm: boolean;
   reason:
     | "warm"
+    | "timer"
     | "prefix_too_small"
     | "no_savings"
     | "horizon"
@@ -223,6 +374,8 @@ export interface WarmupDecision {
   /** Best returns per warmup over the plans that `decideWarmup` compares. */
   returnsPerWarmup: number;
   threshold: number;
+  /** A parent segment's gaps filled in for a thin segment. */
+  parentPrior: boolean;
 }
 
 /**
@@ -238,14 +391,31 @@ export interface WarmupDecision {
  * compares plans of 1, 2, ... warmups up to the horizon. Each plan sends its
  * next warmup only while nobody returned. Junior warms when the best plan
  * pays, and decides again at the next warmup.
+ *
+ * The timer floor: while the cache would expire before a timer's Turn
+ * starts, Junior warms even when no plan pays and after the horizon (reason
+ * `timer`). The timer's Turn then reads the cache. The floor only adds
+ * warmups, so it never warms less than the decision without a timer.
  */
 export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   const savedPerReturn = input.cacheWritePrice - input.cacheReadPrice;
   const threshold =
     savedPerReturn > 0 ? Math.min(input.cacheReadPrice / savedPerReturn, 1) : 1;
   const conversation = histogramOf(input.conversationGapsMs);
-  const global = histogramOf(input.globalGapsMs);
-  const histogram = blendHistograms(conversation, global);
+  const segments = [histogramOf(input.globalGapsMs)];
+  for (const gapsMs of input.priorGapsMs ?? []) {
+    if (!segmentNeedsParent(segments.at(-1)!.total)) break;
+    segments.push(histogramOf(gapsMs));
+  }
+  const segmentGaps = segments.reduce((sum, list) => sum + list.total, 0);
+  // Each thin list leans on the blend of the lists after it.
+  const histogram = blendHistograms(
+    conversation,
+    segments.reduceRight((prior, own) =>
+      blendHistograms(own, prior, BLEND_PSEUDOCOUNT),
+    ),
+    CONVERSATION_BLEND_PSEUDOCOUNT,
+  );
   const probability = returnProbability(
     histogram,
     input.idleMs,
@@ -256,14 +426,14 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
     input.idleMs,
     input.cacheExpiryIdleMs,
     input.cacheTtlMs,
-    input.prefixTokens,
   );
   const decision = (reason: WarmupDecision["reason"]): WarmupDecision => ({
-    warm: reason === "warm",
+    warm: reason === "warm" || reason === "timer",
     reason,
     returnProbability: probability,
     returnsPerWarmup: perWarmup,
     threshold,
+    parentPrior: segmentGaps > segments[0]!.total,
   });
   if (input.prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
     return decision("prefix_too_small");
@@ -271,13 +441,18 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   if (threshold >= 1) {
     return decision("no_savings");
   }
-  if (input.idleMs >= IDLE_HORIZON_MS) {
-    return decision("horizon");
-  }
-  if (conversation.total + global.total < MIN_GAP_SAMPLES) {
-    return decision("few_gaps");
-  }
-  return decision(perWarmup >= threshold ? "warm" : "unlikely_return");
+  const timerFloor =
+    input.timerDueIdleMs !== undefined &&
+    input.cacheExpiryIdleMs < input.timerDueIdleMs + TIMER_START_DELAY_MS;
+  const reason =
+    input.idleMs >= IDLE_HORIZON_MS
+      ? "horizon"
+      : conversation.total + segmentGaps < MIN_GAP_SAMPLES
+        ? "few_gaps"
+        : perWarmup >= threshold
+          ? "warm"
+          : "unlikely_return";
+  return decision(reason !== "warm" && timerFloor ? "timer" : reason);
 }
 
 // Best expected returns per warmup over plans of 1, 2, ... warmups that end
@@ -290,10 +465,9 @@ function returnsPerWarmup(
   idleMs: number,
   cacheExpiryIdleMs: number,
   ttlMs: number,
-  prefixTokens: number,
 ): number {
   const now = survival(histogram, idleMs);
-  const intervalMs = ttlMs - warmupMarginMs(prefixTokens);
+  const intervalMs = ttlMs - WARMUP_MARGIN_MS;
   if (now < 0.001 || intervalMs <= 0) return 0;
   const leftAtExpiry = survival(
     histogram,
