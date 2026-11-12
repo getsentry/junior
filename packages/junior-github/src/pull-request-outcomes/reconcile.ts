@@ -5,8 +5,9 @@
  * does not deliver a close, or its handler fails, the row stays open. Once a
  * day for each repository, the heartbeat reads the stored open rows from
  * GitHub with GraphQL. Each close goes through the webhook write path, with
- * its merged or closed_unmerged event. The write is guarded by `updatedAt`,
- * so a replay cannot move a newer row back.
+ * its merged or closed_unmerged event. A pull request that is still open
+ * gets its current title in the code index. The writes are guarded by
+ * `updatedAt`, so a replay cannot move a newer row back.
  */
 import type {
   CodeChangePublisher,
@@ -26,7 +27,7 @@ import {
   type GitHubPullRequestTarget,
 } from "../webhooks/pull-request-people.js";
 import { normalizeGitHubPullRequestOutcome } from "../webhooks/pull-request-outcome.js";
-import { applyGitHubPullRequestOutcome } from "./apply.js";
+import { applyGitHubPullRequestOutcome, githubCodeChange } from "./apply.js";
 import { listGitHubStaleOpenPullRequests } from "./store.js";
 
 /**
@@ -154,7 +155,29 @@ async function reconcileRepository(
         }),
       ).data.repository;
     for (const pullRequest of Object.values(pullRequests)) {
-      if (!pullRequest || pullRequest.state === "OPEN") continue;
+      if (!pullRequest) continue;
+      if (pullRequest.state === "OPEN") {
+        // Rows from before the code index stored titles have none, and no
+        // lifecycle webhook arrives for a title edit. Write the title from
+        // this read. No conversation ids keeps the linked ones.
+        await args.codeChanges.record(
+          githubCodeChange(
+            {
+              candidateOwned: false,
+              number: pullRequest.number,
+              openedAt: new Date(pullRequest.createdAt),
+              pullRequestId: String(pullRequest.databaseId),
+              repositoryFullName: nameWithOwner,
+              repositoryId: String(databaseId),
+              state: "open",
+              title: pullRequest.title,
+              updatedAt: new Date(pullRequest.updatedAt),
+            },
+            [],
+          ),
+        );
+        continue;
+      }
       const body = closedWebhookBody(
         { databaseId, nameWithOwner },
         pullRequest,
