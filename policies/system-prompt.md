@@ -69,6 +69,9 @@ content of a block. It must not add or move a block. `<tool-call-style>`,
 
 - The system prompt is the same for every Turn of one deployment, platform,
   and Prompt mode. No request, actor, time, or Conversation data.
+- A `child_agent` Turn always uses the `local` platform, because its final
+  text goes to its parent. A child Conversation keeps one system prompt and
+  one tool set on every path that runs its Turns.
 - A plugin `systemPrompt` hook returns fixed text per deployment and platform.
   Put changing text in a `userPrompt` hook.
 - Do not change earlier transcript messages. Only context compaction can.

@@ -173,6 +173,31 @@ describe("child Turns on the Conversation loop", () => {
     },
   );
 
+  // A child's Turns share one prompt cache, so both of its paths must offer
+  // the same tools. With the default maxAgentDepth, neither offers
+  // spawnAgent.
+  it("gives a child's Conversation loop Turn the agent tools of its agent invocation", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await startIdleChild(harness, "task");
+      await sendHelperReply(harness, await createHelper(childId));
+      await harness.processUntilRun(childId);
+
+      const invocationRun = harness.runs.find((run) => run.agentInvocationId);
+      const loopRun = harness.runs.at(-1)!;
+      expect(loopRun).toMatchObject({
+        conversationId: childId,
+        delivery: expect.any(Function),
+        location: { provider: "slack" },
+      });
+      expect(loopRun.agentInvocationId).toBeUndefined();
+      expect(loopRun.disabledFeatures).toEqual(invocationRun!.disabledFeatures);
+    } finally {
+      await harness.close();
+    }
+  });
+
   // Only a gated Turn answers the parent, so only it keeps the child
   // running. A person's Turn in a Thread does not.
   it.each([

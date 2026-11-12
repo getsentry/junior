@@ -666,6 +666,17 @@ async function saveAgentInvocationResult(args: {
 }
 
 /**
+ * Return whether a child Turn gets spawnAgent, on its agent invocation and on
+ * its Conversation loop alike.
+ */
+export function childCanSpawn(maxAgentDepth: number | undefined): boolean {
+  // Every child has depth 1 or more, so with 0 no child can spawn. With more,
+  // a child past the limit still sees spawnAgent, and the spawn-time check in
+  // spawn.ts refuses it. Depth is not stored or read per Run.
+  return (maxAgentDepth ?? 0) > 0;
+}
+
+/**
  * Build the invocation consumer that advances work through the shared runner.
  * `enqueueResult` sends each terminal result to the parent mailbox. Omit it
  * only where the parent has no mailbox, such as the local CLI.
@@ -680,10 +691,7 @@ export function createAgentInvocationWorker(
     sendReply?: SendReply;
   } = {},
 ) {
-  // Every child has depth 1 or more, so with 0 no child can spawn. With more,
-  // a child past the limit still sees spawnAgent, and the spawn-time check in
-  // spawn.ts refuses it. Depth is not stored or read per Run.
-  const canSpawn = (options.maxAgentDepth ?? 0) > 0;
+  const canSpawn = childCanSpawn(options.maxAgentDepth);
   return async (
     context: ConversationWorkerContext,
     invocationId: string,
