@@ -42,6 +42,13 @@ consistent.
   compact badges and chart notes; body copy, controls, and metadata use
   `text-xs` or larger. No arbitrary `text-[Nrem]`.
 - No gradients unless they carry product meaning.
+- JS sizes that must match CSS use the same unit. Text, spacing, and
+  breakpoints are in rem, so they grow with the browser font size. Write the
+  JS size in rem, or read the rendered size. Use a px constant only when the
+  CSS that it matches is in px too (`ITEM_PX` and `h-[8px]`), and say so in a
+  comment. `ResizablePanel` sizes must be rem or percent, the style check
+  rejects px breakpoints, and the `px-geometry` lint rule rejects a `*_PX`
+  constant in `*` or `/` math when no element in the file uses its size.
 - Data tables: `table-fixed`, equal fixed widths for metric and status
   columns, only the label column flexes, a minimum width, and horizontal
   scroll on narrow screens.

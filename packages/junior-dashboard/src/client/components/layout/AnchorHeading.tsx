@@ -5,8 +5,13 @@ import { Link, useLocation } from "react-router";
 import { cn } from "../../styles";
 
 // Space between the sticky chrome and the heading. It also clears the card
-// padding above a card heading.
-const SCROLL_GAP_PX = 40;
+// padding above a card heading, which is in rem, so this is in rem too.
+const SCROLL_GAP_REM = 2.5;
+
+function scrollGapPx(): number {
+  const rootFontSize = getComputedStyle(document.documentElement).fontSize;
+  return SCROLL_GAP_REM * parseFloat(rootFontSize);
+}
 
 /**
  * How far below the viewport top a followed heading lands: under the sticky
@@ -15,7 +20,7 @@ const SCROLL_GAP_PX = 40;
  */
 function anchorScrollMargin(): number {
   const chrome = document.querySelector("[data-dashboard-chrome]");
-  return (chrome?.getBoundingClientRect().height ?? 0) + SCROLL_GAP_PX;
+  return (chrome?.getBoundingClientRect().height ?? 0) + scrollGapPx();
 }
 
 /**
@@ -45,7 +50,7 @@ export function useCurrentAnchor(
       frame = 0;
       const margin = anchorScrollMargin();
       const line = margin + 1;
-      const chromeBottom = margin - SCROLL_GAP_PX;
+      const chromeBottom = margin - scrollGapPx();
       const page = document.scrollingElement;
       const atEnd =
         page !== null &&

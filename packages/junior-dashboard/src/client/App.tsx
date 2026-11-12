@@ -185,6 +185,12 @@ const dashboardNoise = {
 };
 
 // The Settings sections used to be pages. Their old links open the section.
+// They keep their query, such as the token name that `?name=` prefills.
+function LegacySettingsRedirect(props: { anchor: string }) {
+  const { search } = useLocation();
+  return <Navigate replace to={`/settings${search}#${props.anchor}`} />;
+}
+
 const legacySettingsPaths = [
   ["/settings/api-tokens", "api-tokens"],
   ["/settings/connections", "identities"],
@@ -244,7 +250,9 @@ function Shell() {
   const serverVersion = useDashboardServerVersion(data?.config.version);
   const userPages = userPagesQuery.data ?? [];
   const loading = !data && !query.error;
-  const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
+  // With auth off, the server still resolves the local viewer for every API
+  // read, so that viewer counts as signed in.
+  const loggedIn = Boolean(data?.me.user.email);
   const personalSpendQuery = usePersonalSpendData(loggedIn);
   const [paneOpen, setPaneOpen] = useConversationSidebarOpen();
   const primaryUserPages = loggedIn
@@ -775,7 +783,7 @@ function Shell() {
               />
               {legacySettingsPaths.map(([path, anchor]) => (
                 <Route
-                  element={<Navigate replace to={`/settings#${anchor}`} />}
+                  element={<LegacySettingsRedirect anchor={anchor} />}
                   key={path}
                   path={path}
                 />

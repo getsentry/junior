@@ -1,3 +1,4 @@
+import { startDashboardE2eServer } from "./harness";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 
@@ -268,4 +269,23 @@ test("Zen mode hides the page links that the pane lists", async ({
   await page.keyboard.press("ControlOrMeta+KeyB");
   await expect(pane).toBeVisible();
   await expect(pageLinks).toHaveCount(0);
+});
+
+test("mock data shows the local viewer's Inbox when auth is off", async ({
+  page,
+}) => {
+  const dashboard = await startDashboardE2eServer({ authRequired: false });
+  try {
+    await page.setViewportSize({ width: 1440, height: 1150 });
+    await page.goto(dashboard.baseURL);
+    const primary = page.getByRole("navigation", { name: "Primary" });
+    await expect(primary.getByRole("link", { name: /^Inbox/ })).toHaveText(
+      /^Inbox\s*\d+$/,
+    );
+    await expect(
+      primary.getByRole("link", { name: "Automations" }),
+    ).toBeVisible();
+  } finally {
+    await dashboard.close();
+  }
 });

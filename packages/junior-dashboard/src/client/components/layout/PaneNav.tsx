@@ -126,10 +126,16 @@ type PaneWidthValue = { setWidth(width: number): void; width: number };
 // Apart from `PaneNavContext`, so a drag renders only the resize handle.
 const PaneWidthContext = createContext<PaneWidthValue | null>(null);
 
-const RESIZE_KEY_STEP = 16;
+// The pane width is in rem, so the pane keeps room for its text when the
+// reader changes the browser font size. One arrow press moves it 1rem.
+const RESIZE_KEY_STEP = 1;
 
 function clampWidth(width: number): number {
   return Math.min(SIDEBAR_WIDTH.max, Math.max(SIDEBAR_WIDTH.min, width));
+}
+
+function rootFontPx(): number {
+  return parseFloat(getComputedStyle(document.documentElement).fontSize);
 }
 
 function usePaneNav(): PaneNavValue {
@@ -262,7 +268,7 @@ export function PaneNavProvider(props: {
       <PaneWidthContext.Provider value={widthValue}>
         <div
           className="flex min-h-svh w-full"
-          style={{ "--pane-width": `${width}px` } as CSSProperties}
+          style={{ "--pane-width": `${width}rem` } as CSSProperties}
         >
           {props.children}
         </div>
@@ -840,9 +846,10 @@ function PaneResizeHandle() {
     handle.setPointerCapture(event.pointerId);
     const startX = event.clientX;
     const startWidth = width;
+    const remPx = rootFontPx();
     let next = startWidth;
     const move = (moveEvent: PointerEvent) => {
-      const raw = startWidth + moveEvent.clientX - startX;
+      const raw = startWidth + (moveEvent.clientX - startX) / remPx;
       if (raw < SIDEBAR_WIDTH.min / 2) {
         end();
         pane.setOpen(false, { focus: true });
@@ -857,7 +864,7 @@ function PaneResizeHandle() {
       handle.removeEventListener("pointercancel", end);
       document.body.style.removeProperty("cursor");
       document.body.style.removeProperty("user-select");
-      saveSidebarWidth(next);
+      saveSidebarWidth(next * remPx);
     };
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
@@ -877,16 +884,19 @@ function PaneResizeHandle() {
     event.preventDefault();
     const next = clampWidth(width + step);
     setWidth(next);
-    saveSidebarWidth(next);
+    saveSidebarWidth(next * rootFontPx());
   };
+
+  // The separator reports px, the unit that the reader sees move.
+  const remPx = rootFontPx();
 
   return (
     <div
       aria-label="Resize sidebar"
       aria-orientation="vertical"
-      aria-valuemax={SIDEBAR_WIDTH.max}
-      aria-valuemin={SIDEBAR_WIDTH.min}
-      aria-valuenow={Math.round(width)}
+      aria-valuemax={Math.round(SIDEBAR_WIDTH.max * remPx)}
+      aria-valuemin={Math.round(SIDEBAR_WIDTH.min * remPx)}
+      aria-valuenow={Math.round(width * remPx)}
       className="absolute inset-y-0 right-0 z-20 w-2 cursor-col-resize after:absolute after:inset-y-0 after:right-0 after:w-px after:transition-colors hover:after:bg-dashboard-border-interactive focus-visible:outline-none focus-visible:after:bg-dashboard-border-interactive max-md:hidden"
       onKeyDown={stepWidth}
       onPointerDown={startDrag}

@@ -82,7 +82,9 @@ When a person wants to open the UI that you changed, send a preview URL:
 
 1. Push the branch, so a later Turn can make the preview again.
 2. Start the server in the background on all interfaces:
-   `(HOST=0.0.0.0 JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true JUNIOR_DASHBOARD_LIVE_ORIGIN=https://junior-prod.sentry.dev setsid nohup pnpm dev > /tmp/dev.log 2>&1 &)`
+   `(HOST=0.0.0.0 JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true JUNIOR_DASHBOARD_LIVE_ORIGIN=https://junior-prod.sentry.dev JUNIOR_BOT_NAME="junior (Preview)" setsid nohup pnpm dev > /tmp/dev.log 2>&1 &)`
+   `JUNIOR_BOT_NAME` replaces the `junior-example` name from `.env.example`
+   in the tab title.
 3. Wait until `curl -s -o /dev/null -w '%{http_code}' localhost:3000/` returns
    `200`.
 4. Call `createPreview` with port `3000`, and send the URL.

@@ -5,7 +5,7 @@ import { Button } from "./ui/button";
 import { BottomSheet } from "./BottomSheet";
 import { Drawer } from "./Drawer";
 
-const panelMediaQuery = "(min-width: 1280px)";
+const panelMediaQuery = "(min-width: 80rem)";
 
 function subscribeToPanelLayout(onChange: () => void) {
   const media = window.matchMedia(panelMediaQuery);

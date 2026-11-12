@@ -90,6 +90,9 @@ describe("dashboard live preview", () => {
 
     expect(missing.status).toBe(401);
     expect(missing.headers.get("www-authenticate")).toMatch(/^Basic realm=/);
+    expect(await missing.text()).toContain(
+      "/settings/api-tokens?name=Live+preview+on+preview",
+    );
     expect(rejected.status).toBe(401);
     expect(accepted.status).toBe(302);
     expect(accepted.headers.get("location")).toBe("http://preview/");

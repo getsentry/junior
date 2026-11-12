@@ -16,7 +16,7 @@
  */
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
-import { exampleDashboardAuthRequired } from "./dashboard";
+import { exampleDashboardAuthRequired } from "./dashboard.ts";
 
 /** An app that serves requests, such as the Hono app from `createApp()`. */
 export interface FetchApp<Rest extends unknown[]> {
@@ -137,14 +137,15 @@ async function startLivePreview(
     if (me.ok) return Response.redirect(new URL("/", url), 302);
   }
   const host = escapeHtml(new URL(origin).host);
-  const tokensUrl = escapeHtml(new URL("/settings/api-tokens", origin).href);
+  const tokensUrl = new URL("/settings/api-tokens", origin);
+  tokensUrl.searchParams.set("name", `Live preview on ${url.host}`);
   return new Response(
     `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="utf-8" /><title>Live data</title></head>
 <body style="font-family: system-ui, sans-serif; max-width: 36rem; margin: 4rem auto; padding: 0 1rem;">
   <h1>Live data from ${host}</h1>
-  <p>Enter any user name and a <a href="${tokensUrl}">personal token from ${host}</a> as the password. Live data is read-only.</p>
+  <p>Enter any user name and a <a href="${escapeHtml(tokensUrl.href)}">personal token from ${host}</a> as the password. Live data is read-only.</p>
   <p><a href="/">Use demo data</a></p>
 </body>
 </html>`,
