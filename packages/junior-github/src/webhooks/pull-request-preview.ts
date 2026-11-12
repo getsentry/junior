@@ -49,14 +49,19 @@ export async function refreshGitHubPullRequestPreview(args: {
       if (current?.kind !== "object" || current.facts?.type !== "code_change") {
         return;
       }
+      const storedAt = current.sourceUpdatedAt
+        ? Date.parse(current.sourceUpdatedAt)
+        : undefined;
       // A late delivery must not undo a newer body.
+      if (storedAt !== undefined && storedAt > updatedAt) return;
+      // An unchanged image still moves `sourceUpdatedAt` forward, so a late
+      // delivery of a body between the two cannot pass the check above.
       if (
-        current.sourceUpdatedAt &&
-        Date.parse(current.sourceUpdatedAt) > updatedAt
+        current.facts.previewImageUrl === previewImageUrl &&
+        storedAt === updatedAt
       ) {
         return;
       }
-      if (current.facts.previewImageUrl === previewImageUrl) return;
       const {
         plugin: _plugin,
         createdAt: _createdAt,
