@@ -204,6 +204,8 @@ export function activityChartAverageLabel(
 
 /** The `text-2xs` label size at the default root font size. */
 const DEFAULT_LABEL_FONT_PX = 12;
+/** Narrowest chip, in label font sizes: 52px at the default size. */
+const MIN_CHIP_WIDTH_EM = 52 / 12;
 
 /**
  * Draw the average label on a solid chip at the right end of the line, so
@@ -228,8 +230,7 @@ function ActivityChartAverageChip(props: {
   const chipHeight = fontPx + 6;
   // Width estimate for tabular digits at the label size.
   const chipWidth =
-    Math.max(52 / DEFAULT_LABEL_FONT_PX, props.text.length * 0.62) * fontPx +
-    10;
+    Math.max(MIN_CHIP_WIDTH_EM, props.text.length * 0.62) * fontPx + 10;
   const above = lineY - (plotArea?.y ?? 0) > chipHeight + 4;
   const chipY = above ? lineY - chipHeight - 3 : lineY + 4;
   return (
