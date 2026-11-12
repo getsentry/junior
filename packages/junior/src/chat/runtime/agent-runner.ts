@@ -1,11 +1,9 @@
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { MessageAttachment } from "@/chat/attachments/input";
-import {
-  isAgentRunFeatureDisabled,
-  type AgentAttachment,
-  type AgentRun,
-  type MessageAgent,
-  type SpawnAgent,
+import type {
+  AgentAttachment,
+  AgentEnvironment,
+  AgentRun,
 } from "@/chat/agent/types";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
@@ -24,8 +22,8 @@ export function createAgentRunner(
   options?: {
     attachmentStorage?: AttachmentStorage;
     backgroundCompactionQueue?: BackgroundCompactionQueue;
-    bindMessageAgent?: (run: AgentRun) => MessageAgent | undefined;
-    bindSpawnAgent?: (run: AgentRun) => SpawnAgent | undefined;
+    bindMessageAgent?: AgentEnvironment["bindMessageAgent"];
+    bindSpawnAgent?: AgentEnvironment["bindSpawnAgent"];
     conversationWorkQueue?: ConversationWorkQueue;
     streamFn?: StreamFn;
     tracePropagation?: SandboxEgressTracePropagationConfig;
@@ -40,19 +38,6 @@ export function createAgentRunner(
   const bindMessageAgent = options?.bindMessageAgent;
   return {
     run: async (run) => {
-      const spawnAgent =
-        bindSpawnAgent &&
-        !isAgentRunFeatureDisabled(run.disabledFeatures, "subagents")
-          ? bindSpawnAgent(run)
-          : undefined;
-      // An Agent invocation can always message its parent, even when it is
-      // too deep to start child agents of its own.
-      const messageAgent =
-        bindMessageAgent &&
-        bindSpawnAgent &&
-        (spawnAgent || run.agentInvocationId)
-          ? bindMessageAgent(run)
-          : undefined;
       const nextRun: AgentRun = {
         ...run,
         environment: {
@@ -66,16 +51,12 @@ export function createAgentRunner(
             run.environment?.conversationWorkQueue ?? conversationWorkQueue,
           sandboxTracePropagation:
             run.environment?.sandboxTracePropagation ?? tracePropagation,
+          // Tool wiring binds agent tools after it reads the Turn's behavior.
+          ...(bindSpawnAgent ? { bindSpawnAgent } : undefined),
+          ...(bindSpawnAgent && bindMessageAgent
+            ? { bindMessageAgent }
+            : undefined),
         },
-        ...(spawnAgent || messageAgent
-          ? {
-              durability: {
-                ...run.durability,
-                ...(spawnAgent ? { spawnAgent } : undefined),
-                ...(messageAgent ? { messageAgent } : undefined),
-              },
-            }
-          : undefined),
       };
       // Image storage loads runtime config. Keep it behind execution so the
       // local CLI can set its defaults before config is first read.

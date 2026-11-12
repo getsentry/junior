@@ -9,7 +9,11 @@ import {
   type SeqRange,
 } from "@/chat/conversations/sql/event-watermarks";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { getStateAdapter } from "@/chat/state/adapter";
+import {
+  getStateAdapter,
+  getStateValues,
+  setStateValues,
+} from "@/chat/state/adapter";
 import { juniorConversationEvents } from "@/db/schema";
 import {
   agentTurnUsageSchema,
@@ -142,11 +146,13 @@ function usageFromRow(row: ModelUsageSums): AgentTurnUsage | undefined {
     : undefined;
 }
 
-/** Sum assistant calls by model id, in the given seq range of each Conversation. */
+/** Sum assistant calls by Conversation and model id, in the seq range of each Conversation. */
 async function sumModelUsage(
   executor: JuniorSqlDatabase,
   ranges: readonly SeqRange[],
-): Promise<Array<ModelUsageSums & { modelId: string }>> {
+): Promise<
+  Array<ModelUsageSums & { conversationId: string; modelId: string }>
+> {
   // Prefer the model field when it already carries a vendor prefix so usage keys
   // match configured model ids (openai/gpt-5.6-sol), not the transport
   // provider concatenated onto that id (vercel-ai-gateway/openai/gpt-5.6-sol).
@@ -163,6 +169,7 @@ async function sumModelUsage(
   return await executor
     .db()
     .select({
+      conversationId: juniorConversationEvents.conversationId,
       modelId,
       inputTokens: summed(inputTokens),
       outputTokens: summed(outputTokens),
@@ -198,27 +205,24 @@ async function sumModelUsage(
         sql`coalesce(${modelText}, '') <> ''`,
       ),
     )
-    .groupBy(modelId);
+    .groupBy(juniorConversationEvents.conversationId, modelId);
 }
 
+// One entry per Conversation, not per subtree, with its own watermark. A
+// root and its child agents then reuse the same entries.
 const modelUsageCacheSchema = z.object({
-  conversations: z.record(
-    z.string(),
-    z.object({ seq: z.number().int(), originMs: z.number() }),
-  ),
+  seq: z.number().int(),
+  originMs: z.number(),
   models: z.record(z.string(), modelUsageSumsSchema),
 });
 type ModelUsageCache = z.infer<typeof modelUsageCacheSchema>;
-const EMPTY_MODEL_USAGE_CACHE: ModelUsageCache = {
-  conversations: {},
-  models: {},
-};
-// A read writes the entry only when events changed. A miss after this TTL
+// A read writes an entry only when its events changed. A miss after this TTL
 // costs one full recompute, which is cheap for a Conversation that is idle.
 const MODEL_USAGE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+// v2 holds one Conversation. v1 held a whole subtree.
 function modelUsageCacheKey(conversationId: string): string {
-  return `conversation-model-usage:${conversationId}`;
+  return `conversation-model-usage:v2:${conversationId}`;
 }
 
 function addSums(
@@ -246,61 +250,102 @@ function mergeSums(
   return merged;
 }
 
+function mergeModels(
+  target: ModelUsageCache["models"],
+  models: ModelUsageCache["models"],
+): void {
+  for (const [modelId, sums] of Object.entries(models)) {
+    target[modelId] = mergeSums(target[modelId], sums);
+  }
+}
+
 /**
  * Aggregate real assistant calls by provider/model in SQL, for one
  * Conversation and all its child agents at any depth. Replayed history is not
  * another call; its tokens appear in the next call's input usage.
  *
- * Reading assistant payloads is slow on long Conversations, so the sums are
- * cached with the last seq that each Conversation in the subtree added. A read
- * sums only later events. This is correct because a row at or below a seen
- * seq never changes and never changes whether it counts:
+ * Reading assistant payloads is slow on long Conversations, so each
+ * Conversation in the subtree has its own cache entry. The entry keeps its
+ * own watermark: the last seq that it counted and the creation time of the
+ * first event (`originMs`). A read sums only the events after the seq of
+ * each entry. Only a Conversation with no entry, or with an entry whose
+ * watermark does not match, gets a full read of its own events. A read never
+ * reads the whole subtree again. This is correct because a row at or below a
+ * counted seq never changes and never changes whether it counts:
  * - Events are append-only. The per-Conversation event lock serializes
  *   appends and is held to commit, so when seq N is visible, lower seqs are.
  * - `notInheritedByForkChild` reads only lower seqs of the same Conversation.
- * - `notCopiedByFork` reads a later fork note, but a fork commits its copied
- *   events and the note in one transaction.
+ * - `notCopiedByFork` reads a later fork note of the same Conversation, but a
+ *   fork commits its copied events and the note in one transaction.
+ * So both rules depend only on the events of the entry's own Conversation.
+ * A purge removes the events of a Conversation, and new events start again
+ * at seq 0 with a new first event. A lower seq or another `originMs` does
+ * not match the watermark, so a read rebuilds that Conversation's entry
+ * only.
  * Concurrent reads can overwrite each other's entry. Each entry is correct
- * at its own seqs, so the last write wins safely.
+ * at its own seq, so the last write wins safely.
  */
 export async function readConversationModelUsageFromSql(
   executor: JuniorSqlDatabase,
   options: { conversationId: string },
 ): Promise<Array<{ modelId: string; usage: AgentTurnUsage }>> {
+  const watermarks = (
+    await readSubtreeEventWatermarks(executor.db(), [options.conversationId])
+  ).flatMap(({ conversationId, seq, originMs }) =>
+    seq === null || originMs === null
+      ? []
+      : [{ conversationId, seq, originMs }],
+  );
   const state = getStateAdapter();
-  const key = modelUsageCacheKey(options.conversationId);
-  const [stored, watermarks] = await Promise.all([
-    state.get(key),
-    readSubtreeEventWatermarks(executor.db(), [options.conversationId]),
-  ]);
-  const cached = modelUsageCacheSchema.safeParse(stored).data;
-  // Purge removes the whole subtree's events, so rebuild all on any mismatch.
-  const purged = watermarks.some(({ conversationId, seq, originMs }) => {
-    const seen = cached?.conversations[conversationId];
-    return (
-      seen && (seq === null || seq < seen.seq || originMs !== seen.originMs)
-    );
+  // One batched read for the whole subtree, not one per Conversation.
+  const cachedValues = await getStateValues(
+    state,
+    watermarks.map(({ conversationId }) => modelUsageCacheKey(conversationId)),
+  );
+  const entries = watermarks.map((watermark, index) => {
+    const cached = modelUsageCacheSchema.safeParse(cachedValues[index]).data;
+    const base =
+      cached &&
+      cached.seq <= watermark.seq &&
+      cached.originMs === watermark.originMs
+        ? cached
+        : undefined;
+    return { base, watermark };
   });
-  const base = cached && !purged ? cached : EMPTY_MODEL_USAGE_CACHE;
-  const ranges: SeqRange[] = [];
-  const conversations: ModelUsageCache["conversations"] = {};
-  for (const { conversationId, seq, originMs } of watermarks) {
-    if (seq === null || originMs === null) continue;
-    conversations[conversationId] = { seq, originMs };
-    const fromSeq = base.conversations[conversationId]?.seq ?? -1;
-    if (seq > fromSeq) ranges.push({ conversationId, fromSeq, toSeq: seq });
-  }
+  const ranges = entries.flatMap(({ base, watermark }) =>
+    watermark.seq > (base?.seq ?? -1)
+      ? [
+          {
+            conversationId: watermark.conversationId,
+            fromSeq: base?.seq ?? -1,
+            toSeq: watermark.seq,
+          },
+        ]
+      : [],
+  );
+  const deltas = ranges.length > 0 ? await sumModelUsage(executor, ranges) : [];
 
-  let models = base.models;
-  if (ranges.length > 0 || base !== cached) {
-    const deltas =
-      ranges.length > 0 ? await sumModelUsage(executor, ranges) : [];
-    models = { ...base.models };
-    for (const { modelId, ...sums } of deltas) {
-      models[modelId] = mergeSums(models[modelId], sums);
+  const models: ModelUsageCache["models"] = {};
+  const writes: Array<{ key: string; value: ModelUsageCache }> = [];
+  for (const { base, watermark } of entries) {
+    const { conversationId, seq, originMs } = watermark;
+    if (base && base.seq === seq) {
+      mergeModels(models, base.models);
+      continue;
     }
-    await state.set(key, { conversations, models }, MODEL_USAGE_CACHE_TTL_MS);
+    const entryModels = { ...base?.models };
+    for (const { conversationId: deltaId, modelId, ...sums } of deltas) {
+      if (deltaId === conversationId) {
+        entryModels[modelId] = mergeSums(entryModels[modelId], sums);
+      }
+    }
+    mergeModels(models, entryModels);
+    writes.push({
+      key: modelUsageCacheKey(conversationId),
+      value: { seq, originMs, models: entryModels },
+    });
   }
+  await setStateValues(state, writes, MODEL_USAGE_CACHE_TTL_MS);
 
   return Object.entries(models)
     .sort(([left], [right]) => (left < right ? -1 : 1))

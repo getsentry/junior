@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { BaselineSnapshotReport } from "@sentry/junior/api/schema";
 
 import { Card } from "../../components/layout/Card";
+import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { formatMs, formatRelativeTime, formatTime } from "../../format";
 import { formatSandboxSize } from "./sandboxSize";
 
@@ -17,14 +18,13 @@ export function BaseSandboxCard(props: {
   const snapshot = props.snapshot;
   return (
     <Card as="section" className="mb-0" padding="md" variant="section">
-      <div aria-labelledby="base-sandbox-heading" className="grid gap-4">
+      <div className="grid gap-4">
         <div className="min-w-0 grid gap-1">
-          <h2
+          <AnchorHeading
+            anchor="base-sandbox"
             className="m-0 text-base font-semibold text-dashboard-text"
-            id="base-sandbox-heading"
-          >
-            Base Sandbox
-          </h2>
+            title="Base Sandbox"
+          />
           <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
             The base snapshot is inherited by all Workspaces.
           </p>

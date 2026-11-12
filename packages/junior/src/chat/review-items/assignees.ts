@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import type { ProviderTenant } from "@/api/conversations/access";
 import { findUserByEmailFromSql } from "@/chat/plugins/viewer";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -6,6 +6,7 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   juniorAutomations,
   juniorConversationParticipants,
+  juniorConversations,
   juniorIdentities,
 } from "@/db/schema";
 
@@ -82,26 +83,57 @@ export async function resolveAssignees(
   };
 }
 
-/** Return which of the Users take part in one root Conversation. */
-export async function conversationParticipantUserIds(
+// Participant rows belong to the root, so a child id reads its root's rows.
+async function participantUserIds(
   db: JuniorDatabase,
-  rootConversationId: string,
-  userIds: readonly string[],
-): Promise<Set<string>> {
-  if (userIds.length === 0) return new Set();
+  conversationId: string,
+  condition: SQL,
+): Promise<string[]> {
   const rows = await db
     .select({ userId: juniorConversationParticipants.userId })
     .from(juniorConversationParticipants)
-    .where(
-      and(
-        eq(
-          juniorConversationParticipants.rootConversationId,
-          rootConversationId,
-        ),
-        inArray(juniorConversationParticipants.userId, [...userIds]),
+    .innerJoin(
+      juniorConversations,
+      eq(
+        juniorConversationParticipants.rootConversationId,
+        sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
       ),
+    )
+    .where(
+      and(eq(juniorConversations.conversationId, conversationId), condition),
     );
-  return new Set(rows.map((row) => row.userId));
+  return rows.map((row) => row.userId);
+}
+
+/** Return which of the Users are Participants of a Conversation. */
+export async function conversationParticipantUserIds(
+  db: JuniorDatabase,
+  conversationId: string,
+  userIds: readonly string[],
+): Promise<Set<string>> {
+  if (userIds.length === 0) return new Set();
+  return new Set(
+    await participantUserIds(
+      db,
+      conversationId,
+      inArray(juniorConversationParticipants.userId, [...userIds]),
+    ),
+  );
+}
+
+/**
+ * Return the active Participants of a Conversation: the people who have not
+ * unsubscribed from it.
+ */
+export async function activeParticipantUserIds(
+  db: JuniorDatabase,
+  conversationId: string,
+): Promise<string[]> {
+  return await participantUserIds(
+    db,
+    conversationId,
+    isNull(juniorConversationParticipants.unsubscribedAt),
+  );
 }
 
 /** Return the User who created an Automation, if Junior knows them. */

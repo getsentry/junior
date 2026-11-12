@@ -104,7 +104,7 @@ async function mockLongConversation(
     `**/api/conversations/${conversationId}/read-position`,
     async (route) => {
       await route.fulfill({
-        json: { ...route.request().postDataJSON(), unreadReply: false },
+        json: route.request().postDataJSON(),
       });
     },
   );
@@ -123,6 +123,20 @@ async function mockLongConversation(
           ? aroundRange(Number(around))
           : [Math.max(0, Number(before) - PAGE_SIZE), Number(before) - 1];
       await route.fulfill({ json: eventPage(from, to) });
+    },
+  );
+  await page.route(
+    `**/api/conversations/${conversationId}/outline`,
+    async (route) => {
+      await route.fulfill({
+        json: {
+          items: events(0, lastSeq).flatMap(({ data, seq }) =>
+            data.type === "message" && data.role === "user"
+              ? [{ seq, text: data.text }]
+              : [],
+          ),
+        },
+      });
     },
   );
   await page.route(
@@ -341,7 +355,7 @@ test("jumps to a far message from the outline", async ({ page, dashboard }) => {
   await page.setViewportSize({ height: 900, width: 1920 });
   const mock = await mockLongConversation(page, {
     lastReadSeq: EVENT_COUNT - 1,
-    paged: false,
+    paged: true,
   });
   await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
   const transcript = page.getByLabel("Conversation transcript");
@@ -351,6 +365,8 @@ test("jumps to a far message from the outline", async ({ page, dashboard }) => {
   await expect(
     transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
   ).toBeInViewport();
+  // The outline lists every person message, not only the loaded page.
+  await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
   await expect(row(transcript, 1_234)).toHaveCount(0);
 
   const item = outline.getByRole("button", {
@@ -362,6 +378,61 @@ test("jumps to a far message from the outline", async ({ page, dashboard }) => {
   await expect(row(transcript, 1_233)).not.toBeInViewport({ ratio: 0.5 });
   await expect(item).toHaveAttribute("aria-current", "location");
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
+});
+
+test("points at the outline item under a still pointer while the list scrolls", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 1920 });
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: true,
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const outline = page.getByRole("navigation", {
+    name: "Conversation outline",
+  });
+  await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
+  // The list scrolls to the active item near its end, so a wheel up has
+  // room to scroll.
+  await expect(outline.locator("button[aria-current]")).toBeInViewport();
+  await outline.getByRole("list").hover({ position: { x: 4, y: 200 } });
+  const pointed = outline.locator("button[data-highlighted]");
+  const title = page.locator('[data-slot="message-outline-preview-title"]');
+  const before = (await pointed.getAttribute("aria-label"))!;
+  await expect(title).toHaveText(before);
+
+  // A wheel scrolls the list without a pointer move. The pointed item and
+  // its preview follow the item that is now under the pointer.
+  await page.mouse.wheel(0, -400);
+  await expect(pointed).not.toHaveAttribute("aria-label", before);
+  await expect(title).toHaveText((await pointed.getAttribute("aria-label"))!);
+});
+
+test("points at the outline item under the pointer with a larger font size", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 2560 });
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: true,
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  // A browser font size or a text-only zoom changes rem.
+  await page.addStyleTag({ content: "html { font-size: 20px; }" });
+  const outline = page.getByRole("navigation", {
+    name: "Conversation outline",
+  });
+  await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
+  const item = outline.getByRole("button", {
+    name: "Transcript message 1990 with",
+  });
+  await item.hover();
+  await expect(
+    page.locator('[data-slot="message-outline-preview-title"]'),
+  ).toHaveText((await item.getAttribute("aria-label"))!);
 });
 
 test("holds the top row while earlier pages load above it", async ({

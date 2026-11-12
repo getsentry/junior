@@ -29,6 +29,8 @@ export type DispatchStatus =
 export type SlackDispatchOptions = Omit<DispatchOptions, "destination"> & {
   destination: SlackDestination;
   outcomes?: TaskOutcome[];
+  /** Skill that an Automation run invokes. Core-owned; plugins cannot set it. */
+  skill?: string;
 };
 
 export interface BoundDispatchOptions extends Omit<
@@ -80,6 +82,10 @@ export type DispatchRecord = {
   source: Source;
   /** Visible effects after successful work. */
   outcomes?: TaskOutcome[];
+  /** Skill that the run invokes, from an Automation in skill mode. */
+  skill?: string;
+  /** Title of the dispatch Conversation, saved when it is created. */
+  title?: string;
   updatedAtMs: number;
 } & DispatchState;
 

@@ -3,6 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { encodeConversationCursor } from "@/api/conversations/cursor";
 import * as z from "zod";
 import { createConversationForViewer } from "@/api/conversations/create";
+import { conversationTitleSchema } from "@/api/schema/conversation-title";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import {
   mcpAcceptedMessageSchema,
@@ -32,6 +33,11 @@ export function registerCreateConversationTool(
         "Start a new conversation as you, with a first message. The agent works on it in the background. Returns the messages that no turn has read yet and a `cursor`. Pass the `cursor` as `after` to getConversation to read the reply.",
       inputSchema: {
         message: mcpMessageTextSchema,
+        title: conversationTitleSchema
+          .optional()
+          .describe(
+            "Short title for the conversation. Omit it to generate one from the message.",
+          ),
         visibility: z
           .enum(["private", "public"])
           .default("private")
@@ -48,7 +54,7 @@ export function registerCreateConversationTool(
         readOnlyHint: false,
       },
     },
-    async ({ idempotencyKey, message, visibility }) => {
+    async ({ idempotencyKey, message, title, visibility }) => {
       let accepted;
       try {
         accepted = await createConversationForViewer(
@@ -56,6 +62,7 @@ export function registerCreateConversationTool(
           {
             idempotencyKey: idempotencyKey ?? randomUUID(),
             message,
+            ...(title ? { title } : undefined),
             visibility,
           },
           { attachmentStorage, queue },

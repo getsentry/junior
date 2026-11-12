@@ -1,5 +1,5 @@
 /**
- * Browser side of phone notifications: service worker registration and the
+ * Browser side of push notifications: service worker registration and the
  * Web Push subscription for this device.
  */
 import {
@@ -8,7 +8,7 @@ import {
   NOTIFICATION_TARGET_KEY,
 } from "../../service-worker";
 
-/** What this browser can do with phone notifications. */
+/** What this browser can do with push notifications. */
 export type PushSupport =
   | "supported"
   /** iPhone and iPad allow Web Push only from a Home Screen app. */
@@ -34,7 +34,7 @@ function isAppleMobile(): boolean {
   );
 }
 
-/** Report whether this browser can receive phone notifications now. */
+/** Report whether this browser can receive push notifications now. */
 export function pushSupport(): PushSupport {
   if (!window.isSecureContext || !("serviceWorker" in navigator)) {
     return isAppleMobile() && !isStandalone() ? "needs-install" : "unsupported";

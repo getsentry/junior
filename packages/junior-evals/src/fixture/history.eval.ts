@@ -6,6 +6,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect } from "vitest";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { slackMention, reply, webMessage, type MessageInput } from "./inputs";
 import { isRecordedConversation } from "./recorded";
 import {
@@ -19,6 +20,7 @@ import {
 const VOLATILE_KEYS = new Set([
   "authorIdentityId",
   "cacheWrite1h",
+  "id",
   "idempotencyKey",
   "inputMessageIds",
   "messageId",
@@ -26,6 +28,7 @@ const VOLATILE_KEYS = new Set([
   "responseId",
   "slackTs",
   "timestamp",
+  "toolCallId",
   "turnId",
   "usage",
 ]);
@@ -50,9 +53,18 @@ function stripVolatile(value: unknown): unknown {
     return value.replace(/ slack_ts="[^"]*"/g, "");
   }
   if (!value || typeof value !== "object") return value;
+  // The model may give `noReply` a note, which loaded history cannot know.
+  // A person's Turn keeps only the call, so its input and output are free
+  // text, like a reply.
+  const noReplyKeys =
+    "name" in value && value.name === NO_REPLY_TOOL_NAME
+      ? ["arguments"]
+      : "toolName" in value && value.toolName === NO_REPLY_TOOL_NAME
+        ? ["content", "details"]
+        : [];
   return Object.fromEntries(
     Object.entries(value)
-      .filter(([key]) => !VOLATILE_KEYS.has(key))
+      .filter(([key]) => !VOLATILE_KEYS.has(key) && !noReplyKeys.includes(key))
       .map(([key, entry]) => [key, stripVolatile(entry)]),
   );
 }
@@ -153,8 +165,6 @@ describe("loaded history", () => {
     run,
   }) => {
     // Slack ingress escapes markdown, such as the brackets and underscore.
-    // The input does not name the no-reply marker, because the model then
-    // repeats the escaped text, which Junior delivers as a reply.
     await compareWithRealTurn(
       run,
       slackMention(

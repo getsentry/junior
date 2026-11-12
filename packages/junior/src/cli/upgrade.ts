@@ -108,6 +108,7 @@ export async function runUpgrade(
   const sqlExecutor: JuniorSqlExecutor = createJuniorSqlExecutor({
     connectionString: readMigrationDatabaseUrl(sql.databaseUrl),
     driver: sql.driver,
+    onInfo: (message) => io.info(`    ${message}`),
     statementTimeoutMs: false,
   });
   try {

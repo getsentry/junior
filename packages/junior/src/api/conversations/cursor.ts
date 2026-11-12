@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import * as z from "zod";
+import { readJuniorSecret } from "@/chat/secrets";
 
 const CURSOR_CONTEXT = "junior-conversation-report-cursor";
 
@@ -18,7 +19,7 @@ type ConversationCursorPayload = z.infer<
 >;
 
 function cursorSecret(): string {
-  const secret = process.env.JUNIOR_SECRET?.trim();
+  const secret = readJuniorSecret();
   if (!secret) {
     throw new Error("Cannot sign conversation cursor without JUNIOR_SECRET");
   }

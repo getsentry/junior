@@ -19,7 +19,7 @@ import type {
   Conversation,
   ConversationExecution,
   ConversationRunMetrics,
-  ConversationKind,
+  ChildConversationKind,
   ConversationSource,
   ConversationStatus,
   ConversationStore,
@@ -34,6 +34,7 @@ import type { JuniorDestinationKind } from "@/db/schema/destination-kind";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import {
   bindProviderConversation,
+  claimProviderConversationOwner,
   getConversationIdByProviderConversation,
   type ProviderConversationBinding,
   type ProviderConversationReference,
@@ -48,8 +49,12 @@ import {
   locationFromRow,
   visibilityFromLocationRow,
 } from "./location";
-import { conversationKindFromRow } from "./conversation-row";
+import {
+  conversationKindFromRow,
+  ensureConversationRow,
+} from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
+import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
@@ -179,24 +184,17 @@ function destinationUpsertFromDestination(args: {
     metadata: { platform: "local" },
   };
 }
-// TODO(dcramer): Remove awaiting_resume mapping after every SQL row uses paused
-// and no supported worker writes the legacy status.
 function executionStatusFromValue(value: unknown): ConversationStatus {
-  if (value === "awaiting_resume" || value === "paused") return "paused";
   if (
     value === "failed" ||
     value === "idle" ||
+    value === "paused" ||
     value === "pending" ||
     value === "running"
   ) {
     return value;
   }
   throw new Error("Conversation record execution status is invalid");
-}
-function executionStatusToSql(status: ConversationStatus): ConversationStatus {
-  return (
-    status === "paused" ? "awaiting_resume" : status
-  ) as ConversationStatus;
 }
 
 function destinationFromRow(
@@ -303,6 +301,9 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(msFromDate(row.stoppedAt) !== undefined
       ? { stoppedAtMs: msFromDate(row.stoppedAt) }
       : undefined),
+    ...(msFromDate(row.deliveryPausedAt) !== undefined
+      ? { deliveryPausedAtMs: msFromDate(row.deliveryPausedAt) }
+      : undefined),
     ...(visibility ? { visibility } : undefined),
   };
 }
@@ -310,6 +311,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
 function emptyConversation(args: {
   conversationId: string;
   destination?: Destination;
+  kind?: "root" | "automation";
   nowMs: number;
   source?: ConversationSource;
   sessionSource?: SessionSource;
@@ -318,7 +320,7 @@ function emptyConversation(args: {
     schemaVersion: 1,
     conversationId: args.conversationId,
     createdAtMs: args.nowMs,
-    kind: "root",
+    kind: args.kind ?? "root",
     lastActivityAtMs: args.nowMs,
     updatedAtMs: args.nowMs,
     ...(args.destination ? { destination: args.destination } : undefined),
@@ -363,9 +365,21 @@ export class SqlStore implements ConversationStore {
     await bindProviderConversation(this.executor, args);
   }
 
+  async claimProviderConversation(
+    args: ProviderConversationBinding & { atMs: number },
+  ): Promise<string> {
+    const { atMs, ...binding } = args;
+    return await this.executor.transaction(async () => {
+      await ensureConversationRow(this.executor, binding.conversationId, atMs, {
+        activity: "preserve",
+      });
+      return await claimProviderConversationOwner(this.executor, binding);
+    });
+  }
+
   async createChild(args: {
     childConversationId: string;
-    kind: Exclude<ConversationKind, "root">;
+    kind: ChildConversationKind;
     parentConversationId: string;
     nowMs?: number;
     source?: ConversationSource;
@@ -451,6 +465,7 @@ export class SqlStore implements ConversationStore {
     sessionSource?: Source;
     title?: string;
     visibility?: ConversationPrivacy;
+    kind?: "root" | "automation";
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
     const activityAtMs = args.activityAtMs ?? nowMs;
@@ -471,6 +486,7 @@ export class SqlStore implements ConversationStore {
         emptyConversation({
           conversationId: args.conversationId,
           destination: args.destination,
+          kind: args.kind,
           nowMs,
           source: args.source,
           ...(sessionSource ? { sessionSource } : undefined),
@@ -503,6 +519,7 @@ export class SqlStore implements ConversationStore {
     });
   }
   async recordExecution(args: {
+    actorIdentityId?: string;
     channelName?: string;
     conversationId: string;
     createdAtMs: number;
@@ -581,6 +598,7 @@ export class SqlStore implements ConversationStore {
       });
       if (args.metrics && args.execution.runId) {
         await replaceConversationMetrics(this.executor, {
+          actorIdentityId: args.actorIdentityId,
           conversationId: args.conversationId,
           runId: args.execution.runId,
           occurredAtMs: args.createdAtMs,
@@ -772,7 +790,9 @@ export class SqlStore implements ConversationStore {
     destinationId?: string;
   }): Promise<void> {
     const { conversation } = args;
-    if ((conversation.kind === "root") !== !conversation.parentConversationId) {
+    if (
+      isTopLevelKind(conversation.kind) !== !conversation.parentConversationId
+    ) {
       throw new Error(
         `Conversation ${conversation.conversationId} kind does not match its parent`,
       );
@@ -846,7 +866,7 @@ export class SqlStore implements ConversationStore {
           conversation.execution.updatedAtMs === undefined
             ? null
             : dateFromMs(conversation.execution.updatedAtMs),
-        executionStatus: executionStatusToSql(conversation.execution.status),
+        executionStatus: conversation.execution.status,
         runId: conversation.execution.runId ?? null,
         lastCheckpointAt:
           conversation.execution.lastCheckpointAtMs === undefined
@@ -906,7 +926,7 @@ export class SqlStore implements ConversationStore {
         `Conversation parent changed for ${conversation.conversationId}`,
       );
     }
-    // Root actors stay in the personal feed even before they author a message.
+    // The root Actor is a Participant before they author a message.
     if (row.actorIdentityId && row.parentConversationId === null) {
       await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,

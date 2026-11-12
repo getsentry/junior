@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, isNotNull, isNull, notExists, or, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
@@ -7,7 +7,6 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
-  juniorIdentities,
 } from "@/db/schema";
 import { throwApiError } from "../http";
 import type {
@@ -39,7 +38,7 @@ import { readConversationAccessFromSql } from "./access";
  * - Given the last subscriber, when they unsubscribe, then the root and its
  *   unarchived descendants are archived for everyone. No feed shows it
  *   anymore. The person who started the Conversation is a subscriber before
- *   they post in it.
+ *   they post in it, because their first Turn adds their Participant row.
  * - Given an archived root, when a person restores it (any Message that
  *   restores an archive, or Unarchive), then that person is subscribed
  *   again. A restored root never sits in no feed.
@@ -122,8 +121,8 @@ export async function updateConversationSubscription(
       .for("no key update");
     if (!root) return undefined;
     const unsubscribedAt = subscribed ? null : new Date();
-    // The root actor may not have a participant row yet. The detail ETag
-    // and the feed version read the subscription on each request.
+    // The detail ETag and the feed version read the subscription on each
+    // request.
     // oxlint-disable-next-line junior/touch-conversation-detail -- see above.
     await db
       .insert(juniorConversationParticipants)
@@ -164,10 +163,7 @@ export async function updateConversationSubscription(
   });
 }
 
-/**
- * True when someone still has the root in their feed: a participant who did
- * not unsubscribe, or the root actor before they have a participant row.
- */
+/** True when an active Participant still has the root in their feed. */
 async function hasSubscriber(
   db: JuniorDatabase,
   rootConversationId: string,
@@ -185,39 +181,7 @@ async function hasSubscriber(
       ),
     )
     .limit(1);
-  if (subscriber) return true;
-  const [rowlessActor] = await db
-    .select({ userId: juniorIdentities.userId })
-    .from(juniorConversations)
-    .innerJoin(
-      juniorIdentities,
-      eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-    )
-    .where(
-      and(
-        eq(juniorConversations.conversationId, rootConversationId),
-        isNotNull(juniorIdentities.userId),
-        notExists(
-          db
-            .select({ userId: juniorConversationParticipants.userId })
-            .from(juniorConversationParticipants)
-            .where(
-              and(
-                eq(
-                  juniorConversationParticipants.rootConversationId,
-                  rootConversationId,
-                ),
-                eq(
-                  juniorConversationParticipants.userId,
-                  juniorIdentities.userId,
-                ),
-              ),
-            ),
-        ),
-      ),
-    )
-    .limit(1);
-  return Boolean(rowlessActor);
+  return Boolean(subscriber);
 }
 
 /**

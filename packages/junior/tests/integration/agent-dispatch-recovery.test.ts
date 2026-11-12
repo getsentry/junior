@@ -125,21 +125,15 @@ describe("agent dispatch recovery", () => {
       createModelStream([
         {
           type: "toolCall",
-          name: "finishAutomationRun",
-          arguments: {
-            result: "send_message",
-            message: "Resumed scheduled digest",
-          },
+          name: "reply",
+          arguments: { text: "Resumed scheduled digest" },
         },
-        // The declared result is final. The resumed slice must not call the
-        // model again and replace it.
+        // The reply is final. The resumed slice must not call the model
+        // again and replace it.
         {
           type: "toolCall",
-          name: "finishAutomationRun",
-          arguments: {
-            result: "send_message",
-            message: "Replaced scheduled digest",
-          },
+          name: "reply",
+          arguments: { text: "Replaced scheduled digest" },
         },
       ]),
     );
@@ -157,7 +151,7 @@ describe("agent dispatch recovery", () => {
       await processConversationQueueMessage(queue.takeMessage(), {
         queue,
         run,
-        // Pause the first slice after the declared result is saved.
+        // Pause the first slice after the `reply` result is saved.
         softYieldAfterMs: deliveries === 1 ? 0 : undefined,
         state,
       });

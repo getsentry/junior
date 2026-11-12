@@ -707,6 +707,11 @@ export interface ConversationEventStore {
   loadCurrentHistoryVersion(conversationId: string): Promise<number>;
   /** Events of the current history version in `seq` order. */
   loadCurrentHistory(conversationId: string): Promise<ConversationEvent[]>;
+  /** Events after `afterSeq` across history versions in `seq` order. */
+  loadEventsAfter(
+    conversationId: string,
+    afterSeq: number,
+  ): Promise<ConversationEvent[]>;
   /** Events in the history version containing `seq`, when it exists. */
   loadHistoryContaining(
     conversationId: string,

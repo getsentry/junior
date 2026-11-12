@@ -11,7 +11,7 @@
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { runWithLogAttributes } from "@/chat/log-context";
-import { logInfo, withSpan, type SetSpanAttributes } from "@/chat/logging";
+import { withSpan, type SetSpanAttributes } from "@/chat/logging";
 
 /**
  * Where a compaction runs: `blocking` at Turn start, `active` between model
@@ -75,19 +75,44 @@ export async function measureTurnCompactionWait<T>(
   }
 }
 
+/** Span attributes of the first model request after a replacement. */
+type NextInputAttributes = {
+  "app.compaction.mode": CompactionMode;
+  "app.compaction.next_input.size": number;
+  "app.compaction.next_input.over_threshold": boolean;
+  "app.compaction.threshold": number;
+};
+
 /**
- * Log the provider-reported input of the first model request after a
- * replacement. It shows when the replacement was still above the threshold.
+ * Track the replacement that waits for the provider-reported input of the
+ * next model request. That request's `gen_ai.chat` span shows whether the
+ * replacement got the history below the threshold. Production drops info
+ * logs, so this is a span attribute.
  */
-export function logInputAfterCompaction(args: {
-  inputSize: number;
-  mode: CompactionMode;
-  threshold: number;
-}): void {
-  logInfo("context_compaction.next_request.completed", {
-    "app.compaction.mode": args.mode,
-    "app.compaction.next_input.size": args.inputSize,
-    "app.compaction.next_input.over_threshold": args.inputSize > args.threshold,
-    "app.compaction.threshold": args.threshold,
-  });
+export function createNextInputTracker(): {
+  replaced: (mode: CompactionMode, threshold: number) => void;
+  attributes: (
+    inputSize: number | undefined,
+  ) => NextInputAttributes | undefined;
+} {
+  let pending: { mode: CompactionMode; threshold: number } | undefined;
+  return {
+    replaced(mode, threshold) {
+      pending = { mode, threshold };
+    },
+    // A failed or aborted request reports no input, so the next one counts.
+    attributes(inputSize) {
+      if (!pending || !inputSize) {
+        return undefined;
+      }
+      const { mode, threshold } = pending;
+      pending = undefined;
+      return {
+        "app.compaction.mode": mode,
+        "app.compaction.next_input.size": inputSize,
+        "app.compaction.next_input.over_threshold": inputSize > threshold,
+        "app.compaction.threshold": threshold,
+      };
+    },
+  };
 }
