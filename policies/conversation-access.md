@@ -81,10 +81,10 @@ never lets one Conversation read another.
 
 - `messageAgent`, `searchConversationEvents`, and `readConversationEvent`
   use `canAccessConversation`.
-- `searchAgents` with `top_level` scope finds public roots and roots at the
-  requester's Destination.
-- `searchConversationBriefs` and `searchConversationMessages` are only
-  available in public Conversations and return only public Conversations.
-  `searchConversationMessages` is a Slack tool, so it returns only Slack
-  Conversations.
+- `searchAgents` with `roots` scope finds public roots and roots at the
+  Destination of the requester's root. It never finds the requester's own
+  tree. Its results include the latest Brief.
+- `searchConversationMessages` is only available in public Conversations
+  and returns only public Conversations. It is a Slack tool, so it returns
+  only Slack Conversations.
 - Memories are public only (#2684).

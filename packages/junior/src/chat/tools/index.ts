@@ -37,7 +37,7 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { createAutomationTools } from "@/chat/tools/automations";
 import { createSlackChannelJoinTool } from "@/chat/slack/tools/channel-join";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
-import { createSlackConversationBriefSearchPort } from "@/chat/slack/tools/conversation-brief-search";
+import { createSlackRootSearchChannelPort } from "@/chat/slack/tools/root-conversation-search";
 import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
@@ -65,7 +65,6 @@ import { createUnpublishImageTool } from "@/chat/tools/unpublish-image";
 import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
 import { createReadConversationEventTool } from "@/chat/tools/read-conversation-event";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
-import { createSearchConversationBriefsTool } from "@/chat/tools/search-conversation-briefs";
 import { disableTools, type ToolRegistry } from "@/chat/tools/definition";
 import type {
   ToolHooks,
@@ -162,14 +161,6 @@ export function createTools(
   };
   tools.searchConversationEvents = createSearchConversationEventsTool(context);
   tools.readConversationEvent = createReadConversationEventTool(context);
-  if (context.conversationPrivacy === "public") {
-    tools.searchConversationBriefs = createSearchConversationBriefsTool(
-      context.conversationId,
-      slackContext
-        ? createSlackConversationBriefSearchPort(slackContext.teamId)
-        : undefined,
-    );
-  }
   const createPreview = context.workspace.createPreview?.bind(
     context.workspace,
   );
@@ -245,15 +236,16 @@ export function createTools(
     tools.archiveAgent = createArchiveAgentTool(context.conversationId);
   }
 
-  // A child agent that is too deep to start child agents can still find its
-  // parent and siblings.
-  if (context.spawnAgent || context.messageAgent) {
-    tools.searchAgents = createSearchAgentsTool({
-      ...(context.actor ? { actor: context.actor } : undefined),
-      conversationId: context.conversationId,
-      parentConversationId: context.parentConversationId,
-    });
-  }
+  // Every Conversation can find root Conversations and their Briefs, also
+  // one that cannot start or message agents.
+  tools.searchAgents = createSearchAgentsTool({
+    ...(context.actor ? { actor: context.actor } : undefined),
+    ...(slackContext
+      ? { channels: createSlackRootSearchChannelPort(slackContext.teamId) }
+      : undefined),
+    conversationId: context.conversationId,
+    parentConversationId: context.parentConversationId,
+  });
 
   if (context.messageAgent) {
     tools.messageAgent = createMessageAgentTool(context.messageAgent);

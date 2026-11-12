@@ -3,8 +3,8 @@ import { appendConversationBrief } from "@/chat/briefs/store";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { parseSlackTeamId } from "@/chat/slack/ids";
-import { createSlackConversationBriefSearchPort } from "@/chat/slack/tools/conversation-brief-search";
-import { createSearchConversationBriefsTool } from "@/chat/tools/search-conversation-briefs";
+import { createSlackRootSearchChannelPort } from "@/chat/slack/tools/root-conversation-search";
+import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { conversationBriefFixture } from "../fixtures/conversation-brief";
 import {
   chatGetPermalinkOk,
@@ -16,7 +16,7 @@ const teamId = parseSlackTeamId("T123");
 if (!teamId) {
   throw new Error("test Slack team id did not parse");
 }
-const slackProvider = createSlackConversationBriefSearchPort(teamId);
+const channels = createSlackRootSearchChannelPort(teamId);
 
 async function executeTool<TInput>(tool: any, input: TInput) {
   if (typeof tool?.execute !== "function") {
@@ -25,7 +25,7 @@ async function executeTool<TInput>(tool: any, input: TInput) {
   return await tool.execute(input, {} as any);
 }
 
-describe("searchConversationBriefs", () => {
+describe("searchAgents roots", () => {
   afterEach(async () => {
     setDashboardConversationLinkOptions(undefined);
     await closeDb();
@@ -75,10 +75,10 @@ describe("searchConversationBriefs", () => {
       }),
     });
 
-    const tool = createSearchConversationBriefsTool(
-      "slack:CREQUEST:1700000000.900000",
-      slackProvider,
-    );
+    const tool = createSearchAgentsTool({
+      channels,
+      conversationId: "slack:CREQUEST:1700000000.900000",
+    });
     expect(tool.inputSchema.properties).toHaveProperty("channel_id");
     const result = await executeTool(tool, {
       after: null,
@@ -86,13 +86,13 @@ describe("searchConversationBriefs", () => {
       before: null,
       channel_id: null,
       limit: null,
+      outcome: "done",
       query: "launch decision",
-      status: "done",
+      scope: "roots",
     });
 
     expect(result).toEqual({
-      count: 1,
-      matches: [
+      agents: [
         {
           channel_id: "CARCHIVE",
           channel_name: "archive",
@@ -107,17 +107,16 @@ describe("searchConversationBriefs", () => {
               url: "https://github.com/getsentry/junior/pull/1805",
             },
           ],
+          outcome: "done",
           permalink:
             "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
-          status: "done",
+          relation: "root",
+          status: "idle",
           summary: "The launch decision uses a blue rollout.",
           title: "Launch decision",
           updated_at: expect.any(String),
-          version: 1,
         },
       ],
-      query: "launch decision",
-      status: "done",
     });
 
     queueSlackApiResponse("chat.getPermalink", {
@@ -125,23 +124,27 @@ describe("searchConversationBriefs", () => {
     });
     const resultWithoutPermalink = await executeTool(tool, {
       query: "launch decision",
+      scope: "roots",
     });
-    expect(resultWithoutPermalink.matches[0]).not.toHaveProperty("permalink");
+    expect(resultWithoutPermalink.agents[0]).not.toHaveProperty("permalink");
 
-    const publicTool = createSearchConversationBriefsTool("local:test:current");
+    const publicTool = createSearchAgentsTool({
+      conversationId: "local:test:current",
+    });
     expect(publicTool.inputSchema.properties).not.toHaveProperty("channel_id");
     expect(() =>
       publicTool.prepareArguments({ channel_id: "CARCHIVE" }),
     ).toThrow("Invalid tool arguments");
     const publicResult = await executeTool(publicTool, {
       query: "launch decision",
+      scope: "roots",
     });
-    expect(publicResult.matches[0]).toMatchObject({
+    expect(publicResult.agents[0]).toMatchObject({
       conversation_id: conversationId,
       dashboard_url: `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`,
     });
-    expect(publicResult.matches[0]).not.toHaveProperty("channel_id");
-    expect(publicResult.matches[0]).not.toHaveProperty("channel_name");
-    expect(publicResult.matches[0]).not.toHaveProperty("permalink");
+    expect(publicResult.agents[0]).not.toHaveProperty("channel_id");
+    expect(publicResult.agents[0]).not.toHaveProperty("channel_name");
+    expect(publicResult.agents[0]).not.toHaveProperty("permalink");
   });
 });

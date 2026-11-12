@@ -15,7 +15,7 @@ ignores:
   # Read-only labels and links; they do not post.
   - packages/junior/src/api/conversations/projection.ts
   - packages/junior/src/chat/slack/tools/channel-list-messages.ts
-  - packages/junior/src/chat/slack/tools/conversation-brief-search.ts
   - packages/junior/src/chat/slack/tools/conversation-message-search.ts
+  - packages/junior/src/chat/slack/tools/root-conversation-search.ts
 rule:
   pattern: parseSlackThreadId($$$)

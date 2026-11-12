@@ -5,9 +5,13 @@ import {
   type ParentAgent,
 } from "@/chat/agent-invocations/list";
 import {
-  searchTopLevelAgents,
-  type TopLevelAgent,
-} from "@/chat/agent-invocations/search-top-level";
+  briefLinkSchema,
+  briefOutcomeStatusSchema,
+} from "@/chat/briefs/schema";
+import {
+  searchRootConversations,
+  type RootConversation,
+} from "@/chat/conversations/root-search";
 import { conversationIdsWithAnnotation } from "@/chat/conversations/sql/annotation-filter";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
@@ -26,17 +30,22 @@ const TASK_MAX_LENGTH = 1_000;
 const ERROR_MAX_LENGTH = 500;
 const SUMMARY_MAX_LENGTH = 1_000;
 const CONVERSATION_IDS_MAX = 25;
-const TOP_LEVEL_DEFAULT_LIMIT = 10;
-const TOP_LEVEL_MAX_LIMIT = 25;
+const ROOTS_DEFAULT_LIMIT = 10;
+const ROOTS_MAX_LIMIT = 25;
+
+/** Provider-owned channel filter and match details for root search. */
+export interface RootSearchChannelPort {
+  channelFilterSchema: z.ZodString;
+  describeMatch(match: RootConversation): Promise<{
+    channel_id?: string;
+    channel_name?: string;
+    permalink?: string;
+  }>;
+  resolveChannel(input: string): Promise<string>;
+}
 
 /** How a listed agent relates to the conversation that lists it. */
-const AGENT_RELATIONS = [
-  "self",
-  "parent",
-  "child",
-  "sibling",
-  "top_level",
-] as const;
+const AGENT_RELATIONS = ["self", "parent", "child", "sibling", "root"] as const;
 type AgentRelation = (typeof AGENT_RELATIONS)[number];
 
 /**
@@ -68,7 +77,7 @@ function childAgentStatus(agent: ChildAgent): ListedAgentStatus {
 }
 
 function conversationAgentStatus(
-  agent: ParentAgent | TopLevelAgent,
+  agent: ParentAgent | RootConversation,
 ): ListedAgentStatus {
   // A Conversation whose Turn failed waits for new input.
   return agent.status === "failed" ? "idle" : agent.status;
@@ -83,7 +92,7 @@ const listedAgentSchema = z
     relation: z
       .enum(AGENT_RELATIONS)
       .describe(
-        "self: this conversation. parent: the agent that started it. child: an agent that it started. sibling: another child of its parent. top_level: another public root conversation, or a root conversation in the same private channel or DM.",
+        "self: this conversation. parent: the agent that started it. child: an agent that it started. sibling: another child of its parent. root: another public root conversation, or a root conversation in the same private channel or DM.",
       ),
     conversation_id: z
       .string()
@@ -121,12 +130,35 @@ const listedAgentSchema = z
       .string()
       .optional()
       .describe(
-        "Short display title of the latest task, or of a top-level conversation",
+        "Short display title of the latest task, or of a root conversation",
       ),
     summary: z
       .string()
       .optional()
-      .describe("Summary from the latest Brief of a top-level conversation"),
+      .describe("Summary from the latest Brief of a root conversation"),
+    outcome: briefOutcomeStatusSchema
+      .optional()
+      .describe("Outcome status from the latest Brief of a root conversation"),
+    excerpt: z
+      .string()
+      .optional()
+      .describe("Brief text that matches the query"),
+    links: z
+      .array(briefLinkSchema)
+      .max(5)
+      .optional()
+      .describe(
+        "Top links from the latest Brief, such as pull requests, of a root conversation",
+      ),
+    channel_id: z.string().min(1).optional(),
+    channel_name: z.string().min(1).optional(),
+    permalink: z.string().url().optional(),
+    transcript_purged: z
+      .literal(true)
+      .optional()
+      .describe(
+        "The transcript is purged. Only the title and the Brief remain.",
+      ),
     dashboard_url: z
       .string()
       .url()
@@ -171,18 +203,31 @@ function listedChildAgent(
   };
 }
 
-function listedTopLevelAgent(agent: TopLevelAgent): ListedAgent {
+async function listedRootAgent(
+  agent: RootConversation,
+  channels: RootSearchChannelPort | undefined,
+): Promise<ListedAgent> {
   const dashboardUrl = getDashboardConversationLink(agent.conversationId);
+  const channelFields = channels
+    ? await channels.describeMatch(agent)
+    : undefined;
   return {
-    relation: "top_level",
+    relation: "root",
     conversation_id: agent.conversationId,
     status: conversationAgentStatus(agent),
     ...(agent.title ? { title: agent.title } : undefined),
     ...(agent.summary
       ? { summary: truncate(agent.summary, SUMMARY_MAX_LENGTH) }
       : undefined),
+    ...(agent.outcomeStatus ? { outcome: agent.outcomeStatus } : undefined),
+    ...(agent.excerpt ? { excerpt: agent.excerpt } : undefined),
+    ...(agent.links.length > 0 ? { links: agent.links } : undefined),
+    ...channelFields,
     ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
     ...(agent.archived ? { archived: true as const } : undefined),
+    ...(agent.transcriptPurged
+      ? { transcript_purged: true as const }
+      : undefined),
     updated_at: new Date(agent.updatedAtMs).toISOString(),
   };
 }
@@ -211,110 +256,170 @@ const searchAgentsOutputSchema = juniorToolOutputSchema.extend({
   agents: z
     .array(listedAgentSchema)
     .describe(
-      "relatives: this conversation, its parent, its child agents, then its siblings, newest activity first. top_level: best match first for a query, else newest activity first.",
+      "relatives: this conversation, its parent, its child agents, then its siblings, newest activity first. roots: best match first for a query, else newest activity first.",
     ),
 });
 
-const searchAgentsInputSchema = z
-  .object({
-    scope: z
-      .enum(["relatives", "top_level"])
-      .nullable()
-      .optional()
-      .describe(
-        "relatives (default): this conversation, its parent, its child agents, and its siblings. top_level: other public root conversations, and root conversations in the same private channel or DM. Only a root conversation can search top_level.",
-      ),
-    conversation_ids: z
-      .array(z.string().trim().min(1))
-      .min(1)
-      .max(CONVERSATION_IDS_MAX)
-      .nullable()
-      .optional()
-      .describe("Return only these conversation IDs."),
-    annotation: z
-      .string()
-      .trim()
-      .min(1)
-      .max(256)
-      .nullable()
-      .optional()
-      .describe(
-        "Linked resource key, such as owner/repo#123 for a pull request. Matches that key, or nested children that continue with #. Matches a conversation when it or one of its child agents created, changed, or read the resource.",
-      ),
-    query: z
-      .string()
-      .trim()
-      .min(1)
-      .max(200)
-      .nullable()
-      .optional()
-      .describe(
-        "Words to match. relatives: the name, title, or task. top_level: the latest Brief or the title.",
-      ),
-    include_archived: z
-      .boolean()
-      .nullable()
-      .optional()
-      .describe(
-        "Include archived conversations. Default false. This changes only top_level results.",
-      ),
-    limit: z
-      .number()
-      .int()
-      .min(1)
-      .max(TOP_LEVEL_MAX_LIMIT)
-      .nullable()
-      .optional()
-      .describe(
-        `Maximum top_level results. Default ${TOP_LEVEL_DEFAULT_LIMIT}; max ${TOP_LEVEL_MAX_LIMIT}. Relatives are not limited.`,
-      ),
-  })
-  .strict();
+function searchAgentsInputSchema(channels?: RootSearchChannelPort) {
+  return z
+    .object({
+      scope: z
+        .enum(["relatives", "roots"])
+        .nullable()
+        .optional()
+        .describe(
+          "relatives (default): this conversation, its parent, its child agents, and its siblings. roots: other public root conversations, and root conversations in the same private channel or DM, with their latest Brief. Use roots to find past or current work.",
+        ),
+      conversation_ids: z
+        .array(z.string().trim().min(1))
+        .min(1)
+        .max(CONVERSATION_IDS_MAX)
+        .nullable()
+        .optional()
+        .describe("Return only these conversation IDs."),
+      annotation: z
+        .string()
+        .trim()
+        .min(1)
+        .max(256)
+        .nullable()
+        .optional()
+        .describe(
+          "Linked resource key, such as owner/repo#123 for a pull request. Matches that key, or nested children that continue with #. Matches a conversation when it or one of its child agents created, changed, or read the resource.",
+        ),
+      query: z
+        .string()
+        .trim()
+        .min(1)
+        .max(200)
+        .nullable()
+        .optional()
+        .describe(
+          "Words to match. relatives: the name, title, or task. roots: the latest Brief or the title.",
+        ),
+      outcome: briefOutcomeStatusSchema
+        .nullable()
+        .optional()
+        .describe("roots only. Outcome status of the latest Brief."),
+      after: z
+        .string()
+        .datetime()
+        .nullable()
+        .optional()
+        .describe("roots only. Activity at or after this timestamp."),
+      before: z
+        .string()
+        .datetime()
+        .nullable()
+        .optional()
+        .describe("roots only. Activity before this timestamp."),
+      ...(channels
+        ? {
+            channel_id: channels.channelFilterSchema
+              .nullable()
+              .optional()
+              .describe("roots only. Channel of the conversation."),
+          }
+        : undefined),
+      include_archived: z
+        .boolean()
+        .nullable()
+        .optional()
+        .describe(
+          "Include archived conversations, such as finished past work. Default false. This changes only roots results.",
+        ),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(ROOTS_MAX_LIMIT)
+        .nullable()
+        .optional()
+        .describe(
+          `Maximum roots results. Default ${ROOTS_DEFAULT_LIMIT}; max ${ROOTS_MAX_LIMIT}. Relatives are not limited.`,
+        ),
+    })
+    .strict();
+}
 
 /**
  * Create the read-only tool that searches the agents one conversation can
  * see: its relatives (child agents and, for a child agent, itself, its
- * parent, and its siblings) or the top-level agents it may reach.
+ * parent, and its siblings) or the root conversations it may find.
  */
 export function createSearchAgentsTool(context: {
   actor?: Actor;
+  channels?: RootSearchChannelPort;
   conversationId: string;
   parentConversationId?: string;
 }) {
+  const { channels } = context;
   return zodTool({
     exposure: "deferred",
     source: AGENTS_TOOL_SOURCE,
     description:
-      "Search the agents that this conversation can see, with the state recorded by the runtime. Relatives are the child agents it started and, for a child agent, itself, its parent, and its siblings. Top-level agents are other public root conversations and root conversations in the same private channel or DM. messageAgent can send to a public one only when this conversation is public too. Results of child agents arrive as new tasks, not through this tool.",
+      "Search the agents that this conversation can see, with the state recorded by the runtime and, for roots, the latest Brief: summary, outcome, and links of their work. Relatives are the child agents it started and, for a child agent, itself, its parent, and its siblings. Roots are other public root conversations and root conversations in the same private channel or DM. messageAgent can send to a root only from a root conversation, and to a public root only from a public one. Results of child agents arrive as new tasks, not through this tool.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
       openWorldHint: false,
       readOnlyHint: true,
     },
-    inputSchema: searchAgentsInputSchema,
+    inputSchema: searchAgentsInputSchema(channels),
     outputSchema: searchAgentsOutputSchema,
     execute: async (input) => {
       const annotation = input.annotation ?? undefined;
       const conversationIds = input.conversation_ids ?? undefined;
       const query = input.query ?? undefined;
-      if (input.scope === "top_level") {
-        if (context.parentConversationId) {
-          throw new ToolInputError(
-            "A child agent cannot search top_level agents. Search relatives instead.",
-          );
+      const outcomeStatus = input.outcome ?? undefined;
+      // The schema accepts only ISO-8601 timestamps.
+      const afterMs = input.after ? Date.parse(input.after) : undefined;
+      const beforeMs = input.before ? Date.parse(input.before) : undefined;
+      const channelInput =
+        "channel_id" in input && typeof input.channel_id === "string"
+          ? input.channel_id
+          : undefined;
+      if (input.scope === "roots") {
+        if (
+          afterMs !== undefined &&
+          beforeMs !== undefined &&
+          afterMs >= beforeMs
+        ) {
+          throw new ToolInputError("`after` must be earlier than `before`");
         }
-        const agents = await searchTopLevelAgents({
+        const channelId =
+          channels && channelInput
+            ? await channels.resolveChannel(channelInput)
+            : undefined;
+        const roots = await searchRootConversations(getDb(), {
           requesterConversationId: context.conversationId,
           search: {
+            ...(afterMs !== undefined ? { afterMs } : undefined),
             ...(annotation ? { annotation } : undefined),
+            ...(beforeMs !== undefined ? { beforeMs } : undefined),
+            ...(channelId ? { channelId } : undefined),
             ...(conversationIds ? { conversationIds } : undefined),
             includeArchived: input.include_archived ?? false,
-            limit: input.limit ?? TOP_LEVEL_DEFAULT_LIMIT,
+            limit: input.limit ?? ROOTS_DEFAULT_LIMIT,
+            ...(outcomeStatus ? { outcomeStatus } : undefined),
             ...(query ? { query } : undefined),
           },
         });
-        return { agents: agents.map(listedTopLevelAgent) };
+        return {
+          agents: await Promise.all(
+            roots.map((root) => listedRootAgent(root, channels)),
+          ),
+        };
+      }
+      if (
+        outcomeStatus ||
+        afterMs !== undefined ||
+        beforeMs !== undefined ||
+        channelInput
+      ) {
+        throw new ToolInputError(
+          "outcome, after, before, and channel_id filter only roots. Set scope to roots.",
+        );
       }
       const { children, parent, self, siblings } =
         await listAgentRelatives(context);
