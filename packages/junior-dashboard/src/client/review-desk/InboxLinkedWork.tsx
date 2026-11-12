@@ -27,8 +27,8 @@ function identity(card: CardAnnotation): string {
 
 /**
  * Linked work on a comfortable Inbox row: up to three small cards, newest
- * first, each with its status color and title. Work that the plugin saved no
- * title or URL for keeps its chip.
+ * first, each with its status color, title and preview image. Work that the
+ * plugin saved no title or URL for keeps its chip.
  */
 export function InboxLinkedWork(props: { annotations: Annotation[] }) {
   const cards = props.annotations.filter(isCard);
@@ -44,10 +44,21 @@ export function InboxLinkedWork(props: { annotations: Annotation[] }) {
         const status = linkStatusLabel(card.status);
         return (
           <OutboundLink
-            className="flex w-56 shrink-0 items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-2.5 py-1.5 font-sans text-xs text-dashboard-text-muted no-underline transition-colors hover:border-dashboard-border-strong hover:bg-dashboard-fill-soft focus-visible:outline-2 focus-visible:outline-dashboard-focus sm:w-auto sm:min-w-48 sm:max-w-72 sm:flex-1"
+            className="flex w-56 shrink-0 flex-wrap items-center gap-x-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-2.5 py-1.5 font-sans text-xs text-dashboard-text-muted no-underline transition-colors hover:border-dashboard-border-strong hover:bg-dashboard-fill-soft focus-visible:outline-2 focus-visible:outline-dashboard-focus sm:w-auto sm:min-w-48 sm:max-w-72 sm:flex-1"
             href={card.url}
             key={card.key}
           >
+            {card.imageUrl ? (
+              <span className="mb-1.5 block aspect-video basis-full overflow-hidden rounded-md bg-dashboard-fill-soft">
+                <img
+                  alt={`Preview of ${card.title}`}
+                  className="size-full object-cover"
+                  decoding="async"
+                  loading="lazy"
+                  src={card.imageUrl}
+                />
+              </span>
+            ) : null}
             <ObjectIcon
               className="size-4 shrink-0"
               objectType={card.objectType}

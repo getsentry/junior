@@ -49,7 +49,14 @@ export function githubSidebarAnnotations(
         key: annotation.key,
         label,
       };
-      if (annotation.kind === "object") sidebar.title = annotation.title;
+      if (annotation.kind === "object") {
+        sidebar.title = annotation.title;
+        const image =
+          annotation.facts?.type === "code_change"
+            ? annotation.facts.previewImageUrls?.[0]
+            : undefined;
+        if (image) sidebar.imageUrl = image;
+      }
       if (annotation.url) sidebar.url = annotation.url;
       return [{ annotation: sidebar, updatedAt: annotation.updatedAt }];
     })

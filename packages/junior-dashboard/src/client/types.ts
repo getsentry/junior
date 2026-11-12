@@ -170,6 +170,8 @@ export type Conversation = {
   activityPreview?: ConversationSummaryReport["activityPreview"];
   /** The latest Brief's status, summary, and intent, when visible. */
   brief?: ConversationFeedItem["brief"];
+  /** The newest stored files, when private content is visible. */
+  media?: ConversationFeedItem["media"];
   annotations?: ConversationSummaryReport["annotations"];
   sidebarAnnotations?: ConversationSummaryReport["sidebarAnnotations"];
   archivedAt?: string | null;

@@ -1,5 +1,8 @@
 import { mockAutomationCollection } from "../src/mock-reporting/automation-collection";
-import { NOW_MS } from "../src/mock-reporting/fixtures";
+import {
+  CHECKOUT_PREVIEW_IMAGE_URL,
+  NOW_MS,
+} from "../src/mock-reporting/fixtures";
 import { mockAutomationEditor } from "./automation-editor-fixture";
 import { automationReport } from "./automation-fixture";
 import {
@@ -18,6 +21,11 @@ import {
 } from "./inbox-fixture";
 import { screenshot } from "./screenshot";
 import { expect, test } from "./test";
+
+const ONE_PIXEL_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+  "base64",
+);
 
 const checkout = "Investigate checkout latency";
 
@@ -773,10 +781,14 @@ test("an expanded question shows the message of the Turn that asked it", async (
   expect(reads).toBe(1);
 });
 
-test("comfortable rows show linked work as cards, and compact rows keep chips", async ({
+test("comfortable rows show files and linked work as cards, and compact rows keep chips", async ({
   dashboard,
   page,
 }) => {
+  // The PR preview is a public artifact on another host.
+  await page.route(CHECKOUT_PREVIEW_IMAGE_URL, (route) =>
+    route.fulfill({ body: ONE_PIXEL_PNG, contentType: "image/png" }),
+  );
   const density = async (value: "comfortable" | "compact") => {
     await page.evaluate((next) => {
       localStorage.setItem("junior:density", next);
@@ -807,8 +819,36 @@ test("comfortable rows show linked work as cards, and compact rows keep chips", 
   await expect(qa.getByRole("group", { name: "Linked work" })).toBeAttached();
   await expect(qa.getByRole("link", { name: /getsentry/ })).toHaveCount(0);
   await expect(qa.getByLabel(/^Linked work, newest first/)).toBeAttached();
+  // Its newest files: images as lazy thumbnails, other files by name.
+  const files = qa.getByRole("group", { name: "Files" });
+  await expect(files.getByRole("link")).toHaveCount(3);
+  for (const name of ["chart.png", "chart-detail.png"]) {
+    const thumbnail = files.getByRole("img", { name, exact: true });
+    await expect(thumbnail).toHaveAttribute("loading", "lazy");
+    await expect(thumbnail).toHaveAttribute(
+      "src",
+      /\/attachments\/qa-chart-png$/,
+    );
+  }
+  await expect(files.getByRole("link", { name: "demo.mp4" })).toBeAttached();
+  // A pull request card shows the first image of its description.
+  const preview = page
+    .locator("[data-inbox-row]")
+    .filter({ hasText: "Investigate checkout latency" })
+    .first()
+    .getByRole("img", {
+      name: "Preview of Retry checkout writes after lock timeouts",
+    });
+  await expect(preview).toHaveAttribute("src", CHECKOUT_PREVIEW_IMAGE_URL);
+  await preview.scrollIntoViewIfNeeded();
+  await expect
+    .poll(() =>
+      preview.evaluate((image: HTMLImageElement) => image.naturalWidth),
+    )
+    .toBeGreaterThan(0);
 
   await density("compact");
+  await expect(qa.getByRole("group", { name: "Files" })).toHaveCount(0);
   await expect(release.getByRole("group", { name: "Linked work" })).toHaveCount(
     0,
   );

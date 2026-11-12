@@ -65,6 +65,7 @@ import {
   readConversationActivityPreviews,
 } from "./activity-preview";
 import { readConversationFeedBriefs } from "./feed-brief";
+import { readFeedMedia } from "./feed-media";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { attachActivityPreviewMentions } from "./mentions";
 import { readConversationParticipants } from "./participants";
@@ -574,22 +575,30 @@ export async function readConversationFeedFromSql(
         : [],
     ]),
   );
-  const [sidebarAnnotationsByConversation, threadsByRoot] = await Promise.all([
-    listConversationSidebarAnnotations(
-      conversationIds,
-      visibleAnnotationsByConversation,
-    ),
-    // A Thread shows only while its root is not archived.
-    readFeedThreads(
-      db,
-      conversations
-        .filter((conversation) => conversation.archivedAtMs === undefined)
-        .map(({ conversationId }) => ({
-          access: accessByConversation.get(conversationId),
-          conversationId,
-        })),
-    ),
-  ]);
+  const [sidebarAnnotationsByConversation, threadsByRoot, mediaByConversation] =
+    await Promise.all([
+      listConversationSidebarAnnotations(
+        conversationIds,
+        visibleAnnotationsByConversation,
+      ),
+      // A Thread shows only while its root is not archived.
+      readFeedThreads(
+        db,
+        conversations
+          .filter((conversation) => conversation.archivedAtMs === undefined)
+          .map(({ conversationId }) => ({
+            access: accessByConversation.get(conversationId),
+            conversationId,
+          })),
+      ),
+      readFeedMedia(
+        db,
+        conversationIds.filter(
+          (conversationId) =>
+            accessByConversation.get(conversationId)?.canViewPrivateContent,
+        ),
+      ),
+    ]);
   const assignedWork = new Set(conversationWork.assignedIds);
   const unfinishedWork = new Set(conversationWork.unfinishedIds);
   return {
@@ -648,6 +657,7 @@ export async function readConversationFeedFromSql(
         ? participantsByConversation.get(conversation.conversationId)
         : undefined;
       const threads = threadsByRoot.get(conversation.conversationId);
+      const media = mediaByConversation.get(conversation.conversationId);
       const lastMessageAt = row.lastMessageAt?.toISOString();
       return {
         ...summary,
@@ -662,6 +672,7 @@ export async function readConversationFeedFromSql(
           : undefined),
         ...(activityPreview ? { activityPreview } : undefined),
         ...(brief ? { brief } : undefined),
+        ...(media ? { media } : undefined),
         ...(annotations.length > 0 ? { annotations } : undefined),
         ...(sidebarAnnotationsByConversation[conversation.conversationId]
           ? {

@@ -34,6 +34,7 @@ import type {
   AutomationSummary,
 } from "@sentry/junior/api/schema";
 import { IDLE_CHANGE_DAYS } from "@sentry/junior/api/schema";
+import { mockFeedMedia } from "./feed-media";
 import { mockQuestionConversations } from "./review-items";
 import { isUnlistedMockConversation, withMockSends } from "./sends";
 
@@ -144,6 +145,8 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 // Mock text links to dashboard pages on this origin.
 const MOCK_DASHBOARD_ORIGIN = "https://junior.example.com";
+/** A public artifact URL. Tests and screenshots serve its bytes. */
+export const CHECKOUT_PREVIEW_IMAGE_URL = `${MOCK_DASHBOARD_ORIGIN}/public/artifacts/checkout-p95.png`;
 const INCIDENT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 const PRIVATE_CONVERSATION_ID = "slack:DQA123:1770007200.000300";
 const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
@@ -455,6 +458,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         label: "payments",
         title: "Retry checkout writes after lock timeouts",
         url: "https://github.com/getsentry/payments/pull/42",
+        imageUrl: CHECKOUT_PREVIEW_IMAGE_URL,
       },
     ],
     annotations: [
@@ -475,6 +479,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
           reviewers: ["avery"],
           sourceBranch: "fix/checkout-lock-retry",
           targetBranch: "main",
+          previewImageUrls: [CHECKOUT_PREVIEW_IMAGE_URL],
         },
         objectType: "code_change",
         plugin: "github",
@@ -2152,7 +2157,10 @@ function mockThreadPlacement(
 function feedItemFromConversation(
   conversation: MockConversation,
 ): ConversationFeedItem {
-  const summary = summaryFromConversation(conversation);
+  const summary = {
+    ...summaryFromConversation(conversation),
+    media: mockFeedMedia(conversation),
+  };
   const brief = conversation.brief?.content;
   if (!brief) return summary;
   return {

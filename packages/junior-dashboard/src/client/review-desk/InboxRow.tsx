@@ -60,6 +60,7 @@ import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
 import { InboxLinkedWork } from "./InboxLinkedWork";
+import { InboxMedia } from "./InboxMedia";
 import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
 
@@ -449,12 +450,13 @@ function InboxRowBody(
   const waiting = bundle?.needsYou ?? false;
   const summary = props.itemTitle ? undefined : rowSummary(conversation);
   const annotations = conversation?.sidebarAnnotations ?? [];
+  const media = conversation?.media ?? [];
   const canDone = openItems.some((item) => item.canAct);
   const regionId = `inbox-row-${props.rowKey}`;
   const pinned = Boolean(conversation?.pinnedAt);
   const running = conversation?.status === "active";
-  // Comfortable rows show linked work as cards in their own strip.
-  const cards = comfortable && annotations.length > 0;
+  // Comfortable rows show files and linked work as cards in their own strip.
+  const cards = comfortable && (annotations.length > 0 || media.length > 0);
   const hasChips = pills.length > 0 || (!cards && annotations.length > 0);
   // A comfortable row with a summary reads in two columns on wider screens:
   // the title and people, then the summary beside them.
@@ -610,11 +612,16 @@ function InboxRowBody(
         {cards ? (
           <div
             className={cn(
-              "min-w-0 pr-2 pb-2.5 pl-[1.875rem]",
+              "grid min-w-0 gap-2 pr-2 pb-2.5 pl-[1.875rem]",
               columns && "sm:pl-[calc(1.875rem+var(--inbox-lead)+0.625rem)]",
             )}
           >
-            <InboxLinkedWork annotations={annotations} />
+            {media.length > 0 ? (
+              <InboxMedia conversationId={props.conversationId} media={media} />
+            ) : null}
+            {annotations.length > 0 ? (
+              <InboxLinkedWork annotations={annotations} />
+            ) : null}
           </div>
         ) : null}
       </div>

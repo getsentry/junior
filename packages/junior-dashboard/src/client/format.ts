@@ -880,6 +880,7 @@ export function buildConversations(
     .map((summary) => ({
       activityPreview: summary.activityPreview,
       brief: summary.brief,
+      media: summary.media,
       annotations: summary.annotations,
       sidebarAnnotations: summary.sidebarAnnotations,
       archivedAt: summary.archivedAt,
