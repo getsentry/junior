@@ -7,6 +7,9 @@ import {
 } from "@/chat/tools/search-tools";
 import { tool } from "@/chat/tools/definition";
 
+// These cases never reach the rerank model, so no cost is recorded.
+const NO_COST = { owner: "none" } as const;
+
 function catalog() {
   return {
     bash: tool({
@@ -251,7 +254,7 @@ function mixedCatalog() {
 
 describe("searchTools", () => {
   it("discovers deferred catalog tools from metadata and returns their schemas", async () => {
-    const searchTools = createSearchToolsTool(catalog());
+    const searchTools = createSearchToolsTool(catalog(), NO_COST);
 
     expect(searchTools.description).toContain(
       "Deferred tools are grouped by source",
@@ -319,7 +322,7 @@ describe("searchTools", () => {
   });
 
   it("filters by source and omits per-tool source in filtered results", async () => {
-    const searchTools = createSearchToolsTool(catalog());
+    const searchTools = createSearchToolsTool(catalog(), NO_COST);
 
     const result = await searchTools.execute!(
       { source: "memory", query: "create a memory" },
@@ -455,7 +458,7 @@ describe("searchTools", () => {
   });
 
   it("does not match partial words or unrelated production queries", async () => {
-    const searchTools = createSearchToolsTool(mixedCatalog());
+    const searchTools = createSearchToolsTool(mixedCatalog(), NO_COST);
 
     for (const [query, source] of [
       ["version", undefined],
@@ -478,7 +481,7 @@ describe("searchTools", () => {
   });
 
   it("lists provider tools when a production search omits its query", async () => {
-    const searchTools = createSearchToolsTool(mixedCatalog());
+    const searchTools = createSearchToolsTool(mixedCatalog(), NO_COST);
 
     const result = await searchTools.execute!(
       { source: "notion", max_results: 20 },
@@ -499,7 +502,7 @@ describe("searchTools", () => {
   });
 
   it("returns known sources without throwing for an unknown source", async () => {
-    const searchTools = createSearchToolsTool(catalog());
+    const searchTools = createSearchToolsTool(catalog(), NO_COST);
 
     const result = await searchTools.execute!(
       { source: "missing", query: "memory" },
@@ -517,7 +520,7 @@ describe("searchTools", () => {
   });
 
   it("bounds empty all-source search while listing known sources", async () => {
-    const searchTools = createSearchToolsTool(catalog());
+    const searchTools = createSearchToolsTool(catalog(), NO_COST);
 
     const result = await searchTools.execute!(
       { query: "", max_results: 1 },
@@ -546,7 +549,7 @@ describe("searchTools", () => {
   });
 
   it("returns compact source ids for mixed-source results", async () => {
-    const searchTools = createSearchToolsTool(catalog());
+    const searchTools = createSearchToolsTool(catalog(), NO_COST);
 
     const result = await searchTools.execute!(
       { query: "", max_results: 3 },

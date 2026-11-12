@@ -71,6 +71,7 @@ import {
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 import { capToolResult } from "@/chat/tool-support/result-cap";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
+import type { ConversationModelCost } from "@/chat/core-model";
 
 /**
  * How long a preempted tool may take to return its own aborted result. Keep it
@@ -785,6 +786,9 @@ export function createPiAgentTools(
     /** Keeps the full text of a model-facing result that was cut. */
     workspace?: Pick<SandboxWorkspace, "writeFiles">;
   },
+  // A run passes its Conversation. Tests and evals have none, so the
+  // rerank cost stays on the span.
+  searchToolsCost: ConversationModelCost = { owner: "none" },
 ): AgentTool[] {
   const plannedTools = planToolExposure(tools);
   const visibleTools: Record<string, AnyToolDefinition> = {
@@ -800,6 +804,7 @@ export function createPiAgentTools(
   }
   visibleTools[SEARCH_TOOLS_NAME] = createSearchToolsTool(
     plannedTools.catalogTools,
+    searchToolsCost,
   );
   visibleTools[EXECUTE_TOOL_NAME] = createExecuteToolTool();
   const pipeline = createToolPipeline({

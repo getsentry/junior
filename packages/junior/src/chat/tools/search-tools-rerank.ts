@@ -12,7 +12,7 @@
 import * as z from "zod";
 import { botConfig } from "@/chat/config";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
-import { completeObject } from "@/chat/pi/client";
+import { completeObject, type ConversationModelCost } from "@/chat/core-model";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { escapeXmlText } from "@/chat/xml";
 
@@ -73,6 +73,7 @@ export function renderRerankPrompt(
 export async function rerankSearchCandidates(args: {
   query: string;
   candidates: RerankCandidate[];
+  cost: ConversationModelCost;
   signal?: AbortSignal;
 }): Promise<string[] | undefined> {
   const startedAt = Date.now();
@@ -88,11 +89,11 @@ export async function rerankSearchCandidates(args: {
   try {
     const { object } = await completeObject({
       modelId: botConfig.fastModelId,
-      promptName: "junior.tool_search_rerank",
+      operation: "tool_search_rerank",
+      cost: args.cost,
       schema: rerankSchema,
       system: RERANK_SYSTEM_PROMPT,
       prompt: renderRerankPrompt(args.query, args.candidates),
-      temperature: 0,
       signal: args.signal ? AbortSignal.any([args.signal, timeout]) : timeout,
       metadata: { modelId: botConfig.fastModelId },
     });

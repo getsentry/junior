@@ -1,5 +1,6 @@
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import * as z from "zod";
+import type { ConversationModelCost } from "@/chat/core-model";
 import { setSpanAttributes } from "@/chat/logging";
 import { effectiveToolExposure } from "@/chat/tool-exposure";
 import { rerankSearchCandidates } from "@/chat/tools/search-tools-rerank";
@@ -661,6 +662,8 @@ function toolMetadata(
  */
 export function createSearchToolsTool(
   allCatalogTools: Record<string, AnyToolDefinition>,
+  /** The Conversation that pays for a rerank model call. */
+  rerankCost: ConversationModelCost,
 ) {
   const catalogTools = Object.fromEntries(
     Object.entries(allCatalogTools).filter(
@@ -731,6 +734,7 @@ export function createSearchToolsTool(
         allMatches =
           (await rerankSearchCandidates({
             query: query!,
+            cost: rerankCost,
             candidates: search.unclearCandidates.map((name) => ({
               name,
               source: catalogTools[name]!.source?.id,

@@ -123,7 +123,10 @@ const MODEL_DECIDES_CASES = [
   ["mark a draft pull request ready for review", "github"],
   ["closing an issue", "github"],
   ["add a comment to an issue", "github"],
+  // Issue and issue comment tools share the update action.
+  ["edit my issue comment", "github"],
   ["remember something", "memory"],
+  ["modify an issue", "github"],
   ["create repository", "github"],
   ["create repository", null],
   ["edit a memory", null],
