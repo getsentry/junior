@@ -2,19 +2,15 @@ import type { AppMentionEvent, GenericMessageEvent } from "@slack/types";
 import type { StateAdapter } from "chat";
 import * as z from "zod";
 import type { SlackChannelScope } from "@/chat/ingress/slack-payload";
-import {
-  getSlackClient,
-  SlackActionError,
-  withSlackRetries,
-} from "@/chat/slack/client";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import {
   parseSlackTeamId,
   parseSlackUserId,
   slackBotIdSchema,
   type SlackBotId,
+  type SlackUserId,
 } from "@/chat/slack/ids";
-import { lookupSlackUserProfile } from "@/chat/slack/users";
+import { lookupSlackBot, lookupSlackUserProfile } from "@/chat/slack/users";
 import { createCache } from "@/chat/state/cache";
 export { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 
@@ -72,26 +68,42 @@ export async function isSlackWorkspaceMember(
       { refresh: true },
     );
   }
-  return await cache.getOrLoad(key, async () => {
-    // External users in shared channels can have is_stranger: false.
-    // https://docs.slack.dev/apis/slack-connect/#members
-    const user = await lookupSlackUserProfile(userId);
-    const authorTeam = parseSlackTeamId(user.team_id);
-    // Do not cache failures or incomplete/mismatched user responses.
-    if (user.id !== userId || !authorTeam) return { value: false };
-    const member = authorTeam === workspaceTeamId && !user.is_deleted;
-    return {
-      value: member,
-      ttlMs: member ? MEMBER_TTL_MS : NON_MEMBER_TTL_MS,
-    };
-  });
+  return await isCachedWorkspaceUser(userId, workspaceTeamId, state);
+}
+
+// Resolve membership through users.info, cached per workspace and user.
+async function isCachedWorkspaceUser(
+  userId: SlackUserId,
+  workspaceTeamId: string,
+  state: StateAdapter,
+): Promise<boolean> {
+  const cache = createCache(state, "core");
+  return await cache.getOrLoad(
+    `slack:membership:${workspaceTeamId}:${userId}`,
+    async () => {
+      // External users in shared channels can have is_stranger: false.
+      // https://docs.slack.dev/apis/slack-connect/#members
+      const user = await lookupSlackUserProfile(userId);
+      const authorTeam = parseSlackTeamId(user.team_id);
+      // Do not cache failures or incomplete/mismatched user responses.
+      if (user.id !== userId || !authorTeam) return { value: false };
+      const member = authorTeam === workspaceTeamId && !user.is_deleted;
+      return {
+        value: member,
+        ttlMs: member ? MEMBER_TTL_MS : NON_MEMBER_TTL_MS,
+      };
+    },
+  );
 }
 
 type BotProfile = NonNullable<GenericMessageEvent["bot_profile"]>;
 
-// What bots.info shows about a bot: a live bot with a bot user in this
-// workspace, a live classic integration with no bot user, or neither.
-type WorkspaceBot = "bot_user" | "classic" | "none";
+// What bots.info shows about a bot: a live bot with a bot user, a live
+// classic integration with no bot user, or neither.
+type SlackBotRecord =
+  | { kind: "bot_user"; userId: SlackUserId }
+  | { kind: "classic" }
+  | { kind: "none" };
 
 // A post with a bot ID and no user. Posts from current Slack apps carry
 // bot_profile; posts from classic integrations do not.
@@ -141,52 +153,31 @@ export async function slackWorkspaceBotId(
       : undefined;
   }
   const cache = createCache(state, "core");
-  const verified = await cache.getOrLoad<WorkspaceBot>(
-    `slack:workspace-bot:${workspaceTeamId}:${botId}`,
+  const bot = await cache.getOrLoad<SlackBotRecord>(
+    `slack:bot:${workspaceTeamId}:${botId}`,
     async () => {
       const bot = await lookupSlackBot(botId);
-      if (!bot) return { value: "none", ttlMs: NON_MEMBER_TTL_MS };
+      if (!bot || bot.deleted) {
+        return { value: { kind: "none" }, ttlMs: NON_MEMBER_TTL_MS };
+      }
       // Do not cache incomplete responses.
-      if (bot.id !== botId) return { value: "none" };
-      if (bot.deleted) return { value: "none", ttlMs: NON_MEMBER_TTL_MS };
+      if (bot.id !== botId) return { value: { kind: "none" } };
       if (bot.user_id === undefined) {
-        return { value: "classic", ttlMs: MEMBER_TTL_MS };
+        return { value: { kind: "classic" }, ttlMs: MEMBER_TTL_MS };
       }
       const userId = parseSlackUserId(bot.user_id);
-      if (!userId) return { value: "none" };
-      const user = await lookupSlackUserProfile(userId);
-      const authorTeam = parseSlackTeamId(user.team_id);
-      if (user.id !== userId || !authorTeam) return { value: "none" };
-      return user.is_bot && authorTeam === workspaceTeamId && !user.is_deleted
-        ? { value: "bot_user", ttlMs: MEMBER_TTL_MS }
-        : { value: "none", ttlMs: NON_MEMBER_TTL_MS };
+      if (!userId) return { value: { kind: "none" } };
+      return { value: { kind: "bot_user", userId }, ttlMs: MEMBER_TTL_MS };
     },
   );
-  // A classic integration has no bot user, so Slack does not name its
-  // workspace. Its post is accepted on a workspace-only channel alone. On
-  // Enterprise Grid, a bot of another workspace in the org could post in an
-  // org-shared channel, so such a post runs nothing.
+  // A bot user is checked like any other author. A classic integration has
+  // no bot user, so Slack does not name its workspace. Its post is accepted
+  // on a workspace-only channel alone. On Enterprise Grid, a bot of another
+  // workspace in the org could post in an org-shared channel, so such a post
+  // runs nothing.
   const accepted =
-    verified === "bot_user" ||
-    (verified === "classic" && channelScope === "workspace");
+    bot.kind === "bot_user"
+      ? await isCachedWorkspaceUser(bot.userId, workspaceTeamId, state)
+      : bot.kind === "classic" && channelScope === "workspace";
   return accepted ? botId : undefined;
-}
-
-async function lookupSlackBot(botId: string) {
-  try {
-    const result = await withSlackRetries(
-      () => getSlackClient().bots.info({ bot: botId }),
-      3,
-      { action: "bots.info" },
-    );
-    return result.bot;
-  } catch (error) {
-    if (
-      error instanceof SlackActionError &&
-      error.apiError === "bot_not_found"
-    ) {
-      return undefined;
-    }
-    throw error;
-  }
 }

@@ -42,7 +42,7 @@ import {
   verifySlackSignature,
   type SlackInstallationContext,
 } from "@/chat/slack/adapter-context";
-import { textMentionsBot } from "@/chat/ingress/bot-mention";
+import { eventMentionsBot } from "@/chat/ingress/bot-mention";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import {
   SLACK_EVENT_NAMESPACE,
@@ -357,28 +357,6 @@ async function persistSlackMessage(args: {
     }
     throw new SlackEventPersistenceError(error, kept);
   });
-}
-
-/**
- * Whether a Slack message mentions Junior in its text or section blocks.
- * Slack still emits app_mention for tokens inside code spans/blocks. Only
- * mentions that sit outside code count.
- */
-function eventMentionsBot(
-  event: SlackInboundEvent,
-  botUserId: string | undefined,
-): boolean {
-  return Boolean(
-    botUserId &&
-    (textMentionsBot(event.text ?? "", botUserId) ||
-      event.blocks?.some(
-        (block) =>
-          block.type === "section" &&
-          typeof block.text === "object" &&
-          block.text.type === "mrkdwn" &&
-          textMentionsBot(block.text.text, botUserId),
-      )),
-  );
 }
 
 async function routeParsedMessage(args: {
