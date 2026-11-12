@@ -67,8 +67,8 @@ function restPullRequest(draft: DraftFixture) {
   };
 }
 
-// `gh pr view` and `gh pr checks` alias `commits(last: 1)` as
-// `statusCheckRollup`, so both fields carry the same commit.
+// `github_getPullRequest` reads `commits(last: 1)`, and `gh pr view` aliases
+// it as `statusCheckRollup`, so both fields carry the same commit.
 function graphqlPullRequest(draft: DraftFixture) {
   const commits = {
     nodes: [
@@ -106,9 +106,12 @@ function graphqlPullRequest(draft: DraftFixture) {
     commits,
     headRefName: `feat/cache-warmup-${draft.number}`,
     headRefOid: draft.sha,
+    autoMergeRequest: null,
     id: `PR_eval_${draft.number}`,
     isDraft: !readied.has(draft.number),
+    mergeStateStatus: readied.has(draft.number) ? "BLOCKED" : "DRAFT",
     number: draft.number,
+    reviewDecision: null,
     state: "OPEN",
     statusCheckRollup: commits,
     title: draftTitle,
