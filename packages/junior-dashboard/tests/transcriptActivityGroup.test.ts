@@ -4,9 +4,9 @@ import {
   activityGroupLabel,
   activityGroupSummary,
   isCollapsibleActivityEntry,
-  liveActivityStep,
   quietTurnEntryKeys,
 } from "../src/client/conversations/TranscriptActivityGroup";
+import { liveActivityStep } from "../src/client/conversations/TranscriptLiveStep";
 import type { RenderedTranscriptEntry } from "../src/client/conversations/transcriptRenderModel";
 
 function tool(
@@ -201,7 +201,7 @@ describe("transcript activity group", () => {
     expect(activityGroupSummary([compaction()])).toBe("context compacted");
   });
 
-  it("shows the latest reasoning and only a tool call that came after it", () => {
+  it("shows the latest reasoning and only a running tool call after it", () => {
     const thought = (key: string, text: string): RenderedTranscriptEntry => ({
       key,
       kind: "reasoning",
@@ -214,6 +214,8 @@ describe("transcript activity group", () => {
       reasoning: "Compare the spans.",
       tool: undefined,
     });
+    // A finished tool call means Junior is thinking about the next step.
+    expect(liveActivityStep([second, tool("2")]).tool).toBeUndefined();
     expect(
       liveActivityStep([first, tool("1"), second, tool("2", "running")]).tool
         ?.id,

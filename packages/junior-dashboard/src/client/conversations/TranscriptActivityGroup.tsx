@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode } from "react";
-import { ChevronRight, Wrench } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 import { ShimmerText } from "../components/ShimmerText";
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
@@ -8,9 +8,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import { DisplayText } from "../display-text/DisplayText";
 import { formatMs } from "../format";
-import type { TranscriptViewToolCallPart } from "../types";
 import { isMemoryCaptureEvent } from "./conversationMemory";
 import {
   isAgentInvocationResultMessage,
@@ -21,7 +19,7 @@ import { useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptActivityNesting } from "./TranscriptRailEvent";
 import { useTranscriptRowOpen } from "./TranscriptRows";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
-import { toolCallPreview } from "./toolCallPreview";
+import { LiveActivityStep, useWorkingTime } from "./TranscriptLiveStep";
 
 function countLabel(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : `${count} ${plural}`;
@@ -95,6 +93,18 @@ function entryEndMs(entry: RenderedTranscriptEntry): number | undefined {
   }
   if (entry.kind === "message") return entry.message.timestamp;
   return entry.timestamp;
+}
+
+function activityGroupStartMs(
+  entries: readonly RenderedTranscriptEntry[],
+): number | undefined {
+  const starts = entries
+    .map(entryStartMs)
+    .filter(
+      (start): start is number =>
+        typeof start === "number" && Number.isFinite(start),
+    );
+  return starts.length > 0 ? Math.min(...starts) : undefined;
 }
 
 /** Span one activity group from the earliest start to the latest end. */
@@ -181,67 +191,6 @@ export function activityGroupSummary(
   return parts.length > 0 ? parts.join(" · ") : activityGroupLabel(entries);
 }
 
-/**
- * Pick what a running Turn shows while its activity is closed: the latest
- * reasoning, and the latest tool call after it. A tool call from before the
- * latest reasoning is an earlier step, so it does not show.
- */
-export function liveActivityStep(entries: readonly RenderedTranscriptEntry[]): {
-  reasoning?: string;
-  tool?: TranscriptViewToolCallPart;
-} {
-  let tool: TranscriptViewToolCallPart | undefined;
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index]!;
-    if (entry.kind === "tool") {
-      tool ??= entry.part;
-      continue;
-    }
-    if (entry.kind !== "reasoning") continue;
-    const text = entry.part.redacted ? "" : entry.part.text.trim();
-    if (text) return { reasoning: text, tool };
-  }
-  return { tool };
-}
-
-function LiveActivityStep(props: { entries: RenderedTranscriptEntry[] }) {
-  const { reasoning, tool } = liveActivityStep(props.entries);
-  if (!reasoning && !tool) return null;
-  const preview = tool ? toolCallPreview(tool.name, tool.input) : null;
-  return (
-    <div aria-live="polite" className="mt-1.5 grid min-w-0 gap-1.5">
-      {reasoning ? (
-        // A new step replaces the text, so it fades in instead of jumping.
-        <div
-          className="line-clamp-3 text-sm leading-relaxed text-dashboard-text-muted motion-safe:animate-in motion-safe:fade-in-0"
-          key={reasoning}
-        >
-          <DisplayText inline links={false} text={reasoning} />
-        </div>
-      ) : null}
-      {tool ? (
-        <div className="flex min-w-0 items-center gap-1.5 text-xs leading-5 text-dashboard-text-muted">
-          <Wrench
-            aria-hidden="true"
-            className="size-3.5 shrink-0 text-dashboard-text-faint"
-            strokeWidth={2}
-          />
-          <ShimmerText
-            active={tool.status === "running"}
-            as="strong"
-            className="shrink-0 font-semibold"
-          >
-            {tool.name}
-          </ShimmerText>
-          {preview ? (
-            <code className="min-w-0 truncate font-mono">{preview}</code>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function hasLiveActivity(entries: RenderedTranscriptEntry[]): boolean {
   return entries.some(
     (entry) => entry.kind === "tool" && entry.part.status === "running",
@@ -266,7 +215,13 @@ export function TranscriptActivityGroup(props: {
   const rows = props.entries.map((entry) => (
     <Fragment key={entry.key}>{props.renderEntry(entry)}</Fragment>
   ));
-  const label = activityGroupLabel(props.entries);
+  // A running Turn counts its time up, like a stopwatch.
+  const workingTime = useWorkingTime(
+    props.live ? activityGroupStartMs(props.entries) : undefined,
+  );
+  const label = workingTime
+    ? `Working for ${workingTime}`
+    : activityGroupLabel(props.entries);
   const summary = activityGroupSummary(props.entries);
   const live = props.live || hasLiveActivity(props.entries);
 
@@ -295,7 +250,7 @@ export function TranscriptActivityGroup(props: {
           >
             <span className="min-w-0 truncate">
               <ShimmerText active={live}>
-                {open ? `Hide ${label}` : label}
+                {open && !workingTime ? `Hide ${label}` : label}
               </ShimmerText>
             </span>
             <ChevronRight

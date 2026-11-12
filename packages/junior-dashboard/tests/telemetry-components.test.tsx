@@ -489,7 +489,34 @@ describe("dashboard canonical-event components", () => {
       /aria-live="polite"[^]*?sentry-cli spans query/,
     )?.[0];
     expect(step).toContain("Compare the serializer spans.");
+    expect(step).toContain("Running");
+    expect(workingHtml).toContain("Working for");
     expect(workingHtml).not.toContain("Junior is thinking…");
+
+    // A running Task line shows that Junior waits on it.
+    const waiting = conversation(
+      [
+        ...working.events,
+        event(2, {
+          type: "subagent",
+          startedSeq: 2,
+          startedAt: "2026-01-01T00:00:00.000Z",
+          childConversationId: "internal:span-review",
+          childKind: "task",
+          subagentKind: "advisor",
+          title: "Review the spans",
+          status: "running",
+        }),
+      ],
+      { status: "active" },
+    );
+    const waitingHtml = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <Transcript live transcript={waiting} />
+      </QueryClientProvider>,
+    );
+    expect(waitingHtml).toContain("Review the spans");
+    expect(waitingHtml).not.toContain("Junior is thinking…");
     const pausedHtml = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <Transcript live responding={false} transcript={working} />

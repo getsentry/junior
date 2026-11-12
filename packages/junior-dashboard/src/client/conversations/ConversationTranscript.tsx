@@ -667,14 +667,19 @@ function TranscriptEntryList(
     ],
   );
 
-  // The running Turn shows its progress in its trailing activity row. With
-  // no activity yet, the thinking row shows instead.
+  // The running Turn shows its progress in its trailing activity row, and
+  // a running Task line shows that Junior waits on the Task. Otherwise the
+  // thinking row shows.
+  const lastRow = search.active ? undefined : rows.at(-1);
   const liveIndex =
-    props.responding && !search.active && rows.at(-1)?.kind === "activity"
+    props.responding && lastRow?.kind === "activity"
       ? rows.length - 1
       : undefined;
+  const waitingOnTask =
+    lastRow?.kind === "tasks" &&
+    lastRow.entries.some((entry) => entry.part.status === "running");
   const thinking =
-    props.responding && liveIndex === undefined ? (
+    props.responding && liveIndex === undefined && !waitingOnTask ? (
       <TranscriptThinkingRow />
     ) : null;
 
