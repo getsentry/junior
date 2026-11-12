@@ -226,7 +226,7 @@ describe("dashboard conversation formatting", () => {
 
   it("reads each message author from the conversation authors", () => {
     const owner = {
-      avatarUrl: "/api/people/avatars/identity-web?v=1",
+      avatarUrl: "/api/images/avatar-web.signature?w=128&v=1",
       email: "owner@example.com",
       fullName: "Owner Person",
     };

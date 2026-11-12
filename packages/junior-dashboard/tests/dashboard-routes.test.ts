@@ -611,7 +611,9 @@ describe("dashboard routes", () => {
   });
 
   it("returns the signed-in identity", async () => {
-    readViewerAvatarUrl.mockResolvedValueOnce("/api/people/avatars/identity-1");
+    readViewerAvatarUrl.mockResolvedValueOnce(
+      "/api/images/avatar-1.signature?w=128",
+    );
     const app = dashboard({
       session: {
         token: "secret-session-token",
@@ -629,7 +631,7 @@ describe("dashboard routes", () => {
       autoArchiveDefault: false,
       autoArchiveGraceHours: 24,
       user: {
-        avatarUrl: "/api/people/avatars/identity-1",
+        avatarUrl: "/api/images/avatar-1.signature?w=128",
         email: "person@sentry.io",
         emailVerified: true,
         isAdmin: false,

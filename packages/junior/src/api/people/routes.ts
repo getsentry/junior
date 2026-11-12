@@ -1,13 +1,9 @@
 import { Hono } from "hono";
-import { readAvatarImage } from "@/chat/identities/avatar";
-import { getDb } from "@/chat/db";
-import { getStateAdapter } from "@/chat/state/adapter";
-import { jsonResponse, throwApiError } from "../http";
+import { jsonResponse } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
-  avatarParamsSchema,
   personParamsSchema,
   personalSpendReportSchema,
 } from "../schema/person";
@@ -21,50 +17,9 @@ import { readPeoplePluginReports } from "./plugin-reports";
 import { readPeopleProfile } from "./profile";
 import { readPersonalSpendFromSql } from "./spend.query";
 
-// A versioned photo path never changes its bytes. `private` keeps photos out
-// of shared caches, because the route needs a signed-in viewer.
-const AVATAR_IMMUTABLE_CACHE_CONTROL = "private, max-age=31536000, immutable";
-
 /** Create the HTTP routes owned by the People API. */
 export function createPeopleRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
-
-  // Serve profile photos from Junior, so browsers never load them from
-  // Slack or Google. A photo path has the version of its photo, so the
-  // browser keeps a current versioned photo and checks any other request.
-  app.get(
-    "/avatars/:identityId",
-    requireViewer,
-    validateRequest("param", avatarParamsSchema, "Invalid route parameters."),
-    async (context) => {
-      const { identityId } = context.req.valid("param");
-      const avatar = await readAvatarImage(
-        getDb(),
-        getStateAdapter(),
-        identityId,
-      );
-      if (!avatar) throwApiError(404, "Avatar not found.");
-      const etag = `"${avatar.version}"`;
-      const headers = {
-        "cache-control":
-          context.req.query("v") === avatar.version
-            ? AVATAR_IMMUTABLE_CACHE_CONTROL
-            : "private, no-cache",
-        etag,
-      };
-      if (context.req.header("if-none-match") === etag) {
-        return new Response(null, { headers, status: 304 });
-      }
-      return new Response(Buffer.from(avatar.image.data, "base64"), {
-        headers: {
-          ...headers,
-          "content-security-policy": "default-src 'none'; sandbox",
-          "content-type": avatar.image.contentType,
-          "x-content-type-options": "nosniff",
-        },
-      });
-    },
-  );
 
   app.get("/me/spend", requireViewer, async (context) => {
     const viewer = context.get("viewer");

@@ -62,11 +62,11 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
       .string()
       .regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/)
       .optional(),
-    // A Junior photo path. Browsers never load a provider photo URL.
+    // A Junior image path. Browsers never load a provider photo URL.
     avatarUrl: z
       .string()
       .max(500)
-      .regex(/^\/api\/people\/avatars\/[^/?#]+(\?v=[\w-]+)?$/)
+      .regex(/^\/api\/images\/[\w-]+\.[\w-]+\?w=\d+(&v=[\w-]+)?$/)
       .optional(),
   }),
 ]);
