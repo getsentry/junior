@@ -65,6 +65,11 @@ function callbackPages(botName: string) {
       message: `This authorization link is no longer active. Return to ${botName} and retry the original request.`,
       status: 400,
     },
+    connected: {
+      title: "Authorization complete",
+      message: `Your MCP access is connected. The request that asked for it no longer waits, so ask ${botName} again when you need it.`,
+      status: 200,
+    },
     success: {
       title: "Authorization complete",
       message: `Your MCP access is connected. ${botName} will continue the paused request.`,
@@ -111,7 +116,7 @@ function htmlResponse(
         }
       : pages[kind];
   const footerMessage =
-    kind === "success" && !options?.local
+    (kind === "success" || kind === "connected") && !options?.local
       ? `You can close this tab and return to ${botName}.`
       : undefined;
   return htmlCallbackResponse(page.title, page.message, page.status, {
@@ -148,13 +153,22 @@ async function wakeAuthorizedMcpTurn(args: {
   );
 }
 
-async function isCurrentMcpAuthorizationAttempt(
+/**
+ * How one sign-in attempt relates to its Conversation. `waiting`: the request
+ * that sent the link still waits for it. `ended`: that request no longer
+ * waits, for example because a person stopped it. The sign-in still saves
+ * the credential for later requests. `expired`: a newer attempt replaced this
+ * one, or it has no Conversation.
+ */
+type McpAuthorizationAttempt = "waiting" | "ended" | "expired";
+
+async function readMcpAuthorizationAttempt(
   authSession: McpAuthSessionState,
   provider: string,
-): Promise<boolean> {
+): Promise<McpAuthorizationAttempt> {
   const conversationId = mcpConversationId(authSession);
   if (!conversationId) {
-    return false;
+    return "expired";
   }
 
   const currentState = await getPersistedThreadState(conversationId);
@@ -165,11 +179,13 @@ async function isCurrentMcpAuthorizationAttempt(
     provider,
     actorId: authSession.userId,
   });
-
-  return (
-    pendingAuth?.authSessionId === authSession.authSessionId &&
+  if (!pendingAuth) {
+    return "ended";
+  }
+  return pendingAuth.authSessionId === authSession.authSessionId &&
     pendingAuth.sessionId === authSession.sessionId
-  );
+    ? "waiting"
+    : "expired";
 }
 
 function mcpConversationId(
@@ -187,7 +203,7 @@ function mcpConversationId(
   return undefined;
 }
 
-/** Commit one shared credential mutation only while this attempt owns the thread. */
+/** Commit one shared credential mutation only while no newer attempt replaced this one. */
 async function runCurrentMcpCredentialMutation<T>(
   authSession: McpAuthSessionState,
   provider: string,
@@ -207,7 +223,9 @@ async function runCurrentMcpCredentialMutation<T>(
     );
   }
   try {
-    if (!(await isCurrentMcpAuthorizationAttempt(authSession, provider))) {
+    if (
+      (await readMcpAuthorizationAttempt(authSession, provider)) === "expired"
+    ) {
       throw new McpOAuthAttemptExpiredError();
     }
     return await mutation();
@@ -290,11 +308,11 @@ export async function GET(
 
   try {
     const pendingSession = await getMcpAuthSession(state);
-    if (
-      !pendingSession ||
-      pendingSession.provider !== provider ||
-      !(await isCurrentMcpAuthorizationAttempt(pendingSession, provider))
-    ) {
+    const attempt =
+      pendingSession?.provider === provider
+        ? await readMcpAuthorizationAttempt(pendingSession, provider)
+        : "expired";
+    if (!pendingSession || attempt === "expired") {
       if (pendingSession) {
         await deleteMcpAuthSession(pendingSession.authSessionId);
       }
@@ -388,6 +406,9 @@ export async function GET(
       });
     }
 
+    if (attempt === "ended") {
+      return htmlResponse("connected");
+    }
     return htmlResponse("success", {
       // Web roots keep a local destination for conversation-only delivery.
       // Only the CLI path should get the local-client success copy.

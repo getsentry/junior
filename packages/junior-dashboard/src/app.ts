@@ -51,6 +51,7 @@ import {
 import { isAuthPath, type AuthenticatedRoute } from "./authenticated-routes";
 import { resetMockConversationViewerState } from "./mock-reporting/fixtures";
 import { resetMockReadPositions } from "./mock-reporting/read-positions";
+import { resetMockReviewItems } from "./mock-reporting/review-items";
 import { resetMockSends } from "./mock-reporting/sends";
 import { createMockReportingApi } from "./mock-reporting/routes";
 import {
@@ -95,6 +96,7 @@ export function resetMockDashboardState(): void {
   resetMockConversationViewerState();
   mockAutoArchiveSettingsByEmail.clear();
   resetMockReadPositions();
+  resetMockReviewItems();
   resetMockSends();
 }
 

@@ -78,6 +78,13 @@ class MemoryConversationEventStore implements ConversationEventStore {
     );
   }
 
+  async loadEventsAfter(
+    _conversationId: string,
+    afterSeq: number,
+  ): Promise<ConversationEvent[]> {
+    return this.history.filter((event) => event.seq > afterSeq);
+  }
+
   async loadHistoryContaining(): Promise<ConversationEvent[]> {
     return this.history;
   }

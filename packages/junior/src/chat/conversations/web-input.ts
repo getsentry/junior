@@ -31,6 +31,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import { sameDestination } from "@/chat/destination";
 import { webMessageId } from "./web-message-id";
+import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 
 type EnqueueOptions = {
   attachmentStorage?: AttachmentStorage;
@@ -47,6 +48,8 @@ export interface CreateConversationInput {
   images?: SandboxFileUpload[];
   /** Client-supplied idempotency key for the first message. */
   idempotencyKey: string;
+  /** Saved title. Title generation runs only when it is omitted. */
+  title?: string;
   /** New roots default public. Continues never rewrite visibility. */
   visibility?: ConversationPrivacy;
 }
@@ -60,6 +63,8 @@ export interface AppendWebMessageInput {
   idempotencyKey: string;
   /** Review item change that this Message reports. */
   reviewItemChange?: ReviewItemChangeRecord;
+  /** Applied only when this call creates the conversation root. */
+  rootTitle?: string;
   /** Applied only when this call creates the conversation root. */
   rootVisibility?: ConversationPrivacy;
 }
@@ -128,7 +133,7 @@ function storedActorFromWeb(actor: WebActor): StoredSlackActor {
 export function acceptsWebMessages(
   conversation: Pick<Conversation, "conversationId" | "destination" | "kind">,
 ): boolean {
-  if (conversation.kind !== "root") return conversation.kind === "thread";
+  if (!isTopLevelKind(conversation.kind)) return conversation.kind === "thread";
   const { conversationId, destination } = conversation;
   if (destination?.platform === "slack") return true;
   return (
@@ -228,6 +233,8 @@ export async function recordWebConversationActivity(args: {
   conversationStore?: ConversationStore;
   nowMs: number;
   /** Applied only when this call creates the Conversation root. */
+  rootTitle?: string;
+  /** Applied only when this call creates the Conversation root. */
   rootVisibility?: ConversationPrivacy;
 }): Promise<Destination | undefined> {
   const store = args.conversationStore ?? getConversationStore();
@@ -254,9 +261,10 @@ export async function recordWebConversationActivity(args: {
     // after every Turn stores Source and all resume readers use that Turn fact.
     ...(isNewRoot ? { source: "web" as const } : undefined),
     ...(source ? { sessionSource: source } : undefined),
+    ...(isNewRoot && args.rootTitle ? { title: args.rootTitle } : undefined),
     ...(isNewRoot ? { visibility } : undefined),
   });
-  return existing && existing.kind !== "root" ? undefined : destination;
+  return existing && !isTopLevelKind(existing.kind) ? undefined : destination;
 }
 
 /** Create a Conversation from web input and enqueue its first Message. */
@@ -278,6 +286,7 @@ export async function createAndEnqueueConversation(
       idempotencyKey: input.idempotencyKey,
       message: input.message,
       images: input.images,
+      ...(input.title ? { rootTitle: input.title } : undefined),
       rootVisibility: input.visibility === "private" ? "private" : "public",
     },
     options,
@@ -314,6 +323,7 @@ export async function appendAndEnqueueWebMessage(
     conversationId: input.conversationId,
     conversationStore: options.conversationStore,
     nowMs,
+    ...(input.rootTitle && { rootTitle: input.rootTitle }),
     ...(input.rootVisibility && { rootVisibility: input.rootVisibility }),
   });
   let attachments: MessageAttachment[] = [];

@@ -9,9 +9,14 @@ import {
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
+import type { StateAdapter } from "chat";
 import { findLegacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
 import { parseDestination } from "@/chat/destination";
 import { isRecord } from "@/chat/coerce";
+import {
+  createEncryptedState,
+  readEncryptedState,
+} from "@/chat/encryption/state";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
 
@@ -100,15 +105,12 @@ function parseSessionIndex(value: unknown): string[] {
 }
 
 function parseMcpAuthSession(value: unknown): McpAuthSessionState | undefined {
-  if (typeof value !== "string") {
+  if (!isRecord(value)) {
     return undefined;
   }
 
   try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
-    if (!isRecord(parsed)) {
-      return undefined;
-    }
+    const parsed = value;
 
     if (
       parsed.schemaVersion !== 2 ||
@@ -202,12 +204,10 @@ function parseServerSession(value: unknown): McpServerSessionState | undefined {
 function parseStoredCredentials(
   value: unknown,
 ): McpStoredOAuthCredentials | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
   try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
+    // Plaintext values from before encryption are JSON strings.
+    const parsed: unknown =
+      typeof value === "string" ? JSON.parse(value) : value;
     if (!isRecord(parsed)) {
       return undefined;
     }
@@ -234,10 +234,39 @@ function parseStoredCredentials(
   }
 }
 
+// Attempts hold the PKCE code verifier and the user's message, so they are
+// encrypted. The attempt index holds only ids and stays plain.
+async function readMcpAuthSession(
+  stateAdapter: StateAdapter,
+  authSessionId: string,
+): Promise<unknown> {
+  const stored = await readEncryptedState(
+    stateAdapter,
+    sessionKey(authSessionId),
+  );
+  // TODO(dcramer): Delete one attempt TTL after deploy. Attempts saved before
+  // encryption are JSON strings; the next write encrypts them.
+  if (stored?.stale && typeof stored.value === "string") {
+    try {
+      return JSON.parse(stored.value);
+    } catch {
+      return undefined;
+    }
+  }
+  return stored?.value;
+}
+
 async function getConnectedStateAdapter() {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
   return stateAdapter;
+}
+
+async function readCredentials(
+  state: StateAdapter,
+  key: string,
+): Promise<unknown> {
+  return (await readEncryptedState(state, key))?.value;
 }
 
 type ConnectedStateAdapter = Awaited<
@@ -282,9 +311,9 @@ async function writeMcpAuthSession(
   if (!nextIndex.includes(session.authSessionId)) {
     nextIndex.push(session.authSessionId);
   }
-  await state.set(
+  await createEncryptedState(state).set(
     sessionKey(session.authSessionId),
-    JSON.stringify(session),
+    session,
     ttlMs,
   );
   await state.set(indexKey, JSON.stringify(nextIndex), ttlMs);
@@ -294,7 +323,9 @@ export async function getMcpAuthSession(
   authSessionId: string,
 ): Promise<McpAuthSessionState | undefined> {
   const stateAdapter = await getConnectedStateAdapter();
-  return parseMcpAuthSession(await stateAdapter.get(sessionKey(authSessionId)));
+  return parseMcpAuthSession(
+    await readMcpAuthSession(stateAdapter, authSessionId),
+  );
 }
 
 /** Save one authorization attempt and add it to the user/provider index. */
@@ -327,7 +358,7 @@ export async function patchMcpAuthSession(
     owner.provider,
     async (state, fence) => {
       const current = parseMcpAuthSession(
-        await state.get(sessionKey(authSessionId)),
+        await readMcpAuthSession(state, authSessionId),
       );
       if (!current) {
         throw new Error(`Unknown MCP auth session: ${authSessionId}`);
@@ -394,8 +425,10 @@ export async function getMcpStoredOAuthCredentials(
   provider: string,
 ): Promise<McpStoredOAuthCredentials | undefined> {
   const stateAdapter = await getConnectedStateAdapter();
+  // Stale values expire within the credential TTL or move to the active key
+  // on the next save, so they are not saved again here.
   const stored = parseStoredCredentials(
-    await stateAdapter.get(credentialsKey(userId, provider)),
+    await readCredentials(stateAdapter, credentialsKey(userId, provider)),
   );
   if (stored) return stored;
   // TODO(dcramer): Delete after no legacy `dashboard:` MCP credential keys
@@ -403,17 +436,19 @@ export async function getMcpStoredOAuthCredentials(
   const legacyUserId = await findLegacyWebActorUserId(userId);
   if (!legacyUserId) return undefined;
   const legacyKey = credentialsKey(legacyUserId, provider);
-  const legacy = parseStoredCredentials(await stateAdapter.get(legacyKey));
+  const legacy = parseStoredCredentials(
+    await readCredentials(stateAdapter, legacyKey),
+  );
   if (!legacy) return undefined;
   return await withMcpConnectionLock(userId, provider, async (state, fence) => {
     const current = parseStoredCredentials(
-      await state.get(credentialsKey(userId, provider)),
+      await readCredentials(state, credentialsKey(userId, provider)),
     );
     if (current) return current;
     await fence();
-    await state.set(
+    await createEncryptedState(state).set(
       credentialsKey(userId, provider),
-      JSON.stringify(legacy),
+      legacy,
       MCP_AUTH_CREDENTIALS_TTL_MS,
     );
     await state.delete(legacyKey);
@@ -451,10 +486,16 @@ export async function updateMcpStoredOAuthCredentials(
 ): Promise<void> {
   await withMcpConnectionLock(userId, provider, async (state, fence) => {
     const key = credentialsKey(userId, provider);
-    const next = await update(parseStoredCredentials(await state.get(key)));
+    const next = await update(
+      parseStoredCredentials(await readCredentials(state, key)),
+    );
     if (!next) return;
     await fence();
-    await state.set(key, JSON.stringify(next), MCP_AUTH_CREDENTIALS_TTL_MS);
+    await createEncryptedState(state).set(
+      key,
+      next,
+      MCP_AUTH_CREDENTIALS_TTL_MS,
+    );
   });
 }
 

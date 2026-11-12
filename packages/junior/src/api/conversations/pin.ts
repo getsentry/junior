@@ -1,6 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, count, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
+import { setSpanAttributes } from "@/chat/logging";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import type { JuniorDatabase } from "@/db/db";
@@ -16,17 +17,17 @@ import type {
   ReorderPinnedConversationsResponse,
 } from "../schema/conversation-pin";
 import { readConversationAccessFromSql } from "./access";
+import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 
 /**
  * Pin or unpin one conversation for the signed-in viewer.
  *
  * A pin lives on the viewer's participant row, and that row grants send and
- * control access. So only a participant can pin, the same as archive. The
- * root actor may have no row yet, so pinning adds it. A pin also restores an
- * archived conversation for everyone, because the Pinned section shows only
- * active conversations. A pin on a child would be a fact of the child, not
- * of the viewer's root, and no list shows child pins yet, so only a root can
- * be pinned.
+ * control access. So only a participant can pin, the same as archive. A pin
+ * also restores an archived conversation for everyone, because the Pinned
+ * section shows only active conversations. A pin on a child would be a fact
+ * of the child, not of the viewer's root, and no list shows child pins yet,
+ * so only a root can be pinned.
  */
 export async function pinConversation(
   viewer: User,
@@ -42,9 +43,45 @@ export async function pinConversation(
     throwApiError(404, "Conversation not found.");
   }
   const executor = getSqlExecutor();
-  return await executor.transaction(() =>
-    setPin(executor.db(), viewer, conversationId, body.pinned),
-  );
+  return await executor.transaction(async () => {
+    const db = executor.db();
+    const result = await setPin(db, viewer, conversationId, body.pinned);
+    recordPinUsage(
+      body.pinned ? "pin" : "unpin",
+      await countViewerPins(db, viewer),
+    );
+    return result;
+  });
+}
+
+/**
+ * Tag the request span with a pin change and the viewer's pin count after
+ * it. Pins stay manual; this shows how much people use them.
+ */
+function recordPinUsage(
+  action: "pin" | "reorder" | "unpin",
+  pinnedCount: number,
+): void {
+  setSpanAttributes({
+    "app.conversation.pin.action": action,
+    "app.conversation.pin.count": pinnedCount,
+  });
+}
+
+async function countViewerPins(
+  db: JuniorDatabase,
+  viewer: User,
+): Promise<number> {
+  const [row] = await db
+    .select({ pins: count() })
+    .from(juniorConversationParticipants)
+    .where(
+      and(
+        eq(juniorConversationParticipants.userId, viewer.id),
+        isNotNull(juniorConversationParticipants.pinnedAt),
+      ),
+    );
+  return row?.pins ?? 0;
 }
 
 async function setPin(
@@ -70,7 +107,7 @@ async function setPin(
   if (!conversation) throwApiError(404, "Conversation not found.");
   // The viewer passed the access check above, so the root id is safe to name.
   // MCP output has no root field, and the caller needs it to act.
-  if (conversationKindFromRow(conversation) !== "root") {
+  if (!isTopLevelKind(conversationKindFromRow(conversation))) {
     throwApiError(
       409,
       `A child conversation cannot be pinned or unpinned. It uses its root's pin: ${conversation.rootConversationId ?? conversation.parentConversationId}.`,
@@ -145,6 +182,8 @@ export async function reorderPinnedConversations(
       and(eq(participants.userId, viewer.id), isNotNull(participants.pinnedAt)),
     )
     .returning({ rootConversationId: participants.rootConversationId });
+  // The update reads every pin of the viewer, so its rows are the pin count.
+  recordPinUsage("reorder", updated.length);
   const updatedIds = new Set(updated.map((row) => row.rootConversationId));
   return { conversationIds: ids.filter((id) => updatedIds.has(id)) };
 }

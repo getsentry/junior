@@ -1,11 +1,11 @@
 import { describe, expect } from "vitest";
-import { githubWebhook } from "@junior-evals/fixture/inputs";
+import { githubWebhook, slackMention } from "@junior-evals/fixture/inputs";
 import {
   insertEventAutomation,
   slackChannel,
 } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
-import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
+import { completedToolCalls, toolCallsOf } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 const reviewTrigger = {
@@ -57,6 +57,21 @@ describe("Event automation delivery", () => {
     expect(delivery.toolCalls.map((call) => call.name)).not.toContain(
       "deleteAutomation",
     );
+
+    // A person's reply in the run's thread is a chat Turn in the run's
+    // Conversation, and its final response is delivered.
+    const followUp = await delivery.continue(
+      slackMention("Which pull request was that? Answer with its number only."),
+    );
+    expect(followUp.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
+    expect(followUp.replies).toEqual([
+      expect.objectContaining({
+        conversationId: delivery.replies[0]!.conversationId,
+        text: expect.stringContaining("691"),
+      }),
+    ]);
+    expect(delivery.replies[0]!.conversationId).toMatch(/^agent-dispatch:/);
+    expect(toolCallsOf("reply", followUp)).toEqual([]);
   });
 
   test.for([
@@ -65,7 +80,7 @@ describe("Event automation delivery", () => {
       task: "If the reviewer asks for more tests, post a reminder here to add them. Otherwise post nothing.",
     },
     {
-      // Tasks written before declared results spell out the silence marker.
+      // Tasks written before the `noReply` tool spell out the silence marker.
       silence: "with the old marker",
       task: "If the reviewer asks for more tests, post a reminder here to add them. Otherwise reply with exactly [[NO_REPLY]].",
     },
@@ -92,11 +107,9 @@ describe("Event automation delivery", () => {
       );
 
       expect(delivery.replies).toEqual([]);
-      // Check the saved result, not the call input. A message that is only
-      // the old marker is saved as `no_action`.
-      expect(
-        completedToolCalls("finishAutomationRun", delivery).map(toolOutput),
-      ).toEqual([expect.objectContaining({ result: "no_action" })]);
+      // `reply` rejects a message that is only the old marker.
+      expect(completedToolCalls("noReply", delivery)).toHaveLength(1);
+      expect(completedToolCalls("reply", delivery)).toEqual([]);
     },
   );
 
@@ -123,9 +136,7 @@ describe("Event automation delivery", () => {
       }),
     );
 
-    expect(
-      completedToolCalls("finishAutomationRun", blocked).map(toolOutput),
-    ).toEqual([expect.objectContaining({ result: "misconfigured" })]);
+    expect(completedToolCalls("reportBlocked", blocked)).toHaveLength(1);
     // The only post is the blocked notice, in the creator's direct message.
     expect(blocked.replies).toHaveLength(1);
     expect(blocked.replies[0]!.text).toContain("is blocked");

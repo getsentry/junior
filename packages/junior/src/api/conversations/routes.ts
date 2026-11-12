@@ -15,11 +15,11 @@ import {
   conversationEventPageSchema,
   conversationEventsQuerySchema,
   conversationFeedQuerySchema,
-  conversationFeedSchema,
   conversationParamsSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
+import { conversationFeedSchema } from "../schema/conversation-feed";
 import {
   conversationCatchUpBodySchema,
   conversationCatchUpSchema,
@@ -31,13 +31,13 @@ import {
   reorderPinnedConversationsResponseSchema,
 } from "../schema/conversation-pin";
 import {
+  conversationDeliveryBodySchema,
+  conversationDeliveryResponseSchema,
+} from "../schema/conversation-delivery";
+import {
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "../schema/conversation-subscription";
-import {
-  conversationUnreadSchema,
-  markConversationUnreadBodySchema,
-} from "../schema/conversation-unread";
 import {
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
@@ -53,14 +53,12 @@ import {
   conversationPendingMessagesReportSchema,
   conversationUnchangedDetailWithMailboxSchema,
 } from "../schema/conversation-pending-messages";
-import {
-  conversationReadPositionSchema,
-  conversationReadReportSchema,
-} from "../schema/conversation-read-position";
+import { conversationReadPositionSchema } from "../schema/conversation-read-position";
 import {
   renameConversationBodySchema,
   renameConversationResponseSchema,
 } from "../schema/conversation-title";
+import { conversationOutlineSchema } from "../schema/conversation-outline";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
 import {
@@ -72,11 +70,12 @@ import { conversationWatchesReportSchema } from "../schema/watch";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { createConversationAccessReader } from "./access";
+import { reportConversationRead } from "./read-position";
 import { archiveConversation } from "./archive";
 import { catchUpOnConversation } from "./catch-up";
 import { pinConversation, reorderPinnedConversations } from "./pin";
 import { setConversationSubscription } from "./subscription";
-import { markConversationUnread, reportConversationRead } from "./unread";
+import { setConversationDeliveryForViewer } from "./delivery";
 import { renameConversation } from "./rename";
 import {
   archiveViewerDoneConversations,
@@ -95,6 +94,7 @@ import { readConversationDetailEtag } from "./detail-etag";
 import { forkConversationForViewer, keepQuickQuestionForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
+import { readConversationOutline } from "./outline";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
 import { steerConversationPendingMessagesForViewer } from "./steer-pending-messages";
 import { requireConversationPendingMessages } from "./pending-messages";
@@ -122,7 +122,7 @@ export function createConversationRoutes(
       "Invalid query parameters.",
     ),
     async (context) => {
-      const { actorEmail, codeRepositoryId, q, status } =
+      const { actorEmail, codeRepositoryId, cursor, q, status } =
         context.req.valid("query");
       const viewer = context.get("viewer");
       return jsonResponse(
@@ -130,6 +130,7 @@ export function createConversationRoutes(
         await readConversationFeed({
           ...(actorEmail ? { actorEmail } : undefined),
           ...(codeRepositoryId ? { codeRepositoryId } : undefined),
+          ...(cursor ? { cursor } : undefined),
           ...(q ? { q } : undefined),
           status,
           ...(viewer ? { viewer } : undefined),
@@ -322,6 +323,30 @@ export function createConversationRoutes(
   );
 
   app.patch(
+    "/:conversationId/delivery",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      conversationDeliveryBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        conversationDeliveryResponseSchema,
+        await setConversationDeliveryForViewer(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
+  );
+
+  app.patch(
     "/:conversationId/subscription",
     requireViewer,
     validateRequest(
@@ -338,30 +363,6 @@ export function createConversationRoutes(
       jsonResponse(
         conversationSubscriptionResponseSchema,
         await setConversationSubscription(
-          context.get("viewer"),
-          context.req.valid("param").conversationId,
-          context.req.valid("json"),
-        ),
-      ),
-  );
-
-  app.patch(
-    "/:conversationId/unread",
-    requireViewer,
-    validateRequest(
-      "param",
-      conversationParamsSchema,
-      "Invalid route parameters.",
-    ),
-    validateRequest(
-      "json",
-      markConversationUnreadBodySchema,
-      "Invalid request body.",
-    ),
-    async (context) =>
-      jsonResponse(
-        conversationUnreadSchema,
-        await markConversationUnread(
           context.get("viewer"),
           context.req.valid("param").conversationId,
           context.req.valid("json"),
@@ -411,7 +412,7 @@ export function createConversationRoutes(
       const { conversationId } = context.req.valid("param");
       const body = context.req.valid("json");
       return jsonResponse(
-        conversationReadReportSchema,
+        conversationReadPositionSchema,
         await reportConversationRead(viewer, conversationId, body),
       );
     },
@@ -512,6 +513,25 @@ export function createConversationRoutes(
       });
       if (!report) throwApiError(404, "Conversation not found.");
       return jsonResponse(conversationEventPageSchema, report);
+    },
+  );
+
+  app.get(
+    "/:conversationId/outline",
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const { conversationId } = context.req.valid("param");
+      const viewer = context.get("viewer");
+      const outline = await readConversationOutline(
+        conversationId,
+        viewer ? { viewer } : undefined,
+      );
+      if (!outline) throwApiError(404, "Conversation not found.");
+      return jsonResponse(conversationOutlineSchema, outline);
     },
   );
 
@@ -708,7 +728,9 @@ export function createConversationRoutes(
       }
       const report = await readConversationDetail(conversationId, {
         ...query,
-        ...(version ? { state: version.state } : undefined),
+        ...(version
+          ? { stored: { record: version.record, state: version.state } }
+          : undefined),
         ...viewerOptions,
       });
       if (!report) throwApiError(404, "Conversation not found.");

@@ -8,6 +8,9 @@ features:
   bot_user:
     display_name: junior
     always_online: true
+  unfurl_domains:
+    # Set to the dashboard host, so dashboard conversation links get previews.
+    - example.com
 oauth_config:
   scopes:
     bot:
@@ -19,6 +22,7 @@ oauth_config:
       - channels:join
       - channels:read
       - chat:write
+      - dnd:read
       - files:read
       - files:write
       - groups:history
@@ -26,6 +30,8 @@ oauth_config:
       - im:history
       - im:read
       - im:write
+      - links:read
+      - links:write
       - lists:read
       - lists:write
       - mpim:history
@@ -49,6 +55,7 @@ settings:
       - agent_session_stopped
       - app_mention
       - channel_created
+      - link_shared
       - message.channels
       - message.groups
       - message.im

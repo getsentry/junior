@@ -10,6 +10,10 @@
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type {
+  AgentTools,
+  TurnBehavior,
+} from "@/chat/conversations/kind-behavior";
+import type {
   AgentInvocationSource,
   Destination,
   EventAutomationSource,
@@ -48,6 +52,7 @@ import {
 } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { planToolExposure } from "@/chat/tool-exposure";
+import { renderScriptTools } from "@/chat/codemode/tool";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { getWorkspace } from "@/chat/workspaces/store";
 import { getDb } from "@/chat/db";
@@ -74,6 +79,10 @@ import {
 } from "@/chat/agent/types";
 import { loadableSkills, upsertActiveSkill } from "@/chat/agent/skills";
 import type { ResumeState } from "@/chat/agent/resume";
+import {
+  credentialAuditAttributes,
+  credentialAuditSource,
+} from "@/chat/credentials/audit";
 import { credentialUserSubjectId } from "@/chat/credentials/context";
 import { incrementStat } from "@/stats";
 import { botConfig } from "@/chat/config";
@@ -135,6 +144,7 @@ export async function createRunSandbox(
     egressSignals: args.run.environment?.sandboxEgressSignals,
     conversationId: args.run.conversationId,
     credentialEgress: args.run.credentialContext,
+    credentialAuditSource: credentialAuditSource(args.run.source),
     actor: args.currentActor,
     locationConfiguration: args.run.environment?.locationConfiguration,
     configurationValues: args.configurationValues,
@@ -169,6 +179,7 @@ export function createPromptHookContext(args: {
 interface ToolWiringArgs {
   abortAgent: () => void;
   activeSkills: Skill[];
+  behavior: TurnBehavior;
   currentActor?: Actor;
   /** Live Pi transcript used to give Guardian bounded action context. */
   currentAgentMessages: () => PiMessage[];
@@ -315,6 +326,8 @@ export interface ToolWiring {
   close(): Promise<void>;
   /** Tools this Turn cannot run. They stay in the tool list. */
   disabledTools: DisabledToolPromptContext[];
+  /** The tools that a Code Mode script can call, for `<script-tools>`. */
+  scriptTools: string;
   toolGuidance: Array<{
     name: string;
     promptGuidelines: AnyToolDefinition["promptGuidelines"];
@@ -328,6 +341,7 @@ export async function wireAgentTools(
   args: ToolWiringArgs,
 ): Promise<ToolWiring> {
   const runSource = args.run.source;
+  const auditSource = credentialAuditSource(runSource);
   const credentialUserId = args.run.credentialContext
     ? credentialUserSubjectId(args.run.credentialContext)
     : undefined;
@@ -386,6 +400,7 @@ export async function wireAgentTools(
   const mcpToolManager = new McpToolManager(
     pluginCatalogRuntime.getMcpProviders(),
     {
+      auditAttributes: credentialAuditAttributes(auditSource),
       authProviderFactory: mcpAuth.authProviderFactory,
       serviceAccountProviderFactory: mcpAuth.serviceAccountProviderFactory,
       onAuthorizationRequired: (provider, _error, context) =>
@@ -404,9 +419,20 @@ export async function wireAgentTools(
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
     turnId: args.run.turnId,
-    ...(args.run.agentInvocationId
-      ? { agentInvocationId: args.run.agentInvocationId }
-      : undefined),
+    turnTools: {
+      ...args.behavior.tools,
+      // An Automation with no outcomes posts nothing, so its run cannot
+      // reply. A dispatch record from before #1788 has no outcomes and sends
+      // to its Destination.
+      // TODO(dcramer): Remove the `undefined` case and the same check in
+      // `finishedRunReply` when automation dispatches require `outcomes`.
+      // Automations have stored outcomes since #1788, and older dispatch
+      // records have passed the 7-day state TTL.
+      reply:
+        args.run.dispatch?.outcomes?.length === 0
+          ? "none"
+          : args.behavior.tools.reply,
+    },
     ...(args.run.parentConversationId
       ? { parentConversationId: args.run.parentConversationId }
       : undefined),
@@ -420,6 +446,7 @@ export async function wireAgentTools(
     userText: args.userInput,
     configuration: args.configurationValues,
     egress: createPluginEgress({
+      credentialAuditSource: auditSource,
       credentialContext: args.run.credentialContext,
       pluginAuth: {
         async handleAuthRequired(signal) {
@@ -448,25 +475,7 @@ export async function wireAgentTools(
             await readActorIdentity(args.currentActor!),
         }
       : undefined),
-    ...(args.durability.spawnAgent
-      ? { spawnAgent: args.durability.spawnAgent }
-      : undefined),
-    ...(args.durability.messageAgent
-      ? { messageAgent: args.durability.messageAgent }
-      : undefined),
-    ...(args.run.dispatch?.declaresResult
-      ? {
-          // A dispatch record from before #1788 has no outcomes and sends to
-          // its Destination.
-          // TODO(dcramer): Remove this fallback and the same check in
-          // `finishedRunReply` when automation dispatches require `outcomes`.
-          // Automations have stored outcomes since #1788, and older dispatch
-          // records have passed the 7-day state TTL.
-          automation: {
-            sendsMessage: args.run.dispatch.outcomes?.length !== 0,
-          },
-        }
-      : undefined),
+    ...bindAgentTools(args.run, args.behavior.tools.agents),
   };
   const toolRoute = resolveToolRuntimeRoute({
     actor: args.currentActor,
@@ -549,6 +558,7 @@ export async function wireAgentTools(
     },
     toolRuntimeContext,
     {
+      automationSkills: args.availableSkills,
       pluginSandbox: createPluginToolSandbox(agentSandbox, {
         handleAuthSignal: pluginAuth.maybeHandleAuthSignal,
       }),
@@ -700,7 +710,33 @@ export async function wireAgentTools(
       }
     },
     disabledTools,
+    scriptTools: renderScriptTools(plannedToolExposure.scriptTools),
     toolGuidance,
     toolRuntimeContext,
+  };
+}
+
+/** Bind the agent tools that the Turn's behavior gives it. */
+export function bindAgentTools(
+  run: AgentRun,
+  agents: AgentTools,
+): Pick<ToolRuntimeContext, "spawnAgent" | "messageAgent"> {
+  const { bindSpawnAgent, bindMessageAgent } = run.environment ?? {};
+  if (agents === "none" || !bindSpawnAgent) return {};
+  const spawnAgent = isAgentRunFeatureDisabled(
+    run.disabledFeatures,
+    "subagents",
+  )
+    ? undefined
+    : bindSpawnAgent(run);
+  // A child agent can always message its parent, even when it is too deep to
+  // start child agents of its own.
+  const messageAgent =
+    spawnAgent || agents === "children_and_parent"
+      ? bindMessageAgent?.(run, agents)
+      : undefined;
+  return {
+    ...(spawnAgent ? { spawnAgent } : undefined),
+    ...(messageAgent ? { messageAgent } : undefined),
   };
 }

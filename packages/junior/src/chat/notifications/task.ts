@@ -6,10 +6,14 @@ import type {
 import { eq } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";
+import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { getConversationEventStore } from "@/chat/db";
+import type { ConversationMessage } from "@/chat/state/conversation";
 import { logInfo, setSpanAttributes } from "@/chat/logging";
 import { findUserByEmailFromSql } from "@/chat/plugins/viewer";
 import { isWithinNotificationSchedule } from "./schedule";
+import { isPausedBySlack } from "./slack";
 import { readNotificationSchedule } from "./store";
 import { resolveNotificationTimezone } from "./timezone";
 import {
@@ -34,14 +38,24 @@ function notificationPreview(text: string): string {
     : plain;
 }
 
-function lastAssistantText(run: PluginRunContext): string | undefined {
-  for (let index = run.transcript.length - 1; index >= 0; index -= 1) {
-    const entry = run.transcript[index];
-    if (entry?.type === "message" && entry.role === "assistant") {
-      return entry.text;
-    }
-  }
-  return undefined;
+/**
+ * Return the stored reply of the Turn: the text that the person sees. The
+ * run transcript has the raw model text, which can be a no-reply marker, and
+ * does not say whether the reply was quiet.
+ */
+async function readTurnReply(
+  run: PluginRunContext,
+): Promise<ConversationMessage | undefined> {
+  const prefix = `${run.runId}:assistant:`;
+  const messages = projectConversationMessages(
+    await getConversationEventStore().loadMessageHistory(run.conversationId),
+  );
+  return messages
+    .filter(
+      (message) =>
+        message.role === "assistant" && message.id.startsWith(prefix),
+    )
+    .at(-1);
 }
 
 /**
@@ -76,7 +90,9 @@ type SkipReason =
   | "no_reply"
   | "no_user"
   | "not_configured"
-  | "outside_hours";
+  | "outside_hours"
+  | "quiet"
+  | "slack_paused";
 
 function skip(reason: SkipReason): void {
   setSpanAttributes({
@@ -89,7 +105,7 @@ function skip(reason: SkipReason): void {
 }
 
 /**
- * Send a phone notification to the Actor's user when a Turn finishes.
+ * Send a push notification to the Actor's user when a Turn finishes.
  *
  * Only Conversations without a Location qualify. A Conversation with a
  * Location, such as a Slack thread, already notifies people there.
@@ -101,27 +117,36 @@ async function notifyReply(context: PluginTaskContext): Promise<void> {
   if (run.locationId) return skip("has_location");
   const url = getDashboardConversationLink(run.conversationId);
   if (!url) return skip("no_dashboard");
-  const reply = lastAssistantText(run);
+  const reply = await readTurnReply(run);
   if (!reply) return skip("no_reply");
+  // A Quiet message notifies nobody, like in the Location.
+  if (reply.meta?.quiet) return skip("quiet");
   const db = context.db as JuniorDatabase;
   const userId = await recipientUserId(db, run);
   if (!userId) return skip("no_user");
 
   const nowMs = Date.now();
   const schedule = await readNotificationSchedule(db, userId);
-  const { timezone } = await resolveNotificationTimezone({
-    db,
-    nowMs,
-    schedule,
-    userId,
-  });
-  if (!isWithinNotificationSchedule(schedule, timezone, nowMs)) {
-    return skip("outside_hours");
+  const pausedBySlack =
+    schedule.followSlack !== false
+      ? await isPausedBySlack(db, userId, nowMs)
+      : undefined;
+  if (pausedBySlack) return skip("slack_paused");
+  if (pausedBySlack === undefined) {
+    const { timezone } = await resolveNotificationTimezone({
+      db,
+      nowMs,
+      schedule,
+      userId,
+    });
+    if (!isWithinNotificationSchedule(schedule, timezone, nowMs)) {
+      return skip("outside_hours");
+    }
   }
 
   // The payload holds only a short plain-text preview. Logs hold only counts.
   const payload: PushNotificationPayload = {
-    body: notificationPreview(reply) || "New reply",
+    body: notificationPreview(reply.text) || "New reply",
     tag: run.conversationId,
     title: (await readConversationTitle(db, run.conversationId)) ?? "Junior",
     url,
@@ -154,7 +179,7 @@ export const notificationsTaskRegistration: PluginRegistration = {
   manifest: {
     name: "notifications",
     displayName: "Notifications",
-    description: "Phone notifications for dashboard replies",
+    description: "Push notifications for dashboard replies",
   },
   tasks: {
     notifyReply: {

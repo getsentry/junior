@@ -25,7 +25,6 @@ import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   juniorConversationParticipants,
   juniorConversations,
-  juniorUsers,
 } from "@/db/schema";
 import { and, eq, isNotNull } from "drizzle-orm";
 
@@ -521,38 +520,38 @@ describe("conversation archive API", () => {
     ]);
   });
 
-  it("archives for a root actor without an existing participant row", async () => {
+  it("makes a root Actor a Participant when their Identity gets its User later", async () => {
     const conversationId = "local:test:archive-root-actor";
     const lastSeenAt = "1970-01-01T00:00:02.000Z";
     const email = "root-actor@example.com";
+    const slackActor = {
+      platform: "slack" as const,
+      slackUserId: "UROOT",
+      teamId: "T1",
+    };
+    // Slack sent no email, so the Identity that starts the root has no User.
     await getConversationStore().recordActivity({
       destination: { platform: "local" as const, conversationId },
-      actor: {
-        email,
-        platform: "slack",
-        slackUserId: "UROOT",
-        teamId: "T1",
-      },
+      actor: slackActor,
       conversationId,
       nowMs: Date.parse(lastSeenAt),
       source: "slack",
       title: "Root actor archive",
     });
-    const linkedUser = await getDb()
-      .select({ id: juniorUsers.id })
-      .from(juniorUsers)
-      .where(eq(juniorUsers.primaryEmailNormalized, email))
-      .limit(1);
-    const viewerId = linkedUser[0]?.id;
-    expect(viewerId).toBeDefined();
-    await getDb()
-      .delete(juniorConversationParticipants)
-      .where(eq(juniorConversationParticipants.userId, viewerId!));
+    // A later Turn from the same Slack account links it to a User.
+    await getConversationStore().recordActivity({
+      destination: {
+        platform: "local" as const,
+        conversationId: "local:test:archive-root-actor-later",
+      },
+      actor: { ...slackActor, email },
+      conversationId: "local:test:archive-root-actor-later",
+      nowMs: Date.parse(lastSeenAt),
+      source: "slack",
+      title: "Later root",
+    });
 
-    const viewer = {
-      ...(await resolveViewerUser(email))!,
-      id: viewerId!,
-    };
+    const viewer = (await resolveViewerUser(email))!;
     const { app } = await authenticatedApi(email);
     const archive = await app.request(
       `http://localhost/api/conversations/${conversationId}/archive`,
@@ -563,9 +562,6 @@ describe("conversation archive API", () => {
       },
     );
     expect(archive.status).toBe(200);
-    await expect(readConversationFeed({ viewer })).resolves.toMatchObject({
-      conversations: [],
-    });
     expect(
       conversationDetailReportSchema.parse(
         await readConversationDetail(conversationId, { viewer }),
