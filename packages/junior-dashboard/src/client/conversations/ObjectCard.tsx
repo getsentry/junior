@@ -12,7 +12,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../components/ui/collapsible";
-import { Item, ItemContent, ItemMedia } from "../components/ui/item";
+import { MessageCard, MessageCardHeader } from "../components/MessageCard";
 import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
 
@@ -35,34 +35,17 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
   const fields = objectFactFields(card.facts);
   const presentation = objectPresentation(card);
   const type = card.displayType ?? presentation.label;
-  function facts(items: typeof fields) {
-    return (
-      <dl className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
-        {items.map((field) => (
-          <div key={field.key} className="min-w-0">
-            <dt className="text-xs text-dashboard-text-muted">{field.label}</dt>
-            <dd className="m-0 mt-1 break-words text-sm text-dashboard-text">
-              {field.value}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    );
-  }
   return (
-    <section
-      aria-label={`${type}: ${card.title}`}
-      className="my-1 w-full min-w-0 max-w-[37.5rem] overflow-hidden rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel text-sm"
-    >
-      <Item className="items-start" size="card">
-        <ItemMedia className="text-dashboard-text-muted" variant="icon">
-          <ObjectIcon {...card} size={18} />
-        </ItemMedia>
-        <ItemContent className="block">
-          <p className="m-0 mb-1 break-words text-xs text-dashboard-text-muted">
+    <MessageCard aria-label={`${type}: ${card.title}`} className="my-1">
+      <MessageCardHeader
+        icon={<ObjectIcon {...card} size={18} />}
+        meta={
+          <>
             {type} · {card.plugin} · {card.label}
-          </p>
-          {card.url ? (
+          </>
+        }
+        title={
+          card.url ? (
             <OutboundLink
               href={card.url}
               className="break-words text-base font-semibold text-dashboard-text hover:underline focus-visible:outline-dashboard-focus"
@@ -73,16 +56,35 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
             <strong className="break-words text-base text-dashboard-text">
               {card.title}
             </strong>
-          )}
-        </ItemContent>
-      </Item>
+          )
+        }
+      />
       <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
-        {card.status && (
-          <StatusChip size="compact" tone={presentation.tone}>
-            {card.status}
-          </StatusChip>
+        {(card.status || fields.length > 0) && (
+          // Facts sit side by side and wrap to a stack in a narrow column.
+          <dl className="m-0 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-3">
+            {card.status && (
+              <div className="min-w-0">
+                <dt className="text-xs text-dashboard-text-muted">State</dt>
+                <dd className="m-0 mt-1">
+                  <StatusChip size="compact" tone={presentation.tone}>
+                    {card.status}
+                  </StatusChip>
+                </dd>
+              </div>
+            )}
+            {fields.map((field) => (
+              <div key={field.key} className="min-w-0">
+                <dt className="text-xs text-dashboard-text-muted">
+                  {field.label}
+                </dt>
+                <dd className="m-0 mt-1 break-words text-sm text-dashboard-text">
+                  {field.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
         )}
-        {fields.length > 0 && facts(fields)}
         {card.description && (
           <Collapsible className="min-w-0 border-t border-dashboard-border pt-3">
             <CollapsibleTrigger className="group flex cursor-pointer items-center gap-1 text-xs font-medium text-dashboard-text-muted focus-visible:outline-dashboard-focus">
@@ -93,7 +95,7 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
               More details
             </CollapsibleTrigger>
             <CollapsibleContent hiddenUntilFound>
-              <p className="mb-0 mt-3 whitespace-pre-wrap break-words text-sm text-dashboard-text-muted">
+              <p className="mb-0 mt-3 max-w-[80ch] whitespace-pre-wrap break-words text-sm text-dashboard-text-muted">
                 {card.description}
               </p>
             </CollapsibleContent>
@@ -116,6 +118,6 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
         )}
         <span className="text-dashboard-text-muted">Latest saved state</span>
       </div>
-    </section>
+    </MessageCard>
   );
 }
