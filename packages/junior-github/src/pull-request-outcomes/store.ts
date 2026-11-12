@@ -229,10 +229,16 @@ export async function listGitHubFinishedWork(
 export async function listGitHubStaleOpenPullRequests(
   db: GitHubDb,
   before: Date,
-): Promise<Array<{ number: number; repositoryFullName: string }>> {
+): Promise<
+  Array<{ number: number; repositoryFullName: string; repositoryId: string }>
+> {
   const t = juniorGitHubPullRequests;
   return await db
-    .select({ number: t.number, repositoryFullName: t.repositoryFullName })
+    .select({
+      number: t.number,
+      repositoryFullName: t.repositoryFullName,
+      repositoryId: t.repositoryId,
+    })
     .from(t)
     .where(and(eq(t.state, "open"), lt(t.updatedAt, before)))
     .orderBy(t.updatedAt);

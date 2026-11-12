@@ -82,6 +82,7 @@ describe("merge conflict check on webhook events", () => {
     conversationId: string;
   }>;
   let codeChanges: CodeChangeInput[];
+  let heartbeatLogs: Array<[level: string, message: string]>;
 
   let stored: Map<string, { expiresAtMs: number; value: unknown }>;
   const live = (key: string) => {
@@ -206,7 +207,11 @@ describe("merge conflict check on webhook events", () => {
       db: fixture.db(),
       embedder: { embedTexts: unused, model: "unused", provider: "unused" },
       events,
-      log: { error() {}, info() {}, warn() {} },
+      log: {
+        error: (message) => heartbeatLogs.push(["error", message]),
+        info() {},
+        warn: (message) => heartbeatLogs.push(["warn", message]),
+      },
       nowMs,
       plugin: { name: "github" },
       state,
@@ -229,6 +234,7 @@ describe("merge conflict check on webhook events", () => {
     reactions = 0;
     annotations = [];
     codeChanges = [];
+    heartbeatLogs = [];
     pullRequest = pullRequestResponse({
       headSha: "1111111111111111111111111111111111111111",
       mergeable: false,
@@ -565,6 +571,34 @@ describe("merge conflict check on webhook events", () => {
         "1234+sentry-junior[bot]@users.noreply.github.com",
       );
       mswServer.use(
+        // GitHub finds a token's repositories by their current name or id.
+        http.post(
+          "https://api.github.com/app/installations/456/access_tokens",
+          async ({ request }) => {
+            const body = (await request.json()) as {
+              repositories?: string[];
+              repository_ids?: number[];
+            };
+            const reachable =
+              (body.repositories ?? []).every((name) => name === "junior") &&
+              (body.repository_ids ?? []).every((id) => id === 1);
+            return reachable
+              ? HttpResponse.json({
+                  expires_at: "2027-01-01T00:00:00.000Z",
+                  token: "installation-token",
+                })
+              : HttpResponse.json(
+                  {
+                    message:
+                      "There is at least one repository that does not exist or is not accessible to the parent installation.",
+                  },
+                  { status: 422 },
+                );
+          },
+        ),
+        http.get("https://api.github.com/repositories/1", () =>
+          HttpResponse.json({ full_name: "getsentry/junior", id: 1 }),
+        ),
         http.get(
           "https://api.github.com/repos/getsentry/junior/pulls/946/commits",
           () =>
@@ -741,6 +775,48 @@ describe("merge conflict check on webhook events", () => {
       const [reconciled, webhook] = closes();
       expect(reconciled?.eventKey).toBe(webhook?.eventKey);
       expect(reconciled?.people).toEqual(webhook?.people);
+    });
+
+    const rowStates = async () =>
+      (
+        await fixture
+          .db()
+          .select()
+          .from(juniorGitHubPullRequests)
+          .orderBy(juniorGitHubPullRequests.number)
+      ).map((row) => [row.number, row.state]);
+
+    it("finds a renamed repository by its id", async () => {
+      await fixture
+        .db()
+        .update(juniorGitHubPullRequests)
+        .set({ repositoryFullName: "getsentry/junior-old" });
+      await heartbeat(now);
+
+      expect(heartbeatLogs).toEqual([]);
+      expect(await rowStates()).toEqual([
+        [946, "merged"],
+        [947, "open"],
+        [949, "closed_unmerged"],
+        [950, "open"],
+        [951, "open"],
+      ]);
+    });
+
+    it("warns and keeps the rows when GitHub cannot reach the repository", async () => {
+      await fixture
+        .db()
+        .update(juniorGitHubPullRequests)
+        .set({ repositoryId: "2" });
+      await heartbeat(now);
+
+      expect(heartbeatLogs).toEqual([
+        ["warn", "GitHub pull request reconcile skipped a repository"],
+      ]);
+      expect(queries).toEqual([]);
+      expect(new Set((await rowStates()).map(([, state]) => state))).toEqual(
+        new Set(["open"]),
+      );
     });
 
     it("keeps a close open for the next reconcile when its event fails", async () => {
