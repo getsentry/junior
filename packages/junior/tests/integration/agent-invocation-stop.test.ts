@@ -19,6 +19,7 @@ import {
   completeAgentInvocation,
   getAgentInvocation,
   listPendingAgentInvocationMailboxAppends,
+  markAgentInvocationParentMailboxAppended,
 } from "@/chat/agent-invocations/store";
 import type {
   CreateAgentInvocationInput,
@@ -28,6 +29,7 @@ import {
   createAndEnqueueAgentInvocation,
   enqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
+import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import { stopConversation } from "@/chat/conversations/stop";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
@@ -37,6 +39,7 @@ import {
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
+  appendInboundMessage,
   getConversationWorkState,
   hasConversationStop,
 } from "@/chat/task-execution/store";
@@ -581,4 +584,64 @@ describe("stopping child agents", () => {
       await harness.close();
     }
   });
+
+  // A reply or result from before senders stored their fields has only its
+  // id. One release reads the sender from that id.
+  it.each([
+    {
+      form: "reply",
+      id: (invocationId: string) => `agent-reply:${invocationId}:call-reply`,
+    },
+    {
+      form: "result",
+      id: (invocationId: string) => `agent-invocation:${invocationId}:result`,
+    },
+  ])(
+    "skips an unread $form that has only its row id when the child stops",
+    async ({ id }) => {
+      const harness = await createHarness(neverRunAgentRunner());
+      try {
+        const child = await createAgentInvocation({
+          ...invocationInput,
+          idempotencyKey: "legacy-child",
+        });
+        const helper = await createAgentInvocation({
+          ...invocationInput,
+          idempotencyKey: "legacy-helper",
+          parentConversationId: child.childConversationId,
+        });
+        await completeAgentInvocation({
+          errorMessage: "Helper needs a token.",
+          invocationId: helper.invocationId,
+          status: "blocked",
+        });
+        await markAgentInvocationParentMailboxAppended(helper.invocationId);
+        await appendInboundMessage({
+          message: {
+            conversationId: child.childConversationId,
+            createdAtMs: Date.now(),
+            delivery: "defer",
+            inboundMessageId: id(helper.invocationId),
+            input: { text: "Helper needs a token." },
+            receivedAtMs: Date.now(),
+            source: "event",
+          },
+          state: harness.state,
+        });
+
+        // The child's own stop skips the unread results in its mailbox.
+        await markConversationsStopped([child.childConversationId], {
+          cancelWatches: false,
+          state: harness.state,
+        });
+        await stopChildAgentsOf(child.childConversationId, harness.state);
+
+        await expect(
+          getAgentInvocation(helper.invocationId),
+        ).resolves.toMatchObject({ parentMailboxStatus: "skipped" });
+      } finally {
+        await harness.close();
+      }
+    },
+  );
 });
