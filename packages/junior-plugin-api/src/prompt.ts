@@ -1,10 +1,11 @@
-import { z } from "zod";
+import * as z from "zod";
 import type {
   Destination,
   Platform,
   PluginContext,
   PluginEmbedder,
   PluginModel,
+  PluginReranker,
   Actor,
   Identity,
   Source,
@@ -86,6 +87,14 @@ export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
   /** Conversation-bound event writer when the prompt belongs to a durable turn. */
   events?: PluginConversationEvents;
   model: PluginModel;
+  /** Host reranker bound to the configured reranking model. */
+  reranker: PluginReranker;
+  /**
+   * Record numeric diagnostics on the host span for this hook. Keys must
+   * start with `app.<plugin name>.`; the host drops other keys and
+   * non-finite values.
+   */
+  setSpanAttributes(attributes: Record<string, number>): void;
   /** Location associated with this Conversation. */
   locationId?: string;
   actor?: Actor;

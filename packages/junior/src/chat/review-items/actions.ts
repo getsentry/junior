@@ -10,9 +10,8 @@ import { deliverReviewItemChange, type ReviewItemDelivery } from "./changes";
 import type { ReviewItemChange } from "./messages";
 import {
   canActOnReviewItem,
-  canReadReviewItem,
+  canUserReadReviewItem,
   isOnlyAssignee,
-  reviewItemReaderForUser,
 } from "./access";
 import { matchReplyToReviewItems } from "./reply-match";
 import {
@@ -25,7 +24,7 @@ import {
 } from "./store";
 
 /** What a person can do with a Review item. */
-export type ReviewItemAction = "take" | "submit" | "complete" | "dismiss";
+export type ReviewItemAction = "take" | "submit" | "dismiss";
 
 /** An expected failure of a person action, for the API to report. */
 export class ReviewItemActionError extends Error {
@@ -44,7 +43,7 @@ export async function readReviewItemForUser(
   id: string,
 ): Promise<ReviewItem> {
   const item = await getReviewItem(getDb(), id);
-  if (!item || !canReadReviewItem(item, reviewItemReaderForUser(user))) {
+  if (!item || !(await canUserReadReviewItem(item, user))) {
     throw new ReviewItemActionError("not_found", "Review item not found.");
   }
   return item;
@@ -61,7 +60,6 @@ export function reviewItemChange(
 ): ReviewItemChange {
   if (action === "take") return { kind: "taken", user };
   if (action === "submit") return { kind: "submitted", user };
-  if (action === "complete") return { kind: "completed", user };
   return { kind: "dismissed", user };
 }
 
@@ -105,7 +103,7 @@ function submittedAnswer(
 
 /**
  * Do one person action on a Review item and tell its linked Conversations.
- * The first submit, complete, or dismiss closes the item for every
+ * The first submit or dismiss closes the item for every
  * assignee. A retry of the same close sends any missing messages again and
  * succeeds, so a client can retry after a failure. With `firstCloseOnly`,
  * only the call that closes the item succeeds, and every other call gets a
@@ -167,12 +165,6 @@ export async function actOnReviewItem(args: {
       throw new ReviewItemActionError(
         "forbidden",
         "Only an assignee can act on this item.",
-      );
-    }
-    if (action === "complete" && item.kind === "action") {
-      throw new ReviewItemActionError(
-        "invalid",
-        "An action item needs an answer. Submit it or dismiss it.",
       );
     }
     const answer =

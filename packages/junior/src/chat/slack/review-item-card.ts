@@ -1,5 +1,5 @@
 import type { Button, KnownBlock, ModalView } from "@slack/types";
-import { z } from "zod";
+import * as z from "zod";
 import { getDashboardReviewItemLink } from "@/chat/dashboard-link";
 import {
   REVIEW_ITEM_REPLIED_REASON,
@@ -22,7 +22,6 @@ export const SLACK_REVIEW_ITEM_VIEW_ID = "junior_review_item";
 const ACTION_ID_PREFIX = "junior_review_item:";
 const CHOICE_ACTION_ID_PREFIX = `${ACTION_ID_PREFIX}choice:`;
 const ANSWER_ACTION_ID = `${ACTION_ID_PREFIX}answer`;
-const DONE_ACTION_ID = `${ACTION_ID_PREFIX}done`;
 const DISMISS_ACTION_ID = `${ACTION_ID_PREFIX}dismiss`;
 // Slack allows 12,000 characters in all markdown blocks of one message.
 const MAX_BODY_CHARS = 3_000;
@@ -49,11 +48,33 @@ function assigneeText(item: ReviewItem): string {
   return names.length ? `For ${names.join(", ")}` : "Not assigned";
 }
 
+/**
+ * Link the title to the subject. A plugin rewrite skips text in a link, so
+ * it cannot guess another URL for a reference in the title, such as an
+ * issue URL for a pull request.
+ */
+function titleText(item: ReviewItem): string {
+  const href = safeLinkUrl(item.subject?.url);
+  if (!href) return `**${item.title}**`;
+  const label = item.title.replace(/[[\]\\]/g, "\\$&");
+  return `**[${label}](${href.replaceAll("(", "%28").replaceAll(")", "%29")})**`;
+}
+
+// Agents and plugins supply the subject URL, and URL parsing also accepts
+// `javascript:` and `data:` URLs.
+function safeLinkUrl(url: string | undefined): string | undefined {
+  if (!url || !URL.canParse(url)) return undefined;
+  const href = new URL(url);
+  return href.protocol === "https:" || href.protocol === "http:"
+    ? href.href
+    : undefined;
+}
+
 /** The title, body, and question of an item, in Slack markdown. */
 function itemText(item: ReviewItem): string {
   return normalizeSlackReplyMarkdown(
     [
-      `**${item.title}**`,
+      titleText(item),
       truncate(item.body, MAX_BODY_CHARS),
       ...(item.request ? [slackUserInputText(item.request)] : []),
     ].join("\n\n"),
@@ -67,18 +88,9 @@ function controls(item: ReviewItem): Button[] {
     text: plainText("Dismiss"),
     value: item.id,
   };
-  if (item.kind === "notice" || !item.request) {
-    return [
-      {
-        type: "button",
-        action_id: DONE_ACTION_ID,
-        style: "primary",
-        text: plainText("Done"),
-        value: item.id,
-      },
-      dismiss,
-    ];
-  }
+  // A notice has nothing to answer, and it can close by itself, so a person
+  // can only dismiss it.
+  if (item.kind === "notice" || !item.request) return [dismiss];
   const buttonField = buttonUserInputField(item.request);
   if (!buttonField) {
     return [
@@ -142,8 +154,8 @@ function closedNote(item: ReviewItem): string {
 /**
  * Render a Review item as one Slack message. An open item shows its
  * controls: one button per choice when one click can answer it, an Answer
- * button that opens a form otherwise, and Done for a notice. A closed item
- * shows a note instead, so nobody can act on it again.
+ * button that opens a form otherwise, and only Dismiss for a notice. A
+ * closed item shows a note instead, so nobody can act on it again.
  */
 export function buildSlackReviewItemCard(item: ReviewItem): {
   blocks: KnownBlock[];
@@ -191,7 +203,6 @@ export function buildHiddenSlackReviewItemCard(item: ReviewItem): {
 export type SlackReviewItemClick =
   | { kind: "choice"; itemId: string; label: string }
   | { kind: "answer"; itemId: string }
-  | { kind: "done"; itemId: string }
   | { kind: "dismiss"; itemId: string };
 
 const choiceValueSchema = z.object({
@@ -225,9 +236,6 @@ export function parseSlackReviewItemClick(action: {
   }
   if (action.action_id === ANSWER_ACTION_ID) {
     return { kind: "answer", itemId: value };
-  }
-  if (action.action_id === DONE_ACTION_ID) {
-    return { kind: "done", itemId: value };
   }
   if (action.action_id === DISMISS_ACTION_ID) {
     return { kind: "dismiss", itemId: value };

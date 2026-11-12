@@ -2,7 +2,12 @@ import {
   eventMatchFieldsSchema,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
-import { gitHubCommitMatchFields, gitHubRepoMatchFields } from "./scope.js";
+import {
+  gitHubCommitMatchFields,
+  gitHubCommitShaDataSchema,
+  gitHubRepoDataSchema,
+  gitHubRepoMatchFields,
+} from "./scope.js";
 
 export const GITHUB_DEPLOYMENT_EVENTS = [
   "deployment.created",
@@ -89,10 +94,16 @@ export function gitHubDeploymentSourceSubscribable(input: {
   repo: string;
 }): SubscribableResource | undefined {
   if (!input.canSubscribe) return undefined;
+  const environment = input.environment?.trim().toLowerCase();
   return {
     ...gitHubDeploymentSourceResource(input),
-    suggestedEvents: GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,
-    supportedEvents: [...GITHUB_DEPLOYMENT_EVENTS],
+    match: {
+      repo: gitHubRepoDataSchema.parse(input.repo),
+      commit_sha: gitHubCommitShaDataSchema.parse(input.commitSha),
+      ...(environment ? { environment } : undefined),
+    },
+    suggested_events: GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,
+    supported_events: [...GITHUB_DEPLOYMENT_EVENTS],
     type: "deployment_source",
   };
 }

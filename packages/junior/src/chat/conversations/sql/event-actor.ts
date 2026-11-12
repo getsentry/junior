@@ -136,9 +136,12 @@ async function findJuniorIdentityIdByEmail(
 }
 
 /**
- * Resolve a dashboard:<hash> author against junior identities keyed by email.
- * Web actors store userId as dashboard:${sha256(email).slice(0,24)} while the
- * durable identity subject remains the verified email.
+ * Resolve a legacy dashboard:<hash> author against junior identities keyed by
+ * email. Web Actors stored dashboard:${sha256(email).slice(0,24)} before they
+ * used the User id. This read-only fallback serves only those old events.
+ *
+ * TODO(dcramer): Delete with the guess in resolveEventActorIdentityId, after
+ * every stored user Message event has its author Identity.
  */
 async function findJuniorIdentityIdByDashboardAuthorId(
   executor: JuniorSqlDatabase,
@@ -157,7 +160,7 @@ async function findJuniorIdentityIdByDashboardAuthorId(
         eq(juniorIdentities.kind, "user"),
         eq(juniorIdentities.emailVerified, true),
         sql`${juniorIdentities.emailNormalized} is not null`,
-        // Match webActorFromEmail(): dashboard:${sha256(email).slice(0,24)}
+        // Match legacyWebActorUserId(): dashboard:${sha256(email).slice(0,24)}
         sql`concat(
           'dashboard:',
           left(encode(digest(${juniorIdentities.emailNormalized}, 'sha256'), 'hex'), 24)
@@ -253,8 +256,8 @@ export async function resolveEventActorIdentityId(
     );
   }
 
-  // Dashboard authors store dashboard:<hash> without email in meta. Junior
-  // identities stay keyed by verified email, so match the hash of that email.
+  // Legacy dashboard authors store dashboard:<hash> without email in meta.
+  // Junior identities stay keyed by verified email, so match its hash.
   if (userId.startsWith("dashboard:")) {
     return findJuniorIdentityIdByDashboardAuthorId(executor, userId);
   }

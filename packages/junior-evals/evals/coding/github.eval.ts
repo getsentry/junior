@@ -51,6 +51,29 @@ describe("GitHub Skill Workflows", () => {
     );
   });
 
+  test("when CI stalls with no cause in the logs, check GitHub status before blaming an outage", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        "/github-code Say the checks on my PR sat queued for 40 minutes, then a job failed with nothing useful in the logs. What do you do first? Keep it short.",
+      ),
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The answer says Junior checks GitHub status (githubstatus.com) for an open or recent incident.",
+          "The answer says Junior reports a related incident as the likely cause, and does not blame an outage when there is no related incident.",
+        ],
+        fail: [
+          "Do not say the failure is an outage without checking GitHub status.",
+          "Do not tell the user to check GitHub status themselves.",
+        ],
+      }),
+    );
+  });
+
   test("when a default repo is set in one turn, reuse it in the next turn without asking again", async ({
     run,
   }) => {

@@ -22,9 +22,8 @@ import { FormNotice } from "../../components/FormNotice";
 import { DashboardApiError, fetchDashboardJson, post } from "../../http";
 
 /**
- * Header actions for one Automation: Edit, then creator-only Pause or Resume
- * and Delete. Public readers can edit settings, but only the creator controls
- * lifecycle. Lifecycle actions re-read the revision before they apply.
+ * Header actions for one Automation: Edit, Pause or Resume, and Delete.
+ * Lifecycle actions re-read the revision before they apply.
  */
 export function AutomationActions({
   automation,
@@ -34,8 +33,8 @@ export function AutomationActions({
 }: {
   automation: AutomationSummary;
   editPath: string;
-  /** Use "default" when a notice on the page owns the main action. */
-  editVariant: "default" | "primary";
+  /** Use "outline" when a notice on the page owns the main action. */
+  editVariant: "default" | "outline";
   onDelete(source: HTMLButtonElement): void;
 }) {
   const toast = useToastManager();
@@ -103,6 +102,7 @@ export function AutomationActions({
         {canPause ? (
           <>
             <Button
+              variant="outline"
               disabled={mutation.isPending}
               onClick={() => mutation.mutate()}
             >
@@ -114,7 +114,13 @@ export function AutomationActions({
             </Button>
             <Popover>
               <PopoverTrigger
-                render={<Button aria-label="About pausing" size="icon" />}
+                render={
+                  <Button
+                    variant="ghost"
+                    aria-label="About pausing"
+                    size="icon"
+                  />
+                }
               >
                 <CircleHelp aria-hidden="true" size={16} />
               </PopoverTrigger>
@@ -142,7 +148,7 @@ export function AutomationActions({
                 focusableWhenDisabled
                 aria-label="Delete automation"
                 size="icon"
-                variant="danger"
+                variant="destructive"
                 onClick={(event) => onDelete(event.currentTarget)}
                 disabled={mutation.isPending}
               >

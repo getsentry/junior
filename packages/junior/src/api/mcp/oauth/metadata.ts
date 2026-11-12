@@ -1,13 +1,13 @@
 /**
- * Own the MCP OAuth paths, scope, and discovery documents.
+ * Own the MCP OAuth paths and discovery documents.
  *
  * Every URL comes from the trusted public origin of the app. The documents
  * advertise Client ID Metadata Documents and no client registration endpoint.
  */
 import { resolvePublicOrigin } from "@/api/public-origin";
+import { MCP_SCOPES } from "./scopes";
 
 export const MCP_PATH = "/api/mcp";
-export const MCP_SCOPE = "conversations:read";
 export const MCP_RESOURCE_METADATA_PATH =
   "/.well-known/oauth-protected-resource/api/mcp";
 export const MCP_AUTHORIZATION_SERVER_METADATA_PATH =
@@ -58,7 +58,7 @@ export function protectedResourceMetadata(urls: McpUrls) {
     resource: urls.resource,
     authorization_servers: [urls.issuer],
     bearer_methods_supported: ["header"],
-    scopes_supported: [MCP_SCOPE],
+    scopes_supported: [...MCP_SCOPES],
   };
 }
 
@@ -68,7 +68,7 @@ export function authorizationServerMetadata(urls: McpUrls) {
     issuer: urls.issuer,
     authorization_endpoint: urls.authorize,
     token_endpoint: urls.token,
-    scopes_supported: [MCP_SCOPE],
+    scopes_supported: [...MCP_SCOPES],
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],

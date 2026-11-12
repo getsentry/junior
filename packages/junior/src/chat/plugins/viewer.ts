@@ -48,6 +48,10 @@ async function readUserById(
       asc(juniorIdentities.providerTenantId),
       asc(juniorIdentities.providerSubjectId),
     );
+  return userFromRows(userRow, identityRows);
+}
+
+function userFromRows(userRow: UserRow, identityRows: IdentityRow[]): User {
   return userSchema.parse({
     email: userRow.primaryEmail,
     id: userRow.id,
@@ -57,6 +61,34 @@ async function readUserById(
   });
 }
 
+async function readUserByNormalizedEmail(
+  db: JuniorDatabase,
+  normalizedEmail: string,
+): Promise<User | undefined> {
+  const rows = await db
+    .select({ user: juniorUsers, identity: juniorIdentities })
+    .from(juniorUsers)
+    .leftJoin(
+      juniorIdentities,
+      and(
+        eq(juniorIdentities.userId, juniorUsers.id),
+        eq(juniorIdentities.kind, "user"),
+      ),
+    )
+    .where(eq(juniorUsers.primaryEmailNormalized, normalizedEmail))
+    .orderBy(
+      asc(juniorIdentities.provider),
+      asc(juniorIdentities.providerTenantId),
+      asc(juniorIdentities.providerSubjectId),
+    );
+  const userRow = rows[0]?.user;
+  if (!userRow) return undefined;
+  return userFromRows(
+    userRow,
+    rows.flatMap((row) => (row.identity ? [row.identity] : [])),
+  );
+}
+
 /** Resolve or create the canonical user for one verified viewer email. */
 export async function resolveViewerUserFromSql(
   db: JuniorDatabase,
@@ -64,6 +96,10 @@ export async function resolveViewerUserFromSql(
 ): Promise<User | undefined> {
   const normalizedEmail = normalizeIdentityEmail(email);
   if (!normalizedEmail) return undefined;
+  // Every authenticated request resolves its viewer. Read first, so a known
+  // user costs one read instead of an insert attempt and two reads.
+  const existing = await readUserByNormalizedEmail(db, normalizedEmail);
+  if (existing) return existing;
   const now = new Date();
   const rows = await db
     .insert(juniorUsers)
@@ -103,14 +139,7 @@ export async function findUserByEmailFromSql(
 ): Promise<User | undefined> {
   const normalizedEmail = normalizeIdentityEmail(email);
   if (!normalizedEmail) return undefined;
-  const userRow = (
-    await db
-      .select()
-      .from(juniorUsers)
-      .where(eq(juniorUsers.primaryEmailNormalized, normalizedEmail))
-      .limit(1)
-  )[0];
-  return userRow ? await readUserById(db, userRow) : undefined;
+  return await readUserByNormalizedEmail(db, normalizedEmail);
 }
 
 /** Read one existing canonical user by verified email without creating a row. */

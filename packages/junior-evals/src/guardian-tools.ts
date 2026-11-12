@@ -11,6 +11,7 @@ import { githubPlugin } from "@sentry/junior-github";
 import { googlePlugin } from "@sentry/junior-google";
 import { vercelPlugin } from "@sentry/junior-vercel";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { proposalTool } from "@/chat/guardian/gate";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
@@ -86,17 +87,17 @@ const context: ToolRuntimeContext = {
       return new Response("ok");
     },
   },
-  // Guardian evals never run a tool, so no tool touches the sandbox.
+  // Guardian evals never run a tool, so no tool touches the sandbox or
+  // storage. Storage is set so the agent's attachment tools exist.
+  attachmentStorage: {} as ToolRuntimeContext["attachmentStorage"],
   workspace: {} as ToolRuntimeContext["workspace"],
-  // The agent has publishImage only with attachment storage.
-  attachmentStorage: {
-    provider: "guardian-eval",
-    async put() {},
-    async get() {
-      return null;
-    },
-    async delete() {},
-  },
+  // A root Run can start and message child agents.
+  messageAgent: unavailable,
+  spawnAgent: unavailable,
+  turnTools: turnBehavior({
+    kind: "root",
+    personInput: true,
+  }).tools,
 };
 
 let agentTools: Promise<Record<string, AnyToolDefinition>> | undefined;

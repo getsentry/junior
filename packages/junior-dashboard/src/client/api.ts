@@ -1,4 +1,9 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  queryOptions,
+  useInfiniteQuery,
+  useQuery,
+} from "@tanstack/react-query";
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
@@ -15,31 +20,52 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   personalSpendReportSchema,
+  replyTimeSegmentsReportSchema,
   automationExecutionListSchema,
   automationListSchema,
   automationSummarySchema,
   automationRunListSchema,
   automationVersionListSchema,
 } from "@sentry/junior/api/schema";
+import { joinConversationFeedPages } from "./conversations/conversationFeedCache";
 import {
   pluginOperationalReportFeedSchema,
   pluginsSchema,
+  skillDetailReportSchema,
   skillReportsSchema,
 } from "@sentry/junior/api/schema";
 import { pluginUserPageLinksSchema } from "@sentry/junior-plugin-api";
 
-import { dashboardConfigSchema, dashboardIdentitySchema } from "../api/schema";
+import {
+  dashboardBootstrapSchema,
+  dashboardConfigSchema,
+  dashboardIdentitySchema,
+} from "../api/schema";
+import { usePinOrderSaving } from "./conversations/useReorderPinnedConversations";
 import { fetchDashboardJson } from "./http";
 import type { DashboardCoreData, SystemData } from "./types";
 
-const dashboardMetadataStaleTimeMs = 5 * 60_000;
-// The server reuses its cached report until the viewer's spend changes, so a
-// short poll shows a finished Turn without a full aggregate query each time.
-const PERSONAL_SPEND_REFRESH_MS = 10_000;
+declare global {
+  interface Window {
+    __JUNIOR_DASHBOARD_BOOTSTRAP__?: unknown;
+  }
+}
 
-/** Fetch dashboard shell data shared across browser routes. */
-export function useDashboardCoreData() {
-  return useQuery({
+const dashboardMetadataStaleTimeMs = 5 * 60_000;
+
+// The shell embeds core data for the first read only. Taking it once means a
+// later cache entry for the same key reads the API instead of stale data.
+function takeDashboardBootstrap(): DashboardCoreData | undefined {
+  if (typeof window === "undefined") return undefined;
+  const embedded = window.__JUNIOR_DASHBOARD_BOOTSTRAP__;
+  delete window.__JUNIOR_DASHBOARD_BOOTSTRAP__;
+  const parsed = dashboardBootstrapSchema.safeParse(embedded);
+  return parsed.success ? parsed.data : undefined;
+}
+
+/** Query options for dashboard shell data, seeded from the page shell. */
+export function dashboardCoreQueryOptions() {
+  return queryOptions({
     queryKey: ["dashboard", "core"],
     queryFn: async ({ signal }): Promise<DashboardCoreData> => {
       const [me, config] = await Promise.all([
@@ -51,9 +77,17 @@ export function useDashboardCoreData() {
         me,
       };
     },
+    initialData: takeDashboardBootstrap,
+    // The server built the embedded data while it served the page.
+    initialDataUpdatedAt: () => performance.timeOrigin,
     retry: false,
     staleTime: dashboardMetadataStaleTimeMs,
   });
+}
+
+/** Fetch dashboard shell data shared across browser routes. */
+export function useDashboardCoreData() {
+  return useQuery(dashboardCoreQueryOptions());
 }
 
 /** Fetch safe plugin metadata used by dashboard navigation and System pages. */
@@ -80,22 +114,28 @@ export function usePluginUserPagesData() {
 
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
 export function useConversationsData(search = "") {
-  return useQuery({
+  const pinOrderSaving = usePinOrderSaving();
+  return useInfiniteQuery({
+    // A read that ends during a Pinned order save can hold the old order.
+    // The feed keeps its data and refetches when the save ends.
+    enabled: !pinOrderSaving,
     queryKey: ["dashboard", "conversations", "viewer", { search }],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
+    queryFn: ({ pageParam, signal }) => {
+      const params = new URLSearchParams();
+      if (search) params.set("q", search);
+      if (pageParam) params.set("cursor", pageParam);
+      const query = params.toString();
+      return fetchDashboardJson(
         conversationFeedSchema,
-        `/api/conversations${search ? `?q=${encodeURIComponent(search)}` : ""}`,
+        `/api/conversations${query ? `?${query}` : ""}`,
         signal,
-      ),
+      );
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.nextCursor,
+    select: joinConversationFeedPages,
     placeholderData: keepPreviousData,
-    // Active rows change while no Conversation is open, such as a new title.
-    refetchInterval: (query) =>
-      query.state.data?.conversations.some(
-        (conversation) => conversation.status === "active",
-      )
-        ? 10_000
-        : false,
+    // The versions poll refreshes the feed when it changes.
     retry: false,
   });
 }
@@ -289,7 +329,10 @@ export function useActorCodeData(email: string | undefined) {
   });
 }
 
-/** Fetch and refresh the authenticated viewer's rolling model spend. */
+/**
+ * Fetch the authenticated viewer's rolling model spend. The versions poll
+ * refreshes it when it changes.
+ */
 export function usePersonalSpendData(enabled: boolean) {
   return useQuery({
     enabled,
@@ -300,7 +343,6 @@ export function usePersonalSpendData(enabled: boolean) {
         "/api/people/me/spend",
         signal,
       ),
-    refetchInterval: PERSONAL_SPEND_REFRESH_MS,
     retry: false,
     staleTime: 0,
   });
@@ -346,6 +388,21 @@ export function useSkillsData() {
   });
 }
 
+/** Fetch one skill with its SKILL.md body. */
+export function useSkillDetail(name: string) {
+  return useQuery({
+    queryKey: ["dashboard", "skills", name],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        skillDetailReportSchema,
+        `/api/skills/${encodeURIComponent(name)}`,
+        signal,
+      ),
+    retry: false,
+    staleTime: dashboardMetadataStaleTimeMs,
+  });
+}
+
 /** Fetch operational plugin reports used by System navigation and pages. */
 export function usePluginReportsData() {
   return useQuery({
@@ -383,6 +440,16 @@ export function useSystemData(coreData: DashboardCoreData) {
       ),
     retry: false,
   });
+  const replyTimesQuery = useQuery({
+    queryKey: ["dashboard", "reply-times"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        replyTimeSegmentsReportSchema,
+        "/api/reply-times",
+        signal,
+      ),
+    retry: false,
+  });
   const skillsQuery = useSkillsData();
   const pluginReportsQuery = usePluginReportsData();
   const dataReady = pluginsQuery.data && skillsQuery.data;
@@ -401,6 +468,10 @@ export function useSystemData(coreData: DashboardCoreData) {
             : undefined),
           pluginReportsLoading: pluginReportsQuery.isPending,
           plugins: pluginsQuery.data,
+          ...(replyTimesQuery.data
+            ? { replyTimes: replyTimesQuery.data }
+            : undefined),
+          replyTimesError: Boolean(replyTimesQuery.error),
           skills: skillsQuery.data,
         } satisfies SystemData)
       : undefined,

@@ -2,16 +2,63 @@ import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 
 /**
  * Build the dashboard route for a conversation id. A `turnId` opens the
- * start of that Turn in the event log.
+ * start of that Turn in the event log. `reviewItems` opens the Review items
+ * panel.
  */
 export function conversationPath(
   conversationId: string,
-  options?: { turnId?: string },
+  options?: { reviewItems?: boolean; turnId?: string },
 ): string {
   const path = `/conversations/${encodeURIComponent(conversationId)}`;
-  return options?.turnId
-    ? `${path}?${CONVERSATION_TURN_PARAM}=${encodeURIComponent(options.turnId)}`
-    : path;
+  const params = new URLSearchParams();
+  if (options?.turnId) params.set(CONVERSATION_TURN_PARAM, options.turnId);
+  if (options?.reviewItems) {
+    params.set(CONVERSATION_REVIEW_PARAM, CONVERSATION_REVIEW_OPEN);
+  }
+  const search = params.toString();
+  return search ? `${path}?${search}` : path;
+}
+
+/**
+ * Navigation state that asks the opened Conversation to focus its reply box.
+ * `draftFrom` names the draft of a composer the reader typed in before the
+ * page opened. The reply box takes its text.
+ */
+export type ReplyFocusState = { draftFrom?: string; focusReply: true };
+
+/** Ask the opened Conversation to focus its reply box. */
+export const FOCUS_REPLY_STATE = { focusReply: true } as const;
+
+/** Read the reply focus that navigation state asks for, if any. */
+export function readReplyFocus(state: unknown): ReplyFocusState | undefined {
+  if (
+    typeof state !== "object" ||
+    state === null ||
+    !("focusReply" in state) ||
+    state.focusReply !== true
+  ) {
+    return undefined;
+  }
+  return {
+    draftFrom:
+      "draftFrom" in state && typeof state.draftFrom === "string"
+        ? state.draftFrom
+        : undefined,
+    focusReply: true,
+  };
+}
+
+/** Navigation state that opens the Conversation at its event log. */
+export const OPEN_EVENT_LOG_STATE = { eventLog: true } as const;
+
+/** True when navigation state asks for the event log. */
+export function readOpenEventLog(state: unknown): boolean {
+  return (
+    typeof state === "object" &&
+    state !== null &&
+    "eventLog" in state &&
+    state.eventLog === true
+  );
 }
 
 /** Dashboard home route. Legacy `/conversations/new` redirects here. */
@@ -31,6 +78,10 @@ export function parseConversationEventSeq(
 ): number | undefined {
   return value && /^\d+$/.test(value) ? Number(value) : undefined;
 }
+
+/** Query param that opens the Review items panel of a Conversation. */
+export const CONVERSATION_REVIEW_PARAM = "review";
+export const CONVERSATION_REVIEW_OPEN = "open";
 
 /** Query param that opens the start of one Turn in the event log. */
 export const CONVERSATION_TURN_PARAM = "turn";

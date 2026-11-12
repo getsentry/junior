@@ -27,8 +27,6 @@ export type UsageCardSplit = {
 };
 
 export type UsageCardProps = {
-  /** Closing hint, such as where to find the full breakdown. */
-  footer?: string;
   /** Muted detail after the title, such as a compaction count. */
   note?: string;
   sections: UsageCardSection[];
@@ -64,18 +62,17 @@ export function UsageCard(props: UsageCardProps) {
       <span
         className={cn(
           "grid gap-2.5",
-          (props.sections.length > 0 || props.footer) &&
-            "border-b border-dashboard-border pb-3",
+          props.sections.length > 0 && "border-b border-dashboard-border pb-3",
         )}
       >
         <span className="flex items-baseline justify-between gap-3">
-          <span className="min-w-0 truncate">
+          <span className="min-w-0 truncate font-medium text-dashboard-text">
             {props.title}
             {props.note ? (
               <span className="text-dashboard-text-faint"> · {props.note}</span>
             ) : null}
           </span>
-          <span className="whitespace-nowrap text-lg font-semibold tabular-nums text-dashboard-text">
+          <span className="whitespace-nowrap text-base font-semibold tabular-nums text-dashboard-text">
             {props.total}
           </span>
         </span>
@@ -104,7 +101,8 @@ export function UsageCard(props: UsageCardProps) {
               </span>
               <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                 <Swatch className={SUBAGENT_FILL} />
-                {props.split.count} subagent{props.split.count === 1 ? "" : "s"}
+                {props.split.count} child conversation
+                {props.split.count === 1 ? "" : "s"}
                 <span className="font-medium text-dashboard-text">
                   {props.split.subagents}
                 </span>
@@ -127,7 +125,7 @@ export function UsageCard(props: UsageCardProps) {
               <span
                 className={cn(
                   "flex min-w-0 items-baseline gap-2",
-                  row.code && "font-mono text-dashboard-text",
+                  row.code && "font-mono",
                 )}
               >
                 <span className="min-w-0 truncate" title={row.label}>
@@ -156,17 +154,6 @@ export function UsageCard(props: UsageCardProps) {
           ) : null}
         </span>
       ))}
-      {props.footer ? (
-        <span
-          className={cn(
-            "text-dashboard-text-faint",
-            props.sections.length > 0 &&
-              "border-t border-dashboard-border pt-3",
-          )}
-        >
-          {props.footer}
-        </span>
-      ) : null}
     </span>
   );
 }

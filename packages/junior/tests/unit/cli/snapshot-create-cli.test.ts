@@ -55,7 +55,7 @@ describe("snapshot create cli", () => {
 
     expect(resolveMock).toHaveBeenCalledTimes(1);
     expect(resolveMock).toHaveBeenCalledWith({
-      runtime: "node22",
+      runtime: "node24",
       timeoutMs: 10 * 60 * 1000,
       onProgress: expect.any(Function),
     });

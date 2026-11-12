@@ -34,20 +34,22 @@ Use `SLACK_BOT_TOKEN` for normal bot replies. Use `SLACK_BOT_USER_TOKEN` only wh
 
 Grant the smallest scopes that cover the Slack features you enable. A typical Junior installation needs scopes for mentions, posting replies, reading thread context, reactions, user lookup, and file workflows.
 
-| Capability                                     | Slack scopes to verify                                                                                       |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Mentions                                       | `app_mentions:read`                                                                                          |
-| Thread replies and private auth prompts        | `chat:write`                                                                                                 |
-| Processing reactions                           | `reactions:write`                                                                                            |
-| User lookup and App Home ownership             | `users:read`                                                                                                 |
-| Thread and channel history in channels and DMs | `channels:history`, `channels:read`, `groups:history`, `groups:read`, `im:history`, `mpim:history` as needed |
-| On-demand join of public channels              | `channels:join` **required** to join a public channel when reading linked threads or history                 |
-| Public workspace search (messages)             | `search:read.public` **required** for interactive public Slack search                                        |
-| Public workspace search (files)                | `search:read.files` **required** when searching public files                                                 |
-| Public workspace search (users)                | `search:read.users` **required** when searching people via public search                                     |
-| File/image context and generated files         | `files:read`, `files:write` when file workflows are enabled                                                  |
-| Direct links back to Slack conversations       | `team:read`                                                                                                  |
-| Slack assistant status/title surfaces          | `assistant:write` and other assistant scopes required by your Slack app configuration                        |
+| Capability                                          | Slack scopes to verify                                                                                       |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Mentions                                            | `app_mentions:read`                                                                                          |
+| Thread replies and private auth prompts             | `chat:write`                                                                                                 |
+| Processing reactions                                | `reactions:write`                                                                                            |
+| User lookup and App Home ownership                  | `users:read`                                                                                                 |
+| Thread and channel history in channels and DMs      | `channels:history`, `channels:read`, `groups:history`, `groups:read`, `im:history`, `mpim:history` as needed |
+| On-demand join of public channels                   | `channels:join` **required** to join a public channel when reading linked threads or history                 |
+| Public workspace search (messages)                  | `search:read.public` **required** for interactive public Slack search                                        |
+| Public workspace search (files)                     | `search:read.files` **required** when searching public files                                                 |
+| Public workspace search (users)                     | `search:read.users` **required** when searching people via public search                                     |
+| File/image context and generated files              | `files:read`, `files:write` when file workflows are enabled                                                  |
+| Direct links back to Slack conversations            | `team:read`                                                                                                  |
+| Dashboard link previews and "Continue here"         | `links:read`, `links:write`                                                                                  |
+| Push notifications on a Slack notification schedule | `dnd:read`                                                                                                   |
+| Slack assistant status/title surfaces               | `assistant:write` and other assistant scopes required by your Slack app configuration                        |
 
 Slack requires reinstalling the app after scope changes. Reinstall before debugging runtime behavior.
 
@@ -73,10 +75,23 @@ Subscribe to the events that match your usage:
 | `entity_details_requested`    | Open and refresh Work Object details.                |
 | Slack assistant thread events | Assistant-thread title, status, and prompt surfaces. |
 | `agent_session_stopped`       | Slack's stop button for a running Junior Turn.       |
+| `channel_created`             | Optional auto-join of new public channels.           |
+| `link_shared`                 | Previews of dashboard conversation links.            |
 
 If your app relies on subscribed-thread follow-ups in shared channels, enable the channel message events required by that Slack app model and confirm the bot is present in those channels.
 
-Slack shows a stop button on a working thread only when the app subscribes to `agent_session_stopped`. Existing apps must add this bot event in the Slack app settings. The button stops the current Turn. The thread stays subscribed. The `stop` keyword also makes Junior leave the thread.
+For dashboard link previews, add the dashboard host under **App Unfurl Domains** too. A preview of a public dashboard conversation in a public channel has a **Continue here** button. A participant can click it to move the conversation into that message's thread.
+
+Slack shows a stop button on a working thread only when the app subscribes to `agent_session_stopped`. Existing apps must add this bot event in the Slack app settings. The button stops the current Turn, the same as the `stop` keyword. The thread stays subscribed.
+
+To make Junior join each new public channel, subscribe to `channel_created` and turn on the option. Junior does not join channels that existed before. The app needs `channels:join`.
+
+```ts title="server.ts"
+export default await createApp({
+  plugins,
+  slack: { autoJoinNewChannels: true },
+});
+```
 
 For object previews, enable **Work Object Previews → Item and Task** in the Slack app settings. Existing apps must also add `entity_details_requested` to their bot event subscriptions; deploying Junior does not update Slack app settings.
 

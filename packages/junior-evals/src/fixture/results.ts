@@ -2,18 +2,23 @@
  * Call results read through Junior's reporting API, the way the dashboard
  * reads a Conversation. Tests never read stored rows directly.
  */
-import type { z } from "zod";
+import type * as z from "zod";
 import {
   conversationDetailReportSchema,
   conversationPendingMessagesReportSchema,
 } from "@/api/schema";
+import {
+  CODE_MODE_CALL_STATUS_TEXT,
+  CODEMODE_TOOL_NAME,
+  type CodeModeCallStatus,
+} from "@/chat/codemode/result";
 import {
   serializeError,
   toJsonValue,
   type HarnessRun,
   type TranscriptEvent,
 } from "vitest-evals/harness";
-import { getSlackContinuationMarker } from "@/chat/slack/output";
+import type { CapturedSlackApiCall } from "@junior-tests/msw/captured-slack-api-calls";
 import type { RequestApp, SlackPost } from "./slack";
 import { EARLIER_MESSAGES_KEY, type VisibleMessage } from "./judge";
 
@@ -41,10 +46,48 @@ export interface ToolCall {
   toolCallId: string;
 }
 
+const SCRIPT_CALL_STATUS = new Map(
+  Object.entries(CODE_MODE_CALL_STATUS_TEXT).map(([status, text]) => [
+    text,
+    status as CodeModeCallStatus,
+  ]),
+);
+
+/**
+ * The tool calls that a `codemode` script made, read from its result text
+ * (`renderResult` in `codemode/tool.ts`): a status line, `Tool calls (N):`,
+ * then `<i>. <tool>: <status>` for each call, with indented notes. The
+ * reporting API does not return script arguments, so the calls have no
+ * `input`. A call that did not start is not a call.
+ */
+function scriptToolCalls(call: ToolCall): ToolCall[] {
+  const lines = typeof call.output === "string" ? call.output.split("\n") : [];
+  const count = /^Tool calls \((\d+)\):$/.exec(lines[1] ?? "")?.[1];
+  if (!lines[0]?.startsWith("Script ") || !count) return [];
+  const calls: ToolCall[] = [];
+  let index = 0;
+  for (const line of lines.slice(2)) {
+    if (index === Number(count)) break;
+    if (line.startsWith(" ")) continue;
+    const match = /^(\d+)\. (\S+): (.+)$/.exec(line);
+    const status = match && SCRIPT_CALL_STATUS.get(match[3]!);
+    if (!status || Number(match[1]) !== index + 1) break;
+    index += 1;
+    if (status === "not_started") continue;
+    calls.push({
+      name: match[2]!,
+      status: status === "ok" ? "completed" : "error",
+      toolCallId: `${call.toolCallId}/${index}`,
+    });
+  }
+  return calls;
+}
+
 /**
  * Calls of one tool in any state across the results of several calls. The
  * agent runs deferred tools through `executeTool`; those calls count as calls
- * of the inner tool, with its arguments as `input`.
+ * of the inner tool, with its arguments as `input`. Calls that a `codemode`
+ * script made count too, without `input`.
  */
 export function toolCallsOf(
   name: string,
@@ -54,6 +97,9 @@ export function toolCallsOf(
     .flatMap((result) => result.toolCalls)
     .flatMap((call) => {
       if (call.name === name) return [call];
+      if (call.name === CODEMODE_TOOL_NAME) {
+        return scriptToolCalls(call).filter((inner) => inner.name === name);
+      }
       const deferred = call.input as
         | { arguments?: unknown; tool_name?: unknown }
         | undefined;
@@ -132,6 +178,8 @@ export interface CallEvents {
   /** Times Junior replaced agent history with a summary. */
   compactions: number;
   lastSeq: number;
+  /** Quiet messages: stored, but not delivered, so people did not see them. */
+  quietReplies: Reply[];
   replies: Reply[];
   toolCalls: ToolCall[];
   turns: Turn[];
@@ -155,6 +203,13 @@ export async function readConversationDetail(
     );
   }
   return conversationDetailReportSchema.parse(await response.json());
+}
+
+/** Slack user ids of the participants that the dashboard lists. */
+export function participantSlackUserIds(detail: ConversationDetail): string[] {
+  return (detail.participants ?? []).flatMap((participant) =>
+    participant.slackUserId ? [participant.slackUserId] : [],
+  );
 }
 
 type CallTranscriptSource = {
@@ -255,6 +310,7 @@ export function readCallEvents(args: {
   conversationId: string;
   detail: ConversationDetail;
 }): CallEvents {
+  const quietReplies: Reply[] = [];
   const replies: Reply[] = [];
   const visibleMessages: VisibleMessage[] = [];
   const turns = new Map<string, Turn>();
@@ -292,6 +348,10 @@ export function readCallEvents(args: {
           messageId: data.messageId,
           text: data.text,
         };
+        if (data.quiet) {
+          quietReplies.push(reply);
+          continue;
+        }
         replies.push(reply);
         currentTurn?.replies.push(reply);
         visibleMessages.push({ content: data.text, role: "assistant" });
@@ -325,12 +385,6 @@ export function readCallEvents(args: {
       compactions += 1;
       continue;
     }
-    // A handoff replaces agent history, so its tool call gets no tool result.
-    // The handoff event completes the call, as the dashboard shows it.
-    if (data.type === "handoff" && data.triggeringToolCallId) {
-      const call = toolCalls.get(data.triggeringToolCallId);
-      if (call) call.status = "completed";
-    }
   }
 
   for (const turn of turns.values()) {
@@ -343,6 +397,7 @@ export function readCallEvents(args: {
   return {
     compactions,
     lastSeq,
+    quietReplies,
     replies,
     toolCalls: [...toolCalls.values()],
     turns: [...turns.values()],
@@ -367,8 +422,53 @@ function comparableText(text: string): string {
     .trim();
 }
 
-/** The marker that ends each post of a long reply except the last. */
-const CONTINUED_MARKER = getSlackContinuationMarker().trim();
+/** What one call did in a Slack thread, read from its Slack API calls. */
+export function slackThreadEffects(
+  slackCalls: CapturedSlackApiCall[],
+  thread: { channelId: string; threadTs: string } | undefined,
+): {
+  files: string[];
+  reactions: string[];
+  statuses: string[];
+  threadTitles: string[];
+} {
+  // Slack reactions are sets; ingress and the worker can add the same one.
+  const reactions = [
+    ...new Set(
+      slackCalls.flatMap((captured) =>
+        captured.method === "reactions.add" &&
+        captured.params.channel === thread?.channelId &&
+        typeof captured.params.name === "string"
+          ? [`${String(captured.params.timestamp)}:${captured.params.name}`]
+          : [],
+      ),
+    ),
+  ].map((key) => key.slice(key.indexOf(":") + 1));
+  const files = slackCalls.flatMap((captured) =>
+    captured.method === "files.completeUploadExternal" &&
+    captured.params.channel_id === thread?.channelId &&
+    captured.params.thread_ts === thread?.threadTs &&
+    Array.isArray(captured.params.files)
+      ? captured.params.files.map((file: { title?: unknown }) =>
+          String(file.title),
+        )
+      : [],
+  );
+  const threadCalls = (method: string) =>
+    slackCalls.filter(
+      (captured) =>
+        captured.method === method &&
+        captured.params.channel_id === thread?.channelId &&
+        captured.params.thread_ts === thread?.threadTs,
+    );
+  const statuses = threadCalls("assistant.threads.setStatus").map((captured) =>
+    String(captured.params.status),
+  );
+  const threadTitles = threadCalls("assistant.threads.setTitle").map(
+    (captured) => String(captured.params.title),
+  );
+  return { files, reactions, statuses, threadTitles };
+}
 
 /**
  * Use Slack thread posts as the replies of a Slack call. Delivery splits a
@@ -382,13 +482,7 @@ export function slackCallReplies(args: {
   posts: SlackPost[];
 }): { replies: Reply[]; visibleMessages: VisibleMessage[] } {
   const unmatched = [...args.durable.replies];
-  const postTexts = args.posts.map(({ text }) =>
-    comparableText(
-      text.endsWith(CONTINUED_MARKER)
-        ? text.slice(0, -CONTINUED_MARKER.length)
-        : text,
-    ),
-  );
+  const postTexts = args.posts.map(({ text }) => comparableText(text));
   // The number of posts from `start` that make up the stored reply.
   const postCount = (start: number, reply: Reply): number => {
     const target = comparableText(reply.text);

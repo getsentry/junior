@@ -1,5 +1,5 @@
 import type { PiMessage } from "@/chat/pi/messages";
-import { z } from "zod";
+import * as z from "zod";
 import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
 import {
   RISK_LEVELS,
@@ -53,7 +53,10 @@ const rejectionMarkerSchema = z
     version: z.literal(1),
   })
   .strict();
-/** Core-owned versioned transcript state for one rejected action. */
+/**
+ * Core-owned versioned transcript state for one rejected action. Stored
+ * transcripts keep it, so a shape change needs a new version.
+ */
 export type ToolActionRejectionMarker = z.output<typeof rejectionMarkerSchema>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {

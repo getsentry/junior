@@ -1,4 +1,5 @@
 import {
+  declaredEventKeys,
   eventMatches,
   type EventInput,
   type EventMatch,
@@ -9,6 +10,11 @@ import {
 } from "@sentry/junior-testing/event-filters";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { githubPlugin } from "../src/index";
+import { gitHubDeploymentSourceSubscribable } from "../src/events/deployment";
+import { gitHubIssueSubscribable } from "../src/events/issue";
+import { gitHubPullRequestSubscribable } from "../src/events/pull-request";
+import { gitHubReleaseSourceSubscribable } from "../src/events/release";
+import { gitHubRepositorySubscribable } from "../src/events/repository";
 import type { GitHubDb } from "../src/db/database";
 import { gitHubMergeConflictEvents } from "../src/webhooks/merge-conflict";
 import { normalizeGitHubEvents } from "../src/webhooks/events";
@@ -117,8 +123,18 @@ function fixtureDeliveries(
     ),
     ...["opened", "closed", "reopened"].map((action) => ({
       eventName: "issues",
-      body: { action, issue: { number: scope.issue }, repository },
+      body: { action, issue: { number: scope.issue }, repository, sender },
     })),
+    {
+      eventName: "issues",
+      body: {
+        action: "labeled",
+        issue: { number: scope.issue },
+        label: { name: "Junior: repro" },
+        repository,
+        sender,
+      },
+    },
     {
       eventName: "issue_comment",
       body: {
@@ -316,6 +332,59 @@ function gitHubIdentifierMatch(event: {
     : undefined;
 }
 
+/** Scopes that differ from `BASE_SCOPE` in each part of an identifier. */
+const SIBLING_SCOPE: FixtureScope = {
+  ...BASE_SCOPE,
+  checkSha: "C".repeat(40),
+  deploymentId: 3002,
+  environment: " Staging EU ",
+  issue: 13,
+  pullRequest: 947,
+  tag: "Release/Ü1",
+};
+// A tag that differs from the sibling tag only in a non-ASCII letter.
+const LOWERCASE_TAG_SCOPE: FixtureScope = { ...BASE_SCOPE, tag: "Release/ü1" };
+const OTHER_REPO_SCOPE: FixtureScope = {
+  ...BASE_SCOPE,
+  repo: "getsentry/sentry",
+};
+
+/**
+ * Build the subscribable resources that GitHub tools return for one scope,
+ * with the values as the GitHub API reports them.
+ */
+function scopeSubscribables(scope: FixtureScope) {
+  const canSubscribe = true;
+  const { repo } = scope;
+  return {
+    issues: [
+      gitHubIssueSubscribable({ canSubscribe, number: scope.issue, repo }),
+      gitHubRepositorySubscribable({ canSubscribe, repo }),
+    ],
+    others: [
+      gitHubPullRequestSubscribable({
+        canSubscribe,
+        number: scope.pullRequest,
+        repo,
+      }),
+      gitHubRepositorySubscribable({ canSubscribe, repo }),
+      gitHubDeploymentSourceSubscribable({
+        canSubscribe,
+        commitSha: scope.deploymentSha,
+        environment: scope.environment,
+        repo,
+      }),
+      gitHubDeploymentSourceSubscribable({
+        canSubscribe,
+        commitSha: scope.deploymentSha,
+        repo,
+      }),
+      gitHubReleaseSourceSubscribable({ canSubscribe, repo, tag: scope.tag }),
+      gitHubReleaseSourceSubscribable({ canSubscribe, repo }),
+    ],
+  };
+}
+
 describe("GitHub event data", () => {
   it("declares filter events that match the data the webhooks set", async () => {
     const events = [
@@ -356,36 +425,21 @@ describe("GitHub event data", () => {
     expect(scopeValues("tag")).toEqual(new Set(["v1.2.0"]));
   });
 
-  it("turns each identifier into filters that select only its events", async () => {
+  it("turns each identifier and each subscribable match into filters that select only its events", async () => {
     const events = [
       ...(await publish(fixtureDeliveries(BASE_SCOPE), "base")),
       // The same repository and commit, with other numbers, another
       // environment, and a tag with a slash and a non-ASCII letter.
+      ...(await publish(fixtureDeliveries(SIBLING_SCOPE), "sibling")),
       ...(await publish(
-        fixtureDeliveries({
-          ...BASE_SCOPE,
-          checkSha: "C".repeat(40),
-          deploymentId: 3002,
-          environment: " Staging EU ",
-          issue: 13,
-          pullRequest: 947,
-          tag: "Release/Ü1",
-        }),
-        "sibling",
-      )),
-      // A tag that differs from the one above only in a non-ASCII letter.
-      ...(await publish(
-        [releaseDelivery(BASE_SCOPE.repo, "Release/ü1")],
+        [releaseDelivery(LOWERCASE_TAG_SCOPE.repo, LOWERCASE_TAG_SCOPE.tag)],
         "lowercase-tag",
       )),
       // The same numbers in another repository.
-      ...(await publish(
-        fixtureDeliveries({ ...BASE_SCOPE, repo: "getsentry/sentry" }),
-        "other-repo",
-      )),
+      ...(await publish(fixtureDeliveries(OTHER_REPO_SCOPE), "other-repo")),
       ...mergeConflictEvents(BASE_SCOPE),
-      ...mergeConflictEvents({ ...BASE_SCOPE, pullRequest: 947 }),
-      ...mergeConflictEvents({ ...BASE_SCOPE, repo: "getsentry/sentry" }),
+      ...mergeConflictEvents(SIBLING_SCOPE),
+      ...mergeConflictEvents(OTHER_REPO_SCOPE),
     ];
 
     expect(
@@ -394,6 +448,34 @@ describe("GitHub event data", () => {
         events,
         matches: eventMatches,
         toMatch: gitHubIdentifierMatch,
+      }),
+    ).toEqual([]);
+    // An event automation copies `match` from the tool result, and a Watch
+    // copies `identifier`. Both must select the same events. Core compares
+    // identifiers after `normalizeIdentifier`, and reads the snake_case
+    // match keys as declared keys.
+    const normalize = githubPlugin().events!.normalizeIdentifier!;
+    const byIdentifier = (key: "issues" | "others") =>
+      new Map(
+        [BASE_SCOPE, SIBLING_SCOPE, LOWERCASE_TAG_SCOPE, OTHER_REPO_SCOPE]
+          .flatMap((scope) => scopeSubscribables(scope)[key])
+          .map((resource) => [
+            normalize(resource!.identifier),
+            resource!.match && declaredEventKeys(resource!.match),
+          ]),
+      );
+    const issues = byIdentifier("issues");
+    const others = byIdentifier("others");
+
+    expect(
+      identifierMatchMismatches({
+        resourceTypes: githubPlugin().events?.resourceTypes ?? [],
+        events,
+        matches: eventMatches,
+        toMatch: ({ eventType, identifier }) =>
+          (eventType.startsWith("issue.") ? issues : others).get(
+            normalize(identifier),
+          ),
       }),
     ).toEqual([]);
     // Tags keep their text: no URI encoding, and only ASCII letters change.

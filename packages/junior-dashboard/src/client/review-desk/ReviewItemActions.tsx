@@ -26,7 +26,7 @@ function actionError(error: unknown): string {
 }
 
 /** Show the submitted answer as one line for each answered field. */
-function AnswerSummary(props: {
+export function AnswerSummary(props: {
   answer: NonNullable<ReviewItemPayload["answer"]>;
   request: NonNullable<ReviewItemPayload["request"]>;
 }) {
@@ -74,7 +74,7 @@ function ClosedSummary(props: { item: ReviewItemPayload }) {
 
 /**
  * Show the actions that the viewer can take on one Review item, or how it
- * closed. The review desk, the transcript card, and the side panel use it.
+ * closed. The review desk and the side panel use it.
  */
 export function ReviewItemActions(props: { item: ReviewItemPayload }) {
   const { item } = props;
@@ -102,14 +102,14 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
     }
   }
 
-  // Take and Dismiss are quiet, so the answer or Done stays the main action.
+  // Take and Dismiss are quiet, so the answer stays the main action.
   const secondaryActions = (
     <>
       {item.canTake ? (
         <Button
           disabled={action.isPending}
           onClick={() => void run({ action: "take" }).catch(() => {})}
-          variant="quiet"
+          variant="ghost"
         >
           Take
         </Button>
@@ -117,7 +117,7 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
       <Button
         disabled={action.isPending}
         onClick={() => void run({ action: "dismiss" }).catch(() => {})}
-        variant="quiet"
+        variant="ghost"
       >
         Dismiss
       </Button>
@@ -149,15 +149,6 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          {item.kind === "notice" ? (
-            <Button
-              disabled={action.isPending}
-              onClick={() => void run({ action: "complete" }).catch(() => {})}
-              variant="primary"
-            >
-              Done
-            </Button>
-          ) : null}
           <div className="flex flex-wrap gap-1 sm:ml-auto">
             {secondaryActions}
           </div>

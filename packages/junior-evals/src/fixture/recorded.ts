@@ -48,8 +48,29 @@ const NAME_KEYS = new Set([
   "userName",
 ]);
 
+/**
+ * Return the web Actor ids in the rows. They are User ids, and rendered text
+ * such as the actor block repeats them.
+ */
+function webActorIds(rows: RecordedEventRow[]): string[] {
+  const ids = new Set<string>();
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) return value.forEach(visit);
+    if (!value || typeof value !== "object") return;
+    const record = value as Record<string, unknown>;
+    if (record.platform === "web" && typeof record.userId === "string") {
+      ids.add(record.userId);
+    }
+    Object.values(record).forEach(visit);
+  };
+  rows.forEach((row) => visit(row.payload));
+  return [...ids];
+}
+
 /** Replace people and workspace identifiers with stable placeholders. */
-function createSanitizer(): (value: unknown) => unknown {
+function createSanitizer(
+  webUserIds: readonly string[],
+): (value: unknown) => unknown {
   const replacements = new Map<string, string>();
   const replace = (
     value: string,
@@ -67,7 +88,14 @@ function createSanitizer(): (value: unknown) => unknown {
   };
   // Slack ids always contain a digit; capitalized words such as TRACKING do not.
   const sanitizeText = (text: string) =>
-    text
+    webUserIds
+      .reduce(
+        (next, id) =>
+          next.replaceAll(id, () =>
+            replace(id, "web-user", (n) => `web-user${n}`),
+          ),
+        text,
+      )
       .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, (email) =>
         replace(email.toLowerCase(), "person", (n) => `person${n}@example.com`),
       )
@@ -150,7 +178,7 @@ export async function exportRecordedConversation(
 export function sanitizeRecordedEvents(
   rows: RecordedEventRow[],
 ): RecordedEventRow[] {
-  const sanitize = createSanitizer();
+  const sanitize = createSanitizer(webActorIds(rows));
   return rows
     .filter((row) => !UNCOPIED_EVENT_TYPES.has(row.type))
     .map((row) => ({

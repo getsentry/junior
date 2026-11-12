@@ -7,8 +7,6 @@ const {
   activeSandboxVersion,
   preparedMessages,
   repositoryInstructionsAvailable,
-  repositoryInstructionsRead,
-  routerSawRepositoryInstructionsRead,
   sessionRecordPiMessageProvenance,
   sessionRecordPiMessages,
   sessionRecordResumed,
@@ -33,12 +31,6 @@ const {
   },
   repositoryInstructionsAvailable: {
     value: true,
-  },
-  repositoryInstructionsRead: {
-    value: false,
-  },
-  routerSawRepositoryInstructionsRead: {
-    value: undefined as boolean | undefined,
   },
   sessionRecordPiMessageProvenance: {
     value: [] as unknown[],
@@ -204,9 +196,7 @@ vi.mock("@/chat/config", async (importOriginal) => {
   const memoryConfig = original.readChatConfig({
     ...process.env,
     AI_FAST_MODEL: "test-fast-model",
-    AI_HANDOFF_MODEL: "test-handoff-model",
     AI_MODEL: "test-model",
-    AI_MODEL_PROFILES: JSON.stringify({ standard: "test-model" }),
     JUNIOR_STATE_ADAPTER: "memory",
   });
   return {
@@ -221,59 +211,8 @@ vi.mock("@/chat/pi/client", () => ({
   GEN_AI_PROVIDER_NAME: "test-provider",
   GEN_AI_SERVER_ADDRESS: "ai-gateway.vercel.sh",
   GEN_AI_SERVER_PORT: 443,
-  completeObject: async ({ prompt }: { prompt: string }) => {
-    const instructionMatch = prompt.match(
-      /<current-instruction>\n([\s\S]*?)\n<\/current-instruction>/,
-    );
-    const instruction = instructionMatch?.[1] ?? "";
-
-    if (instruction === "route while the sandbox reads AGENTS.md") {
-      const deadline = Date.now() + 2_000;
-      while (!repositoryInstructionsRead.value && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 5));
-      }
-      routerSawRepositoryInstructionsRead.value =
-        repositoryInstructionsRead.value;
-    }
-
-    if (prompt.includes("TypeError: x is undefined")) {
-      return {
-        object: {
-          reasoning_level: "high",
-          profile: "standard",
-          confidence: 1,
-          reason: "attachment stack trace",
-        },
-      };
-    }
-    if (instruction === "hello") {
-      return {
-        object: {
-          reasoning_level: "none",
-          profile: "standard",
-          confidence: 1,
-          reason: "ack",
-        },
-      };
-    }
-    if (instruction === "fix the failing test in chat") {
-      return {
-        object: {
-          reasoning_level: "high",
-          profile: "standard",
-          confidence: 1,
-          reason: "code change request",
-        },
-      };
-    }
-    return {
-      object: {
-        reasoning_level: "medium",
-        profile: "standard",
-        confidence: 1,
-        reason: "test-router",
-      },
-    };
+  completeObject: async () => {
+    throw new Error("unexpected structured completion");
   },
   getGatewayApiKey: () => "unauthenticated",
   resolveGatewayModel: (modelId: string) => ({ id: modelId }),
@@ -291,7 +230,7 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
 vi.mock("@/chat/conversations/projection", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/conversations/projection")>()),
   loadConnectedMcpProviders: async () => [],
-  openConversationProjection: async () => ({ modelProfile: "standard" }),
+  openConversationProjection: async () => ({}),
   recordMcpProviderConnected: async () => undefined,
   recordToolExecutionStarted: async () => undefined,
 }));
@@ -423,7 +362,6 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
     };
     return {
       captureRepositoryInstructions: async () => {
-        repositoryInstructionsRead.value = true;
         return repositoryInstructionsAvailable.value &&
           (options.sandboxRef || createSandboxCallCount.value > 0)
           ? {
@@ -525,12 +463,37 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
 
 import { executeAgentRun } from "@/chat/agent";
 import type { AgentRun } from "@/chat/agent/types";
+import type { PiMessage } from "@/chat/pi/messages";
+import {
+  AGENTS_REMOVAL_NOTICE,
+  renderAgentsInstructions,
+} from "@/chat/repository-instructions";
+import {
+  renderCompactionSummary,
+  selectRetainedUserMessages,
+  summarizedRuntimeContextMessage,
+  userMessage,
+} from "@/chat/services/context-compaction";
 
 const LOCAL_DESTINATION = {
   platform: "local" as const,
   conversationId: "local:test:agent-run-sandbox",
 };
 const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
+
+/** Return each AGENTS.md block in history, in order. */
+function agentsBlocks(messages: PiMessage[] | undefined): string[] {
+  return (messages ?? []).flatMap((message) =>
+    message.role === "user" && Array.isArray(message.content)
+      ? message.content.flatMap((part) =>
+          part.type === "text" &&
+          part.text.startsWith("# AGENTS.md instructions")
+            ? [part.text]
+            : [],
+        )
+      : [],
+  );
+}
 
 async function generateLocalReply(
   message: string,
@@ -551,7 +514,7 @@ async function generateLocalReply(
     ...rest,
   });
   if (outcome.status !== "completed") {
-    throw new Error(`Expected final reply, got ${outcome.status}`);
+    throw new Error(`Expected final response, got ${outcome.status}`);
   }
   return outcome.result;
 }
@@ -563,8 +526,6 @@ describe("executeAgentRun lazy sandbox boot", () => {
     activeSandboxVersion.value = 1;
     preparedMessages.value = [];
     repositoryInstructionsAvailable.value = true;
-    repositoryInstructionsRead.value = false;
-    routerSawRepositoryInstructionsRead.value = undefined;
     sessionRecordPiMessageProvenance.value = [];
     sessionRecordPiMessages.value = [];
     sessionRecordResumed.value = false;
@@ -579,7 +540,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(createSandboxCallCount.value).toBe(0);
     expect(reply.sandboxRef).toBeUndefined();
     expect(reply.diagnostics.toolCalls).toEqual([]);
-    expect(selectedThinkingLevels.value).toEqual(["off"]);
+    expect(selectedThinkingLevels.value).toEqual(["high"]);
   });
 
   it("does not create a sandbox when loadSkill only reads host-side skill data", async () => {
@@ -591,7 +552,6 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(createSandboxCallCount.value).toBe(0);
     expect(reply.sandboxRef).toBeUndefined();
     expect(reply.diagnostics.toolCalls).toEqual(["loadSkill"]);
-    expect(selectedThinkingLevels.value).toEqual(["medium"]);
   });
 
   it("does not create a sandbox for restored skill history at turn start", async () => {
@@ -723,61 +683,6 @@ describe("executeAgentRun lazy sandbox boot", () => {
     );
   });
 
-  it("reads AGENTS.md from an existing sandbox while the router runs", async () => {
-    const reply = await generateLocalReply(
-      "route while the sandbox reads AGENTS.md",
-      {
-        state: {
-          sandboxRef: { id: "sandbox-test", profileHash: "hash-test" },
-        },
-      },
-    );
-
-    expect(reply.text).toBe("Plain reply.");
-    expect(routerSawRepositoryInstructionsRead.value).toBe(true);
-  });
-
-  it("uses a high thinking level for explicit code-change asks", async () => {
-    const reply = await generateLocalReply("fix the failing test in chat");
-
-    expect(reply.text).toBe("Plain reply.");
-    expect(selectedThinkingLevels.value).toEqual(["high"]);
-  });
-
-  it("uses attachment text when routing the turn thinking level", async () => {
-    const reply = await generateLocalReply("can you fix this?", {
-      instruction: {
-        attachments: [
-          {
-            data: Buffer.from("TypeError: x is undefined\nat agent-run.ts:42"),
-            filename: "error.txt",
-            mediaType: "text/plain",
-          },
-        ],
-      },
-    });
-
-    expect(reply.text).toBe("Plain reply.");
-    expect(selectedThinkingLevels.value).toEqual(["high"]);
-  });
-
-  it("uses structured-suffix attachment text when the media type has parameters", async () => {
-    const reply = await generateLocalReply("can you fix this?", {
-      instruction: {
-        attachments: [
-          {
-            data: Buffer.from("TypeError: x is undefined\nat agent-run.ts:42"),
-            filename: "error.json",
-            mediaType: "application/vnd.api+json; charset=utf-8",
-          },
-        ],
-      },
-    });
-
-    expect(reply.text).toBe("Plain reply.");
-    expect(selectedThinkingLevels.value).toEqual(["high"]);
-  });
-
   it("retains and reports the sandbox reference after lazy boot on error turns", async () => {
     agentMode.value = "bashThenError";
     const onSandboxRefChanged = vi.fn();
@@ -815,5 +720,76 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(JSON.stringify(preparedMessages.value)).not.toContain(
       '"stdout":"# AGENTS.md instructions',
     );
+  });
+
+  it("adds AGENTS.md once across Turns and again only when it changes", async () => {
+    // A bash call runs the AGENTS.md check before the next model call.
+    agentMode.value = "agentsAfterBash";
+    const state = {
+      sandboxRef: { id: "sandbox-test", profileHash: "hash-test" },
+    };
+    const first = await generateLocalReply("first request", { state });
+    const original =
+      "# AGENTS.md instructions for /vercel/sandbox/repo\n\n<INSTRUCTIONS>\nCall retries the cobalt budget.\n</INSTRUCTIONS>";
+    expect(agentsBlocks(first.piMessages)).toEqual([original]);
+
+    const second = await generateLocalReply("second request", {
+      history: first.piMessages,
+      state,
+    });
+    expect(agentsBlocks(second.piMessages)).toEqual([original]);
+
+    // No sandbox at Turn start: the bash call boots one and reads AGENTS.md.
+    createSandboxCallCount.value = 0;
+    const lazyBoot = await generateLocalReply("lazy boot request", {
+      history: first.piMessages,
+    });
+    expect(agentsBlocks(lazyBoot.piMessages)).toEqual([original]);
+
+    // The history that a compaction replacement keeps for later Turns.
+    const compacted = [
+      summarizedRuntimeContextMessage(second.piMessages!, [])!,
+      ...selectRetainedUserMessages(second.piMessages!),
+      userMessage(renderCompactionSummary("Earlier work.")),
+    ];
+    const afterCompaction = await generateLocalReply("third request", {
+      history: compacted,
+      state,
+    });
+    expect(agentsBlocks(afterCompaction.piMessages)).toEqual([original]);
+
+    activeSandboxVersion.value = 2;
+    const changed = await generateLocalReply("fourth request", {
+      history: afterCompaction.piMessages,
+      state,
+    });
+    expect(agentsBlocks(changed.piMessages)).toEqual([
+      original,
+      "# AGENTS.md instructions for /vercel/sandbox/repo\n\n<INSTRUCTIONS>\nThese AGENTS.md instructions replace all previously provided AGENTS.md instructions.\n\nUse the current repository formatter.\n</INSTRUCTIONS>",
+    ]);
+
+    // Unchanged after a replacement: the replacement notice must not count as a change.
+    const afterReplace = await generateLocalReply("fifth request", {
+      history: changed.piMessages,
+      state,
+    });
+    expect(agentsBlocks(afterReplace.piMessages)).toHaveLength(2);
+
+    // Removed: one removal notice, then nothing more.
+    repositoryInstructionsAvailable.value = false;
+    const removed = await generateLocalReply("sixth request", {
+      history: afterReplace.piMessages,
+      state,
+    });
+    const removedBlocks = agentsBlocks(removed.piMessages);
+    expect(removedBlocks).toHaveLength(3);
+    expect(removedBlocks[2]).toEqual(
+      renderAgentsInstructions({ text: AGENTS_REMOVAL_NOTICE }),
+    );
+    const afterRemoved = await generateLocalReply("seventh request", {
+      history: removed.piMessages,
+      state,
+    });
+    expect(agentsBlocks(afterRemoved.piMessages)).toHaveLength(3);
   });
 });

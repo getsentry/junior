@@ -2,36 +2,38 @@ import type { WebActor } from "@/chat/actor";
 import type { AgentSteeringMessage } from "@/chat/agent/types";
 import {
   buildSteeringPiMessage,
+  instructionActorFor,
   withoutSavedSteeringMessages,
 } from "@/chat/agent/prompt";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { instructionProvenanceFor } from "@/chat/conversations/provenance";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
-import {
-  normalizeConversationText,
-  upsertConversationMessage,
-} from "@/chat/services/conversation-memory";
+import { upsertConversationMessage } from "@/chat/services/conversation-memory";
 import type {
   ConversationAuthor,
   ThreadConversationState,
 } from "@/chat/state/conversation";
 import { getTurnRecord } from "@/chat/task-execution/checkpoint";
+import { loadReviewItemInput } from "@/chat/review-items/prompt-input";
+import { webConversationMessage } from "@/chat/task-execution/mailbox-input";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 
-function steeringMessageFromWeb(
+async function steeringMessageFromWeb(
   message: InboundMessage,
   actor: WebActor,
-): AgentSteeringMessage {
+): Promise<AgentSteeringMessage> {
   const storedAttachments = readMessageAttachments(message.input.attachments);
+  // An answer steers in as its Review item tag.
+  const reviewItemInput = await loadReviewItemInput(
+    message.input.reviewItemChange,
+  );
   return {
-    actor: {
-      authorId: actor.userId,
-      ...(actor.fullName ? { authorName: actor.fullName } : undefined),
-    },
+    actor: instructionActorFor(actor),
+    ...(reviewItemInput ? { kind: "runtime" as const } : undefined),
     provenance: instructionProvenanceFor(actor),
-    text: message.input.text.trim(),
+    text: reviewItemInput ?? message.input.text.trim(),
     timestampMs: message.createdAtMs,
     ...(storedAttachments.length ? { storedAttachments } : undefined),
   };
@@ -70,22 +72,10 @@ export function createWebSteeringDrain(args: {
       // Save the transcript Message first. A failed write leaves the input
       // pending instead of missing from the transcript.
       for (const message of joining) {
-        const attachments = readMessageAttachments(message.input.attachments);
-        upsertConversationMessage(conversation, {
-          id: message.inboundMessageId,
-          role: "user",
-          text: normalizeConversationText(message.input.text),
-          createdAtMs: message.createdAtMs,
-          author,
-          ...(message.input.authorIdentityId
-            ? { authorIdentityId: message.input.authorIdentityId }
-            : undefined),
-          meta: {
-            ...(attachments.length ? { attachments } : undefined),
-            explicitMention: true,
-            source: "web",
-          },
-        });
+        upsertConversationMessage(
+          conversation,
+          webConversationMessage(message, author),
+        );
       }
       await persistConversationMessages({
         conversation,
@@ -98,7 +88,9 @@ export function createWebSteeringDrain(args: {
         (await getTurnRecord(context.conversationId, turnId))?.piMessages ?? [];
       const messages = withoutSavedSteeringMessages(
         saved,
-        joining.map((message) => steeringMessageFromWeb(message, actor)),
+        await Promise.all(
+          joining.map((message) => steeringMessageFromWeb(message, actor)),
+        ),
         buildSteeringPiMessage,
       );
       if (messages.length > 0) {

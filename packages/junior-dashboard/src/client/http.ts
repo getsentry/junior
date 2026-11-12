@@ -1,5 +1,29 @@
 import type { ZodType } from "zod";
 import { recordDashboardServerVersion } from "./dashboard-version";
+import { readResponseJson } from "./sentry";
+
+declare global {
+  interface Window {
+    __JUNIOR_DASHBOARD_EARLY_RESPONSE__?: {
+      path: string;
+      response: Promise<Response>;
+    };
+  }
+}
+
+// The page shell starts the first read of a Conversation page before this
+// module loads (see `conversationOpenScript`). The first request for the same
+// path takes it, once, so later reads see fresh data.
+function takeEarlyResponse(path: string): Promise<Response> | undefined {
+  if (typeof window === "undefined") return undefined;
+  const early = window.__JUNIOR_DASHBOARD_EARLY_RESPONSE__;
+  if (early?.path !== path) return undefined;
+  delete window.__JUNIOR_DASHBOARD_EARLY_RESPONSE__;
+  return early.response.then((response) => {
+    recordDashboardServerVersion(response);
+    return response;
+  });
+}
 
 /** An authenticated dashboard request rejected by the product API. */
 export class DashboardApiError extends Error {
@@ -91,7 +115,7 @@ export async function patch<T>(
   });
   if (response.status === 401) restartDashboardSignIn();
   if (!response.ok) await throwDashboardApiError(path, response);
-  return schema.parse(await response.json());
+  return readResponseJson(response, schema);
 }
 
 /** Send one authenticated POST request and validate its response. */
@@ -108,7 +132,7 @@ export async function post<T>(
   });
   if (response.status === 401) restartDashboardSignIn();
   if (!response.ok) await throwDashboardApiError(path, response);
-  return schema.parse(await response.json());
+  return readResponseJson(response, schema);
 }
 
 /** Send one authenticated PUT request and validate its response. */
@@ -125,7 +149,7 @@ export async function put<T>(
   });
   if (response.status === 401) restartDashboardSignIn();
   if (!response.ok) await throwDashboardApiError(path, response);
-  return schema.parse(await response.json());
+  return readResponseJson(response, schema);
 }
 
 /** Delete one authenticated dashboard resource. */
@@ -152,7 +176,7 @@ export async function del<T>(
   });
   if (response.status === 401) restartDashboardSignIn();
   if (!response.ok) await throwDashboardApiError(path, response);
-  return schema.parse(await response.json());
+  return readResponseJson(response, schema);
 }
 
 async function fetchDashboard(
@@ -164,6 +188,26 @@ async function fetchDashboard(
   return response;
 }
 
+/**
+ * Read at most `maxBytes` from the start of an authenticated dashboard file.
+ * It asks for one byte range, so a large file does not download whole.
+ */
+export async function readDashboardBytes(
+  path: string,
+  maxBytes: number,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
+  const response = await fetchDashboard(path, {
+    credentials: "same-origin",
+    headers: { range: `bytes=0-${maxBytes - 1}` },
+    ...(signal ? { signal } : undefined),
+  });
+  if (response.status === 401) restartDashboardSignIn();
+  if (!response.ok) await throwDashboardApiError(path, response);
+  // HTTP lets a server ignore the range and send the whole file.
+  return new Uint8Array(await response.arrayBuffer()).subarray(0, maxBytes);
+}
+
 /** Fetch one authenticated dashboard JSON resource and validate its response. */
 export async function fetchDashboardJson<T>(
   schema: ZodType<T>,
@@ -171,24 +215,27 @@ export async function fetchDashboardJson<T>(
   signal?: AbortSignal,
 ): Promise<T> {
   const response = await readDashboardResponse(path, signal);
-  return schema.parse(await response.json());
+  return readResponseJson(response, schema);
 }
 
-/** Read an authenticated response, allowing 304 only for an explicit validator. */
+/** Read an authenticated response, allowing 304 only for explicit validator headers. */
 export async function readDashboardResponse(
   path: string,
   signal?: AbortSignal,
-  etag?: string,
+  validator?: Record<string, string>,
 ): Promise<Response> {
-  const response = await fetchDashboard(path, {
-    credentials: "same-origin",
-    ...(signal ? { signal } : undefined),
-    ...(etag
-      ? { cache: "no-store" as const, headers: { "if-none-match": etag } }
-      : undefined),
-  });
+  // A read with a validator has a cached copy, so it is never the first.
+  const early = validator ? undefined : takeEarlyResponse(path);
+  const response = await (early ??
+    fetchDashboard(path, {
+      credentials: "same-origin",
+      ...(signal ? { signal } : undefined),
+      ...(validator
+        ? { cache: "no-store" as const, headers: validator }
+        : undefined),
+    }));
   if (response.status === 401) restartDashboardSignIn();
-  if (!response.ok && !(etag && response.status === 304)) {
+  if (!response.ok && !(validator && response.status === 304)) {
     await throwDashboardApiError(path, response);
   }
   return response;

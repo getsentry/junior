@@ -1,4 +1,5 @@
 import type { SubscribableResource } from "@sentry/junior-plugin-api";
+import { gitHubRepoDataSchema } from "./scope.js";
 import { GITHUB_DEPLOYMENT_EVENTS } from "./deployment.js";
 import { GITHUB_ISSUE_EVENTS, GITHUB_ISSUE_SUGGESTED_EVENTS } from "./issue.js";
 import {
@@ -34,7 +35,10 @@ export const GITHUB_REPOSITORY_EVENTS = [
 export const GITHUB_REPOSITORY_SUGGESTED_EVENTS = [
   "issue.opened",
   "pull_request.opened",
-  ...GITHUB_ISSUE_SUGGESTED_EVENTS,
+  // Label, assignee, and edit updates are too frequent across a repository.
+  ...GITHUB_ISSUE_SUGGESTED_EVENTS.filter(
+    (eventType) => eventType !== "issue.updated",
+  ),
   ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
 ] as const;
 
@@ -50,8 +54,9 @@ export function gitHubRepositorySubscribable(input: {
   if (!input.canSubscribe) return undefined;
   return {
     ...gitHubRepositoryResource(input),
-    suggestedEvents: [...GITHUB_REPOSITORY_SUGGESTED_EVENTS],
-    supportedEvents: [...GITHUB_REPOSITORY_EVENTS],
+    match: { repo: gitHubRepoDataSchema.parse(input.repo) },
+    suggested_events: [...GITHUB_REPOSITORY_SUGGESTED_EVENTS],
+    supported_events: [...GITHUB_REPOSITORY_EVENTS],
     type: "repository",
   };
 }

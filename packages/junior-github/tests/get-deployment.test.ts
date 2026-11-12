@@ -44,29 +44,34 @@ describe("getDeployment", () => {
     await expect(
       tool.execute?.(
         {
-          commitSha: COMMIT_SHA.toUpperCase(),
+          commit_sha: COMMIT_SHA.toUpperCase(),
           environment: "Production",
           repo: "GetSentry/Junior-Prod",
         },
         { toolCallId: "get-deployment" },
       ),
     ).resolves.toMatchObject({
-      commitSha: COMMIT_SHA,
+      commit_sha: COMMIT_SHA,
       deployment: {
         creator: null,
         environment: "Production",
         id: 5_634_510_476,
-        latestStatus: {
+        latest_status: {
           creator: null,
           description: null,
-          environmentUrl: null,
-          logUrl: null,
+          environment_url: null,
+          log_url: null,
           state: "failure",
         },
       },
       subscribable: {
         identifier: `deployment-source:getsentry/junior-prod:production:${COMMIT_SHA}`,
-        suggestedEvents: [
+        match: {
+          repo: "getsentry/junior-prod",
+          commit_sha: COMMIT_SHA,
+          environment: "production",
+        },
+        suggested_events: [
           "deployment.succeeded",
           "deployment.failed",
           "deployment.error",
@@ -95,7 +100,7 @@ describe("getDeployment", () => {
     await expect(
       tool.execute?.(
         {
-          commitSha: COMMIT_SHA,
+          commit_sha: COMMIT_SHA,
           environment: "Preview",
           repo: "getsentry/junior-prod",
         },
@@ -116,7 +121,7 @@ describe("getDeployment", () => {
     await expect(
       tool.execute?.(
         {
-          commitSha: COMMIT_SHA,
+          commit_sha: COMMIT_SHA,
           repo: "GetSentry/Junior-Prod",
         },
         { toolCallId: "watch-commit-deployments" },
@@ -141,7 +146,7 @@ describe("getDeployment", () => {
     await expect(
       tool.execute?.(
         {
-          commitSha: COMMIT_SHA,
+          commit_sha: COMMIT_SHA,
           environment: "Production",
           repo: "getsentry/missing",
         },
@@ -167,7 +172,7 @@ describe("getDeployment", () => {
       { body: { message: "Request was spammed" }, status: 422 },
     ]);
     const input = {
-      commitSha: COMMIT_SHA,
+      commit_sha: COMMIT_SHA,
       environment: "Production",
       repo: "getsentry/junior-prod",
     };
@@ -207,7 +212,7 @@ describe("getDeployment", () => {
     await expect(
       tool.execute?.(
         {
-          commitSha: COMMIT_SHA,
+          commit_sha: COMMIT_SHA,
           environment: "Production",
           repo: "getsentry/junior-prod",
         },

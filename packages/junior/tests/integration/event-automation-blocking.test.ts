@@ -1,25 +1,27 @@
 import { createAutomationTool } from "@/chat/automations/tools/create";
 import { createUpdateAutomationTool } from "@/chat/automations/tools/update";
 import { createDeleteAutomationTool } from "@/chat/automations/tools/delete";
+import { createSearchAutomationsTool } from "@/chat/automations/tools/search";
 import { automationToolContext } from "@/chat/automations/tool-access";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { createApp, defineJuniorPlugins } from "@/app";
-import { markDispatchBlocked } from "@/chat/agent-dispatch/store";
+import {
+  getDispatchRecord,
+  markDispatchBlocked,
+} from "@/chat/agent-dispatch/store";
 import { getConversationStore } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import { getEventAutomation } from "@/chat/event-automations/store";
 import { botConfig } from "@/chat/config";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { githubPlugin } from "@sentry/junior-github";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { juniorAutomations } from "@/db/schema/automations";
 import {
   changesRequestedEvent,
   context,
   createTask,
-  EVENT_CATALOG,
+  useGitHubEvents,
   execute,
   teamId,
 } from "../fixtures/event-automations";
@@ -27,6 +29,7 @@ import {
   createConversationWorkQueueTestAdapter,
   type ConversationWorkQueueTestAdapter,
 } from "../fixtures/conversation-work";
+import { installTestSkills } from "../fixtures/skill-dirs";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import {
   createConfiguredJuniorSqlFixture,
@@ -62,9 +65,11 @@ describe("event automation blocking", () => {
       source: "local",
       nowMs: Date.now(),
     });
+    await useGitHubEvents();
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await fixture.sql
       .db()
       .delete(juniorAutomations)
@@ -75,7 +80,13 @@ describe("event automation blocking", () => {
   });
 
   it("blocks an event automation after a blocked run and tells its creator once", async () => {
-    const { automation } = await createTask("Add the release-train label.");
+    const { automation } = await createTask(
+      "Add the release-train label.",
+      undefined,
+      undefined,
+      undefined,
+      "creator",
+    );
     const reason = "This run needs a connected github account.";
     const db = fixture.sql.db();
     const read = async () => (await getEventAutomation(db, automation.id))!;
@@ -84,10 +95,10 @@ describe("event automation blocking", () => {
       execute(
         createUpdateAutomationTool(
           automationToolContext(context()),
-          EVENT_CATALOG,
+          getEventCatalog(),
         ),
         {
-          automationId: automation.id,
+          automation_id: automation.id,
           status,
         },
       );
@@ -138,10 +149,10 @@ describe("event automation blocking", () => {
       execute(
         createUpdateAutomationTool(
           automationToolContext(context("U999")),
-          EVENT_CATALOG,
+          getEventCatalog(),
         ),
         {
-          automationId: automation.id,
+          automation_id: automation.id,
           status: "active",
         },
       ),
@@ -168,6 +179,113 @@ describe("event automation blocking", () => {
       status: "blocked",
       statusReason: reason,
     });
+  });
+
+  it("runs the chosen skill and blocks when it is no longer installed", async () => {
+    let removeSkills: (() => Promise<void>) | undefined =
+      await installTestSkills([
+        {
+          name: "release-check",
+          description: "Check the release.",
+          body: "Check the release.",
+          disableModelInvocation: true,
+        },
+      ]);
+    try {
+      const create = (skill: string) =>
+        execute(
+          createAutomationTool(
+            automationToolContext(context()),
+            getEventCatalog(),
+          ),
+          {
+            skill,
+            outcomes: [],
+            trigger: {
+              type: "event",
+              namespace: "github",
+              label: "GitHub PR getsentry/junior#1174",
+              events: ["pull_request.review.changes_requested"],
+              match: { repo: "getsentry/junior", pull_request: 1174 },
+            },
+          },
+          `skill-create-${skill}`,
+        ) as Promise<{ automation: { id: string } }>;
+      await expect(create("unknown-check")).rejects.toThrow(
+        "The skill unknown-check is not installed.",
+      );
+      const { automation } = await create("release-check");
+      const tools = automationToolContext(context());
+      const update = (input: Record<string, unknown>) =>
+        execute(createUpdateAutomationTool(tools, getEventCatalog()), {
+          automation_id: automation.id,
+          ...input,
+        });
+      const search = (skill: string) =>
+        execute(createSearchAutomationsTool(tools, getEventCatalog()), {
+          skill,
+        }) as Promise<{
+          automations: Array<{ id: string; task: unknown }>;
+        }>;
+      await update({ context: "Only check getsentry/junior." });
+      expect((await search("release-check")).automations).toMatchObject([
+        {
+          id: automation.id,
+          task: {
+            kind: "skill",
+            skill: "release-check",
+            context: "Only check getsentry/junior.",
+          },
+        },
+      ]);
+      expect((await search("other-check")).automations).toEqual([]);
+      const db = fixture.sql.db();
+      const read = async () => (await getEventAutomation(db, automation.id))!;
+      const ingest = (eventKey: string) =>
+        ingestEventAutomations(changesRequestedEvent(eventKey), {
+          queue,
+          teamId,
+        });
+
+      expect(await ingest("github:skill-1")).toEqual({ dispatched: 1 });
+      const dispatchId = queue
+        .sentRecords()[0]!
+        .conversationId!.replace(/^agent-dispatch:/, "");
+      await expect(getDispatchRecord(dispatchId)).resolves.toMatchObject({
+        skill: "release-check",
+      });
+
+      await removeSkills();
+      removeSkills = undefined;
+      expect(await ingest("github:skill-2")).toEqual({ dispatched: 0 });
+      expect(await read()).toMatchObject({
+        status: "blocked",
+        statusReason:
+          "The skill release-check is no longer installed. Choose another skill or switch to an instruction.",
+      });
+      expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
+
+      // An instruction replaces the skill and its context.
+      await update({
+        instruction: "Add the release-train label.",
+        status: "active",
+      });
+      const resumed = await read();
+      expect(resumed).toMatchObject({
+        status: "active",
+        task: {
+          kind: "instruction",
+          instruction: "Add the release-train label.",
+        },
+      });
+      expect(resumed.task).not.toHaveProperty("skill");
+      await expect(update({ context: "Only main." })).rejects.toThrow(
+        "Context goes only with a skill.",
+      );
+      expect(await ingest("github:skill-3")).toEqual({ dispatched: 1 });
+    } finally {
+      await removeSkills?.();
+    }
   });
 
   it("limits runs for each event automation, not for its trigger", async () => {
@@ -227,10 +345,10 @@ describe("event automation blocking", () => {
     await execute(
       createUpdateAutomationTool(
         automationToolContext(context()),
-        EVENT_CATALOG,
+        getEventCatalog(),
       ),
       {
-        automationId: automation.id,
+        automation_id: automation.id,
         status: "active",
       },
     );
@@ -243,10 +361,10 @@ describe("event automation blocking", () => {
       execute(
         createDeleteAutomationTool(
           automationToolContext(context()),
-          EVENT_CATALOG,
+          getEventCatalog(),
         ),
         {
-          automationId,
+          automation_id: automationId,
         },
       );
     await remove(sibling.id);
@@ -263,65 +381,52 @@ describe("event automation blocking", () => {
   }, 30_000);
 
   it("counts each event once, however many resources it is published for", async () => {
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
-    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
-    try {
-      const { automation } = (await execute(
-        createAutomationTool(
-          automationToolContext(context()),
-          getEventCatalog(),
-        ),
-        {
-          instruction: "Summarize the failed deployment.",
-          trigger: {
-            type: "event",
-            namespace: "github",
-            label: "Failed deployments",
-            events: ["deployment.failed"],
-          },
+    const { automation } = (await execute(
+      createAutomationTool(automationToolContext(context()), getEventCatalog()),
+      {
+        instruction: "Summarize the failed deployment.",
+        trigger: {
+          type: "event",
+          namespace: "github",
+          label: "Failed deployments",
+          events: ["deployment.failed"],
         },
-        "any-deployment",
-      )) as { automation: { id: string } };
-      // A trigger with no identifier gets every copy of an event. Repeated
-      // copies must not fill the run list and block it early.
-      const copies = 12;
-      const occur = async (eventKey: string, nowMs: number) => {
-        let dispatched = 0;
-        for (let index = 0; index < copies; index += 1) {
-          const result = await ingestEventAutomations(
-            {
-              eventKey,
-              eventType: "deployment.failed",
-              occurredAtMs: nowMs,
-              namespace: "github",
-              identifier: `deployment-source:getsentry/repo-${index}:abc`,
-              trustedSummary: "A deployment failed.",
-            },
-            { nowMs, queue, teamId },
-          );
-          dispatched += result.dispatched;
-        }
-        return dispatched;
-      };
-      const nowMs = Date.now();
-      for (
-        let index = 0;
-        index < botConfig.maxEventAutomationRuns;
-        index += 1
-      ) {
-        expect(await occur(`github:deploy-${index}`, nowMs)).toBe(1);
+      },
+      "any-deployment",
+    )) as { automation: { id: string } };
+    // A trigger with no identifier gets every copy of an event. Repeated
+    // copies must not fill the run list and block it early.
+    const copies = 12;
+    const occur = async (eventKey: string, nowMs: number) => {
+      let dispatched = 0;
+      for (let index = 0; index < copies; index += 1) {
+        const result = await ingestEventAutomations(
+          {
+            eventKey,
+            eventType: "deployment.failed",
+            occurredAtMs: nowMs,
+            namespace: "github",
+            identifier: `deployment-source:getsentry/repo-${index}:abc`,
+            trustedSummary: "A deployment failed.",
+          },
+          { nowMs, queue, teamId },
+        );
+        dispatched += result.dispatched;
       }
-      const db = fixture.sql.db();
-      expect(await getEventAutomation(db, automation.id)).toMatchObject({
-        status: "active",
-      });
-      // The limit is the same as for a trigger with an identifier.
-      expect(await occur("github:deploy-over", nowMs)).toBe(0);
-      expect(await getEventAutomation(db, automation.id)).toMatchObject({
-        status: "blocked",
-      });
-    } finally {
-      vi.unstubAllEnvs();
+      return dispatched;
+    };
+    const nowMs = Date.now();
+    for (let index = 0; index < botConfig.maxEventAutomationRuns; index += 1) {
+      expect(await occur(`github:deploy-${index}`, nowMs)).toBe(1);
     }
+    const db = fixture.sql.db();
+    expect(await getEventAutomation(db, automation.id)).toMatchObject({
+      status: "active",
+    });
+    // The limit is the same as for a trigger with an identifier.
+    expect(await occur("github:deploy-over", nowMs)).toBe(0);
+    expect(await getEventAutomation(db, automation.id)).toMatchObject({
+      status: "blocked",
+    });
   }, 30_000);
 });

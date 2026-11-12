@@ -26,6 +26,9 @@ const AVATAR_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const AVATAR_FAILURE_TTL_MS = 5 * 60 * 1000;
 const AVATAR_FETCH_TIMEOUT_MS = 5_000;
 const MAX_AVATAR_BYTES = 1024 * 1024;
+// The dashboard shows photos at 32 CSS pixels or less. 96 pixels stays sharp
+// on 3x screens. Slack sends 512 pixel photos of up to about 600 KB.
+const AVATAR_EDGE_PX = 96;
 // Google photo URLs redirect once to another Google photo host.
 const MAX_AVATAR_REDIRECTS = 3;
 
@@ -34,6 +37,12 @@ interface AvatarImage {
   contentType: string;
   /** Base64 image bytes, so the state cache can store them as JSON. */
   data: string;
+}
+
+/** A saved photo and the version of its provider URL. */
+interface AvatarRead {
+  image: AvatarImage;
+  version: string;
 }
 
 type AvatarIdentityRow = {
@@ -64,9 +73,20 @@ export function parseAvatarUrl(
     : undefined;
 }
 
+// A new photo has a new provider URL, so the hash of the URL names the photo.
+function avatarUrlHash(url: string): string {
+  return createHash("sha256").update(url).digest("hex");
+}
+
+// The version names one photo of an Identity. It changes with the photo, so
+// browsers can keep a versioned photo path for a long time.
+function avatarVersion(url: string): string {
+  return avatarUrlHash(url).slice(0, 16);
+}
+
 // The Junior API path that serves the photo of one Identity.
-function avatarPath(identityId: string): string {
-  return `/api/people/avatars/${encodeURIComponent(identityId)}`;
+function avatarPath(identityId: string, avatarUrl: string): string {
+  return `/api/people/avatars/${encodeURIComponent(identityId)}?v=${avatarVersion(avatarUrl)}`;
 }
 
 /**
@@ -80,6 +100,7 @@ export async function readUserAvatarUrls(
   if (userIds.length === 0) return new Map();
   const rows = await db
     .select({
+      avatarUrl: juniorIdentities.avatarUrl,
       identityId: juniorIdentities.id,
       provider: juniorIdentities.provider,
       updatedAt: juniorIdentities.updatedAt,
@@ -94,17 +115,29 @@ export async function readUserAvatarUrls(
         isNotNull(juniorIdentities.avatarUrl),
       ),
     );
+  return userAvatarUrlsFromIdentities(rows);
+}
+
+/**
+ * Pick the photo path of each user from their user Identities, for a caller
+ * that already read them: the Slack photo, then the Google photo.
+ */
+export function userAvatarUrlsFromIdentities(
+  rows: readonly (AvatarIdentityRow & { provider: string; updatedAt: Date })[],
+): Map<string, string> {
   const rank = (row: (typeof rows)[number]) =>
     AVATAR_PROVIDERS.indexOf(row.provider);
-  rows.sort(
-    (left, right) =>
-      rank(left) - rank(right) ||
-      right.updatedAt.getTime() - left.updatedAt.getTime(),
-  );
+  const ranked = rows
+    .filter((row) => rank(row) >= 0)
+    .sort(
+      (left, right) =>
+        rank(left) - rank(right) ||
+        right.updatedAt.getTime() - left.updatedAt.getTime(),
+    );
   const avatars = new Map<string, string>();
-  for (const row of rows) {
-    if (row.userId && !avatars.has(row.userId)) {
-      avatars.set(row.userId, avatarPath(row.identityId));
+  for (const row of ranked) {
+    if (row.userId && row.avatarUrl && !avatars.has(row.userId)) {
+      avatars.set(row.userId, avatarPath(row.identityId, row.avatarUrl));
     }
   }
   return avatars;
@@ -119,7 +152,7 @@ export function identityAvatarUrl(
   userAvatarUrls: ReadonlyMap<string, string>,
 ): string | undefined {
   if (row.userId) return userAvatarUrls.get(row.userId);
-  return row.avatarUrl ? avatarPath(row.identityId) : undefined;
+  return row.avatarUrl ? avatarPath(row.identityId, row.avatarUrl) : undefined;
 }
 
 // Read at most `maxBytes` of the body. Return undefined when it is larger.
@@ -204,24 +237,53 @@ async function fetchAvatarImage(
     });
   }
   if (!data) return avatarFetchFailed(host, { "app.reason": "too_large" });
-  // Use the bytes, not the provider header, to pick the content type.
+  // Check the bytes, not the provider header. sharp also reads SVG and other
+  // formats that Junior does not accept as photos.
   const contentType = detectImageMediaType(data);
   if (!contentType) {
     return avatarFetchFailed(host, { "app.reason": "not_an_image" });
   }
-  return { contentType, data: Buffer.from(data).toString("base64") };
+  try {
+    return { contentType: "image/webp", data: await shrinkAvatar(data) };
+  } catch (error) {
+    // A large photo is better than no photo. This also covers a build that
+    // has no sharp native library.
+    logWarn("avatar.resize.failed", {
+      "server.address": host,
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+    return { contentType, data: Buffer.from(data).toString("base64") };
+  }
+}
+
+// Resize the photo to the largest size the dashboard shows. Return base64.
+async function shrinkAvatar(data: Uint8Array): Promise<string> {
+  // sharp loads a native library, so load it only when a photo is fetched.
+  const { default: sharp } = await import("sharp");
+  const image = await sharp(data)
+    .rotate()
+    .resize({
+      width: AVATAR_EDGE_PX,
+      height: AVATAR_EDGE_PX,
+      withoutEnlargement: true,
+    })
+    .webp({ quality: 80 })
+    .toBuffer();
+  return image.toString("base64");
 }
 
 /**
- * Read the saved photo of one Identity. Junior fetches it from the provider
- * once and keeps it in the state cache for a day. Return undefined when the
- * Identity has no photo or the provider does not return one.
+ * Read the saved photo of one Identity and its version. Junior fetches it
+ * from the provider once, resizes it, and keeps it in the state cache for a
+ * day. Return undefined when the Identity has no photo or the provider does
+ * not return one.
  */
 export async function readAvatarImage(
   db: JuniorDatabase,
   state: StateAdapter,
   identityId: string,
-): Promise<AvatarImage | undefined> {
+): Promise<AvatarRead | undefined> {
   const [row] = await db
     .select({
       avatarUrl: juniorIdentities.avatarUrl,
@@ -236,9 +298,9 @@ export async function readAvatarImage(
     )
     .limit(1);
   const url = row ? parseAvatarUrl(row.avatarUrl, row.provider) : undefined;
-  if (!row || !url) return undefined;
-  // A new photo has a new URL, so the key changes with the photo.
-  const key = `avatar:${createHash("sha256").update(url).digest("hex")}`;
+  if (!row?.avatarUrl || !url) return undefined;
+  // The size is in the key, so a new size does not serve old cached photos.
+  const key = `avatar:${AVATAR_EDGE_PX}:${avatarUrlHash(url)}`;
   const image = await createCache(state, "core").getOrLoad(key, async () => {
     const loaded = await fetchAvatarImage(url, row.provider);
     return {
@@ -246,5 +308,5 @@ export async function readAvatarImage(
       ttlMs: loaded ? AVATAR_CACHE_TTL_MS : AVATAR_FAILURE_TTL_MS,
     };
   });
-  return image ?? undefined;
+  return image ? { image, version: avatarVersion(row.avatarUrl) } : undefined;
 }

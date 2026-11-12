@@ -25,13 +25,13 @@ import {
   formatTranscriptTimestampDetails,
   formatTranscriptDuration,
   formatUsageTotal,
-  parseMarkdownBlocks,
   peoplePath,
   slackLocationLabel,
   summarizeMessages,
   summarizeModelUsage,
   summarizeToolCalls,
   summarizeTurns,
+  transcriptMessageActor,
 } from "../src/client/format";
 import { formatDuration } from "../src/client/components/Duration";
 import type { ConversationTranscript } from "../src/client/types";
@@ -58,6 +58,7 @@ function transcript(
 ): ConversationTranscript {
   const startedAt = "2026-01-01T00:00:00.000Z";
   return {
+    kind: "root",
     conversationId: "conversation-1",
     cumulativeDurationMs: 0,
     displayTitle: "Conversation",
@@ -188,6 +189,7 @@ describe("dashboard conversation formatting", () => {
   it("formats conversation duration from cumulative execution time", () => {
     const [conversation] = buildConversations([
       {
+        kind: "root",
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 7_000,
         displayTitle: "Conversation",
@@ -206,6 +208,7 @@ describe("dashboard conversation formatting", () => {
   it("omits conversation runtime when no execution time is recorded", () => {
     const [conversation] = buildConversations([
       {
+        kind: "root",
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 0,
         displayTitle: "Conversation",
@@ -221,6 +224,52 @@ describe("dashboard conversation formatting", () => {
     expect(formatConversationDuration(conversation!)).toBe("none");
   });
 
+  it("reads each message author from the conversation authors", () => {
+    const owner = {
+      avatarUrl: "/api/people/avatars/identity-web?v=1",
+      email: "owner@example.com",
+      fullName: "Owner Person",
+    };
+    const conversation = transcript(
+      [
+        event(0, {
+          type: "message",
+          messageId: "web",
+          role: "user",
+          text: "ship it",
+          actorIdentityId: "identity-web",
+          actorIdentity: { fullName: "Saved Name" },
+        }),
+      ],
+      {
+        actorIdentity: { fullName: "Alice" },
+        authors: { "identity-slack": owner, "identity-web": owner },
+      },
+    );
+
+    expect(summarizeMessages(conversation).items).toEqual([
+      { author: "Owner Person", bytes: 7 },
+    ]);
+    expect(
+      transcriptMessageActor(conversation, {
+        actorIdentityId: "identity-slack",
+        parts: [],
+        role: "user",
+        sourceSeq: 1,
+      }),
+    ).toBe(owner);
+    // An author who is not in the Conversation yet keeps the saved identity.
+    expect(
+      transcriptMessageActor(conversation, {
+        actorIdentity: { fullName: "New Person" },
+        actorIdentityId: "identity-new",
+        parts: [],
+        role: "user",
+        sourceSeq: 2,
+      }),
+    ).toEqual({ fullName: "New Person" });
+  });
+
   it("summarizes visible canonical messages and structural tools", () => {
     const conversation = transcript(
       [
@@ -229,7 +278,9 @@ describe("dashboard conversation formatting", () => {
           messageId: "user",
           role: "user",
           text: "run search",
+          // A web send carries an email, but the label is the name.
           actorIdentity: {
+            email: "taylor@example.com",
             fullName: "Taylor Chen",
             slackUserName: "taylor",
           },
@@ -249,6 +300,7 @@ describe("dashboard conversation formatting", () => {
           startedSeq: 2,
           startedAt: "2026-01-01T00:00:02.000Z",
           childConversationId: "child-1",
+          childKind: "task",
           subagentKind: "advisor",
           parentToolCallId: "search-1",
           status: "running",
@@ -308,7 +360,7 @@ describe("dashboard conversation formatting", () => {
       { actorIdentity: { fullName: "Alice" } },
     );
     expect(summarizeMessages(conversation)).toEqual({
-      items: [{ author: "Agent invocation", bytes: 5 }],
+      items: [{ author: "Parent agent", bytes: 5 }],
       total: 1,
     });
   });
@@ -333,6 +385,7 @@ describe("dashboard conversation formatting", () => {
       conversationId: "slack:C1:123",
       cumulativeDurationMs: 0,
       isParticipant: false,
+      kind: "root" as const,
       lastProgressAt: "2026-06-01T10:05:00.000Z",
       startedAt: "2026-06-01T10:00:00.000Z",
       status: "completed" as const,
@@ -359,9 +412,11 @@ describe("dashboard conversation formatting", () => {
     );
     expect(
       conversationActorLabel({
+        kind: "root",
         id: "1",
         cumulativeDurationMs: 0,
         displayTitle: "x",
+        isParticipant: true,
         lastProgressAt: "x",
         lastSeenAt: "x",
         startedAt: "x",
@@ -377,24 +432,5 @@ describe("dashboard conversation formatting", () => {
         channelNameRedacted: false,
       }),
     ).toBe("#proj-alpha (C1)");
-  });
-});
-
-describe("transcript blocks", () => {
-  it("keeps prose as markdown and preserves fenced languages", () => {
-    expect(
-      parseMarkdownBlocks("The function returns a const value.")[0],
-    ).toMatchObject({
-      fenced: false,
-      language: "markdown",
-    });
-    expect(parseMarkdownBlocks('```json\n{"ok":true}\n```')[0]).toMatchObject({
-      fenced: true,
-      language: "json",
-    });
-    expect(parseMarkdownBlocks("```xml\n<root />\n```")[0]).toMatchObject({
-      fenced: true,
-      language: "xml",
-    });
   });
 });

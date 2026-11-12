@@ -5,10 +5,46 @@ import {
   resolveViewerUserFromSql,
   updateViewerDisplayNameFromSql,
 } from "@/chat/plugins/viewer";
-import { juniorUsers } from "@/db/schema";
+import { juniorIdentities, juniorUsers } from "@/db/schema";
 import { createJuniorSqlFixture } from "../fixtures/sql";
 
-describe("viewer display name", () => {
+describe("viewer user", () => {
+  it("resolves a known user with its linked identities and no new row", async () => {
+    const fixture = await createJuniorSqlFixture();
+    try {
+      await migrateSchema(fixture.sql);
+      const db = fixture.sql.db();
+      const created = await resolveViewerUserFromSql(db, "Person@Example.com");
+      expect(created?.identities).toEqual([]);
+      const now = new Date();
+      await db.insert(juniorIdentities).values(
+        ["slack", "github"].map((provider) => ({
+          createdAt: now,
+          id: `identity-${provider}`,
+          kind: "user" as const,
+          provider,
+          providerSubjectId: `${provider}-subject`,
+          updatedAt: now,
+          userId: created!.id,
+        })),
+      );
+
+      const known = await resolveViewerUserFromSql(db, "person@example.com");
+
+      expect(known).toMatchObject({
+        email: "Person@Example.com",
+        id: created!.id,
+        identities: [
+          { id: "identity-github", provider: "github" },
+          { id: "identity-slack", provider: "slack" },
+        ],
+      });
+      expect(await db.select().from(juniorUsers)).toHaveLength(1);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("persists a display name for the canonical user", async () => {
     const fixture = await createJuniorSqlFixture();
     try {

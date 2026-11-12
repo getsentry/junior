@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { ConversationEventData } from "./history";
 
 const messageFieldsSchema = z.record(z.string(), z.unknown());

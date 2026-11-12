@@ -1,4 +1,3 @@
-import { createPluginCache } from "@/chat/plugins/cache";
 import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
   missingToolAnnotationKeys,
@@ -24,6 +23,7 @@ import type {
   Platform,
   Event,
   EventData,
+  EventPublisher,
   SlackConversationLink,
   PluginRegistration,
   SlackToolRegistrationHookContext,
@@ -38,19 +38,34 @@ import {
   annotateToolResult,
   saveObjectAnnotations,
 } from "@/chat/conversations/annotation-results";
+import { recordToolReply } from "@/chat/conversations/tool-replies";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginConversationEventReader } from "@/chat/plugins/conversation-event-reader";
 import { createPluginConversationEventStats } from "@/chat/plugins/conversation-event-stats";
-import { logInfo, logWarn, withSpan } from "@/chat/logging";
+import { logInfo, logWarn, type SetSpanAttributes } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
-import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
+import { createPluginModelCostRecorder } from "@/chat/plugins/model-cost";
+import {
+  runAfterToolExecuteHooks,
+  type AfterToolHookInput,
+  type ToolHookSandbox,
+  type ToolHookTurn,
+  type ToolResultNudge,
+} from "@/chat/plugins/after-tool-hooks";
+import {
+  basePluginContext,
+  createSandboxCapability,
+  withPluginHookSpan,
+} from "@/chat/plugins/hook-context";
+import {
+  createPluginDecider,
+  createPluginEmbedder,
+  createPluginModel,
+  createPluginReranker,
+} from "@/chat/plugins/model";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import { createPluginState } from "@/chat/plugins/state";
-import {
-  SANDBOX_JUNIOR_ROOT,
-  SANDBOX_WORKSPACE_ROOT,
-} from "@/chat/sandbox/paths";
-import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
+import { SANDBOX_JUNIOR_ROOT } from "@/chat/sandbox/paths";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -68,14 +83,11 @@ import {
   resolveViewerUser,
 } from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-import type {
-  SandboxCommandInput,
-  SandboxWorkspace,
-} from "@/chat/sandbox/workspace";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
 import type { Actor } from "@/chat/actor";
-import { z } from "zod";
+import * as z from "zod";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import {
   getWorkspace,
@@ -118,6 +130,7 @@ export interface AfterMcpToolHookInput {
 
 export interface PluginHookRunner {
   afterMcpTool(input: AfterMcpToolHookInput): Promise<OwnedObjectAnnotation[]>;
+  afterToolExecute(input: AfterToolHookInput): Promise<ToolResultNudge[]>;
   beforeToolExecute(input: ToolHookInput): Promise<ToolHookResult>;
   prepareSandbox(workspace: SandboxWorkspace): Promise<void>;
   prepareWorkspace(
@@ -159,16 +172,6 @@ const systemPromptMessageArraySchema = z.array(promptMessageSchema);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function basePluginContext(plugin: PluginRegistration) {
-  const name = plugin.manifest.name;
-  return {
-    plugin: { name },
-    cache: createPluginCache(name),
-    log: createPluginLogger(name),
-    db: getDb(),
-  };
 }
 
 /** Convert manifest names into model-facing tool namespaces. */
@@ -241,6 +244,32 @@ function pluginInvocationContext(
   }
 }
 
+/**
+ * Let a plugin add numeric diagnostics to its hook span. Plugins own the
+ * meaning of these attributes, so they stay in the plugin's `app.<name>.`
+ * namespace and cannot overwrite host attributes or carry text.
+ */
+function pluginSpanAttributeSetter(
+  pluginName: string,
+  setSpanAttributes: SetSpanAttributes,
+): UserPromptContext["setSpanAttributes"] {
+  const prefix = `app.${pluginName}.`;
+  return (attributes) => {
+    const allowed = Object.fromEntries(
+      Object.entries(attributes).filter(
+        ([key, value]) =>
+          key.length > prefix.length &&
+          key.startsWith(prefix) &&
+          typeof value === "number" &&
+          Number.isFinite(value),
+      ),
+    );
+    if (Object.keys(allowed).length > 0) {
+      setSpanAttributes(allowed);
+    }
+  };
+}
+
 function invocationPluginContext(
   plugin: PluginRegistration,
   context: Pick<
@@ -253,14 +282,23 @@ function invocationPluginContext(
     | "source"
     | "userText"
   >,
+  setSpanAttributes: SetSpanAttributes,
   turnId?: string,
 ): UserPromptContext {
   const base = basePluginContext(plugin);
+  const onCost = context.conversationId
+    ? createPluginModelCostRecorder({
+        conversationId: context.conversationId,
+        pluginName: plugin.manifest.name,
+        source: "userPrompt",
+        ...(turnId ? { turnId } : undefined),
+      })
+    : undefined;
   const common = {
     ...base,
     conversationId: context.conversationId,
     locationId: context.locationId,
-    embedder: createPluginEmbedder(plugin.manifest.name),
+    embedder: createPluginEmbedder(plugin.manifest.name, { onCost }),
     ...(context.conversationId && turnId
       ? {
           events: createPluginConversationEvents({
@@ -271,7 +309,12 @@ function invocationPluginContext(
           }),
         }
       : undefined),
-    model: createPluginModel(plugin.manifest.name, plugin.model),
+    model: createPluginModel(plugin.manifest.name, plugin.model, { onCost }),
+    reranker: createPluginReranker(plugin.manifest.name, { onCost }),
+    setSpanAttributes: pluginSpanAttributeSetter(
+      plugin.manifest.name,
+      setSpanAttributes,
+    ),
     source: context.source,
     text: context.userText ?? "",
     state: createPluginState(plugin.manifest.name),
@@ -315,24 +358,6 @@ function pluginMcpContext(
       );
     },
   };
-}
-
-/** Time one plugin hook call so slow plugins show up in turn traces. */
-async function withPluginHookSpan<T>(
-  pluginName: string,
-  hookName: "beforeToolExecute" | "sandboxPrepare" | "userPrompt",
-  callback: () => Promise<T>,
-): Promise<T> {
-  return await withSpan(
-    `plugin.hook ${hookName}`,
-    "plugin.hook",
-    {},
-    callback,
-    {
-      "app.plugin.name": pluginName,
-      "app.plugin.hook": hookName,
-    },
-  );
 }
 
 function safeErrorMessage(error: unknown): string {
@@ -581,9 +606,14 @@ export async function getPluginUserPromptContributions(args: {
       const rawResult = await withPluginHookSpan(
         pluginName,
         "userPrompt",
-        async () =>
+        async (setSpanAttributes) =>
           await hook({
-            ...invocationPluginContext(plugin, args.context, args.turnId),
+            ...invocationPluginContext(
+              plugin,
+              args.context,
+              setSpanAttributes,
+              args.turnId,
+            ),
           }),
       );
       if (rawResult === undefined) {
@@ -679,9 +709,6 @@ export function getPluginTools(
             channelCapabilities: resolveChannelCapabilities(
               slackToolContext.locationChannelId,
             ),
-            ...(dashboardConversationUrl
-              ? { conversationLink: { url: dashboardConversationUrl } }
-              : undefined),
             ...(credentialSubject ? { credentialSubject } : undefined),
           }
         : undefined;
@@ -743,20 +770,30 @@ export function getPluginTools(
       context.source.automationId
         ? getDashboardTaskLink(context.source.automationId)
         : undefined;
+    const onCost = createPluginModelCostRecorder({
+      conversationId: context.conversationId,
+      pluginName,
+      source: "tool",
+      ...(context.turnId ? { turnId: context.turnId } : undefined),
+    });
     const common = {
       ...basePluginContext(plugin),
       annotations,
       ...(automationUrl
         ? { automationLink: { url: automationUrl } }
         : undefined),
+      ...(dashboardConversationUrl
+        ? { conversationLink: { url: dashboardConversationUrl } }
+        : undefined),
       conversationId: context.conversationId,
       locationId: context.locationId,
       ...(slackContext ? { slack: slackContext } : undefined),
       userText: context.userText,
-      embedder: createPluginEmbedder(pluginName),
+      decider: createPluginDecider(pluginName, { onCost }),
+      embedder: createPluginEmbedder(pluginName, { onCost }),
       egress: context.egress,
       ...(mcp ? { mcp } : undefined),
-      model: createPluginModel(pluginName, plugin.model),
+      model: createPluginModel(pluginName, plugin.model, { onCost }),
       events,
       sandbox,
       state: createPluginState(pluginName),
@@ -878,7 +915,12 @@ export function getPluginTools(
           annotateToolResult(
             context.conversationId,
             pluginName,
-            await execute.call(definition, input, options),
+            await recordToolReply({
+              conversationId: context.conversationId,
+              plugin: pluginName,
+              result: await execute.call(definition, input, options),
+              toolCallId: options.toolCallId,
+            }),
           );
         tools[name] = wrapped;
       } else tools[name] = definition;
@@ -937,20 +979,85 @@ function requirePublishedEvent(
   }
 }
 
+/** The core event publisher that plugin event publishers write to. */
+export interface AppEventPublisher {
+  hasMatch?(events: Event[]): Promise<boolean>;
+  neededMatchKeys?(input: {
+    data?: EventData;
+    eventTypes: string[];
+    identifiers: string[];
+    namespace: string;
+  }): Promise<string[]>;
+  publish(event: Event): Promise<void>;
+}
+
+/**
+ * Bind the core event publisher to one plugin. Events get the plugin's
+ * namespace, and the plugin can publish only the event types it registered.
+ */
+export function createPluginEventPublisher(
+  plugin: PluginRegistration,
+  appEvents: AppEventPublisher,
+): EventPublisher {
+  const pluginName = plugin.manifest.name;
+  return {
+    async hasMatch(events) {
+      if (!appEvents.hasMatch) return false;
+      return await appEvents.hasMatch(
+        events.map((event) => {
+          const parsed = eventInputSchema.parse(event);
+          requirePublishedEvent(plugin, parsed.eventType);
+          return {
+            ...parsed,
+            identifier: normalizeEventIdentifier(
+              plugin.events,
+              parsed.identifier,
+            ),
+            namespace: pluginName,
+          };
+        }),
+      );
+    },
+    async neededMatchKeys(input) {
+      if (!appEvents.neededMatchKeys) return [];
+      const identifiers = [
+        ...new Set(
+          input.identifiers
+            .map((identifier) =>
+              normalizeEventIdentifier(plugin.events, identifier),
+            )
+            .filter(Boolean),
+        ),
+      ];
+      if (identifiers.length === 0 || input.eventTypes.length === 0) {
+        return [];
+      }
+      return await appEvents.neededMatchKeys({
+        ...(input.data
+          ? { data: eventDataSchema.parse(input.data) }
+          : undefined),
+        eventTypes: input.eventTypes,
+        identifiers,
+        namespace: pluginName,
+      });
+    },
+    async publish(event) {
+      const parsed = eventInputSchema.parse(event);
+      requirePublishedEvent(plugin, parsed.eventType);
+      await appEvents.publish({
+        ...parsed,
+        identifier: normalizeEventIdentifier(plugin.events, parsed.identifier),
+        namespace: pluginName,
+      });
+    },
+  };
+}
+
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
   /** Shows a Review item that a plugin route changed. App setup supplies it. */
   showReviewItem?: ShowReviewItem;
-  events: {
-    hasMatch?(event: Event): Promise<boolean>;
-    neededMatchKeys?(input: {
-      data?: EventData;
-      eventTypes: string[];
-      identifiers: string[];
-      namespace: string;
-    }): Promise<string[]>;
-    publish(event: Event): Promise<void>;
-  };
+  events: AppEventPublisher;
 }): PluginRouteRegistration[] {
   const routes: PluginRouteRegistration[] = [];
   const seen = new Set<string>();
@@ -973,6 +1080,7 @@ export function getPluginRoutes(options: {
           }),
       },
       codeChanges: createCodeChangePublisher(pluginName),
+      state: createPluginState(pluginName),
       reviewItems: {
         forConversation: (conversationId) =>
           createPluginReviewItems({
@@ -982,56 +1090,7 @@ export function getPluginRoutes(options: {
           }),
       },
       users: { readIdentity: readIdentityById },
-      events: {
-        async hasMatch(event) {
-          if (!options.events.hasMatch) return false;
-          const parsed = eventInputSchema.parse(event);
-          requirePublishedEvent(plugin, parsed.eventType);
-          return await options.events.hasMatch({
-            ...parsed,
-            identifier: normalizeEventIdentifier(
-              plugin.events,
-              parsed.identifier,
-            ),
-            namespace: pluginName,
-          });
-        },
-        async neededMatchKeys(input) {
-          if (!options.events.neededMatchKeys) return [];
-          const identifiers = [
-            ...new Set(
-              input.identifiers
-                .map((identifier) =>
-                  normalizeEventIdentifier(plugin.events, identifier),
-                )
-                .filter(Boolean),
-            ),
-          ];
-          if (identifiers.length === 0 || input.eventTypes.length === 0) {
-            return [];
-          }
-          return await options.events.neededMatchKeys({
-            ...(input.data
-              ? { data: eventDataSchema.parse(input.data) }
-              : undefined),
-            eventTypes: input.eventTypes,
-            identifiers,
-            namespace: pluginName,
-          });
-        },
-        async publish(event) {
-          const parsed = eventInputSchema.parse(event);
-          requirePublishedEvent(plugin, parsed.eventType);
-          await options.events.publish({
-            ...parsed,
-            identifier: normalizeEventIdentifier(
-              plugin.events,
-              parsed.identifier,
-            ),
-            namespace: pluginName,
-          });
-        },
-      },
+      events: createPluginEventPublisher(plugin, options.events),
     });
     if (!Array.isArray(pluginRoutes)) {
       throw new Error(
@@ -1542,60 +1601,29 @@ function normalizeEnv(value: unknown): Record<string, string> {
   return env;
 }
 
-function preparationSignal(
-  inputSignal?: AbortSignal,
-  ownerSignal?: AbortSignal,
-): AbortSignal | undefined {
-  if (!inputSignal) return ownerSignal;
-  if (!ownerSignal) return inputSignal;
-  return AbortSignal.any([inputSignal, ownerSignal]);
-}
-
-function createSandboxCapability(
-  workspace: SandboxWorkspace,
-  ownerSignal?: AbortSignal,
-): PluginSandbox {
-  return {
-    root: SANDBOX_WORKSPACE_ROOT,
-    juniorRoot: SANDBOX_JUNIOR_ROOT,
-    async readFile(filePath) {
-      return (await workspace.readFileToBuffer({ path: filePath })) ?? null;
-    },
-    async run(input: SandboxCommandInput) {
-      const signal = preparationSignal(input.signal, ownerSignal);
-      const result = await runNonInteractiveCommand(workspace, {
-        ...input,
-        ...(signal ? { signal } : undefined),
-      });
-      return {
-        exitCode: result.exitCode,
-        stdout: result.stdout,
-        stderr: result.stderr,
-      };
-    },
-    async writeFile(input) {
-      await workspace.writeFiles([
-        {
-          path: input.path,
-          content: input.content,
-          ...(input.mode !== undefined ? { mode: input.mode } : undefined),
-        },
-      ]);
-    },
-  };
-}
-
 /** Create one runner over runtime hook plugins registered by the app. */
 export function createPluginHookRunner(
   input: {
     actor?: Actor;
     /** Live getter for the run's committed instruction actors; see `multi-actor-runs.md`. */
     actors?: () => Actor[];
+    /** The Run's Turn and sandbox. Without it, `afterToolExecute` hooks do not run. */
+    toolRun?: ToolHookTurn & { sandbox: () => ToolHookSandbox };
   } = {},
 ): PluginHookRunner {
   const loaded = getPlugins();
 
   return {
+    async afterToolExecute(tool) {
+      if (!input.toolRun) return [];
+      const { sandbox, ...turn } = input.toolRun;
+      return await runAfterToolExecuteHooks({
+        plugins: loaded,
+        sandbox: sandbox(),
+        tool,
+        turn,
+      });
+    },
     async afterMcpTool(tool) {
       const cards: OwnedObjectAnnotation[] = [];
       for (const plugin of loaded) {

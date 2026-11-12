@@ -119,13 +119,17 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior-notion`
 - `@sentry/junior-octolens`
 - `@sentry/junior-pagerduty`
+- `@sentry/junior-restream`
 - `@sentry/junior-sentry`
 - `@sentry/junior-vercel`
+- `@sentry/junior-xdotcom`
 
-Run `pnpm release:check` after you change this list. It keeps `.craft.yml`,
-CI, the bump script, and the release docs aligned.
+Run `pnpm release:check` after you change this list. It keeps CI, the bump
+script, and the release docs aligned. Craft publishes every public workspace
+package, so `.craft.yml` has no package list.
 
-To release, open **Actions → Release** and run it with a `bump` (`patch`,
-`minor`, or `major`). Set `force=true` only to bypass release blockers on
-purpose. `contribute/releasing.md` has the full process and the required repository
+To release, open **Actions → Release** and run it with a `bump` (`auto`,
+`pre`, `patch`, `minor`, or `major`). `auto` picks the bump from the commit
+titles, and `pre` releases a prerelease of that version.
+Set `force=true` only to bypass release blockers on purpose. `contribute/releasing.md` has the full process and the required repository
 configuration.

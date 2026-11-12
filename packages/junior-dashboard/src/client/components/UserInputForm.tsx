@@ -2,10 +2,12 @@ import { ArrowRight } from "lucide-react";
 import {
   useEffect,
   useId,
+  useImperativeHandle,
   useRef,
   useState,
   type FormEvent,
   type ReactNode,
+  type Ref,
 } from "react";
 import {
   buttonUserInputField,
@@ -20,20 +22,33 @@ import {
 import { cn } from "../styles";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
-import { Field, FieldDescription, FieldLabel } from "./ui/field";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+  FieldTitle,
+} from "./ui/field";
+import { Kbd } from "./ui/kbd";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Textarea } from "./ui/textarea";
-
-// Each choice is a whole selectable row, so the hit area and the selected
-// state read at a glance. The control inside keeps its own focus ring.
-const optionClass =
-  "flex cursor-pointer items-start gap-3 rounded-md border border-dashboard-border bg-dashboard-surface-panel px-3 py-2.5 text-sm transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover has-[[data-checked]]:border-dashboard-accent/60 has-[[data-checked]]:bg-dashboard-accent/10 has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-60";
 
 // A described choice is one button row, so its description stays beside its
 // label and one click is still the answer. The picked row keeps the accent
 // while the answer sends.
 const choiceButtonClass =
   "group flex w-full cursor-pointer items-center gap-3 rounded-md border border-dashboard-border bg-dashboard-surface-raised px-3 py-2.5 text-left font-sans text-sm transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed disabled:opacity-60 data-[picked]:border-dashboard-accent/60 data-[picked]:bg-dashboard-accent/10 data-[picked]:opacity-100";
+
+/** Sends the picks of a docked form from outside it. */
+export type UserInputFormHandle = {
+  /**
+   * Send the picks and text. Undefined when there is nothing to send;
+   * otherwise resolves false when the send fails.
+   */
+  sendPicks(): Promise<boolean> | undefined;
+};
 
 // Marks the choice that Junior recommends, next to its label.
 function SuggestedLabel(props: { className?: string }) {
@@ -49,23 +64,39 @@ function SuggestedLabel(props: { className?: string }) {
   );
 }
 
-function OptionText(props: {
-  description?: string;
-  label: string;
-  recommended?: boolean;
-}) {
+// Names the number key of a docked choice. The button already says it to
+// screen readers in `aria-keyshortcuts`.
+function ShortcutHint(props: { value?: string }) {
+  if (!props.value) return null;
   return (
-    <span className="grid min-w-0 gap-0.5 break-words">
-      <span className="font-medium text-dashboard-text">
-        {props.label}
-        {props.recommended ? <SuggestedLabel /> : null}
-      </span>
-      {props.description ? (
-        <span className="text-xs text-dashboard-text-muted">
-          {props.description}
-        </span>
-      ) : null}
-    </span>
+    <Kbd aria-hidden="true" className="max-md:hidden">
+      {props.value}
+    </Kbd>
+  );
+}
+
+// Each choice is a choice card, so the hit area and the selected state read
+// at a glance. The control inside keeps its own focus ring.
+function ChoiceOption(props: {
+  control: ReactNode;
+  option: { description?: string; label: string; recommended?: boolean };
+}) {
+  const { option } = props;
+  return (
+    <FieldLabel>
+      <Field orientation="horizontal">
+        {props.control}
+        <FieldContent className="min-w-0 break-words">
+          <FieldTitle>
+            {option.label}
+            {option.recommended ? <SuggestedLabel className="ml-0" /> : null}
+          </FieldTitle>
+          {option.description ? (
+            <FieldDescription>{option.description}</FieldDescription>
+          ) : null}
+        </FieldContent>
+      </Field>
+    </FieldLabel>
   );
 }
 
@@ -77,24 +108,24 @@ function ChoiceField(props: {
 }) {
   const id = useId();
   const { field } = props;
-  // Say how many choices count, so a reader knows when a field is done.
+  // Radios already say that one choice counts. Say it for checkboxes only.
   const legend = (
-    <legend className="mb-2 p-0 text-sm font-semibold text-dashboard-text">
+    <FieldLegend variant="label">
       {field.label}
-      <span className="ml-2 text-xs font-normal text-dashboard-text-muted">
-        {field.kind === "choice" ? "Pick one" : "Pick any"}
-      </span>
-    </legend>
+      {field.kind === "multi_choice" ? (
+        <span className="ml-2 text-xs font-normal text-dashboard-text-muted">
+          Pick any
+        </span>
+      ) : null}
+    </FieldLegend>
   );
   const description = field.description ? (
-    <FieldDescription className="-mt-1 mb-2" id={`${id}-help`}>
-      {field.description}
-    </FieldDescription>
+    <FieldDescription id={`${id}-help`}>{field.description}</FieldDescription>
   ) : null;
   const describedBy = field.description ? `${id}-help` : undefined;
   if (field.kind === "choice") {
     return (
-      <fieldset className="m-0 min-w-0 border-0 p-0">
+      <FieldSet className="min-w-0">
         {legend}
         {description}
         <RadioGroup
@@ -106,50 +137,42 @@ function ChoiceField(props: {
           value={props.values[0] ?? null}
         >
           {field.options.map((option) => (
-            <label className={optionClass} key={option.label}>
-              <RadioGroupItem className="mt-0.5" value={option.label} />
-              <OptionText
-                description={option.description}
-                label={option.label}
-                recommended={option.recommended}
-              />
-            </label>
+            <ChoiceOption
+              control={<RadioGroupItem value={option.label} />}
+              key={option.label}
+              option={option}
+            />
           ))}
         </RadioGroup>
-      </fieldset>
+      </FieldSet>
     );
   }
   return (
-    <fieldset
-      aria-describedby={describedBy}
-      className="m-0 min-w-0 border-0 p-0"
-    >
+    <FieldSet aria-describedby={describedBy} className="min-w-0">
       {legend}
       {description}
-      <div className="grid gap-2">
+      <div className="grid gap-2" data-slot="checkbox-group">
         {field.options.map((option) => (
-          <label className={optionClass} key={option.label}>
-            <Checkbox
-              checked={props.values.includes(option.label)}
-              className="mt-0.5"
-              disabled={props.disabled}
-              onCheckedChange={(checked) =>
-                props.onChange(
-                  checked
-                    ? [...props.values, option.label]
-                    : props.values.filter((value) => value !== option.label),
-                )
-              }
-            />
-            <OptionText
-              description={option.description}
-              label={option.label}
-              recommended={option.recommended}
-            />
-          </label>
+          <ChoiceOption
+            control={
+              <Checkbox
+                checked={props.values.includes(option.label)}
+                disabled={props.disabled}
+                onCheckedChange={(checked) =>
+                  props.onChange(
+                    checked
+                      ? [...props.values, option.label]
+                      : props.values.filter((value) => value !== option.label),
+                  )
+                }
+              />
+            }
+            key={option.label}
+            option={option}
+          />
         ))}
       </div>
-    </fieldset>
+    </FieldSet>
   );
 }
 
@@ -159,6 +182,7 @@ function TextField(props: {
   disabled: boolean;
   label: string;
   onChange(value: string): void;
+  ref?: Ref<HTMLTextAreaElement>;
   value: string;
 }) {
   const id = useId();
@@ -166,7 +190,7 @@ function TextField(props: {
     <Field>
       <FieldLabel htmlFor={id}>{props.label}</FieldLabel>
       {props.description ? (
-        <FieldDescription className="-mt-1" id={`${id}-help`}>
+        <FieldDescription id={`${id}-help`}>
           {props.description}
         </FieldDescription>
       ) : null}
@@ -176,6 +200,7 @@ function TextField(props: {
         disabled={props.disabled}
         id={id}
         onChange={(event) => props.onChange(event.target.value)}
+        ref={props.ref}
         value={props.value}
       />
     </Field>
@@ -186,14 +211,23 @@ function TextField(props: {
  * Render the answer controls of an action item request. A request with
  * one short choice field shows one button per choice, and a click is the
  * answer. Choices with descriptions stack as rows, so each description stays
- * with its choice. Other requests show a form that the reader submits once.
+ * with its choice. Other… turns the buttons into the form, so the reader can
+ * add a note or answer in their own words. Other requests show a form that
+ * the reader submits once.
  * A failed `onSubmit` lets the reader try again. `secondaryActions`, such as
  * Dismiss, sit after the answer controls. `onUnsentChange` reports whether
  * the form has picks or text that the reader has not sent.
+ *
+ * `docked` is for the question above the message box. The message box takes
+ * the reader's own words and sends the picks, so Other…, the note, and the
+ * form's Send do not show. `ref.sendPicks` sends the picks. Each choice
+ * button names its number key in `aria-keyshortcuts`.
  */
 export function UserInputForm(props: {
+  docked?: boolean;
   onSubmit(answer: UserInputAnswer): Promise<void>;
   onUnsentChange?(unsent: boolean): void;
+  ref?: Ref<UserInputFormHandle>;
   request: UserInputRequest;
   requestId: string;
   secondaryActions?: ReactNode;
@@ -204,24 +238,34 @@ export function UserInputForm(props: {
   const choicesId = useId();
   const [values, setValues] = useState<Record<string, string[]>>({});
   const [other, setOther] = useState("");
-  const buttonField = buttonUserInputField(props.request);
+  const [writeOther, setWriteOther] = useState(false);
+  const buttonField = writeOther
+    ? undefined
+    : buttonUserInputField(props.request);
+  // Other… unmounts the button that had focus, so move focus to the note.
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (writeOther) noteRef.current?.focus();
+  }, [writeOther]);
 
   // A ref blocks a second click before React renders the disabled controls.
   // The lock stays after a sent answer; only a failed send can retry.
   const sendLock = useRef(false);
 
-  async function send(answer: UserInputAnswer) {
-    if (sendLock.current) return;
+  async function send(answer: UserInputAnswer): Promise<boolean> {
+    if (sendLock.current) return false;
     sendLock.current = true;
     setSending(true);
     setFailed(false);
     try {
       await props.onSubmit(answer);
+      return true;
     } catch {
       sendLock.current = false;
       setSending(false);
       setPicked(undefined);
       setFailed(true);
+      return false;
     }
   }
 
@@ -246,6 +290,9 @@ export function UserInputForm(props: {
   useEffect(() => {
     onUnsentChange?.(unsent);
   }, [onUnsentChange, unsent]);
+  useImperativeHandle(props.ref, () => ({
+    sendPicks: () => (unsent ? send(answer) : undefined),
+  }));
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!isEmptyUserInputAnswer(normalized)) {
@@ -258,6 +305,20 @@ export function UserInputForm(props: {
       {props.secondaryActions}
     </div>
   ) : null;
+  // Slack cards show the same button, so both surfaces take a free-text
+  // answer when no choice fits.
+  const otherButton = props.docked ? null : (
+    <Button
+      variant="outline"
+      disabled={sending}
+      onClick={() => setWriteOther(true)}
+    >
+      Other…
+    </Button>
+  );
+  // Number keys pick the first nine choices.
+  const shortcut = (index: number) =>
+    props.docked && index < 9 ? String(index + 1) : undefined;
 
   return (
     <>
@@ -273,6 +334,7 @@ export function UserInputForm(props: {
                 aria-describedby={
                   option.description ? `${choicesId}-${index}` : undefined
                 }
+                aria-keyshortcuts={shortcut(index)}
                 aria-labelledby={`${choicesId}-${index}-label`}
                 className={choiceButtonClass}
                 data-picked={picked === option.label ? "" : undefined}
@@ -281,6 +343,7 @@ export function UserInputForm(props: {
                 onClick={() => pick(buttonField.id, option.label)}
                 type="button"
               >
+                <ShortcutHint value={shortcut(index)} />
                 <span className="grid min-w-0 flex-1 gap-0.5 break-words">
                   <span
                     className="font-medium text-dashboard-text"
@@ -306,23 +369,28 @@ export function UserInputForm(props: {
               </button>
             ))}
           </div>
-          {secondary ? (
-            <div className="mt-3 flex flex-wrap items-center">{secondary}</div>
-          ) : null}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {otherButton}
+            {secondary}
+          </div>
         </>
       ) : buttonField ? (
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {buttonField.options.map((option) => (
+          {buttonField.options.map((option, index) => (
             <Button
+              variant="outline"
+              aria-keyshortcuts={shortcut(index)}
               disabled={sending}
               key={option.label}
               onClick={() => pick(buttonField.id, option.label)}
             >
+              <ShortcutHint value={shortcut(index)} />
               {option.label}
               {/* The button gap already spaces the label. */}
               {option.recommended ? <SuggestedLabel className="ml-0" /> : null}
             </Button>
           ))}
+          {otherButton}
           {secondary}
         </div>
       ) : (
@@ -351,28 +419,37 @@ export function UserInputForm(props: {
               />
             ),
           )}
-          <TextField
-            className="min-h-16"
-            description={USER_INPUT_NOTE.description}
-            disabled={sending}
-            label={USER_INPUT_NOTE.label}
-            onChange={setOther}
-            value={other}
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <Button disabled={sending} type="submit" variant="primary">
-              Send
-            </Button>
-            {fieldCount > 1 ? (
-              <span
-                aria-live="polite"
-                className="text-xs text-dashboard-text-muted"
-              >
-                {answeredCount} of {fieldCount} answered
-              </span>
-            ) : null}
-            {secondary}
-          </div>
+          {props.docked ? null : (
+            <TextField
+              className="min-h-16"
+              description={USER_INPUT_NOTE.description}
+              disabled={sending}
+              label={USER_INPUT_NOTE.label}
+              onChange={setOther}
+              ref={noteRef}
+              value={other}
+            />
+          )}
+          {/* A docked form sends from the message box, so this row can be
+              empty there. */}
+          {props.docked && fieldCount < 2 && !secondary ? null : (
+            <div className="flex flex-wrap items-center gap-2">
+              {props.docked ? null : (
+                <Button disabled={sending} type="submit" variant="default">
+                  Send
+                </Button>
+              )}
+              {fieldCount > 1 ? (
+                <span
+                  aria-live="polite"
+                  className="text-xs text-dashboard-text-muted"
+                >
+                  {answeredCount} of {fieldCount} answered
+                </span>
+              ) : null}
+              {secondary}
+            </div>
+          )}
         </form>
       )}
       {failed ? (

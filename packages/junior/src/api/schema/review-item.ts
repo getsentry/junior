@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { userInputRequestSchema } from "@/chat/tools/runtime/user-input-request";
 
 const answerSchema = z
@@ -28,7 +28,7 @@ export const reviewItemSchema = z
     assignees: z.array(personSchema),
     automationId: z.string().min(1).optional(),
     body: z.string(),
-    /** True when the viewer can take, submit, complete, or dismiss it. */
+    /** True when the viewer can take, submit, or dismiss it. */
     canAct: z.boolean(),
     /** True when the viewer can act and is not already the only assignee. */
     canTake: z.boolean(),
@@ -57,26 +57,35 @@ export const reviewItemSchema = z
   .strict();
 
 export type ReviewItemPayload = z.output<typeof reviewItemSchema>;
+export type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 
 /**
  * Review desk list filters. The list has the open items that the viewer can
- * see, one page at a time. A search also finds done and dismissed items,
- * after the open ones.
+ * see, one page at a time. A search or `include=archived` also finds done and
+ * dismissed items, after the open ones.
  */
 export const reviewItemListQuerySchema = z
   .object({
     conversationId: z.string().min(1).optional(),
     /** `nextCursor` of the page before. */
     cursor: z.string().min(1).max(1_000).optional(),
+    /**
+     * `viewer` drops the items that are assigned only to other people. The
+     * list keeps items assigned to the viewer, to Everyone, or to no one.
+     */
+    for: z.enum(["viewer"]).optional(),
     /** The number of open items on one page. */
     limit: z.coerce.number().int().min(1).max(100).default(50),
+    /** Also list the newest done and dismissed items, with the first page. */
+    include: z.enum(["archived"]).optional(),
     q: z.string().trim().max(200).optional(),
   })
   .strict();
 
 /**
- * One page of the review desk list. Open items come first, newest change
- * first. The first page of a search also has the newest archived matches.
+ * One page of the review desk list. Open items come first, oldest first.
+ * The first page of a search, or of a list that includes archived items,
+ * also has the newest archived matches.
  */
 export const reviewItemListSchema = z
   .object({
@@ -99,9 +108,35 @@ export const reviewItemCountSchema = z
   })
   .strict();
 
-/** Conversations linked to an open action item assigned to the viewer. */
+/**
+ * Conversations linked to an open action item assigned to the viewer. `title`
+ * is the newest such item; `count` is how many there are; `waitingSince` is
+ * when the oldest was added.
+ */
 export const reviewItemWaitingConversationsSchema = z
-  .object({ conversationIds: z.array(z.string().min(1)) })
+  .object({
+    conversations: z.array(
+      z
+        .object({
+          conversationId: z.string().min(1),
+          /** Open items that need the viewer, newest first. */
+          items: z
+            .array(
+              z
+                .object({
+                  /** The plugin that added the item, such as `github`. */
+                  plugin: z.string().min(1).optional(),
+                  title: z.string().min(1),
+                })
+                .strict(),
+            )
+            .min(1),
+          /** When the oldest of those items was added: when the wait began. */
+          waitingSince: z.string().datetime(),
+        })
+        .strict(),
+    ),
+  })
   .strict();
 
 export const reviewItemParamsSchema = z
@@ -111,7 +146,6 @@ export const reviewItemParamsSchema = z
 /** One person action on a Review item. */
 export const reviewItemActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("take") }).strict(),
-  z.object({ action: z.literal("complete") }).strict(),
   z.object({ action: z.literal("dismiss") }).strict(),
   z
     .object({

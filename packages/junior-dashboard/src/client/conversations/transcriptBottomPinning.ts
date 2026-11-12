@@ -1,4 +1,5 @@
 import {
+  createContext,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -20,18 +21,10 @@ import {
 } from "./transcriptScrollAnchor";
 
 const BOTTOM_PROXIMITY_PX = 96;
-const PREVIOUS_PAGE_PROXIMITY_PX = 600;
+const HISTORY_PAGE_PROXIMITY_PX = 600;
 const USER_SCROLL_DELTA_PX = 2;
-const PIN_START_ATTRIBUTE = "data-transcript-pin-start";
-const PIN_START_MARGIN_PX = 16;
-
-/**
- * Mark a tall block whose start the reader must see first, such as a Review
- * item card. The value is a stable id, so each block moves the view only once.
- */
-export function transcriptPinStartProps(id: string) {
-  return { [PIN_START_ATTRIBUTE]: id };
-}
+// Leave a little earlier context above the "New" marker.
+const UNREAD_START_OFFSET_PX = 48;
 
 type ScrollRoot = HTMLElement | Window;
 type PositionMeasureSource = "measure" | "scroll";
@@ -46,9 +39,19 @@ export type ScrollSnapshot = {
 
 type BottomPinResult = {
   anchorRef: RefObject<HTMLDivElement | null>;
+  contentElement: HTMLDivElement | null;
   contentRef: RefCallback<HTMLDivElement>;
   hasPendingUpdate: boolean;
   jumpToBottom: () => void;
+  /**
+   * Show a mounted row. A row that the reader asks for moves to the middle
+   * of the viewport. A row that `arrived` by itself moves only into view,
+   * and only while the reader follows the latest. Returns false when the
+   * row does not show.
+   */
+  showRow: (row: Element, options: { arrived: boolean }) => boolean;
+  /** The `data-scroll-anchor` key of the row that holds the reader's place. */
+  scrollAnchorKey: () => string | undefined;
   showJumpToLatest: boolean;
 };
 
@@ -130,8 +133,7 @@ function changesVisibleTranscript(event: ConversationReportEvent): boolean {
     data.type === "subagent" ||
     data.type === "structured_event" ||
     data.type === "attachments_delivered" ||
-    data.type === "compaction" ||
-    data.type === "handoff"
+    data.type === "compaction"
   );
 }
 
@@ -205,18 +207,6 @@ function eventTailVersion(event: ConversationReportEvent | undefined): string {
       ].join(":");
     case "compaction":
       return [data.type, data.summary?.length ?? 0, event.createdAt].join(":");
-    case "handoff":
-      return [
-        data.type,
-        data.modelProfile,
-        data.modelId,
-        data.summary?.length ?? 0,
-        event.createdAt,
-      ].join(":");
-    case "turn_routed":
-      return [data.type, data.turnId, data.modelProfile, data.modelId].join(
-        ":",
-      );
     case "guardian_action_reviewed":
       return [data.type, data.turnId, data.toolCallId, data.decision].join(":");
     case "turn_context":
@@ -259,14 +249,23 @@ export function terminalReplyPinState(input: {
 
 /**
  * Show the jump control only when the reader left the bottom and a newer tail
- * arrived. Staying pinned, or intentionally following, must not flash it.
+ * arrived, when the transcript opened at unread rows, or when it does not end
+ * at the latest event. Staying pinned, or intentionally following, must not
+ * flash it.
  */
 export function shouldShowJumpToLatest(input: {
   enabled: boolean;
+  endsAtLatest?: boolean;
   following: boolean;
   hasPendingUpdate: boolean;
+  openedAtUnread?: boolean;
 }): boolean {
-  return input.enabled && !input.following && input.hasPendingUpdate;
+  return (
+    !input.following &&
+    (input.endsAtLatest === false ||
+      Boolean(input.openedAtUnread) ||
+      (input.enabled && input.hasPendingUpdate))
+  );
 }
 
 /** Resolve scroll intent with user upward movement taking precedence over bottom slack. */
@@ -311,21 +310,37 @@ export function programmaticSettleScrollAction(input: {
 export function usePinnedTranscriptBottom(input: {
   conversationId?: string;
   enabled: boolean;
+  /**
+   * False while newer pages are not loaded. The end of the transcript is
+   * then not the latest event, so the reader cannot follow it, and a page
+   * that loads below them does not pull them down.
+   */
+  endsAtLatest?: boolean;
   historyVersion: string;
   juniorMessageVersion: string;
   pinRequestVersion?: number;
+  /** Open where a link shows its row, not at the latest message. */
+  startAtLink?: boolean;
+  /** Open at the "New" marker when the transcript has one. */
+  startAtUnread?: boolean;
   view: TranscriptViewMode;
   versions: Record<TranscriptViewMode, string>;
 }): BottomPinResult {
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const contentElementRef = useRef<HTMLDivElement | null>(null);
   const enabledRef = useRef(input.enabled);
+  const endsAtLatestRef = useRef(true);
+  endsAtLatestRef.current = input.endsAtLatest ?? true;
   const followingRef = useRef(false);
   const initializedRef = useRef(false);
-  const initializedConversationRef = useRef<string | null>(null);
+  // The Conversation and start that the transcript opened with. A link at
+  // open that fails becomes a normal start, so the transcript opens again.
+  const startedRef = useRef<string | null>(null);
   const previousScrollTopRef = useRef<number | null>(null);
-  // The scroll position that the last restore set. Its scroll event is not
-  // a reader scroll, so it must not change follow intent.
+  // The scroll position that the last restore or open at the marker set.
+  // Its scroll event is not a reader scroll, so it must not change follow
+  // intent or the recorded place. Rows can change size before that event,
+  // and the restore after them needs the place from before.
   const restoredScrollTopRef = useRef<number | null>(null);
   const scrollAnchorRef = useRef<ScrollAnchor | null>(null);
   const pinRequestVersionRef = useRef(input.pinRequestVersion ?? 0);
@@ -334,9 +349,9 @@ export function usePinnedTranscriptBottom(input: {
   const terminalPinPendingRef = useRef(false);
   const versionsRef = useRef(input.versions);
   const programmaticScrollGenerationRef = useRef(0);
-  const seenPinStartsRef = useRef(new Set<string>());
   const [following, setFollowing] = useState(false);
   const [hasPendingUpdate, setHasPendingUpdate] = useState(false);
+  const [openedAtUnread, setOpenedAtUnread] = useState(false);
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(
     null,
   );
@@ -351,9 +366,14 @@ export function usePinnedTranscriptBottom(input: {
     if (!input.enabled) setHasPendingUpdate(false);
   }, [input.enabled]);
 
+  // The transcript opened at the latest message, but the reader prefers the
+  // "New" marker. The marker can appear when a fetch replaces a cached detail.
+  const awaitingUnreadMarkerRef = useRef(false);
   const setFollowingIntent = useCallback((value: boolean) => {
     followingRef.current = value;
     setFollowing(value);
+    if (value) setOpenedAtUnread(false);
+    else awaitingUnreadMarkerRef.current = false;
   }, []);
 
   const rememberPlace = useCallback(() => {
@@ -400,7 +420,6 @@ export function usePinnedTranscriptBottom(input: {
       const root = scrollRootFor(contentElementRef.current);
       if (!root) return;
 
-      if (source === "scroll") rememberPlace();
       const snapshot = scrollSnapshot(root);
       const previousScrollTop = previousScrollTopRef.current;
       previousScrollTopRef.current = snapshot.scrollTop;
@@ -412,6 +431,7 @@ export function usePinnedTranscriptBottom(input: {
         if (restored !== null && Math.abs(snapshot.scrollTop - restored) < 1) {
           return;
         }
+        rememberPlace();
       }
 
       const intent = transcriptFollowIntent({
@@ -431,6 +451,7 @@ export function usePinnedTranscriptBottom(input: {
       }
 
       if (intent === "follow") {
+        if (!endsAtLatestRef.current) return;
         setFollowingIntent(true);
         setHasPendingUpdate(false);
         return;
@@ -448,26 +469,13 @@ export function usePinnedTranscriptBottom(input: {
       const root = scrollRootFor(contentElementRef.current);
       if (!root) return;
 
-      // A new block that does not fit shows its start, not its end. Stop
-      // following, so later layout does not move the start out of view.
-      const startTop = newPinStartScrollTop(
-        root,
-        contentElementRef.current,
-        seenPinStartsRef.current,
-      );
-      if (startTop !== null) setFollowingIntent(false);
-
       // Only suppress pin-settle noise while still following. After the reader
       // leaves the bottom, do not open a window that can ignore their scroll.
-      const suppressSettleNoise = startTop !== null || followingRef.current;
+      const suppressSettleNoise = followingRef.current;
       const generation = suppressSettleNoise
         ? ++programmaticScrollGenerationRef.current
         : 0;
-      setScrollTop(
-        root,
-        startTop ?? scrollSnapshot(root).scrollHeight,
-        behavior,
-      );
+      setScrollTop(root, scrollSnapshot(root).scrollHeight, behavior);
 
       const settleProgrammaticScroll = () => {
         if (
@@ -502,32 +510,125 @@ export function usePinnedTranscriptBottom(input: {
     [setFollowingIntent],
   );
 
+  const showRow = useCallback(
+    (row: Element, options: { arrived: boolean }): boolean => {
+      const root = scrollRootFor(contentElementRef.current);
+      if (!root) return false;
+      // A reader who scrolled away reads something else. Do not move it.
+      if (options.arrived && !followingRef.current) return false;
+      const bounds = viewportBounds(root);
+      const rect = row.getBoundingClientRect();
+      const offset = options.arrived
+        ? Math.max(0, rect.bottom - bounds.bottom)
+        : rect.top -
+          bounds.top -
+          (bounds.bottom - bounds.top - rect.height) / 2;
+      if (Math.abs(offset) < 1) return true;
+      // The reader goes to the row, so the latest must not pull them back.
+      if (offset < 0) leaveBottom();
+      const behavior = preferredExplicitScrollBehavior();
+      setScrollTop(
+        root,
+        Math.max(0, scrollSnapshot(root).scrollTop + offset),
+        behavior,
+      );
+      // A layout change must not restore the place that the reader left.
+      // A smooth scroll remembers each new place on its scroll events.
+      if (behavior === "smooth") {
+        scrollAnchorRef.current = null;
+        return true;
+      }
+      const snapshot = scrollSnapshot(root);
+      previousScrollTopRef.current = snapshot.scrollTop;
+      restoredScrollTopRef.current = snapshot.scrollTop;
+      rememberPlace();
+      return true;
+    },
+    [leaveBottom, rememberPlace],
+  );
+
+  /** Scroll to the "New" marker, if the transcript has one. */
+  const openAtUnreadMarker = useCallback((): boolean => {
+    const content = contentElementRef.current;
+    const root = scrollRootFor(content);
+    const marker = content?.querySelector("[data-transcript-unread-marker]");
+    if (!root || !marker) return false;
+    awaitingUnreadMarkerRef.current = false;
+    const offset =
+      marker.getBoundingClientRect().top - viewportBounds(root).top;
+    setScrollTop(
+      root,
+      Math.max(
+        0,
+        scrollSnapshot(root).scrollTop + offset - UNREAD_START_OFFSET_PX,
+      ),
+    );
+    const snapshot = scrollSnapshot(root);
+    previousScrollTopRef.current = snapshot.scrollTop;
+    restoredScrollTopRef.current = snapshot.scrollTop;
+    // Unread rows that fit above the bottom leave the reader at the latest.
+    const atBottom = endsAtLatestRef.current && isNearScrollBottom(snapshot);
+    setFollowingIntent(atBottom);
+    setOpenedAtUnread(!atBottom);
+    rememberPlace();
+    return true;
+  }, [rememberPlace, setFollowingIntent]);
+
   useBrowserLayoutEffect(() => {
     if (!contentElement || !input.conversationId) return;
-    if (initializedConversationRef.current === input.conversationId) return;
+    const start = `${input.conversationId}:${input.startAtLink ? "link" : "start"}`;
+    if (startedRef.current === start) return;
 
     const root = scrollRootFor(contentElement);
     if (!root) return;
 
-    initializedConversationRef.current = input.conversationId;
+    startedRef.current = start;
+    setHasPendingUpdate(false);
+    // The link scrolls to its row, maybe before this runs. Do not move away.
+    if (input.startAtLink) {
+      previousScrollTopRef.current = scrollSnapshot(root).scrollTop;
+      setFollowingIntent(false);
+      return;
+    }
+    if (input.startAtUnread && openAtUnreadMarker()) return;
+
     setScrollTop(root, scrollSnapshot(root).scrollHeight);
     previousScrollTopRef.current = scrollSnapshot(root).scrollTop;
-    // Start every conversation at its latest message. Keep following until the
-    // reader scrolls up so late content and footer layout cannot expose stale
-    // space below the transcript.
+    // Without unread rows, start at the latest message. Keep following until
+    // the reader scrolls up so late content and footer layout cannot expose
+    // stale space below the transcript.
     setFollowingIntent(true);
-    setHasPendingUpdate(false);
-  }, [contentElement, input.conversationId, setFollowingIntent]);
+    awaitingUnreadMarkerRef.current = Boolean(input.startAtUnread);
+  }, [
+    contentElement,
+    input.conversationId,
+    input.startAtLink,
+    input.startAtUnread,
+    openAtUnreadMarker,
+    setFollowingIntent,
+  ]);
+
+  // Follow the latest message, unless the "New" marker appeared before the
+  // reader moved. Then open at the marker, as if it was there at the start.
+  const followLatest = useCallback(() => {
+    if (awaitingUnreadMarkerRef.current && openAtUnreadMarker()) return;
+    if (!endsAtLatestRef.current) {
+      setFollowingIntent(false);
+      restorePlace();
+      return;
+    }
+    scrollToBottom("auto");
+  }, [openAtUnreadMarker, restorePlace, scrollToBottom, setFollowingIntent]);
 
   const syncAfterLayoutChange = useCallback(() => {
     if (followingRef.current) {
-      scrollToBottom("auto");
+      followLatest();
       return;
     }
 
     restorePlace();
     measurePosition("measure");
-  }, [measurePosition, restorePlace, scrollToBottom]);
+  }, [followLatest, measurePosition, restorePlace]);
 
   // An earlier page renders above the reader. Hold their place before paint;
   // a reader at the bottom stays at the latest message.
@@ -568,7 +669,7 @@ export function usePinnedTranscriptBottom(input: {
         following: followingRef.current,
       })
     ) {
-      scrollToBottom("auto");
+      followLatest();
       setHasPendingUpdate(false);
       return;
     }
@@ -581,7 +682,7 @@ export function usePinnedTranscriptBottom(input: {
     input.view,
     input.versions.rich,
     input.versions.raw,
-    scrollToBottom,
+    followLatest,
     setFollowingIntent,
   ]);
 
@@ -615,7 +716,12 @@ export function usePinnedTranscriptBottom(input: {
     measurePosition("measure");
     rememberPlace();
     // Listen on the scroll root, so gestures outside transcript rows count.
-    target.addEventListener("scroll", onScroll, { passive: true });
+    // Capture runs first at the root, so the place is recorded before a
+    // virtual list mounts the rows for the new position.
+    target.addEventListener("scroll", onScroll, {
+      capture: true,
+      passive: true,
+    });
     target.addEventListener("wheel", onWheel, { passive: true });
     target.addEventListener("touchstart", onTouchStart, {
       passive: true,
@@ -625,7 +731,7 @@ export function usePinnedTranscriptBottom(input: {
     });
     window.addEventListener("resize", syncAfterLayoutChange);
     return () => {
-      target.removeEventListener("scroll", onScroll);
+      target.removeEventListener("scroll", onScroll, { capture: true });
       target.removeEventListener("wheel", onWheel);
       target.removeEventListener("touchstart", onTouchStart);
       target.removeEventListener("touchmove", onTouchMove);
@@ -655,6 +761,7 @@ export function usePinnedTranscriptBottom(input: {
   }, [contentElement, syncAfterLayoutChange]);
 
   const jumpToBottom = useCallback(() => {
+    awaitingUnreadMarkerRef.current = false;
     setFollowingIntent(true);
     setHasPendingUpdate(false);
     scrollToBottom(preferredExplicitScrollBehavior());
@@ -690,29 +797,58 @@ export function usePinnedTranscriptBottom(input: {
     const version = input.pinRequestVersion ?? 0;
     if (version === pinRequestVersionRef.current) return;
     pinRequestVersionRef.current = version;
+    // The reader asked for the latest event, not the "New" marker.
+    awaitingUnreadMarkerRef.current = false;
     setFollowingIntent(true);
     setHasPendingUpdate(false);
     scrollToBottom("auto");
   }, [input.pinRequestVersion, scrollToBottom, setFollowingIntent]);
 
+  const scrollAnchorKey = useCallback(() => scrollAnchorRef.current?.key, []);
+
   return useMemo(
     () => ({
       anchorRef,
+      contentElement,
       contentRef,
       hasPendingUpdate,
       jumpToBottom,
+      scrollAnchorKey,
+      showRow,
       showJumpToLatest: shouldShowJumpToLatest({
         enabled: input.enabled,
+        endsAtLatest: input.endsAtLatest,
         following,
         hasPendingUpdate,
+        openedAtUnread,
       }),
     }),
-    [contentRef, following, hasPendingUpdate, input.enabled, jumpToBottom],
+    [
+      contentElement,
+      contentRef,
+      following,
+      hasPendingUpdate,
+      input.enabled,
+      input.endsAtLatest,
+      jumpToBottom,
+      openedAtUnread,
+      scrollAnchorKey,
+      showRow,
+    ],
   );
 }
 
-/** Load the previous history page when the reader scrolls near the top. */
-export function useAutoLoadPreviousPage(input: {
+/** Jump to the latest row from inside the transcript, like the floating pill. */
+export const TranscriptJumpToLatestContext = createContext<
+  (() => void) | undefined
+>(undefined);
+
+/**
+ * Load the next history page when the reader scrolls near the edge where it
+ * goes: the top for earlier pages, the bottom for newer pages.
+ */
+export function useAutoLoadHistoryPage(input: {
+  edge: "bottom" | "top";
   enabled: boolean;
   historyVersion: string;
   onLoad: () => void;
@@ -734,17 +870,21 @@ export function useAutoLoadPreviousPage(input: {
       },
       {
         root: root && !isWindowRoot(root) ? root : null,
-        rootMargin: `${PREVIOUS_PAGE_PROXIMITY_PX}px 0px 0px 0px`,
+        rootMargin:
+          input.edge === "top"
+            ? `${HISTORY_PAGE_PROXIMITY_PX}px 0px 0px 0px`
+            : `0px 0px ${HISTORY_PAGE_PROXIMITY_PX}px 0px`,
       },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [input.enabled, input.historyVersion, sentinel]);
+  }, [input.edge, input.enabled, input.historyVersion, sentinel]);
 
   return setSentinel;
 }
 
-function scrollRootFor(element: HTMLElement | null): ScrollRoot | null {
+/** Find the nearest element that scrolls the transcript, or the window. */
+export function scrollRootFor(element: HTMLElement | null): ScrollRoot | null {
   if (typeof window === "undefined") return null;
   if (!element) return window;
 
@@ -756,38 +896,6 @@ function scrollRootFor(element: HTMLElement | null): ScrollRoot | null {
   }
 
   return window;
-}
-
-/**
- * Return the scroll position that shows the start of the last pin-start block,
- * when a bottom pin would cut off its start. Each block counts once.
- */
-function newPinStartScrollTop(
-  root: ScrollRoot,
-  content: HTMLElement | null,
-  seen: Set<string>,
-): number | null {
-  const block = content
-    ? Array.from(
-        content.querySelectorAll<HTMLElement>(`[${PIN_START_ATTRIBUTE}]`),
-      ).at(-1)
-    : undefined;
-  const id = block?.getAttribute(PIN_START_ATTRIBUTE);
-  if (!block || !id || seen.has(id)) return null;
-  const rect = block.getBoundingClientRect();
-  // The block has no size until its data loads. Check it again then.
-  if (rect.height === 0) return null;
-  seen.add(id);
-
-  const snapshot = scrollSnapshot(root);
-  const offset =
-    snapshot.scrollTop -
-    (isWindowRoot(root) ? 0 : root.getBoundingClientRect().top);
-  const startTop = rect.top + offset - PIN_START_MARGIN_PX;
-  const bottomTop = snapshot.scrollHeight - snapshot.clientHeight;
-  // Keep the bottom pin when it shows the start, or when the block is above it.
-  if (startTop >= bottomTop || rect.bottom + offset <= bottomTop) return null;
-  return Math.max(0, startTop);
 }
 
 function scrollSnapshot(root: ScrollRoot): ScrollSnapshot {
@@ -819,6 +927,7 @@ function setScrollTop(
   root.scrollTo({ behavior, top: scrollTop });
 }
 
+/** Read the visible band of a scroll root in client coordinates. */
 function viewportBounds(root: ScrollRoot): { bottom: number; top: number } {
   if (isWindowRoot(root)) return { bottom: window.innerHeight, top: 0 };
   const top = root.getBoundingClientRect().top;

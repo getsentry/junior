@@ -36,6 +36,13 @@ function removeExampleOnlyServerConfig(source: string): string {
         "",
       )
       .replace('  import("./dashboard.ts"),\n', "")
+      // Only the example app can show live data in a Preview.
+      .replace("  { withExampleLivePreview },\n", "")
+      .replace('  import("./live-preview.ts"),\n', "")
+      .replace(
+        "export default withExampleLivePreview(app);",
+        "export default app;",
+      )
       // The example deployment allows Sentry; the scaffold uses a placeholder.
       .replace(
         'allowedDomains: ["sentry.io"]',
@@ -96,6 +103,7 @@ describe("init cli", () => {
     );
     expect(workflow).toContain("pnpm check");
     expect(workflow).toContain("pnpm build");
+    expect(workflow).toContain('JUNIOR_SKIP_SNAPSHOT: "1"');
     expect(workflow).toContain("pnpm install");
 
     const vercelConfig = readJsonFile<Record<string, unknown>>(
@@ -181,7 +189,6 @@ minimumReleaseAgeExclude:
       "utf8",
     );
     expect(envExample).toContain("CRON_SECRET=");
-    expect(envExample).toContain("JUNIOR_CROSS_ACTOR_MID_RUN_MODE=");
     expect(envExample).toContain("AI_GUARDIAN_MODEL=");
     expect(envExample).toContain("DATABASE_URL=");
     expect(envExample).toContain("JUNIOR_DATABASE_DRIVER=");

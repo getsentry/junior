@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_conversation_events_author_idx" ON "junior_conversation_events" USING btree ("conversation_id","actor_identity_id","seq") WHERE "junior_conversation_events"."actor_identity_id" is not null;

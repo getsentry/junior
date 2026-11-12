@@ -2,9 +2,20 @@ import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
-import { getConversationStore, getDb } from "@/chat/db";
+import { projectConversationMessages } from "@/chat/conversations/message-projection";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
-import { takeReviewItem } from "@/chat/review-items/store";
+import { sendReviewItemMessages } from "@/chat/review-items/messages";
+import {
+  getReviewItem,
+  insertReviewItem,
+  takeReviewItem,
+} from "@/chat/review-items/store";
+import { juniorConversationParticipants } from "@/db/schema";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
 import { createAddReviewItemTool } from "@/chat/tools/review-items";
@@ -14,6 +25,8 @@ import {
   type ConversationFixture,
 } from "../../../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
+
+const CLI_CONVERSATION_ID = "local:cli:review-items";
 
 const REQUEST = {
   question: "Approve or reject this entry?",
@@ -87,9 +100,25 @@ function api(fixture: ConversationFixture, viewer: User) {
   };
 }
 
-async function pendingTexts(conversationId: string): Promise<string[]> {
+async function pendingMessages(conversationId: string) {
   const conversation = await getConversation({ conversationId });
-  return (conversation?.execution.pendingMessages ?? []).map(
+  return conversation?.execution.pendingMessages ?? [];
+}
+
+async function savedChanges(
+  conversationId: string,
+  kind: "taken" | "dismissed",
+) {
+  const messages = projectConversationMessages(
+    await getConversationEventStore().loadMessageHistory(conversationId),
+  );
+  return messages.filter((message) =>
+    message.meta?.reviewItemChanges?.some((change) => change.kind === kind),
+  );
+}
+
+async function pendingTexts(conversationId: string): Promise<string[]> {
+  return (await pendingMessages(conversationId)).map(
     (message) => message.input.text,
   );
 }
@@ -97,6 +126,146 @@ async function pendingTexts(conversationId: string): Promise<string[]> {
 describe("review item actions API", () => {
   afterEach(async () => {
     await closeConversationFixture();
+  });
+
+  it("lists each waiting conversation once, with its items newest first", async () => {
+    const fixture = await createConversationFixture();
+    await slackConversation("slack:CPUB:1.000001");
+    const ana = await user("ana@example.com");
+    const acmeId = await addItem({
+      kind: "action",
+      title: "Review acme entry",
+      body: "The acme entry changed its license.",
+      assignees: ["ana@example.com"],
+      dedupe_key: "fair-source:entry:acme",
+      request: REQUEST,
+    });
+    // Created later, so it is the newest item.
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    await addItem({
+      kind: "action",
+      title: "Review globex entry",
+      body: "The globex entry changed its license.",
+      assignees: ["ana@example.com"],
+      dedupe_key: "fair-source:entry:globex",
+      request: REQUEST,
+    });
+
+    // A child agent links its items to its own conversation. The root waits
+    // on Ana.
+    await slackConversation("slack:CPUB:1.000004");
+    await getConversationStore().createChild({
+      childConversationId: "agent:child-of-4",
+      kind: "task",
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      parentConversationId: "slack:CPUB:1.000004",
+    });
+    await insertReviewItem(getDb(), {
+      addedByConversationId: "agent:child-of-4",
+      assignedToEveryone: false,
+      assigneeUserIds: [ana.id],
+      body: "The initech entry changed its license.",
+      conversationIds: ["agent:child-of-4"],
+      dedupeKey: "fair-source:entry:initech",
+      kind: "action",
+      nowMs: Date.now(),
+      request: {
+        fields: [
+          {
+            id: "decision",
+            kind: "choice",
+            label: "Decision",
+            options: [{ label: "Approve" }, { label: "Reject" }],
+          },
+        ],
+        question: "Approve or reject this entry?",
+      },
+      title: "Review initech entry",
+      visibility: "private",
+    });
+
+    expect(
+      await (await api(fixture, ana).get("/waiting-conversations")).json(),
+    ).toEqual({
+      conversations: [
+        {
+          conversationId: "slack:CPUB:1.000001",
+          items: [
+            { title: "Review globex entry" },
+            { title: "Review acme entry" },
+          ],
+          // The wait began with the oldest item.
+          waitingSince: (await getReviewItem(
+            getDb(),
+            acmeId,
+          ))!.createdAt.toISOString(),
+        },
+        {
+          conversationId: "slack:CPUB:1.000004",
+          items: [{ title: "Review initech entry" }],
+          waitingSince: expect.any(String),
+        },
+      ],
+    });
+  });
+
+  it("shows a Conversation's items to the people in it", async () => {
+    const fixture = await createConversationFixture();
+    const ana = await user("ana@example.com");
+    const cal = await user("cal@example.com");
+    await user("ben@example.com");
+    // A public dashboard Conversation that Ben started. Ana joined and then
+    // unsubscribed, so she is an inactive Participant.
+    await getConversationStore().recordActivity({
+      actor: { email: "ben@example.com" },
+      conversationId: "local:web:shared",
+      destination: { platform: "local", conversationId: "local:web:shared" },
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      source: "web",
+      visibility: "public",
+    });
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date(1),
+        rootConversationId: "local:web:shared",
+        unsubscribedAt: new Date(2),
+        userId: ana.id,
+      });
+    // An event Turn asks without naming anyone, so the item goes to the
+    // active Participants: only Ben.
+    const tool = createAddReviewItemTool(
+      {
+        conversationId: "local:web:shared",
+        resolveActorIdentity: async () => undefined,
+        source: { kind: "event" } as any,
+      },
+      createSlackReviewItemToolServices(createConversationWorkQueueTestAdapter),
+    );
+    const { item } = await (tool as any).execute(
+      {
+        kind: "action",
+        title: "Close the tracking issue?",
+        body: "The pull request merged.",
+        request: REQUEST,
+      },
+      {},
+    );
+    const ids = async (viewer: User, path: string) =>
+      ((await (await api(fixture, viewer).get(path)).json()) as any).items.map(
+        (listed: any) => listed.id,
+      );
+
+    // Ana is not assigned, so the item is not on her review desk. She is
+    // still a Participant, so the Conversation view shows it.
+    expect(await ids(ana, "")).toEqual([]);
+    expect(await ids(ana, "?conversationId=local:web:shared")).toEqual([
+      item.id,
+    ]);
+    expect((await api(fixture, ana).get(`/${item.id}`)).status).toBe(200);
+    // Cal can view the public Conversation but does not take part in it.
+    expect(await ids(cal, "?conversationId=local:web:shared")).toEqual([]);
+    expect((await api(fixture, cal).get(`/${item.id}`)).status).toBe(404);
   });
 
   it("closes an action item for every assignee on the first submit", async () => {
@@ -132,27 +301,45 @@ describe("review item actions API", () => {
     expect(
       await (await api(fixture, ana).get("/waiting-conversations")).json(),
     ).toEqual({
-      conversationIds: ["slack:CPUB:1.000001", "slack:CPUB:1.000002"],
+      conversations: [
+        {
+          conversationId: "slack:CPUB:1.000001",
+          items: [{ title: "Review acme entry" }],
+          waitingSince: expect.any(String),
+        },
+        {
+          conversationId: "slack:CPUB:1.000002",
+          items: [{ title: "Review acme entry" }],
+          waitingSince: expect.any(String),
+        },
+      ],
     });
     expect(
       await (await api(fixture, cal).get("/waiting-conversations")).json(),
-    ).toEqual({ conversationIds: [] });
+    ).toEqual({ conversations: [] });
     const calList = await (await api(fixture, cal).get("")).json();
-    expect(calList.items).toMatchObject([
-      { kind: "notice" },
-      { id, canAct: false },
-    ]);
+    expect(calList.items).toHaveLength(2);
+    expect(calList.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "notice" }),
+        expect.objectContaining({ id, canAct: false }),
+      ]),
+    );
+    // The inbox list drops the items that are assigned only to others.
+    expect(
+      (await (await api(fixture, cal).get("?for=viewer")).json()).items,
+    ).toEqual([]);
+    expect(
+      (await (await api(fixture, ana).get("?for=viewer")).json()).items,
+    ).toHaveLength(2);
     // A person outside the Slack workspace does not see the public item.
     const outsider = { ...cal, identities: [] };
     expect((await (await api(fixture, outsider).get("")).json()).items).toEqual(
       [],
     );
     expect(
-      (await api(fixture, cal).act(id, { action: "complete" })).status,
+      (await api(fixture, cal).act(id, { action: "dismiss" })).status,
     ).toBe(403);
-    expect(
-      (await api(fixture, ana).act(id, { action: "complete" })).status,
-    ).toBe(400);
 
     const submitted = await api(fixture, ana).act(id, {
       action: "submit",
@@ -180,6 +367,10 @@ describe("review item actions API", () => {
       expect(texts).toHaveLength(1);
       expect(texts[0]).toContain("ana@example.com answered review item");
       expect(texts[0]).toContain("Not fair source");
+      // The message records the answer, so the dashboard shows it as one.
+      expect(
+        (await pendingMessages(conversationId))[0]?.input.reviewItemChange,
+      ).toEqual({ kind: "submitted", reviewItemId: id });
     }
 
     // Ben is too late, and the item leaves the open views.
@@ -191,7 +382,7 @@ describe("review item actions API", () => {
     });
     expect(
       await (await api(fixture, ben).get("/waiting-conversations")).json(),
-    ).toEqual({ conversationIds: [] });
+    ).toEqual({ conversations: [] });
     // The list still shows every open item that Ben can see.
     expect(
       (await (await api(fixture, ben).get("")).json()).items,
@@ -199,6 +390,12 @@ describe("review item actions API", () => {
     // A search still finds the closed item.
     const found = await (await api(fixture, ben).get("?q=acme")).json();
     expect(found.items).toMatchObject([{ id, status: "done" }]);
+    // The inbox asks for archived items without a search.
+    const all = await (await api(fixture, ben).get("?include=archived")).json();
+    expect(all.items).toMatchObject([
+      { kind: "notice" },
+      { id, status: "done" },
+    ]);
   });
 
   it("lets anyone take an item assigned to Everyone", async () => {
@@ -222,8 +419,10 @@ describe("review item actions API", () => {
     });
     expect(
       await (await api(fixture, cal).get("/waiting-conversations")).json(),
-    ).toEqual({ conversationIds: [] });
+    ).toEqual({ conversations: [] });
 
+    // The next item is created later, so the list order is fixed.
+    await new Promise((resolve) => setTimeout(resolve, 2));
     const otherId = await addItem({
       kind: "notice",
       title: "Another pull request needs review",
@@ -232,26 +431,28 @@ describe("review item actions API", () => {
       dedupe_key: "pr:8",
     });
 
-    // The list pages the open items, newest change first. A cursor reads
-    // the next page of the same list only.
+    // The list pages the open items, oldest first. A cursor reads the next
+    // page of the same list only.
     const first = await (await api(fixture, cal).get("?limit=1")).json();
-    expect(first.items).toHaveLength(1);
+    expect(first.items).toMatchObject([{ id, canAct: true, canTake: true }]);
     expect(first.nextCursor).toEqual(expect.any(String));
     const cursor = encodeURIComponent(first.nextCursor);
     const second = await (
       await api(fixture, cal).get(`?limit=1&cursor=${cursor}`)
     ).json();
+    expect(second.items).toMatchObject([{ id: otherId }]);
     expect(second.nextCursor).toBeUndefined();
-    const listed = [...first.items, ...second.items];
-    expect(listed.map((item: { id: string }) => item.id).sort()).toEqual(
-      [id, otherId].sort(),
-    );
-    expect(listed).toContainEqual(
-      expect.objectContaining({ id, canAct: true, canTake: true }),
-    );
     expect(
       (await api(fixture, cal).get(`?q=pull&limit=1&cursor=${cursor}`)).status,
     ).toBe(400);
+    expect(
+      (await api(fixture, cal).get(`?for=viewer&limit=1&cursor=${cursor}`))
+        .status,
+    ).toBe(400);
+    // Items for Everyone stay in the inbox list.
+    expect(
+      (await (await api(fixture, cal).get("?for=viewer")).json()).items,
+    ).toMatchObject([{ id }, { id: otherId }]);
 
     // The take committed, but its messages did not go out. A retry of the
     // take sends them.
@@ -269,10 +470,56 @@ describe("review item actions API", () => {
     });
     expect(
       await (await api(fixture, cal).get("/waiting-conversations")).json(),
-    ).toEqual({ conversationIds: ["slack:CPUB:1.000001"] });
-    const texts = await pendingTexts("slack:CPUB:1.000001");
-    expect(texts).toEqual([
-      expect.stringContaining("cal@example.com took review item"),
+    ).toEqual({
+      conversations: [
+        {
+          conversationId: "slack:CPUB:1.000001",
+          items: [{ title: "Pull request needs review" }],
+          waitingSince: expect.any(String),
+        },
+      ],
+    });
+    // A take starts no Turn. The Conversation saves it as a handled
+    // Message with its record, so the dashboard still shows it, and a later
+    // answer does not change what it shows.
+    expect(await pendingMessages("slack:CPUB:1.000001")).toEqual([]);
+    expect(await savedChanges("slack:CPUB:1.000001", "taken")).toEqual([
+      expect.objectContaining({
+        text: expect.stringContaining("cal@example.com took review item"),
+        meta: expect.objectContaining({
+          reviewItemChanges: [{ kind: "taken", reviewItemId: id }],
+        }),
+      }),
+    ]);
+    // A local CLI Conversation saves it the same way.
+    await getConversationStore().recordActivity({
+      conversationId: CLI_CONVERSATION_ID,
+      destination: { platform: "local", conversationId: CLI_CONVERSATION_ID },
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      source: "local",
+      visibility: "public",
+    });
+    const item = await getReviewItem(getDb(), id);
+    await sendReviewItemMessages({
+      change: { kind: "taken", user: cal },
+      item: { ...item!, conversationIds: [CLI_CONVERSATION_ID] },
+      nowMs: Date.now(),
+      queue: fixture.queue,
+    });
+    expect(await pendingMessages(CLI_CONVERSATION_ID)).toEqual([]);
+    expect(await savedChanges(CLI_CONVERSATION_ID, "taken")).toHaveLength(1);
+
+    // A dismiss also starts no Turn. It is saved the same way.
+    const dismissed = await api(fixture, cal).act(id, { action: "dismiss" });
+    expect(dismissed.status).toBe(200);
+    expect(await pendingMessages("slack:CPUB:1.000001")).toEqual([]);
+    expect(await savedChanges("slack:CPUB:1.000001", "dismissed")).toEqual([
+      expect.objectContaining({
+        text: expect.stringContaining("cal@example.com dismissed review item"),
+        meta: expect.objectContaining({
+          reviewItemChanges: [{ kind: "dismissed", reviewItemId: id }],
+        }),
+      }),
     ]);
   });
 });

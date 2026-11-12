@@ -2,10 +2,11 @@
  * Dashboard records for agent invocations. The parent Conversation gets one
  * `subagent_started` and one `subagent_ended` event for each agent invocation.
  * The child Conversation gets `message` events for its input and its result,
- * because a child has no Location that records visible messages.
+ * because a child posts nothing to its Location.
  */
 import { getConversationEventStore } from "@/chat/db";
-import { getAgentInvocationMessageId } from "./store";
+import type { ConversationMessageMeta } from "@/chat/state/conversation";
+import { getAgentInvocationMessageId } from "./ids";
 import type { AgentInvocation, TerminalAgentInvocation } from "./types";
 
 // The dashboard labels each child row with this kind.
@@ -17,10 +18,13 @@ const SUBAGENT_KIND = "agent";
  * pairs the parent event with `subagent_ended` to show the child and its
  * status. It must be written before the child mailbox append, so the child
  * cannot end first. An agent wrote the input, not a person, so the message
- * names its agent invocation instead of an author.
+ * names its agent invocation instead of an author. Input from Events, such as
+ * the child's own Watch Events, passes their Event fields, so the dashboard
+ * shows it as an Event, as on a root.
  */
 export async function recordSubagentStarted(
   invocation: AgentInvocation,
+  eventMeta?: ConversationMessageMeta,
 ): Promise<void> {
   const eventStore = getConversationEventStore();
   // The mailbox input has the same id, so the child Turn links to it.
@@ -33,7 +37,7 @@ export async function recordSubagentStarted(
         messageId,
         role: "user",
         text: invocation.input,
-        meta: { agentInvocationId: invocation.invocationId },
+        meta: { ...eventMeta, agentInvocationId: invocation.invocationId },
       },
       createdAtMs: invocation.createdAtMs,
     },

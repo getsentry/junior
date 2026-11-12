@@ -3,7 +3,7 @@ import {
   type EventData,
   type EventInput,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   SENTRY_ISSUE_LEVELS,
   SENTRY_ISSUE_PRIORITIES,

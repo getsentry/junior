@@ -9,7 +9,11 @@ export type { DashboardSession };
 export interface DashboardAuth {
   handler(request: Request): Promise<Response>;
   getSession(request: Request): Promise<DashboardSession | null>;
-  signInWithGoogle(request: Request, callbackURL: string): Promise<Response>;
+  signInWithGoogle(
+    request: Request,
+    callbackURL: string,
+    errorCallbackURL: string,
+  ): Promise<Response>;
 }
 
 /** Read a personal bearer token from one dashboard API request. */

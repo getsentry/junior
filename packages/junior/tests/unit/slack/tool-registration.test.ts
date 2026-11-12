@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { bindAgentTools } from "@/chat/agent/tools";
+import type { AgentRun } from "@/chat/agent/types";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
   createEventSource,
   createLocalSource,
@@ -9,6 +12,11 @@ import { createTools } from "@/chat/tools";
 import { readSlackActionToken } from "@/chat/slack/action-token";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
 const noopSandbox = {} as any;
 const actionToken = readSlackActionToken({
   raw: { action_token: "action-123" },
@@ -47,6 +55,7 @@ function ctx(
 ): ToolRuntimeContext {
   if (!channelId) {
     return {
+      turnTools: rootTurnTools,
       conversationId: "local:test:tool-registration",
       destination: {
         platform: "local" as const,
@@ -59,6 +68,7 @@ function ctx(
   }
 
   return {
+    turnTools: rootTurnTools,
     conversationId: `slack:${channelId}:1700000000.100000`,
     conversationPrivacy:
       sourceVisibility ?? (channelId.startsWith("C") ? "public" : "private"),
@@ -328,11 +338,14 @@ describe("Slack tool registration", () => {
     expect(tools.addReviewItem?.exposure).not.toBe("deferred");
     expect(tools.addReviewItem?.disabledReason).toBeUndefined();
 
-    // A child agent reports the need to its parent, even in a Slack message
-    // Turn of its own.
+    // An Agent invocation reports the need to its parent.
     const childTools = createTools([], {}, {
       ...ctx("C12345"),
       parentConversationId: "slack:C12345:1700000000.000",
+      turnTools: turnBehavior({
+        kind: "task",
+        personInput: false,
+      }).tools,
     } as ToolRuntimeContext);
     expect(childTools.addReviewItem?.disabledReason).toContain("reportBlocked");
   });
@@ -342,6 +355,7 @@ describe("Slack tool registration", () => {
       [],
       {},
       {
+        turnTools: rootTurnTools,
         conversationId: "local:test:run-test",
         destination: {
           platform: "local",
@@ -377,5 +391,64 @@ describe("Slack tool registration", () => {
     );
 
     expect(tools).toHaveProperty("imageGenerate");
+  });
+});
+
+describe("agent tool binding", () => {
+  // Binding reads only the Run's environment and disabled features.
+  function agentRun(disabledFeatures: AgentRun["disabledFeatures"] = []) {
+    const spawnAgent = vi.fn();
+    const messageAgent = vi.fn();
+    const environment = {
+      bindSpawnAgent: vi.fn(() => spawnAgent),
+      bindMessageAgent: vi.fn(() => messageAgent),
+    };
+    return {
+      environment,
+      messageAgent,
+      run: {
+        conversationId: "local:agent-tools",
+        turnId: "turn-agent-tools",
+        instruction: { text: "hello" },
+        source: createLocalSource("local:agent-tools"),
+        destination: { platform: "local", conversationId: "local:agent-tools" },
+        disabledFeatures,
+        environment,
+      } satisfies AgentRun,
+      spawnAgent,
+    };
+  }
+
+  it("binds no agent tools for a person's Turn in a Thread", () => {
+    const { environment, run } = agentRun();
+    const agents = turnBehavior({
+      kind: "thread",
+      personInput: true,
+    }).tools.agents;
+
+    expect(agents).toBe("none");
+    expect(bindAgentTools(run, agents)).toEqual({});
+    expect(environment.bindSpawnAgent).not.toHaveBeenCalled();
+    expect(environment.bindMessageAgent).not.toHaveBeenCalled();
+  });
+
+  // The binder gets the agent tools of the Turn. A root's messageAgent then
+  // rejects `parent` when it is called, as the root has no parent agent.
+  it.each(["children", "children_and_parent"] as const)(
+    "binds spawnAgent and messageAgent for %s",
+    (agents) => {
+      const { environment, messageAgent, run, spawnAgent } = agentRun();
+
+      expect(bindAgentTools(run, agents)).toEqual({ spawnAgent, messageAgent });
+      expect(environment.bindMessageAgent).toHaveBeenCalledWith(run, agents);
+    },
+  );
+
+  it("keeps messageAgent for the parent when the Turn is too deep to spawn", () => {
+    const tooDeep = agentRun(["subagents"]);
+    expect(bindAgentTools(tooDeep.run, "children_and_parent")).toEqual({
+      messageAgent: tooDeep.messageAgent,
+    });
+    expect(bindAgentTools(agentRun(["subagents"]).run, "children")).toEqual({});
   });
 });

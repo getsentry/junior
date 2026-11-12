@@ -32,6 +32,7 @@ import {
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { createSlackActor } from "@/chat/actor";
 import {
   failTurnRecord,
   getTurnRecord,
@@ -41,7 +42,7 @@ import {
   getPersistedThreadState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
-import type { SlackTurnInputTelemetry } from "@/chat/providers/slack/turn-input-telemetry";
+import type { TurnInputTelemetry } from "@/chat/task-execution/turn-telemetry";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import { createTestMessage } from "../../fixtures/slack-harness";
 import {
@@ -463,7 +464,7 @@ describe("Slack conversation work execution", () => {
       message: Message;
       skipped: Message[];
       thread: Thread;
-      telemetry?: SlackTurnInputTelemetry;
+      telemetry?: TurnInputTelemetry;
     }> = [];
 
     await handleSlackWebhookAndFlush({
@@ -822,6 +823,8 @@ describe("Slack conversation work execution", () => {
 
     expect(runNextPausedTurn).toHaveBeenCalledOnce();
     expect(runNextPausedTurn).toHaveBeenCalledWith(CONVERSATION_ID, {
+      checkIn: expect.any(Function),
+      drainSteeringMessages: expect.any(Function),
       shouldYield: expect.any(Function),
       // The resumed Run must observe a stop like a first Run does.
       stopSignal: expect.any(AbortSignal),
@@ -841,7 +844,7 @@ describe("Slack conversation work execution", () => {
     expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
   });
 
-  it("drains Slack messages that arrive during an active turn into steering", async () => {
+  it("drains only the active author's Slack messages into steering", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
@@ -863,15 +866,31 @@ describe("Slack conversation work execution", () => {
     });
 
     const injected: string[][] = [];
+    const turns: string[] = [];
     const runtime: SlackWorkerOptions["runtime"] = {
-      handleNewMention: async (_thread, _message, hooks) => {
+      handleNewMention: async (_thread, message, hooks) => {
+        turns.push(message.id);
         await hooks.ack?.();
+        if (turns.length > 1) return;
         await handleSlackWebhookAndFlush({
           request: slackWebhookRequest(
             slackEnvelope({
               text: `<@${SLACK_BOT_USER_ID}> steer this`,
               ts: "1712345.0002",
               threadTs: "1712345.0001",
+            }),
+          ),
+          services: ingressServices,
+        });
+        // The turn runs with U123's credentials, so another person cannot
+        // join it, even with the !! marker.
+        await handleSlackWebhookAndFlush({
+          request: slackWebhookRequest(
+            slackEnvelope({
+              text: `<@${SLACK_BOT_USER_ID}> !! steer this too`,
+              ts: "1712345.0003",
+              threadTs: "1712345.0001",
+              user: "U456",
             }),
           ),
           services: ingressServices,
@@ -895,6 +914,7 @@ describe("Slack conversation work execution", () => {
     ).resolves.toEqual({ status: "completed" });
 
     expect(injected).toEqual([["1712345.0002"]]);
+    expect(turns).toEqual(["1712345.0001", "1712345.0003"]);
     const work = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
       state,
@@ -903,6 +923,7 @@ describe("Slack conversation work execution", () => {
     expect(work?.execution.inboundMessageIds).toEqual([
       "slack:T123:slack:C123:1712345.0001:1712345.0001",
       "slack:T123:slack:C123:1712345.0001:1712345.0002",
+      "slack:T123:slack:C123:1712345.0001:1712345.0003",
     ]);
     expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
     await expectRemainingQueuedSlackWorkIsNoop({
@@ -1350,6 +1371,74 @@ describe("Slack conversation work execution", () => {
     expect(observedToken).toBe("xoxb-T123");
   });
 
+  it("yields a resumed Run only for a Slack interruption that cannot join its Turn", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      nowMs: 1_000,
+      state,
+    });
+    // A stored Turn without a Source still takes its Actor's input.
+    const turn = await upsertTurnRecord({
+      actor: createSlackActor("T123", "U123", undefined),
+      conversationId: CONVERSATION_ID,
+      turnId: "turn-resumed",
+      sliceId: 2,
+      state: "running",
+      destination: SLACK_DESTINATION,
+      piMessages: [],
+    });
+    const mention = async (ts: string, user: string) =>
+      await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          slackEnvelope({
+            text: `<@${SLACK_BOT_USER_ID}> check my deploy`,
+            ts,
+            threadTs: "1712345.0001",
+            user,
+          }),
+        ),
+        services: {
+          getSlackAdapter: () => slackAdapter,
+          queue,
+          runtime: createNoopSlackWebhookRuntime(),
+          state,
+        },
+      });
+
+    const yieldsAfterStep: boolean[] = [];
+    await processConversationWork(conversationQueueMessage(), {
+      queue,
+      state,
+      run: createSlackConversationWorker({
+        getSlackAdapter: () => slackAdapter,
+        runNextPausedTurn: async (_conversationId, runOptions) => {
+          const drain = runOptions.drainSteeringMessages(turn);
+          await mention("1712345.0002", "U123");
+          await drain(async () => {});
+          yieldsAfterStep.push(runOptions.shouldYield());
+          await mention("1712345.0003", "U456");
+          await drain(async () => {});
+          yieldsAfterStep.push(runOptions.shouldYield());
+          return true;
+        },
+        runtime: {
+          handleNewMention: async () => {},
+          handleSubscribedMessage: async () => {},
+        },
+        state,
+      }),
+    });
+
+    // The author's message waits for the Run to end. Another person's
+    // message ends the Run at its next step, so its own Turn can start.
+    expect(yieldsAfterStep).toEqual([false, true]);
+  });
+
   it("terminalizes stale idle continuations skipped by resume startup", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
@@ -1381,7 +1470,6 @@ describe("Slack conversation work execution", () => {
     await persistThreadStateById(CONVERSATION_ID, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "1712345.0001",
@@ -1530,7 +1618,6 @@ describe("Slack conversation work execution", () => {
     });
     expect(work?.lease).toBeUndefined();
     expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
-    expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
     expect(work?.messages[0]?.attemptCount).toBe(1);
   });
 
@@ -1725,7 +1812,6 @@ describe("Slack conversation work execution", () => {
     expect(work?.lease).toBeUndefined();
     expect(work?.needsRun).toBe(true);
     expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
-    expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
     expect(work?.messages[0]?.attemptCount).toBeUndefined();
   });
 
@@ -1787,7 +1873,6 @@ describe("Slack conversation work execution", () => {
     expect(work?.lease).toBeUndefined();
     expect(work?.needsRun).toBe(true);
     expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
-    expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
   });
 
   it("completes Slack mailbox work when the handler finishes after the soft deadline", async () => {

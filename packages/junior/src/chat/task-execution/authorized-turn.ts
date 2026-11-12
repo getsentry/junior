@@ -2,7 +2,7 @@
  * OAuth callbacks save readiness, not agent history. The conversation worker
  * consumes this event under its lease before it resumes the paused Turn.
  */
-import { z } from "zod";
+import * as z from "zod";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { getConversationEventStore } from "@/chat/db";
 import { getTurnRecord, type TurnRecord } from "./checkpoint";

@@ -1,19 +1,23 @@
 import { randomUUID } from "node:crypto";
 import {
   and,
+  asc,
   count,
   desc,
   eq,
+  gt,
   ilike,
   inArray,
   isNull,
-  lt,
+  notLike,
   or,
+  sql,
   type SQL,
 } from "drizzle-orm";
 import type { ProviderTenant } from "@/api/conversations/access";
 import type { JuniorDatabase } from "@/db/db";
 import {
+  juniorConversations,
   juniorReviewItemAssignees,
   juniorReviewItemConversations,
   juniorReviewItems,
@@ -24,9 +28,12 @@ import type {
   UserInputRequest,
 } from "@/chat/tools/runtime/user-input-request";
 import {
+  PLUGIN_REVIEW_ITEM_KEY_PREFIX,
   reviewItemAssignedTo,
+  reviewItemForUser,
   reviewItemLinkedTo,
   reviewItemNeedsUser,
+  reviewItemPlugin,
   reviewItemVisibleTo,
   type ReviewItemReader,
 } from "./access";
@@ -251,7 +258,9 @@ export async function getReviewItem(
 
 /**
  * Read the action items that the agent added in one Conversation and that a
- * reply can answer: the open items, and the items that a reply closed.
+ * reply can answer: the open items, and the items that a reply closed. A
+ * plugin's items are left out: the plugin closes them when its provider
+ * state changes, such as when a pull request merges.
  */
 export async function listReplyActionItems(
   db: JuniorDatabase,
@@ -264,6 +273,10 @@ export async function listReplyActionItems(
       and(
         eq(juniorReviewItems.addedByConversationId, conversationId),
         eq(juniorReviewItems.kind, "action"),
+        notLike(
+          juniorReviewItems.dedupeKey,
+          `${PLUGIN_REVIEW_ITEM_KEY_PREFIX}%`,
+        ),
         or(
           eq(juniorReviewItems.status, "open"),
           eq(juniorReviewItems.closeReason, REVIEW_ITEM_REPLIED_REASON),
@@ -489,28 +502,39 @@ export async function takeReviewItem(
 }
 
 /**
- * A position in the search order: the last item of a page. Search returns
- * the items after it.
+ * A position in the oldest-first order: the last item of a page. Search
+ * returns the items after it.
  */
 export interface ReviewItemPosition {
+  createdAt: Date;
   id: string;
-  updatedAt: Date;
 }
 
 /** Filters for Review item search. Every filter is optional. */
 export interface ReviewItemFilters {
   /**
-   * Return only the items after this position. Use it with one status
-   * group, such as only open items, because open items sort first.
+   * Return only the items after this position. Use it with `order: "oldest"`
+   * and one status group, such as only open items, because open items sort
+   * first.
    */
   after?: ReviewItemPosition;
   /** One assigned User, or Everyone. */
   assignee?: { everyone: true } | { userId: string };
   automationId?: string;
   conversationId?: string;
+  /**
+   * Drop the items that are assigned only to other people
+   * (`reviewItemForUser`).
+   */
+  forUserId?: string;
   limit: number;
   /** Words to find in the title or body. */
   query?: string;
+  /**
+   * `oldest` sorts by creation, oldest first. By default the newest change
+   * comes first.
+   */
+  order?: "oldest";
   statuses: readonly ReviewItemStatus[];
   subjectId?: string;
 }
@@ -526,10 +550,10 @@ function searchConditions(
   if (filters.after) {
     conditions.push(
       or(
-        lt(juniorReviewItems.updatedAt, filters.after.updatedAt),
+        gt(juniorReviewItems.createdAt, filters.after.createdAt),
         and(
-          eq(juniorReviewItems.updatedAt, filters.after.updatedAt),
-          lt(juniorReviewItems.id, filters.after.id),
+          eq(juniorReviewItems.createdAt, filters.after.createdAt),
+          gt(juniorReviewItems.id, filters.after.id),
         ),
       )!,
     );
@@ -549,6 +573,9 @@ function searchConditions(
         ? eq(juniorReviewItems.assignedToEveryone, true)
         : reviewItemAssignedTo(filters.assignee.userId),
     );
+  }
+  if (filters.forUserId) {
+    conditions.push(reviewItemForUser(filters.forUserId));
   }
   if (filters.query) {
     const pattern = `%${filters.query.replace(/[\\%_]/g, "\\$&")}%`;
@@ -575,10 +602,28 @@ export async function countReviewItemsNeedingUser(
 }
 
 /**
+ * Return a query for a token that changes when the open Review items that
+ * need a User change. An item that is added or changed moves the newest
+ * `updated_at`, and an item that closes or leaves the User changes the count.
+ */
+export function reviewItemsNeedingUserVersionQuery(
+  db: JuniorDatabase,
+  userId: string,
+) {
+  return db
+    .select({
+      version: sql<string>`concat_ws(':', count(*), max(${juniorReviewItems.updatedAt}))`,
+    })
+    .from(juniorReviewItems)
+    .where(reviewItemNeedsUser(userId));
+}
+
+/**
  * Find the Review items that a reader can see. Open items come first, so
  * the limit never drops an open item for a closed one. Then the newest
- * change comes first: `updated_at`, then `id`, both descending. `after`
- * pages through that order.
+ * change comes first: `updated_at`, then `id`, both descending. With
+ * `order: "oldest"`, the oldest item comes first: `created_at`, then `id`,
+ * both ascending. `after` pages through that order.
  */
 export async function searchReviewItems(
   db: JuniorDatabase,
@@ -591,30 +636,79 @@ export async function searchReviewItems(
     .where(and(...searchConditions(reader, filters)))
     .orderBy(
       desc(eq(juniorReviewItems.status, "open")),
-      desc(juniorReviewItems.updatedAt),
-      desc(juniorReviewItems.id),
+      ...(filters.order === "oldest"
+        ? [asc(juniorReviewItems.createdAt), asc(juniorReviewItems.id)]
+        : [desc(juniorReviewItems.updatedAt), desc(juniorReviewItems.id)]),
     )
     .limit(filters.limit);
   return await hydrate(db, rows);
 }
 
+/** One open Review item that a Conversation waits on a User for. */
+type WaitingItem = {
+  /** The plugin that added the item, such as `github`. Unset for an agent. */
+  plugin?: string;
+  title: string;
+};
+
+/** One Conversation that waits on a User, with its open Review items. */
+export type WaitingConversation = {
+  conversationId: string;
+  /** Open Review items on this Conversation that need the User, newest first. */
+  items: WaitingItem[];
+  /** When the oldest of those items was added: when the wait began. */
+  waitingSince: string;
+};
+
 /**
- * List the Conversations that wait on a User: each is linked to an open item
- * that needs the User (`reviewItemNeedsUser`).
+ * List the root Conversations that wait on a User: each root or one of its
+ * child conversations is linked to an open item that needs the User
+ * (`reviewItemNeedsUser`). An item that a child agent adds links the child,
+ * and the feed lists only roots.
  */
-export async function listWaitingConversationIds(
+export async function listWaitingConversations(
   db: JuniorDatabase,
   userId: string,
-): Promise<string[]> {
+): Promise<WaitingConversation[]> {
   const rows = await db
     .selectDistinct({
-      conversationId: juniorReviewItemConversations.conversationId,
+      conversationId: sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorReviewItemConversations.conversationId})`,
+      itemId: juniorReviewItems.id,
+      dedupeKey: juniorReviewItems.dedupeKey,
+      title: juniorReviewItems.title,
+      createdAt: juniorReviewItems.createdAt,
     })
     .from(juniorReviewItemConversations)
     .innerJoin(
       juniorReviewItems,
       eq(juniorReviewItems.id, juniorReviewItemConversations.itemId),
     )
-    .where(reviewItemNeedsUser(userId));
-  return rows.map((row) => row.conversationId).sort();
+    .leftJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorReviewItemConversations.conversationId,
+      ),
+    )
+    .where(reviewItemNeedsUser(userId))
+    .orderBy(desc(juniorReviewItems.createdAt), desc(juniorReviewItems.id));
+  const waiting = new Map<string, WaitingConversation>();
+  for (const row of rows) {
+    const plugin = reviewItemPlugin(row.dedupeKey);
+    const item = { title: row.title, ...(plugin ? { plugin } : undefined) };
+    const current = waiting.get(row.conversationId);
+    // Rows come newest first, so each later row is older.
+    if (current) {
+      current.items.push(item);
+      current.waitingSince = row.createdAt.toISOString();
+    } else
+      waiting.set(row.conversationId, {
+        conversationId: row.conversationId,
+        items: [item],
+        waitingSince: row.createdAt.toISOString(),
+      });
+  }
+  return [...waiting.values()].sort((left, right) =>
+    left.conversationId.localeCompare(right.conversationId),
+  );
 }

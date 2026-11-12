@@ -10,7 +10,6 @@ import {
 } from "@sentry/junior/api/schema";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { Textarea } from "../../components/ui/textarea";
 import { Field, FieldError, FieldLabel } from "../../components/ui/field";
 import { useToastManager } from "../../components/ui/toast";
 import { FormNotice } from "../../components/FormNotice";
@@ -20,12 +19,11 @@ import { AutomationDraftChanges } from "./AutomationDraftChanges";
 import { AutomationFormSection } from "./AutomationFormSection";
 import { AutomationScheduleFields } from "./AutomationScheduleFields";
 import { AutomationEventFields } from "./AutomationEventFields";
-import {
-  AutomationOutcomeFields,
-  AutomationOutcomeList,
-} from "./AutomationOutcomeFields";
+import { AutomationOutcomeFields } from "./AutomationOutcomeFields";
+import { AutomationTaskFields } from "./AutomationTaskFields";
 import {
   automationDraftChanges,
+  taskDraft,
   createAutomationDraft,
   scheduleDraft,
   type AutomationDraft,
@@ -103,7 +101,11 @@ export function AutomationEditor(props: {
     if (!latest) return;
     setDraft(
       keepChanges
-        ? { ...createAutomationDraft(latest), ...changes }
+        ? {
+            ...createAutomationDraft(latest),
+            ...changes,
+            task: changes.task ? draft.task : taskDraft(latest.task),
+          }
         : createAutomationDraft(latest),
     );
     setOriginal(latest);
@@ -131,11 +133,14 @@ export function AutomationEditor(props: {
   const triggerField = original.kind === "scheduled" ? "schedule" : "trigger";
   const owned = original.ownedByViewer;
   const creator = props.summary.createdBy;
-  // Core switches a non-creator's execution change to system credentials.
+  // Core switches a non-creator's execution or outcome change to system
+  // credentials.
   const dropsCreatorCredentials =
     !owned &&
     original.credentialMode === "creator" &&
-    (changes.instruction !== undefined || changes[triggerField] !== undefined);
+    (changes.task !== undefined ||
+      changes[triggerField] !== undefined ||
+      changes.outcomes !== undefined);
   const triggerError = fieldError(triggerField);
   const inputState = (key: string) => ({
     "aria-invalid": Boolean(fieldError(key)) || undefined,
@@ -148,6 +153,23 @@ export function AutomationEditor(props: {
       onSubmit={(event) => {
         event.preventDefault();
         if (save.isPending || conflict || !dirty) return;
+        const taskError: Record<string, string[]> | undefined =
+          draft.task.kind === "skill"
+            ? draft.task.skill
+              ? undefined
+              : { "task.skill": ["Choose a skill."] }
+            : draft.task.instruction.trim()
+              ? undefined
+              : {
+                  "task.instruction": [
+                    "Write an instruction or choose a skill.",
+                  ],
+                };
+        if (taskError) {
+          setFields(taskError);
+          focusError();
+          return;
+        }
         const parsed = automationUpdateSchema.safeParse(update);
         if (!parsed.success) {
           const errors: Record<string, string[]> = {};
@@ -166,8 +188,12 @@ export function AutomationEditor(props: {
           <FormNotice title="Discard unsaved changes?">
             <p>Your changes have not been saved.</p>
             <div className="flex gap-2">
-              <Button onClick={() => blocker.reset()}>Keep editing</Button>
-              <Button onClick={() => blocker.proceed()}>Discard changes</Button>
+              <Button variant="outline" onClick={() => blocker.reset()}>
+                Keep editing
+              </Button>
+              <Button variant="outline" onClick={() => blocker.proceed()}>
+                Discard changes
+              </Button>
             </div>
           </FormNotice>
         </div>
@@ -192,6 +218,7 @@ export function AutomationEditor(props: {
             </p>
             {conflict ? (
               <Button
+                variant="outline"
                 disabled={review.isPending}
                 onClick={() => review.mutate()}
               >
@@ -239,10 +266,10 @@ export function AutomationEditor(props: {
               </section>
             ))}
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => acceptLatest(true)}>
+              <Button variant="outline" onClick={() => acceptLatest(true)}>
                 Keep my changed fields
               </Button>
-              <Button onClick={() => acceptLatest(false)}>
+              <Button variant="outline" onClick={() => acceptLatest(false)}>
                 Use latest saved version
               </Button>
             </div>
@@ -252,8 +279,8 @@ export function AutomationEditor(props: {
       {owned ? null : (
         <p className="mt-0 mb-6 max-w-2xl text-sm leading-relaxed text-dashboard-text-muted">
           {creator} created this automation. You can edit it because it is in a
-          public channel. Only {creator} can change where results go or turn on
-          their connected accounts. Version history keeps every saved change.
+          public channel. Only {creator} can turn on their connected accounts.
+          Version history keeps every saved change.
         </p>
       )}
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-10">
@@ -263,11 +290,13 @@ export function AutomationEditor(props: {
           className="min-w-0 [&>section:first-of-type]:border-t-0 [&>section:first-of-type]:pt-0"
         >
           <AutomationFormSection
-            changed={
-              changes.title !== undefined || changes.instruction !== undefined
-            }
+            changed={changes.title !== undefined || changes.task !== undefined}
             title="What to do"
-            detail="Give Junior a clear instruction and a name you can find later."
+            detail={
+              draft.task.kind === "instruction"
+                ? "Give Junior a clear instruction and a name you can find later."
+                : "Pick a skill for Junior to run. Add context only when this automation needs more than the skill does."
+            }
           >
             <Field>
               <FieldLabel htmlFor="title">Title</FieldLabel>
@@ -281,23 +310,14 @@ export function AutomationEditor(props: {
               />
               <FieldError id="title-error">{fieldError("title")}</FieldError>
             </Field>
-            <Field>
-              <FieldLabel htmlFor="instruction">Instruction</FieldLabel>
-              <Textarea
-                id="instruction"
-                rows={8}
-                value={draft.instruction}
-                onChange={(e) => change({ instruction: e.target.value })}
-                {...inputState("instruction")}
-                className="resize-y text-base leading-relaxed sm:text-sm"
-              />
-              <p className="m-0 text-right text-xs text-dashboard-text-muted">
-                {draft.instruction.length.toLocaleString()} / 4,000
-              </p>
-              <FieldError id="instruction-error">
-                {fieldError("instruction")}
-              </FieldError>
-            </Field>
+            <AutomationTaskFields
+              task={draft.task}
+              original={original}
+              disabled={save.isPending}
+              fieldError={fieldError}
+              inputState={inputState}
+              onChange={(task) => change({ task })}
+            />
           </AutomationFormSection>
           <AutomationFormSection
             changed={changes[triggerField] !== undefined}
@@ -345,25 +365,13 @@ export function AutomationEditor(props: {
                 {fieldError("outcomes")}
               </p>
             ) : null}
-            {owned ? (
-              <AutomationOutcomeFields
-                value={draft.outcomes}
-                original={original.outcomes}
-                destination={props.summary.destination}
-                disabled={save.isPending}
-                onChange={(outcomes) => change({ outcomes })}
-              />
-            ) : (
-              <>
-                <AutomationOutcomeList
-                  outcomes={original.outcomes}
-                  destination={props.summary.destination}
-                />
-                <p className="m-0 text-xs text-dashboard-text-muted">
-                  Only {creator} can change where results go.
-                </p>
-              </>
-            )}
+            <AutomationOutcomeFields
+              value={draft.outcomes}
+              original={original.outcomes}
+              destination={props.summary.destination}
+              disabled={save.isPending}
+              onChange={(outcomes) => change({ outcomes })}
+            />
           </AutomationFormSection>
           <AutomationFormSection
             changed={changes.credentialMode !== undefined}
@@ -424,9 +432,9 @@ export function AutomationEditor(props: {
             </RadioGroup>
             {dropsCreatorCredentials ? (
               <FormNotice title="Saving switches this automation to system credentials.">
-                Only {creator} can let a changed instruction
-                {original.kind === "event" ? " or trigger" : " or schedule"} use
-                their connected accounts.
+                Only {creator} can let a changed instruction,
+                {original.kind === "event" ? " trigger," : " schedule,"} or
+                result destination use their connected accounts.
               </FormNotice>
             ) : null}
             {fieldError("credentialMode") ? (
@@ -468,7 +476,7 @@ export function AutomationEditor(props: {
             </Link>
             <Button
               type="submit"
-              variant="primary"
+              variant="default"
               className="min-h-11 sm:min-h-9"
               disabled={!dirty || save.isPending || conflict}
             >

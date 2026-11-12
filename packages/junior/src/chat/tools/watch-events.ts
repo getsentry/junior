@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { agentEventKeys, declaredEventKeys } from "@sentry/junior-plugin-api";
+import * as z from "zod";
 import {
   eventNamespaceSchema,
   eventWatchUnavailable,
@@ -31,7 +32,7 @@ function inputSchema(catalog: EventCatalog) {
       namespace: eventNamespaceSchema(catalog).describe(
         "Enabled plugin namespace for this resource.",
       ),
-      resourceType: registeredResourceTypeSchema(catalog).describe(
+      resource_type: registeredResourceTypeSchema(catalog).describe(
         "Plugin-defined resource type.",
       ),
       label: z
@@ -55,7 +56,7 @@ function inputSchema(catalog: EventCatalog) {
         .describe(
           "Concise reason this conversation wants these events, used when an event arrives.",
         ),
-      ttlMs: z.coerce
+      ttl_ms: z.coerce
         .number()
         .describe(
           "How long to keep the subscription active. Defaults to 14 days and must not exceed 30 days.",
@@ -86,7 +87,7 @@ const resultDataSchema = z
     identifier: z.string().min(1),
     events: z.array(z.string().min(1)).min(1),
     match: z.record(z.string(), z.unknown()).optional(),
-    expiresAtMs: z.number().finite(),
+    expires_at: z.string().datetime(),
     stop_watching: stopWatchingActionSchema,
   })
   .strict();
@@ -98,14 +99,14 @@ function cleanStrings(values: string[]): string[] {
 }
 
 function ttlMs(input: Input): number {
-  if (input.ttlMs === undefined) return RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS;
-  if (!Number.isFinite(input.ttlMs) || input.ttlMs <= 0) {
-    throw new ToolInputError("ttlMs must be a positive finite number");
+  if (input.ttl_ms === undefined) return RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS;
+  if (!Number.isFinite(input.ttl_ms) || input.ttl_ms <= 0) {
+    throw new ToolInputError("ttl_ms must be a positive finite number");
   }
-  if (input.ttlMs > RESOURCE_SUBSCRIPTION_MAX_TTL_MS) {
+  if (input.ttl_ms > RESOURCE_SUBSCRIPTION_MAX_TTL_MS) {
     throw new ToolInputError("Watches cannot exceed 30 days");
   }
-  return input.ttlMs;
+  return input.ttl_ms;
 }
 
 /** Create the tool that temporarily watches events in one conversation. */
@@ -128,7 +129,7 @@ export function createWatchEventsTool(
       const unavailable = eventWatchUnavailable(
         catalog,
         input.namespace,
-        input.resourceType,
+        input.resource_type,
       );
       if (unavailable) throw new ToolInputError(unavailable);
       const events = cleanStrings(input.events);
@@ -138,9 +139,9 @@ export function createWatchEventsTool(
         catalog,
         {
           events,
-          match: input.match,
+          match: input.match ? declaredEventKeys(input.match) : undefined,
           namespace: input.namespace,
-          resourceType: input.resourceType,
+          resourceType: input.resource_type,
         },
         "watch",
       );
@@ -153,16 +154,21 @@ export function createWatchEventsTool(
         label: input.label.trim(),
         ...(match ? { match } : undefined),
         namespace: input.namespace.trim(),
-        identifier: requireEventIdentifier(catalog, input),
-        resourceType: input.resourceType.trim(),
+        identifier: requireEventIdentifier(catalog, {
+          ...input,
+          resourceType: input.resource_type,
+        }),
+        resourceType: input.resource_type.trim(),
       });
       const details = {
         id: subscription.id,
         subscription_status: subscription.status,
         identifier: subscription.identifier,
         events: subscription.events,
-        ...(subscription.match ? { match: subscription.match } : undefined),
-        expiresAtMs: subscription.expiresAtMs,
+        ...(subscription.match
+          ? { match: agentEventKeys(subscription.match) }
+          : undefined),
+        expires_at: new Date(subscription.expiresAtMs).toISOString(),
         stop_watching: {
           execution_tool: "executeTool" as const,
           execution_example: {

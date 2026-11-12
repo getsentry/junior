@@ -19,32 +19,47 @@ import { readPeopleCode } from "./code";
 import { readPeopleList } from "./list";
 import { readPeoplePluginReports } from "./plugin-reports";
 import { readPeopleProfile } from "./profile";
-import { createPersonalSpendReader } from "./spend";
+import { readPersonalSpendFromSql } from "./spend.query";
+
+// A versioned photo path never changes its bytes. `private` keeps photos out
+// of shared caches, because the route needs a signed-in viewer.
+const AVATAR_IMMUTABLE_CACHE_CONTROL = "private, max-age=31536000, immutable";
 
 /** Create the HTTP routes owned by the People API. */
 export function createPeopleRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
-  const readPersonalSpend = createPersonalSpendReader();
 
   // Serve profile photos from Junior, so browsers never load them from
-  // Slack or Google. The browser keeps each photo for a day.
+  // Slack or Google. A photo path has the version of its photo, so the
+  // browser keeps a current versioned photo and checks any other request.
   app.get(
     "/avatars/:identityId",
     requireViewer,
     validateRequest("param", avatarParamsSchema, "Invalid route parameters."),
     async (context) => {
       const { identityId } = context.req.valid("param");
-      const image = await readAvatarImage(
+      const avatar = await readAvatarImage(
         getDb(),
         getStateAdapter(),
         identityId,
       );
-      if (!image) throwApiError(404, "Avatar not found.");
-      return new Response(Buffer.from(image.data, "base64"), {
+      if (!avatar) throwApiError(404, "Avatar not found.");
+      const etag = `"${avatar.version}"`;
+      const headers = {
+        "cache-control":
+          context.req.query("v") === avatar.version
+            ? AVATAR_IMMUTABLE_CACHE_CONTROL
+            : "private, no-cache",
+        etag,
+      };
+      if (context.req.header("if-none-match") === etag) {
+        return new Response(null, { headers, status: 304 });
+      }
+      return new Response(Buffer.from(avatar.image.data, "base64"), {
         headers: {
-          "cache-control": "private, max-age=86400",
+          ...headers,
           "content-security-policy": "default-src 'none'; sandbox",
-          "content-type": image.contentType,
+          "content-type": avatar.image.contentType,
           "x-content-type-options": "nosniff",
         },
       });
@@ -55,7 +70,7 @@ export function createPeopleRoutes(): Hono<JuniorApiEnv> {
     const viewer = context.get("viewer");
     return jsonResponse(
       personalSpendReportSchema,
-      await readPersonalSpend(viewer.email),
+      await readPersonalSpendFromSql(viewer.email),
     );
   });
 

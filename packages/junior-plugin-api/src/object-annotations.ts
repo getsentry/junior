@@ -1,6 +1,16 @@
-import { z } from "zod";
-import { objectFactsSchema } from "./object-facts";
-import { objectTypeSchema } from "./object-presentation";
+import * as z from "zod";
+import { type ObjectFacts, objectFactsSchema } from "./object-facts";
+import { type ObjectType, objectTypeSchema } from "./object-presentation";
+
+/** Return whether facts fit an object type. Deployment facts also fit an item. */
+export function objectFactsMatchType(
+  facts: ObjectFacts,
+  objectType: ObjectType,
+): boolean {
+  return facts.type === "deployment"
+    ? objectType === "deployment" || objectType === "item"
+    : facts.type === objectType;
+}
 
 /**
  * Verified facts shared by Conversation annotations and Message cards.
@@ -11,7 +21,8 @@ import { objectTypeSchema } from "./object-presentation";
  * selects the fields it needs; preview rules must not remove saved facts.
  *
  * Keep raw responses, diffs, logs, credentials, and comments out of this schema.
- * See "Object annotations and Message cards" in packages/junior/src/chat/conversations/AGENTS.md.
+ * Return only facts that the Conversation audience may see. An annotation
+ * never grants provider access.
  */
 export const objectAnnotationSchema = z
   .object({
@@ -43,10 +54,7 @@ export const objectAnnotationSchema = z
   .refine(
     (annotation) =>
       !annotation.facts ||
-      (annotation.facts.type === "deployment"
-        ? annotation.objectType === "deployment" ||
-          annotation.objectType === "item"
-        : annotation.facts.type === annotation.objectType),
+      objectFactsMatchType(annotation.facts, annotation.objectType),
     "Object facts must match the object type",
   );
 export type ObjectAnnotation = z.output<typeof objectAnnotationSchema>;

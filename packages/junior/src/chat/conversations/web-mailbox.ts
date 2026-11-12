@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 // TODO(dcramer): Delete this legacy schema after every deployed mailbox record
 // stores complete web Source and Actor values.

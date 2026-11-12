@@ -2,11 +2,11 @@ import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-ca
 import { botConfig } from "@/chat/config";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
+import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
+import { recordPreviewOrigin } from "@/personal-tokens/preview-origins";
+import { runBestEffort } from "@/chat/logging";
 import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
-import { createFindFilesTool } from "@/chat/tools/sandbox/find-files";
-import { createGrepTool } from "@/chat/tools/sandbox/grep";
 import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
-import { createListDirTool } from "@/chat/tools/sandbox/list-dir";
 import type { SkillMetadata } from "@/chat/skills";
 import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
@@ -16,11 +16,13 @@ import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
-import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
+import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
-import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
+import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
+import { createReplyTool } from "@/chat/tools/runtime/reply";
+import { createNoReplyTool } from "@/chat/tools/runtime/no-reply";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
 import {
   createAddReviewItemTool,
@@ -28,7 +30,8 @@ import {
   createUpdateReviewItemTool,
 } from "@/chat/tools/review-items";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
-import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
+import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
+import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import { createEventTools } from "@/chat/tools/events";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { createAutomationTools } from "@/chat/tools/automations";
@@ -56,12 +59,13 @@ import { createUserLookupTool } from "@/chat/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
 import { createOperatorTools } from "@/chat/tools/operator-sql";
 import { createUserCustomizationTools } from "@/chat/tools/user-customization";
+import { createConversationSubscriptionTools } from "@/chat/tools/conversation-subscription";
 import { createPublishImageTool } from "@/chat/tools/publish-image";
 import { createUnpublishImageTool } from "@/chat/tools/unpublish-image";
 import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
+import { createReadConversationEventTool } from "@/chat/tools/read-conversation-event";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
 import { createSearchConversationBriefsTool } from "@/chat/tools/search-conversation-briefs";
-import { createHandoffTool } from "@/chat/tools/handoff/tool";
 import { disableTools, type ToolRegistry } from "@/chat/tools/definition";
 import type {
   ToolHooks,
@@ -90,6 +94,12 @@ function createToolState(): ToolState {
 export type { ToolHooks, ToolRuntimeContext };
 
 export interface CreateToolsOptions {
+  /**
+   * Every discovered skill, for the skill an Automation runs. Unlike the
+   * skills that `loadSkill` gets, it includes skills with
+   * `disable-model-invocation`.
+   */
+  automationSkills?: readonly SkillMetadata[];
   pluginSandbox?: PluginSandbox;
 }
 
@@ -106,6 +116,7 @@ export function createTools(
   options: CreateToolsOptions = {},
 ) {
   const state = createToolState();
+  const turnTools = context.turnTools;
   const slackContext = getSlackToolContext(context);
   const slackLocationCapabilities = slackContext
     ? resolveChannelCapabilities(slackContext.locationChannelId)
@@ -116,6 +127,10 @@ export function createTools(
       : context.attachmentStorage,
   );
   const eventCatalog = getEventCatalog();
+  const modelCost = {
+    conversationId: context.conversationId,
+    ...(context.turnId ? { turnId: context.turnId } : undefined),
+  };
   const tools: ToolRegistry = {
     loadSkill: createLoadSkillTool(availableSkills, {
       onSkillLoaded: hooks.onSkillLoaded,
@@ -126,9 +141,6 @@ export function createTools(
     bash: createBashTool(),
     readFile: createReadFileTool(),
     editFile: createEditFileTool(),
-    grep: createGrepTool(),
-    findFiles: createFindFilesTool(),
-    listDir: createListDirTool(),
     writeFile: createWriteFileTool(),
     webSearch: createWebSearchTool(
       botConfig.webSearchModelId,
@@ -136,29 +148,43 @@ export function createTools(
     ),
     webFetch: createWebFetchTool(hooks, {
       canSendFilesToActiveConversation,
-      sandbox: context.workspace,
     }),
     ...createEventTools(context, eventCatalog),
-    ...createAutomationTools(context, eventCatalog),
+    ...createAutomationTools(
+      context,
+      eventCatalog,
+      options.automationSkills ?? [],
+    ),
     ...createWorkspaceTools(context),
     ...createOperatorTools(context),
     ...createUserCustomizationTools(context),
+    ...createConversationSubscriptionTools(context),
   };
   tools.searchConversationEvents = createSearchConversationEventsTool(context);
+  tools.readConversationEvent = createReadConversationEventTool(context);
   if (context.conversationPrivacy === "public") {
     tools.searchConversationBriefs = createSearchConversationBriefsTool(
-      slackContext
-        ? {
-            kind: "public_provider_tenant",
-            provider: "slack",
-            providerTenantId: slackContext.teamId,
-          }
-        : { kind: "public" },
       context.conversationId,
       slackContext
         ? createSlackConversationBriefSearchPort(slackContext.teamId)
         : undefined,
     );
+  }
+  const createPreview = context.workspace.createPreview?.bind(
+    context.workspace,
+  );
+  if (createPreview) {
+    tools.createPreview = createCreatePreviewTool(async (port) => {
+      const url = await createPreview(port);
+      // Lets the requester send this Preview a personal token for live data.
+      // The Preview works without the record: Connect then refuses it, and
+      // the viewer pastes a token instead.
+      await runBestEffort(async () => {
+        const owner = (await context.resolveActorIdentity?.())?.user;
+        if (owner) await recordPreviewOrigin({ ownerEmail: owner.email, url });
+      }, "sandbox.preview_origin.record.failed");
+      return url;
+    });
   }
   if (context.supportsImageInput) {
     tools.viewImage = createViewImageTool(
@@ -175,6 +201,7 @@ export function createTools(
       {
         modelId: botConfig.imageGenerationModelId,
         canSendFilesToActiveConversation,
+        promptCost: modelCost,
         sandbox: context.workspace,
       },
       hooks.toolOverrides?.imageGenerate,
@@ -212,25 +239,17 @@ export function createTools(
     });
   }
 
-  if (context.handoff) {
-    tools.handoff = createHandoffTool(context.handoff);
-  }
-
   if (context.spawnAgent) {
-    if (!context.spawnAgentProfiles) {
-      throw new Error("spawnAgent is missing its configured model profiles");
-    }
-    tools.spawnAgent = createSpawnAgentTool(
-      context.spawnAgent,
-      context.spawnAgentProfiles,
-    );
+    tools.spawnAgent = createSpawnAgentTool(context.spawnAgent, modelCost);
     tools.stopAgent = createStopAgentTool(context.conversationId);
+    tools.archiveAgent = createArchiveAgentTool(context.conversationId);
   }
 
-  // A child agent that is too deep to start child agents can still list its
+  // A child agent that is too deep to start child agents can still find its
   // parent and siblings.
   if (context.spawnAgent || context.messageAgent) {
-    tools.listAgents = createListAgentsTool({
+    tools.searchAgents = createSearchAgentsTool({
+      ...(context.actor ? { actor: context.actor } : undefined),
       conversationId: context.conversationId,
       parentConversationId: context.parentConversationId,
     });
@@ -240,15 +259,16 @@ export function createTools(
     tools.messageAgent = createMessageAgentTool(context.messageAgent);
   }
 
-  // A child agent reports to its parent, whatever input started this Turn.
-  if (context.parentConversationId) {
-    tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool();
+  if (turnTools.reply !== "none") {
+    tools[REPLY_TOOL_NAME] = createReplyTool(turnTools.reply);
   }
-
-  if (context.automation) {
-    tools[FINISH_AUTOMATION_RUN_TOOL_NAME] = createFinishAutomationRunTool(
-      context.automation,
+  if (turnTools.reportBlocked !== "none") {
+    tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool(
+      turnTools.reportBlocked,
     );
+  }
+  if (turnTools.noReply) {
+    tools[NO_REPLY_TOOL_NAME] = createNoReplyTool();
   }
 
   if (context.mcpToolManager) {
@@ -268,11 +288,7 @@ export function createTools(
     if (context.conversationPrivacy === "public") {
       tools.searchConversationMessages =
         createSlackConversationMessageSearchTool(
-          {
-            kind: "public_provider_tenant",
-            provider: "slack",
-            providerTenantId: slackContext.teamId,
-          },
+          slackContext.teamId,
           context.conversationId,
         );
     }
@@ -371,7 +387,7 @@ export function createTools(
           reviewItemServices,
         ),
       },
-      context.parentConversationId
+      !turnTools.reviewDesk
         ? `A child agent cannot use the review desk. Use ${REPORT_BLOCKED_TOOL_NAME} to tell the parent agent what needs a person.`
         : undefined,
     ),

@@ -34,6 +34,7 @@ function conversation(args: {
   return {
     conversationId: args.conversationId ?? "slack:C123:1712345.0001",
     createdAtMs: 1,
+    kind: args.parentConversationId ? "task" : "root",
     lastActivityAtMs: 1,
     updatedAtMs: 1,
     schemaVersion: 1,
@@ -55,7 +56,9 @@ function conversationStore(
     get: vi.fn(async () => undefined),
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
+    claimProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
+    recordDestinationVisibility: vi.fn(),
     getRunMetrics: vi.fn(async () => undefined),
     findSlackDestinationByName: vi.fn(async () => undefined),
     recordActivity: vi.fn(),

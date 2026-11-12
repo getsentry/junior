@@ -8,6 +8,7 @@ import { juniorConversationMetrics } from "./schema/conversation-metrics";
 import { juniorConversationBriefs } from "./schema/conversation-briefs";
 import { juniorConversationBindings } from "./schema/conversation-bindings";
 import { juniorConversationParticipants } from "./schema/conversation-participants";
+import { juniorConversationReadPositions } from "./schema/conversation-read-positions";
 import { juniorConversations } from "./schema/conversations";
 import {
   juniorAgentBindings,
@@ -26,6 +27,7 @@ import {
   juniorReviewItemSlackCards,
   juniorReviewItems,
 } from "./schema/review-items";
+import { juniorPushSubscriptions } from "./schema/push-subscriptions";
 import { juniorSnapshots } from "./schema/snapshots";
 import { juniorUsers } from "./schema/users";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "./schema/workspaces";
@@ -44,6 +46,7 @@ export {
   juniorConversationBriefs,
   juniorConversationBindings,
   juniorConversationParticipants,
+  juniorConversationReadPositions,
   juniorConversations,
   juniorLocationConfigurations,
   juniorDestinations,
@@ -52,6 +55,7 @@ export {
   juniorReviewItemConversations,
   juniorReviewItemSlackCards,
   juniorReviewItems,
+  juniorPushSubscriptions,
   juniorSnapshots,
   juniorStats,
   juniorAutomationRuns,
@@ -76,6 +80,7 @@ export const juniorSqlSchema = {
   juniorConversationBriefs,
   juniorConversationBindings,
   juniorConversationParticipants,
+  juniorConversationReadPositions,
   juniorConversations,
   juniorLocationConfigurations,
   juniorDestinations,
@@ -84,6 +89,7 @@ export const juniorSqlSchema = {
   juniorReviewItemConversations,
   juniorReviewItemSlackCards,
   juniorReviewItems,
+  juniorPushSubscriptions,
   juniorSnapshots,
   juniorStats,
   juniorAutomationRuns,
