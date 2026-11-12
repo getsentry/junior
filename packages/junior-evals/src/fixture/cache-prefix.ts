@@ -31,6 +31,8 @@ export interface AgentGatewayRequest {
 interface CachePrefixBreak {
   /** Index of the request in the test. */
   request: number;
+  /** The Conversation ID that the request was sent for. */
+  conversation: string;
   part: "model" | "tools" | "system" | "messages";
   detail: string;
 }
@@ -130,7 +132,7 @@ function prefixBreak(
   before: SeenRequest,
   after: SeenRequest,
   blocks: PromptBlock[],
-): Omit<CachePrefixBreak, "request"> | undefined {
+): Omit<CachePrefixBreak, "request" | "conversation"> | undefined {
   const previous = before.request;
   const next = after.request;
   if (promptMode(previous) !== promptMode(next)) return undefined;
@@ -183,7 +185,13 @@ export function findCachePrefixBreaks(
     }
     if (!before) continue;
     const found = prefixBreak(before, current, blocks);
-    if (found) breaks.push({ request: index, ...found });
+    if (found) {
+      breaks.push({
+        request: index,
+        conversation: request.sessionAffinity,
+        ...found,
+      });
+    }
   }
   return breaks;
 }

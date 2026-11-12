@@ -87,7 +87,12 @@ describe("findCachePrefixBreaks", () => {
     ["messages", request([user("FIRST"), assistant("one"), user("again")])],
   ])("reports a changed %s prefix", (part, changed) => {
     expect(findCachePrefixBreaks([first, changed])).toEqual([
-      { request: 1, part, detail: expect.any(String) },
+      {
+        request: 1,
+        conversation: "conversation-1",
+        part,
+        detail: expect.any(String),
+      },
     ]);
   });
 
@@ -108,7 +113,12 @@ describe("findCachePrefixBreaks", () => {
     });
     expect(findCachePrefixBreaks([run, personTurn])).toEqual([]);
     expect(findCachePrefixBreaks([personTurn, changed])).toEqual([
-      { request: 1, part: "system", detail: expect.any(String) },
+      {
+        request: 1,
+        conversation: "conversation-1",
+        part: "system",
+        detail: expect.any(String),
+      },
     ]);
   });
 
