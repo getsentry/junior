@@ -49,6 +49,7 @@ import {
   pullRequestReadyTargets,
   syncGitHubPullRequestReadyNotices,
 } from "./pull-request-ready.js";
+import { requestGitHubReviewersWhenReady } from "./pull-request-ready-reviewers.js";
 import { syncGitHubPullRequestReviewRequest } from "./pull-request-review-request.js";
 import {
   withGitHubPullRequestMatchData,
@@ -166,7 +167,7 @@ export function createGitHubWebhookRoute(args: {
   loadRepositoryRole?(target: GitHubRoleTarget): Promise<string>;
   /** Linked GitHub login of the user of one Junior identity, if any. */
   loadGitHubLogin?(identityId: string): Promise<string | undefined>;
-  log?: Pick<PluginLogger, "error">;
+  log?: Pick<PluginLogger, "error" | "warn">;
   markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
   events: EventPublisher;
@@ -434,6 +435,20 @@ export function createGitHubWebhookRoute(args: {
         log: args.log,
         reviewItems: args.reviewItems,
         targets: pullRequestReadyTargets(eventName, body),
+      });
+      await requestGitHubReviewersWhenReady({
+        body,
+        db: args.db,
+        deliveryId,
+        env: {
+          appIdEnv: args.appIdEnv,
+          installationIdEnv: args.installationIdEnv,
+          privateKeyEnv: args.privateKeyEnv,
+        },
+        eventName,
+        loadGitHubLogin: args.loadGitHubLogin,
+        log: args.log,
+        state: args.state,
       });
       await syncGitHubPullRequestReviewRequest({
         body,

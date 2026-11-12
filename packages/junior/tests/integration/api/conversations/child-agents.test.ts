@@ -262,7 +262,7 @@ describe("conversation child agents API", () => {
     });
   });
 
-  it("labels a child that no Agent invocation names from its spawn options", async () => {
+  it("labels a child that no Agent invocation names from its agent config", async () => {
     const { conversationStore } = await prepareSlackParentConversation();
     const childId = await spawnChildWithoutAgentInvocation({
       actor: slackInvocationInput.actor,
@@ -270,7 +270,7 @@ describe("conversation child agents API", () => {
       idempotencyKey: "agent-tree-without-agent-invocation",
       parentConversationId: slackParentConversationId,
       queue: createConversationWorkQueueTestAdapter(),
-      spawnOptions: { agentType: "explore", fork: true },
+      agentConfig: { agentType: "explore", fork: true },
       title: "Claim check",
     });
 

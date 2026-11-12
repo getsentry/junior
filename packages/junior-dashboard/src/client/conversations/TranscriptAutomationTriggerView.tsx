@@ -76,7 +76,10 @@ export function TranscriptAutomationTriggerView(props: {
         </span>
         {automationId ? (
           <Link
-            className={cn(buttonVariants(), "h-8 shrink-0 text-xs")}
+            className={cn(
+              buttonVariants({ variant: "outline" }),
+              "h-8 shrink-0 text-xs",
+            )}
             to={automationPath(automationId)}
           >
             Open automation

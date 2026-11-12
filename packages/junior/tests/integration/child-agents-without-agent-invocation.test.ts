@@ -79,7 +79,7 @@ describe("child agents that no Agent invocation names", () => {
     });
   }
 
-  it("runs a parent task as the parent Turn's Actor, grants, and spawn options", async () => {
+  it("runs a parent task as the parent Turn's Actor, grants, and agent config", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
@@ -95,7 +95,7 @@ describe("child agents that no Agent invocation names", () => {
       const childId = await spawnChild(harness, "timer-turn:call-1", {
         actor: EVENT_SYSTEM_ACTOR,
         credentialContext,
-        spawnOptions: { reasoningLevel: "high" },
+        agentConfig: { reasoningLevel: "high" },
       });
       await harness.processUntilRun(childId);
 
@@ -245,12 +245,12 @@ describe("child agents that no Agent invocation names", () => {
     }
   });
 
-  it("gives a parent message to the child with its spawn options", async () => {
+  it("gives a parent message to the child with its agent config", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
       const childId = await spawnChild(harness, "parent-turn:call-1", {
-        spawnOptions: { agentType: "explore", reasoningLevel: "high" },
+        agentConfig: { agentType: "explore", reasoningLevel: "high" },
       });
       // The child finished its task and has no open work.
       await harness.processUntilRun(childId);
@@ -344,7 +344,7 @@ describe("child agents that no Agent invocation names", () => {
         },
       ]);
       const childId = await spawnChild(harness, "parent-turn:call-1", {
-        spawnOptions: { fork: true },
+        agentConfig: { fork: true },
       });
       await harness.processUntilRun(childId);
 
@@ -362,7 +362,7 @@ describe("child agents that no Agent invocation names", () => {
     try {
       const childId = await spawnChild(harness, "parent-turn:call-1", {
         from: "slack:C999:1712345.0009",
-        spawnOptions: { fork: true },
+        agentConfig: { fork: true },
       });
       await harness.drain(childId);
 

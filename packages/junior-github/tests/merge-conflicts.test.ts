@@ -7,6 +7,7 @@ import type {
   HeartbeatHookContext,
   PluginState,
 } from "@sentry/junior-plugin-api";
+import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { juniorGitHubPullRequests } from "../src/db/schema";
@@ -82,6 +83,7 @@ describe("merge conflict check on webhook events", () => {
     conversationId: string;
   }>;
   let codeChanges: CodeChangeInput[];
+  let heartbeatLogs: Array<[level: string, message: string]>;
 
   let stored: Map<string, { expiresAtMs: number; value: unknown }>;
   const live = (key: string) => {
@@ -206,7 +208,11 @@ describe("merge conflict check on webhook events", () => {
       db: fixture.db(),
       embedder: { embedTexts: unused, model: "unused", provider: "unused" },
       events,
-      log: { error() {}, info() {}, warn() {} },
+      log: {
+        error: (message) => heartbeatLogs.push(["error", message]),
+        info() {},
+        warn: (message) => heartbeatLogs.push(["warn", message]),
+      },
       nowMs,
       plugin: { name: "github" },
       state,
@@ -229,6 +235,7 @@ describe("merge conflict check on webhook events", () => {
     reactions = 0;
     annotations = [];
     codeChanges = [];
+    heartbeatLogs = [];
     pullRequest = pullRequestResponse({
       headSha: "1111111111111111111111111111111111111111",
       mergeable: false,
@@ -354,15 +361,19 @@ describe("merge conflict check on webhook events", () => {
         body: {
           action: "ready_for_review",
           installation: { id: 456 },
-          repository: { full_name: "getsentry/junior" },
+          repository: { full_name: "getsentry/junior", id: 1 },
           pull_request: {
             ...pullRequestResponse({
               headSha: "3333333333333333333333333333333333333333",
               mergeable: false,
               mergeableState: "dirty",
             }),
+            created_at: "2026-07-01T12:00:00.000Z",
             draft: false,
+            id: 9460,
+            merged: false,
             number: 946,
+            updated_at: "2026-07-02T12:00:00.000Z",
             user: { login: "jane" },
           },
         },
@@ -535,6 +546,7 @@ describe("merge conflict check on webhook events", () => {
     const now = Date.parse("2026-11-09T12:00:00.000Z");
     const day = 24 * 60 * 60_000;
     let queries: number[][];
+    let drafts: Set<number>;
 
     /** A pull request lifecycle as GitHub GraphQL returns it. */
     function lifecycle(number: number) {
@@ -547,7 +559,7 @@ describe("merge conflict check on webhook events", () => {
         createdAt: new Date(now - 3 * day).toISOString(),
         databaseId: number * 10,
         headRefName: `feat/pr-${number}`,
-        isDraft: false,
+        isDraft: drafts.has(number),
         merged,
         mergedAt: merged ? new Date(now - day).toISOString() : null,
         number,
@@ -560,11 +572,40 @@ describe("merge conflict check on webhook events", () => {
     beforeEach(async () => {
       vi.useFakeTimers({ now, toFake: ["Date"] });
       queries = [];
+      drafts = new Set();
       vi.stubEnv(
         "GITHUB_APP_BOT_EMAIL",
         "1234+sentry-junior[bot]@users.noreply.github.com",
       );
       mswServer.use(
+        // GitHub finds a token's repositories by their current name or id.
+        http.post(
+          "https://api.github.com/app/installations/456/access_tokens",
+          async ({ request }) => {
+            const body = (await request.json()) as {
+              repositories?: string[];
+              repository_ids?: number[];
+            };
+            const reachable =
+              (body.repositories ?? []).every((name) => name === "junior") &&
+              (body.repository_ids ?? []).every((id) => id === 1);
+            return reachable
+              ? HttpResponse.json({
+                  expires_at: "2027-01-01T00:00:00.000Z",
+                  token: "installation-token",
+                })
+              : HttpResponse.json(
+                  {
+                    message:
+                      "There is at least one repository that does not exist or is not accessible to the parent installation.",
+                  },
+                  { status: 422 },
+                );
+          },
+        ),
+        http.get("https://api.github.com/repositories/1", () =>
+          HttpResponse.json({ full_name: "getsentry/junior", id: 1 }),
+        ),
         http.get(
           "https://api.github.com/repos/getsentry/junior/pulls/946/commits",
           () =>
@@ -677,6 +718,29 @@ describe("merge conflict check on webhook events", () => {
       expect(queries[1]?.sort()).toEqual([947, 950, 951]);
     });
 
+    it("writes a draft state that changed on GitHub", async () => {
+      drafts = new Set([947]);
+      await heartbeat(now);
+
+      const [row] = await fixture
+        .db()
+        .select()
+        .from(juniorGitHubPullRequests)
+        .where(eq(juniorGitHubPullRequests.number, 947));
+      expect(row).toMatchObject({ draft: true, state: "open" });
+      expect(
+        codeChanges.map((change) => [
+          change.number,
+          change.state,
+          change.draft,
+        ]),
+      ).toEqual([
+        [946, "merged", undefined],
+        [947, "open", true],
+        [949, "closed", undefined],
+      ]);
+    });
+
     it("publishes a corrected close with the key of its webhook", async () => {
       const closes = () =>
         published.filter(
@@ -741,6 +805,48 @@ describe("merge conflict check on webhook events", () => {
       const [reconciled, webhook] = closes();
       expect(reconciled?.eventKey).toBe(webhook?.eventKey);
       expect(reconciled?.people).toEqual(webhook?.people);
+    });
+
+    const rowStates = async () =>
+      (
+        await fixture
+          .db()
+          .select()
+          .from(juniorGitHubPullRequests)
+          .orderBy(juniorGitHubPullRequests.number)
+      ).map((row) => [row.number, row.state]);
+
+    it("finds a renamed repository by its id", async () => {
+      await fixture
+        .db()
+        .update(juniorGitHubPullRequests)
+        .set({ repositoryFullName: "getsentry/junior-old" });
+      await heartbeat(now);
+
+      expect(heartbeatLogs).toEqual([]);
+      expect(await rowStates()).toEqual([
+        [946, "merged"],
+        [947, "open"],
+        [949, "closed_unmerged"],
+        [950, "open"],
+        [951, "open"],
+      ]);
+    });
+
+    it("warns and keeps the rows when GitHub cannot reach the repository", async () => {
+      await fixture
+        .db()
+        .update(juniorGitHubPullRequests)
+        .set({ repositoryId: "2" });
+      await heartbeat(now);
+
+      expect(heartbeatLogs).toEqual([
+        ["warn", "GitHub pull request reconcile skipped a repository"],
+      ]);
+      expect(queries).toEqual([]);
+      expect(new Set((await rowStates()).map(([, state]) => state))).toEqual(
+        new Set(["open"]),
+      );
     });
 
     it("keeps a close open for the next reconcile when its event fails", async () => {

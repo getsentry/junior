@@ -24,6 +24,11 @@ export function slackMessageAttributes(body: SlackEventEnvelope) {
     "app.slack.user_team": field(event?.user_team, teamId),
     "app.slack.source_team": field(event?.source_team, teamId),
     "app.slack.event_team": field(event?.team, teamId),
+    "app.slack.context_team_id": field(body.context_team_id, /^T[A-Z0-9]+$/),
+    "app.slack.context_enterprise_id":
+      body.context_enterprise_id === null
+        ? "none"
+        : field(body.context_enterprise_id, /^E[A-Z0-9]+$/),
     "app.slack.is_ext_shared_channel":
       typeof body.is_ext_shared_channel === "boolean"
         ? body.is_ext_shared_channel

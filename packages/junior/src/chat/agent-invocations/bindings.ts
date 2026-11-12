@@ -37,7 +37,7 @@ export async function getAgentBinding(args: {
 
 /**
  * Find a direct child agent of one parent by name or child Conversation id.
- * A child that no Agent invocation names stores its spawn options.
+ * A child that no Agent invocation names stores its agent config.
  */
 export async function findChildAgentConversationId(args: {
   parentConversationId: string;
@@ -59,7 +59,7 @@ export async function findChildAgentConversationId(args: {
         eq(juniorConversations.parentConversationId, args.parentConversationId),
         eq(juniorConversations.conversationId, args.target),
         or(
-          isNotNull(juniorConversations.spawnOptions),
+          isNotNull(juniorConversations.agentConfig),
           exists(
             db
               .select({ invocationId: juniorAgentInvocations.invocationId })

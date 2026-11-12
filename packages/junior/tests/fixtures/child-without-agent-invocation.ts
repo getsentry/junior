@@ -11,7 +11,7 @@ import {
   AGENT_PARENT_MESSAGE_EVENT_TYPE,
 } from "@/chat/agent-invocations/result-event-type";
 import { parentMessageAuthorId } from "@/chat/agent-invocations/parent-message";
-import type { ChildSpawnOptions } from "@/chat/agent-invocations/spawn-options";
+import type { AgentConfig } from "@/chat/conversations/agent-config";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
@@ -82,7 +82,7 @@ export async function sendParentMessage(args: {
 
 /**
  * Spawn a child agent as a spawn that writes no Agent invocation does: the
- * child Conversation with its spawn options, and its task as a parent
+ * child Conversation with its agent config, and its task as a parent
  * message in its mailbox. This pins the state that a rollback must still
  * read.
  */
@@ -96,7 +96,7 @@ export async function spawnChildWithoutAgentInvocation(args: {
   kind?: "task" | "thread";
   parentConversationId: string;
   queue: ConversationWorkQueue;
-  spawnOptions?: ChildSpawnOptions;
+  agentConfig?: AgentConfig;
   state?: StateAdapter;
   task?: string;
   title?: string;
@@ -113,12 +113,12 @@ export async function spawnChildWithoutAgentInvocation(args: {
   });
   await getDb()
     .update(juniorConversations)
-    .set({ spawnOptions: args.spawnOptions ?? {} })
+    .set({ agentConfig: args.agentConfig ?? {} })
     .where(eq(juniorConversations.conversationId, childConversationId));
   await sendParentMessage({
     ...args,
     childConversationId,
-    ...(args.spawnOptions?.fork ? { fork: true } : undefined),
+    ...(args.agentConfig?.fork ? { fork: true } : undefined),
     text: args.task,
   });
   return childConversationId;

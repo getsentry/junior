@@ -64,7 +64,6 @@ import {
   resolveGatewayModel,
 } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
-import { renderAgentsInstructions } from "@/chat/repository-instructions";
 import { createRepositoryInstructionsContext } from "@/chat/agent/repository-context";
 import {
   extractAssistantText,
@@ -682,6 +681,9 @@ async function executeAgentRunInPrivacyContext(
     // A gated Turn's answer calls past a limit, and how many of them failed.
     const answerCallsPastLimit = new Set<string>();
     let failedAnswerCallsPastLimit = 0;
+    // Tool calls that Junior ended the run with. Pi stops after a batch only
+    // when every call in it is one of these.
+    const terminatingToolCallIds = new Set<string>();
     // Model calls that a retry discarded. They still cost money.
     let discardedRetryUsage: AgentTurnUsage | undefined;
     const turnLimitGate = createTurnLimitGate(runResume.turnLimitWrappedUp);
@@ -785,27 +787,19 @@ async function executeAgentRunInPrivacyContext(
       currentActor: actor,
       availableSkills,
       configurationValues,
-      contextContentParts: [
-        ...(initialRepositoryInstructions
-          ? [
-              {
-                type: "text" as const,
-                text: renderAgentsInstructions(initialRepositoryInstructions),
-              },
-            ]
-          : []),
-        ...contextContentParts,
-      ],
+      contextContentParts,
       conversationPrivacy,
       existingSessionPiMessages: existingSessionRecord?.piMessages,
       existingTurnStartMessageIndex:
         existingSessionRecord?.turnStartMessageIndex,
       explicitSkill,
       priorPiMessages,
+      repositoryInstructions: initialRepositoryInstructions,
       resumedFromSessionRecord,
       run,
       spanContext,
       disabledTools: wiring.disabledTools,
+      scriptTools: wiring.scriptTools,
       toolGuidance: wiring.toolGuidance,
       turnContext: promptTurnContext,
       userContentParts,
@@ -819,9 +813,9 @@ async function executeAgentRunInPrivacyContext(
         await runResume.persistSafeBoundary(messages, [contextProvenance]);
       },
       hasSandbox: () => Boolean(wiring.getSandboxRef()),
-      initialInstructions: initialRepositoryInstructions,
       onTransition: recordAgentsTransition,
       promptContextContentParts,
+      promptHistoryMessages,
       restoredMessages: existingSessionRecord?.piMessages,
       restoredProvenance: existingSessionRecord?.piMessageProvenance,
       setMessages(messages) {
@@ -1108,6 +1102,7 @@ async function executeAgentRunInPrivacyContext(
             ? new TurnToolCallLimitExceededError(botConfig.maxToolCallsPerTurn)
             : new TurnBudgetExceededError(botConfig.maxTurnCostUsd);
         pendingPiHookError ??= limitError;
+        terminatingToolCallIds.add(toolCall.id);
         return {
           block: true,
           reason: limitError.message,
@@ -1135,6 +1130,7 @@ async function executeAgentRunInPrivacyContext(
         // A reply, blocked report, or no-reply is the last step of the run.
         if (isAnswerToolName(toolCall.name) && !isError && !override) {
           cacheWarming.answerToolEnded(toolCall.name);
+          terminatingToolCallIds.add(toolCall.id);
           return { terminate: true };
         }
         // Past a limit, the second failed answer call ends the run without
@@ -1144,6 +1140,7 @@ async function executeAgentRunInPrivacyContext(
           answerCallsPastLimit.has(toolCall.id) &&
           ++failedAnswerCallsPastLimit >= MAX_FAILED_ANSWER_CALLS_PAST_LIMIT
         ) {
+          terminatingToolCallIds.add(toolCall.id);
           return { ...override, terminate: true };
         }
         return override;
@@ -1174,12 +1171,16 @@ async function executeAgentRunInPrivacyContext(
                   nextTurn.context,
                 );
               const pendingMessages = await drainSteeringMessages();
-              // Pi also runs this hook after the final response. Another model
-              // call follows only after tool results or steering. Compaction
-              // here would drop the delivered reply and start a retry. A
-              // background request does not change history, so it still runs.
+              // Pi also runs this hook after the final response and after a
+              // batch that ended the run, such as a `noReply` call. Another
+              // model call follows only after steering or a tool result that
+              // did not end the run. Compaction here would drop the answer and
+              // start a retry. A background request does not change history,
+              // so it still runs.
               if (
-                nextTurn.toolResults.length === 0 &&
+                nextTurn.toolResults.every((result) =>
+                  terminatingToolCallIds.has(result.toolCallId),
+                ) &&
                 pendingMessages.length === 0
               ) {
                 await requestBackgroundCompactionAfterModelCall();

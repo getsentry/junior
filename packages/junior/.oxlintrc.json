@@ -94,6 +94,7 @@
     {
       "files": ["**/junior-github/src/**/*.ts"],
       "rules": {
+        "junior/github-graphql-schema": "error",
         "junior/use-github-api": "error",
         "no-restricted-imports": [
           "error",

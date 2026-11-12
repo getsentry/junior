@@ -201,11 +201,13 @@ function plugin(name: string, overrides: Partial<Plugin> = {}): Plugin {
 describe("dashboard canonical-event components", () => {
   it("renders transcript markdown with hard breaks and safe links", () => {
     const html = renderToStaticMarkup(
-      <TranscriptSearchProvider query="line">
-        <DisplayText
-          text={"line one\nline two\n\n[docs](https://docs.sentry.io)"}
-        />
-      </TranscriptSearchProvider>,
+      <QueryClientProvider client={client}>
+        <TranscriptSearchProvider query="line">
+          <DisplayText
+            text={"line one\nline two\n\n[docs](https://docs.sentry.io)"}
+          />
+        </TranscriptSearchProvider>
+      </QueryClientProvider>,
     );
 
     expect(html.match(/<br\/>/g)).toHaveLength(1);
@@ -216,9 +218,11 @@ describe("dashboard canonical-event components", () => {
 
   it("highlights a markdown link label when search matches its URL", () => {
     const html = renderToStaticMarkup(
-      <TranscriptSearchProvider query="docs.sentry.io">
-        <DisplayText text="[product docs](https://docs.sentry.io/platforms/)" />
-      </TranscriptSearchProvider>,
+      <QueryClientProvider client={client}>
+        <TranscriptSearchProvider query="docs.sentry.io">
+          <DisplayText text="[product docs](https://docs.sentry.io/platforms/)" />
+        </TranscriptSearchProvider>
+      </QueryClientProvider>,
     );
 
     expect(html).toContain("<mark");
@@ -243,9 +247,11 @@ describe("dashboard canonical-event components", () => {
 
   it("renders bold-wrapped bare URLs without leaking emphasis markers into the href", () => {
     const html = renderToStaticMarkup(
-      <TranscriptSearchProvider query="">
-        <DisplayText text="**PR is up: https://github.com/getsentry/getsentry/pull/21513**" />
-      </TranscriptSearchProvider>,
+      <QueryClientProvider client={client}>
+        <TranscriptSearchProvider query="">
+          <DisplayText text="**PR is up: https://github.com/getsentry/getsentry/pull/21513**" />
+        </TranscriptSearchProvider>
+      </QueryClientProvider>,
     );
 
     expect(html).toContain(

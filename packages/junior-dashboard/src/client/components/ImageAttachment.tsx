@@ -161,6 +161,7 @@ function ImagePreview(props: {
             {count > 1 ? (
               <div className="flex items-center gap-0.5">
                 <Button
+                  variant="outline"
                   aria-label="Previous image"
                   className={PREVIEW_NAV_BUTTON_CLASS}
                   onClick={() => show(index - 1)}
@@ -171,6 +172,7 @@ function ImagePreview(props: {
                   {index + 1} of {count}
                 </span>
                 <Button
+                  variant="outline"
                   aria-label="Next image"
                   className={PREVIEW_NAV_BUTTON_CLASS}
                   onClick={() => show(index + 1)}
@@ -192,7 +194,10 @@ function ImagePreview(props: {
             </a>
             <DialogClose
               render={
-                <Button className="h-10 gap-1.5 border-0 bg-transparent px-2.5 text-xs text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text" />
+                <Button
+                  variant="outline"
+                  className="h-10 gap-1.5 border-0 bg-transparent px-2.5 text-xs text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text"
+                />
               }
             >
               <X aria-hidden="true" size={16} />

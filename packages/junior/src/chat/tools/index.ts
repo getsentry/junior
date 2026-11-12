@@ -3,6 +3,8 @@ import { botConfig } from "@/chat/config";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
+import { recordPreviewOrigin } from "@/personal-tokens/preview-origins";
+import { runBestEffort } from "@/chat/logging";
 import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
 import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import type { SkillMetadata } from "@/chat/skills";
@@ -168,10 +170,21 @@ export function createTools(
         : undefined,
     );
   }
-  if (context.workspace.createPreview) {
-    tools.createPreview = createCreatePreviewTool(
-      context.workspace.createPreview,
-    );
+  const createPreview = context.workspace.createPreview?.bind(
+    context.workspace,
+  );
+  if (createPreview) {
+    tools.createPreview = createCreatePreviewTool(async (port) => {
+      const url = await createPreview(port);
+      // Lets the requester send this Preview a personal token for live data.
+      // The Preview works without the record: Connect then refuses it, and
+      // the viewer pastes a token instead.
+      await runBestEffort(async () => {
+        const owner = (await context.resolveActorIdentity?.())?.user;
+        if (owner) await recordPreviewOrigin({ ownerEmail: owner.email, url });
+      }, "sandbox.preview_origin.record.failed");
+      return url;
+    });
   }
   if (context.supportsImageInput) {
     tools.viewImage = createViewImageTool(

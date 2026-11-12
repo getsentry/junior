@@ -5,6 +5,7 @@ import {
   slackMention,
 } from "@junior-evals/fixture/inputs";
 import {
+  insertGitHubDraftWatch,
   insertLinkedGitHubIdentity,
   insertScheduledAutomation,
   insertWatch,
@@ -78,6 +79,61 @@ function checkSuiteWebhook(conclusion: "failure" | "success") {
     },
     repository,
   });
+}
+
+// The shared GitHub HTTP fixture serves these drafts: #692 with every
+// required check passing, #693 with an open decision in its body, and #694
+// with another required check failing.
+const draftHeadShas = {
+  692: "6920000000000000000000000000000000000692",
+  693: "6930000000000000000000000000000000000693",
+  694: "6940000000000000000000000000000000000694",
+};
+type DraftNumber = keyof typeof draftHeadShas;
+
+/** A passing check suite on one of the drafts. */
+function draftChecksPassedWebhook(number: DraftNumber) {
+  const sha = draftHeadShas[number];
+  const ref = `feat/cache-warmup-${number}`;
+  return githubWebhook("check_suite", {
+    action: "completed",
+    check_suite: {
+      app: { name: "GitHub Actions" },
+      conclusion: "success",
+      head_branch: ref,
+      head_sha: sha,
+      id: number,
+      pull_requests: [
+        {
+          base: { ref: "main", repo: repositoryRef },
+          head: { ref, repo: repositoryRef, sha },
+          number,
+        },
+      ],
+    },
+    repository,
+  });
+}
+
+/** Add the Watch that Junior adds after it opens a draft to a thread. */
+async function startDraftThread(run: RunAgent, number: DraftNumber) {
+  const draft = `getsentry/junior#${number}`;
+  const conversation = await run(slackMention(`What does ${draft} change?`));
+  await insertGitHubDraftWatch({ conversation, pullRequest: draft });
+  return conversation;
+}
+
+/** Completed calls that mark a pull request ready, direct or deferred. */
+function markReadyCalls(result: { toolCalls: ToolCall[] }) {
+  return [
+    ...completedToolCalls("github_updatePullRequest", result).map(
+      (call) => call.input,
+    ),
+    ...completedToolCalls("executeTool", result)
+      .map((call) => call.input as { arguments?: unknown; tool_name?: string })
+      .filter((input) => input.tool_name === "github_updatePullRequest")
+      .map((input) => input.arguments),
+  ].filter((input) => (input as { draft?: unknown })?.draft === false);
 }
 
 function mergedWebhook() {
@@ -290,6 +346,50 @@ describe("Watches", () => {
         ),
       ),
     ).not.toHaveLength(0);
+  });
+
+  test("when the checks of a Junior draft pass, mark it ready and say so", async ({
+    run,
+  }) => {
+    const conversation = await startDraftThread(run, 692);
+
+    const delivery = await conversation.continue(draftChecksPassedWebhook(692));
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: ["The reply says getsentry/junior#692 is now ready for review."],
+        fail: [
+          "Do not say that a required check failed.",
+          "Do not ask the person whether to mark it ready.",
+        ],
+      }),
+    );
+
+    expect(markReadyCalls(delivery)).toHaveLength(1);
+    expect(delivery.replies).toHaveLength(1);
+  });
+
+  test("when a Junior draft names an open decision, keep it a draft", async ({
+    run,
+  }) => {
+    const conversation = await startDraftThread(run, 693);
+
+    const delivery = await conversation.continue(draftChecksPassedWebhook(693));
+
+    expect(delivery.turns).not.toHaveLength(0);
+    expect(markReadyCalls(delivery)).toEqual([]);
+    expect(delivery.replies).toEqual([]);
+  });
+
+  test("when another required check of a Junior draft fails, keep it a draft", async ({
+    run,
+  }) => {
+    const conversation = await startDraftThread(run, 694);
+
+    const delivery = await conversation.continue(draftChecksPassedWebhook(694));
+
+    expect(delivery.turns).not.toHaveLength(0);
+    expect(markReadyCalls(delivery)).toEqual([]);
   });
 
   test("when a watched PR is merged, report completion without extra work", async ({

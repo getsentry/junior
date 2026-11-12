@@ -1,5 +1,5 @@
 {
-  "id": "8a7a9180-0a40-4c1b-b0d5-aa13f2bc43f4",
+  "id": "274435a4-3e2a-463a-98ca-872a6ec7d7e3",
   "prevId": "8c000a3c-a86f-4543-a3c5-b1db2e397d4d",
   "version": "7",
   "dialect": "postgresql",
@@ -1293,6 +1293,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "ARRAY[]::text[]"
+        },
+        "draft": {
+          "name": "draft",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "last_activity_at": {
           "name": "last_activity_at",
@@ -2698,12 +2705,6 @@
         "kind": {
           "name": "kind",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "spawn_options_json": {
-          "name": "spawn_options_json",
-          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },

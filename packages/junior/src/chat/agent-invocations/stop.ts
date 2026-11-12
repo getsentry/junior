@@ -330,7 +330,7 @@ async function lockAgentConversationTree(
       })
       .from(juniorAgentInvocations)
       .where(inArray(juniorAgentInvocations.parentConversationId, parents));
-    // A child agent that no agent invocation names stores its spawn options.
+    // A child agent that no agent invocation names stores its agent config.
     const withoutInvocations = await executor
       .db()
       .select({ childConversationId: juniorConversations.conversationId })
@@ -338,7 +338,7 @@ async function lockAgentConversationTree(
       .where(
         and(
           inArray(juniorConversations.parentConversationId, parents),
-          isNotNull(juniorConversations.spawnOptions),
+          isNotNull(juniorConversations.agentConfig),
         ),
       );
     parents = [
@@ -420,7 +420,7 @@ export async function stopChildAgentInvocations(args: {
         ),
       )
       .limit(1),
-    // A child agent that no agent invocation names stores its spawn options.
+    // A child agent that no agent invocation names stores its agent config.
     db
       .select({ conversationId: juniorConversations.conversationId })
       .from(juniorConversations)
@@ -431,7 +431,7 @@ export async function stopChildAgentInvocations(args: {
             juniorConversations.parentConversationId,
             args.parentConversationId,
           ),
-          isNotNull(juniorConversations.spawnOptions),
+          isNotNull(juniorConversations.agentConfig),
         ),
       ),
   ]);

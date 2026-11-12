@@ -85,6 +85,7 @@ async function runScript(source: string) {
   const { scriptTools } = planToolExposure(createTools([], {}, context()));
   const result = await runCodeModeScript({
     countToolCall: resume.countToolCall,
+    modelOnlyTools: [],
     pipeline: createToolPipeline({
       actionReview,
       catalogTools: {},

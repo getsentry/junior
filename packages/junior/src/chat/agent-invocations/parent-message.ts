@@ -14,7 +14,7 @@ import {
   AGENT_INVOCATION_EVENT_NAMESPACE,
   AGENT_PARENT_MESSAGE_EVENT_TYPE,
 } from "./result-event-type";
-import { readChildSpawnOptions } from "./spawn-options";
+import { readAgentConfig } from "@/chat/conversations/agent-config";
 import { agentInvocationInputText } from "./work";
 
 /**
@@ -115,7 +115,7 @@ export async function parentMessageText(
   message: InboundMessage,
   parentMessage: ParentMessage,
 ): Promise<string> {
-  const options = await readChildSpawnOptions(message.conversationId);
+  const options = await readAgentConfig(message.conversationId);
   return agentInvocationInputText({
     agentType: options?.agentType,
     fork: parentMessage.fork,
@@ -163,7 +163,7 @@ export async function readLastParentMessageAtMs(
 }
 
 /**
- * Apply the spawn options of a child agent to one of its Turns on the root
+ * Apply the agent config of a child agent to one of its Turns on the root
  * Turn code. Every Turn keeps the reasoning level. A fork's first Turn
  * starts with its parent's history. A parent message is the child's
  * instruction, as on an Agent invocation, also when its Turn resumes
@@ -179,7 +179,7 @@ export async function childAgentTurnOptions(args: {
   instruction: Pick<AgentInstruction, "provenance">;
   run: Pick<AgentRun, "reasoning">;
 }> {
-  const options = await readChildSpawnOptions(args.conversationId);
+  const options = await readAgentConfig(args.conversationId);
   const parentMessage = args.inputs
     .map(readParentMessage)
     .find((input) => input !== undefined);

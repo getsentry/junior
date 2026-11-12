@@ -733,8 +733,15 @@
     {
       "idx": 104,
       "version": "7",
-      "when": 1794444537797,
-      "tag": "0104_conversation_spawn_options",
+      "when": 1794493721940,
+      "tag": "0104_code_change_draft",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1794507141648,
+      "tag": "0105_conversation_agent_config",
       "breakpoints": true
     }
   ]

@@ -5,8 +5,8 @@ import { Link, useLocation } from "react-router";
 import { cn } from "../../styles";
 
 // Space between the sticky chrome and the heading. It also clears the card
-// padding above a card heading.
-const SCROLL_GAP_PX = 40;
+// padding above a card heading, which is in rem, so this is in rem too.
+const SCROLL_GAP = "2.5rem";
 
 /** Id of the title text, for `aria-labelledby` on the section. */
 export function anchorTitleId(anchor: string): string {
@@ -33,7 +33,7 @@ export function AnchorHeading(props: {
     // the header, page links, and banner, so measure it.
     const chrome = document.querySelector("[data-dashboard-chrome]");
     const chromeHeight = chrome?.getBoundingClientRect().height ?? 0;
-    heading.style.scrollMarginTop = `${chromeHeight + SCROLL_GAP_PX}px`;
+    heading.style.scrollMarginTop = `calc(${chromeHeight}px + ${SCROLL_GAP})`;
     heading.scrollIntoView();
     // `key` changes when someone follows the same anchor again.
   }, [hash, key, props.anchor]);

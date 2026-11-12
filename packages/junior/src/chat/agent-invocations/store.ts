@@ -14,7 +14,7 @@ import {
 } from "./ids";
 import { readChildConversationSender } from "./child-input";
 import { listOpenChildAgentsWithoutAgentInvocations } from "./list";
-import { readChildSpawnOptions } from "./spawn-options";
+import { readAgentConfig } from "@/chat/conversations/agent-config";
 import {
   agentInvocationSchema,
   type AgentInvocation,
@@ -151,7 +151,7 @@ export async function getLatestAgentInvocationForConversation(
  * Each agent invocation keeps the child's agent type, but only the one that
  * started a fork has `fork` set, so the flag reads every agent invocation.
  * A child that no Agent invocation names reads its binding, title, and
- * spawn options.
+ * agent config.
  */
 export async function getChildAgentLabel(childConversationId: string) {
   const [row] = await getSqlExecutor()
@@ -174,7 +174,7 @@ export async function getChildAgentLabel(childConversationId: string) {
   }
   const [sender, options] = await Promise.all([
     readChildConversationSender(childConversationId),
-    readChildSpawnOptions(childConversationId),
+    readAgentConfig(childConversationId),
   ]);
   return sender && options
     ? {

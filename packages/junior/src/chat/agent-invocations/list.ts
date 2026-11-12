@@ -1,4 +1,6 @@
 import { and, desc, eq, inArray, isNotNull, ne, notExists } from "drizzle-orm";
+import pLimit from "p-limit";
+import type { Source } from "@sentry/junior-plugin-api";
 import {
   conversationSubtree,
   conversationSubtreeColumns,
@@ -20,8 +22,15 @@ import {
   juniorAgentInvocations,
   juniorConversations,
 } from "@/db/schema";
-import { listActiveMailboxTurns } from "@/chat/task-execution/mailbox-turn";
-import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  listActiveMailboxTurns,
+  listActiveMailboxTurnSources,
+} from "@/chat/task-execution/mailbox-turn";
+import {
+  getConversationWorkState,
+  getConversationWorkStates,
+  type InboundMessage,
+} from "@/chat/task-execution/store";
 import {
   getAgentInvocationIdForResult,
   isAgentReplyMessageId,
@@ -56,6 +65,7 @@ const childAgentKindSchema = z.enum(CHILD_AGENT_KINDS);
 
 /** Bound the agent invocations that one child agent listing reads. */
 const CHILD_AGENT_LIST_INVOCATION_LIMIT = 200;
+const CONVERSATION_LOOP_CHECK_CONCURRENCY = 8;
 
 /** Return whether a child's session stopped after its latest agent invocation. */
 export function isChildAgentSessionStopped(
@@ -211,26 +221,37 @@ async function listChildAgentsFromInvocations(
     })
     .from(juniorConversations)
     .where(inArray(juniorConversations.conversationId, [...byChild.keys()]));
+  const active = conversations.filter(
+    (row) =>
+      row.executionStatus === "pending" ||
+      row.executionStatus === "running" ||
+      row.executionStatus === "paused",
+  );
+  const activeIds = active.map((row) => row.conversationId);
+  // A purge deletes a child's Turn history together with its agent
+  // invocations, so a listed child never has a Turn without history.
+  const [workStates, mailboxTurnSources] = await Promise.all([
+    getConversationWorkStates(activeIds),
+    listActiveMailboxTurnSources(activeIds),
+  ]);
+  const limit = pLimit(CONVERSATION_LOOP_CHECK_CONCURRENCY);
   const onConversationLoop = new Set(
     (
       await Promise.all(
-        conversations
-          .filter(
-            (row) =>
-              row.executionStatus === "pending" ||
-              row.executionStatus === "running" ||
-              row.executionStatus === "paused",
-          )
-          .map(async (row) =>
+        active.map((row) =>
+          limit(async () =>
             (await runsOnConversationLoop(
-              row.conversationId,
               conversationKindFromRow(row),
               byChild.get(row.conversationId)![0]!,
               row.stoppedAt?.getTime(),
+              workStates.get(row.conversationId)?.execution.pendingMessages ??
+                [],
+              mailboxTurnSources.get(row.conversationId) ?? [],
             ))
               ? row.conversationId
               : undefined,
           ),
+        ),
       )
     ).filter((id) => id !== undefined),
   );
@@ -297,7 +318,7 @@ export async function countOpenParentMessages(
 
 /**
  * List the child agents of one parent that no agent invocation names. Each
- * stores its spawn options, so older children of a parent, such as ones
+ * stores its agent config, so older children of a parent, such as ones
  * that a removed feature created, are not listed. A child is `running` while
  * a Turn or mailbox input that answers its parent is open, and is `failed`
  * when its last Turn failed.
@@ -333,7 +354,7 @@ async function listChildAgentsWithoutAgentInvocations(
     .where(
       and(
         eq(juniorConversations.parentConversationId, parentConversationId),
-        isNotNull(juniorConversations.spawnOptions),
+        isNotNull(juniorConversations.agentConfig),
         notExists(
           db
             .select({ invocationId: juniorAgentInvocations.invocationId })
@@ -348,6 +369,12 @@ async function listChildAgentsWithoutAgentInvocations(
       ),
     )
     .limit(CHILD_AGENT_LIST_INVOCATION_LIMIT);
+  const ids = rows.map((row) => row.conversationId);
+  const [workStates, mailboxTurnSources] = await Promise.all([
+    getConversationWorkStates(ids),
+    listActiveMailboxTurnSources(ids),
+  ]);
+  const limit = pLimit(CONVERSATION_LOOP_CHECK_CONCURRENCY);
   return await Promise.all(
     rows.map(async (row): Promise<ChildAgent> => {
       // A spawn without an agent invocation always stores the kind.
@@ -355,11 +382,14 @@ async function listChildAgentsWithoutAgentInvocations(
       const stoppedAtMs = row.stoppedAt?.getTime();
       const running =
         stoppedAtMs === undefined &&
-        (await runsOnConversationLoop(
-          row.conversationId,
-          kind,
-          undefined,
-          undefined,
+        (await limit(() =>
+          runsOnConversationLoop(
+            kind,
+            undefined,
+            undefined,
+            workStates.get(row.conversationId)?.execution.pendingMessages ?? [],
+            mailboxTurnSources.get(row.conversationId) ?? [],
+          ),
         ));
       return {
         ...(row.agentName ? { agentName: row.agentName } : undefined),
@@ -394,19 +424,17 @@ function answersParent(kind: ConversationKind, source: string | undefined) {
 
 /**
  * Return whether a child whose `latest` agent invocation ended has work on
- * the Conversation loop that will answer its parent: input that waits in the
- * mailbox until its Turn commits it, such as a Watch Event in its debounce
- * window, or an open mailbox Turn that answers.
+ * the Conversation loop that will answer its parent: `pending` input that
+ * waits in the mailbox until its Turn commits it, such as a Watch Event in
+ * its debounce window, or an open mailbox Turn that answers.
  */
 async function runsOnConversationLoop(
-  conversationId: string,
   kind: ConversationKind,
   latest: AgentInvocation | undefined,
   stoppedAtMs: number | undefined,
+  pending: readonly InboundMessage[],
+  mailboxTurnSources: ReadonlyArray<Source | undefined>,
 ) {
-  const pending =
-    (await getConversationWorkState({ conversationId }))?.execution
-      .pendingMessages ?? [];
   for (const message of pending) {
     if (
       answersParent(kind, message.source) &&
@@ -416,9 +444,7 @@ async function runsOnConversationLoop(
       return true;
     }
   }
-  return (await listActiveMailboxTurns(conversationId)).some((turn) =>
-    answersParent(kind, turn.source?.kind),
-  );
+  return mailboxTurnSources.some((source) => answersParent(kind, source?.kind));
 }
 
 /**
