@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import type { Source } from "@sentry/junior-plugin-api";
 import {
   conversationSubtree,
   conversationSubtreeColumns,
@@ -19,8 +20,15 @@ import {
   juniorAgentInvocations,
   juniorConversations,
 } from "@/db/schema";
-import { listActiveMailboxTurns } from "@/chat/task-execution/mailbox-turn";
-import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  listActiveMailboxTurns,
+  listActiveMailboxTurnSources,
+} from "@/chat/task-execution/mailbox-turn";
+import {
+  getConversationWorkState,
+  getConversationWorkStates,
+  type InboundMessage,
+} from "@/chat/task-execution/store";
 import {
   getAgentInvocationIdForResult,
   isAgentReplyMessageId,
@@ -192,26 +200,33 @@ export async function listChildAgents(
     })
     .from(juniorConversations)
     .where(inArray(juniorConversations.conversationId, [...byChild.keys()]));
+  const active = conversations.filter(
+    (row) =>
+      row.executionStatus === "pending" ||
+      row.executionStatus === "running" ||
+      row.executionStatus === "paused",
+  );
+  const activeIds = active.map((row) => row.conversationId);
+  // A purge deletes a child's Turn history together with its agent
+  // invocations, so a listed child never has a Turn without history.
+  const [workStates, mailboxTurnSources] = await Promise.all([
+    getConversationWorkStates(activeIds),
+    listActiveMailboxTurnSources(activeIds),
+  ]);
   const onConversationLoop = new Set(
     (
       await Promise.all(
-        conversations
-          .filter(
-            (row) =>
-              row.executionStatus === "pending" ||
-              row.executionStatus === "running" ||
-              row.executionStatus === "paused",
-          )
-          .map(async (row) =>
-            (await runsOnConversationLoop(
-              row.conversationId,
-              conversationKindFromRow(row),
-              byChild.get(row.conversationId)![0]!,
-              row.stoppedAt?.getTime(),
-            ))
-              ? row.conversationId
-              : undefined,
-          ),
+        active.map(async (row) =>
+          (await runsOnConversationLoop(
+            conversationKindFromRow(row),
+            byChild.get(row.conversationId)![0]!,
+            row.stoppedAt?.getTime(),
+            workStates.get(row.conversationId)?.execution.pendingMessages ?? [],
+            mailboxTurnSources.get(row.conversationId) ?? [],
+          ))
+            ? row.conversationId
+            : undefined,
+        ),
       )
     ).filter((id) => id !== undefined),
   );
@@ -250,19 +265,17 @@ function answersParent(kind: ConversationKind, source: string | undefined) {
 
 /**
  * Return whether a child whose `latest` agent invocation ended has work on
- * the Conversation loop that will answer its parent: input that waits in the
- * mailbox until its Turn commits it, such as a Watch Event in its debounce
- * window, or an open mailbox Turn that answers.
+ * the Conversation loop that will answer its parent: `pending` input that
+ * waits in the mailbox until its Turn commits it, such as a Watch Event in
+ * its debounce window, or an open mailbox Turn that answers.
  */
 async function runsOnConversationLoop(
-  conversationId: string,
   kind: ConversationKind,
   latest: AgentInvocation,
   stoppedAtMs: number | undefined,
+  pending: readonly InboundMessage[],
+  mailboxTurnSources: ReadonlyArray<Source | undefined>,
 ) {
-  const pending =
-    (await getConversationWorkState({ conversationId }))?.execution
-      .pendingMessages ?? [];
   for (const message of pending) {
     if (
       answersParent(kind, message.source) &&
@@ -272,9 +285,7 @@ async function runsOnConversationLoop(
       return true;
     }
   }
-  return (await listActiveMailboxTurns(conversationId)).some((turn) =>
-    answersParent(kind, turn.source?.kind),
-  );
+  return mailboxTurnSources.some((source) => answersParent(kind, source?.kind));
 }
 
 /**
