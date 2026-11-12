@@ -177,11 +177,14 @@ test("the list loads older Conversations as it scrolls", async ({
   await expect(older).toHaveCount(0);
   expect(olderPage).toBe(0);
   const list = page.getByRole("region", { name: "Conversations" });
-  await list
-    .locator(".overflow-y-auto")
-    .first()
-    .evaluate((node) => (node.scrollTop = node.scrollHeight));
-  await expect(older).toBeVisible();
+  // The list shows its loaded rows first, then reads the next page.
+  await expect(async () => {
+    await list
+      .locator(".overflow-y-auto")
+      .first()
+      .evaluate((node) => (node.scrollTop = node.scrollHeight));
+    await expect(older).toBeVisible({ timeout: 1_000 });
+  }).toPass();
   expect(olderPage).toBe(1);
   expect(firstPage).toBeGreaterThan(0);
 

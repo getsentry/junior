@@ -212,6 +212,8 @@ test("a sweep clears only FYI items, with an Undo", async ({
     addedByConversationId: "slack:C789:1770021600.000900",
     assignedToEveryone: true,
     assignees: [],
+    // Recent, so it shows in Today above the older Conversations.
+    createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
     id: "item-team-ask",
     title: "Pick the on-call rotation",
   };

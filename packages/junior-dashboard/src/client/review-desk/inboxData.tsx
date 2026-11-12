@@ -36,6 +36,27 @@ const activityAt = (conversation: Conversation) =>
 
 const IN_FLIGHT_LIMIT = 5;
 
+// Asks from Conversations outside the loaded feed, such as an Automation
+// run, take their place by time among the unpinned rows. Appended, they
+// would sit below every loaded Conversation, however new they are.
+function withRowsByTime(
+  feedRows: ConversationRow[],
+  rows: ConversationRow[],
+): ConversationRow[] {
+  const pending = [...rows].sort(
+    (left, right) => Date.parse(right.time) - Date.parse(left.time),
+  );
+  const merged: ConversationRow[] = [];
+  for (const row of feedRows) {
+    if (!row.conversation?.pinnedAt) {
+      while (pending[0] && Date.parse(pending[0].time) > Date.parse(row.time))
+        merged.push(pending.shift()!);
+    }
+    merged.push(row);
+  }
+  return [...merged, ...pending];
+}
+
 /** What the Inbox sidebar and its lists read: one value for both. */
 type InboxData = ReturnType<typeof useBuildInboxData>;
 
@@ -132,8 +153,8 @@ function useBuildInboxData(input: {
   // Every Conversation, pinned first in the viewer's order, then newest
   // activity. A Conversation outside the loaded feed joins when it has
   // open items.
-  const conversationRows: ConversationRow[] = [
-    ...pinnedFirst(conversations).map(
+  const conversationRows = withRowsByTime(
+    pinnedFirst(conversations).map(
       (conversation): ConversationRow => ({
         bundle: bundleByConversation.get(conversation.id),
         conversation,
@@ -141,7 +162,7 @@ function useBuildInboxData(input: {
         time: activityAt(conversation),
       }),
     ),
-    ...bundles
+    bundles
       .filter((bundle) => !conversationById.has(bundle.conversationId))
       .map(
         (bundle): ConversationRow => ({
@@ -150,7 +171,7 @@ function useBuildInboxData(input: {
           time: bundle.newest.createdAt,
         }),
       ),
-  ];
+  );
 
   // In flight: every pin, each one click away, and running Conversations in
   // the rows left, up to IN_FLIGHT_LIMIT. Running rows come first, a running
