@@ -59,6 +59,12 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     participants: z.array(text).max(5).optional(),
     lastActivityAt: z.iso.datetime({ offset: true }).optional(),
   }),
+  // Documents: who owns the file and when it changed. Never copy the text.
+  z.strictObject({
+    type: z.literal("document"),
+    owner: text.optional(),
+    modifiedAt: z.iso.datetime({ offset: true }).optional(),
+  }),
   // People: only what the dashboard People pages already show.
   z.strictObject({
     type: z.literal("person"),
@@ -135,6 +141,18 @@ export function objectFactFields(
         "Last activity",
         facts.lastActivityAt &&
           new Date(facts.lastActivityAt).toLocaleString(undefined, {
+            dateStyle: "medium",
+            timeStyle: "short",
+          }),
+      );
+      break;
+    case "document":
+      add("owner", "Owner", facts.owner);
+      add(
+        "modifiedAt",
+        "Modified",
+        facts.modifiedAt &&
+          new Date(facts.modifiedAt).toLocaleString(undefined, {
             dateStyle: "medium",
             timeStyle: "short",
           }),

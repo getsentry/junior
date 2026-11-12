@@ -31,6 +31,11 @@ test("links to saved objects show as a chip, a hover card, and a card", async ({
     }),
   ).toBeVisible();
 
+  // Resolved links render again when their cards arrive, which drops an
+  // earlier hover. Wait for them first.
+  await expect(
+    page.getByRole("link", { name: /Release 4\.2 checklist/ }),
+  ).toBeVisible();
   // A labeled link keeps its text and previews the card on hover.
   await page.getByRole("link", { name: "relay fix" }).hover();
   await expect(
@@ -69,6 +74,43 @@ test("links without an Annotation resolve to a chip and a hover card", async ({
     }),
   ).toBeVisible();
   await screenshot(page, "conversation-resolved-object-links", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
+test("Google Doc and Calendar links resolve to chips and hover cards", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  const event = page.getByRole("link", { name: /Release 4\.2 go\/no-go/ });
+  await expect(event).toHaveAttribute(
+    "href",
+    /^https:\/\/www\.google\.com\/calendar\/event\?eid=/,
+  );
+  await event.hover();
+  const eventCard = page.getByRole("region", {
+    name: "Calendar event: Release 4.2 go/no-go",
+  });
+  await expect(eventCard).toContainText("Mon, Feb 2, 15:00 – 15:30 PST");
+  await screenshot(page, "conversation-google-calendar-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+
+  await page.mouse.move(0, 0);
+  await expect(eventCard).toBeHidden();
+  const doc = page.getByRole("link", { name: /Release 4\.2 checklist/ });
+  await doc.hover();
+  const docCard = page.getByRole("region", {
+    name: "Google Doc: Release 4.2 checklist",
+  });
+  await expect(docCard).toContainText("Morgan Lee");
+  await screenshot(page, "conversation-google-document-link", {
     lightTheme: true,
     view: "desktop",
   });

@@ -9,6 +9,7 @@ import * as z from "zod";
 import type { PluginContext, User } from "./context";
 import type { ObjectAnnotation } from "./object-annotations";
 import type { ObjectType } from "./object-presentation";
+import type { PluginEgress } from "./tools";
 
 const hostSchema = z
   .string()
@@ -125,14 +126,21 @@ export function objectLinkFilterSpecificity(
 
 /** Trusted host context for one link resolution. */
 export interface ObjectLinkContext extends PluginContext {
+  /**
+   * Provider egress as a system Actor. It gets only credentials that the
+   * plugin owns, such as an app or Junior's own account, and never the
+   * viewer's credentials. Check that the viewer may see the object before
+   * you return it.
+   */
+  egress: PluginEgress;
   /** The signed-in person who sees the card. */
   viewer: User;
 }
 
 /**
- * One link type of a plugin. `resolve` reads the object with the viewer's
- * own access. Return nothing when the viewer cannot read the object, so the
- * card does not show that it exists. Junior does not save the result.
+ * One link type of a plugin. Return nothing when the viewer cannot read the
+ * object, so the card does not show that it exists. Junior does not save the
+ * result.
  */
 export interface PluginObjectLinkDefinition {
   filters: ObjectLinkFilter[];

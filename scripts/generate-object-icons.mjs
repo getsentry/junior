@@ -16,6 +16,7 @@ const names = [
   "calendar",
   "comment-discussion",
   "person",
+  "file",
   "package",
 ];
 const paths = Object.fromEntries(

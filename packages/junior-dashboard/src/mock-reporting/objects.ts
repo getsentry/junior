@@ -3,6 +3,7 @@ import {
   personObjectCard,
   type ObjectLinksReport,
 } from "@sentry/junior/api/schema";
+import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
   readMockConversationDetail,
   readMockPeopleDirectory,
@@ -15,9 +16,44 @@ function pageSegment(url: URL, page: string): string | undefined {
   return match ? decodeURIComponent(match[1]!) : undefined;
 }
 
+// The mock release thread links to one Google Doc and one Calendar event.
+const GOOGLE_OBJECTS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
+  "/document/d/1MockReleaseChecklist_0123456789/edit": {
+    kind: "object",
+    objectType: "document",
+    key: "1MockReleaseChecklist_0123456789",
+    label: "Release 4.2 checklist",
+    title: "Release 4.2 checklist",
+    displayType: "Google Doc",
+    facts: {
+      type: "document",
+      owner: "Morgan Lee",
+      modifiedAt: "2026-02-02T08:15:00.000Z",
+    },
+    plugin: "google",
+  },
+  "/calendar/event": {
+    kind: "object",
+    objectType: "calendar_event",
+    key: "rel42gonogo",
+    label: "Release 4.2 go/no-go",
+    title: "Release 4.2 go/no-go",
+    facts: {
+      type: "calendar_event",
+      when: "Mon, Feb 2, 15:00 – 15:30 PST",
+      attendees: ["Morgan Lee", "Ari Chen"],
+    },
+    plugin: "google",
+  },
+};
+
 function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   if (!URL.canParse(href)) return [];
   const url = new URL(href);
+  const google = url.hostname.endsWith(".google.com")
+    ? GOOGLE_OBJECTS[url.pathname]
+    : undefined;
+  if (google) return [{ object: { ...google, url: href }, url: href }];
   const conversationId = pageSegment(url, "conversations");
   const detail = conversationId
     ? readMockConversationDetail(conversationId)

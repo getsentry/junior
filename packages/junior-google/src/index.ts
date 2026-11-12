@@ -3,8 +3,8 @@
  *
  * Junior acts as its own Google Workspace account. A Junior admin connects
  * that account out of band, through the dashboard Admin page or the CLI.
- * Calendar, Docs, Sheets, and Slides tools use host-owned egress, and the
- * sandbox gets no Google credential.
+ * Calendar, Docs, Sheets, and Slides tools and link cards use host-owned
+ * egress, and the sandbox gets no Google credential.
  */
 import {
   defineJuniorPlugin,
@@ -24,6 +24,8 @@ import {
   googleGrantForEgress,
   issueGoogleCredential,
 } from "./credentials";
+import { googleCalendarLinks } from "./links/calendar";
+import { googleFileLinks } from "./links/files";
 import { createGoogleSetupPage, createGoogleSetupRoutes } from "./setup-routes";
 import type { GoogleDb } from "./store";
 import { createCancelCalendarEventTool } from "./tools/cancel-event";
@@ -63,6 +65,7 @@ export function googlePlugin(): PluginRegistration {
       commands: [createGoogleCliCommand()],
     },
     userPages: [createGoogleSetupPage()],
+    objectLinks: [googleFileLinks, googleCalendarLinks],
     hooks: {
       apiRoutes(ctx) {
         const config = readGoogleConfig();

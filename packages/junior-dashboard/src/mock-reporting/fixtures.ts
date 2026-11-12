@@ -1392,6 +1392,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "",
         // No Annotations: the API resolves these dashboard links.
         `Deployment is ready. Next, ${MOCK_DASHBOARD_ORIGIN}/people/dev%40example.com picks up ${MOCK_DASHBOARD_ORIGIN}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}.`,
+        "Track it in https://docs.google.com/document/d/1MockReleaseChecklist_0123456789/edit before https://www.google.com/calendar/event?eid=cmVsNDJnb25vZ28ganVuaW9yQGV4YW1wbGUuY29t",
       ].join("\n"),
     }),
   );

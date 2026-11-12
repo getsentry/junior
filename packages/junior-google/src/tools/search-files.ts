@@ -82,12 +82,12 @@ const fileListSchema = z.object({
 type DriveFile = z.infer<typeof fileListSchema>["files"][number];
 
 /** Quote a value for a Drive search query. */
-function driveQueryString(value: string): string {
+export function driveQueryString(value: string): string {
   return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
 }
 
 /** Drive search terms for files that name the requester in a permission. */
-function namedQuery(requester: string): string {
+export function namedQuery(requester: string): string {
   const email = driveQueryString(requester);
   return `(${email} in readers or ${email} in writers or ${email} in owners)`;
 }
