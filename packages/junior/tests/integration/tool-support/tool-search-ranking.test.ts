@@ -207,7 +207,7 @@ function catalogTools(): AgentTools {
   return createPiAgentTools(
     catalogToolDefinitions(),
     new SkillSandbox([], []),
-    {},
+    { spanContext: {}, searchToolsCost: { owner: "none" } },
   );
 }
 

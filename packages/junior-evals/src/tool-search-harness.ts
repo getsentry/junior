@@ -124,7 +124,7 @@ async function buildAgentTools(): Promise<AgentTools> {
       },
     ),
     new SkillSandbox([], []),
-    {},
+    { spanContext: {}, searchToolsCost: { owner: "none" } },
   );
 }
 

@@ -660,24 +660,25 @@ export async function wireAgentTools(
         await emitEvent({ type: "tool_finished", report });
       }
     : undefined;
-  const agentTools = createPiAgentTools(
-    tools,
-    args.skillSandbox,
-    args.spanContext,
+  const agentTools = createPiAgentTools(tools, args.skillSandbox, {
+    spanContext: args.spanContext,
+    searchToolsCost: {
+      conversationId: args.run.conversationId,
+      turnId: args.run.turnId,
+    },
     onStatus,
-    agentSandbox.tools,
-    pluginAuth,
+    sandboxTools: agentSandbox.tools,
+    pluginAuthOrchestration: pluginAuth,
     onToolCall,
-    pluginHooks,
-    args.conversationPrivacy,
+    agentHooks: pluginHooks,
+    conversationPrivacy: args.conversationPrivacy,
     onToolResult,
     actionReview,
-    {
+    codeMode: {
       countToolCall: args.resume.countToolCall,
       workspace: agentSandbox.workspace,
     },
-    { conversationId: args.run.conversationId, turnId: args.run.turnId },
-  );
+  });
   // Keep Pi's native tool schema static for the whole turn. Ideally this
   // would use provider-native tool loading/search APIs, but Pi's generic
   // AgentTool surface cannot yet express OpenAI/Anthropic deferred MCP tools.
