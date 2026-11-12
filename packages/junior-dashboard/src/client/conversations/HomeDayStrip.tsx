@@ -155,7 +155,11 @@ function DayActivity(props: {
                     key={event.change.id}
                   >
                     <span className="min-w-0 truncate text-dashboard-text-muted">
-                      {event.change.title ?? `#${event.change.number}`}
+                      {event.change.title ?? (
+                        <span className="text-dashboard-text-faint">
+                          Untitled
+                        </span>
+                      )}
                     </span>
                     <span className="shrink-0 text-dashboard-text-faint">
                       {/* Tabular figures on digits only, not on names. */}

@@ -98,8 +98,19 @@ describe("people code API", () => {
         updatedAt: new Date("2026-05-01T12:00:00.000Z"),
         url: "https://github.com/getsentry/junior/pull/10",
       } satisfies CodeChangeInput;
+      // Updated last, but opened after the stale change's latest activity.
+      const aliceFreshChange = {
+        ...aliceStaleChange,
+        number: 13,
+        openedAt: new Date("2026-08-24T08:00:00.000Z"),
+        providerId: "change-alice-fresh",
+        title: "Alice fresh change",
+        updatedAt: new Date("2026-08-24T08:00:00.000Z"),
+        url: "https://github.com/getsentry/junior/pull/13",
+      } satisfies CodeChangeInput;
       await recordCodeChange(fixture.sql.db(), "github", aliceChange);
       await recordCodeChange(fixture.sql.db(), "github", aliceStaleChange);
+      await recordCodeChange(fixture.sql.db(), "github", aliceFreshChange);
       await recordCodeChange(fixture.sql.db(), "github", bobChange);
       const codeChanges = createCodeChangePublisher("github");
       const activity = { number: 10, repositoryProviderId: "repository-1" };
@@ -121,18 +132,20 @@ describe("people code API", () => {
       expect(report.summary).toEqual({
         closed: 0,
         costUsd: 0,
-        created: 1,
+        created: 2,
         medianMergeTimeMs: 2 * 24 * 60 * 60 * 1_000,
         merged: 1,
         mergeRate: 1,
-        open: 1,
+        open: 2,
       });
+      // Open changes come first, longest idle first, by activity or opening.
       expect(report.changes).toEqual([
         expect.objectContaining({
           lastActivityAt: "2026-08-23T09:00:00.000Z",
           number: 10,
           state: "open",
         }),
+        expect.objectContaining({ number: 13, state: "open" }),
         expect.objectContaining({
           number: 11,
           repository: "getsentry/junior",

@@ -76,8 +76,6 @@ export function HomeSummary() {
         <SummaryCard
           aside={
             <HomeDayStrip
-              // Open changes first, then by last update, so the week's
-              // changes fit in the report's limit.
               changes={code.data.changes}
               days={merges.days}
               previousDays={merges.previousDays}
@@ -107,7 +105,9 @@ export function HomeSummary() {
             )
           }
           label="Open"
-          value={open.length}
+          // The report lists a limited number of changes. The summary counts
+          // every open one.
+          value={code.data.summary.open}
         />
         <SummaryCard
           detail={
@@ -239,7 +239,11 @@ function OpenChangeRow(props: {
   nowMs: number;
 }) {
   const change = props.change;
-  const title = change.title ?? `${change.repository} #${change.number}`;
+  // Changes recorded before titles were stored have none. The repository and
+  // number already show on the right, so don't repeat them here.
+  const title = change.title ?? (
+    <span className="text-dashboard-text-muted">Untitled</span>
+  );
   return (
     <li className={rowClass}>
       <div className="flex min-w-0 items-center gap-2.5 font-sans text-sm text-dashboard-text">

@@ -3611,7 +3611,17 @@ export function readMockPeopleCode(
     openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4, 3),
     openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5, 96),
     openChange(61, "getsentry/payments", "Drop legacy refund path", 8, 30),
-    openChange(523, "getsentry/sentry-docs", "Fix broken SDK links", 10, 216),
+    // Recorded before code changes stored titles.
+    {
+      ...openChange(
+        523,
+        "getsentry/sentry-docs",
+        "Fix broken SDK links",
+        10,
+        216,
+      ),
+      title: undefined,
+    },
     openChange(2350, "getsentry/junior", "Migrate memory schema", 320, 2),
   ];
   // Merges land on the days that `merges` counts in the last 7 days.
