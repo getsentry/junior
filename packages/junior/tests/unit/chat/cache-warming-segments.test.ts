@@ -74,8 +74,12 @@ async function endTurn(
   userActor: boolean,
   id = conversationId,
   turnContext = context,
+  mode: PromptMode = runPrompt.mode,
 ) {
-  const recorder = createCacheWarmingRecorder(id, userActor, runPrompt);
+  const recorder = createCacheWarmingRecorder(id, userActor, {
+    ...runPrompt,
+    mode,
+  });
   recorder.wrap((() => undefined) as never)(model, turnContext, {});
   await recorder.record(finalReply);
 }
@@ -187,7 +191,7 @@ describe("cache warming gap segments", () => {
     ).toEqual([7 * MINUTE]);
   });
 
-  it.each(["noReply", "reportBlocked"])(
+  it.each(["reply", "noReply", "reportBlocked"])(
     "starts an idle period from the %s call of a child agent's Turn, not of an Automation run",
     async (toolName) => {
       vi.useFakeTimers();
@@ -203,6 +207,8 @@ describe("cache warming gap segments", () => {
       await clearGaps();
       try {
         await endTurnWithAnswerTool(toolName, "automation");
+        // A final response of an Automation run starts none either.
+        await endTurn(false, conversationId, context, "automation");
         expect(mocks.sendCacheWarmup).not.toHaveBeenCalled();
 
         await endTurnWithAnswerTool(toolName, "child_agent");

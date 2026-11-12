@@ -29,6 +29,7 @@ import { logInfo, logWarn, withSpan } from "@/chat/logging";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { metrics } from "@/chat/sentry";
+import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import type { ThinkingLevel } from "@/chat/pi/sdk";
 import {
   buildDeploymentSystemPrompt,
@@ -79,9 +80,11 @@ const CONVERSATION_GAPS_MAX = 50;
 export const CONVERSATION_STATE_TTL_MS = 7 * 24 * 60 * MINUTE_MS;
 /** How the Turn before an idle period ended. */
 type TurnEnding = "reply" | "no_reply" | "blocked";
-// Answer tools that end the run without a final response. People often answer
-// a Turn that posted nothing or that ended blocked, so it warms like a reply.
+// Answer tools that end the run without a final response. A child agent
+// answers its parent with `reply`. People often answer a Turn that posted
+// nothing or that ended blocked, so it warms like a reply.
 const ANSWER_TOOL_ENDINGS: Partial<Record<string, TurnEnding>> = {
+  [REPLY_TOOL_NAME]: "reply",
   [NO_REPLY_TOOL_NAME]: "no_reply",
   [REPORT_BLOCKED_TOOL_NAME]: "blocked",
 };
@@ -440,10 +443,8 @@ export interface CacheWarmingRecorder {
   toolsReturned(): void;
   /**
    * Mark that an answer tool call of the last request ended the run. After
-   * `noReply` or `reportBlocked`, `stop` starts the idle period from that
-   * request, as a final response would. An Automation run (Prompt mode
-   * `automation`) starts none, because it almost never gets an answer. A
-   * child agent's Turn does: its parent or a person can return to it.
+   * `reply`, `noReply` or `reportBlocked`, `stop` starts the idle period from
+   * that request, as a final response would.
    */
   answerToolEnded(toolName: string): void;
   /** Stop the warmups of this run. Call it when the run ends. */
@@ -479,6 +480,10 @@ export function createCacheWarmingRecorder(
   // calls have nothing to record. This keeps them free of state reads.
   let idleEnded = false;
   let warmupsStopped: Promise<void> | undefined;
+  // An Automation run starts no idle period, whether it ends with a final
+  // response or an answer tool, because it almost never gets an answer. A
+  // child agent's Turn does: its parent or a person can return to it.
+  const endingStartsIdle = systemPrompt.mode !== "automation";
   const toolWait = createToolWaitWarmer(conversationId);
   return {
     wrap:
@@ -539,7 +544,9 @@ export function createCacheWarmingRecorder(
           systemPrompt,
           request,
           message,
-          message.stopReason === "stop" ? "reply" : undefined,
+          message.stopReason === "stop" && endingStartsIdle
+            ? "reply"
+            : undefined,
         );
       } catch (error) {
         logWarn("cache_warming.model_call.record_failed", {
@@ -550,10 +557,9 @@ export function createCacheWarmingRecorder(
     },
     toolsReturned: toolWait.toolsReturned,
     answerToolEnded: (toolName) => {
-      answerToolEnding =
-        systemPrompt.mode === "automation"
-          ? undefined
-          : ANSWER_TOOL_ENDINGS[toolName];
+      answerToolEnding = endingStartsIdle
+        ? ANSWER_TOOL_ENDINGS[toolName]
+        : undefined;
     },
     stop: async () => {
       try {
@@ -616,11 +622,11 @@ export function createCacheWarmingRecorder(
  *
  * `work_state` and `archived` are read when the idle period starts and pick
  * its `gapSegment`. `turn_ending` is how the Turn before the idle period
- * ended: `reply` (a final response), `no_reply` (`noReply`), or `blocked`
- * (`reportBlocked`). `waiting_on` is `child` (a child agent still ran) or
- * `review` (the Turn asked a Review item) when the idle period starts, and
- * picks the segment's `waitingGapSegment` child. `timer_due_ms` is the idle
- * time at which a timer is due, when it is due within
+ * ended: `reply` (a final response or `reply`), `no_reply` (`noReply`), or
+ * `blocked` (`reportBlocked`). `waiting_on` is `child` (a child agent still
+ * ran) or `review` (the Turn asked a Review item) when the idle period
+ * starts, and picks the segment's `waitingGapSegment` child. `timer_due_ms`
+ * is the idle time at which a timer is due, when it is due within
  * `timerFloorMaxDueIdleMs`. The `conversation.returned` log has the same
  * five. Decision attributes are absent when the warmup skipped before the
  * decision. Of them, `timer_floor` is true for a warmup that only the timer
