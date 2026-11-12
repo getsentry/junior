@@ -282,32 +282,43 @@ describe("Slack webhook: dashboard conversation links", () => {
     );
   });
 
-  it("refuses a click from someone outside the conversation", async () => {
+  it("lets someone outside a public conversation move it", async () => {
     const slack = harness();
     const { conversationId, url } = await slack.startConversation("public");
     await linkSlackUser("ben@example.com", "U456");
     await slack.shareLink(url);
 
     await slack.click("U456", continueHereValue(url)!);
-    expect(slackApiOutbox.calls("chat.postEphemeral")).toHaveLength(1);
-    expect(slackApiOutbox.calls("chat.postEphemeral")[0]?.params).toMatchObject(
-      {
-        channel: "C123",
-        user: "U456",
-        text: "Only people in this conversation can move it here.",
-      },
+    expect(slackApiOutbox.calls("chat.postEphemeral")).toHaveLength(0);
+    expect(slackApiOutbox.messages()).toHaveLength(1);
+    expect(
+      (await getConversationStore().get({ conversationId }))?.location,
+    ).toMatchObject({ channelId: "C123", threadTs: SHARED_TS });
+  });
+
+  it("shows nothing for a private conversation and refuses a forged click", async () => {
+    const slack = harness();
+    const { conversationId, url } = await slack.startConversation("private");
+    await linkSlackUser(webTestActor.email, "U123");
+
+    await slack.shareLink(url);
+    expect(slackApiOutbox.calls("chat.unfurl")).toHaveLength(0);
+
+    await slack.click(
+      "U123",
+      JSON.stringify({
+        conversationId,
+        messageTs: SHARED_TS,
+        threadTs: SHARED_TS,
+        url,
+      }),
+    );
+    expect(slackApiOutbox.calls("chat.postEphemeral")[0]?.params.text).toBe(
+      "Only public conversations can move here.",
     );
     expect(slackApiOutbox.messages()).toHaveLength(0);
     expect(
       (await getConversationStore().get({ conversationId }))?.location,
     ).toBeUndefined();
-  });
-
-  it("shows nothing for a private conversation", async () => {
-    const slack = harness();
-    const { url } = await slack.startConversation("private");
-
-    await slack.shareLink(url);
-    expect(slackApiOutbox.calls("chat.unfurl")).toHaveLength(0);
   });
 });
