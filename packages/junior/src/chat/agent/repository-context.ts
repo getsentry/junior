@@ -28,7 +28,6 @@ type RepositoryInstructionsContextOptions = {
   /** Commit history that ends with a new AGENTS.md message. */
   commit(messages: PiMessage[]): Promise<void>;
   hasSandbox(): boolean;
-  initialInstructions?: RepositoryInstructions;
   onTransition?: (
     instructions: RepositoryInstructions | undefined,
   ) => void | Promise<void>;
@@ -62,7 +61,9 @@ function findRestoredInstructions(
 export function createRepositoryInstructionsContext(
   options: RepositoryInstructionsContextOptions,
 ) {
-  const visibleInstructions = options.shouldPromptAgent
+  // Compare against the text the model sees, not a fingerprint: a Turn that
+  // starts without a sandbox has no captured instructions to fingerprint.
+  let visibleInstructions = options.shouldPromptAgent
     ? findVisibleAgentsInstructions([
         ...options.promptHistoryMessages,
         {
@@ -74,12 +75,6 @@ export function createRepositoryInstructionsContext(
         options.restoredMessages,
         options.restoredProvenance,
       );
-  let instructionsVisible = visibleInstructions?.active === true;
-  let visibleFingerprint =
-    options.initialInstructions &&
-    showsAgentsInstructions(visibleInstructions, options.initialInstructions)
-      ? options.initialInstructions.fingerprint
-      : undefined;
   return {
     /** Re-read AGENTS.md and append a context message when it changed. */
     async applyUpdate(
@@ -108,13 +103,14 @@ export function createRepositoryInstructionsContext(
   function refreshOutcome(
     instructions: RepositoryInstructions | undefined,
   ): RepositoryInstructionsRefreshOutcome {
+    const instructionsVisible = visibleInstructions?.active === true;
     if (!instructions) {
       return instructionsVisible ? "removed" : "none";
     }
     if (!instructionsVisible) {
       return "added";
     }
-    return instructions.fingerprint === visibleFingerprint
+    return showsAgentsInstructions(visibleInstructions, instructions)
       ? "unchanged"
       : "updated";
   }
@@ -126,9 +122,10 @@ export function createRepositoryInstructionsContext(
     const message = instructions
       ? buildAgentsInstructionsMessage({
           directory: instructions.directory,
-          text: instructionsVisible
-            ? `${AGENTS_REPLACEMENT_NOTICE}\n\n${instructions.text}`
-            : instructions.text,
+          text:
+            visibleInstructions?.active === true
+              ? `${AGENTS_REPLACEMENT_NOTICE}\n\n${instructions.text}`
+              : instructions.text,
         })
       : buildAgentsInstructionsMessage({ text: AGENTS_REMOVAL_NOTICE });
     const messages = [...(currentContext.messages as PiMessage[]), message];
@@ -136,8 +133,13 @@ export function createRepositoryInstructionsContext(
     // A final response is committed directly after the current history, so
     // this message must be committed first.
     await options.commit(messages);
-    visibleFingerprint = instructions?.fingerprint;
-    instructionsVisible = Boolean(instructions);
+    visibleInstructions = instructions
+      ? {
+          active: true,
+          directory: instructions.directory,
+          text: instructions.text,
+        }
+      : { active: false };
     await options.onTransition?.(instructions);
     return { context: { ...currentContext, messages } };
   }

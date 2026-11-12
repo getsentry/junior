@@ -735,6 +735,13 @@ describe("executeAgentRun lazy sandbox boot", () => {
     });
     expect(agentsBlocks(second.piMessages)).toEqual([original]);
 
+    // No sandbox at Turn start: the bash call boots one and reads AGENTS.md.
+    createSandboxCallCount.value = 0;
+    const lazyBoot = await generateLocalReply("lazy boot request", {
+      history: first.piMessages,
+    });
+    expect(agentsBlocks(lazyBoot.piMessages)).toEqual([original]);
+
     // The history that a compaction replacement keeps for later Turns.
     const compacted = [
       summarizedRuntimeContextMessage(second.piMessages!, [])!,

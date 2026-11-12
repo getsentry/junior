@@ -812,7 +812,6 @@ async function executeAgentRunInPrivacyContext(
         await runResume.persistSafeBoundary(messages, [contextProvenance]);
       },
       hasSandbox: () => Boolean(wiring.getSandboxRef()),
-      initialInstructions: initialRepositoryInstructions,
       onTransition: recordAgentsTransition,
       promptContextContentParts,
       promptHistoryMessages,
