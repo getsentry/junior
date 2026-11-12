@@ -130,6 +130,8 @@ export const conversationFeedQuerySchema = z
       .transform((value) => value.toLowerCase())
       .optional(),
     codeRepositoryId: z.string().uuid().optional(),
+    /** `nextCursor` from the previous page of the same feed. */
+    cursor: z.string().min(1).max(500).optional(),
     q: z.string().trim().max(200).optional(),
     status: z.enum(["active", "archived"]).default("active"),
   })

@@ -29,6 +29,10 @@ import { AnimatedList } from "./AnimatedList";
 import { WaitingChip } from "./WaitingChip";
 import type { ConversationSection } from "./conversationSections";
 import { ConversationSectionList } from "./ConversationSectionList";
+import {
+  ConversationFeedLoadMore,
+  type ConversationFeedMorePages,
+} from "./ConversationFeedLoadMore";
 import { ConversationStatusText } from "./ConversationListStatusIcon";
 import { ConversationSectionHeading } from "./ConversationSectionHeading";
 import {
@@ -90,6 +94,8 @@ export function ConversationSidebar(props: {
   conversations: Conversation[];
   error?: string;
   loading: boolean;
+  /** Older feed pages, loaded as the reader scrolls to the end. */
+  morePages: ConversationFeedMorePages;
   selectedId?: string;
   timeZone: string;
   waitingConversations: ReadonlyMap<string, WaitingConversation>;
@@ -216,6 +222,12 @@ export function ConversationSidebar(props: {
                     />
                   )
                 }
+              />
+            )}
+            {props.error ? null : (
+              <ConversationFeedLoadMore
+                {...props.morePages}
+                loadedCount={props.conversations.length}
               />
             )}
           </ScrollArea>

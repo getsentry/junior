@@ -67,12 +67,14 @@ import {
   conversationCatchUpBodySchema,
   conversationCatchUpSchema,
   DEFAULT_NOTIFICATION_SCHEDULE,
+  type ConversationFeed,
   notificationScheduleSchema,
   notificationSettingsSchema,
   type NotificationSchedule,
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
 import { mockDemoMp4 } from "./demo-mp4";
+import { mockConversationFeedPage } from "./feed-page";
 import { readMockConversationOutline } from "./outline";
 import {
   actOnMockReviewItem,
@@ -273,9 +275,17 @@ export function createMockReportingApi(): Hono<{
         : feed;
     };
     const report = readFeed(query.data.status);
-    if (!query.data.q) {
-      return jsonResponse(conversationFeedSchema, report);
-    }
+    const respond = (feed: ConversationFeed) => {
+      const page = mockConversationFeedPage(feed, {
+        ...(query.data.cursor ? { cursor: query.data.cursor } : undefined),
+        pinsFirst:
+          !query.data.q && !repositoryId && query.data.status === "active",
+      });
+      return page
+        ? jsonResponse(conversationFeedSchema, page)
+        : errorResponse("Invalid conversation feed cursor.", 400);
+    };
+    if (!query.data.q) return respond(report);
     const archived = readFeed("archived");
     const search = query.data.q.toLowerCase();
     const conversations = new Map(
@@ -283,7 +293,7 @@ export function createMockReportingApi(): Hono<{
         (conversation) => [conversation.conversationId, conversation],
       ),
     );
-    return jsonResponse(conversationFeedSchema, {
+    return respond({
       ...report,
       conversations: [...conversations.values()].filter((conversation) =>
         conversation.displayTitle.toLowerCase().includes(search),
