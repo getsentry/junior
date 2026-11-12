@@ -7,6 +7,7 @@
 import type { PluginCache } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
+  GitHubRequestError,
   githubRequest,
   issueInstallationToken,
 } from "../credential-support.js";
@@ -77,23 +78,57 @@ export async function loadPullRequest(
   );
 }
 
+/** GitHub cannot reach a repository: it is gone, or the installation lost it. */
+export class GitHubRepositoryUnreachableError extends Error {
+  constructor(repositoryId: number) {
+    super(`GitHub repository ${repositoryId} is not reachable`);
+    this.name = "GitHubRepositoryUnreachableError";
+  }
+}
+
+// GitHub answers a token request for a repository that the installation
+// cannot reach with 422 and this message.
+const UNREACHABLE_REPOSITORY_MESSAGE = /does not exist or is not accessible/i;
+
 /**
  * Read the lifecycle of some pull requests of one repository in one GraphQL
  * query, with a read-only token. Each pull request has the alias `pr<index>`.
+ * The repository is found by its id, because a rename changes its name.
  */
 export async function loadPullRequestLifecycles(
   env: GitHubInstallationEnv,
-  input: { numbers: number[]; repositoryFullName: string },
+  input: { numbers: number[]; repositoryId: number },
 ): Promise<unknown> {
+  let token: { token: string };
+  try {
+    token = await issueInstallationToken({
+      ...env,
+      permissions: { pull_requests: "read" },
+      repositoryIds: [input.repositoryId],
+    });
+  } catch (error) {
+    if (
+      error instanceof GitHubRequestError &&
+      error.status === 422 &&
+      UNREACHABLE_REPOSITORY_MESSAGE.test(error.message)
+    ) {
+      throw new GitHubRepositoryUnreachableError(input.repositoryId);
+    }
+    throw error;
+  }
+  const repository = z
+    .object({ full_name: z.string().min(1) })
+    .parse(
+      await githubRequest(
+        "https://api.github.com",
+        `/repositories/${input.repositoryId}`,
+        { token: token.token },
+      ),
+    );
   const { owner, name } = splitRepository(
-    input.repositoryFullName,
+    repository.full_name,
     "pull request lifecycle",
   );
-  const token = await issueInstallationToken({
-    ...env,
-    permissions: { pull_requests: "read" },
-    repositories: [name],
-  });
   const variables = input.numbers.map((_, index) => `$n${index}: Int!`);
   const pullRequests = input.numbers.map(
     (_, index) =>

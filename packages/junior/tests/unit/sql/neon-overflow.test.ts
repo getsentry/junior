@@ -189,9 +189,12 @@ describe("Neon pool overflow", () => {
 
   it("keeps a failed background connect from failing queries", async () => {
     await executor.query("select 'warm'");
-    const cause = new Error("getaddrinfo ENOTFOUND ep-overflow-test");
+    // A socket that closes during the handshake fails with a bare TypeError.
     wire.failNextConnect = true;
-    wire.connectError = new ErrorEvent("error", { message: "", error: cause });
+    wire.connectError = new ErrorEvent("error", {
+      message: "",
+      error: new TypeError(""),
+    });
 
     const [first, second] = await Promise.all([
       executor.query<{ transport: string }>("select 1"),
@@ -203,15 +206,13 @@ describe("Neon pool overflow", () => {
     ]);
     await vi.waitFor(() => expect(wire.clientsOpened).toBe(2));
     await vi.waitFor(() =>
-      expect(logException).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: `WebSocket connect failed: ${cause.message}`,
-          cause,
-        }),
-        "db.pool.client.connect_failed",
-        expect.anything(),
-      ),
+      expect(logWarn).toHaveBeenCalledWith("db.pool.client.connect_failed", {
+        "app.db.driver": "neon",
+        "error.type": "Error",
+        "exception.message": "WebSocket connect failed: TypeError (no message)",
+      }),
     );
+    expect(logException).not.toHaveBeenCalled();
 
     // The pool still serves queries, and the next overflow grows it again.
     await Promise.all([executor.query("select 3"), executor.query("select 4")]);

@@ -156,7 +156,9 @@ export function ConversationSidebarAnnotations(props: {
       />
       <TooltipContent align="start">
         <TooltipTitle>Linked work</TooltipTitle>
-        <ul className="m-0 list-none space-y-1 p-0">
+        {/* A row can link many items. Scroll the list so the tooltip stays on
+            screen; Base UI keeps the popup open while the pointer is on it. */}
+        <ul className="thin-scrollbar m-0 max-h-80 list-none space-y-1 overflow-y-auto overscroll-contain p-0 pr-1">
           {annotations.map((annotation, index) => (
             <li
               className="flex min-w-0 items-center gap-1.5"

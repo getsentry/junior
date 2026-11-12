@@ -11,7 +11,10 @@ import {
 } from "react";
 import { cn } from "@dashboard/lib/utils";
 
-/** Height of one item. The pointer maps to items with it. */
+/**
+ * Height of one item. The pointer maps to items with it, so items use this
+ * pixel height, not rem: rem changes with the browser font size.
+ */
 const ITEM_PX = 8;
 /** Bar widths. Bars near the pointer grow from `base` toward `max`. */
 const BAR_PX = { base: 6, active: 14, max: 24 };
@@ -194,7 +197,7 @@ function MessageOutlineItem({
         aria-current={active ? "location" : undefined}
         data-highlighted={!active && index === previewIndex ? "" : undefined}
         className={cn(
-          "group/message-outline-item flex h-2 w-6 cursor-pointer items-center border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring/55",
+          "group/message-outline-item flex h-[8px] w-6 cursor-pointer items-center border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring/55",
           className,
         )}
         onFocus={() => movePointer(index)}
