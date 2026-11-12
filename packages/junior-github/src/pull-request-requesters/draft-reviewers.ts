@@ -11,9 +11,9 @@ import type { PluginState } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { GitHubPullRequestTarget } from "../webhooks/pull-request-people.js";
 
-// A draft can stay a draft for a long time. After this time, the request goes
+// Junior drafts become ready within days. After this time, the request goes
 // to the requester.
-const DRAFT_REVIEWERS_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+const DRAFT_REVIEWERS_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
 const reviewersSchema = z.array(z.string().min(1)).min(1);
 
