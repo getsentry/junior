@@ -31,13 +31,14 @@ function spendWindow(nowMs: number) {
   return { end, sevenDayStart, thirtyDayStart };
 }
 
-/** Match the viewer's own Turn metric rows in the spend window. */
+/** Match the viewer's own Turn cost rows in the spend window. */
 function viewerWindowWhere(email: string, nowMs: number) {
   const normalizedEmail = normalizeEmail(email);
   const { end, thirtyDayStart } = spendWindow(nowMs);
   return normalizedEmail
     ? and(
         verifiedActorWhere(normalizedEmail),
+        eq(juniorConversationMetrics.metric, "cost_usd"),
         gte(juniorConversationMetrics.occurredAt, thirtyDayStart),
         lte(juniorConversationMetrics.occurredAt, end),
       )
@@ -65,22 +66,26 @@ function personalSpendDaysQuery(email: string, nowMs: number) {
 /**
  * Return a query for a change marker of one viewer's spend window.
  *
- * It reads the same Turn metric rows as the spend read. A new or replaced
- * row moves it, and the window start moves it at UTC midnight.
+ * It reads the same Turn cost rows as the spend read and holds the two
+ * totals that the read shows. A checkpoint rewrites every metric row of its
+ * Turn, so a Turn that runs longer or uses more tokens without more cost
+ * does not move it. The window start moves it at UTC midnight.
  */
 export function personalSpendVersionQuery(
   db: JuniorDatabase,
   email: string,
   nowMs: number,
 ) {
-  const { thirtyDayStart } = spendWindow(nowMs);
+  const { sevenDayStart, thirtyDayStart } = spendWindow(nowMs);
+  // Rounding drops float noise from the order in which rows are summed.
   return db
     .select({
       version: sql<string>`concat_ws(':',
         ${thirtyDayStart.toISOString().slice(0, 10)}::text,
-        count(*),
-        sum(${juniorConversationMetrics.value}),
-        max(${juniorConversationMetrics.updatedAt})
+        round(sum(${juniorConversationMetrics.value})::numeric, 9),
+        round((sum(${juniorConversationMetrics.value}) filter (
+          where ${juniorConversationMetrics.occurredAt} >= ${sevenDayStart}
+        ))::numeric, 9)
       )`,
     })
     .from(juniorConversationMetrics)

@@ -3,12 +3,15 @@ import { getSqlExecutor } from "@/chat/db";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import type { Conversation } from "@/chat/conversations/store";
 import { juniorConversations } from "@/db/schema";
+import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 
 /** True when the Conversation is a root that delivers to a Location. */
 export function canPauseConversationDelivery(
   conversation: Pick<Conversation, "kind" | "location">,
 ): boolean {
-  return conversation.kind === "root" && conversation.location !== undefined;
+  return (
+    isTopLevelKind(conversation.kind) && conversation.location !== undefined
+  );
 }
 
 const rootConversation = (conversationId: string) =>

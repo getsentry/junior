@@ -42,7 +42,10 @@ describe("event automation match data", () => {
         destination: SLACK_DESTINATION,
         destinationVisibility: "public",
         outcomes: [],
-        task: { text: "Review pull requests that admins open." },
+        task: {
+          kind: "instruction",
+          instruction: "Review pull requests that admins open.",
+        },
         trigger: {
           events: ["pull_request.opened"],
           label: "Admin pull requests in getsentry/junior",
@@ -59,7 +62,7 @@ describe("event automation match data", () => {
         destination: SLACK_DESTINATION,
         destinationVisibility: "public",
         outcomes: [],
-        task: { text: "Review pull request 8." },
+        task: { kind: "instruction", instruction: "Review pull request 8." },
         trigger: {
           events: ["pull_request.opened"],
           identifier: "getsentry/junior#8",

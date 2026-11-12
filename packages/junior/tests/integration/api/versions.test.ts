@@ -1,6 +1,6 @@
 import { and, eq, max } from "drizzle-orm";
 import { Hono } from "hono";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
@@ -93,10 +93,16 @@ function feedMoved(before: Versions, after: Versions) {
 
 describe("versions API", () => {
   afterEach(async () => {
+    vi.useRealTimers();
     await closeDb();
   });
 
   it("moves only the token whose read changed", async () => {
+    // Fixture writes such as `replaceHistory` stamp the clock. The test starts
+    // on a whole minute, so its run does not reach the next minute and its
+    // Turns stay newer than those stamps.
+    vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+    vi.setSystemTime(Date.parse("2026-10-01T12:05:00.000Z"));
     const { app, viewer } = await authenticatedApi();
     await recordRoot(OWN, "private", SLACK_ACTOR);
     await recordRoot(OTHER, "private");
@@ -254,9 +260,27 @@ describe("versions API", () => {
     const withTaskCost = await read();
     expect(changed(withTurn, withTaskCost)).toEqual(["conversation", "spend"]);
 
-    // Each Event of a live Turn moves the root's last activity. The row
-    // shows that as an age in whole minutes, so the feed moves only when
-    // the minute changes.
+    // A checkpoint rewrites every metric row of its Turn. One that adds
+    // time and tokens but no cost does not move spend.
+    await getConversationStore().recordExecution({
+      actorIdentityId,
+      conversationId: `${OWN}:child`,
+      createdAtMs: nowMs,
+      execution: { runId: "task-turn", status: "idle", updatedAtMs: nowMs + 1 },
+      lastActivityAtMs: nowMs,
+      metrics: {
+        durationMs: 400,
+        usage: { cost: { total: 0.25 }, inputTokens: 900, outputTokens: 90 },
+      },
+      source: "slack",
+      updatedAtMs: nowMs + 1,
+    });
+    const withTaskCheckpoint = await read();
+    expect(changed(withTaskCost, withTaskCheckpoint)).toEqual(["conversation"]);
+
+    // Each Event moves the root's last activity. An idle row shows that as
+    // an age in whole minutes, so the feed moves only when the minute
+    // changes.
     const rootToolEvent = async (atMs: number) => {
       await getConversationEventStore().append(OWN, [
         {
@@ -271,13 +295,73 @@ describe("versions API", () => {
       return await read();
     };
     const withRootTool = await rootToolEvent(nowMs + 30_000);
-    expect(changed(withTaskCost, withRootTool)).toEqual(["conversation"]);
+    expect(changed(withTaskCheckpoint, withRootTool)).toEqual(["conversation"]);
     const nextMinute = await rootToolEvent(nowMs + 60_000);
     expect(changed(withRootTool, nextMinute)).toEqual([
       "conversation",
       "conversations",
     ]);
     expect(feedMoved(withRootTool, nextMinute)).toEqual(["activity"]);
+
+    // A running row shows that it runs in place of its age, so the Events
+    // of a live Turn do not move the feed. Its end moves the status.
+    const rootTurn = async (status: "idle" | "running", atMs: number) => {
+      await getConversationStore().recordExecution({
+        conversationId: OWN,
+        createdAtMs: atMs,
+        execution: { runId: "turn-2", status, updatedAtMs: atMs },
+        lastActivityAtMs: atMs,
+        metrics: { durationMs: 50 },
+        source: "slack",
+        updatedAtMs: atMs,
+      });
+      return await read();
+    };
+    const running = await rootTurn("running", nowMs + 60_000);
+    expect(feedMoved(nextMinute, running)).toEqual(["activity", "status"]);
+    const liveEvent = await rootToolEvent(nowMs + 120_000);
+    expect(changed(running, liveEvent)).toEqual(["conversation"]);
+    const turnEnded = await rootTurn("idle", nowMs + 120_000);
+    expect(feedMoved(liveEvent, turnEnded)).toEqual(["activity", "status"]);
+
+    // A running Thread row also shows that it runs in place of its age, so
+    // the Events of its live Turn do not move the feed. Its start and end
+    // move the Thread's status.
+    const threadId = `${OWN}:thread`;
+    await createChild({
+      childConversationId: threadId,
+      kind: "thread",
+      parentConversationId: OWN,
+    });
+    const withThread = await read();
+    const threadTurn = async (status: "idle" | "running", atMs: number) => {
+      await getConversationEventStore().append(threadId, [
+        {
+          data: {
+            type: "tool_execution_started",
+            toolCallId: `${threadId}:tool-${atMs}`,
+            toolName: "search",
+          },
+          createdAtMs: atMs,
+        },
+      ]);
+      await getConversationStore().recordExecution({
+        conversationId: threadId,
+        createdAtMs: atMs,
+        execution: { runId: "thread-turn", status, updatedAtMs: atMs },
+        lastActivityAtMs: atMs,
+        metrics: { durationMs: 50 },
+        source: "slack",
+        updatedAtMs: atMs,
+      });
+      return await read();
+    };
+    const threadRunning = await threadTurn("running", nowMs + 180_000);
+    expect(feedMoved(withThread, threadRunning)).toEqual(["threads"]);
+    const threadEvent = await threadTurn("running", nowMs + 240_000);
+    expect(changed(threadRunning, threadEvent)).toEqual(["conversation"]);
+    const threadEnded = await threadTurn("idle", nowMs + 240_000);
+    expect(feedMoved(threadEvent, threadEnded)).toEqual(["threads"]);
 
     // A reply changes the feed row but costs nothing, so spend stays.
     await appendVisibleHistory(OWN, "Root answer");
@@ -292,13 +376,12 @@ describe("versions API", () => {
       },
     ]);
     const withReply = await read();
-    expect(changed(nextMinute, withReply)).toEqual([
+    expect(changed(threadEnded, withReply)).toEqual([
       "conversation",
       "conversations",
     ]);
 
-    // Scrolling moves the read position, but the feed row shows only
-    // whether the reply is unread.
+    // Reading moves the read position, which no feed row shows.
     const [reply] = await getDb()
       .select({ seq: max(juniorConversationEvents.seq) })
       .from(juniorConversationEvents)
@@ -319,17 +402,9 @@ describe("versions API", () => {
           },
         )
       ).json();
-    expect(await reportRead(reply!.seq! - 1)).toEqual({
-      lastReadSeq: reply!.seq! - 1,
-      unreadReply: true,
+    expect(await reportRead(reply!.seq!)).toEqual({
+      lastReadSeq: reply!.seq!,
     });
-    const scrolled = await read();
-    expect(changed(withReply, scrolled)).toEqual([]);
-    expect(await reportRead(reply!.seq!)).toMatchObject({
-      unreadReply: false,
-    });
-    const cleared = await read();
-    expect(changed(scrolled, cleared)).toEqual(["conversations"]);
-    expect(feedMoved(scrolled, cleared)).toEqual(["unread"]);
+    expect(changed(withReply, await read())).toEqual([]);
   });
 });

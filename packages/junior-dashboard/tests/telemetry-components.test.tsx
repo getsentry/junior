@@ -19,9 +19,9 @@ import {
 } from "../src/client/conversations/queries";
 import { ConversationTranscriptView } from "../src/client/conversations/ConversationTranscript";
 import {
-  SubagentTranscriptDrawer,
-  type SubagentTranscriptTarget,
-} from "../src/client/conversations/SubagentTranscriptDrawer";
+  ConversationDrawer,
+  type ConversationDrawerTarget,
+} from "../src/client/conversations/ConversationDrawer";
 import { Transcript } from "../src/client/conversations/TranscriptView";
 import { ConversationHeader } from "../src/client/conversations/ConversationHeader";
 import {
@@ -51,15 +51,18 @@ import type { ConversationTranscript, SystemData } from "../src/client/types";
 vi.mock("../src/client/components/Drawer", () => ({
   Drawer: ({
     header,
+    subheader,
     actions,
     children,
   }: {
     header: ReactNode;
+    subheader?: ReactNode;
     actions?: ReactNode;
     children: ReactNode;
   }) => (
     <>
       {header}
+      {subheader}
       {actions}
       {children}
     </>
@@ -169,6 +172,7 @@ function systemData(): SystemData {
     },
     conversationStatsError: false,
     conversationStatsLoading: false,
+    replyTimesError: false,
     pluginReports: {
       generatedAt: "2026-01-01T00:00:00.000Z",
       reports: [],
@@ -197,11 +201,13 @@ function plugin(name: string, overrides: Partial<Plugin> = {}): Plugin {
 describe("dashboard canonical-event components", () => {
   it("renders transcript markdown with hard breaks and safe links", () => {
     const html = renderToStaticMarkup(
-      <TranscriptSearchProvider query="line">
-        <DisplayText
-          text={"line one\nline two\n\n[docs](https://docs.sentry.io)"}
-        />
-      </TranscriptSearchProvider>,
+      <QueryClientProvider client={client}>
+        <TranscriptSearchProvider query="line">
+          <DisplayText
+            text={"line one\nline two\n\n[docs](https://docs.sentry.io)"}
+          />
+        </TranscriptSearchProvider>
+      </QueryClientProvider>,
     );
 
     expect(html.match(/<br\/>/g)).toHaveLength(1);
@@ -212,9 +218,11 @@ describe("dashboard canonical-event components", () => {
 
   it("highlights a markdown link label when search matches its URL", () => {
     const html = renderToStaticMarkup(
-      <TranscriptSearchProvider query="docs.sentry.io">
-        <DisplayText text="[product docs](https://docs.sentry.io/platforms/)" />
-      </TranscriptSearchProvider>,
+      <QueryClientProvider client={client}>
+        <TranscriptSearchProvider query="docs.sentry.io">
+          <DisplayText text="[product docs](https://docs.sentry.io/platforms/)" />
+        </TranscriptSearchProvider>
+      </QueryClientProvider>,
     );
 
     expect(html).toContain("<mark");
@@ -239,9 +247,11 @@ describe("dashboard canonical-event components", () => {
 
   it("renders bold-wrapped bare URLs without leaking emphasis markers into the href", () => {
     const html = renderToStaticMarkup(
-      <TranscriptSearchProvider query="">
-        <DisplayText text="**PR is up: https://github.com/getsentry/getsentry/pull/21513**" />
-      </TranscriptSearchProvider>,
+      <QueryClientProvider client={client}>
+        <TranscriptSearchProvider query="">
+          <DisplayText text="**PR is up: https://github.com/getsentry/getsentry/pull/21513**" />
+        </TranscriptSearchProvider>
+      </QueryClientProvider>,
     );
 
     expect(html).toContain(
@@ -326,6 +336,7 @@ describe("dashboard canonical-event components", () => {
       <QueryClientProvider client={client}>
         <TranscriptSearchProvider query="search">
           <TranscriptToolView
+            conversationId="slack:C1:123"
             part={{
               id: "tool-1",
               input: { query: "regression" },
@@ -349,6 +360,7 @@ describe("dashboard canonical-event components", () => {
       <QueryClientProvider client={client}>
         <TranscriptSearchProvider query="">
           <TranscriptToolView
+            conversationId="slack:C1:123"
             part={{
               id: "tool-1",
               name: "webSearch",
@@ -370,42 +382,40 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <ConversationHeader
-          archive={{
-            archived: false,
-            disabled: false,
-            onClick: () => {},
-            pending: false,
-          }}
-          conversationId="conversation-1"
           detailsOpen={false}
+          errors={[]}
+          menu={{
+            actions: {
+              archive: () => {},
+              continueInSlack: () => {},
+              delivery: () => {},
+              eventLog: () => {},
+              pin: () => {},
+              rename: () => {},
+              subscription: () => {},
+            },
+            conversation: undefined,
+            conversationId: "conversation-1",
+            detail: undefined,
+            eventLogOpen: true,
+            pending: {
+              archive: false,
+              delivery: false,
+              pin: false,
+              subscription: false,
+            },
+          }}
           onDetailsClick={() => {}}
           onSearchChange={() => {}}
           onViewChange={() => {}}
-          pin={{
-            disabled: false,
-            error: false,
-            onClick: () => {},
-            pinned: false,
-          }}
           privacy={null}
-          read={{
-            disabled: false,
-            error: false,
-            onClick: () => {},
-            unread: false,
-          }}
           search=""
           searchMatch={{
             count: 0,
             index: 0,
+            reset: () => {},
             setMatches: () => {},
             step: () => {},
-          }}
-          subscription={{
-            disabled: false,
-            error: false,
-            onClick: () => {},
-            subscribed: true,
           }}
           title="Header QA"
           view="raw"
@@ -1164,7 +1174,7 @@ describe("dashboard canonical-event components", () => {
       { conversationId: "child-1", displayTitle: "Advisor review" },
     );
     client.setQueryData(conversationDetailQueryKey("child-1"), child);
-    const target: SubagentTranscriptTarget = {
+    const target: ConversationDrawerTarget = {
       conversationId: "child-1",
       status: "completed",
     };
@@ -1172,7 +1182,7 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <QueryClientProvider client={client}>
-          <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+          <ConversationDrawer icon={null} target={target} onClose={() => {}} />
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -1192,7 +1202,7 @@ describe("dashboard canonical-event components", () => {
       status: "completed",
     });
     client.setQueryData(conversationDetailQueryKey("child-1"), child);
-    const target: SubagentTranscriptTarget = {
+    const target: ConversationDrawerTarget = {
       conversationId: "child-1",
       status: "error",
     };
@@ -1200,7 +1210,7 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <QueryClientProvider client={client}>
-          <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+          <ConversationDrawer icon={null} target={target} onClose={() => {}} />
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -1241,7 +1251,8 @@ describe("dashboard canonical-event components", () => {
     const drawerHtml = renderToStaticMarkup(
       <MemoryRouter>
         <QueryClientProvider client={client}>
-          <SubagentTranscriptDrawer
+          <ConversationDrawer
+            icon={null}
             target={{
               conversationId: "child-1",
               status: "running",
@@ -1281,7 +1292,7 @@ describe("dashboard canonical-event components", () => {
         status: "error",
       },
     );
-    const target: SubagentTranscriptTarget = {
+    const target: ConversationDrawerTarget = {
       conversationId: "child-error",
       status: "error",
     };
@@ -1289,7 +1300,7 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <QueryClientProvider client={errorClient}>
-          <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+          <ConversationDrawer icon={null} target={target} onClose={() => {}} />
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -1324,7 +1335,7 @@ describe("dashboard canonical-event components", () => {
       fetchStatus: "idle",
       status: "error",
     });
-    const target: SubagentTranscriptTarget = {
+    const target: ConversationDrawerTarget = {
       conversationId: "child-stale",
       status: "running",
     };
@@ -1332,7 +1343,7 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <QueryClientProvider client={staleClient}>
-          <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+          <ConversationDrawer icon={null} target={target} onClose={() => {}} />
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -1654,7 +1665,13 @@ describe("dashboard canonical-event components", () => {
   it("renders system metrics and capability inventories", () => {
     const data = systemData();
     data.plugins = [plugin("github")];
-    data.skills = [{ name: "triage", pluginProvider: "github" }];
+    data.skills = [
+      {
+        name: "triage",
+        description: "Triage issues.",
+        pluginProvider: "github",
+      },
+    ];
 
     const systemHtml = renderToStaticMarkup(
       <MemoryRouter initialEntries={["/system"]}>
@@ -1689,7 +1706,7 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).not.toContain(">metrics<");
     expect(systemHtml).not.toContain(">datasets<");
     expect(systemHtml).not.toContain(">1 loaded<");
-    expect(systemHtml).not.toContain(">triage<");
+    expect(systemHtml).not.toContain(">$triage<");
 
     const pluginsHtml = renderToStaticMarkup(
       <MemoryRouter initialEntries={["/system/plugins"]}>
@@ -1699,7 +1716,7 @@ describe("dashboard canonical-event components", () => {
     expect(pluginsHtml).toContain(">Plugins<");
     expect(pluginsHtml).toContain(">Skills<");
     expect(pluginsHtml).toContain(">GitHub<");
-    expect(pluginsHtml).toContain(">triage<");
+    expect(pluginsHtml).toContain(">$triage<");
     expect(pluginsHtml).not.toContain("Usage over time");
     expect(pluginsHtml).not.toContain('aria-label="Reporting period"');
 
@@ -1709,7 +1726,7 @@ describe("dashboard canonical-event components", () => {
       </MemoryRouter>,
     );
     expect(skillsHtml).toContain(">github<");
-    expect(skillsHtml).toContain(">triage<");
+    expect(skillsHtml).toContain(">$triage<");
   });
 
   it("renders each plugin as a dedicated System route", () => {
@@ -1721,7 +1738,11 @@ describe("dashboard canonical-event components", () => {
       plugin("scheduler", {}),
     ];
     data.skills = [
-      { name: "scheduled-automations", pluginProvider: "scheduler" },
+      {
+        name: "scheduled-automations",
+        description: "Manage scheduled automations.",
+        pluginProvider: "scheduler",
+      },
     ];
     data.pluginReports!.reports = [
       {
@@ -1743,7 +1764,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain('href="/system/plugins/scheduler"');
     expect(html).toContain(">Scheduler<");
     expect(html).toContain(">active tasks<");
-    expect(html).toContain(">scheduled-automations<");
+    expect(html).toContain(">$scheduled-automations<");
     expect(html).not.toContain(">1 reporting<");
     expect(html).not.toContain("Usage over time");
   });

@@ -13,6 +13,7 @@ function thread(
     cumulativeDurationMs: 0,
     displayTitle: id,
     id,
+    isParticipant: true,
     kind: "thread",
     lastProgressAt: at,
     lastSeenAt: at,

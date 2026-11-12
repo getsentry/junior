@@ -22,7 +22,7 @@ const CONVERSATION_SUBSCRIPTION_TOOL_SOURCE = {
 export function createConversationSubscriptionTools(
   context: ToolRuntimeContext,
 ): ToolRegistry {
-  if (context.agentInvocationId) return {};
+  if (!context.turnTools.subscriptions) return {};
 
   return {
     setConversationSubscription: zodTool({

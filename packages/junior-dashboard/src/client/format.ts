@@ -879,12 +879,12 @@ export function buildConversations(
   return summaries
     .map((summary) => ({
       activityPreview: summary.activityPreview,
+      brief: summary.brief,
       annotations: summary.annotations,
       sidebarAnnotations: summary.sidebarAnnotations,
       archivedAt: summary.archivedAt,
       pinnedAt: summary.pinnedAt,
       pinPosition: summary.pinPosition,
-      unread: summary.unread,
       auxiliaryCosts: summary.auxiliaryCosts,
       channel: summary.channel,
       channelName: summary.channelName,
@@ -894,6 +894,8 @@ export function buildConversations(
       cumulativeUsage: summary.cumulativeUsage,
       displayTitle: summary.displayTitle,
       id: summary.conversationId,
+      isParticipant: summary.isParticipant,
+      lastMessageAt: summary.lastMessageAt,
       lastProgressAt: summary.lastProgressAt,
       lastSeenAt: summary.lastSeenAt,
       locationId: summary.locationId,
@@ -909,7 +911,6 @@ export function buildConversations(
       kind: summary.kind,
       parentConversationId: summary.parentConversationId,
       threads: summary.threads && buildConversations(summary.threads),
-      unfinishedWork: summary.unfinishedWork,
       awaitingAuthorization: summary.awaitingAuthorization,
       visibility: summary.visibility,
     }))
@@ -921,7 +922,22 @@ export function conversationFromDetail(
   detail: ConversationTranscript | undefined,
 ): Conversation | undefined {
   if (!detail) return undefined;
-  const conversation = buildConversations([detail])[0];
+  // The detail carries the whole Brief; a row keeps the feed's short form.
+  const { brief, ...summary } = detail;
+  const conversation = buildConversations([
+    {
+      ...summary,
+      ...(brief
+        ? {
+            brief: {
+              intent: brief.content.intent,
+              status: brief.content.outcome.status,
+              summary: brief.content.summary,
+            },
+          }
+        : undefined),
+    },
+  ])[0];
   return conversation
     ? { ...conversation, displayTitle: detail.displayTitle }
     : undefined;

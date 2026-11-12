@@ -9,10 +9,14 @@ import { conversationDetailQueryKey } from "./queries";
  * Detach a conversation from its Slack thread, so updates stay here, or
  * attach it again.
  */
-export function useConversationDelivery(conversationId: string) {
+export function useConversationDelivery(
+  conversationId: string,
+  options?: { onError?(): void },
+) {
   const queryClient = useQueryClient();
   const detailQueryKey = conversationDetailQueryKey(conversationId);
   return useMutation({
+    onError: () => options?.onError?.(),
     mutationFn: (paused: boolean) =>
       patch(
         conversationDeliveryResponseSchema,

@@ -18,6 +18,7 @@ recipes.
 
 - Use OpenTelemetry semantic attributes when one exists. Use `app.*` for
   Junior attributes.
+- Do not add app-specific keys under `user.*`. Put request facts in `app.*`.
 - Event names: `<domain>.<operation>[.<suboperation>].<outcome>`, lowercase,
   dot-separated, snake case inside a component.
 - Use singular nouns (`message`, `tool_call`). Use a plural only for a batch

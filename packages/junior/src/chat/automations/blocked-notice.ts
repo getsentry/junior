@@ -1,4 +1,5 @@
 import type { KnownBlock } from "@slack/types";
+import { automationTaskDescription } from "@/chat/automations/task";
 import { isConnectableProvider } from "@/chat/credentials/connections";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
@@ -92,7 +93,7 @@ export async function notifyAutomationBlocked(
       const title =
         task.title ??
         fallbackShortTitle(
-          task.task.text,
+          automationTaskDescription(task.task),
           ref.kind === "scheduled"
             ? "Scheduled automation"
             : "Event automation",

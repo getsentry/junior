@@ -17,8 +17,8 @@
     "lint:fix": "pnpm --filter @sentry/junior lint:fix",
     "file-length:check": "node --test scripts/check-file-length.test.mjs && node scripts/check-file-length.mjs",
     "migration-metadata:check": "node --test scripts/check-drizzle-migrations.test.mjs && node scripts/check-drizzle-migrations.mjs",
-    "migration-locks:check": "node --test scripts/check-migration-locks.test.mjs && node scripts/check-migration-locks.mjs",
-    "oxlint-rules:check": "node --test tools/oxlint/junior/rules/*.test.ts",
+    "migration-locks:check": "node --test scripts/check-migration-locks.test.mjs && node scripts/check-migration-locks.mjs && squawk --reporter gcc 'packages/*/migrations/*.sql'",
+    "oxlint-rules:check": "node --test tools/oxlint/junior/rules/*.test.ts packages/junior-dashboard/oxlint/*.test.ts",
     "test-architecture:check": "node --test scripts/check-test-architecture.test.mjs && node scripts/check-test-architecture.mjs",
     "dashboard-style:check": "node --test scripts/check-dashboard-styles.test.mjs && node scripts/check-dashboard-styles.mjs",
     "ast-grep:lint": "ast-grep test --test-dir ast-grep/tests --skip-snapshot-tests && ast-grep scan",
@@ -61,6 +61,7 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
     "@ast-grep/cli": "^0.43.0",
+    "@octokit/graphql-schema": "^15.26.1",
     "@oxlint/plugins": "1.79.0",
     "@playwright/test": "^1.60.0",
     "@primer/octicons": "19.21.1",
@@ -68,11 +69,11 @@
     "libpg-query": "18.2.2",
     "lint-staged": "^17.0.5",
     "oxlint": "1.79.0",
-    "p-limit": "7.3.1",
     "prettier": "^3.8.3",
     "publint": "^0.3.21",
     "sentry": "0.47.0",
     "simple-git-hooks": "^2.13.1",
+    "squawk-cli": "2.72.0",
     "tsx": "^4.22.3"
   }
 }

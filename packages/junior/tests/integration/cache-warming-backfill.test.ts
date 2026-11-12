@@ -7,6 +7,7 @@ import {
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { backfillCacheWarmingGaps } from "@/chat/cache-warming/backfill";
 import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
+import { GLOBAL_GAPS_TTL_MS } from "@/chat/cache-warming/warmup";
 import {
   agentInstructionProvenance,
   contextProvenance,
@@ -21,6 +22,9 @@ import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation
 import { mockTitleModel } from "../fixtures/title-model";
 
 const MINUTE = 60_000;
+const BACKFILL_KEY = "junior:cache_warming:backfill:work_state:v2";
+// Older releases wrote `done` here with no TTL.
+const LEGACY_BACKFILL_KEY = "junior:cache_warming:backfill:work_state";
 const T0 = Date.parse("2026-06-01T09:00:00.000Z");
 const SEGMENTS = [
   "user:1:none",
@@ -97,16 +101,20 @@ describe("cache warming gap backfill", () => {
   afterEach(async () => {
     vi.useRealTimers();
     const state = getStateAdapter();
-    await state.delete("junior:cache_warming:backfill:work_state");
+    await state.delete(LEGACY_BACKFILL_KEY);
+    await state.delete(BACKFILL_KEY);
     for (const segment of SEGMENTS) {
       await state.delete(`junior:cache_warming:gaps:${segment}`);
     }
     await closeConversationFixture();
   });
 
-  it("fills each empty gap list once from the stored Turns", async () => {
+  it("fills each empty gap list from the stored Turns", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     mockTitleModel("Conversation title");
+    // An older release completed a run and kept `done` with no TTL. The
+    // backfill runs again under its new key.
+    await getStateAdapter().set(LEGACY_BACKFILL_KEY, "done");
     // Live recording already has a gap for later Turns of people. The
     // backfill does not add to it.
     await getStateAdapter().appendToList(
@@ -157,6 +165,13 @@ describe("cache warming gap backfill", () => {
     await getStateAdapter().delete("junior:cache_warming:gaps:user:1:none");
     await heartbeat(T0 + 131 * MINUTE);
     expect(await gaps("user:1:none")).toEqual([]);
+
+    // The completed run expires after the gap list TTL, so a later heartbeat
+    // checks for empty lists again.
+    vi.setSystemTime(T0 + 130 * MINUTE + GLOBAL_GAPS_TTL_MS - MINUTE);
+    expect(await getStateAdapter().get(BACKFILL_KEY)).toBe("done");
+    vi.setSystemTime(T0 + 130 * MINUTE + GLOBAL_GAPS_TTL_MS);
+    expect(await getStateAdapter().get(BACKFILL_KEY)).toBeNull();
   });
 
   it("keeps the Actor that started a Turn when a person steers it", async () => {

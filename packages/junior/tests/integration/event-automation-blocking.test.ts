@@ -1,10 +1,14 @@
 import { createAutomationTool } from "@/chat/automations/tools/create";
 import { createUpdateAutomationTool } from "@/chat/automations/tools/update";
 import { createDeleteAutomationTool } from "@/chat/automations/tools/delete";
+import { createSearchAutomationsTool } from "@/chat/automations/tools/search";
 import { automationToolContext } from "@/chat/automations/tool-access";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { markDispatchBlocked } from "@/chat/agent-dispatch/store";
+import {
+  getDispatchRecord,
+  markDispatchBlocked,
+} from "@/chat/agent-dispatch/store";
 import { AUTOMATION_CONNECT_ACTION_ID } from "@/chat/automations/blocked-notice";
 import { getConversationStore } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -26,6 +30,7 @@ import {
   createConversationWorkQueueTestAdapter,
   type ConversationWorkQueueTestAdapter,
 } from "../fixtures/conversation-work";
+import { installTestSkills } from "../fixtures/skill-dirs";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import {
   createConfiguredJuniorSqlFixture,
@@ -76,7 +81,13 @@ describe("event automation blocking", () => {
   });
 
   it("blocks an event automation after a blocked run and tells its creator once", async () => {
-    const { automation } = await createTask("Add the release-train label.");
+    const { automation } = await createTask(
+      "Add the release-train label.",
+      undefined,
+      undefined,
+      undefined,
+      "creator",
+    );
     const reason = "This run needs a connected github account.";
     const db = fixture.sql.db();
     const read = async () => (await getEventAutomation(db, automation.id))!;
@@ -185,6 +196,113 @@ describe("event automation blocking", () => {
       status: "blocked",
       statusReason: reason,
     });
+  });
+
+  it("runs the chosen skill and blocks when it is no longer installed", async () => {
+    let removeSkills: (() => Promise<void>) | undefined =
+      await installTestSkills([
+        {
+          name: "release-check",
+          description: "Check the release.",
+          body: "Check the release.",
+          disableModelInvocation: true,
+        },
+      ]);
+    try {
+      const create = (skill: string) =>
+        execute(
+          createAutomationTool(
+            automationToolContext(context()),
+            getEventCatalog(),
+          ),
+          {
+            skill,
+            outcomes: [],
+            trigger: {
+              type: "event",
+              namespace: "github",
+              label: "GitHub PR getsentry/junior#1174",
+              events: ["pull_request.review.changes_requested"],
+              match: { repo: "getsentry/junior", pull_request: 1174 },
+            },
+          },
+          `skill-create-${skill}`,
+        ) as Promise<{ automation: { id: string } }>;
+      await expect(create("unknown-check")).rejects.toThrow(
+        "The skill unknown-check is not installed.",
+      );
+      const { automation } = await create("release-check");
+      const tools = automationToolContext(context());
+      const update = (input: Record<string, unknown>) =>
+        execute(createUpdateAutomationTool(tools, getEventCatalog()), {
+          automation_id: automation.id,
+          ...input,
+        });
+      const search = (skill: string) =>
+        execute(createSearchAutomationsTool(tools, getEventCatalog()), {
+          skill,
+        }) as Promise<{
+          automations: Array<{ id: string; task: unknown }>;
+        }>;
+      await update({ context: "Only check getsentry/junior." });
+      expect((await search("release-check")).automations).toMatchObject([
+        {
+          id: automation.id,
+          task: {
+            kind: "skill",
+            skill: "release-check",
+            context: "Only check getsentry/junior.",
+          },
+        },
+      ]);
+      expect((await search("other-check")).automations).toEqual([]);
+      const db = fixture.sql.db();
+      const read = async () => (await getEventAutomation(db, automation.id))!;
+      const ingest = (eventKey: string) =>
+        ingestEventAutomations(changesRequestedEvent(eventKey), {
+          queue,
+          teamId,
+        });
+
+      expect(await ingest("github:skill-1")).toEqual({ dispatched: 1 });
+      const dispatchId = queue
+        .sentRecords()[0]!
+        .conversationId!.replace(/^agent-dispatch:/, "");
+      await expect(getDispatchRecord(dispatchId)).resolves.toMatchObject({
+        skill: "release-check",
+      });
+
+      await removeSkills();
+      removeSkills = undefined;
+      expect(await ingest("github:skill-2")).toEqual({ dispatched: 0 });
+      expect(await read()).toMatchObject({
+        status: "blocked",
+        statusReason:
+          "The skill release-check is no longer installed. Choose another skill or switch to an instruction.",
+      });
+      expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
+
+      // An instruction replaces the skill and its context.
+      await update({
+        instruction: "Add the release-train label.",
+        status: "active",
+      });
+      const resumed = await read();
+      expect(resumed).toMatchObject({
+        status: "active",
+        task: {
+          kind: "instruction",
+          instruction: "Add the release-train label.",
+        },
+      });
+      expect(resumed.task).not.toHaveProperty("skill");
+      await expect(update({ context: "Only main." })).rejects.toThrow(
+        "Context goes only with a skill.",
+      );
+      expect(await ingest("github:skill-3")).toEqual({ dispatched: 1 });
+    } finally {
+      await removeSkills?.();
+    }
   });
 
   it("limits runs for each event automation, not for its trigger", async () => {

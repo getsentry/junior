@@ -237,6 +237,24 @@ function configureVercelDeployment(
   return defaultMaxDuration;
 }
 
+// Apps route `/**` to `./server.ts`, and Nitro also detects `server.ts` as
+// its server entry. With both, a 404 from the app runs the app again with the
+// same Request, whose body the first run may already have read.
+function dropRoutedServerEntry(nitro: Nitro): void {
+  const serverEntry = nitro.options.serverEntry;
+  if (!serverEntry) {
+    return;
+  }
+  const routed = Object.values(nitro.options.routes).some(
+    (route) =>
+      (typeof route === "string" ? route : route.handler) ===
+      serverEntry.handler,
+  );
+  if (routed) {
+    nitro.options.serverEntry = false;
+  }
+}
+
 /** Nitro module that configures deployment wiring and copies app/plugin content into the Vercel build output. */
 export function juniorNitro(options: JuniorNitroOptions = {}): {
   nitro: { setup(nitro: unknown): void };
@@ -253,6 +271,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           options,
         );
 
+        dropRoutedServerEntry(nitro);
         applyRolldownTreeshakeWorkaround(nitro);
         if (dashboardEnabled(options.dashboard)) {
           // Nitro resolves configured public assets before modules run, so

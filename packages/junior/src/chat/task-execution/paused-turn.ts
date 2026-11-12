@@ -6,6 +6,7 @@
  * generation; started continues must durably record success, failure, auth
  * pause, or another safe pause boundary.
  */
+import { instructionActorFor } from "@/chat/agent/prompt";
 import { savedInputInstruction } from "@/chat/review-items/prompt-input";
 import {
   buildTurnFailureResponse,
@@ -72,7 +73,7 @@ import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
 import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { buildDispatchRoutingContext } from "@/chat/agent-dispatch/work";
-import { postsRunNotices } from "@/chat/automation-result";
+import { postsRunNotices } from "@/chat/conversations/kind-behavior";
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import {
   createSlackActor,
@@ -611,14 +612,17 @@ async function runPausedTurnInContext(
           });
         };
 
+        const messageTs = getTurnUserSlackMessageTs(userMessage);
+        const instructionActor = instructionActorFor(actor, messageTs);
         return {
           messageText: userMessage.text,
           sliceId: activeTurn.sliceId,
-          messageTs: getTurnUserSlackMessageTs(userMessage),
+          messageTs,
           inputMessageIds: [userMessage.id],
           initialStatus: latestProgressStatus(turnMessages),
           run: {
             instruction: {
+              ...(instructionActor ? { actor: instructionActor } : undefined),
               // Attachment fields come from the turn user message context helper.
               ...getTurnUserReplyAttachmentContext(userMessage),
               ...(await savedInputInstruction({

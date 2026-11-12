@@ -4,10 +4,6 @@ description: Notion page search, fetch, and limited write workflows
 
 mcp:
   url: https://mcp.notion.com/mcp
-  audit-tools:
-    - notion-create-pages
-    - notion-update-page
-    - notion-move-pages
   allowed-tools:
     - notion-search
     - notion-fetch
