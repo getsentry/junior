@@ -15,15 +15,15 @@ import { DOCKER_SANDBOX_LABEL } from "@/chat/sandbox/docker/settings";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 
 // Module overview: build the local image that stands in for a Vercel Sandbox
-// runtime. It matches the parts of Vercel's `node22` image that Junior uses:
-// Amazon Linux 2023, Node 22, `dnf`, passwordless `sudo`, the
+// runtime. It matches the parts of Vercel's `node24` image that Junior uses:
+// Amazon Linux 2023, Node 24, `dnf`, passwordless `sudo`, the
 // `vercel-sandbox` user, and the workspace directory.
 
 const BASE_IMAGE = { name: "amazonlinux", tag: "2023" };
 const RUNTIME_REPOSITORY = "junior-sandbox-runtime";
 /** System packages for each runtime, installed on top of the base image. */
 const RUNTIME_PACKAGES: Record<string, string[]> = {
-  node22: ["nodejs22", "nodejs22-npm"],
+  node24: ["nodejs24", "nodejs24-npm"],
 };
 const COMMON_PACKAGES = [
   "coreutils",

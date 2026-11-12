@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { z } from "zod";
+import * as z from "zod";
 import { signQueueMessage, verifyQueueMessage } from "@/chat/queue/sign";
 
 const originalJuniorSecret = process.env.JUNIOR_SECRET;

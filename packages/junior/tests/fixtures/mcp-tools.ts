@@ -42,15 +42,19 @@ export async function seedMcpConversation(args: {
 /** Append user and assistant messages to one Conversation, oldest first. */
 export async function appendMcpMessages(
   conversationId: string,
-  messages: readonly { role: "assistant" | "user"; text: string }[],
+  messages: readonly {
+    messageId?: string;
+    role: "assistant" | "user";
+    text: string;
+  }[],
 ): Promise<void> {
   const nowMs = Date.now();
   await getConversationEventStore().append(
     conversationId,
-    messages.map(({ role, text }, index) => ({
+    messages.map(({ messageId, role, text }, index) => ({
       data: {
         type: "message" as const,
-        messageId: `message-${index}`,
+        messageId: messageId ?? `message-${index}`,
         role,
         text,
       },
@@ -150,7 +154,7 @@ export async function seedMcpAutomation(args: {
       timezone: "UTC",
     },
     status: "active",
-    task: { text: args.instruction },
+    task: { kind: "instruction", instruction: args.instruction },
     title: args.title,
     updatedAtMs: nowMs,
   });

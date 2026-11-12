@@ -1,6 +1,10 @@
 import type { CodeChangePublisher } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
-import { associateCodeChangeConversations, recordCodeChange } from "./store";
+import {
+  associateCodeChangeConversations,
+  recordCodeChange,
+  recordCodeChangeActivity,
+} from "./store";
 
 /** Connect a plugin to Junior's code records. */
 export function createCodeChangePublisher(
@@ -12,6 +16,9 @@ export function createCodeChangePublisher(
     },
     async record(input) {
       await recordCodeChange(getDb(), provider, input);
+    },
+    async recordActivity(input) {
+      await recordCodeChangeActivity(getDb(), provider, input);
     },
   };
 }

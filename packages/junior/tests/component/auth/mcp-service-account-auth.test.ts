@@ -6,6 +6,7 @@ import {
   SERVICE_ACCOUNT_MCP_URL,
   useServiceAccountMcpServer,
 } from "../../fixtures/service-account-mcp";
+import { type EmittedLogRecord, registerLogRecordSink } from "@/chat/logging";
 import { McpAuthorizationRequiredError } from "@/chat/mcp/client";
 import { McpServiceAccountRequiredError } from "@/chat/mcp/errors";
 import {
@@ -152,11 +153,22 @@ describe("MCP service account auth", () => {
 
     await connectServiceAccount();
     const { manager, mcpAuth } = createManager(onAuthorizationRequired);
+    const records: EmittedLogRecord[] = [];
+    const unregister = registerLogRecordSink((record) => {
+      records.push(record);
+    });
 
     try {
       await manager.activateProvider(PROVIDER);
       await expect(tool(manager, "search").execute({})).resolves.toMatchObject({
         content: [{ type: "text", text: "access-1" }],
+      });
+      expect(
+        records.find((record) => record.eventName === "mcp.tool_call.completed")
+          ?.attributes,
+      ).toMatchObject({
+        "app.credential.account": "service_account",
+        "app.log.audit": true,
       });
 
       await expect(tool(manager, "create").execute({})).rejects.toBeInstanceOf(
@@ -175,6 +187,7 @@ describe("MCP service account auth", () => {
         mcpAuth.serviceAccountProviderFactory(plugin),
       ).resolves.toBeUndefined();
     } finally {
+      unregister();
       await manager.close();
     }
   });

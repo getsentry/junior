@@ -15,8 +15,8 @@ export function buildSandboxInput(
       !Array.isArray(params.env)
         ? { env: params.env }
         : undefined),
-      ...(optionalNumber(params.timeoutMs)
-        ? { timeoutMs: optionalNumber(params.timeoutMs) }
+      ...(optionalNumber(params.timeout_ms)
+        ? { timeoutMs: optionalNumber(params.timeout_ms) }
         : undefined),
     };
   }
@@ -35,42 +35,6 @@ export function buildSandboxInput(
     return {
       path: String(params.path ?? ""),
       edits: Array.isArray(params.edits) ? params.edits : [],
-    };
-  }
-  if (toolName === "grep") {
-    return {
-      pattern: String(params.pattern ?? ""),
-      ...(typeof params.path === "string" ? { path: params.path } : undefined),
-      ...(typeof params.glob === "string" ? { glob: params.glob } : undefined),
-      ...(typeof params.ignoreCase === "boolean"
-        ? { ignoreCase: params.ignoreCase }
-        : undefined),
-      ...(typeof params.literal === "boolean"
-        ? { literal: params.literal }
-        : undefined),
-      ...(optionalNumber(params.context)
-        ? { context: optionalNumber(params.context) }
-        : undefined),
-      ...(optionalNumber(params.limit)
-        ? { limit: optionalNumber(params.limit) }
-        : undefined),
-    };
-  }
-  if (toolName === "findFiles") {
-    return {
-      pattern: String(params.pattern ?? ""),
-      ...(typeof params.path === "string" ? { path: params.path } : undefined),
-      ...(optionalNumber(params.limit)
-        ? { limit: optionalNumber(params.limit) }
-        : undefined),
-    };
-  }
-  if (toolName === "listDir") {
-    return {
-      ...(typeof params.path === "string" ? { path: params.path } : undefined),
-      ...(optionalNumber(params.limit)
-        ? { limit: optionalNumber(params.limit) }
-        : undefined),
     };
   }
   if (toolName === "writeFile") {

@@ -19,9 +19,8 @@ export async function readPeoplePluginReports(args: {
       source: "plugins",
     });
   }
-  const { getPluginProfileReports } = await import(
-    "@/chat/plugins/agent-hooks"
-  );
+  const { getPluginProfileReports } =
+    await import("@/chat/plugins/agent-hooks");
   return pluginOperationalReportFeedSchema.parse({
     generatedAt: new Date(nowMs).toISOString(),
     reports: await getPluginProfileReports({

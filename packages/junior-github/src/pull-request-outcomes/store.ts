@@ -1,5 +1,5 @@
-import { and, eq, lte, ne, sql } from "drizzle-orm";
-import { z } from "zod";
+import { and, eq, lt, lte, ne, sql } from "drizzle-orm";
+import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import {
   type GitHubPullRequestCommitComposition,
@@ -14,6 +14,8 @@ const githubPullRequestOutcomeInputSchema = z
     candidateOwned: z.boolean(),
     closedAt: z.date().optional(),
     commitComposition: githubPullRequestCommitCompositionSchema.optional(),
+    /** When omitted, the stored draft state does not change. */
+    draft: z.boolean().optional(),
     mergedAt: z.date().optional(),
     number: z.number().int().positive(),
     openedAt: z.date(),
@@ -68,6 +70,7 @@ function projectionValues(input: GitHubPullRequestOutcomeInput) {
     ...(input.commitComposition
       ? { commitComposition: input.commitComposition }
       : undefined),
+    ...(input.draft !== undefined ? { draft: input.draft } : undefined),
     mergedAt: input.mergedAt ?? null,
     number: input.number,
     openedAt: input.openedAt,
@@ -150,7 +153,7 @@ function conversationIdsForPullRequests(
   ];
 }
 
-/** Return candidate conversations that have an associated unmerged pull request. */
+/** Return candidate conversations that have an associated open pull request. */
 export async function listGitHubUnfinishedWork(
   db: GitHubDb,
   conversationIds: string[],
@@ -165,14 +168,19 @@ export async function listGitHubUnfinishedWork(
     .from(juniorGitHubPullRequests)
     .where(
       and(
-        ne(juniorGitHubPullRequests.state, "merged"),
+        eq(juniorGitHubPullRequests.state, "open"),
         sql`${juniorGitHubPullRequests.conversationIds} && ARRAY[${values}]::text[]`,
       ),
     );
   return conversationIdsForPullRequests(rows, conversationIds);
 }
 
-/** Return the latest merge time for each candidate conversation. */
+/**
+ * Return the latest merge or close time for each candidate conversation.
+ * A closed pull request is finished even when it did not merge. A
+ * conversation with an open pull request is still unfinished; the caller
+ * combines this with `listGitHubUnfinishedWork`.
+ */
 export async function listGitHubFinishedWork(
   db: GitHubDb,
   conversationIds: string[],
@@ -184,25 +192,27 @@ export async function listGitHubFinishedWork(
   );
   const rows = await db
     .select({
+      closedAt: juniorGitHubPullRequests.closedAt,
       conversationIds: juniorGitHubPullRequests.conversationIds,
       mergedAt: juniorGitHubPullRequests.mergedAt,
     })
     .from(juniorGitHubPullRequests)
     .where(
       and(
-        eq(juniorGitHubPullRequests.state, "merged"),
+        ne(juniorGitHubPullRequests.state, "open"),
         sql`${juniorGitHubPullRequests.conversationIds} && ARRAY[${values}]::text[]`,
       ),
     );
   const candidates = new Set(conversationIds);
   const finishedAtById = new Map<string, Date>();
   for (const row of rows) {
-    if (!row.mergedAt) continue;
+    const finishedAt = row.mergedAt ?? row.closedAt;
+    if (!finishedAt) continue;
     for (const conversationId of row.conversationIds) {
       if (!candidates.has(conversationId)) continue;
       const current = finishedAtById.get(conversationId);
-      if (!current || row.mergedAt > current) {
-        finishedAtById.set(conversationId, row.mergedAt);
+      if (!current || finishedAt > current) {
+        finishedAtById.set(conversationId, finishedAt);
       }
     }
   }
@@ -212,6 +222,35 @@ export async function listGitHubFinishedWork(
       return finishedAt ? [[conversationId, finishedAt.toISOString()]] : [];
     }),
   );
+}
+
+/**
+ * Return the open Junior pull requests whose last lifecycle change is
+ * before `before`, oldest first. The daily reconcile checks these against
+ * GitHub.
+ */
+export async function listGitHubStaleOpenPullRequests(
+  db: GitHubDb,
+  before: Date,
+): Promise<
+  Array<{
+    draft: boolean;
+    number: number;
+    repositoryFullName: string;
+    repositoryId: string;
+  }>
+> {
+  const t = juniorGitHubPullRequests;
+  return await db
+    .select({
+      draft: t.draft,
+      number: t.number,
+      repositoryFullName: t.repositoryFullName,
+      repositoryId: t.repositoryId,
+    })
+    .from(t)
+    .where(and(eq(t.state, "open"), lt(t.updatedAt, before)))
+    .orderBy(t.updatedAt);
 }
 
 /** Return candidate conversations linked to any Junior-owned pull request. */

@@ -2,7 +2,7 @@ import {
   definePluginTool,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   fileOutputFields,
   fileReferenceSchema,
@@ -30,7 +30,7 @@ const inputSchema = z
 
 const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("readGoogleSheet"),
-  modifiedTime: z.string().optional(),
+  modified_at: z.string().optional(),
   ranges: z.array(
     z.object({
       content: z
@@ -42,7 +42,7 @@ const outputSchema = pluginToolOutputSchema.extend({
         .describe("True when rows at the end of this range are left out."),
     }),
   ),
-  spreadsheetId: z.string(),
+  spreadsheet_id: z.string(),
   tabs: z.array(z.string()).describe("Names of every tab in the Sheet."),
   title: z.string(),
   truncated: z
@@ -149,7 +149,7 @@ export function createReadGoogleSheetTool(ctx: GoogleToolContext) {
         target: "readGoogleSheet" as const,
         ...fileOutputFields(file),
         ranges,
-        spreadsheetId: file.id,
+        spreadsheet_id: file.id,
         tabs,
         title: file.name,
         truncated: ranges.some((range) => range.truncated),

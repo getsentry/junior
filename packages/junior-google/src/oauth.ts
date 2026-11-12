@@ -6,7 +6,7 @@
  * it. Slack never carries the sign-in link, the authorization code, or tokens.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { z } from "zod";
+import * as z from "zod";
 import {
   GOOGLE_API_SCOPES,
   GOOGLE_IDENTITY_SCOPES,

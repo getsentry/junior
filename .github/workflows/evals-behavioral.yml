@@ -4,7 +4,6 @@ permissions:
   contents: read
   pull-requests: read
   actions: read
-  checks: write
 
 on:
   pull_request:
@@ -25,7 +24,7 @@ jobs:
     outputs:
       should_run: ${{ steps.decision.outputs.should_run }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -50,6 +49,7 @@ jobs:
               - 'packages/junior-evals/src/**'
               - 'packages/junior-evals/fixtures/**'
               - 'packages/junior-evals/package.json'
+              - 'packages/junior-evals/roach.json'
               - 'packages/junior-evals/scripts/report.mjs'
               - 'packages/junior-evals/scripts/network-jail.sh'
               - 'packages/junior-evals/global-setup.ts'
@@ -102,6 +102,11 @@ jobs:
     needs: select
     if: needs.select.outputs.should_run == 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+      checks: write
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -139,7 +144,9 @@ jobs:
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
       VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: Install cloudflared
         run: |
@@ -154,7 +161,7 @@ jobs:
           "$RUNNER_TEMP/cloudflared" version
       # The evals build a sandbox snapshot only when this file does not have it.
       - name: Keep sandbox snapshot ids
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/junior-evals/sandbox-snapshots.json
           key: eval-sandbox-snapshots-${{ github.run_id }}
@@ -184,12 +191,12 @@ jobs:
           }
       - name: Publish behavioral shard summary
         if: steps.results.conclusion == 'success'
-        uses: getsentry/vitest-evals@v0.16.1
+        uses: getsentry/vitest-evals@abea6a519955e5df56ecb2a2d83bae9c821561e1 # v0.16.1
         with:
           results: packages/junior-evals/behavioral-results-${{ matrix.shard }}.json
       - name: Upload behavioral eval results
         if: steps.results.conclusion == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: behavioral-evals-${{ matrix.shard }}
           path: packages/junior-evals/behavioral-results-${{ matrix.shard }}.json
@@ -201,15 +208,20 @@ jobs:
     needs: [select, behavioral]
     if: ${{ always() && !cancelled() && needs.select.outputs.should_run == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+      checks: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24.22.1"
       - name: Download behavioral eval results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: behavioral-evals-*
           path: eval-results
@@ -229,7 +241,7 @@ jobs:
           fi
           ls -la eval-results
       - name: Publish combined behavioral eval report
-        uses: getsentry/vitest-evals@v0.16.1
+        uses: getsentry/vitest-evals@abea6a519955e5df56ecb2a2d83bae9c821561e1 # v0.16.1
         with:
           results: eval-results/*.json
           publish-check: true

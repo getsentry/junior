@@ -1,7 +1,8 @@
 import { getSlackFileId } from "./attachments";
 import type { Attachment } from "chat";
 import { botConfig } from "@/chat/config";
-import { resolveGatewayModel, type completeText } from "@/chat/pi/client";
+import type { completeText, ConversationModelCost } from "@/chat/core-model";
+import { resolveGatewayModel } from "@/chat/pi/client";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { getSqlExecutor } from "@/chat/db";
 import {
@@ -72,6 +73,7 @@ export interface VisionContextService {
   hydrateConversationVisionContext: (
     conversation: ThreadConversationState,
     context: {
+      conversationId?: string;
       threadId?: string;
       channelId?: string;
       actorId?: string;
@@ -118,20 +120,14 @@ export function isVisionEnabled(): boolean {
   return Boolean(botConfig.visionModelId);
 }
 
-/**
- * Report whether every profile model accepts image input. The router picks the
- * profile after attachments resolve, so native images need every profile to
- * read them.
- */
-function profileModelsAcceptImages(): boolean {
-  return Object.values(botConfig.profiles).every((profile) =>
-    resolveGatewayModel(profile.modelId).input.includes("image"),
-  );
+/** Report whether the main agent model accepts image input. */
+function agentModelAcceptsImages(): boolean {
+  return resolveGatewayModel(botConfig.modelId).input.includes("image");
 }
 
 /** Report whether the agent can read current-message images by any path. */
 export function canReadImages(): boolean {
-  return isVisionEnabled() || profileModelsAcceptImages();
+  return isVisionEnabled() || agentModelAcceptsImages();
 }
 
 class ImageAttachmentProcessingError extends Error {
@@ -204,8 +200,15 @@ function buildAttachmentResolutionFailurePromptText(args: {
   ].join("\n");
 }
 
+// Without a stored Conversation, such as a local run, the cost stays on the
+// span.
+function visionCost(conversationId: string | undefined): ConversationModelCost {
+  return conversationId ? { conversationId } : { owner: "none" };
+}
+
 async function summarizeImageWithVision(args: {
   completeText: typeof completeText;
+  cost: ConversationModelCost;
   imageData: Buffer;
   mimeType: string;
   maxTokens: number;
@@ -219,9 +222,9 @@ async function summarizeImageWithVision(args: {
 
   const result = await args.completeText({
     modelId: visionModelId,
-    temperature: 0,
     maxTokens: args.maxTokens,
-    promptName: "junior.vision_summary",
+    operation: "vision_summary",
+    cost: args.cost,
     messages: [
       {
         role: "user",
@@ -407,7 +410,7 @@ async function resolveUserAttachmentsWithDeps(
     // Providers reject an image whose bytes do not match its media type, so
     // send the detected type. Slack's declared type can be wrong.
     const nativeImageMediaType =
-      isImageAttachment && profileModelsAcceptImages()
+      isImageAttachment && agentModelAcceptsImages()
         ? detectImageMediaType(data)
         : undefined;
     if (nativeImageMediaType) {
@@ -445,6 +448,7 @@ async function resolveUserAttachmentsWithDeps(
       try {
         const summary = await summarizeImageWithVision({
           completeText: deps.completeText,
+          cost: visionCost(context.conversationId),
           imageData: data,
           mimeType: mediaType,
           maxTokens: 220,
@@ -527,6 +531,7 @@ async function summarizeConversationImage(
     mimeType: string;
     fileId: string;
     context: {
+      conversationId?: string;
       threadId?: string;
       channelId?: string;
       actorId?: string;
@@ -543,6 +548,7 @@ async function summarizeConversationImage(
   try {
     const summary = await summarizeImageWithVision({
       completeText: deps.completeText,
+      cost: visionCost(args.context.conversationId),
       imageData: args.imageData,
       mimeType: args.mimeType,
       maxTokens: 220,
@@ -578,6 +584,7 @@ async function summarizeConversationImage(
 async function hydrateConversationVisionContextWithDeps(
   conversation: ThreadConversationState,
   context: {
+    conversationId?: string;
     threadId?: string;
     channelId?: string;
     actorId?: string;

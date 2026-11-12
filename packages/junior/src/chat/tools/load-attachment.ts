@@ -1,5 +1,5 @@
 import path from "node:path";
-import { z } from "zod";
+import * as z from "zod";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { readLiveAttachment } from "@/chat/attachments/store";
 import type { AttachmentStorage } from "@/chat/attachments/storage";

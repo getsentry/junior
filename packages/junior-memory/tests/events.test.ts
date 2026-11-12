@@ -71,7 +71,7 @@ describe("memory conversation events", () => {
       ],
     });
 
-    expect(presentation?.title).toBe("1 memory captured");
+    expect(presentation?.title).toBe("Captured 1 memory");
     expect(presentation?.preview).toBeUndefined();
     expect(presentation?.details?.[0]?.title).toBe(content);
   });
@@ -96,6 +96,6 @@ describe("memory conversation events", () => {
       ],
     });
 
-    expect(presentation?.title).toBe("2 memories captured");
+    expect(presentation?.title).toBe("Captured 2 memories");
   });
 });

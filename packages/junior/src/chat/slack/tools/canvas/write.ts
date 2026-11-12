@@ -3,16 +3,19 @@ import {
   resolveCanvasTarget,
   slackCanvasRefParam,
 } from "@/chat/slack/tool-support/canvas/context";
-import { z } from "zod";
+import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
 /** Create a tool that deliberately replaces a Slack canvas body. */
 export function createSlackCanvasWriteTool(state: ToolState) {
   return zodTool({
+    exposure: "deferred",
+    source: SLACK_TOOL_SOURCE,
     annotations: {
       destructiveHint: true,
       idempotentHint: true,

@@ -12,10 +12,6 @@ Make the subject the story. For a product, show what people can do, why it matte
 | set up Remotion, measure clips, mix music, render, check an export, or see revision examples                      | [references/rendering.md](references/rendering.md) |
 | time motion to the narration: word alignment, camera moves, highlights, cursor, captions, transitions, and stills | [references/motion.md](references/motion.md)       |
 
-## 0. Pick The Model Profile
-
-Composition, motion timing, and frame review are implementation work. When `handoff` is available and a listed profile fits implementation better than the active one, switch before step 1. If the requester names a model or profile, use it when it is available. Do not hand off only to summarize finished work.
-
 ## 1. Resolve The Brief And Reuse Work
 
 - Read the current request and prior decisions. Keep the agreed audience, length, tone, credits, and destination. Ask only for a missing decision that blocks work.

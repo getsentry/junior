@@ -17,6 +17,7 @@ import { recordTurnSummary } from "@/chat/task-execution/turn-cursor";
 import {
   buildJuniorSqlConversation,
   createEmptyJuniorPostgresFixture,
+  createConfiguredJuniorSqlFixture,
   createEmptyJuniorSqlFixture,
   hasJuniorPostgresTestDatabase,
 } from "../fixtures/sql";
@@ -202,10 +203,7 @@ ORDER BY conversation_id
           provider: "github",
         },
       ]);
-      expect(
-        projectConversationEvents(history, { defaultProfile: "default" })
-          .messages,
-      ).toEqual([]);
+      expect(projectConversationEvents(history).messages).toEqual([]);
     } finally {
       await fixture.close();
     }
@@ -491,21 +489,6 @@ ORDER BY table_name ASC, ordinal_position ASC
       );
 
       for (const columns of actual.values()) columns.sort();
-      // TODO(dcramer): Remove this after migration 0058 drops these columns.
-      // Migration 0057 keeps them because old workers still name them.
-      const pendingColumnDrops = new Map([
-        ["junior_automation_versions", ["kind"]],
-        ["junior_conversations", ["origin_id", "origin_run_id", "origin_type"]],
-      ]);
-      for (const [table, dropped] of pendingColumnDrops) {
-        actual.set(
-          table,
-          (actual.get(table) ?? []).filter(
-            (column) => !dropped.includes(column),
-          ),
-        );
-      }
-
       expect(actual).toEqual(expected);
       expect(actual.has("junior_conversation_inbound_messages")).toBe(false);
 
@@ -835,7 +818,9 @@ CREATE TABLE junior_conversations (
   );
 
   it("mirrors completed scheduler turns into SQL conversation record", async () => {
-    const fixture = await createEmptyJuniorSqlFixture();
+    // Turn summaries resolve the Turn Actor's Identity in the runtime
+    // database, so the store must use it too.
+    const fixture = createConfiguredJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -904,6 +889,13 @@ CREATE TABLE junior_conversations (
         updatedAtMs: Date.now(),
       });
       await recordTurnSummary({
+        actor: {
+          email: "person@example.com",
+          fullName: "Person",
+          platform: "slack",
+          teamId: "T123",
+          userId: "U123",
+        },
         conversationId: "agent-dispatch:dispatch_scheduler_run",
         cumulativeDurationMs: 500,
         cumulativeUsage: {
@@ -957,6 +949,21 @@ WHERE conversation_id = 'agent-dispatch:dispatch_scheduler_run'
           totalTokens: 205,
         },
       });
+      // Each Turn's metric rows record that Turn's Actor, not the root's.
+      const turnActors = await fixture.sql.query<{
+        runId: string;
+        subject: string | null;
+      }>(`
+SELECT DISTINCT m.run_id AS "runId", i.provider_subject_id AS subject
+FROM junior_conversation_metrics m
+LEFT JOIN junior_identities i ON i.id = m.actor_identity_id
+WHERE m.conversation_id = 'agent-dispatch:dispatch_scheduler_run'
+ORDER BY m.run_id
+`);
+      expect(turnActors).toEqual([
+        { runId: "dispatch:scheduler-run", subject: null },
+        { runId: "dispatch:scheduler-run-2", subject: "U123" },
+      ]);
     } finally {
       await disconnectStateAdapter();
       await fixture.close();

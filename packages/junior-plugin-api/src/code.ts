@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 export const codeChangeStateSchema = z.enum(["closed", "merged", "open"]);
 export type CodeChangeState = z.output<typeof codeChangeStateSchema>;
@@ -7,6 +7,11 @@ export const codeChangeInputSchema = z
   .object({
     closedAt: z.date().optional(),
     conversationIds: z.array(z.string().min(1)).default([]),
+    /**
+     * Whether the code change is a draft. When omitted, Junior keeps the
+     * stored value; a new code change is not a draft.
+     */
+    draft: z.boolean().optional(),
     mergedAt: z.date().optional(),
     number: z.number().int().positive(),
     openedAt: z.date(),
@@ -34,4 +39,13 @@ export interface CodeChangePublisher {
     providerId: string;
   }): Promise<void>;
   record(input: CodeChangeInput): Promise<void>;
+  /**
+   * Record a push, review, or comment by a person on a code change. Junior
+   * ignores activity on code changes that it did not record.
+   */
+  recordActivity(input: {
+    at: Date;
+    number: number;
+    repositoryProviderId: string;
+  }): Promise<void>;
 }

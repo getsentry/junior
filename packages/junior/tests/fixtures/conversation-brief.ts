@@ -33,7 +33,6 @@ export function conversationBriefFixture(
       text: "The work reached its recorded outcome.",
     },
     decisions: [],
-    openDecisions: [],
     facts: [],
     links: options.links ?? [],
     keywords: ["test"],

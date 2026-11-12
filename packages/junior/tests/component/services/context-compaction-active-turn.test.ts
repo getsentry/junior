@@ -78,14 +78,15 @@ describe("active-turn context compaction", () => {
   it("includes provider output in measured context usage", async () => {
     const { compactActiveContextIfNeeded } =
       await import("@/chat/services/context-compaction");
-    const summarize = vi.fn(async () => "Continue from the summary.");
+    const summarize = vi.fn(async () => ({
+      summary: "Continue from the summary.",
+    }));
 
     const result = await compactActiveContextIfNeeded(
       {
         conversationId: "conversation-provider-usage",
         mode: "active",
         modelId: "openai/gpt-5.4",
-        modelProfile: "standard",
         piMessages: [
           user("Continue the task.", 1),
           assistantWithUsage("Work completed so far.", {
@@ -112,7 +113,6 @@ describe("active-turn context compaction", () => {
         conversationId: "conversation-tool-details",
         mode: "active",
         modelId: "openai/gpt-5.4",
-        modelProfile: "standard",
         piMessages: [
           user("Inspect the tool result.", 1),
           assistantWithUsage("Reading the requested file.", {
@@ -196,7 +196,6 @@ describe("active-turn context compaction", () => {
         conversationId,
         mode: "active",
         modelId: "openai/gpt-5.4",
-        modelProfile: "standard",
         pendingMessages: [
           {
             message: user(
@@ -216,7 +215,7 @@ describe("active-turn context compaction", () => {
         ],
         piMessages: activeMessages,
       },
-      async () => "No outstanding asks.",
+      async () => ({ summary: "No outstanding asks." }),
     );
 
     expect(result.compacted).toBe(true);
@@ -249,7 +248,6 @@ describe("active-turn context compaction", () => {
     const durable = await loadProjection({ conversationId });
     expect(durable).toEqual(result.piMessages);
     const projection = await loadConversationProjection({ conversationId });
-    expect(projection.modelProfile).toBe("standard");
     expect(projection.provenance[0]).toEqual({ authority: "context" });
     expect(projection.provenance[1]).toMatchObject({
       authority: "instruction",
@@ -261,7 +259,6 @@ describe("active-turn context compaction", () => {
     ).find((event) => event.data.type === "compaction");
     expect(compactionEvent?.data).toMatchObject({
       type: "compaction",
-      modelProfile: "standard",
       modelId: "openai/gpt-5.4",
       summary: "No outstanding asks.",
       details: {

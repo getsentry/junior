@@ -7,7 +7,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import * as acp from "@agentclientprotocol/sdk";
 import { userSchema, type User } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import type { AcpErrorContext, ReportAcpError } from "./errors";
 import type { AcpConversations } from "./conversations";
 import { acpInboundMessageSchema } from "./schema";

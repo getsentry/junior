@@ -1,6 +1,7 @@
 /** Own the MCP view of one Automation, shared by the automation tools. */
-import { z } from "zod";
+import * as z from "zod";
 import type { AutomationSummary } from "@/api/schema/automation";
+import { automationTaskSchema } from "@/chat/automations/task";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 
 /** MCP view of one Automation. It omits cost and run-count charts. */
@@ -9,7 +10,7 @@ export const mcpAutomationSchema = z
     id: z.string(),
     kind: z.enum(["scheduled", "event"]),
     title: z.string(),
-    instruction: z.string(),
+    task: automationTaskSchema,
     status: z.enum(["active", "blocked", "paused", "completed"]),
     statusReason: z.string().optional(),
     trigger: z
@@ -45,7 +46,7 @@ export function mcpAutomation(
     id: automation.id,
     kind: automation.kind,
     title: automation.title,
-    instruction: automation.instruction,
+    task: automation.task,
     status: automation.status,
     ...(automation.statusReason
       ? { statusReason: automation.statusReason }

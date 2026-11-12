@@ -14,6 +14,8 @@ import {
 import type {
   AuthorizationKind,
   ConversationEvent,
+  ConversationEventData,
+  ConversationEventStore,
 } from "@/chat/conversations/history";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import {
@@ -22,12 +24,11 @@ import {
   authenticationUnlinkedEvent,
   JUNIOR_NATIVE_EVENT_NAMESPACE,
 } from "@/chat/conversations/structured-events";
-import { botConfig } from "@/chat/config";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import {
-  bindProviderConversation,
+  claimProviderConversation,
   type ProviderConversationReference,
 } from "@/chat/conversations/sql/bindings";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
@@ -38,8 +39,6 @@ import {
   type PiConversationEventProjection,
   type PiConversationProjection,
 } from "@/chat/pi/conversation-events";
-import type { ModelProfile } from "@/chat/model-profile";
-import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
@@ -119,7 +118,7 @@ function durableMessageIdentity(message: PiMessage): unknown {
  *
  * Returns `current.length` only when every committed message still matches by
  * durable identity. A shorter `next` or a content/role/timestamp change is a
- * branch that only compaction/handoff may perform.
+ * branch that only compaction may perform.
  */
 function countDurablePrefix(current: PiMessage[], next: PiMessage[]): number {
   if (next.length < current.length) {
@@ -200,15 +199,14 @@ function resolveCommitProvenance(args: {
         "trailing commit provenance cannot exceed committed messages",
       );
     }
-    const newMessageCount = args.nextMessages.length - matchingPrefix;
-    if (args.trailingMessageProvenance.length > newMessageCount) {
-      throw new Error(
-        "trailing commit provenance must align to newly committed messages",
-      );
-    }
+    // A redelivered Turn can commit input that is already committed. That
+    // input keeps its committed provenance; only new messages take the
+    // trailing provenance.
     const start = provenance.length - args.trailingMessageProvenance.length;
     args.trailingMessageProvenance.forEach((entry, offset) => {
-      provenance[start + offset] = entry;
+      if (start + offset >= matchingPrefix) {
+        provenance[start + offset] = entry;
+      }
     });
   }
   return provenance;
@@ -218,6 +216,24 @@ interface ScopedConversation {
   conversationId: string;
 }
 
+/**
+ * Pi projection of one history version through `throughSeq`, as read from
+ * the event store. A checkpoint commit can reuse it as its committed base.
+ */
+export interface StoredProjection extends PiConversationEventProjection {
+  historyVersion: number;
+  throughSeq: number;
+}
+
+function storedProjection(events: ConversationEvent[]): StoredProjection {
+  const last = events.at(-1);
+  return {
+    ...projectConversationEvents(events),
+    historyVersion: last?.historyVersion ?? 0,
+    throughSeq: last?.seq ?? -1,
+  };
+}
+
 /** Load the current Pi agent history for a conversation. */
 export async function loadProjection(
   args: ScopedConversation,
@@ -225,9 +241,7 @@ export async function loadProjection(
   const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
-  return projectConversationEvents(events, {
-    defaultProfile: botConfig.defaultProfile,
-  }).messages;
+  return projectConversationEvents(events).messages;
 }
 
 /** Load current Pi context with aligned provenance and source event sequences. */
@@ -237,9 +251,7 @@ export async function loadConversationProjection(
   const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
-  return projectConversationEvents(events, {
-    defaultProfile: botConfig.defaultProfile,
-  });
+  return projectConversationEvents(events);
 }
 
 /** Load the active Pi projection before a conversation's next request. */
@@ -249,9 +261,7 @@ export async function openConversationProjection(
   const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
-  return projectConversationEvents(events, {
-    defaultProfile: botConfig.defaultProfile,
-  });
+  return projectConversationEvents(events);
 }
 
 /**
@@ -269,14 +279,13 @@ export async function loadTurnProjection(args: {
   conversationId: string;
   committedSeq: number;
   includeTail: boolean;
-}): Promise<PiConversationEventProjection | undefined> {
+}): Promise<StoredProjection | undefined> {
   const eventStore = getConversationEventStore();
   // A record that committed no messages materializes the live projection, the
   // same way count-based records with a zero cursor did.
   if (args.committedSeq < 0) {
-    return projectConversationEvents(
+    return storedProjection(
       await eventStore.loadCurrentHistory(args.conversationId),
-      { defaultProfile: botConfig.defaultProfile },
     );
   }
   const historyEvents = await eventStore.loadHistoryContaining(
@@ -287,9 +296,7 @@ export async function loadTurnProjection(args: {
   if (!historyEvents) {
     return undefined;
   }
-  return projectConversationEvents(historyEvents, {
-    defaultProfile: botConfig.defaultProfile,
-  });
+  return storedProjection(historyEvents);
 }
 
 /** Load MCP providers the credential subject connected in this conversation. */
@@ -297,8 +304,11 @@ export async function loadConnectedMcpProviders(args: {
   conversationId: string;
   credentialSubjectId: string;
 }): Promise<string[]> {
-  const events = await getConversationEventStore().loadHistory(
+  // Every turn start calls this. Load only connection events: a long
+  // Conversation's full log holds every compaction's replacement history.
+  const events = await getConversationEventStore().loadEventsOfType(
     args.conversationId,
+    "mcp_provider_connected",
   );
   return connectedMcpProvidersFromEvents(events, args.credentialSubjectId);
 }
@@ -313,7 +323,7 @@ function messageTimestamp(message: PiMessage): number {
  *
  * Checkpoints are append-only against the durable identity of the committed
  * prefix (role, timestamp, content; tool results also match call id). A shorter
- * history or a true content branch is rejected — only compaction and handoff may
+ * history or a true content branch is rejected — only compaction may
  * intentionally replace active model history. In-place Pi mutations of already
  * committed assistant envelopes (usage/stopReason) do not block the suffix.
  */
@@ -333,6 +343,8 @@ export async function commitMessages(args: {
   };
   /** SQL authority for the atomic commit; defaults to the process executor. */
   executor?: JuniorSqlDatabase;
+  /** Projection read before the commit; the commit then reads only later events. */
+  storedProjection?: StoredProjection;
 }): Promise<{
   committedSeq: number;
   historyVersion: number;
@@ -396,11 +408,47 @@ export async function commitAcceptedReply(args: {
       );
       for (const reference of args.providerConversationBindings ?? []) {
         const binding = { conversationId: args.conversationId, ...reference };
-        await bindProviderConversation(executor, binding);
-        await startLocationThread(executor, binding);
+        // A Conversation claims its thread when it starts. A reply into a
+        // thread that another Conversation started in leaves it with that one.
+        if (await claimProviderConversation(executor, binding)) {
+          await startLocationThread(executor, binding);
+        }
       }
     }),
   );
+}
+
+/**
+ * Load the current projection under the commit lock.
+ *
+ * Within one history version, projection only appends. So an earlier stored
+ * projection plus the projection of every later event is the current one
+ * while all later events belong to its version. A later event in a newer
+ * version means a history replacement, so read the current history again.
+ */
+async function loadCurrentProjection(
+  eventStore: ConversationEventStore,
+  conversationId: string,
+  base: StoredProjection | undefined,
+): Promise<StoredProjection> {
+  if (base) {
+    const later = await eventStore.loadEventsAfter(
+      conversationId,
+      base.throughSeq,
+    );
+    if (later.every((event) => event.historyVersion === base.historyVersion)) {
+      const tail = projectConversationEvents(later);
+      return {
+        messages: [...base.messages, ...tail.messages],
+        provenance: [...base.provenance, ...tail.provenance],
+        seqs: [...base.seqs, ...tail.seqs],
+        replacementSeq: tail.replacementSeq ?? base.replacementSeq,
+        historyVersion: base.historyVersion,
+        throughSeq: later.at(-1)?.seq ?? base.throughSeq,
+      };
+    }
+  }
+  return storedProjection(await eventStore.loadCurrentHistory(conversationId));
 }
 
 async function commitMessagesLocked(
@@ -408,12 +456,11 @@ async function commitMessagesLocked(
   executor: JuniorSqlDatabase,
 ): ReturnType<typeof commitMessages> {
   const eventStore = createSqlConversationEventStore(executor);
-  const currentEvents = await eventStore.loadCurrentHistory(
+  const current = await loadCurrentProjection(
+    eventStore,
     args.conversationId,
+    args.storedProjection,
   );
-  const current = projectConversationEvents(currentEvents, {
-    defaultProfile: botConfig.defaultProfile,
-  });
   const nextLocalMessages = args.messages.map(normalizeDurableMessage);
   const matchingPrefix = countDurablePrefix(
     current.messages,
@@ -459,10 +506,13 @@ async function commitMessagesLocked(
       })),
       ...turnContextEvents,
     ]);
-    const cursor = appendedEvents.at(-1) ?? currentEvents.at(-1);
+    const cursor = appendedEvents.at(-1) ?? {
+      seq: current.throughSeq,
+      historyVersion: current.historyVersion,
+    };
     return {
-      committedSeq: cursor?.seq ?? -1,
-      historyVersion: cursor?.historyVersion ?? 0,
+      committedSeq: cursor.seq,
+      historyVersion: cursor.historyVersion,
       messageSeqs: [
         ...current.seqs,
         ...appendedEvents
@@ -476,31 +526,63 @@ async function commitMessagesLocked(
   throw new AgentHistoryBranchError(args.conversationId);
 }
 
-/** Record a successful MCP provider connection for one credential subject without duplicating it. */
-export async function recordMcpProviderConnected(args: {
+/**
+ * Append one host fact once. The idempotency key dedupes across every history
+ * version, as the readers do. Rows written before these keys existed have
+ * none, so a matching keyless row also counts.
+ */
+async function appendHostFactOnce(args: {
   conversationId: string;
-  provider: string;
-  credentialSubjectId: string;
+  data: ConversationEventData & {
+    type:
+      | "mcp_provider_connected"
+      | "authorization_requested"
+      | "authorization_completed";
+  };
+  idempotencyKey: string;
+  isSameFact: (data: ConversationEvent["data"]) => boolean;
 }): Promise<void> {
   const eventStore = getConversationEventStore();
-  const events = await eventStore.loadCurrentHistory(args.conversationId);
+  const events = await eventStore.loadEventsOfType(
+    args.conversationId,
+    args.data.type,
+  );
   if (
-    connectedMcpProvidersFromEvents(events, args.credentialSubjectId).includes(
-      args.provider,
+    events.some(
+      (event) =>
+        event.idempotencyKey === undefined && args.isSameFact(event.data),
     )
   ) {
     return;
   }
   await eventStore.append(args.conversationId, [
     {
-      data: {
-        type: "mcp_provider_connected",
-        provider: args.provider,
-        credentialSubjectId: args.credentialSubjectId,
-      },
+      idempotencyKey: args.idempotencyKey,
+      data: args.data,
       createdAtMs: Date.now(),
     },
   ]);
+}
+
+/** Record a successful MCP provider connection for one credential subject without duplicating it. */
+export async function recordMcpProviderConnected(args: {
+  conversationId: string;
+  provider: string;
+  credentialSubjectId: string;
+}): Promise<void> {
+  await appendHostFactOnce({
+    conversationId: args.conversationId,
+    idempotencyKey: `mcp_provider_connected:${args.provider}:${args.credentialSubjectId}`,
+    data: {
+      type: "mcp_provider_connected",
+      provider: args.provider,
+      credentialSubjectId: args.credentialSubjectId,
+    },
+    isSameFact: (data) =>
+      data.type === "mcp_provider_connected" &&
+      data.provider === args.provider &&
+      data.credentialSubjectId === args.credentialSubjectId,
+  });
 }
 
 /** Record that an OAuth/MCP authorization link was delivered or reused. */
@@ -512,30 +594,21 @@ export async function recordAuthorizationRequested(args: {
   authorizationId: string;
   delivery: "private_link_sent" | "private_link_reused";
 }): Promise<void> {
-  const eventStore = getConversationEventStore();
-  const events = await eventStore.loadCurrentHistory(args.conversationId);
-  if (
-    events.some(
-      (event) =>
-        event.data.type === "authorization_requested" &&
-        event.data.authorizationId === args.authorizationId,
-    )
-  ) {
-    return;
-  }
-  await eventStore.append(args.conversationId, [
-    {
-      data: {
-        type: "authorization_requested",
-        kind: args.kind,
-        provider: args.provider,
-        actorId: args.actorId,
-        authorizationId: args.authorizationId,
-        delivery: args.delivery,
-      },
-      createdAtMs: Date.now(),
+  await appendHostFactOnce({
+    conversationId: args.conversationId,
+    idempotencyKey: `authorization_requested:${args.authorizationId}`,
+    data: {
+      type: "authorization_requested",
+      kind: args.kind,
+      provider: args.provider,
+      actorId: args.actorId,
+      authorizationId: args.authorizationId,
+      delivery: args.delivery,
     },
-  ]);
+    isSameFact: (data) =>
+      data.type === "authorization_requested" &&
+      data.authorizationId === args.authorizationId,
+  });
 }
 
 /** Record completed authorization as a chronological host observation for Pi. */
@@ -546,29 +619,20 @@ export async function recordAuthorizationCompleted(args: {
   actorId: string;
   authorizationId: string;
 }): Promise<void> {
-  const eventStore = getConversationEventStore();
-  const events = await eventStore.loadCurrentHistory(args.conversationId);
-  if (
-    events.some(
-      (event) =>
-        event.data.type === "authorization_completed" &&
-        event.data.authorizationId === args.authorizationId,
-    )
-  ) {
-    return;
-  }
-  await eventStore.append(args.conversationId, [
-    {
-      data: {
-        type: "authorization_completed",
-        kind: args.kind,
-        provider: args.provider,
-        actorId: args.actorId,
-        authorizationId: args.authorizationId,
-      },
-      createdAtMs: Date.now(),
+  await appendHostFactOnce({
+    conversationId: args.conversationId,
+    idempotencyKey: `authorization_completed:${args.authorizationId}`,
+    data: {
+      type: "authorization_completed",
+      kind: args.kind,
+      provider: args.provider,
+      actorId: args.actorId,
+      authorizationId: args.authorizationId,
     },
-  ]);
+    isSameFact: (data) =>
+      data.type === "authorization_completed" &&
+      data.authorizationId === args.authorizationId,
+  });
 }
 
 type AuthenticationAccountChangeArgs = {
@@ -772,78 +836,6 @@ export async function recordSubscribedReplyRoute(args: {
             ? { shouldUnsubscribe: args.shouldUnsubscribe }
             : undefined),
         },
-      },
-    },
-  ]);
-}
-
-/**
- * Load the profile of the newest Turn route or handoff.
- *
- * The projection profile is not enough: a Turn route does not replace history.
- */
-export async function loadLastModelProfile(
-  args: ScopedConversation,
-): Promise<ModelProfile | undefined> {
-  const page = await getConversationEventStore().query(args.conversationId, {
-    limit: 1,
-    types: ["turn_routed", "handoff"],
-  });
-  const data = page.events[0]?.data;
-  return data?.type === "turn_routed" || data?.type === "handoff"
-    ? data.modelProfile
-    : undefined;
-}
-
-/** Load a previously selected model profile for a resumed turn. */
-export async function loadTurnRoute(args: {
-  conversationId: string;
-  turnId: string;
-}): Promise<
-  | (Extract<ConversationEvent["data"], { type: "turn_routed" }> & {
-      seq: number;
-    })
-  | undefined
-> {
-  const event = await getConversationEventStore().loadByIdempotencyKey(
-    args.conversationId,
-    `turn:${args.turnId}:routed`,
-  );
-  if (!event) {
-    return undefined;
-  }
-  if (event.data.type !== "turn_routed" || event.data.turnId !== args.turnId) {
-    throw new Error(`Turn route key for "${args.turnId}" has invalid data`);
-  }
-  return { ...event.data, seq: event.seq };
-}
-
-/** Record the model profile selected for one turn without changing agent history. */
-export async function recordTurnRoute(args: {
-  conversationId: string;
-  turnId: string;
-  modelProfile: ModelProfile;
-  modelId: string;
-  costUsd?: number;
-  reasoningLevel: TurnReasoningLevel;
-  confidence?: number;
-  source: "configured" | "inherited" | "router";
-}): Promise<void> {
-  await getConversationEventStore().append(args.conversationId, [
-    {
-      idempotencyKey: `turn:${args.turnId}:routed`,
-      createdAtMs: Date.now(),
-      data: {
-        type: "turn_routed",
-        turnId: args.turnId,
-        modelProfile: args.modelProfile,
-        modelId: args.modelId,
-        ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined),
-        reasoningLevel: args.reasoningLevel,
-        ...(args.confidence !== undefined
-          ? { confidence: args.confidence }
-          : undefined),
-        source: args.source,
       },
     },
   ]);

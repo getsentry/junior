@@ -9,17 +9,18 @@ import {
   appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
 } from "@/chat/conversations/web-input";
+import { legacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
 import { closeDb } from "@/chat/db";
 import {
   closeConversationFixture,
   createConversationFixture,
 } from "../../../fixtures/conversation";
-import { testViewer } from "../../../fixtures/user";
+import { signedInViewer } from "../../../fixtures/user";
 
 function apiFor(email: string) {
   const app = new Hono<{ Variables: JuniorApiVariables }>();
   app.use("*", async (context, next) => {
-    context.set("viewer", testViewer(email));
+    context.set("viewer", await signedInViewer(email));
     await next();
   });
   app.route("/", createJuniorApi());
@@ -48,10 +49,22 @@ describe("conversation steer pending messages API", () => {
       },
       { conversationStore, queue, state },
     );
+    // Input queued before web Actors used the User id stores the legacy id.
+    const legacyQueued = await appendAndEnqueueWebMessage(
+      {
+        actor: { ...actor, userId: legacyWebActorUserId(actor.email) },
+        conversationId: created.conversationId,
+        idempotencyKey: "steer-api-legacy",
+        message: "legacy",
+      },
+      { conversationStore, queue, state },
+    );
     const path = `http://localhost/api/conversations/${encodeURIComponent(created.conversationId)}/pending-messages`;
     const steer = (email: string) =>
       apiFor(email).request(`${path}/steer`, {
-        body: JSON.stringify({ inboundMessageIds: [queued.messageId] }),
+        body: JSON.stringify({
+          inboundMessageIds: [queued.messageId, legacyQueued.messageId],
+        }),
         headers: { "content-type": "application/json" },
         method: "POST",
       });
@@ -64,7 +77,7 @@ describe("conversation steer pending messages API", () => {
       steerConversationPendingMessagesResponseSchema.parse(
         await response.json(),
       ).steeredInboundMessageIds,
-    ).toEqual([queued.messageId]);
+    ).toEqual([queued.messageId, legacyQueued.messageId]);
 
     const report = conversationPendingMessagesReportSchema.parse(
       await (await apiFor(actor.email).request(path)).json(),
@@ -74,6 +87,7 @@ describe("conversation steer pending messages API", () => {
     ).toEqual([
       ["first", "defer"],
       ["second", "interrupt"],
+      ["legacy", "interrupt"],
     ]);
   });
 });

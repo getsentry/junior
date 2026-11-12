@@ -3,20 +3,63 @@ import { createGitHubGetPullRequestTool } from "../src/tools/get-pull-request";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
 const HEAD_SHA = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
 
-function toolContext(
-  canSubscribe = true,
-  responses: Array<{ body?: unknown; status?: number }> = [
-    {
-      body: {
-        base: { ref: "main" },
-        draft: false,
-        head: { ref: "feat/events", sha: HEAD_SHA },
-        html_url: "https://github.com/getsentry/junior/pull/691",
-        merged: false,
-        number: 691,
-        state: "open",
-        title: "Add events",
-        body: `Add **events**.<!-- Internal template note --><<!-- nested -->!-- hidden -->
+/** A GraphQL checks response for the head commit. */
+function checksResponse(
+  rollup: { contexts: unknown[]; hasNextPage?: boolean } | null,
+  pullRequest: Record<string, unknown> = {},
+) {
+  return {
+    body: {
+      data: {
+        repository: {
+          pullRequest: {
+            autoMergeRequest: null,
+            commits: {
+              nodes: [
+                {
+                  commit: {
+                    statusCheckRollup: rollup && {
+                      contexts: {
+                        nodes: rollup.contexts,
+                        pageInfo: { hasNextPage: rollup.hasNextPage ?? false },
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+            mergeStateStatus: "CLEAN",
+            reviewDecision: null,
+            ...pullRequest,
+          },
+        },
+      },
+    },
+  };
+}
+
+function checkRun(
+  name: string,
+  status: string,
+  conclusion: string | null,
+  isRequired = true,
+) {
+  return { __typename: "CheckRun", conclusion, isRequired, name, status };
+}
+
+/** The REST response for pull request #691. */
+function pullRequestResponse() {
+  return {
+    body: {
+      base: { ref: "main" },
+      draft: false,
+      head: { ref: "feat/events", sha: HEAD_SHA },
+      html_url: "https://github.com/getsentry/junior/pull/691",
+      merged: false,
+      number: 691,
+      state: "open",
+      title: "Add events",
+      body: `Add **events**.<!-- Internal template note --><<!-- nested -->!-- hidden -->
 
 <!-- junior-request-attribution:start -->
 via **Alex**.
@@ -26,15 +69,22 @@ via **Alex**.
 [View Session](https://example.com/session)
 <!-- junior-session-footer:end -->
 <!-- unfinished comment`,
-        user: { login: "alex" },
-        requested_reviewers: [{ login: "sam" }],
-        mergeable: null,
-        changed_files: 8,
-        additions: 120,
-        deletions: 30,
-        updated_at: "2026-09-25T13:00:00Z",
-      },
+      user: { login: "alex" },
+      requested_reviewers: [{ login: "sam" }],
+      mergeable: null,
+      changed_files: 8,
+      additions: 120,
+      deletions: 30,
+      updated_at: "2026-09-25T13:00:00Z",
     },
+  };
+}
+
+function toolContext(
+  canSubscribe = true,
+  responses: Array<{ body?: unknown; status?: number }> = [
+    pullRequestResponse(),
+    checksResponse({ contexts: [checkRun("test", "COMPLETED", "SUCCESS")] }),
   ],
 ) {
   const adapter = createGitHubApiTestAdapter(responses);
@@ -72,12 +122,12 @@ describe("getPullRequest", () => {
           },
         },
       ],
-      headSha: HEAD_SHA,
+      head_sha: HEAD_SHA,
       number: 691,
       subscribable: {
         label: "GitHub PR getsentry/junior#691",
         identifier: "getsentry/junior#691",
-        match: { repo: "getsentry/junior", pullRequest: 691 },
+        match: { repo: "getsentry/junior", pull_request: 691 },
         type: "pull_request",
       },
     });
@@ -86,8 +136,96 @@ describe("getPullRequest", () => {
         operation: "github.pull.get",
         provider: "github",
       }),
+      expect.objectContaining({
+        operation: "github.pull.checks.get",
+        provider: "github",
+      }),
     ]);
   });
+
+  it("returns the required checks and the merge state", async () => {
+    const { adapter, tool } = toolContext(true, [
+      pullRequestResponse(),
+      checksResponse(
+        {
+          contexts: [
+            checkRun("test", "COMPLETED", "SUCCESS"),
+            checkRun("lint", "IN_PROGRESS", null),
+            checkRun("coverage", "COMPLETED", "FAILURE", false),
+            {
+              __typename: "StatusContext",
+              context: "deploy/preview",
+              isRequired: true,
+              state: "FAILURE",
+            },
+          ],
+          hasNextPage: true,
+        },
+        {
+          autoMergeRequest: { enabledAt: "2026-09-25T13:00:00Z" },
+          mergeStateStatus: "BLOCKED",
+          reviewDecision: "APPROVED",
+        },
+      ),
+    ]);
+
+    const result = await tool.execute?.(
+      { repo: "getsentry/junior", number: 691 },
+      { toolCallId: "get-pr-checks" },
+    );
+
+    expect(result).toMatchObject({
+      checks: {
+        auto_merge: true,
+        failing: ["deploy/preview"],
+        incomplete: true,
+        merge_state: "BLOCKED",
+        passing: ["test"],
+        pending: ["lint"],
+        required: "failing",
+        review_decision: "APPROVED",
+      },
+    });
+    expect(await adapter.requests()[1]!.request.clone().json()).toMatchObject({
+      operationName: "PullRequestChecks",
+      variables: { name: "junior", number: 691, owner: "getsentry" },
+    });
+  });
+
+  it.each([
+    { name: "no checks", rollup: null },
+    {
+      name: "only checks that are not required",
+      rollup: {
+        contexts: [checkRun("coverage", "COMPLETED", "SUCCESS", false)],
+      },
+    },
+  ])(
+    "reports that no required check reported when the head has $name",
+    async ({ rollup }) => {
+      const { tool } = toolContext(true, [
+        pullRequestResponse(),
+        checksResponse(rollup, { mergeStateStatus: "BLOCKED" }),
+      ]);
+
+      const result = await tool.execute?.(
+        { repo: "getsentry/junior", number: 691 },
+        { toolCallId: "get-pr-no-required-checks" },
+      );
+
+      expect(result).toMatchObject({
+        checks: {
+          auto_merge: false,
+          failing: [],
+          merge_state: "BLOCKED",
+          passing: [],
+          pending: [],
+          required: "not_reported",
+        },
+      });
+      expect(result).not.toHaveProperty("checks.incomplete");
+    },
+  );
 
   it("omits the hint when the host cannot create subscriptions", async () => {
     const { tool } = toolContext(false);

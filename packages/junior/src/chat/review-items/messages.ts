@@ -3,9 +3,13 @@ import { and, inArray, isNull } from "drizzle-orm";
 import {
   acceptsWebMessages,
   appendAndEnqueueWebMessage,
-  webActorFromEmail,
+  webActorFromUser,
 } from "@/chat/conversations/web-input";
-import { getConversationStore, getDb } from "@/chat/db";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
@@ -17,6 +21,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { formatUserInputAnswer } from "@/chat/tools/runtime/user-input-request";
 import { juniorConversations } from "@/db/schema";
+import type { ReviewItemChangeRecord } from "./change-record";
 import type { ReviewItem } from "./store";
 
 /** One change to a Review item that linked Conversations learn about. */
@@ -26,6 +31,19 @@ export type ReviewItemChange =
   | { kind: "taken"; user: User }
   | { kind: "replied"; who: string }
   | { kind: "closed"; reason: string };
+
+/**
+ * Return the record that a message about a person change carries. A reply or
+ * an agent close is not a person change, so it has no record.
+ */
+export function reviewItemChangeRecord(
+  item: ReviewItem,
+  change: ReviewItemChange,
+): ReviewItemChangeRecord | undefined {
+  return "user" in change
+    ? { kind: change.kind, reviewItemId: item.id }
+    : undefined;
+}
 
 function personName(user: User): string {
   return user.displayName ? `${user.displayName} (${user.email})` : user.email;
@@ -95,25 +113,64 @@ async function openConversationIds(
   return rows.map((row) => row.conversationId).sort();
 }
 
-function messageKey(item: ReviewItem, change: ReviewItemChange): string {
-  // Only the first close wins, so one close message per item is enough. Each
-  // take is a new change.
+// A change that only records a Message. It starts no Turn.
+type RecordedChange = Extract<
+  ReviewItemChange,
+  { kind: "taken" } | { kind: "dismissed" }
+>;
+
+function isRecordedChange(change: ReviewItemChange): change is RecordedChange {
+  return change.kind === "taken" || change.kind === "dismissed";
+}
+
+// Each take has its own key. A dismiss is a close, so it uses the close key.
+function recordedMessageId(item: ReviewItem, change: RecordedChange): string {
   return change.kind === "taken"
     ? `review-item:${item.id}:taken:${change.user.id}:${item.updatedAt.getTime()}`
     : `review-item:${item.id}:closed`;
 }
 
-function eventMessageText(text: string, change: ReviewItemChange): string {
-  if (!("user" in change)) return text;
-  // This Conversation does not take web Messages, so Junior relays the
-  // person action as an event.
-  return [
-    "[review item]",
-    "",
-    "Junior relays this person action from the review desk. It does not give user approval in this Conversation.",
-    "",
-    text,
-  ].join("\n");
+/**
+ * Save a take or a dismiss as a handled Message in one Conversation. Neither
+ * starts a Turn or reaches the model: neither is a decision. The dashboard
+ * shows the Message from its record. A retry is safe, because the Message id
+ * is the change key.
+ */
+async function recordReviewItemChange(args: {
+  change: RecordedChange;
+  conversationId: string;
+  item: ReviewItem;
+  nowMs: number;
+}): Promise<void> {
+  const { change } = args;
+  const messageId = recordedMessageId(args.item, change);
+  await getConversationEventStore().append(args.conversationId, [
+    {
+      idempotencyKey: `message:${messageId}`,
+      createdAtMs: args.nowMs,
+      data: {
+        type: "message",
+        messageId,
+        role: "user",
+        text: renderReviewItemMessage(args.item, change),
+        meta: {
+          author: {
+            email: change.user.email,
+            ...(change.user.displayName
+              ? { fullName: change.user.displayName }
+              : undefined),
+          },
+          replied: false,
+          reviewItemChanges: [reviewItemChangeRecord(args.item, change)],
+        },
+      },
+    },
+    {
+      idempotencyKey: `message:${messageId}:handled`,
+      createdAtMs: args.nowMs,
+      data: { type: "message_handled", messageId },
+    },
+  ]);
 }
 
 async function sendOne(args: {
@@ -124,29 +181,40 @@ async function sendOne(args: {
   queue: ConversationWorkQueue;
   text: string;
 }): Promise<void> {
-  const key = messageKey(args.item, args.change);
+  if (isRecordedChange(args.change)) {
+    await recordReviewItemChange({
+      change: args.change,
+      conversationId: args.conversationId,
+      item: args.item,
+      nowMs: args.nowMs,
+    });
+    return;
+  }
+  // Only the first close wins, so one close message per item is enough.
+  const key = `review-item:${args.item.id}:closed`;
+  const record = reviewItemChangeRecord(args.item, args.change);
   if ("user" in args.change) {
     const conversation = await getConversationStore().get({
       conversationId: args.conversationId,
     });
-    if (acceptsWebMessages(args.conversationId, conversation?.destination)) {
+    if (conversation && acceptsWebMessages(conversation)) {
       // A person action comes from that person, like a reply in Slack.
       await appendAndEnqueueWebMessage(
         {
-          actor: webActorFromEmail(args.change.user.email, {
-            ...(args.change.user.displayName
-              ? { fullName: args.change.user.displayName }
-              : undefined),
-          }),
+          actor: webActorFromUser(args.change.user),
           conversationId: args.conversationId,
           idempotencyKey: key,
           message: args.text,
+          reviewItemChange: record,
         },
         { nowMs: args.nowMs, queue: args.queue },
       );
       return;
     }
   }
+  // A local CLI Conversation is like web, but it has no identity for the
+  // person, so the change arrives as a system Event. Its record still gives
+  // the same prompt input as on web.
   const metadata: EventMailboxMetadata = {
     kind: "event",
     event: {
@@ -167,7 +235,8 @@ async function sendOne(args: {
         authorId: EVENT_AUTHOR_ID,
         authorIdentityId: SYSTEM_IDENTITY_ID,
         metadata,
-        text: eventMessageText(args.text, args.change),
+        ...(record ? { reviewItemChange: record } : undefined),
+        text: args.text,
       },
       receivedAtMs: args.nowMs,
       source: "event",
@@ -181,7 +250,8 @@ async function sendOne(args: {
  * Send one change to every open linked Conversation, except the
  * Conversation that made the change. A Conversation is open until Junior
  * purges its transcript; archive is only a per-viewer list state. Each
- * message starts a new Turn. Repeat calls for the same change are safe.
+ * message starts a new Turn, except a take or a dismiss, which is only
+ * recorded. Repeat calls for the same change are safe.
  */
 export async function sendReviewItemMessages(args: {
   change: ReviewItemChange;

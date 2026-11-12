@@ -1,4 +1,5 @@
 import {
+  declaredEventKeys,
   eventMatches,
   type EventInput,
   type EventMatch,
@@ -122,8 +123,18 @@ function fixtureDeliveries(
     ),
     ...["opened", "closed", "reopened"].map((action) => ({
       eventName: "issues",
-      body: { action, issue: { number: scope.issue }, repository },
+      body: { action, issue: { number: scope.issue }, repository, sender },
     })),
+    {
+      eventName: "issues",
+      body: {
+        action: "labeled",
+        issue: { number: scope.issue },
+        label: { name: "Junior: repro" },
+        repository,
+        sender,
+      },
+    },
     {
       eventName: "issue_comment",
       body: {
@@ -441,7 +452,8 @@ describe("GitHub event data", () => {
     ).toEqual([]);
     // An event automation copies `match` from the tool result, and a Watch
     // copies `identifier`. Both must select the same events. Core compares
-    // identifiers after `normalizeIdentifier`.
+    // identifiers after `normalizeIdentifier`, and reads the snake_case
+    // match keys as declared keys.
     const normalize = githubPlugin().events!.normalizeIdentifier!;
     const byIdentifier = (key: "issues" | "others") =>
       new Map(
@@ -449,7 +461,7 @@ describe("GitHub event data", () => {
           .flatMap((scope) => scopeSubscribables(scope)[key])
           .map((resource) => [
             normalize(resource!.identifier),
-            resource!.match,
+            resource!.match && declaredEventKeys(resource!.match),
           ]),
       );
     const issues = byIdentifier("issues");

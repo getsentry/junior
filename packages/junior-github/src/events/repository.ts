@@ -35,7 +35,10 @@ export const GITHUB_REPOSITORY_EVENTS = [
 export const GITHUB_REPOSITORY_SUGGESTED_EVENTS = [
   "issue.opened",
   "pull_request.opened",
-  ...GITHUB_ISSUE_SUGGESTED_EVENTS,
+  // Label, assignee, and edit updates are too frequent across a repository.
+  ...GITHUB_ISSUE_SUGGESTED_EVENTS.filter(
+    (eventType) => eventType !== "issue.updated",
+  ),
   ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
 ] as const;
 
@@ -52,8 +55,8 @@ export function gitHubRepositorySubscribable(input: {
   return {
     ...gitHubRepositoryResource(input),
     match: { repo: gitHubRepoDataSchema.parse(input.repo) },
-    suggestedEvents: [...GITHUB_REPOSITORY_SUGGESTED_EVENTS],
-    supportedEvents: [...GITHUB_REPOSITORY_EVENTS],
+    suggested_events: [...GITHUB_REPOSITORY_SUGGESTED_EVENTS],
+    supported_events: [...GITHUB_REPOSITORY_EVENTS],
     type: "repository",
   };
 }

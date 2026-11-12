@@ -79,6 +79,7 @@ function SheetContent({
                     closeButtonProps?.className,
                   )}
                   size="icon"
+                  variant="ghost"
                 />
               }
             >

@@ -1,4 +1,12 @@
-import { type ReactNode, createContext, useContext } from "react";
+import {
+  type ReactNode,
+  type RefObject,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import type { DecorationItem } from "shiki/bundle/web";
 
 import {
@@ -7,6 +15,7 @@ import {
 } from "./transcriptRenderModel";
 import { transcriptFailureSearchText } from "./transcriptFailure";
 import { stringifyPartValue } from "../format";
+import { isPlatformShortcut } from "../keyboard";
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
@@ -17,12 +26,20 @@ type TranscriptSearchContextValue = {
   normalizedQuery: string;
   /** True when the normalised query is non-empty. */
   active: boolean;
+  /** Index of the current match among the matching rows. */
+  match: number;
+  /**
+   * The transcript list reports how many rows match, and how many matches
+   * loaded history put before the first one it showed.
+   */
+  onMatches?(count: number, prepended: number): void;
 };
 
 const defaultValue: TranscriptSearchContextValue = {
   query: "",
   normalizedQuery: "",
   active: false,
+  match: 0,
 };
 
 const TranscriptSearchContext =
@@ -30,15 +47,25 @@ const TranscriptSearchContext =
 
 export function TranscriptSearchProvider({
   children,
+  match = 0,
+  onMatches,
   query,
 }: {
   children: ReactNode;
+  match?: number;
+  onMatches?(count: number, prepended: number): void;
   query: string;
 }) {
   const normalizedQuery = query.trim().toLowerCase();
   return (
     <TranscriptSearchContext.Provider
-      value={{ query, normalizedQuery, active: normalizedQuery.length > 0 }}
+      value={{
+        query,
+        normalizedQuery,
+        active: normalizedQuery.length > 0,
+        match,
+        onMatches,
+      }}
     >
       {children}
     </TranscriptSearchContext.Provider>
@@ -47,6 +74,94 @@ export function TranscriptSearchProvider({
 
 export function useTranscriptSearch() {
   return useContext(TranscriptSearchContext);
+}
+
+/** The current match of one search box, and how many rows match. */
+export type TranscriptSearchMatch = ReturnType<typeof useTranscriptSearchMatch>;
+
+/**
+ * Track the current match for `query`. A new query starts at the first
+ * match. Steps wrap around at both ends.
+ */
+export function useTranscriptSearchMatch(query: string) {
+  const [position, setPosition] = useState({ index: 0, query });
+  const [count, setCount] = useState(0);
+  const index =
+    position.query === query
+      ? Math.max(0, Math.min(position.index, count - 1))
+      : 0;
+  const setMatches = useCallback(
+    (next: number, prepended: number) => {
+      setCount(next);
+      if (prepended === 0) return;
+      // Earlier history put matches before the current one. Keep the same
+      // row current.
+      setPosition((current) => ({
+        index: (current.query === query ? current.index : 0) + prepended,
+        query,
+      }));
+    },
+    [query],
+  );
+  return {
+    count,
+    index,
+    setMatches,
+    step(delta: 1 | -1) {
+      if (count === 0) return;
+      setPosition({ index: (index + delta + count) % count, query });
+    },
+    /** Forget the current match, such as when another transcript opens. */
+    reset() {
+      setPosition({ index: 0, query: "" });
+      setCount(0);
+    },
+  };
+}
+
+// ─── Find shortcut ───────────────────────────────────────────────────────────
+
+/**
+ * Take ⌘F / Ctrl+F for transcript search. The first press opens or focuses
+ * the search box; a press while the search box has focus goes to the
+ * browser's find. Only the search in the front layer (the page, or the
+ * topmost drawer or dialog) takes the shortcut.
+ */
+export function useTranscriptFindShortcut(props: {
+  /** Element in the search's layer, such as its toggle button. */
+  anchorRef: RefObject<HTMLElement | null>;
+  inputRef: RefObject<HTMLInputElement | null>;
+  onOpen(): void;
+  open: boolean;
+}) {
+  const { anchorRef, inputRef, onOpen, open } = props;
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || !isPlatformShortcut(event, "f")) return;
+      const input = inputRef.current;
+      // A new press in the search box goes to the browser's find. A key
+      // repeat from holding the keys does not.
+      if (input && document.activeElement === input && !event.repeat) return;
+      if (!inFrontLayer(anchorRef.current)) return;
+      event.preventDefault();
+      if (event.repeat) return;
+      if (open && input) {
+        input.focus();
+        input.select();
+        return;
+      }
+      onOpen();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [anchorRef, inputRef, onOpen, open]);
+}
+
+function inFrontLayer(element: HTMLElement | null): boolean {
+  if (!element) return false;
+  const modals = document.querySelectorAll("[data-dashboard-modal]");
+  const front = modals[modals.length - 1] ?? null;
+  return element.closest("[data-dashboard-modal]") === front;
 }
 
 // ─── Inline highlighting ─────────────────────────────────────────────────────
@@ -72,7 +187,7 @@ export function HighlightText({ text }: { text: string }) {
     parts.push(
       <mark
         key={key++}
-        className="rounded-[2px] bg-amber-400/20 px-0.5 text-inherit not-italic"
+        className="rounded-[2px] bg-amber-400/20 text-inherit not-italic"
       >
         {text.slice(idx, idx + normalizedQuery.length)}
       </mark>,
@@ -194,17 +309,9 @@ export function entryMatchesSearch(
 
   if (entry.kind === "context") {
     const event = entry.part.event;
-    return event.type === "handoff"
-      ? [
-          "model handoff",
-          event.modelProfile,
-          event.modelId,
-          event.reasoningLevel,
-          event.summary,
-        ].some((value) => textContains(value, normalizedQuery))
-      : ["context compacted", event.summary].some((value) =>
-          textContains(value, normalizedQuery),
-        );
+    return ["context compacted", event.summary].some((value) =>
+      textContains(value, normalizedQuery),
+    );
   }
 
   return false;

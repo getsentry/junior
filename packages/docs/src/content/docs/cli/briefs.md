@@ -10,7 +10,7 @@ related:
   - /concepts/conversations/
 ---
 
-Use `junior briefs` to inspect and tune Brief generation without changing production data. A Brief records the intent, outcome, decisions, open decisions, durable facts, and evidence links for one Conversation.
+Use `junior briefs` to inspect and tune Brief generation without changing production data. A Brief records the intent, outcome, decisions, durable facts, and evidence links for one Conversation.
 
 ## Pull snapshots
 
@@ -29,7 +29,7 @@ You can pull any public Conversation. You can pull a private Conversation only w
 
 ## Generate Briefs
 
-Run the default prompt and the app's configured default model against a snapshot:
+Run the default prompt and the app's configured fast model against a snapshot:
 
 ```bash
 pnpm exec junior briefs run ./brief-snapshots/<conversation-id>.snapshot.json \
@@ -38,6 +38,6 @@ pnpm exec junior briefs run ./brief-snapshots/<conversation-id>.snapshot.json \
 
 The command writes `<conversation-id>.brief.json` and `<conversation-id>.brief.md`. The Markdown file ends with an evidence check. It shows link counts, dropped model URLs, and model cost.
 
-Without `--model`, the command resolves the model for the current default profile when the run starts. Use `--model <id>` or `--prompt <file>` to compare generation settings. Add `--turn-by-turn` to generate one version for each completed turn in the snapshot.
+Without `--model`, the command uses the app's fast model, the same model that production Briefs use. Use `--model <id>` or `--prompt <file>` to compare generation settings. Add `--turn-by-turn` to generate one version for each completed turn in the snapshot.
 
 Brief generation needs Vercel OIDC or `AI_GATEWAY_API_KEY`. Snapshot download needs only the dashboard token.

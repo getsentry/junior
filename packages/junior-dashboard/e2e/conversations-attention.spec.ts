@@ -1,10 +1,12 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
+import { viewAsParticipant } from "./conversationMenu";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const WAITING_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
-const FINISHED_CONVERSATION_ID = "agent-dispatch:event-1";
+
+const READY_TITLE = "Ready to merge · #42";
 
 const reviewItem = {
   assignedToEveryone: false,
@@ -38,7 +40,10 @@ const reviewItem = {
   visibility: "public" as const,
 };
 
-/** Make one conversation wait on the viewer with two open Review items. */
+/**
+ * Make one conversation wait on the viewer with two open Review items: a
+ * GitHub ask, then the agent's question.
+ */
 async function mockWaitingConversation(
   page: Page,
   waitingId = WAITING_CONVERSATION_ID,
@@ -52,8 +57,11 @@ async function mockWaitingConversation(
           conversations: [
             {
               conversationId: waitingId,
-              count: 2,
-              title: reviewItem.title,
+              items: [
+                { plugin: "github", title: READY_TITLE },
+                { title: reviewItem.title },
+              ],
+              waitingSince: reviewItem.createdAt,
             },
           ],
         },
@@ -81,99 +89,232 @@ async function mockWaitingConversation(
   });
 }
 
+/** Label of the sidebar section that lists the first row matching `title`. */
+async function sidebarSectionOf(
+  sidebar: Locator,
+  title: RegExp,
+): Promise<string | undefined> {
+  const items = await sidebar
+    .locator("button[aria-expanded], a")
+    .evaluateAll((elements) =>
+      elements.map((element) => ({
+        heading: element.tagName === "BUTTON",
+        text: element.textContent?.trim() ?? "",
+      })),
+    );
+  let section: string | undefined;
+  for (const item of items) {
+    if (item.heading) section = item.text;
+    else if (title.test(item.text)) return section;
+  }
+  return undefined;
+}
+
+/**
+ * Serve versions and waiting conversations that a test can change, so the
+ * feed poll picks up who waits.
+ */
+async function mockChangingWaiting(page: Page) {
+  let waiting = false;
+  const versions = {
+    conversations: "feed-1",
+    reviewItems: "review-1",
+    spend: "spend-1",
+  };
+  await page.route("**/api/versions*", (route) =>
+    route.fulfill({ json: versions }),
+  );
+  await page.route("**/api/review-items/waiting-conversations", (route) =>
+    route.fulfill({
+      json: {
+        conversations: waiting
+          ? [
+              {
+                conversationId: WAITING_CONVERSATION_ID,
+                items: [{ title: reviewItem.title }],
+                waitingSince: reviewItem.createdAt,
+              },
+            ]
+          : [],
+      },
+    }),
+  );
+  /** Change who waits, and move the token the poll reads. */
+  return (next: boolean) => {
+    waiting = next;
+    versions.reviewItems = `review-${next ? 2 : 3}`;
+  };
+}
+
 test.describe("conversation sections", () => {
-  test("puts waiting conversations in Needs attention first", async ({
+  test("puts waiting conversations in Needs you first", async ({
     page,
     dashboard,
   }) => {
     await mockWaitingConversation(page);
     await page.goto(dashboard.baseURL);
 
-    const list = page.getByRole("list", { name: "Your conversations" });
-    const attention = list.getByRole("button", { name: "Needs attention" });
-    const waitingCard = list.getByRole("listitem").filter({
-      has: page.getByRole("heading", { name: "Checkout latency triage" }),
+    const sidebar = page.getByRole("navigation", {
+      name: "Your conversations",
     });
-    await expect(list.getByRole("button").first()).toHaveText(
-      /^Needs attention/,
-    );
-    await expect(list.getByRole("listitem").first()).toContainText(
-      "Checkout latency triage",
+    const attention = sidebar.getByRole("button", { name: "Needs you" });
+    const waitingRow = sidebar.getByRole("link", {
+      name: /Checkout latency triage/,
+    });
+    await expect(sidebar.getByRole("button").first()).toHaveText(/^Needs you/);
+    await expect(sidebar.getByRole("link").first()).toHaveAccessibleName(
+      /Checkout latency triage/,
     );
     await expect(
-      waitingCard.getByRole("img", { name: "Waiting on you" }),
+      waitingRow.getByRole("img", { name: "Waiting on you" }),
     ).toBeVisible();
-    await screenshot(page, "conversations-needs-attention");
+    await screenshot(page, "conversations-needs-you");
 
     await attention.click();
     await expect(attention).toHaveAttribute("aria-expanded", "false");
-    await expect(waitingCard).toHaveCount(0);
+    await expect(waitingRow).toHaveCount(0);
     await screenshot(page, "conversations-sections-collapsed");
 
     await page.reload();
     await expect(attention).toHaveAttribute("aria-expanded", "false");
-    await expect(waitingCard).toHaveCount(0);
+    await expect(waitingRow).toHaveCount(0);
 
     await attention.click();
-    await expect(waitingCard).toBeVisible();
+    await expect(waitingRow).toBeVisible();
   });
 
-  test("keeps an opened unread conversation in place until another opens", async ({
+  test("pinning moves a conversation to Pinned only", async ({
     page,
     dashboard,
   }) => {
-    // The viewer last read the conversation before its final activity. Seed
-    // it once, before the app reads storage on the first load.
-    await page.addInitScript((conversationId) => {
-      if (window.sessionStorage.getItem("qa:seeded")) return;
-      window.sessionStorage.setItem("qa:seeded", "true");
-      window.localStorage.setItem(
-        "junior:conversation-finished-indicators",
-        JSON.stringify({
-          [conversationId]: { lastReadAt: "2026-08-07T08:00:00.000Z" },
-        }),
-      );
-    }, FINISHED_CONVERSATION_ID);
+    await mockWaitingConversation(page, ACTIVE_CONVERSATION_ID);
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
+    );
+    const sidebar = page.getByRole("navigation", {
+      name: "Your conversations",
+    });
+    const activeRows = sidebar.getByRole("link", {
+      name: /Investigate checkout latency/,
+    });
+    await expect(sidebar.getByRole("button").first()).toHaveText(/^Needs you/);
+
+    // Pin from the row's hover action in the sidebar.
+    const pinRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "PATCH" && request.url().endsWith("/pin"),
+    );
+    await activeRows.hover();
+    await sidebar
+      .getByRole("button", { name: "Pin Investigate checkout latency" })
+      .click();
+    expect((await pinRequest).postDataJSON()).toEqual({ pinned: true });
+
+    await expect(sidebar.getByRole("button").first()).toHaveText(/^Pinned/);
+    // Pinned wins over Needs you, so the row shows only in Pinned.
+    await expect(activeRows).toHaveCount(1);
+    await expect
+      .poll(() => sidebarSectionOf(sidebar, /Investigate checkout latency/))
+      .toMatch(/^Pinned/);
+    await expect(
+      activeRows.getByRole("img", { name: "Waiting on you" }),
+    ).toBeVisible();
+    await activeRows.hover();
+    await expect(
+      sidebar.getByRole("button", {
+        name: "Unpin Investigate checkout latency",
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await screenshot(page, "conversations-pinned", {
+      lightTheme: true,
+      view: "desktop",
+    });
+
+    await page.reload();
+    await expect(sidebar.getByRole("button").first()).toHaveText(/^Pinned/);
+
+    // Unpin from the conversation `⋯` menu.
+    await page.getByRole("button", { name: "Conversation menu" }).click();
+    await page.getByRole("menuitem", { name: "Unpin", exact: true }).click();
+    await expect(
+      page.getByRole("menuitem", { name: "Pin", exact: true }),
+    ).toBeVisible();
+    await expect(sidebar.getByRole("button").first()).toHaveText(/^Needs you/);
+  });
+
+  test("lists the rows of the conversation menu in the row menu", async ({
+    page,
+    dashboard,
+  }) => {
+    await viewAsParticipant(page);
     await page.goto(dashboard.baseURL);
 
-    const list = page.getByRole("list", { name: "Your conversations" });
-    const finishedCard = list.getByRole("listitem").filter({
-      has: page.getByRole("heading", { name: "Closed issue summary" }),
-    });
-    await expect(list.getByRole("listitem").first()).toContainText(
-      "Closed issue summary",
-    );
-    await expect(
-      finishedCard.getByRole("img", { name: "Finished since last viewed" }),
-    ).toBeVisible();
-
-    await finishedCard
-      .getByRole("link", { name: "Open Closed issue summary" })
-      .click();
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
     });
     const finishedRow = sidebar.getByRole("link", {
       name: /Closed issue summary/,
     });
-    await expect(finishedRow).toHaveAttribute("aria-current", "page");
-    // Read now, but held at the top so the row does not move under the pointer.
-    await expect(sidebar.getByRole("link").first()).toHaveAccessibleName(
-      /Closed issue summary/,
-    );
-    await expect(sidebar.getByRole("img", { name: "Unread" })).toHaveCount(0);
+    await finishedRow.click({ button: "right" });
+    // The row menu shows the rows of the `⋯` menu, in the same order.
+    await expect(page.getByRole("menuitem")).toHaveText([
+      "Share",
+      "Copy as Markdown",
+      "Open event log",
+      "Pin",
+      "Rename",
+      "Subscribe",
+      "Archive",
+    ]);
+    await screenshot(page, "conversation-sidebar-context-menu", {
+      lightTheme: true,
+      view: "desktop",
+    });
+  });
 
-    await sidebar
-      .getByRole("link", { name: /Checkout latency triage/ })
-      .click();
-    await expect(sidebar.getByRole("link").first()).not.toHaveAccessibleName(
-      /Closed issue summary/,
-    );
-
+  test("renames a conversation from the row menu", async ({
+    page,
+    dashboard,
+  }) => {
+    await viewAsParticipant(page);
     await page.goto(dashboard.baseURL);
-    await expect(
-      finishedCard.getByRole("img", { name: "Finished since last viewed" }),
-    ).toHaveCount(0);
+    const sidebar = page.getByRole("navigation", {
+      name: "Your conversations",
+    });
+    const renameRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "PATCH" && request.url().endsWith("/title"),
+    );
+    await sidebar
+      .getByRole("link", { name: /Closed issue summary/ })
+      .click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Rename" }).click();
+    const titleInput = page.getByRole("textbox", { name: "Title" });
+    await expect(titleInput).toBeFocused();
+    await expect(titleInput).toHaveValue("Closed issue summary");
+    await titleInput.fill("  Closed issue follow-up ");
+    await page.getByRole("button", { name: "Save" }).click();
+    expect((await renameRequest).postDataJSON()).toEqual({
+      title: "Closed issue follow-up",
+    });
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    const renamedRow = sidebar.getByRole("link", {
+      name: /Closed issue follow-up/,
+    });
+    await expect(renamedRow).toBeVisible();
+
+    await page.reload();
+    await expect(renamedRow).toBeVisible();
+
+    // The `⋯` menu renames too.
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
+    );
+    await page.getByRole("button", { name: "Conversation menu" }).click();
+    await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Title" })).toHaveValue(
+      "Investigate checkout latency",
+    );
   });
 
   test("the sidebar review chip opens details at Needs you", async ({
@@ -192,18 +333,27 @@ test.describe("conversation sections", () => {
     const waitingRow = sidebar.getByRole("link", {
       name: /Investigate checkout latency/,
     });
-    const chip = sidebar.getByRole("link", {
-      name: /Approve the checkout fix/,
-    });
-    await expect(sidebar.getByRole("button").first()).toHaveText(
-      /^Needs attention/,
-    );
+    const chip = sidebar.getByRole("link", { name: /Ready to merge · #42/ });
+    await expect(sidebar.getByRole("button").first()).toHaveText(/^Needs you/);
     await expect(
       waitingRow.getByRole("img", { name: "Waiting on you" }),
     ).toBeVisible();
     await expect(chip).toContainText("+1 more");
+    // The newest item comes from GitHub, so the chip shows its mark.
+    await expect(chip.getByRole("img", { name: "GitHub" })).toBeVisible();
+    await expect(chip).not.toHaveAttribute("title");
     await screenshot(page, "conversation-sidebar-review-chip", {
       lightTheme: true,
+      view: "desktop",
+    });
+    // The tooltip lists every waiting item in full.
+    await chip.hover();
+    const tooltip = page.getByRole("tooltip");
+    await expect(tooltip.getByRole("listitem")).toHaveText([
+      READY_TITLE,
+      reviewItem.title,
+    ]);
+    await screenshot(page, "conversation-sidebar-review-chip-tooltip", {
       view: "desktop",
     });
 
@@ -243,9 +393,159 @@ test.describe("conversation sections", () => {
       .getByRole("button", { name: "Close conversation details" })
       .click();
 
-    const attention = sidebar.getByRole("button", { name: "Needs attention" });
+    const attention = sidebar.getByRole("button", { name: "Needs you" });
     await attention.click();
     await expect(attention).toHaveAttribute("aria-expanded", "false");
     await expect(waitingRow).toHaveCount(0);
+  });
+});
+
+test.describe("stable conversation list", () => {
+  test("holds the order under the pointer and offers the new one", async ({
+    page,
+    dashboard,
+  }) => {
+    // Real versions poll interval.
+    test.setTimeout(60_000);
+    const setWaiting = await mockChangingWaiting(page);
+    await page.goto(dashboard.baseURL);
+    const sidebar = page.getByRole("navigation", {
+      name: "Your conversations",
+    });
+    const waitingRow = sidebar.getByRole("link", {
+      name: /Checkout latency triage/,
+    });
+    // An open menu hides the sidebar from the accessibility tree.
+    const rowSection = () =>
+      sidebarSectionOf(
+        page.locator('[role="navigation"][aria-label="Your conversations"]'),
+        /Checkout latency triage/,
+      );
+    const pill = page.getByRole("button", { name: "1 updated" });
+    await expect(waitingRow).toBeVisible();
+    await expect.poll(rowSection).toMatch(/^(?!Needs you)/);
+
+    // While the pointer is on the list, the row keeps its place. Its marker
+    // still updates, and the pill offers the new order.
+    await waitingRow.hover();
+    setWaiting(true);
+    await expect(pill).toBeVisible({ timeout: 15_000 });
+    await expect(
+      waitingRow.getByRole("img", { name: "Waiting on you" }),
+    ).toBeVisible();
+    expect(await rowSection()).not.toMatch(/^Needs you/);
+    await screenshot(page, "conversations-list-held", {
+      lightTheme: true,
+      view: "desktop",
+    });
+
+    // A row menu opens outside the list, and it still holds the order.
+    await waitingRow.click({ button: "right" });
+    await page.getByRole("menu").hover();
+    await expect(pill).toBeVisible();
+    expect(await rowSection()).not.toMatch(/^Needs you/);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+
+    // A pill applied from the keyboard lets go of focus, so the next update
+    // applies with no pointer on the list.
+    await page.mouse.move(1_200, 500);
+    await pill.focus();
+    await page.keyboard.press("Enter");
+    await expect.poll(rowSection).toMatch(/^Needs you/);
+    setWaiting(false);
+    await expect
+      .poll(rowSection, { timeout: 15_000 })
+      .toMatch(/^(?!Needs you)/);
+    await expect(pill).toHaveCount(0);
+
+    // Hold again, then apply with a click.
+    await waitingRow.hover();
+    setWaiting(true);
+    await expect(pill).toBeVisible({ timeout: 15_000 });
+    await pill.click();
+    await expect.poll(rowSection).toMatch(/^Needs you/);
+    await expect(pill).toHaveCount(0);
+
+    // Leaving the list, pointer and focus both, applies the new order.
+    setWaiting(false);
+    await expect(pill).toBeVisible({ timeout: 15_000 });
+    expect(await rowSection()).toMatch(/^Needs you/);
+    await page.mouse.move(1_200, 500);
+    await page.evaluate(() => (document.activeElement as HTMLElement).blur());
+    await expect.poll(rowSection).toMatch(/^(?!Needs you)/);
+    await expect(pill).toHaveCount(0);
+  });
+
+  test("holds the order for a pointer on the list edge through the first load", async ({
+    page,
+    dashboard,
+  }) => {
+    // Real versions poll interval.
+    test.setTimeout(60_000);
+    const setWaiting = await mockChangingWaiting(page);
+    let releaseFeed!: () => void;
+    const feedGate = new Promise<void>((resolve) => (releaseFeed = resolve));
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        await feedGate;
+        await route.fallback();
+      },
+    );
+    await page.goto(dashboard.baseURL);
+    const sidebar = page.getByRole("navigation", {
+      name: "Your conversations",
+    });
+    // The pointer comes to rest on the list's side padding while its rows
+    // load.
+    await page
+      .locator('[data-slot="scroll-area"]')
+      .first()
+      .hover({ position: { x: 4, y: 120 } });
+    releaseFeed();
+    await expect(
+      sidebar.getByRole("link", { name: /Checkout latency triage/ }),
+    ).toBeVisible();
+
+    setWaiting(true);
+    await expect(page.getByRole("button", { name: "1 updated" })).toBeVisible({
+      timeout: 15_000,
+    });
+    expect(
+      await sidebarSectionOf(
+        page.locator('[role="navigation"][aria-label="Your conversations"]'),
+        /Checkout latency triage/,
+      ),
+    ).not.toMatch(/^Needs you/);
+  });
+
+  test("holds the home list order under the pointer", async ({
+    page,
+    dashboard,
+  }) => {
+    // Real versions poll interval.
+    test.setTimeout(60_000);
+    const setWaiting = await mockChangingWaiting(page);
+    // A narrow window with a mouse shows the home list, not the sidebar.
+    await page.setViewportSize({ width: 700, height: 900 });
+    await page.goto(dashboard.baseURL);
+    const card = page.getByRole("link", {
+      name: "Open Checkout latency triage",
+    });
+    const inNeedsYou = page
+      .locator("section:has(#conversation-section-needs-you)")
+      .getByRole("link", { name: "Open Checkout latency triage" });
+    const pill = page.getByRole("button", { name: "1 updated" });
+    await expect(card).toBeVisible();
+    await expect(inNeedsYou).toHaveCount(0);
+
+    await card.hover();
+    setWaiting(true);
+    await expect(pill).toBeVisible({ timeout: 15_000 });
+    await expect(inNeedsYou).toHaveCount(0);
+    await pill.click();
+    await expect(inNeedsYou).toBeVisible();
+    await expect(pill).toHaveCount(0);
   });
 });

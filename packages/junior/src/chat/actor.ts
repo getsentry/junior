@@ -4,7 +4,7 @@
  * Runtime actors are platform-scoped actors. Stored Slack actor parsing
  * remains explicit so durable conversation metadata is not repaired on read.
  */
-import { z } from "zod";
+import * as z from "zod";
 import { actorSchema } from "@sentry/junior-plugin-api";
 import { parseSlackTeamId } from "@/chat/slack/ids";
 

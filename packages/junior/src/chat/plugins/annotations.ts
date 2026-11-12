@@ -9,6 +9,7 @@ import {
   juniorConversationAnnotations,
   juniorConversations,
 } from "@/db/schema";
+import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
 
 function annotationFromRow(row: {
   annotation: unknown;
@@ -37,6 +38,7 @@ export function createPluginAnnotations(args: {
       const annotation = conversationAnnotationInputSchema.parse(input);
       const now = new Date();
       await args.db
+        .with(conversationDetailTouch(args.db, [args.conversationId]))
         .insert(juniorConversationAnnotations)
         .values({
           annotation,
@@ -59,6 +61,7 @@ export function createPluginAnnotations(args: {
     },
     async remove(kind, key) {
       await args.db
+        .with(conversationDetailTouch(args.db, [args.conversationId]))
         .delete(juniorConversationAnnotations)
         .where(
           and(
@@ -132,9 +135,11 @@ export async function listConversationAnnotationsById(
         juniorConversationAnnotations.conversationId,
       ),
     )
+    // Filter both ids on the joined Conversation row. An OR across the two
+    // tables cannot use an index and scans both tables.
     .where(
       or(
-        inArray(juniorConversationAnnotations.conversationId, [...requested]),
+        inArray(juniorConversations.conversationId, [...requested]),
         inArray(juniorConversations.rootConversationId, [...requested]),
       ),
     )

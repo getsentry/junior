@@ -1,9 +1,31 @@
 import { describe, expect, it, vi } from "vitest";
 import { createGitHubUpdatePullRequestTool } from "../src/tools/update-pull-request";
 
-function toolContext(response?: Response) {
-  const fetch = vi.fn(
-    async () =>
+const ATTRIBUTED_BODY = `Original body
+
+<!-- junior-request-attribution:start -->
+via @lcian.
+<!-- junior-request-attribution:end -->`;
+
+function toolContext(
+  response?: Response,
+  options: {
+    actor?: unknown;
+    currentBody?: string;
+    decider?: unknown;
+    requester?: unknown;
+    source?: unknown;
+  } = {},
+) {
+  const fetch = vi.fn(async (input: { operation: string }) => {
+    // Updates read the body that is on GitHub before they write.
+    if (input.operation === "github.pull.get") {
+      return new Response(
+        JSON.stringify({ body: options.currentBody ?? null }),
+        { status: 200 },
+      );
+    }
+    return (
       response ??
       new Response(
         JSON.stringify({
@@ -17,10 +39,11 @@ function toolContext(response?: Response) {
           title: "Updated title",
         }),
         { status: 200 },
-      ),
-  );
+      )
+    );
+  });
   const ctx = {
-    actor: {
+    actor: options.actor ?? {
       platform: "slack",
       fullName: "David Cramer",
       userId: "U039RR91S",
@@ -30,19 +53,31 @@ function toolContext(response?: Response) {
     egress: { fetch },
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     events: { canSubscribe: true },
-    slack: {
-      conversationLink: { url: "https://example.com/session" },
-    },
+    conversationLink: { url: "https://example.com/session" },
+    source: options.source,
     users: {
-      resolveActor: async () => undefined,
+      resolveActor: async () => options.requester,
     },
   };
-  return { fetch, tool: createGitHubUpdatePullRequestTool(ctx) };
+  return {
+    fetch,
+    tool: createGitHubUpdatePullRequestTool(ctx as any, options.decider as any),
+  };
+}
+
+async function patchedBody(fetch: ReturnType<typeof toolContext>["fetch"]) {
+  const call = fetch.mock.calls.find(
+    ([input]) => input.operation === "github.pull.update",
+  )?.[0] as { request: Request } | undefined;
+  if (!call) throw new Error("No pull request update was sent.");
+  return ((await call.request.clone().json()) as { body: string }).body;
 }
 
 describe("updatePullRequest", () => {
   it("updates mutable pull request fields and preserves runtime-owned body metadata", async () => {
-    const { fetch, tool } = toolContext();
+    const { fetch, tool } = toolContext(undefined, {
+      currentBody: ATTRIBUTED_BODY,
+    });
 
     await expect(
       tool.execute?.(
@@ -69,7 +104,10 @@ describe("updatePullRequest", () => {
       url: "https://github.com/getsentry/junior/pull/691",
     });
 
-    const call = fetch.mock.calls[0]?.[0];
+    expect(fetch.mock.calls[0]?.[0]).toMatchObject({
+      operation: "github.pull.get",
+    });
+    const call = fetch.mock.calls[1]?.[0];
     expect(call).toMatchObject({
       operation: "github.pull.update",
       provider: "github",
@@ -85,12 +123,145 @@ describe("updatePullRequest", () => {
       body: expect.stringContaining("Updated body"),
     });
     const body = (await call?.request.clone().json()) as { body: string };
-    expect(body.body).toContain("via **David Cramer**.");
+    // A new requester joins the requesters already on GitHub.
+    expect(body.body).toContain("via @lcian, **David Cramer**.");
     expect(body.body).toContain("[View Session](https://example.com/session)");
   });
 
+  // The pull request starts as `via @lcian.`. The model sends a body without
+  // the attribution block, because it reads descriptions with the block
+  // removed.
+  const jan = {
+    platform: "slack",
+    fullName: "Jan Michael Auer",
+    teamId: "T1",
+    userId: "U2",
+  };
+  it.each([
+    {
+      name: "a review event keeps the requesters",
+      actor: { platform: "system", name: "event" },
+      source: { kind: "event" },
+      expected: "via @lcian.",
+    },
+    {
+      name: "another person with a linked GitHub account is added",
+      actor: jan,
+      requester: {
+        user: { identities: [{ provider: "github", handle: "jan-auer" }] },
+      },
+      expected: "via @lcian, @jan-auer.",
+    },
+    {
+      name: "another person without a linked GitHub account is added",
+      actor: jan,
+      expected: "via @lcian, **Jan Michael Auer**.",
+    },
+    {
+      name: "the same requester is not added twice",
+      actor: {
+        platform: "slack",
+        fullName: "Lorenzo Cian",
+        teamId: "T1",
+        userId: "U3",
+      },
+      requester: {
+        user: { identities: [{ provider: "github", handle: "lcian" }] },
+      },
+      expected: "via @lcian.",
+    },
+    {
+      name: "an automation run is added after the people",
+      actor: { platform: "system", name: "automation" },
+      source: {
+        kind: "event_automation",
+        automationId: "evt_1",
+        automationRunId: "run_1",
+      },
+      expected: "via @lcian, automation `evt_1` · Run ID `run_1`.",
+    },
+    {
+      name: "each automation run is kept, like each person",
+      actor: { platform: "system", name: "automation" },
+      source: {
+        kind: "event_automation",
+        automationId: "evt_1",
+        automationRunId: "run_2",
+      },
+      currentBody: `Original body
+
+<!-- junior-request-attribution:start -->
+via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
+<!-- junior-request-attribution:end -->`,
+      expected:
+        "via @lcian, automation `evt_1` · Run ID `run_1`, automation `evt_1` · Run ID `run_2`.",
+    },
+  ])("$name", async ({ actor, currentBody, expected, requester, source }) => {
+    const { fetch, tool } = toolContext(undefined, {
+      actor,
+      currentBody: currentBody ?? ATTRIBUTED_BODY,
+      requester,
+      source,
+    });
+
+    await tool.execute?.(
+      { repo: "getsentry/junior", number: 691, body: "Updated body" },
+      { toolCallId: "update-pr" },
+    );
+
+    const body = await patchedBody(fetch);
+    expect(body).toMatch(
+      /^Updated body\n\n<!-- junior-request-attribution:start -->/,
+    );
+    expect(body).toContain(`\n${expected}\n`);
+  });
+
+  it("with the description check experiment on, rejects a body that fails a check and does not write it", async () => {
+    // The decision model finds a test plan and nothing else.
+    const decider = {
+      decide: vi.fn(async ({ instructions }: { instructions: string }) => ({
+        choice: instructions.includes("test plan") ? "yes" : "no",
+      })),
+    };
+    const { fetch, tool } = toolContext(undefined, { decider });
+
+    await expect(
+      tool.execute?.(
+        {
+          repo: "getsentry/junior",
+          number: 691,
+          body: "Retry timed-out webhooks.\n\n## Test plan\n- [x] pnpm test",
+        },
+        { toolCallId: "update-pr" },
+      ),
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message: expect.stringContaining(
+        "- Remove check results, test plans, test coverage notes, and commands.",
+      ),
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("with the description check experiment on, rejects a blank body without asking the decision model", async () => {
+    const decider = { decide: vi.fn() };
+    const { fetch, tool } = toolContext(undefined, { decider });
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", number: 691, body: "  " },
+        { toolCallId: "update-pr" },
+      ),
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message: expect.stringContaining("- Say why the change is needed."),
+    });
+    expect(decider.decide).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("preserves merged status when updating a merged pull request", async () => {
-    const { tool } = toolContext(
+    const { fetch, tool } = toolContext(
       new Response(
         JSON.stringify({
           base: { ref: "main" },
@@ -120,6 +291,10 @@ describe("updatePullRequest", () => {
         },
       ],
     });
+    // Without a body, the update does not read or rewrite the description.
+    expect(fetch.mock.calls.map(([input]) => input.operation)).toEqual([
+      "github.pull.update",
+    ]);
   });
 
   it("marks a draft pull request ready for review through GraphQL", async () => {
@@ -260,7 +435,7 @@ describe("updatePullRequest", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("includes GitHub's error message when the update fails", async () => {
+  it("returns a rejected update to the model with GitHub's error message", async () => {
     const { tool } = toolContext(
       new Response(JSON.stringify({ message: "Validation Failed" }), {
         status: 422,
@@ -272,8 +447,28 @@ describe("updatePullRequest", () => {
         { repo: "getsentry/junior", number: 691, base: "missing" },
         { toolCallId: "update-pr" },
       ),
-    ).rejects.toThrow(
-      "GitHub pull request update failed with HTTP 422: Validation Failed",
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message:
+        "GitHub pull request update failed with HTTP 422: Validation Failed",
+    });
+  });
+
+  it("keeps GitHub server failures as system errors", async () => {
+    const { tool } = toolContext(
+      new Response(JSON.stringify({ message: "Server Error" }), {
+        status: 500,
+      }),
     );
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", number: 691, base: "main" },
+        { toolCallId: "update-pr" },
+      ),
+    ).rejects.toMatchObject({
+      name: "Error",
+      message: "GitHub pull request update failed with HTTP 500: Server Error",
+    });
   });
 });

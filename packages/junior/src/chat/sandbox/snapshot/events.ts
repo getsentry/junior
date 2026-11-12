@@ -54,11 +54,11 @@ export function workspaceSnapshotWatch(input: {
     identifier: input.workspaceId,
     label: `Workspace ${input.workspaceName} snapshot`,
     namespace: WORKSPACE_SNAPSHOT_NAMESPACE,
-    supportedEvents: [
+    supported_events: [
       WORKSPACE_SNAPSHOT_READY_EVENT,
       WORKSPACE_SNAPSHOT_FAILED_EVENT,
     ],
-    suggestedEvents: [],
+    suggested_events: [],
     type: WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
   };
 }

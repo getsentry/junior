@@ -5,25 +5,20 @@ import {
   ActivityChartXAxis,
   ActivityChartYAxis,
 } from "../../components/charts/ActivityChart";
-import { ChartLegend } from "../../components/charts/ChartLegend";
 import {
   type TimeRangeBucketUnit,
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
+import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { ChartContainer, ChartTooltip } from "../../components/ui/chart";
 import type { MemoryDay } from "./memoryDashboard";
 
-const series = [
-  { color: "var(--color-cyan-300)", key: "personal", label: "Personal" },
-  { color: "var(--color-emerald-300)", key: "public", label: "Public" },
-] as const;
+const chartConfig = {
+  count: { color: "var(--color-emerald-300)", label: "Memories" },
+};
 
-const chartConfig = Object.fromEntries(
-  series.map((item) => [item.key, { color: item.color, label: item.label }]),
-);
-
-/** Render viewer memory creation as a stacked personal/public timeline. */
+/** Render memory creation as a timeline. */
 export function MemoryTimeline(props: {
   bucketUnit?: TimeRangeBucketUnit;
 
@@ -33,26 +28,26 @@ export function MemoryTimeline(props: {
   const bucketUnit = props.bucketUnit ?? "day";
 
   const days = props.days;
-  const totals = days.map((day) => day.personal + day.public);
+  const totals = days.map((day) => day.count);
   const maximum = Math.max(1, ...totals);
   const hasMemories = totals.some((total) => total > 0);
 
   return (
     <Card className="min-h-[17rem] p-4 sm:p-5">
       <div>
-        <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
-          Activity over time
-        </h2>
+        <AnchorHeading
+          anchor="activity"
+          className="m-0 font-display text-xl font-medium text-dashboard-text"
+          title="Activity over time"
+        />
         <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
           {bucketUnit === "hour"
-            ? "Stacked personal + public memories created each hour."
+            ? "Memories created each hour."
             : bucketUnit === "6hour"
-              ? "Stacked personal + public memories created each 6 hours."
-              : "Stacked personal + public memories created each day."}
+              ? "Memories created each 6 hours."
+              : "Memories created each day."}
         </p>
       </div>
-
-      <ChartLegend ariaLabel="Memory visibility legend" items={series} />
 
       <div className="relative mt-3 overflow-hidden">
         <ChartContainer
@@ -71,25 +66,17 @@ export function MemoryTimeline(props: {
             <ChartTooltip
               content={
                 <ActivityChartTooltipContent
-                  rows={(day: MemoryDay) => [
-                    ["personal", day.personal],
-                    ["public", day.public],
-                    ["total", day.personal + day.public],
-                  ]}
+                  rows={(day: MemoryDay) => [["memories", day.count]]}
                 />
               }
             />
-            {series.map((item) => (
-              <Bar
-                dataKey={item.key}
-                fill={`var(--color-${item.key})`}
-                fillOpacity={0.82}
-                isAnimationActive={false}
-                key={item.key}
-                maxBarSize={13}
-                stackId="visibility"
-              />
-            ))}
+            <Bar
+              dataKey="count"
+              fill="var(--color-count)"
+              fillOpacity={0.82}
+              isAnimationActive={false}
+              maxBarSize={13}
+            />
           </BarChart>
         </ChartContainer>
         {!hasMemories ? (

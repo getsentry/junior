@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 /** Native Slack message timestamp, safe to pass as Slack Web API `message_ts`. */
 export const slackMessageTsSchema = z

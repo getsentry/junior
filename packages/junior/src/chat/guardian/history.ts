@@ -1,5 +1,5 @@
 import type { PiMessage } from "@/chat/pi/messages";
-import { z } from "zod";
+import * as z from "zod";
 import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
 import {
   RISK_LEVELS,

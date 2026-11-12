@@ -4,6 +4,7 @@ import {
   checkAgentTestArchitecture,
   checkDatabaseTestFixtures,
   checkIntegrationTestArchitecture,
+  SOURCE_RULES,
 } from "./check-test-architecture.mjs";
 
 const TEST_PATH = "packages/junior/tests/integration/new.test.ts";
@@ -303,11 +304,72 @@ test("allows agent tests to import the fixture, the public app API, plugin packa
         ),
         integrationTest(
           'import { getDb } from "@/chat/db";',
-          "packages/junior-evals/evals/router/new.eval.ts",
+          "packages/junior-evals/evals/classifiers/new.eval.ts",
         ),
       ],
       {},
     ),
     [],
+  );
+});
+
+test("rejects a new kind branch outside kind-behavior.ts", () => {
+  const source = (path, contents) => ({ path, contents });
+  const branch = 'if (conversation.kind === "thread") {}';
+  assert.equal(
+    checkAgentTestArchitecture(
+      [
+        source("packages/junior/src/chat/new.ts", branch),
+        source(
+          "packages/junior/src/chat/conversations/kind-behavior.ts",
+          branch,
+        ),
+        source(
+          "packages/junior/src/chat/old.ts",
+          "run.dispatch?.declaresResult",
+        ),
+      ],
+      { "kind-behavior": { "packages/junior/src/chat/old.ts": 1 } },
+      SOURCE_RULES,
+    ).length,
+    1,
+  );
+});
+
+test("counts each form of a kind branch", () => {
+  const branches = [
+    "if (x.parentConversationId) {}",
+    "if (!parentConversationId) {}",
+    "const child = Boolean(row && row.parentConversationId);",
+    "const root = conversation?.parentConversationId ? a : b;",
+    "if (invocation.parentToolCallId !== undefined) {}",
+    "const messages = spawnAgent || run.agentInvocationId;",
+    'if (message.source === "web") {}',
+    "switch (run.source.kind) {}",
+    'if ("automation" === kind) {}',
+    "const result = run.dispatch?.declaresResult === true;",
+    "if (!isTopLevelKind(conversation.kind)) {}",
+  ];
+  const notBranches = [
+    "parentConversationId?: string;",
+    "declaresResult?: boolean;",
+    "const row = { parentConversationId: id, declaresResult: true };",
+    'const ts = source.kind === "slack" ? source.threadTs : undefined;',
+    "const parent = run.parentConversationId ?? root;",
+    "// if (x.parentConversationId) is a comment.",
+  ];
+  const count = (contents) =>
+    checkAgentTestArchitecture(
+      [{ path: "packages/junior/src/chat/new.ts", contents }],
+      {},
+      SOURCE_RULES,
+    ).length;
+  assert.deepEqual(
+    branches.map(count),
+    branches.map(() => 1),
+  );
+  assert.deepEqual(
+    notBranches.map(count),
+    notBranches.map(() => 0),
   );
 });

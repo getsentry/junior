@@ -1,3 +1,4 @@
+import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import type { Page } from "@playwright/test";
 import { screenshot } from "./screenshot";
 import { expect, test } from "./test";
@@ -111,7 +112,10 @@ const migration = {
   title: "Pick the billing migration window",
 };
 
-async function mockReviewItems(page: Page, options: { open?: unknown[] } = {}) {
+async function mockReviewItems(
+  page: Page,
+  options: { open?: unknown[]; pageSize?: number } = {},
+) {
   const actions: { body: unknown; id: string }[] = [];
   const open = (options.open ?? [
     rollout,
@@ -128,19 +132,31 @@ async function mockReviewItems(page: Page, options: { open?: unknown[] } = {}) {
     if (path === "/count") return route.fulfill({ json: { needsViewer: 3 } });
     if (path === "" || path === "/") {
       const q = url.searchParams.get("q")?.toLowerCase() ?? "";
+      const linked = url.searchParams.get("conversationId");
       // A search also finds archived items, after the open ones.
-      const list = q ? [...open, ...archived] : open;
+      const list = (q ? [...open, ...archived] : open).filter(
+        (i) =>
+          i.title.toLowerCase().includes(q) &&
+          (!linked || i.conversationIds.includes(linked)),
+      );
+      // The cursor is the index of the first item of the page.
+      const start = Number(url.searchParams.get("cursor") ?? 0);
+      const end = start + (options.pageSize ?? list.length);
       return route.fulfill({
-        json: { items: list.filter((i) => i.title.toLowerCase().includes(q)) },
+        json: {
+          items: list.slice(start, end),
+          ...(end < list.length ? { nextCursor: String(end) } : undefined),
+        },
       });
     }
     const action = path.match(/^\/([^/]+)\/actions$/);
     if (action) {
-      actions.push({
-        body: route.request().postDataJSON(),
-        id: decodeURIComponent(action[1]!),
-      });
-      return route.fulfill({ json: { ok: true } });
+      const id = decodeURIComponent(action[1]!);
+      actions.push({ body: route.request().postDataJSON(), id });
+      const acted = items.find((i) => i.id === id);
+      return acted
+        ? route.fulfill({ json: acted })
+        : route.fulfill({ json: { error: "Not found" }, status: 404 });
     }
     const item = items.find((i) => i.id === decodeURIComponent(path.slice(1)));
     return item
@@ -215,6 +231,23 @@ test("each review item gets a fresh answer form", async ({
     },
     id: license.id,
   });
+
+  // Other… lets the reader answer a button question in their own words.
+  await list.getByRole("link", { name: new RegExp(rollout.title) }).click();
+  await detail.getByRole("button", { name: "Other…" }).click();
+  await expect(detail.getByLabel("Anything else?")).toBeFocused();
+  await page.keyboard.type("Wait for the EU canary first.");
+  await screenshot(page, "review-desk-other", { view: "desktop" });
+  // Every text box sends its form on Ctrl+Enter or Cmd+Enter.
+  await page.keyboard.press("ControlOrMeta+Enter");
+  await expect.poll(() => actions.length).toBe(3);
+  expect(actions[2]).toMatchObject({
+    body: {
+      action: "submit",
+      answer: { other: "Wait for the EU canary first.", values: {} },
+    },
+    id: rollout.id,
+  });
 });
 
 test("the inbox shows an item in its conversation", async ({
@@ -263,6 +296,124 @@ test("the inbox shows an item in its conversation", async ({
   await expect(
     detail.getByRole("link", { name: `Next: ${migration.title}` }),
   ).toBeVisible();
+});
+
+test("review item changes show as rows, not as context for other items", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page);
+  // Right after Junior asked for this item, the person took another item and
+  // then answered it. A Watch Event then arrived with the relay of someone's
+  // take of this item from another Conversation.
+  const takeText = `Dashboard User took review item "${answered.title}".`;
+  const answerText = `Dashboard User answered review item "${answered.title}".`;
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(conversationId)}*`,
+    async (route) => {
+      const response = await route.fetch({
+        headers: {
+          ...route.request().headers(),
+          [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+        },
+      });
+      const detail = await response.json();
+      const askedAt = Date.parse(rollout.createdAt);
+      const change = (
+        seq: number,
+        kind: "submitted" | "taken",
+        text: string,
+      ) => ({
+        seq,
+        createdAt: new Date(askedAt + seq - 99_990).toISOString(),
+        data: {
+          type: "message",
+          messageId: `${kind}-initech`,
+          reviewItemChanges: [{ kind, reviewItemId: answered.id }],
+          role: "user",
+          source: "web",
+          text,
+        },
+      });
+      const relayText = `Someone took review item "${rollout.title}".`;
+      const eventBatch = {
+        seq: 100_002,
+        createdAt: new Date(askedAt + 12).toISOString(),
+        data: {
+          type: "message",
+          messageId: "event-batch",
+          eventType: "pull_request.checks.failed",
+          events: [
+            {
+              eventType: "pull_request.checks.failed",
+              trustedSummary: "CI failed on run 7.",
+            },
+          ],
+          reviewItemChanges: [{ kind: "taken", reviewItemId: rollout.id }],
+          role: "user",
+          text: `CI failed on run 7.\n\n${relayText}`,
+          trustedSummary: "CI failed on run 7.",
+        },
+      };
+      // The changes and the Event batch are the only messages after the ask.
+      const before = (detail.events as { createdAt: string }[]).filter(
+        (event) => Date.parse(event.createdAt) <= askedAt,
+      );
+      await route.fulfill({
+        response,
+        json: {
+          ...detail,
+          events: [
+            ...before,
+            change(100_000, "taken", takeText),
+            change(100_001, "submitted", answerText),
+            eventBatch,
+          ],
+        },
+      });
+    },
+  );
+
+  await page.goto(`${dashboard.baseURL}/review?item=${rollout.id}`);
+  const detail = page.getByRole("region", { name: "Selected review item" });
+  await expect(
+    detail.getByText("Find the slow checkout requests"),
+  ).toBeVisible();
+  await expect(
+    detail.getByRole("region", { name: new RegExp(answered.title) }),
+  ).toHaveCount(0);
+  // The Event batch stays as context, without its change row.
+  await expect(
+    detail.getByRole("button", { name: /CI failed on run 7\./ }),
+  ).toBeVisible();
+  await expect(
+    detail.getByRole("region", { name: `Took ${rollout.title}` }),
+  ).toHaveCount(0);
+
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+  );
+  // Each message shows its own change. The take stays a take after the
+  // answer closed the item.
+  const take = page.getByRole("region", { name: `Took ${answered.title}` });
+  const answer = page.getByRole("region", {
+    name: `Answered ${answered.title}`,
+  });
+  await expect(answer.getByText("MIT license, no change.")).toBeVisible();
+  await expect(take).toBeVisible();
+  await expect(take.getByText("MIT license, no change.")).toHaveCount(0);
+  await expect(take.getByText("Done")).toHaveCount(0);
+  await expect(page.getByText(takeText)).toHaveCount(0);
+  await expect(page.getByText(answerText)).toHaveCount(0);
+  // The relay shows as its change row next to the Watch Event, not as a
+  // second Event line.
+  await expect(
+    page.getByRole("button", { name: /CI failed on run 7\./ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: `Took ${rollout.title}` }),
+  ).toBeVisible();
+  await expect(page.getByText("1 events")).toHaveCount(0);
 });
 
 test("on mobile the list opens one item at a time", async ({
@@ -324,23 +475,34 @@ test("an empty inbox hides archived items", async ({ dashboard, page }) => {
   await screenshot(page, "review-desk-empty", { view: "desktop" });
 });
 
-test("a message asks before it drops unsent picks", async ({
+test("Send sends docked picks and asks before a message drops others", async ({
   dashboard,
   page,
 }) => {
-  const actions = await mockReviewItems(page);
-  const messages: string[] = [];
+  // A notice fills the first page, so the question docks from the second.
+  const actions = await mockReviewItems(page, {
+    open: [{ ...prReady, conversationIds: [conversationId] }, migration],
+    pageSize: 1,
+  });
+  // Each message records how many answers were sent before it.
+  const messages: { answersBefore: number; message: string }[] = [];
   const path = `**/api/conversations/${encodeURIComponent(conversationId)}`;
   await page.route(`${path}/messages`, async (route) => {
-    messages.push(route.request().postDataJSON().message);
+    messages.push({
+      answersBefore: actions.length,
+      message: route.request().postDataJSON().message,
+    });
     await route.fulfill({
       json: { conversationId, messageId: "reply", status: "accepted" },
     });
   });
-  // Show the tool call that added the item, so its card is in the transcript.
-  await page.route(path, async (route) => {
+  // Show the tool call that added the item, as a live Turn does.
+  await page.route(`${path}*`, async (route) => {
     const response = await route.fetch({
-      headers: { ...route.request().headers(), "if-none-match": "" },
+      headers: {
+        ...route.request().headers(),
+        [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+      },
     });
     const detail = await response.json();
     const last = detail.events.at(-1);
@@ -374,30 +536,62 @@ test("a message asks before it drops unsent picks", async ({
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
-  const card = page.getByRole("region", {
-    name: `Review item: ${migration.title}`,
+  const question = page.getByRole("region", {
+    name: `Question: ${migration.title}`,
   });
-  await card.getByRole("radio", { name: "Approve" }).click();
   const composer = page.getByLabel("Continue this conversation");
-  await composer.fill("Thursday works.");
-  await composer.press("Enter");
 
-  // Go back keeps the draft and the picks.
+  // Picks in the details panel do not go with a message.
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  const details = page.getByRole("region", { name: "Needs you" });
+  await details.getByRole("button", { name: migration.title }).click();
+  await details.getByRole("radio", { name: "Reject" }).click();
+
+  // The message box sends the docked picks. With an empty draft no message
+  // goes, so nothing asks about the details-panel picks.
+  await expect(
+    question.getByRole("textbox", { name: /Anything else/ }),
+  ).toHaveCount(0);
+  await expect(question.getByRole("button", { name: "Send" })).toHaveCount(0);
+  await question.getByRole("radio", { name: "Approve" }).click();
+  await composer.press("Enter");
+  await expect
+    .poll(() => actions)
+    .toEqual([
+      {
+        body: {
+          action: "submit",
+          answer: { values: { decision: ["Approve"] } },
+        },
+        id: migration.id,
+      },
+    ]);
   const confirm = page.getByRole("alertdialog", {
     name: "Send without your answers?",
   });
+  await expect(confirm).toHaveCount(0);
+  expect(messages).toEqual([]);
+
+  // A message drops the details-panel picks, so it asks first.
+  await composer.fill("Friday works.");
+  await composer.press("Enter");
   await expect(confirm).toContainText(migration.title);
-  await screenshot(page, "conversation-unsent-answers");
+  // A mobile view would close the details panel and its picks.
+  await screenshot(page, "conversation-unsent-answers", { view: "desktop" });
+  // Go back keeps the draft and the picks.
   await confirm.getByRole("button", { name: "Go back" }).click();
   await expect(confirm).toBeHidden();
-  await expect(composer).toHaveValue("Thursday works.");
-  await expect(card.getByRole("radio", { name: "Approve" })).toBeChecked();
+  await expect(composer).toHaveValue("Friday works.");
+  await expect(details.getByRole("radio", { name: "Reject" })).toBeChecked();
   expect(messages).toEqual([]);
 
   // The reader can send the message anyway.
-  await composer.press("Enter");
+  await composer.press("ControlOrMeta+Enter");
   await confirm.getByRole("button", { name: "Send message" }).click();
-  await expect.poll(() => messages).toEqual(["Thursday works."]);
-  await expect(composer).toHaveValue("");
-  expect(actions).toEqual([]);
+  await expect
+    .poll(() => messages)
+    .toEqual([{ answersBefore: 1, message: "Friday works." }]);
+  expect(actions).toHaveLength(1);
 });

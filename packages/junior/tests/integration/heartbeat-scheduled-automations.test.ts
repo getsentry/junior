@@ -8,7 +8,7 @@ import {
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
-import { getDb, getSqlExecutor } from "@/chat/db";
+import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity } from "@/chat/identities/sql";
 import {
   getDispatchConversationId,
@@ -20,6 +20,7 @@ import {
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { GET as heartbeat } from "@/handlers/heartbeat";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import { installTestSkills } from "../fixtures/skill-dirs";
 import { createWaitUntilCollector } from "../fixtures/wait-until";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
@@ -92,7 +93,8 @@ function createTask(
     },
     status: "active",
     task: {
-      text: "Post a digest. Summarize the latest state.",
+      kind: "instruction",
+      instruction: "Post a digest. Summarize the latest state.",
     },
     updatedAtMs: nextRunAtMs,
     ...overrides,
@@ -177,7 +179,9 @@ describe("scheduled automation heartbeat", () => {
           timezone: "UTC",
         },
         task: {
-          text: "Post a digest for the Automation creator. Summarize the latest state.",
+          kind: "instruction",
+          instruction:
+            "Post a digest for the Automation creator. Summarize the latest state.",
         },
       }),
     );
@@ -198,15 +202,17 @@ describe("scheduled automation heartbeat", () => {
     expect(running?.conversationId).toBe(
       getDispatchConversationId({ id: running!.dispatchId! }),
     );
+    await expect(
+      getConversationStore().get({ conversationId: running!.conversationId! }),
+    ).resolves.toMatchObject({ kind: "automation" });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(conversationWorkQueue.sentRecords()).toHaveLength(1);
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
-    expect(dispatchRecord?.input).toContain("[task]");
-    expect(dispatchRecord?.input).not.toContain("[[NO_REPLY]]");
-    expect(dispatchRecord?.input).toContain("Created by: <@U039RR91S>");
+    expect(dispatchRecord?.input).toMatch(/^<task>\n/);
+    expect(dispatchRecord?.input).toContain("<created-by><@U039RR91S>.");
     // The run gets the creator mention, not the stored phrase.
     expect(dispatchRecord?.input).toContain(
-      "Instructions: Post a digest for <@U039RR91S>. Summarize the latest state.",
+      "<instructions>Post a digest for <@U039RR91S>. Summarize the latest state.</instructions>",
     );
     expect(dispatchRecord?.destination).toEqual(SLACK_DESTINATION);
     expect(dispatchRecord?.destinationVisibility).toBe("public");
@@ -406,66 +412,73 @@ describe("scheduled automation heartbeat", () => {
     });
   }, 30_000);
 
-  it("blocks malformed scheduled automations without stopping the core heartbeat", async () => {
-    const fetchMock = vi.fn(async () => {
-      return new Response("Accepted", { status: 202 });
-    });
-    global.fetch = fetchMock as typeof fetch;
-    const db = scheduledAutomationDb();
-    await saveScheduledAutomation(db, {
-      ...createTask(),
-      id: "sched_plugin_malformed",
-      task: { text: "" },
-    });
-    const waitUntil = createWaitUntilCollector();
-    const request = new Request(
-      "https://example.invalid/api/internal/heartbeat",
+  it("dispatches a skill run with the skill named in the dispatch", async () => {
+    const removeSkills = await installTestSkills([
       {
-        headers: { authorization: "Bearer heartbeat-secret" },
+        name: "manual-digest",
+        description: "Post the manual digest.",
+        body: "Post the digest.",
+        disableModelInvocation: true,
       },
-    );
-    const response = await testHeartbeat(request, waitUntil.fn);
-    expect(response.status).toBe(202);
-    await waitUntil.flush();
+    ]);
+    try {
+      const db = scheduledAutomationDb();
+      await saveScheduledAutomation(
+        db,
+        createTask({
+          task: {
+            kind: "skill",
+            skill: "manual-digest",
+            context: "Only cover getsentry/junior.",
+          },
+        }),
+      );
 
-    await expect(
-      readScheduledRun(db, `sched_plugin_malformed:${TEST_RUN_AT_MS}`),
-    ).resolves.toMatchObject({
-      status: "blocked",
-      errorMessage: expect.stringContaining(
-        "Scheduled automation dispatch metadata could not be built",
-      ),
-    });
-    const blockedTask = await readScheduledAutomation(
+      await runAuthorizedHeartbeat();
+
+      const running = await readScheduledRun(
+        db,
+        `sched_plugin_1:${TEST_RUN_AT_MS}`,
+      );
+      expect(running?.status).toBe("running");
+      const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
+      // The agent run invokes the skill from this field, not from the text.
+      expect(dispatchRecord?.skill).toBe("manual-digest");
+      expect(dispatchRecord?.input).toContain(
+        [
+          "Run the manual-digest skill. The instructions below add context for this run.",
+          "<instructions>Only cover getsentry/junior.</instructions>",
+        ].join("\n"),
+      );
+    } finally {
+      await removeSkills();
+    }
+  }, 30_000);
+
+  it("blocks a skill run when the skill is no longer installed", async () => {
+    const db = scheduledAutomationDb();
+    await saveScheduledAutomation(
       db,
-      "sched_plugin_malformed",
+      createTask({ task: { kind: "skill", skill: "removed-digest" } }),
     );
-    expect(blockedTask).toMatchObject({
-      status: "blocked",
-      statusReason: expect.stringContaining(
-        "Scheduled automation dispatch metadata could not be built",
-      ),
-    });
-    // A block before dispatch tells the creator too.
-    expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
-    await saveScheduledAutomation(db, {
-      ...blockedTask!,
-      nextRunAtMs: TEST_RUN_AT_MS,
-      status: "active",
-      statusReason: undefined,
-      task: { text: "Post the recovered digest." },
-      updatedAtMs: TEST_NOW_MS + 1,
-    });
-    const retryWaitUntil = createWaitUntilCollector();
-    await testHeartbeat(request, retryWaitUntil.fn);
-    await retryWaitUntil.flush();
+
+    await runAuthorizedHeartbeat();
+
+    const reason =
+      "The skill removed-digest is no longer installed. Choose another skill or switch to an instruction.";
     await expect(
-      readScheduledRun(db, `sched_plugin_malformed:${TEST_RUN_AT_MS}`),
+      readScheduledRun(db, `sched_plugin_1:${TEST_RUN_AT_MS}`),
     ).resolves.toMatchObject({
-      status: "running",
-      dispatchId: expect.any(String),
+      status: "blocked",
+      errorMessage: reason,
+      dispatchId: null,
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(
+      readScheduledAutomation(db, "sched_plugin_1"),
+    ).resolves.toMatchObject({ status: "blocked", statusReason: reason });
+    expect(conversationWorkQueue.sentRecords()).toHaveLength(0);
+    // The creator hears that the Automation is blocked.
+    expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
   }, 30_000);
 
   it("skips old recurring occurrences and advances to the next future run", async () => {

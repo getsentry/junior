@@ -22,6 +22,7 @@ const model = {
 function assistant(
   content: AssistantMessage["content"],
   stopReason: AssistantMessage["stopReason"] = "stop",
+  costUsd = 0,
 ): AssistantMessage {
   return {
     role: "assistant",
@@ -35,7 +36,13 @@ function assistant(
       cacheRead: 0,
       cacheWrite: 0,
       totalTokens: 0,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      cost: {
+        input: 0,
+        output: costUsd,
+        cacheRead: 0,
+        cacheWrite: 0,
+        total: costUsd,
+      },
     },
     stopReason,
     timestamp: 0,
@@ -139,10 +146,14 @@ describe("context summary", () => {
 
   it("appends one instruction to the request and returns the summary", async () => {
     const { calls, streamFn } = replies([
-      assistant([
-        { type: "thinking", thinking: "Collect the open work." },
-        { type: "text", text: "<summary>\n## Goal\n- Fix CI\n</summary>" },
-      ]),
+      assistant(
+        [
+          { type: "thinking", thinking: "Collect the open work." },
+          { type: "text", text: "<summary>\n## Goal\n- Fix CI\n</summary>" },
+        ],
+        "stop",
+        0.25,
+      ),
     ]);
     const request = await buildAgentModelRequest(createAgent(streamFn), [
       { role: "user", content: "Fix the failing check.", timestamp: 0 },
@@ -150,7 +161,7 @@ describe("context summary", () => {
 
     const summary = await requestContextSummary(request, streamFn);
 
-    expect(summary).toBe("## Goal\n- Fix CI");
+    expect(summary).toEqual({ summary: "## Goal\n- Fix CI", costUsd: 0.25 });
     expect(calls).toHaveLength(1);
     const { context, options } = calls[0]!;
     expect(context.systemPrompt).toBe(request.context.systemPrompt);
@@ -175,16 +186,20 @@ describe("context summary", () => {
           },
         ],
         "toolUse",
+        0.25,
       ),
-      assistant([{ type: "text", text: "<summary>## Goal" }], "length"),
+      assistant([{ type: "text", text: "<summary>## Goal" }], "length", 0.5),
     ]);
     const request = await buildAgentModelRequest(createAgent(streamFn), [
       { role: "user", content: "Fix the failing check.", timestamp: 0 },
     ]);
 
-    await expect(requestContextSummary(request, streamFn)).rejects.toThrow(
-      "Context summary failed: max_tokens",
-    );
+    await expect(
+      requestContextSummary(request, streamFn),
+    ).rejects.toMatchObject({
+      message: "Context summary failed: max_tokens",
+      costUsd: 0.75,
+    });
     expect(calls).toHaveLength(2);
     expect(calls[1]!.context.messages.slice(0, -1)).toEqual(
       calls[0]!.context.messages,

@@ -1,4 +1,8 @@
-import { webMessageId } from "@sentry/junior/api/schema";
+import {
+  CONVERSATION_DETAIL_VERSION_HEADER,
+  CONVERSATION_VERSION_HEADER,
+  webMessageId,
+} from "@sentry/junior/api/schema";
 import type {
   ConversationPendingMessage,
   InputImage,
@@ -6,6 +10,7 @@ import type {
 import type { Route } from "@playwright/test";
 import { chooseTranscriptView } from "./conversationMenu";
 import { expect, test } from "./test";
+import { routeConversationVersion, withRequestedMailbox } from "./harness";
 import { screenshot } from "./screenshot";
 import { mockChartPng } from "../src/mock-reporting/chart-png";
 
@@ -134,51 +139,117 @@ test("starts and continues conversations from the dashboard", async ({
     buffer: Buffer.from(imageBase64, "base64"),
   });
   await expect(page.getByRole("img", { name: "pasted.png" })).toBeVisible();
+  await startComposer.fill("Check the deploy");
   await page.getByRole("button", { name: "Send" }).click();
   await expect.poll(() => createRequests.length).toBe(1);
-  // Create restore keeps send locked while the first accept is open so a later
-  // submit cannot race the failed-draft restore.
+  // The new Conversation shows at once with the message and Junior at work.
+  // The draft stays in the hidden home composer while the first accept is
+  // open, so a later submit cannot send it twice.
+  const transcriptView = page.getByLabel("Conversation transcript");
+  await expect(transcriptView.getByText("Check the deploy")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Sending message" }),
-  ).toBeDisabled();
+    page.getByRole("status").filter({ hasText: "Junior is thinking" }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(startComposer).toBeHidden();
+  await expect(startComposer).toHaveValue("Check the deploy");
   await startComposer.evaluate((element) => {
     element.closest("form")?.requestSubmit();
   });
   expect(createRequests).toHaveLength(1);
   releaseFirstCreate?.();
   await expect(
-    page.getByText("Could not create the conversation. Try again."),
+    page.getByText("Message failed to send. Try again."),
   ).toBeVisible();
-  // New roots have no mailbox outbox, so a failed create restores the draft and
-  // keeps the same idempotency key for a safe retry.
-  await expect(startComposer).toHaveValue("");
+  // New roots have no mailbox outbox, so a failed create keeps the draft and
+  // the same idempotency key for a safe retry. Focus returns, so Enter
+  // retries.
+  await expect(startComposer).toHaveValue("Check the deploy");
+  await expect(startComposer).toBeFocused();
   await expect(page.getByRole("img", { name: "pasted.png" })).toBeVisible();
   expect(createRequests[0]?.images).toEqual([
     { filename: "pasted.png", contentType: "image/png", data: imageBase64 },
   ]);
   const failedCreateKey = createRequests[0]?.idempotencyKey;
-  expect(createRequests[0]?.message).toBe("");
+  expect(createRequests[0]?.message).toBe("Check the deploy");
   expect(createRequests[0]?.visibility).toBe("private");
   expect(failedCreateKey).toBeTruthy();
 
+  let createdDetailReads = 0;
+  let releaseCreatedDetail: (() => void) | undefined;
+  const createdDetailHeld = new Promise<void>((resolve) => {
+    releaseCreatedDetail = resolve;
+  });
+  // Serve the new Conversation before its history has the first message.
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(createdConversationId)}*`,
+    async (route) => {
+      createdDetailReads += 1;
+      await createdDetailHeld;
+      const url = route.request().url();
+      const response = await route.fetch({
+        headers: {
+          ...route.request().headers(),
+          [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+        },
+        // Any mock Conversation with available history.
+        url: url.replace(
+          encodeURIComponent(createdConversationId),
+          encodeURIComponent("slack:CQA123:1770003600.000200"),
+        ),
+      });
+      const detail = await response.json();
+      await route.fulfill({
+        json: withRequestedMailbox(route, {
+          ...detail,
+          conversationId: createdConversationId,
+          events: [],
+          isParticipant: true,
+          previousCursor: undefined,
+          status: "active",
+        }),
+      });
+    },
+  );
   await page.getByRole("button", { name: "Send" }).click();
+  // The pending Conversation shows until the new one can open with its
+  // transcript.
+  await expect.poll(() => createdDetailReads).toBe(1);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(transcriptView.getByText("Check the deploy")).toBeVisible();
+  await expect(startComposer).toHaveValue("Check the deploy");
+  releaseCreatedDetail?.();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(createdConversationId)}`,
   );
+  await expect(
+    page.getByLabel("Conversation transcript").getByText("Check the deploy"),
+  ).toBeVisible();
+  // The cursor stays in the reply box from send to the opened Conversation.
+  const replyBox = page.getByLabel("Continue this conversation");
+  await expect(replyBox).toBeFocused();
+  // Coming back from the event log does not ask for the reply box again.
+  await chooseTranscriptView(page, "Event log");
+  await chooseTranscriptView(page, "Conversation");
+  await expect(replyBox).toBeVisible();
+  await expect(replyBox).not.toBeFocused();
   expect(createRequests).toHaveLength(2);
   expect(createRequests[1]?.idempotencyKey).toBe(failedCreateKey);
-  expect(createRequests[1]?.message).toBe("");
+  expect(createRequests[1]?.message).toBe("Check the deploy");
   expect(createRequests[1]?.visibility).toBe("private");
   expect(createRequests[1]?.images).toEqual(createRequests[0]?.images);
 
   const slackConversationId = "slack:CQA123:1770000000.000100";
   await page.route(
-    `**/api/conversations/${encodeURIComponent(slackConversationId)}`,
+    `**/api/conversations/${encodeURIComponent(slackConversationId)}*`,
     async (route) => {
       if (holdDetailRefresh) await detailRefreshHeld;
       // Request the full body because this test changes it.
       const response = await route.fetch({
-        headers: { ...route.request().headers(), "if-none-match": "" },
+        headers: {
+          ...route.request().headers(),
+          [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+        },
       });
       await route.fulfill({
         response,
@@ -231,7 +302,11 @@ test("starts and continues conversations from the dashboard", async ({
   // Distinct messages can queue while an earlier accept is still open.
   await composer.fill("Second queued message");
   await page.getByRole("button", { name: "Send" }).click();
-  await expect(pending.getByText("Second queued message")).toBeVisible();
+  const expandQueue = pending.getByRole("button", {
+    name: "2 queued messages",
+  });
+  await expect(expandQueue).toHaveAttribute("aria-expanded", "false");
+  await expect(pending.getByText("Second queued message")).toBeHidden();
   await expect.poll(() => continueRequests.length).toBe(2);
   // Empty-composer double submit must not mint another request.
   await composer.evaluate((element) => {
@@ -240,6 +315,7 @@ test("starts and continues conversations from the dashboard", async ({
   expect(continueRequests).toHaveLength(2);
   releaseFirstContinue?.();
   await expect(pending.getByText("Could not send.")).toBeVisible();
+  await expect(expandQueue).toHaveAttribute("aria-expanded", "false");
   await expect(composer).toHaveValue("");
   const failedIdempotencyKey = continueRequests[0]?.idempotencyKey;
   expect(continueRequests[0]?.message).toBe("Continue in Junior");
@@ -254,6 +330,8 @@ test("starts and continues conversations from the dashboard", async ({
   // The accepted message stays out of the composer before background transcript
   // refreshes finish. Keep the local row until a server snapshot sees it.
   await expect(composer).toHaveValue("");
+  await expandQueue.click();
+  await expect(pending.getByText("Second queued message")).toBeVisible();
   await expect(pending.getByText("Continue in Junior")).toBeVisible();
   releaseDetailRefresh?.();
   await screenshot(page, "conversation-outbox-author");
@@ -292,8 +370,8 @@ test("hands web and external messages from queue to history without gaps", async
   let committed: ConversationPendingMessage[] = [];
   let active = false;
   let started = false;
-  let pendingReads = 0;
   let detailReads = 0;
+  let detailReadsInFlight = 0;
   let releaseAccept!: () => void;
   const accept = new Promise<void>((resolve) => {
     releaseAccept = resolve;
@@ -301,43 +379,57 @@ test("hands web and external messages from queue to history without gaps", async
   let releaseHistory!: () => void;
   let historyHeld: Promise<void> | undefined;
   let failCancel = true;
+  // Polls read the mailbox with the detail below. This route only cancels.
   await page.route(`${path}/pending-messages`, async (route) => {
-    if (route.request().method() === "DELETE") {
-      if (failCancel) {
-        await route.fulfill({
-          status: 500,
-          json: { error: "temporary failure" },
-        });
-      } else {
-        const cancelled = queued.map((message) => message.inboundMessageId);
-        queued = [];
-        await route.fulfill({
-          json: {
-            conversationId,
-            cancelledCount: cancelled.length,
-            cancelledInboundMessageIds: cancelled,
-          },
-        });
-      }
+    if (failCancel) {
+      await route.fulfill({
+        status: 500,
+        json: { error: "temporary failure" },
+      });
       return;
     }
-    pendingReads += 1;
+    const cancelled = queued.map((message) => message.inboundMessageId);
+    queued = [];
     await route.fulfill({
-      json: { conversationId, generatedAt: createdAt, messages: queued },
+      json: {
+        conversationId,
+        cancelledCount: cancelled.length,
+        cancelledInboundMessageIds: cancelled,
+      },
     });
   });
-  await page.route(path, async (route) => {
+  // The tree token moves with the mailbox and history, as on the server.
+  const conversationVersion = () =>
+    JSON.stringify([queued, committed, active, started]);
+  await routeConversationVersion(page, conversationVersion);
+  await page.route(`${path}*`, async (route) => {
     detailReads += 1;
+    detailReadsInFlight += 1;
+    // Like the server, read the mailbox before history.
+    const mailbox = {
+      conversationId,
+      generatedAt: createdAt,
+      messages: queued,
+    };
     await historyHeld;
     // Request the full body because this test changes it.
     const response = await route.fetch({
-      headers: { ...route.request().headers(), "if-none-match": "" },
+      headers: {
+        ...route.request().headers(),
+        [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+      },
     });
     const detail = await response.json();
+    const { "content-length": _, ...headers } = response.headers();
     await route.fulfill({
       response,
+      headers: {
+        ...headers,
+        [CONVERSATION_VERSION_HEADER]: conversationVersion(),
+      },
       json: {
         ...detail,
+        mailbox,
         eventHistory: { status: "available" },
         isParticipant: true,
         status: active ? "active" : "completed",
@@ -371,6 +463,7 @@ test("hands web and external messages from queue to history without gaps", async
         ],
       },
     });
+    detailReadsInFlight -= 1;
   });
   await page.route(`${path}/messages`, async (route) => {
     const body = route.request().postDataJSON();
@@ -507,22 +600,24 @@ test("hands web and external messages from queue to history without gaps", async
   historyHeld = undefined;
   // The mailbox copy does not pull the message back into the queue.
   queued = [web];
-  const readsBeforeQueued = pendingReads;
-  await expect.poll(() => pendingReads).toBeGreaterThan(readsBeforeQueued + 1);
+  const readsBeforeQueued = detailReads;
+  await expect.poll(() => detailReads).toBeGreaterThan(readsBeforeQueued + 1);
   await expect(transcript.getByText(web.text)).toBeVisible();
   await expect(pending).toBeHidden();
   await expect(thinking).toBeHidden();
 
   // The mailbox can empty before the slower history read returns. Publish both
-  // together, and do not hide the web message in the meantime.
-  const readsBeforeCommit = pendingReads;
+  // together, and do not hide the web message in the meantime. A read that is
+  // already past the hold would show the new history early.
+  await expect.poll(() => detailReadsInFlight).toBe(0);
+  const readsBeforeCommit = detailReads;
   queued = [];
   committed = [waiting, web];
   started = true;
   historyHeld = new Promise<void>((resolve) => {
     releaseHistory = resolve;
   });
-  await expect.poll(() => pendingReads).toBeGreaterThan(readsBeforeCommit);
+  await expect.poll(() => detailReads).toBeGreaterThan(readsBeforeCommit);
   await expect(transcript.getByText(web.text)).toBeVisible();
   await expect(thinking).toBeHidden();
   releaseHistory();
@@ -639,11 +734,6 @@ test("stops the active Turn and returns queued text to the composer", async ({
   let active = true;
   let queued: ConversationPendingMessage[] = [queuedMessage];
   let stopRequests = 0;
-  await page.route(`${path}/pending-messages`, async (route) => {
-    await route.fulfill({
-      json: { conversationId, generatedAt: createdAt, messages: queued },
-    });
-  });
   await page.route(`${path}/messages`, async (route) => {
     const body = route.request().postDataJSON();
     sentMessage.messageId = await webMessageId({
@@ -676,18 +766,25 @@ test("stops the active Turn and returns queued text to the composer", async ({
       },
     });
   });
-  await page.route(path, async (route) => {
+  await page.route(`${path}*`, async (route) => {
     const response = await route.fetch({
-      headers: { ...route.request().headers(), "if-none-match": "" },
+      headers: {
+        ...route.request().headers(),
+        [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+      },
     });
     const detail = await response.json();
     await route.fulfill({
       response,
-      json: {
-        ...detail,
-        isParticipant: true,
-        status: active ? "active" : "completed",
-      },
+      json: withRequestedMailbox(
+        route,
+        {
+          ...detail,
+          isParticipant: true,
+          status: active ? "active" : "completed",
+        },
+        { conversationId, generatedAt: createdAt, messages: queued },
+      ),
     });
   });
 
@@ -701,6 +798,12 @@ test("stops the active Turn and returns queued text to the composer", async ({
   await expect(stop).toBeVisible();
   await composer.fill(sentMessage.text);
   await page.getByRole("button", { name: "Send", exact: true }).click();
+  await pending
+    .getByRole("button", { name: "2 queued messages" })
+    .press("Enter");
+  await expect(
+    pending.getByRole("button", { name: "Show fewer queued messages" }),
+  ).toBeFocused();
   await expect(pending.getByText(sentMessage.text)).toBeVisible();
   await screenshot(page, "conversation-stop-active");
 
@@ -776,12 +879,6 @@ test("edits a queued message back into the composer", async ({
     });
   });
   await page.route(`${path}/pending-messages`, async (route) => {
-    if (route.request().method() !== "DELETE") {
-      await route.fulfill({
-        json: { conversationId, generatedAt: createdAt, messages: queued },
-      });
-      return;
-    }
     const [id] = route.request().postDataJSON().inboundMessageIds as string[];
     const cancelled = id === queuedMessage.inboundMessageId ? [id] : [];
     queued = queued.filter((message) => message.inboundMessageId !== id);
@@ -793,14 +890,21 @@ test("edits a queued message back into the composer", async ({
       },
     });
   });
-  await page.route(path, async (route) => {
+  await page.route(`${path}*`, async (route) => {
     const response = await route.fetch({
-      headers: { ...route.request().headers(), "if-none-match": "" },
+      headers: {
+        ...route.request().headers(),
+        [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+      },
     });
     const detail = await response.json();
     await route.fulfill({
       response,
-      json: { ...detail, isParticipant: true, status: "active" },
+      json: withRequestedMailbox(
+        route,
+        { ...detail, isParticipant: true, status: "active" },
+        { conversationId, generatedAt: createdAt, messages: queued },
+      ),
     });
   });
 
@@ -809,6 +913,7 @@ test("edits a queued message back into the composer", async ({
   );
   const composer = page.getByLabel("Continue this conversation");
   const pending = page.getByLabel("Pending messages");
+  await pending.getByRole("button", { name: "2 queued messages" }).click();
   await expect(pending.getByText(queuedMessage.text)).toBeVisible();
   await expect(
     pending.getByRole("img", { name: "queued-chart.png" }),
@@ -870,7 +975,7 @@ test("edits a queued message back into the composer", async ({
 
   await pending.getByRole("button", { name: "Edit queued message" }).click();
   await expect(
-    page.getByText("Junior already read that message."),
+    page.getByText("That message was already read or removed."),
   ).toBeVisible();
   await expect(composer).toHaveValue(
     `${queuedMessage.text}\nDraft in progress`,

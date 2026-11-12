@@ -1,5 +1,6 @@
 import {
   memo,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -12,6 +13,7 @@ import {
 } from "@sentry/junior/api/schema";
 import {
   AlertCircle,
+  ChevronRight,
   Clock3,
   FileText,
   Pencil,
@@ -42,7 +44,9 @@ import {
 } from "./TranscriptHeadingRow";
 import { SlackMark } from "./SlackMark";
 import { DisplayText } from "../display-text/DisplayText";
+import { ReviewItemChangeLabel } from "../review-desk/ReviewItemChangeRow";
 import { displayPlainText } from "../display-text/plainText";
+import { cn, dashboardDisclosureChevronClass } from "../styles";
 
 // Rows are one line each, so the stack can show five before it collapses.
 const MAX_EXPANDED_PENDING_ROWS = 5;
@@ -123,7 +127,7 @@ function PendingActionButton(props: {
   onClick(): void;
   pending: boolean;
   tooltip: string;
-  variant?: "danger";
+  variant?: "destructive";
 }) {
   const Icon = props.icon;
   return (
@@ -139,7 +143,7 @@ function PendingActionButton(props: {
             onClick={props.onClick}
             size="icon"
             type="button"
-            variant={props.variant}
+            variant={props.variant ?? "ghost"}
           >
             {props.pending ? (
               <Spinner aria-hidden="true" className="size-3.25" />
@@ -226,7 +230,7 @@ function PendingMetaIcons(props: {
               ? "Could not delete. Try again."
               : "Delete from the queue"
           }
-          variant="danger"
+          variant="destructive"
         />
       ) : null}
     </TranscriptHeadingMeta>
@@ -305,6 +309,7 @@ function PendingRow(props: {
   cancelPending: boolean;
   canEdit: boolean;
   canSteer: boolean;
+  className: string;
   conversationId?: string;
   editPending: boolean;
   message: ConversationMailboxMessage;
@@ -318,13 +323,14 @@ function PendingRow(props: {
   const mentions = props.message.mentions ?? [];
   const redacted = Boolean(props.message.redacted);
   const showSlack = props.message.source === "slack";
-  const canRetry =
-    props.message.clientStatus === "failed" &&
-    Boolean(props.message.idempotencyKey) &&
-    Boolean(props.onRetry);
 
   return (
-    <article className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 px-3 py-1.5 text-dashboard-text md:px-3.5">
+    <article
+      className={cn(
+        "min-w-0 grid-cols-[minmax(0,1fr)] gap-1 px-3 py-1.5 text-dashboard-text md:px-3.5",
+        props.className,
+      )}
+    >
       <TranscriptHeadingRow
         className="items-center"
         left={
@@ -349,7 +355,17 @@ function PendingRow(props: {
                 className="m-0 min-w-0 truncate font-sans text-sm leading-snug text-dashboard-text-subtle"
                 title={displayPlainText(text, mentions)}
               >
-                <DisplayText inline mentions={mentions} text={text} />
+                {props.message.reviewItemChange && props.conversationId ? (
+                  <ReviewItemChangeLabel
+                    conversationId={props.conversationId}
+                    fallback={
+                      <DisplayText inline mentions={mentions} text={text} />
+                    }
+                    record={props.message.reviewItemChange}
+                  />
+                ) : (
+                  <DisplayText inline mentions={mentions} text={text} />
+                )}
               </p>
             ) : null}
           </>
@@ -380,18 +396,18 @@ function PendingRow(props: {
           />
         }
       />
-      {canRetry ? (
+      {props.onRetry ? (
         <div className="flex min-w-0 items-center gap-2">
           <p className="m-0 font-sans text-xs text-red-300/80">
             Could not send.
           </p>
-          <button
-            className="cursor-pointer border-0 bg-transparent p-0 font-sans text-xs font-medium text-dashboard-accent-text/90 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+          <Button
+            className="text-xs font-medium text-dashboard-accent-text/90 underline-offset-2 focus-visible:outline-offset-1"
             onClick={() => props.onRetry?.(props.message)}
-            type="button"
+            variant="link"
           >
             Retry
-          </button>
+          </Button>
         </div>
       ) : null}
       {props.cancelError ? (
@@ -404,36 +420,42 @@ function PendingRow(props: {
 }
 
 function ExpandQueuedMessagesButton(props: {
+  className?: string;
+  controls: string;
   expanded: boolean;
-  hiddenCount: number;
   onClick(): void;
+  tallHiddenCount: number;
   totalCount: number;
 }) {
-  const totalLabel =
-    props.totalCount === 1
-      ? "1 queued message"
-      : `${props.totalCount} queued messages`;
-  const moreLabel =
-    props.hiddenCount > 0
-      ? `${props.hiddenCount} more queued messages`
-      : totalLabel;
-  // Mobile collapses previews and uses the total count as the expand control.
-  const mobileCollapsedLabel = totalLabel;
-  const label = props.expanded ? "Show fewer queued messages" : moreLabel;
-
   return (
     <button
+      aria-controls={props.controls}
       aria-expanded={props.expanded}
-      className="w-full cursor-pointer border-0 bg-transparent px-3 py-2 text-left font-sans text-xs font-medium text-amber-100/80 transition-colors hover:text-amber-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-200/55 md:px-3.5"
+      className={cn(
+        "group flex w-full cursor-pointer items-center gap-1.5 border-0 bg-transparent px-3 py-2 text-left font-sans text-xs font-medium text-amber-100/80 transition-colors hover:text-amber-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-200/55 md:px-3.5",
+        props.className,
+      )}
       onClick={props.onClick}
       type="button"
     >
+      <ChevronRight
+        aria-hidden="true"
+        className={dashboardDisclosureChevronClass}
+      />
       {props.expanded ? (
-        label
+        "Show fewer queued messages"
       ) : (
         <>
-          <span className="md:hidden">{mobileCollapsedLabel}</span>
-          <span className="hidden md:inline">{moreLabel}</span>
+          <span className="md:tall:hidden">
+            {props.totalCount} queued messages
+          </span>
+          {props.tallHiddenCount > 0 ? (
+            <span className="hidden md:tall:inline">
+              {props.tallHiddenCount === 1
+                ? "1 more queued message"
+                : `${props.tallHiddenCount} more queued messages`}
+            </span>
+          ) : null}
         </>
       )}
     </button>
@@ -474,6 +496,7 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
   viewerEmail?: string;
 }): ReactNode {
   const [expanded, setExpanded] = useState(false);
+  const rowsId = useId();
   const onLayoutChangeRef = useRef(props.onLayoutChange);
   onLayoutChangeRef.current = props.onLayoutChange;
   const hasMountedExpandedRef = useRef(false);
@@ -490,24 +513,46 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
   // Preserve mailbox order and clientStatus from the merged source rows.
   // History wins on messageId so a send does not appear twice once workers
   // persist the user message.
-  const rows = props.messages.filter(
-    (message) => !committedIds.has(message.messageId),
-  );
+  const rows = props.messages
+    .filter((message) => !committedIds.has(message.messageId))
+    .map((message) => {
+      const cancelError = Boolean(
+        props.cancelError &&
+        props.cancelTargetInboundMessageId === message.inboundMessageId,
+      );
+      const retry =
+        message.clientStatus === "failed" && message.idempotencyKey
+          ? props.onRetry
+          : undefined;
+      return {
+        cancelError,
+        message,
+        retry,
+        needsAttention: cancelError || !!retry,
+      };
+    });
   if (rows.length === 0) return null;
 
-  const canCollapse = rows.length > MAX_EXPANDED_PENDING_ROWS;
-  const showCollapsed = canCollapse && !expanded;
-  const previewRows = rows.slice(0, COLLAPSED_PENDING_ROW_COUNT);
-  const visibleRows = showCollapsed ? previewRows : rows;
-  const hiddenCount = Math.max(0, rows.length - COLLAPSED_PENDING_ROW_COUNT);
+  const longQueue = rows.length > MAX_EXPANDED_PENDING_ROWS;
+  const canCollapse =
+    rows.length > 1 && rows.some((row) => !row.needsAttention);
+  const tallHiddenCount = longQueue
+    ? rows
+        .slice(COLLAPSED_PENDING_ROW_COUNT)
+        .filter((row) => !row.needsAttention).length
+    : 0;
   const toggleExpanded = () => setExpanded((value) => !value);
   const actionsDisabled =
     Boolean(props.cancelPending) ||
     Boolean(props.editTargetInboundMessageId) ||
     Boolean(props.steerTargetInboundMessageId);
-  const renderRow = (message: ConversationMailboxMessage) => {
-    const isTarget =
-      props.cancelTargetInboundMessageId === message.inboundMessageId;
+  const renderRow = (row: (typeof rows)[number], index: number) => {
+    const { cancelError, message, needsAttention, retry } = row;
+    const collapsed = canCollapse && !expanded && !needsAttention;
+    if (collapsed && longQueue && index >= COLLAPSED_PENDING_ROW_COUNT) {
+      return null;
+    }
+
     // Only accepted server rows can leave the queue. Local rows are still sending.
     const accepted = message.clientStatus === undefined;
     const ownWebRow =
@@ -519,10 +564,20 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
       <PendingRow
         actionsDisabled={actionsDisabled}
         authors={props.authors}
-        cancelError={Boolean(props.cancelError && isTarget)}
-        cancelPending={Boolean(props.cancelPending && isTarget)}
+        cancelError={cancelError}
+        cancelPending={Boolean(
+          props.cancelPending &&
+          props.cancelTargetInboundMessageId === message.inboundMessageId,
+        )}
         canEdit={ownWebRow}
         canSteer={ownWebRow && message.delivery === "defer"}
+        className={
+          collapsed
+            ? longQueue
+              ? "hidden md:tall:grid"
+              : "grid md:hidden md:tall:grid"
+            : "grid"
+        }
         conversationId={props.conversationId}
         editPending={
           props.editTargetInboundMessageId === message.inboundMessageId
@@ -531,7 +586,7 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
         message={message}
         onCancel={accepted ? props.onCancelMessage : undefined}
         onEdit={props.onEditMessage}
-        onRetry={props.onRetry}
+        onRetry={retry}
         onSteer={props.onSteerMessage}
         steerPending={
           props.steerTargetInboundMessageId === message.inboundMessageId
@@ -545,17 +600,17 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
       aria-label="Pending messages"
       className="mx-2 overflow-hidden rounded-t-lg bg-amber-300/[0.055] md:mx-3"
     >
-      {showCollapsed ? (
-        // Desktop keeps a short preview; mobile collapses to the control only.
-        <div className="hidden md:block">{previewRows.map(renderRow)}</div>
-      ) : (
-        visibleRows.map(renderRow)
-      )}
+      <div id={rowsId}>{rows.map(renderRow)}</div>
       {canCollapse ? (
         <ExpandQueuedMessagesButton
+          className={cn(
+            !longQueue && "hidden md:flex",
+            tallHiddenCount === 0 && "md:tall:hidden",
+          )}
+          controls={rowsId}
           expanded={expanded}
-          hiddenCount={hiddenCount}
           onClick={toggleExpanded}
+          tallHiddenCount={tallHiddenCount}
           totalCount={rows.length}
         />
       ) : null}

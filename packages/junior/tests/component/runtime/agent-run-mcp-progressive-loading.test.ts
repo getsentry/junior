@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { getConversationEventStore } from "@/chat/db";
+import {
+  agentInstructionProvenance,
+  contextProvenance,
+} from "@/chat/conversations/provenance";
 import { McpProviderError } from "@/chat/mcp/errors";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
@@ -686,7 +690,7 @@ import { createSlackSource } from "@sentry/junior-plugin-api";
 
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {
-    throw new Error(`Expected final reply, got ${outcome.status}`);
+    throw new Error(`Expected final response, got ${outcome.status}`);
   }
   return outcome.result;
 }
@@ -1005,59 +1009,104 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(agentAfterToolResults).toHaveLength(1);
   });
 
-  it("wires Guardian denial through the runtime before MCP execution", async () => {
-    listToolsMock.mockReset();
-    listToolsMock.mockResolvedValue(makeDemoMcpTools());
-    guardianDecision.value = "deny";
-
-    await executeAgentRun(
-      makeAgentRun("help me", {
-        conversationId: "conversation-guardian-deny",
-        threadTs: "1712345.0099",
-        turnId: "turn-guardian-deny",
-      }),
-    );
-
-    expect(guardianProposals).toEqual([
-      expect.objectContaining({
-        input: {
-          arguments: { query: "hello" },
-          tool_name: "mcp__demo__ping",
+  // A parent agent task is the user intent of a child Run, without its tag,
+  // as a person's message is for a root Run. A nested result is not. A child
+  // reads its own Conversation even when its parent's Actor is a system
+  // Actor, so earlier parent tasks still count.
+  it.each([
+    {
+      name: "a root Run",
+      conversationId: "conversation-guardian-deny",
+      input: "help me",
+      intent: "help me",
+      run: {},
+    },
+    {
+      name: "a child Run",
+      input:
+        "<parent-agent-task>\nPing the demo service.\n</parent-agent-task>",
+      intent: "Ping the demo service.",
+      conversationId: "agent:guardian-deny",
+      run: {
+        agentInvocationId: "agent-invocation:guardian-deny",
+        instruction: { provenance: agentInstructionProvenance },
+      },
+    },
+    {
+      name: "a child of an Automation run woken by a nested result",
+      input: '<agent-result status="completed">\nPing it.\n</agent-result>',
+      intent: "[empty]",
+      conversationId: "agent:guardian-deny-result",
+      run: {
+        actor: { platform: "system", name: "event" } as const,
+        agentInvocationId: "agent-invocation:guardian-deny-result",
+        credentialContext: {
+          actor: { platform: "system", name: "event" } as const,
         },
-        tool: expect.objectContaining({
-          name: "mcp__demo__ping",
+        instruction: { provenance: contextProvenance },
+      },
+    },
+  ])(
+    "wires Guardian denial through the runtime before MCP execution for $name",
+    async ({ conversationId, input, intent, run }) => {
+      listToolsMock.mockReset();
+      listToolsMock.mockResolvedValue(makeDemoMcpTools());
+      guardianDecision.value = "deny";
+
+      await executeAgentRun(
+        makeAgentRun(
+          input,
+          {
+            conversationId,
+            threadTs: "1712345.0099",
+            turnId: "turn-guardian-deny",
+          },
+          run,
+        ),
+      );
+
+      expect(guardianProposals).toEqual([
+        expect.objectContaining({
+          context: expect.objectContaining({ userIntent: intent }),
+          rootConversation: expect.anything(),
+          input: {
+            arguments: { query: "hello" },
+            tool_name: "mcp__demo__ping",
+          },
+          tool: expect.objectContaining({
+            name: "mcp__demo__ping",
+          }),
         }),
-      }),
-    ]);
-    expect(callToolMock).not.toHaveBeenCalled();
-    expect(agentAfterToolResults).toEqual([
-      expect.objectContaining({
-        details: expect.objectContaining({
-          guardianActionRejection: expect.objectContaining({
-            decision: "deny",
-            priorRejection: expect.objectContaining({
-              input: {
-                arguments: { query: "hello" },
-                tool_name: "mcp__demo__ping",
-              },
+      ]);
+      expect(callToolMock).not.toHaveBeenCalled();
+      expect(agentAfterToolResults).toEqual([
+        expect.objectContaining({
+          details: expect.objectContaining({
+            guardianActionRejection: expect.objectContaining({
+              decision: "deny",
+              priorRejection: expect.objectContaining({
+                input: {
+                  arguments: { query: "hello" },
+                  tool_name: "mcp__demo__ping",
+                },
+              }),
             }),
           }),
         }),
-      }),
-    ]);
-    const events = await getConversationEventStore().loadCurrentHistory(
-      "conversation-guardian-deny",
-    );
-    expect(events.map((event) => event.data)).toContainEqual({
-      type: "guardian_action_reviewed",
-      turnId: "turn-guardian-deny",
-      toolCallId: expect.any(String),
-      toolName: "mcp__demo__ping",
-      decision: "deny",
-      riskLevel: "high",
-      userAuthorization: "low",
-    });
-  });
+      ]);
+      const events =
+        await getConversationEventStore().loadCurrentHistory(conversationId);
+      expect(events.map((event) => event.data)).toContainEqual({
+        type: "guardian_action_reviewed",
+        turnId: "turn-guardian-deny",
+        toolCallId: expect.any(String),
+        toolName: "mcp__demo__ping",
+        decision: "deny",
+        riskLevel: "high",
+        userAuthorization: "low",
+      });
+    },
+  );
 
   it("escalates unavailable Guardian review to the agent-run boundary", async () => {
     listToolsMock.mockReset();

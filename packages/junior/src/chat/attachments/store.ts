@@ -3,6 +3,10 @@ import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments, juniorConversations } from "@/db/schema";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
+import {
+  conversationDetailTouch,
+  touchConversationDetail,
+} from "@/chat/conversations/sql/detail-version";
 import type { AttachmentStorage } from "./storage";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -121,8 +125,9 @@ async function rejectPurgedAttachmentWrite(args: {
   storage: AttachmentStorage;
   storageKey: string;
 }): Promise<never> {
-  await args.db
-    .db()
+  const db = args.db.db();
+  await db
+    .with(conversationDetailTouch(db, [args.conversationId]))
     .update(juniorAttachments)
     .set({ deleteRequestedAt: args.now })
     .where(eq(juniorAttachments.id, args.id));
@@ -235,6 +240,7 @@ export async function storeAttachment(args: {
     const oldStorageKey = existing.storageKey;
     const revived = await args.db
       .db()
+      .with(conversationDetailTouch(args.db.db(), [args.conversationId]))
       .update(juniorAttachments)
       .set({
         deleteRequestedAt: null,
@@ -287,6 +293,7 @@ export async function storeAttachment(args: {
   try {
     inserted = await args.db
       .db()
+      .with(conversationDetailTouch(args.db.db(), [args.conversationId]))
       .insert(juniorAttachments)
       .values({
         id,
@@ -354,6 +361,7 @@ export async function storeAttachment(args: {
 
   const revived = await args.db
     .db()
+    .with(conversationDetailTouch(args.db.db(), [args.conversationId]))
     .update(juniorAttachments)
     .set({
       deleteRequestedAt: null,
@@ -478,6 +486,7 @@ export async function requestAttachmentDeletion(
   if (conversationIds.length === 0) return;
   await db
     .db()
+    .with(conversationDetailTouch(db.db(), conversationIds))
     .update(juniorAttachments)
     .set({ deleteRequestedAt: new Date(nowMs) })
     .where(
@@ -561,7 +570,11 @@ export async function collectAttachmentGarbage(args: {
       ),
     )
     .returning({
-      id: juniorAttachments.id,
+      conversationId: juniorAttachments.conversationId,
     });
+  await touchConversationDetail(
+    args.db.db(),
+    removed.map((row) => row.conversationId),
+  );
   return { deleted: removed.length };
 }

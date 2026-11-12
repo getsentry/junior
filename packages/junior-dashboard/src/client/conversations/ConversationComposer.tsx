@@ -11,14 +11,17 @@ import {
   useImperativeHandle,
   useRef,
   useState,
+  useSyncExternalStore,
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
   type Ref,
 } from "react";
+import { flushSync } from "react-dom";
 import { ImagePlus, Send, Square } from "lucide-react";
 
 import { Button } from "../components/ui/button";
+import { BareTextarea } from "../components/ui/textarea";
 import {
   Tooltip,
   TooltipContent,
@@ -27,10 +30,25 @@ import {
 import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
 import { useComposerAutocorrect } from "./composerAutocorrect";
+import { useSwipeDownToBlur } from "./useSwipeDownToBlur";
 
 const DRAFT_STORAGE_PREFIX = "junior:dashboard:conversation-draft:";
 // Keep keystrokes off the storage path. Mobile Safari pays for every write.
 const DRAFT_STORAGE_DEBOUNCE_MS = 250;
+// Touch keyboards have no Shift+Enter, so Return adds a line there and the
+// send button sends.
+const TOUCH_KEYBOARD_QUERY = "(pointer: coarse)";
+
+function subscribeToTouchKeyboard(onChange: () => void) {
+  const media = window.matchMedia(TOUCH_KEYBOARD_QUERY);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
+/** True when the device types on a touch keyboard. */
+export function touchKeyboardMatches() {
+  return window.matchMedia(TOUCH_KEYBOARD_QUERY).matches;
+}
 
 type ConversationDraft = {
   /** Image bytes are not restored from localStorage; do not reuse their send key. */
@@ -63,10 +81,14 @@ export function conversationAttemptForSubmit(
   };
 }
 
-/** Imperative composer actions for the reply footer. */
+/** Imperative composer actions for the reply footer and the create view. */
 export type ConversationComposerHandle = {
+  /** Add text as a new paragraph after the draft, with the cursor below it. */
+  appendText(text: string): void;
   /** True when the draft has room for these images right now. */
   canRestoreImages(images: readonly InputImage[]): boolean;
+  /** Put the cursor in the draft. */
+  focus(): void;
   /** Put queued text and images ahead of the draft. Queued images win. */
   restoreMessage(message: { images?: InputImage[]; text: string }): void;
 };
@@ -81,21 +103,34 @@ type ConversationComposerProps = {
    * crushed beside the mobile send button.
    */
   footerStart?: ReactNode;
+  /** Text only, for a narrow panel: no images, no key hint, icon-only send. */
+  compact?: boolean;
   label: string;
+  placeholder?: string;
   /**
-   * Restore the submitted text after a failed accept when there is no mailbox
-   * outbox (new conversation create). Existing conversations keep failures in
-   * the pending queue instead.
+   * Keep the draft in place and locked until `onSubmit` resolves, then clear
+   * it. Use it when no mailbox outbox shows the send (new Conversation, Quick
+   * question): the text leaves the composer when it shows somewhere else. A
+   * failure keeps the draft and its send key for a retry.
    */
-  restoreDraftOnError?: boolean;
+  holdDraftUntilAccept?: boolean;
   /** Lets the parent put a message taken out of the queue back in the draft. */
   ref?: Ref<ConversationComposerHandle>;
   submitLabel: string;
   /**
-   * Return a promise to ask the reader before a send. The draft stays when it
+   * Return a promise to run before a send, such as a question to the reader
+   * or answers that go with the message. `sendsMessage` is false when the
+   * draft is empty, so only those answers go. The draft stays when it
    * resolves false. Return undefined to send at once.
    */
-  confirmSubmit?: () => Promise<boolean> | undefined;
+  beforeSubmit?: (send: {
+    sendsMessage: boolean;
+  }) => Promise<boolean> | undefined;
+  /**
+   * Enable Send with an empty draft, because `beforeSubmit` has input of its
+   * own to send. An empty draft then sends no message.
+   */
+  sendsWithoutDraft?: boolean;
   onFocus?: () => void;
   onSubmit(
     message: string,
@@ -119,9 +154,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   const [initialDraft] = useState<ConversationDraft>(() =>
     readStoredDraft(storageKey),
   );
-  // New-conversation create holds the send control until accept settles so a
-  // failed restore cannot race a later submit.
-  const [createPending, setCreatePending] = useState(false);
+  const [holdPending, setHoldPending] = useState(false);
   const [canSend, setCanSend] = useState(() =>
     Boolean(initialDraft.text.trim()),
   );
@@ -131,11 +164,18 @@ export const ConversationComposer = memo(function ConversationComposer(
   const [readingImages, setReadingImages] = useState(false);
   const readingImagesRef = useRef(false);
   const [dragging, setDragging] = useState(false);
+  const replyLayout = !props.footerStart && !props.compact;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const online = useDashboardOnline();
   const [autocorrect] = useComposerAutocorrect();
+  const enterSends = !useSyncExternalStore(
+    subscribeToTouchKeyboard,
+    touchKeyboardMatches,
+    () => false,
+  );
   const id = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useSwipeDownToBlur(textareaRef);
   const draftRef = useRef(initialDraft);
   const canSendRef = useRef(canSend);
   const storageTimerRef = useRef<number | undefined>(undefined);
@@ -145,15 +185,12 @@ export const ConversationComposer = memo(function ConversationComposer(
     idempotencyKey: initialDraft.idempotencyKey,
     lastSubmittedText: initialDraft.lastSubmittedText,
   });
-  // Blocks same-tick double fire. For create restore, also blocks until settle.
+  // Blocks same-tick double fire. A held draft also blocks until settle.
   const submittingRef = useRef(false);
-  // Blocks a second send while the reader answers `confirmSubmit`.
+  // Blocks a second send while `beforeSubmit` runs.
   const confirmingRef = useRef(false);
   const stoppingRef = useRef(false);
-  // Monotonic token so a late failed create never restores over a newer submit.
-  const submitTokenRef = useRef(0);
-  const sendLocked =
-    Boolean(props.disabled) || (props.restoreDraftOnError && createPending);
+  const sendLocked = Boolean(props.disabled) || holdPending;
 
   // Flush the latest draft if the reader leaves before the debounce lands.
   useEffect(() => {
@@ -166,31 +203,39 @@ export const ConversationComposer = memo(function ConversationComposer(
   }, [storageKey]);
 
   // Grow with wrapped and explicit lines. CSS `max-height` caps the box, and
-  // longer drafts scroll inside it. Width changes rewrap the text, so measure
-  // again when the textarea gets narrower or wider.
+  // longer drafts scroll inside it. Measure again when the text rewraps or
+  // the reply layout switches density.
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
     syncComposerHeight(textarea);
     let width = textarea.clientWidth;
     let frame: number | undefined;
-    const observer = new ResizeObserver(() => {
-      if (textarea.clientWidth === width) return;
-      width = textarea.clientWidth;
+    const scheduleHeight = () => {
       // A height change inside this callback starts a ResizeObserver loop
       // error. Measure in the next frame instead.
-      if (frame !== undefined) window.cancelAnimationFrame(frame);
+      if (frame !== undefined) return;
       frame = window.requestAnimationFrame(() => {
         frame = undefined;
         syncComposerHeight(textarea);
       });
+    };
+    const observer = new ResizeObserver(() => {
+      if (textarea.clientWidth === width) return;
+      width = textarea.clientWidth;
+      scheduleHeight();
     });
     observer.observe(textarea);
+    const tallViewport = replyLayout
+      ? window.matchMedia("(min-height: 62.5rem)")
+      : undefined;
+    tallViewport?.addEventListener("change", scheduleHeight);
     return () => {
       observer.disconnect();
+      tallViewport?.removeEventListener("change", scheduleHeight);
       if (frame !== undefined) window.cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [replyLayout]);
 
   const updateCanSend = (text: string) => {
     const nextCanSend = Boolean(text.trim());
@@ -265,7 +310,11 @@ export const ConversationComposer = memo(function ConversationComposer(
   };
 
   const canSubmit = () =>
-    Boolean(draftRef.current.text.trim() || imagesRef.current.length) &&
+    Boolean(
+      draftRef.current.text.trim() ||
+      imagesRef.current.length ||
+      props.sendsWithoutDraft,
+    ) &&
     online &&
     !submittingRef.current &&
     !confirmingRef.current &&
@@ -275,7 +324,11 @@ export const ConversationComposer = memo(function ConversationComposer(
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!canSubmit()) return;
-    const confirmation = props.confirmSubmit?.();
+    const confirmation = props.beforeSubmit?.({
+      sendsMessage: Boolean(
+        draftRef.current.text.trim() || imagesRef.current.length,
+      ),
+    });
     if (confirmation) {
       confirmingRef.current = true;
       let confirmed: boolean;
@@ -288,6 +341,7 @@ export const ConversationComposer = memo(function ConversationComposer(
     }
     const text = draftRef.current.text.trim();
     const submittedImages = imagesRef.current;
+    if (!text && !submittedImages.length) return;
 
     const attempt = conversationAttemptForSubmit(
       attemptRef.current,
@@ -295,62 +349,59 @@ export const ConversationComposer = memo(function ConversationComposer(
       submittedImages.length ? submittedImages : undefined,
     );
     attemptRef.current = attempt;
-    const submitToken = ++submitTokenRef.current;
-    const submittedDraft: ConversationDraft = {
-      idempotencyKey: attempt.idempotencyKey,
-      lastSubmittedText: attempt.lastSubmittedText,
-      hasImages: submittedImages.length > 0,
-      text,
-    };
-    // Clear immediately so the reader can compose the next message. Existing
-    // conversations keep failures in the mailbox outbox; new roots may restore.
-    const nextAttempt = emptyDraft();
-    const clearedDraft: ConversationDraft = {
-      ...nextAttempt,
-      text: "",
-    };
-    replaceMessage(clearedDraft);
-    replaceImages([]);
-    setImageError(undefined);
-    storeDraft(storageKey, clearedDraft);
-    attemptRef.current = nextAttempt;
-    submittingRef.current = true;
-    if (props.restoreDraftOnError) setCreatePending(true);
-    props.onSubmitStart?.();
-    textareaRef.current?.focus({ preventScroll: true });
-    // Existing conversations unlock immediately so the next message can queue.
-    // Create restore stays locked until this accept settles.
-    if (!props.restoreDraftOnError) {
-      queueMicrotask(() => {
-        submittingRef.current = false;
-      });
-    }
-
-    try {
-      await props.onSubmit(
+    const send = () =>
+      props.onSubmit(
         text,
         attempt.idempotencyKey,
         submittedImages.length ? submittedImages : undefined,
       );
-    } catch {
-      if (!props.restoreDraftOnError) {
-        // Parent keeps the failed message in the mailbox queue for retry.
+    const clear = () => {
+      const nextAttempt = emptyDraft();
+      const clearedDraft: ConversationDraft = { ...nextAttempt, text: "" };
+      replaceMessage(clearedDraft);
+      replaceImages([]);
+      setImageError(undefined);
+      storeDraft(storageKey, clearedDraft);
+      attemptRef.current = nextAttempt;
+    };
+    submittingRef.current = true;
+    props.onSubmitStart?.();
+
+    if (props.holdDraftUntilAccept) {
+      // Save the send key with the draft, so a retry after a reload reuses it.
+      const heldDraft: ConversationDraft = {
+        ...draftRef.current,
+        idempotencyKey: attempt.idempotencyKey,
+        lastSubmittedText: attempt.lastSubmittedText,
+        hasImages: submittedImages.length > 0,
+      };
+      draftRef.current = heldDraft;
+      storeDraft(storageKey, heldDraft);
+      setHoldPending(true);
+      try {
+        await send();
+      } catch {
+        // The parent shows the error. The draft stays for a retry, with
+        // focus, so Enter sends it again.
+        flushSync(() => setHoldPending(false));
+        textareaRef.current?.focus({ preventScroll: true });
         return;
-      }
-      // Ignore stale failures after a newer submit owns the composer.
-      if (submitToken !== submitTokenRef.current) return;
-      // Restore only when the reader has not already started another draft.
-      if (draftRef.current.text || imagesRef.current.length) return;
-      replaceImages(submittedImages);
-      replaceMessage(submittedDraft);
-      attemptRef.current = attempt;
-      storeDraft(storageKey, submittedDraft);
-    } finally {
-      if (props.restoreDraftOnError && submitToken === submitTokenRef.current) {
+      } finally {
         submittingRef.current = false;
-        setCreatePending(false);
+        setHoldPending(false);
       }
+      clear();
+      return;
     }
+
+    // Clear at once so the reader can compose the next message. The parent
+    // keeps a failed send in the mailbox outbox for retry.
+    clear();
+    textareaRef.current?.focus({ preventScroll: true });
+    queueMicrotask(() => {
+      submittingRef.current = false;
+    });
+    await send().catch(() => {});
   };
 
   // Put queued text back ahead of anything the reader already typed.
@@ -378,8 +429,24 @@ export const ConversationComposer = memo(function ConversationComposer(
   };
 
   useImperativeHandle(props.ref, () => ({
+    appendText: (text) => {
+      const draft = draftRef.current.text.trimEnd();
+      // The blank line ends a Markdown block, so the next words start anew.
+      const next = {
+        ...draftRef.current,
+        text: `${draft && `${draft}\n\n`}${text}\n\n`,
+      };
+      replaceMessage(next);
+      storeDraft(storageKey, next);
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(next.text.length, next.text.length);
+      textarea.scrollTop = textarea.scrollHeight;
+    },
     canRestoreImages: (images) =>
       !images.length || composerImagesFit([...images, ...imagesRef.current]),
+    focus: () => textareaRef.current?.focus({ preventScroll: true }),
     restoreMessage: (message) => {
       // An image-only message has no text to put ahead of the draft.
       if (message.text.trim()) prependDraftText(message.text);
@@ -402,6 +469,7 @@ export const ConversationComposer = memo(function ConversationComposer(
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (
+      enterSends &&
       event.key === "Enter" &&
       !event.shiftKey &&
       !event.nativeEvent.isComposing
@@ -427,13 +495,20 @@ export const ConversationComposer = memo(function ConversationComposer(
           // only for the bare reply dock.
           props.footerStart
             ? "block overflow-hidden focus-within:border-dashboard-focus/45 focus-within:ring-1 focus-within:ring-dashboard-focus/25"
-            : "grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden focus-within:border-dashboard-accent/35 focus-within:ring-1 focus-within:ring-dashboard-focus/35 md:block",
+            : "grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden focus-within:border-dashboard-accent/35 focus-within:ring-1 focus-within:ring-dashboard-focus/35",
+          // A compact form has only the send button: keep it beside the text.
+          replyLayout && "md:block",
           dashboardComposerSurfaceClass,
           dragging && "ring-2 ring-dashboard-focus",
         )}
         onDragOver={(event) => {
           if (!event.dataTransfer.types.includes("Files")) return;
+          // Always cancel a file drop, or the browser opens the file.
           event.preventDefault();
+          if (props.compact) {
+            event.dataTransfer.dropEffect = "none";
+            return;
+          }
           event.dataTransfer.dropEffect = "copy";
           setDragging(true);
         }}
@@ -444,12 +519,13 @@ export const ConversationComposer = memo(function ConversationComposer(
         onDrop={(event) => {
           if (!event.dataTransfer.types.includes("Files")) return;
           event.preventDefault();
+          if (props.compact) return;
           setDragging(false);
           void addImages(Array.from(event.dataTransfer.files));
         }}
         onPaste={(event) => {
           const files = Array.from(event.clipboardData.files);
-          if (!files.length) return;
+          if (props.compact || !files.length) return;
           event.preventDefault();
           void addImages(files);
         }}
@@ -490,16 +566,26 @@ export const ConversationComposer = memo(function ConversationComposer(
         <label className="sr-only" htmlFor={id}>
           {props.label}
         </label>
-        <textarea
-          // Chat is technical: ids, paths, code. Keep the keyboard chat-like
-          // (Send) and suppress browser IME assist that fights identifiers,
-          // unless the user turns autocorrect on in settings.
+        <BareTextarea
+          // Chat is technical: ids, paths, code. Suppress browser IME assist
+          // that fights identifiers, unless the user turns autocorrect on in
+          // settings. Android Chrome maps `autocomplete="off"` to
+          // TYPE_TEXT_FLAG_NO_SUGGESTIONS, which also turns off keyboard
+          // autocorrect, so leave it out when autocorrect is on.
           autoCapitalize={autocorrect ? "sentences" : "off"}
-          autoComplete="off"
+          autoComplete={autocorrect ? undefined : "off"}
           autoCorrect={autocorrect ? "on" : "off"}
-          className="min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-14 md:max-h-[min(calc(12lh_+_1.5rem),40dvh)] md:px-4 md:py-3"
-          disabled={Boolean(props.restoreDraftOnError && createPending)}
-          enterKeyHint="send"
+          className={cn(
+            "min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-faint",
+            props.compact
+              ? "md:max-h-[min(calc(8lh_+_1.5rem),30dvh)] md:text-sm"
+              : "md:max-h-[min(calc(12lh_+_1.5rem),40dvh)] md:px-4",
+            replyLayout
+              ? "md:py-2 md:tall:min-h-14 md:tall:py-3"
+              : !props.compact && "md:min-h-14",
+          )}
+          disabled={holdPending}
+          enterKeyHint={enterSends ? "send" : "enter"}
           id={id}
           inputMode="text"
           maxLength={32_000}
@@ -510,41 +596,46 @@ export const ConversationComposer = memo(function ConversationComposer(
           }}
           onFocus={props.onFocus}
           onKeyDown={handleKeyDown}
-          placeholder="Message Junior…"
+          placeholder={props.placeholder ?? "Message Junior…"}
           ref={textareaRef}
           rows={1}
           spellCheck={autocorrect}
         />
         <div
           className={cn(
-            "flex min-w-0 items-center gap-3 px-2 py-1.5 md:px-3 md:py-2",
+            "flex min-w-0 items-center gap-3 px-2 py-1.5",
+            !props.compact && "md:px-3",
+            replyLayout ? "md:tall:py-2" : !props.compact && "md:py-2",
             props.footerStart
               ? "justify-between"
               : "justify-end md:justify-between",
           )}
         >
           <div className="flex min-w-0 items-center gap-3">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    focusableWhenDisabled
-                    aria-label="Attach images"
-                    disabled={sendLocked || readingImages}
-                    onClick={() => fileInputRef.current?.click()}
-                    size="icon"
-                    type="button"
-                  >
-                    <ImagePlus aria-hidden="true" size={16} />
-                  </Button>
-                }
-              />
-              <TooltipContent size="compact">
-                Attach images (up to 3 MB total)
-              </TooltipContent>
-            </Tooltip>
+            {props.compact ? null : (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      focusableWhenDisabled
+                      aria-label="Attach images"
+                      disabled={sendLocked || readingImages}
+                      onClick={() => fileInputRef.current?.click()}
+                      size="icon"
+                      type="button"
+                    >
+                      <ImagePlus aria-hidden="true" size={16} />
+                    </Button>
+                  }
+                />
+                <TooltipContent size="compact">
+                  Attach images (up to 3 MB total)
+                </TooltipContent>
+              </Tooltip>
+            )}
             {props.footerStart}
-            {props.footerStart ? null : (
+            {props.footerStart || props.compact || !enterSends ? null : (
               <div className="hidden min-w-0 font-sans text-xs leading-relaxed text-dashboard-text-muted md:block">
                 Enter to send · Shift+Enter for a new line
               </div>
@@ -553,6 +644,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           <div className="flex shrink-0 items-center gap-2">
             {props.onStop ? (
               <Button
+                variant="outline"
                 aria-label={props.stopPending ? "Stopping" : "Stop"}
                 disabled={props.stopPending || !online}
                 onClick={() => void stopTurn()}
@@ -565,20 +657,25 @@ export const ConversationComposer = memo(function ConversationComposer(
             ) : null}
             <Button
               aria-label={sendLocked ? "Sending message" : props.submitLabel}
-              className="disabled:!border-transparent disabled:!bg-dashboard-fill-hover disabled:!text-dashboard-text-muted disabled:!opacity-100"
+              className={cn(
+                "disabled:!border-transparent disabled:!bg-dashboard-fill-hover disabled:!text-dashboard-text-muted disabled:!opacity-100",
+                props.compact && "w-9 px-0",
+              )}
               disabled={
-                (!canSend && !images.length) ||
+                (!canSend && !images.length && !props.sendsWithoutDraft) ||
                 !online ||
                 sendLocked ||
                 readingImages
               }
-              variant="primary"
+              variant="default"
               type="submit"
             >
               <Send aria-hidden="true" size={14} />
-              <span className="hidden md:inline">
-                {sendLocked ? "Sending…" : props.submitLabel}
-              </span>
+              {props.compact ? null : (
+                <span className="hidden md:inline">
+                  {sendLocked ? "Sending…" : props.submitLabel}
+                </span>
+              )}
             </Button>
           </div>
         </div>
@@ -663,6 +760,17 @@ export function restoreStoredDraftText(draftId: string, text: string): void {
   if (!text.trim()) return;
   const storageKey = draftStorageKey(draftId);
   storeDraft(storageKey, withPrependedText(readStoredDraft(storageKey), text));
+}
+
+/**
+ * Remove the saved draft text of a composer that is gone, to move it to
+ * another composer.
+ */
+export function takeStoredDraftText(draftId: string): string {
+  const storageKey = draftStorageKey(draftId);
+  const { text } = readStoredDraft(storageKey);
+  storeDraft(storageKey, { ...emptyDraft(), text: "" });
+  return text;
 }
 
 function storeDraft(storageKey: string, draft: ConversationDraft): void {

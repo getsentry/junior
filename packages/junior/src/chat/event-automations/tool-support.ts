@@ -1,12 +1,13 @@
 import {
-  eventMatchSchema,
+  agentEventKeys,
+  agentEventMatchSchema,
   eventTriggerText,
   type EventMatch,
   type EventTriggerDescription,
   type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
 import { saveObjectAnnotations } from "@/chat/conversations/annotation-results";
-import { z } from "zod";
+import * as z from "zod";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import type { StoredEventAutomation } from "@/chat/event-automations/store";
@@ -17,6 +18,7 @@ import {
   describeRegisteredEventTrigger,
   registeredEventTypeSchema,
   registeredEventMatchSchema,
+  registeredEventTriggerProblems,
   requireEventIdentifier,
   requireValidEventTrigger,
   type EventCatalog,
@@ -24,6 +26,10 @@ import {
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { destinationFilterValue } from "@/chat/automations/creator";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
+import {
+  automationTaskDescription,
+  automationTaskSchema,
+} from "@/chat/automations/task";
 
 /** Model-facing shape of one event automation. */
 export const compactEventAutomationResultSchema = z
@@ -31,15 +37,15 @@ export const compactEventAutomationResultSchema = z
     type: z.literal("event"),
     id: z.string().min(1),
     status: z.enum(["active", "blocked", "paused", "deleted"]),
-    statusReason: z.string().nullable(),
+    status_reason: z.string().nullable(),
     title: z.string().min(1).nullable(),
-    dashboardUrl: z.string().url().nullable(),
-    instruction: z.string().min(1),
+    dashboard_url: z.string().url().nullable(),
+    task: automationTaskSchema,
     trigger: z
       .object({
         namespace: z.string().min(1),
         identifier: z.string().min(1).nullable(),
-        resourceType: z.string().min(1).nullable(),
+        resource_type: z.string().min(1).nullable(),
         label: z.string().min(1),
         events: z.array(z.string().min(1)).min(1),
         match: z.record(z.string(), z.unknown()).optional(),
@@ -54,8 +60,8 @@ export const compactEventAutomationResultSchema = z
         thread: z.string().min(1).nullable(),
       })
       .strict(),
-    credentialMode: z.enum(["system", "creator"]),
-    isCreator: z.boolean(),
+    credential_mode: z.enum(["system", "creator"]),
+    is_creator: z.boolean(),
     outcomes: z
       .array(
         z
@@ -71,7 +77,7 @@ export const compactEventAutomationResultSchema = z
           .strict(),
       )
       .max(5),
-    createdBy: z
+    created_by: z
       .object({
         name: z.string().min(1).nullable(),
         username: z.string().min(1).nullable(),
@@ -89,7 +95,7 @@ export function registeredEventAutomationTriggerSchema(catalog: EventCatalog) {
       label: z.string().trim().min(1).max(500),
       events: z.array(registeredEventTypeSchema(plugins)).min(1),
       match: registeredEventMatchSchema().describe(
-        "Filters that select the events, from the matchFields of the namespace. Use the match of a subscribable tool result to select one resource, such as { repo, pullRequest } for one pull request. Leave it out to run for every resource, when the reach of each event allows that. A single value must equal the event data. A list means the event value may be any one entry. For a field with list: true, the event value is a list, and it matches when it includes the value or any entry.",
+        "Filters that select the events, from the match_fields of the namespace. Use the match of a subscribable tool result to select one resource, such as { repo, pull_request } for one pull request. Leave it out to run for every resource, when the reach of each event allows that. A single value must equal the event data. A list means the event value may be any one entry. For a field with list: true, the event value is a list, and it matches when it includes the value or any entry.",
       ),
     })
     .strict();
@@ -101,10 +107,13 @@ export function registeredEventAutomationTriggerSchema(catalog: EventCatalog) {
  * a trigger broader by leaving out a filter.
  */
 const eventMatchChangesSchema = z
-  .record(z.string(), z.union([eventMatchSchema.valueType, z.null()]))
+  .record(
+    agentEventMatchSchema.keyType,
+    z.union([agentEventMatchSchema.valueType, z.null()]),
+  )
   .optional()
   .describe(
-    "Filter changes, from the matchFields of the namespace. A value sets the filter, null removes it, and a filter that is left out keeps its saved value. When the namespace changes, the saved filters are dropped.",
+    "Filter changes, from the match_fields of the namespace. A value sets the filter, null removes it, and a filter that is left out keeps its saved value. When the namespace changes, the saved filters are dropped.",
   );
 
 /** Build the event trigger that the update tool accepts. */
@@ -151,6 +160,7 @@ export function requireEventAutomationTrigger(
     namespace: string;
     resourceType?: string | null;
   },
+  options?: { inputKeys: boolean },
 ): EventAutomation["trigger"] {
   const identifier = input.identifier ?? undefined;
   const resourceType = input.resourceType ?? undefined;
@@ -164,6 +174,7 @@ export function requireEventAutomationTrigger(
     automationEventCatalog(catalog),
     { namespace: input.namespace, resourceType, events, match: input.match },
     "event_automation",
+    options,
   );
   return {
     namespace: input.namespace,
@@ -205,22 +216,29 @@ export function compactEventAutomation(
   catalog: EventCatalog,
   isCreator: boolean,
 ) {
-  const { problems } = describeEventAutomationTrigger(task.trigger, catalog);
+  // Name filters as the agent writes them in match.
+  const problems = registeredEventTriggerProblems(
+    automationEventCatalog(catalog),
+    task.trigger,
+    { inputKeys: true },
+  ).map((problem) => problem.message);
   return compactEventAutomationResultSchema.parse({
     type: "event",
     id: task.id,
     status: task.status,
-    statusReason: task.statusReason ?? null,
+    status_reason: task.statusReason ?? null,
     title: task.title?.trim() || null,
-    dashboardUrl: getDashboardTaskLink(task.id) ?? null,
-    instruction: task.task.text,
+    dashboard_url: getDashboardTaskLink(task.id) ?? null,
+    task: task.task,
     trigger: {
       namespace: task.trigger.namespace,
       identifier: task.trigger.identifier ?? null,
-      resourceType: task.trigger.resourceType ?? null,
+      resource_type: task.trigger.resourceType ?? null,
       label: task.trigger.label,
       events: task.trigger.events,
-      ...(task.trigger.match ? { match: task.trigger.match } : undefined),
+      ...(task.trigger.match
+        ? { match: agentEventKeys(task.trigger.match) }
+        : undefined),
       available: problems.length === 0,
       ...(problems.length > 0 ? { problems } : undefined),
     },
@@ -229,8 +247,8 @@ export function compactEventAutomation(
       channel: task.destination.channelId,
       thread: null,
     },
-    credentialMode: task.credentialMode,
-    isCreator,
+    credential_mode: task.credentialMode,
+    is_creator: isCreator,
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination).map(
       (outcome) => ({
         action: outcome.action,
@@ -240,7 +258,7 @@ export function compactEventAutomation(
         },
       }),
     ),
-    createdBy: {
+    created_by: {
       name: task.createdBy.fullName ?? null,
       username: task.createdBy.userName ?? null,
     },
@@ -256,8 +274,9 @@ export async function eventAutomationToolResult(
 ) {
   const automation = compactEventAutomation(task, catalog, isCreator);
   const description = describeEventAutomationTrigger(task.trigger, catalog);
+  const taskDescription = automationTaskDescription(task.task);
   const title =
-    automation.title ?? fallbackShortTitle(task.task.text, "Event automation");
+    automation.title ?? fallbackShortTitle(taskDescription, "Event automation");
   return {
     automation,
     objectCards: await saveObjectAnnotations(conversationId, "junior", [
@@ -267,8 +286,8 @@ export async function eventAutomationToolResult(
         label: title,
         key: task.id,
         title,
-        url: automation.dashboardUrl,
-        description: task.task.text,
+        url: automation.dashboard_url,
+        description: taskDescription,
         status: description.problems.length === 0 ? "ready" : "unavailable",
         trigger: eventTriggerText(task.trigger.label, description),
         warning:
