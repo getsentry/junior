@@ -657,23 +657,19 @@ test("inspects and copies a child agent transcript", async ({
   await expect(
     page.getByRole("heading", { name: "Dashboard QA edge cases" }),
   ).toBeVisible();
-  // A run of Tasks collapses to one line that says what needs attention.
-  const tasksLine = page.getByRole("button", { name: /^2 Tasks/ });
-  await expect(tasksLine).toContainText("1 blocked");
+  // The Tasks of a Turn sit under its reply, one chip each with its status.
   const planner = page.getByRole("button", {
-    name: "Open Review the dashboard plan transcript",
+    name: "Open Review the dashboard plan transcript (completed)",
   });
   const reviewer = page.getByRole("button", {
-    name: "Open reviewer transcript",
+    name: "Open reviewer transcript (blocked)",
   });
-  await expect(planner).toBeHidden();
-  // The line already shows the result, so its Event row does not render.
+  await expect(planner).toBeVisible();
+  await expect(reviewer).toBeVisible();
+  // The chip already shows the result, so its Event row does not render.
   await expect(
     page.getByText('Child agent "reviewer" is blocked.'),
   ).toBeHidden();
-  await tasksLine.click();
-  await expect(reviewer).toContainText("blocked");
-  await expect(planner).toContainText("completed");
   await screenshot(page, "conversation-child-agents");
 
   // Details lists Tasks with the runtime status.

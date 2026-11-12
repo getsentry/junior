@@ -294,6 +294,10 @@ function conversationStopKey(conversationId: string): string {
   return `${CONVERSATION_PREFIX}:stop:${conversationId}`;
 }
 
+function deferredMoveKey(conversationId: string): string {
+  return `${CONVERSATION_PREFIX}:deferred-move:${conversationId}`;
+}
+
 function indexLockKey(indexKey: string): string {
   return `${indexKey}:lock`;
 }
@@ -1630,12 +1634,7 @@ export async function moveIdleConversationDestination(args: {
 }): Promise<"busy" | "moved" | "not_moved"> {
   return await withConversationMutation(args, async (state, lock) => {
     const existing = await readConversation(state, args.conversationId);
-    if (
-      existing &&
-      (existing.execution.lease ||
-        existing.execution.status === "running" ||
-        existing.execution.status === "paused")
-    ) {
+    if (existing && isHeldByRun(existing)) {
       return "busy";
     }
     if (!(await args.move())) return "not_moved";
@@ -1652,6 +1651,61 @@ export async function moveIdleConversationDestination(args: {
       });
     }
     return "moved";
+  });
+}
+
+function isHeldByRun(conversation: ConversationExecutionState): boolean {
+  return (
+    conversation.execution.lease !== undefined ||
+    conversation.execution.status === "running" ||
+    conversation.execution.status === "paused"
+  );
+}
+
+/**
+ * Store one Destination move until the Run that holds the Conversation ends.
+ *
+ * The first stored move wins: a later call gets it back. With no Run, this
+ * stores nothing and returns `idle`, so the caller moves now.
+ */
+export async function deferConversationMove(args: {
+  conversationId: string;
+  move: unknown;
+  state?: StateAdapter;
+}): Promise<{ status: "idle" } | { move: unknown; status: "deferred" }> {
+  return await withConversationMutation(args, async (state, lock) => {
+    const existing = await readConversation(state, args.conversationId);
+    if (!existing || !isHeldByRun(existing)) return { status: "idle" };
+    const key = deferredMoveKey(args.conversationId);
+    const stored = await state.get(key);
+    if (stored !== null) return { move: stored, status: "deferred" };
+    await fenceConversationMutation(state, lock, args.conversationId);
+    await state.set(key, args.move, JUNIOR_THREAD_STATE_TTL_MS);
+    return { move: args.move, status: "deferred" };
+  });
+}
+
+/**
+ * Remove and return the deferred move once no Run holds the Conversation.
+ * The caller runs it, and defers it again when a new Run started first.
+ */
+export async function takeDeferredConversationMove(args: {
+  conversationId: string;
+  state?: StateAdapter;
+}): Promise<unknown> {
+  const key = deferredMoveKey(args.conversationId);
+  // Almost every Run ends with no deferred move. Skip the lock for those.
+  if ((await (await getConnectedState(args.state)).get(key)) === null) {
+    return undefined;
+  }
+  return await withConversationMutation(args, async (state, lock) => {
+    const existing = await readConversation(state, args.conversationId);
+    if (existing && isHeldByRun(existing)) return undefined;
+    const stored = await state.get(key);
+    if (stored === null) return undefined;
+    await fenceConversationMutation(state, lock, args.conversationId);
+    await state.delete(key);
+    return stored;
   });
 }
 

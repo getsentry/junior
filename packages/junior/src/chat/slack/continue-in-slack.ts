@@ -33,7 +33,8 @@ import { getStateAdapter } from "@/chat/state/adapter";
 import { moveIdleConversationDestination } from "@/chat/task-execution/store";
 import { juniorDestinations } from "@/db/schema";
 
-const BUSY = "Wait for Junior to finish, then try again.";
+/** Refusal for a move that cannot wait for the active Run. */
+export const BUSY = "Wait for Junior to finish, then try again.";
 const THREAD_TAKEN = "This thread already has a Junior conversation.";
 // Thrown in the move transaction to roll back the thread claim.
 const MOVED_ELSEWHERE = new Error("Conversation already has a Location");
@@ -51,7 +52,9 @@ export type ContinueInSlackResult =
       locationUrl?: string;
       status: "moved";
     }
-  | { message: string; status: "refused" };
+  | { message: string; status: "refused" }
+  // A Run holds the Conversation. Nothing was posted.
+  | { status: "busy" };
 
 /**
  * Return whether a Conversation can still move to a Slack thread.
@@ -212,7 +215,7 @@ export async function continueConversationInSlack(args: {
     conversation.execution.status === "running" ||
     conversation.execution.status === "paused"
   ) {
-    return { message: BUSY, status: "refused" };
+    return { status: "busy" };
   }
   const executor = getSqlExecutor();
   const binding = (threadTs: string) => ({
@@ -305,14 +308,14 @@ export async function continueConversationInSlack(args: {
       channelId: channel.channelId,
       timestamp: posted.ts,
     });
-    let message = BUSY;
-    if (moved === "not_moved") {
-      const current = await getConversationStore().get({ conversationId });
-      message = threadTaken
+    if (moved === "busy") return { status: "busy" };
+    const current = await getConversationStore().get({ conversationId });
+    return {
+      message: threadTaken
         ? THREAD_TAKEN
-        : await alreadyContinuesInSlackMessage(current ?? conversation);
-    }
-    return { message, status: "refused" };
+        : await alreadyContinuesInSlackMessage(current ?? conversation),
+      status: "refused",
+    };
   }
   // Thread replies without a mention join the Conversation history.
   await getStateAdapter().subscribe(`slack:${channel.channelId}:${threadTs}`);

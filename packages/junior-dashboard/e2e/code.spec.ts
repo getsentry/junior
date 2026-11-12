@@ -113,3 +113,29 @@ test("counts every open code change past the listed ones", async ({
   ).toBeVisible();
   await expect(page.getByText("No changes match this state.")).toHaveCount(0);
 });
+
+test("opens Linked work toward the larger free space", async ({
+  page,
+  dashboard,
+}) => {
+  // The first repository conversation sits about 500px from the top.
+  for (const { height, side } of [
+    { height: 1400, side: "bottom" },
+    { height: 600, side: "top" },
+  ]) {
+    await page.setViewportSize({ height, width: 1600 });
+    await page.goto(`${dashboard.baseURL}/code`);
+    await page
+      .getByRole("link", { name: "getsentry/junior", exact: true })
+      .click();
+    // Some browsers default to a root font smaller than 16px.
+    await page.addStyleTag({ content: "html { font-size: 14px }" });
+    await page
+      .getByLabel(/^Linked work, newest first/)
+      .first()
+      .hover();
+    const tooltip = page.getByRole("tooltip");
+    await expect(tooltip).toContainText("Linked work");
+    await expect(tooltip).toHaveAttribute("data-side", side);
+  }
+});

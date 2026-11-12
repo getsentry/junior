@@ -107,6 +107,7 @@ export function ConversationSidebarAnnotations(props: {
 }) {
   const annotations = props.annotations;
   const isMobile = useIsMobileViewport();
+  const [side, setSide] = useState<"top" | "bottom">("top");
   if (!annotations?.length) return null;
 
   const details = annotations.map((annotation) =>
@@ -123,12 +124,18 @@ export function ConversationSidebarAnnotations(props: {
     : [];
 
   return (
-    <Tooltip>
+    <Tooltip
+      onOpenChange={(open, details) => {
+        if (open && details.trigger) setSide(sideWithMoreRoom(details.trigger));
+      }}
+    >
       <TooltipTrigger
         render={
           <span
             aria-label={`Linked work, newest first: ${details.join(", ")}`}
-            className="inline-flex min-w-0 max-w-full items-center"
+            // Rows that are one stretched link turn off pointer events.
+            // The trigger takes them back, so hover opens the tooltip.
+            className="pointer-events-auto inline-flex min-w-0 max-w-full items-center"
           >
             {useMobileFacepile ? (
               <SidebarAnnotationIconFacepile
@@ -154,7 +161,7 @@ export function ConversationSidebarAnnotations(props: {
           </span>
         }
       />
-      <TooltipContent align="start">
+      <TooltipContent align="start" side={side}>
         <TooltipTitle>Linked work</TooltipTitle>
         {/* A row can link many items. Scroll the list so the tooltip stays on
             screen; Base UI keeps the popup open while the pointer is on it. */}
@@ -383,6 +390,12 @@ function SidebarAnnotationStatusChip(props: {
       )}
     </span>
   );
+}
+
+/** Open toward the taller free space, so a long list covers fewer rows. */
+function sideWithMoreRoom(trigger: Element): "top" | "bottom" {
+  const rect = trigger.getBoundingClientRect();
+  return rect.top > window.innerHeight - rect.bottom ? "top" : "bottom";
 }
 
 function useIsMobileViewport(): boolean {

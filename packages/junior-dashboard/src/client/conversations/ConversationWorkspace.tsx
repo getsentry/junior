@@ -1,4 +1,3 @@
-import type { InputImage } from "@sentry/junior/api/schema";
 import { useEffect, useMemo, useRef, useState, type Ref } from "react";
 import { ArrowLeft, Globe2, LockKeyhole } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -182,7 +181,7 @@ export function ConversationWorkspace(props: {
           ? "Message failed to send. Try again."
           : undefined
       }
-      onSubmit={async (message, idempotencyKey, visibility, images) => {
+      onSubmit={async (message, idempotencyKey, visibility, files) => {
         const visit = homeVisit.current;
         const pendingDraftId = newConversationDraftId(idempotencyKey);
         // Show the Conversation at once. The create view stays mounted but
@@ -190,7 +189,7 @@ export function ConversationWorkspace(props: {
         setPendingCreate({
           createdAt: new Date().toISOString(),
           idempotencyKey,
-          images,
+          files,
           message,
           visibility,
         });
@@ -199,7 +198,7 @@ export function ConversationWorkspace(props: {
           accepted = await createConversation.mutateAsync({
             idempotencyKey,
             message,
-            images,
+            files,
             visibility,
           });
         } catch (error) {
@@ -414,7 +413,7 @@ function NewConversationView(props: {
     message: string,
     idempotencyKey: string,
     visibility: "private" | "public",
-    images?: InputImage[],
+    files?: File[],
   ): Promise<void>;
 }) {
   const [visibility, setVisibility] = useState<"private" | "public">("public");
@@ -454,8 +453,8 @@ function NewConversationView(props: {
         holdDraftUntilAccept
         ref={props.composerRef}
         submitLabel="Send"
-        onSubmit={(message, idempotencyKey, images) =>
-          props.onSubmit(message, idempotencyKey, visibility, images)
+        onSubmit={(message, idempotencyKey, files) =>
+          props.onSubmit(message, idempotencyKey, visibility, files)
         }
       />
       {wide ? (

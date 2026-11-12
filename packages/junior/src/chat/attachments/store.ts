@@ -413,6 +413,47 @@ export async function storeAttachment(args: {
   throw new Error(`Attachment ${id} disappeared while reviving`);
 }
 
+/**
+ * Record an object that a browser already wrote, under the upload's id.
+ *
+ * The row takes over the object key. A retry with the same id keeps the
+ * first row. The caller checked the object's size, type, and digest.
+ */
+export async function recordUploadedAttachment(args: {
+  attachment: Omit<AttachmentRecord, "storageProvider"> & { sha256: string };
+  db: JuniorSqlDatabase;
+  nowMs: number;
+  storage: AttachmentStorage;
+}): Promise<void> {
+  const { attachment } = args;
+  const now = new Date(args.nowMs);
+  await assertConversationNotPurged(args.db, attachment.conversationId);
+  const inserted = await args.db
+    .db()
+    .with(conversationDetailTouch(args.db.db(), [attachment.conversationId]))
+    .insert(juniorAttachments)
+    .values({
+      ...attachment,
+      storageProvider: args.storage.provider,
+      createdAt: now,
+    })
+    .onConflictDoNothing({ target: juniorAttachments.id })
+    .returning({ id: juniorAttachments.id });
+  if (
+    inserted.length > 0 &&
+    (await isConversationPurged(args.db, attachment.conversationId))
+  ) {
+    await rejectPurgedAttachmentWrite({
+      conversationId: attachment.conversationId,
+      db: args.db,
+      id: attachment.id,
+      now,
+      storage: args.storage,
+      storageKey: attachment.storageKey,
+    });
+  }
+}
+
 /** Load one live attachment owned by a conversation. */
 export async function readLiveAttachment(args: {
   attachmentId: string;

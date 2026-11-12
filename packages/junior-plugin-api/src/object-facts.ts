@@ -20,11 +20,13 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     changedFiles: count.optional(),
     additions: count.optional(),
     deletions: count.optional(),
-    /** Public images from the description that the dashboard can show. */
+    /**
+     * Public images from the description that the dashboard can show. The
+     * 4 KiB facts limit sets how many fit.
+     */
     previewImageUrls: z
       .array(z.url({ protocol: /^https?$/ }).max(512))
       .min(1)
-      .max(4)
       .optional(),
   }),
   // Tasks: ownership and priority first; planning context comes next.

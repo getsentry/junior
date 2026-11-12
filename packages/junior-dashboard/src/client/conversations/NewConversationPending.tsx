@@ -1,4 +1,3 @@
-import type { InputImage } from "@sentry/junior/api/schema";
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -33,7 +32,7 @@ import { Transcript } from "./TranscriptView";
 export type PendingNewConversation = {
   createdAt: string;
   idempotencyKey: string;
-  images?: InputImage[];
+  files?: File[];
   message: string;
   visibility: "private" | "public";
 };
