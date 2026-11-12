@@ -36,7 +36,7 @@ pnpm view <package>@<target> version
 Allow for npm security scanning and propagation delays after publication:
 
 - Confirm missing versions with cache-busted npm metadata and the direct version endpoint. Continue only when every package's exact target version and tarball are available. Do not retry auth failures as publication delays.
-- If any package is missing, leave app files unchanged. Call `watchTimer` with `after_ms: 900000` (15 minutes). Start its intent with `Run $self-update for target <target>`, so the timer Turn loads this skill, then name the missing packages and the wait number (for example `wait 1 of 4`). After `watchTimer` succeeds, end the Turn without a message in a separate call: in an Automation run, call `finishAutomationRun` with `no_action`; otherwise call `noReply`. If `watchTimer` fails, report the failure instead. When the timer fires, check the same target again.
+- If any package is missing, leave app files unchanged. Call `watchTimer` with `after_ms: 900000` (15 minutes). Start its intent with `Run $self-update for target <target>`, so the timer Turn loads this skill, then name the missing packages and the wait number (for example `wait 1 of 4`). After `watchTimer` succeeds, call `noReply` in a separate call to end the Turn without a message. If `watchTimer` fails, report the failure instead. When the timer fires, check the same target again.
 - Wait at most 4 times (one hour). If a package is still missing after the fourth wait, do not open an update PR. Report "not yet available on npm" with the target, affected packages, and checks. Missing packages alone do not prove a failed publish or a scanning delay; do not republish or cut another release.
 
 ### 3. Build release context
