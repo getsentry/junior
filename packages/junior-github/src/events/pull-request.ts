@@ -136,9 +136,22 @@ const GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE = {
     "Mention each person in People involved, or the person who asked for the pull request if that line is missing. Say that it merged and link it.",
 } as const satisfies Partial<Record<GitHubPullRequestEvent, string>>;
 
-/** Build the Watch created after Junior creates a pull request. */
+/**
+ * Junior finishes its own drafts. Passing checks start no other step, so the
+ * Watch of a draft also gets them. Marking the pull request ready sends the
+ * review request.
+ */
+const DRAFT_CHECKS_RECOVERED_GUIDANCE =
+  "If the pull request is still a draft, run `gh pr checks NUMBER --repo OWNER/REPO --required`. When every required check passes and no decision is open, in the pull request body or in an open review item that waits on the person who asked for it, mark it ready with github_updatePullRequest and draft false, and report that in the originating thread. When a required check fails, fix it like a failed check. Otherwise stay silent.";
+
+/**
+ * Build the Watch created after Junior creates a pull request. Only a draft
+ * Watch gets passing checks, so a ready pull request is not woken by each
+ * passing check suite.
+ */
 export function gitHubPullRequestCreateWatch(
   config: GitHubPullRequestSubscriptionConfig,
+  pullRequest: { draft: boolean },
 ): {
   events: GitHubPullRequestEvent[];
   guidance: Partial<Record<GitHubPullRequestEvent, string>>;
@@ -155,9 +168,17 @@ export function gitHubPullRequestCreateWatch(
         // request ready to merge even when the app config omits this event.
         "pull_request.merge_conflict" as const,
         ...outcomeEvents,
+        ...(pullRequest.draft
+          ? ["pull_request.checks.recovered" as const]
+          : []),
       ]),
     ],
-    guidance: GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE,
+    guidance: pullRequest.draft
+      ? {
+          ...GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE,
+          "pull_request.checks.recovered": DRAFT_CHECKS_RECOVERED_GUIDANCE,
+        }
+      : GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE,
     intent: config.intent,
   };
 }

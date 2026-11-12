@@ -179,6 +179,31 @@ export async function searchOpenPullRequestMergeability(
   });
 }
 
+/** Ask people to review one pull request, with a pull request write token. */
+export async function requestPullRequestReviewers(
+  env: GitHubInstallationEnv,
+  input: { number: number; repositoryFullName: string; reviewers: string[] },
+): Promise<void> {
+  const { owner, name } = splitRepository(
+    input.repositoryFullName,
+    "pull request review request",
+  );
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { pull_requests: "write" },
+    repositories: [name],
+  });
+  await githubRequest(
+    "https://api.github.com",
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${input.number}/requested_reviewers`,
+    {
+      body: { reviewers: input.reviewers },
+      method: "POST",
+      token: token.token,
+    },
+  );
+}
+
 /** Add the "reviewing" reaction to one pull request comment or review body. */
 export async function markPullRequestFeedbackReviewing(
   env: GitHubInstallationEnv,
