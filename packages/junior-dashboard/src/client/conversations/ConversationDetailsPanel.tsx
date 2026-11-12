@@ -13,7 +13,7 @@ import {
   type ConversationMemoryEntry,
   type ConversationMemoryState,
 } from "./conversationMemory";
-import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
+import type { ConversationDrawerTarget } from "./ConversationDrawer";
 import {
   conversationParticipants,
   ParticipantAvatarStack,
@@ -30,7 +30,7 @@ export function ConversationDetailsPanel(props: {
   links: ConversationLink[];
   memoryState: ConversationMemoryState;
   onClose(): void;
-  onOpenSubagent(target: SubagentTranscriptTarget): void;
+  onOpenSubagent(target: ConversationDrawerTarget): void;
   onSelectMemory(entry: ConversationMemoryEntry & { turnId: string }): void;
 }) {
   const { conversation, detail } = props;

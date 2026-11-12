@@ -142,6 +142,8 @@ const KIND_BRANCH_PATTERNS = [
   /\bswitch\s*\(\s*(?:[\w$]+\??\.)*source\.kind\s*\)/g,
   // Reading the Automation result flag. Its declaration and writes are not.
   /\bdeclaresResult\b(?!\s*\??:)/g,
+  // A top-level kind check is a kind branch too.
+  /\bisTopLevelKind\(/g,
 ];
 
 // A field of the parent edge or the Agent invocation read as a condition.

@@ -39,5 +39,7 @@ Use `git` and `gh` for repository work.
 - Code changes always end in a pushed branch and a PR. Do not ask whether to open one. Skip it only when the user opts out or asks for investigation only.
 - Open the PR ready for review when the work is complete and the checks pass. Open a draft when work, checks, or decisions remain. A scope or follow-up question is not a reason to stop: open the PR, and name the question in the PR description context and the report.
 - Link the PR. Mention checks only when they failed or were skipped.
+- The runtime adds the requester `via` line. Do not write one.
+- Credit other people, such as a reporter, by GitHub `@login` so GitHub notifies them. Get the login from `userLookup` (`linked_identities` with provider `github`, else a GitHub link in `profile_fields`). Pass the Slack user ID when known. With no login, write the name. Never guess a login. When you delegate the write, put the `@login` in the brief.
 
 Do not install or repair the GitHub plugin from this skill.

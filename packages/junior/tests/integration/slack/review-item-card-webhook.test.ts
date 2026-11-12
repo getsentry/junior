@@ -363,6 +363,16 @@ describe("Slack webhook: Review item cards", () => {
       kind: "submitted",
       reviewItemId: item.id,
     });
+    // The click starts input in a thread no Conversation claimed, so it
+    // claims the thread for this one.
+    await expect(
+      getConversationStore().getConversationIdByProviderConversation({
+        provider: "slack",
+        providerConversationId: "1712345.0001",
+        providerDestinationId: "C123",
+        providerTenantId: "T123",
+      }),
+    ).resolves.toBe(THREAD);
     // The other linked thread learns about it once, from the person.
     const other = await getConversationWorkState({
       conversationId: OTHER_THREAD,

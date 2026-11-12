@@ -4,12 +4,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import type { CacheWarmupMessage } from "@/chat/cache-warming/queue";
 import { setConversationArchive } from "@/api/conversations/archive";
-import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
+import { createAgentInvocation } from "@/chat/agent-invocations/create";
+import {
+  IDLE_HORIZON_MS,
+  NO_REPLY_GAP_MS,
+  WARMUP_MARGIN_MS,
+} from "@/chat/cache-warming/model";
 import { getConversationStore } from "@/chat/db";
+import { cancelWatch, createTimerWatch } from "@/chat/events/store";
 import { createApp } from "@/app";
 import { defineJuniorPlugins } from "@/plugins";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
+import type { PromptMode } from "@/chat/system-prompt-rules";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { mockTitleModel } from "../../fixtures/title-model";
 
@@ -31,6 +38,9 @@ const conversationId = "local:test:cache-warming-segments";
 const workConversationId = "local:test:cache-warming-segments-work";
 const childConversationId = `${workConversationId}:child`;
 const openWorkConversationId = "local:test:cache-warming-segments-open";
+// Only these Conversations have a timer or a child agent.
+const timerConversationId = "local:test:cache-warming-segments-timer";
+const parentConversationId = "local:test:cache-warming-segments-parent";
 const model = resolveGatewayModel("anthropic/claude-opus-5.5");
 const runPrompt = { platform: "local", mode: "conversation" } as const;
 // Warmups compare the stored prompt with the prompt of this deployment.
@@ -78,8 +88,11 @@ const toolCall = (name: string): AssistantMessage => ({
 
 // Run one Turn that calls a tool and then an answer tool that ends the run,
 // like one agent run does.
-async function endTurnWithAnswerTool(toolName: string, gated: boolean) {
-  const recorder = createCacheWarmingRecorder(conversationId, true, runPrompt);
+async function endTurnWithAnswerTool(toolName: string, mode: PromptMode) {
+  const recorder = createCacheWarmingRecorder(conversationId, false, {
+    ...runPrompt,
+    mode,
+  });
   const stream = recorder.wrap((() => undefined) as never);
   stream(model, context, {});
   await recorder.record(toolCall("systemTime"));
@@ -87,7 +100,7 @@ async function endTurnWithAnswerTool(toolName: string, gated: boolean) {
   vi.advanceTimersByTime(MINUTE);
   stream(model, context, {});
   await recorder.record(toolCall(toolName));
-  recorder.answerToolEnded(toolName, gated);
+  recorder.answerToolEnded(toolName);
   await recorder.stop();
 }
 
@@ -100,17 +113,39 @@ function scheduledHorizon(): CacheWarmupMessage {
   return message;
 }
 
-function scheduledWarmup(): CacheWarmupMessage {
+type WarmupMessage = Extract<CacheWarmupMessage, { kind: "warmup" }>;
+
+function scheduledWarmup(): WarmupMessage {
   const message = mocks.sendCacheWarmup.mock.calls
     .map(([sent]) => sent as CacheWarmupMessage)
     .reverse()
-    .find((sent) => sent.kind === "warmup");
+    .find((sent): sent is WarmupMessage => sent.kind === "warmup");
   if (!message) throw new Error("No warmup was scheduled.");
   return message;
 }
 
 const segmentGaps = (segment: string) =>
   getStateAdapter().getList<number>(`junior:cache_warming:gaps:${segment}`);
+
+// Deliver each warmup of the idle period when the queue would, and the
+// horizon before the first warmup after it. Return the idle time of each
+// warmup that refreshed the cache.
+async function runIdleWarmups(sinceMs: number): Promise<number[]> {
+  const refreshedAtIdleMs: number[] = [];
+  let horizonRan = false;
+  for (let warmup = scheduledWarmup(); ; ) {
+    vi.setSystemTime(warmup.cacheExpiresAtMs - WARMUP_MARGIN_MS);
+    if (!horizonRan && Date.now() - sinceMs >= IDLE_HORIZON_MS) {
+      await runCacheWarmup(scheduledHorizon());
+      horizonRan = true;
+    }
+    await runCacheWarmup(warmup);
+    const next = scheduledWarmup();
+    if (next === warmup) return refreshedAtIdleMs;
+    refreshedAtIdleMs.push(Date.now() - sinceMs);
+    warmup = next;
+  }
+}
 
 describe("cache warming gap segments", () => {
   afterEach(async () => {
@@ -121,6 +156,8 @@ describe("cache warming gap segments", () => {
       workConversationId,
       childConversationId,
       openWorkConversationId,
+      timerConversationId,
+      parentConversationId,
     ]) {
       await getStateAdapter().delete(`junior:cache_warming:conversation:${id}`);
     }
@@ -151,26 +188,32 @@ describe("cache warming gap segments", () => {
   });
 
   it.each(["noReply", "reportBlocked"])(
-    "starts an idle period from the %s call of a Turn outside an Automation run",
+    "starts an idle period from the %s call of a child agent's Turn, not of an Automation run",
     async (toolName) => {
       vi.useFakeTimers();
       mocks.sendCacheWarmup.mockClear();
+      const clearGaps = async () => {
+        await getStateAdapter().delete(
+          "junior:cache_warming:gaps:system:1:none",
+        );
+        await getStateAdapter().delete(
+          `junior:cache_warming:gaps:conversation:${conversationId}:system:1:none`,
+        );
+      };
+      await clearGaps();
       try {
-        await endTurnWithAnswerTool(toolName, true);
+        await endTurnWithAnswerTool(toolName, "automation");
         expect(mocks.sendCacheWarmup).not.toHaveBeenCalled();
 
-        await endTurnWithAnswerTool(toolName, false);
+        await endTurnWithAnswerTool(toolName, "child_agent");
         scheduledWarmup();
-        // The person returns 4 minutes after the answer tool call.
+        // The parent returns 4 minutes after the answer tool call.
         vi.advanceTimersByTime(4 * MINUTE);
-        await endTurn(true);
+        await endTurn(false);
 
-        expect(await segmentGaps("user:1:none")).toEqual([4 * MINUTE]);
+        expect(await segmentGaps("system:1:none")).toEqual([4 * MINUTE]);
       } finally {
-        await getStateAdapter().delete("junior:cache_warming:gaps:user:1:none");
-        await getStateAdapter().delete(
-          `junior:cache_warming:gaps:conversation:${conversationId}:user:1:none`,
-        );
+        await clearGaps();
       }
     },
   );
@@ -301,6 +344,162 @@ describe("cache warming gap segments", () => {
     } finally {
       await state.delete("junior:cache_warming:gaps:user:1:none");
       // The warmup counted an outcome for the provider breaker.
+      await state.delete("junior:cache_warming:breaker:anthropic:outcomes");
+    }
+  });
+
+  it("keeps warming past the horizon until a timer due within the floor fires", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const state = getStateAdapter();
+    mocks.sendCacheWarmup.mockClear();
+    mockTitleModel("", { cacheReadTokens: 60_000 });
+    const timer = await createTimerWatch({
+      conversationId: timerConversationId,
+      toolCallId: "timer-80",
+      afterMs: 80 * MINUTE,
+      intent: "Check the deploy.",
+    });
+    try {
+      const sinceMs = Date.now();
+      // The segment has no gaps, so without the timer nothing warms.
+      await endTurn(true, timerConversationId);
+      const warmups = await runIdleWarmups(sinceMs);
+
+      expect(warmups.at(-1)).toBeGreaterThan(IDLE_HORIZON_MS);
+      // The last warmup keeps the cache until the timer's Turn starts.
+      expect(warmups.at(-1)! + 5 * MINUTE).toBeGreaterThan(82 * MINUTE);
+      expect(warmups.at(-1)).toBeLessThan(82 * MINUTE);
+      // The next warmup stops the idle period.
+      expect(
+        await state.get(
+          `junior:cache_warming:snapshot:${timerConversationId}:${scheduledWarmup().generation}`,
+        ),
+      ).toBeNull();
+      // The horizon still records the no-reply gap.
+      expect(await segmentGaps("user:1:none")).toEqual([NO_REPLY_GAP_MS]);
+    } finally {
+      await cancelWatch({ conversationId: timerConversationId, id: timer.id });
+      await state.delete("junior:cache_warming:gaps:user:1:none");
+      await state.delete("junior:cache_warming:breaker:anthropic:outcomes");
+    }
+  });
+
+  it("warms an idle period with a timer due after the floor as without the timer", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const state = getStateAdapter();
+    mockTitleModel("", { cacheReadTokens: 60_000 });
+    const warmupsAfterTurn = async () => {
+      mocks.sendCacheWarmup.mockClear();
+      await state.delete(
+        `junior:cache_warming:conversation:${timerConversationId}`,
+      );
+      await state.delete("junior:cache_warming:gaps:user:1:none");
+      // People in this segment reply after 8 minutes.
+      for (let i = 0; i < 20; i++) {
+        await state.appendToList(
+          "junior:cache_warming:gaps:user:1:none",
+          8 * MINUTE,
+        );
+      }
+      const sinceMs = Date.now();
+      await endTurn(true, timerConversationId);
+      return await runIdleWarmups(sinceMs);
+    };
+    const withoutTimer = await warmupsAfterTurn();
+    const timer = await createTimerWatch({
+      conversationId: timerConversationId,
+      toolCallId: "timer-150",
+      afterMs: 150 * MINUTE,
+      intent: "Check the deploy.",
+    });
+    try {
+      expect(withoutTimer.length).toBeGreaterThan(0);
+      expect(await warmupsAfterTurn()).toEqual(withoutTimer);
+    } finally {
+      await cancelWatch({ conversationId: timerConversationId, id: timer.id });
+      await state.delete("junior:cache_warming:gaps:user:1:none");
+      await state.delete("junior:cache_warming:breaker:anthropic:outcomes");
+    }
+  });
+
+  it("records the gap of an idle period that waits on a child agent or a Review item in the segment's child", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const state = getStateAdapter();
+    // People reply after 8 minutes in the segment. Its children have no gaps
+    // yet.
+    for (let i = 0; i < 20; i++) {
+      await state.appendToList(
+        "junior:cache_warming:gaps:user:1:none",
+        8 * MINUTE,
+      );
+    }
+    mocks.sendCacheWarmup.mockClear();
+    const warmupRequests: unknown[] = [];
+    mockTitleModel("", {
+      cacheReadTokens: 60_000,
+      onRequest: (request) => warmupRequests.push(request),
+    });
+    try {
+      // The Turn started a child agent, which still runs.
+      const parentDestination = {
+        platform: "local",
+        conversationId: parentConversationId,
+      } as const;
+      await getConversationStore().recordActivity({
+        conversationId: parentConversationId,
+        destination: parentDestination,
+        source: "internal",
+      });
+      await createAgentInvocation({
+        actor: { name: "parent-agent", platform: "system" },
+        destination: parentDestination,
+        idempotencyKey: "cache-warming-child",
+        input: "Summarize the durable task.",
+        parentConversationId,
+        reasoningLevel: "medium",
+      });
+      await endTurn(true, parentConversationId);
+      // The thin child segment warms with the gaps of its segment.
+      await runCacheWarmup(scheduledWarmup());
+      expect(warmupRequests).toHaveLength(1);
+      vi.setSystemTime(Date.now() + 2 * MINUTE);
+      await endTurn(true, parentConversationId);
+
+      // Another Turn asked a Review item.
+      await endTurn(true, conversationId, {
+        ...context,
+        messages: [...context.messages, toolCall("addReviewItem")],
+      });
+      vi.setSystemTime(Date.now() + 3 * MINUTE);
+      await endTurn(true, conversationId);
+
+      expect(await segmentGaps("user:1:none:child")).toEqual([2 * MINUTE]);
+      expect(await segmentGaps("user:1:none:review")).toEqual([3 * MINUTE]);
+      // The segment keeps every gap, so its children can lean on it.
+      expect((await segmentGaps("user:1:none")).slice(20)).toEqual([
+        2 * MINUTE,
+        3 * MINUTE,
+      ]);
+      // The Conversation keeps the child's return apart from a person's.
+      const conversationGaps = (segment: string) =>
+        state.getList<number>(
+          `junior:cache_warming:gaps:conversation:${parentConversationId}:${segment}`,
+        );
+      expect(await conversationGaps("user:1:none:child")).toEqual([2 * MINUTE]);
+      expect(await conversationGaps("user:1:none")).toEqual([]);
+    } finally {
+      for (const segment of [
+        "user:1:none",
+        "user:1:none:child",
+        "user:1:none:review",
+      ]) {
+        await state.delete(`junior:cache_warming:gaps:${segment}`);
+        for (const id of [conversationId, parentConversationId]) {
+          await state.delete(
+            `junior:cache_warming:gaps:conversation:${id}:${segment}`,
+          );
+        }
+      }
       await state.delete("junior:cache_warming:breaker:anthropic:outcomes");
     }
   });

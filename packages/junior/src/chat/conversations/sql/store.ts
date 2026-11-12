@@ -34,6 +34,7 @@ import type { JuniorDestinationKind } from "@/db/schema/destination-kind";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import {
   bindProviderConversation,
+  claimProviderConversationOwner,
   getConversationIdByProviderConversation,
   type ProviderConversationBinding,
   type ProviderConversationReference,
@@ -48,7 +49,10 @@ import {
   locationFromRow,
   visibilityFromLocationRow,
 } from "./location";
-import { conversationKindFromRow } from "./conversation-row";
+import {
+  conversationKindFromRow,
+  ensureConversationRow,
+} from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
 import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 type ConversationRow = typeof juniorConversations.$inferSelect;
@@ -359,6 +363,18 @@ export class SqlStore implements ConversationStore {
     args: ProviderConversationBinding,
   ): Promise<void> {
     await bindProviderConversation(this.executor, args);
+  }
+
+  async claimProviderConversation(
+    args: ProviderConversationBinding & { atMs: number },
+  ): Promise<string> {
+    const { atMs, ...binding } = args;
+    return await this.executor.transaction(async () => {
+      await ensureConversationRow(this.executor, binding.conversationId, atMs, {
+        activity: "preserve",
+      });
+      return await claimProviderConversationOwner(this.executor, binding);
+    });
   }
 
   async createChild(args: {

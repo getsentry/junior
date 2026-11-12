@@ -34,6 +34,17 @@ export type TurnBehavior = {
    * reminder. Without it, the Turn ends quietly.
    */
   missingAnswerError?: string;
+  /**
+   * `parent`: a failed Turn, also one that ends without an answer, sends its
+   * failure to the parent agent. `none`: the failure stays in the
+   * Conversation and in telemetry.
+   */
+  failureNotice: "none" | "parent";
+  /**
+   * Run the plugin tasks of a completed session, such as memory capture.
+   * Memory is public, so a child agent never captures it.
+   */
+  sessionTasks: boolean;
   tools: {
     agents: AgentTools;
     reviewDesk: boolean;
@@ -58,6 +69,8 @@ const ROOT: TurnBehavior = {
   delivery: "location",
   promptMode: "conversation",
   gated: false,
+  failureNotice: "none",
+  sessionTasks: true,
   tools: {
     agents: "children",
     reviewDesk: true,
@@ -74,6 +87,7 @@ const ROOT: TurnBehavior = {
 // the wrong Actor.
 const PERSON_IN_THREAD: TurnBehavior = {
   ...ROOT,
+  sessionTasks: false,
   tools: { ...ROOT.tools, agents: "none" },
 };
 
@@ -84,6 +98,8 @@ const AGENT_IN_THREAD: TurnBehavior = {
   delivery: "conversation",
   promptMode: "child_agent",
   gated: true,
+  failureNotice: "none",
+  sessionTasks: false,
   tools: {
     agents: "children_and_parent",
     reviewDesk: false,
@@ -95,11 +111,12 @@ const AGENT_IN_THREAD: TurnBehavior = {
   },
 };
 
-// A Task does work for its parent, so its parent learns when it ends without
-// an answer.
+// A Task does work for its parent, so its parent learns when it fails or ends
+// without an answer.
 const AGENT_IN_TASK: TurnBehavior = {
   ...AGENT_IN_THREAD,
   missingAnswerError: "No reply was sent.",
+  failureNotice: "parent",
 };
 
 // The dispatch Turn and every Watch Event Turn of an Automation run must
@@ -108,6 +125,8 @@ const AUTOMATION_RUN: TurnBehavior = {
   delivery: "conversation",
   promptMode: "automation",
   gated: true,
+  failureNotice: "none",
+  sessionTasks: true,
   tools: {
     ...ROOT.tools,
     reply: "automation",

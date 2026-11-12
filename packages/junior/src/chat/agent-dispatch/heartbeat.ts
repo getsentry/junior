@@ -16,12 +16,12 @@ import {
   listPendingAgentInvocationMailboxAppends,
   listPendingAgentInvocationResults,
 } from "@/chat/agent-invocations/store";
-import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
-import { recordSubagentEnded } from "@/chat/agent-invocations/markers";
 import {
-  endAgentInvocationsOfStoppedWork,
-  enqueueAgentInvocation,
-} from "@/chat/agent-invocations/work";
+  createEndStoppedChildWork,
+  enqueueAgentInvocationResult,
+} from "@/chat/agent-invocations/result";
+import { recordSubagentEnded } from "@/chat/agent-invocations/markers";
+import { enqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import {
   confirmDispatchMailboxAppend,
   getDispatchRecord,
@@ -205,7 +205,7 @@ export async function runHeartbeat(args: {
   // Runs before result recovery, so an invocation that this ends is sent to
   // its parent in the same heartbeat.
   await recoverConversationWork({
-    beforeWorkStops: endAgentInvocationsOfStoppedWork,
+    beforeWorkStops: createEndStoppedChildWork({ queue }),
     nowMs: args.nowMs,
     queue,
   });

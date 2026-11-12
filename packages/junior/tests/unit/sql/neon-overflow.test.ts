@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createNeonJuniorSqlExecutor } from "@/db/neon";
 import { juniorConversations } from "@/db/schema";
 import { ErrorEvent } from "undici";
-import { logException } from "@/chat/logging";
+import { logException, logWarn } from "@/chat/logging";
 import { mswServer } from "../../msw/server";
 
 const CONNECTION_STRING =
@@ -13,12 +13,14 @@ const CONNECTION_STRING =
 vi.mock("@/chat/logging", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/logging")>()),
   logException: vi.fn(),
+  logWarn: vi.fn(),
 }));
 
 const wire = vi.hoisted(() => ({
   clientsOpened: 0,
   clientsReady: 0,
   clientsClosed: 0,
+  clients: [] as Array<{ emit(event: string, error: unknown): boolean }>,
   failNextConnect: false,
   connectError: undefined as unknown,
   websocketQueries: [] as string[],
@@ -35,6 +37,7 @@ vi.mock("@neondatabase/serverless", async (importOriginal) => {
     _ending = false;
     connect(callback: (error?: unknown) => void) {
       wire.clientsOpened++;
+      wire.clients.push(this);
       const failed = wire.failNextConnect;
       wire.failNextConnect = false;
       setImmediate(() => {
@@ -96,9 +99,11 @@ describe("Neon pool overflow", () => {
     wire.clientsOpened = 0;
     wire.clientsReady = 0;
     wire.clientsClosed = 0;
+    wire.clients.length = 0;
     wire.failNextConnect = false;
     wire.connectError = undefined;
     vi.mocked(logException).mockClear();
+    vi.mocked(logWarn).mockClear();
     wire.websocketQueries.length = 0;
     wire.httpQueries.length = 0;
     // The driver sends HTTP queries to the regional API host.
@@ -212,6 +217,25 @@ describe("Neon pool overflow", () => {
     await Promise.all([executor.query("select 3"), executor.query("select 4")]);
     await vi.waitFor(() => expect(wire.clientsReady).toBe(2));
     expect(wire.clientsOpened).toBe(3);
+  });
+
+  it("reports a failed idle client as a readable warning", async () => {
+    await executor.query("select 'warm'");
+    const cause = new Error("Connection terminated unexpectedly");
+    wire.clients[0]?.emit(
+      "error",
+      new ErrorEvent("error", { message: "", error: cause }),
+    );
+
+    expect(logWarn).toHaveBeenCalledWith("db.pool.client.failed", {
+      "app.db.driver": "neon",
+      "error.type": "Error",
+      "exception.message": `WebSocket idle client failed: ${cause.message}`,
+    });
+    expect(logException).not.toHaveBeenCalled();
+    // The pool replaces the failed client.
+    await executor.query("select 1");
+    expect(wire.clientsOpened).toBe(2);
   });
 
   it("opens one client again after every client idles out", async () => {

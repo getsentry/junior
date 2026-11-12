@@ -1490,22 +1490,25 @@ Conversation: \`local:test:old-conversation\`
           { status: 201 },
         ),
     });
-    const plugin = githubPlugin();
+    // With the default Watch off, every pull request event stays suggested.
+    const plugin = githubPlugin({
+      pullRequestEvents: { subscribeAfterCreate: false },
+    });
     const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
 
-    await expect(
-      tool?.execute?.(
-        {
-          repo: "getsentry/junior",
-          title: "Typed PR",
-          head: "dcramer/gh-660-pr-create",
-          base: "main",
-          description_context: "PR body",
-          draft: true,
-        },
-        { toolCallId: "call-create-pull-request" },
-      ),
-    ).resolves.toMatchObject({
+    const result = await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "dcramer/gh-660-pr-create",
+        base: "main",
+        description_context: "PR body",
+        draft: true,
+      },
+      { toolCallId: "call-create-pull-request" },
+    );
+    expect(result).not.toHaveProperty("subscription");
+    expect(result).toMatchObject({
       objectAnnotations: [
         {
           kind: "object",
@@ -1658,6 +1661,40 @@ Conversation: \`local:test:old-conversation\`
         type: "pull_request",
       }),
     });
+  });
+
+  it("subscribes the default maintenance Watch when the app configures none", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const subscribe = vi.fn(async ({ events }) => ({
+      events,
+      id: "subscription-1",
+    }));
+    const ctx = githubToolsContext({ subscribe });
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "feature",
+        base: "main",
+        description_context: "PR body",
+      },
+      { toolCallId: "call-create-pull-request-default-watch" },
+    );
+    expect(subscribe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        events: expect.arrayContaining([
+          "pull_request.checks.failed",
+          "pull_request.review_comment.created",
+          "pull_request.closed_unmerged",
+          "pull_request.merged",
+        ]),
+        intent: expect.stringContaining(
+          "Reply on GitHub to review comments and questions",
+        ),
+      }),
+    );
   });
 
   it("returns the created pull request when subscribe-after-create fails", async () => {
