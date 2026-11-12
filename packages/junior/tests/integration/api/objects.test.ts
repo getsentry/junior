@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import { objectLinksReportSchema } from "@/api/schema";
@@ -11,7 +12,11 @@ import {
   getDb,
   getSqlExecutor,
 } from "@/chat/db";
-import { upsertLinkedIdentity } from "@/chat/identities/sql";
+import {
+  deleteProviderIdentityForUser,
+  upsertLinkedIdentity,
+} from "@/chat/identities/sql";
+import { juniorIdentities } from "@/db/schema";
 import { conversationBriefFixture } from "../../fixtures/conversation-brief";
 import {
   conversationsInfoOk,
@@ -93,6 +98,7 @@ describe("object links API", () => {
 
   afterEach(async () => {
     setDashboardConversationLinkOptions(previousDashboard);
+    vi.useRealTimers();
     await closeDb();
   });
 
@@ -181,6 +187,65 @@ describe("object links API", () => {
       "mailto:Alice@Example.com",
       unlinkedUrl,
     ]);
+  });
+
+  // Reads in the first seconds after an Identity write skip the cache.
+  function passIdentityWriteWindow() {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 60_000);
+  }
+
+  it("serves a person card from the identity cache to every viewer", async () => {
+    const alice = await linkSlackUser("alice@example.com", "UALICE");
+    await upsertLinkedIdentity(getSqlExecutor(), alice.id, {
+      handle: "alice_acme",
+      kind: "user",
+      provider: "github",
+      providerSubjectId: "1001",
+    });
+    passIdentityWriteWindow();
+    const personUrl = `${DASHBOARD}/people/${encodeURIComponent("alice@example.com")}`;
+    const first = await (await viewerApi("bob@example.com"))(personUrl);
+    expect(first.objects.get(personUrl)?.facts).toMatchObject({
+      githubHandle: "alice_acme",
+    });
+
+    // A write outside the Identity writers does not clear the cache, so the
+    // next viewer gets the cached person.
+    await getDb()
+      .update(juniorIdentities)
+      .set({ handle: "renamed" })
+      .where(eq(juniorIdentities.providerSubjectId, "1001"));
+    const second = await (await viewerApi("carol@example.com"))(personUrl);
+    expect(second.objects.get(personUrl)?.facts).toMatchObject({
+      githubHandle: "alice_acme",
+    });
+  });
+
+  it("shows a GitHub link and unlink on the person card at once", async () => {
+    const alice = await linkSlackUser("alice@example.com", "UALICE");
+    passIdentityWriteWindow();
+    const personUrl = `${DASHBOARD}/people/${encodeURIComponent("alice@example.com")}`;
+    const resolve = await viewerApi("bob@example.com");
+    const handle = async () =>
+      (await resolve(personUrl)).objects.get(personUrl)?.facts;
+    expect(await handle()).not.toHaveProperty("githubHandle");
+
+    await upsertLinkedIdentity(getSqlExecutor(), alice.id, {
+      handle: "alice_acme",
+      kind: "user",
+      provider: "github",
+      providerSubjectId: "1001",
+    });
+    expect(await handle()).toMatchObject({ githubHandle: "alice_acme" });
+
+    await deleteProviderIdentityForUser(
+      getSqlExecutor(),
+      alice.id,
+      "github",
+      "1001",
+    );
+    expect(await handle()).not.toHaveProperty("githubHandle");
   });
 
   it("resolves a Slack message only where the viewer's Slack account sees it", async () => {

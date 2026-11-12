@@ -74,6 +74,52 @@ test("links without an Annotation resolve to a chip and a hover card", async ({
   });
 });
 
+test("one request asks for the cards of every link in a message", async ({
+  page,
+  dashboard,
+}) => {
+  const personUrl = "https://junior.example.com/people/dev%40example.com";
+  const conversationUrl = `https://junior.example.com/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`;
+  // Move the two links of the reply apart, so that only one is in view.
+  await page.route(
+    (url) => url.pathname.startsWith("/api/conversations/"),
+    async (route) => {
+      const response = await route.fetch();
+      const text = await response.text();
+      const body = text.replace(
+        " picks up ",
+        ` picks up\\n\\n${"More release notes.\\n\\n".repeat(80)}`,
+      );
+      await route.fulfill({ body, response });
+    },
+  );
+  const requests: URL[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/objects") requests.push(url);
+  });
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  await expect(page.getByText("More release notes.").first()).toBeAttached();
+  await expect(
+    page
+      .getByRole("link", { name: /Investigate checkout latency · Running/ })
+      .or(page.getByRole("link", { name: /Morgan Lee/ }))
+      .first(),
+  ).toBeVisible();
+
+  const asked = requests.filter((url) =>
+    url.searchParams
+      .getAll("url")
+      .some((link) => link === personUrl || link === conversationUrl),
+  );
+  expect(asked).toHaveLength(1);
+  expect(asked[0]!.searchParams.getAll("url")).toEqual(
+    expect.arrayContaining([personUrl, conversationUrl]),
+  );
+});
+
 test("a Slack message link resolves to a chip and a hover card", async ({
   page,
   dashboard,
