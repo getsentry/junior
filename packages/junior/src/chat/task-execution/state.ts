@@ -1184,12 +1184,12 @@ export async function getConversationWorkStates(
     conversationIds.map(conversationKey),
   );
   const workStates = new Map<string, ConversationWorkState>();
-  conversationIds.forEach((conversationId, index) => {
+  for (const [index, conversationId] of conversationIds.entries()) {
     const conversation = conversationFromValue(conversationId, values[index]);
     if (conversation) {
       workStates.set(conversationId, conversationWorkState(conversation));
     }
-  });
+  }
   return workStates;
 }
 

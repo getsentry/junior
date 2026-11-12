@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import {
   createEventSource,
   createLocalSource,
@@ -32,6 +33,8 @@ import {
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
+
+const MAILBOX_TURN_READ_CONCURRENCY = 8;
 
 /** Mailbox Message with the Actor and Source facts needed to start a Turn. */
 export type MailboxTurnInput = {
@@ -183,26 +186,33 @@ export async function listActiveMailboxTurns(
 export async function listActiveMailboxTurnSources(
   conversationIds: readonly string[],
 ): Promise<Map<string, Array<Source | undefined>>> {
+  const limit = pLimit(MAILBOX_TURN_READ_CONCURRENCY);
   const summaries = (
-    await Promise.all(conversationIds.map(listTurnSummaries))
+    await Promise.all(
+      conversationIds.map((conversationId) =>
+        limit(() => listTurnSummaries(conversationId)),
+      ),
+    )
   ).flatMap((list) => list.filter(isOpenTurnSummary));
   const stored = await getStoredTurnFields(summaries);
   const sources = new Map<string, Array<Source | undefined>>(
     conversationIds.map((conversationId) => [conversationId, []]),
   );
   await Promise.all(
-    summaries.map(async (summary, index) => {
-      const fields = stored[index];
-      // Only a legacy cursor with no Source needs its Actors, which come from
-      // Turn history.
-      const turn =
-        fields && !fields.source && fields.surface !== "api"
-          ? await getTurnRecord(summary.conversationId, summary.turnId)
-          : fields;
-      if (turn && isActiveMailboxTurn(turn)) {
-        sources.get(summary.conversationId)?.push(turn.source);
-      }
-    }),
+    summaries.map((summary, index) =>
+      limit(async () => {
+        const fields = stored[index];
+        // Only a legacy cursor with no Source needs its Actors, which come
+        // from Turn history.
+        const turn =
+          fields && !fields.source && fields.surface !== "api"
+            ? await getTurnRecord(summary.conversationId, summary.turnId)
+            : fields;
+        if (turn && isActiveMailboxTurn(turn)) {
+          sources.get(summary.conversationId)?.push(turn.source);
+        }
+      }),
+    ),
   );
   return sources;
 }

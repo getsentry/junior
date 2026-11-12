@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import pLimit from "p-limit";
 import type { Source } from "@sentry/junior-plugin-api";
 import {
   conversationSubtree,
@@ -58,6 +59,7 @@ function isChildAgentResult(
 
 /** Bound the agent invocations that one child agent listing reads. */
 const CHILD_AGENT_LIST_INVOCATION_LIMIT = 200;
+const CONVERSATION_LOOP_CHECK_CONCURRENCY = 8;
 
 /** Return whether a child's session stopped after its latest agent invocation. */
 export function isChildAgentSessionStopped(
@@ -213,19 +215,23 @@ export async function listChildAgents(
     getConversationWorkStates(activeIds),
     listActiveMailboxTurnSources(activeIds),
   ]);
+  const limit = pLimit(CONVERSATION_LOOP_CHECK_CONCURRENCY);
   const onConversationLoop = new Set(
     (
       await Promise.all(
-        active.map(async (row) =>
-          (await runsOnConversationLoop(
-            conversationKindFromRow(row),
-            byChild.get(row.conversationId)![0]!,
-            row.stoppedAt?.getTime(),
-            workStates.get(row.conversationId)?.execution.pendingMessages ?? [],
-            mailboxTurnSources.get(row.conversationId) ?? [],
-          ))
-            ? row.conversationId
-            : undefined,
+        active.map((row) =>
+          limit(async () =>
+            (await runsOnConversationLoop(
+              conversationKindFromRow(row),
+              byChild.get(row.conversationId)![0]!,
+              row.stoppedAt?.getTime(),
+              workStates.get(row.conversationId)?.execution.pendingMessages ??
+                [],
+              mailboxTurnSources.get(row.conversationId) ?? [],
+            ))
+              ? row.conversationId
+              : undefined,
+          ),
         ),
       )
     ).filter((id) => id !== undefined),
