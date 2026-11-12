@@ -29,4 +29,4 @@ export const AGENT_MESSAGE_EVENT_TYPE = "agent.message";
  * Event type of a parent agent task or message to a child that no agent
  * invocation names.
  */
-export const AGENT_TASK_EVENT_TYPE = "agent.task";
+export const AGENT_PARENT_MESSAGE_EVENT_TYPE = "agent.parent_message";

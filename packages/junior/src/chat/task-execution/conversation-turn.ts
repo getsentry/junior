@@ -15,7 +15,11 @@ import { createHash } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { createWebAuthorization } from "@/chat/conversations/web-authorization";
 import { loadProjection } from "@/chat/conversations/projection";
-import { childAgentTurnOptions } from "@/chat/agent-invocations/parent-task";
+import {
+  childAgentTurnOptions,
+  isParentMessageMeta,
+  readParentMessage,
+} from "@/chat/agent-invocations/parent-message";
 import {
   hydrateConversationMessages,
   persistConversationMessages,
@@ -282,6 +286,7 @@ export function createConversationTurnWorker(
       ? await getTurnRecord(context.conversationId, turnId)
       : undefined;
     let savedMessageIsEvent = false;
+    let savedParentMessage = false;
     if (isResume) {
       const userMessage = getTurnUserMessage(conversation, turnId);
       if (!userMessage) {
@@ -290,6 +295,7 @@ export function createConversationTurnWorker(
         );
       }
       savedMessageIsEvent = isEventConversationMessage(userMessage);
+      savedParentMessage = isParentMessageMeta(userMessage.meta);
       // Resume has no new input. Restore Source and Actor from the Turn.
       // TODO(dcramer): Remove the saved Message fallback after no deployed Turn
       // cursor can omit Source or Actor.
@@ -345,10 +351,12 @@ export function createConversationTurnWorker(
             (await verifiedTimerWatchSubject(
               context.conversationId,
               sharedDelegatedSubject(resolved.batch),
+              resolved.batch.every((entry) => readParentMessage(entry.message)),
             )))
           : await verifiedTimerWatchSubject(
               context.conversationId,
               savedTurn?.credentialSubject,
+              savedParentMessage,
             );
     }
     const source = sourceFromTurnInput({
@@ -615,6 +623,7 @@ export function createConversationTurnWorker(
               resolved.kind === "mailbox"
                 ? resolved.batch.map((entry) => entry.message)
                 : [],
+            savedParentMessage,
           });
           const piMessages = childTurn.history;
           failureCode = "agent_run_failed";

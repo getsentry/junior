@@ -10,7 +10,7 @@ import { getSqlExecutor } from "@/chat/db";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import { juniorAgentBindings, juniorConversations } from "@/db/schema";
 import { parseTurnReplyMessageId } from "./ids";
-import { readParentTask } from "./parent-task";
+import { isFromStoredParent, readParentMessage } from "./parent-message";
 import {
   AGENT_INVOCATION_EVENT_NAMESPACE,
   AGENT_MESSAGE_EVENT_TYPE,
@@ -77,11 +77,14 @@ export function childAgentInput(
  * agent status all read this, so they agree on which input starts work.
  *
  * A parent task or message goes to its agent invocation. `latest` is the
- * Conversation's newest agent invocation; a root has none. With an open one, a Watch Event and input from a child agent go to an agent
- * invocation, and so do a result, and input to a child that waits for its own
- * child agents (`replaced`). A stopped child drops input from its own child
- * agents, also input sent before the stop. A session stop at `stoppedAtMs`
- * skips Events as `skipInputAfterConversationStop` does.
+ * Conversation's newest agent invocation; a root has none. A parent message
+ * that no Agent invocation names is dropped when it does not come from the
+ * stored parent. With an open Agent invocation, that parent message, a Watch
+ * Event, and input from a child agent go to an agent invocation, and so do a
+ * result, and input to a child that waits for its own child agents
+ * (`replaced`). A stopped child drops input from its own child agents, also
+ * input sent before the stop. A session stop at `stoppedAtMs` skips Events
+ * as `skipInputAfterConversationStop` does.
  *
  * TODO(dcramer): Drop the agent invocation route with the legacy child worker
  * (#3060 step 7).
@@ -97,14 +100,22 @@ export async function routeChildInput(
   if (isAgentInvocationInput(message)) {
     return "agent invocation";
   }
-  // A parent task that no agent invocation names starts a Turn, as a
-  // person's Message does.
-  if (readParentTask(message)) {
+  const open = latest !== undefined && !isTerminalAgentInvocation(latest);
+  // A parent message that no Agent invocation names starts a Turn, as a
+  // person's Message does. A child with an open Agent invocation keeps it,
+  // so one child's work never runs on both paths.
+  const parentMessage = readParentMessage(message);
+  if (parentMessage) {
+    if (!(await isFromStoredParent(message, parentMessage))) {
+      return "dropped";
+    }
+    if (open) {
+      return "agent invocation";
+    }
     return isSkippedAfterConversationStop(message, stoppedAtMs)
       ? "dropped"
       : "Conversation loop";
   }
-  const open = latest !== undefined && !isTerminalAgentInvocation(latest);
   const input = childAgentInput(message);
   if (!input) {
     if (open && isEventMailboxMetadata(message.input.metadata)) {

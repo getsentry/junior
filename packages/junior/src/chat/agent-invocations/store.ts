@@ -10,7 +10,11 @@ import { AGENT_INVOCATION_EVENT_NAMESPACE } from "./result-event-type";
 import {
   getAgentInvocationResultMessageId,
   isAgentReplyMessageId,
+  parseTurnReplyMessageId,
 } from "./ids";
+import { readChildConversationSender } from "./child-input";
+import { listOpenChildAgentsWithoutAgentInvocations } from "./list";
+import { readChildSpawnOptions } from "./spawn-options";
 import {
   agentInvocationSchema,
   type AgentInvocation,
@@ -146,6 +150,8 @@ export async function getLatestAgentInvocationForConversation(
  * the child have no title, so an agent invocation with a title comes first.
  * Each agent invocation keeps the child's agent type, but only the one that
  * started a fork has `fork` set, so the flag reads every agent invocation.
+ * A child that no Agent invocation names reads its binding, title, and
+ * spawn options.
  */
 export async function getChildAgentLabel(childConversationId: string) {
   const [row] = await getSqlExecutor()
@@ -163,7 +169,21 @@ export async function getChildAgentLabel(childConversationId: string) {
       desc(juniorAgentInvocations.createdAt),
     )
     .limit(1);
-  return row;
+  if (row) {
+    return row;
+  }
+  const [sender, options] = await Promise.all([
+    readChildConversationSender(childConversationId),
+    readChildSpawnOptions(childConversationId),
+  ]);
+  return sender && options
+    ? {
+        agentName: sender.agentName ?? null,
+        agentType: options.agentType ?? null,
+        fork: options.fork ?? false,
+        title: sender.title ?? null,
+      }
+    : undefined;
 }
 
 /**
@@ -223,12 +243,27 @@ export function sendsResultToParent(
 /**
  * Return whether a child Conversation has work that will start another agent
  * invocation on it: another open agent invocation, an open child agent, or a
- * child agent result that is sent but still waits in its mailbox.
+ * child agent result that is sent but still waits in its mailbox. A child
+ * agent that no Agent invocation names is open as `searchAgents` shows it,
+ * and its Turn's unread result or reply also waits.
  */
 async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
   const conversationId = invocation.childConversationId;
   const open = await listOpenAgentInvocations(conversationId);
-  if (open.some((row) => row.invocationId !== invocation.invocationId)) {
+  if (
+    open.some((row) => row.invocationId !== invocation.invocationId) ||
+    (await listOpenChildAgentsWithoutAgentInvocations(conversationId)).length >
+      0
+  ) {
+    return true;
+  }
+  const work = await getConversationWorkState({ conversationId });
+  if (
+    work?.messages.some(
+      (message) =>
+        parseTurnReplyMessageId(message.inboundMessageId) !== undefined,
+    )
+  ) {
     return true;
   }
   // A `replaced` child result is never sent. A later agent invocation of
@@ -254,7 +289,6 @@ async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
   if (marked.length === 0) {
     return false;
   }
-  const work = await getConversationWorkState({ conversationId });
   const unread = new Set(
     work?.messages.map((message) => message.inboundMessageId),
   );

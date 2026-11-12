@@ -37,7 +37,7 @@ import {
   recoverPendingAgentInvocationMailboxAppends,
   recoverPendingAgentInvocationResults,
 } from "@/chat/agent-dispatch/heartbeat";
-import { spawnChildWithoutInvocation } from "../fixtures/child-without-invocation";
+import { spawnChildWithoutAgentInvocation } from "../fixtures/child-without-agent-invocation";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import {
   createEventSource,
@@ -255,7 +255,7 @@ describe("agent invocation spawn and result delivery", () => {
     const { conversationStore, fixture } = await prepareParentConversation();
     const queue = createConversationWorkQueueTestAdapter();
     try {
-      const childConversationId = await spawnChildWithoutInvocation({
+      const childConversationId = await spawnChildWithoutAgentInvocation({
         actor: { platform: "local", userId: "local-user" },
         conversationStore,
         idempotencyKey: "parent-turn:call-1",

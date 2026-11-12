@@ -19,6 +19,8 @@ import {
   slackInvocationInput,
   slackParentConversationId,
 } from "../../../fixtures/agent-invocations";
+import { spawnChildWithoutAgentInvocation } from "../../../fixtures/child-without-agent-invocation";
+import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
 
 async function requestDetail(conversationId: string, etag?: string) {
   return await createJuniorApi().request(
@@ -257,6 +259,31 @@ describe("conversation child agents API", () => {
       conversationId: slackParentConversationId,
       kind: "root",
       label: "Renamed plan",
+    });
+  });
+
+  it("labels a child that no Agent invocation names from its spawn options", async () => {
+    const { conversationStore } = await prepareSlackParentConversation();
+    const childId = await spawnChildWithoutAgentInvocation({
+      actor: slackInvocationInput.actor,
+      conversationStore,
+      idempotencyKey: "agent-tree-without-agent-invocation",
+      parentConversationId: slackParentConversationId,
+      queue: createConversationWorkQueueTestAdapter(),
+      spawnOptions: { agentType: "explore", fork: true },
+      title: "Claim check",
+    });
+
+    const response = await requestDetail(childId);
+    expect(
+      conversationDetailReportSchema.parse(await response.json())
+        .agentTree?.[1],
+    ).toEqual({
+      agentType: "explore",
+      conversationId: childId,
+      fork: true,
+      kind: "task",
+      label: "Claim check",
     });
   });
 

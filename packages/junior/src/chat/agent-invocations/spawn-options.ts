@@ -21,16 +21,20 @@ export const childSpawnOptionsSchema = z
 export type ChildSpawnOptions = z.output<typeof childSpawnOptionsSchema>;
 
 /**
- * Read the spawn options that one child Conversation stores. A child that an
- * Agent invocation names reads them from its row first.
+ * Read the spawn options that one child Conversation stores. Only a child
+ * that a spawn created without an Agent invocation row has them, so another
+ * Conversation reads undefined. A child that an Agent invocation names reads
+ * them from its row first.
  */
 export async function readChildSpawnOptions(
   childConversationId: string,
-): Promise<ChildSpawnOptions> {
+): Promise<ChildSpawnOptions | undefined> {
   const [row] = await getSqlExecutor()
     .db()
     .select({ spawnOptions: juniorConversations.spawnOptions })
     .from(juniorConversations)
     .where(eq(juniorConversations.conversationId, childConversationId));
-  return childSpawnOptionsSchema.parse(row?.spawnOptions ?? {});
+  return row?.spawnOptions
+    ? childSpawnOptionsSchema.parse(row.spawnOptions)
+    : undefined;
 }

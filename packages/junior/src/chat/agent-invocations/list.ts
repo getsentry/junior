@@ -36,6 +36,7 @@ import {
   sendsResultToParent,
 } from "./store";
 import { routeChildInput } from "./child-input";
+import { readParentMessage } from "./parent-message";
 import {
   CHILD_AGENT_KINDS,
   CHILD_AGENT_RESULTS,
@@ -162,7 +163,7 @@ export async function listChildAgents(
 ): Promise<ChildAgent[]> {
   const [withInvocations, withoutInvocations] = await Promise.all([
     listChildAgentsFromInvocations(parentConversationId),
-    listChildAgentsWithoutInvocations(parentConversationId),
+    listChildAgentsWithoutAgentInvocations(parentConversationId),
   ]);
   return [...withInvocations, ...withoutInvocations].sort(
     (left, right) => right.updatedAtMs - left.updatedAtMs,
@@ -262,16 +263,36 @@ async function listChildAgentsFromInvocations(
  * List the ids of the child agents of one parent that no agent invocation
  * names and that have open work.
  */
-export async function listOpenChildAgentsWithoutInvocations(
+export async function listOpenChildAgentsWithoutAgentInvocations(
   parentConversationId: string,
 ): Promise<string[]> {
-  return (await listChildAgentsWithoutInvocations(parentConversationId))
+  return (await listChildAgentsWithoutAgentInvocations(parentConversationId))
     .filter((child) =>
       (NON_TERMINAL_AGENT_INVOCATION_STATUSES as readonly string[]).includes(
         child.status,
       ),
     )
     .map((child) => child.childConversationId);
+}
+
+/**
+ * Count the open parent messages of one child that no Agent invocation
+ * names: each one that waits in its mailbox, and each open Turn, which runs
+ * one. This is the queue that `MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD` caps.
+ */
+export async function countOpenParentMessages(
+  childConversationId: string,
+): Promise<number> {
+  const [turns, work] = await Promise.all([
+    listActiveMailboxTurns(childConversationId),
+    getConversationWorkState({ conversationId: childConversationId }),
+  ]);
+  return (
+    turns.length +
+    (work?.messages ?? []).filter(
+      (message) => readParentMessage(message) !== undefined,
+    ).length
+  );
 }
 
 /**
@@ -284,7 +305,7 @@ export async function listOpenChildAgentsWithoutInvocations(
  * TODO(dcramer): Make this the only listing when #3060 step 7 drops the
  * agent invocation table.
  */
-async function listChildAgentsWithoutInvocations(
+async function listChildAgentsWithoutAgentInvocations(
   parentConversationId: string,
 ): Promise<ChildAgent[]> {
   const db = getSqlExecutor().db();

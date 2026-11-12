@@ -1,8 +1,12 @@
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAgentBindings, juniorAgentInvocations } from "@/db/schema";
 import { getAgentBinding } from "./bindings";
 import { readChildConversationSender } from "./child-input";
-import { listOpenChildAgentsWithoutInvocations } from "./list";
+import {
+  countOpenParentMessages,
+  listOpenChildAgentsWithoutAgentInvocations,
+} from "./list";
 import { readChildSpawnOptions } from "./spawn-options";
 import {
   AgentInvocationLimitError,
@@ -110,7 +114,7 @@ function sameCreateInput(
  * A stopped child agent cannot start or give work to child agents until its
  * parent gives it new work. A Turn on the child's Conversation loop
  * has no open agent invocation, but it can. A root Conversation has no agent
- * invocation, so it always passes. `open` is the parent's open work from
+ * invocation or spawn options, so it always passes. `open` is the parent's open work from
  * `listOpenAgentInvocations`.
  */
 async function assertCanGiveChildWork(
@@ -122,7 +126,13 @@ async function assertCanGiveChildWork(
   }
   const latest =
     await getLatestAgentInvocationForConversation(parentConversationId);
-  if (latest && isStoppedAgentInvocation(latest)) {
+  // A child that no Agent invocation names stays stopped until new work
+  // from its parent ends the stop.
+  const stopped = latest
+    ? isStoppedAgentInvocation(latest)
+    : (await readChildSpawnOptions(parentConversationId)) !== undefined &&
+      (await getConversationStoppedAtMs(parentConversationId)) !== undefined;
+  if (stopped) {
     throw new Error(
       `Agent conversation ${parentConversationId} is stopped and cannot give work to child agents`,
     );
@@ -146,7 +156,9 @@ async function assertChildAgentCapacity(
     ...open
       .filter((row) => row.parentConversationId === args.parentConversationId)
       .map((row) => row.childConversationId),
-    ...(await listOpenChildAgentsWithoutInvocations(args.parentConversationId)),
+    ...(await listOpenChildAgentsWithoutAgentInvocations(
+      args.parentConversationId,
+    )),
   ]);
   if (
     !active.has(args.childConversationId) &&
@@ -266,9 +278,12 @@ export async function createAgentInvocationFromLatest(
     input: string;
     invocationId: string;
     latest: AgentInvocation;
-    /** Actor, credentials, and Source for watch events and results. */
+    /**
+     * Actor, credentials, and Source for watch events and results. A parent
+     * message also sets its tool call, which makes it the instruction.
+     */
     runAs?: Pick<AgentInvocation, "actor" | "credentialContext"> &
-      Partial<Pick<AgentInvocation, "source">>;
+      Partial<Pick<AgentInvocation, "fork" | "parentToolCallId" | "source">>;
   },
   nowMs = Date.now(),
 ): Promise<AgentInvocation> {
@@ -282,9 +297,11 @@ export async function createAgentInvocationFromLatest(
       childConversationId: latest.childConversationId,
       credentialContext,
       destination: latest.destination,
+      fork: args.runAs?.fork,
       input: args.input,
       invocationId: args.invocationId,
       parentConversationId: latest.parentConversationId,
+      parentToolCallId: args.runAs?.parentToolCallId,
       reasoningLevel: latest.reasoningLevel,
       source: args.runAs?.source,
     },
@@ -360,12 +377,18 @@ export async function createAgentInvocationForMessage(
         );
       }
       const spawnOptions =
-        latest ?? (await readChildSpawnOptions(input.childConversationId));
+        latest ??
+        (await readChildSpawnOptions(input.childConversationId)) ??
+        {};
       const open = await listOpenAgentInvocations(input.parentConversationId);
       await assertCanGiveChildWork(input.parentConversationId, open);
-      const openCount = open.filter(
-        (row) => row.childConversationId === input.childConversationId,
-      ).length;
+      // A child that no Agent invocation names counts its open parent
+      // messages instead.
+      const openCount =
+        open.filter(
+          (row) => row.childConversationId === input.childConversationId,
+        ).length +
+        (latest ? 0 : await countOpenParentMessages(input.childConversationId));
       if (openCount >= MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD) {
         throw new AgentMessageQueueFullError(
           MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD,

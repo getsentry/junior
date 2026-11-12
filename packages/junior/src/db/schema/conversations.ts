@@ -83,8 +83,10 @@ export const juniorConversations = pgTable(
     // arm of junior_conversations_kind_parent_check.
     kind: text("kind").$type<ConversationKind>(),
     // The `spawnAgent` options that every Turn of a child agent keeps. Set
-    // once at create. Agent invocation rows also hold them until #3060
-    // step 7 drops the rows; readers read the row first.
+    // once at create. A non-null value marks a child created without an
+    // Agent invocation row; readers that list or stop children without rows
+    // read only these. Agent invocation rows also hold the options until
+    // #3060 step 7 drops the rows; readers read the row first.
     spawnOptions: jsonb("spawn_options_json").$type<ChildSpawnOptions>(),
     // Archive applies to everyone, on a root or a child. A Conversation shows
     // only while it and every ancestor are unarchived.

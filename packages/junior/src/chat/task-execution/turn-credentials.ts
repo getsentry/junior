@@ -6,19 +6,24 @@ import type { MailboxTurnInput } from "@/chat/task-execution/mailbox-turn";
 
 /**
  * Return a saved timer creator subject when it is still valid here. The
- * timer's Watch belongs to this Conversation, or to a parent whose child
- * agent continues the work of the timer Turn.
+ * timer's Watch belongs to this Conversation. It may also belong to an
+ * ancestor when `fromParent`: the input is a parent message that passed its
+ * sender check, so the child continues the work of the parent's timer Turn.
  */
 export async function verifiedTimerWatchSubject(
   conversationId: string,
   subject: CredentialSubject | undefined,
+  fromParent: boolean,
 ): Promise<CredentialSubject | undefined> {
   if (subject?.binding.type !== "timer-watch") return undefined;
   const watchConversationId = subject.binding.conversationId;
   if (
     watchConversationId !== conversationId &&
-    !(await readConversationLineage(conversationId)).some(
-      (entry) => entry.conversationId === watchConversationId,
+    !(
+      fromParent &&
+      (await readConversationLineage(conversationId)).some(
+        (entry) => entry.conversationId === watchConversationId,
+      )
     )
   ) {
     return undefined;

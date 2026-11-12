@@ -45,7 +45,7 @@ import {
   readChildConversationSender,
   routeChildInput,
 } from "./child-input";
-import { readParentTask } from "./parent-task";
+import { parentMessageText, readParentMessage } from "./parent-message";
 import { createAgentInvocationFromLatest } from "./create";
 import {
   getAgentInvocationIdForEvents,
@@ -622,7 +622,10 @@ async function startAgentInvocationsForChildInput(
     return undefined;
   }
   const inputs = messages.map(childAgentInput);
-  const isAgentInput = inputs.every((input) => input !== undefined);
+  const isAgentInput = messages.every(
+    (message, index) =>
+      inputs[index] !== undefined || readParentMessage(message) !== undefined,
+  );
   const events = isAgentInput ? [] : parseEventMessages(messages);
   if (!isAgentInput && events.length === 0) {
     return undefined;
@@ -665,6 +668,28 @@ async function startAgentInvocationsForChildInput(
   }
   for (const [index, message] of messages.entries()) {
     if (routes[index] === "dropped") {
+      continue;
+    }
+    const parentMessage = readParentMessage(message);
+    if (parentMessage) {
+      // A parent message to a child with an open Agent invocation queues
+      // behind it, as `messageAgent` does with a row.
+      await enqueueAgentInvocation(
+        await createAgentInvocationFromLatest({
+          input: message.input.text.trim(),
+          invocationId: getAgentInvocationIdForMessage(
+            message.inboundMessageId,
+          ),
+          latest,
+          runAs: {
+            actor: parentMessage.actor,
+            credentialContext: parentMessage.credentialContext,
+            fork: parentMessage.fork,
+            parentToolCallId: parentMessage.parentToolCallId,
+          },
+        }),
+        options,
+      );
       continue;
     }
     const input = inputs[index]!;
@@ -768,8 +793,30 @@ export function createChildConversationWorker(
       await context.attempt.ack();
       return { status: "completed" };
     }
-    return await options.runTurn(context, kept);
+    const result = await options.runTurn(context, kept);
+    await reportParentWithoutOpenWork(context.conversationId, options);
+    return result;
   };
+}
+
+/**
+ * A Turn of a child that no Agent invocation names can end the last open
+ * work of its parent, such as a Turn that ends with `noReply`. A `replaced`
+ * result of that parent then reports, as when a child row ends.
+ *
+ * TODO(dcramer): Remove with the `replaced` result (#3060 step 7).
+ */
+async function reportParentWithoutOpenWork(
+  conversationId: string,
+  options: { queue: ConversationWorkQueue; state?: StateAdapter },
+): Promise<void> {
+  const sender = await readChildConversationSender(conversationId);
+  const replaced = sender
+    ? await reportReplacedWithoutOpenWork(sender.parentConversationId)
+    : undefined;
+  if (replaced && isTerminalAgentInvocation(replaced)) {
+    await enqueueAgentInvocationResult(replaced, options);
+  }
 }
 
 /**
@@ -798,19 +845,28 @@ export async function withAgentInvocationResultActors(
     : [undefined, undefined];
   const batch = await Promise.all(
     work.batch.map(async (entry) => {
-      // A parent task runs as the Actor of the parent's Turn, with its
-      // grants, as on an agent invocation.
-      const task = readParentTask(entry.message);
-      if (task) {
-        return entry.message.input.authorId === resultAuthorId(task.actor)
-          ? {
-              ...entry,
-              actor: task.actor,
-              ...(task.credentialContext
-                ? { credentialContext: task.credentialContext }
-                : undefined),
-            }
-          : { ...entry, actor: EVENT_SYSTEM_ACTOR };
+      // A parent message from the stored parent runs as the Actor of the
+      // parent's Turn, with its grants and text, as on an Agent invocation.
+      const parentMessage = readParentMessage(entry.message);
+      if (parentMessage) {
+        if (
+          (await routeChildInput(entry.message, latest, stoppedAtMs)) ===
+          "dropped"
+        ) {
+          return undefined;
+        }
+        const text = await parentMessageText(entry.message, parentMessage);
+        return {
+          ...entry,
+          actor: parentMessage.actor,
+          ...(parentMessage.credentialContext
+            ? { credentialContext: parentMessage.credentialContext }
+            : undefined),
+          message: {
+            ...entry.message,
+            input: { ...entry.message.input, text },
+          },
+        };
       }
       const input = childAgentInput(entry.message);
       if (!input) {
