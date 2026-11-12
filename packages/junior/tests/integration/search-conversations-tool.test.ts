@@ -128,6 +128,38 @@ describe("searchConversations", () => {
       "permalink",
     );
 
+    // A child agent gives the Slack channel and thread of its root.
+    const childId = "agent:launch-child";
+    await getConversationStore().createChild({
+      childConversationId: childId,
+      kind: "thread",
+      parentConversationId: conversationId,
+      nowMs: Date.parse("2026-07-01T12:01:00.000Z"),
+      source: "slack",
+      title: "Launch decision follow-up",
+    });
+    queueSlackApiResponse("chat.getPermalink", {
+      body: chatGetPermalinkOk({
+        permalink:
+          "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
+      }),
+    });
+    const childResult = await executeTool(tool, {
+      query: "follow-up",
+      roots_only: false,
+    });
+    expect(childResult.conversations).toEqual([
+      expect.objectContaining({
+        channel_id: "CARCHIVE",
+        channel_name: "archive",
+        conversation_id: childId,
+        kind: "thread",
+        permalink:
+          "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
+        root_conversation_id: conversationId,
+      }),
+    ]);
+
     const publicTool = createSearchConversationsTool({
       conversationId: "local:test:current",
     });

@@ -22,7 +22,8 @@ export function createSlackConversationSearchChannelPort(
       return target.channelId;
     },
     async describeMatch(match) {
-      const reference = parseSlackThreadId(match.conversationId);
+      // A child agent has no Slack thread of its own. It belongs to its root.
+      const reference = parseSlackThreadId(match.rootConversationId);
       if (!reference || reference.channelId !== match.providerDestinationId) {
         return {};
       }
