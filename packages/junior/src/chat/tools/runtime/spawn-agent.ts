@@ -14,7 +14,6 @@ import {
   formatAgentTypes,
 } from "@/chat/agent-invocations/agent-types";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
-import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { completeText, type ConversationModelCost } from "@/chat/core-model";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import {
@@ -55,7 +54,7 @@ export function createSpawnAgentTool(
       "Delegate a Task when: the request splits into independent tracks that each need real investigation, such as several repos, services, sources, or items (start every track in the same message); an answer needs reading across many files, logs, or sources and you need the conclusion, not the raw output; a side task does not block your main answer; or you want a second opinion that is not anchored on your analysis (give it the evidence, not your conclusion).",
       "Do it yourself instead of a Task when: the work fits in a handful of tool calls; you already know the file, symbol, or value to look up; or the job is one modest task that you would only split into pieces. Each child rebuilds its context and its result arrives in a later turn, so when in doubt, do not spawn a Task.",
       `Pick agent_type when one fits; omit it for a general-purpose child with your tools:\n${formatAgentTypes()}`,
-      `After you delegate, do not do the same work yourself. When your reply posts to people, do not post a status that only says the work started or repeats the task: call ${NO_REPLY_TOOL_NAME} instead, because the child's result posts when it arrives. Reply only with something people need now, such as an answer, a question, or a Thread's dashboard_url.`,
+      `After you delegate, do not do the same work yourself. When starting child agents is the only outcome of the Turn, reply with one short line that says what you started, so people know that work continues; the child's result posts when it arrives. Do not repeat the task or predict the result. When the Turn has other output for people, such as an answer, a question, or a Thread's dashboard_url, reply with that and add no status.`,
       "You know nothing about a child's findings until its result arrives: do not predict them, do not wait or poll, and if the user asks before then, give status.",
       "Give a child a name when you may send it more work later. To give more work to a child agent that already exists, use messageAgent instead.",
       "A child keeps its type and kind when it receives more work through messageAgent.",
