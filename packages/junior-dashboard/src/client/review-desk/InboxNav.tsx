@@ -179,8 +179,10 @@ export function InboxNav(props: {
     <nav
       aria-label="Inbox"
       className={cn(
-        "thin-scrollbar h-full min-h-0 overflow-y-auto overscroll-contain pb-6",
-        props.phone ? "px-2 pt-2" : "px-3 pt-2",
+        "thin-scrollbar h-full min-h-0 overflow-y-auto overscroll-contain bg-dashboard-surface-panel pb-6",
+        props.phone
+          ? "px-2 pt-2"
+          : "border-r border-dashboard-border px-3 pt-2",
       )}
     >
       <ul className="m-0 grid gap-0.5 p-0">

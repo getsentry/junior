@@ -36,7 +36,10 @@ export function ConversationWorkspaceLoading(props: { detail: boolean }) {
 function ConversationSidebarLoading() {
   return (
     <ListPane className="max-md:hidden">
-      <div aria-hidden="true" className="grid gap-1 px-3 pt-2">
+      <div
+        aria-hidden="true"
+        className="grid h-full content-start gap-1 border-r border-dashboard-border bg-dashboard-surface-panel px-3 pt-2"
+      >
         {Array.from({ length: 7 }, (_, index) => (
           <div className="flex h-8 items-center gap-3 px-3" key={index}>
             <Skeleton className="size-4 rounded" />
