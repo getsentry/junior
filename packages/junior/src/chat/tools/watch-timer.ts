@@ -14,7 +14,7 @@ export function createWatchTimerTool(context: ToolRuntimeContext) {
       readOnlyHint: false,
     },
     description:
-      "Wake this conversation once after a delay so you can check back later. Returns immediately. Timing is approximate. Use watchEvents instead when you can watch for the event.",
+      "Wake this conversation once after a delay so you can check back later. Returns immediately. Timing is approximate. Use watchEvents instead when you can watch for the event. For a reminder or other later work that a person asks for, create a scheduled automation instead.",
     inputSchema: z
       .object({
         after_ms: z
