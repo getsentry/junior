@@ -1,4 +1,5 @@
 import type { ObjectAnnotation } from "@sentry/junior-plugin-api";
+import { lexer, walkTokens } from "marked";
 import * as z from "zod";
 
 const person = z.object({ login: z.string() });
@@ -42,8 +43,10 @@ function description(body: string | null | undefined): string | undefined {
   return text.length > 4000 ? `${text.slice(0, 3999)}…` : text;
 }
 
-const IMAGE_PATTERN =
-  /!\[[^\]]*\]\(\s*<?([^\s)>]+)|<img\b[^>]*?\ssrc\s*=\s*["']?([^"'\s>]+)/gi;
+// An HTML block can hold more than one image.
+const HTML_IMAGE_SRC = /<img\b[^>]*?\ssrc\s*=\s*["']?([^"'\s>]+)/gi;
+// Facts must fit in 4 KiB, with the other code change facts.
+const MAX_PREVIEW_IMAGES = 4;
 
 /**
  * Keep only images that the dashboard can load without GitHub auth. GitHub
@@ -69,20 +72,36 @@ function publicArtifactUrl(value: string): string | undefined {
     url.pathname.startsWith(prefix.pathname) &&
     !url.username &&
     !url.password &&
-    url.href.length <= 2048
+    url.href.length <= 512
     ? url.href
     : undefined;
 }
 
-/** Return the first public image in a pull request body, for card previews. */
-export function githubPreviewImageUrl(
+/**
+ * Return the public images in a pull request body, in body order, for card
+ * previews. Screenshots often come as a before and after pair, so the
+ * dashboard chooses which one to show.
+ */
+export function githubPreviewImageUrls(
   body: string | null | undefined,
-): string | undefined {
-  for (const match of visibleBody(body).matchAll(IMAGE_PATTERN)) {
-    const url = publicArtifactUrl(match[1] ?? match[2] ?? "");
-    if (url) return url;
-  }
-  return undefined;
+): string[] | undefined {
+  const sources: string[] = [];
+  walkTokens(lexer(visibleBody(body), { gfm: true }), (token) => {
+    if (token.type === "image") sources.push(token.href);
+    if (token.type === "html") {
+      for (const match of token.raw.matchAll(HTML_IMAGE_SRC)) {
+        sources.push(match[1]!);
+      }
+    }
+  });
+  const urls = [
+    ...new Set(
+      sources
+        .map(publicArtifactUrl)
+        .filter((url): url is string => url !== undefined),
+    ),
+  ];
+  return urls.length > 0 ? urls.slice(0, MAX_PREVIEW_IMAGES) : undefined;
 }
 
 /** Select card facts from GitHub REST responses; never infer reviews or checks. */
@@ -112,7 +131,7 @@ export function githubObjectFacts(
             changedFiles: data.changed_files,
             additions: data.additions,
             deletions: data.deletions,
-            previewImageUrl: githubPreviewImageUrl(data.body),
+            previewImageUrls: githubPreviewImageUrls(data.body),
           }
         : {
             type,

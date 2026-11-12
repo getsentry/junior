@@ -3560,7 +3560,7 @@ describe("GitHub-owned pull request outcomes", () => {
         ),
       );
       expect(chip.kind === "object" && chip.facts).toEqual({
-        previewImageUrl: artifact,
+        previewImageUrls: [artifact],
         sourceBranch: "feat/preview",
         type: "code_change",
       });
@@ -3571,9 +3571,9 @@ describe("GitHub-owned pull request outcomes", () => {
       );
       expect(
         chip.kind === "object" && chip.facts?.type === "code_change"
-          ? chip.facts.previewImageUrl
+          ? chip.facts.previewImageUrls
           : undefined,
-      ).toBe(artifact);
+      ).toEqual([artifact]);
 
       // A newer body with the same image moves the check time forward, so a
       // late body from between the two changes nothing.
@@ -3586,7 +3586,7 @@ describe("GitHub-owned pull request outcomes", () => {
         signedRequest(edited("No image.", "2026-07-02T15:00:00.000Z")),
       );
       expect(chip).toMatchObject({
-        facts: { previewImageUrl: artifact },
+        facts: { previewImageUrls: [artifact] },
         sourceUpdatedAt: "2026-07-02T18:00:00.000Z",
       });
 
@@ -3603,7 +3603,7 @@ describe("GitHub-owned pull request outcomes", () => {
         sourceUpdatedAt: "2026-07-03T12:00:00.000Z",
       });
       expect(chip.kind === "object" && chip.facts).not.toHaveProperty(
-        "previewImageUrl",
+        "previewImageUrls",
       );
     } finally {
       vi.unstubAllEnvs();

@@ -147,10 +147,12 @@ describe("getPullRequest", () => {
     ]);
   });
 
-  it("saves the first public artifact image as the preview", async () => {
+  it("saves the public artifact images as previews", async () => {
     vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
     const artifact =
       "https://junior.example.com/public/artifacts/0123456789abcdef.png";
+    const after =
+      "https://junior.example.com/public/artifacts/fedcba9876543210.png";
     const withBody = (body: string) => {
       const response = pullRequestResponse();
       return { body: { ...response.body, body } };
@@ -158,7 +160,17 @@ describe("getPullRequest", () => {
     const checks = checksResponse({ contexts: [] });
     const { tool } = toolContext(true, [
       withBody(
-        `![Private](https://github.com/user-attachments/assets/1)\n![Other](https://example.com/public/artifacts/0123456789abcdef.png)\n![Inbox](${artifact})`,
+        [
+          "![Private](https://github.com/user-attachments/assets/1)",
+          "![Other](https://example.com/public/artifacts/0123456789abcdef.png)",
+          "```md",
+          "![Example](https://junior.example.com/public/artifacts/code.png)",
+          "```",
+          `| Before | After |\n| --- | --- |\n| ![Before][before] | <img src="${after}"> |`,
+          `![Again](${artifact})`,
+          "",
+          `[before]: ${artifact}`,
+        ].join("\n"),
       ),
       checks,
       withBody("![Private](https://github.com/user-attachments/assets/1)"),
@@ -171,10 +183,10 @@ describe("getPullRequest", () => {
         { repo: "getsentry/junior", number: 691 },
         { toolCallId: "get-pr" },
       )) as { objectAnnotations: Array<{ facts: Record<string, unknown> }> };
-      return result.objectAnnotations[0]?.facts.previewImageUrl;
+      return result.objectAnnotations[0]?.facts.previewImageUrls;
     };
 
-    expect(await preview()).toBe(artifact);
+    expect(await preview()).toEqual([artifact, after]);
     expect(await preview()).toBeUndefined();
     expect(await preview()).toBeUndefined();
   });

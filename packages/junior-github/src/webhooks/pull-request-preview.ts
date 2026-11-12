@@ -4,7 +4,7 @@ import type {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
-import { githubPreviewImageUrl } from "../object-facts.js";
+import { githubPreviewImageUrls } from "../object-facts.js";
 import { readGitHubPullRequestConversationIds } from "../pull-request-outcomes/store.js";
 
 // These actions carry the current body. `edited` can add or remove an image.
@@ -38,7 +38,7 @@ export async function refreshGitHubPullRequestPreview(args: {
   );
   if (conversationIds.length === 0) return;
   const key = `${repository.full_name.toLowerCase()}#${pullRequest.number}`;
-  const previewImageUrl = githubPreviewImageUrl(pullRequest.body);
+  const previewImageUrls = githubPreviewImageUrls(pullRequest.body);
   const updatedAt = Date.parse(pullRequest.updated_at);
   const results = await Promise.allSettled(
     conversationIds.map(async (conversationId) => {
@@ -54,10 +54,11 @@ export async function refreshGitHubPullRequestPreview(args: {
         : undefined;
       // A late delivery must not undo a newer body.
       if (storedAt !== undefined && storedAt > updatedAt) return;
-      // An unchanged image still moves `sourceUpdatedAt` forward, so a late
+      // Unchanged images still move `sourceUpdatedAt` forward, so a late
       // delivery of a body between the two cannot pass the check above.
       if (
-        current.facts.previewImageUrl === previewImageUrl &&
+        current.facts.previewImageUrls?.join("\n") ===
+          previewImageUrls?.join("\n") &&
         storedAt === updatedAt
       ) {
         return;
@@ -66,12 +67,12 @@ export async function refreshGitHubPullRequestPreview(args: {
         plugin: _plugin,
         createdAt: _createdAt,
         updatedAt: _updatedAt,
-        facts: { previewImageUrl: _previous, ...facts },
+        facts: { previewImageUrls: _previous, ...facts },
         ...annotation
       } = current;
       await store.upsert({
         ...annotation,
-        facts: previewImageUrl ? { ...facts, previewImageUrl } : facts,
+        facts: previewImageUrls ? { ...facts, previewImageUrls } : facts,
         sourceUpdatedAt: pullRequest.updated_at,
       });
     }),
