@@ -554,6 +554,9 @@ importers:
       '@sentry/junior':
         specifier: workspace:*
         version: file:packages/junior(vitest@4.1.12(msw@2.14.6(typescript@7.0.2))(tsx@4.22.3))
+      '@sentry/junior-eval-pantry':
+        specifier: link:fixtures/plugins/eval-pantry
+        version: link:fixtures/plugins/eval-pantry
       '@sentry/junior-github':
         specifier: workspace:*
         version: file:packages/junior-github
