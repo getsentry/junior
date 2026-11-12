@@ -69,7 +69,10 @@ function WorkCard(props: {
           {props.title}
         </span>
         <span className="truncate">
-          {[props.identity, status].filter(Boolean).join(" · ")}
+          {/* A person card's label is the name the title already shows. */}
+          {[props.identity === props.title ? undefined : props.identity, status]
+            .filter(Boolean)
+            .join(" · ")}
         </span>
       </span>
     </OutboundLink>
