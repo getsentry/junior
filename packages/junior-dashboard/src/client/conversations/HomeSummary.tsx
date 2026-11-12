@@ -81,7 +81,7 @@ export function HomeSummary() {
             />
           }
           detail={<MergeDelta {...merges} />}
-          label="Merged, last 7 days"
+          label="Merged"
           value={merges.last7Days}
         />
         <SummaryCard
