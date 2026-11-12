@@ -57,6 +57,7 @@ export const dashboardConfigSchema = z
     authRequired: z.boolean(),
     authPath: z.string(),
     basePath: z.string(),
+    mockConversations: z.boolean(),
     sentryConversationLinks: z.boolean(),
     version: z.string().min(1),
   })

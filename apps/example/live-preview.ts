@@ -16,7 +16,7 @@
  */
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
-import { exampleDashboardAuthRequired } from "./dashboard";
+import { exampleDashboardAuthRequired } from "./dashboard.ts";
 
 /** An app that serves requests, such as the Hono app from `createApp()`. */
 export interface FetchApp<Rest extends unknown[]> {
@@ -105,8 +105,11 @@ async function proxyRequest(
   responseHeaders.set(VERSION_HEADER, JUNIOR_VERSION);
   let body: BodyInit | null = upstream.body;
   if (url.pathname === "/api/config" && upstream.ok) {
+    // The live deployment never serves mock data, and its older versions do
+    // not send `mockConversations`.
     body = JSON.stringify({
       ...(await upstream.json()),
+      mockConversations: false,
       version: JUNIOR_VERSION,
     });
   }

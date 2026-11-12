@@ -228,7 +228,12 @@ export function DashboardShell() {
   const serverVersion = useDashboardServerVersion(data?.config.version);
   const userPages = userPagesQuery.data ?? [];
   const loading = !data && !query.error;
-  const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
+  // Mock data serves the local viewer's own items, so that viewer counts as
+  // signed in when auth is off.
+  const loggedIn = Boolean(
+    data?.me.user.email &&
+    (data.config.authRequired || data.config.mockConversations),
+  );
   const personalSpendQuery = usePersonalSpendData(loggedIn);
   const desktopTopBar = useDesktopTopBar();
   const primaryUserPages = loggedIn

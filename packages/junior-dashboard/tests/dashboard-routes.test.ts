@@ -659,6 +659,7 @@ describe("dashboard routes", () => {
       authRequired: true,
       authPath: "/api/auth",
       basePath: "/",
+      mockConversations: false,
       sentryConversationLinks: true,
       version: expect.stringMatching(/\S+/),
     });

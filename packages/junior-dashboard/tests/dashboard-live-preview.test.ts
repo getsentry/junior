@@ -107,6 +107,9 @@ describe("dashboard live preview", () => {
         },
       }),
     );
+    const config = await app.fetch(
+      new Request("http://preview/api/config", { headers: basic(TOKEN) }),
+    );
     const page = await app.fetch(
       new Request("http://preview/", { headers: basic(TOKEN) }),
     );
@@ -118,6 +121,11 @@ describe("dashboard live preview", () => {
     expect(liveRequests[0]?.headers.authorization).toBe(`Bearer ${TOKEN}`);
     expect(liveRequests[0]?.headers.cookie).toBeUndefined();
     expect(liveRequests[0]?.headers["x-junior-detail-version"]).toBe("v1");
+    expect(await config.json()).toMatchObject({
+      mockConversations: false,
+      url: "/api/config",
+      version: JUNIOR_VERSION,
+    });
     expect(html).toContain("You are seeing a preview of");
     expect(html).toContain("delete window.__JUNIOR_DASHBOARD_BOOTSTRAP__");
   });

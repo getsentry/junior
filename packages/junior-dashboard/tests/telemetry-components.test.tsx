@@ -124,6 +124,7 @@ function systemData(): SystemData {
       authPath: "/api/auth",
       authRequired: false,
       basePath: "/",
+      mockConversations: false,
       sentryConversationLinks: false,
       version: "0.0.0-test",
     },
