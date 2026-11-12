@@ -358,8 +358,8 @@ export function ConversationWorkspace(props: {
             defaultSize={sidebarOpen ? readSidebarWidth() : 0}
             groupResizeBehavior="preserve-pixel-size"
             id={SIDEBAR_PANEL_ID}
-            maxSize={SIDEBAR_WIDTH.max}
-            minSize={SIDEBAR_WIDTH.min}
+            maxSize={`${SIDEBAR_WIDTH.max}rem`}
+            minSize={`${SIDEBAR_WIDTH.min}rem`}
             onResize={(size) => {
               // Dragging past the minimum width collapses the list too, so the
               // panel size is the one source for the open state.

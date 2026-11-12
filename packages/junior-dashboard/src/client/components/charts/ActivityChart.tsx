@@ -1,5 +1,8 @@
 import {
   cloneElement,
+  useLayoutEffect,
+  useRef,
+  useState,
   type CSSProperties,
   type ReactElement,
   type ReactNode,
@@ -199,7 +202,8 @@ export function activityChartAverageLabel(
   return `${formatted} / ${unit}`;
 }
 
-const AVERAGE_LABEL_FONT_PX = 12;
+/** The `text-2xs` label size at the default root font size. */
+const DEFAULT_LABEL_FONT_PX = 12;
 
 /**
  * Draw the average label on a solid chip at the right end of the line, so
@@ -210,12 +214,22 @@ function ActivityChartAverageChip(props: {
   viewBox?: { width?: number; x?: number; y?: number };
 }) {
   const plotArea = usePlotArea();
+  const textRef = useRef<SVGTextElement>(null);
+  // The label inherits the chart's rem-based `text-2xs`, which grows with the
+  // browser font size, so size the chip from the label's real font size.
+  const [fontPx, setFontPx] = useState(DEFAULT_LABEL_FONT_PX);
+  useLayoutEffect(() => {
+    if (!textRef.current) return;
+    const size = parseFloat(getComputedStyle(textRef.current).fontSize);
+    if (size > 0) setFontPx(size);
+  }, []);
   const lineY = props.viewBox?.y ?? 0;
   const right = (props.viewBox?.x ?? 0) + (props.viewBox?.width ?? 0);
-  const chipHeight = AVERAGE_LABEL_FONT_PX + 6;
+  const chipHeight = fontPx + 6;
   // Width estimate for tabular digits at the label size.
   const chipWidth =
-    Math.max(52, props.text.length * AVERAGE_LABEL_FONT_PX * 0.62) + 10;
+    Math.max(52 / DEFAULT_LABEL_FONT_PX, props.text.length * 0.62) * fontPx +
+    10;
   const above = lineY - (plotArea?.y ?? 0) > chipHeight + 4;
   const chipY = above ? lineY - chipHeight - 3 : lineY + 4;
   return (
@@ -232,6 +246,7 @@ function ActivityChartAverageChip(props: {
       <text
         className="fill-dashboard-text-solid font-sans tabular-nums"
         dominantBaseline="central"
+        ref={textRef}
         textAnchor="middle"
         x={right - chipWidth / 2}
         y={chipY + chipHeight / 2}
