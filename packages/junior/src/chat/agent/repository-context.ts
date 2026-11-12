@@ -11,6 +11,7 @@ import {
   AGENTS_REPLACEMENT_NOTICE,
   buildAgentsInstructionsMessage,
   findVisibleAgentsInstructions,
+  showsAgentsInstructions,
   type RepositoryInstructions,
 } from "@/chat/repository-instructions";
 
@@ -34,6 +35,8 @@ type RepositoryInstructionsContextOptions = {
   restoredMessages?: PiMessage[];
   restoredProvenance?: ConversationMessageProvenance[];
   promptContextContentParts: UserContentPart[];
+  /** History before a new prompt. It can hold AGENTS.md from earlier Turns. */
+  promptHistoryMessages: PiMessage[];
   setMessages(messages: PiMessage[]): void;
   shouldPromptAgent: boolean;
 };
@@ -61,6 +64,7 @@ export function createRepositoryInstructionsContext(
 ) {
   const visibleInstructions = options.shouldPromptAgent
     ? findVisibleAgentsInstructions([
+        ...options.promptHistoryMessages,
         {
           role: "user",
           content: options.promptContextContentParts,
@@ -73,9 +77,7 @@ export function createRepositoryInstructionsContext(
   let instructionsVisible = visibleInstructions?.active === true;
   let visibleFingerprint =
     options.initialInstructions &&
-    visibleInstructions?.active === true &&
-    visibleInstructions.directory === options.initialInstructions.directory &&
-    visibleInstructions.text === options.initialInstructions.text
+    showsAgentsInstructions(visibleInstructions, options.initialInstructions)
       ? options.initialInstructions.fingerprint
       : undefined;
   return {

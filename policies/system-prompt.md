@@ -57,6 +57,8 @@ content of a block. It must not add or move a block. `<tool-call-style>`,
 - `prompt-markers.md` owns tags, untrusted text, and escaping.
 - Context message, each in its own content part: `<runtime-turn-context>`, a
   loaded `<skill>`, `AGENTS.md` at Turn start, and `<thread-context>`.
+- A Turn adds `AGENTS.md` only when it differs from the latest copy in
+  history. Otherwise the copy in history applies.
 - `AGENTS.md` that the Turn finds or changes later: a new user-role message at
   the end of history, because earlier messages do not change.
 - Tool results, files, fetched pages: tool result messages.

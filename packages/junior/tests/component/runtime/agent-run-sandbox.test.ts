@@ -463,12 +463,33 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
 
 import { executeAgentRun } from "@/chat/agent";
 import type { AgentRun } from "@/chat/agent/types";
+import type { PiMessage } from "@/chat/pi/messages";
+import {
+  renderCompactionSummary,
+  selectRetainedUserMessages,
+  summarizedRuntimeContextMessage,
+  userMessage,
+} from "@/chat/services/context-compaction";
 
 const LOCAL_DESTINATION = {
   platform: "local" as const,
   conversationId: "local:test:agent-run-sandbox",
 };
 const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
+
+/** Return each AGENTS.md block in history, in order. */
+function agentsBlocks(messages: PiMessage[] | undefined): string[] {
+  return (messages ?? []).flatMap((message) =>
+    message.role === "user" && Array.isArray(message.content)
+      ? message.content.flatMap((part) =>
+          part.type === "text" &&
+          part.text.startsWith("# AGENTS.md instructions")
+            ? [part.text]
+            : [],
+        )
+      : [],
+  );
+}
 
 async function generateLocalReply(
   message: string,
@@ -695,5 +716,45 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(JSON.stringify(preparedMessages.value)).not.toContain(
       '"stdout":"# AGENTS.md instructions',
     );
+  });
+
+  it("adds AGENTS.md once across Turns and again only when it changes", async () => {
+    // A bash call runs the AGENTS.md check before the next model call.
+    agentMode.value = "agentsAfterBash";
+    const state = {
+      sandboxRef: { id: "sandbox-test", profileHash: "hash-test" },
+    };
+    const first = await generateLocalReply("first request", { state });
+    const original =
+      "# AGENTS.md instructions for /vercel/sandbox/repo\n\n<INSTRUCTIONS>\nCall retries the cobalt budget.\n</INSTRUCTIONS>";
+    expect(agentsBlocks(first.piMessages)).toEqual([original]);
+
+    const second = await generateLocalReply("second request", {
+      history: first.piMessages,
+      state,
+    });
+    expect(agentsBlocks(second.piMessages)).toEqual([original]);
+
+    // The history that a compaction replacement keeps for later Turns.
+    const compacted = [
+      summarizedRuntimeContextMessage(second.piMessages!, [])!,
+      ...selectRetainedUserMessages(second.piMessages!),
+      userMessage(renderCompactionSummary("Earlier work.")),
+    ];
+    const afterCompaction = await generateLocalReply("third request", {
+      history: compacted,
+      state,
+    });
+    expect(agentsBlocks(afterCompaction.piMessages)).toEqual([original]);
+
+    activeSandboxVersion.value = 2;
+    const changed = await generateLocalReply("fourth request", {
+      history: afterCompaction.piMessages,
+      state,
+    });
+    expect(agentsBlocks(changed.piMessages)).toEqual([
+      original,
+      "# AGENTS.md instructions for /vercel/sandbox/repo\n\n<INSTRUCTIONS>\nThese AGENTS.md instructions replace all previously provided AGENTS.md instructions.\n\nUse the current repository formatter.\n</INSTRUCTIONS>",
+    ]);
   });
 });
