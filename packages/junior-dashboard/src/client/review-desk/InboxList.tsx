@@ -299,6 +299,10 @@ export function InboxList(props: {
   const { includedId, includeItem } = data;
   useEffect(() => {
     if (!linkedId) return;
+    // The router moves the URL as soon as the reader leaves, before this
+    // list renders again. A link must not replace the place they picked.
+    const current = new URLSearchParams(window.location.search).get("item");
+    if (current !== linkedId) return;
     if (linkedRowKey) {
       // A collapsed To do has no rows, so a link into it opens it first.
       if (linkedRowKey.startsWith("todo:") && todoCollapsed) {
