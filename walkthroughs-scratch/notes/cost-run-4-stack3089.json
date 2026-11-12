@@ -1,0 +1,4763 @@
+{
+  "id": "abe0cd49-e6f3-497c-ae11-7b04724d442b",
+  "status": "ready",
+  "provider": "github-local",
+  "repository": "getsentry/junior",
+  "codeChanges": [
+    {
+      "number": 3087,
+      "title": "feat(walkthroughs): Add the Walkthrough format, validator, and diff parsing",
+      "url": "https://github.com/getsentry/junior/pull/3087",
+      "headSha": "08604c08a6511c37c79182e0a2e3bad12686cc9c",
+      "baseSha": "25900346e8243fc386f21fe44e7d88c5088920f0",
+      "additions": 1341,
+      "deletions": 0
+    },
+    {
+      "number": 3088,
+      "title": "feat(plugins): Let plugins read code changes, diffs, and files for the host",
+      "url": "https://github.com/getsentry/junior/pull/3088",
+      "headSha": "fca443e5f741058c5384c2da3cda7f6cf91ce4c5",
+      "baseSha": "08604c08a6511c37c79182e0a2e3bad12686cc9c",
+      "additions": 752,
+      "deletions": 0
+    },
+    {
+      "number": 3090,
+      "title": "feat(walkthroughs): Store Walkthrough versions and hide their generation Conversations",
+      "url": "https://github.com/getsentry/junior/pull/3090",
+      "headSha": "ff19181cdd0309113103a7ecddc947575184e204",
+      "baseSha": "fca443e5f741058c5384c2da3cda7f6cf91ce4c5",
+      "additions": 5114,
+      "deletions": 5
+    },
+    {
+      "number": 3124,
+      "title": "feat(walkthroughs): Add the walkthrough skill and submitWalkthrough tool",
+      "url": "https://github.com/getsentry/junior/pull/3124",
+      "headSha": "71cef849afd556347d3f335b341465b6e73b6e34",
+      "baseSha": "ff19181cdd0309113103a7ecddc947575184e204",
+      "additions": 659,
+      "deletions": 13
+    },
+    {
+      "number": 3133,
+      "title": "feat(walkthroughs): Start a Walkthrough generation from the API behind an experiment",
+      "url": "https://github.com/getsentry/junior/pull/3133",
+      "headSha": "2178be57ae5a446859fdfc5e0eb80610d741e090",
+      "baseSha": "71cef849afd556347d3f335b341465b6e73b6e34",
+      "additions": 609,
+      "deletions": 9
+    }
+  ],
+  "costUsd": 2.2965502,
+  "createdAt": "2026-11-11T01:00:37.507Z",
+  "completedAt": "2026-11-11T01:11:20.327Z",
+  "document": {
+    "schemaVersion": 1,
+    "versionId": "abe0cd49-e6f3-497c-ae11-7b04724d442b",
+    "contentVersionId": "abe0cd49-e6f3-497c-ae11-7b04724d442b",
+    "repository": "getsentry/junior",
+    "layers": [
+      {
+        "pr": 3087,
+        "title": "feat(walkthroughs): Add the Walkthrough format, validator, and diff parsing",
+        "url": "https://github.com/getsentry/junior/pull/3087",
+        "headSha": "08604c08a6511c37c79182e0a2e3bad12686cc9c",
+        "baseSha": "25900346e8243fc386f21fe44e7d88c5088920f0",
+        "additions": 1341,
+        "deletions": 0
+      },
+      {
+        "pr": 3088,
+        "title": "feat(plugins): Let plugins read code changes, diffs, and files for the host",
+        "url": "https://github.com/getsentry/junior/pull/3088",
+        "headSha": "fca443e5f741058c5384c2da3cda7f6cf91ce4c5",
+        "baseSha": "08604c08a6511c37c79182e0a2e3bad12686cc9c",
+        "additions": 752,
+        "deletions": 0
+      },
+      {
+        "pr": 3090,
+        "title": "feat(walkthroughs): Store Walkthrough versions and hide their generation Conversations",
+        "url": "https://github.com/getsentry/junior/pull/3090",
+        "headSha": "ff19181cdd0309113103a7ecddc947575184e204",
+        "baseSha": "fca443e5f741058c5384c2da3cda7f6cf91ce4c5",
+        "additions": 5114,
+        "deletions": 5
+      },
+      {
+        "pr": 3124,
+        "title": "feat(walkthroughs): Add the walkthrough skill and submitWalkthrough tool",
+        "url": "https://github.com/getsentry/junior/pull/3124",
+        "headSha": "71cef849afd556347d3f335b341465b6e73b6e34",
+        "baseSha": "ff19181cdd0309113103a7ecddc947575184e204",
+        "additions": 659,
+        "deletions": 13
+      },
+      {
+        "pr": 3133,
+        "title": "feat(walkthroughs): Start a Walkthrough generation from the API behind an experiment",
+        "url": "https://github.com/getsentry/junior/pull/3133",
+        "headSha": "2178be57ae5a446859fdfc5e0eb80610d741e090",
+        "baseSha": "71cef849afd556347d3f335b341465b6e73b6e34",
+        "additions": 609,
+        "deletions": 9
+      }
+    ],
+    "excerpts": [
+      {
+        "id": "3087:head:packages/junior/src/chat/walkthroughs/schema.ts#1-38",
+        "pr": 3087,
+        "path": "packages/junior/src/chat/walkthroughs/schema.ts",
+        "side": "head",
+        "start": 1,
+        "end": 38,
+        "lines": [
+          { "kind": "add", "content": "/**", "newLine": 1 },
+          {
+            "kind": "add",
+            "content": " * Runtime schemas for Walkthroughs.",
+            "newLine": 2
+          },
+          { "kind": "add", "content": " *", "newLine": 3 },
+          {
+            "kind": "add",
+            "content": " * The model writes a `WalkthroughOutput`. It cites code by PR, file, and line",
+            "newLine": 4
+          },
+          {
+            "kind": "add",
+            "content": " * range, and messages by their seq in the source Conversation. It never copies",
+            "newLine": 5
+          },
+          {
+            "kind": "add",
+            "content": " * code or text. Junior adds the parts that do not need a model (layers, code",
+            "newLine": 6
+          },
+          {
+            "kind": "add",
+            "content": " * excerpts, message text, skipped files, checks, cost) and stores a",
+            "newLine": 7
+          },
+          {
+            "kind": "add",
+            "content": " * `WalkthroughDocument`. The dashboard renders only the stored document.",
+            "newLine": 8
+          },
+          { "kind": "add", "content": " *", "newLine": 9 },
+          {
+            "kind": "add",
+            "content": " * Text limits are part of the contract. A caption is one sentence, so a",
+            "newLine": 10
+          },
+          {
+            "kind": "add",
+            "content": " * Walkthrough stays a story and does not turn into a wall of text.",
+            "newLine": 11
+          },
+          { "kind": "add", "content": " */", "newLine": 12 },
+          {
+            "kind": "add",
+            "content": "import * as z from \"zod\";",
+            "newLine": 13
+          },
+          { "kind": "add", "content": "", "newLine": 14 },
+          {
+            "kind": "add",
+            "content": "export const WALKTHROUGH_SCHEMA_VERSION = 1;",
+            "newLine": 15
+          },
+          { "kind": "add", "content": "", "newLine": 16 },
+          {
+            "kind": "add",
+            "content": "/** Stable slug. Chapter and decision ids stay the same across versions. */",
+            "newLine": 17
+          },
+          { "kind": "add", "content": "const idSchema = z", "newLine": 18 },
+          { "kind": "add", "content": "  .string()", "newLine": 19 },
+          {
+            "kind": "add",
+            "content": "  .regex(/^[a-z][a-z0-9-]{0,47}$/, \"Use a lowercase slug.\");",
+            "newLine": 20
+          },
+          {
+            "kind": "add",
+            "content": "const sentence = (max: number) => z.string().trim().min(1).max(max);",
+            "newLine": 21
+          },
+          {
+            "kind": "add",
+            "content": "const caption = sentence(160);",
+            "newLine": 22
+          },
+          {
+            "kind": "add",
+            "content": "const shaSchema = z.string().regex(/^[0-9a-f]{7,40}$/);",
+            "newLine": 23
+          },
+          { "kind": "add", "content": "", "newLine": 24 },
+          { "kind": "add", "content": "/**", "newLine": 25 },
+          {
+            "kind": "add",
+            "content": " * Change types and their fixed slots, in reading order. The model fills slots.",
+            "newLine": 26
+          },
+          {
+            "kind": "add",
+            "content": " * It does not invent structure, so every bug fix reads the same way.",
+            "newLine": 27
+          },
+          { "kind": "add", "content": " */", "newLine": 28 },
+          {
+            "kind": "add",
+            "content": "export const WALKTHROUGH_TEMPLATES = {",
+            "newLine": 29
+          },
+          {
+            "kind": "add",
+            "content": "  feature: [\"how_it_works\", \"gap\", \"change\"],",
+            "newLine": 30
+          },
+          {
+            "kind": "add",
+            "content": "  bug_fix: [\"broken\", \"cause\", \"fix\", \"side_effects\", \"proof\"],",
+            "newLine": 31
+          },
+          {
+            "kind": "add",
+            "content": "  refactor: [\"claim\", \"proof\", \"exceptions\"],",
+            "newLine": 32
+          },
+          {
+            "kind": "add",
+            "content": "  migration: [\"why\", \"change\", \"safe_to_run\", \"rollback\"],",
+            "newLine": 33
+          },
+          {
+            "kind": "add",
+            "content": "  dependency: [\"what_changed\", \"blast_radius\", \"rollback\"],",
+            "newLine": 34
+          },
+          {
+            "kind": "add",
+            "content": "  performance: [\"hot_path\", \"change\", \"numbers\"],",
+            "newLine": 35
+          },
+          {
+            "kind": "add",
+            "content": "  ui: [\"before_after\"],",
+            "newLine": 36
+          },
+          {
+            "kind": "add",
+            "content": "  ship_check: [\"after_ship\"],",
+            "newLine": 37
+          },
+          { "kind": "add", "content": "} as const;", "newLine": 38 }
+        ]
+      },
+      {
+        "id": "3087:head:packages/junior/src/chat/walkthroughs/validate.ts#43-96",
+        "pr": 3087,
+        "path": "packages/junior/src/chat/walkthroughs/validate.ts",
+        "side": "head",
+        "start": 43,
+        "end": 96,
+        "lines": [
+          { "kind": "add", "content": "/**", "newLine": 43 },
+          {
+            "kind": "add",
+            "content": " * Return problems with a full generation. An empty list means the output is",
+            "newLine": 44
+          },
+          {
+            "kind": "add",
+            "content": " * safe to store. Otherwise the problems go back to the model to fix.",
+            "newLine": 45
+          },
+          { "kind": "add", "content": " */", "newLine": 46 },
+          {
+            "kind": "add",
+            "content": "export function validateWalkthrough(",
+            "newLine": 47
+          },
+          {
+            "kind": "add",
+            "content": "  output: WalkthroughOutput,",
+            "newLine": 48
+          },
+          {
+            "kind": "add",
+            "content": "  refs: WalkthroughInputRefs,",
+            "newLine": 49
+          },
+          { "kind": "add", "content": "): string[] {", "newLine": 50 },
+          {
+            "kind": "add",
+            "content": "  const problems: string[] = [];",
+            "newLine": 51
+          },
+          {
+            "kind": "add",
+            "content": "  const diagramIds = new Set([",
+            "newLine": 52
+          },
+          {
+            "kind": "add",
+            "content": "    ...output.diagram.nodes.map((node) => node.id),",
+            "newLine": 53
+          },
+          {
+            "kind": "add",
+            "content": "    ...output.diagram.edges.map((edge) => edge.id),",
+            "newLine": 54
+          },
+          { "kind": "add", "content": "  ]);", "newLine": 55 },
+          {
+            "kind": "add",
+            "content": "  const nodeIds = new Set(output.diagram.nodes.map((node) => node.id));",
+            "newLine": 56
+          },
+          {
+            "kind": "add",
+            "content": "  for (const edge of output.diagram.edges) {",
+            "newLine": 57
+          },
+          {
+            "kind": "add",
+            "content": "    if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {",
+            "newLine": 58
+          },
+          {
+            "kind": "add",
+            "content": "      problems.push(`Edge ${edge.id} joins a node that does not exist.`);",
+            "newLine": 59
+          },
+          { "kind": "add", "content": "    }", "newLine": 60 },
+          { "kind": "add", "content": "  }", "newLine": 61 },
+          { "kind": "add", "content": "  problems.push(", "newLine": 62 },
+          { "kind": "add", "content": "    ...duplicateIds(", "newLine": 63 },
+          { "kind": "add", "content": "      \"chapter\",", "newLine": 64 },
+          {
+            "kind": "add",
+            "content": "      output.chapters.map((c) => c.id),",
+            "newLine": 65
+          },
+          { "kind": "add", "content": "    ),", "newLine": 66 },
+          { "kind": "add", "content": "  );", "newLine": 67 },
+          { "kind": "add", "content": "  problems.push(", "newLine": 68 },
+          { "kind": "add", "content": "    ...duplicateIds(", "newLine": 69 },
+          { "kind": "add", "content": "      \"decision\",", "newLine": 70 },
+          {
+            "kind": "add",
+            "content": "      output.chapters.flatMap((c) => c.decisions.map((d) => d.id)),",
+            "newLine": 71
+          },
+          { "kind": "add", "content": "    ),", "newLine": 72 },
+          { "kind": "add", "content": "  );", "newLine": 73 },
+          {
+            "kind": "add",
+            "content": "  for (const chapter of output.chapters) {",
+            "newLine": 74
+          },
+          {
+            "kind": "add",
+            "content": "    problems.push(...chapterProblems(chapter, refs, diagramIds));",
+            "newLine": 75
+          },
+          { "kind": "add", "content": "  }", "newLine": 76 },
+          {
+            "kind": "add",
+            "content": "  const bugFixCause = output.chapters.find(",
+            "newLine": 77
+          },
+          {
+            "kind": "add",
+            "content": "    (c) => c.type === \"bug_fix\" && c.slot === \"cause\",",
+            "newLine": 78
+          },
+          { "kind": "add", "content": "  );", "newLine": 79 },
+          {
+            "kind": "add",
+            "content": "  // The reader judges whether the cause is the root cause. They need code or",
+            "newLine": 80
+          },
+          {
+            "kind": "add",
+            "content": "  // a check to judge it, not the model's word.",
+            "newLine": 81
+          },
+          { "kind": "add", "content": "  if (", "newLine": 82 },
+          { "kind": "add", "content": "    bugFixCause &&", "newLine": 83 },
+          {
+            "kind": "add",
+            "content": "    !bugFixCause.evidence.some((e) => e.kind === \"code\" || e.kind === \"check\")",
+            "newLine": 84
+          },
+          { "kind": "add", "content": "  ) {", "newLine": 85 },
+          {
+            "kind": "add",
+            "content": "    problems.push(\"The cause chapter cites no code or check.\");",
+            "newLine": 86
+          },
+          { "kind": "add", "content": "  }", "newLine": 87 },
+          { "kind": "add", "content": "  problems.push(", "newLine": 88 },
+          {
+            "kind": "add",
+            "content": "    ...coverageProblems(",
+            "newLine": 89
+          },
+          { "kind": "add", "content": "      refs,", "newLine": 90 },
+          {
+            "kind": "add",
+            "content": "      output.chapters.flatMap((c) => c.evidence),",
+            "newLine": 91
+          },
+          {
+            "kind": "add",
+            "content": "      output.notCovered,",
+            "newLine": 92
+          },
+          { "kind": "add", "content": "    ),", "newLine": 93 },
+          { "kind": "add", "content": "  );", "newLine": 94 },
+          { "kind": "add", "content": "  return problems;", "newLine": 95 },
+          { "kind": "add", "content": "}", "newLine": 96 }
+        ]
+      },
+      {
+        "id": "3087:head:packages/junior/src/chat/walkthroughs/diff.ts#125-150",
+        "pr": 3087,
+        "path": "packages/junior/src/chat/walkthroughs/diff.ts",
+        "side": "head",
+        "start": 125,
+        "end": 150,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "export function readWalkthroughDiff(",
+            "newLine": 125
+          },
+          { "kind": "add", "content": "  pr: number,", "newLine": 126 },
+          {
+            "kind": "add",
+            "content": "  changed: readonly WalkthroughChangedFile[],",
+            "newLine": 127
+          },
+          {
+            "kind": "add",
+            "content": "): { files: WalkthroughDiffFile[]; skipped: WalkthroughSkipped[] } {",
+            "newLine": 128
+          },
+          {
+            "kind": "add",
+            "content": "  const files: WalkthroughDiffFile[] = [];",
+            "newLine": 129
+          },
+          {
+            "kind": "add",
+            "content": "  const skipped = new Map<WalkthroughSkipReason, WalkthroughSkipped>();",
+            "newLine": 130
+          },
+          {
+            "kind": "add",
+            "content": "  for (const file of changed) {",
+            "newLine": 131
+          },
+          {
+            "kind": "add",
+            "content": "    const hunks = file.patch ? parsePatch(file.patch) : [];",
+            "newLine": 132
+          },
+          {
+            "kind": "add",
+            "content": "    const reason = skipReason(file, hunks);",
+            "newLine": 133
+          },
+          { "kind": "add", "content": "    if (reason) {", "newLine": 134 },
+          {
+            "kind": "add",
+            "content": "      const entry = skipped.get(reason) ?? { reason, files: 0, lines: 0 };",
+            "newLine": 135
+          },
+          {
+            "kind": "add",
+            "content": "      entry.files += 1;",
+            "newLine": 136
+          },
+          {
+            "kind": "add",
+            "content": "      entry.lines += changedLines(hunks);",
+            "newLine": 137
+          },
+          {
+            "kind": "add",
+            "content": "      skipped.set(reason, entry);",
+            "newLine": 138
+          },
+          { "kind": "add", "content": "      continue;", "newLine": 139 },
+          { "kind": "add", "content": "    }", "newLine": 140 },
+          {
+            "kind": "add",
+            "content": "    files.push({ pr, path: file.path, hunks });",
+            "newLine": 141
+          },
+          { "kind": "add", "content": "  }", "newLine": 142 },
+          {
+            "kind": "add",
+            "content": "  return { files, skipped: [...skipped.values()] };",
+            "newLine": 143
+          },
+          { "kind": "add", "content": "}", "newLine": 144 },
+          { "kind": "add", "content": "", "newLine": 145 },
+          { "kind": "add", "content": "function skipReason(", "newLine": 146 },
+          {
+            "kind": "add",
+            "content": "  file: WalkthroughChangedFile,",
+            "newLine": 147
+          },
+          {
+            "kind": "add",
+            "content": "  hunks: readonly WalkthroughHunk[],",
+            "newLine": 148
+          },
+          {
+            "kind": "add",
+            "content": "): WalkthroughSkipReason | undefined {",
+            "newLine": 149
+          },
+          {
+            "kind": "add",
+            "content": "  const name = file.path.slice(file.path.lastIndexOf(\"/\") + 1);",
+            "newLine": 150
+          }
+        ]
+      },
+      {
+        "id": "3087:head:packages/junior/src/chat/walkthroughs/excerpts.ts#15-49",
+        "pr": 3087,
+        "path": "packages/junior/src/chat/walkthroughs/excerpts.ts",
+        "side": "head",
+        "start": 15,
+        "end": 49,
+        "lines": [
+          { "kind": "add", "content": "/**", "newLine": 15 },
+          {
+            "kind": "add",
+            "content": " * Build one excerpt per distinct citation. Call this only after",
+            "newLine": 16
+          },
+          {
+            "kind": "add",
+            "content": " * `validateWalkthrough` passed, so every range resolves.",
+            "newLine": 17
+          },
+          { "kind": "add", "content": " *", "newLine": 18 },
+          {
+            "kind": "add",
+            "content": " * `contextFiles` holds the text of files read at a PR head commit, keyed by",
+            "newLine": 19
+          },
+          {
+            "kind": "add",
+            "content": " * `contextFileKey`, for head-side citations outside the diff.",
+            "newLine": 20
+          },
+          { "kind": "add", "content": " */", "newLine": 21 },
+          {
+            "kind": "add",
+            "content": "export function buildWalkthroughExcerpts(",
+            "newLine": 22
+          },
+          {
+            "kind": "add",
+            "content": "  refs: readonly WalkthroughCodeRef[],",
+            "newLine": 23
+          },
+          {
+            "kind": "add",
+            "content": "  files: readonly WalkthroughDiffFile[],",
+            "newLine": 24
+          },
+          {
+            "kind": "add",
+            "content": "  contextFiles: ReadonlyMap<string, string>,",
+            "newLine": 25
+          },
+          {
+            "kind": "add",
+            "content": "): WalkthroughExcerpt[] {",
+            "newLine": 26
+          },
+          {
+            "kind": "add",
+            "content": "  const excerpts = new Map<string, WalkthroughExcerpt>();",
+            "newLine": 27
+          },
+          {
+            "kind": "add",
+            "content": "  for (const ref of refs) {",
+            "newLine": 28
+          },
+          {
+            "kind": "add",
+            "content": "    const id = codeExcerptId(ref);",
+            "newLine": 29
+          },
+          {
+            "kind": "add",
+            "content": "    if (excerpts.has(id)) continue;",
+            "newLine": 30
+          },
+          {
+            "kind": "add",
+            "content": "    const lines = hunkLines(ref, files) ?? contextLines(ref, contextFiles);",
+            "newLine": 31
+          },
+          { "kind": "add", "content": "    if (!lines) {", "newLine": 32 },
+          {
+            "kind": "add",
+            "content": "      throw new Error(`Citation ${id} does not resolve; validate first.`);",
+            "newLine": 33
+          },
+          { "kind": "add", "content": "    }", "newLine": 34 },
+          { "kind": "add", "content": "    excerpts.set(id, {", "newLine": 35 },
+          { "kind": "add", "content": "      id,", "newLine": 36 },
+          { "kind": "add", "content": "      pr: ref.pr,", "newLine": 37 },
+          { "kind": "add", "content": "      path: ref.path,", "newLine": 38 },
+          { "kind": "add", "content": "      side: ref.side,", "newLine": 39 },
+          {
+            "kind": "add",
+            "content": "      start: ref.start,",
+            "newLine": 40
+          },
+          { "kind": "add", "content": "      end: ref.end,", "newLine": 41 },
+          {
+            "kind": "add",
+            "content": "      lines: lines.map((line) => ({",
+            "newLine": 42
+          },
+          { "kind": "add", "content": "        ...line,", "newLine": 43 },
+          {
+            "kind": "add",
+            "content": "        content: line.content.slice(0, MAX_LINE_LENGTH),",
+            "newLine": 44
+          },
+          { "kind": "add", "content": "      })),", "newLine": 45 },
+          { "kind": "add", "content": "    });", "newLine": 46 },
+          { "kind": "add", "content": "  }", "newLine": 47 },
+          {
+            "kind": "add",
+            "content": "  return [...excerpts.values()];",
+            "newLine": 48
+          },
+          { "kind": "add", "content": "}", "newLine": 49 }
+        ]
+      },
+      {
+        "id": "3088:head:packages/junior-plugin-api/src/code.ts#2-3",
+        "pr": 3088,
+        "path": "packages/junior-plugin-api/src/code.ts",
+        "side": "head",
+        "start": 2,
+        "end": 3,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "import type { PluginContext } from \"./context\";",
+            "newLine": 2
+          },
+          {
+            "kind": "add",
+            "content": "import type { PluginEgress } from \"./tools\";",
+            "newLine": 3
+          }
+        ]
+      },
+      {
+        "id": "3088:head:packages/junior-plugin-api/src/code.ts#91-117",
+        "pr": 3088,
+        "path": "packages/junior-plugin-api/src/code.ts",
+        "side": "head",
+        "start": 91,
+        "end": 117,
+        "lines": [
+          { "kind": "add", "content": "/**", "newLine": 91 },
+          {
+            "kind": "add",
+            "content": " * Read-only access to code changes for host features such as Walkthroughs.",
+            "newLine": 92
+          },
+          {
+            "kind": "add",
+            "content": " * A plugin implements all three or none. Return `undefined` when the code",
+            "newLine": 93
+          },
+          {
+            "kind": "add",
+            "content": " * change or file does not exist; throw for every other failure.",
+            "newLine": 94
+          },
+          { "kind": "add", "content": " */", "newLine": 95 },
+          {
+            "kind": "add",
+            "content": "export interface CodeChangeHooks {",
+            "newLine": 96
+          },
+          {
+            "kind": "add",
+            "content": "  /** Read the stack that contains one code change. */",
+            "newLine": 97
+          },
+          { "kind": "add", "content": "  readStack(", "newLine": 98 },
+          {
+            "kind": "add",
+            "content": "    ctx: CodeChangeReadHookContext & { repository: string; number: number },",
+            "newLine": 99
+          },
+          {
+            "kind": "add",
+            "content": "  ): Promise<CodeChangeStack | undefined>;",
+            "newLine": 100
+          },
+          {
+            "kind": "add",
+            "content": "  /** Read the files changed between a base commit and a head commit. */",
+            "newLine": 101
+          },
+          { "kind": "add", "content": "  readDiff(", "newLine": 102 },
+          {
+            "kind": "add",
+            "content": "    ctx: CodeChangeReadHookContext & {",
+            "newLine": 103
+          },
+          {
+            "kind": "add",
+            "content": "      repository: string;",
+            "newLine": 104
+          },
+          {
+            "kind": "add",
+            "content": "      baseSha: string;",
+            "newLine": 105
+          },
+          {
+            "kind": "add",
+            "content": "      headSha: string;",
+            "newLine": 106
+          },
+          { "kind": "add", "content": "    },", "newLine": 107 },
+          {
+            "kind": "add",
+            "content": "  ): Promise<CodeChangeDiff>;",
+            "newLine": 108
+          },
+          {
+            "kind": "add",
+            "content": "  /** Read one file's text at a commit. */",
+            "newLine": 109
+          },
+          { "kind": "add", "content": "  readFile(", "newLine": 110 },
+          {
+            "kind": "add",
+            "content": "    ctx: CodeChangeReadHookContext & {",
+            "newLine": 111
+          },
+          {
+            "kind": "add",
+            "content": "      repository: string;",
+            "newLine": 112
+          },
+          { "kind": "add", "content": "      sha: string;", "newLine": 113 },
+          { "kind": "add", "content": "      path: string;", "newLine": 114 },
+          { "kind": "add", "content": "    },", "newLine": 115 },
+          {
+            "kind": "add",
+            "content": "  ): Promise<string | undefined>;",
+            "newLine": 116
+          },
+          { "kind": "add", "content": "}", "newLine": 117 }
+        ]
+      },
+      {
+        "id": "3088:head:packages/junior/src/chat/plugins/code-change-hooks.ts#105-133",
+        "pr": 3088,
+        "path": "packages/junior/src/chat/plugins/code-change-hooks.ts",
+        "side": "head",
+        "start": 105,
+        "end": 133,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "function pluginFor(provider: string): PluginRegistration | undefined {",
+            "newLine": 105
+          },
+          {
+            "kind": "add",
+            "content": "  return getPlugins().find((plugin) => plugin.manifest.name === provider);",
+            "newLine": 106
+          },
+          { "kind": "add", "content": "}", "newLine": 107 },
+          { "kind": "add", "content": "", "newLine": 108 },
+          {
+            "kind": "add",
+            "content": "function codeChangeHooks(provider: string): {",
+            "newLine": 109
+          },
+          {
+            "kind": "add",
+            "content": "  plugin: PluginRegistration;",
+            "newLine": 110
+          },
+          {
+            "kind": "add",
+            "content": "  hooks: CodeChangeHooks;",
+            "newLine": 111
+          },
+          { "kind": "add", "content": "} {", "newLine": 112 },
+          {
+            "kind": "add",
+            "content": "  const plugin = pluginFor(provider);",
+            "newLine": 113
+          },
+          {
+            "kind": "add",
+            "content": "  const hooks = plugin?.hooks?.codeChanges;",
+            "newLine": 114
+          },
+          {
+            "kind": "add",
+            "content": "  if (!plugin || !hooks) {",
+            "newLine": 115
+          },
+          {
+            "kind": "add",
+            "content": "    throw new Error(`Provider \"${provider}\" cannot read code changes`);",
+            "newLine": 116
+          },
+          { "kind": "add", "content": "  }", "newLine": 117 },
+          {
+            "kind": "add",
+            "content": "  return { plugin, hooks };",
+            "newLine": 118
+          },
+          { "kind": "add", "content": "}", "newLine": 119 },
+          { "kind": "add", "content": "", "newLine": 120 },
+          {
+            "kind": "add",
+            "content": "function readContext(plugin: PluginRegistration, signal: AbortSignal) {",
+            "newLine": 121
+          },
+          { "kind": "add", "content": "  return {", "newLine": 122 },
+          {
+            "kind": "add",
+            "content": "    ...basePluginContext(plugin),",
+            "newLine": 123
+          },
+          {
+            "kind": "add",
+            "content": "    egress: createPluginEgress({",
+            "newLine": 124
+          },
+          {
+            "kind": "add",
+            "content": "      credentialContext: credentialContextForActor(",
+            "newLine": 125
+          },
+          {
+            "kind": "add",
+            "content": "        CODE_CHANGE_READ_SYSTEM_ACTOR,",
+            "newLine": 126
+          },
+          { "kind": "add", "content": "      ),", "newLine": 127 },
+          {
+            "kind": "add",
+            "content": "      // Host reads must never ask anyone to authorize.",
+            "newLine": 128
+          },
+          {
+            "kind": "add",
+            "content": "      pluginAuth: { async handleAuthRequired() {} },",
+            "newLine": 129
+          },
+          { "kind": "add", "content": "    }),", "newLine": 130 },
+          { "kind": "add", "content": "    signal,", "newLine": 131 },
+          { "kind": "add", "content": "  };", "newLine": 132 },
+          { "kind": "add", "content": "}", "newLine": 133 }
+        ]
+      },
+      {
+        "id": "3088:head:packages/junior-github/src/code-changes.ts#81-116",
+        "pr": 3088,
+        "path": "packages/junior-github/src/code-changes.ts",
+        "side": "head",
+        "start": 81,
+        "end": 116,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "async function readStack(",
+            "newLine": 81
+          },
+          {
+            "kind": "add",
+            "content": "  ctx: ReadContext & { repository: string; number: number },",
+            "newLine": 82
+          },
+          {
+            "kind": "add",
+            "content": "): Promise<CodeChangeStack | undefined> {",
+            "newLine": 83
+          },
+          {
+            "kind": "add",
+            "content": "  assertPathParts({ repository: ctx.repository });",
+            "newLine": 84
+          },
+          {
+            "kind": "add",
+            "content": "  const pull = await getPull(ctx, ctx.repository, ctx.number);",
+            "newLine": 85
+          },
+          {
+            "kind": "add",
+            "content": "  if (!pull) return undefined;",
+            "newLine": 86
+          },
+          { "kind": "add", "content": "  const numbers =", "newLine": 87 },
+          {
+            "kind": "add",
+            "content": "    (await stackFromStacksApi(ctx, ctx.repository, ctx.number)) ??",
+            "newLine": 88
+          },
+          {
+            "kind": "add",
+            "content": "    (await stackFromBaseBranches(ctx, ctx.repository, pull));",
+            "newLine": 89
+          },
+          {
+            "kind": "add",
+            "content": "  const pulls = await Promise.all(",
+            "newLine": 90
+          },
+          {
+            "kind": "add",
+            "content": "    numbers.map(async (number) => {",
+            "newLine": 91
+          },
+          {
+            "kind": "add",
+            "content": "      if (number === pull.number) return pull;",
+            "newLine": 92
+          },
+          {
+            "kind": "add",
+            "content": "      const other = await getPull(ctx, ctx.repository, number);",
+            "newLine": 93
+          },
+          { "kind": "add", "content": "      if (!other) {", "newLine": 94 },
+          {
+            "kind": "add",
+            "content": "        throw new Error(`GitHub pull request #${number} of the stack is gone`);",
+            "newLine": 95
+          },
+          { "kind": "add", "content": "      }", "newLine": 96 },
+          { "kind": "add", "content": "      return other;", "newLine": 97 },
+          { "kind": "add", "content": "    }),", "newLine": 98 },
+          { "kind": "add", "content": "  );", "newLine": 99 },
+          {
+            "kind": "add",
+            "content": "  // A merged or closed layer needs no review. The requested one stays.",
+            "newLine": 100
+          },
+          {
+            "kind": "add",
+            "content": "  const open = pulls.filter(",
+            "newLine": 101
+          },
+          {
+            "kind": "add",
+            "content": "    (p) => p.number === pull.number || p.state === \"open\",",
+            "newLine": 102
+          },
+          { "kind": "add", "content": "  );", "newLine": 103 },
+          { "kind": "add", "content": "  return {", "newLine": 104 },
+          {
+            "kind": "add",
+            "content": "    codeChanges: open.map((p) => ({",
+            "newLine": 105
+          },
+          {
+            "kind": "add",
+            "content": "      number: p.number,",
+            "newLine": 106
+          },
+          { "kind": "add", "content": "      title: p.title,", "newLine": 107 },
+          {
+            "kind": "add",
+            "content": "      body: p.body ?? \"\",",
+            "newLine": 108
+          },
+          {
+            "kind": "add",
+            "content": "      url: p.html_url,",
+            "newLine": 109
+          },
+          {
+            "kind": "add",
+            "content": "      headSha: p.head.sha,",
+            "newLine": 110
+          },
+          {
+            "kind": "add",
+            "content": "      baseSha: p.base.sha,",
+            "newLine": 111
+          },
+          {
+            "kind": "add",
+            "content": "      additions: p.additions,",
+            "newLine": 112
+          },
+          {
+            "kind": "add",
+            "content": "      deletions: p.deletions,",
+            "newLine": 113
+          },
+          { "kind": "add", "content": "    })),", "newLine": 114 },
+          { "kind": "add", "content": "  };", "newLine": 115 },
+          { "kind": "add", "content": "}", "newLine": 116 }
+        ]
+      },
+      {
+        "id": "3088:head:packages/junior-github/src/code-changes.ts#143-180",
+        "pr": 3088,
+        "path": "packages/junior-github/src/code-changes.ts",
+        "side": "head",
+        "start": 143,
+        "end": 180,
+        "lines": [
+          { "kind": "add", "content": "/**", "newLine": 143 },
+          {
+            "kind": "add",
+            "content": " * Walk base branches without the Stacks API. A pull request whose base is",
+            "newLine": 144
+          },
+          {
+            "kind": "add",
+            "content": " * another open pull request's head is stacked on it. Walk down to the trunk",
+            "newLine": 145
+          },
+          {
+            "kind": "add",
+            "content": " * and up to the top, and stop where the chain is ambiguous.",
+            "newLine": 146
+          },
+          { "kind": "add", "content": " */", "newLine": 147 },
+          {
+            "kind": "add",
+            "content": "async function stackFromBaseBranches(",
+            "newLine": 148
+          },
+          { "kind": "add", "content": "  ctx: ReadContext,", "newLine": 149 },
+          { "kind": "add", "content": "  repository: string,", "newLine": 150 },
+          { "kind": "add", "content": "  pull: GitHubPull,", "newLine": 151 },
+          {
+            "kind": "add",
+            "content": "): Promise<number[]> {",
+            "newLine": 152
+          },
+          {
+            "kind": "add",
+            "content": "  const owner = repository.split(\"/\")[0]!;",
+            "newLine": 153
+          },
+          {
+            "kind": "add",
+            "content": "  const chain = [pull.number];",
+            "newLine": 154
+          },
+          {
+            "kind": "add",
+            "content": "  let branch = pull.base.ref;",
+            "newLine": 155
+          },
+          {
+            "kind": "add",
+            "content": "  for (let depth = 0; depth < MAX_STACK_DEPTH; depth += 1) {",
+            "newLine": 156
+          },
+          {
+            "kind": "add",
+            "content": "    const parents = await listOpenPulls(",
+            "newLine": 157
+          },
+          { "kind": "add", "content": "      ctx,", "newLine": 158 },
+          { "kind": "add", "content": "      repository,", "newLine": 159 },
+          {
+            "kind": "add",
+            "content": "      `head=${encodeURIComponent(`${owner}:${branch}`)}`,",
+            "newLine": 160
+          },
+          { "kind": "add", "content": "    );", "newLine": 161 },
+          {
+            "kind": "add",
+            "content": "    // No parent: `branch` is the trunk. Two parents: the chain is ambiguous.",
+            "newLine": 162
+          },
+          {
+            "kind": "add",
+            "content": "    if (parents.length !== 1) break;",
+            "newLine": 163
+          },
+          {
+            "kind": "add",
+            "content": "    chain.unshift(parents[0]!.number);",
+            "newLine": 164
+          },
+          {
+            "kind": "add",
+            "content": "    branch = parents[0]!.base.ref;",
+            "newLine": 165
+          },
+          { "kind": "add", "content": "  }", "newLine": 166 },
+          {
+            "kind": "add",
+            "content": "  branch = pull.head.ref;",
+            "newLine": 167
+          },
+          {
+            "kind": "add",
+            "content": "  for (let depth = 0; depth < MAX_STACK_DEPTH; depth += 1) {",
+            "newLine": 168
+          },
+          {
+            "kind": "add",
+            "content": "    const children = await listOpenPulls(",
+            "newLine": 169
+          },
+          { "kind": "add", "content": "      ctx,", "newLine": 170 },
+          { "kind": "add", "content": "      repository,", "newLine": 171 },
+          {
+            "kind": "add",
+            "content": "      `base=${encodeURIComponent(branch)}`,",
+            "newLine": 172
+          },
+          { "kind": "add", "content": "    );", "newLine": 173 },
+          {
+            "kind": "add",
+            "content": "    // Two children fork the chain, so stop at this pull request.",
+            "newLine": 174
+          },
+          {
+            "kind": "add",
+            "content": "    if (children.length !== 1) break;",
+            "newLine": 175
+          },
+          {
+            "kind": "add",
+            "content": "    chain.push(children[0]!.number);",
+            "newLine": 176
+          },
+          {
+            "kind": "add",
+            "content": "    branch = children[0]!.head.ref;",
+            "newLine": 177
+          },
+          { "kind": "add", "content": "  }", "newLine": 178 },
+          { "kind": "add", "content": "  return chain;", "newLine": 179 },
+          { "kind": "add", "content": "}", "newLine": 180 }
+        ]
+      },
+      {
+        "id": "3088:head:packages/junior-github/src/code-changes.ts#182-203",
+        "pr": 3088,
+        "path": "packages/junior-github/src/code-changes.ts",
+        "side": "head",
+        "start": 182,
+        "end": 203,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "async function readDiff(",
+            "newLine": 182
+          },
+          {
+            "kind": "add",
+            "content": "  ctx: ReadContext & {",
+            "newLine": 183
+          },
+          {
+            "kind": "add",
+            "content": "    repository: string;",
+            "newLine": 184
+          },
+          { "kind": "add", "content": "    baseSha: string;", "newLine": 185 },
+          { "kind": "add", "content": "    headSha: string;", "newLine": 186 },
+          { "kind": "add", "content": "  },", "newLine": 187 },
+          {
+            "kind": "add",
+            "content": "): Promise<CodeChangeDiff> {",
+            "newLine": 188
+          },
+          { "kind": "add", "content": "  assertPathParts({", "newLine": 189 },
+          {
+            "kind": "add",
+            "content": "    repository: ctx.repository,",
+            "newLine": 190
+          },
+          {
+            "kind": "add",
+            "content": "    shas: [ctx.baseSha, ctx.headSha],",
+            "newLine": 191
+          },
+          { "kind": "add", "content": "  });", "newLine": 192 },
+          {
+            "kind": "add",
+            "content": "  // Compare the exact commits, so a push during generation cannot change",
+            "newLine": 193
+          },
+          {
+            "kind": "add",
+            "content": "  // what the Walkthrough describes. Three dots diff from the merge base,",
+            "newLine": 194
+          },
+          {
+            "kind": "add",
+            "content": "  // which is what a pull request shows.",
+            "newLine": 195
+          },
+          {
+            "kind": "add",
+            "content": "  const response = await githubApi(ctx.egress, {",
+            "newLine": 196
+          },
+          {
+            "kind": "add",
+            "content": "    operation: \"github.compare.read\",",
+            "newLine": 197
+          },
+          {
+            "kind": "add",
+            "content": "    path: `/repos/${ctx.repository}/compare/${ctx.baseSha}...${ctx.headSha}`,",
+            "newLine": 198
+          },
+          {
+            "kind": "add",
+            "content": "    signal: ctx.signal,",
+            "newLine": 199
+          },
+          { "kind": "add", "content": "  });", "newLine": 200 },
+          { "kind": "add", "content": "  if (!response.ok) {", "newLine": 201 },
+          {
+            "kind": "add",
+            "content": "    throw new Error(`GitHub compare failed with HTTP ${response.status}`);",
+            "newLine": 202
+          },
+          { "kind": "add", "content": "  }", "newLine": 203 }
+        ]
+      },
+      {
+        "id": "3088:head:packages/junior-github/tests/code-changes.test.ts#89-119",
+        "pr": 3088,
+        "path": "packages/junior-github/tests/code-changes.test.ts",
+        "side": "head",
+        "start": 89,
+        "end": 119,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "  it(\"walks base branches down and up when the repository cannot use stacks\", async () => {",
+            "newLine": 89
+          },
+          {
+            "kind": "add",
+            "content": "    const { adapter, input } = context([",
+            "newLine": 90
+          },
+          {
+            "kind": "add",
+            "content": "      { body: pull(2, \"b1\", \"b2\") },",
+            "newLine": 91
+          },
+          {
+            "kind": "add",
+            "content": "      { status: 404, body: { message: \"Not Found\" } },",
+            "newLine": 92
+          },
+          {
+            "kind": "add",
+            "content": "      { body: [{ number: 1, head: { ref: \"b1\" }, base: { ref: \"main\" } }] },",
+            "newLine": 93
+          },
+          { "kind": "add", "content": "      { body: [] },", "newLine": 94 },
+          {
+            "kind": "add",
+            "content": "      { body: [{ number: 3, head: { ref: \"b3\" }, base: { ref: \"b2\" } }] },",
+            "newLine": 95
+          },
+          {
+            "kind": "add",
+            "content": "      // Two children of b3: the chain forks, so it stops at #3.",
+            "newLine": 96
+          },
+          { "kind": "add", "content": "      {", "newLine": 97 },
+          { "kind": "add", "content": "        body: [", "newLine": 98 },
+          {
+            "kind": "add",
+            "content": "          { number: 4, head: { ref: \"b4\" }, base: { ref: \"b3\" } },",
+            "newLine": 99
+          },
+          {
+            "kind": "add",
+            "content": "          { number: 5, head: { ref: \"b5\" }, base: { ref: \"b3\" } },",
+            "newLine": 100
+          },
+          { "kind": "add", "content": "        ],", "newLine": 101 },
+          { "kind": "add", "content": "      },", "newLine": 102 },
+          {
+            "kind": "add",
+            "content": "      { body: pull(1, \"main\", \"b1\") },",
+            "newLine": 103
+          },
+          {
+            "kind": "add",
+            "content": "      { body: pull(3, \"b2\", \"b3\") },",
+            "newLine": 104
+          },
+          { "kind": "add", "content": "    ]);", "newLine": 105 },
+          {
+            "kind": "add",
+            "content": "    const stack = await hooks.readStack(",
+            "newLine": 106
+          },
+          { "kind": "add", "content": "      input({", "newLine": 107 },
+          {
+            "kind": "add",
+            "content": "        repository: \"getsentry/junior\",",
+            "newLine": 108
+          },
+          { "kind": "add", "content": "        number: 2,", "newLine": 109 },
+          { "kind": "add", "content": "      }),", "newLine": 110 },
+          { "kind": "add", "content": "    );", "newLine": 111 },
+          {
+            "kind": "add",
+            "content": "    expect(stack?.codeChanges.map((c) => c.number)).toEqual([1, 2, 3]);",
+            "newLine": 112
+          },
+          {
+            "kind": "add",
+            "content": "    expect(paths(adapter).slice(2, 6)).toEqual([",
+            "newLine": 113
+          },
+          {
+            "kind": "add",
+            "content": "      \"/repos/getsentry/junior/pulls?state=open&per_page=2&head=getsentry%3Ab1\",",
+            "newLine": 114
+          },
+          {
+            "kind": "add",
+            "content": "      \"/repos/getsentry/junior/pulls?state=open&per_page=2&head=getsentry%3Amain\",",
+            "newLine": 115
+          },
+          {
+            "kind": "add",
+            "content": "      \"/repos/getsentry/junior/pulls?state=open&per_page=2&base=b2\",",
+            "newLine": 116
+          },
+          {
+            "kind": "add",
+            "content": "      \"/repos/getsentry/junior/pulls?state=open&per_page=2&base=b3\",",
+            "newLine": 117
+          },
+          { "kind": "add", "content": "    ]);", "newLine": 118 },
+          { "kind": "add", "content": "  });", "newLine": 119 }
+        ]
+      },
+      {
+        "id": "3090:head:packages/junior/migrations/0100_walkthrough_versions.sql#1-20",
+        "pr": 3090,
+        "path": "packages/junior/migrations/0100_walkthrough_versions.sql",
+        "side": "head",
+        "start": 1,
+        "end": 20,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "CREATE TABLE \"junior_walkthrough_versions\" (",
+            "newLine": 1
+          },
+          {
+            "kind": "add",
+            "content": "\t\"id\" uuid PRIMARY KEY NOT NULL,",
+            "newLine": 2
+          },
+          {
+            "kind": "add",
+            "content": "\t\"parent_version_id\" uuid,",
+            "newLine": 3
+          },
+          {
+            "kind": "add",
+            "content": "\t\"provider\" text NOT NULL,",
+            "newLine": 4
+          },
+          {
+            "kind": "add",
+            "content": "\t\"repository\" text NOT NULL,",
+            "newLine": 5
+          },
+          {
+            "kind": "add",
+            "content": "\t\"snapshot_key\" text NOT NULL,",
+            "newLine": 6
+          },
+          {
+            "kind": "add",
+            "content": "\t\"code_changes\" jsonb NOT NULL,",
+            "newLine": 7
+          },
+          {
+            "kind": "add",
+            "content": "\t\"generation_conversation_id\" text,",
+            "newLine": 8
+          },
+          {
+            "kind": "add",
+            "content": "\t\"source_conversation_id\" text,",
+            "newLine": 9
+          },
+          {
+            "kind": "add",
+            "content": "\t\"status\" text NOT NULL,",
+            "newLine": 10
+          },
+          {
+            "kind": "add",
+            "content": "\t\"document_key\" text,",
+            "newLine": 11
+          },
+          {
+            "kind": "add",
+            "content": "\t\"failure_reason\" text,",
+            "newLine": 12
+          },
+          {
+            "kind": "add",
+            "content": "\t\"created_by_user_id\" text,",
+            "newLine": 13
+          },
+          {
+            "kind": "add",
+            "content": "\t\"created_at\" timestamp with time zone NOT NULL,",
+            "newLine": 14
+          },
+          {
+            "kind": "add",
+            "content": "\t\"completed_at\" timestamp with time zone",
+            "newLine": 15
+          },
+          { "kind": "add", "content": ");", "newLine": 16 },
+          {
+            "kind": "add",
+            "content": "--> statement-breakpoint",
+            "newLine": 17
+          },
+          {
+            "kind": "add",
+            "content": "CREATE UNIQUE INDEX \"junior_walkthrough_versions_snapshot_idx\" ON \"junior_walkthrough_versions\" USING btree (\"provider\",\"repository\",\"snapshot_key\") WHERE \"junior_walkthrough_versions\".\"status\" <> 'failed';--> statement-breakpoint",
+            "newLine": 18
+          },
+          {
+            "kind": "add",
+            "content": "CREATE UNIQUE INDEX \"junior_walkthrough_versions_generation_conversation_idx\" ON \"junior_walkthrough_versions\" USING btree (\"generation_conversation_id\");--> statement-breakpoint",
+            "newLine": 19
+          },
+          {
+            "kind": "add",
+            "content": "CREATE INDEX \"junior_walkthrough_versions_parent_idx\" ON \"junior_walkthrough_versions\" USING btree (\"parent_version_id\");",
+            "newLine": 20
+          }
+        ]
+      },
+      {
+        "id": "3090:head:packages/junior/src/db/schema/walkthroughs.ts#39-75",
+        "pr": 3090,
+        "path": "packages/junior/src/db/schema/walkthroughs.ts",
+        "side": "head",
+        "start": 39,
+        "end": 75,
+        "lines": [
+          { "kind": "add", "content": "    /**", "newLine": 39 },
+          {
+            "kind": "add",
+            "content": "     * Stable key of the code changes and commits, so an unchanged stack",
+            "newLine": 40
+          },
+          {
+            "kind": "add",
+            "content": "     * reuses its version instead of generating again.",
+            "newLine": 41
+          },
+          { "kind": "add", "content": "     */", "newLine": 42 },
+          {
+            "kind": "add",
+            "content": "    snapshotKey: text(\"snapshot_key\").notNull(),",
+            "newLine": 43
+          },
+          {
+            "kind": "add",
+            "content": "    /** The stack, bottom first, at the commits this version describes. */",
+            "newLine": 44
+          },
+          {
+            "kind": "add",
+            "content": "    codeChanges: jsonb(\"code_changes\")",
+            "newLine": 45
+          },
+          {
+            "kind": "add",
+            "content": "      .$type<WalkthroughCodeChange[]>()",
+            "newLine": 46
+          },
+          { "kind": "add", "content": "      .notNull(),", "newLine": 47 },
+          { "kind": "add", "content": "    /**", "newLine": 48 },
+          {
+            "kind": "add",
+            "content": "     * The hidden Conversation whose Turn generates this version. Lists hide",
+            "newLine": 49
+          },
+          {
+            "kind": "add",
+            "content": "     * Conversations that appear here. No foreign key: the version claims",
+            "newLine": 50
+          },
+          {
+            "kind": "add",
+            "content": "     * its snapshot before the Conversation exists, so two clicks never",
+            "newLine": 51
+          },
+          {
+            "kind": "add",
+            "content": "     * create two Conversations.",
+            "newLine": 52
+          },
+          { "kind": "add", "content": "     */", "newLine": 53 },
+          {
+            "kind": "add",
+            "content": "    generationConversationId: text(\"generation_conversation_id\"),",
+            "newLine": 54
+          },
+          {
+            "kind": "add",
+            "content": "    /** The Conversation that opened the code change, when it was readable. */",
+            "newLine": 55
+          },
+          {
+            "kind": "add",
+            "content": "    sourceConversationId: text(\"source_conversation_id\"),",
+            "newLine": 56
+          },
+          {
+            "kind": "add",
+            "content": "    status: text(\"status\").$type<WalkthroughVersionStatus>().notNull(),",
+            "newLine": 57
+          },
+          {
+            "kind": "add",
+            "content": "    documentKey: text(\"document_key\"),",
+            "newLine": 58
+          },
+          {
+            "kind": "add",
+            "content": "    failureReason: text(\"failure_reason\"),",
+            "newLine": 59
+          },
+          {
+            "kind": "add",
+            "content": "    createdByUserId: text(\"created_by_user_id\"),",
+            "newLine": 60
+          },
+          {
+            "kind": "add",
+            "content": "    createdAt: timestamptz(\"created_at\").notNull(),",
+            "newLine": 61
+          },
+          {
+            "kind": "add",
+            "content": "    completedAt: timestamptz(\"completed_at\"),",
+            "newLine": 62
+          },
+          { "kind": "add", "content": "  },", "newLine": 63 },
+          { "kind": "add", "content": "  (table) => [", "newLine": 64 },
+          {
+            "kind": "add",
+            "content": "    // One live version per snapshot: a second click joins the running or",
+            "newLine": 65
+          },
+          {
+            "kind": "add",
+            "content": "    // finished one. Failed versions do not block a retry.",
+            "newLine": 66
+          },
+          {
+            "kind": "add",
+            "content": "    uniqueIndex(\"junior_walkthrough_versions_snapshot_idx\")",
+            "newLine": 67
+          },
+          {
+            "kind": "add",
+            "content": "      .on(table.provider, table.repository, table.snapshotKey)",
+            "newLine": 68
+          },
+          {
+            "kind": "add",
+            "content": "      .where(sql`${table.status} <> 'failed'`),",
+            "newLine": 69
+          },
+          {
+            "kind": "add",
+            "content": "    // Serves the list filter that hides generation Conversations.",
+            "newLine": 70
+          },
+          {
+            "kind": "add",
+            "content": "    uniqueIndex(\"junior_walkthrough_versions_generation_conversation_idx\").on(",
+            "newLine": 71
+          },
+          {
+            "kind": "add",
+            "content": "      table.generationConversationId,",
+            "newLine": 72
+          },
+          { "kind": "add", "content": "    ),", "newLine": 73 },
+          {
+            "kind": "add",
+            "content": "    index(\"junior_walkthrough_versions_parent_idx\").on(table.parentVersionId),",
+            "newLine": 74
+          },
+          { "kind": "add", "content": "  ],", "newLine": 75 }
+        ]
+      },
+      {
+        "id": "3090:head:packages/junior/src/chat/walkthroughs/store.ts#50-87",
+        "pr": 3090,
+        "path": "packages/junior/src/chat/walkthroughs/store.ts",
+        "side": "head",
+        "start": 50,
+        "end": 87,
+        "lines": [
+          { "kind": "add", "content": "/**", "newLine": 50 },
+          {
+            "kind": "add",
+            "content": " * Start a version for a snapshot. When another request already started one,",
+            "newLine": 51
+          },
+          {
+            "kind": "add",
+            "content": " * return that version instead, so concurrent clicks never generate twice.",
+            "newLine": 52
+          },
+          { "kind": "add", "content": " */", "newLine": 53 },
+          {
+            "kind": "add",
+            "content": "export async function startWalkthroughVersion(input: {",
+            "newLine": 54
+          },
+          { "kind": "add", "content": "  provider: string;", "newLine": 55 },
+          { "kind": "add", "content": "  repository: string;", "newLine": 56 },
+          {
+            "kind": "add",
+            "content": "  codeChanges: WalkthroughCodeChange[];",
+            "newLine": 57
+          },
+          {
+            "kind": "add",
+            "content": "  generationConversationId: string;",
+            "newLine": 58
+          },
+          {
+            "kind": "add",
+            "content": "  sourceConversationId?: string;",
+            "newLine": 59
+          },
+          {
+            "kind": "add",
+            "content": "  parentVersionId?: string;",
+            "newLine": 60
+          },
+          {
+            "kind": "add",
+            "content": "  createdByUserId?: string;",
+            "newLine": 61
+          },
+          {
+            "kind": "add",
+            "content": "}): Promise<{ version: WalkthroughVersion; started: boolean }> {",
+            "newLine": 62
+          },
+          {
+            "kind": "add",
+            "content": "  const snapshotKey = walkthroughSnapshotKey(input.codeChanges);",
+            "newLine": 63
+          },
+          {
+            "kind": "add",
+            "content": "  const [row] = await getDb()",
+            "newLine": 64
+          },
+          {
+            "kind": "add",
+            "content": "    .insert(juniorWalkthroughVersions)",
+            "newLine": 65
+          },
+          { "kind": "add", "content": "    .values({", "newLine": 66 },
+          {
+            "kind": "add",
+            "content": "      id: randomUUID(),",
+            "newLine": 67
+          },
+          {
+            "kind": "add",
+            "content": "      provider: input.provider,",
+            "newLine": 68
+          },
+          {
+            "kind": "add",
+            "content": "      repository: input.repository,",
+            "newLine": 69
+          },
+          { "kind": "add", "content": "      snapshotKey,", "newLine": 70 },
+          {
+            "kind": "add",
+            "content": "      codeChanges: input.codeChanges,",
+            "newLine": 71
+          },
+          {
+            "kind": "add",
+            "content": "      generationConversationId: input.generationConversationId,",
+            "newLine": 72
+          },
+          {
+            "kind": "add",
+            "content": "      sourceConversationId: input.sourceConversationId ?? null,",
+            "newLine": 73
+          },
+          {
+            "kind": "add",
+            "content": "      parentVersionId: input.parentVersionId ?? null,",
+            "newLine": 74
+          },
+          {
+            "kind": "add",
+            "content": "      createdByUserId: input.createdByUserId ?? null,",
+            "newLine": 75
+          },
+          {
+            "kind": "add",
+            "content": "      status: \"generating\",",
+            "newLine": 76
+          },
+          {
+            "kind": "add",
+            "content": "      createdAt: new Date(),",
+            "newLine": 77
+          },
+          { "kind": "add", "content": "    })", "newLine": 78 },
+          {
+            "kind": "add",
+            "content": "    .onConflictDoNothing()",
+            "newLine": 79
+          },
+          { "kind": "add", "content": "    .returning();", "newLine": 80 },
+          {
+            "kind": "add",
+            "content": "  if (row) return { version: row, started: true };",
+            "newLine": 81
+          },
+          {
+            "kind": "add",
+            "content": "  const live = await findLiveWalkthroughVersion({ ...input, snapshotKey });",
+            "newLine": 82
+          },
+          { "kind": "add", "content": "  if (!live) {", "newLine": 83 },
+          {
+            "kind": "add",
+            "content": "    throw new Error(\"Walkthrough version conflict without a live version\");",
+            "newLine": 84
+          },
+          { "kind": "add", "content": "  }", "newLine": 85 },
+          {
+            "kind": "add",
+            "content": "  return { version: live, started: false };",
+            "newLine": 86
+          },
+          { "kind": "add", "content": "}", "newLine": 87 }
+        ]
+      },
+      {
+        "id": "3090:head:packages/junior/tests/integration/walkthrough-versions.test.ts#104-142",
+        "pr": 3090,
+        "path": "packages/junior/tests/integration/walkthrough-versions.test.ts",
+        "side": "head",
+        "start": 104,
+        "end": 142,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "  it(\"reuses the live version of a snapshot and stores its document\", async () => {",
+            "newLine": 104
+          },
+          {
+            "kind": "add",
+            "content": "    const first = await publicConversation(\"local:web:walkthrough-gen-1\");",
+            "newLine": 105
+          },
+          {
+            "kind": "add",
+            "content": "    const second = await publicConversation(\"local:web:walkthrough-gen-2\");",
+            "newLine": 106
+          },
+          { "kind": "add", "content": "    const input = {", "newLine": 107 },
+          {
+            "kind": "add",
+            "content": "      provider: \"github\",",
+            "newLine": 108
+          },
+          {
+            "kind": "add",
+            "content": "      repository: \"getsentry/junior\",",
+            "newLine": 109
+          },
+          { "kind": "add", "content": "      codeChanges,", "newLine": 110 },
+          { "kind": "add", "content": "    };", "newLine": 111 },
+          { "kind": "add", "content": "", "newLine": 112 },
+          {
+            "kind": "add",
+            "content": "    const started = await startWalkthroughVersion({",
+            "newLine": 113
+          },
+          { "kind": "add", "content": "      ...input,", "newLine": 114 },
+          {
+            "kind": "add",
+            "content": "      generationConversationId: first,",
+            "newLine": 115
+          },
+          { "kind": "add", "content": "    });", "newLine": 116 },
+          {
+            "kind": "add",
+            "content": "    expect(started.started).toBe(true);",
+            "newLine": 117
+          },
+          {
+            "kind": "add",
+            "content": "    // A second click on the same commits joins the running version.",
+            "newLine": 118
+          },
+          {
+            "kind": "add",
+            "content": "    const joined = await startWalkthroughVersion({",
+            "newLine": 119
+          },
+          { "kind": "add", "content": "      ...input,", "newLine": 120 },
+          {
+            "kind": "add",
+            "content": "      generationConversationId: second,",
+            "newLine": 121
+          },
+          { "kind": "add", "content": "    });", "newLine": 122 },
+          {
+            "kind": "add",
+            "content": "    expect(joined).toEqual({ version: started.version, started: false });",
+            "newLine": 123
+          },
+          { "kind": "add", "content": "", "newLine": 124 },
+          {
+            "kind": "add",
+            "content": "    const id = started.version.id;",
+            "newLine": 125
+          },
+          {
+            "kind": "add",
+            "content": "    const storage = createMemoryAttachmentStorage();",
+            "newLine": 126
+          },
+          {
+            "kind": "add",
+            "content": "    const stored = document(id);",
+            "newLine": 127
+          },
+          { "kind": "add", "content": "    expect(", "newLine": 128 },
+          {
+            "kind": "add",
+            "content": "      await completeWalkthroughVersion(storage, {",
+            "newLine": 129
+          },
+          { "kind": "add", "content": "        id,", "newLine": 130 },
+          {
+            "kind": "add",
+            "content": "        document: stored,",
+            "newLine": 131
+          },
+          { "kind": "add", "content": "      }),", "newLine": 132 },
+          { "kind": "add", "content": "    ).toBe(true);", "newLine": 133 },
+          {
+            "kind": "add",
+            "content": "    const ready = await getWalkthroughVersion(id);",
+            "newLine": 134
+          },
+          {
+            "kind": "add",
+            "content": "    expect(ready).toMatchObject({ status: \"ready\" });",
+            "newLine": 135
+          },
+          {
+            "kind": "add",
+            "content": "    expect(await readWalkthroughDocument(storage, ready!)).toEqual(stored);",
+            "newLine": 136
+          },
+          {
+            "kind": "add",
+            "content": "    expect([...storage.objects.keys()]).toEqual([`walkthroughs/${id}.json`]);",
+            "newLine": 137
+          },
+          { "kind": "add", "content": "", "newLine": 138 },
+          {
+            "kind": "add",
+            "content": "    // A finished version cannot fail or complete again.",
+            "newLine": 139
+          },
+          {
+            "kind": "add",
+            "content": "    await failWalkthroughVersion({ id, reason: \"late failure\" });",
+            "newLine": 140
+          },
+          {
+            "kind": "add",
+            "content": "    expect((await getWalkthroughVersion(id))?.status).toBe(\"ready\");",
+            "newLine": 141
+          },
+          { "kind": "add", "content": "  });", "newLine": 142 }
+        ]
+      },
+      {
+        "id": "3090:head:packages/junior/src/chat/conversations/sql/listed.ts#10-19",
+        "pr": 3090,
+        "path": "packages/junior/src/chat/conversations/sql/listed.ts",
+        "side": "head",
+        "start": 10,
+        "end": 19,
+        "lines": [
+          {
+            "kind": "context",
+            "content": "export function listedConversation(): SQL {",
+            "oldLine": 9,
+            "newLine": 10
+          },
+          {
+            "kind": "context",
+            "content": "  return and(",
+            "oldLine": 10,
+            "newLine": 11
+          },
+          {
+            "kind": "context",
+            "content": "    isNull(juniorConversations.parentConversationId),",
+            "oldLine": 11,
+            "newLine": 12
+          },
+          {
+            "kind": "context",
+            "content": "    // An unkept Quick question is a private side thread.",
+            "oldLine": 12,
+            "newLine": 13
+          },
+          {
+            "kind": "context",
+            "content": "    isNull(juniorConversations.quickQuestionAt),",
+            "oldLine": 13,
+            "newLine": 14
+          },
+          {
+            "kind": "add",
+            "content": "    // A Walkthrough generation is host work that the Walkthrough page shows.",
+            "newLine": 15
+          },
+          {
+            "kind": "add",
+            "content": "    // The unique index on generation_conversation_id serves this lookup.",
+            "newLine": 16
+          },
+          {
+            "kind": "add",
+            "content": "    sql`NOT EXISTS (SELECT 1 FROM ${juniorWalkthroughVersions} WHERE ${juniorWalkthroughVersions.generationConversationId} = ${juniorConversations.conversationId})`,",
+            "newLine": 17
+          },
+          {
+            "kind": "context",
+            "content": "  )!;",
+            "oldLine": 14,
+            "newLine": 18
+          },
+          { "kind": "context", "content": "}", "oldLine": 15, "newLine": 19 }
+        ]
+      },
+      {
+        "id": "3090:head:packages/junior/tests/integration/walkthrough-versions.test.ts#166-183",
+        "pr": 3090,
+        "path": "packages/junior/tests/integration/walkthrough-versions.test.ts",
+        "side": "head",
+        "start": 166,
+        "end": 183,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "  it(\"hides generation Conversations from Conversation lists\", async () => {",
+            "newLine": 166
+          },
+          {
+            "kind": "add",
+            "content": "    const generation = await publicConversation(\"local:web:walkthrough-hidden\");",
+            "newLine": 167
+          },
+          {
+            "kind": "add",
+            "content": "    const ordinary = await publicConversation(\"local:web:walkthrough-visible\");",
+            "newLine": 168
+          },
+          {
+            "kind": "add",
+            "content": "    expect(await listedIds()).toEqual(",
+            "newLine": 169
+          },
+          {
+            "kind": "add",
+            "content": "      expect.arrayContaining([generation, ordinary]),",
+            "newLine": 170
+          },
+          { "kind": "add", "content": "    );", "newLine": 171 },
+          { "kind": "add", "content": "", "newLine": 172 },
+          {
+            "kind": "add",
+            "content": "    await startWalkthroughVersion({",
+            "newLine": 173
+          },
+          {
+            "kind": "add",
+            "content": "      provider: \"github\",",
+            "newLine": 174
+          },
+          {
+            "kind": "add",
+            "content": "      repository: \"getsentry/junior\",",
+            "newLine": 175
+          },
+          {
+            "kind": "add",
+            "content": "      codeChanges: [codeChanges[1]!],",
+            "newLine": 176
+          },
+          {
+            "kind": "add",
+            "content": "      generationConversationId: generation,",
+            "newLine": 177
+          },
+          { "kind": "add", "content": "    });", "newLine": 178 },
+          { "kind": "add", "content": "", "newLine": 179 },
+          {
+            "kind": "add",
+            "content": "    const listed = await listedIds();",
+            "newLine": 180
+          },
+          {
+            "kind": "add",
+            "content": "    expect(listed).toContain(ordinary);",
+            "newLine": 181
+          },
+          {
+            "kind": "add",
+            "content": "    expect(listed).not.toContain(generation);",
+            "newLine": 182
+          },
+          { "kind": "add", "content": "  });", "newLine": 183 }
+        ]
+      },
+      {
+        "id": "3124:head:packages/junior/skills/walkthrough/SKILL.md#1-25",
+        "pr": 3124,
+        "path": "packages/junior/skills/walkthrough/SKILL.md",
+        "side": "head",
+        "start": 1,
+        "end": 25,
+        "lines": [
+          { "kind": "add", "content": "---", "newLine": 1 },
+          { "kind": "add", "content": "name: walkthrough", "newLine": 2 },
+          {
+            "kind": "add",
+            "content": "description: Generate a Walkthrough for one code change or a stack. The Walkthrough worker runs this skill; people start it from the dashboard.",
+            "newLine": 3
+          },
+          {
+            "kind": "add",
+            "content": "disable-model-invocation: true",
+            "newLine": 4
+          },
+          { "kind": "add", "content": "---", "newLine": 5 },
+          { "kind": "add", "content": "", "newLine": 6 },
+          { "kind": "add", "content": "# Walkthrough", "newLine": 7 },
+          { "kind": "add", "content": "", "newLine": 8 },
+          {
+            "kind": "add",
+            "content": "A Walkthrough helps a reviewer who has no context understand a code change",
+            "newLine": 9
+          },
+          {
+            "kind": "add",
+            "content": "without reading all of its code. The story leads. Code is the evidence.",
+            "newLine": 10
+          },
+          { "kind": "add", "content": "", "newLine": 11 },
+          { "kind": "add", "content": "## Input", "newLine": 12 },
+          { "kind": "add", "content": "", "newLine": 13 },
+          {
+            "kind": "add",
+            "content": "The instruction gives the repository, the code changes (bottom first, with",
+            "newLine": 14
+          },
+          {
+            "kind": "add",
+            "content": "base and head commits), and sometimes a source Conversation ID: the",
+            "newLine": 15
+          },
+          {
+            "kind": "add",
+            "content": "Conversation that opened the code change.",
+            "newLine": 16
+          },
+          { "kind": "add", "content": "", "newLine": 17 },
+          {
+            "kind": "add",
+            "content": "If `submitWalkthrough` is not in your tools, this Turn is not a Walkthrough",
+            "newLine": 18
+          },
+          {
+            "kind": "add",
+            "content": "generation. Say that Walkthroughs start from the dashboard, and stop.",
+            "newLine": 19
+          },
+          { "kind": "add", "content": "", "newLine": 20 },
+          { "kind": "add", "content": "## Steps", "newLine": 21 },
+          { "kind": "add", "content": "", "newLine": 22 },
+          {
+            "kind": "add",
+            "content": "1. Read the diff of each code change at the given commits. Use `gh pr diff`",
+            "newLine": 23
+          },
+          {
+            "kind": "add",
+            "content": "   or a shallow clone and `git diff BASE...HEAD`. Read callers or other",
+            "newLine": 24
+          },
+          {
+            "kind": "add",
+            "content": "   unchanged code when the change affects them.",
+            "newLine": 25
+          }
+        ]
+      },
+      {
+        "id": "3124:head:packages/junior/src/chat/walkthroughs/submit-tool.ts#123-150",
+        "pr": 3124,
+        "path": "packages/junior/src/chat/walkthroughs/submit-tool.ts",
+        "side": "head",
+        "start": 123,
+        "end": 150,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "    execute: async (output) => {",
+            "newLine": 123
+          },
+          {
+            "kind": "add",
+            "content": "      const codeRefs = codeCitations(output);",
+            "newLine": 124
+          },
+          {
+            "kind": "add",
+            "content": "      const [{ files, skipped }, contextFiles, messages] = await Promise.all([",
+            "newLine": 125
+          },
+          { "kind": "add", "content": "        loadDiff(),", "newLine": 126 },
+          {
+            "kind": "add",
+            "content": "        readContextFiles(codeRefs, loadHeadFile),",
+            "newLine": 127
+          },
+          {
+            "kind": "add",
+            "content": "        readCitedMessages(context, generation, output),",
+            "newLine": 128
+          },
+          { "kind": "add", "content": "      ]);", "newLine": 129 },
+          {
+            "kind": "add",
+            "content": "      const knownUrls = new Set(",
+            "newLine": 130
+          },
+          {
+            "kind": "add",
+            "content": "        generation.layers.flatMap((layer) => [",
+            "newLine": 131
+          },
+          { "kind": "add", "content": "          layer.url,", "newLine": 132 },
+          {
+            "kind": "add",
+            "content": "          ...urlsIn(layer.body),",
+            "newLine": 133
+          },
+          { "kind": "add", "content": "        ]),", "newLine": 134 },
+          { "kind": "add", "content": "      );", "newLine": 135 },
+          {
+            "kind": "add",
+            "content": "      for (const message of messages) {",
+            "newLine": 136
+          },
+          {
+            "kind": "add",
+            "content": "        for (const url of urlsIn(message.text)) knownUrls.add(url);",
+            "newLine": 137
+          },
+          { "kind": "add", "content": "      }", "newLine": 138 },
+          {
+            "kind": "add",
+            "content": "      const problems = validateWalkthrough(output, {",
+            "newLine": 139
+          },
+          { "kind": "add", "content": "        files,", "newLine": 140 },
+          { "kind": "add", "content": "        contextFiles,", "newLine": 141 },
+          {
+            "kind": "add",
+            "content": "        messageSeqs: new Set(messages.map((message) => message.seq)),",
+            "newLine": 142
+          },
+          { "kind": "add", "content": "        knownUrls,", "newLine": 143 },
+          {
+            "kind": "add",
+            "content": "        checkIds: new Set(),",
+            "newLine": 144
+          },
+          { "kind": "add", "content": "      });", "newLine": 145 },
+          {
+            "kind": "add",
+            "content": "      if (problems.length > 0) {",
+            "newLine": 146
+          },
+          {
+            "kind": "add",
+            "content": "        throw new ToolInputError(",
+            "newLine": 147
+          },
+          {
+            "kind": "add",
+            "content": "          `The Walkthrough has ${problems.length} problem(s). Fix them and call ${SUBMIT_WALKTHROUGH_TOOL_NAME} again:\\n${problems.map((p) => `- ${p}`).join(\"\\n\")}`,",
+            "newLine": 148
+          },
+          { "kind": "add", "content": "        );", "newLine": 149 },
+          { "kind": "add", "content": "      }", "newLine": 150 }
+        ]
+      },
+      {
+        "id": "3124:head:packages/junior/src/chat/walkthroughs/submit-tool.ts#244-282",
+        "pr": 3124,
+        "path": "packages/junior/src/chat/walkthroughs/submit-tool.ts",
+        "side": "head",
+        "start": 244,
+        "end": 282,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "/** Copy the cited messages of the source Conversation that this Actor can read. */",
+            "newLine": 244
+          },
+          {
+            "kind": "add",
+            "content": "async function readCitedMessages(",
+            "newLine": 245
+          },
+          {
+            "kind": "add",
+            "content": "  context: ToolRuntimeContext,",
+            "newLine": 246
+          },
+          {
+            "kind": "add",
+            "content": "  generation: WalkthroughGeneration,",
+            "newLine": 247
+          },
+          {
+            "kind": "add",
+            "content": "  output: WalkthroughOutput,",
+            "newLine": 248
+          },
+          {
+            "kind": "add",
+            "content": "): Promise<WalkthroughDocument[\"messages\"]> {",
+            "newLine": 249
+          },
+          {
+            "kind": "add",
+            "content": "  const sourceId = generation.sourceConversationId;",
+            "newLine": 250
+          },
+          {
+            "kind": "add",
+            "content": "  if (!sourceId) return [];",
+            "newLine": 251
+          },
+          { "kind": "add", "content": "  const seqs = [", "newLine": 252 },
+          { "kind": "add", "content": "    ...new Set(", "newLine": 253 },
+          {
+            "kind": "add",
+            "content": "      output.chapters.flatMap((chapter) =>",
+            "newLine": 254
+          },
+          {
+            "kind": "add",
+            "content": "        chapter.evidence.flatMap((e) => (e.kind === \"message\" ? [e.seq] : [])),",
+            "newLine": 255
+          },
+          { "kind": "add", "content": "      ),", "newLine": 256 },
+          { "kind": "add", "content": "    ),", "newLine": 257 },
+          { "kind": "add", "content": "  ];", "newLine": 258 },
+          {
+            "kind": "add",
+            "content": "  if (seqs.length === 0) return [];",
+            "newLine": 259
+          },
+          {
+            "kind": "add",
+            "content": "  await assertCanReadConversationEvents(context, sourceId);",
+            "newLine": 260
+          },
+          {
+            "kind": "add",
+            "content": "  const events = getConversationEventStore();",
+            "newLine": 261
+          },
+          {
+            "kind": "add",
+            "content": "  const messages = await Promise.all(",
+            "newLine": 262
+          },
+          {
+            "kind": "add",
+            "content": "    seqs.map(async (seq) => {",
+            "newLine": 263
+          },
+          {
+            "kind": "add",
+            "content": "      const page = await events.query(sourceId, {",
+            "newLine": 264
+          },
+          {
+            "kind": "add",
+            "content": "        afterSeq: seq - 1,",
+            "newLine": 265
+          },
+          {
+            "kind": "add",
+            "content": "        beforeSeq: seq + 1,",
+            "newLine": 266
+          },
+          { "kind": "add", "content": "        limit: 1,", "newLine": 267 },
+          { "kind": "add", "content": "      });", "newLine": 268 },
+          {
+            "kind": "add",
+            "content": "      const data = page.events[0]?.data;",
+            "newLine": 269
+          },
+          {
+            "kind": "add",
+            "content": "      if (data?.type !== \"message\" || !data.text.trim()) return [];",
+            "newLine": 270
+          },
+          {
+            "kind": "add",
+            "content": "      if (data.role !== \"user\" && data.role !== \"assistant\") return [];",
+            "newLine": 271
+          },
+          { "kind": "add", "content": "      return [", "newLine": 272 },
+          { "kind": "add", "content": "        {", "newLine": 273 },
+          { "kind": "add", "content": "          seq,", "newLine": 274 },
+          {
+            "kind": "add",
+            "content": "          role: data.role,",
+            "newLine": 275
+          },
+          {
+            "kind": "add",
+            "content": "          text: data.text.trim().slice(0, MESSAGE_TEXT_LIMIT),",
+            "newLine": 276
+          },
+          { "kind": "add", "content": "        },", "newLine": 277 },
+          { "kind": "add", "content": "      ];", "newLine": 278 },
+          { "kind": "add", "content": "    }),", "newLine": 279 },
+          { "kind": "add", "content": "  );", "newLine": 280 },
+          {
+            "kind": "add",
+            "content": "  return messages.flat().sort((a, b) => a.seq - b.seq);",
+            "newLine": 281
+          },
+          { "kind": "add", "content": "}", "newLine": 282 }
+        ]
+      },
+      {
+        "id": "3124:head:packages/junior/src/chat/tools/index.ts#31-34",
+        "pr": 3124,
+        "path": "packages/junior/src/chat/tools/index.ts",
+        "side": "head",
+        "start": 31,
+        "end": 34,
+        "lines": [
+          { "kind": "add", "content": "import {", "newLine": 31 },
+          {
+            "kind": "add",
+            "content": "  createSubmitWalkthroughTool,",
+            "newLine": 32
+          },
+          {
+            "kind": "add",
+            "content": "  SUBMIT_WALKTHROUGH_TOOL_NAME,",
+            "newLine": 33
+          },
+          {
+            "kind": "add",
+            "content": "} from \"@/chat/walkthroughs/submit-tool\";",
+            "newLine": 34
+          }
+        ]
+      },
+      {
+        "id": "3124:head:packages/junior/src/chat/conversations/kind-behavior.ts#95-133",
+        "pr": 3124,
+        "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+        "side": "head",
+        "start": 95,
+        "end": 133,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "// A Walkthrough generation reads the code change and ends by submitting the",
+            "newLine": 95
+          },
+          {
+            "kind": "add",
+            "content": "// Walkthrough. Its hidden Conversation keeps the final response, and it",
+            "newLine": 96
+          },
+          {
+            "kind": "add",
+            "content": "// cannot reach people, other agents, or subscriptions.",
+            "newLine": 97
+          },
+          {
+            "kind": "add",
+            "content": "const WALKTHROUGH_GENERATION: TurnBehavior = {",
+            "newLine": 98
+          },
+          {
+            "kind": "add",
+            "content": "  delivery: \"conversation\",",
+            "newLine": 99
+          },
+          {
+            "kind": "add",
+            "content": "  promptMode: \"conversation\",",
+            "newLine": 100
+          },
+          { "kind": "add", "content": "  gated: false,", "newLine": 101 },
+          { "kind": "add", "content": "  tools: {", "newLine": 102 },
+          { "kind": "add", "content": "    agents: \"none\",", "newLine": 103 },
+          {
+            "kind": "add",
+            "content": "    reviewDesk: false,",
+            "newLine": 104
+          },
+          {
+            "kind": "add",
+            "content": "    subscriptions: false,",
+            "newLine": 105
+          },
+          {
+            "kind": "add",
+            "content": "    userCustomization: false,",
+            "newLine": 106
+          },
+          {
+            "kind": "add",
+            "content": "    reportBlocked: false,",
+            "newLine": 107
+          },
+          { "kind": "add", "content": "    noReply: false,", "newLine": 108 },
+          {
+            "kind": "add",
+            "content": "    finishAutomationRun: false,",
+            "newLine": 109
+          },
+          {
+            "kind": "add",
+            "content": "    submitWalkthrough: true,",
+            "newLine": 110
+          },
+          { "kind": "add", "content": "  },", "newLine": 111 },
+          { "kind": "add", "content": "};", "newLine": 112 },
+          { "kind": "add", "content": "", "newLine": 113 },
+          {
+            "kind": "context",
+            "content": "/**",
+            "oldLine": 92,
+            "newLine": 114
+          },
+          {
+            "kind": "context",
+            "content": " * Return the behavior of one Turn. `automationRun` marks a Scheduled or Event",
+            "oldLine": 93,
+            "newLine": 115
+          },
+          {
+            "kind": "context",
+            "content": " * automation run. It is a temporary bridge until Conversation kind",
+            "oldLine": 94,
+            "newLine": 116
+          },
+          {
+            "kind": "context",
+            "content": " * `automation` replaces it.",
+            "oldLine": 95,
+            "newLine": 117
+          },
+          { "kind": "context", "content": " *", "oldLine": 96, "newLine": 118 },
+          {
+            "kind": "add",
+            "content": " * `walkthroughGeneration` marks a Walkthrough generation run, the same kind of",
+            "newLine": 119
+          },
+          {
+            "kind": "add",
+            "content": " * bridge until a `walkthrough` kind exists.",
+            "newLine": 120
+          },
+          { "kind": "add", "content": " *", "newLine": 121 },
+          {
+            "kind": "context",
+            "content": " * TODO(dcramer): Remove `automationRun` when kind `automation` ships.",
+            "oldLine": 97,
+            "newLine": 122
+          },
+          {
+            "kind": "context",
+            "content": " */",
+            "oldLine": 98,
+            "newLine": 123
+          },
+          {
+            "kind": "context",
+            "content": "export function turnBehavior(args: {",
+            "oldLine": 99,
+            "newLine": 124
+          },
+          {
+            "kind": "context",
+            "content": "  kind: ConversationKind;",
+            "oldLine": 100,
+            "newLine": 125
+          },
+          {
+            "kind": "context",
+            "content": "  personInput: boolean;",
+            "oldLine": 101,
+            "newLine": 126
+          },
+          {
+            "kind": "context",
+            "content": "  automationRun: boolean;",
+            "oldLine": 102,
+            "newLine": 127
+          },
+          {
+            "kind": "add",
+            "content": "  walkthroughGeneration?: boolean;",
+            "newLine": 128
+          },
+          {
+            "kind": "context",
+            "content": "}): TurnBehavior {",
+            "oldLine": 103,
+            "newLine": 129
+          },
+          {
+            "kind": "add",
+            "content": "  if (args.walkthroughGeneration) return WALKTHROUGH_GENERATION;",
+            "newLine": 130
+          },
+          {
+            "kind": "context",
+            "content": "  if (args.automationRun) return AUTOMATION_RUN;",
+            "oldLine": 104,
+            "newLine": 131
+          },
+          {
+            "kind": "context",
+            "content": "  if (isTopLevelKind(args.kind)) return ROOT;",
+            "oldLine": 105,
+            "newLine": 132
+          },
+          {
+            "kind": "context",
+            "content": "  if (!args.personInput) return AGENT_IN_CHILD;",
+            "oldLine": 106,
+            "newLine": 133
+          }
+        ]
+      },
+      {
+        "id": "3124:head:packages/junior/src/chat/conversations/kind-behavior.ts#38-80",
+        "pr": 3124,
+        "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+        "side": "head",
+        "start": 38,
+        "end": 80,
+        "lines": [
+          {
+            "kind": "context",
+            "content": "    submitWalkthrough: boolean;",
+            "newLine": 38
+          },
+          { "kind": "context", "content": "  };", "newLine": 39 },
+          { "kind": "context", "content": "};", "newLine": 40 },
+          { "kind": "context", "content": "", "newLine": 41 },
+          {
+            "kind": "context",
+            "content": "const ROOT: TurnBehavior = {",
+            "newLine": 42
+          },
+          {
+            "kind": "context",
+            "content": "  delivery: \"location\",",
+            "newLine": 43
+          },
+          {
+            "kind": "context",
+            "content": "  promptMode: \"conversation\",",
+            "newLine": 44
+          },
+          { "kind": "context", "content": "  gated: false,", "newLine": 45 },
+          { "kind": "context", "content": "  tools: {", "newLine": 46 },
+          {
+            "kind": "context",
+            "content": "    agents: \"children\",",
+            "newLine": 47
+          },
+          {
+            "kind": "context",
+            "content": "    reviewDesk: true,",
+            "newLine": 48
+          },
+          {
+            "kind": "context",
+            "content": "    subscriptions: true,",
+            "newLine": 49
+          },
+          {
+            "kind": "context",
+            "content": "    userCustomization: true,",
+            "newLine": 50
+          },
+          {
+            "kind": "context",
+            "content": "    reportBlocked: false,",
+            "newLine": 51
+          },
+          { "kind": "context", "content": "    noReply: true,", "newLine": 52 },
+          {
+            "kind": "context",
+            "content": "    finishAutomationRun: false,",
+            "newLine": 53
+          },
+          {
+            "kind": "context",
+            "content": "    submitWalkthrough: false,",
+            "newLine": 54
+          },
+          { "kind": "context", "content": "  },", "newLine": 55 },
+          { "kind": "context", "content": "};", "newLine": 56 },
+          { "kind": "context", "content": "", "newLine": 57 },
+          {
+            "kind": "context",
+            "content": "// A person's Turn in a Thread runs like a Turn on a root, but it does not",
+            "newLine": 58
+          },
+          {
+            "kind": "context",
+            "content": "// start or message child agents: their results would report to the parent as",
+            "newLine": 59
+          },
+          {
+            "kind": "context",
+            "content": "// the wrong Actor.",
+            "newLine": 60
+          },
+          {
+            "kind": "context",
+            "content": "const PERSON_IN_THREAD: TurnBehavior = {",
+            "newLine": 61
+          },
+          { "kind": "context", "content": "  ...ROOT,", "newLine": 62 },
+          {
+            "kind": "context",
+            "content": "  tools: { ...ROOT.tools, agents: \"none\" },",
+            "newLine": 63
+          },
+          { "kind": "context", "content": "};", "newLine": 64 },
+          { "kind": "context", "content": "", "newLine": 65 },
+          {
+            "kind": "context",
+            "content": "// Every other Turn on a child is an agent invocation: an agent wrote its",
+            "newLine": 66
+          },
+          {
+            "kind": "context",
+            "content": "// input, and its final response goes back to its parent.",
+            "newLine": 67
+          },
+          {
+            "kind": "context",
+            "content": "const AGENT_IN_CHILD: TurnBehavior = {",
+            "newLine": 68
+          },
+          {
+            "kind": "context",
+            "content": "  delivery: \"conversation\",",
+            "newLine": 69
+          },
+          {
+            "kind": "context",
+            "content": "  promptMode: \"child_agent\",",
+            "newLine": 70
+          },
+          { "kind": "context", "content": "  gated: false,", "newLine": 71 },
+          { "kind": "context", "content": "  tools: {", "newLine": 72 },
+          {
+            "kind": "context",
+            "content": "    agents: \"children_and_parent\",",
+            "newLine": 73
+          },
+          {
+            "kind": "context",
+            "content": "    reviewDesk: false,",
+            "newLine": 74
+          },
+          {
+            "kind": "context",
+            "content": "    subscriptions: false,",
+            "newLine": 75
+          },
+          {
+            "kind": "context",
+            "content": "    userCustomization: false,",
+            "newLine": 76
+          },
+          {
+            "kind": "context",
+            "content": "    reportBlocked: true,",
+            "newLine": 77
+          },
+          { "kind": "context", "content": "    noReply: true,", "newLine": 78 },
+          {
+            "kind": "context",
+            "content": "    finishAutomationRun: false,",
+            "newLine": 79
+          },
+          {
+            "kind": "context",
+            "content": "    submitWalkthrough: false,",
+            "newLine": 80
+          }
+        ]
+      },
+      {
+        "id": "3124:head:packages/junior/src/chat/tools/index.ts#253-258",
+        "pr": 3124,
+        "path": "packages/junior/src/chat/tools/index.ts",
+        "side": "head",
+        "start": 253,
+        "end": 258,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "  if (turnTools.submitWalkthrough && context.walkthroughGeneration) {",
+            "newLine": 253
+          },
+          {
+            "kind": "add",
+            "content": "    tools[SUBMIT_WALKTHROUGH_TOOL_NAME] = createSubmitWalkthroughTool(",
+            "newLine": 254
+          },
+          { "kind": "add", "content": "      context,", "newLine": 255 },
+          {
+            "kind": "add",
+            "content": "      context.walkthroughGeneration,",
+            "newLine": 256
+          },
+          { "kind": "add", "content": "    );", "newLine": 257 },
+          { "kind": "add", "content": "  }", "newLine": 258 }
+        ]
+      },
+      {
+        "id": "3124:head:packages/junior/src/chat/agent/index.ts#308-314",
+        "pr": 3124,
+        "path": "packages/junior/src/chat/agent/index.ts",
+        "side": "head",
+        "start": 308,
+        "end": 314,
+        "lines": [
+          {
+            "kind": "context",
+            "content": "    kind: conversationKind,",
+            "oldLine": 308,
+            "newLine": 308
+          },
+          {
+            "kind": "context",
+            "content": "    personInput: isPersonInput(run.source.kind),",
+            "oldLine": 309,
+            "newLine": 309
+          },
+          {
+            "kind": "context",
+            "content": "    automationRun: run.dispatch?.declaresResult === true,",
+            "oldLine": 310,
+            "newLine": 310
+          },
+          {
+            "kind": "add",
+            "content": "    walkthroughGeneration: run.walkthroughGeneration !== undefined,",
+            "newLine": 311
+          },
+          {
+            "kind": "context",
+            "content": "  });",
+            "oldLine": 311,
+            "newLine": 312
+          },
+          {
+            "kind": "context",
+            "content": "  // TODO(dcramer): Gate every answer tool here, not only the Automation run.",
+            "oldLine": 312,
+            "newLine": 313
+          },
+          {
+            "kind": "context",
+            "content": "  const requireAutomationResult = behavior.gated;",
+            "oldLine": 313,
+            "newLine": 314
+          }
+        ]
+      },
+      {
+        "id": "3133:head:packages/junior/src/api/walkthroughs/routes.ts#93-118",
+        "pr": 3133,
+        "path": "packages/junior/src/api/walkthroughs/routes.ts",
+        "side": "head",
+        "start": 93,
+        "end": 118,
+        "lines": [
+          { "kind": "add", "content": "  app.post(", "newLine": 93 },
+          { "kind": "add", "content": "    \"/\",", "newLine": 94 },
+          { "kind": "add", "content": "    requireViewer,", "newLine": 95 },
+          { "kind": "add", "content": "    validateRequest(", "newLine": 96 },
+          { "kind": "add", "content": "      \"json\",", "newLine": 97 },
+          {
+            "kind": "add",
+            "content": "      startWalkthroughBodySchema,",
+            "newLine": 98
+          },
+          {
+            "kind": "add",
+            "content": "      \"Invalid request body.\",",
+            "newLine": 99
+          },
+          { "kind": "add", "content": "    ),", "newLine": 100 },
+          {
+            "kind": "add",
+            "content": "    async (context) => {",
+            "newLine": 101
+          },
+          {
+            "kind": "add",
+            "content": "      const body = context.req.valid(\"json\");",
+            "newLine": 102
+          },
+          {
+            "kind": "add",
+            "content": "      const version = await startWalkthrough({",
+            "newLine": 103
+          },
+          { "kind": "add", "content": "        ...body,", "newLine": 104 },
+          {
+            "kind": "add",
+            "content": "        viewer: context.get(\"viewer\"),",
+            "newLine": 105
+          },
+          {
+            "kind": "add",
+            "content": "        queue: options.queue,",
+            "newLine": 106
+          },
+          { "kind": "add", "content": "      });", "newLine": 107 },
+          {
+            "kind": "add",
+            "content": "      if (!version) throwApiError(404, \"Code change not found.\");",
+            "newLine": 108
+          },
+          {
+            "kind": "add",
+            "content": "      if (!(await canReadSource(version, context.get(\"viewer\")))) {",
+            "newLine": 109
+          },
+          {
+            "kind": "add",
+            "content": "        throwApiError(404, \"Walkthrough not found.\");",
+            "newLine": 110
+          },
+          { "kind": "add", "content": "      }", "newLine": 111 },
+          {
+            "kind": "add",
+            "content": "      return jsonResponse(",
+            "newLine": 112
+          },
+          {
+            "kind": "add",
+            "content": "        walkthroughVersionSchema,",
+            "newLine": 113
+          },
+          {
+            "kind": "add",
+            "content": "        await walkthroughResponse(version),",
+            "newLine": 114
+          },
+          {
+            "kind": "add",
+            "content": "        { status: 202 },",
+            "newLine": 115
+          },
+          { "kind": "add", "content": "      );", "newLine": 116 },
+          { "kind": "add", "content": "    },", "newLine": 117 },
+          { "kind": "add", "content": "  );", "newLine": 118 }
+        ]
+      },
+      {
+        "id": "3133:head:packages/junior/src/chat/walkthroughs/generation.ts#96-135",
+        "pr": 3133,
+        "path": "packages/junior/src/chat/walkthroughs/generation.ts",
+        "side": "head",
+        "start": 96,
+        "end": 135,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "  const actor = webActorFromUser(input.viewer);",
+            "newLine": 96
+          },
+          {
+            "kind": "add",
+            "content": "  const sourceConversationId = await findSourceConversationId(",
+            "newLine": 97
+          },
+          {
+            "kind": "add",
+            "content": "    stack.codeChanges.map((change) => change.body),",
+            "newLine": 98
+          },
+          { "kind": "add", "content": "  );", "newLine": 99 },
+          {
+            "kind": "add",
+            "content": "  const idempotencyKey = `walkthrough:${randomUUID()}`;",
+            "newLine": 100
+          },
+          {
+            "kind": "add",
+            "content": "  const { version, started } = await startWalkthroughVersion({",
+            "newLine": 101
+          },
+          {
+            "kind": "add",
+            "content": "    provider: input.provider,",
+            "newLine": 102
+          },
+          {
+            "kind": "add",
+            "content": "    repository: input.repository,",
+            "newLine": 103
+          },
+          {
+            "kind": "add",
+            "content": "    codeChanges: stack.codeChanges,",
+            "newLine": 104
+          },
+          {
+            "kind": "add",
+            "content": "    generationConversationId: createConversationId({",
+            "newLine": 105
+          },
+          {
+            "kind": "add",
+            "content": "      actorEmail: actor.email ?? input.viewer.email,",
+            "newLine": 106
+          },
+          { "kind": "add", "content": "      idempotencyKey,", "newLine": 107 },
+          { "kind": "add", "content": "    }),", "newLine": 108 },
+          {
+            "kind": "add",
+            "content": "    createdByUserId: input.viewer.id,",
+            "newLine": 109
+          },
+          {
+            "kind": "add",
+            "content": "    ...(sourceConversationId ? { sourceConversationId } : undefined),",
+            "newLine": 110
+          },
+          { "kind": "add", "content": "  });", "newLine": 111 },
+          {
+            "kind": "add",
+            "content": "  if (!started) return version;",
+            "newLine": 112
+          },
+          { "kind": "add", "content": "", "newLine": 113 },
+          { "kind": "add", "content": "  try {", "newLine": 114 },
+          {
+            "kind": "add",
+            "content": "    await createAndEnqueueConversation(",
+            "newLine": 115
+          },
+          { "kind": "add", "content": "      {", "newLine": 116 },
+          { "kind": "add", "content": "        actor,", "newLine": 117 },
+          {
+            "kind": "add",
+            "content": "        idempotencyKey,",
+            "newLine": 118
+          },
+          {
+            "kind": "add",
+            "content": "        message: generationInstruction(version),",
+            "newLine": 119
+          },
+          {
+            "kind": "add",
+            "content": "        title: `Walkthrough of #${input.number}`,",
+            "newLine": 120
+          },
+          {
+            "kind": "add",
+            "content": "        visibility: \"public\",",
+            "newLine": 121
+          },
+          { "kind": "add", "content": "      },", "newLine": 122 },
+          { "kind": "add", "content": "      {", "newLine": 123 },
+          {
+            "kind": "add",
+            "content": "        conversationStore: getConversationStore(),",
+            "newLine": 124
+          },
+          {
+            "kind": "add",
+            "content": "        queue: input.queue,",
+            "newLine": 125
+          },
+          { "kind": "add", "content": "      },", "newLine": 126 },
+          { "kind": "add", "content": "    );", "newLine": 127 },
+          { "kind": "add", "content": "  } catch (error) {", "newLine": 128 },
+          {
+            "kind": "add",
+            "content": "    await failWalkthroughVersion({",
+            "newLine": 129
+          },
+          { "kind": "add", "content": "      id: version.id,", "newLine": 130 },
+          {
+            "kind": "add",
+            "content": "      reason: \"The generation could not start.\",",
+            "newLine": 131
+          },
+          { "kind": "add", "content": "    });", "newLine": 132 },
+          { "kind": "add", "content": "    throw error;", "newLine": 133 },
+          { "kind": "add", "content": "  }", "newLine": 134 },
+          { "kind": "add", "content": "  return version;", "newLine": 135 }
+        ]
+      },
+      {
+        "id": "3133:head:packages/junior/src/chat/walkthroughs/store.ts#19-20",
+        "pr": 3133,
+        "path": "packages/junior/src/chat/walkthroughs/store.ts",
+        "side": "head",
+        "start": 19,
+        "end": 20,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "/** A generation that runs longer than this died, such as in a crash. */",
+            "newLine": 19
+          },
+          {
+            "kind": "add",
+            "content": "const GENERATION_TIMEOUT_MS = 30 * 60 * 1000;",
+            "newLine": 20
+          }
+        ]
+      },
+      {
+        "id": "3133:head:packages/junior/src/chat/walkthroughs/store.ts#70-89",
+        "pr": 3133,
+        "path": "packages/junior/src/chat/walkthroughs/store.ts",
+        "side": "head",
+        "start": 70,
+        "end": 89,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "  // A dead generation must not block every later click on this snapshot.",
+            "newLine": 70
+          },
+          { "kind": "add", "content": "  await getDb()", "newLine": 71 },
+          {
+            "kind": "add",
+            "content": "    .update(juniorWalkthroughVersions)",
+            "newLine": 72
+          },
+          { "kind": "add", "content": "    .set({", "newLine": 73 },
+          {
+            "kind": "add",
+            "content": "      status: \"failed\",",
+            "newLine": 74
+          },
+          {
+            "kind": "add",
+            "content": "      failureReason: \"Generation timed out.\",",
+            "newLine": 75
+          },
+          {
+            "kind": "add",
+            "content": "      completedAt: new Date(),",
+            "newLine": 76
+          },
+          { "kind": "add", "content": "    })", "newLine": 77 },
+          { "kind": "add", "content": "    .where(", "newLine": 78 },
+          { "kind": "add", "content": "      and(", "newLine": 79 },
+          {
+            "kind": "add",
+            "content": "        eq(juniorWalkthroughVersions.provider, input.provider),",
+            "newLine": 80
+          },
+          {
+            "kind": "add",
+            "content": "        eq(juniorWalkthroughVersions.repository, input.repository),",
+            "newLine": 81
+          },
+          {
+            "kind": "add",
+            "content": "        eq(juniorWalkthroughVersions.snapshotKey, snapshotKey),",
+            "newLine": 82
+          },
+          {
+            "kind": "add",
+            "content": "        eq(juniorWalkthroughVersions.status, \"generating\"),",
+            "newLine": 83
+          },
+          { "kind": "add", "content": "        lt(", "newLine": 84 },
+          {
+            "kind": "add",
+            "content": "          juniorWalkthroughVersions.createdAt,",
+            "newLine": 85
+          },
+          {
+            "kind": "add",
+            "content": "          new Date(Date.now() - GENERATION_TIMEOUT_MS),",
+            "newLine": 86
+          },
+          { "kind": "add", "content": "        ),", "newLine": 87 },
+          { "kind": "add", "content": "      ),", "newLine": 88 },
+          { "kind": "add", "content": "    );", "newLine": 89 }
+        ]
+      },
+      {
+        "id": "3133:head:packages/junior/src/chat/task-execution/conversation-turn.ts#56-56",
+        "pr": 3133,
+        "path": "packages/junior/src/chat/task-execution/conversation-turn.ts",
+        "side": "head",
+        "start": 56,
+        "end": 56,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "import { readWalkthroughRun } from \"@/chat/walkthroughs/generation\";",
+            "newLine": 56
+          }
+        ]
+      },
+      {
+        "id": "3133:head:packages/junior/src/chat/task-execution/conversation-turn.ts#680-712",
+        "pr": 3133,
+        "path": "packages/junior/src/chat/task-execution/conversation-turn.ts",
+        "side": "head",
+        "start": 680,
+        "end": 712,
+        "lines": [
+          {
+            "kind": "context",
+            "content": "          const walkthrough = await readWalkthroughRun(context.conversationId);",
+            "newLine": 680
+          },
+          {
+            "kind": "context",
+            "content": "          failureCode = \"agent_run_failed\";",
+            "newLine": 681
+          },
+          {
+            "kind": "context",
+            "content": "          currentRunId = `conversation-run:${stableHex(turnId, String(startedAtMs))}`;",
+            "newLine": 682
+          },
+          {
+            "kind": "context",
+            "content": "          setTags({ runId: currentRunId });",
+            "newLine": 683
+          },
+          { "kind": "context", "content": "", "newLine": 684 },
+          {
+            "kind": "context",
+            "content": "          const outcome = await executeTurn(",
+            "newLine": 685
+          },
+          {
+            "kind": "context",
+            "content": "            agentRunner,",
+            "newLine": 686
+          },
+          { "kind": "context", "content": "            {", "newLine": 687 },
+          {
+            "kind": "context",
+            "content": "              conversationId: context.conversationId,",
+            "newLine": 688
+          },
+          {
+            "kind": "context",
+            "content": "              turnId,",
+            "newLine": 689
+          },
+          {
+            "kind": "context",
+            "content": "              runId: currentRunId,",
+            "newLine": 690
+          },
+          {
+            "kind": "context",
+            "content": "              instruction: {",
+            "newLine": 691
+          },
+          {
+            "kind": "context",
+            "content": "                ...instructionInputs,",
+            "newLine": 692
+          },
+          {
+            "kind": "context",
+            "content": "                storedAttachments: attachments,",
+            "newLine": 693
+          },
+          {
+            "kind": "context",
+            "content": "                context: await buildTurnThreadContext({",
+            "newLine": 694
+          },
+          {
+            "kind": "context",
+            "content": "                  conversation,",
+            "newLine": 695
+          },
+          {
+            "kind": "context",
+            "content": "                  conversationId: context.conversationId,",
+            "newLine": 696
+          },
+          {
+            "kind": "context",
+            "content": "                  excludeMessageIds: inputMessageIds,",
+            "newLine": 697
+          },
+          {
+            "kind": "context",
+            "content": "                  hasHistory: piMessages.length > 0,",
+            "newLine": 698
+          },
+          {
+            "kind": "context",
+            "content": "                  turnId,",
+            "newLine": 699
+          },
+          {
+            "kind": "context",
+            "content": "                }),",
+            "newLine": 700
+          },
+          { "kind": "context", "content": "              },", "newLine": 701 },
+          {
+            "kind": "context",
+            "content": "              history: piMessages,",
+            "newLine": 702
+          },
+          {
+            "kind": "context",
+            "content": "              actor,",
+            "newLine": 703
+          },
+          {
+            "kind": "context",
+            "content": "              credentialContext: credentialContextForActor(",
+            "newLine": 704
+          },
+          {
+            "kind": "context",
+            "content": "                actor,",
+            "newLine": 705
+          },
+          {
+            "kind": "context",
+            "content": "                credentialSubject,",
+            "newLine": 706
+          },
+          { "kind": "context", "content": "              ),", "newLine": 707 },
+          {
+            "kind": "context",
+            "content": "              // TODO(dcramer): Remove AgentRun.destination after agent and tool",
+            "newLine": 708
+          },
+          {
+            "kind": "context",
+            "content": "              // code reads AgentRun.location and no Run consumer needs it.",
+            "newLine": 709
+          },
+          {
+            "kind": "context",
+            "content": "              destination,",
+            "newLine": 710
+          },
+          {
+            "kind": "context",
+            "content": "              source,",
+            "newLine": 711
+          },
+          {
+            "kind": "context",
+            "content": "              walkthroughGeneration: walkthrough?.generation,",
+            "newLine": 712
+          }
+        ]
+      },
+      {
+        "id": "3133:head:packages/junior/src/chat/task-execution/conversation-turn.ts#773-773",
+        "pr": 3133,
+        "path": "packages/junior/src/chat/task-execution/conversation-turn.ts",
+        "side": "head",
+        "start": 773,
+        "end": 773,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "              await walkthrough?.finish();",
+            "newLine": 773
+          }
+        ]
+      },
+      {
+        "id": "3133:head:packages/junior/src/chat/task-execution/conversation-turn.ts#919-930",
+        "pr": 3133,
+        "path": "packages/junior/src/chat/task-execution/conversation-turn.ts",
+        "side": "head",
+        "start": 919,
+        "end": 930,
+        "lines": [
+          {
+            "kind": "context",
+            "content": "        } catch (error) {",
+            "newLine": 919
+          },
+          {
+            "kind": "context",
+            "content": "          const failure = error instanceof AgentRunError ? error.cause : error;",
+            "newLine": 920
+          },
+          {
+            "kind": "context",
+            "content": "          if (hasLostTurnInputCommit(failure)) {",
+            "newLine": 921
+          },
+          {
+            "kind": "context",
+            "content": "            return { status: \"lost_lease\" };",
+            "newLine": 922
+          },
+          { "kind": "context", "content": "          }", "newLine": 923 },
+          {
+            "kind": "context",
+            "content": "          if (stopSignal?.aborted) {",
+            "newLine": 924
+          },
+          {
+            "kind": "context",
+            "content": "            return await completeCancelledTurn();",
+            "newLine": 925
+          },
+          { "kind": "context", "content": "          }", "newLine": 926 },
+          {
+            "kind": "context",
+            "content": "          if (!context.attempt.isFinalAttempt) {",
+            "newLine": 927
+          },
+          {
+            "kind": "context",
+            "content": "            throw failure;",
+            "newLine": 928
+          },
+          { "kind": "context", "content": "          }", "newLine": 929 },
+          { "kind": "context", "content": "", "newLine": 930 }
+        ]
+      },
+      {
+        "id": "3133:head:packages/junior/src/chat/conversations/kind-behavior.ts#40-41",
+        "pr": 3133,
+        "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+        "side": "head",
+        "start": 40,
+        "end": 41,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "  /** Tighter limits than the app defaults, for Turns that nobody watches. */",
+            "newLine": 40
+          },
+          {
+            "kind": "add",
+            "content": "  limits?: { maxToolCalls: number; maxCostUsd: number };",
+            "newLine": 41
+          }
+        ]
+      },
+      {
+        "id": "3133:head:packages/junior/src/chat/conversations/kind-behavior.ts#114-115",
+        "pr": 3133,
+        "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+        "side": "head",
+        "start": 114,
+        "end": 115,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "  // A run that reads several large diffs stays well under these.",
+            "newLine": 114
+          },
+          {
+            "kind": "add",
+            "content": "  limits: { maxToolCalls: 80, maxCostUsd: 5 },",
+            "newLine": 115
+          }
+        ]
+      },
+      {
+        "id": "3133:head:packages/junior/src/chat/agent/index.ts#315-317",
+        "pr": 3133,
+        "path": "packages/junior/src/chat/agent/index.ts",
+        "side": "head",
+        "start": 315,
+        "end": 317,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "  const maxToolCalls =",
+            "newLine": 315
+          },
+          {
+            "kind": "add",
+            "content": "    behavior.limits?.maxToolCalls ?? botConfig.maxToolCallsPerTurn;",
+            "newLine": 316
+          },
+          {
+            "kind": "add",
+            "content": "  const maxCostUsd = behavior.limits?.maxCostUsd ?? botConfig.maxTurnCostUsd;",
+            "newLine": 317
+          }
+        ]
+      },
+      {
+        "id": "3133:head:packages/junior/src/chat/agent/index.ts#1094-1112",
+        "pr": 3133,
+        "path": "packages/junior/src/chat/agent/index.ts",
+        "side": "head",
+        "start": 1094,
+        "end": 1112,
+        "lines": [
+          {
+            "kind": "context",
+            "content": "        const overBudget = turnCostUsd >= maxCostUsd;",
+            "newLine": 1094
+          },
+          {
+            "kind": "context",
+            "content": "        const decision = turnLimitGate({",
+            "newLine": 1095
+          },
+          {
+            "kind": "context",
+            "content": "          assistantMessage,",
+            "newLine": 1096
+          },
+          {
+            "kind": "context",
+            "content": "          overLimit: overBudget || toolCallCount > maxToolCalls,",
+            "newLine": 1097
+          },
+          { "kind": "context", "content": "        });", "newLine": 1098 },
+          {
+            "kind": "context",
+            "content": "        if (decision === \"allow\") {",
+            "newLine": 1099
+          },
+          {
+            "kind": "context",
+            "content": "          return undefined;",
+            "newLine": 1100
+          },
+          { "kind": "context", "content": "        }", "newLine": 1101 },
+          {
+            "kind": "context",
+            "content": "        if (decision === \"wrap_up\") {",
+            "newLine": 1102
+          },
+          {
+            "kind": "context",
+            "content": "          runResume.markTurnLimitWrappedUp();",
+            "newLine": 1103
+          },
+          {
+            "kind": "context",
+            "content": "          logWarn(\"agent.turn.limit.wrap_up\", {",
+            "newLine": 1104
+          },
+          {
+            "kind": "context",
+            "content": "            \"app.ai.cost.total_usd\": turnCostUsd,",
+            "newLine": 1105
+          },
+          {
+            "kind": "context",
+            "content": "            \"app.ai.tool_call_count\": toolCallCount,",
+            "newLine": 1106
+          },
+          { "kind": "context", "content": "          });", "newLine": 1107 },
+          {
+            "kind": "context",
+            "content": "          return { block: true, reason: TURN_LIMIT_WRAP_UP_MESSAGE };",
+            "newLine": 1108
+          },
+          { "kind": "context", "content": "        }", "newLine": 1109 },
+          {
+            "kind": "context",
+            "content": "        // The tool-call total only grows, so a stop under it came from spend.",
+            "newLine": 1110
+          },
+          {
+            "kind": "context",
+            "content": "        const limitError =",
+            "newLine": 1111
+          },
+          {
+            "kind": "context",
+            "content": "          toolCallCount > maxToolCalls && !overBudget",
+            "newLine": 1112
+          }
+        ]
+      },
+      {
+        "id": "3133:head:packages/junior/src/api/walkthroughs/routes.ts#26-74",
+        "pr": 3133,
+        "path": "packages/junior/src/api/walkthroughs/routes.ts",
+        "side": "head",
+        "start": 26,
+        "end": 74,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "async function walkthroughResponse(",
+            "newLine": 26
+          },
+          {
+            "kind": "add",
+            "content": "  version: WalkthroughVersion,",
+            "newLine": 27
+          },
+          {
+            "kind": "add",
+            "content": "): Promise<WalkthroughVersionResponse> {",
+            "newLine": 28
+          },
+          {
+            "kind": "add",
+            "content": "  const [costUsd, document] = await Promise.all([",
+            "newLine": 29
+          },
+          {
+            "kind": "add",
+            "content": "    readWalkthroughCostUsd(version),",
+            "newLine": 30
+          },
+          {
+            "kind": "add",
+            "content": "    version.status === \"ready\"",
+            "newLine": 31
+          },
+          {
+            "kind": "add",
+            "content": "      ? readWalkthroughDocument(getAttachmentStorage(), version)",
+            "newLine": 32
+          },
+          { "kind": "add", "content": "      : undefined,", "newLine": 33 },
+          { "kind": "add", "content": "  ]);", "newLine": 34 },
+          { "kind": "add", "content": "  return {", "newLine": 35 },
+          { "kind": "add", "content": "    id: version.id,", "newLine": 36 },
+          {
+            "kind": "add",
+            "content": "    status: version.status,",
+            "newLine": 37
+          },
+          {
+            "kind": "add",
+            "content": "    provider: version.provider,",
+            "newLine": 38
+          },
+          {
+            "kind": "add",
+            "content": "    repository: version.repository,",
+            "newLine": 39
+          },
+          {
+            "kind": "add",
+            "content": "    codeChanges: version.codeChanges.map(",
+            "newLine": 40
+          },
+          {
+            "kind": "add",
+            "content": "      ({ body: _body, ...change }) => change,",
+            "newLine": 41
+          },
+          { "kind": "add", "content": "    ),", "newLine": 42 },
+          {
+            "kind": "add",
+            "content": "    createdAt: version.createdAt.toISOString(),",
+            "newLine": 43
+          },
+          {
+            "kind": "add",
+            "content": "    ...(costUsd !== undefined ? { costUsd } : undefined),",
+            "newLine": 44
+          },
+          {
+            "kind": "add",
+            "content": "    ...(version.failureReason",
+            "newLine": 45
+          },
+          {
+            "kind": "add",
+            "content": "      ? { failureReason: version.failureReason }",
+            "newLine": 46
+          },
+          { "kind": "add", "content": "      : undefined),", "newLine": 47 },
+          {
+            "kind": "add",
+            "content": "    ...(version.completedAt",
+            "newLine": 48
+          },
+          {
+            "kind": "add",
+            "content": "      ? { completedAt: version.completedAt.toISOString() }",
+            "newLine": 49
+          },
+          { "kind": "add", "content": "      : undefined),", "newLine": 50 },
+          {
+            "kind": "add",
+            "content": "    ...(document ? { document } : undefined),",
+            "newLine": 51
+          },
+          { "kind": "add", "content": "  };", "newLine": 52 },
+          { "kind": "add", "content": "}", "newLine": 53 },
+          { "kind": "add", "content": "", "newLine": 54 },
+          { "kind": "add", "content": "/**", "newLine": 55 },
+          {
+            "kind": "add",
+            "content": " * A document quotes its source Conversation. Generation reads only a public",
+            "newLine": 56
+          },
+          {
+            "kind": "add",
+            "content": " * source, but the source can turn private later, so check again on read.",
+            "newLine": 57
+          },
+          { "kind": "add", "content": " */", "newLine": 58 },
+          {
+            "kind": "add",
+            "content": "async function canReadSource(",
+            "newLine": 59
+          },
+          {
+            "kind": "add",
+            "content": "  version: WalkthroughVersion,",
+            "newLine": 60
+          },
+          { "kind": "add", "content": "  viewer: User,", "newLine": 61 },
+          { "kind": "add", "content": "): Promise<boolean> {", "newLine": 62 },
+          {
+            "kind": "add",
+            "content": "  if (!version.sourceConversationId) return true;",
+            "newLine": 63
+          },
+          { "kind": "add", "content": "  const access = (", "newLine": 64 },
+          {
+            "kind": "add",
+            "content": "    await readConversationAccessFromSql(",
+            "newLine": 65
+          },
+          { "kind": "add", "content": "      getDb(),", "newLine": 66 },
+          {
+            "kind": "add",
+            "content": "      [version.sourceConversationId],",
+            "newLine": 67
+          },
+          { "kind": "add", "content": "      viewer,", "newLine": 68 },
+          { "kind": "add", "content": "    )", "newLine": 69 },
+          {
+            "kind": "add",
+            "content": "  ).get(version.sourceConversationId);",
+            "newLine": 70
+          },
+          { "kind": "add", "content": "  return Boolean(", "newLine": 71 },
+          {
+            "kind": "add",
+            "content": "    access?.visibility === \"public\" || access?.canViewPrivateContent,",
+            "newLine": 72
+          },
+          { "kind": "add", "content": "  );", "newLine": 73 },
+          { "kind": "add", "content": "}", "newLine": 74 }
+        ]
+      },
+      {
+        "id": "3133:head:packages/junior/src/chat/walkthroughs/store.ts#147-167",
+        "pr": 3133,
+        "path": "packages/junior/src/chat/walkthroughs/store.ts",
+        "side": "head",
+        "start": 147,
+        "end": 167,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "/** What a version's generation Conversation has cost so far. */",
+            "newLine": 147
+          },
+          {
+            "kind": "add",
+            "content": "export async function readWalkthroughCostUsd(",
+            "newLine": 148
+          },
+          {
+            "kind": "add",
+            "content": "  version: Pick<WalkthroughVersion, \"generationConversationId\">,",
+            "newLine": 149
+          },
+          {
+            "kind": "add",
+            "content": "): Promise<number | undefined> {",
+            "newLine": 150
+          },
+          {
+            "kind": "add",
+            "content": "  if (!version.generationConversationId) return undefined;",
+            "newLine": 151
+          },
+          {
+            "kind": "add",
+            "content": "  const [row] = await getDb()",
+            "newLine": 152
+          },
+          { "kind": "add", "content": "    .select({", "newLine": 153 },
+          {
+            "kind": "add",
+            "content": "      total: sql<number | null>`sum(${juniorConversationMetrics.value})`,",
+            "newLine": 154
+          },
+          { "kind": "add", "content": "    })", "newLine": 155 },
+          {
+            "kind": "add",
+            "content": "    .from(juniorConversationMetrics)",
+            "newLine": 156
+          },
+          { "kind": "add", "content": "    .where(", "newLine": 157 },
+          { "kind": "add", "content": "      and(", "newLine": 158 },
+          { "kind": "add", "content": "        eq(", "newLine": 159 },
+          {
+            "kind": "add",
+            "content": "          juniorConversationMetrics.conversationId,",
+            "newLine": 160
+          },
+          {
+            "kind": "add",
+            "content": "          version.generationConversationId,",
+            "newLine": 161
+          },
+          { "kind": "add", "content": "        ),", "newLine": 162 },
+          {
+            "kind": "add",
+            "content": "        eq(juniorConversationMetrics.metric, \"cost_usd\"),",
+            "newLine": 163
+          },
+          { "kind": "add", "content": "      ),", "newLine": 164 },
+          { "kind": "add", "content": "    );", "newLine": 165 },
+          {
+            "kind": "add",
+            "content": "  return row?.total ?? undefined;",
+            "newLine": 166
+          },
+          { "kind": "add", "content": "}", "newLine": 167 }
+        ]
+      },
+      {
+        "id": "3133:head:packages/junior/tests/integration/walkthrough-generation.test.ts#138-152",
+        "pr": 3133,
+        "path": "packages/junior/tests/integration/walkthrough-generation.test.ts",
+        "side": "head",
+        "start": 138,
+        "end": 152,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "  it(\"fails a version whose Turn ends without a Walkthrough, so a retry starts fresh\", async () => {",
+            "newLine": 138
+          },
+          {
+            "kind": "add",
+            "content": "    const { get, post } = await setup(true);",
+            "newLine": 139
+          },
+          {
+            "kind": "add",
+            "content": "    const started = (await (await post(START)).json()) as { id: string };",
+            "newLine": 140
+          },
+          {
+            "kind": "add",
+            "content": "    const version = await getWalkthroughVersion(started.id);",
+            "newLine": 141
+          },
+          {
+            "kind": "add",
+            "content": "    const run = await readWalkthroughRun(version!.generationConversationId!);",
+            "newLine": 142
+          },
+          { "kind": "add", "content": "", "newLine": 143 },
+          {
+            "kind": "add",
+            "content": "    await run!.finish();",
+            "newLine": 144
+          },
+          {
+            "kind": "add",
+            "content": "    await expect(get(started.id)).resolves.toMatchObject({ status: \"failed\" });",
+            "newLine": 145
+          },
+          { "kind": "add", "content": "    await expect(", "newLine": 146 },
+          {
+            "kind": "add",
+            "content": "      readWalkthroughRun(version!.generationConversationId!),",
+            "newLine": 147
+          },
+          {
+            "kind": "add",
+            "content": "    ).resolves.toBeUndefined();",
+            "newLine": 148
+          },
+          { "kind": "add", "content": "", "newLine": 149 },
+          {
+            "kind": "add",
+            "content": "    const retry = (await (await post(START)).json()) as { id: string };",
+            "newLine": 150
+          },
+          {
+            "kind": "add",
+            "content": "    expect(retry.id).not.toBe(started.id);",
+            "newLine": 151
+          },
+          { "kind": "add", "content": "  });", "newLine": 152 }
+        ]
+      }
+    ],
+    "skipped": [{ "reason": "no_diff", "files": 1, "lines": 0 }],
+    "checks": [],
+    "messages": [],
+    "content": {
+      "title": "Walkthroughs: checked, citation-only reviews of a PR stack, behind an experiment",
+      "intent": "This stack adds Walkthroughs: an API-started agent Turn that writes a structured review of a PR stack, where every citation is re-checked against GitHub before it is stored.",
+      "diagram": {
+        "nodes": [
+          { "id": "click", "label": "Person clicks", "column": 0, "row": 0 },
+          {
+            "id": "route",
+            "label": "POST /api/walkthroughs",
+            "column": 1,
+            "row": 0
+          },
+          { "id": "version", "label": "Version row", "column": 2, "row": 0 },
+          {
+            "id": "lists",
+            "label": "Conversation lists",
+            "column": 2,
+            "row": 1
+          },
+          { "id": "turn", "label": "Generation Turn", "column": 3, "row": 0 },
+          { "id": "sandbox", "label": "Model sandbox", "column": 3, "row": 1 },
+          {
+            "id": "hooks",
+            "label": "GitHub codeChanges hooks",
+            "column": 2,
+            "row": 3
+          },
+          {
+            "id": "submit",
+            "label": "submitWalkthrough",
+            "column": 4,
+            "row": 0
+          },
+          { "id": "validator", "label": "Validator", "column": 4, "row": 1 },
+          {
+            "id": "storage",
+            "label": "Document storage",
+            "column": 4,
+            "row": 2
+          }
+        ],
+        "edges": [
+          { "id": "e-click", "from": "click", "to": "route", "label": "click" },
+          {
+            "id": "e-stack",
+            "from": "route",
+            "to": "hooks",
+            "label": "readStack"
+          },
+          {
+            "id": "e-claim",
+            "from": "route",
+            "to": "version",
+            "label": "claim snapshot"
+          },
+          {
+            "id": "e-queue",
+            "from": "route",
+            "to": "turn",
+            "label": "queue Turn"
+          },
+          {
+            "id": "e-hide",
+            "from": "version",
+            "to": "lists",
+            "label": "hidden from"
+          },
+          {
+            "id": "e-explore",
+            "from": "turn",
+            "to": "sandbox",
+            "label": "reads diff"
+          },
+          {
+            "id": "e-submit",
+            "from": "turn",
+            "to": "submit",
+            "label": "submit"
+          },
+          {
+            "id": "e-reread",
+            "from": "submit",
+            "to": "hooks",
+            "label": "re-read diff"
+          },
+          {
+            "id": "e-check",
+            "from": "submit",
+            "to": "validator",
+            "label": "validate"
+          },
+          {
+            "id": "e-store",
+            "from": "submit",
+            "to": "storage",
+            "label": "store document"
+          },
+          {
+            "id": "e-ready",
+            "from": "submit",
+            "to": "version",
+            "label": "mark ready"
+          },
+          {
+            "id": "e-finish",
+            "from": "turn",
+            "to": "version",
+            "label": "fail on end"
+          }
+        ]
+      },
+      "chapters": [
+        {
+          "id": "gap",
+          "caption": "A model summary of a PR can quote code that does not exist, so the model may only cite.",
+          "body": "Reviewers of an agent-written stack get either the raw diff or a summary that can invent code. The Walkthrough format fixes the shape: the model cites PRs, files, line ranges and message seqs, never copies text, and each change type has fixed slots [1].",
+          "view": {
+            "show": [
+              "turn",
+              "sandbox",
+              "submit",
+              "validator",
+              "storage",
+              "e-submit",
+              "e-check",
+              "e-store"
+            ],
+            "highlight": ["sandbox"],
+            "added": [],
+            "broken": []
+          },
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3087,
+              "path": "packages/junior/src/chat/walkthroughs/schema.ts",
+              "side": "head",
+              "start": 1,
+              "end": 38,
+              "note": "Contract: cite, never copy; fixed slots per change type"
+            }
+          ],
+          "decisions": [],
+          "asks": ["Why not let the model quote code directly?"],
+          "type": "feature",
+          "slot": "gap"
+        },
+        {
+          "id": "format",
+          "caption": "A pure validator, diff parser, and excerpt builder decide what may be stored.",
+          "body": "validateWalkthrough returns problems: unresolved citations, uncited markers, wrong slots, a cause with no code, and any hunk neither cited nor in not_covered [1]. Mechanical files are dropped before the model sees them and only counted [2]. Excerpts are copied from the provider diff, not from model output [3].",
+          "view": {
+            "show": ["submit", "validator", "storage", "e-check", "e-store"],
+            "highlight": ["validator"],
+            "added": ["validator"],
+            "broken": []
+          },
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3087,
+              "path": "packages/junior/src/chat/walkthroughs/validate.ts",
+              "side": "head",
+              "start": 43,
+              "end": 96
+            },
+            {
+              "kind": "code",
+              "pr": 3087,
+              "path": "packages/junior/src/chat/walkthroughs/diff.ts",
+              "side": "head",
+              "start": 125,
+              "end": 150
+            },
+            {
+              "kind": "code",
+              "pr": 3087,
+              "path": "packages/junior/src/chat/walkthroughs/excerpts.ts",
+              "side": "head",
+              "start": 15,
+              "end": 49
+            }
+          ],
+          "decisions": [],
+          "asks": [
+            "What counts as a mechanical file?",
+            "Can a citation point outside the diff?"
+          ],
+          "type": "feature",
+          "slot": "change"
+        },
+        {
+          "id": "hooks",
+          "caption": "Plugins get a read-only codeChanges hook group so core never calls GitHub itself.",
+          "body": "Core must not call provider APIs, so 3088 adds an optional codeChanges group: readStack, readDiff and readFile, which return undefined only for missing items [2]. Their context carries plugin egress [1]. Core picks the plugin by provider name and gives it a system Actor whose auth handler never prompts anyone [3].",
+          "view": {
+            "show": ["hooks", "route", "submit", "e-stack", "e-reread"],
+            "highlight": ["hooks"],
+            "added": ["hooks"],
+            "broken": []
+          },
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3088,
+              "path": "packages/junior-plugin-api/src/code.ts",
+              "side": "head",
+              "start": 2,
+              "end": 3
+            },
+            {
+              "kind": "code",
+              "pr": 3088,
+              "path": "packages/junior-plugin-api/src/code.ts",
+              "side": "head",
+              "start": 91,
+              "end": 117
+            },
+            {
+              "kind": "code",
+              "pr": 3088,
+              "path": "packages/junior/src/chat/plugins/code-change-hooks.ts",
+              "side": "head",
+              "start": 105,
+              "end": 133
+            }
+          ],
+          "decisions": [],
+          "asks": ["Which credentials do these reads use?"],
+          "type": "feature",
+          "slot": "change"
+        },
+        {
+          "id": "github-reads",
+          "caption": "GitHub reads the open stack around a PR and diffs exact commits.",
+          "body": "readStack asks the Stacks API, falls back to walking base branches, and drops merged or closed layers except the one asked for [1]. The walk stops at the trunk, a fork in the chain, or 10 levels [2][4]. readDiff compares the exact base and head SHAs, so a later push cannot change what is described [3].",
+          "view": {
+            "show": ["route", "hooks", "e-stack"],
+            "highlight": ["hooks"],
+            "added": [],
+            "broken": []
+          },
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3088,
+              "path": "packages/junior-github/src/code-changes.ts",
+              "side": "head",
+              "start": 81,
+              "end": 116
+            },
+            {
+              "kind": "code",
+              "pr": 3088,
+              "path": "packages/junior-github/src/code-changes.ts",
+              "side": "head",
+              "start": 143,
+              "end": 180
+            },
+            {
+              "kind": "code",
+              "pr": 3088,
+              "path": "packages/junior-github/src/code-changes.ts",
+              "side": "head",
+              "start": 182,
+              "end": 203
+            },
+            {
+              "kind": "code",
+              "pr": 3088,
+              "path": "packages/junior-github/tests/code-changes.test.ts",
+              "side": "head",
+              "start": 89,
+              "end": 119
+            }
+          ],
+          "decisions": [
+            {
+              "id": "fork-prs",
+              "question": "The fallback walk matches parents by owner:branch, so a stacked PR whose head is in a fork is not found. Is that acceptable?",
+              "origin": { "kind": "not_asked" },
+              "evidence": 1
+            }
+          ],
+          "asks": ["What happens when the repo has no Stacks API?"],
+          "type": "feature",
+          "slot": "change"
+        },
+        {
+          "id": "versions-table",
+          "caption": "Each generation gets a version row, and one live version is allowed per snapshot.",
+          "body": "Migration 0100 adds junior_walkthrough_versions with a partial unique index: one non-failed version per provider, repository and snapshot key [1][2]. startWalkthroughVersion inserts with onConflictDoNothing and returns the live row on conflict, so a second click joins instead of generating twice [3][4].",
+          "view": {
+            "show": ["route", "version", "storage", "e-claim"],
+            "highlight": ["version"],
+            "added": ["version"],
+            "broken": []
+          },
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3090,
+              "path": "packages/junior/migrations/0100_walkthrough_versions.sql",
+              "side": "head",
+              "start": 1,
+              "end": 20
+            },
+            {
+              "kind": "code",
+              "pr": 3090,
+              "path": "packages/junior/src/db/schema/walkthroughs.ts",
+              "side": "head",
+              "start": 39,
+              "end": 75
+            },
+            {
+              "kind": "code",
+              "pr": 3090,
+              "path": "packages/junior/src/chat/walkthroughs/store.ts",
+              "side": "head",
+              "start": 50,
+              "end": 87
+            },
+            {
+              "kind": "code",
+              "pr": 3090,
+              "path": "packages/junior/tests/integration/walkthrough-versions.test.ts",
+              "side": "head",
+              "start": 104,
+              "end": 142
+            }
+          ],
+          "decisions": [
+            {
+              "id": "no-fk",
+              "question": "generation_conversation_id has no foreign key, so a deleted generation Conversation leaves its version pointing at nothing. Is that fine?",
+              "origin": { "kind": "not_asked" },
+              "evidence": 1
+            }
+          ],
+          "asks": ["Where does the document itself live?"],
+          "type": "migration",
+          "slot": "change"
+        },
+        {
+          "id": "safe-to-run",
+          "caption": "The migration only adds a table, but every list query gains one NOT EXISTS probe.",
+          "body": "The migration only adds a table and indexes. Its one live effect: listedConversation adds a NOT EXISTS probe on generation_conversation_id to every list and search [1], served by that column's unique index. A test shows a generation Conversation drops out of the list [2]. To roll back, revert code first: the filter needs the table.",
+          "view": {
+            "show": ["version", "lists", "e-hide"],
+            "highlight": ["lists", "e-hide"],
+            "added": ["e-hide"],
+            "broken": []
+          },
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3090,
+              "path": "packages/junior/src/chat/conversations/sql/listed.ts",
+              "side": "head",
+              "start": 10,
+              "end": 19
+            },
+            {
+              "kind": "code",
+              "pr": 3090,
+              "path": "packages/junior/tests/integration/walkthrough-versions.test.ts",
+              "side": "head",
+              "start": 166,
+              "end": 183
+            }
+          ],
+          "decisions": [
+            {
+              "id": "list-probe-cost",
+              "question": "The extra probe on every list and search was measured only on a synthetic 100k-row dataset. Is that enough before it ships?",
+              "origin": { "kind": "missing_signal" },
+              "evidence": 0
+            }
+          ],
+          "asks": ["Does this slow the home list?"],
+          "type": "migration",
+          "slot": "safe_to_run"
+        },
+        {
+          "id": "submit-tool",
+          "caption": "submitWalkthrough re-reads every cited fact from trusted sources before it stores anything.",
+          "body": "The model explores in its untrusted sandbox, led by a skill hidden from other Turns [1], then calls submitWalkthrough [4]. The tool re-reads diffs and head files through the plugin hooks, rebuilds known URLs and message seqs, and returns validator problems as a tool input error to fix [2]. Messages are copied only after an access check [3].",
+          "view": {
+            "show": [
+              "turn",
+              "sandbox",
+              "submit",
+              "hooks",
+              "validator",
+              "storage",
+              "version",
+              "e-explore",
+              "e-submit",
+              "e-reread",
+              "e-check",
+              "e-store",
+              "e-ready"
+            ],
+            "highlight": ["submit"],
+            "added": ["submit"],
+            "broken": []
+          },
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3124,
+              "path": "packages/junior/skills/walkthrough/SKILL.md",
+              "side": "head",
+              "start": 1,
+              "end": 25
+            },
+            {
+              "kind": "code",
+              "pr": 3124,
+              "path": "packages/junior/src/chat/walkthroughs/submit-tool.ts",
+              "side": "head",
+              "start": 123,
+              "end": 150
+            },
+            {
+              "kind": "code",
+              "pr": 3124,
+              "path": "packages/junior/src/chat/walkthroughs/submit-tool.ts",
+              "side": "head",
+              "start": 244,
+              "end": 282
+            },
+            {
+              "kind": "code",
+              "pr": 3124,
+              "path": "packages/junior/src/chat/tools/index.ts",
+              "side": "head",
+              "start": 31,
+              "end": 34
+            }
+          ],
+          "decisions": [
+            {
+              "id": "sandbox-github",
+              "question": "In this generation, gh and git failed with Missing GITHUB_APP_ID. Nothing checks sandbox GitHub access before a generation Turn starts.",
+              "origin": { "kind": "missing_signal" },
+              "evidence": 0
+            }
+          ],
+          "asks": ["What if the model cites a file it never read?"],
+          "type": "feature",
+          "slot": "change"
+        },
+        {
+          "id": "isolation",
+          "caption": "Only a generation Turn gets the submit tool, and it cannot reach people or agents.",
+          "body": "A new WALKTHROUGH_GENERATION behavior is the only one with submitWalkthrough on. It also turns off agents, the review desk, subscriptions, user customization and noReply [1][2]. The tool is built only when that flag and AgentRun.walkthroughGeneration are both set [3][4], and only the Turn worker sets that field.",
+          "view": {
+            "show": ["turn", "submit", "e-submit"],
+            "highlight": ["turn"],
+            "added": [],
+            "broken": []
+          },
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3124,
+              "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+              "side": "head",
+              "start": 95,
+              "end": 133
+            },
+            {
+              "kind": "code",
+              "pr": 3124,
+              "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+              "side": "head",
+              "start": 38,
+              "end": 80,
+              "note": "submitWalkthrough is false for every other behavior"
+            },
+            {
+              "kind": "code",
+              "pr": 3124,
+              "path": "packages/junior/src/chat/tools/index.ts",
+              "side": "head",
+              "start": 253,
+              "end": 258
+            },
+            {
+              "kind": "code",
+              "pr": 3124,
+              "path": "packages/junior/src/chat/agent/index.ts",
+              "side": "head",
+              "start": 308,
+              "end": 314
+            }
+          ],
+          "decisions": [],
+          "asks": ["Could a normal chat Turn call submitWalkthrough?"],
+          "type": "feature",
+          "slot": "change"
+        },
+        {
+          "id": "start-flow",
+          "caption": "A click claims a version, and only the winning click queues one hidden generation Turn.",
+          "body": "POST /api/walkthroughs reads the stack, then claims a version [1]. Only the click that wins the claim creates a public web Conversation whose first message is $walkthrough plus the commits; if enqueue fails, the version fails [2]. A version still generating after 30 minutes is failed on the next click for that snapshot [3][4].",
+          "view": {
+            "show": [
+              "click",
+              "route",
+              "hooks",
+              "version",
+              "turn",
+              "e-click",
+              "e-stack",
+              "e-claim",
+              "e-queue"
+            ],
+            "highlight": ["route"],
+            "added": ["route", "e-queue"],
+            "broken": []
+          },
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3133,
+              "path": "packages/junior/src/api/walkthroughs/routes.ts",
+              "side": "head",
+              "start": 93,
+              "end": 118
+            },
+            {
+              "kind": "code",
+              "pr": 3133,
+              "path": "packages/junior/src/chat/walkthroughs/generation.ts",
+              "side": "head",
+              "start": 96,
+              "end": 135
+            },
+            {
+              "kind": "code",
+              "pr": 3133,
+              "path": "packages/junior/src/chat/walkthroughs/store.ts",
+              "side": "head",
+              "start": 19,
+              "end": 20
+            },
+            {
+              "kind": "code",
+              "pr": 3133,
+              "path": "packages/junior/src/chat/walkthroughs/store.ts",
+              "side": "head",
+              "start": 70,
+              "end": 89
+            }
+          ],
+          "decisions": [
+            {
+              "id": "runs-as-clicker",
+              "question": "The generation Turn runs as the person who clicked, in a public Conversation. Should its sandbox use that person's credentials?",
+              "origin": { "kind": "not_asked" },
+              "evidence": 1
+            }
+          ],
+          "asks": [
+            "What if two people click at once?",
+            "Is the source Conversation always used?"
+          ],
+          "type": "feature",
+          "slot": "change"
+        },
+        {
+          "id": "finish",
+          "caption": "A generation Turn that completes without a Walkthrough fails its version so a retry can start.",
+          "body": "The Turn worker looks up the generating version by Conversation id and passes it into the run [1][2]. When the Turn completes, finish() fails the version unless submitWalkthrough already marked it ready [3]. The thrown-error and cancel paths never call finish(), so those versions wait for the 30-minute reaper [4].",
+          "view": {
+            "show": ["turn", "version", "e-finish"],
+            "highlight": ["e-finish"],
+            "added": ["e-finish"],
+            "broken": []
+          },
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3133,
+              "path": "packages/junior/src/chat/task-execution/conversation-turn.ts",
+              "side": "head",
+              "start": 56,
+              "end": 56
+            },
+            {
+              "kind": "code",
+              "pr": 3133,
+              "path": "packages/junior/src/chat/task-execution/conversation-turn.ts",
+              "side": "head",
+              "start": 680,
+              "end": 712
+            },
+            {
+              "kind": "code",
+              "pr": 3133,
+              "path": "packages/junior/src/chat/task-execution/conversation-turn.ts",
+              "side": "head",
+              "start": 773,
+              "end": 773
+            },
+            {
+              "kind": "code",
+              "pr": 3133,
+              "path": "packages/junior/src/chat/task-execution/conversation-turn.ts",
+              "side": "head",
+              "start": 919,
+              "end": 930,
+              "note": "Error and cancel paths; no finish() call"
+            }
+          ],
+          "decisions": [
+            {
+              "id": "error-path-finish",
+              "question": "Should a thrown or stopped generation Turn fail its version right away instead of waiting for a click after 30 minutes?",
+              "origin": { "kind": "not_asked" },
+              "evidence": 3
+            }
+          ],
+          "asks": ["What happens to a Turn that yields and resumes?"],
+          "type": "feature",
+          "slot": "change"
+        },
+        {
+          "id": "limits",
+          "caption": "Generation Turns get their own cap of 80 tool calls and $5.",
+          "body": "TurnBehavior gains optional limits, and the generation behavior sets 80 tool calls and $5 [1][2]. The agent run reads them and falls back to the app defaults [3], then uses them in the existing limit gate and error messages [4]. Other Turns keep the same limits as before.",
+          "view": {
+            "show": ["turn"],
+            "highlight": ["turn"],
+            "added": [],
+            "broken": []
+          },
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3133,
+              "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+              "side": "head",
+              "start": 40,
+              "end": 41
+            },
+            {
+              "kind": "code",
+              "pr": 3133,
+              "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+              "side": "head",
+              "start": 114,
+              "end": 115
+            },
+            {
+              "kind": "code",
+              "pr": 3133,
+              "path": "packages/junior/src/chat/agent/index.ts",
+              "side": "head",
+              "start": 315,
+              "end": 317
+            },
+            {
+              "kind": "code",
+              "pr": 3133,
+              "path": "packages/junior/src/chat/agent/index.ts",
+              "side": "head",
+              "start": 1094,
+              "end": 1112
+            }
+          ],
+          "decisions": [
+            {
+              "id": "limit-values",
+              "question": "The 80-call and $5 caps are not yet backed by real cost runs, which the PR defers. Are they safe defaults?",
+              "origin": { "kind": "assumed" },
+              "evidence": 1
+            }
+          ],
+          "asks": ["Do the limits change for normal Turns?"],
+          "type": "feature",
+          "slot": "change"
+        },
+        {
+          "id": "after-ship",
+          "caption": "Version status, failure reason, and summed cost show whether generations work.",
+          "body": "GET /api/walkthroughs/:id returns status, failure reason, and cost summed from the generation Conversation's cost_usd metric rows, and returns 404 if the source turns private [1][2]. After enabling experimental.walkthroughs, watch ready versus failed rows and their cost; a Turn that ends without a Walkthrough shows as failed [3].",
+          "view": {
+            "show": ["route", "version", "storage"],
+            "highlight": ["version"],
+            "added": [],
+            "broken": []
+          },
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3133,
+              "path": "packages/junior/src/api/walkthroughs/routes.ts",
+              "side": "head",
+              "start": 26,
+              "end": 74
+            },
+            {
+              "kind": "code",
+              "pr": 3133,
+              "path": "packages/junior/src/chat/walkthroughs/store.ts",
+              "side": "head",
+              "start": 147,
+              "end": 167
+            },
+            {
+              "kind": "code",
+              "pr": 3133,
+              "path": "packages/junior/tests/integration/walkthrough-generation.test.ts",
+              "side": "head",
+              "start": 138,
+              "end": 152
+            }
+          ],
+          "decisions": [
+            {
+              "id": "no-outcome-metric",
+              "question": "No metric or log counts ready versus failed versions or reaper timeouts; outcomes show only in version rows.",
+              "origin": { "kind": "missing_signal" },
+              "evidence": 0
+            }
+          ],
+          "asks": ["How do we know generations succeed in production?"],
+          "type": "ship_check",
+          "slot": "after_ship"
+        }
+      ],
+      "splits": [
+        {
+          "pr": 3124,
+          "reason": "Mixes the submit tool feature with a mechanical snake_case rename of not_covered and check_id."
+        }
+      ],
+      "not_covered": [
+        {
+          "pr": 3087,
+          "path": "packages/junior/tests/unit/walkthroughs/diff.test.ts",
+          "reason": "Unit tests of patch parsing, skip counts, and excerpts."
+        },
+        {
+          "pr": 3087,
+          "path": "packages/junior/tests/unit/walkthroughs/validate.test.ts",
+          "reason": "Unit tests of each validator rule."
+        },
+        {
+          "pr": 3088,
+          "path": "packages/junior-github/src/plugin.ts",
+          "reason": "Registers githubCodeChangeHooks on the GitHub plugin."
+        },
+        {
+          "pr": 3088,
+          "path": "packages/junior-plugin-api/src/hooks.ts",
+          "reason": "Adds the optional codeChanges field to PluginHooks."
+        },
+        {
+          "pr": 3090,
+          "path": "packages/junior/migrations/meta/_journal.json",
+          "reason": "Generated migration journal entry."
+        },
+        {
+          "pr": 3090,
+          "path": "packages/junior/src/db/schema.ts",
+          "reason": "Re-exports the new table."
+        },
+        {
+          "pr": 3124,
+          "path": "packages/junior/src/chat/agent/tools.ts",
+          "reason": "Passes walkthroughGeneration into the tool context."
+        },
+        {
+          "pr": 3124,
+          "path": "packages/junior/src/chat/agent/types.ts",
+          "reason": "Adds the optional AgentRun field."
+        },
+        {
+          "pr": 3124,
+          "path": "packages/junior/src/chat/tools/types.ts",
+          "reason": "Adds the optional tool context field."
+        },
+        {
+          "pr": 3124,
+          "path": "packages/junior/src/chat/walkthroughs/schema.ts",
+          "reason": "Renames notCovered and checkId to snake_case."
+        },
+        {
+          "pr": 3124,
+          "path": "packages/junior/src/chat/walkthroughs/validate.ts",
+          "reason": "Follows the snake_case rename."
+        },
+        {
+          "pr": 3124,
+          "path": "packages/junior/tests/integration/walkthrough-versions.test.ts",
+          "reason": "Integration test of the tool gate and the stored document."
+        },
+        {
+          "pr": 3124,
+          "path": "packages/junior/tests/unit/chat/kind-behavior.test.ts",
+          "reason": "Asserts the new behavior row."
+        },
+        {
+          "pr": 3124,
+          "path": "packages/junior/tests/unit/walkthroughs/validate.test.ts",
+          "reason": "Follows the snake_case rename."
+        },
+        {
+          "pr": 3133,
+          "path": "packages/docs/src/content/docs/reference/config-and-env.md",
+          "reason": "Documents the walkthroughs experiment flag."
+        },
+        {
+          "pr": 3133,
+          "path": "packages/junior/src/api.ts",
+          "reason": "Mounts the routes at /api/walkthroughs."
+        },
+        {
+          "pr": 3133,
+          "path": "packages/junior/src/api/schema/walkthrough.ts",
+          "reason": "Request and response schemas for the routes."
+        },
+        {
+          "pr": 3133,
+          "path": "packages/junior/src/chat/experimental.ts",
+          "reason": "Adds the walkthroughs flag name."
+        },
+        {
+          "pr": 3133,
+          "path": "packages/junior/src/chat/plugins/code-change-hooks.ts",
+          "reason": "Adds canReadCodeChanges, a provider check used by startWalkthrough."
+        },
+        {
+          "pr": 3133,
+          "path": "packages/junior/tests/unit/chat/kind-behavior.test.ts",
+          "reason": "Asserts the new limits."
+        }
+      ]
+    },
+    "updates": [],
+    "meta": {
+      "modelId": "anthropic/claude-opus-5.5",
+      "promptVersion": 1,
+      "createdAt": "2026-11-11T01:11:20.310Z"
+    }
+  }
+}

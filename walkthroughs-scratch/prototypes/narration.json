@@ -1,0 +1,13 @@
+{
+  "3153-1": "In sentry-docs, a weekly sync PR merges master into java-v9, while a long-lived collection PR goes the other way. When the sync merged, GitHub closed the collection PR too. Nobody had merged it.",
+  "3153-2": "Junior builds a stack by walking from a PR to the PR below it. Here that's a circle: seven-oh-one to seven-hundred and straight back, so the chain fills with repeats until the depth limit gives up.",
+  "3153-3": "With the fix, the same test stops before the walk even starts. The sync PR comes from master, the trunk, and that is never stacked work.",
+  "3153-4": "Two feature branches can still point at each other. Now the walk checks the chain first, sees seven-oh-one again, and stops instead of looping.",
+  "3153-5": "Run the two new tests on both commits. Before the fix, both build an eleven-PR stack and fail. After it, neither builds a stack, and Junior never calls the Stacks API.",
+  "3153-6": "One case stays open. A feature PR into java-v9 still stacks on the collection PR, and merging that stack as a group could land java-v9 on master early.",
+  "3071-1": "Five places in Junior list or search Conversations, and each one repeats the same two checks. Walkthroughs need to hide their generation runs, and with five copies, one would get missed.",
+  "3071-2": "This PR moves both checks into one function, listed Conversation, and all five call it. Each query keeps its own access filters and sort order.",
+  "3071-3": "Reviewing it is mechanical. Every query loses the same two checks and gains one call. Three have small extra edits, and none of them changes which rows match.",
+  "3071-4": "The test watches the feed token around a quick question. It stays the same while the question is unkept, and changes on Keep. If the check went missing, it would change too early.",
+  "3071-5": "Retention and a few other places mean is a root, not is shown, so they keep their own filter. Otherwise, hidden Conversations would never be purged."
+}

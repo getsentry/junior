@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Walkthrough as an assurance case</title>
+<style>
+  :root{--bg:#EEECE7;--paper:#FAF9F6;--ink:#22211F;--mid:#7D7A73;--line:#C9C5BC;--faint:#E4E1DA;--acc:#2D62D8;--bad:#C2372D;--ok:#2F7D4F;--warn:#A86A12;
+    --serif:"Iowan Old Style",Charter,Georgia,"Noto Serif",serif;--mono:"SF Mono",ui-monospace,Menlo,Consolas,"DejaVu Sans Mono",monospace}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.5 var(--serif)}
+  nav{position:sticky;top:0;z-index:2;display:flex;gap:6px;justify-content:center;padding:14px;background:rgba(238,236,231,.92);backdrop-filter:blur(6px)}
+  nav a{font:13px var(--mono);color:var(--mid);text-decoration:none;border:1px solid var(--line);border-radius:99px;padding:6px 14px;background:var(--paper)}
+  nav a:hover{color:var(--ink);border-color:var(--ink)}
+  main{max-width:860px;margin:0 auto;padding:8px 20px 80px;display:grid;gap:56px}
+  article{background:var(--paper);border:1px solid var(--faint);border-radius:12px;padding:40px 48px}
+  .kicker{font:12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mid);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .kicker a{color:var(--mid)}
+  .tier{font:12px var(--mono);letter-spacing:.06em;text-transform:uppercase;border-radius:99px;padding:3px 10px;border:1px solid}
+  .tier.low{color:var(--ok);border-color:var(--ok)}.tier.med{color:var(--warn);border-color:var(--warn)}
+  h1{margin:10px 0 6px;font:600 32px/1.2 var(--serif);letter-spacing:-.01em}
+  .verdict{font:14px var(--mono);color:var(--ink);background:#F2F0EB;border-radius:8px;padding:10px 14px;margin:18px 0 0}
+  .verdict b{font-weight:500}
+  h2{margin:34px 0 10px;font:12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mid)}
+  p{margin:0 0 10px}
+  .intent{font-size:20px;line-height:1.45}
+  .src{font:13px var(--mono);color:var(--mid)}
+  .decision{border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:#fff}
+  .decision p{margin:0 0 6px}
+  .decision .why{color:var(--mid);font-size:16px}
+  .decision .btns{display:flex;gap:8px;margin-top:10px}
+  .decision button{font:13px var(--mono);border:1px solid var(--line);background:var(--paper);border-radius:99px;padding:6px 14px;cursor:pointer;color:var(--ink)}
+  .decision button:hover{border-color:var(--ink)}
+  .decision button.sel{background:var(--acc);border-color:var(--acc);color:#fff}
+  table{width:100%;border-collapse:collapse}
+  td{vertical-align:top;padding:12px 0;border-top:1px solid var(--faint)}
+  td.claim{width:42%;padding-right:18px}
+  td.ev{color:var(--mid);font-size:15.5px;padding-right:14px}
+  td.st{width:96px;text-align:right}
+  .s{font:11px var(--mono);letter-spacing:.06em;text-transform:uppercase;border-radius:99px;padding:3px 8px;white-space:nowrap}
+  .s.proven{background:#E6F2EA;color:var(--ok)}
+  .s.supported{background:#E9EEF9;color:var(--acc)}
+  .s.asserted{background:#F6EEDC;color:var(--warn)}
+  .s.notshown{background:#FBEFEC;color:var(--bad)}
+  .legend{font:12px var(--mono);color:var(--mid);margin-top:8px;display:flex;gap:14px;flex-wrap:wrap}
+  .lines li{margin-bottom:8px}
+  code{font:14px var(--mono);background:#F2F0EB;border-radius:4px;padding:1px 5px}
+  ul{margin:0;padding-left:20px}
+  .proof{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;align-items:center;margin:12px 0 4px;font:13px var(--mono)}
+  .proof .row{display:flex;gap:3px}
+  .proof .sq{width:10px;height:20px;border-radius:2px;background:#FBEFEC;border:1px solid var(--bad)}
+  .proof .lbl{color:var(--mid)}
+  .proof .bad{color:var(--bad)}.proof .ok{color:var(--ok)}
+  .note{font:13px var(--mono);color:var(--mid);margin-top:30px;border-top:1px solid var(--faint);padding-top:14px}
+</style>
+</head>
+<body>
+<nav><a href="#c3153">#3153 bug fix</a><a href="#c3071">#3071 refactor</a><a href="#c3131">#3131 feature</a><a href="./">all prototypes</a></nav>
+<main>
+
+<!-- ============ #3153 ============ -->
+<article id="c3153">
+  <div class="kicker"><a href="https://github.com/getsentry/junior/pull/3153">#3153</a> · bug fix · github plugin <span class="tier med">medium risk · reversible</span></div>
+  <h1>Stop stacking sync PRs and looping base branches</h1>
+  <div class="verdict"><b>You need to:</b> rule on 2 decisions · accept 1 open gap · read 2 lines</div>
+
+  <h2>Intent</h2>
+  <p class="intent">In sentry-docs, Junior stacked a weekly sync PR (<code>master</code> into <code>java-v9</code>) on a collection PR going the other way. Merging the sync made GitHub close the collection PR as merged. This PR makes Junior refuse to stack in that case, and whenever base branches loop.</p>
+  <p class="src">Why: from the PR body. The source Slack thread isn't readable, so no discussion was used.</p>
+
+  <h2>Decisions to rule on</h2>
+  <div class="decision"><p>When base branches loop, leave the PR unstacked instead of stacking the part below the loop.</p><p class="why">Tradeoff: a real stack that touches a loop loses stacking, and nobody is told.</p><div class="btns"><button>Agree</button><button>Change</button><button>Ask</button></div></div>
+  <div class="decision"><p>The new skips get no log line.</p><p class="why">Tradeoff: less noise, but nobody can tell how often loops happen or that the fix fired.</p><div class="btns"><button>Agree</button><button>Change</button><button>Ask</button></div></div>
+
+  <h2>Claims and evidence</h2>
+  <table>
+    <tr><td class="claim">The root cause is a walk that never notices it has been somewhere before. Only the depth limit stops it.</td><td class="ev">Recorded run of the PR's new test at base <code>4fc0a41</code>: the chain fills to 11 alternating #701 / #700, then Junior calls stack create.</td><td class="st"><span class="s proven">proven</span></td></tr>
+    <tr><td class="claim">A PR whose head is the trunk now returns no stack.</td><td class="ev">Guard at line 77. Recorded head run stops there with an empty chain.</td><td class="st"><span class="s proven">proven</span></td></tr>
+    <tr><td class="claim">A loop between two feature branches now stops on the repeat.</td><td class="ev"><code>chain.includes</code> at line 130. Recorded head run stops on the second #701.</td><td class="st"><span class="s proven">proven</span></td></tr>
+    <tr><td class="claim">Both new tests fail before the fix and pass after it.</td><td class="ev"><div class="proof"><span class="lbl">before</span><span class="row"><i class="sq"></i><i class="sq"></i><i class="sq"></i><i class="sq"></i><i class="sq"></i><i class="sq"></i><i class="sq"></i><i class="sq"></i><i class="sq"></i><i class="sq"></i><i class="sq"></i>&nbsp;<span class="bad">stack of 11 · fails ×2</span></span><span class="lbl">after</span><span class="ok">no stack · passes ×2</span></div></td><td class="st"><span class="s proven">proven</span></td></tr>
+    <tr><td class="claim">Normal stacks still work.</td><td class="ev">The existing stacking test passes, and now also fails if the walk steps past the trunk.</td><td class="st"><span class="s supported">supported</span></td></tr>
+    <tr><td class="claim">The incident is exactly this bug.</td><td class="ev">The PR body describes the incident. Nobody replayed the real sentry-docs PRs.</td><td class="st"><span class="s asserted">asserted</span></td></tr>
+  </table>
+  <div class="legend"><span><span class="s proven">proven</span> a run shows it</span><span><span class="s supported">supported</span> a test covers it</span><span><span class="s asserted">asserted</span> stated, not shown</span><span><span class="s notshown">not shown</span> no evidence</span></div>
+
+  <h2>Open gap to accept</h2>
+  <p>A feature PR into <code>java-v9</code> still stacks on the collection PR. Merged as a group, it could land <code>java-v9</code> on <code>master</code> early. Not fixed here.</p>
+  <div class="decision"><p>Ship with this gap and handle long-lived branches separately.</p><div class="btns"><button>Accept</button><button>Block</button><button>Ask</button></div></div>
+
+  <h2>Read these lines</h2>
+  <ul class="lines">
+    <li><b>Line 77, the trunk guard:</b> it decides which PRs are never stacked, so a wrong condition silently disables stacking.</li>
+    <li><b>Line 130, the repeat check:</b> it's the only exit from the walk besides the depth limit.</li>
+  </ul>
+
+  <h2>After merge</h2>
+  <p>Nothing to watch, because the skips aren't logged. That's the second decision above.</p>
+  <p class="note">Prototype. Evidence comes from runs recorded by hand in a sandbox, which Junior would do itself in the product. Line numbers are at head <code>7c74ace</code>.</p>
+</article>
+
+<!-- ============ #3071 ============ -->
+<article id="c3071">
+  <div class="kicker"><a href="https://github.com/getsentry/junior/pull/3071">#3071</a> · refactor · conversations <span class="tier low">low risk · reversible</span></div>
+  <h1>Share one filter for listed Conversations</h1>
+  <div class="verdict"><b>You need to:</b> rule on 2 decisions · check 1 asserted claim · read 2 places</div>
+
+  <h2>Intent</h2>
+  <p class="intent">Five queries each repeat the rule "a root, and not an unkept Quick question". Walkthroughs need to hide their generation runs too, and with five copies one would be missed. This PR moves the rule into one function, <code>listedConversation()</code>. It's meant to change no behavior.</p>
+  <p class="src">Why: from the source Conversation, where the next feature depends on this.</p>
+
+  <h2>Decisions to rule on</h2>
+  <div class="decision"><p>Share one SQL condition, not a shared list query with options.</p><p class="why">Tradeoff: each caller keeps its own select, access filters and sort, so the five queries still differ in shape.</p><div class="btns"><button>Agree</button><button>Change</button><button>Ask</button></div></div>
+  <div class="decision"><p>Dashboard stats and Location pages keep their root-only filter for now.</p><p class="why">Tradeoff: they may already count unkept Quick questions, and will count Walkthrough runs once those are hidden.</p><div class="btns"><button>Agree</button><button>Change</button><button>Ask</button></div></div>
+
+  <h2>Claims and evidence</h2>
+  <table>
+    <tr><td class="claim">All five queries lose the same two conditions and call <code>listedConversation()</code> instead.</td><td class="ev">Conversation list, feed change token, Board, agent search, Brief search. Three have small extra edits: the Board call moves before <code>archivedAt</code>, agent search keeps its own root check, and an unused import goes.</td><td class="st"><span class="s supported">supported</span></td></tr>
+    <tr><td class="claim">No query matches different rows than before.</td><td class="ev">The PR body says the captured SQL matches before and after, apart from grouping and the Board reorder. Not re-run.</td><td class="st"><span class="s asserted">asserted</span></td></tr>
+    <tr><td class="claim">The feed change token ignores unkept Quick questions.</td><td class="ev">The fork test reads the token: unchanged while the question is unkept, changed on Keep. The PR body says it fails without the condition.</td><td class="st"><span class="s supported">supported</span></td></tr>
+    <tr><td class="claim">Retention, delivery pause, Location and participants are correctly left out.</td><td class="ev">They mean "is a root", not "is shown". Otherwise hidden Conversations would never be purged. The doc comment on the helper says so.</td><td class="st"><span class="s asserted">asserted</span></td></tr>
+  </table>
+
+  <h2>Read these lines</h2>
+  <ul class="lines">
+    <li><b><code>listed.ts</code>:</b> the whole rule now lives here, so a mistake leaks hidden Conversations into every list at once.</li>
+    <li><b>The Board query:</b> the only call site where the order changed.</li>
+  </ul>
+
+  <h2>After merge</h2>
+  <p>List and search counts should not change. A drop or jump right after deploy means the rule moved wrong.</p>
+</article>
+
+<!-- ============ #3131 ============ -->
+<article id="c3131">
+  <div class="kicker"><a href="https://github.com/getsentry/junior/pull/3131">#3131</a> · feature · dashboard <span class="tier low">low risk · reversible</span></div>
+  <h1>Show skill text from every $skill-name reference</h1>
+  <div class="verdict"><b>You need to:</b> rule on 2 decisions · resolve 1 evidence gap · read 1 place</div>
+
+  <h2>Intent</h2>
+  <p class="intent">In the Automation editor, "View skill" led to pages that don't show what the skill tells Junior. Now every <code>$skill-name</code> opens the skill's text in a drawer, served by a new <code>GET /api/skills/:name</code>.</p>
+  <p class="src">Why: from the source Slack thread, which asked for a way to load and show a skill's text.</p>
+
+  <h2>Decisions to rule on</h2>
+  <div class="decision"><p>A drawer instead of a skill page.</p><p class="why">Tradeoff: the reader keeps their place in the editor, but a skill has no URL to link to.</p><div class="btns"><button>Agree</button><button>Change</button><button>Ask</button></div></div>
+  <div class="decision"><p>Show what the author wrote, not the text the model receives.</p><p class="why">Tradeoff: the preamble Junior adds when it loads a skill is invisible here.</p><div class="btns"><button>Agree</button><button>Change</button><button>Ask</button></div></div>
+
+  <h2>Claims and evidence</h2>
+  <table>
+    <tr><td class="claim">The endpoint returns the list fields plus the body without frontmatter.</td><td class="ev">API test: the result matches its list entry, and the body doesn't start with <code>---</code>.</td><td class="st"><span class="s supported">supported</span></td></tr>
+    <tr><td class="claim">An unknown name returns 404.</td><td class="ev">API test.</td><td class="st"><span class="s supported">supported</span></td></tr>
+    <tr><td class="claim">"View skill" opens the drawer, and Raw shows the source.</td><td class="ev">e2e test, which also saves the <code>automation-skill-drawer</code> screenshot.</td><td class="st"><span class="s proven">proven</span></td></tr>
+    <tr><td class="claim">The drawer says a skill is no longer installed when it's gone.</td><td class="ev">In the code only. No test covers it.</td><td class="st"><span class="s asserted">asserted</span></td></tr>
+    <tr><td class="claim">Only people allowed to see a skill can read its text.</td><td class="ev">Nothing in the PR shows who can call the new endpoint.</td><td class="st"><span class="s notshown">not shown</span></td></tr>
+  </table>
+
+  <h2>Evidence gap to resolve</h2>
+  <p>The new endpoint serves skill bodies. Check that it uses the same access rules as the skill list before approving.</p>
+
+  <h2>Read these lines</h2>
+  <ul class="lines">
+    <li><b>The <code>/api/skills/:name</code> route:</b> its access check and how it strips the frontmatter.</li>
+  </ul>
+
+  <h2>After merge</h2>
+  <p>Watch 404s from the drawer. A spike means references point at skills that aren't installed.</p>
+  <p class="note">Prototype. I haven't checked the "not shown" access claim in the code. It's flagged because the evidence doesn't cover it, not because the code is known to be wrong.</p>
+</article>
+
+</main>
+<script>
+document.querySelectorAll(".decision").forEach((d) => d.querySelectorAll("button").forEach((b) => b.onclick = () => d.querySelectorAll("button").forEach((x) => x.classList.toggle("sel", x === b))));
+</script>
+</body>
+</html>

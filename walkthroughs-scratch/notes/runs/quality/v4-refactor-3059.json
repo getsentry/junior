@@ -1,0 +1,2688 @@
+{
+  "id": "62ad4244-b5c6-4dd0-bfb3-b47215f1ff5a",
+  "status": "ready",
+  "provider": "github-local",
+  "repository": "getsentry/junior",
+  "codeChanges": [
+    {
+      "number": 3059,
+      "title": "ref(conversations): Route per-kind behavior through turnBehavior",
+      "url": "https://github.com/getsentry/junior/pull/3059",
+      "headSha": "8cf9873ff435ebaa363e12f9836b2cff0201f475",
+      "baseSha": "95c696ac636eb166130f8fc28890c6f3cc13134e",
+      "additions": 837,
+      "deletions": 143
+    }
+  ],
+  "costUsd": 2.3296658,
+  "generationConversationId": "local:web:672ad3178d83e7e150ea9fb8",
+  "createdAt": "2026-11-11T11:16:34.509Z",
+  "completedAt": "2026-11-11T11:22:52.546Z",
+  "versions": [
+    {
+      "id": "62ad4244-b5c6-4dd0-bfb3-b47215f1ff5a",
+      "status": "ready",
+      "createdAt": "2026-11-11T11:16:34.509Z"
+    }
+  ],
+  "document": {
+    "schemaVersion": 3,
+    "versionId": "62ad4244-b5c6-4dd0-bfb3-b47215f1ff5a",
+    "contentVersionId": "62ad4244-b5c6-4dd0-bfb3-b47215f1ff5a",
+    "repository": "getsentry/junior",
+    "layers": [
+      {
+        "pr": 3059,
+        "title": "ref(conversations): Route per-kind behavior through turnBehavior",
+        "url": "https://github.com/getsentry/junior/pull/3059",
+        "headSha": "8cf9873ff435ebaa363e12f9836b2cff0201f475",
+        "baseSha": "95c696ac636eb166130f8fc28890c6f3cc13134e",
+        "additions": 837,
+        "deletions": 143
+      }
+    ],
+    "excerpts": [
+      {
+        "id": "3059:head:packages/junior/src/chat/conversations/kind-behavior.ts#92-110",
+        "pr": 3059,
+        "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+        "side": "head",
+        "start": 92,
+        "end": 110,
+        "lines": [
+          { "kind": "add", "content": "/**", "newLine": 92 },
+          {
+            "kind": "add",
+            "content": " * Return the behavior of one Turn. `automationRun` marks a Scheduled or Event",
+            "newLine": 93
+          },
+          {
+            "kind": "add",
+            "content": " * automation run. It is a temporary bridge until Conversation kind",
+            "newLine": 94
+          },
+          {
+            "kind": "add",
+            "content": " * `automation` replaces it.",
+            "newLine": 95
+          },
+          { "kind": "add", "content": " *", "newLine": 96 },
+          {
+            "kind": "add",
+            "content": " * TODO(dcramer): Remove `automationRun` when kind `automation` ships.",
+            "newLine": 97
+          },
+          { "kind": "add", "content": " */", "newLine": 98 },
+          {
+            "kind": "add",
+            "content": "export function turnBehavior(args: {",
+            "newLine": 99
+          },
+          {
+            "kind": "add",
+            "content": "  kind: ConversationKind;",
+            "newLine": 100
+          },
+          {
+            "kind": "add",
+            "content": "  personInput: boolean;",
+            "newLine": 101
+          },
+          {
+            "kind": "add",
+            "content": "  automationRun: boolean;",
+            "newLine": 102
+          },
+          { "kind": "add", "content": "}): TurnBehavior {", "newLine": 103 },
+          {
+            "kind": "add",
+            "content": "  if (args.automationRun) return AUTOMATION_RUN;",
+            "newLine": 104
+          },
+          {
+            "kind": "add",
+            "content": "  if (args.kind === \"root\") return ROOT;",
+            "newLine": 105
+          },
+          {
+            "kind": "add",
+            "content": "  if (!args.personInput) return AGENT_IN_CHILD;",
+            "newLine": 106
+          },
+          {
+            "kind": "add",
+            "content": "  if (args.kind === \"thread\") return PERSON_IN_THREAD;",
+            "newLine": 107
+          },
+          {
+            "kind": "add",
+            "content": "  // Only an agent writes input to a task.",
+            "newLine": 108
+          },
+          {
+            "kind": "add",
+            "content": "  throw new Error(\"A task Conversation cannot have a person's input\");",
+            "newLine": 109
+          },
+          { "kind": "add", "content": "}", "newLine": 110 }
+        ]
+      },
+      {
+        "id": "3059:head:packages/junior/src/chat/conversations/kind-behavior.ts#19-39",
+        "pr": 3059,
+        "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+        "side": "head",
+        "start": 19,
+        "end": 39,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "export type TurnBehavior = {",
+            "newLine": 19
+          },
+          { "kind": "add", "content": "  /**", "newLine": 20 },
+          {
+            "kind": "add",
+            "content": "   * `location`: the runtime delivers the final response to the Location.",
+            "newLine": 21
+          },
+          {
+            "kind": "add",
+            "content": "   * `conversation`: the final response stays in the Conversation. A child",
+            "newLine": 22
+          },
+          {
+            "kind": "add",
+            "content": "   * agent's response goes to its parent, and an Automation run posts only its",
+            "newLine": 23
+          },
+          { "kind": "add", "content": "   * declared result.", "newLine": 24 },
+          { "kind": "add", "content": "   */", "newLine": 25 },
+          {
+            "kind": "add",
+            "content": "  delivery: \"location\" | \"conversation\";",
+            "newLine": 26
+          },
+          {
+            "kind": "add",
+            "content": "  promptMode: PromptMode;",
+            "newLine": 27
+          },
+          {
+            "kind": "add",
+            "content": "  /** The Turn must end with its answer tool, or it is reminded once. */",
+            "newLine": 28
+          },
+          { "kind": "add", "content": "  gated: boolean;", "newLine": 29 },
+          { "kind": "add", "content": "  tools: {", "newLine": 30 },
+          {
+            "kind": "add",
+            "content": "    agents: AgentTools;",
+            "newLine": 31
+          },
+          {
+            "kind": "add",
+            "content": "    reviewDesk: boolean;",
+            "newLine": 32
+          },
+          {
+            "kind": "add",
+            "content": "    subscriptions: boolean;",
+            "newLine": 33
+          },
+          {
+            "kind": "add",
+            "content": "    userCustomization: boolean;",
+            "newLine": 34
+          },
+          {
+            "kind": "add",
+            "content": "    reportBlocked: boolean;",
+            "newLine": 35
+          },
+          { "kind": "add", "content": "    noReply: boolean;", "newLine": 36 },
+          {
+            "kind": "add",
+            "content": "    finishAutomationRun: boolean;",
+            "newLine": 37
+          },
+          { "kind": "add", "content": "  };", "newLine": 38 },
+          { "kind": "add", "content": "};", "newLine": 39 }
+        ]
+      },
+      {
+        "id": "3059:head:packages/junior/src/chat/conversations/kind-behavior.ts#56-79",
+        "pr": 3059,
+        "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+        "side": "head",
+        "start": 56,
+        "end": 79,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "// A person's Turn in a Thread runs like a Turn on a root, but it does not",
+            "newLine": 56
+          },
+          {
+            "kind": "add",
+            "content": "// start or message child agents: their results would report to the parent as",
+            "newLine": 57
+          },
+          { "kind": "add", "content": "// the wrong Actor.", "newLine": 58 },
+          {
+            "kind": "add",
+            "content": "const PERSON_IN_THREAD: TurnBehavior = {",
+            "newLine": 59
+          },
+          { "kind": "add", "content": "  ...ROOT,", "newLine": 60 },
+          {
+            "kind": "add",
+            "content": "  tools: { ...ROOT.tools, agents: \"none\" },",
+            "newLine": 61
+          },
+          { "kind": "add", "content": "};", "newLine": 62 },
+          { "kind": "add", "content": "", "newLine": 63 },
+          {
+            "kind": "add",
+            "content": "// Every other Turn on a child is an agent invocation: an agent wrote its",
+            "newLine": 64
+          },
+          {
+            "kind": "add",
+            "content": "// input, and its final response goes back to its parent.",
+            "newLine": 65
+          },
+          {
+            "kind": "add",
+            "content": "const AGENT_IN_CHILD: TurnBehavior = {",
+            "newLine": 66
+          },
+          {
+            "kind": "add",
+            "content": "  delivery: \"conversation\",",
+            "newLine": 67
+          },
+          {
+            "kind": "add",
+            "content": "  promptMode: \"child_agent\",",
+            "newLine": 68
+          },
+          { "kind": "add", "content": "  gated: false,", "newLine": 69 },
+          { "kind": "add", "content": "  tools: {", "newLine": 70 },
+          {
+            "kind": "add",
+            "content": "    agents: \"children_and_parent\",",
+            "newLine": 71
+          },
+          { "kind": "add", "content": "    reviewDesk: false,", "newLine": 72 },
+          {
+            "kind": "add",
+            "content": "    subscriptions: false,",
+            "newLine": 73
+          },
+          {
+            "kind": "add",
+            "content": "    userCustomization: false,",
+            "newLine": 74
+          },
+          {
+            "kind": "add",
+            "content": "    reportBlocked: true,",
+            "newLine": 75
+          },
+          { "kind": "add", "content": "    noReply: true,", "newLine": 76 },
+          {
+            "kind": "add",
+            "content": "    finishAutomationRun: false,",
+            "newLine": 77
+          },
+          { "kind": "add", "content": "  },", "newLine": 78 },
+          { "kind": "add", "content": "};", "newLine": 79 }
+        ]
+      },
+      {
+        "id": "3059:head:packages/junior/src/chat/agent/index.ts#238-244",
+        "pr": 3059,
+        "path": "packages/junior/src/chat/agent/index.ts",
+        "side": "head",
+        "start": 238,
+        "end": 244,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "  // Spawning a child writes its row first. Only a root can run before its",
+            "newLine": 238
+          },
+          { "kind": "add", "content": "  // row exists.", "newLine": 239 },
+          {
+            "kind": "add",
+            "content": "  if (!conversation && run.parentConversationId) {",
+            "newLine": 240
+          },
+          { "kind": "add", "content": "    throw new Error(", "newLine": 241 },
+          {
+            "kind": "add",
+            "content": "      `Child Conversation ${run.conversationId} has no Conversation row`,",
+            "newLine": 242
+          },
+          { "kind": "add", "content": "    );", "newLine": 243 },
+          { "kind": "add", "content": "  }", "newLine": 244 }
+        ]
+      },
+      {
+        "id": "3059:head:packages/junior/src/chat/agent/index.ts#298-304",
+        "pr": 3059,
+        "path": "packages/junior/src/chat/agent/index.ts",
+        "side": "head",
+        "start": 298,
+        "end": 304,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "  const behavior = turnBehavior({",
+            "newLine": 298
+          },
+          {
+            "kind": "add",
+            "content": "    kind: conversationKind,",
+            "newLine": 299
+          },
+          {
+            "kind": "add",
+            "content": "    personInput: isPersonInput(run.source.kind),",
+            "newLine": 300
+          },
+          {
+            "kind": "add",
+            "content": "    automationRun: run.dispatch?.declaresResult === true,",
+            "newLine": 301
+          },
+          { "kind": "add", "content": "  });", "newLine": 302 },
+          {
+            "kind": "add",
+            "content": "  // TODO(dcramer): Gate every answer tool here, not only the Automation run.",
+            "newLine": 303
+          },
+          {
+            "kind": "add",
+            "content": "  const requireAutomationResult = behavior.gated;",
+            "newLine": 304
+          }
+        ]
+      },
+      {
+        "id": "3059:head:packages/junior/src/chat/agent/prompt.ts#632-645",
+        "pr": 3059,
+        "path": "packages/junior/src/chat/agent/prompt.ts",
+        "side": "head",
+        "start": 632,
+        "end": 645,
+        "lines": [
+          {
+            "kind": "context",
+            "content": "  // Automation runs have no Delivery port. Their declared message still goes",
+            "newLine": 632
+          },
+          {
+            "kind": "context",
+            "content": "  // to Slack, so they keep Slack formatting rules.",
+            "newLine": 633
+          },
+          {
+            "kind": "context",
+            "content": "  const platform =",
+            "newLine": 634
+          },
+          {
+            "kind": "context",
+            "content": "    (args.run.delivery || args.promptMode === \"automation\") &&",
+            "newLine": 635
+          },
+          {
+            "kind": "context",
+            "content": "    args.run.location?.provider === \"slack\"",
+            "newLine": 636
+          },
+          { "kind": "context", "content": "      ? \"slack\"", "newLine": 637 },
+          {
+            "kind": "context",
+            "content": "      : \"local\";",
+            "newLine": 638
+          },
+          {
+            "kind": "context",
+            "content": "  const systemPromptContributions =",
+            "newLine": 639
+          },
+          {
+            "kind": "context",
+            "content": "    await getPluginSystemPromptContributions(platform);",
+            "newLine": 640
+          },
+          {
+            "kind": "context",
+            "content": "  const pluginSystemPrompt = buildPluginSystemPromptContributions(",
+            "newLine": 641
+          },
+          {
+            "kind": "context",
+            "content": "    systemPromptContributions,",
+            "newLine": 642
+          },
+          { "kind": "context", "content": "  );", "newLine": 643 },
+          {
+            "kind": "context",
+            "content": "  const baseInstructions = [",
+            "newLine": 644
+          },
+          {
+            "kind": "context",
+            "content": "    buildSystemPrompt(platform, args.promptMode),",
+            "newLine": 645
+          }
+        ]
+      },
+      {
+        "id": "3059:head:packages/junior/src/chat/agent/tools.ts#705-729",
+        "pr": 3059,
+        "path": "packages/junior/src/chat/agent/tools.ts",
+        "side": "head",
+        "start": 705,
+        "end": 729,
+        "lines": [
+          { "kind": "add", "content": "", "newLine": 705 },
+          {
+            "kind": "add",
+            "content": "/** Bind the agent tools that the Turn's behavior gives it. */",
+            "newLine": 706
+          },
+          {
+            "kind": "add",
+            "content": "export function bindAgentTools(",
+            "newLine": 707
+          },
+          { "kind": "add", "content": "  run: AgentRun,", "newLine": 708 },
+          { "kind": "add", "content": "  agents: AgentTools,", "newLine": 709 },
+          {
+            "kind": "add",
+            "content": "): Pick<ToolRuntimeContext, \"spawnAgent\" | \"messageAgent\"> {",
+            "newLine": 710
+          },
+          {
+            "kind": "add",
+            "content": "  const { bindSpawnAgent, bindMessageAgent } = run.environment ?? {};",
+            "newLine": 711
+          },
+          {
+            "kind": "add",
+            "content": "  if (agents === \"none\" || !bindSpawnAgent) return {};",
+            "newLine": 712
+          },
+          {
+            "kind": "add",
+            "content": "  const spawnAgent = isAgentRunFeatureDisabled(",
+            "newLine": 713
+          },
+          {
+            "kind": "add",
+            "content": "    run.disabledFeatures,",
+            "newLine": 714
+          },
+          { "kind": "add", "content": "    \"subagents\",", "newLine": 715 },
+          { "kind": "add", "content": "  )", "newLine": 716 },
+          { "kind": "add", "content": "    ? undefined", "newLine": 717 },
+          {
+            "kind": "add",
+            "content": "    : bindSpawnAgent(run);",
+            "newLine": 718
+          },
+          {
+            "kind": "add",
+            "content": "  // A child agent can always message its parent, even when it is too deep to",
+            "newLine": 719
+          },
+          {
+            "kind": "add",
+            "content": "  // start child agents of its own.",
+            "newLine": 720
+          },
+          {
+            "kind": "add",
+            "content": "  const messageAgent =",
+            "newLine": 721
+          },
+          {
+            "kind": "add",
+            "content": "    spawnAgent || agents === \"children_and_parent\"",
+            "newLine": 722
+          },
+          {
+            "kind": "add",
+            "content": "      ? bindMessageAgent?.(run, agents)",
+            "newLine": 723
+          },
+          { "kind": "add", "content": "      : undefined;", "newLine": 724 },
+          { "kind": "add", "content": "  return {", "newLine": 725 },
+          {
+            "kind": "add",
+            "content": "    ...(spawnAgent ? { spawnAgent } : undefined),",
+            "newLine": 726
+          },
+          {
+            "kind": "add",
+            "content": "    ...(messageAgent ? { messageAgent } : undefined),",
+            "newLine": 727
+          },
+          { "kind": "add", "content": "  };", "newLine": 728 },
+          { "kind": "add", "content": "}", "newLine": 729 }
+        ]
+      },
+      {
+        "id": "3059:head:packages/junior/src/chat/runtime/agent-runner.ts#54-58",
+        "pr": 3059,
+        "path": "packages/junior/src/chat/runtime/agent-runner.ts",
+        "side": "head",
+        "start": 54,
+        "end": 58,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "          // Tool wiring binds agent tools after it reads the Turn's behavior.",
+            "newLine": 54
+          },
+          {
+            "kind": "add",
+            "content": "          ...(bindSpawnAgent ? { bindSpawnAgent } : undefined),",
+            "newLine": 55
+          },
+          {
+            "kind": "add",
+            "content": "          ...(bindSpawnAgent && bindMessageAgent",
+            "newLine": 56
+          },
+          {
+            "kind": "add",
+            "content": "            ? { bindMessageAgent }",
+            "newLine": 57
+          },
+          {
+            "kind": "add",
+            "content": "            : undefined),",
+            "newLine": 58
+          }
+        ]
+      },
+      {
+        "id": "3059:head:packages/junior/src/chat/tools/index.ts#239-250",
+        "pr": 3059,
+        "path": "packages/junior/src/chat/tools/index.ts",
+        "side": "head",
+        "start": 239,
+        "end": 250,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "  if (turnTools.reportBlocked) {",
+            "newLine": 239
+          },
+          {
+            "kind": "context",
+            "content": "    tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool();",
+            "oldLine": 240,
+            "newLine": 240
+          },
+          {
+            "kind": "context",
+            "content": "  }",
+            "oldLine": 241,
+            "newLine": 241
+          },
+          { "kind": "remove", "content": "", "oldLine": 242 },
+          {
+            "kind": "remove",
+            "content": "  // An Automation run ends with its declared result instead.",
+            "oldLine": 243
+          },
+          {
+            "kind": "context",
+            "content": "  if (context.automation) {",
+            "oldLine": 244,
+            "newLine": 242
+          },
+          {
+            "kind": "context",
+            "content": "    tools[FINISH_AUTOMATION_RUN_TOOL_NAME] = createFinishAutomationRunTool(",
+            "oldLine": 245,
+            "newLine": 243
+          },
+          {
+            "kind": "context",
+            "content": "      context.automation,",
+            "oldLine": 246,
+            "newLine": 244
+          },
+          {
+            "kind": "context",
+            "content": "    );",
+            "oldLine": 247,
+            "newLine": 245
+          },
+          { "kind": "remove", "content": "  } else {", "oldLine": 248 },
+          { "kind": "add", "content": "  }", "newLine": 246 },
+          {
+            "kind": "add",
+            "content": "  if (turnTools.noReply) {",
+            "newLine": 247
+          },
+          {
+            "kind": "context",
+            "content": "    tools[NO_REPLY_TOOL_NAME] = createNoReplyTool();",
+            "oldLine": 249,
+            "newLine": 248
+          },
+          {
+            "kind": "context",
+            "content": "  }",
+            "oldLine": 250,
+            "newLine": 249
+          },
+          { "kind": "context", "content": "", "oldLine": 251, "newLine": 250 }
+        ]
+      },
+      {
+        "id": "3059:head:packages/junior/src/chat/tools/index.ts#364-369",
+        "pr": 3059,
+        "path": "packages/junior/src/chat/tools/index.ts",
+        "side": "head",
+        "start": 364,
+        "end": 369,
+        "lines": [
+          {
+            "kind": "context",
+            "content": "          reviewItemServices,",
+            "oldLine": 365,
+            "newLine": 364
+          },
+          {
+            "kind": "context",
+            "content": "        ),",
+            "oldLine": 366,
+            "newLine": 365
+          },
+          {
+            "kind": "context",
+            "content": "      },",
+            "oldLine": 367,
+            "newLine": 366
+          },
+          {
+            "kind": "remove",
+            "content": "      context.agentInvocationId",
+            "oldLine": 368
+          },
+          {
+            "kind": "add",
+            "content": "      !turnTools.reviewDesk",
+            "newLine": 367
+          },
+          {
+            "kind": "context",
+            "content": "        ? `A child agent cannot use the review desk. Use ${REPORT_BLOCKED_TOOL_NAME} to tell the parent agent what needs a person.`",
+            "oldLine": 369,
+            "newLine": 368
+          },
+          {
+            "kind": "context",
+            "content": "        : undefined,",
+            "oldLine": 370,
+            "newLine": 369
+          }
+        ]
+      },
+      {
+        "id": "3059:head:packages/junior/src/chat/conversations/kind-behavior.ts#104-107",
+        "pr": 3059,
+        "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+        "side": "head",
+        "start": 104,
+        "end": 107,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "  if (args.automationRun) return AUTOMATION_RUN;",
+            "newLine": 104
+          },
+          {
+            "kind": "add",
+            "content": "  if (args.kind === \"root\") return ROOT;",
+            "newLine": 105
+          },
+          {
+            "kind": "add",
+            "content": "  if (!args.personInput) return AGENT_IN_CHILD;",
+            "newLine": 106
+          },
+          {
+            "kind": "add",
+            "content": "  if (args.kind === \"thread\") return PERSON_IN_THREAD;",
+            "newLine": 107
+          }
+        ]
+      },
+      {
+        "id": "3059:base:packages/junior/src/chat/task-execution/conversation-turn.ts#442-447",
+        "pr": 3059,
+        "path": "packages/junior/src/chat/task-execution/conversation-turn.ts",
+        "side": "base",
+        "start": 442,
+        "end": 447,
+        "lines": [
+          {
+            "kind": "remove",
+            "content": "    // A person's Turn in a Thread does not start or message child agents:",
+            "oldLine": 442
+          },
+          {
+            "kind": "remove",
+            "content": "    // their results would report to the parent as the wrong Actor.",
+            "oldLine": 443
+          },
+          {
+            "kind": "remove",
+            "content": "    const disabledFeatures: AgentFeature[] = [",
+            "oldLine": 444
+          },
+          {
+            "kind": "remove",
+            "content": "      ...(webActor ? [] : [\"interactive-auth\" as const]),",
+            "oldLine": 445
+          },
+          {
+            "kind": "remove",
+            "content": "      ...(isThread ? [\"subagents\" as const] : []),",
+            "oldLine": 446
+          },
+          { "kind": "remove", "content": "    ];", "oldLine": 447 }
+        ]
+      },
+      {
+        "id": "3059:head:packages/junior/src/chat/task-execution/conversation-turn.ts#453-461",
+        "pr": 3059,
+        "path": "packages/junior/src/chat/task-execution/conversation-turn.ts",
+        "side": "head",
+        "start": 453,
+        "end": 461,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "    // Only an Event Turn delivers here, and an Event has no person.",
+            "newLine": 453
+          },
+          {
+            "kind": "context",
+            "content": "    const deliverToProvider =",
+            "oldLine": 459,
+            "newLine": 454
+          },
+          {
+            "kind": "context",
+            "content": "      Boolean(conversationLocation) &&",
+            "oldLine": 460,
+            "newLine": 455
+          },
+          {
+            "kind": "context",
+            "content": "      isEventTurn &&",
+            "oldLine": 461,
+            "newLine": 456
+          },
+          {
+            "kind": "remove",
+            "content": "      storedConversation?.kind === \"root\";",
+            "oldLine": 462
+          },
+          { "kind": "add", "content": "      turnBehavior({", "newLine": 457 },
+          {
+            "kind": "add",
+            "content": "        kind: storedConversation?.kind ?? \"root\",",
+            "newLine": 458
+          },
+          {
+            "kind": "add",
+            "content": "        personInput: false,",
+            "newLine": 459
+          },
+          {
+            "kind": "add",
+            "content": "        automationRun: false,",
+            "newLine": 460
+          },
+          {
+            "kind": "add",
+            "content": "      }).delivery === \"location\";",
+            "newLine": 461
+          }
+        ]
+      },
+      {
+        "id": "3059:head:packages/junior/tests/unit/chat/kind-behavior.test.ts#47-48",
+        "pr": 3059,
+        "path": "packages/junior/tests/unit/chat/kind-behavior.test.ts",
+        "side": "head",
+        "start": 47,
+        "end": 48,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "    { kind: \"thread\", personInput: false, expected: childAgentTurn },",
+            "newLine": 47
+          },
+          {
+            "kind": "add",
+            "content": "    { kind: \"task\", personInput: false, expected: childAgentTurn },",
+            "newLine": 48
+          }
+        ]
+      },
+      {
+        "id": "3059:head:scripts/check-test-architecture.mjs#132-191",
+        "pr": 3059,
+        "path": "scripts/check-test-architecture.mjs",
+        "side": "head",
+        "start": 132,
+        "end": 191,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "// A kind or person-Source branch outside `kind-behavior.ts`.",
+            "newLine": 132
+          },
+          {
+            "kind": "add",
+            "content": "const KIND_BRANCH_PATTERNS = [",
+            "newLine": 133
+          },
+          {
+            "kind": "add",
+            "content": "  // Conversation kind compared to a value, in either order.",
+            "newLine": 134
+          },
+          {
+            "kind": "add",
+            "content": "  /\\b[\\w$]*[kK]ind\\s*(?:===|!==)\\s*[\"'](?:root|thread|task|automation)[\"']/g,",
+            "newLine": 135
+          },
+          {
+            "kind": "add",
+            "content": "  /[\"'](?:root|thread|task|automation)[\"']\\s*(?:===|!==)\\s*(?:[\\w$]+\\??\\.)*[\\w$]*[kK]ind\\b/g,",
+            "newLine": 136
+          },
+          {
+            "kind": "add",
+            "content": "  // A person Source check. Narrowing a Source union to use the narrowed",
+            "newLine": 137
+          },
+          {
+            "kind": "add",
+            "content": "  // Source, such as `source.kind === \"slack\" ? source.threadTs`, is not one.",
+            "newLine": 138
+          },
+          {
+            "kind": "add",
+            "content": "  /\\bsource(?:\\.kind)?\\s*(?:===|!==)\\s*[\"'](?:slack|web)[\"'](?!\\s*(?:\\?|&&)\\s*(?:\\{\\s*\\.\\.\\.)?(?:[\\w$]+\\??\\.)*source\\b)/g,",
+            "newLine": 139
+          },
+          {
+            "kind": "add",
+            "content": "  /\\bswitch\\s*\\(\\s*(?:[\\w$]+\\??\\.)*source\\.kind\\s*\\)/g,",
+            "newLine": 140
+          },
+          {
+            "kind": "add",
+            "content": "  // Reading the Automation result flag. Its declaration and writes are not.",
+            "newLine": 141
+          },
+          {
+            "kind": "add",
+            "content": "  /\\bdeclaresResult\\b(?!\\s*\\??:)/g,",
+            "newLine": 142
+          },
+          { "kind": "add", "content": "];", "newLine": 143 },
+          { "kind": "add", "content": "", "newLine": 144 },
+          {
+            "kind": "add",
+            "content": "// A field of the parent edge or the Agent invocation read as a condition.",
+            "newLine": 145
+          },
+          {
+            "kind": "add",
+            "content": "const EDGE_FIELD_PATTERN =",
+            "newLine": 146
+          },
+          {
+            "kind": "add",
+            "content": "  /\\b(?:parentConversationId|parentToolCallId|agentInvocationId)\\b/g;",
+            "newLine": 147
+          },
+          {
+            "kind": "add",
+            "content": "const EDGE_CONDITION_BEFORE =",
+            "newLine": 148
+          },
+          {
+            "kind": "add",
+            "content": "  /(?:\\bif\\s*\\(|!|&&|\\|\\||===|!==|==|!=)\\s*(?:[\\w$]+\\??\\.)*$/;",
+            "newLine": 149
+          },
+          {
+            "kind": "add",
+            "content": "const EDGE_CONDITION_AFTER = /^\\s*(?:\\?(?![.?:])|&&|\\|\\||===|!==|==|!=)/;",
+            "newLine": 150
+          },
+          { "kind": "add", "content": "", "newLine": 151 },
+          {
+            "kind": "add",
+            "content": "/** Remove comments, so prose that names a field is not counted. */",
+            "newLine": 152
+          },
+          {
+            "kind": "add",
+            "content": "function stripComments(contents) {",
+            "newLine": 153
+          },
+          {
+            "kind": "add",
+            "content": "  return contents.replace(/\\/\\*[\\s\\S]*?\\*\\/|(?<![:\"'`\\w])\\/\\/.*$/gm, \"\");",
+            "newLine": 154
+          },
+          { "kind": "add", "content": "}", "newLine": 155 },
+          { "kind": "add", "content": "", "newLine": 156 },
+          {
+            "kind": "add",
+            "content": "/** Count kind, parent-edge, and person-Source branches in one file. */",
+            "newLine": 157
+          },
+          {
+            "kind": "add",
+            "content": "function countKindBranches(file) {",
+            "newLine": 158
+          },
+          {
+            "kind": "add",
+            "content": "  const code = stripComments(file.contents);",
+            "newLine": 159
+          },
+          { "kind": "add", "content": "  let count = 0;", "newLine": 160 },
+          {
+            "kind": "add",
+            "content": "  for (const pattern of KIND_BRANCH_PATTERNS) {",
+            "newLine": 161
+          },
+          {
+            "kind": "add",
+            "content": "    count += countMatches(code, pattern);",
+            "newLine": 162
+          },
+          { "kind": "add", "content": "  }", "newLine": 163 },
+          {
+            "kind": "add",
+            "content": "  for (const match of code.matchAll(EDGE_FIELD_PATTERN)) {",
+            "newLine": 164
+          },
+          {
+            "kind": "add",
+            "content": "    const before = code.slice(Math.max(0, match.index - 120), match.index);",
+            "newLine": 165
+          },
+          {
+            "kind": "add",
+            "content": "    const after = code.slice(match.index + match[0].length);",
+            "newLine": 166
+          },
+          { "kind": "add", "content": "    if (", "newLine": 167 },
+          {
+            "kind": "add",
+            "content": "      EDGE_CONDITION_BEFORE.test(before) ||",
+            "newLine": 168
+          },
+          {
+            "kind": "add",
+            "content": "      EDGE_CONDITION_AFTER.test(after.slice(0, 8))",
+            "newLine": 169
+          },
+          { "kind": "add", "content": "    ) {", "newLine": 170 },
+          { "kind": "add", "content": "      count += 1;", "newLine": 171 },
+          { "kind": "add", "content": "    }", "newLine": 172 },
+          { "kind": "add", "content": "  }", "newLine": 173 },
+          { "kind": "add", "content": "  return count;", "newLine": 174 },
+          { "kind": "add", "content": "}", "newLine": 175 },
+          { "kind": "add", "content": "", "newLine": 176 },
+          { "kind": "add", "content": "/**", "newLine": 177 },
+          {
+            "kind": "add",
+            "content": " * Rules for runtime source. Conversation kind and the person who opened a",
+            "newLine": 178
+          },
+          {
+            "kind": "add",
+            "content": " * Turn decide behavior only in `kind-behavior.ts`. The baseline lists the",
+            "newLine": 179
+          },
+          {
+            "kind": "add",
+            "content": " * legacy sites that still branch.",
+            "newLine": 180
+          },
+          { "kind": "add", "content": " */", "newLine": 181 },
+          {
+            "kind": "add",
+            "content": "export const SOURCE_RULES = [",
+            "newLine": 182
+          },
+          { "kind": "add", "content": "  {", "newLine": 183 },
+          {
+            "kind": "add",
+            "content": "    id: \"kind-behavior\",",
+            "newLine": 184
+          },
+          { "kind": "add", "content": "    message:", "newLine": 185 },
+          {
+            "kind": "add",
+            "content": "      \"branch on Conversation kind, the parent edge, the Agent invocation, declaresResult, or a person Source only in chat/conversations/kind-behavior.ts; read turnBehavior instead\",",
+            "newLine": 186
+          },
+          {
+            "kind": "add",
+            "content": "    pathPrefix: \"packages/junior/src/\",",
+            "newLine": 187
+          },
+          {
+            "kind": "add",
+            "content": "    exclude: [\"packages/junior/src/chat/conversations/kind-behavior.ts\"],",
+            "newLine": 188
+          },
+          {
+            "kind": "add",
+            "content": "    count: countKindBranches,",
+            "newLine": 189
+          },
+          { "kind": "add", "content": "  },", "newLine": 190 },
+          { "kind": "add", "content": "];", "newLine": 191 }
+        ]
+      },
+      {
+        "id": "3059:head:scripts/check-test-architecture.test.mjs#339-374",
+        "pr": 3059,
+        "path": "scripts/check-test-architecture.test.mjs",
+        "side": "head",
+        "start": 339,
+        "end": 374,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "test(\"counts each form of a kind branch\", () => {",
+            "newLine": 339
+          },
+          { "kind": "add", "content": "  const branches = [", "newLine": 340 },
+          {
+            "kind": "add",
+            "content": "    \"if (x.parentConversationId) {}\",",
+            "newLine": 341
+          },
+          {
+            "kind": "add",
+            "content": "    \"if (!parentConversationId) {}\",",
+            "newLine": 342
+          },
+          {
+            "kind": "add",
+            "content": "    \"const child = Boolean(row && row.parentConversationId);\",",
+            "newLine": 343
+          },
+          {
+            "kind": "add",
+            "content": "    \"const root = conversation?.parentConversationId ? a : b;\",",
+            "newLine": 344
+          },
+          {
+            "kind": "add",
+            "content": "    \"if (invocation.parentToolCallId !== undefined) {}\",",
+            "newLine": 345
+          },
+          {
+            "kind": "add",
+            "content": "    \"const messages = spawnAgent || run.agentInvocationId;\",",
+            "newLine": 346
+          },
+          {
+            "kind": "add",
+            "content": "    'if (message.source === \"web\") {}',",
+            "newLine": 347
+          },
+          {
+            "kind": "add",
+            "content": "    \"switch (run.source.kind) {}\",",
+            "newLine": 348
+          },
+          {
+            "kind": "add",
+            "content": "    'if (\"automation\" === kind) {}',",
+            "newLine": 349
+          },
+          {
+            "kind": "add",
+            "content": "    \"const result = run.dispatch?.declaresResult === true;\",",
+            "newLine": 350
+          },
+          { "kind": "add", "content": "  ];", "newLine": 351 },
+          {
+            "kind": "add",
+            "content": "  const notBranches = [",
+            "newLine": 352
+          },
+          {
+            "kind": "add",
+            "content": "    \"parentConversationId?: string;\",",
+            "newLine": 353
+          },
+          {
+            "kind": "add",
+            "content": "    \"declaresResult?: boolean;\",",
+            "newLine": 354
+          },
+          {
+            "kind": "add",
+            "content": "    \"const row = { parentConversationId: id, declaresResult: true };\",",
+            "newLine": 355
+          },
+          {
+            "kind": "add",
+            "content": "    'const ts = source.kind === \"slack\" ? source.threadTs : undefined;',",
+            "newLine": 356
+          },
+          {
+            "kind": "add",
+            "content": "    \"const parent = run.parentConversationId ?? root;\",",
+            "newLine": 357
+          },
+          {
+            "kind": "add",
+            "content": "    \"// if (x.parentConversationId) is a comment.\",",
+            "newLine": 358
+          },
+          { "kind": "add", "content": "  ];", "newLine": 359 },
+          {
+            "kind": "add",
+            "content": "  const count = (contents) =>",
+            "newLine": 360
+          },
+          {
+            "kind": "add",
+            "content": "    checkAgentTestArchitecture(",
+            "newLine": 361
+          },
+          {
+            "kind": "add",
+            "content": "      [{ path: \"packages/junior/src/chat/new.ts\", contents }],",
+            "newLine": 362
+          },
+          { "kind": "add", "content": "      {},", "newLine": 363 },
+          { "kind": "add", "content": "      SOURCE_RULES,", "newLine": 364 },
+          { "kind": "add", "content": "    ).length;", "newLine": 365 },
+          { "kind": "add", "content": "  assert.deepEqual(", "newLine": 366 },
+          {
+            "kind": "add",
+            "content": "    branches.map(count),",
+            "newLine": 367
+          },
+          {
+            "kind": "add",
+            "content": "    branches.map(() => 1),",
+            "newLine": 368
+          },
+          { "kind": "add", "content": "  );", "newLine": 369 },
+          { "kind": "add", "content": "  assert.deepEqual(", "newLine": 370 },
+          {
+            "kind": "add",
+            "content": "    notBranches.map(count),",
+            "newLine": 371
+          },
+          {
+            "kind": "add",
+            "content": "    notBranches.map(() => 0),",
+            "newLine": 372
+          },
+          { "kind": "add", "content": "  );", "newLine": 373 },
+          { "kind": "add", "content": "});", "newLine": 374 }
+        ]
+      },
+      {
+        "id": "3059:head:scripts/test-architecture-baseline.json#172-227",
+        "pr": 3059,
+        "path": "scripts/test-architecture-baseline.json",
+        "side": "head",
+        "start": 172,
+        "end": 227,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "  \"kind-behavior\": {",
+            "newLine": 172
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/api/board/read.ts\": 3,",
+            "newLine": 173
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/api/conversations/access.ts\": 2,",
+            "newLine": 174
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/api/conversations/agent-tree.ts\": 3,",
+            "newLine": 175
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/api/conversations/events.ts\": 3,",
+            "newLine": 176
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/api/conversations/pending-messages.ts\": 2,",
+            "newLine": 177
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/api/conversations/projection.ts\": 4,",
+            "newLine": 178
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/api/conversations/record.ts\": 1,",
+            "newLine": 179
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/api/conversations/reporting.ts\": 1,",
+            "newLine": 180
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/api/conversations/stats.query.ts\": 1,",
+            "newLine": 181
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/api/conversations/stop.ts\": 1,",
+            "newLine": 182
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/api/conversations/threads.ts\": 1,",
+            "newLine": 183
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/agent-invocations/create.ts\": 7,",
+            "newLine": 184
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/agent-invocations/fork-history.ts\": 2,",
+            "newLine": 185
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/agent-invocations/list.ts\": 2,",
+            "newLine": 186
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/agent-invocations/result.ts\": 1,",
+            "newLine": 187
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/agent-invocations/root-conversation.ts\": 1,",
+            "newLine": 188
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/agent-invocations/spawn.ts\": 1,",
+            "newLine": 189
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/agent-invocations/stop.ts\": 1,",
+            "newLine": 190
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/agent-invocations/store.ts\": 1,",
+            "newLine": 191
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/agent-invocations/top-level-message.ts\": 2,",
+            "newLine": 192
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/agent-invocations/work.ts\": 5,",
+            "newLine": 193
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/agent/index.ts\": 8,",
+            "newLine": 194
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/agent/tools.ts\": 2,",
+            "newLine": 195
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/agent/types.ts\": 5,",
+            "newLine": 196
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/app/conversation-work.ts\": 2,",
+            "newLine": 197
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/automation-result.ts\": 1,",
+            "newLine": 198
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/automations/tool-access.ts\": 1,",
+            "newLine": 199
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/briefs/task.ts\": 1,",
+            "newLine": 200
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/cache-warming/backfill.ts\": 1,",
+            "newLine": 201
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/conversations/delivery-pause.ts\": 1,",
+            "newLine": 202
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/conversations/event-access.ts\": 2,",
+            "newLine": 203
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/conversations/fork.ts\": 1,",
+            "newLine": 204
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/conversations/lineage.ts\": 1,",
+            "newLine": 205
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/conversations/sql/conversation-row.ts\": 4,",
+            "newLine": 206
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/conversations/sql/conversation-tree.ts\": 2,",
+            "newLine": 207
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/conversations/sql/purge.ts\": 2,",
+            "newLine": 208
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/conversations/sql/store.ts\": 9,",
+            "newLine": 209
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/conversations/web-input.ts\": 3,",
+            "newLine": 210
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/ingress/slack-conversation-unfurl.ts\": 1,",
+            "newLine": 211
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/plugins/agent-hooks.ts\": 2,",
+            "newLine": 212
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/prompt.ts\": 2,",
+            "newLine": 213
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/services/conversation-title.ts\": 1,",
+            "newLine": 214
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/slack/automated-turn-limit-notice.ts\": 1,",
+            "newLine": 215
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/slack/continue-in-slack.ts\": 1,",
+            "newLine": 216
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/task-execution/attempt-selection.ts\": 1,",
+            "newLine": 217
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/task-execution/conversation-turn.ts\": 2,",
+            "newLine": 218
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/task-execution/mailbox-turn.ts\": 1,",
+            "newLine": 219
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/task-execution/slack-work.ts\": 3,",
+            "newLine": 220
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/task-execution/state.ts\": 2,",
+            "newLine": 221
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/task-execution/turn-wake.ts\": 1,",
+            "newLine": 222
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/task-execution/web-steering.ts\": 1,",
+            "newLine": 223
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/task-execution/worker.ts\": 1,",
+            "newLine": 224
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/tools/runtime/archive-agent.ts\": 2,",
+            "newLine": 225
+          },
+          {
+            "kind": "add",
+            "content": "    \"packages/junior/src/chat/tools/runtime/search-agents.ts\": 1",
+            "newLine": 226
+          },
+          {
+            "kind": "context",
+            "content": "  }",
+            "oldLine": 171,
+            "newLine": 227
+          }
+        ]
+      },
+      {
+        "id": "3059:head:packages/junior/tests/unit/chat/kind-behavior.test.ts#43-56",
+        "pr": 3059,
+        "path": "packages/junior/tests/unit/chat/kind-behavior.test.ts",
+        "side": "head",
+        "start": 43,
+        "end": 56,
+        "lines": [
+          { "kind": "add", "content": "  it.each([", "newLine": 43 },
+          {
+            "kind": "add",
+            "content": "    { kind: \"root\", personInput: true, expected: rootTurn },",
+            "newLine": 44
+          },
+          {
+            "kind": "add",
+            "content": "    { kind: \"root\", personInput: false, expected: rootTurn },",
+            "newLine": 45
+          },
+          {
+            "kind": "add",
+            "content": "    { kind: \"thread\", personInput: true, expected: personInThreadTurn },",
+            "newLine": 46
+          },
+          {
+            "kind": "add",
+            "content": "    { kind: \"thread\", personInput: false, expected: childAgentTurn },",
+            "newLine": 47
+          },
+          {
+            "kind": "add",
+            "content": "    { kind: \"task\", personInput: false, expected: childAgentTurn },",
+            "newLine": 48
+          },
+          { "kind": "add", "content": "  ] as const)(", "newLine": 49 },
+          {
+            "kind": "add",
+            "content": "    \"gives a $kind Turn with person input $personInput its behavior\",",
+            "newLine": 50
+          },
+          {
+            "kind": "add",
+            "content": "    ({ kind, personInput, expected }) => {",
+            "newLine": 51
+          },
+          {
+            "kind": "add",
+            "content": "      expect(turnBehavior({ kind, personInput, automationRun: false })).toEqual(",
+            "newLine": 52
+          },
+          { "kind": "add", "content": "        expected,", "newLine": 53 },
+          { "kind": "add", "content": "      );", "newLine": 54 },
+          { "kind": "add", "content": "    },", "newLine": 55 },
+          { "kind": "add", "content": "  );", "newLine": 56 }
+        ]
+      },
+      {
+        "id": "3059:head:packages/junior/tests/unit/slack/tool-registration.test.ts#424-457",
+        "pr": 3059,
+        "path": "packages/junior/tests/unit/slack/tool-registration.test.ts",
+        "side": "head",
+        "start": 424,
+        "end": 457,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "  it(\"binds no agent tools for a person's Turn in a Thread\", () => {",
+            "newLine": 424
+          },
+          {
+            "kind": "add",
+            "content": "    const { environment, run } = agentRun();",
+            "newLine": 425
+          },
+          {
+            "kind": "add",
+            "content": "    const agents = turnBehavior({",
+            "newLine": 426
+          },
+          {
+            "kind": "add",
+            "content": "      kind: \"thread\",",
+            "newLine": 427
+          },
+          {
+            "kind": "add",
+            "content": "      personInput: true,",
+            "newLine": 428
+          },
+          {
+            "kind": "add",
+            "content": "      automationRun: false,",
+            "newLine": 429
+          },
+          { "kind": "add", "content": "    }).tools.agents;", "newLine": 430 },
+          { "kind": "add", "content": "", "newLine": 431 },
+          {
+            "kind": "add",
+            "content": "    expect(agents).toBe(\"none\");",
+            "newLine": 432
+          },
+          {
+            "kind": "add",
+            "content": "    expect(bindAgentTools(run, agents)).toEqual({});",
+            "newLine": 433
+          },
+          {
+            "kind": "add",
+            "content": "    expect(environment.bindSpawnAgent).not.toHaveBeenCalled();",
+            "newLine": 434
+          },
+          {
+            "kind": "add",
+            "content": "    expect(environment.bindMessageAgent).not.toHaveBeenCalled();",
+            "newLine": 435
+          },
+          { "kind": "add", "content": "  });", "newLine": 436 },
+          { "kind": "add", "content": "", "newLine": 437 },
+          {
+            "kind": "add",
+            "content": "  // The binder gets the agent tools of the Turn. A root's messageAgent then",
+            "newLine": 438
+          },
+          {
+            "kind": "add",
+            "content": "  // rejects `parent` when it is called, as the root has no parent agent.",
+            "newLine": 439
+          },
+          {
+            "kind": "add",
+            "content": "  it.each([\"children\", \"children_and_parent\"] as const)(",
+            "newLine": 440
+          },
+          {
+            "kind": "add",
+            "content": "    \"binds spawnAgent and messageAgent for %s\",",
+            "newLine": 441
+          },
+          { "kind": "add", "content": "    (agents) => {", "newLine": 442 },
+          {
+            "kind": "add",
+            "content": "      const { environment, messageAgent, run, spawnAgent } = agentRun();",
+            "newLine": 443
+          },
+          { "kind": "add", "content": "", "newLine": 444 },
+          {
+            "kind": "add",
+            "content": "      expect(bindAgentTools(run, agents)).toEqual({ spawnAgent, messageAgent });",
+            "newLine": 445
+          },
+          {
+            "kind": "add",
+            "content": "      expect(environment.bindMessageAgent).toHaveBeenCalledWith(run, agents);",
+            "newLine": 446
+          },
+          { "kind": "add", "content": "    },", "newLine": 447 },
+          { "kind": "add", "content": "  );", "newLine": 448 },
+          { "kind": "add", "content": "", "newLine": 449 },
+          {
+            "kind": "add",
+            "content": "  it(\"keeps messageAgent for the parent when the Turn is too deep to spawn\", () => {",
+            "newLine": 450
+          },
+          {
+            "kind": "add",
+            "content": "    const tooDeep = agentRun([\"subagents\"]);",
+            "newLine": 451
+          },
+          {
+            "kind": "add",
+            "content": "    expect(bindAgentTools(tooDeep.run, \"children_and_parent\")).toEqual({",
+            "newLine": 452
+          },
+          {
+            "kind": "add",
+            "content": "      messageAgent: tooDeep.messageAgent,",
+            "newLine": 453
+          },
+          { "kind": "add", "content": "    });", "newLine": 454 },
+          {
+            "kind": "add",
+            "content": "    expect(bindAgentTools(agentRun([\"subagents\"]).run, \"children\")).toEqual({});",
+            "newLine": 455
+          },
+          { "kind": "add", "content": "  });", "newLine": 456 },
+          { "kind": "add", "content": "});", "newLine": 457 }
+        ]
+      },
+      {
+        "id": "3059:head:packages/junior-evals/evals/integration/coding/event-automations/delivery.eval.ts#64-78",
+        "pr": 3059,
+        "path": "packages/junior-evals/evals/integration/coding/event-automations/delivery.eval.ts",
+        "side": "head",
+        "start": 64,
+        "end": 78,
+        "lines": [
+          { "kind": "add", "content": "", "newLine": 64 },
+          {
+            "kind": "add",
+            "content": "    // A person's reply in the run's thread is a chat Turn in the run's",
+            "newLine": 65
+          },
+          {
+            "kind": "add",
+            "content": "    // Conversation, and its final response is delivered.",
+            "newLine": 66
+          },
+          {
+            "kind": "add",
+            "content": "    const followUp = await delivery.continue(",
+            "newLine": 67
+          },
+          {
+            "kind": "add",
+            "content": "      slackMention(\"Which pull request was that? Answer with its number only.\"),",
+            "newLine": 68
+          },
+          { "kind": "add", "content": "    );", "newLine": 69 },
+          {
+            "kind": "add",
+            "content": "    expect(followUp.turns.map((turn) => turn.status)).toEqual([\"succeeded\"]);",
+            "newLine": 70
+          },
+          {
+            "kind": "add",
+            "content": "    expect(followUp.replies).toEqual([",
+            "newLine": 71
+          },
+          {
+            "kind": "add",
+            "content": "      expect.objectContaining({",
+            "newLine": 72
+          },
+          {
+            "kind": "add",
+            "content": "        conversationId: delivery.replies[0]!.conversationId,",
+            "newLine": 73
+          },
+          {
+            "kind": "add",
+            "content": "        text: expect.stringContaining(\"691\"),",
+            "newLine": 74
+          },
+          { "kind": "add", "content": "      }),", "newLine": 75 },
+          { "kind": "add", "content": "    ]);", "newLine": 76 },
+          {
+            "kind": "add",
+            "content": "    expect(delivery.replies[0]!.conversationId).toMatch(/^agent-dispatch:/);",
+            "newLine": 77
+          },
+          {
+            "kind": "add",
+            "content": "    expect(toolCallsOf(\"finishAutomationRun\", followUp)).toEqual([]);",
+            "newLine": 78
+          }
+        ]
+      },
+      {
+        "id": "3059:base:packages/junior/tests/integration/thread-input.test.ts#271-276",
+        "pr": 3059,
+        "path": "packages/junior/tests/integration/thread-input.test.ts",
+        "side": "base",
+        "start": 271,
+        "end": 276,
+        "lines": [
+          {
+            "kind": "context",
+            "content": "      // The person's Turn uses the Thread's own Destination and Location,",
+            "oldLine": 271,
+            "newLine": 271
+          },
+          {
+            "kind": "remove",
+            "content": "      // copies of its root's, and cannot start or message child agents.",
+            "oldLine": 272
+          },
+          {
+            "kind": "add",
+            "content": "      // copies of its root's. Tool wiring reads its agent tools from",
+            "newLine": 272
+          },
+          {
+            "kind": "add",
+            "content": "      // `turnBehavior`.",
+            "newLine": 273
+          },
+          {
+            "kind": "context",
+            "content": "      expect(personRun).toMatchObject({",
+            "oldLine": 273,
+            "newLine": 274
+          },
+          {
+            "kind": "context",
+            "content": "        actor: webTestActor,",
+            "oldLine": 274,
+            "newLine": 275
+          },
+          {
+            "kind": "context",
+            "content": "        destination: slackDestination,",
+            "oldLine": 275,
+            "newLine": 276
+          },
+          {
+            "kind": "remove",
+            "content": "        disabledFeatures: [\"subagents\"],",
+            "oldLine": 276
+          }
+        ]
+      },
+      {
+        "id": "3059:head:packages/junior/src/chat/agent/index.ts#240-243",
+        "pr": 3059,
+        "path": "packages/junior/src/chat/agent/index.ts",
+        "side": "head",
+        "start": 240,
+        "end": 243,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "  if (!conversation && run.parentConversationId) {",
+            "newLine": 240
+          },
+          { "kind": "add", "content": "    throw new Error(", "newLine": 241 },
+          {
+            "kind": "add",
+            "content": "      `Child Conversation ${run.conversationId} has no Conversation row`,",
+            "newLine": 242
+          },
+          { "kind": "add", "content": "    );", "newLine": 243 }
+        ]
+      },
+      {
+        "id": "3059:head:packages/junior/src/chat/conversations/kind-behavior.ts#108-109",
+        "pr": 3059,
+        "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+        "side": "head",
+        "start": 108,
+        "end": 109,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "  // Only an agent writes input to a task.",
+            "newLine": 108
+          },
+          {
+            "kind": "add",
+            "content": "  throw new Error(\"A task Conversation cannot have a person's input\");",
+            "newLine": 109
+          }
+        ]
+      }
+    ],
+    "skipped": [],
+    "checks": [],
+    "messages": [],
+    "content": {
+      "title": "Route per-kind Turn behavior through turnBehavior",
+      "intent": "This PR refactors per-kind Turn behavior into one table, turnBehavior, so prompt mode, tool access, delivery and the Automation gate stop branching on scattered Run fields.",
+      "types": ["refactor"],
+      "diagrams": [
+        {
+          "pr": 3059,
+          "nodes": [
+            { "id": "run", "label": "executeAgentRun" },
+            { "id": "behavior", "label": "turnBehavior" },
+            { "id": "prompt", "label": "assemblePrompt" },
+            { "id": "gate", "label": "Automation result gate" },
+            { "id": "wiring", "label": "wireAgentTools" },
+            { "id": "tools", "label": "createTools gates" },
+            { "id": "bind", "label": "bindAgentTools" },
+            { "id": "runner", "label": "createAgentRunner" },
+            { "id": "event", "label": "Event Turn delivery" },
+            { "id": "check", "label": "Architecture check" }
+          ],
+          "edges": [
+            {
+              "id": "e-run-behavior",
+              "from": "run",
+              "to": "behavior",
+              "label": "kind, source, dispatch"
+            },
+            {
+              "id": "e-behavior-prompt",
+              "from": "behavior",
+              "to": "prompt",
+              "label": "promptMode"
+            },
+            {
+              "id": "e-behavior-gate",
+              "from": "behavior",
+              "to": "gate",
+              "label": "gated"
+            },
+            {
+              "id": "e-behavior-wiring",
+              "from": "behavior",
+              "to": "wiring",
+              "label": "tools"
+            },
+            {
+              "id": "e-wiring-tools",
+              "from": "wiring",
+              "to": "tools",
+              "label": "turnTools"
+            },
+            {
+              "id": "e-wiring-bind",
+              "from": "wiring",
+              "to": "bind",
+              "label": "tools.agents"
+            },
+            {
+              "id": "e-runner-bind",
+              "from": "runner",
+              "to": "bind",
+              "label": "binders in environment"
+            },
+            {
+              "id": "e-behavior-event",
+              "from": "behavior",
+              "to": "event",
+              "label": "delivery"
+            },
+            {
+              "id": "e-check-behavior",
+              "from": "check",
+              "to": "behavior",
+              "label": "only home for branches"
+            }
+          ]
+        }
+      ],
+      "chapters": [
+        {
+          "id": "opening",
+          "label": "One table for Turn behavior",
+          "caption": "Per-kind decisions that were spread across the runtime now come from one lookup.",
+          "role": "opening",
+          "body": "Before this PR, what a Turn could do (its prompt mode, its tools, whether it must end with finishAutomationRun) was decided in many places, each reading a different signal: the Agent invocation id, the Automation result flag, a root-kind check, or a Thread-only subagents flag. This PR puts those answers in one table [1] keyed by Conversation kind, person input, and Automation run, and a source check blocks new branches elsewhere. The PR says no behavior change; the review risk is Event Turns on child Conversations, which the new key routes differently.",
+          "view": {
+            "pr": 3059,
+            "show": [
+              "run",
+              "behavior",
+              "prompt",
+              "gate",
+              "wiring",
+              "tools",
+              "e-run-behavior",
+              "e-behavior-prompt",
+              "e-behavior-gate",
+              "e-behavior-wiring",
+              "e-wiring-tools"
+            ],
+            "highlight": ["behavior"],
+            "added": ["behavior"],
+            "broken": []
+          },
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+              "side": "head",
+              "start": 92,
+              "end": 110,
+              "note": "The selector every caller now reads"
+            }
+          ],
+          "decisions": [],
+          "asks": []
+        },
+        {
+          "id": "table",
+          "label": "The behavior table",
+          "caption": "Four fixed rows cover a root, a person in a Thread, an agent in a child, and an Automation run.",
+          "role": "other",
+          "body": "Each row (`TurnBehavior`) sets where the final response goes, the prompt mode, whether the Turn is gated on an answer tool, and seven tool flags [1]. A person in a Thread is a root row with no agent tools; any other child Turn gets reportBlocked instead of the review desk, subscriptions, and user customization [2]. The selector checks the Automation flag first, then root, then person input, and throws for a person's input on a task [3]. The Automation flag is a stated temporary bridge until a Conversation kind for automations exists.",
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+              "side": "head",
+              "start": 19,
+              "end": 39
+            },
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+              "side": "head",
+              "start": 56,
+              "end": 79
+            },
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+              "side": "head",
+              "start": 92,
+              "end": 110
+            }
+          ],
+          "decisions": [],
+          "asks": [
+            "Why does an Automation run keep the root's agent tools?",
+            "What replaces automationRun when kind automation ships?"
+          ]
+        },
+        {
+          "id": "selection",
+          "label": "Picking a row per Run",
+          "caption": "The agent executor reads the stored kind, the Source, and the dispatch once, then hands the row to the prompt and the gate.",
+          "role": "other",
+          "body": "The executor now builds the row from the stored Conversation kind, defaulting to root when no row exists, and refuses to run a child that has no row [1]. The result gate reads `gated` instead of the dispatch flag [2], and the prompt takes its mode from the row instead of re-deriving it from the dispatch and the invocation id [3]. For Agent invocations and person Turns the mapping matches the old derivation.",
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/src/chat/agent/index.ts",
+              "side": "head",
+              "start": 238,
+              "end": 244
+            },
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/src/chat/agent/index.ts",
+              "side": "head",
+              "start": 298,
+              "end": 304
+            },
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/src/chat/agent/prompt.ts",
+              "side": "head",
+              "start": 632,
+              "end": 645
+            }
+          ],
+          "decisions": [
+            {
+              "id": "child-run-needs-row",
+              "claim": "A child Run with no Conversation row should fail instead of running with an unknown kind.",
+              "concern": "Any child path that runs before its row is written now errors on every attempt; before, it ran with root-like behavior.",
+              "origin": { "kind": "behavior_change" }
+            }
+          ],
+          "asks": ["Can a root still run before its row exists?"]
+        },
+        {
+          "id": "tools",
+          "label": "Tools read turnTools",
+          "caption": "Agent tools are bound in tool wiring from the row, and tool gates read flags instead of the invocation id.",
+          "role": "other",
+          "body": "The runner no longer binds spawnAgent and messageAgent up front; it passes the binders through the Run environment [2], and tool wiring binds them from the row's agent setting [1]. A child still keeps messageAgent to its parent when too deep to spawn. In tool creation, reportBlocked, noReply and the review-desk disable reason now read the row's flags [3][4]. Tool context now requires these flags (`turnTools`), so every test context had to pass a root row.",
+          "view": {
+            "pr": 3059,
+            "show": [
+              "wiring",
+              "bind",
+              "runner",
+              "tools",
+              "e-wiring-bind",
+              "e-runner-bind",
+              "e-wiring-tools"
+            ],
+            "highlight": ["bind"],
+            "added": ["bind"],
+            "broken": []
+          },
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/src/chat/agent/tools.ts",
+              "side": "head",
+              "start": 705,
+              "end": 729
+            },
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/src/chat/runtime/agent-runner.ts",
+              "side": "head",
+              "start": 54,
+              "end": 58
+            },
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/src/chat/tools/index.ts",
+              "side": "head",
+              "start": 239,
+              "end": 250
+            },
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/src/chat/tools/index.ts",
+              "side": "head",
+              "start": 364,
+              "end": 369
+            }
+          ],
+          "decisions": [],
+          "asks": [
+            "Does the production messageAgent binder use the new agents argument?"
+          ]
+        },
+        {
+          "id": "child-events",
+          "label": "Event Turns on child Conversations",
+          "caption": "A non-person Turn on a Thread or task now gets the child-agent row, not only an Agent invocation.",
+          "role": "other",
+          "body": "The old gates keyed off the Agent invocation id, which the mailbox worker never sets, and that worker disabled subagents for every Thread Turn [2]. The new key is kind plus person input, so an Event Turn on a Thread or task falls to the child-agent row [1], which the unit table pins [4]. On a Thread such a Turn now gets spawnAgent and messageAgent; on either kind it gets reportBlocked and the child-agent prompt and loses the review desk and subscriptions. Event delivery to the Location stays root-only [3].",
+          "view": {
+            "pr": 3059,
+            "show": ["behavior", "event", "e-behavior-event"],
+            "highlight": ["event"],
+            "added": [],
+            "broken": []
+          },
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+              "side": "head",
+              "start": 104,
+              "end": 107
+            },
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/src/chat/task-execution/conversation-turn.ts",
+              "side": "base",
+              "start": 442,
+              "end": 447,
+              "note": "Removed: subagents off for every Thread Turn"
+            },
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/src/chat/task-execution/conversation-turn.ts",
+              "side": "head",
+              "start": 453,
+              "end": 461
+            },
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/tests/unit/chat/kind-behavior.test.ts",
+              "side": "head",
+              "start": 47,
+              "end": 48
+            }
+          ],
+          "decisions": [
+            {
+              "id": "child-event-turns",
+              "claim": "An Event Turn on a Thread or task should get child-agent behavior, including spawnAgent.",
+              "concern": "PR claims no behavior change. Old code barred Thread Turns from child agents so results don't report as the wrong Actor; no test runs this path.",
+              "origin": { "kind": "behavior_change" }
+            }
+          ],
+          "asks": [
+            "Can a Thread receive Event Turns today?",
+            "Should Event Turns on a Thread get agents none?"
+          ]
+        },
+        {
+          "id": "guard",
+          "label": "Keeping branches in one module",
+          "caption": "A new source rule counts kind, parent-edge, Automation-flag and person-Source branches per file against a baseline.",
+          "role": "other",
+          "body": "The architecture check now scans runtime source with regexes for kind comparisons, person-Source checks, reads of the Automation flag, and parent-edge fields used as conditions, skipping comments and the table module [1]. Its tests show which forms count and which do not [2]. A baseline records today's count per file, and a count may only go down [3].",
+          "view": {
+            "pr": 3059,
+            "show": ["check", "behavior", "e-check-behavior"],
+            "highlight": ["check"],
+            "added": ["check"],
+            "broken": []
+          },
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "scripts/check-test-architecture.mjs",
+              "side": "head",
+              "start": 132,
+              "end": 191
+            },
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "scripts/check-test-architecture.test.mjs",
+              "side": "head",
+              "start": 339,
+              "end": 374
+            },
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "scripts/test-architecture-baseline.json",
+              "side": "head",
+              "start": 172,
+              "end": 227
+            }
+          ],
+          "decisions": [
+            {
+              "id": "regex-guard",
+              "claim": "A regex count with a per-file baseline that only shrinks is enough to keep kind branches in kind-behavior.ts.",
+              "concern": "The baseline also absorbs branches this PR adds, such as the new parent-edge throw in agent/index.ts, and regexes miss indirect reads.",
+              "origin": { "kind": "assumed" }
+            }
+          ],
+          "asks": []
+        },
+        {
+          "id": "proof",
+          "label": "How we know it works",
+          "caption": "Unit tests pin each row and the agent-tool binding, and an eval checks a person's reply in an Automation thread.",
+          "role": "proof",
+          "body": "A table test checks every kind and opener pair, the task rejection, and the Automation row [1]. New binding tests show a person's Thread Turn gets no agent tools and a too-deep child keeps messageAgent [2]. The Event automation eval now sends a person's follow-up in the run's thread and expects a delivered reply with no finishAutomationRun [3]. The integration assertion that a person's Thread Run disables subagents was removed [4], so that rule is now covered only at unit level.",
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/tests/unit/chat/kind-behavior.test.ts",
+              "side": "head",
+              "start": 43,
+              "end": 56
+            },
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/tests/unit/slack/tool-registration.test.ts",
+              "side": "head",
+              "start": 424,
+              "end": 457
+            },
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior-evals/evals/integration/coding/event-automations/delivery.eval.ts",
+              "side": "head",
+              "start": 64,
+              "end": 78
+            },
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/tests/integration/thread-input.test.ts",
+              "side": "base",
+              "start": 271,
+              "end": 276
+            }
+          ],
+          "decisions": [
+            {
+              "id": "thread-agents-unit-only",
+              "claim": "A unit test of bindAgentTools is enough to guard that a person's Thread Turn gets no agent tools.",
+              "concern": "No integration test checks the wired tools on a real Thread Run, so a regression in how the executor picks the row would pass.",
+              "origin": { "kind": "missing_signal" }
+            }
+          ],
+          "asks": []
+        },
+        {
+          "id": "watch",
+          "label": "What to watch after ship",
+          "caption": "Two new hard errors and child-agent tool calls from Event Turns show whether the mapping holds.",
+          "role": "other",
+          "body": "Watch Sentry for \"Child Conversation … has no Conversation row\" [1] and \"A task Conversation cannot have a person's input\" [2]; any count means a path the table did not expect. Also watch for spawnAgent or messageAgent calls on Event Turns in Thread Conversations, which had neither tool before, and reportBlocked calls on Event Turns in any child.",
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/src/chat/agent/index.ts",
+              "side": "head",
+              "start": 240,
+              "end": 243
+            },
+            {
+              "kind": "code",
+              "pr": 3059,
+              "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+              "side": "head",
+              "start": 108,
+              "end": 109
+            }
+          ],
+          "decisions": [],
+          "asks": []
+        }
+      ],
+      "also_changed": [
+        {
+          "reason": "Tests and fixtures pass a root turnTools row",
+          "files": [
+            {
+              "pr": 3059,
+              "path": "packages/junior-evals/src/guardian-tools.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/component/conversations/web-files.test.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/component/events/watch-people.test.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/component/memory-plugin-storage.test.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/component/workspace-tools.test.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/fixtures/event-automations.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/integration/api/conversations/subscription.test.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/integration/codemode/bridge.test.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/integration/codemode/tool.test.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/integration/operator-sql-tool.test.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/integration/read-conversation-event.test.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/integration/sandbox-egress-proxy.test.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/integration/scheduled-automation-tools.test.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/integration/search-conversation-events.test.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/integration/tool-support/pi-tool-adapter.test.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/integration/tool-support/tool-search-ranking.test.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/integration/user-customization-tool.test.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/integration/user-lookup.test.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/unit/plugins/agent-hooks.test.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/unit/tools/events.test.ts"
+            }
+          ]
+        },
+        {
+          "reason": "Delivery and person-input helpers moved to kind-behavior.ts",
+          "files": [
+            {
+              "pr": 3059,
+              "path": "packages/junior/src/chat/automation-result.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/src/chat/providers/slack/resume.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/src/chat/providers/slack/turn.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/src/chat/task-execution/paused-turn.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/src/chat/conversations/session-stop.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/src/chat/task-execution/state.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/tests/unit/chat/automation-result.test.ts"
+            }
+          ]
+        },
+        {
+          "reason": "Other tool gates, types, and the CLI binder",
+          "files": [
+            {
+              "pr": 3059,
+              "path": "packages/junior/src/chat/tools/conversation-subscription.ts"
+            },
+            {
+              "pr": 3059,
+              "path": "packages/junior/src/chat/tools/user-customization.ts"
+            },
+            { "pr": 3059, "path": "packages/junior/src/chat/tools/types.ts" },
+            { "pr": 3059, "path": "packages/junior/src/chat/agent/types.ts" },
+            { "pr": 3059, "path": "packages/junior/src/cli/chat.ts" }
+          ]
+        }
+      ]
+    },
+    "files": [
+      {
+        "pr": 3059,
+        "path": "packages/junior-evals/evals/integration/coding/event-automations/delivery.eval.ts",
+        "hash": "4d21ca0ad37f3441743d09e05ae05b7e4b86d59aa16b286c07879bca611853b6"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior-evals/src/guardian-tools.ts",
+        "hash": "d0125b7b341eec83385eef873026d6532bb97cef220abcdf7f114c1a73f65507"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/src/chat/agent/index.ts",
+        "hash": "cc6a57e75df63288feddcff95084e5c1afb8e7c4ee2b62f21828f3203f9b6959"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/src/chat/agent/prompt.ts",
+        "hash": "5cf9eade1b6e484b919b69a14c252f63ecdf192be080026e73ab1f68584a4b1c"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/src/chat/agent/tools.ts",
+        "hash": "a1f4ff5e191aa4da5569907844b404750a3f74828ee7244bee6ce26dd268eb84"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/src/chat/agent/types.ts",
+        "hash": "66e4f8bc314f00b51602aaf0619913d114ed554a5562d36e243cfccebf5eaa71"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/src/chat/automation-result.ts",
+        "hash": "c0b7f896f2480cf03f512265f1ba884f35b465a83bd07a9d71ec35f374151461"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+        "hash": "491c1f358701d0b6966c67e550d87cbbe60e39df1c79bfc88816caf5f0808987"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/src/chat/conversations/session-stop.ts",
+        "hash": "7440e7cfa5e912ed2c091e81c9a932578abe448d167ac0893401174ef8a523e7"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/src/chat/providers/slack/resume.ts",
+        "hash": "0f13049c86de51163dc09dc2f9de97b3aba7b7f83574423d77287fb619aae387"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/src/chat/providers/slack/turn.ts",
+        "hash": "32eaaab6b8838c9dcbe6b16b6058ca2e0a15f2dfcfe2ac84f99f99fec5b96a54"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/src/chat/runtime/agent-runner.ts",
+        "hash": "4b898dce4f093984f33417db69e1c1bccff6e9d62eaebb822058821d148078d5"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/src/chat/task-execution/conversation-turn.ts",
+        "hash": "c68753f3e7207db705f0c429c3bf753a21beeb5857849d14cf2d9b74d6538ed3"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/src/chat/task-execution/paused-turn.ts",
+        "hash": "2a5dfba5e9521562f0bac40f59fe745770fc2e64546b54ff3c58c63684d0212f"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/src/chat/task-execution/state.ts",
+        "hash": "6eb9d71bb95ec697686787ba93dc10b0ddce1fdaca8bd9c016e54a042c8de6da"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/src/chat/tools/conversation-subscription.ts",
+        "hash": "de1793a53e3b128c304abc41a2ed3a949596271c91324c0a8cb997eb18eed43f"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/src/chat/tools/index.ts",
+        "hash": "4e214dc8af5f86ea1828fa6f3bde3dc7ad50b32b7d84186a797ecafd73b63a17"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/src/chat/tools/types.ts",
+        "hash": "b281d9555dd14de07af2768781b5628b01bb3004e94e93b7d9084f409f4d7170"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/src/chat/tools/user-customization.ts",
+        "hash": "19e4cf2fca65c1c06c4b77ff9b37c94197f8cacb2b8d89e4391266d164f93405"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/src/cli/chat.ts",
+        "hash": "1777844f6b0f6ca50fff8a88fb78bce4c8aa40d5deaa7cab32a2b5a30d942314"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/component/conversations/web-files.test.ts",
+        "hash": "d31257b46d9e71d1053c7ff8d8cfa84897e829f717e3a010a5c61804f35fe67d"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/component/events/watch-people.test.ts",
+        "hash": "c3aba752deee3913dbc9b78cf13189717526f1e5a0bff116714ae29a18d550d9"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/component/memory-plugin-storage.test.ts",
+        "hash": "3e2996acbed8ab5613f7fcc23daa22e0040fc2da7f46c2a2f1aaea3e479db418"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/component/workspace-tools.test.ts",
+        "hash": "6c245470e55294f1152ef17341eb099419e26644efa84a3e613d8554cf780b80"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/fixtures/event-automations.ts",
+        "hash": "7ea580813ce2a2c3a0c739767053f8884ac73b124a329f3bc6d3a16353a1cde1"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/integration/api/conversations/subscription.test.ts",
+        "hash": "d31257b46d9e71d1053c7ff8d8cfa84897e829f717e3a010a5c61804f35fe67d"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/integration/codemode/bridge.test.ts",
+        "hash": "b2a9a1377dc64eec5b5b98cf6858d71ed2b4afb2a937f17b0000a2904fc783d9"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/integration/codemode/tool.test.ts",
+        "hash": "4d4a3f253f5f0fdd0c01c3a09e0a38196709b2e94fe11e5480910621475aa67f"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/integration/operator-sql-tool.test.ts",
+        "hash": "d31257b46d9e71d1053c7ff8d8cfa84897e829f717e3a010a5c61804f35fe67d"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/integration/read-conversation-event.test.ts",
+        "hash": "d31257b46d9e71d1053c7ff8d8cfa84897e829f717e3a010a5c61804f35fe67d"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/integration/sandbox-egress-proxy.test.ts",
+        "hash": "70d7e197433806de73d06f18cb754008ab250de54917d0663110bd9768f7ec42"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/integration/scheduled-automation-tools.test.ts",
+        "hash": "fb9ccf931b6e39fbfc33edfad8ff4e593f99da3d87fdbab09898353e2461b8cb"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/integration/search-conversation-events.test.ts",
+        "hash": "52a1ccd66789c9f44fb16df562b271802f95a1c5f8bfa9612198904fb42d23e3"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/integration/thread-input.test.ts",
+        "hash": "81ae0cf7378e0f2f8a7648b2743cab81c54804a3fbe03f6ab695823f7b580adf"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/integration/tool-support/pi-tool-adapter.test.ts",
+        "hash": "8913c4c2cc9589843a0618e5d24de102b1b6a8f5617a6bd05a41f67145932fe5"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/integration/tool-support/tool-search-ranking.test.ts",
+        "hash": "70d7e197433806de73d06f18cb754008ab250de54917d0663110bd9768f7ec42"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/integration/user-customization-tool.test.ts",
+        "hash": "dca7e0f25328820d6376594426854bb2a83dbefcfd94e16a6346410c2cc0d333"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/integration/user-lookup.test.ts",
+        "hash": "b80775215c933eab7f6d006f1303d68958d4a6e208a49564cd107b11981200a1"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/unit/chat/automation-result.test.ts",
+        "hash": "eecd98705cc858dd4d14dc463e32d4cfdbb74ecdfd0550e3b25a7d539558299b"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/unit/chat/kind-behavior.test.ts",
+        "hash": "593e42e3d84a1363b845391df7b4e86fd6f9cdb79387f0f759b5e77c1ea12bbf"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/unit/plugins/agent-hooks.test.ts",
+        "hash": "1565732bdbaea22d859c64ef789d2c6213d0b1586b1bae763a823a39732a8870"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/unit/slack/tool-registration.test.ts",
+        "hash": "7b4e479dd2eebe0f8434ea375520ed36879e473f07418d9da4d34933e45b3063"
+      },
+      {
+        "pr": 3059,
+        "path": "packages/junior/tests/unit/tools/events.test.ts",
+        "hash": "013ba471fba758ad8092f8979fcd0c0b0a35694e951c2f375f0cdf0038bc1085"
+      },
+      {
+        "pr": 3059,
+        "path": "scripts/check-test-architecture.mjs",
+        "hash": "d8b5c5d7b9263f859bd306f0a5a43c39f8416282aea4c10a1e7ee82a9ffac849"
+      },
+      {
+        "pr": 3059,
+        "path": "scripts/check-test-architecture.test.mjs",
+        "hash": "b18d040f39f1b8b725eea8a09852f47ba263756db1936336cf2488b414fc0492"
+      },
+      {
+        "pr": 3059,
+        "path": "scripts/test-architecture-baseline.json",
+        "hash": "fa42640f55f3cf0e5efc9ae2ca4d1a2f1bba862b329283096373f6d883606539"
+      }
+    ],
+    "updates": [],
+    "meta": {
+      "modelId": "anthropic/claude-opus-5.5",
+      "promptVersion": 4,
+      "createdAt": "2026-11-11T11:22:52.529Z"
+    }
+  }
+}

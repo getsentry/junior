@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Walkthrough</title>
+<style id="deck-style"></style>
+<style>
+  :root{--bg:#EEECE7;--paper:#FAF9F6;--ink:#22211F;--mid:#7D7A73;--line:#C9C5BC;--faint:#E4E1DA;--acc:#2D62D8;--bad:#C2372D}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:"Iowan Old Style",Charter,Georgia,serif}
+  .app{min-height:100%;display:grid;grid-template-rows:auto auto auto;gap:16px;padding:20px 24px 24px;box-sizing:border-box;max-width:1260px;margin:0 auto}
+  .top{display:flex;justify-content:space-between;align-items:center;font:13px ui-monospace,Menlo,monospace;color:var(--mid)}
+  .top a{color:var(--mid);text-decoration:none}
+  .viewport{position:relative;width:100%;aspect-ratio:1200/700;align-self:start}
+  .scaler{position:absolute;left:0;top:0;width:1200px;height:700px;transform-origin:0 0}
+  .slide{position:absolute;inset:0;opacity:0;transition:opacity .45s ease}
+  .slide.on{opacity:1}
+  .slide .f{position:absolute;inset:0}
+  .hl{position:absolute;left:64px;top:64px;margin:0;font:600 46px/1.15 "Iowan Old Style",Charter,Georgia,serif;letter-spacing:-.01em;color:var(--ink)}
+  .slno{position:absolute;left:64px;top:30px;font:12px ui-monospace,Menlo,monospace;letter-spacing:.08em;color:var(--mid);text-transform:uppercase}
+  /* enter animations */
+  .slide.on .stagein>*{animation:rise .5s ease both}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .slide.on .stagein>.ghost,.slide.on .stagein>.g{animation-name:riseghost}
+  @keyframes riseghost{from{opacity:0}to{opacity:.22}}
+  .slide.on .cell{animation:pop .35s ease both}
+  @keyframes pop{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:none}}
+  .cell{transform-box:fill-box;transform-origin:center}
+  .slide.on .draw{animation:draw 1.1s ease both}
+  @keyframes draw{from{stroke-dashoffset:var(--len)}to{stroke-dashoffset:0}}
+  /* poll */
+  .poll{position:absolute;left:64px;bottom:22px;display:flex;align-items:center;gap:14px;padding:10px 12px 10px 18px;border:1px solid var(--line);border-radius:99px;background:#fff;font-size:18px;opacity:0;transform:translateY(6px);transition:all .35s ease;pointer-events:none}
+  .poll.show{opacity:1;transform:none;pointer-events:auto}
+  .poll i{font:normal 12px ui-monospace,Menlo,monospace;color:var(--mid);letter-spacing:.06em;text-transform:uppercase}
+  .poll button{font:14px ui-monospace,Menlo,monospace;border:1px solid var(--line);background:var(--paper);border-radius:99px;padding:6px 14px;cursor:pointer;color:var(--ink)}
+  .poll button:hover{border-color:var(--ink)}
+  .poll button.sel{background:var(--acc);border-color:var(--acc);color:#fff}
+  /* presenter */
+  .presenter{display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center}
+  .subs{font-size:22px;line-height:1.45;min-height:3em;color:var(--mid)}
+  .subs .w{transition:color .15s}
+  .subs .w.said{color:var(--ink)}
+  .ctl{display:flex;gap:8px}
+  .ctl button,.askbtn{font:14px ui-monospace,Menlo,monospace;border:1px solid var(--line);background:var(--paper);border-radius:8px;height:38px;min-width:38px;padding:0 12px;cursor:pointer;color:var(--ink)}
+  .ctl button:hover,.askbtn:hover{border-color:var(--ink)}
+  .dots{display:flex;gap:6px;justify-content:center;margin-top:10px}
+  .dots span{width:28px;height:4px;border-radius:2px;background:var(--line);overflow:hidden;cursor:pointer}
+  .dots span b{display:block;height:100%;width:0;background:var(--ink)}
+  .askform{margin-top:12px;display:none;gap:10px}
+  .askform.open{display:flex}
+  .askform input{flex:1;font:17px Georgia,serif;padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  .answer{margin-top:10px;font-size:17px;color:var(--mid);display:none}
+  .answer.show{display:block}
+  .start{position:absolute;inset:0;display:grid;place-items:center;background:rgba(250,249,246,.86);z-index:5}
+  .start div{display:grid;gap:12px;justify-items:center}
+  .start button{font:16px ui-monospace,Menlo,monospace;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:99px;padding:12px 26px;cursor:pointer}
+  .start button.alt{background:transparent;color:var(--ink);border-color:var(--line)}
+  .start small{font:13px ui-monospace,Menlo,monospace;color:var(--mid)}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top"><span id="title"></span><span><span id="count"></span> · <a href="./">all storyboards</a></span></div>
+  <div class="viewport" id="vp"><div class="scaler" id="sc"></div>
+    <div class="start" id="start"><div>
+      <button id="play">Play with narration</button>
+      <button class="alt" id="mute">Watch muted, with subtitles</button>
+      <small>Synthetic narration in Junior's voice · arrow keys to move, space to pause</small>
+    </div></div>
+  </div>
+  <div>
+    <div class="presenter">
+      <div class="ctl"><button id="prev" title="Back">Back</button><button id="pp" title="Pause">Pause</button><button id="next" title="Next">Next</button></div>
+      <div class="subs" id="sub"></div>
+      <div class="ctl"><button id="snd" title="Sound">Sound on</button><button class="askbtn" id="askbtn">Ask about this slide</button></div>
+    </div>
+    <div class="dots" id="dots"></div>
+    <form class="askform" id="ask"><input id="q" placeholder="What's confusing on this slide?" autocomplete="off"><button class="askbtn">Ask</button></form>
+    <div class="answer" id="ans"></div>
+  </div>
+</div>
+<script type="module">
+const pr = new URLSearchParams(location.search).get("pr") || "3153";
+const $ = (id) => document.getElementById(id);
+const deck = await (await fetch(`deck-${pr}.json`)).json();
+document.title = deck.title; $("title").textContent = deck.title;
+$("deck-style").textContent = deck.style.replace(/body\{[^}]*\}/, "").replace(/main\{[^}]*\}/, "").replace(/h1\{[^}]*\}/, "");
+const sc = $("sc");
+sc.insertAdjacentHTML("beforeend", deck.defs);
+const audio = new Audio();
+let i = 0, playing = false, muted = false, t0 = 0, elapsed = 0, waitingPoll = false, ended = false;
+const polls = {};
+
+deck.slides.forEach((s, k) => {
+  const el = document.createElement("div");
+  el.className = "slide";
+  el.innerHTML = `<section class="f"><div class="slno">${k + 1} / ${deck.slides.length}</div><h2 class="hl">${s.h}</h2>${s.stage}${s.claim ? `<div class="poll"><i>Do you agree?</i><span>${s.claim}</span><button data-v="agree">Agree</button><button data-v="unsure">Not sure</button></div>` : ""}</section>`;
+  sc.appendChild(el);
+  // stagger stage pieces
+  el.querySelectorAll("svg.stage, svg.s, table, pre").forEach((n) => {
+    if (n.tagName.toLowerCase() === "svg") {
+      n.classList.add("stagein");
+      [...n.children].forEach((c, j) => (c.style.animationDelay = `${0.15 + j * 0.05}s`));
+    } else n.style.animation = "rise .5s .2s ease both";
+  });
+  // chain cells pop in across the first ~60% of the narration
+  const cells = [...el.querySelectorAll("g.c")].filter((c) => !c.closest(".ghost"));
+  cells.forEach((c, j) => { c.classList.add("cell"); c.style.animationDelay = `${0.6 + (j * s.dur * 0.55) / Math.max(cells.length, 1)}s`; });
+  // accent paths draw themselves
+  el.querySelectorAll("path.e.acc, path.la").forEach((p, j) => {
+    const len = p.getTotalLength?.() || 400; p.style.strokeDasharray = len; p.style.setProperty("--len", len);
+    p.classList.add("draw"); p.style.animationDelay = `${0.8 + j * 0.12}s`;
+  });
+  el.querySelectorAll(".poll button").forEach((b) => b.onclick = () => {
+    polls[k] = b.dataset.v;
+    el.querySelectorAll(".poll button").forEach((x) => x.classList.toggle("sel", x === b));
+    if (b.dataset.v === "unsure") { openAsk(`About "${s.claim}" — `); return; }
+    waitingPoll = false; if (playing) setTimeout(() => go(i + 1), 700);
+  });
+  const d = document.createElement("span"); d.innerHTML = "<b></b>"; d.onclick = () => go(k); $("dots").appendChild(d);
+});
+const slides = [...sc.querySelectorAll(".slide")];
+
+function fit() { const w = $("vp").clientWidth; sc.style.transform = `scale(${w / 1200})`; }
+addEventListener("resize", fit); fit();
+
+function renderSub(s, frac) {
+  const words = s.n.split(" ");
+  const said = Math.floor(words.length * frac);
+  $("sub").innerHTML = words.map((w, j) => `<span class="w${j < said ? " said" : ""}">${w}</span>`).join(" ");
+}
+
+function tick() {
+  const s = deck.slides[i];
+  const t = muted ? elapsed + (playing ? (performance.now() - t0) / 1000 : 0) : audio.currentTime;
+  const frac = Math.min(t / s.dur, 1);
+  renderSub(s, frac);
+  $("dots").children[i].firstChild.style.width = `${frac * 100}%`;
+  if (frac >= 1 && playing && !waitingPoll && !ended) { ended = true; end(); }
+  requestAnimationFrame(tick);
+}
+
+function end() {
+  const s = deck.slides[i];
+  if (s.claim && !polls[i]) { waitingPoll = true; slides[i].querySelector(".poll").classList.add("show"); return; }
+  if (i < slides.length - 1) setTimeout(() => go(i + 1), 900);
+  else { playing = false; $("pp").textContent = "Replay"; }
+}
+
+function go(k) {
+  if (k < 0 || k >= slides.length) return;
+  i = k; waitingPoll = false; ended = false;
+  slides.forEach((el, j) => { el.classList.toggle("on", j === i); if (j === i) { el.classList.remove("on"); void el.offsetWidth; el.classList.add("on"); } });
+  [...$("dots").children].forEach((d, j) => (d.firstChild.style.width = j < i ? "100%" : "0"));
+  const poll = slides[i].querySelector(".poll"); if (poll) poll.classList.toggle("show", !!polls[i]);
+  $("count").textContent = `${i + 1} / ${slides.length}`;
+  $("ask").classList.remove("open"); $("ans").classList.remove("show");
+  elapsed = 0; t0 = performance.now();
+  audio.src = deck.slides[i].audio; audio.muted = muted;
+  if (playing && !muted) audio.play().catch(() => {});
+}
+
+function setPlaying(p) {
+  if (p && !muted) audio.play().catch(() => {}); else audio.pause();
+  if (p) t0 = performance.now(); else elapsed += (performance.now() - t0) / 1000;
+  playing = p; $("pp").textContent = p ? "Pause" : "Play";
+}
+
+function openAsk(prefill = "") {
+  if (playing) setPlaying(false);
+  $("ask").classList.add("open"); $("q").value = prefill; $("q").focus();
+}
+
+$("play").onclick = () => { $("start").remove(); muted = false; playing = true; $("pp").textContent = "Pause"; go(0); };
+$("mute").onclick = () => { $("start").remove(); muted = true; $("snd").textContent = "Sound off"; playing = true; $("pp").textContent = "Pause"; go(0); };
+$("pp").onclick = () => { if ($("pp").textContent === "Replay") { playing = true; go(0); $("pp").textContent = "Pause"; } else setPlaying(!playing); };
+$("prev").onclick = () => go(i - 1);
+$("next").onclick = () => go(i + 1);
+$("snd").onclick = () => {
+  if (!muted) { elapsed = audio.currentTime; t0 = performance.now(); }
+  muted = !muted; audio.muted = muted; $("snd").textContent = muted ? "Sound off" : "Sound on";
+  if (!muted) { audio.currentTime = Math.min(elapsed + (playing ? (performance.now() - t0) / 1000 : 0), deck.slides[i].dur); if (playing) audio.play().catch(() => {}); }
+};
+$("askbtn").onclick = () => openAsk();
+$("ask").onsubmit = (e) => {
+  e.preventDefault();
+  $("ans").textContent = "Prototype: in the product, Junior answers here, scoped to this slide and its evidence (the cited code, recorded runs and source Conversation). The question Turn isn't wired into this page.";
+  $("ans").classList.add("show");
+};
+addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "ArrowRight") go(i + 1);
+  if (e.key === "ArrowLeft") go(i - 1);
+  if (e.key === " ") { e.preventDefault(); $("pp").click(); }
+});
+go(0); $("pp").textContent = "Play"; requestAnimationFrame(tick);
+</script>
+</body>
+</html>

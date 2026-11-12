@@ -1,0 +1,887 @@
+{
+  "id": "5dda9136-948f-4d8c-9dea-aaa99abba4b4",
+  "status": "ready",
+  "provider": "github-local",
+  "repository": "getsentry/junior",
+  "codeChanges": [
+    {
+      "number": 3071,
+      "title": "ref(conversations): Share one filter for listed Conversations",
+      "url": "https://github.com/getsentry/junior/pull/3071",
+      "headSha": "6024898760de6ab0d04e8774f34e9cfefd051461",
+      "baseSha": "070d82440f6f3c3a9b0853e03c2bf56e134a1c5c",
+      "additions": 32,
+      "deletions": 14
+    }
+  ],
+  "costUsd": 0.6596796,
+  "generationConversationId": "local:web:4ac250d1307511ebd594f8ea",
+  "createdAt": "2026-11-11T11:06:27.208Z",
+  "completedAt": "2026-11-11T11:08:27.737Z",
+  "versions": [
+    {
+      "id": "5dda9136-948f-4d8c-9dea-aaa99abba4b4",
+      "status": "ready",
+      "createdAt": "2026-11-11T11:06:27.208Z"
+    }
+  ],
+  "document": {
+    "schemaVersion": 3,
+    "versionId": "5dda9136-948f-4d8c-9dea-aaa99abba4b4",
+    "contentVersionId": "5dda9136-948f-4d8c-9dea-aaa99abba4b4",
+    "repository": "getsentry/junior",
+    "layers": [
+      {
+        "pr": 3071,
+        "title": "ref(conversations): Share one filter for listed Conversations",
+        "url": "https://github.com/getsentry/junior/pull/3071",
+        "headSha": "6024898760de6ab0d04e8774f34e9cfefd051461",
+        "baseSha": "070d82440f6f3c3a9b0853e03c2bf56e134a1c5c",
+        "additions": 32,
+        "deletions": 14
+      }
+    ],
+    "excerpts": [
+      {
+        "id": "3071:head:packages/junior/src/chat/conversations/sql/listed.ts#1-15",
+        "pr": 3071,
+        "path": "packages/junior/src/chat/conversations/sql/listed.ts",
+        "side": "head",
+        "start": 1,
+        "end": 15,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "import { and, isNull, type SQL } from \"drizzle-orm\";",
+            "newLine": 1
+          },
+          {
+            "kind": "add",
+            "content": "import { juniorConversations } from \"@/db/schema\";",
+            "newLine": 2
+          },
+          { "kind": "add", "content": "", "newLine": 3 },
+          { "kind": "add", "content": "/**", "newLine": 4 },
+          {
+            "kind": "add",
+            "content": " * Match Conversations that lists and searches may show: roots that are not",
+            "newLine": 5
+          },
+          {
+            "kind": "add",
+            "content": " * an unkept Quick question. Each list adds its own access and scope filters.",
+            "newLine": 6
+          },
+          {
+            "kind": "add",
+            "content": " * Structural root checks, such as retention, do not use this.",
+            "newLine": 7
+          },
+          { "kind": "add", "content": " */", "newLine": 8 },
+          {
+            "kind": "add",
+            "content": "export function listedConversation(): SQL {",
+            "newLine": 9
+          },
+          { "kind": "add", "content": "  return and(", "newLine": 10 },
+          {
+            "kind": "add",
+            "content": "    isNull(juniorConversations.parentConversationId),",
+            "newLine": 11
+          },
+          {
+            "kind": "add",
+            "content": "    // An unkept Quick question is a private side thread.",
+            "newLine": 12
+          },
+          {
+            "kind": "add",
+            "content": "    isNull(juniorConversations.quickQuestionAt),",
+            "newLine": 13
+          },
+          { "kind": "add", "content": "  )!;", "newLine": 14 },
+          { "kind": "add", "content": "}", "newLine": 15 }
+        ]
+      },
+      {
+        "id": "3071:base:packages/junior/src/api/conversations/list.ts#150-152",
+        "pr": 3071,
+        "path": "packages/junior/src/api/conversations/list.ts",
+        "side": "base",
+        "start": 150,
+        "end": 152,
+        "lines": [
+          {
+            "kind": "remove",
+            "content": "        isNull(juniorConversations.parentConversationId),",
+            "oldLine": 150
+          },
+          {
+            "kind": "remove",
+            "content": "        // An unkept Quick question is a private side thread.",
+            "oldLine": 151
+          },
+          {
+            "kind": "remove",
+            "content": "        isNull(juniorConversations.quickQuestionAt),",
+            "oldLine": 152
+          }
+        ]
+      },
+      {
+        "id": "3071:base:packages/junior/src/api/conversations/list.ts#319-320",
+        "pr": 3071,
+        "path": "packages/junior/src/api/conversations/list.ts",
+        "side": "base",
+        "start": 319,
+        "end": 320,
+        "lines": [
+          {
+            "kind": "context",
+            "content": "      and(",
+            "oldLine": 319,
+            "newLine": 318
+          },
+          {
+            "kind": "remove",
+            "content": "        isNull(juniorConversations.parentConversationId),",
+            "oldLine": 320
+          }
+        ]
+      },
+      {
+        "id": "3071:head:packages/junior/src/api/conversations/list.ts#148-152",
+        "pr": 3071,
+        "path": "packages/junior/src/api/conversations/list.ts",
+        "side": "head",
+        "start": 148,
+        "end": 152,
+        "lines": [
+          {
+            "kind": "context",
+            "content": "  return selectConversationRecords(db)",
+            "oldLine": 147,
+            "newLine": 148
+          },
+          {
+            "kind": "context",
+            "content": "    .where(",
+            "oldLine": 148,
+            "newLine": 149
+          },
+          {
+            "kind": "context",
+            "content": "      and(",
+            "oldLine": 149,
+            "newLine": 150
+          },
+          {
+            "kind": "remove",
+            "content": "        isNull(juniorConversations.parentConversationId),",
+            "oldLine": 150
+          },
+          {
+            "kind": "remove",
+            "content": "        // An unkept Quick question is a private side thread.",
+            "oldLine": 151
+          },
+          {
+            "kind": "remove",
+            "content": "        isNull(juniorConversations.quickQuestionAt),",
+            "oldLine": 152
+          },
+          {
+            "kind": "add",
+            "content": "        listedConversation(),",
+            "newLine": 151
+          },
+          {
+            "kind": "context",
+            "content": "        conversationFeedMembershipFilter(status, filter),",
+            "oldLine": 153,
+            "newLine": 152
+          }
+        ]
+      },
+      {
+        "id": "3071:head:packages/junior/src/api/conversations/list.ts#317-322",
+        "pr": 3071,
+        "path": "packages/junior/src/api/conversations/list.ts",
+        "side": "head",
+        "start": 317,
+        "end": 322,
+        "lines": [
+          {
+            "kind": "context",
+            "content": "    .where(",
+            "oldLine": 318,
+            "newLine": 317
+          },
+          {
+            "kind": "context",
+            "content": "      and(",
+            "oldLine": 319,
+            "newLine": 318
+          },
+          {
+            "kind": "remove",
+            "content": "        isNull(juniorConversations.parentConversationId),",
+            "oldLine": 320
+          },
+          {
+            "kind": "remove",
+            "content": "        isNull(juniorConversations.quickQuestionAt),",
+            "oldLine": 321
+          },
+          {
+            "kind": "add",
+            "content": "        listedConversation(),",
+            "newLine": 319
+          },
+          {
+            "kind": "context",
+            "content": "        conversationFeedMembershipFilter(\"active\", { kind: \"viewer\", userId }),",
+            "oldLine": 322,
+            "newLine": 320
+          },
+          {
+            "kind": "context",
+            "content": "      ),",
+            "oldLine": 323,
+            "newLine": 321
+          },
+          {
+            "kind": "context",
+            "content": "    )",
+            "oldLine": 324,
+            "newLine": 322
+          }
+        ]
+      },
+      {
+        "id": "3071:head:packages/junior/src/api/board/read.ts#115-125",
+        "pr": 3071,
+        "path": "packages/junior/src/api/board/read.ts",
+        "side": "head",
+        "start": 115,
+        "end": 125,
+        "lines": [
+          { "kind": "context", "content": "    .where(", "newLine": 115 },
+          { "kind": "context", "content": "      and(", "newLine": 116 },
+          {
+            "kind": "context",
+            "content": "        conversationIsMemberRoot({ userId }),",
+            "newLine": 117
+          },
+          {
+            "kind": "context",
+            "content": "        listedConversation(),",
+            "newLine": 118
+          },
+          {
+            "kind": "context",
+            "content": "        isNull(juniorConversations.archivedAt),",
+            "newLine": 119
+          },
+          { "kind": "context", "content": "        gte(", "newLine": 120 },
+          {
+            "kind": "context",
+            "content": "          juniorConversations.lastActivityAt,",
+            "newLine": 121
+          },
+          {
+            "kind": "context",
+            "content": "          new Date(nowMs - ACTIVE_WINDOW_MS),",
+            "newLine": 122
+          },
+          { "kind": "context", "content": "        ),", "newLine": 123 },
+          { "kind": "context", "content": "      ),", "newLine": 124 },
+          { "kind": "context", "content": "    )", "newLine": 125 }
+        ]
+      },
+      {
+        "id": "3071:head:packages/junior/src/chat/briefs/search.ts#84-99",
+        "pr": 3071,
+        "path": "packages/junior/src/chat/briefs/search.ts",
+        "side": "head",
+        "start": 84,
+        "end": 99,
+        "lines": [
+          {
+            "kind": "context",
+            "content": "  const conditions: SQL[] = [",
+            "newLine": 84
+          },
+          { "kind": "context", "content": "    notExists(", "newLine": 85 },
+          { "kind": "context", "content": "      db", "newLine": 86 },
+          {
+            "kind": "context",
+            "content": "        .select({ one: sql`1` })",
+            "newLine": 87
+          },
+          {
+            "kind": "context",
+            "content": "        .from(newer)",
+            "newLine": 88
+          },
+          { "kind": "context", "content": "        .where(", "newLine": 89 },
+          { "kind": "context", "content": "          and(", "newLine": 90 },
+          {
+            "kind": "context",
+            "content": "            eq(newer.conversationId, briefs.conversationId),",
+            "newLine": 91
+          },
+          {
+            "kind": "context",
+            "content": "            gt(newer.version, briefs.version),",
+            "newLine": 92
+          },
+          { "kind": "context", "content": "          ),", "newLine": 93 },
+          { "kind": "context", "content": "        ),", "newLine": 94 },
+          { "kind": "context", "content": "    ),", "newLine": 95 },
+          {
+            "kind": "context",
+            "content": "    listedConversation(),",
+            "newLine": 96
+          },
+          {
+            "kind": "context",
+            "content": "    ne(juniorConversations.conversationId, args.currentConversationId),",
+            "newLine": 97
+          },
+          {
+            "kind": "context",
+            "content": "    eq(juniorDestinations.visibility, \"public\"),",
+            "newLine": 98
+          },
+          { "kind": "context", "content": "  ];", "newLine": 99 }
+        ]
+      },
+      {
+        "id": "3071:head:packages/junior/src/chat/agent-invocations/search-top-level.ts#72-81",
+        "pr": 3071,
+        "path": "packages/junior/src/chat/agent-invocations/search-top-level.ts",
+        "side": "head",
+        "start": 72,
+        "end": 81,
+        "lines": [
+          {
+            "kind": "context",
+            "content": "  const conditions: (SQL | undefined)[] = [",
+            "oldLine": 71,
+            "newLine": 72
+          },
+          {
+            "kind": "remove",
+            "content": "    isNull(juniorConversations.parentConversationId),",
+            "oldLine": 72
+          },
+          {
+            "kind": "add",
+            "content": "    listedConversation(),",
+            "newLine": 73
+          },
+          {
+            "kind": "context",
+            "content": "    // Only valid roots, so `limit` counts only real results.",
+            "oldLine": 73,
+            "newLine": 74
+          },
+          {
+            "kind": "context",
+            "content": "    eq(",
+            "oldLine": 74,
+            "newLine": 75
+          },
+          {
+            "kind": "context",
+            "content": "      juniorConversations.rootConversationId,",
+            "oldLine": 75,
+            "newLine": 76
+          },
+          {
+            "kind": "context",
+            "content": "      juniorConversations.conversationId,",
+            "oldLine": 76,
+            "newLine": 77
+          },
+          {
+            "kind": "context",
+            "content": "    ),",
+            "oldLine": 77,
+            "newLine": 78
+          },
+          {
+            "kind": "remove",
+            "content": "    // An unkept Quick question is a private side thread.",
+            "oldLine": 78
+          },
+          {
+            "kind": "remove",
+            "content": "    isNull(juniorConversations.quickQuestionAt),",
+            "oldLine": 79
+          },
+          {
+            "kind": "context",
+            "content": "    isNull(juniorConversations.transcriptPurgedAt),",
+            "oldLine": 80,
+            "newLine": 79
+          },
+          {
+            "kind": "context",
+            "content": "    ne(juniorConversations.conversationId, requesterConversationId),",
+            "oldLine": 81,
+            "newLine": 80
+          },
+          {
+            "kind": "context",
+            "content": "    eq(juniorDestinations.visibility, \"public\"),",
+            "oldLine": 82,
+            "newLine": 81
+          }
+        ]
+      },
+      {
+        "id": "3071:head:packages/junior/src/api/conversations/stats.query.ts#144-144",
+        "pr": 3071,
+        "path": "packages/junior/src/api/conversations/stats.query.ts",
+        "side": "head",
+        "start": 144,
+        "end": 144,
+        "lines": [
+          {
+            "kind": "context",
+            "content": "    isNull(juniorConversations.parentConversationId),",
+            "newLine": 144
+          }
+        ]
+      },
+      {
+        "id": "3071:head:packages/junior/src/api/locations/query.ts#119-119",
+        "pr": 3071,
+        "path": "packages/junior/src/api/locations/query.ts",
+        "side": "head",
+        "start": 119,
+        "end": 119,
+        "lines": [
+          {
+            "kind": "context",
+            "content": "  return isNull(juniorConversations.parentConversationId);",
+            "newLine": 119
+          }
+        ]
+      },
+      {
+        "id": "3071:head:packages/junior/tests/integration/api/conversations/fork.test.ts#401-405",
+        "pr": 3071,
+        "path": "packages/junior/tests/integration/api/conversations/fork.test.ts",
+        "side": "head",
+        "start": 401,
+        "end": 405,
+        "lines": [
+          {
+            "kind": "add",
+            "content": "    // The feed change token covers the same rows as the feed.",
+            "newLine": 401
+          },
+          {
+            "kind": "add",
+            "content": "    const feedToken = async () =>",
+            "newLine": 402
+          },
+          {
+            "kind": "add",
+            "content": "      versionsSchema.parse(await (await reader.request(\"/api/versions\")).json())",
+            "newLine": 403
+          },
+          {
+            "kind": "add",
+            "content": "        .conversations;",
+            "newLine": 404
+          },
+          {
+            "kind": "add",
+            "content": "    const emptyFeedToken = await feedToken();",
+            "newLine": 405
+          }
+        ]
+      },
+      {
+        "id": "3071:head:packages/junior/tests/integration/api/conversations/fork.test.ts#451-453",
+        "pr": 3071,
+        "path": "packages/junior/tests/integration/api/conversations/fork.test.ts",
+        "side": "head",
+        "start": 451,
+        "end": 453,
+        "lines": [
+          {
+            "kind": "context",
+            "content": "    expect(await listed(reader)).not.toContain(conversationId);",
+            "oldLine": 445,
+            "newLine": 451
+          },
+          {
+            "kind": "add",
+            "content": "    expect(await feedToken()).toBe(emptyFeedToken);",
+            "newLine": 452
+          },
+          {
+            "kind": "context",
+            "content": "    expect(await sourceForks()).toEqual([]);",
+            "oldLine": 446,
+            "newLine": 453
+          }
+        ]
+      },
+      {
+        "id": "3071:head:packages/junior/tests/integration/api/conversations/fork.test.ts#460-465",
+        "pr": 3071,
+        "path": "packages/junior/tests/integration/api/conversations/fork.test.ts",
+        "side": "head",
+        "start": 460,
+        "end": 465,
+        "lines": [
+          {
+            "kind": "context",
+            "content": "    expect((await keep(owner)).status).toBe(404);",
+            "newLine": 460
+          },
+          {
+            "kind": "context",
+            "content": "    expect((await keep(reader)).status).toBe(200);",
+            "newLine": 461
+          },
+          {
+            "kind": "context",
+            "content": "    expect((await keep(reader)).status).toBe(200);",
+            "newLine": 462
+          },
+          {
+            "kind": "context",
+            "content": "    expect(await listed(reader)).toContain(conversationId);",
+            "newLine": 463
+          },
+          {
+            "kind": "context",
+            "content": "    expect(await feedToken()).not.toBe(emptyFeedToken);",
+            "newLine": 464
+          },
+          {
+            "kind": "context",
+            "content": "    expect(await sourceForks()).toEqual([conversationId]);",
+            "newLine": 465
+          }
+        ]
+      }
+    ],
+    "skipped": [],
+    "checks": [],
+    "messages": [],
+    "content": {
+      "title": "One shared filter for Conversations that lists may show",
+      "intent": "This PR is a refactor: four lists and searches shared a hand-written \"root and not an unkept Quick question\" filter, and now call one function so a new hidden kind is one edit.",
+      "types": ["refactor"],
+      "diagrams": [
+        {
+          "pr": 3071,
+          "nodes": [
+            { "id": "listed", "label": "listedConversation()" },
+            { "id": "feed-rows", "label": "Feed rows" },
+            { "id": "feed-token", "label": "Feed change token" },
+            { "id": "board", "label": "Board roots" },
+            { "id": "brief-search", "label": "Brief search" },
+            { "id": "agent-search", "label": "Top-level agent search" },
+            { "id": "root-only", "label": "Stats / Locations (root only)" }
+          ],
+          "edges": [
+            {
+              "id": "e-feed-rows",
+              "from": "listed",
+              "to": "feed-rows",
+              "label": "filters"
+            },
+            {
+              "id": "e-feed-token",
+              "from": "listed",
+              "to": "feed-token",
+              "label": "filters"
+            },
+            {
+              "id": "e-board",
+              "from": "listed",
+              "to": "board",
+              "label": "filters"
+            },
+            {
+              "id": "e-brief",
+              "from": "listed",
+              "to": "brief-search",
+              "label": "filters"
+            },
+            {
+              "id": "e-agent",
+              "from": "listed",
+              "to": "agent-search",
+              "label": "filters"
+            }
+          ]
+        }
+      ],
+      "chapters": [
+        {
+          "id": "opening",
+          "label": "Same rows, one definition",
+          "caption": "Four queries keep returning the same rows, but now get their visibility rule from one function.",
+          "role": "opening",
+          "body": "Lists and searches hide child Conversations and unkept Quick questions (private side threads a reader opens from a message). Four places wrote both conditions by hand. Now they call `listedConversation()`; access, scope, and sort filters stay with each caller. No behavior change is intended. The payoff is next: Walkthroughs add a Conversation lists must hide, and that becomes one edit. Review risk is small: check each caller lost exactly the two conditions, and that the root-only queries left out should stay.",
+          "view": {
+            "pr": 3071,
+            "show": [
+              "listed",
+              "feed-rows",
+              "feed-token",
+              "board",
+              "brief-search",
+              "agent-search",
+              "e-feed-rows",
+              "e-feed-token",
+              "e-board",
+              "e-brief",
+              "e-agent"
+            ],
+            "highlight": ["listed"],
+            "added": ["listed"],
+            "broken": []
+          },
+          "evidence": [],
+          "decisions": [],
+          "asks": [
+            "Why not change stats and Locations in the same PR?",
+            "Which PRs must land before this one?"
+          ]
+        },
+        {
+          "id": "shared-filter",
+          "label": "The listed filter",
+          "caption": "`listedConversation()` returns the root check and the unkept Quick question check as one SQL condition.",
+          "role": "other",
+          "body": "The new function joins the two `isNull` checks with `and` [1]. Its doc comment sets the boundary: it is for what lists and searches may show, not for structural root checks such as retention. A later change can replace the body with a `kind` check without touching callers. The non-null assertion on `and(...)` is safe because both arguments are always defined.",
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3071,
+              "path": "packages/junior/src/chat/conversations/sql/listed.ts",
+              "side": "head",
+              "start": 1,
+              "end": 15
+            }
+          ],
+          "decisions": [
+            {
+              "id": "hide-new-kinds-here",
+              "claim": "Hiding a new Conversation kind from lists only needs an edit to `listedConversation()`.",
+              "concern": "Root-only queries such as stats, Locations, and the Conversation page would still count or open that kind unless changed too.",
+              "origin": { "kind": "assumed" }
+            }
+          ],
+          "asks": ["Should purge use this too?"]
+        },
+        {
+          "id": "feed-token",
+          "label": "Feed rows match the token",
+          "caption": "The feed rows and the feed change token now share one filter, so they cannot drift apart.",
+          "role": "other",
+          "body": "The feed change token (`conversationFeedVersionQuery`) tells the client when to refetch the feed. It must cover the same rows the feed returns; if it counted a row the feed hides, the token would change while the feed did not. Before, both queries copied the two conditions [1][2]. Now both call `listedConversation()` [3][4], so they match by construction.",
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3071,
+              "path": "packages/junior/src/api/conversations/list.ts",
+              "side": "base",
+              "start": 150,
+              "end": 152
+            },
+            {
+              "kind": "code",
+              "pr": 3071,
+              "path": "packages/junior/src/api/conversations/list.ts",
+              "side": "base",
+              "start": 319,
+              "end": 320
+            },
+            {
+              "kind": "code",
+              "pr": 3071,
+              "path": "packages/junior/src/api/conversations/list.ts",
+              "side": "head",
+              "start": 148,
+              "end": 152
+            },
+            {
+              "kind": "code",
+              "pr": 3071,
+              "path": "packages/junior/src/api/conversations/list.ts",
+              "side": "head",
+              "start": 317,
+              "end": 322
+            }
+          ],
+          "decisions": [],
+          "asks": []
+        },
+        {
+          "id": "other-callers",
+          "label": "Board and searches",
+          "caption": "The Board, Brief search, and top-level agent search swap their copies for the shared call.",
+          "role": "other",
+          "body": "The Board root query drops both checks and calls the function in their place [1]. Because the Quick question check sat after `archivedAt`, the condition order changes slightly; Postgres treats `AND` order as irrelevant for results. Brief search [2] and top-level agent search [3] make the same swap. Agent search keeps its extra `rootConversationId = conversationId` check, which guards `limit` against bad rows and is not part of the listed rule.",
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3071,
+              "path": "packages/junior/src/api/board/read.ts",
+              "side": "head",
+              "start": 115,
+              "end": 125
+            },
+            {
+              "kind": "code",
+              "pr": 3071,
+              "path": "packages/junior/src/chat/briefs/search.ts",
+              "side": "head",
+              "start": 84,
+              "end": 99
+            },
+            {
+              "kind": "code",
+              "pr": 3071,
+              "path": "packages/junior/src/chat/agent-invocations/search-top-level.ts",
+              "side": "head",
+              "start": 72,
+              "end": 81
+            }
+          ],
+          "decisions": [],
+          "asks": ["Does the Board condition order change affect the plan?"]
+        },
+        {
+          "id": "left-out",
+          "label": "Root-only queries left alone",
+          "caption": "Stats and Locations still check only for a root, so they may count unkept Quick questions.",
+          "role": "other",
+          "body": "Structural root checks (purge, delivery pause, location and participant SQL) mean \"a root\", not \"shown in a list\", and purge must still reach hidden Conversations. Those stay as they are. Stats [1] and Locations [2] also check only `parentConversationId`. They may count unkept Quick questions that lists hide, but switching them changes reported numbers, so the PR leaves that as a separate decision.",
+          "view": {
+            "pr": 3071,
+            "show": ["root-only"],
+            "highlight": [],
+            "added": [],
+            "broken": []
+          },
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3071,
+              "path": "packages/junior/src/api/conversations/stats.query.ts",
+              "side": "head",
+              "start": 144,
+              "end": 144
+            },
+            {
+              "kind": "code",
+              "pr": 3071,
+              "path": "packages/junior/src/api/locations/query.ts",
+              "side": "head",
+              "start": 119,
+              "end": 119
+            }
+          ],
+          "decisions": [
+            {
+              "id": "stats-count-hidden",
+              "claim": "Stats and Locations can keep counting unkept Quick questions for now.",
+              "concern": "Counts then include private side threads that no list shows, and Walkthrough Conversations would join them.",
+              "origin": { "kind": "not_asked" }
+            }
+          ],
+          "asks": []
+        },
+        {
+          "id": "proof",
+          "label": "How we know it works",
+          "caption": "A Quick question test now pins the feed token, and captured SQL matched before and after.",
+          "role": "proof",
+          "body": "The Quick question fork test now reads the reader's feed change token from `/api/versions` before the fork [1]. While the Quick question is unkept, the feed hides it and the token stays the same [2]. After Keep as fork, the row appears and the token changes [3]. Per the PR, the test fails if the Quick question check is removed from the token query. The author also captured SQL from the list, Board, and search tests before and after; it matched apart from grouping and the Board reorder. Typecheck and lint pass.",
+          "evidence": [
+            {
+              "kind": "code",
+              "pr": 3071,
+              "path": "packages/junior/tests/integration/api/conversations/fork.test.ts",
+              "side": "head",
+              "start": 401,
+              "end": 405
+            },
+            {
+              "kind": "code",
+              "pr": 3071,
+              "path": "packages/junior/tests/integration/api/conversations/fork.test.ts",
+              "side": "head",
+              "start": 451,
+              "end": 453
+            },
+            {
+              "kind": "code",
+              "pr": 3071,
+              "path": "packages/junior/tests/integration/api/conversations/fork.test.ts",
+              "side": "head",
+              "start": 460,
+              "end": 465
+            }
+          ],
+          "decisions": [],
+          "asks": [
+            "Is there a test for Brief or agent search hiding Quick questions?"
+          ]
+        }
+      ],
+      "also_changed": []
+    },
+    "files": [
+      {
+        "pr": 3071,
+        "path": "packages/junior/src/api/board/read.ts",
+        "hash": "b5072c508c1273c5a463246a189104d5819c31214cf02611b38b441cdd6e2c41"
+      },
+      {
+        "pr": 3071,
+        "path": "packages/junior/src/api/conversations/list.ts",
+        "hash": "98d99866185147d8a0fa46d565a4b5e6e2c0a586fb37ffb338e696e36ba87090"
+      },
+      {
+        "pr": 3071,
+        "path": "packages/junior/src/chat/agent-invocations/search-top-level.ts",
+        "hash": "a3764767f5675c4098c5f957c8f813ed15404ed3892740e06f8d4b44e2f313ea"
+      },
+      {
+        "pr": 3071,
+        "path": "packages/junior/src/chat/briefs/search.ts",
+        "hash": "72c5ec63fefbba43a96c19e177f9e5660d4356b8becebde8cb1a9d50f9139db5"
+      },
+      {
+        "pr": 3071,
+        "path": "packages/junior/src/chat/conversations/sql/listed.ts",
+        "hash": "d8ea96c2b7396bb653efd1daac25880b96a2ab9133af0737643d49e7bc7eb92a"
+      },
+      {
+        "pr": 3071,
+        "path": "packages/junior/tests/integration/api/conversations/fork.test.ts",
+        "hash": "d4574ae21a186a6bca989475c341b0cf724b0accda1f90e9784661c5fe50a802"
+      }
+    ],
+    "updates": [],
+    "meta": {
+      "modelId": "anthropic/claude-opus-5.5",
+      "promptVersion": 4,
+      "createdAt": "2026-11-11T11:08:27.714Z"
+    }
+  }
+}

@@ -1,0 +1,89 @@
+[
+  {
+    "file": "runs/quality/iter1-v4-small-3071.json",
+    "type": "refactor",
+    "score": "6/6",
+    "scores": [2, 2, 2],
+    "unclearTerms": "archivedAt, parentConversationId, rootConversationId, conversationId, limit, /api/versions, noReply",
+    "unclearCount": 7,
+    "costUsd": 0.0105,
+    "answers": [
+      {
+        "q": "What stays the same, and why is the refactor worth it?",
+        "a": "Four lists and searches return the same rows by calling one shared function `listedConversation()` instead of hand-writing the same two conditions (root check and unkept Quick question check) in each place. The refactor is worth it because a future Walkthrough will add a new hidden Conversation kind that lists must hide; that becomes one edit to `listedConversation()` instead of four edits across callers. Access, scope, and sort filters stay with each caller, so no behavior change is intended.",
+        "score": 2,
+        "note": "Correctly identifies the four callers, the two shared conditions being consolidated, the future Walkthrough motivation, and that access/scope/sort filters remain per-caller with no intended behavior change."
+      },
+      {
+        "q": "How do we know behavior does not change, and what are the exceptions?",
+        "a": "Behavior does not change because each of the four callers (Board, Brief search, top-level agent search, and feed rows) previously copied the same two SQL conditions by hand, and now all call the same function. The feed change token (`conversationFeedVersionQuery`) and feed rows now share the same filter, so they cannot drift apart. Exceptions: Stats and Locations queries still check only for root (not the listed filter) because they are structural checks for purge, delivery pause, and participant SQL, and switching them would change reported numbers. Root-only queries for retention and delivery also stay unchanged.",
+        "score": 2,
+        "note": "Accurately explains the verification strategy (four callers now call same function, feed token and rows now share filter preventing drift), correctly names the exceptions (Stats, Locations stay root-only for structural reasons, changing them would alter counts), and distinguishes between list-hiding and structural checks."
+      },
+      {
+        "q": "What should a reviewer worry about most?",
+        "a": "A reviewer should check: (1) each of the four callers lost exactly the two hand-written conditions and now calls `listedConversation()`; (2) root-only queries (Stats, Locations, purge, delivery pause, participant SQL) stayed unchanged and did not accidentally call the new function; (3) the condition order change in the Board query (the Quick question check moved relative to `archivedAt`) does not affect results, since Postgres treats `AND` order as irrelevant; (4) the non-null assertion on `and(...)` in `listedConversation()` is safe because both arguments are always defined.",
+        "score": 2,
+        "note": "Identifies the four key review concerns: (1) all four callers correctly replaced, (2) root-only queries untouched, (3) condition reordering in Board query is safe, (4) non-null assertion safety. These are the most material risks in the diff."
+      }
+    ]
+  },
+  {
+    "file": "runs/quality/iter1-v4-refactor-3059.json",
+    "type": "refactor",
+    "score": "5/6",
+    "scores": [2, 1, 2],
+    "unclearTerms": "agentInvocationId, declaresResult, subagents, reportBlocked, noReply, gated, turnTools, postsRunNotices, deliversFinalText, promptMode, bindAgentTools, createAgentRunner, finishAutomationRun, SOURCE_RULES, mailbox worker, Thread worker, child-agent row, parent-edge, execution slice",
+    "unclearCount": 19,
+    "costUsd": 0.028,
+    "answers": [
+      {
+        "q": "What stays the same, and why is the refactor worth it?",
+        "a": "The behavior itself stays the same: the prompt mode, tool availability, delivery destination, and gating all produce the same results for each Turn kind and source. The refactor is worth it because it centralizes scattered conditional logic into one table, making the rules explicit and enforceable. Before, each site (prompt assembly, tool binding, delivery, review desk) decided independently based on `agentInvocationId` or `declaresResult`, creating maintenance risk and making it hard to see the full picture. Now `turnBehavior` is the single source of truth, and a lint rule prevents new branches from spreading again.",
+        "score": 2,
+        "note": "Correct: identifies no behavior change, explains centralization and lint enforcement as the value, names the scattered sites that now route through turnBehavior."
+      },
+      {
+        "q": "How do we know behavior does not change, and what are the exceptions?",
+        "a": "The PR compares the old field-based checks (`agentInvocationId`, `declaresResult`) against the new kind + Source + Automation flag mapping to verify they pick the same row for every Turn. The exceptions are: (1) non-person Turns on a Thread now get child-agent behavior instead of root behavior with subagents disabled—this is a real change, not a bug fix; (2) the Automation row has `noReply: false`, which matches the old `else` but was not explicit before. The review risk is whether the mapping is complete and correct for all paths.",
+        "score": 1,
+        "note": "Partly right: correctly identifies the mapping verification approach and the non-person Thread change, but mischaracterizes it as 'not a bug fix'—the PR says 'No behavior change' and this is actually a correction (Event Turns should not spawn agents). Misses that the mapping itself is the exception to verify, not a list of exceptions."
+      },
+      {
+        "q": "What should a reviewer worry about most?",
+        "a": "A reviewer should worry most about: (1) whether kind + Source + Automation flag picks the same behavior row as the old `agentInvocationId` check for every Turn—this is the core correctness claim; (2) whether the new lint rule is sound and will catch future violations; (3) the real behavior change for non-person Turns on a Thread (Event or timer Turns now get child-agent tools and `reportBlocked` instead of root tools with subagents disabled); (4) whether the two new errors (`child Run with no Conversation row`, `person input on task`) will surface the right problems in production.",
+        "score": 2,
+        "note": "Right and specific: names the three core risks—correctness of the kind+Source+Automation mapping, soundness of the lint rule, and the real behavior change for Event/timer Turns on Thread. Correctly identifies the two new error cases as production risks."
+      }
+    ]
+  },
+  {
+    "file": "runs/quality/iter1-v4-stack-3087-3133.json",
+    "type": "feature",
+    "score": "5/6",
+    "scores": [2, 2, 1],
+    "unclearTerms": "Stacks API, hunks, snapshot_key, generation Conversation, turnBehavior, WALKTHROUGH_GENERATION, disable-model-invocation, junior-conversation-id, $walkthrough instruction, listedConversation, ON CONFLICT DO NOTHING, failure_reason",
+    "unclearCount": 12,
+    "costUsd": 0.0315,
+    "answers": [
+      {
+        "q": "What problem does this solve?",
+        "a": "It lets reviewers get a guided, citation-checked story of a PR or stack. Every citation is verified by Junior before storage, so the story is trustworthy and reusable across multiple views.",
+        "score": 2,
+        "note": "Correctly identifies the core problem: a trustworthy, citation-checked story of code changes that reviewers can reuse. Mentions verification and reusability."
+      },
+      {
+        "q": "How does it work, in 3-5 sentences?",
+        "a": "A click on a code change triggers a hidden generation Turn that reads the PR, diffs, and files through plugin hooks, sends hunks to the model with instructions to cite code by location, validates every citation against the actual diff and files, and stores the result as a Walkthrough document. The model cannot copy code—it must cite it, and Junior copies only the cited lines. A partial unique index lets a second click reuse a live version instead of regenerating.",
+        "score": 2,
+        "note": "Accurate 5-sentence summary: hidden Turn, plugin hooks for reads, model cites by location, validation before storage, unique index for reuse. All key mechanisms present."
+      },
+      {
+        "q": "What should a reviewer worry about most?",
+        "a": "Three trust boundaries: (1) the `submitWalkthrough` tool must re-check every fact from trusted sources before storing, since the model explores in an untrusted sandbox; (2) who can read a Walkthrough of a private repository—the routes check the source Conversation but not the viewer's repository access, so stored excerpts hold whatever the GitHub App can read; (3) two queries run even with the experiment off, so watch for latency jumps and monitor stuck versions that generate for over 30 minutes.",
+        "score": 1,
+        "note": "Identifies real risks (1) and (2) correctly, but (3) is generic and wrong—the experiment gate prevents the two queries from running when off. Should focus on actual risks: repository access mismatch between viewer and GitHub App, or stuck versions blocking retries."
+      }
+    ]
+  }
+]

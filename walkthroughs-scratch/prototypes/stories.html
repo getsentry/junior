@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Walkthrough stories</title>
+<style>
+  :root{--bg:#EEECE7;--paper:#FAF9F6;--ink:#22211F;--mid:#7D7A73;--line:#C9C5BC;--faint:#E4E1DA;--acc:#2D62D8;--bad:#C2372D;
+    --serif:"Iowan Old Style",Charter,Georgia,"Noto Serif",serif;--mono:"SF Mono",ui-monospace,Menlo,Consolas,"DejaVu Sans Mono",monospace}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:#1b1a18;overscroll-behavior:none}
+  body{display:grid;place-items:center;font-family:var(--serif);color:var(--ink)}
+  .phone{position:relative;width:min(100vw,430px);height:min(100dvh,932px);background:var(--paper);overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+  @media (min-width:600px){.phone{border-radius:28px;height:min(92dvh,880px)}}
+  .bars{position:absolute;left:12px;right:12px;top:calc(env(safe-area-inset-top) + 10px);display:flex;gap:4px;z-index:3}
+  .bars span{flex:1;height:3px;border-radius:2px;background:var(--faint);overflow:hidden}
+  .bars b{display:block;height:100%;width:0;background:var(--ink)}
+  .head{position:absolute;left:16px;right:16px;top:calc(env(safe-area-inset-top) + 24px);display:flex;justify-content:space-between;align-items:center;font:12px var(--mono);color:var(--mid);z-index:3}
+  .head a{color:var(--mid)}
+  .head button{font:12px var(--mono);border:1px solid var(--line);background:var(--paper);border-radius:99px;padding:5px 10px;color:var(--ink)}
+  .card{position:absolute;inset:0;opacity:0;transition:opacity .35s ease;pointer-events:none}
+  .card.on{opacity:1}
+  .hl{position:absolute;left:20px;right:20px;top:calc(env(safe-area-inset-top) + 62px);margin:0;font:600 30px/1.15 var(--serif);letter-spacing:-.01em}
+  .vis{position:absolute;left:0;right:0;top:calc(env(safe-area-inset-top) + 150px);width:100%;height:auto;max-height:46dvh}
+  .cap{position:absolute;left:20px;right:20px;bottom:calc(env(safe-area-inset-bottom) + 64px);font-size:18px;line-height:1.42;color:var(--mid)}
+  .cap .said{color:var(--ink)}
+  .swipe{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 18px);text-align:center;font:12px var(--mono);color:var(--mid);z-index:3}
+  .swipe::before{content:"";display:block;width:36px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 8px}
+  /* svg pieces */
+  svg text{font:14px var(--mono);fill:var(--mid)}
+  .n{fill:var(--paper);stroke:var(--line);stroke-width:1.25}.n.tr{stroke:var(--ink);stroke-width:2}
+  .nt{font-size:16px!important;fill:var(--ink)!important;text-anchor:middle}
+  .sub{font-size:11px!important;text-anchor:middle;letter-spacing:.08em;text-transform:uppercase}
+  .e{fill:none;stroke-width:2}.e.ink{stroke:var(--mid)}.e.acc{stroke:var(--acc);stroke-width:3}.e.bad{stroke:var(--bad);stroke-width:2.5}
+  .el{text-anchor:middle}.el.acc{fill:var(--acc)!important}.el.bad{fill:var(--bad)!important}.el.ink{fill:var(--mid)}
+  .lab,.colh{font-size:11px!important;letter-spacing:.08em;text-transform:uppercase}
+  .rl{font-size:16px!important;fill:var(--ink)!important}
+  .tok{fill:var(--acc)}
+  .c rect{fill:var(--paper);stroke-width:1.5}.c text{font-size:13px!important;text-anchor:middle}
+  .c.ink rect{stroke:var(--ink)}.c.ink text{fill:var(--ink)}
+  .c.bad rect{stroke:var(--bad);fill:#FBEFEC}.c.bad text{fill:var(--bad)}
+  .c.acc rect{stroke:var(--acc);stroke-width:2.5}.c.acc text{fill:var(--acc)}
+  .ghost{opacity:.2}
+  .empty{fill:none;stroke:var(--acc);stroke-width:2;stroke-dasharray:4 4}
+  .split{stroke:var(--acc);stroke-width:2}.sl{font-size:11px!important;fill:var(--acc)!important;letter-spacing:.08em;text-transform:uppercase}
+  .stop{stroke:var(--acc);stroke-width:4;stroke-linecap:round}
+  .rule{stroke:var(--faint)}
+  .sq.bad{fill:#FBEFEC;stroke:var(--bad);stroke-width:1.2}
+  /* entrance */
+  .card.on .vis>*{animation:rise .45s ease both}
+  .card.on .vis>.ghost{animation-name:riseg}
+  @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  @keyframes riseg{from{opacity:0}to{opacity:.2}}
+  .card.on .cell{animation:pop .3s ease both}
+  .cell{transform-box:fill-box;transform-origin:center}
+  @keyframes pop{from{opacity:0;transform:scale(.5)}to{opacity:1;transform:none}}
+  /* poll sticker */
+  .sticker{position:absolute;left:50%;top:74%;transform:translate(-50%,-50%) rotate(-2deg) scale(.9);width:min(84%,340px);background:#fff;border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:16px 16px 14px;opacity:0;transition:all .3s cubic-bezier(.2,1.4,.4,1);pointer-events:none;z-index:4}
+  .sticker.show{opacity:1;transform:translate(-50%,-50%) rotate(-2deg) scale(1);pointer-events:auto}
+  .sticker i{display:block;font:normal 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mid);margin-bottom:6px}
+  .sticker p{margin:0 0 12px;font-size:19px;line-height:1.3}
+  .sticker div{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .sticker button{font:15px var(--mono);border:1px solid var(--line);background:var(--paper);border-radius:12px;padding:11px 0;color:var(--ink)}
+  .sticker button.sel{background:var(--acc);border-color:var(--acc);color:#fff}
+  /* sheet */
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:20px 20px 0 0;box-shadow:0 -10px 30px rgba(0,0,0,.15);padding:14px 20px calc(env(safe-area-inset-bottom) + 20px);transform:translateY(105%);transition:transform .3s ease;z-index:6;max-height:75%;overflow:auto}
+  .sheet.open{transform:none}
+  .sheet .grab{width:36px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 14px}
+  .sheet h3{margin:0 0 6px;font:11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mid)}
+  .sheet p{margin:0 0 16px;font-size:16px;line-height:1.45}
+  .sheet a{color:var(--acc)}
+  .sheet form{display:flex;gap:8px;margin-top:6px}
+  .sheet input{flex:1;font:16px var(--serif);padding:11px 12px;border:1px solid var(--line);border-radius:12px}
+  .sheet button{font:14px var(--mono);border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:12px;padding:0 14px}
+  .sheet .ans{display:none;color:var(--mid);font-size:15px;margin-top:10px}
+  .sheet .ans.show{display:block}
+  .sheet .close{display:block;width:100%;margin-top:16px;background:var(--paper);color:var(--ink);border-color:var(--line);padding:11px 0}
+  .paused{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);font:12px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--mid);background:rgba(255,255,255,.9);padding:8px 14px;border-radius:99px;opacity:0;transition:opacity .2s;z-index:3}
+  .paused.show{opacity:1}
+  .start{position:absolute;inset:0;z-index:9;background:var(--paper);display:grid;place-items:center;padding:30px;text-align:center}
+  .start h1{font:600 26px/1.2 var(--serif);margin:0 0 6px}
+  .start .meta{font:12px var(--mono);color:var(--mid);margin-bottom:28px}
+  .start button{display:block;width:100%;font:15px var(--mono);border-radius:14px;padding:14px 0;margin-top:10px;border:1px solid var(--ink);background:var(--ink);color:#fff}
+  .start button.alt{background:transparent;color:var(--ink);border-color:var(--line)}
+  .start .hint{font:12px var(--mono);color:var(--mid);margin-top:22px;line-height:1.7}
+</style>
+</head>
+<body>
+<div class="phone" id="phone">
+  <div class="bars" id="bars"></div>
+  <div class="head"><span>junior · <a id="prlink" target="_blank">#3153</a></span><button id="snd">Sound on</button></div>
+  <div id="cards"></div>
+  <div class="paused" id="paused">Paused</div>
+  <div class="swipe" id="swipe">Swipe up · evidence &amp; questions</div>
+  <div class="sheet" id="sheet">
+    <div class="grab"></div>
+    <h3>Evidence</h3><p id="ev"></p>
+    <h3>Ask about this story</h3>
+    <form id="ask"><input id="q" placeholder="What's confusing here?" autocomplete="off"><button>Ask</button></form>
+    <div class="ans" id="ans">Prototype: in the product, Junior answers here, scoped to this story and its evidence. The question Turn isn't wired into this page.</div>
+    <button class="close" id="close">Back to the story</button>
+  </div>
+  <div class="start" id="start"><div>
+    <h1 id="t"></h1>
+    <div class="meta" id="m"></div>
+    <button id="play">Watch with sound</button>
+    <button class="alt" id="mute">Watch muted</button>
+    <div class="hint">Tap right: next · Tap left: back<br>Hold: pause · Swipe up: evidence &amp; questions</div>
+  </div></div>
+</div>
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const pr = new URLSearchParams(location.search).get("pr") || "3153";
+const deck = await (await fetch(`story-${pr}.json`)).json();
+document.title = deck.title;
+$("t").textContent = deck.title.replace(/^#\d+ · /, "");
+$("m").textContent = `#${pr} · ${deck.slides.length} stories · ${Math.round(deck.slides.reduce((a, s) => a + s.dur, 0))}s`;
+$("prlink").href = deck.url; $("prlink").textContent = `#${pr}`;
+
+const defs = `<defs>${["ink", "acc", "bad"].map((c) => `<marker id="a-${c}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--${c === "ink" ? "mid" : c})"/></marker>`).join("")}</defs>`;
+deck.slides.forEach((s, k) => {
+  const el = document.createElement("div");
+  el.className = "card";
+  el.innerHTML = `<h2 class="hl">${s.h}</h2><svg class="vis" viewBox="0 0 360 450">${defs}${s.svg}</svg><div class="cap"></div>${s.claim ? `<div class="sticker"><i>Do you agree?</i><p>${s.claim}</p><div><button data-v="agree">Agree</button><button data-v="unsure">Not sure</button></div></div>` : ""}`;
+  $("cards").appendChild(el);
+  [...el.querySelector(".vis").children].forEach((c, j) => (c.style.animationDelay = `${0.1 + j * 0.04}s`));
+  const cells = [...el.querySelectorAll(".vis > g.c")];
+  cells.forEach((c, j) => { c.classList.add("cell"); c.style.animationDelay = `${0.5 + (j * s.dur * 0.55) / Math.max(cells.length, 1)}s`; });
+  el.querySelectorAll(".sticker button").forEach((b) => b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    polls[k] = b.dataset.v;
+    el.querySelectorAll(".sticker button").forEach((x) => x.classList.toggle("sel", x === b));
+    if (b.dataset.v === "unsure") { openSheet(`About "${s.claim}": `); return; }
+    waiting = false; setTimeout(() => go(i + 1), 650);
+  }));
+  const bar = document.createElement("span"); bar.innerHTML = "<b></b>"; $("bars").appendChild(bar);
+});
+const cards = [...document.querySelectorAll(".card")];
+const audio = new Audio();
+const polls = {};
+let i = 0, playing = false, muted = false, t0 = 0, elapsed = 0, waiting = false, ended = false, sheetOpen = false;
+
+function now() { return muted ? elapsed + (playing ? (performance.now() - t0) / 1000 : 0) : audio.currentTime; }
+function caption(s, frac) {
+  const w = s.n.split(" "), n = Math.floor(w.length * frac);
+  cards[i].querySelector(".cap").innerHTML = w.map((x, j) => (j < n ? `<span class="said">${x}</span>` : x)).join(" ");
+}
+function tick() {
+  const s = deck.slides[i], frac = Math.min(now() / s.dur, 1);
+  caption(s, frac);
+  [...$("bars").children].forEach((b, j) => (b.firstChild.style.width = j < i ? "100%" : j === i ? `${frac * 100}%` : "0"));
+  if (frac >= 1 && playing && !waiting && !ended) {
+    ended = true;
+    if (s.claim && !polls[i]) { waiting = true; cards[i].querySelector(".sticker").classList.add("show"); cards[i].querySelector(".cap").style.opacity = 0; }
+    else if (i < cards.length - 1) setTimeout(() => go(i + 1), 600);
+  }
+  requestAnimationFrame(tick);
+}
+function go(k) {
+  if (k < 0) k = 0;
+  if (k >= cards.length) return;
+  i = k; waiting = false; ended = false; elapsed = 0; t0 = performance.now();
+  cards.forEach((c, j) => { c.classList.remove("on"); if (j === i) { void c.offsetWidth; c.classList.add("on"); } });
+  const st = cards[i].querySelector(".sticker"); if (st) st.classList.toggle("show", !!polls[i]);
+  cards[i].querySelector(".cap").style.opacity = polls[i] ? 0 : 1;
+  $("ev").textContent = deck.slides[i].evidence || "";
+  audio.src = deck.slides[i].audio; audio.muted = muted;
+  if (playing && !muted) audio.play().catch(() => {});
+}
+function setPlaying(p) {
+  if (p === playing) return;
+  if (p) { t0 = performance.now(); if (!muted) audio.play().catch(() => {}); }
+  else { elapsed = now(); audio.pause(); }
+  playing = p;
+}
+function openSheet(prefill = "") { sheetOpen = true; setPlaying(false); $("sheet").classList.add("open"); $("q").value = prefill; $("ans").classList.remove("show"); if (prefill) $("q").focus(); }
+function closeSheet() { sheetOpen = false; $("sheet").classList.remove("open"); setPlaying(true); }
+
+// gestures: tap left/right, hold to pause, swipe up for the sheet
+let down = null, holdTimer = null, held = false;
+$("phone").addEventListener("pointerdown", (e) => {
+  if (sheetOpen || e.target.closest(".sticker,.head,.start,.sheet")) return;
+  down = { x: e.clientX, y: e.clientY }; held = false;
+  holdTimer = setTimeout(() => { held = true; setPlaying(false); $("paused").classList.add("show"); }, 220);
+});
+$("phone").addEventListener("pointerup", (e) => {
+  if (!down) return;
+  clearTimeout(holdTimer);
+  const dy = e.clientY - down.y, dx = e.clientX - down.x;
+  if (held) { $("paused").classList.remove("show"); setPlaying(true); }
+  else if (dy < -50 && Math.abs(dx) < 80) openSheet();
+  else {
+    const r = $("phone").getBoundingClientRect();
+    e.clientX - r.left < r.width * 0.33 ? go(i - 1) : go(i + 1);
+  }
+  down = null;
+});
+$("close").onclick = closeSheet;
+$("ask").onsubmit = (e) => { e.preventDefault(); $("ans").classList.add("show"); };
+$("snd").onclick = (e) => {
+  e.stopPropagation();
+  const t = now(); muted = !muted; audio.muted = muted; $("snd").textContent = muted ? "Sound off" : "Sound on";
+  if (muted) { elapsed = t; t0 = performance.now(); } else { audio.currentTime = Math.min(t, deck.slides[i].dur); if (playing) audio.play().catch(() => {}); }
+};
+function start(m) { muted = m; $("snd").textContent = m ? "Sound off" : "Sound on"; $("start").remove(); playing = true; go(0); }
+$("play").onclick = () => start(false);
+$("mute").onclick = () => start(true);
+addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "ArrowRight") go(i + 1);
+  if (e.key === "ArrowLeft") go(i - 1);
+  if (e.key === "ArrowUp") openSheet();
+  if (e.key === "Escape" && sheetOpen) closeSheet();
+  if (e.key === " ") { e.preventDefault(); setPlaying(!playing); }
+});
+go(0); requestAnimationFrame(tick);
+</script>
+</body>
+</html>

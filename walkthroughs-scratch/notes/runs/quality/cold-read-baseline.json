@@ -1,0 +1,89 @@
+[
+  {
+    "file": "runs/story-first/v3-small-3071.json",
+    "type": "refactor",
+    "score": "6/6",
+    "scores": [2, 2, 2],
+    "unclearTerms": "Quick question, Board, Brief search, top-level agent search, reader's feed change token, Keep as fork, purge, delivery pause, location, participants",
+    "unclearCount": 10,
+    "costUsd": 0.0097,
+    "answers": [
+      {
+        "q": "What stays the same, and why is the refactor worth it?",
+        "a": "The two conditions—root Conversation and not an unkept Quick question—stay the same across all four lists and searches. The refactor is worth it because it centralizes these conditions in one function, `listedConversation()`, so a later hidden kind (such as Walkthrough generation Conversations) needs a change in one place only, and it prevents the feed rows and change token from drifting apart, which could hide a Quick question from the feed but change the token anyway.",
+        "score": 2,
+        "note": "Correctly identifies both conditions (root and not unkept Quick question), explains centralization benefit, and names the specific future use case (Walkthrough) and the drift risk between feed rows and token."
+      },
+      {
+        "q": "How do we know behavior does not change, and what are the exceptions?",
+        "a": "The Quick question test proves behavior holds: it checks that the feed token ignores an unkept Quick question and changes once it is kept. The PR body says this test passes on `main` and fails if the Quick question condition is removed from the token query. The SQL captured before and after matched, apart from grouping and the Board order. Exceptions: Stats and locations still check only for a root and may keep counting unkept Quick questions, because switching would change reported numbers. Structural root checks in purge, delivery pause, location, and participants also stay as they are.",
+        "score": 2,
+        "note": "Accurately describes the test verification (token ignores unkept, changes on Keep), cites the SQL matching evidence, and correctly names the intentional exceptions (Stats, locations, structural checks) with reasons."
+      },
+      {
+        "q": "What should a reviewer worry about most?",
+        "a": "A reviewer should worry most about whether the shared filter is applied consistently across all four lists and searches, and whether the feed rows and change token now use the same filter so they cannot drift. They should also check that the condition order change in the Board query (the two conditions now sit together in one call instead of split by the archived check) does not affect results, and verify that Stats and locations were intentionally left alone.",
+        "score": 2,
+        "note": "Identifies the three key reviewer concerns: consistent application across four callers, feed rows/token alignment to prevent drift, and the Board condition order change. Also notes the intentional exceptions, showing understanding of scope."
+      }
+    ]
+  },
+  {
+    "file": "runs/story-first/v3-refactor-3059.json",
+    "type": "refactor",
+    "score": "4/6",
+    "scores": [2, 1, 1],
+    "unclearTerms": "deliversFinalText, postsRunNotices, agentInvocationId, declaresResult, personInput, agents: \"none\", subagents, child_agent, children_and_parent, noReply, finishAutomationRun, messageAgent, spawnAgent, bindAgentTools, ToolRuntimeContext, turnTools, ToolExposure, searchTools, executeTool, Code Mode, review desk",
+    "unclearCount": 21,
+    "costUsd": 0.0282,
+    "answers": [
+      {
+        "q": "What stays the same, and why is the refactor worth it?",
+        "a": "The refactor keeps the same behavior profiles and delivery logic. It is worth it because it centralizes Turn behavior routing into one table (turnBehavior) instead of scattered branches at call sites, making the code easier to maintain and audit. It also establishes an architecture rule to prevent new branches from creeping back in.",
+        "score": 2,
+        "note": "Correctly identifies centralization into turnBehavior as the refactor's goal and notes the architecture rule baseline. Accurately states no behavior change is claimed."
+      },
+      {
+        "q": "How do we know behavior does not change, and what are the exceptions?",
+        "a": "The PR claims to change no behavior, but the Walkthrough identifies six exceptions that need review: (1) turnBehavior throws when a person's input reaches a task (previously allowed?); (2) executeAgentRun throws when a child Run has no Conversation row (previously silent?); (3) Thread Turns no longer get the subagents-disabled feature; (4) every non-person Turn on a child now gets the agent-in-child profile (previously only agentInvocationId selected this); (5) Event Turns on a child shift from root prompt and tools to child_agent ones; (6) missing Conversation rows now default kind to root instead of inferring it. The eval and unit tests verify the main paths, but these edges need manual review.",
+        "score": 1,
+        "note": "Identifies real exceptions but overstates them. Points 1-2 are error-handling additions (not behavior changes). Point 3 is wrong: subagents disabling moves from hardcoded list to turnBehavior logic, same outcome. Point 4 misreads: agentInvocationId never selected behavior; kind always did. Point 5 is speculative; Event Turns are non-person so they get AGENT_IN_CHILD only if on a child, which is correct. Point 6 is correct but minor."
+      },
+      {
+        "q": "What should a reviewer worry about most?",
+        "a": "A reviewer should worry most about: (1) the five behavior-change edges listed above, especially whether throwing on person-input-to-task and missing-child-Conversation is correct; (2) whether Event Turns on children should really shift to child_agent behavior; (3) whether the architecture rule's regex patterns correctly count all branches and will catch future violations; (4) whether every test context now correctly passes the required turnTools field; (5) whether the agent tool binding late in the pipeline (during tool wiring, not in the runner) handles all edge cases, especially for disabled subagents.",
+        "score": 1,
+        "note": "Raises valid concerns (1, 3, 4, 5) but misses the actual risk: the late binding of agent tools in wireAgentTools via bindAgentTools now depends on behavior.tools.agents, which must match what the Turn actually needs. The bigger worry is whether all callers of wireAgentTools pass behavior correctly and whether the binding logic handles the 'children_and_parent' case for messageAgent correctly when spawnAgent is disabled."
+      }
+    ]
+  },
+  {
+    "file": "runs/story-first/v3-stack-3087-3133.json",
+    "type": "feature",
+    "score": "5/6",
+    "scores": [2, 2, 1],
+    "unclearTerms": "Stacks API, trunk, mechanical, WalkthroughOutput, hunk, excused, listedConversation, turnBehavior, WALKTHROUGH_GENERATION, submitWalkthrough, walkthrough skill, noReply, finish()",
+    "unclearCount": 13,
+    "costUsd": 0.0313,
+    "answers": [
+      {
+        "q": "What problem does this solve?",
+        "a": "It solves the problem of creating guided, citation-checked stories of PR stacks. Users want to understand what a stack of related PRs does and why, with every claim verified against the actual code and messages.",
+        "score": 2,
+        "note": "Correctly identifies the core problem: structured, citation-checked stories of PR stacks with verification against actual code and messages."
+      },
+      {
+        "q": "How does it work, in 3-5 sentences?",
+        "a": "A person posts a PR to a new API. Junior reads the whole stack of related PRs through plugin hooks, starts a hidden Turn that writes structured chapters citing code by line range, re-checks every citation against the actual diffs and files, and stores the verified document. Repeat clicks join the running generation instead of starting over.",
+        "score": 2,
+        "note": "Accurate 3-5 sentence summary: API → plugin reads stack → hidden Turn writes chapters with citations → re-validates all citations → stores document → deduplicates on repeat clicks."
+      },
+      {
+        "q": "What should a reviewer worry about most?",
+        "a": "A reviewer should worry most about: (1) the citation validation logic in submitWalkthrough—it must correctly reject any citation that does not resolve or is incomplete, since the whole value is trustworthiness; (2) the snapshot key and partial unique index—a collision or race could cause two generations to run or one to be lost; (3) access control on read—the source Conversation can turn private after the document is stored, so every GET must re-check visibility; (4) the 30-minute timeout and reclaim logic—a stuck generation must not block retries forever.",
+        "score": 1,
+        "note": "Names real risks (citation validation, snapshot key collisions, access control re-check, timeout logic) but misses the most critical one: the tool trusts the sandbox model's output structure before validation, and validation errors go back to the model for fixes—if validation is incomplete, bad citations could slip through on resubmit. Also doesn't mention the risk that excerpts are truncated to 400 chars, potentially hiding important context."
+      }
+    ]
+  }
+]
