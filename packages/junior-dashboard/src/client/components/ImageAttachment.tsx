@@ -10,6 +10,7 @@ import {
   type ComponentPropsWithoutRef,
 } from "react";
 
+import { cn } from "../styles";
 import { Button } from "./ui/button";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "./ui/dialog";
 import { useSheet } from "./ui/useSheet";
@@ -222,9 +223,14 @@ function ImagePreview(props: {
   );
 }
 
+/** Least zoom limit. A larger image can zoom to its natural size. */
 const MAX_ZOOM = 4;
 /** Least zoom of a click or double tap. Most images zoom to natural size. */
 const DETAIL_ZOOM = 2.5;
+/** Zoom per wheel delta unit, for ctrl+wheel and trackpad pinches. */
+const WHEEL_ZOOM_RATE = 0.01;
+/** A mouse wheel notch is about 100. Clamp it so one notch zooms one step. */
+const WHEEL_ZOOM_MAX_DELTA = 50;
 const DOUBLE_TAP_MS = 300;
 /** Distance before a one-finger drag picks its axis. */
 const SWIPE_LOCK_PX = 10;
@@ -265,8 +271,8 @@ function ZoomableImage(props: {
 }) {
   const [zoom, setZoom] = useState(NO_ZOOM);
   const [swipe, setSwipe] = useState<Swipe>();
-  // Animate only zoom that jumps, after a click or a double tap. Pinch, drag,
-  // and wheel follow the input.
+  // True while a click or double-tap zoom animates. Pinch, drag, and wheel
+  // follow the input, so they do not animate.
   const [animate, setAnimate] = useState(false);
   const frame = useRef<HTMLDivElement>(null);
   const image = useRef<HTMLImageElement>(null);
@@ -300,21 +306,21 @@ function ZoomableImage(props: {
   }, [animate, zoom]);
 
   /**
-   * Zoom in on the image point under `point`, or zoom out to fit. An unzoomed
-   * image ignores points beside it. Returns the zoom it set.
+   * Zoom in from `from` on the image point under `point`, or zoom out to fit.
+   * An unzoomed image ignores points beside it. Returns the zoom it set.
    */
-  const toggleZoom = (point: Point): Zoom | undefined => {
+  const toggleZoom = (point: Point, from: Zoom): Zoom | undefined => {
     const element = image.current!;
-    if (zoom.scale === 1 && !contains(element.getBoundingClientRect(), point)) {
+    if (from.scale === 1 && !contains(element.getBoundingClientRect(), point)) {
       return undefined;
     }
     const next =
-      zoom.scale > 1
+      from.scale > 1
         ? NO_ZOOM
         : zoomAt(
-            gestureAt([point], zoom, element),
+            gestureAt([point], from, element),
             point,
-            detailZoom(element),
+            Math.max(DETAIL_ZOOM, naturalZoom(element)),
             element,
           );
     setAnimate(true);
@@ -328,23 +334,27 @@ function ZoomableImage(props: {
     const element = frame.current!;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
-      const point = { x: event.clientX, y: event.clientY };
+      const point = clientPoint(event);
       const from = interruptZoom();
       const start = gestureAt([point], from, image.current!);
-      // Trackpad pinches and ctrl+wheel zoom. A mouse wheel notch is about
-      // 100, so clamp it to keep one notch from jumping too far.
+      // Trackpad pinches arrive as ctrl+wheel.
       if (event.ctrlKey) {
-        const delta = clamp(event.deltaY, -50, 50);
+        const delta = clamp(
+          event.deltaY,
+          -WHEEL_ZOOM_MAX_DELTA,
+          WHEEL_ZOOM_MAX_DELTA,
+        );
         setZoom(
           zoomAt(
             start,
             point,
-            from.scale * Math.exp(-delta * 0.01),
+            from.scale * Math.exp(-delta * WHEEL_ZOOM_RATE),
             image.current!,
           ),
         );
       } else if (from.scale > 1) {
-        // Other wheel input scrolls the zoomed image, like a page.
+        // Other wheel input scrolls the zoomed image, like a page. zoomAt at
+        // the same scale pans and keeps the edges in the frame.
         setZoom(
           zoomAt(
             start,
@@ -364,7 +374,7 @@ function ZoomableImage(props: {
     if (mouse && event.button !== 0) return;
     // Keep move and end events when a pointer slides out of the frame.
     event.currentTarget.setPointerCapture(event.pointerId);
-    const point = { x: event.clientX, y: event.clientY };
+    const point = clientPoint(event);
     pointers.current.set(event.pointerId, point);
     // A mouse drag only pans. Swipes to page or dismiss are for touch.
     swipeAxis.current = mouse || pointers.current.size > 1 ? "none" : undefined;
@@ -379,7 +389,7 @@ function ZoomableImage(props: {
       event.timeStamp - lastTapAt.current < DOUBLE_TAP_MS
     ) {
       lastTapAt.current = 0;
-      startGesture(toggleZoom(point) ?? from);
+      startGesture(toggleZoom(point, from) ?? from);
       return;
     }
     if (!mouse && pointers.current.size === 1) {
@@ -391,10 +401,7 @@ function ZoomableImage(props: {
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const start = gesture.current;
     if (!start || !pointers.current.has(event.pointerId)) return;
-    pointers.current.set(event.pointerId, {
-      x: event.clientX,
-      y: event.clientY,
-    });
+    pointers.current.set(event.pointerId, clientPoint(event));
     const points = [...pointers.current.values()];
     // A drag, pan, or swipe is not a click or the first tap of a double tap.
     if (
@@ -433,7 +440,7 @@ function ZoomableImage(props: {
     click.current = undefined;
     if (clicked) {
       gesture.current = undefined;
-      toggleZoom(clicked);
+      toggleZoom(clicked, zoom);
       return;
     }
     if (swipe && !swipe.settling) {
@@ -452,9 +459,10 @@ function ZoomableImage(props: {
     // Explicit tracks give the image a definite area, so `max-h-full` fits a
     // tall image to the frame instead of clipping it.
     <div
-      className={`grid min-h-0 touch-none grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] place-items-center overflow-hidden p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:p-6 ${
-        zoom.scale > 1 ? "cursor-grab active:cursor-grabbing" : ""
-      }`}
+      className={cn(
+        "grid min-h-0 touch-none grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] place-items-center overflow-hidden p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:p-6",
+        zoom.scale > 1 && "cursor-grab active:cursor-grabbing",
+      )}
       onPointerCancel={onPointerEnd}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -463,16 +471,16 @@ function ZoomableImage(props: {
     >
       <img
         alt={props.alt}
-        className={`max-h-full max-w-full object-contain select-none ${
-          zoom.scale > 1 ? "" : "cursor-zoom-in"
-        } ${
-          swipe?.settling || (animate && !swipe)
-            ? "transition-[opacity,transform] duration-180 ease-out motion-reduce:transition-none"
-            : ""
-        }`}
+        className={cn(
+          "max-h-full max-w-full object-contain select-none",
+          zoom.scale === 1 && "cursor-zoom-in",
+          (swipe?.settling || (animate && !swipe)) &&
+            "transition-[opacity,transform] duration-180 ease-out motion-reduce:transition-none",
+        )}
         draggable={false}
         onTransitionEnd={() => {
           if (swipe?.settling) setSwipe(undefined);
+          setAnimate(false);
         }}
         ref={image}
         src={props.src}
@@ -525,9 +533,17 @@ function renderedZoom(element: HTMLElement): Zoom {
   return { scale: matrix.a, x: matrix.e, y: matrix.f };
 }
 
-/** Zoom that shows the image at its natural size, and at least DETAIL_ZOOM. */
-function detailZoom(element: HTMLImageElement): number {
-  return Math.max(DETAIL_ZOOM, element.naturalWidth / element.offsetWidth);
+/**
+ * Zoom that shows the image at its natural size. An image that is still
+ * loading has no size yet, so it reports 1.
+ */
+function naturalZoom(element: HTMLImageElement): number {
+  if (!element.naturalWidth || !element.offsetWidth) return 1;
+  return element.naturalWidth / element.offsetWidth;
+}
+
+function clientPoint(event: { clientX: number; clientY: number }): Point {
+  return { x: event.clientX, y: event.clientY };
 }
 
 function contains(rect: DOMRect, point: Point): boolean {
@@ -568,10 +584,7 @@ function zoomAt(
   scale: number,
   element: HTMLImageElement,
 ): Zoom {
-  // A tall image that fits the frame may need more than MAX_ZOOM to reach
-  // its natural size.
-  const max = Math.max(MAX_ZOOM, element.naturalWidth / element.offsetWidth);
-  const next = clamp(scale, 1, max);
+  const next = clamp(scale, 1, Math.max(MAX_ZOOM, naturalZoom(element)));
   const ratio = next / gesture.zoom.scale;
   const x =
     point.x -
