@@ -31,6 +31,8 @@ import {
 } from "./ConversationListStatusIcon";
 import { conversationPath } from "./conversationRoutes";
 import { useArchiveConversation } from "./conversationArchive";
+import { ConversationRowContextMenu } from "./ConversationRowContextMenu";
+import { usePinConversation } from "./usePinConversation";
 import { DisplayText } from "../display-text/DisplayText";
 import type { ConversationSection } from "./conversationSections";
 import { ConversationSectionList } from "./ConversationSectionList";
@@ -55,7 +57,7 @@ export function ConversationHomeList(props: {
 }) {
   const { collapsedKeys, toggle: toggleSection } =
     useCollapsedConversationSections();
-  const { showActionError, showArchiveError, showArchived } =
+  const { clearActionError, showActionError, showArchiveError, showArchived } =
     useConversationActionToasts();
   const handleReorderError = useCallback(
     (conversation: Conversation) =>
@@ -93,8 +95,10 @@ export function ConversationHomeList(props: {
               <ConversationCardSection
                 collapsed={collapsedKeys.has(section.key)}
                 key={section.key}
+                onActionError={showActionError}
                 onArchiveError={showArchiveError}
                 onArchived={showArchived}
+                onPinned={clearActionError}
                 onRowAction={releaseHold}
                 onToggle={() => toggleSection(section.key)}
                 waitingConversations={props.waitingConversations}
@@ -173,8 +177,10 @@ function ConversationCardLoading(props: { index: number }) {
 
 function ConversationCardSection(props: {
   collapsed: boolean;
+  onActionError(conversation: Conversation, title: string): void;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
+  onPinned(conversation: Conversation): void;
   onRowAction(): void;
   onToggle(): void;
   section: ConversationSection;
@@ -200,8 +206,10 @@ function ConversationCardSection(props: {
           {props.section.conversations.map((conversation) => {
             const card = {
               conversation,
+              onActionError: props.onActionError,
               onArchiveError: props.onArchiveError,
               onArchived: props.onArchived,
+              onPinned: props.onPinned,
               onRowAction: props.onRowAction,
               waitingOnViewer: props.waitingConversations.has(conversation.id),
             };
@@ -221,8 +229,10 @@ type ConversationCardProps = {
   conversation: Conversation;
   /** Set on pinned cards, which drag to reorder. */
   drag?: PinnedRowDrag;
+  onActionError(conversation: Conversation, title: string): void;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
+  onPinned(conversation: Conversation): void;
   /** Lets the list show the result of a row action at once. */
   onRowAction(): void;
   waitingOnViewer: boolean;
@@ -243,6 +253,21 @@ function ConversationCard(props: ConversationCardProps) {
       if (archived) props.onArchived(conversation);
     },
   });
+  const pin = usePinConversation(conversation.id, {
+    onError: (pinned) =>
+      props.onActionError(
+        conversation,
+        pinned ? "Could not pin" : "Could not unpin",
+      ),
+    onSuccess: () => props.onPinned(conversation),
+  });
+  const toggleArchive = () => {
+    props.onRowAction();
+    archive.mutate({
+      archived: !conversation.archivedAt,
+      lastSeenAt: conversation.lastSeenAt,
+    });
+  };
   const status = visualStatusForConversation(conversation);
   const title = conversationDisplayTitle(conversation);
   const participants = conversationParticipants(conversation);
@@ -255,15 +280,26 @@ function ConversationCard(props: ConversationCardProps) {
   const showStatus = props.waitingOnViewer && status !== "active";
   const activityAt = conversation.lastMessageAt ?? conversation.lastSeenAt;
   return (
-    <article
+    <ConversationRowContextMenu
       {...prefetch}
       {...drag?.listeners}
+      archive={{ pending: archive.isPending, toggle: toggleArchive }}
       className={cn(
-        "group relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-2.5 transition-[background-color,border-color,scale] duration-100 ease-out hover:border-dashboard-border hover:bg-dashboard-fill-soft has-[>a:active]:scale-[0.99] has-[>a:active]:bg-dashboard-fill-soft motion-reduce:has-[>a:active]:scale-100 sm:px-4",
+        "group relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-2.5 transition-[background-color,border-color,scale] duration-100 ease-out hover:border-dashboard-border hover:bg-dashboard-fill-soft has-[>a:active]:scale-[0.99] has-[>a:active]:bg-dashboard-fill-soft data-popup-open:border-dashboard-border data-popup-open:bg-dashboard-fill-soft motion-reduce:has-[>a:active]:scale-100 sm:px-4",
         drag?.dragging && "opacity-40",
       )}
+      conversation={conversation}
+      onActionError={props.onActionError}
       onKeyDown={drag?.onKeyDown}
+      pin={{
+        pending: pin.isPending,
+        set: (pinned) => {
+          props.onRowAction();
+          pin.mutate(pinned);
+        },
+      }}
       ref={drag?.setNodeRef}
+      render={<article />}
       role="listitem"
     >
       <Link
@@ -271,8 +307,9 @@ function ConversationCard(props: ConversationCardProps) {
         aria-label={`Open ${title}`}
         className={cn(
           "absolute inset-0 z-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-dashboard-focus",
-          // A long press drags the card instead of opening the link menu.
-          drag && "[-webkit-touch-callout:none]",
+          // A long press opens the card menu or drags a pin, not the iOS
+          // link callout.
+          "[-webkit-touch-callout:none]",
         )}
         // The browser's own link drag would take the pointer from the reorder.
         draggable={drag ? false : undefined}
@@ -338,13 +375,7 @@ function ConversationCard(props: ConversationCardProps) {
             aria-label={`${conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
             className="relative z-[1] shrink-0 cursor-pointer border-0 bg-transparent p-0 text-dashboard-text-muted transition before:absolute before:-inset-2 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus focus:ring-offset-2 focus:ring-offset-dashboard-canvas disabled:cursor-not-allowed disabled:opacity-50"
             disabled={archive.isPending}
-            onClick={() => {
-              props.onRowAction();
-              archive.mutate({
-                archived: !conversation.archivedAt,
-                lastSeenAt: conversation.lastSeenAt,
-              });
-            }}
+            onClick={toggleArchive}
             type="button"
           >
             {conversation.archivedAt ? (
@@ -381,6 +412,6 @@ function ConversationCard(props: ConversationCardProps) {
           </div>
         ) : null}
       </div>
-    </article>
+    </ConversationRowContextMenu>
   );
 }
