@@ -3,8 +3,8 @@
  *
  * Junior's own Google account reads the event from its own calendar, so the
  * card shows only when the viewer organizes, created, or is invited to the
- * event. Any unclear case gets no card. The card shows the title only, never
- * the guests or the description.
+ * event. Any unclear case gets no card. The card shows the title and time,
+ * never the guests or the description.
  */
 import type {
   ObjectAnnotation,
@@ -14,18 +14,28 @@ import type {
 import * as z from "zod";
 import { readGoogleConfig } from "../config";
 import {
+  formatInterval,
   googleApiError,
   googleApiRequest,
   googleAttendeeSchema,
+  isTimeZone,
 } from "../tools/shared";
 
 const EVENT_ID_PATTERN = /^[A-Za-z0-9_]{5,1024}$/;
 
+const eventTimeSchema = z.object({
+  date: z.string().optional(),
+  dateTime: z.string().optional(),
+  timeZone: z.string().optional(),
+});
+
 const linkedEventSchema = z.object({
   attendees: z.array(googleAttendeeSchema).optional(),
   creator: z.object({ email: z.string().optional() }).optional(),
+  end: eventTimeSchema,
   id: z.string(),
   organizer: z.object({ email: z.string().optional() }).optional(),
+  start: eventTimeSchema,
   status: z.string().optional(),
   summary: z.string().optional(),
   updated: z.string().optional(),
@@ -52,6 +62,30 @@ function parseEventLink(url: URL, calendarEmail: string): string | undefined {
     calendar?.toLowerCase() === calendarEmail
     ? eventId
     : undefined;
+}
+
+/**
+ * Event time in the event's own time zone. Junior does not know the
+ * viewer's time zone here. An all-day event shows its first date.
+ */
+function eventWhen({ start, end }: LinkedEvent): string | undefined {
+  if (start.dateTime && end.dateTime) {
+    const timeZone =
+      start.timeZone && isTimeZone(start.timeZone) ? start.timeZone : "UTC";
+    return formatInterval(
+      Date.parse(start.dateTime),
+      Date.parse(end.dateTime),
+      timeZone,
+    );
+  }
+  if (!start.date) return undefined;
+  // A date has no time zone. Format it in UTC so the day does not shift.
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+    weekday: "short",
+  }).format(Date.parse(start.date));
 }
 
 /** Return whether the viewer organizes, created, or is invited to it. */
@@ -94,6 +128,7 @@ async function resolveGoogleCalendarLink(
     title: title.slice(0, 512),
     url: url.href,
     sourceUpdatedAt: event.updated,
+    facts: { type: "calendar_event", when: eventWhen(event) },
   };
 }
 

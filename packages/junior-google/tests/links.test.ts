@@ -172,8 +172,16 @@ describe("Google link cards", () => {
         { email: "room@resource.calendar.google.com", resource: true },
       ],
       creator: { email: ACCOUNT_EMAIL },
+      end: {
+        dateTime: "2026-10-05T17:30:00Z",
+        timeZone: "America/Los_Angeles",
+      },
       id: "evt123abc",
       organizer: { email: ACCOUNT_EMAIL },
+      start: {
+        dateTime: "2026-10-05T17:00:00Z",
+        timeZone: "America/Los_Angeles",
+      },
       summary: "Launch review",
       updated: "2026-10-01T10:00:00.000Z",
     };
@@ -181,9 +189,13 @@ describe("Google link cards", () => {
     it("shows an event on Junior's calendar to an attendee", async () => {
       const google = fakeGoogle({ event: EVENT });
 
-      await expect(
-        resolveAs("Alice@example.com", google, "calendar_event", EVENT_URL),
-      ).resolves.toEqual({
+      const card = await resolveAs(
+        "Alice@example.com",
+        google,
+        "calendar_event",
+        EVENT_URL,
+      );
+      expect(card).toEqual({
         kind: "object",
         objectType: "calendar_event",
         key: "evt123abc",
@@ -191,10 +203,35 @@ describe("Google link cards", () => {
         title: "Launch review",
         url: EVENT_URL,
         sourceUpdatedAt: EVENT.updated,
+        facts: {
+          type: "calendar_event",
+          when: "Mon, Oct 5, 10:00 – 10:30 PDT",
+        },
       });
+      // The guest list stays hidden.
+      expect(JSON.stringify(card)).not.toContain("@example.com");
       expect(new URL(google.fetch.mock.calls[0]![0].request.url).pathname).toBe(
         "/calendar/v3/calendars/primary/events/evt123abc",
       );
+    });
+
+    it("shows the date of an all-day event", async () => {
+      await expect(
+        resolveAs(
+          "alice@example.com",
+          fakeGoogle({
+            event: {
+              ...EVENT,
+              start: { date: "2026-10-05" },
+              end: { date: "2026-10-06" },
+            },
+          }),
+          "calendar_event",
+          EVENT_URL,
+        ),
+      ).resolves.toMatchObject({
+        facts: { type: "calendar_event", when: "Mon, Oct 5" },
+      });
     });
 
     it("hides an event from a viewer who is not on it", async () => {
