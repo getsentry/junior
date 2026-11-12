@@ -57,9 +57,10 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     email: text.optional(),
     slackHandle: text.optional(),
     // A verified linked GitHub login. The card links it to its profile.
+    // Enterprise Managed User logins have an underscore, such as `ada_acme`.
     githubHandle: z
       .string()
-      .regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/)
+      .regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/)
       .optional(),
     // A Junior photo path. Browsers never load a provider photo URL.
     avatarUrl: z

@@ -126,7 +126,7 @@ describe("object links API", () => {
   it("resolves a person link and a mailto link to a known person", async () => {
     const alice = await linkSlackUser("alice@example.com", "UALICE");
     await upsertLinkedIdentity(getSqlExecutor(), alice.id, {
-      handle: "alice-gh",
+      handle: "alice_acme",
       kind: "user",
       provider: "github",
       providerSubjectId: "1001",
@@ -154,7 +154,7 @@ describe("object links API", () => {
       facts: {
         email: "alice@example.com",
         avatarUrl: expect.stringMatching(/^\/api\/people\/avatars\//),
-        githubHandle: "alice-gh",
+        githubHandle: "alice_acme",
         type: "person",
       },
       label: "alice",
