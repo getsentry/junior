@@ -18,6 +18,8 @@ export type DrawerProps = {
   /** Remove the body inset, so content such as the event log meets the edges. */
   flush?: boolean;
   header: ReactNode;
+  /** Header content under the title row, at the full header width. */
+  subheader?: ReactNode;
   onClose(): void;
   openKey: string;
   width?: "default" | "wide" | "narrow";
@@ -45,23 +47,26 @@ export function DrawerContent(props: DrawerProps) {
         )}
       >
         {/* Positioned so header overlays, such as transcript search, float over the body. */}
-        <header className="relative z-10 flex shrink-0 items-start gap-3 border-b border-dashboard-border bg-dashboard-bg-elevated px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:px-5">
-          <div className="min-w-0 flex-1">{props.header}</div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {props.actions}
-            <DrawerClose
-              render={
-                <Button
-                  variant="ghost"
-                  ref={closeRef}
-                  aria-label={props.closeLabel}
-                  size="icon"
-                />
-              }
-            >
-              <X aria-hidden="true" size={15} strokeWidth={2.25} />
-            </DrawerClose>
+        <header className="relative z-10 shrink-0 border-b border-dashboard-border bg-dashboard-bg-elevated px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:px-5">
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">{props.header}</div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {props.actions}
+              <DrawerClose
+                render={
+                  <Button
+                    variant="ghost"
+                    ref={closeRef}
+                    aria-label={props.closeLabel}
+                    size="icon"
+                  />
+                }
+              >
+                <X aria-hidden="true" size={15} strokeWidth={2.25} />
+              </DrawerClose>
+            </div>
           </div>
+          {props.subheader}
         </header>
         <div
           className={cn(

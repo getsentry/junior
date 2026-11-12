@@ -1489,22 +1489,25 @@ Conversation: \`local:test:old-conversation\`
           { status: 201 },
         ),
     });
-    const plugin = githubPlugin();
+    // With the default Watch off, every pull request event stays suggested.
+    const plugin = githubPlugin({
+      pullRequestEvents: { subscribeAfterCreate: false },
+    });
     const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
 
-    await expect(
-      tool?.execute?.(
-        {
-          repo: "getsentry/junior",
-          title: "Typed PR",
-          head: "dcramer/gh-660-pr-create",
-          base: "main",
-          body: "PR body",
-          draft: true,
-        },
-        { toolCallId: "call-create-pull-request" },
-      ),
-    ).resolves.toMatchObject({
+    const result = await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "dcramer/gh-660-pr-create",
+        base: "main",
+        body: "PR body",
+        draft: true,
+      },
+      { toolCallId: "call-create-pull-request" },
+    );
+    expect(result).not.toHaveProperty("subscription");
+    expect(result).toMatchObject({
       objectAnnotations: [
         {
           kind: "object",
@@ -1651,6 +1654,39 @@ Conversation: \`local:test:old-conversation\`
         type: "pull_request",
       }),
     });
+  });
+
+  it("subscribes the default maintenance Watch when the app configures none", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const subscribe = vi.fn(async ({ events }) => ({
+      events,
+      id: "subscription-1",
+    }));
+    const ctx = githubToolsContext({ subscribe });
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "feature",
+        base: "main",
+      },
+      { toolCallId: "call-create-pull-request-default-watch" },
+    );
+    expect(subscribe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        events: expect.arrayContaining([
+          "pull_request.checks.failed",
+          "pull_request.review_comment.created",
+          "pull_request.closed_unmerged",
+          "pull_request.merged",
+        ]),
+        intent: expect.stringContaining(
+          "Reply on GitHub to review comments and questions",
+        ),
+      }),
+    );
   });
 
   it("returns the created pull request when subscribe-after-create fails", async () => {
@@ -2447,6 +2483,42 @@ Conversation: \`local:test:old-conversation\`
       name: "installation-write",
       access: "write",
     });
+  });
+
+  it("routes issue comment edits and issue reactions to typed tools", async () => {
+    await expect(
+      grantForEgress({
+        method: "PATCH",
+        url: "https://api.github.com/repos/getsentry/junior/issues/comments/99",
+      }),
+    ).rejects.toThrow("must use the github_updateIssueComment tool");
+    await expect(
+      grantForEgress({
+        method: "PATCH",
+        operation: "github.issue.comment.update",
+        url: "https://api.github.com/repos/getsentry/junior/issues/comments/99",
+      }),
+    ).resolves.toMatchObject({ name: "installation-write", access: "write" });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/issues/3037/reactions",
+      }),
+    ).rejects.toThrow("must use the github_reactToIssue tool");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        operation: "github.issue.reaction.create",
+        url: "https://api.github.com/repos/getsentry/junior/issues/3037/reactions",
+      }),
+    ).resolves.toMatchObject({ name: "installation-write", access: "write" });
+    await expect(
+      grantForEgress({
+        method: "DELETE",
+        operation: "github.issue.comment.update",
+        url: "https://api.github.com/repos/getsentry/junior/issues/comments/99",
+      }),
+    ).rejects.toThrow("This GitHub write request is not supported.");
   });
 
   it("denies raw issue and pull request metadata updates", async () => {

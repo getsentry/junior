@@ -40,6 +40,7 @@ export async function createHarness() {
   // starts lands here.
   const otherOpenTurns: string[] = [];
   let onInvocationRun: (() => Promise<never>) | undefined;
+  let onPersonRun: ((run: AgentRun) => Promise<never>) | undefined;
   const work = await createConversationWorkHarness({
     run: async (run) => {
       assertRunConsistency(
@@ -59,6 +60,9 @@ export async function createHarness() {
       );
       if (run.agentInvocationId && onInvocationRun) {
         await onInvocationRun();
+      }
+      if (!run.agentInvocationId && onPersonRun) {
+        await onPersonRun(run);
       }
       throw new Error("stop after reading the run");
     },
@@ -99,6 +103,10 @@ export async function createHarness() {
     onInvocationRun: (fn: () => Promise<never>) => {
       onInvocationRun = fn;
     },
+    /** Run `fn` in each later run on the Conversation loop. */
+    onPersonRun: (fn: (run: AgentRun) => Promise<never>) => {
+      onPersonRun = fn;
+    },
     otherOpenTurns,
     process,
     queue: work.queue,
@@ -128,21 +136,24 @@ export async function finishInvocation(
   });
 }
 
-/** Start a named child agent as a Thread. */
+/** Start a named child agent, a Thread unless `kind` says otherwise. */
 export async function startThread(
   harness: Harness,
   idempotencyKey: string,
   input: Partial<
-    Pick<CreateAgentInvocationInput, "destination" | "parentConversationId">
+    Pick<
+      CreateAgentInvocationInput,
+      "destination" | "kind" | "parentConversationId"
+    >
   > = {},
 ) {
   const created = await createAndEnqueueAgentInvocation(
     {
       ...slackInvocationInput,
+      kind: "thread",
       ...input,
       agentName: harness.agentName,
       idempotencyKey,
-      kind: "thread",
     },
     {
       conversationStore: harness.conversationStore,

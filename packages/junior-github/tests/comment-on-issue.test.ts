@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createGitHubCommentOnIssueTool } from "../src/tools/comment-on-issue";
+import { createGitHubUpdateIssueCommentTool } from "../src/tools/update-issue-comment";
 
 function toolContext(response?: Response) {
   const fetch = vi.fn(
@@ -59,5 +60,74 @@ describe("commentOnIssue", () => {
         { toolCallId: "missing" },
       ),
     ).rejects.toThrow("GitHub issue comment failed with HTTP 404: Not Found");
+  });
+});
+
+const BOT_EMAIL = "123+junior[bot]@users.noreply.github.com";
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status });
+}
+
+function updateContext(responses: Response[]) {
+  const pending = [...responses];
+  const fetch = vi.fn(async () => {
+    const next = pending.shift();
+    if (!next) throw new Error("unexpected GitHub request");
+    return next;
+  });
+  return {
+    fetch,
+    tool: createGitHubUpdateIssueCommentTool({ fetch }, BOT_EMAIL),
+  };
+}
+
+describe("updateIssueComment", () => {
+  it("replaces the body of a comment the bot posted", async () => {
+    const { fetch, tool } = updateContext([
+      json({ user: { id: 123 } }),
+      json({
+        id: 99,
+        html_url:
+          "https://github.com/getsentry/junior/issues/2888#issuecomment-99",
+      }),
+    ]);
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", comment_id: 99, body: "- [x] Reproduced" },
+        { toolCallId: "update" },
+      ),
+    ).resolves.toEqual({
+      target: "updateIssueComment",
+      repo: "getsentry/junior",
+      comment_id: 99,
+      url: "https://github.com/getsentry/junior/issues/2888#issuecomment-99",
+    });
+
+    const update = fetch.mock.calls[1]?.[0];
+    expect(update).toMatchObject({
+      operation: "github.issue.comment.update",
+      provider: "github",
+    });
+    expect(update?.request.method).toBe("PATCH");
+    expect(update?.request.url).toBe(
+      "https://api.github.com/repos/getsentry/junior/issues/comments/99",
+    );
+    await expect(update?.request.clone().json()).resolves.toEqual({
+      body: "- [x] Reproduced",
+    });
+  });
+
+  it("refuses comments by other users without writing", async () => {
+    const { fetch, tool } = updateContext([json({ user: { id: 456 } })]);
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", comment_id: 99, body: "Edited." },
+        { toolCallId: "other" },
+      ),
+    ).rejects.toThrow("This bot can only edit issue comments it posted.");
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

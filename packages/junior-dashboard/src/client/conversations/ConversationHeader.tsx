@@ -15,6 +15,7 @@ import {
   TranscriptSearchToggle,
 } from "./ConversationHeaderActions";
 import type { ConversationMenu } from "./conversationMenuItems";
+import { ChildAgentTags } from "./ChildAgentTags";
 import { ConversationBreadcrumb } from "./ConversationBreadcrumb";
 import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
 import { TranscriptSearchBar } from "./TranscriptSearchBar";
@@ -146,6 +147,8 @@ export function ConversationHeader(props: {
       </h2>
     );
 
+  const childAgentTags = <ChildAgentTags node={props.agentTree?.at(-1)} />;
+
   const showMobileHeader =
     searchOpenVisible ||
     props.errors.length > 0 ||
@@ -195,6 +198,7 @@ export function ConversationHeader(props: {
               title
             )}
             {props.status}
+            {childAgentTags}
             {props.privacy ? (
               <span className="shrink-0">{props.privacy}</span>
             ) : null}
@@ -242,7 +246,10 @@ export function ConversationHeader(props: {
         {props.agentTree ? (
           <div className="flex min-w-0 items-center justify-between gap-2 px-4 py-2 md:hidden">
             <ConversationBreadcrumb nodes={props.agentTree} />
-            {props.status}
+            <div className="flex shrink-0 items-center gap-1.5">
+              {props.status}
+              {childAgentTags}
+            </div>
           </div>
         ) : null}
         {props.forks ? (
