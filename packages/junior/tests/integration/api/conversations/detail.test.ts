@@ -1,7 +1,7 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@/api/schema";
 import { afterEach, describe, expect, it } from "vitest";
 import { avatarPath } from "../../../fixtures/avatar";
-import { testViewer } from "../../../fixtures/user";
+import { signedInViewer } from "../../../fixtures/user";
 import { createJuniorApi } from "@/api";
 import { conversationDetailReportSchema } from "@/api/schema";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
@@ -434,7 +434,7 @@ describe("conversation detail API", () => {
     expect(hidden).not.toHaveProperty("brief");
     await expect(
       readConversationDetail(conversationId, {
-        viewer: testViewer("participant@example.com"),
+        viewer: await signedInViewer("participant@example.com"),
       }),
     ).resolves.toMatchObject({
       brief: {
@@ -519,7 +519,7 @@ describe("conversation detail API", () => {
     });
 
     const detail = await readConversationDetail(conversationId, {
-      viewer: testViewer("owner@example.com"),
+      viewer: await signedInViewer("owner@example.com"),
     });
     const message = detail?.events.find(
       (event) =>
@@ -613,7 +613,7 @@ describe("conversation detail API", () => {
     ]);
 
     const detail = await readConversationDetail(conversationId, {
-      viewer: testViewer("owner@example.com"),
+      viewer: await signedInViewer("owner@example.com"),
     });
     // Messages name their author. The detail carries each author once.
     expect(detail?.events[0]?.data).toMatchObject({
@@ -724,7 +724,10 @@ describe("conversation detail API", () => {
           timezone: "UTC",
         },
         status: "active",
-        task: { text: "Send the weekly project summary" },
+        task: {
+          kind: "instruction",
+          instruction: "Send the weekly project summary",
+        },
         title: "Weekly project summary",
         updatedAtMs: nowMs,
       });

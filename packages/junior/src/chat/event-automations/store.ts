@@ -1,4 +1,5 @@
 import { requireAutomationRevision } from "@/chat/automations/revision";
+import { automationTaskColumns } from "@/chat/automations/task";
 import { recordAutomationVersion } from "@/chat/automations/versions";
 import {
   eventMatches,
@@ -54,7 +55,7 @@ function eventAutomationColumns(task: EventAutomation | StoredEventAutomation) {
     creatorIdentityId,
     creatorSlackUserId: record.createdBy.slackUserId,
     identifier: record.trigger.identifier ?? null,
-    instruction: record.task.text,
+    ...automationTaskColumns(record.task),
     namespace: record.trigger.namespace,
     record,
     teamId: record.destination.teamId,

@@ -15,6 +15,7 @@ import {
   listPersonalTokens,
   revokePersonalToken,
 } from "../../personal-tokens/store";
+import { previewOriginBelongsTo } from "../../personal-tokens/preview-origins";
 
 /** Create authenticated native personal-token list and action routes. */
 export function createPersonalTokenRoutes(): Hono<JuniorApiEnv> {
@@ -38,6 +39,15 @@ export function createPersonalTokenRoutes(): Hono<JuniorApiEnv> {
     async (context) => {
       const viewer = context.get("viewer");
       const body = context.req.valid("json");
+      if (
+        body.previewOrigin &&
+        !(await previewOriginBelongsTo({
+          email: viewer.email,
+          origin: body.previewOrigin,
+        }))
+      ) {
+        throwApiError(403, "Junior did not make this Preview for you.");
+      }
       return jsonResponse(
         createdPersonalTokenSchema,
         await createPersonalToken({ email: viewer.email, name: body.name }),

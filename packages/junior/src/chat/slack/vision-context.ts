@@ -222,7 +222,6 @@ async function summarizeImageWithVision(args: {
 
   const result = await args.completeText({
     modelId: visionModelId,
-    temperature: 0,
     maxTokens: args.maxTokens,
     operation: "vision_summary",
     cost: args.cost,

@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createLocalSource, type Identity } from "@sentry/junior-plugin-api";
@@ -18,6 +19,11 @@ import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { createConversationSubscriptionTools } from "@/chat/tools/conversation-subscription";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
 
 // The contract is the comment at the top of
 // `src/api/conversations/subscription.ts`. Each test is one of its
@@ -99,6 +105,7 @@ async function agentSetsSubscription(actor: Person, subscribed: boolean) {
     providerSubjectId: actor.identityId,
   };
   const context = {
+    turnTools: rootTurnTools,
     conversationId: CONVERSATION_ID,
     destination: { platform: "local", conversationId: CONVERSATION_ID },
     egress: { fetch: async () => new Response("ok") },

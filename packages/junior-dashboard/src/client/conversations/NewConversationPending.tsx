@@ -19,6 +19,7 @@ import { ConversationPrivacyChip } from "./ConversationMeta";
 import { ConversationSidePanelLayout } from "./ConversationSidePanelLayout";
 import { useDetailsDefaultOpen } from "./conversationSidebarLayout";
 import { DetailsPanel } from "../components/DetailsPanel";
+import { useRegisterMobileHeaderBack } from "../components/layout/DashboardChrome";
 import {
   conversationOutboxMessageForSubmit,
   mailboxMessageFromOutbox,
@@ -45,6 +46,25 @@ const detailsTitle = (
 
 // The page shows the server's title when it opens.
 const PENDING_TITLE = "New conversation";
+
+// The header is inert until the Conversation exists.
+const PENDING_MENU_ACTIONS = {
+  archive: noop,
+  continueInSlack: noop,
+  delivery: noop,
+  eventLog: noop,
+  pin: noop,
+  read: noop,
+  rename: noop,
+  subscription: noop,
+};
+const PENDING_MENU_STATE = {
+  archive: false,
+  delivery: false,
+  pin: false,
+  read: false,
+  subscription: false,
+};
 
 /**
  * The draft of the reply box shown while a new Conversation is created. The
@@ -110,6 +130,15 @@ export function NewConversationPending(props: {
   // would not carry over to the page.
   const showDetails = useDetailsDefaultOpen();
   const searchMatch = useTranscriptSearchMatch("");
+  // Home has no Conversation chrome. Show the page's, so mobile does not
+  // flash the home header before the route changes. Back waits, like the
+  // header actions: home's composer holds the sent text until the create is
+  // accepted.
+  useRegisterMobileHeaderBack(
+    "Back to conversations",
+    undefined,
+    PENDING_TITLE,
+  );
 
   return (
     <div className="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)]">
@@ -131,42 +160,25 @@ export function NewConversationPending(props: {
         <ChatLayout
           header={
             <ConversationHeader
-              archive={{
-                archived: false,
-                disabled: true,
-                onClick: noop,
-                pending: false,
-              }}
-              conversationId={pending.idempotencyKey}
               detailsOpen={showDetails}
+              errors={[]}
+              menu={{
+                actions: PENDING_MENU_ACTIONS,
+                conversation: undefined,
+                conversationId: pending.idempotencyKey,
+                detail: undefined,
+                pending: PENDING_MENU_STATE,
+              }}
               pending
               onDetailsClick={noop}
               onSearchChange={noop}
               onViewChange={noop}
-              pin={{
-                disabled: true,
-                error: false,
-                onClick: noop,
-                pinned: false,
-              }}
               privacy={
                 <ConversationPrivacyChip visibility={pending.visibility} />
               }
-              read={{
-                disabled: true,
-                error: false,
-                onClick: noop,
-                unread: false,
-              }}
               search=""
               searchMatch={searchMatch}
               sidebarToggle={props.sidebarToggle}
-              subscription={{
-                disabled: true,
-                error: false,
-                onClick: noop,
-                subscribed: false,
-              }}
               title={PENDING_TITLE}
               view="rich"
             />

@@ -93,7 +93,7 @@ export function MemoryDetails(props: {
                       else props.onForget(forgetAction);
                     }}
                     size="icon"
-                    variant="danger"
+                    variant="destructive"
                   >
                     <Trash2 aria-hidden="true" size={16} />
                   </Button>
@@ -116,7 +116,7 @@ export function MemoryDetails(props: {
                   setConfirmOpen(false);
                   props.onForget(forgetAction);
                 }}
-                variant="danger"
+                variant="destructive"
               >
                 {forgetAction.label}
               </AlertDialogAction>

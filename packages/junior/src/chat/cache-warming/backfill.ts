@@ -1,6 +1,6 @@
 /**
- * One-time fill of the cache warming gap lists from stored Conversation
- * history.
+ * Fill of the empty cache warming gap lists from stored Conversation
+ * history, about once a month.
  *
  * `warmup.ts` learns reply gaps only from idle periods after it is deployed.
  * Until a `gapSegment` has gaps, Junior sends no warmups for it. This replays
@@ -12,14 +12,25 @@
  * batch that the statement timeout canceled. It fills only segment lists
  * that are empty when it starts, so it does not add history to gaps that
  * live recording already has.
+ *
+ * History does not tell the plugin work state or the archive state that a
+ * Conversation had when an idle period started. So it fills only the
+ * segments of Conversations that are not archived and have work state
+ * `none`, which most Conversations have. The `open` and `done` segments and
+ * the `archived:*` segments stay empty until live gaps arrive. Until then,
+ * `decideWarmup` leans on their `parentGapSegment`, a `none` segment that
+ * this fills. Each idle period still records its gap, so the segment fills
+ * from live idle periods.
  */
 import { performance } from "node:perf_hooks";
+import { and, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type { ConversationKind } from "@/chat/conversations/store";
 import { getChatConfig } from "@/chat/config";
-import { getSqlExecutor } from "@/chat/db";
-import { logInfo } from "@/chat/logging";
+import { getDb } from "@/chat/db";
+import { logInfo, withSpan } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import {
   gapSegment,
   IDLE_HORIZON_MS,
@@ -34,10 +45,19 @@ import {
   segmentGapsKey,
 } from "./warmup";
 
-const BACKFILL_KEY = "junior:cache_warming:backfill";
+// The key names the segment format. A change of the `gapSegment` keys must
+// change it, so that the fill runs again for the new segment lists. `v2`
+// replaces a key whose `done` had no TTL. Existing installs run the backfill
+// once more after deploy, and that run fills only segments that are empty.
+const BACKFILL_KEY = "junior:cache_warming:backfill:work_state:v2";
 // A run that fails or is stopped before it marks the install as done holds
 // the claim for this long. Then a later heartbeat tries again.
 const BACKFILL_CLAIM_TTL_MS = 60 * MINUTE_MS;
+// A completed run expires after the gap list TTL. Then a heartbeat checks
+// for empty segment lists again, about once a month, for a fresh install and
+// for one that has run for a long time. A list that expired while warming was
+// off gets history again. Until then a heartbeat makes one state call.
+const BACKFILL_DONE_TTL_MS = GLOBAL_GAPS_TTL_MS;
 // Each batch is one query, and the SQL statement timeout applies to it. Small
 // batches keep each query short and let the budget check run often.
 const CONVERSATION_BATCH_SIZE = 10;
@@ -53,13 +73,22 @@ const BACKFILL_BUDGET_MS = 60_000;
 // arrives during the write. The model reads the list as a histogram, so mixed
 // order does not matter.
 const BACKFILL_GAPS_MAX = GLOBAL_GAPS_MAX / 2;
-// Each segment that `gapSegment` can return. It puts 3 or more ended Turns
-// in one group.
-const ALL_SEGMENTS = new Set(
+// Each segment that the backfill fills. `gapSegment` puts 3 or more ended
+// Turns in one group.
+const BACKFILL_SEGMENTS = new Set(
   [true, false].flatMap((userActor) =>
-    [0, 1, 2, 3].map((endedTurns) => gapSegment(userActor, endedTurns)),
+    [0, 1, 2, 3].map((endedTurns) => historySegment(userActor, endedTurns)),
   ),
 );
+
+function historySegment(userActor: boolean, endedTurns: number): string {
+  return gapSegment({
+    userActor,
+    endedTurns,
+    workState: "none",
+    archived: false,
+  });
+}
 
 interface ConversationRow {
   conversationId: string;
@@ -97,14 +126,23 @@ interface RecordedGap {
 async function loadConversations(
   windowStartMs: number,
 ): Promise<ConversationRow[]> {
-  return await getSqlExecutor().query<ConversationRow>(
-    `SELECT conversation_id AS "conversationId", kind,
-       parent_conversation_id AS "parentConversationId"
-     FROM junior_conversations
-     WHERE last_activity_at >= $1 AND transcript_purged_at IS NULL
-     ORDER BY last_activity_at DESC, conversation_id`,
-    [new Date(windowStartMs).toISOString()],
-  );
+  return await getDb()
+    .select({
+      conversationId: juniorConversations.conversationId,
+      kind: juniorConversations.kind,
+      parentConversationId: juniorConversations.parentConversationId,
+    })
+    .from(juniorConversations)
+    .where(
+      and(
+        gte(juniorConversations.lastActivityAt, new Date(windowStartMs)),
+        isNull(juniorConversations.transcriptPurgedAt),
+      ),
+    )
+    .orderBy(
+      desc(juniorConversations.lastActivityAt),
+      juniorConversations.conversationId,
+    );
 }
 
 // Agent history stores each model response as an `assistant_message` and
@@ -113,36 +151,44 @@ async function loadConversations(
 // A fork copies the rows of its source with their old times, so rows from
 // before the Conversation was created are skipped.
 async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
-  return await getSqlExecutor().query<EventRow>(
-    `SELECT e.conversation_id AS "conversationId", e.type,
-       CASE WHEN e.type = 'user_message' THEN
-         (e.payload->'provenance'->'actor'->>'userId') IS NOT NULL
-       END AS "personInstruction",
-       m.message->>'stopReason' AS "stopReason",
-       m.message->>'timestamp' AS "startedAtMs",
-       e.payload->'usage'->>'cacheRead' AS "cacheRead",
-       e.payload->'usage'->>'cacheWrite' AS "cacheWrite"
-     FROM junior_conversation_events e
-     JOIN junior_conversations c ON c.conversation_id = e.conversation_id
-     CROSS JOIN LATERAL (
-       SELECT CASE
-         WHEN e.type <> 'assistant_message' THEN NULL
-         WHEN e.schema_version >= 2 THEN (e.payload->>'message')::jsonb
-         ELSE e.payload
-       END AS message
-     ) m
-     WHERE e.conversation_id = ANY($1::text[])
-       AND (
-         e.type = 'assistant_message'
-         OR (
-           e.type = 'user_message'
-           AND (e.payload->'provenance'->>'authority') = 'instruction'
-         )
-       )
-       AND e.created_at >= c.created_at
-     ORDER BY e.conversation_id, e.seq`,
-    [conversationIds],
-  );
+  const events = juniorConversationEvents;
+  const isUserMessage = sql`${events.type} = 'user_message'`;
+  const message = sql`CASE
+    WHEN ${events.type} <> 'assistant_message' THEN NULL
+    WHEN ${events.schemaVersion} >= 2 THEN (${events.payload}->>'message')::jsonb
+    ELSE ${events.payload}
+  END`;
+  return await getDb()
+    .select({
+      conversationId: events.conversationId,
+      type: sql<EventRow["type"]>`${events.type}`,
+      personInstruction: sql<
+        boolean | null
+      >`CASE WHEN ${isUserMessage} THEN (${events.payload}->'provenance'->'actor'->>'userId') IS NOT NULL END`,
+      stopReason: sql<string | null>`(${message})->>'stopReason'`,
+      startedAtMs: sql<string | null>`(${message})->>'timestamp'`,
+      cacheRead: sql<string | null>`${events.payload}->'usage'->>'cacheRead'`,
+      cacheWrite: sql<string | null>`${events.payload}->'usage'->>'cacheWrite'`,
+    })
+    .from(events)
+    .innerJoin(
+      juniorConversations,
+      eq(juniorConversations.conversationId, events.conversationId),
+    )
+    .where(
+      and(
+        inArray(events.conversationId, conversationIds),
+        or(
+          eq(events.type, "assistant_message"),
+          and(
+            isUserMessage,
+            sql`(${events.payload}->'provenance'->>'authority') = 'instruction'`,
+          ),
+        ),
+        gte(events.createdAt, juniorConversations.createdAt),
+      ),
+    )
+    .orderBy(events.conversationId, events.seq);
 }
 
 /**
@@ -221,7 +267,7 @@ function replayConversation(
         Number(event.cacheRead ?? 0) + Number(event.cacheWrite ?? 0);
       idle = {
         sinceMs: startedAtMs,
-        segment: gapSegment(userActor, endedTurns),
+        segment: historySegment(userActor, endedTurns),
         eligible: prefixTokens >= MIN_WARMUP_PREFIX_TOKENS,
       };
       endedTurns += 1;
@@ -308,9 +354,9 @@ async function collectGaps(
 }
 
 /**
- * Fill each empty cache warming gap list once per install from the stored
- * Conversation history. The heartbeat calls it each minute. After one run
- * completes, a call makes one state request and returns.
+ * Fill each empty cache warming gap list from the stored Conversation
+ * history. The heartbeat calls it each minute. After a run completes, a call
+ * makes one state request and returns, until the completed run expires.
  *
  * A run that uses its scan budget writes the gaps that it has and also
  * completes. Some gaps are better than none, and a run that cannot finish
@@ -332,46 +378,62 @@ export async function backfillCacheWarmingGaps(args: {
   ) {
     return;
   }
-  // Check before the scan, so live gaps that arrive during the scan do not
-  // stop the fill. A list that has gaps now has live gaps, or gaps from a run
-  // that failed while it wrote. Both are kept as they are.
-  const emptySegments = new Set<string>();
-  for (const segment of ALL_SEGMENTS) {
-    const gaps = await state.getList(segmentGapsKey(segment));
-    if (gaps.length === 0) emptySegments.add(segment);
-  }
-  const { bySegment, scanned, canceledBatches, budgetExceeded } =
-    await collectGaps(args.nowMs, args.budgetMs ?? BACKFILL_BUDGET_MS);
-  const logAttributes = {
-    "app.cache_warming.backfill.conversation_count": scanned,
-    "app.cache_warming.backfill.canceled_batch_count": canceledBatches,
-    "app.cache_warming.backfill.budget_exceeded": budgetExceeded,
-  };
-  // Only canceled queries: no history was read. The claim expires, and a
-  // later heartbeat tries again.
-  if (scanned === 0 && canceledBatches > 0) {
-    logInfo("cache_warming.backfill.not_completed", logAttributes);
-    return;
-  }
-  let gapCount = 0;
-  let segmentCount = 0;
-  for (const [segment, gaps] of bySegment) {
-    if (!emptySegments.has(segment)) continue;
-    const key = segmentGapsKey(segment);
-    const newest = gaps.slice(-BACKFILL_GAPS_MAX);
-    for (const gapMs of newest) {
-      await state.appendToList(key, gapMs, {
-        maxLength: GLOBAL_GAPS_MAX,
-        ttlMs: GLOBAL_GAPS_TTL_MS,
+  await withSpan(
+    "cache_warming.backfill",
+    "cache_warming.backfill",
+    {},
+    async (setSpanAttributes) => {
+      // Check before the scan, so live gaps that arrive during the scan do
+      // not stop the fill. A list that has gaps now has live gaps, or gaps
+      // from a run that failed while it wrote. Both are kept as they are.
+      const emptySegments = new Set<string>();
+      for (const segment of BACKFILL_SEGMENTS) {
+        const gaps = await state.getList(segmentGapsKey(segment));
+        if (gaps.length === 0) emptySegments.add(segment);
+      }
+      const { bySegment, scanned, canceledBatches, budgetExceeded } =
+        await collectGaps(args.nowMs, args.budgetMs ?? BACKFILL_BUDGET_MS);
+      const logAttributes = {
+        "app.cache_warming.backfill.conversation_count": scanned,
+        "app.cache_warming.backfill.canceled_batch_count": canceledBatches,
+        "app.cache_warming.backfill.budget_exceeded": budgetExceeded,
+      };
+      // Only canceled queries: no history was read. The claim expires, and a
+      // later heartbeat tries again.
+      if (scanned === 0 && canceledBatches > 0) {
+        logInfo("cache_warming.backfill.not_completed", logAttributes);
+        setSpanAttributes({
+          ...logAttributes,
+          "app.cache_warming.backfill.outcome": "not_completed",
+        });
+        return;
+      }
+      let gapCount = 0;
+      let segmentCount = 0;
+      for (const [segment, gaps] of bySegment) {
+        if (!emptySegments.has(segment)) continue;
+        const key = segmentGapsKey(segment);
+        const newest = gaps.slice(-BACKFILL_GAPS_MAX);
+        for (const gapMs of newest) {
+          await state.appendToList(key, gapMs, {
+            maxLength: GLOBAL_GAPS_MAX,
+            ttlMs: GLOBAL_GAPS_TTL_MS,
+          });
+        }
+        gapCount += newest.length;
+        segmentCount += 1;
+      }
+      await state.set(BACKFILL_KEY, "done", BACKFILL_DONE_TTL_MS);
+      const completed = {
+        ...logAttributes,
+        "app.cache_warming.backfill.gap_count": gapCount,
+        "app.cache_warming.backfill.segment_count": segmentCount,
+      };
+      logInfo("cache_warming.backfill.completed", completed);
+      setSpanAttributes({
+        ...completed,
+        "app.cache_warming.backfill.outcome": "completed",
       });
-    }
-    gapCount += newest.length;
-    segmentCount += 1;
-  }
-  await state.set(BACKFILL_KEY, "done");
-  logInfo("cache_warming.backfill.completed", {
-    ...logAttributes,
-    "app.cache_warming.backfill.gap_count": gapCount,
-    "app.cache_warming.backfill.segment_count": segmentCount,
-  });
+    },
+  );
 }

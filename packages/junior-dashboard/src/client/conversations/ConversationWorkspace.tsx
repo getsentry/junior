@@ -19,8 +19,12 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "../components/ui/resizable";
-import { pageCount, pageItems, PagePagination } from "../components/Pagination";
+import { composerDockClass } from "./ComposerDock";
 import { ConversationHomeList } from "./ConversationHomeList";
+import {
+  ConversationFeedLoadMore,
+  type ConversationFeedMorePages,
+} from "./ConversationFeedLoadMore";
 import { ConversationVisibilitySelect } from "./ConversationVisibilitySelect";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { useConversationPageArchiveResult } from "./conversationArchive";
@@ -51,10 +55,7 @@ import {
   FOCUS_REPLY_STATE,
   NEW_CONVERSATION_PATH,
 } from "./conversationRoutes";
-import {
-  attentionConversationIds,
-  pinnedAndAttentionFirst,
-} from "./conversationSections";
+import { pinnedAndWaitingFirst } from "./conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
 import { usePushNotificationsTip } from "../notifications/pushNotificationsTip";
@@ -62,12 +63,10 @@ import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationPage } from "./ConversationPage";
 import { FeedThreads, feedThreadsById } from "./feedThreads";
-import {
-  useWaitingConversationIds,
-  useWaitingConversations,
-} from "../review-desk/queries";
+import { useWaitingConversations } from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
 import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
+import { HomeSummary } from "./HomeSummary";
 import {
   readSidebarWidth,
   saveSidebarWidth,
@@ -76,7 +75,6 @@ import {
   useSidebarFits,
 } from "./conversationSidebarLayout";
 
-const CONVERSATION_PAGE_SIZE = 20;
 const SIDEBAR_PANEL_ID = "conversation-list";
 
 /**
@@ -87,7 +85,6 @@ export function ConversationWorkspace(props: {
   /** The selected Conversation's data, from the shell. */
   detail: ConversationData;
 }) {
-  const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useConversationSidebarOpen();
   // Home reports an archive that started on a conversation page. Do it here,
@@ -145,27 +142,25 @@ export function ConversationWorkspace(props: {
     [conversations],
   );
   const waitingConversations = useWaitingConversations();
-  const waitingConversationIds = useWaitingConversationIds();
 
-  const totalPages = pageCount(conversations.length, CONVERSATION_PAGE_SIZE);
-  const pagedConversations = useMemo(
-    () =>
-      pageItems(
-        pinnedAndAttentionFirst(
-          conversations,
-          attentionConversationIds(conversations, waitingConversationIds),
-        ),
-        page,
-        CONVERSATION_PAGE_SIZE,
-      ),
-    [conversations, page, waitingConversationIds],
+  const homeConversations = useMemo(
+    () => pinnedAndWaitingFirst(conversations, waitingConversations),
+    [conversations, waitingConversations],
   );
+  const homeList = useRef<HTMLDivElement>(null);
+  // A new search starts at the top. Otherwise the shorter list leaves the
+  // load-more row in view, and it loads a page before the results arrive.
   useEffect(() => {
-    setPage(1);
+    homeList.current?.scrollTo({ top: 0 });
   }, [search]);
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+  // A failed next page keeps the loaded rows; the load-more row shows it.
+  const feedError = feed.isFetchNextPageError ? undefined : feed.error?.message;
+  const morePages: ConversationFeedMorePages = {
+    failed: feed.isFetchNextPageError,
+    hasMore: feed.hasNextPage,
+    loading: feed.isFetchingNextPage,
+    onLoadMore: () => void feed.fetchNextPage({ cancelRefetch: false }),
+  };
 
   // Aborts when the reader leaves home, so a late create does not pull them
   // back from the page they went to.
@@ -198,6 +193,7 @@ export function ConversationWorkspace(props: {
   const createView = (
     <NewConversationView
       composerRef={createComposer}
+      docked={!sidebarFits}
       error={
         createConversation.error
           ? "Message failed to send. Try again."
@@ -274,32 +270,28 @@ export function ConversationWorkspace(props: {
   );
 
   // One tree for every width, so the create draft and its images survive a
-  // resize across the breakpoint.
+  // resize across the breakpoint: the create view is always the child of the
+  // second div.
   const homePane = (
     <main
       className={cn(
-        "h-full min-h-0 w-full",
-        pendingCreate && "hidden",
+        "h-full min-h-0 w-full overflow-hidden",
+        pendingCreate ? "hidden" : "grid",
         sidebarFits
-          ? "grid grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
-          : "overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6",
+          ? "grid-rows-[auto_minmax(0,1fr)]"
+          : "grid-rows-[minmax(0,1fr)_auto]",
       )}
     >
       {sidebarFits ? (
         <div className="flex h-13 items-center px-1">{sidebarToggle}</div>
-      ) : null}
-      <div
-        className={
-          sidebarFits
-            ? // The bottom pad matches the toggle row, so the create view
-              // sits in the middle of the pane.
-              "grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-6 pb-13"
-            : "mx-auto grid w-full max-w-6xl gap-8"
-        }
-      >
-        {createView}
-        {sidebarFits ? null : (
-          <section aria-label="Conversations" className="grid gap-3">
+      ) : (
+        // The top space is inside the content, not the scroller's padding,
+        // so the sticky section labels meet the page header.
+        <div
+          className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-3 sm:px-6"
+          ref={homeList}
+        >
+          <section aria-label="Conversations" className="grid gap-3 pt-4">
             <SearchInput
               className="w-full sm:ml-auto sm:w-72"
               label="Search your conversations"
@@ -308,31 +300,41 @@ export function ConversationWorkspace(props: {
               value={query}
             />
             <ConversationHomeList
-              conversations={pagedConversations}
-              emptyLabel={feed.error?.message}
+              conversations={homeConversations}
+              emptyLabel={feedError}
               loading={feed.isPending}
-              // Search, or more pins than one page holds, shows only some
-              // pins, so a drop could not place the rest.
-              onReorderPins={
-                search ||
-                conversations.filter((conversation) => conversation.pinnedAt)
-                  .length > CONVERSATION_PAGE_SIZE
-                  ? undefined
-                  : reorderPins
-              }
+              // The first page holds every pin. Search shows only some pins,
+              // so a drop could not place the rest.
+              onReorderPins={search ? undefined : reorderPins}
               timeZone={getDashboardTimeZone()}
-              waitingConversationIds={waitingConversationIds}
+              waitingConversations={waitingConversations}
             />
-            <PagePagination
-              className="pt-1"
-              onPageChange={setPage}
-              page={page}
-              pageCount={totalPages}
-              pageSize={CONVERSATION_PAGE_SIZE}
-              total={conversations.length}
-            />
+            {feedError || conversations.length === 0 ? null : (
+              <ConversationFeedLoadMore
+                {...morePages}
+                loadedCount={conversations.length}
+              />
+            )}
           </section>
-        )}
+        </div>
+      )}
+      <div
+        className={
+          sidebarFits
+            ? // The tall bottom pad lifts the create view above the middle,
+              // so the summary that hangs below it fits in the pane. Gutters
+              // on both edges keep it centered when the summary grows enough
+              // to show a scrollbar.
+              "grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-6 pb-48 [scrollbar-gutter:stable_both-edges]"
+            : // Narrow screens dock the composer at the bottom, in thumb
+              // reach.
+              cn(
+                composerDockClass,
+                "overflow-y-auto border-t border-dashboard-border-subtle sm:px-6",
+              )
+        }
+      >
+        {createView}
       </div>
     </main>
   );
@@ -356,8 +358,8 @@ export function ConversationWorkspace(props: {
             defaultSize={sidebarOpen ? readSidebarWidth() : 0}
             groupResizeBehavior="preserve-pixel-size"
             id={SIDEBAR_PANEL_ID}
-            maxSize={SIDEBAR_WIDTH.max}
-            minSize={SIDEBAR_WIDTH.min}
+            maxSize={`${SIDEBAR_WIDTH.max}rem`}
+            minSize={`${SIDEBAR_WIDTH.min}rem`}
             onResize={(size) => {
               // Dragging past the minimum width collapses the list too, so the
               // panel size is the one source for the open state.
@@ -375,8 +377,9 @@ export function ConversationWorkspace(props: {
             >
               <ConversationSidebar
                 conversations={conversations}
-                error={feed.error?.message}
+                error={feedError}
                 loading={feed.isPending}
+                morePages={morePages}
                 onNewConversation={openCreate}
                 onReorderPins={reorderPins}
                 selectedId={selectedId}
@@ -439,6 +442,8 @@ export function ConversationWorkspace(props: {
 
 function NewConversationView(props: {
   composerRef: Ref<ConversationComposerHandle>;
+  /** Docked at the bottom of the narrow home, where the list is above it. */
+  docked: boolean;
   error?: string;
   onSubmit(
     message: string,
@@ -452,9 +457,14 @@ function NewConversationView(props: {
   return (
     <section
       aria-label="New conversation"
-      className="mx-auto grid w-full max-w-3xl gap-3"
+      className="relative mx-auto grid w-full max-w-3xl gap-3"
     >
-      <h2 className="m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
+      <h2
+        className={cn(
+          "m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl",
+          props.docked && "sr-only",
+        )}
+      >
         What do you need?
       </h2>
       <ConversationComposer
@@ -474,6 +484,13 @@ function NewConversationView(props: {
           props.onSubmit(message, idempotencyKey, visibility, images)
         }
       />
+      {props.docked ? null : (
+        // Hangs below the composer and takes no layout space, so the
+        // composer stays centered while the summary loads.
+        <div className="absolute inset-x-0 top-full pt-8">
+          <HomeSummary />
+        </div>
+      )}
     </section>
   );
 }

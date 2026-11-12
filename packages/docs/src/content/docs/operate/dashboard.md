@@ -122,6 +122,7 @@ The current authenticated product API slices are:
 | `/api/automations`                        | Viewer-owned scheduled and event automations.                                                                                                                                                         |
 | `/api/automations/:id`                    | Deletes one viewer-owned scheduled or event automation.                                                                                                                                               |
 | `/api/skills`                             | Discovered skill list.                                                                                                                                                                                |
+| `/api/skills/:name`                       | One skill with its `SKILL.md` body, without frontmatter.                                                                                                                                              |
 | `/api/conversations`                      | Recent SQL conversation feed; optional `actorEmail` is a normalized presentation filter, not authorization; optional `codeRepositoryId` lists conversations linked to that repository's code changes. |
 | `/api/conversations/stats`                | Complete 90-day conversation stats and people/place leaderboards aggregated by SQL.                                                                                                                   |
 | `/api/code`                               | Native code-change overview across repositories.                                                                                                                                                      |
@@ -177,7 +178,8 @@ Dashboard callbacks use `dashboard.baseURL`, `JUNIOR_BASE_URL`, Vercel URL envs,
 The dashboard can send push notifications through Web Push. When Junior
 replies in a dashboard Conversation, the person who sent the message gets a
 notification on each device that they turned on. A Conversation in a Slack
-thread does not send these notifications. Slack notifies people there.
+thread does not send these notifications. Slack notifies people there. A
+quiet reply to a watch event sends no notification.
 
 1. Create one VAPID key pair for the deployment:
 

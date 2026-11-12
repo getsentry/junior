@@ -29,8 +29,6 @@ import {
 } from "../components/ui/tooltip";
 import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
-import { ComposerDictation } from "./ComposerDictation";
-import { useDictation } from "./useDictation";
 import { useComposerAutocorrect } from "./composerAutocorrect";
 import { useSwipeDownToBlur } from "./useSwipeDownToBlur";
 
@@ -120,10 +118,19 @@ type ConversationComposerProps = {
   ref?: Ref<ConversationComposerHandle>;
   submitLabel: string;
   /**
-   * Return a promise to ask the reader before a send. The draft stays when it
+   * Return a promise to run before a send, such as a question to the reader
+   * or answers that go with the message. `sendsMessage` is false when the
+   * draft is empty, so only those answers go. The draft stays when it
    * resolves false. Return undefined to send at once.
    */
-  confirmSubmit?: () => Promise<boolean> | undefined;
+  beforeSubmit?: (send: {
+    sendsMessage: boolean;
+  }) => Promise<boolean> | undefined;
+  /**
+   * Enable Send with an empty draft, because `beforeSubmit` has input of its
+   * own to send. An empty draft then sends no message.
+   */
+  sendsWithoutDraft?: boolean;
   onFocus?: () => void;
   onSubmit(
     message: string,
@@ -156,10 +163,6 @@ export const ConversationComposer = memo(function ConversationComposer(
   const [imageError, setImageError] = useState<string>();
   const [readingImages, setReadingImages] = useState(false);
   const readingImagesRef = useRef(false);
-  const [dictationError, setDictationError] = useState<string>();
-  // A saved draft reports its cursor at 0, also after a programmatic focus.
-  // Use the cursor only after the reader clicks or types in the textarea.
-  const cursorPlacedRef = useRef(false);
   const [dragging, setDragging] = useState(false);
   const replyLayout = !props.footerStart && !props.compact;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -184,7 +187,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   });
   // Blocks same-tick double fire. A held draft also blocks until settle.
   const submittingRef = useRef(false);
-  // Blocks a second send while the reader answers `confirmSubmit`.
+  // Blocks a second send while `beforeSubmit` runs.
   const confirmingRef = useRef(false);
   const stoppingRef = useRef(false);
   const sendLocked = Boolean(props.disabled) || holdPending;
@@ -307,19 +310,25 @@ export const ConversationComposer = memo(function ConversationComposer(
   };
 
   const canSubmit = () =>
-    Boolean(draftRef.current.text.trim() || imagesRef.current.length) &&
+    Boolean(
+      draftRef.current.text.trim() ||
+      imagesRef.current.length ||
+      props.sendsWithoutDraft,
+    ) &&
     online &&
     !submittingRef.current &&
     !confirmingRef.current &&
     !sendLocked &&
-    !readingImagesRef.current &&
-    // Send waits for dictation, so a clip is never left out of the message.
-    dictation.state === "idle";
+    !readingImagesRef.current;
 
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!canSubmit()) return;
-    const confirmation = props.confirmSubmit?.();
+    const confirmation = props.beforeSubmit?.({
+      sendsMessage: Boolean(
+        draftRef.current.text.trim() || imagesRef.current.length,
+      ),
+    });
     if (confirmation) {
       confirmingRef.current = true;
       let confirmed: boolean;
@@ -332,6 +341,7 @@ export const ConversationComposer = memo(function ConversationComposer(
     }
     const text = draftRef.current.text.trim();
     const submittedImages = imagesRef.current;
+    if (!text && !submittedImages.length) return;
 
     const attempt = conversationAttemptForSubmit(
       attemptRef.current,
@@ -351,7 +361,6 @@ export const ConversationComposer = memo(function ConversationComposer(
       replaceMessage(clearedDraft);
       replaceImages([]);
       setImageError(undefined);
-      setDictationError(undefined);
       storeDraft(storageKey, clearedDraft);
       attemptRef.current = nextAttempt;
     };
@@ -394,34 +403,6 @@ export const ConversationComposer = memo(function ConversationComposer(
     });
     await send().catch(() => {});
   };
-
-  const insertDictation = (text: string) => {
-    const textarea = textareaRef.current;
-    if (!textarea || textarea.disabled) return;
-    const { value } = textarea;
-    // The textarea keeps its selection after blur, so this is where the
-    // reader left the cursor, even after editing during the recording.
-    const placed = cursorPlacedRef.current;
-    const start = placed ? textarea.selectionStart : value.length;
-    const end = placed ? textarea.selectionEnd : value.length;
-    const before = value.slice(0, start);
-    const after = value.slice(end);
-    const spaceBefore = before && !/\s$/.test(before) ? " " : "";
-    const spaceAfter = after && !/^\s/.test(after) ? " " : "";
-    textarea.setRangeText(
-      `${spaceBefore}${text}${spaceAfter}`,
-      start,
-      end,
-      "end",
-    );
-    setMessage(textarea.value);
-    syncTextareaHeight();
-    textarea.focus({ preventScroll: true });
-  };
-  const dictation = useDictation({
-    onError: setDictationError,
-    onText: insertDictation,
-  });
 
   // Put queued text back ahead of anything the reader already typed.
   const prependDraftText = (text: string) => {
@@ -500,12 +481,12 @@ export const ConversationComposer = memo(function ConversationComposer(
 
   return (
     <div className="grid min-w-0 gap-1.5">
-      {props.error || imageError || dictationError ? (
+      {props.error || imageError ? (
         <div
           aria-live="polite"
           className="min-w-0 font-sans text-xs leading-relaxed text-rose-300"
         >
-          {imageError ?? dictationError ?? props.error}
+          {imageError ?? props.error}
         </div>
       ) : null}
       <form
@@ -614,13 +595,7 @@ export const ConversationComposer = memo(function ConversationComposer(
             syncTextareaHeight();
           }}
           onFocus={props.onFocus}
-          onKeyDown={(event) => {
-            cursorPlacedRef.current = true;
-            handleKeyDown(event);
-          }}
-          onPointerDown={() => {
-            cursorPlacedRef.current = true;
-          }}
+          onKeyDown={handleKeyDown}
           placeholder={props.placeholder ?? "Message Junior…"}
           ref={textareaRef}
           rows={1}
@@ -642,6 +617,7 @@ export const ConversationComposer = memo(function ConversationComposer(
                 <TooltipTrigger
                   render={
                     <Button
+                      variant="ghost"
                       focusableWhenDisabled
                       aria-label="Attach images"
                       disabled={sendLocked || readingImages}
@@ -666,12 +642,9 @@ export const ConversationComposer = memo(function ConversationComposer(
             )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <ComposerDictation
-              dictation={dictation}
-              disabled={sendLocked || !online}
-            />
             {props.onStop ? (
               <Button
+                variant="outline"
                 aria-label={props.stopPending ? "Stopping" : "Stop"}
                 disabled={props.stopPending || !online}
                 onClick={() => void stopTurn()}
@@ -689,13 +662,12 @@ export const ConversationComposer = memo(function ConversationComposer(
                 props.compact && "w-9 px-0",
               )}
               disabled={
-                (!canSend && !images.length) ||
+                (!canSend && !images.length && !props.sendsWithoutDraft) ||
                 !online ||
                 sendLocked ||
-                readingImages ||
-                dictation.state !== "idle"
+                readingImages
               }
-              variant="primary"
+              variant="default"
               type="submit"
             >
               <Send aria-hidden="true" size={14} />

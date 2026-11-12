@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import {
+  getConversationStoppedAtMs,
+  markConversationsStopped,
+} from "@/chat/conversations/session-stop";
 import { getWebAuthorization } from "@/chat/conversations/web-authorization";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -9,7 +12,7 @@ import {
   getTurnRecord,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
-import { cancelSignInPausedTurn } from "@/chat/task-execution/conversation-turn";
+import { cancelSignInPausedTurn } from "@/chat/task-execution/turn-cancel";
 import { getAuthPausedConversationTurnId } from "@/chat/task-execution/mailbox-turn";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
@@ -121,6 +124,45 @@ describe("Thread input stop", () => {
       }
     },
   );
+
+  it("ends a person's Turn in a Thread at its next step after a stored stop", async () => {
+    const harness = await createHarness();
+    try {
+      const threadId = await startThread(harness, "thread-step-stop");
+      await harness.process(threadId);
+      await finishInvocation(harness, threadId);
+      harness.onPersonRun(async (run) => {
+        // Only the stored stop is set. No stop request reaches the worker.
+        await markConversationsStopped([run.conversationId!], {
+          cancelWatches: false,
+        });
+        // The agent loop checks for a stop at each step boundary.
+        await run.durability?.checkStop?.();
+        run.signal?.throwIfAborted();
+        throw new Error("The stored stop did not abort the run");
+      });
+      await sendPersonMessage(harness, threadId, "person-step-stop");
+
+      await expect(harness.process(threadId)).resolves.toMatchObject({
+        status: "completed",
+      });
+      expect(harness.runs.at(-1)).toMatchObject({
+        conversationId: threadId,
+        source: { kind: "web" },
+      });
+      await expect(loadTurnEvents(threadId)).resolves.toContainEqual(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            outcome: "cancelled",
+            turnId: harness.runs.at(-1)!.turnId,
+            type: "turn_completed",
+          }),
+        }),
+      );
+    } finally {
+      await harness.close();
+    }
+  });
 
   it("keeps a Turn that a worker resumed after the stop read its sign-in pause", async () => {
     const harness = await createHarness();

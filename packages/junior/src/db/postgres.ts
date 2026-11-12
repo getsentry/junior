@@ -5,9 +5,10 @@ import pg, {
   type QueryResultRow,
 } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
+import { forwardInfoMessages } from "./info-messages";
+import { applyMigrations, waitForMigrationLock } from "./migrate";
 import { juniorSqlSchema } from "./schema";
 import { logException } from "@/chat/logging";
 
@@ -68,10 +69,7 @@ class PostgresExecutor implements JuniorSqlExecutor {
   }
 
   async migrate(config: MigrationConfig): Promise<void> {
-    await migrate(
-      drizzle(this.queryClient(), { schema: juniorSqlSchema }),
-      config,
-    );
+    await applyMigrations(this, config);
   }
 
   async transaction<T>(callback: () => Promise<T>): Promise<T> {
@@ -144,7 +142,13 @@ class PostgresExecutor implements JuniorSqlExecutor {
     const client = await this.pool.connect();
     const lockName = `junior:migrate:${migrationTable}`;
     try {
-      await client.query("SELECT pg_advisory_lock(hashtext($1))", [lockName]);
+      await waitForMigrationLock(async () => {
+        const result = await client.query<{ locked: boolean }>(
+          "SELECT pg_try_advisory_lock(hashtext($1)) AS locked",
+          [lockName],
+        );
+        return result.rows[0]?.locked === true;
+      });
       return await callback();
     } finally {
       // Ending the session releases the lock without replacing a migration error.
@@ -165,6 +169,7 @@ class PostgresExecutor implements JuniorSqlExecutor {
 export function createPostgresJuniorSqlExecutor(args: {
   applicationName?: string;
   connectionString: string;
+  onInfo?: (message: string) => void;
   statementTimeoutMs?: number | false;
 }): JuniorSqlExecutor {
   const pool = new Pool({
@@ -180,5 +185,8 @@ export function createPostgresJuniorSqlExecutor(args: {
       "app.db.driver": "postgres",
     });
   });
+  if (args.onInfo) {
+    forwardInfoMessages(pool, args.onInfo);
+  }
   return new PostgresExecutor(pool);
 }

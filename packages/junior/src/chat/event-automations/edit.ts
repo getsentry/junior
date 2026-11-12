@@ -3,6 +3,7 @@ import { eventAutomationEditSchema } from "@/chat/automations/edit-schema";
 import { stableEventMatchKey } from "@sentry/junior-plugin-api";
 import {
   AutomationEditError,
+  changesAutomationTask,
   editAutomationFields,
 } from "@/chat/automations/edit-rules";
 import type { EventCatalog } from "@/chat/events/catalog";
@@ -61,8 +62,7 @@ export async function editEventAutomation(
     }
   }
   const changesExecution =
-    (input.instruction !== undefined &&
-      input.instruction !== current.task.text) ||
+    changesAutomationTask(current.task, input) ||
     changesEventAutomationTrigger(current.trigger, trigger);
   const next: EventAutomation = {
     ...current,

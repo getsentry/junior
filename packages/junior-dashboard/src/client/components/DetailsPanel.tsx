@@ -5,7 +5,7 @@ import { Button } from "./ui/button";
 import { BottomSheet } from "./BottomSheet";
 import { Drawer } from "./Drawer";
 
-const panelMediaQuery = "(min-width: 1280px)";
+const panelMediaQuery = "(min-width: 80rem)";
 
 function subscribeToPanelLayout(onChange: () => void) {
   const media = window.matchMedia(panelMediaQuery);
@@ -116,6 +116,7 @@ export function DetailsPanel(props: {
         <div className="flex shrink-0 items-center gap-0.5">
           {props.actions}
           <Button
+            variant="ghost"
             ref={closeRef}
             aria-label={closeLabel}
             data-slot="details-panel-close"

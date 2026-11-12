@@ -7,9 +7,12 @@ import { createPortal } from "react-dom";
 import { HighlightedCode, HighlightedCodeFallback } from "../code";
 import { Drawer } from "../components/Drawer";
 import { InlineError } from "../components/InlineError";
+import {
+  MarkdownViewToggle,
+  type MarkdownView,
+} from "../components/MarkdownViewToggle";
 import { buttonVariants } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
-import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { DisplayText } from "../display-text/DisplayText";
 import { readDashboardBytes } from "../http";
 import {
@@ -17,8 +20,6 @@ import {
   TEXT_PREVIEW_MAX_BYTES,
   type TextPreviewLanguage,
 } from "./textPreview";
-
-type MarkdownView = "formatted" | "raw";
 
 const SKELETON_LINE_WIDTHS = ["w-3/4", "w-full", "w-5/6", "w-2/3", "w-full"];
 
@@ -61,21 +62,11 @@ export function TextAttachmentPreview(props: {
       actions={
         <>
           {markdown ? (
-            <ToggleGroup
-              aria-label="Markdown view"
-              onValueChange={(values) => {
-                const next = values[0];
-                if (next) setView(next);
-              }}
-              value={[view]}
-            >
-              <ToggleGroupItem value="formatted">Formatted</ToggleGroupItem>
-              <ToggleGroupItem value="raw">Raw</ToggleGroupItem>
-            </ToggleGroup>
+            <MarkdownViewToggle onChange={setView} value={view} />
           ) : null}
           <a
             aria-label={`Download ${filename}`}
-            className={buttonVariants({ size: "icon" })}
+            className={buttonVariants({ size: "icon", variant: "ghost" })}
             download={filename}
             href={props.href}
             rel="noreferrer"
@@ -88,14 +79,14 @@ export function TextAttachmentPreview(props: {
       }
       closeLabel={`Close ${filename}`}
       header={
-        <div className="min-w-0">
+        <div className="min-w-0 [overflow-wrap:anywhere]">
           <h2
-            className="m-0 truncate font-mono text-sm font-semibold text-dashboard-text"
+            className="m-0 font-mono text-sm font-semibold text-dashboard-text"
             id={titleId}
           >
             {filename}
           </h2>
-          <div className="truncate font-mono text-xs text-dashboard-text-muted">
+          <div className="font-mono text-xs text-dashboard-text-muted">
             {props.meta}
           </div>
         </div>

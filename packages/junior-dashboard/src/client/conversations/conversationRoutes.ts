@@ -48,6 +48,19 @@ export function readReplyFocus(state: unknown): ReplyFocusState | undefined {
   };
 }
 
+/** Navigation state that opens the Conversation at its event log. */
+export const OPEN_EVENT_LOG_STATE = { eventLog: true } as const;
+
+/** True when navigation state asks for the event log. */
+export function readOpenEventLog(state: unknown): boolean {
+  return (
+    typeof state === "object" &&
+    state !== null &&
+    "eventLog" in state &&
+    state.eventLog === true
+  );
+}
+
 /** Dashboard home route. Legacy `/conversations/new` redirects here. */
 export const NEW_CONVERSATION_PATH = "/";
 
