@@ -2,7 +2,7 @@ import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import type { Page } from "@playwright/test";
 
 import { mockLandingAutomationApis } from "./automation-landing-fixture";
-import { mockReviewItems, rollout } from "./inbox-fixture";
+import { mockReviewItems, rollout, rowHead } from "./inbox-fixture";
 import { expect, test } from "./test";
 
 const CHECKOUT_TRIAGE_ID = "slack:CQA123:1770000000.000100";
@@ -289,9 +289,7 @@ test("a snoozed match opens Snoozed with its row expanded", async ({
   await page.setViewportSize({ height: 800, width: 1280 });
   await mockReviewItems(page, { open: [rollout] });
   await page.goto(dashboard.baseURL);
-  await page
-    .getByRole("button", { name: "Show asks in Investigate checkout latency" })
-    .click();
+  await rowHead(page, "Investigate checkout latency").click();
   await page.getByRole("button", { name: "Snooze" }).click();
   await page.getByRole("button", { name: "Tomorrow" }).click();
   await expect(

@@ -1,4 +1,5 @@
 import { viewAsParticipant } from "./conversationMenu";
+import { openRow } from "./inbox-fixture";
 import { expect, test } from "./test";
 
 // Only participants can archive or restore.
@@ -143,7 +144,7 @@ for (const outcome of ["success", "error"] as const) {
       );
     });
     await page.goto(dashboard.baseURL);
-    await page.getByRole("link", { name: /Dashboard QA edge cases/ }).click();
+    await openRow(page.getByRole("link", { name: /Dashboard QA edge cases/ }));
     await expect(
       page.getByRole("heading", { name: "Dashboard QA edge cases" }),
     ).toBeVisible();

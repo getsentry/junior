@@ -2,6 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 import { viewAsParticipant } from "./conversationMenu";
+import { openRow } from "./inbox-fixture";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 
@@ -69,7 +70,7 @@ test.describe("conversation rows", () => {
     });
 
     // Unpin from the conversation `⋯` menu.
-    await row.click();
+    await openRow(row);
     await page.getByRole("button", { name: "Conversation menu" }).click();
     await page.getByRole("menuitem", { name: "Unpin", exact: true }).click();
     await expect(

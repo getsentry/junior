@@ -1,5 +1,11 @@
 import type { Page } from "@playwright/test";
-import { audit, mockReviewItems, rollout } from "./inbox-fixture";
+import {
+  audit,
+  mockReviewItems,
+  openRow,
+  rollout,
+  rowHead,
+} from "./inbox-fixture";
 import { screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
@@ -28,13 +34,13 @@ test("a row opens its Conversation, and Back or Esc restores the list", async ({
   await page.goto(`${dashboard.baseURL}/?view=conversations`);
   const list = page.getByRole("region", { name: "Conversations" });
   const scroller = list.locator(".overflow-y-auto").first();
-  await page.getByRole("button", { name: `Show asks in ${checkout}` }).click();
+  await rowHead(list, checkout).click();
   // The open row pushes this one below the fold, so the reader scrolls.
   const triage = list.getByRole("link", { name: /^Checkout latency triage/ });
   await triage.scrollIntoViewIfNeeded();
   const top = await scroller.evaluate((node) => node.scrollTop);
   expect(top).toBeGreaterThan(0);
-  await triage.click();
+  await openRow(triage);
   await expect(page).toHaveURL(/\/conversations\/slack%3ACQA123/);
   const back = page.getByRole("link", { name: "Back to Conversations" });
   await expect(back).toBeVisible();
@@ -55,7 +61,7 @@ test("a row opens its Conversation, and Back or Esc restores the list", async ({
   ).toBeVisible();
 
   // Esc goes back too, when focus is not in a text box.
-  await triage.click();
+  await openRow(triage);
   await expect(page).toHaveURL(/\/conversations\//);
   await setDetails(page, false);
   await page.keyboard.press("Escape");
@@ -68,10 +74,11 @@ test("the first Esc closes Details, and the second goes back", async ({
 }) => {
   await mockReviewItems(page);
   await page.goto(`${dashboard.baseURL}/`);
-  await page
-    .getByRole("region", { name: "Today" })
-    .getByRole("link", { name: /^Checkout latency triage/ })
-    .click();
+  await openRow(
+    page
+      .getByRole("region", { name: "Today" })
+      .getByRole("link", { name: /^Checkout latency triage/ }),
+  );
   await setDetails(page, true);
   await page.locator("body").focus();
   await page.keyboard.press("Escape");
@@ -484,13 +491,10 @@ test.describe("on a phone", () => {
     ).toBeVisible();
     await screenshot(page, "inbox-phone-list", { lightTheme: true });
 
-    await page
-      .getByRole("button", { name: `Show asks in ${checkout}` })
-      .click();
-    await expect(
-      page.getByRole("region", { name: `${checkout}: asks` }),
-    ).toContainText(rollout.title);
-    await todo.getByRole("link", { name: new RegExp(checkout) }).click();
+    await rowHead(todo, checkout).click();
+    const asks = page.getByRole("region", { name: `${checkout}: asks` });
+    await expect(asks).toContainText(rollout.title);
+    await asks.getByRole("link", { name: "Open conversation" }).click();
     await expect(page).toHaveURL(/\/conversations\//);
     await page.getByRole("link", { name: "Back to Inbox" }).click();
     await expect(page).toHaveURL(/\/\?view=inbox$/);
@@ -558,4 +562,41 @@ test.describe("on a touch phone", () => {
     await expect(page).toHaveURL(/\/conversations\/new$/);
     await expect(composer).toBeFocused();
   });
+});
+
+test("a click expands a row in place, and Open opens its Conversation", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page);
+  await page.goto(`${dashboard.baseURL}/`);
+  const todo = page.getByRole("region", { name: "To do" });
+  const head = rowHead(todo, checkout);
+  const asks = page.getByRole("region", { name: `${checkout}: asks` });
+
+  await head.click();
+  await expect(asks).toBeVisible();
+  await expect(head).toHaveAttribute("aria-expanded", "true");
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await head.click();
+  await expect(asks).toHaveCount(0);
+  // Enter toggles it too.
+  await head.press("Enter");
+  await expect(asks).toBeVisible();
+
+  // Ctrl/⌘-click keeps the link: a new tab opens, and the list stays.
+  const [tab] = await Promise.all([
+    page.context().waitForEvent("page"),
+    head.click({ modifiers: ["ControlOrMeta"] }),
+  ]);
+  await expect(tab).toHaveURL(/\/conversations\//);
+  await tab.close();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(asks).toBeVisible();
+
+  await asks.getByRole("link", { name: "Open conversation" }).click();
+  await expect(page).toHaveURL(/\/conversations\//);
+  await page.goBack();
+  await openRow(head);
+  await expect(page).toHaveURL(/\/conversations\//);
 });

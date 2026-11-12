@@ -2,8 +2,8 @@ import {
   AlarmClockOff,
   Archive,
   ArchiveRestore,
+  ArrowUpRight,
   Check,
-  ChevronDown,
   Clock3,
   Pin,
   PinOff,
@@ -13,7 +13,7 @@ import { Link } from "react-router";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 import { ClampedPreview } from "../components/ClampedPreview";
-import { Button } from "../components/ui/button";
+import { Button, buttonVariants } from "../components/ui/button";
 import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
 import {
   Popover,
@@ -207,6 +207,35 @@ function RowActionButton(props: {
   );
 }
 
+/** The hover action that opens the row's Conversation in the main area. */
+function RowOpenLink(props: { to: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          // The row names the Conversation; a search for its title finds
+          // the row's head only.
+          <Link
+            aria-label="Open conversation"
+            className={ROW_ACTION_BUTTON_CLASS}
+            to={props.to}
+          >
+            <ArrowUpRight aria-hidden="true" size={14} />
+          </Link>
+        }
+      />
+      <TooltipContent size="compact">Open conversation</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Where the row opens: an item row opens at the Turn that added its ask. */
+function rowConversationPath(props: InboxRowProps): string {
+  return conversationPath(props.conversationId, {
+    turnId: props.itemTitle ? props.bundle?.newest.addedByTurnId : undefined,
+  });
+}
+
 type InboxRowProps = {
   bundle?: InboxBundle;
   conversation?: Conversation;
@@ -236,10 +265,11 @@ type InboxRowProps = {
 
 /**
  * One Inbox row: a Conversation, with what it asks of the viewer. A click
- * on the row opens the Conversation in the main area. The ask pills, or the
- * chevron, expand the row in place, where each ask has its answer controls,
- * then Done, pin, and snooze. A row of a loaded Conversation also has the
- * Conversation's context menu, pin and archive on hover, and its Threads.
+ * or Enter on the row expands it in place, where each ask has its answer
+ * controls, then Open, Done, pin, and snooze. Only Open, or a Ctrl/⌘-click
+ * for a new tab, leaves the list. A row of a loaded Conversation also has
+ * the Conversation's context menu, Open, pin and archive on hover, and its
+ * Threads.
  */
 export function InboxRow(props: InboxRowProps) {
   return props.conversation ? (
@@ -296,24 +326,25 @@ function ConversationInboxRow(
               draggable: drag ? false : undefined,
             }}
           />
-          {participant ? (
-            <div className="absolute top-2 right-2 z-10 flex gap-0.5 transition sm:pointer-events-none sm:opacity-0 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100">
-              {actions.archived ? null : (
-                <RowActionButton
-                  disabled={actions.pending.pin}
-                  icon={
-                    <Pin
-                      aria-hidden="true"
-                      fill={actions.pinned ? "currentColor" : "none"}
-                      size={14}
-                    />
-                  }
-                  label={`${actions.pinned ? "Unpin" : "Pin"} ${actions.title}`}
-                  onClick={() => actions.setPinned(!actions.pinned)}
-                  pressed={actions.pinned}
-                  tooltip={actions.pinned ? "Unpin" : "Pin"}
-                />
-              )}
+          <div className="absolute top-2 right-2 z-10 flex gap-0.5 transition sm:pointer-events-none sm:opacity-0 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100">
+            <RowOpenLink to={rowConversationPath(props)} />
+            {participant && !actions.archived ? (
+              <RowActionButton
+                disabled={actions.pending.pin}
+                icon={
+                  <Pin
+                    aria-hidden="true"
+                    fill={actions.pinned ? "currentColor" : "none"}
+                    size={14}
+                  />
+                }
+                label={`${actions.pinned ? "Unpin" : "Pin"} ${actions.title}`}
+                onClick={() => actions.setPinned(!actions.pinned)}
+                pressed={actions.pinned}
+                tooltip={actions.pinned ? "Unpin" : "Pin"}
+              />
+            ) : null}
+            {participant ? (
               <RowActionButton
                 disabled={actions.pending.archive}
                 icon={
@@ -327,8 +358,8 @@ function ConversationInboxRow(
                 onClick={actions.toggleArchive}
                 tooltip={actions.archived ? "Restore" : "Archive"}
               />
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </ContextMenuTrigger>
         {actions.menu}
       </ContextMenu>
@@ -376,12 +407,10 @@ function InboxRowBody(
   const summary = props.itemTitle ? undefined : rowSummary(conversation);
   const annotations = conversation?.sidebarAnnotations ?? [];
   const canDone = openItems.some((item) => item.canAct);
-  const canExpand = openItems.length > 0;
   const regionId = `inbox-row-${props.rowKey}`;
   const pinned = Boolean(conversation?.pinnedAt);
   const running = conversation?.status === "active";
-  const expandLabel = `${props.expanded ? "Hide" : "Show"} asks in ${props.title}`;
-  const hasChips = pills.length > 0 || annotations.length > 0 || canExpand;
+  const hasChips = pills.length > 0 || annotations.length > 0;
   return (
     <>
       <div
@@ -399,7 +428,9 @@ function InboxRowBody(
         ) : null}
         <Link
           {...props.linkProps}
+          aria-controls={regionId}
           aria-current={props.selected ? "page" : undefined}
+          aria-expanded={props.expanded}
           className={cn(
             "grid min-w-0 grid-cols-[0.5rem_minmax(0,1fr)_auto] items-start gap-x-2.5 rounded-xl px-3 pt-2.5 font-sans text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
             // A long press opens the row menu or drags a pin, not the iOS
@@ -407,9 +438,21 @@ function InboxRowBody(
             "[-webkit-touch-callout:none]",
             hasChips ? "pb-1" : "pb-2.5",
           )}
-          to={conversationPath(props.conversationId, {
-            turnId: props.itemTitle ? bundle?.newest.addedByTurnId : undefined,
-          })}
+          // A plain click or Enter expands the row in place. A modified click
+          // keeps the link, so Ctrl/⌘-click opens a new tab.
+          onClick={(event) => {
+            if (
+              event.button !== 0 ||
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey
+            )
+              return;
+            event.preventDefault();
+            props.onToggle();
+          }}
+          to={rowConversationPath(props)}
         >
           <span
             aria-label={waiting ? "Waiting on you" : undefined}
@@ -459,8 +502,8 @@ function InboxRowBody(
           <span
             className={cn(
               "flex items-center gap-1 pt-0.5 text-xs tabular-nums text-dashboard-text-faint",
-              // Pin and Archive take the meta's place on hover or focus.
-              conversation?.isParticipant &&
+              // The row actions take the meta's place on hover or focus.
+              conversation &&
                 "sm:group-hover:invisible sm:group-focus-within:invisible",
             )}
           >
@@ -506,25 +549,6 @@ function InboxRowBody(
               ) : null}
               <ConversationSidebarAnnotations annotations={annotations} />
             </span>
-            {canExpand ? (
-              <button
-                aria-controls={regionId}
-                aria-expanded={props.expanded}
-                aria-label={expandLabel}
-                className="grid size-6 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-dashboard-text-muted transition hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-                onClick={props.onToggle}
-                title={expandLabel}
-                type="button"
-              >
-                <ChevronDown
-                  aria-hidden="true"
-                  className={cn(
-                    "size-4 transition-transform motion-reduce:transition-none",
-                    props.expanded && "rotate-180",
-                  )}
-                />
-              </button>
-            ) : null}
           </div>
         ) : null}
       </div>
@@ -547,6 +571,7 @@ function InboxRowBody(
           <ExpandedActions
             canDone={canDone}
             conversation={conversation}
+            openPath={rowConversationPath(props)}
             donePending={props.donePending}
             onDone={props.onDone}
             onSnooze={props.onSnooze}
@@ -563,6 +588,7 @@ function InboxRowBody(
 function ExpandedActions(props: {
   canDone: boolean;
   conversation?: Conversation;
+  openPath: string;
   donePending?: boolean;
   onDone?(): void;
   onSnooze?(choice: SnoozeChoice): void;
@@ -572,6 +598,13 @@ function ExpandedActions(props: {
 }) {
   return (
     <div className="flex flex-wrap items-center justify-end gap-1">
+      <Link
+        className={buttonVariants({ variant: "ghost" })}
+        to={props.openPath}
+      >
+        <ArrowUpRight aria-hidden="true" size={15} />
+        Open conversation
+      </Link>
       {props.canDone && props.onDone ? (
         <Button
           disabled={props.donePending}

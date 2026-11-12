@@ -1,3 +1,4 @@
+import { openRow } from "./inbox-fixture";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 
@@ -37,7 +38,7 @@ test("opens conversation details beside the chat", async ({
   await expect(
     publicConversation.getByRole("status", { name: "Running" }),
   ).toHaveCount(0);
-  await publicConversation.click();
+  await openRow(publicConversation);
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
   );
@@ -200,7 +201,7 @@ test("opens conversation details beside the chat", async ({
   await detailsButton.click();
   await expect(details).toBeVisible();
   await page.getByRole("link", { name: "Back to Conversations" }).click();
-  await list.getByRole("link", { name: /Direct Message/ }).click();
+  await openRow(list.getByRole("link", { name: /Direct Message/ }));
   // Each conversation opens with details beside the chat.
   await expect(details).toBeVisible();
   await expect(page.getByRole("note")).toContainText("Private conversation");

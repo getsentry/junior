@@ -1,5 +1,5 @@
 /** Review items and an API mock shared by the Inbox e2e specs. */
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { attentionCount } from "./automation-fixture";
 
 export const viewer = {
@@ -301,4 +301,29 @@ export async function mockViewerCodeChanges(
       },
     });
   });
+}
+
+/**
+ * The head of the Inbox row titled `title`. A click or Enter expands the
+ * row in place; only Open leaves the list.
+ */
+export function rowHead(scope: Page | Locator, title: string) {
+  return scope
+    .locator("[data-inbox-row]")
+    .filter({ hasText: title })
+    .getByRole("link", { name: title })
+    .first();
+}
+
+/**
+ * Open the Conversation of the Inbox row whose head is `head`, with the
+ * row's Open action. A click on the head only expands the row.
+ */
+export async function openRow(head: Locator) {
+  await head.hover();
+  await head
+    .locator("xpath=ancestor::*[@data-inbox-row][1]")
+    .getByRole("link", { name: "Open conversation" })
+    .first()
+    .click();
 }

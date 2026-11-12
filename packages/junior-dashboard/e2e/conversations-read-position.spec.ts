@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 
 import { withRequestedMailbox } from "./harness";
+import { openRow } from "./inbox-fixture";
 import { expect, test } from "./test";
 import {
   mockReadPositionConversation,
@@ -196,10 +197,7 @@ test.describe("opens at new messages after a cached reopen", () => {
       request.url().includes("/events?around="),
     );
     const detailRequestCount = mock.detailRequests.length;
-    await page
-      .getByRole("link", { name: /Read position/ })
-      .first()
-      .click();
+    await openRow(page.getByRole("link", { name: /Read position/ }).first());
     await expect(transcript.getByText("Transcript message 39 ")).toBeVisible();
     await expect(marker).toHaveCount(0);
     releaseDetail();
@@ -241,10 +239,7 @@ test.describe("opens at new messages after a cached reopen", () => {
     mock.detailGate = new Promise((resolve) => {
       releaseDetail = resolve;
     });
-    await page
-      .getByRole("link", { name: /Read position/ })
-      .first()
-      .click();
+    await openRow(page.getByRole("link", { name: /Read position/ }).first());
     await expect(
       transcript.getByText("Transcript message 119 "),
     ).toBeInViewport();
@@ -298,7 +293,7 @@ test.describe("opens from a hover prefetch", () => {
     // The open uses the prefetch as its first fetch. It opens at the marker
     // with no read of the page around the read position. It only checks for
     // newer events.
-    await row.click();
+    await openRow(row);
     const transcript = page.getByLabel("Conversation transcript");
     const marker = transcript.getByRole("separator", { name: "New messages" });
     await expect(marker).toBeInViewport();
@@ -346,10 +341,7 @@ test("opens at new messages after earlier pages were cached", async ({
   mock.newerGate = new Promise((resolve) => {
     releaseNewer = resolve;
   });
-  await page
-    .getByRole("link", { name: /Read position/ })
-    .first()
-    .click();
+  await openRow(page.getByRole("link", { name: /Read position/ }).first());
   const marker = transcript.getByRole("separator", { name: "New messages" });
   await expect(marker).toBeInViewport();
   await expect(

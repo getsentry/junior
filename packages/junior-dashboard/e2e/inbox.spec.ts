@@ -14,6 +14,7 @@ import {
   prReady,
   prReview,
   rollout,
+  rowHead,
 } from "./inbox-fixture";
 import { screenshot } from "./screenshot";
 import { expect, test } from "./test";
@@ -185,7 +186,7 @@ test("a row answers its asks in place", async ({ dashboard, page }) => {
 test("snooze hides a row until it wakes", async ({ dashboard, page }) => {
   await mockReviewItems(page, { open: [license, rollout] });
   await page.goto(`${dashboard.baseURL}/`);
-  await page.getByRole("button", { name: `Show asks in ${checkout}` }).click();
+  await rowHead(page, checkout).click();
   await page.getByRole("button", { name: "Snooze" }).click();
   await expect(
     page.getByRole("dialog", { name: "Snooze until" }),
@@ -200,7 +201,7 @@ test("snooze hides a row until it wakes", async ({ dashboard, page }) => {
   const nav = page.getByRole("navigation", { name: "Inbox" });
   await nav.getByRole("link", { name: /^Snoozed/ }).click();
   await expect(page).toHaveURL(/\/\?view=snoozed$/);
-  await page.getByRole("button", { name: `Show asks in ${checkout}` }).click();
+  await rowHead(page, checkout).click();
   await page.getByRole("button", { name: "Wake" }).click();
   await expect(page.getByText("Nothing snoozed")).toBeVisible();
 });
@@ -429,7 +430,12 @@ test("Pull requests lists your open changes, the one waiting on you first", asyn
   await expect(page.getByText("Rename the payments queue")).toHaveCount(0);
 
   // The ask keeps its actions: Done closes it.
-  await waiting.getByRole("button", { name: /^Show asks in / }).click();
+  await waiting
+    .locator("[data-inbox-row]")
+    .first()
+    .getByRole("link")
+    .first()
+    .click();
   await waiting.getByRole("button", { name: "Done", exact: true }).click();
   await expect
     .poll(() => actions.map((action) => action.id))

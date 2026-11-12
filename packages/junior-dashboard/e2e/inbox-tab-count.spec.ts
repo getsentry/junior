@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-import { mockReviewItems, rollout } from "./inbox-fixture";
+import { mockReviewItems, rollout, rowHead } from "./inbox-fixture";
 import { expect, test } from "./test";
 
 const checkout = "Investigate checkout latency";
@@ -17,7 +17,7 @@ function inboxTab(page: Page) {
 }
 
 async function closeCheckoutAsks(page: Page) {
-  await page.getByRole("button", { name: `Show asks in ${checkout}` }).click();
+  await rowHead(page, checkout).click();
   await page.getByRole("button", { name: "Done", exact: true }).click();
 }
 

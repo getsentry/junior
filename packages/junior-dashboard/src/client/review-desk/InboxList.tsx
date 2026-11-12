@@ -437,10 +437,10 @@ export function InboxList(props: {
         conversation={row.conversation}
         conversationId={row.conversationId}
         drag={drag}
-        expanded={false}
+        expanded={state.expandedKey === key}
         key={key}
         onSnoozeMenu={() => undefined}
-        onToggle={() => undefined}
+        onToggle={() => toggle(key)}
         rowKey={key}
         selected={false}
         showThreads
