@@ -29,7 +29,7 @@ import {
 } from "../graphql-documents.js";
 import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 import { appendGitHubFooter } from "./footer.js";
-import { linkifyGitHubReferences } from "../reply-markdown.js";
+import { linkifyGitHubBodyReferences } from "../reply-markdown.js";
 import {
   githubApi,
   githubErrorMessage,
@@ -203,7 +203,7 @@ export function createGitHubUpdatePullRequestTool(
           ? {
               body: appendGitHubFooter(
                 appendGitHubRequesterAttribution(
-                  linkifyGitHubReferences(update.body),
+                  linkifyGitHubBodyReferences(update.body),
                   ctx,
                   requester,
                   currentBody,

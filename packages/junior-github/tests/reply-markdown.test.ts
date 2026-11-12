@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { githubPlugin } from "../src/plugin.js";
-import { linkifyGitHubReferences } from "../src/reply-markdown.js";
+import {
+  linkifyGitHubBodyReferences,
+  linkifyGitHubReferences,
+} from "../src/reply-markdown.js";
 
 describe("GitHub reply markdown", () => {
   it("turns repository issue references into links", () => {
@@ -63,6 +66,16 @@ describe("GitHub reply markdown", () => {
     expect(
       linkifyGitHubReferences("PR #1509 and foo.getsentry/junior#1509"),
     ).toBe("PR #1509 and foo.getsentry/junior#1509");
+  });
+
+  it("keeps closing references bare in GitHub bodies", () => {
+    expect(
+      linkifyGitHubBodyReferences(
+        "Fixes getsentry/junior#1, closes: getsentry/junior#2. See getsentry/junior#3.",
+      ),
+    ).toBe(
+      "Fixes getsentry/junior#1, closes: getsentry/junior#2. See [getsentry/junior#3](https://github.com/getsentry/junior/issues/3).",
+    );
   });
 
   it("registers linkification on the GitHub plugin", () => {

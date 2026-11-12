@@ -4,6 +4,9 @@ const GITHUB_ISSUE_REFERENCE_PATTERN = new RegExp(
   `^(${GITHUB_OWNER_PATTERN})\\/(${GITHUB_REPOSITORY_PATTERN})#(\\d+)\\b`,
 );
 
+const GITHUB_CLOSING_KEYWORD_PATTERN =
+  /(?:^|[^A-Za-z0-9_])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+$/i;
+
 function isReferenceBoundary(char: string | undefined): boolean {
   return char === undefined || !/[A-Za-z0-9._-]/.test(char);
 }
@@ -68,7 +71,7 @@ function readAngleToken(text: string, start: number): number | undefined {
   return end === -1 ? undefined : end + 1;
 }
 
-function linkifyLine(line: string): string {
+function linkifyLine(line: string, keepClosingReferences: boolean): string {
   let output = "";
   let index = 0;
 
@@ -108,7 +111,13 @@ function linkifyLine(line: string): string {
 
     if (isReferenceBoundary(index === 0 ? undefined : line[index - 1])) {
       const match = GITHUB_ISSUE_REFERENCE_PATTERN.exec(line.slice(index));
-      if (match) {
+      if (
+        match &&
+        !(
+          keepClosingReferences &&
+          GITHUB_CLOSING_KEYWORD_PATTERN.test(line.slice(0, index))
+        )
+      ) {
         const [reference, owner, repository, number] = match;
         output += `[${reference}](https://github.com/${owner}/${repository}/issues/${number})`;
         index += reference.length;
@@ -123,14 +132,7 @@ function linkifyLine(line: string): string {
   return output;
 }
 
-/**
- * Linkify GitHub issue and pull request shorthand outside Markdown code.
- *
- * GitHub bodies need this too: a repository autolink prefix such as `SENTRY-`
- * can claim part of bare `getsentry/sentry-docs#1` and link the rest as a
- * same-repository reference. GitHub does not rewrite Markdown link labels.
- */
-export function linkifyGitHubReferences(text: string): string {
+function linkify(text: string, keepClosingReferences: boolean): string {
   let openFenceLength = 0;
   return text
     .split("\n")
@@ -144,7 +146,26 @@ export function linkifyGitHubReferences(text: string): string {
         }
         return line;
       }
-      return openFenceLength > 0 ? line : linkifyLine(line);
+      return openFenceLength > 0
+        ? line
+        : linkifyLine(line, keepClosingReferences);
     })
     .join("\n");
+}
+
+/** Linkify GitHub issue and pull request shorthand outside Markdown code. */
+export function linkifyGitHubReferences(text: string): string {
+  return linkify(text, false);
+}
+
+/**
+ * Linkify shorthand in a GitHub body, but keep closing references such as
+ * `Fixes owner/repo#1` bare so GitHub still links and closes the issue.
+ *
+ * A repository autolink prefix such as `SENTRY-` can claim part of bare
+ * `getsentry/sentry-docs#1` and link the rest as a same-repository reference.
+ * GitHub does not rewrite Markdown link labels.
+ */
+export function linkifyGitHubBodyReferences(text: string): string {
+  return linkify(text, true);
 }

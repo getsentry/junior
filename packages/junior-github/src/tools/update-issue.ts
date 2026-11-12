@@ -23,7 +23,7 @@ import {
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
 import { appendGitHubFooter } from "./footer.js";
-import { linkifyGitHubReferences } from "../reply-markdown.js";
+import { linkifyGitHubBodyReferences } from "../reply-markdown.js";
 import {
   githubApi,
   githubErrorMessage,
@@ -165,7 +165,7 @@ export function createGitHubUpdateIssueTool(ctx: {
           ? {
               body: appendGitHubFooter(
                 appendGitHubRequesterAttribution(
-                  linkifyGitHubReferences(update.body),
+                  linkifyGitHubBodyReferences(update.body),
                   ctx,
                   requester,
                   currentBody,
