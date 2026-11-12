@@ -5,6 +5,10 @@ import {
   type AnyToolDefinition,
 } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import {
+  suggestToolNames,
+  ToolNameMissError,
+} from "@/chat/tool-support/tool-name-suggestions";
 
 export interface CatalogToolCall {
   arguments: Record<string, unknown>;
@@ -41,8 +45,9 @@ export function resolveCatalogToolCall(
 
   const definition = catalogTools[toolName];
   if (!definition) {
-    throw new ToolInputError(
-      `executeTool can only call catalog tools returned by searchTools: ${toolName}`,
+    throw new ToolNameMissError(
+      `executeTool can only call catalog tools returned by searchTools: ${toolName}.`,
+      suggestToolNames(toolName, catalogTools),
     );
   }
 

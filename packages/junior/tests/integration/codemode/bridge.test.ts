@@ -287,6 +287,21 @@ describe("Code Mode bridge", () => {
     });
 
     expect(uncaught.error?.kind).toBe("missing_tool");
+
+    // pi names close tools by substring only. A typo gets Junior's hint.
+    const typo = await runCodeModeScript({
+      countToolCall: turnCount().countToolCall,
+      modelOnlyTools,
+      pipeline: pipelineFor(fakeGuardian()),
+      source: `await tools.systemTiem({});`,
+      toolCallId: CODEMODE_CALL_ID,
+      tools: scriptTools,
+    });
+
+    expect(typo.error?.kind).toBe("missing_tool");
+    expect(typo.error?.message).toMatch(
+      /^TypeError: tools\.systemTiem does not exist\..*\nDid you mean `tools\.systemTime`\?$/s,
+    );
     expect(spawnAgent).not.toHaveBeenCalled();
   });
 
