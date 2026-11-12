@@ -6,6 +6,7 @@ import { createBrowserRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
 
 import { Toaster } from "./client/components/ui/toast";
+import { InboxSweepProvider } from "./client/review-desk/useInboxSweep";
 import { TooltipProvider } from "./client/components/ui/tooltip";
 import { DashboardShell } from "./client/App";
 import { EventLogShownProvider } from "./client/components/paletteEventLog";
@@ -146,9 +147,11 @@ createRoot(root).render(
   <DashboardErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <Toaster>
-        <TooltipProvider>
-          <RouterProvider router={router} />
-        </TooltipProvider>
+        <InboxSweepProvider>
+          <TooltipProvider>
+            <RouterProvider router={router} />
+          </TooltipProvider>
+        </InboxSweepProvider>
       </Toaster>
     </QueryClientProvider>
   </DashboardErrorBoundary>,

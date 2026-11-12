@@ -253,6 +253,42 @@ test("a sweep clears only FYI items, with an Undo", async ({
   expect(actions.map((action) => action.id)).not.toContain(teamAsk.id);
 });
 
+test("Undo after a Clear works from an open Conversation and other tabs", async ({
+  dashboard,
+  page,
+}) => {
+  await page.clock.setFixedTime(NOW_MS);
+  const actions = await mockReviewItems(page, {
+    open: [license, prReady, digest],
+  });
+  await page.goto(`${dashboard.baseURL}/`);
+  const clearToday = page.getByRole("button", { name: /^Clear \d+ in Today$/ });
+  await clearToday.click();
+  await expect(page.getByText(/^Cleared \d+ items?$/)).toBeVisible();
+  await expect(clearToday).toHaveCount(0);
+
+  // The toast stays while a Conversation opens and while the Inbox leaves
+  // the page, and its Undo still works.
+  const row = page
+    .locator("[data-inbox-row]")
+    .filter({ hasText: checkout })
+    .first();
+  await row.hover();
+  await row.getByRole("link", { name: "Open conversation" }).first().click();
+  await expect(page).toHaveURL(/\/conversations\//);
+  await page
+    .getByRole("navigation", { name: "Primary" })
+    .getByRole("link", { name: /^Automations/ })
+    .click();
+  await expect(page).toHaveURL(/\/automations/);
+  await page.getByRole("button", { name: "Undo" }).click();
+  await page.goBack();
+  await page.goBack();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(clearToday).toBeVisible();
+  expect(actions).toEqual([]);
+});
+
 test("a sweep that fails to close an item brings it back", async ({
   dashboard,
   page,

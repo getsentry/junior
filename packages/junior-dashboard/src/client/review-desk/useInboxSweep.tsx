@@ -1,7 +1,14 @@
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 import { reviewItemSchema } from "@sentry/junior/api/schema";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { useToastManager } from "../components/ui/toast";
 import { post } from "../http";
@@ -29,31 +36,37 @@ async function commitSweep(
     .map((item) => item.id);
 }
 
+type InboxSweeper = {
+  isSwept(id: string): boolean;
+  sweep(items: ReviewItemPayload[]): void;
+};
+
+const InboxSweepContext = createContext<InboxSweeper | null>(null);
+
 /**
- * Sweep inbox items with an Undo. The items hide at once, and close only
- * when the Undo window ends, so Undo needs no reopen on the server. Leaving
- * the inbox ends the window early.
+ * Own the Inbox's Clears for the whole dashboard, next to the toasts. The
+ * cleared items hide at once and close when their toast closes, by timeout
+ * or by its close button. So Undo works from any page while the toast
+ * shows, and needs no reopen on the server. Leaving the page closes the
+ * items that are still pending.
  */
-export function useInboxSweep() {
+export function InboxSweepProvider(props: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const { add, close } = useToastManager();
   const [swept, setSwept] = useState<ReadonlySet<string>>(() => new Set());
-  const pending = useRef(
-    new Map<string, { items: ReviewItemPayload[]; timer: number }>(),
-  );
-  // Each sweep gets its own toast and timer, so Undo cancels only its own.
+  // The items of each Clear whose toast still shows, by toast id. Each
+  // Clear gets its own toast, so Undo takes back only its own items.
+  const pending = useRef(new Map<string, ReviewItemPayload[]>());
   const sweeps = useRef(0);
 
   useEffect(() => {
     const open = pending.current;
-    return () => {
-      for (const { items, timer } of open.values()) {
-        window.clearTimeout(timer);
-        void commitSweep(queryClient, items);
-      }
+    const flush = () => {
+      for (const items of open.values()) void commitSweep(queryClient, items);
       open.clear();
     };
-    // The cleanup runs once, when the inbox unmounts.
+    window.addEventListener("pagehide", flush);
+    return () => window.removeEventListener("pagehide", flush);
   }, [queryClient]);
 
   const unsweep = (ids: readonly string[]) =>
@@ -69,8 +82,10 @@ export function useInboxSweep() {
     const id = `inbox-sweep-${sweeps.current}`;
     const ids = items.map((item) => item.id);
     setSwept((current) => new Set([...current, ...ids]));
-    const timer = window.setTimeout(() => {
-      pending.current.delete(id);
+    pending.current.set(id, items);
+    const commit = () => {
+      // Undo or leaving the page already settled this Clear.
+      if (!pending.current.delete(id)) return;
       // Items that did not close come back, so the inbox shows what is
       // still open on the server.
       void commitSweep(queryClient, items).then((failed) => {
@@ -81,11 +96,8 @@ export function useInboxSweep() {
           type: "error",
         });
       });
-    }, UNDO_MS);
-    pending.current.set(id, { items, timer });
+    };
     const undo = () => {
-      const entry = pending.current.get(id);
-      if (entry) window.clearTimeout(entry.timer);
       pending.current.delete(id);
       unsweep(ids);
       close(id);
@@ -94,11 +106,25 @@ export function useInboxSweep() {
       actionProps: { children: "Undo", onClick: undo },
       description: "Questions and approvals stay.",
       id,
+      onClose: commit,
       timeout: UNDO_MS,
       title: `Cleared ${items.length} item${items.length === 1 ? "" : "s"}`,
       type: "success",
     });
   };
 
-  return { isSwept: (id: string) => swept.has(id), sweep };
+  return (
+    <InboxSweepContext.Provider
+      value={{ isSwept: (id) => swept.has(id), sweep }}
+    >
+      {props.children}
+    </InboxSweepContext.Provider>
+  );
+}
+
+/** Clear Inbox items with an Undo, through `InboxSweepProvider`. */
+export function useInboxSweep(): InboxSweeper {
+  const sweeper = useContext(InboxSweepContext);
+  if (!sweeper) throw new Error("useInboxSweep needs an InboxSweepProvider");
+  return sweeper;
 }
