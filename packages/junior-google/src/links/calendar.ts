@@ -17,7 +17,6 @@ import {
   formatInterval,
   googleApiError,
   googleApiRequest,
-  googleAttendeeSchema,
   isTimeZone,
 } from "../tools/shared";
 
@@ -30,7 +29,8 @@ const eventTimeSchema = z.object({
 });
 
 const linkedEventSchema = z.object({
-  attendees: z.array(googleAttendeeSchema).optional(),
+  // Google leaves out `email` for some guests.
+  attendees: z.array(z.object({ email: z.string().optional() })).optional(),
   creator: z.object({ email: z.string().optional() }).optional(),
   end: eventTimeSchema,
   id: z.string(),

@@ -1,4 +1,7 @@
-import type { PluginObjectLinkDefinition } from "@sentry/junior-plugin-api";
+import {
+  objectLinkFilterMatches,
+  type PluginObjectLinkDefinition,
+} from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src";
 import { ACCOUNT_EMAIL, stubGoogleEnv } from "./fixture";
@@ -97,6 +100,25 @@ describe("Google link cards", () => {
       expect(google.queries).toContain(
         `name = '${TITLE}' and trashed = false and ${NAMED}`,
       );
+    });
+
+    it("reads a signed-in link that names the account", async () => {
+      const url = `https://docs.google.com/document/u/1/d/${DOC_ID}/edit`;
+      const link = linkType("document");
+
+      expect(
+        link.filters.some((filter) =>
+          objectLinkFilterMatches(filter, new URL(url)),
+        ),
+      ).toBe(true);
+      await expect(
+        resolveAs(
+          "alice@example.com",
+          fakeGoogle({ file: DOC, finds: [NAMED] }),
+          "document",
+          url,
+        ),
+      ).resolves.toMatchObject({ key: DOC_ID, title: TITLE });
     });
 
     it("shows a file that anyone in the viewer's domain can open", async () => {
@@ -213,6 +235,22 @@ describe("Google link cards", () => {
       expect(new URL(google.fetch.mock.calls[0]![0].request.url).pathname).toBe(
         "/calendar/v3/calendars/primary/events/evt123abc",
       );
+    });
+
+    it("shows an event that has a guest without an email", async () => {
+      await expect(
+        resolveAs(
+          "alice@example.com",
+          fakeGoogle({
+            event: {
+              ...EVENT,
+              attendees: [{ displayName: "Room" }, ...EVENT.attendees],
+            },
+          }),
+          "calendar_event",
+          EVENT_URL,
+        ),
+      ).resolves.toMatchObject({ key: "evt123abc" });
     });
 
     it("shows the date of an all-day event", async () => {

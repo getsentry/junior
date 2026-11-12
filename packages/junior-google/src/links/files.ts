@@ -22,10 +22,10 @@ import {
 import { driveQueryString, namedQuery } from "../tools/search-files";
 import { googleApiError, googleApiRequest } from "../tools/shared";
 
-const LINK_PATHS = {
-  document: "/document/d/",
-  presentation: "/presentation/d/",
-  spreadsheet: "/spreadsheets/d/",
+const LINK_ROOTS = {
+  document: "document",
+  presentation: "presentation",
+  spreadsheet: "spreadsheets",
 } as const satisfies Record<GoogleFileType, string>;
 
 const DISPLAY_TYPES = {
@@ -60,17 +60,21 @@ const fileIdsSchema = z.object({
 function parseFileLink(
   url: URL,
 ): { file: FileReference; type: GoogleFileType } | undefined {
-  for (const [type, prefix] of Object.entries(LINK_PATHS)) {
-    if (!url.pathname.startsWith(prefix)) continue;
-    const fileId = url.pathname.slice(prefix.length).split("/")[0] ?? "";
-    if (!FILE_ID_PATTERN.test(fileId)) return undefined;
-    const resourceKey = url.searchParams.get("resourcekey") ?? undefined;
-    return {
-      file: { fileId, ...(resourceKey ? { resourceKey } : undefined) },
-      type: type as GoogleFileType,
-    };
-  }
-  return undefined;
+  const [, root, ...rest] = url.pathname.split("/");
+  const type = (Object.keys(LINK_ROOTS) as GoogleFileType[]).find(
+    (key) => LINK_ROOTS[key] === root,
+  );
+  if (!type) return undefined;
+  // A signed-in link can name the account: `/document/u/0/d/<id>`.
+  const path =
+    rest[0] === "u" && /^\d+$/.test(rest[1] ?? "") ? rest.slice(2) : rest;
+  const fileId = path[0] === "d" ? (path[1] ?? "") : "";
+  if (!FILE_ID_PATTERN.test(fileId)) return undefined;
+  const resourceKey = url.searchParams.get("resourcekey") ?? undefined;
+  return {
+    file: { fileId, ...(resourceKey ? { resourceKey } : undefined) },
+    type,
+  };
 }
 
 /**
@@ -194,10 +198,12 @@ async function resolveGoogleFileLink(
 
 /** Docs, Sheets, and Slides links that resolve to document cards. */
 export const googleFileLinks: PluginObjectLinkDefinition = {
-  filters: Object.values(LINK_PATHS).map((pathPrefix) => ({
-    host: "docs.google.com",
-    pathPrefix,
-  })),
+  filters: Object.values(LINK_ROOTS).flatMap((root) =>
+    [`/${root}/d/`, `/${root}/u/`].map((pathPrefix) => ({
+      host: "docs.google.com",
+      pathPrefix,
+    })),
+  ),
   objectType: "document",
   resolve: resolveGoogleFileLink,
 };
