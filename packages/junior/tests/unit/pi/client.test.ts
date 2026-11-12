@@ -377,21 +377,28 @@ describe("completeText", () => {
     expect(mocks.logException).not.toHaveBeenCalled();
   });
 
-  it("classifies invalid structured output without capturing it", async () => {
-    const sdkError = Object.assign(new Error("No object generated."), {
-      finishReason: "length",
-      usage: {
-        inputTokens: 10,
-        inputTokenDetails: {
-          noCacheTokens: 10,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
+  it("classifies invalid structured output without capturing it or its text", async () => {
+    const sdkError = Object.assign(
+      new Error("No object generated: could not parse the response.", {
+        cause: new Error("JSON parsing failed: Text: model output"),
+      }),
+      {
+        name: "AI_NoObjectGeneratedError",
+        text: "model output",
+        finishReason: "length",
+        usage: {
+          inputTokens: 10,
+          inputTokenDetails: {
+            noCacheTokens: 10,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
+          outputTokens: 2000,
+          outputTokenDetails: { textTokens: 0, reasoningTokens: 2000 },
+          totalTokens: 2010,
         },
-        outputTokens: 2000,
-        outputTokenDetails: { textTokens: 0, reasoningTokens: 2000 },
-        totalTokens: 2010,
       },
-    });
+    );
     mocks.generateObject.mockRejectedValue(sdkError);
     mocks.noObjectGeneratedErrorIsInstance.mockImplementation(
       (error) => error === sdkError,
@@ -405,11 +412,20 @@ describe("completeText", () => {
         schema: z.object({ ok: z.boolean() }),
         prompt: "return json",
       }),
-    ).rejects.toMatchObject({
-      cause: sdkError,
-      kind: "invalid_response",
-      message: "AI provider error: invalid_response",
-      retryable: false,
+    ).rejects.toSatisfy((error: Error) => {
+      expect(error).toMatchObject({
+        kind: "invalid_response",
+        message: "AI provider error: invalid_response",
+        retryable: false,
+      });
+      expect(error.cause).toMatchObject({
+        name: "AI_NoObjectGeneratedError",
+        message: "No object generated: could not parse the response.",
+      });
+      expect(
+        JSON.stringify(error.cause, Object.getOwnPropertyNames(error.cause)),
+      ).not.toContain("model output");
+      return true;
     });
     expect(mocks.setSpanAttributes).toHaveBeenCalledWith(
       expect.objectContaining({
