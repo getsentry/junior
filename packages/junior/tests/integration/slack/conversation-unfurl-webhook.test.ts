@@ -5,6 +5,11 @@ import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
+  ackMessages,
+  completeConversationWork,
+  startConversationWork,
+} from "@/chat/task-execution/store";
+import {
   SLACK_BOT_USER_ID,
   SLACK_SIGNING_SECRET,
   createConversationWorkQueueTestAdapter,
@@ -75,7 +80,7 @@ function harness() {
       idempotencyKey = `root-${visibility}`,
     ) {
       await state.connect();
-      const { conversationId } = await createAndEnqueueConversation(
+      const { conversationId, messageId } = await createAndEnqueueConversation(
         {
           actor: webTestActor,
           idempotencyKey,
@@ -86,6 +91,7 @@ function harness() {
       );
       return {
         conversationId,
+        messageId,
         url: `${DASHBOARD}/conversations/${encodeURIComponent(conversationId)}`,
       };
     },
@@ -236,6 +242,117 @@ describe("Slack webhook: dashboard conversation links", () => {
     // A new share of a moved conversation has no button.
     await slack.shareLink(url);
     expect(continueHereValue(url)).toBeUndefined();
+  });
+
+  it("moves a conversation here when the Run that holds it ends", async () => {
+    const slack = harness();
+    const { conversationId, messageId, url } =
+      await slack.startConversation("public");
+    await linkSlackUser(webTestActor.email, "U123");
+    await slack.shareLink(url);
+    const value = continueHereValue(url)!;
+    // A Run holds the Conversation and still runs post-reply work.
+    const lease = await startConversationWork({ conversationId });
+    if (lease.status !== "acquired") throw new Error("Expected work lease");
+    await ackMessages({
+      conversationId,
+      inboundMessageIds: [messageId],
+      leaseToken: lease.leaseToken,
+    });
+
+    await slack.click("U123", value);
+    // A repeat click waits for the same move.
+    await slack.click("U123", value);
+    // A click from another thread does not replace the first one.
+    await slack.click(
+      "U123",
+      JSON.stringify({
+        ...JSON.parse(value),
+        messageTs: "1712345.0300",
+        threadTs: "1712345.0300",
+      }),
+    );
+    expect(
+      slackApiOutbox.calls("chat.postEphemeral").map((call) => call.params),
+    ).toEqual([
+      expect.objectContaining({
+        user: "U123",
+        text: "This conversation moves here when Junior finishes.",
+      }),
+      expect.objectContaining({
+        text: "This conversation moves here when Junior finishes.",
+      }),
+      expect.objectContaining({
+        text: "This conversation moves to another thread when Junior finishes.",
+      }),
+    ]);
+    expect(slackApiOutbox.messages()).toHaveLength(0);
+    expect(
+      (await getConversationStore().get({ conversationId }))?.location,
+    ).toBeUndefined();
+
+    await completeConversationWork({
+      conversationId,
+      leaseToken: lease.leaseToken,
+    });
+    expect(slackApiOutbox.messages()).toHaveLength(1);
+    expect(slackApiOutbox.messages()[0]?.params).toMatchObject({
+      channel: "C123",
+      thread_ts: SHARED_TS,
+      text: expect.stringContaining(
+        "moved this conversation here from the dashboard",
+      ),
+    });
+    expect(
+      (await getConversationStore().get({ conversationId }))?.location,
+    ).toMatchObject({ channelId: "C123", threadTs: SHARED_TS });
+    expect(continueHereValue(url)).toBeUndefined();
+    expect(
+      JSON.stringify(unfurlsOf(slackApiOutbox.calls("chat.unfurl").at(-1))),
+    ).toContain("Continues in");
+
+    const before = slack.queue.queuedMessages().length;
+    await slack.mention("1712345.0200");
+    expect(
+      slack.queue
+        .queuedMessages()
+        .slice(before)
+        .map((message) => message.conversationId),
+    ).toEqual([conversationId]);
+  });
+
+  it("tells the clicker when the thread was taken while the move waited", async () => {
+    const slack = harness();
+    const first = await slack.startConversation("public", "first");
+    const second = await slack.startConversation("public", "second");
+    await linkSlackUser(webTestActor.email, "U123");
+    await slack.shareLink(first.url, second.url);
+    const values = [
+      continueHereValue(first.url)!,
+      continueHereValue(second.url)!,
+    ];
+    const lease = await startConversationWork({
+      conversationId: first.conversationId,
+    });
+    if (lease.status !== "acquired") throw new Error("Expected work lease");
+
+    await slack.click("U123", values[0]!);
+    await slack.click("U123", values[1]!);
+    await completeConversationWork({
+      conversationId: first.conversationId,
+      leaseToken: lease.leaseToken,
+    });
+    expect(
+      (
+        await getConversationStore().get({
+          conversationId: first.conversationId,
+        })
+      )?.location,
+    ).toBeUndefined();
+    expect(slackApiOutbox.messages()).toHaveLength(1);
+    expect(slackApiOutbox.calls("chat.postEphemeral").at(-1)?.params.text).toBe(
+      "This thread already has a Junior conversation.",
+    );
   });
 
   it("moves only one of two conversations that race for the same thread", async () => {
