@@ -38,16 +38,16 @@ export async function stopChildAgent(args: {
   parentConversationId: string;
   state?: StateAdapter;
 }): Promise<{ stopped: boolean } | undefined> {
-  const latest = await getLatestAgentInvocationForConversation(
-    args.childConversationId,
-  );
-  const wasStopped =
-    latest !== undefined &&
-    (latest.status === "stopped" ||
-      isChildAgentSessionStopped(
-        latest,
-        await getConversationStoppedAtMs(args.childConversationId),
-      ));
+  const [latest, stoppedAtMs] = await Promise.all([
+    getLatestAgentInvocationForConversation(args.childConversationId),
+    getConversationStoppedAtMs(args.childConversationId),
+  ]);
+  // A child that no Agent invocation names is stopped until new input clears
+  // its stop.
+  const wasStopped = latest
+    ? latest.status === "stopped" ||
+      isChildAgentSessionStopped(latest, stoppedAtMs)
+    : stoppedAtMs !== undefined;
   const tree = await stopChildAgentInvocations(args);
   if (!tree) {
     return undefined;
@@ -337,9 +337,30 @@ async function withChildAgentsTaskedAfter(
         ),
       ),
     );
+  // A child agent that no agent invocation names was tasked when it was
+  // created.
+  const withoutInvocations = await getSqlExecutor()
+    .db()
+    .select({
+      childConversationId: juniorConversations.conversationId,
+      parentConversationId: juniorConversations.parentConversationId,
+    })
+    .from(juniorConversations)
+    .where(
+      and(
+        inArray(juniorConversations.parentConversationId, [
+          ...conversationIds,
+        ]),
+        isNotNull(juniorConversations.agentConfig),
+        or(
+          ne(juniorConversations.parentConversationId, conversationId),
+          gt(juniorConversations.createdAt, new Date(taskedAfterMs)),
+        ),
+      ),
+    );
   const kept = [conversationId];
   for (let index = 0; index < kept.length; index += 1) {
-    for (const link of links) {
+    for (const link of [...links, ...withoutInvocations]) {
       if (
         link.parentConversationId === kept[index] &&
         !kept.includes(link.childConversationId)

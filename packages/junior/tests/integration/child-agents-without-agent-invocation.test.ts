@@ -21,7 +21,11 @@ import {
   completeAgentInvocation,
   getAgentInvocation,
 } from "@/chat/agent-invocations/store";
-import { markConversationsStopped } from "@/chat/conversations/session-stop";
+import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
+import {
+  getConversationStoppedAtMs,
+  markConversationsStopped,
+} from "@/chat/conversations/session-stop";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { getConversationEventStore } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -185,6 +189,13 @@ describe("child agents that no Agent invocation names", () => {
       ).resolves.toMatchObject({ stopped: true });
 
       await expect(parentMessageTexts()).resolves.toEqual(before);
+      // The stored stop shows that the child already stopped.
+      await expect(
+        createStopAgentTool(slackParentConversationId).execute!(
+          { conversation_id: childId },
+          {},
+        ),
+      ).resolves.toMatchObject({ stopped: false });
     } finally {
       await harness.close();
     }
@@ -571,6 +582,82 @@ describe("child agents that no Agent invocation names", () => {
       await expect(
         getAgentInvocation(open.invocationId),
       ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("reports a child's replaced result when only a parent message waits", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const open = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "open-row",
+      });
+      const helper = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "helper",
+        parentConversationId: open.childConversationId,
+      });
+      await expect(
+        completeAgentInvocation({
+          invocationId: open.invocationId,
+          result: "Done.",
+          status: "completed",
+        }),
+      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
+      // A message from the child's own parent is not input from its child
+      // agents, so it does not hold the result back.
+      await sendParentMessage({
+        actor: slackInvocationInput.actor,
+        childConversationId: open.childConversationId,
+        idempotencyKey: "parent-turn:call-2",
+        parentConversationId: slackParentConversationId,
+        queue: harness.queue,
+        state: harness.state,
+      });
+      // The helper ends with `noReply`, so it sends the child nothing.
+      const quiet = (await completeAgentInvocation({
+        invocationId: helper.invocationId,
+        result: "",
+        status: "completed",
+      })) as TerminalAgentInvocation;
+      await enqueueAgentInvocationResult(quiet, {
+        queue: harness.queue,
+        state: harness.state,
+      });
+
+      await expect(
+        getAgentInvocation(open.invocationId),
+      ).resolves.toMatchObject({ parentMailboxStatus: "appended" });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("stops a child agent spawned after its parent's stop", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const open = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "open-row",
+      });
+      await markConversationsStopped([open.childConversationId], {
+        cancelWatches: false,
+        state: harness.state,
+      });
+      // The child's run sees its stop late, after it spawned a helper.
+      vi.setSystemTime(1_800_000_001_000);
+      const grandchildId = await spawnChild(harness, "child-turn:call-1", {
+        parentConversationId: open.childConversationId,
+      });
+      await stopChildAgentsOf(open.childConversationId, harness.state);
+
+      await expect(getConversationStoppedAtMs(grandchildId)).resolves.toBe(
+        1_800_000_000_000,
+      );
     } finally {
       await harness.close();
     }

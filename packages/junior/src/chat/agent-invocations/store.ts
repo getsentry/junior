@@ -6,7 +6,10 @@ import {
   getConversationWorkState,
   type InboundMessage,
 } from "@/chat/task-execution/store";
-import { AGENT_INVOCATION_EVENT_NAMESPACE } from "./result-event-type";
+import {
+  AGENT_INVOCATION_EVENT_NAMESPACE,
+  AGENT_PARENT_MESSAGE_EVENT_TYPE,
+} from "./result-event-type";
 import { getAgentInvocationResultMessageId } from "./ids";
 import {
   hasAgentInvocationReply,
@@ -393,12 +396,14 @@ export async function reportReplacedWithoutOpenWork(
   return await reportReplacedAgentInvocation(latest.invocationId, nowMs);
 }
 
-// Results, replies, and messages from a child's own child agents.
+// Results, replies, and messages from a child's own child agents. A message
+// from the child's parent is not one.
 function isChildAgentInputMessage(message: InboundMessage): boolean {
   const metadata = message.input.metadata;
   return (
     isEventMailboxMetadata(metadata) &&
-    metadata.event.namespace === AGENT_INVOCATION_EVENT_NAMESPACE
+    metadata.event.namespace === AGENT_INVOCATION_EVENT_NAMESPACE &&
+    metadata.event.eventType !== AGENT_PARENT_MESSAGE_EVENT_TYPE
   );
 }
 
