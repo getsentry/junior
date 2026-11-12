@@ -37,6 +37,8 @@ function DoneRow(props: {
     ? (item.closedBy.displayName ?? item.closedBy.email)
     : "An agent";
   const outcome = outcomeOf(item);
+  const text =
+    item.kind === "notice" || !item.request ? item.body : item.request.question;
   const regionId = `inbox-done-${item.id}`;
   const Icon = dismissed ? X : Check;
   return (
@@ -100,20 +102,15 @@ function DoneRow(props: {
             </Link>
           </div>
           <ReviewItemObjects conversationId={item.addedByConversationId}>
-            <DisplayText
-              text={
-                item.kind === "notice" || !item.request
-                  ? item.body
-                  : item.request.question
-              }
-            />
+            <DisplayText text={text} />
+            {item.subject ? (
+              <ReviewItemSubjectPreview
+                body={text}
+                conversationId={item.addedByConversationId}
+                subject={item.subject}
+              />
+            ) : null}
           </ReviewItemObjects>
-          {item.subject ? (
-            <ReviewItemSubjectPreview
-              conversationId={item.addedByConversationId}
-              subject={item.subject}
-            />
-          ) : null}
           {/* A closed item shows who closed it, when, and the answer. */}
           <ReviewItemActions item={item} />
         </div>

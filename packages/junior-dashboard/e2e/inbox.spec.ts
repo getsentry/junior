@@ -745,3 +745,28 @@ test("an item row's second line names its subject, not its own title", async ({
   await expect(row).toContainText(prReview.subject.title);
   await expect(row.getByText(prReview.title, { exact: true })).toHaveCount(1);
 });
+
+test("an item's subject card hides when its text already shows that card", async ({
+  dashboard,
+  page,
+}) => {
+  // The release Conversation saved the card for this pull request.
+  const item = {
+    ...prReview,
+    addedByConversationId: "slack:CQA456:1770021600.000600",
+    body: "GitHub asks you to review this pull request.\n\nhttps://github.com/getsentry/payments/pull/91",
+    id: "item-pr-card",
+    kind: "notice" as const,
+    request: undefined,
+  };
+  await mockReviewItems(page, { open: [item] });
+  await page.goto(`${dashboard.baseURL}/?view=prs`);
+  await rowHead(page, item.title).click();
+  const card = page.getByRole("region", {
+    name: "Pull request: Pin the release train to payments 4.2",
+  });
+  // The URL alone on its line shows the card in the text, so the subject
+  // does not show it again.
+  await expect(card.first()).toBeVisible();
+  await expect(card).toHaveCount(1);
+});

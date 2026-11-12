@@ -6,6 +6,7 @@ import type {
 import { OutboundLink } from "../components/OutboundLink";
 import { ObjectCard } from "../conversations/ObjectCard";
 import { useConversationData } from "../conversations/queries";
+import { useTextShowsObjectCard } from "../display-text/DisplayText";
 import { dashboardInlineLinkClass } from "../styles";
 import { reviewItemSubjectHref } from "./reviewItemFormat";
 
@@ -13,15 +14,23 @@ import { reviewItemSubjectHref } from "./reviewItemFormat";
  * Show the outside object that an item is about, such as a pull request. The
  * rich card is the object annotation that a plugin saved on the item's
  * Conversation for the same URL, so the inbox reads no provider. Without
- * one, it shows a plain link.
+ * one, it shows a plain link. When the shown `body` already has the
+ * subject's full card, it hides, so the card does not show twice. Render it
+ * inside the body's `ReviewItemObjects`, which knows that card.
  */
 export function ReviewItemSubjectPreview(props: {
+  body?: string;
   subject: NonNullable<ReviewItemPayload["subject"]>;
   conversationId: string;
 }) {
   const annotations = useConversationData(props.conversationId).data
     ?.annotations;
   const { subject } = props;
+  const bodyShowsCard = useTextShowsObjectCard(
+    props.body ?? "",
+    subject.url ? reviewItemSubjectHref(subject.url) : undefined,
+  );
+  if (bodyShowsCard) return null;
   const card = annotations?.find(
     (annotation): annotation is OwnedObjectAnnotation & typeof annotation =>
       annotation.kind === "object" &&

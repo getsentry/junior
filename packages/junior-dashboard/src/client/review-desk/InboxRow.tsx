@@ -162,19 +162,20 @@ function RowItem(props: {
           </h4>
         )}
       </div>
-      {showBody ? (
-        <ClampedPreview className="leading-6" label={item.title} lines={4}>
-          <ReviewItemObjects conversationId={item.addedByConversationId}>
+      <ReviewItemObjects conversationId={item.addedByConversationId}>
+        {showBody ? (
+          <ClampedPreview className="leading-6" label={item.title} lines={4}>
             <DisplayText text={item.body} />
-          </ReviewItemObjects>
-        </ClampedPreview>
-      ) : null}
-      {item.subject ? (
-        <ReviewItemSubjectPreview
-          conversationId={props.conversationId}
-          subject={item.subject}
-        />
-      ) : null}
+          </ClampedPreview>
+        ) : null}
+        {item.subject ? (
+          <ReviewItemSubjectPreview
+            body={showBody ? item.body : undefined}
+            conversationId={props.conversationId}
+            subject={item.subject}
+          />
+        ) : null}
+      </ReviewItemObjects>
       {/* A notice's only action is Dismiss, the row's Done. A question keeps
           its own beside its answer. */}
       <ReviewItemActions dismiss={!(props.done && showBody)} item={item} />
