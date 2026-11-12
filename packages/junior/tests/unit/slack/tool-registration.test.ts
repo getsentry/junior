@@ -166,9 +166,9 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("listWatches");
     expect(tools.searchConversationMessages?.exposure).toBe("deferred");
     expect(tools.searchConversationMessages?.source?.id).toBe("conversations");
-    expect(tools.searchAgents?.exposure).toBe("deferred");
-    expect(tools.searchAgents?.source?.id).toBe("agents");
-    expect(tools.searchAgents?.inputSchema.properties).toHaveProperty(
+    expect(tools.searchConversations?.exposure).toBe("deferred");
+    expect(tools.searchConversations?.source?.id).toBe("conversations");
+    expect(tools.searchConversations?.inputSchema.properties).toHaveProperty(
       "channel_id",
     );
     expect(tools.searchConversationEvents?.exposure).toBe("deferred");
@@ -190,20 +190,20 @@ describe("Slack tool registration", () => {
     const tools = createTools([], {}, ctx("C12345", "private"));
 
     expect(tools).not.toHaveProperty("searchConversationMessages");
-    expect(tools).toHaveProperty("searchAgents");
+    expect(tools).toHaveProperty("searchConversations");
   });
 
-  it("registers root search without a channel filter outside Slack", () => {
+  it("registers Conversation search without a channel filter outside Slack", () => {
     const tools = createTools(
       [],
       {},
       { ...ctx(), conversationPrivacy: "public" },
     );
 
-    expect(tools).toHaveProperty("searchAgents");
-    expect(tools.searchAgents?.inputSchema.properties).not.toHaveProperty(
-      "channel_id",
-    );
+    expect(tools).toHaveProperty("searchConversations");
+    expect(
+      tools.searchConversations?.inputSchema.properties,
+    ).not.toHaveProperty("channel_id");
     expect(tools).not.toHaveProperty("searchConversationMessages");
   });
 

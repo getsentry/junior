@@ -29,7 +29,8 @@ import {
   getConversationWorkState,
   type InboundMessage,
 } from "@/chat/task-execution/store";
-import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
+import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { stopChildAgentInvocations } from "@/chat/agent-invocations/stop";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
@@ -270,7 +271,7 @@ describe("messageAgent", () => {
         }),
       ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
       await expect(
-        createSearchAgentsTool({ conversationId: slackParentConversationId })
+        createListAgentsTool({ conversationId: slackParentConversationId })
           .execute!({}, {}),
       ).resolves.toMatchObject({
         agents: [
@@ -282,30 +283,6 @@ describe("messageAgent", () => {
           },
         ],
       });
-      // Filters keep the same rows. A miss returns no agent.
-      const relatives = createSearchAgentsTool({
-        conversationId: slackParentConversationId,
-      });
-      await expect(
-        relatives.execute!({ query: "RETRY path" }, {}),
-      ).resolves.toMatchObject({
-        agents: [{ conversation_id: child.childConversationId }],
-      });
-      await expect(
-        relatives.execute!({ query: "deploy" }, {}),
-      ).resolves.toEqual({ agents: [] });
-      await expect(
-        relatives.execute!({ conversation_ids: ["slack:COTHER:1.0"] }, {}),
-      ).resolves.toEqual({ agents: [] });
-      await annotatePullRequest(child.childConversationId);
-      await expect(
-        relatives.execute!({ annotation: PULL_REQUEST_KEY }, {}),
-      ).resolves.toMatchObject({
-        agents: [{ conversation_id: child.childConversationId }],
-      });
-      await expect(
-        relatives.execute!({ annotation: "getsentry/junior#2" }, {}),
-      ).resolves.toEqual({ agents: [] });
     } finally {
       await fixture.close();
     }
@@ -404,7 +381,7 @@ describe("messageAgent", () => {
         parentConversationId: slackParentConversationId,
       });
       // The `replaced` result was never reported, so it is not a result.
-      const { agents } = (await createSearchAgentsTool({
+      const { agents } = (await createListAgentsTool({
         conversationId: slackParentConversationId,
       }).execute!({}, {})) as { agents: Record<string, unknown>[] };
       expect(agents).toHaveLength(1);
@@ -588,7 +565,7 @@ describe("messageAgent", () => {
     }
   });
 
-  it("finds public roots and roots in the same private channel", async () => {
+  it("finds public root conversations and ones in the same private channel", async () => {
     const { fixture } = await prepareSlackParentConversation();
     try {
       const publicTarget = await topLevelConversation({
@@ -654,15 +631,15 @@ describe("messageAgent", () => {
       const searchRoots = async (
         conversationId: string,
         input: Record<string, unknown> = {},
-        actor: AgentRun["actor"] = parentActor,
       ) => {
-        const result = (await createSearchAgentsTool({
-          actor,
+        const result = (await createSearchConversationsTool({
           conversationId,
-        }).execute!({ scope: "roots", ...input }, {})) as {
-          agents: { conversation_id: string }[];
+        }).execute!(input, {})) as {
+          conversations: { conversation_id: string }[];
         };
-        return result.agents.map((agent) => agent.conversation_id).sort();
+        return result.conversations
+          .map((conversation) => conversation.conversation_id)
+          .sort();
       };
       // A private Conversation in another channel is never found, also one
       // that the person started. One in the same private channel is found.
@@ -679,16 +656,6 @@ describe("messageAgent", () => {
         [publicTarget, otherWorkspace].sort(),
       );
       await expect(
-        searchRoots(privateSender, {}, EVENT_SYSTEM_ACTOR),
-      ).resolves.toEqual(
-        [
-          publicTarget,
-          slackParentConversationId,
-          otherWorkspace,
-          privateNeighbor,
-        ].sort(),
-      );
-      await expect(
         searchRoots(privateSender, {
           conversation_ids: [publicTarget, privateMember, otherWorkspace],
         }),
@@ -697,15 +664,13 @@ describe("messageAgent", () => {
         searchRoots(privateSender, { query: "classifier" }),
       ).resolves.toEqual([publicTarget]);
       await expect(
-        createSearchAgentsTool({
-          actor: parentActor,
+        createSearchConversationsTool({
           conversationId: privateSender,
-        }).execute!({ scope: "roots", query: "deploy checks" }, {}),
+        }).execute!({ query: "deploy checks" }, {}),
       ).resolves.toMatchObject({
-        agents: [
+        conversations: [
           {
             conversation_id: publicTarget,
-            relation: "root",
             summary: "Opened the deploy check pull request.",
           },
         ],
@@ -732,41 +697,29 @@ describe("messageAgent", () => {
         searchRoots(privateSender, { conversation_ids: [publicTarget] }),
       ).resolves.toEqual([]);
       await expect(
-        createSearchAgentsTool({
-          actor: parentActor,
+        createSearchConversationsTool({
           conversationId: privateSender,
         }).execute!(
-          {
-            scope: "roots",
-            conversation_ids: [publicTarget],
-            include_archived: true,
-          },
+          { conversation_ids: [publicTarget], include_archived: true },
           {},
         ),
       ).resolves.toEqual({
-        agents: [
+        conversations: [
           expect.objectContaining({
             archived: true,
             conversation_id: publicTarget,
           }),
         ],
       });
-      // A child agent searches roots with the access of its root, and never
-      // finds its own tree.
+      // A child agent searches with the access of its root, and never finds
+      // its own tree.
       const child = await createAgentInvocation({
         ...slackInvocationInput,
         idempotencyKey: "top-level-search-child",
       });
-      const childResult = (await createSearchAgentsTool({
-        actor: parentActor,
-        conversationId: child.childConversationId,
-        parentConversationId: slackParentConversationId,
-      }).execute!({ scope: "roots", include_archived: true }, {})) as {
-        agents: { conversation_id: string }[];
-      };
-      expect(
-        childResult.agents.map((agent) => agent.conversation_id).sort(),
-      ).toEqual([publicTarget, otherWorkspace].sort());
+      await expect(
+        searchRoots(child.childConversationId, { include_archived: true }),
+      ).resolves.toEqual([publicTarget, otherWorkspace].sort());
     } finally {
       await fixture.close();
     }

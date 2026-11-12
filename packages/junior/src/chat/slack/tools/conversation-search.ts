@@ -1,4 +1,4 @@
-import type { RootSearchChannelPort } from "@/chat/tools/runtime/search-agents";
+import type { ConversationSearchChannelPort } from "@/chat/tools/search-conversations";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import type { SlackTeamId } from "@/chat/slack/ids";
 import { getSlackMessagePermalink } from "@/chat/slack/outbound";
@@ -7,10 +7,10 @@ import {
   slackChannelRefParam,
 } from "@/chat/slack/tool-support/channel-target";
 
-/** Create Slack-owned channel filtering and match details for root search. */
-export function createSlackRootSearchChannelPort(
+/** Create Slack-owned channel filtering and match details for Conversation search. */
+export function createSlackConversationSearchChannelPort(
   teamId: SlackTeamId,
-): RootSearchChannelPort {
+): ConversationSearchChannelPort {
   return {
     channelFilterSchema: slackChannelRefParam,
     async resolveChannel(input) {

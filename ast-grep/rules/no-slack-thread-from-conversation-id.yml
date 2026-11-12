@@ -16,6 +16,6 @@ ignores:
   - packages/junior/src/api/conversations/projection.ts
   - packages/junior/src/chat/slack/tools/channel-list-messages.ts
   - packages/junior/src/chat/slack/tools/conversation-message-search.ts
-  - packages/junior/src/chat/slack/tools/root-conversation-search.ts
+  - packages/junior/src/chat/slack/tools/conversation-search.ts
 rule:
   pattern: parseSlackThreadId($$$)

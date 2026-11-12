@@ -16,7 +16,7 @@ import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
-import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
@@ -37,7 +37,8 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { createAutomationTools } from "@/chat/tools/automations";
 import { createSlackChannelJoinTool } from "@/chat/slack/tools/channel-join";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
-import { createSlackRootSearchChannelPort } from "@/chat/slack/tools/root-conversation-search";
+import { createSlackConversationSearchChannelPort } from "@/chat/slack/tools/conversation-search";
+import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
 import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
@@ -161,6 +162,16 @@ export function createTools(
   };
   tools.searchConversationEvents = createSearchConversationEventsTool(context);
   tools.readConversationEvent = createReadConversationEventTool(context);
+  tools.searchConversations = createSearchConversationsTool({
+    ...(slackContext
+      ? {
+          channels: createSlackConversationSearchChannelPort(
+            slackContext.teamId,
+          ),
+        }
+      : undefined),
+    conversationId: context.conversationId,
+  });
   const createPreview = context.workspace.createPreview?.bind(
     context.workspace,
   );
@@ -236,16 +247,14 @@ export function createTools(
     tools.archiveAgent = createArchiveAgentTool(context.conversationId);
   }
 
-  // Every Conversation can find root Conversations and their Briefs, also
-  // one that cannot start or message agents.
-  tools.searchAgents = createSearchAgentsTool({
-    ...(context.actor ? { actor: context.actor } : undefined),
-    ...(slackContext
-      ? { channels: createSlackRootSearchChannelPort(slackContext.teamId) }
-      : undefined),
-    conversationId: context.conversationId,
-    parentConversationId: context.parentConversationId,
-  });
+  // A child agent that is too deep to start child agents can still find its
+  // parent and siblings.
+  if (context.spawnAgent || context.messageAgent) {
+    tools.listAgents = createListAgentsTool({
+      conversationId: context.conversationId,
+      parentConversationId: context.parentConversationId,
+    });
+  }
 
   if (context.messageAgent) {
     tools.messageAgent = createMessageAgentTool(context.messageAgent);
