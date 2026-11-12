@@ -19,10 +19,6 @@ runtime. Harness mechanics live in `packages/junior-evals/src/`.
 - **Classifiers** (`evals/classifiers/**`): exact choices of a decision model
   classifier, such as the Review items that a thread reply answers. Hard
   pass/fail.
-- **PR descriptions** (`evals/pr-descriptions/**`): the description that the
-  GitHub PR tools write from `description_context`. Fixed rules and a rubric
-  judge. Hard pass/fail. Runs only when the writer, the PR tools, or the suite
-  change.
 
 ### Scenarios
 

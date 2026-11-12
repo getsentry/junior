@@ -106,8 +106,7 @@ describeEval("Guardian Automation Action Snapshots", guardianEvals, (it) => {
         ]),
         input: {
           base: "main",
-          description_context:
-            "Reduce endpoint churn during worker rollouts.\n\nCloses PRODENG-2633.",
+          body: "Reduce endpoint churn during worker rollouts.\n\nCloses PRODENG-2633.",
           draft: true,
           head: "fix/worker-rollout-churn",
           repo: "getsentry/ops",

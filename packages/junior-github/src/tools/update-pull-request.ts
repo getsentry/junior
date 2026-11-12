@@ -7,7 +7,6 @@ import {
   type PluginLogger,
   type PluginDecider,
   type PluginEgress,
-  type PluginModel,
   type Source,
   definePluginTool,
   PluginToolInputError,
@@ -27,15 +26,12 @@ import type { GitHubDb } from "../db/database.js";
 import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 import { appendGitHubFooter } from "./footer.js";
 import {
-  DESCRIPTION_CONTEXT_DESCRIPTION,
-  writePullRequestDescription,
-} from "../tool-support/pull-request-description.js";
-import {
   githubApi,
   githubErrorMessage,
   parseRepo,
   repoPath,
 } from "../tool-support/github-api.js";
+import { checkPullRequestDescription } from "../tool-support/pull-request-description.js";
 
 const inputSchema = z
   .object({
@@ -47,13 +43,11 @@ const inputSchema = z
       .min(1)
       .optional()
       .describe("Replacement pull request title."),
-    description_context: z
+    body: z
       .string()
-      .trim()
-      .min(1)
       .optional()
       .describe(
-        `${DESCRIPTION_CONTEXT_DESCRIPTION} Pass the full context for the current change. The new description replaces the old one.`,
+        "Replacement pull request body. The runtime appends requester attribution and the conversation footer. It is rejected when it has check results, a test plan, a work log, a file list, or chat talk, or does not say why.",
       ),
     base: z
       .string()
@@ -74,9 +68,9 @@ const inputSchema = z
   })
   .strict()
   .refine(
-    ({ title, description_context, base, state, draft }) =>
+    ({ title, body, base, state, draft }) =>
       title !== undefined ||
-      description_context !== undefined ||
+      body !== undefined ||
       base !== undefined ||
       state !== undefined ||
       draft !== undefined,
@@ -112,13 +106,11 @@ const pullRequestSchema = z.object({
 });
 type PullRequest = z.output<typeof pullRequestSchema>;
 interface Result extends PluginToolOutput, PullRequest {
-  description_gaps?: string[];
   target: "updatePullRequest";
   subscribable?: SubscribableResource;
 }
 const outputSchema = pluginToolOutputSchema.merge(
   pullRequestSchema.extend({
-    description_gaps: z.array(z.string()).optional(),
     target: z.literal("updatePullRequest"),
   }),
 );
@@ -166,10 +158,9 @@ export function createGitHubUpdatePullRequestTool(ctx: {
   automationLink?: { url: string };
   conversationId?: string;
   db: unknown;
-  decider: PluginDecider;
   egress: PluginEgress;
+  decider: PluginDecider;
   log: PluginLogger;
-  model: PluginModel;
   events: { canSubscribe: boolean };
   conversationLink?: { url: string };
   source?: Source;
@@ -185,7 +176,7 @@ export function createGitHubUpdatePullRequestTool(ctx: {
       readOnlyHint: false,
     },
     description:
-      "Update an existing GitHub pull request's title, description, base branch, open/closed state, or draft state. Use this instead of raw GitHub API calls when changing PR metadata or marking a PR ready for review.",
+      "Update an existing GitHub pull request's title, body, base branch, open/closed state, or draft state. Use this instead of raw GitHub API calls when changing PR metadata or marking a PR ready for review.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -197,33 +188,25 @@ export function createGitHubUpdatePullRequestTool(ctx: {
         );
       }
       const update = parsedInput.data;
+      if (update.body?.trim()) {
+        await checkPullRequestDescription(ctx.decider, update.body);
+      }
       const repo = parseRepo(update.repo);
       const requester = await resolveGitHubRequester(ctx);
       const currentBody =
-        update.description_context !== undefined
+        update.body !== undefined
           ? await readGitHubBody(ctx.egress, {
               operation: "github.pull.get",
               path: `${repoPath(repo)}/pulls/${update.number}`,
             })
           : undefined;
-      const written =
-        update.description_context !== undefined
-          ? await writePullRequestDescription(
-              { decider: ctx.decider, model: ctx.model },
-              {
-                context: update.description_context,
-                repo: repo.ref,
-                title: update.title,
-              },
-            )
-          : undefined;
       const payload = {
         ...(update.title !== undefined ? { title: update.title } : undefined),
-        ...(written !== undefined
+        ...(update.body !== undefined
           ? {
               body: appendGitHubFooter(
                 appendGitHubRequesterAttribution(
-                  written.description,
+                  update.body,
                   ctx,
                   requester,
                   currentBody,
@@ -319,9 +302,6 @@ export function createGitHubUpdatePullRequestTool(ctx: {
         ],
         target: "updatePullRequest",
         ...data,
-        ...(written?.gaps.length
-          ? { description_gaps: written.gaps }
-          : undefined),
       };
     },
   });

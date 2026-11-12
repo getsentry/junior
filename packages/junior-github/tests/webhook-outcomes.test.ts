@@ -77,7 +77,6 @@ function checkSuitePullRequest(
 }
 
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
-import { echoDescriptionModel, noteDecider } from "./description-model";
 import { mswServer } from "./msw";
 
 it("combines open, merged, and closed pull requests into conversation work", async () => {
@@ -2975,6 +2974,7 @@ describe("GitHub-owned pull request outcomes", () => {
         visibility: "private",
         conversationId: "local:test",
       },
+      decider: { decide: async () => ({ choice: "no" }) },
       egress: {
         async fetch({ operation }: { operation: string }) {
           if (operation === "github.pull.create") return createResponse();
@@ -2995,8 +2995,6 @@ describe("GitHub-owned pull request outcomes", () => {
         },
       },
       events: { canSubscribe: false },
-      decider: noteDecider(),
-      model: echoDescriptionModel(),
       users: {
         async resolveActor() {
           return identityOf(person);
@@ -3022,7 +3020,6 @@ describe("GitHub-owned pull request outcomes", () => {
       head: "fix/requester-role",
       repo: "getsentry/junior",
       title: "Fix requester role",
-      description_context: "PR body",
     };
     const savedRequesters = async () =>
       (
@@ -3087,11 +3084,7 @@ describe("GitHub-owned pull request outcomes", () => {
 
       // An update adds a requester. The opener does not change.
       await tools.updatePullRequest!.execute!(
-        {
-          description_context: "Updated",
-          number: 946,
-          repo: "getsentry/junior",
-        },
+        { body: "Updated", number: 946, repo: "getsentry/junior" },
         { toolCallId: "call-update" },
       );
       await route!.handler(signedRequest(opened));

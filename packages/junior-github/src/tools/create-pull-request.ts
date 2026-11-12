@@ -20,10 +20,6 @@ import { Value } from "@sinclair/typebox/value";
 import * as z from "zod";
 import { appendGitHubFooter } from "./footer.js";
 import {
-  DESCRIPTION_CONTEXT_DESCRIPTION,
-  writePullRequestDescription,
-} from "../tool-support/pull-request-description.js";
-import {
   gitHubPullRequestCreateWatch,
   gitHubPullRequestSubscribable,
   type GitHubPullRequestSubscriptionConfig,
@@ -42,6 +38,7 @@ import {
   type GitHubPullRequestStack,
   type GitHubStackTarget,
 } from "./stack-pull-request.js";
+import { checkPullRequestDescription } from "../tool-support/pull-request-description.js";
 import {
   githubApi,
   githubErrorMessage,
@@ -75,10 +72,11 @@ const createPullRequestInputSchema = Type.Object(
     base: Type.String({
       description: "Base branch.",
     }),
-    // Optional here so idempotency state saved before this field existed
-    // still parses. The executor requires it for new calls.
-    description_context: Type.Optional(
-      Type.String({ description: DESCRIPTION_CONTEXT_DESCRIPTION }),
+    body: Type.Optional(
+      Type.String({
+        description:
+          "Pull request body. The runtime appends the conversation footer. It is rejected when it has check results, a test plan, a work log, a file list, or chat talk, or does not say why.",
+      }),
     ),
     draft: Type.Optional(
       Type.Boolean({
@@ -96,7 +94,12 @@ const createPullRequestToolInputSchema = z
     title: z.string().describe("Pull request title."),
     head: z.string().describe("Head branch or owner:branch ref."),
     base: z.string().describe("Base branch."),
-    description_context: z.string().describe(DESCRIPTION_CONTEXT_DESCRIPTION),
+    body: z
+      .string()
+      .describe(
+        "Pull request body. The runtime appends the conversation footer. It is rejected when it has check results, a test plan, a work log, a file list, or chat talk, or does not say why.",
+      )
+      .optional(),
     draft: z
       .boolean()
       .describe("Whether to open the pull request as a draft.")
@@ -143,7 +146,6 @@ interface GitHubPullRequestResult {
 }
 
 interface GitHubPullRequestToolResult extends GitHubPullRequestResult {
-  description_gaps?: string[];
   stack?: GitHubPullRequestStack;
   subscribable?: SubscribableResource;
   subscription?: WatchResult;
@@ -166,7 +168,6 @@ const gitHubPullRequestDataSchema = z.object({
 
 const gitHubPullRequestOutputSchema = pluginToolOutputSchema.merge(
   gitHubPullRequestDataSchema.extend({
-    description_gaps: z.array(z.string()).optional(),
     target: z.literal("createPullRequest"),
   }),
 );
@@ -225,7 +226,6 @@ function isDefinitiveGitHubPullRequestCreateRejection(
 function createGitHubPullRequestRequest(
   conversationId: string,
   input: CreateGitHubPullRequestInput,
-  description: string,
   ctx: ToolRegistrationHookContext,
   requester: GitHubRequester | undefined,
   dashboardUrl?: string,
@@ -236,7 +236,7 @@ function createGitHubPullRequestRequest(
     head: nonEmptyString(input.head, "head"),
     base: nonEmptyString(input.base, "base"),
     body: appendGitHubFooter(
-      appendGitHubRequesterAttribution(description, ctx, requester),
+      appendGitHubRequesterAttribution(input.body ?? "", ctx, requester),
       conversationId,
       dashboardUrl,
     ),
@@ -449,7 +449,7 @@ export function createGitHubPullRequestTool(
       readOnlyHint: false,
     },
     description:
-      "Create a GitHub pull request with a runtime-written description and conversation footer, and assign it to the requester's linked GitHub account when available. Use this instead of shelling out to gh pr create when creating pull requests.",
+      "Create a GitHub pull request with a runtime-owned conversation footer and assign it to the requester's linked GitHub account when available. Use this instead of shelling out to gh pr create when creating pull requests.",
     exposure: "direct",
     inputSchema: createPullRequestToolInputSchema,
     outputSchema: gitHubPullRequestOutputSchema,
@@ -499,23 +499,14 @@ export function createGitHubPullRequestTool(
               "GitHub pull request creation for this tool call has an uncertain pending result; refusing to create a duplicate pull request.",
             );
           }
+          if (parsedInput.body?.trim()) {
+            await checkPullRequestDescription(ctx.decider, parsedInput.body);
+          }
           const requester = await resolveGitHubRequester(ctx);
           const identityId = requester?.identity?.id;
-          const { description, gaps } = await writePullRequestDescription(
-            { decider: ctx.decider, model: ctx.model },
-            {
-              context: nonEmptyString(
-                parsedInput.description_context,
-                "description_context",
-              ),
-              repo: parsedInput.repo,
-              title: nonEmptyString(parsedInput.title, "title"),
-            },
-          );
           const request = createGitHubPullRequestRequest(
             conversationId,
             parsedInput,
-            description,
             ctx,
             requester,
             ctx.conversationLink?.url,
@@ -574,16 +565,13 @@ export function createGitHubPullRequestTool(
           const stack = stackTarget
             ? await stackGitHubPullRequest(ctx, stackTarget)
             : undefined;
-          const structured = await gitHubPullRequestStructuredResult(
+          return await gitHubPullRequestStructuredResult(
             ctx,
             parsedInput,
             result,
             subscriptionConfig,
             stack,
           );
-          return gaps.length > 0
-            ? { ...structured, description_gaps: gaps }
-            : structured;
         },
       );
     },
