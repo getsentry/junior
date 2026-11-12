@@ -4,7 +4,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -49,10 +48,7 @@ const TranscriptSearchStepContext = createContext<TranscriptSearchStepValue>({
   match: 0,
 });
 
-/**
- * Share one search with the rows below. Rows match and highlight a
- * deferred query, so typing stays responsive in a long transcript.
- */
+/** Share one search with the rows below. */
 export function TranscriptSearchProvider({
   children,
   match = 0,
@@ -64,22 +60,12 @@ export function TranscriptSearchProvider({
   onMatches?(count: number, prepended: number): void;
   query: string;
 }) {
-  // Defer the query and the current match together. A new query resets the
-  // match, and the rows must not see that reset before they see the query.
-  const live = useMemo(() => ({ query, match }), [query, match]);
-  const deferred = useDeferredValue(live);
-  // Clearing search applies at once: a jump clears search and then looks
-  // for its row in the same render.
-  const shown = query.trim() ? deferred : live;
-  const normalizedQuery = shown.query.trim().toLowerCase();
+  const normalizedQuery = query.trim().toLowerCase();
   const search = useMemo(
     () => ({ normalizedQuery, active: normalizedQuery.length > 0 }),
     [normalizedQuery],
   );
-  const step = useMemo(
-    () => ({ match: shown.match, onMatches }),
-    [shown.match, onMatches],
-  );
+  const step = useMemo(() => ({ match, onMatches }), [match, onMatches]);
   return (
     <TranscriptSearchContext.Provider value={search}>
       <TranscriptSearchStepContext.Provider value={step}>

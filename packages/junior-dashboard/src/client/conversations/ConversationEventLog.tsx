@@ -28,7 +28,7 @@ const rowClass =
 export const ConversationEventLog = memo(function ConversationEventLog(props: {
   conversation: ConversationTranscript;
   onSearchChange(value: string): void;
-  /** The search box value. Rows filter by the deferred search query. */
+  /** The search box value. */
   searchValue: string;
   onSelectedSeqChange?(seq: number | undefined): void;
   /** The row that holds the reader's place, from the scroll owner. */
