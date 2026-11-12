@@ -45,6 +45,24 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     when: text.optional(),
     attendees: z.array(text).max(5).optional(),
   }),
+  // Conversations: only what the viewer may read. Never copy Messages.
+  z.strictObject({
+    type: z.literal("conversation"),
+    participants: z.array(text).max(5).optional(),
+    lastActivityAt: z.iso.datetime({ offset: true }).optional(),
+  }),
+  // People: only what the dashboard People pages already show.
+  z.strictObject({
+    type: z.literal("person"),
+    email: text.optional(),
+    slackHandle: text.optional(),
+    // A Junior photo path. Browsers never load a provider photo URL.
+    avatarUrl: z
+      .string()
+      .max(500)
+      .regex(/^\/api\/people\/avatars\/[^/?#]+(\?v=[\w-]+)?$/)
+      .optional(),
+  }),
 ]);
 export type ObjectFacts = z.output<typeof objectFactsSchema>;
 
@@ -90,6 +108,22 @@ export function objectFactFields(
     case "calendar_event":
       add("when", "When", facts.when);
       add("attendees", "Attendees", list(facts.attendees));
+      break;
+    case "conversation":
+      add("participants", "Participants", list(facts.participants));
+      add(
+        "lastActivityAt",
+        "Last activity",
+        facts.lastActivityAt &&
+          new Date(facts.lastActivityAt).toLocaleString(undefined, {
+            dateStyle: "medium",
+            timeStyle: "short",
+          }),
+      );
+      break;
+    case "person":
+      add("email", "Email", facts.email);
+      add("slackHandle", "Slack", facts.slackHandle && `@${facts.slackHandle}`);
       break;
   }
   return fields.slice(0, 4);

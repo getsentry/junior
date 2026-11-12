@@ -230,6 +230,7 @@ function dashboardHostRoutePaths(
     "/api/connections/*",
     "/api/notifications",
     "/api/notifications/*",
+    "/api/objects",
     "/api/stats",
     "/api/reply-times",
     "/api/versions",
