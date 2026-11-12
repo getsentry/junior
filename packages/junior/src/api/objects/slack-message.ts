@@ -15,10 +15,13 @@ import {
   getChannelMessage,
   getConversationInfo,
   isConversationMember,
+  isPublicSlackChannel,
   type SlackConversationInfo,
 } from "@/chat/slack/channel";
 import { SlackActionError } from "@/chat/slack/client";
 import { parseSlackTeamId, type SlackTeamId } from "@/chat/slack/ids";
+import { renderSlackPlainText } from "@/chat/slack/message/content";
+import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
 import { resolveSlackTeamDomain } from "@/chat/slack/team-domain";
 import {
   parseSlackMessageReference,
@@ -33,8 +36,6 @@ export const SLACK_MESSAGE_LINK_FILTER: ObjectLinkFilter = {
   pathPattern: "/archives/*/*",
 };
 
-const USER_MENTION = /<@([UW][A-Z0-9]+)(?:\|[^>]*)?>/g;
-
 // Errors that mean the bot cannot see the channel or the message. The card
 // then shows nothing, the same as for a link to no message.
 const HIDDEN_ERRORS = new Set(["not_found", "not_in_channel", "missing_scope"]);
@@ -43,27 +44,10 @@ function isHiddenError(error: unknown): boolean {
   return error instanceof SlackActionError && HIDDEN_ERRORS.has(error.code);
 }
 
-function isPublicChannel(info: SlackConversationInfo): boolean {
-  return info.isChannel && !info.isPrivate && !info.isIm && !info.isMpim;
-}
-
 function channelLabel(info: SlackConversationInfo): string {
   if (info.isIm) return "Direct message";
   if (info.isMpim) return "Group message";
   return info.name ? `#${info.name}` : "Slack channel";
-}
-
-/** Slack mrkdwn as plain text, with names for user mentions. */
-function plainText(text: string, names: ReadonlyMap<string, string>): string {
-  return text
-    .replace(USER_MENTION, (_, id: string) => `@${names.get(id) ?? "someone"}`)
-    .replace(/<#[A-Z0-9]+\|([^>]*)>/g, "#$1")
-    .replace(/<!(here|channel|everyone)>/g, "@$1")
-    .replace(/<([^|>]+)\|([^>]+)>/g, "$2")
-    .replace(/<([^>]+)>/g, "$1")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&");
 }
 
 /** Read the card for one viewer, inside the installation of their team. */
@@ -84,7 +68,7 @@ async function readMessageCard(args: {
   // A public channel is public to the workspace. Any other channel, DM, or
   // group DM resolves only for its members.
   if (
-    !isPublicChannel(info) &&
+    !isPublicSlackChannel(info) &&
     !(await isConversationMember(channelId, args.slackUserId))
   ) {
     return undefined;
@@ -105,11 +89,11 @@ async function readMessageCard(args: {
     // without the message, and do not join a channel for a card.
     if (!isHiddenError(error)) throw error;
   }
-  const mentions = [...(message?.text ?? "").matchAll(USER_MENTION)].map(
-    (match) => match[1]!,
-  );
   const userIds = [
-    ...new Set([...(message?.user ? [message.user] : []), ...mentions]),
+    ...new Set([
+      ...(message?.user ? [message.user] : []),
+      ...slackMentionedUserIds(message?.text ?? ""),
+    ]),
   ];
   const names = new Map(
     [...(await lookupSlackUserNames(args.teamId, userIds))].flatMap(
@@ -127,7 +111,9 @@ async function readMessageCard(args: {
     channel: channelLabel(info),
     key: `slack:${args.teamId}:${channelId}:${messageTs}`,
     sentAt: new Date(Number(messageTs) * 1000).toISOString(),
-    ...(message?.text ? { text: plainText(message.text, names) } : undefined),
+    ...(message?.text
+      ? { text: renderSlackPlainText(message.text, names) }
+      : undefined),
     url: args.url.href,
   });
 }

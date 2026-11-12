@@ -141,6 +141,11 @@ export interface SlackConversationInfo {
   isMember?: boolean;
 }
 
+/** Return whether anyone in the workspace can read the conversation. */
+export function isPublicSlackChannel(info: SlackConversationInfo): boolean {
+  return info.isChannel && !info.isPrivate && !info.isIm && !info.isMpim;
+}
+
 /** Load conversation metadata used for cross-channel read access checks. */
 export async function getConversationInfo(
   channelId: SlackChannelId,
