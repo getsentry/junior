@@ -165,7 +165,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     });
   });
 
-  it("searches only with the requester's terms, and leaves Meet records to readMeetingTranscript", async () => {
+  it("searches only with the requester's terms", async () => {
     const unknown = toolsFor(undefined);
     await expect(
       run(unknown.tools, "searchGoogleFiles", { query: "plan" }),
@@ -185,11 +185,6 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     const { fetch, tools } = docsTools(
       Response.json({ error: { message: "Invalid Value" } }, { status: 400 }),
       Response.json({ files: [] }),
-      Response.json({
-        id: DOC_ID,
-        mimeType: "application/vnd.google-apps.document",
-        name: "Exec sync - 2026/10/12 14:01 CEST - Notes by Gemini",
-      }),
     );
     await expect(
       run(tools, "searchGoogleFiles", { query: "plan" }),
@@ -199,21 +194,6 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     });
     // A rejected query is not retried without the requester's terms.
     expect(fetch).toHaveBeenCalledTimes(2);
-    await expect(
-      run(tools, "readGoogleDoc", { document: DOC_ID }),
-    ).rejects.toThrow("Call readMeetingTranscript with this link as record");
-
-    // Meet names records in the organizer's language.
-    const localized = docsTools(
-      Response.json({
-        id: DOC_ID,
-        mimeType: "application/vnd.google-apps.document",
-        name: "Weekly triage - 12.10.2026 - Notizen von Gemini",
-      }),
-    );
-    await expect(
-      run(localized.tools, "readGoogleDoc", { document: DOC_ID }),
-    ).rejects.toThrow("Call readMeetingTranscript with this link as record");
   });
 
   it("shows only company-owned files in search", async () => {

@@ -34,14 +34,4 @@ have no owner, so search shows them only when they are shared with the
 requester by name. Search returns nothing for a requester outside those
 domains.
 
-Google Meet shares transcripts and Gemini notes with every invitee, Junior's
-account too, and names them in the organizer's language. The file tools refuse
-any file whose title mentions Gemini or a transcript in a common language. Only
-`readMeetingTranscript` reads Meet records, and only for people invited to the
-meeting. It takes the meeting's event, or the link of a record. For a link, it
-finds the event on Junior's calendar that has the record attached and that
-started in the day before the record was made. If it finds no event, or cannot
-list the calendar, it refuses. The title match is a conservative exclusion: it also refuses some
-ordinary files, and it misses a record renamed to avoid these words.
-
 Plugin setup: https://junior.sentry.dev/extend/
