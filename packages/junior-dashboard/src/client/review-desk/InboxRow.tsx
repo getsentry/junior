@@ -128,7 +128,14 @@ function rowSummary(conversation: Conversation | undefined) {
   };
 }
 
-function RowItem(props: { conversationId: string; item: ReviewItemPayload }) {
+function RowItem(props: {
+  conversationId: string;
+  /** The row's own Done shows. */
+  done: boolean;
+  /** The row's head shows the item's title. */
+  headTitled: boolean;
+  item: ReviewItemPayload;
+}) {
   const { item } = props;
   const showBody = item.kind === "notice" || !item.request;
   const kind = inboxItemKind(item);
@@ -142,9 +149,13 @@ function RowItem(props: { conversationId: string; item: ReviewItemPayload }) {
         <Pill
           pill={{ key: kind, label: kind, strong: itemNeedsViewer(item) }}
         />
-        <h4 className="m-0 min-w-0 truncate text-sm font-semibold text-dashboard-text">
-          {item.title}
-        </h4>
+        {/* An item row's head already names the ask. A Conversation row's
+            head names the Conversation, so each ask keeps its title. */}
+        {props.headTitled ? null : (
+          <h4 className="m-0 min-w-0 truncate text-sm font-semibold text-dashboard-text">
+            {item.title}
+          </h4>
+        )}
       </div>
       {showBody ? (
         <ClampedPreview className="leading-6" label={item.title} lines={4}>
@@ -157,7 +168,9 @@ function RowItem(props: { conversationId: string; item: ReviewItemPayload }) {
           subject={item.subject}
         />
       ) : null}
-      <ReviewItemActions item={item} />
+      {/* A notice's only action is Dismiss, the row's Done. A question keeps
+          its own beside its answer. */}
+      <ReviewItemActions dismiss={!(props.done && showBody)} item={item} />
     </section>
   );
 }
@@ -373,9 +386,9 @@ function InboxRowBody(
     <>
       <div
         className={cn(
-          "relative rounded-xl transition-colors hover:bg-dashboard-fill-hover",
+          "relative rounded-xl",
           props.selected && "bg-dashboard-fill-soft",
-          props.expanded && "rounded-b-none hover:bg-transparent",
+          props.expanded && "rounded-b-none",
         )}
       >
         {props.selected ? (
@@ -443,7 +456,14 @@ function InboxRowBody(
               <ConversationCast conversation={conversation} />
             ) : null}
           </span>
-          <span className="flex items-center gap-1 pt-0.5 text-xs tabular-nums text-dashboard-text-faint">
+          <span
+            className={cn(
+              "flex items-center gap-1 pt-0.5 text-xs tabular-nums text-dashboard-text-faint",
+              // Pin and Archive take the meta's place on hover or focus.
+              conversation?.isParticipant &&
+                "sm:group-hover:invisible sm:group-focus-within:invisible",
+            )}
+          >
             {conversation ? (
               <ConversationStatusText
                 isPrivate={conversation.visibility === "private"}
@@ -518,6 +538,8 @@ function InboxRowBody(
           {openItems.map((item) => (
             <RowItem
               conversationId={props.conversationId}
+              done={canDone && Boolean(props.onDone)}
+              headTitled={Boolean(props.itemTitle)}
               item={item}
               key={item.id}
             />
@@ -549,7 +571,7 @@ function ExpandedActions(props: {
   snoozeMenuOpen: boolean;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-1">
+    <div className="flex flex-wrap items-center justify-end gap-1">
       {props.canDone && props.onDone ? (
         <Button
           disabled={props.donePending}

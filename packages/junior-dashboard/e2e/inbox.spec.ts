@@ -638,3 +638,27 @@ test("To do lists every Automation that the count counts", async ({
       .locator('[data-inbox-row^="automation:"]'),
   ).toHaveCount(105);
 });
+
+test("an open row's notice leaves Dismiss and its title to the row", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page, { open: [prReady] });
+  await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReady.id}`);
+  const asks = page.getByRole("region", { name: /: asks$/ });
+  const card = asks.getByRole("region", { name: prReady.title });
+  await expect(card).toContainText("FYI");
+  // The row's Done dismisses it, and the item row's head names it.
+  await expect(asks.getByRole("button", { name: "Done" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Dismiss" })).toHaveCount(0);
+  await expect(card.getByRole("heading")).toHaveCount(0);
+
+  // A Conversation row's head names the Conversation, so the ask keeps its
+  // title.
+  await page.goto(`${dashboard.baseURL}/?item=${prReady.id}`);
+  await expect(
+    page
+      .getByRole("region", { name: /: asks$/ })
+      .getByRole("heading", { name: prReady.title }),
+  ).toBeVisible();
+});

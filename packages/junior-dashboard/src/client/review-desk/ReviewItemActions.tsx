@@ -74,9 +74,13 @@ function ClosedSummary(props: { item: ReviewItemPayload }) {
 
 /**
  * Show the actions that the viewer can take on one Review item, or how it
- * closed. The Inbox and the side panel use it.
+ * closed. The Inbox and the side panel use it. An Inbox row with its own
+ * Done turns off Dismiss.
  */
-export function ReviewItemActions(props: { item: ReviewItemPayload }) {
+export function ReviewItemActions(props: {
+  dismiss?: boolean;
+  item: ReviewItemPayload;
+}) {
   const { item } = props;
   const action = useReviewItemAction();
   const [error, setError] = useState<string>();
@@ -102,6 +106,7 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
     }
   }
 
+  const dismiss = props.dismiss ?? true;
   // Take and Dismiss are quiet, so the answer stays the main action.
   const secondaryActions = (
     <>
@@ -114,13 +119,15 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
           Take
         </Button>
       ) : null}
-      <Button
-        disabled={action.isPending}
-        onClick={() => void run({ action: "dismiss" }).catch(() => {})}
-        variant="ghost"
-      >
-        Dismiss
-      </Button>
+      {dismiss ? (
+        <Button
+          disabled={action.isPending}
+          onClick={() => void run({ action: "dismiss" }).catch(() => {})}
+          variant="ghost"
+        >
+          Dismiss
+        </Button>
+      ) : null}
     </>
   );
 
@@ -147,13 +154,13 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
             secondaryActions={secondaryActions}
           />
         </div>
-      ) : (
+      ) : item.canTake || dismiss ? (
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex flex-wrap gap-1 sm:ml-auto">
             {secondaryActions}
           </div>
         </div>
-      )}
+      ) : null}
       {error ? <InlineError>{error}</InlineError> : null}
     </div>
   );
