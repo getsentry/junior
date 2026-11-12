@@ -21,6 +21,7 @@ import { projectConversationMessages } from "@/chat/conversations/message-projec
 import {
   commitAcceptedReply,
   commitMessages,
+  recordToolExecutionStarted,
 } from "@/chat/conversations/projection";
 import {
   contextProvenance,
@@ -33,9 +34,10 @@ import {
   webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { instructionActorFor } from "@/chat/agent/prompt";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
-import { NO_REPLY_MARKER } from "@/chat/no-reply";
+import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { createSlackDestination } from "@/chat/destination";
 import { conversationVisibilityFromSlackChannelType } from "@/chat/slack/conversation-context";
 import { parseContent } from "@/chat/slack/message/content";
@@ -336,7 +338,15 @@ async function historyUserMessage(args: {
       actor,
       agentMessage: {
         role: "user",
-        content: [{ type: "text", text: renderCurrentInstruction(input.text) }],
+        content: [
+          {
+            type: "text",
+            text: renderCurrentInstruction(
+              input.text,
+              instructionActorFor(actor),
+            ),
+          },
+        ],
         timestamp: args.createdAtMs,
       },
       conversationMessage: {
@@ -584,12 +594,21 @@ export async function loadHistory(args: {
       args.replyMessages.set(historyReply, replyId);
     }
     if (turn.replies.length === 0) {
-      // Junior answered an input that addressed it with the silence marker.
+      // Junior answered an input that addressed it with `noReply`.
       if (message.conversationMessage.meta?.explicitMention) {
-        agentHistory.push(
-          assistantPiMessage([{ type: "text", text: NO_REPLY_MARKER }], tick()),
+        const [request, output] = toolCallPiMessages(
+          { name: NO_REPLY_TOOL_NAME, arguments: {}, result: {} },
+          tick(),
         );
-        agentProvenance.push(contextProvenance);
+        // A real Turn records the tool start before it saves the call.
+        await recordToolExecutionStarted({
+          conversationId,
+          createdAtMs: request.timestamp,
+          toolCallId: output.toolCallId,
+          toolName: NO_REPLY_TOOL_NAME,
+        });
+        agentHistory.push(request, output);
+        agentProvenance.push(contextProvenance, contextProvenance);
         await commitMessages({
           conversationId,
           messages: agentHistory,

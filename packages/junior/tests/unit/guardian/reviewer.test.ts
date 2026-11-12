@@ -85,7 +85,7 @@ describe("Guardian action review", () => {
     ).toEqual([]);
     expect(completeObject).toHaveBeenCalledWith(
       expect.objectContaining({
-        maxTokens: 2_000,
+        maxTokens: 8_000,
         modelId: "test/guardian",
         prompt: expect.stringContaining('"cadence": "weekly"'),
       }),

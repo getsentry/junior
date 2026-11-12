@@ -256,7 +256,7 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
                 setConfirmOpen(false);
               }}
               variant={
-                confirming?.action.tone === "danger" ? "danger" : "primary"
+                confirming?.action.tone === "danger" ? "destructive" : "default"
               }
             >
               {confirming?.action.label}

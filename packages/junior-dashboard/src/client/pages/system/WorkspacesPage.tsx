@@ -64,7 +64,10 @@ export function WorkspacesPage() {
           <PageLayout>
             <PageHeader
               actions={
-                <Link className={buttonVariants()} to={`${listPath}/new`}>
+                <Link
+                  className={buttonVariants({ variant: "outline" })}
+                  to={`${listPath}/new`}
+                >
                   <Plus aria-hidden="true" size={14} />
                   New Workspace
                 </Link>

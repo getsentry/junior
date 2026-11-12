@@ -83,10 +83,10 @@ export function AutomationPage(props: {
     RANGE_OPTIONS,
   );
   const range = Number(rangeParam) as TimeRangeDays;
-  if (!automationId) return <Navigate replace to="/automations/list" />;
+  if (!automationId) return <Navigate replace to="/automations" />;
   const listSearch = new URLSearchParams(location.search);
   for (const param of PAGE_PARAMS) listSearch.delete(param);
-  const listPath = pathWithSearch("/automations/list", listSearch);
+  const listPath = pathWithSearch("/automations", listSearch);
   const automation = summary.data;
   const tabs = (["overview", "runs", "versions"] as const).map((tab) => ({
     label: TAB_LABELS[tab],
@@ -134,7 +134,9 @@ export function AutomationPage(props: {
               summary.error.status === 404
                 ? "This automation was not found or is not visible to you."
                 : "Try again."}{" "}
-              <Button onClick={() => void summary.refetch()}>Try again</Button>
+              <Button variant="outline" onClick={() => void summary.refetch()}>
+                Try again
+              </Button>
             </FormNotice>
           ) : (
             <PageContentSkeleton label="Loading automation" variant="list" />
@@ -178,7 +180,7 @@ function AutomationPageContent(props: {
         actions={
           tab === "edit" ? undefined : (
             <div className="flex flex-wrap items-start gap-2 md:justify-end">
-              {tab === "overview" || tab === "runs" ? (
+              {tab === "runs" ? (
                 <TimeRangeSelector
                   onChange={props.onRangeChange}
                   value={props.range}
@@ -189,8 +191,8 @@ function AutomationPageContent(props: {
                 editPath={editPath}
                 editVariant={
                   tab === "overview" && automationNeedsAttention(automation)
-                    ? "default"
-                    : "primary"
+                    ? "outline"
+                    : "default"
                 }
                 onDelete={(source) => {
                   deleteSource.current = source;
@@ -239,11 +241,7 @@ function AutomationPageContent(props: {
     <PageLayout>
       {header}
       {tab === "overview" ? (
-        <AutomationOverview
-          automation={automation}
-          editPath={editPath}
-          range={props.range}
-        />
+        <AutomationOverview automation={automation} editPath={editPath} />
       ) : null}
       {tab === "edit" ? <AutomationEditMode automation={automation} /> : null}
       {tab === "versions" ? (
@@ -272,7 +270,9 @@ function AutomationEditMode(props: { automation: AutomationSummary }) {
     return (
       <FormNotice tone="error" title="Automation could not be loaded.">
         It may no longer be available, or you may not have access.{" "}
-        <Button onClick={() => void edit.refetch()}>Try again</Button>
+        <Button variant="outline" onClick={() => void edit.refetch()}>
+          Try again
+        </Button>
       </FormNotice>
     );
   }
@@ -333,11 +333,12 @@ function AutomationHeaderLine(props: { automation: AutomationSummary }) {
 function BackLink(props: { to: string }) {
   return (
     <Link
+      aria-label="Back to automations"
       className="flex w-fit items-center gap-2 font-display text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:text-dashboard-text"
       to={props.to}
     >
       <ArrowLeft aria-hidden="true" size={15} strokeWidth={1.8} />
-      All automations
+      Automations
     </Link>
   );
 }

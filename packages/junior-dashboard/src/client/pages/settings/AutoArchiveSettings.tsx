@@ -7,7 +7,12 @@ import {
 } from "../../../api/schema";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
-import { Field, FieldDescription, FieldLabel } from "../../components/ui/field";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldLabel,
+} from "../../components/ui/field";
 import { NativeSelect } from "../../components/ui/native-select";
 import { InlineError } from "../../components/InlineError";
 import { AnchorHeading } from "../../components/layout/AnchorHeading";
@@ -74,27 +79,28 @@ export function AutoArchiveSettings({
         className="m-0 text-lg font-bold"
         title="Conversations"
       />
-      <label className="mt-4 flex cursor-pointer items-start gap-3">
+      <Field className="mt-4" orientation="horizontal">
         <Checkbox
+          aria-describedby="auto-archive-default-help"
           checked={enabled}
-          className="mt-0.5"
           disabled={update.isPending}
+          id="auto-archive-default"
           onCheckedChange={(checked) =>
             update.mutate({ autoArchiveDefault: checked })
           }
         />
-        <span className="grid gap-0.5">
-          <span className="text-sm font-medium">
+        <FieldContent>
+          <FieldLabel htmlFor="auto-archive-default">
             Auto-archive conversations when done
-          </span>
-          <span className="text-xs text-dashboard-text-muted">
+          </FieldLabel>
+          <FieldDescription id="auto-archive-default-help">
             Archive a conversation for everyone when all of its linked work,
             such as pull requests, is merged or closed and nobody replies during
             the wait time. You can change this for each conversation in its
             details.
-          </span>
-        </span>
-      </label>
+          </FieldDescription>
+        </FieldContent>
+      </Field>
       <Field className="mt-5 max-w-xs">
         <FieldLabel htmlFor="auto-archive-grace">Wait time</FieldLabel>
         <NativeSelect
@@ -124,6 +130,7 @@ export function AutoArchiveSettings({
       <div className="mt-5 grid gap-1.5">
         <div className="flex flex-wrap items-center gap-3">
           <Button
+            variant="outline"
             disabled={archiveDone.isPending}
             onClick={() => archiveDone.mutate()}
             type="button"

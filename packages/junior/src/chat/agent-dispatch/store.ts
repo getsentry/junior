@@ -9,6 +9,7 @@ import {
   taskOutcomeSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { automationSkillNameSchema } from "@/chat/automations/task";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -69,6 +70,7 @@ const dispatchRecordSchema = z
     resultMessageTs: z.string().optional(),
     source: sourceSchema,
     outcomes: z.array(taskOutcomeSchema).max(5).optional(),
+    skill: automationSkillNameSchema.optional(),
     status: dispatchStatusSchema,
     // Plugin titles may be any non-blank text, including "unknown".
     title: z.string().min(1).optional(),
@@ -355,6 +357,7 @@ export async function createOrGetDispatch(args: {
       ...(args.options.outcomes
         ? { outcomes: args.options.outcomes }
         : undefined),
+      ...(args.options.skill ? { skill: args.options.skill } : undefined),
       status: "pending",
       source: args.options.source,
       ...(args.options.title?.trim()

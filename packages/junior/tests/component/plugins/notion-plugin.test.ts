@@ -82,11 +82,6 @@ describe("Notion plugin package", () => {
       url: "https://mcp.notion.com/mcp",
     });
     expect(providers[0]?.manifest.mcp?.allowedTools).toEqual(allowedTools);
-    expect(providers[0]?.manifest.mcp?.auditTools).toEqual([
-      "notion-create-pages",
-      "notion-update-page",
-      "notion-move-pages",
-    ]);
     expect(providers[0]?.manifest.accounts).toEqual({
       serviceAccount: {
         tools: [

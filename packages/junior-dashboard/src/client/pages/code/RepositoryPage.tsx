@@ -84,7 +84,7 @@ export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
               <TimeRangeSelector onChange={setRange} value={range} />
               {repository.url ? (
                 <OutboundLink
-                  className={buttonVariants()}
+                  className={buttonVariants({ variant: "outline" })}
                   href={repository.url}
                 >
                   Open repository

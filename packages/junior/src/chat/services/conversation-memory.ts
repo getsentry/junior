@@ -209,11 +209,14 @@ export function markConversationMessage(
   };
 }
 
-// A take only records who took a Review item. It never reaches the model.
-function isTakeOnly(message: ConversationMessage): boolean {
+// A take or a dismiss is not a decision, so it never reaches the model.
+function isTakeOrDismissOnly(message: ConversationMessage): boolean {
   const changes = message.meta?.reviewItemChanges;
   return Boolean(
-    changes?.length && changes.every((change) => change.kind === "taken"),
+    changes?.length &&
+    changes.every(
+      (change) => change.kind === "taken" || change.kind === "dismissed",
+    ),
   );
 }
 
@@ -293,7 +296,7 @@ export function buildConversationContext(
   const candidates = conversation.messages.filter(
     (entry) =>
       !options.excludeMessageIds?.includes(entry.id) &&
-      !isTakeOnly(entry) &&
+      !isTakeOrDismissOnly(entry) &&
       (!history ||
         (isUntaggedThreadMessage(entry) &&
           (history.afterSeq === undefined ||

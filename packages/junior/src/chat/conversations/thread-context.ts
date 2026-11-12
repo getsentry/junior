@@ -69,6 +69,10 @@ export async function loadThreadContextTrimFloor(
 /**
  * Build the thread context of one Turn prompt. With agent history, show only
  * the thread Messages saved after the cursor of the previous Turn.
+ *
+ * Sets `app.thread_context.*` on the active span: `chat.reply` in a Slack
+ * Turn, `chat.turn` in a web or Event Turn. Cursor `missing` means that the
+ * previous Turn ran before cursors existed.
  */
 export async function buildTurnThreadContext(args: {
   conversation: ThreadConversationState;

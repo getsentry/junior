@@ -462,6 +462,7 @@ export async function addReactionToMessage(input: {
       input.timeoutMs === undefined ? 3 : 1,
       {
         action: "reactions.add",
+        expectedErrorCodes: ["already_reacted"],
         idempotent: true,
         spanAttributes: {
           "app.slack.channel_id": channelId,
@@ -510,6 +511,7 @@ export async function removeReactionFromMessage(input: {
       3,
       {
         action: "reactions.remove",
+        expectedErrorCodes: ["no_reaction"],
         idempotent: true,
         spanAttributes: {
           "app.slack.channel_id": channelId,

@@ -89,6 +89,7 @@ export const TranscriptMessageView = memo(
         {props.message.reviewItemChanges?.length
           ? props.message.reviewItemChanges.map((record, index) => (
               <ReviewItemChangeRow
+                conversationId={props.conversation.conversationId}
                 fallback={text}
                 key={index}
                 record={record}

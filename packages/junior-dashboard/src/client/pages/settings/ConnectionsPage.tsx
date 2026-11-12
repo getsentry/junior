@@ -150,7 +150,7 @@ export function ConnectionsPage() {
                         connectMutation.reset();
                         disconnectMutation.mutate(connection);
                       }}
-                      variant="danger"
+                      variant="destructive"
                     >
                       {pendingProvider === connection.provider
                         ? "Disconnecting…"
@@ -158,6 +158,7 @@ export function ConnectionsPage() {
                     </Button>
                   ) : (
                     <Button
+                      variant="outline"
                       aria-busy={pendingProvider === connection.provider}
                       aria-label={`Connect ${connection.displayName}`}
                       disabled={busy}
