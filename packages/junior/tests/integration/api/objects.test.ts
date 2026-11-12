@@ -269,6 +269,20 @@ describe("object links API", () => {
       "https://example.slack.com/archives/C0PRIVATE/p1712345000000300";
     expect((await alice(deletedUrl)).objects.size).toBe(0);
 
+    // A thread that does not have the linked reply: no card.
+    queueSlackApiResponse("conversations.info", privateInfo);
+    queueSlackApiResponse("conversations.members", members);
+    queueSlackApiResponse("conversations.replies", {
+      body: conversationsRepliesPage({
+        messages: [
+          { text: "Thread root", ts: "1712345000.000100", user: "UAUTHOR" },
+        ],
+      }),
+    });
+    const missingReplyUrl =
+      "https://example.slack.com/archives/C0PRIVATE/p1712345000000400?thread_ts=1712345000.000100";
+    expect((await alice(missingReplyUrl)).objects.size).toBe(0);
+
     // No linked Slack account, or a link to another workspace: no card.
     const unlinked = await (await viewerApi("carol@example.com"))(publicUrl);
     expect(unlinked.objects.size).toBe(0);

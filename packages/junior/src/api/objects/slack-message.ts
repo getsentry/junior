@@ -77,6 +77,8 @@ async function readMessageCard(args: {
   let message: Awaited<ReturnType<typeof getChannelMessage>>;
   try {
     message = await getChannelMessage({ channelId, messageTs, threadTs });
+    // A deleted reply, or a timestamp not in the thread, has no card.
+    if (!message) return undefined;
   } catch (error) {
     // A deleted message has no card.
     if (
