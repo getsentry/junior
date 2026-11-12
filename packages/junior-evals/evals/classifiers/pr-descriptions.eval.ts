@@ -38,6 +38,12 @@ describeEval(
       await run({ body: body("pr-2668-draft"), reject: [CHECKS] });
     });
 
+    it("when a reviewed body explains test coverage, it rejects the checks", async ({
+      run,
+    }) => {
+      await run({ body: body("pr-2668-final"), reject: [CHECKS] });
+    });
+
     for (const pr of ["2379", "2442", "2461"]) {
       it(`when a reviewed body still has a Checks section (#${pr}), it rejects the checks`, async ({
         run,
@@ -46,7 +52,7 @@ describeEval(
       });
     }
 
-    for (const pr of ["2420", "2959", "3204", "2668"]) {
+    for (const pr of ["2420", "2959", "3204"]) {
       it(`when a body passed review (#${pr}), it accepts it`, async ({
         run,
       }) => {

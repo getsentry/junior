@@ -11,8 +11,8 @@ import {
 const DESCRIPTION_CHECKS = [
   {
     question:
-      "Does the description report how tests, lint, typecheck, or CI went when the author ran them, passing or failing, locally or in CI, or have a test plan section? Text about what the product does with such commands, or a note about what has no test coverage, does not count.",
-    fix: "Remove check results, test plans, and commands. Reviewers see checks on the pull request.",
+      "Does the description report how tests, lint, typecheck, or CI went when the author ran them, passing or failing, locally or in CI, or describe a test plan or test coverage, including what has no tests? Text about what the product does with such commands does not count.",
+    fix: "Remove check results, test plans, test coverage notes, and commands. Reviewers see checks on the pull request.",
   },
   {
     question:
