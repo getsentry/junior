@@ -49,8 +49,12 @@
           "name": "junior_agent_bindings_parent_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_agent_bindings",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["parent_conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "parent_conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -58,8 +62,12 @@
           "name": "junior_agent_bindings_child_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_agent_bindings",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["child_conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "child_conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -67,7 +75,10 @@
       "compositePrimaryKeys": {
         "junior_agent_bindings_parent_conversation_id_name_pk": {
           "name": "junior_agent_bindings_parent_conversation_id_name_pk",
-          "columns": ["parent_conversation_id", "name"]
+          "columns": [
+            "parent_conversation_id",
+            "name"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -276,8 +287,12 @@
           "name": "junior_agent_invocations_parent_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_agent_invocations",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["parent_conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "parent_conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -285,8 +300,12 @@
           "name": "junior_agent_invocations_child_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_agent_invocations",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["child_conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "child_conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -685,8 +704,12 @@
           "name": "junior_attachments_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_attachments",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -845,8 +868,12 @@
           "name": "junior_automation_runs_automation_id_junior_automations_id_fk",
           "tableFrom": "junior_automation_runs",
           "tableTo": "junior_automations",
-          "columnsFrom": ["automation_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "automation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -854,8 +881,12 @@
           "name": "junior_automation_runs_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_automation_runs",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -863,8 +894,14 @@
           "name": "junior_automation_runs_automation_version_fk",
           "tableFrom": "junior_automation_runs",
           "tableTo": "junior_automation_versions",
-          "columnsFrom": ["automation_id", "automation_version"],
-          "columnsTo": ["automation_id", "version"],
+          "columnsFrom": [
+            "automation_id",
+            "automation_version"
+          ],
+          "columnsTo": [
+            "automation_id",
+            "version"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -874,7 +911,9 @@
         "junior_automation_runs_conversation_id_unique": {
           "name": "junior_automation_runs_conversation_id_unique",
           "nullsNotDistinct": false,
-          "columns": ["conversation_id"]
+          "columns": [
+            "conversation_id"
+          ]
         }
       },
       "policies": {},
@@ -927,8 +966,12 @@
           "name": "junior_automation_versions_automation_id_fk",
           "tableFrom": "junior_automation_versions",
           "tableTo": "junior_automations",
-          "columnsFrom": ["automation_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "automation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -936,7 +979,10 @@
       "compositePrimaryKeys": {
         "junior_automation_versions_pk": {
           "name": "junior_automation_versions_pk",
-          "columns": ["automation_id", "version"]
+          "columns": [
+            "automation_id",
+            "version"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -1231,8 +1277,12 @@
           "name": "junior_automations_creator_identity_id_junior_identities_id_fk",
           "tableFrom": "junior_automations",
           "tableTo": "junior_identities",
-          "columnsFrom": ["creator_identity_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "creator_identity_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1437,8 +1487,12 @@
           "name": "junior_code_changes_repository_id_junior_code_repositories_id_fk",
           "tableFrom": "junior_code_changes",
           "tableTo": "junior_code_repositories",
-          "columnsFrom": ["repository_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "repository_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1573,8 +1627,12 @@
           "name": "junior_conversation_annotations_conversation_id_fk",
           "tableFrom": "junior_conversation_annotations",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1582,7 +1640,12 @@
       "compositePrimaryKeys": {
         "junior_conversation_annotations_pk": {
           "name": "junior_conversation_annotations_pk",
-          "columns": ["conversation_id", "plugin", "kind", "key"]
+          "columns": [
+            "conversation_id",
+            "plugin",
+            "kind",
+            "key"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -1654,8 +1717,12 @@
           "name": "junior_conversation_bindings_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversation_bindings",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1800,8 +1867,12 @@
           "name": "junior_conversation_briefs_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversation_briefs",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1809,7 +1880,10 @@
       "compositePrimaryKeys": {
         "junior_conversation_briefs_conversation_id_version_pk": {
           "name": "junior_conversation_briefs_conversation_id_version_pk",
-          "columns": ["conversation_id", "version"]
+          "columns": [
+            "conversation_id",
+            "version"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -2170,8 +2244,12 @@
           "name": "junior_conversation_events_actor_identity_id_junior_identities_id_fk",
           "tableFrom": "junior_conversation_events",
           "tableTo": "junior_identities",
-          "columnsFrom": ["actor_identity_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "actor_identity_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2179,8 +2257,12 @@
           "name": "junior_conversation_events_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversation_events",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2188,7 +2270,10 @@
       "compositePrimaryKeys": {
         "junior_conversation_events_conversation_id_seq_pk": {
           "name": "junior_conversation_events_conversation_id_seq_pk",
-          "columns": ["conversation_id", "seq"]
+          "columns": [
+            "conversation_id",
+            "seq"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -2292,8 +2377,12 @@
           "name": "junior_conversation_metrics_actor_identity_id_junior_identities_id_fk",
           "tableFrom": "junior_conversation_metrics",
           "tableTo": "junior_identities",
-          "columnsFrom": ["actor_identity_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "actor_identity_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2301,8 +2390,12 @@
           "name": "junior_conversation_metrics_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversation_metrics",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2310,7 +2403,11 @@
       "compositePrimaryKeys": {
         "junior_conversation_metrics_conversation_id_run_id_metric_pk": {
           "name": "junior_conversation_metrics_conversation_id_run_id_metric_pk",
-          "columns": ["conversation_id", "run_id", "metric"]
+          "columns": [
+            "conversation_id",
+            "run_id",
+            "metric"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -2452,8 +2549,12 @@
           "name": "junior_conversation_participants_user_id_junior_users_id_fk",
           "tableFrom": "junior_conversation_participants",
           "tableTo": "junior_users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2461,8 +2562,12 @@
           "name": "junior_conversation_participants_root_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversation_participants",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["root_conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "root_conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2470,7 +2575,10 @@
       "compositePrimaryKeys": {
         "junior_conversation_participants_user_root_pk": {
           "name": "junior_conversation_participants_user_root_pk",
-          "columns": ["user_id", "root_conversation_id"]
+          "columns": [
+            "user_id",
+            "root_conversation_id"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -2513,8 +2621,12 @@
           "name": "junior_conversation_read_positions_user_id_junior_users_id_fk",
           "tableFrom": "junior_conversation_read_positions",
           "tableTo": "junior_users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2522,8 +2634,12 @@
           "name": "junior_conversation_read_positions_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversation_read_positions",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2531,7 +2647,10 @@
       "compositePrimaryKeys": {
         "junior_conversation_read_positions_user_conversation_pk": {
           "name": "junior_conversation_read_positions_user_conversation_pk",
-          "columns": ["user_id", "conversation_id"]
+          "columns": [
+            "user_id",
+            "conversation_id"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -2913,8 +3032,12 @@
           "name": "junior_conversations_destination_id_junior_destinations_id_fk",
           "tableFrom": "junior_conversations",
           "tableTo": "junior_destinations",
-          "columnsFrom": ["destination_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "destination_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2922,8 +3045,12 @@
           "name": "junior_conversations_actor_identity_id_junior_identities_id_fk",
           "tableFrom": "junior_conversations",
           "tableTo": "junior_identities",
-          "columnsFrom": ["actor_identity_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "actor_identity_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2931,8 +3058,12 @@
           "name": "junior_conversations_creator_identity_id_junior_identities_id_fk",
           "tableFrom": "junior_conversations",
           "tableTo": "junior_identities",
-          "columnsFrom": ["creator_identity_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "creator_identity_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2940,8 +3071,12 @@
           "name": "junior_conversations_credential_subject_identity_id_junior_identities_id_fk",
           "tableFrom": "junior_conversations",
           "tableTo": "junior_identities",
-          "columnsFrom": ["credential_subject_identity_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "credential_subject_identity_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2949,8 +3084,12 @@
           "name": "junior_conversations_parent_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversations",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["parent_conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "parent_conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2958,8 +3097,12 @@
           "name": "junior_conversations_forked_from_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversations",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["forked_from_conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "forked_from_conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -2967,8 +3110,12 @@
           "name": "junior_conversations_root_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversations",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["root_conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "root_conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3307,8 +3454,12 @@
           "name": "junior_identities_user_id_junior_users_id_fk",
           "tableFrom": "junior_identities",
           "tableTo": "junior_users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3372,8 +3523,12 @@
           "name": "junior_location_configurations_location_id_junior_destinations_id_fk",
           "tableFrom": "junior_location_configurations",
           "tableTo": "junior_destinations",
-          "columnsFrom": ["location_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "location_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3381,7 +3536,10 @@
       "compositePrimaryKeys": {
         "junior_location_configurations_location_id_key_pk": {
           "name": "junior_location_configurations_location_id_key_pk",
-          "columns": ["location_id", "key"]
+          "columns": [
+            "location_id",
+            "key"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -3473,8 +3631,12 @@
           "name": "junior_push_subscriptions_user_id_junior_users_id_fk",
           "tableFrom": "junior_push_subscriptions",
           "tableTo": "junior_users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3524,8 +3686,12 @@
           "name": "junior_review_item_assignees_item_id_junior_review_items_id_fk",
           "tableFrom": "junior_review_item_assignees",
           "tableTo": "junior_review_items",
-          "columnsFrom": ["item_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3533,8 +3699,12 @@
           "name": "junior_review_item_assignees_user_id_junior_users_id_fk",
           "tableFrom": "junior_review_item_assignees",
           "tableTo": "junior_users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3542,7 +3712,10 @@
       "compositePrimaryKeys": {
         "junior_review_item_assignees_item_id_user_id_pk": {
           "name": "junior_review_item_assignees_item_id_user_id_pk",
-          "columns": ["item_id", "user_id"]
+          "columns": [
+            "item_id",
+            "user_id"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -3589,8 +3762,12 @@
           "name": "junior_review_item_conversations_item_id_junior_review_items_id_fk",
           "tableFrom": "junior_review_item_conversations",
           "tableTo": "junior_review_items",
-          "columnsFrom": ["item_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3598,8 +3775,12 @@
           "name": "junior_review_item_conversations_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_review_item_conversations",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3607,7 +3788,10 @@
       "compositePrimaryKeys": {
         "junior_review_item_conversations_item_id_conversation_id_pk": {
           "name": "junior_review_item_conversations_item_id_conversation_id_pk",
-          "columns": ["item_id", "conversation_id"]
+          "columns": [
+            "item_id",
+            "conversation_id"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -3656,8 +3840,12 @@
           "name": "junior_review_item_slack_cards_item_id_junior_review_items_id_fk",
           "tableFrom": "junior_review_item_slack_cards",
           "tableTo": "junior_review_items",
-          "columnsFrom": ["item_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3665,8 +3853,12 @@
           "name": "junior_review_item_slack_cards_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_review_item_slack_cards",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3674,7 +3866,10 @@
       "compositePrimaryKeys": {
         "junior_review_item_slack_cards_item_id_conversation_id_pk": {
           "name": "junior_review_item_slack_cards_item_id_conversation_id_pk",
-          "columns": ["item_id", "conversation_id"]
+          "columns": [
+            "item_id",
+            "conversation_id"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -3930,8 +4125,12 @@
           "name": "junior_review_items_added_by_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_review_items",
           "tableTo": "junior_conversations",
-          "columnsFrom": ["added_by_conversation_id"],
-          "columnsTo": ["conversation_id"],
+          "columnsFrom": [
+            "added_by_conversation_id"
+          ],
+          "columnsTo": [
+            "conversation_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3939,8 +4138,12 @@
           "name": "junior_review_items_automation_id_junior_automations_id_fk",
           "tableFrom": "junior_review_items",
           "tableTo": "junior_automations",
-          "columnsFrom": ["automation_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "automation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -3948,8 +4151,12 @@
           "name": "junior_review_items_closed_by_user_id_junior_users_id_fk",
           "tableFrom": "junior_review_items",
           "tableTo": "junior_users",
-          "columnsFrom": ["closed_by_user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "closed_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -4179,8 +4386,12 @@
           "name": "junior_snapshots_workspace_id_junior_workspaces_id_fk",
           "tableFrom": "junior_snapshots",
           "tableTo": "junior_workspaces",
-          "columnsFrom": ["workspace_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -4257,7 +4468,12 @@
       "compositePrimaryKeys": {
         "junior_stats_date_namespace_metric_name_pk": {
           "name": "junior_stats_date_namespace_metric_name_pk",
-          "columns": ["date", "namespace", "metric", "name"]
+          "columns": [
+            "date",
+            "namespace",
+            "metric",
+            "name"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -4398,8 +4614,12 @@
           "name": "junior_workspace_repos_workspace_id_junior_workspaces_id_fk",
           "tableFrom": "junior_workspace_repos",
           "tableTo": "junior_workspaces",
-          "columnsFrom": ["workspace_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -4407,7 +4627,11 @@
       "compositePrimaryKeys": {
         "junior_workspace_repos_workspace_id_provider_repo_pk": {
           "name": "junior_workspace_repos_workspace_id_provider_repo_pk",
-          "columns": ["workspace_id", "provider", "repo"]
+          "columns": [
+            "workspace_id",
+            "provider",
+            "repo"
+          ]
         }
       },
       "uniqueConstraints": {},
