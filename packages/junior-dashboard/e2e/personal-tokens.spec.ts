@@ -74,6 +74,44 @@ test("lists and creates personal API tokens from settings", async ({
   ]);
 });
 
+test("shows a new token when the browser has no Clipboard API", async ({
+  page,
+  dashboard,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", { value: undefined });
+  });
+  await page.route("**/api/personal-tokens", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({
+        json: {
+          createdAt: "2026-08-01T00:01:00.000Z",
+          expiresAt: "2026-10-30T00:01:00.000Z",
+          id: "00000000-0000-4000-8000-000000000002",
+          lastUsedAt: null,
+          name: "Review token",
+          token: "jr_pat_one-time-secret",
+          tokenSuffix: "wxyz",
+        },
+      });
+      return;
+    }
+    await route.fulfill({ json: { tokens: [] } });
+  });
+
+  await page.goto(`${dashboard.baseURL}/settings/api-tokens`);
+  await page.getByLabel("Token name").fill("Review token");
+  await page.getByRole("button", { name: "Create token" }).click();
+  await expect(page.getByText("jr_pat_one-time-secret")).toBeVisible();
+  await expect(
+    page.getByText("Copy this token now. It won't be shown again."),
+  ).toBeVisible();
+  await expect(page.getByText("Review token", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Could not create the API token. Try again."),
+  ).toHaveCount(0);
+});
+
 test("surfaces token create errors without losing the list", async ({
   page,
   dashboard,

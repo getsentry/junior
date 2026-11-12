@@ -69,10 +69,10 @@ export function PersonalTokensPage() {
     onSuccess: async (created) => {
       const { token: _token, ...metadata } = created;
       // The server shows the token once, so copy it right away. Some
-      // browsers refuse a write this long after the click; the copy button
-      // stays available.
-      navigator.clipboard
-        .writeText(created.token)
+      // browsers refuse a write this long after the click, and insecure
+      // origins have no Clipboard API; the copy button stays available.
+      Promise.resolve()
+        .then(() => navigator.clipboard.writeText(created.token))
         .then(() => setAutoCopied(true))
         .catch(() => undefined);
       await cancelTokenListRefetch();
