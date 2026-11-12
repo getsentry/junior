@@ -27,6 +27,10 @@ import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { readUserCustomization } from "@/chat/identities/customization";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
+  renderAgentsInstructionsForPrompt,
+  type RepositoryInstructions,
+} from "@/chat/repository-instructions";
+import {
   hasRuntimeTurnContext,
   retainRuntimeTurnContext,
   stripRuntimeTurnContext,
@@ -607,6 +611,8 @@ export async function assemblePrompt(args: {
   priorPiMessages?: PiMessage[];
   /** From `turnBehavior`. */
   promptMode: PromptMode;
+  /** AGENTS.md read from the sandbox when this slice started. */
+  repositoryInstructions?: RepositoryInstructions;
   resumedFromSessionRecord: boolean;
   run: Pick<
     AgentRun,
@@ -701,6 +707,12 @@ export async function assemblePrompt(args: {
   const turnContextParts: UserContentPart[] = turnContextPrompt
     ? [{ type: "text", text: turnContextPrompt }]
     : [];
+  const agentsInstructions = args.repositoryInstructions
+    ? renderAgentsInstructionsForPrompt(
+        promptHistoryMessages,
+        args.repositoryInstructions,
+      )
+    : undefined;
   const contextContentParts = replayedPrompt?.contextContentParts ?? [
     ...turnContextParts,
     ...(args.explicitSkill
@@ -710,6 +722,9 @@ export async function assemblePrompt(args: {
             text: renderExplicitSkillInstructions(args.explicitSkill),
           },
         ]
+      : []),
+    ...(agentsInstructions
+      ? [{ type: "text" as const, text: agentsInstructions }]
       : []),
     ...args.contextContentParts,
   ];
