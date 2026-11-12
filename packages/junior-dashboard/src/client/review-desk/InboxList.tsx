@@ -398,6 +398,8 @@ export function InboxList(props: {
       drag?: PinnedRowDrag;
       itemRow?: boolean;
       key?: string;
+      /** The row sits under a card that already names its subject. */
+      subjectShown?: boolean;
       /** A snoozed row wakes instead of snoozing. */
       snoozed?: boolean;
       time?: string;
@@ -417,7 +419,12 @@ export function InboxList(props: {
         itemTitle={options.itemRow ? row.newest.title : undefined}
         itemSubtitle={
           options.itemRow
-            ? itemRowSubtitle(row.newest, titleOf(row.conversationId))
+            ? itemRowSubtitle(
+                options.subjectShown
+                  ? { ...row.newest, subject: undefined }
+                  : row.newest,
+                titleOf(row.conversationId),
+              )
             : undefined
         }
         key={key}
@@ -737,7 +744,9 @@ export function InboxList(props: {
               row={row}
             >
               {row.items.length > 0
-                ? row.items.map((item) => bundleRow(item, { itemRow: true }))
+                ? row.items.map((item) =>
+                    bundleRow(item, { itemRow: true, subjectShown: true }),
+                  )
                 : null}
             </PullRequestChange>
           ))}
