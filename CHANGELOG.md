@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.298.0
+
+Users can see dashboard information, update bot comments and reactions through GitHub, get clearer unsupported-tool errors, and avoid needless context compaction after runs.
+
+### New Features ✨
+
+- (dashboard) Show the agent type and fork of a child Conversation by @dcramer with @sentry-junior in [#3195](https://github.com/getsentry/junior/pull/3195)
+- (github) Add tools to edit own issue comments and react to issues by @dingsdax with @sentry-junior in [#3204](https://github.com/getsentry/junior/pull/3204)
+
+### Bug Fixes 🐛
+
+#### Codemode
+
+- Redirect every modelOnly tool from tool exposure by @sentry-junior in [#3230](https://github.com/getsentry/junior/pull/3230)
+- Redirect catalog dispatcher calls from scripts by @thomasjiangcy with @sentry-junior in [#3229](https://github.com/getsentry/junior/pull/3229)
+
+#### Other
+
+- (agent) Skip compaction after a batch that ends the run by @thomasjiangcy with @sentry-junior in [#3227](https://github.com/getsentry/junior/pull/3227)
+
 ## 0.297.0
 
 Junior expands messaging, automation, and monitoring while targeted fixes improve synchronization and delivery; an accessible demo and runtime cleanup support clearer use and upgrades.
