@@ -5,18 +5,22 @@
  * `JUNIOR_DASHBOARD_LIVE_ORIGIN` is set. The Junior packages and the
  * production app do not know about it.
  *
- * A Preview shows mock data by default. A viewer can enter a personal token
- * from the live deployment as the Basic auth password. The browser then sends
- * it with every request, and the wrapper forwards `/api/*` reads to the live
- * deployment as a bearer token. The server never stores the token, so a
- * public Preview URL does not give anyone else live data.
+ * A Preview shows mock data by default. A viewer can connect it to the live
+ * deployment: the API Tokens page there creates a personal token and POSTs it
+ * to `/?live`. It does that only for a Preview that Junior made for that
+ * viewer. For other Previews, the viewer pastes a token into the same form.
+ *
+ * The token stays in an HttpOnly cookie in the viewer's browser, and the
+ * wrapper forwards `/api/*` reads to the live deployment as a bearer token.
+ * The server never stores the token, so a public Preview URL does not give
+ * anyone else live data.
  *
  * The live deployment accepts personal tokens only for GET and HEAD, so live
  * data is read-only.
  */
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
-import { exampleDashboardAuthRequired } from "./dashboard";
+import { exampleDashboardAuthRequired } from "./dashboard.ts";
 
 /** An app that serves requests, such as the Hono app from `createApp()`. */
 export interface FetchApp<Rest extends unknown[]> {
@@ -24,6 +28,8 @@ export interface FetchApp<Rest extends unknown[]> {
 }
 
 const LIVE_PARAM = "live";
+const DEMO_PARAM = "demo";
+const TOKEN_COOKIE = "junior_live_token";
 const AUTH_PATH = "/api/auth";
 const VERSION_HEADER = "x-junior-version";
 // Response headers that describe the upstream transfer, not the body that
@@ -50,20 +56,41 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#039;");
 }
 
-function errorResponse(error: string): Response {
-  return Response.json({ error }, { status: 403 });
+function errorResponse(error: string, headers?: HeadersInit): Response {
+  return Response.json({ error }, { headers, status: 403 });
 }
 
-/** Read the personal token from Basic credentials. The username is ignored. */
+/** Build the Set-Cookie value that keeps the token, or clears it. */
+function tokenCookie(request: Request, token?: string): string {
+  const secure =
+    new URL(request.url).protocol === "https:" ||
+    request.headers.get("x-forwarded-proto") === "https";
+  // Lax, not Strict: the token arrives in a POST from the live deployment,
+  // and the redirect that follows must send the cookie.
+  const value = token ? encodeURIComponent(token) : "";
+  const clear = token ? "" : "; Max-Age=0";
+  return `${TOKEN_COOKIE}=${value}; Path=/; HttpOnly; SameSite=Lax${clear}${secure ? "; Secure" : ""}`;
+}
+
+/** Read the personal token from the cookie that `/?live` sets. */
 function livePreviewToken(request: Request): string | undefined {
-  const encoded = /^Basic ([A-Za-z0-9+/=]+)$/.exec(
-    request.headers.get("authorization") ?? "",
-  )?.[1];
-  if (!encoded) return undefined;
-  const credentials = Buffer.from(encoded, "base64").toString("utf8");
-  const separator = credentials.indexOf(":");
-  const token = separator === -1 ? "" : credentials.slice(separator + 1).trim();
-  return token || undefined;
+  for (const pair of (request.headers.get("cookie") ?? "").split(";")) {
+    const [name, ...value] = pair.trim().split("=");
+    if (name === TOKEN_COOKIE) {
+      return decodeURIComponent(value.join("=")).trim() || undefined;
+    }
+  }
+  return undefined;
+}
+
+async function liveDeploymentAccepts(
+  token: string,
+  origin: string,
+): Promise<boolean> {
+  const me = await fetch(new URL("/api/me", origin), {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  return me.ok;
 }
 
 async function proxyRequest(
@@ -93,9 +120,11 @@ async function proxyRequest(
   );
   // A 401 makes the client restart local sign-in, which cannot fix a bad
   // token. Report it as 403, so the page shows the error.
+  // Also drop the cookie, so the next page load shows demo data.
   if (upstream.status === 401) {
     return errorResponse(
       `${new URL(origin).host} rejected the personal token.`,
+      { "set-cookie": tokenCookie(request) },
     );
   }
   const responseHeaders = new Headers(upstream.headers);
@@ -117,46 +146,117 @@ async function proxyRequest(
   });
 }
 
-/**
- * Ask for a personal token, or go back to the page when the live deployment
- * accepts the token that the browser sent.
- *
- * The browser keeps Basic credentials for the directory of the URL that asked
- * for them. The banner asks on `/`, so the credentials apply to every path.
- */
-async function startLivePreview(
+function livePreviewPage(
   request: Request,
   origin: string,
-): Promise<Response> {
-  const url = new URL(request.url);
-  const token = livePreviewToken(request);
-  if (token) {
-    const me = await fetch(new URL("/api/me", origin), {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    if (me.ok) return Response.redirect(new URL("/", url), 302);
-  }
+  error?: { message: string; status: number },
+  headers?: Record<string, string>,
+): Response {
   const host = escapeHtml(new URL(origin).host);
-  const tokensUrl = escapeHtml(new URL("/settings/api-tokens", origin).href);
+  const tokensUrl = new URL("/settings/api-tokens", origin).href;
+  const pasteUrl = new URL(tokensUrl);
+  pasteUrl.searchParams.set(
+    "name",
+    `Live preview on ${new URL(request.url).host}`,
+  );
+  // The server can sit behind a proxy, so the browser names the origin that
+  // the live deployment sends the token to.
+  const connect = `this.href=${JSON.stringify(`${tokensUrl}?preview=`)}+encodeURIComponent(location.origin)`;
   return new Response(
     `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="utf-8" /><title>Live data</title></head>
 <body style="font-family: system-ui, sans-serif; max-width: 36rem; margin: 4rem auto; padding: 0 1rem;">
   <h1>Live data from ${host}</h1>
-  <p>Enter any user name and a <a href="${tokensUrl}">personal token from ${host}</a> as the password. Live data is read-only.</p>
-  <p><a href="/">Use demo data</a></p>
+  ${error ? `<p role="alert">${escapeHtml(error.message)}</p>` : ""}
+  <p><a href="${escapeHtml(tokensUrl)}" onclick="${escapeHtml(connect)}">Connect to ${host}</a>. This works when Junior made this Preview for you. Live data is read-only.</p>
+  <form method="post" action="/?${LIVE_PARAM}">
+    <label>Or paste a <a href="${escapeHtml(pasteUrl.href)}">personal token from ${host}</a>
+      <input name="token" required autocomplete="off" style="display:block;width:100%;margin:0.5rem 0;font:inherit" /></label>
+    <button type="submit">Use token</button>
+  </form>
+  <p><a href="/?${DEMO_PARAM}">Use demo data</a></p>
 </body>
 </html>`,
     {
       headers: {
         "cache-control": "no-store",
         "content-type": "text/html; charset=utf-8",
-        "www-authenticate": `Basic realm="${host} personal token", charset="UTF-8"`,
+        ...headers,
       },
-      status: 401,
+      status: error?.status ?? 200,
     },
   );
+}
+
+/**
+ * Keep a personal token from the live deployment's API Tokens page or the
+ * paste form, when the live deployment accepts it.
+ */
+async function acceptLivePreviewToken(
+  request: Request,
+  origin: string,
+): Promise<Response> {
+  const url = new URL(request.url);
+  // Only the live deployment and this page may set the token. Otherwise any
+  // site could connect a viewer to someone else's live data. Compare hosts:
+  // behind a proxy, `request.url` can have another scheme.
+  const sender = request.headers.get("origin");
+  const senderHost = sender && URL.canParse(sender) ? new URL(sender).host : "";
+  if (sender !== origin && senderHost !== url.host) {
+    return livePreviewPage(request, origin, {
+      message: "Request blocked. Connect again from this page.",
+      status: 403,
+    });
+  }
+  let token = "";
+  try {
+    const value = (await request.formData()).get("token");
+    token = typeof value === "string" ? value.trim() : "";
+  } catch {
+    // A body that is not a form has no token.
+  }
+  if (!token || !(await liveDeploymentAccepts(token, origin))) {
+    return livePreviewPage(request, origin, {
+      message: `${new URL(origin).host} rejected the personal token.`,
+      status: 403,
+    });
+  }
+  return new Response(null, {
+    headers: { location: "/", "set-cookie": tokenCookie(request, token) },
+    status: 303,
+  });
+}
+
+/**
+ * Ask for a personal token, or go back to the page when the live deployment
+ * accepts the token that the browser has.
+ */
+async function startLivePreview(
+  request: Request,
+  origin: string,
+): Promise<Response> {
+  if (request.method === "POST") {
+    return await acceptLivePreviewToken(request, origin);
+  }
+  const token = livePreviewToken(request);
+  if (!token) return livePreviewPage(request, origin);
+  if (await liveDeploymentAccepts(token, origin)) {
+    return Response.redirect(new URL("/", request.url), 302);
+  }
+  // A revoked or expired token: drop it, so the Preview shows demo data
+  // until the viewer connects again.
+  return livePreviewPage(request, origin, undefined, {
+    "set-cookie": tokenCookie(request),
+  });
+}
+
+/** Leave live mode: drop the token and show demo data. */
+function stopLivePreview(request: Request): Response {
+  return new Response(null, {
+    headers: { location: "/", "set-cookie": tokenCookie(request) },
+    status: 302,
+  });
 }
 
 /**
@@ -174,7 +274,7 @@ async function withPreviewBanner(
   // load, so the link reads it when clicked.
   const liveLink = `<a href="${escapeHtml(origin)}" onclick="this.href=${escapeHtml(JSON.stringify(origin))}+location.pathname+location.search" style="color:inherit;text-decoration:underline">${host}</a>`;
   const text = live
-    ? `You are seeing a preview of ${liveLink}. Read-only.`
+    ? `You are seeing a preview of ${liveLink}. Read-only. <a href="/?${DEMO_PARAM}" style="color:inherit;text-decoration:underline">Use demo data</a>`
     : `Demo data. <a href="/?${LIVE_PARAM}" style="color:inherit;text-decoration:underline">Use live data from ${host}</a>`;
   const banner = `<div role="status" style="position:fixed;z-index:2147483647;left:0.75rem;bottom:calc(0.75rem + env(safe-area-inset-bottom));display:flex;gap:0.5rem;align-items:center;padding:0.375rem 0.75rem;border-radius:9999px;background:#6c5fc7;color:#fff;font:600 12px/1.4 system-ui,sans-serif;box-shadow:0 2px 8px rgb(0 0 0 / 0.3)"><span>${text}</span><button type="button" aria-label="Hide" onclick="this.parentElement.remove()" style="all:unset;cursor:pointer;font-size:14px;line-height:1">×</button></div>`;
   // Classic scripts run before the deferred client module.
@@ -208,6 +308,9 @@ export function withLivePreview<Rest extends unknown[]>(
       const url = new URL(request.url);
       if (url.pathname === "/" && url.searchParams.has(LIVE_PARAM)) {
         return startLivePreview(request, origin);
+      }
+      if (url.pathname === "/" && url.searchParams.has(DEMO_PARAM)) {
+        return stopLivePreview(request);
       }
       const token = livePreviewToken(request);
       if (
