@@ -5,6 +5,7 @@ import {
   getLatestAgentInvocationForConversation,
   listOpenAgentInvocations,
 } from "@/chat/agent-invocations/store";
+import { readLastParentMessageAtMs } from "@/chat/agent-invocations/parent-message";
 import { AGENTS_TOOL_SOURCE } from "@/chat/agent-invocations/tool-source";
 import { getConversationStore, getDb } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -101,11 +102,16 @@ export function createArchiveAgentTool(conversationId: string) {
       // example when its result reaches the parent's mailbox.
       const personMessageAt =
         await readLastPersonMessageAtMs(childConversationId);
+      // A child that no Agent invocation names got its work as parent
+      // messages.
       const latest =
         await getLatestAgentInvocationForConversation(childConversationId);
+      const lastWorkAt = latest
+        ? latest.createdAtMs
+        : await readLastParentMessageAtMs(childConversationId);
       if (
         personMessageAt !== undefined &&
-        personMessageAt > (latest?.createdAtMs ?? 0)
+        personMessageAt > (lastWorkAt ?? 0)
       ) {
         throw new ToolInputError(
           `A person messaged ${childConversationId} since you last gave it work, so a person still uses it. Leave it. That person can archive it from its dashboard_url.`,
