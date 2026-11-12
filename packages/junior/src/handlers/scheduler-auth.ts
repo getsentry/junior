@@ -1,15 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
-
-function getSchedulerSecret(): string | undefined {
-  return (
-    process.env.JUNIOR_SCHEDULER_SECRET?.trim() ||
-    process.env.CRON_SECRET?.trim()
-  );
-}
+import { readSchedulerSecret } from "@/chat/secrets";
 
 /** Check the bearer secret that internal cron requests must send. */
 export function verifySchedulerRequest(request: Request): boolean {
-  const secret = getSchedulerSecret();
+  const secret = readSchedulerSecret();
   if (!secret) {
     return false;
   }

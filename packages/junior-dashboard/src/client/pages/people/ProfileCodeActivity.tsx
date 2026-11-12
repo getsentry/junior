@@ -6,6 +6,7 @@ import {
   timeRangeBucketUnit,
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
+import { anchorTitleId } from "../../components/layout/AnchorHeading";
 import { SectionIntro } from "../../components/layout/SectionIntro";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber, formatCostSummary } from "../../format";
@@ -44,8 +45,8 @@ export function ProfileCodeActivity(props: {
   if (!hasCodeActivity(props.report)) return null;
   const summary = props.report.summary;
   return (
-    <section aria-labelledby="profile-code-title" className="grid gap-4">
-      <SectionIntro id="profile-code-title" title="Code" />
+    <section aria-labelledby={anchorTitleId("code")} className="grid gap-4">
+      <SectionIntro anchor="code" title="Code" />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           detail="In the last 30 days"

@@ -1,0 +1,97 @@
+import { describe, expect, it } from "vitest";
+import {
+  isPersonInput,
+  turnBehavior,
+} from "@/chat/conversations/kind-behavior";
+
+const rootTurn = {
+  delivery: "location",
+  promptMode: "conversation",
+  gated: false,
+  failureNotice: "none",
+  sessionTasks: true,
+  tools: {
+    agents: "children",
+    reviewDesk: true,
+    subscriptions: true,
+    userCustomization: true,
+    reply: "none",
+    reportBlocked: "none",
+    noReply: true,
+  },
+};
+
+// Memory is public, so a Thread never captures it.
+const personInThreadTurn = {
+  ...rootTurn,
+  sessionTasks: false,
+  tools: { ...rootTurn.tools, agents: "none" },
+};
+
+const agentInThreadTurn = {
+  delivery: "conversation",
+  promptMode: "child_agent",
+  gated: true,
+  failureNotice: "none",
+  sessionTasks: false,
+  tools: {
+    agents: "children_and_parent",
+    reviewDesk: false,
+    subscriptions: false,
+    userCustomization: false,
+    reply: "parent",
+    reportBlocked: "parent",
+    noReply: true,
+  },
+};
+
+// A Task's parent learns that it failed or that no reply was sent.
+const agentInTaskTurn = {
+  ...agentInThreadTurn,
+  missingAnswerError: "No reply was sent.",
+  failureNotice: "parent",
+};
+
+const automationTurn = {
+  delivery: "conversation",
+  promptMode: "automation",
+  gated: true,
+  failureNotice: "none",
+  sessionTasks: true,
+  tools: {
+    ...rootTurn.tools,
+    reply: "automation",
+    reportBlocked: "automation",
+  },
+};
+
+describe("turnBehavior", () => {
+  it.each([
+    { kind: "root", personInput: true, expected: rootTurn },
+    { kind: "root", personInput: false, expected: rootTurn },
+    // A person's reply in the run's thread.
+    { kind: "automation", personInput: true, expected: rootTurn },
+    // The dispatch Turn and every Watch Event Turn.
+    { kind: "automation", personInput: false, expected: automationTurn },
+    { kind: "thread", personInput: true, expected: personInThreadTurn },
+    { kind: "thread", personInput: false, expected: agentInThreadTurn },
+    { kind: "task", personInput: false, expected: agentInTaskTurn },
+  ] as const)(
+    "gives a $kind Turn with person input $personInput its behavior",
+    ({ kind, personInput, expected }) => {
+      expect(turnBehavior({ kind, personInput })).toEqual(expected);
+    },
+  );
+
+  it("rejects a person's input on a task", () => {
+    expect(() => turnBehavior({ kind: "task", personInput: true })).toThrow(
+      "A task Conversation cannot have a person's input",
+    );
+  });
+
+  it("counts only Slack and web input as a person's", () => {
+    expect(
+      ["slack", "web", "event", "local", undefined].map(isPersonInput),
+    ).toEqual([true, true, false, false, false]);
+  });
+});

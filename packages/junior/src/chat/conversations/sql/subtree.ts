@@ -21,6 +21,10 @@ export function conversationSubtree(conversationIds: readonly string[]): SQL {
     sql`, `,
   );
   // UNION, not UNION ALL, so that bad parent links cannot loop forever.
+  // `|| ''` keeps the root check out of the index condition, so Postgres
+  // finds the children of each Conversation by parent. With a plain `=` it
+  // can look them up by root instead, which reads the whole tree for each
+  // Conversation in it. `|| ''` keeps null as null, so the check is the same.
   return sql`(
     with recursive tree(scope_conversation_id, conversation_id, root_conversation_id) as (
       select selected.conversation_id, selected.conversation_id, selected.root_conversation_id
@@ -31,7 +35,7 @@ export function conversationSubtree(conversationIds: readonly string[]): SQL {
       from junior_conversations child
       join tree
         on child.parent_conversation_id = tree.conversation_id
-        and child.root_conversation_id = tree.root_conversation_id
+        and (child.root_conversation_id || '') = tree.root_conversation_id
     )
     select scope_conversation_id, conversation_id from tree
   ) conversation_subtree`;

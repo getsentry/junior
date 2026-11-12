@@ -91,6 +91,8 @@ export async function readConversationRunMetrics(
 export async function replaceConversationMetrics(
   executor: JuniorSqlDatabase,
   args: {
+    /** Identity of the Turn Actor. People spend reads it. */
+    actorIdentityId?: string;
     conversationId: string;
     runId: string;
     occurredAtMs: number;
@@ -131,6 +133,7 @@ export async function replaceConversationMetrics(
       ? []
       : [
           {
+            actorIdentityId: args.actorIdentityId ?? null,
             conversationId: args.conversationId,
             runId: args.runId,
             metric,

@@ -54,7 +54,7 @@ describe("Automation lifecycle API", () => {
             await patch({
               kind,
               revision: initial.revision,
-              instruction: "Stale edit",
+              task: { kind: "instruction", instruction: "Stale edit" },
             })
           ).status,
         ).toBe(409);

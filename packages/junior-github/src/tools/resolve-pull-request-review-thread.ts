@@ -6,6 +6,10 @@ import {
   type PluginToolOutput,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import {
+  RESOLVE_REVIEW_THREAD,
+  REVIEW_THREAD_OWNERSHIP,
+} from "../graphql-documents.js";
 import { botUserIdFromEmail } from "../webhooks/ownership.js";
 import {
   githubApi,
@@ -93,26 +97,12 @@ export function createGitHubResolvePullRequestReviewThreadTool(
         throw new Error("GitHub App bot identity is not configured.");
       }
 
-      const query = `query ReviewThreadOwnership($threadId: ID!) {
-        node(id: $threadId) {
-          ... on PullRequestReviewThread {
-            id
-            isResolved
-            pullRequest {
-              number
-              repository { nameWithOwner }
-              author { ... on Bot { databaseId } }
-            }
-          }
-        }
-      }`;
       const lookupResponse = await githubApi(ctx.egress, {
         operation: "github.pull.review-thread.get",
         method: "POST",
         path: "/graphql",
         body: {
-          operationName: "ReviewThreadOwnership",
-          query,
+          ...REVIEW_THREAD_OWNERSHIP,
           variables: { threadId: parsedInput.data.thread_id },
         },
       });
@@ -184,19 +174,12 @@ export function createGitHubResolvePullRequestReviewThreadTool(
         };
       }
 
-      // Same mutation shape as `gh api graphql` resolveReviewThread.
-      const mutation = `mutation ResolveReviewThread($threadId: ID!) {
-        resolveReviewThread(input: {threadId: $threadId}) {
-          thread { id isResolved }
-        }
-      }`;
       const resolveResponse = await githubApi(ctx.egress, {
         operation: `github.pull.review-thread.resolve:${repo.ref.toLowerCase()}`,
         method: "POST",
         path: "/graphql",
         body: {
-          operationName: "ResolveReviewThread",
-          query: mutation,
+          ...RESOLVE_REVIEW_THREAD,
           variables: { threadId: thread.id },
         },
       });

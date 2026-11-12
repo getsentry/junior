@@ -27,14 +27,18 @@ import {
 import { createGoogleSetupPage, createGoogleSetupRoutes } from "./setup-routes";
 import type { GoogleDb } from "./store";
 import { createCancelCalendarEventTool } from "./tools/cancel-event";
+import { createCreateGoogleDocTool } from "./tools/create-doc";
 import { createCreateCalendarEventTool } from "./tools/create-event";
 import { createFindMeetingTimesTool } from "./tools/find-meeting-times";
+import { createInsertGoogleDocContentTool } from "./tools/insert-doc-content";
 import { createListGoogleFileCommentsTool } from "./tools/list-file-comments";
 import { createListCalendarEventsTool } from "./tools/list-events";
 import { createReadGoogleDocTool } from "./tools/read-doc";
 import { createReadMeetingTranscriptTool } from "./tools/read-meeting-transcript";
 import { createReadGoogleSheetTool } from "./tools/read-sheet";
 import { createReadGoogleSlidesTool } from "./tools/read-slides";
+import { createReplaceGoogleDocContentTool } from "./tools/replace-doc-content";
+import { createReplaceGoogleDocTextTool } from "./tools/replace-doc-text";
 import { createSearchGoogleFilesTool } from "./tools/search-files";
 import { createUpdateCalendarEventTool } from "./tools/update-event";
 
@@ -46,7 +50,7 @@ export function googlePlugin(): PluginRegistration {
       name: "google",
       displayName: "Google Workspace",
       description:
-        "Google Calendar scheduling, Meet transcripts, and Google Docs, Sheets, and Slides reading as your own Google Workspace account",
+        "Google Calendar scheduling, Meet transcripts, Google Docs writing, and Google Docs, Sheets, and Slides reading as your own Google Workspace account",
       domains: GOOGLE_API_DOMAINS,
       envVars: {
         [GOOGLE_CLIENT_ID_ENV]: {},
@@ -83,13 +87,18 @@ export function googlePlugin(): PluginRegistration {
         return {
           cancelCalendarEvent: createCancelCalendarEventTool(toolContext),
           createCalendarEvent: createCreateCalendarEventTool(toolContext),
+          createGoogleDoc: createCreateGoogleDocTool(toolContext),
           findMeetingTimes: createFindMeetingTimesTool(toolContext),
+          insertGoogleDocContent: createInsertGoogleDocContentTool(toolContext),
           listCalendarEvents: createListCalendarEventsTool(toolContext),
           listGoogleFileComments: createListGoogleFileCommentsTool(toolContext),
           readGoogleDoc: createReadGoogleDocTool(toolContext),
           readGoogleSheet: createReadGoogleSheetTool(toolContext),
           readGoogleSlides: createReadGoogleSlidesTool(toolContext),
           readMeetingTranscript: createReadMeetingTranscriptTool(toolContext),
+          replaceGoogleDocContent:
+            createReplaceGoogleDocContentTool(toolContext),
+          replaceGoogleDocText: createReplaceGoogleDocTextTool(toolContext),
           searchGoogleFiles: createSearchGoogleFilesTool(toolContext),
           updateCalendarEvent: createUpdateCalendarEventTool(toolContext),
         };

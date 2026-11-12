@@ -91,7 +91,7 @@ export function ConversationCatchUpCard() {
           <Button
             className="-mb-1 h-7 justify-self-center gap-1.5 px-2 text-xs"
             onClick={jumpToLatest}
-            variant="quiet"
+            variant="ghost"
           >
             <ArrowDown aria-hidden="true" size={14} strokeWidth={2} />
             Jump to latest

@@ -35,7 +35,7 @@ describe("spawnAgent", () => {
     );
   });
 
-  it("passes the agent type through", async () => {
+  it("passes the agent type and fork through", async () => {
     const spawnAgent = vi.fn().mockResolvedValue({
       childConversationId: "agent:one",
     });
@@ -43,7 +43,8 @@ describe("spawnAgent", () => {
 
     await tool.execute!(
       tool.prepareArguments!({
-        agent_type: "fork",
+        agent_type: "explore",
+        fork: true,
         task: "Check the other path.",
         title: "Other path",
       }),
@@ -51,7 +52,8 @@ describe("spawnAgent", () => {
     );
     expect(spawnAgent).toHaveBeenCalledWith(
       {
-        agentType: "fork",
+        agentType: "explore",
+        fork: true,
         task: "Check the other path.",
         title: "Other path",
       },
