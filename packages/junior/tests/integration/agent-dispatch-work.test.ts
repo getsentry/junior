@@ -10,9 +10,7 @@ import {
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { createAgentInvocation } from "@/chat/agent-invocations/create";
-import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
-import { completeAgentInvocation } from "@/chat/agent-invocations/store";
-import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
+import { enqueueChildResultToParent } from "@/chat/agent-invocations/result";
 import { upsertIdentity } from "@/chat/identities/sql";
 import {
   readScheduledAutomation,
@@ -28,7 +26,10 @@ import {
   LOST_WORKER_RESUME_MESSAGE,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
-import { persistConversationMessages } from "@/chat/conversations/messages";
+import {
+  hydrateConversationMessages,
+  persistConversationMessages,
+} from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { getUserMessageInstructionText } from "@/chat/pi/transcript";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
@@ -352,38 +353,8 @@ describe("agent dispatch conversation work", () => {
       channel: destination.channelId,
       thread_ts: "1700000000.000200",
     });
-
-    // Watch Event Turns reply in the run's thread, or stay quiet.
-    await watchEvent("watch-merged", "pull_request.merged");
-    await watchEvent("watch-no-reply", "pull_request.comment.created");
-    await watchEvent("watch-no-answer", "pull_request.checks.failed");
-    expect(threadPosts()).toEqual(["Scheduled digest", "The change merged."]);
-    expect(modelStream).toHaveBeenCalledTimes(6);
-
-    // A child result Turn replies in the run's thread.
-    const child = await createAgentInvocation({
-      actor: { name: "automation-run", platform: "system" },
-      destination,
-      idempotencyKey: "watch-follow-up-child",
-      input: "Check the release.",
-      parentConversationId: conversationId,
-      reasoningLevel: "medium",
-    });
-    const childResult = (await completeAgentInvocation({
-      invocationId: child.invocationId,
-      result: "The release is green.",
-      status: "completed",
-    })) as TerminalAgentInvocation;
-    await enqueueAgentInvocationResult(childResult, {
-      nowMs: Date.now() - 60_000,
-      queue,
-      state,
-    });
-    await processNext();
-    expect(threadPosts().at(-1)).toBe("The child agent finished.");
-
-    // A person's reply in the run's thread runs in the run's Conversation and
-    // gets its final response.
+    // The first reply binds the thread, so a person's reply before any later
+    // Turn reaches this Conversation.
     await expect(
       getConversationStore().getConversationIdByProviderConversation({
         provider: "slack",
@@ -392,6 +363,42 @@ describe("agent dispatch conversation work", () => {
         providerTenantId: destination.teamId,
       }),
     ).resolves.toBe(conversationId);
+
+    // Watch Event Turns reply in the run's thread, or stay quiet.
+    await watchEvent("watch-merged", "pull_request.merged");
+    await watchEvent("watch-no-reply", "pull_request.comment.created");
+    await watchEvent("watch-no-answer", "pull_request.checks.failed");
+    expect(threadPosts()).toEqual(["Scheduled digest", "The change merged."]);
+    expect(modelStream).toHaveBeenCalledTimes(6);
+
+    // A Turn on a child's reply replies in the run's thread.
+    const child = await createAgentInvocation({
+      actor: { name: "automation-run", platform: "system" },
+      destination,
+      idempotencyKey: "watch-follow-up-child",
+      input: "Check the release.",
+      parentConversationId: conversationId,
+      reasoningLevel: "medium",
+    });
+    await enqueueChildResultToParent({
+      nowMs: Date.now() - 60_000,
+      queue,
+      result: {
+        kind: "reply",
+        reply: {
+          text: "The release is green.",
+          toolCallId: "call-child-reply",
+        },
+      },
+      messageKey: "call-child-reply",
+      sender: child,
+      state,
+    });
+    await processNext();
+    expect(threadPosts().at(-1)).toBe("The child agent finished.");
+
+    // A person's reply in the run's thread runs in the run's Conversation and
+    // gets its final response.
     await handleSlackWebhookAndFlush({
       request: slackWebhookRequest(
         slackEnvelope({
@@ -423,6 +430,19 @@ describe("agent dispatch conversation work", () => {
   }, 30_000);
 
   it("sends successful work to each outcome destination in order", async () => {
+    // A person's Conversation started in the second outcome's thread.
+    const personThread = {
+      provider: "slack",
+      providerConversationId: "1700000000.000400",
+      providerDestinationId: "C456",
+      providerTenantId: destination.teamId,
+    };
+    const personConversationId = "slack:C456:1700000000.000400";
+    await getConversationStore().claimProviderConversation({
+      ...personThread,
+      atMs: Date.now(),
+      conversationId: personConversationId,
+    });
     const dispatch = await createDispatch(
       "multiple-message-outcomes",
       undefined,
@@ -436,7 +456,11 @@ describe("agent dispatch conversation work", () => {
         },
         {
           action: "send_message",
-          destination: { ...destination, channelId: "C456" },
+          destination: {
+            ...destination,
+            channelId: "C456",
+            threadTs: "1700000000.000400",
+          },
         },
       ],
     );
@@ -454,6 +478,21 @@ describe("agent dispatch conversation work", () => {
     expect(
       slackApiOutbox.messages().map((message) => message.params.channel),
     ).toEqual(["D123", "C456"]);
+    // The run stores its reply, and the thread stays with the person's
+    // Conversation.
+    const stored = coerceThreadConversationState({});
+    await hydrateConversationMessages({
+      conversation: stored,
+      conversationId: getDispatchConversationId(dispatch),
+    });
+    expect(stored.messages).toContainEqual(
+      expect.objectContaining({ role: "assistant", text: "Work complete" }),
+    );
+    await expect(
+      getConversationStore().getConversationIdByProviderConversation(
+        personThread,
+      ),
+    ).resolves.toBe(personConversationId);
   });
 
   it("posts nothing for a run without a reply or outcomes, also when it fails", async () => {

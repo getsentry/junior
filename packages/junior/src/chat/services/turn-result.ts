@@ -80,10 +80,10 @@ export interface TurnResultInput {
    */
   answer?: TurnAnswer | "missing";
   /**
-   * The dispatch Turn of an Automation run fails without an answer, so the
-   * run history shows it. Other gated Turns stay quiet.
+   * The error that fails a gated Turn without an answer. Without it, the Turn
+   * stays quiet.
    */
-  missingAnswerFails?: boolean;
+  missingAnswerError?: string;
 }
 
 /** Process raw agent messages into a structured AgentRunResult. */
@@ -277,14 +277,14 @@ function buildGatedTurnResult(
     ? "success"
     : stopReason === "error"
       ? "provider_error"
-      : input.missingAnswerFails
+      : input.missingAnswerError
         ? "execution_failure"
         : "success";
   const errorMessage =
     outcome === "provider_error"
       ? lastAssistant?.errorMessage
       : outcome === "execution_failure"
-        ? "Automation run ended without an answer."
+        ? input.missingAnswerError
         : undefined;
   const reply = answered && "reply" in answer ? answer.reply : undefined;
 

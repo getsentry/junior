@@ -12,6 +12,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { EventRegistrationInput } from "@/chat/events/catalog";
+import type { SlackBotId } from "@/chat/slack/ids";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 /** Core-owned event namespace for Slack Events. Not a plugin publisher. */
@@ -36,7 +37,7 @@ const CHANNEL_MESSAGE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   userId: {
     kind: "string",
     description:
-      "Slack user ID of the message author. Required to run on bot posts, such as alert bots.",
+      "Slack user ID of the message author, or the bot ID (B…) of a bot post that has no user, such as an app integration. Required to run on bot posts.",
   },
   location: {
     kind: "string",
@@ -70,7 +71,7 @@ export function slackChannelMessageEvents(): EventRegistrationInput {
       [MESSAGE_POSTED_EVENT]: {
         reach: { anyOf: ["channelId"] },
         guidance:
-          "A person or bot posted a new message in this channel. A bot post runs the automation only when match names the bot in user_id. A thread reply runs it only when match.location names thread. A reply goes in the message's Slack thread. If the instructions do not apply to this message, end with no action.",
+          "A person or bot posted a new message in this channel. A bot post runs the automation only when match names the bot in user_id, by its user ID or, for a post with no user, its bot ID. A thread reply runs it only when match.location names thread. A reply goes in the message's Slack thread. If the instructions do not apply to this message, end with no action.",
       },
     },
     limits: {
@@ -144,6 +145,14 @@ export function requireSlackChannelMessageScope(
 }
 
 /**
+ * Author of a channel message: a Slack user, or the bot of a post that has a
+ * bot ID and no user, such as an app integration.
+ */
+export type SlackChannelMessageAuthor =
+  | { kind: "user"; userId: string }
+  | { kind: "bot"; botId: SlackBotId };
+
+/**
  * Build the Event for one new channel message or thread reply, or nothing.
  *
  * Slackbot posts do not count. Bot posts are marked with `postedByBot`, so
@@ -151,17 +160,21 @@ export function requireSlackChannelMessageScope(
  * the `thread` location, so only automations that name it can run on them.
  */
 export function slackChannelMessageEvent(input: {
+  author: SlackChannelMessageAuthor;
   botId?: string;
   channelId: string;
   subtype?: string;
   text?: string;
   threadTs?: string;
   ts: string;
-  userId: string;
 }): EventInput | undefined {
-  if (input.userId === "USLACKBOT") return undefined;
+  const { author } = input;
+  if (author.kind === "user" && author.userId === "USLACKBOT") return undefined;
   if (!CHANNEL_ID_PATTERN.test(input.channelId)) return undefined;
-  const postedByBot = Boolean(input.botId || input.subtype === "bot_message");
+  const postedByBot =
+    author.kind === "bot" ||
+    Boolean(input.botId || input.subtype === "bot_message");
+  const userId = author.kind === "bot" ? author.botId : author.userId;
   const threadTs =
     input.threadTs && input.threadTs !== input.ts ? input.threadTs : undefined;
   return {
@@ -169,13 +182,13 @@ export function slackChannelMessageEvent(input: {
     eventType: MESSAGE_POSTED_EVENT,
     identifier: input.channelId,
     occurredAtMs: Math.floor(Number(input.ts) * 1000),
-    trustedSummary: `${postedByBot ? "The bot " : ""}<@${input.userId}> posted a new ${threadTs ? `thread reply under message ${threadTs}` : "message"} in <#${input.channelId}>.`,
+    trustedSummary: `${postedByBot ? "The bot " : ""}${author.kind === "bot" ? author.botId : `<@${author.userId}>`} posted a new ${threadTs ? `thread reply under message ${threadTs}` : "message"} in <#${input.channelId}>.`,
     data: {
       channelId: input.channelId,
       location: threadTs ? THREAD_LOCATION : CHANNEL_LOCATION,
       messageTs: input.ts,
       ...(threadTs ? { threadTs } : undefined),
-      userId: input.userId,
+      userId,
       ...(postedByBot ? { postedByBot: true } : undefined),
     },
     ...(input.text?.trim() ? { untrustedText: input.text } : undefined),

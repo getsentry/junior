@@ -3,6 +3,7 @@ import { TEST_USER_ID } from "../../fixtures/slack/factories/ids";
 import {
   slackOk,
   authTestOk,
+  botsInfoOk,
   teamInfoOk,
   canvasesAccessSetOk,
   canvasesCreateOk,
@@ -39,6 +40,7 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "assistant.search.context",
   "assistant.threads.setStatus",
   "auth.test",
+  "bots.info",
   "team.info",
   "assistant.threads.setSuggestedPrompts",
   "assistant.threads.setTitle",
@@ -276,6 +278,12 @@ function defaultSlackApiResponse(
       return { body: filesGetUploadUrlOk() };
     case "files.completeUploadExternal":
       return { body: filesCompleteUploadOk() };
+    case "bots.info":
+      return {
+        body: botsInfoOk({
+          botId: typeof params.bot === "string" ? params.bot : undefined,
+        }),
+      };
     case "users.info":
       return {
         body: usersInfoOk({

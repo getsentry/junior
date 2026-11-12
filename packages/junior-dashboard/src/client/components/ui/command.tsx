@@ -18,7 +18,7 @@ function Command({
     <CommandPrimitive
       data-slot="command"
       className={cn(
-        "flex size-full min-h-0 flex-col overflow-hidden text-dashboard-text",
+        "flex size-full min-h-0 flex-col overflow-hidden text-foreground",
         className,
       )}
       {...props}
@@ -69,12 +69,12 @@ function CommandInput({
     >
       <Search
         aria-hidden="true"
-        className="size-4 shrink-0 text-dashboard-text-muted"
+        className="size-4 shrink-0 text-muted-foreground"
       />
       <CommandPrimitive.Input
         data-slot="command-input"
         className={cn(
-          "h-12 min-w-0 flex-1 border-0 bg-transparent font-sans text-sm text-dashboard-text outline-none placeholder:text-dashboard-text-faint",
+          "h-12 min-w-0 flex-1 border-0 bg-transparent font-sans text-sm text-foreground outline-none placeholder:text-dashboard-text-faint",
           className,
         )}
         {...props}
@@ -110,7 +110,7 @@ function CommandEmpty({
     <CommandPrimitive.Empty
       data-slot="command-empty"
       className={cn(
-        "px-3 py-6 text-center font-sans text-sm text-dashboard-text-muted",
+        "px-3 py-6 text-center font-sans text-sm text-muted-foreground",
         className,
       )}
       {...props}
@@ -127,7 +127,7 @@ function CommandGroup({
     <CommandPrimitive.Group
       data-slot="command-group"
       className={cn(
-        "**:[[cmdk-group-heading]]:px-3 **:[[cmdk-group-heading]]:pt-2 **:[[cmdk-group-heading]]:pb-1 **:[[cmdk-group-heading]]:font-sans **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-dashboard-text-muted",
+        "**:[[cmdk-group-heading]]:px-3 **:[[cmdk-group-heading]]:pt-2 **:[[cmdk-group-heading]]:pb-1 **:[[cmdk-group-heading]]:font-sans **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground",
         className,
       )}
       {...props}
@@ -144,7 +144,7 @@ function CommandItem({
     <CommandPrimitive.Item
       data-slot="command-item"
       className={cn(
-        "flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 font-sans text-sm text-dashboard-text outline-none select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-dashboard-fill-hover [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-dashboard-text-muted",
+        "flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 font-sans text-sm text-foreground outline-none select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-[selected=true]:bg-dashboard-fill-hover [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground",
         className,
       )}
       {...props}

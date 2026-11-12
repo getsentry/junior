@@ -1,5 +1,6 @@
 import type {
   AutomationExecution,
+  AutomationRun,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
 import type { StatusChipTone } from "../../components/StatusChip";
@@ -54,4 +55,17 @@ export function automationRunTitle(
     run.title?.trim() ||
     (run.conversationId ? automationTitle : "No conversation")
   );
+}
+
+/** Name the Automation on one of its runs, so run details can show it. */
+export function automationRunOf(
+  execution: AutomationExecution,
+  automation: AutomationSummary,
+): AutomationRun {
+  return {
+    ...execution,
+    automationId: automation.id,
+    automationTitle: automation.title,
+    kind: automation.kind,
+  };
 }

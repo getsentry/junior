@@ -20,6 +20,7 @@ import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record"
 import {
   getDefaultRedisStateAdapterFor,
   getStateAdapter,
+  getStateValues,
 } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { logException } from "@/chat/logging";
@@ -1009,7 +1010,16 @@ async function readConversation(
   state: StateAdapter,
   conversationId: string,
 ): Promise<ConversationExecutionState | undefined> {
-  const raw = await state.get(conversationKey(conversationId));
+  return conversationFromValue(
+    conversationId,
+    await state.get(conversationKey(conversationId)),
+  );
+}
+
+function conversationFromValue(
+  conversationId: string,
+  raw: unknown,
+): ConversationExecutionState | undefined {
   if (raw == null) {
     return undefined;
   }
@@ -1161,6 +1171,28 @@ export async function getConversationWorkState(args: {
   return conversation ? conversationWorkState(conversation) : undefined;
 }
 
+/**
+ * Return the persisted work records of several Conversations in one state
+ * read. A Conversation with no record has no entry.
+ */
+export async function getConversationWorkStates(
+  conversationIds: readonly string[],
+): Promise<Map<string, ConversationWorkState>> {
+  const state = await getConnectedState();
+  const values = await getStateValues(
+    state,
+    conversationIds.map(conversationKey),
+  );
+  const workStates = new Map<string, ConversationWorkState>();
+  for (const [index, conversationId] of conversationIds.entries()) {
+    const conversation = conversationFromValue(conversationId, values[index]);
+    if (conversation) {
+      workStates.set(conversationId, conversationWorkState(conversation));
+    }
+  }
+  return workStates;
+}
+
 /** Count mailbox messages that have not yet reached the conversation event log. */
 export function countPendingConversationMessages(
   conversation: ConversationExecutionState,
@@ -1208,6 +1240,7 @@ async function appendInboundMessageWithAdmission(args: {
   exclusive: boolean;
   message: InboundMessage;
   nowMs?: number;
+  renderText?: RenderInboundText;
   state?: StateAdapter;
 }): Promise<AppendExclusiveInboundMessageResult> {
   const nowMs = args.nowMs ?? now();
@@ -1252,6 +1285,33 @@ async function appendInboundMessageWithAdmission(args: {
       if (args.exclusive && hasRunnableWork(current)) {
         return { status: "active" };
       }
+      const text = args.renderText
+        ? await args.renderText(current.execution.inboundMessageIds)
+        : args.message.input.text;
+      if (text === undefined) {
+        // Record the id, so a repeat append of the dropped message is a
+        // duplicate too.
+        await writeConversation(
+          state,
+          lock,
+          withExecutionUpdate(
+            current,
+            {
+              ...current.execution,
+              inboundMessageIds: [
+                ...current.execution.inboundMessageIds,
+                args.message.inboundMessageId,
+              ],
+            },
+            nowMs,
+          ),
+        );
+        return { status: "duplicate" };
+      }
+      const message: InboundMessage = {
+        ...args.message,
+        input: { ...args.message.input, text },
+      };
 
       let status: ExecutionStatus;
       if (current.execution.lease) {
@@ -1284,7 +1344,7 @@ async function appendInboundMessageWithAdmission(args: {
             ],
             pendingMessages: [
               ...current.execution.pendingMessages,
-              args.message,
+              message,
             ].sort(compareMessages),
           },
           nowMs,
@@ -1295,10 +1355,21 @@ async function appendInboundMessageWithAdmission(args: {
   );
 }
 
+/**
+ * Render the text of one inbound message from the ids that already reached
+ * its mailbox. It runs under the mailbox lock, so two appends that depend on
+ * each other see each other. Undefined drops the message for good: its id
+ * is recorded and nothing is appended, as for a duplicate.
+ */
+export type RenderInboundText = (
+  inboundMessageIds: readonly string[],
+) => Promise<string | undefined>;
+
 /** Persist one inbound message idempotently in its conversation mailbox. */
 export async function appendInboundMessage(args: {
   message: InboundMessage;
   nowMs?: number;
+  renderText?: RenderInboundText;
   state?: StateAdapter;
 }): Promise<AppendInboundMessageResult> {
   const result = await appendInboundMessageWithAdmission({
@@ -1993,39 +2064,61 @@ export async function cancelHumanFacingPendingMessages(args: {
   cancelledInboundMessageIds: string[];
   cancelledMessages: InboundMessage[];
 }> {
-  const nowMs = args.nowMs ?? now();
   const requestedIds =
     args.inboundMessageIds === undefined
       ? undefined
       : new Set(args.inboundMessageIds);
+  const cancelledMessages = await removePendingMessages(
+    args,
+    (message) =>
+      isPersonInput(message.source) &&
+      (requestedIds === undefined ||
+        requestedIds.has(message.inboundMessageId)) &&
+      (args.receivedBeforeMs === undefined ||
+        message.receivedAtMs <= args.receivedBeforeMs),
+  );
+  return {
+    cancelledInboundMessageIds: cancelledMessages.map(
+      (message) => message.inboundMessageId,
+    ),
+    cancelledMessages,
+  };
+}
+
+/**
+ * Drop pending mailbox rows by id without a worker lease, such as unread
+ * input that a stop skips. Returns the ids that were dropped.
+ */
+export async function dropPendingMessages(args: {
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<string[]> {
+  const ids = new Set(args.inboundMessageIds);
+  const dropped = await removePendingMessages(args, (message) =>
+    ids.has(message.inboundMessageId),
+  );
+  return dropped.map((message) => message.inboundMessageId);
+}
+
+async function removePendingMessages(
+  args: { conversationId: string; nowMs?: number; state?: StateAdapter },
+  shouldRemove: (message: InboundMessage) => boolean,
+): Promise<InboundMessage[]> {
+  const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
     if (!current) {
-      return { cancelledInboundMessageIds: [], cancelledMessages: [] };
+      return [];
     }
-
-    const cancelledInboundMessageIds: string[] = [];
-    const cancelledMessages: InboundMessage[] = [];
-    const pendingMessages: InboundMessage[] = [];
-    for (const message of current.execution.pendingMessages) {
-      const isRequested =
-        requestedIds === undefined ||
-        requestedIds.has(message.inboundMessageId);
-      const isInSnapshot =
-        args.receivedBeforeMs === undefined ||
-        message.receivedAtMs <= args.receivedBeforeMs;
-      if (isPersonInput(message.source) && isRequested && isInSnapshot) {
-        cancelledInboundMessageIds.push(message.inboundMessageId);
-        cancelledMessages.push(message);
-        continue;
-      }
-      pendingMessages.push(message);
+    const removed = current.execution.pendingMessages.filter(shouldRemove);
+    if (removed.length === 0) {
+      return removed;
     }
-
-    if (cancelledInboundMessageIds.length === 0) {
-      return { cancelledInboundMessageIds, cancelledMessages };
-    }
-
+    const pendingMessages = current.execution.pendingMessages.filter(
+      (message) => !removed.includes(message),
+    );
     const becomesIdle =
       current.execution.status === "pending" && pendingMessages.length === 0;
 
@@ -2048,8 +2141,7 @@ export async function cancelHumanFacingPendingMessages(args: {
         nowMs,
       ),
     );
-
-    return { cancelledInboundMessageIds, cancelledMessages };
+    return removed;
   });
 }
 

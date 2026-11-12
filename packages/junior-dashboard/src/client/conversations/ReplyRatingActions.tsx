@@ -175,6 +175,7 @@ export function ReplyRatingActions(props: {
                 <PopoverTrigger
                   render={
                     <Button
+                      variant="ghost"
                       aria-label="Bad reply"
                       aria-pressed={rating === "bad"}
                       data-slot="message-action"
@@ -220,7 +221,7 @@ export function ReplyRatingActions(props: {
               <Button
                 className="justify-self-end"
                 type="submit"
-                variant="primary"
+                variant="default"
               >
                 Send
               </Button>

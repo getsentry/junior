@@ -23,8 +23,20 @@ import { sanitizeAssistantText } from "@/chat/services/assistant-reply";
 /** Model-facing tool that sets the reply of a gated Turn. */
 export const REPLY_TOOL_NAME = "reply";
 
-/** The `reply` call of a gated Turn. */
-export type Reply = { text: string };
+/** Return whether a tool ends a gated Turn with its answer. */
+export function isAnswerToolName(name: string): boolean {
+  return (
+    name === REPLY_TOOL_NAME ||
+    name === NO_REPLY_TOOL_NAME ||
+    name === REPORT_BLOCKED_TOOL_NAME
+  );
+}
+
+/**
+ * The `reply` call of a gated Turn. Its tool call id keys the delivery, so a
+ * retried delivery does not send it twice.
+ */
+export type Reply = { text: string; toolCallId: string };
 
 /** The answer that ended a gated Turn. */
 export type TurnAnswer =
@@ -54,11 +66,14 @@ const legacyResultSchema = z.discriminatedUnion("result", [
 function parseAnswer(
   toolName: string | undefined,
   details: unknown,
+  toolCallId: string,
 ): TurnAnswer | undefined {
   switch (toolName) {
     case REPLY_TOOL_NAME: {
       const parsed = replySchema.safeParse(details);
-      return parsed.success ? { reply: parsed.data } : undefined;
+      return parsed.success
+        ? { reply: { text: parsed.data.text, toolCallId } }
+        : undefined;
     }
     case NO_REPLY_TOOL_NAME: {
       const parsed = noReplySchema.safeParse(details);
@@ -73,7 +88,7 @@ function parseAnswer(
       if (!parsed.success) return undefined;
       switch (parsed.data.result) {
         case "send_message":
-          return { reply: { text: parsed.data.message } };
+          return { reply: { text: parsed.data.message, toolCallId } };
         case "no_action":
           return { noReply: {} };
         case "misconfigured":
@@ -99,6 +114,7 @@ export function readTurnAnswer(
     const answer = parseAnswer(
       normalizeToolNameFromResult(message),
       message.details,
+      message.toolCallId,
     );
     if (answer) return answer;
   }

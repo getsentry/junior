@@ -7,6 +7,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  not,
   or,
   sql,
   type SQL,
@@ -21,7 +22,6 @@ import {
   juniorConversationAnnotations,
   juniorConversationBriefs,
   juniorConversationParticipants,
-  juniorConversationReadPositions,
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
@@ -45,7 +45,6 @@ import {
   conversationRecordJoins,
 } from "./record";
 import { readFeedThreads } from "./threads";
-import { readUnreadConversationIds, unreadReplySql } from "./unread";
 import { conversationFeedSchema } from "../schema/conversation-feed";
 import type { ConversationFeed } from "../schema/conversation-feed";
 import {
@@ -69,6 +68,11 @@ import { readConversationFeedBriefs } from "./feed-brief";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { attachActivityPreviewMentions } from "./mentions";
 import { readConversationParticipants } from "./participants";
+import {
+  decodeConversationFeedCursor,
+  encodeConversationFeedCursor,
+  type ConversationFeedCursor,
+} from "./feed-cursor";
 
 const CONVERSATION_FEED_LIMIT = 50;
 
@@ -134,25 +138,33 @@ async function conversationRows(
   {
     codeRepository,
     conversationIds,
+    cursor,
     filter,
     includePrivateBriefs = false,
     limit,
+    pinnedForUserId,
     query,
     status,
   }: {
     codeRepository?: { id: string; viewerUserId?: string };
     /** Read only these root conversations. */
     conversationIds?: string[];
+    /** Read only rows after this feed position. */
+    cursor?: ConversationFeedCursor;
     filter: ConversationFeedMembership | undefined;
     includePrivateBriefs?: boolean;
-    limit: number;
+    limit?: number;
+    /** Read only the rows that this user pinned (`true`) or did not pin. */
+    pinnedForUserId?: { pinned: boolean; userId: string };
     query?: string;
     status: "active" | "archived" | "all";
   },
 ) {
-  return db
+  const rows = db
     .select({
       ...conversationRecordColumns,
+      // Keep microseconds so the next page starts exactly after this row.
+      activityCursor: sql<string>`to_char(${juniorConversations.lastActivityAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
       // A row with no stored time yet, from before the column, reads it
       // from its events. `coalesce` skips that read for every other row.
       lastMessageAt:
@@ -174,6 +186,15 @@ async function conversationRows(
         conversationFeedMembershipFilter(status, filter),
         conversationIds
           ? inArray(juniorConversations.conversationId, conversationIds)
+          : undefined,
+        pinnedForUserId
+          ? pinnedForUserId.pinned
+            ? conversationPinnedForUser(pinnedForUserId.userId)
+            : not(conversationPinnedForUser(pinnedForUserId.userId))
+          : undefined,
+        // Match the sort below: newer activity first, then the smaller id.
+        cursor
+          ? sql<boolean>`(${juniorConversations.lastActivityAt} < ${cursor.at}::timestamptz or (${juniorConversations.lastActivityAt} = ${cursor.at}::timestamptz and ${juniorConversations.conversationId} > ${cursor.conversationId}))`
           : undefined,
         codeRepository
           ? conversationCodeRepositoryFilter(
@@ -202,21 +223,18 @@ async function conversationRows(
       ),
     )
     .orderBy(
-      // Pins sort first so an old pinned root stays inside the feed limit.
-      ...(filter?.kind === "viewer" && status === "active"
-        ? [desc(conversationPinnedForUser(filter.userId))]
-        : []),
       desc(juniorConversations.lastActivityAt),
       asc(juniorConversations.conversationId),
     )
-    .limit(limit);
+    .$dynamic();
+  return limit === undefined ? rows : rows.limit(limit);
 }
 
 type FeedRow = Awaited<ReturnType<typeof conversationRows>>[number];
 
 /**
  * Read the viewer's active conversations that wait on them but fall outside
- * the newest page. Needs you shows every conversation that waits on the
+ * the first page. Needs you shows every conversation that waits on the
  * viewer, so an old one must come back to the feed.
  */
 async function waitingRowsOutsidePage(
@@ -271,8 +289,6 @@ const feedAnnotated = alias(juniorConversations, "feed_annotated");
  * token holds its minute. The end of the Turn moves the status.
  * The rows are in feed order, so a move that reorders them moves the token.
  * The newest Message of each role stands for the preview and participants.
- * The row shows only whether a reply is unread, so a scroll that moves the
- * read position does not move the token.
  * Threads and annotations show from the whole tree. Waiting roots outside
  * the page move the Review items token.
  */
@@ -281,7 +297,6 @@ export function conversationFeedVersionQuery(
   userId: string,
 ) {
   const pin = juniorConversationParticipants;
-  const read = juniorConversationReadPositions;
   const conversationId = juniorConversations.conversationId;
   // The fields of each nested Thread row. An archive anywhere in the tree
   // can hide Threads under it.
@@ -337,9 +352,6 @@ export function conversationFeedVersionQuery(
         sql<number>`(${latestMessageSeqQuery(db, "user", conversationId)})`.as(
           "user_seq",
         ),
-      unread: unreadReplySql(db, userId, conversationId, read.lastReadSeq).as(
-        "unread",
-      ),
       threads: sql<string>`(${tree})`.as("threads"),
       annotations: sql<string>`(${annotations})`.as("annotations"),
     })
@@ -347,10 +359,6 @@ export function conversationFeedVersionQuery(
     .leftJoin(
       pin,
       and(eq(pin.rootConversationId, conversationId), eq(pin.userId, userId)),
-    )
-    .leftJoin(
-      read,
-      and(eq(read.conversationId, conversationId), eq(read.userId, userId)),
     )
     .where(
       and(
@@ -379,7 +387,6 @@ export function conversationFeedVersionQuery(
     status: byRow(page.executionStatus, page.stoppedAt),
     activity: byRow(page.activity),
     messages: byRow(page.assistantSeq, page.userSeq),
-    unread: byRow(page.unread),
     threads: byRow(page.threads),
     annotations: byRow(page.annotations),
   };
@@ -424,11 +431,17 @@ function conversationFeedFilter(options: {
  * `codeRepositoryId` replaces membership with every root linked to that
  * repository's code changes. Private roots appear only for their members, and
  * per-person archive state does not hide rows.
+ *
+ * Each page holds up to `limit` rows by activity, and `nextCursor` reads the
+ * next one. A row with new activity moves to an earlier page, so clients
+ * remove repeats when they join pages.
  */
 export async function readConversationFeedFromSql(
   options: {
     actorEmail?: string;
     codeRepositoryId?: string;
+    /** `nextCursor` of the previous page. */
+    cursor?: string;
     limit?: number;
     q?: string;
     status?: "active" | "archived";
@@ -441,9 +454,17 @@ export async function readConversationFeedFromSql(
     ? undefined
     : conversationFeedFilter(options);
   const query = options.q?.trim().toLowerCase() || undefined;
-  const status =
+  const status: "active" | "archived" | "all" =
     query || options.codeRepositoryId ? "all" : (options.status ?? "active");
-  const rows = await conversationRows(db, {
+  const cursor = options.cursor
+    ? decodeConversationFeedCursor(options.cursor)
+    : undefined;
+  const limit = options.limit ?? CONVERSATION_FEED_LIMIT;
+  // The viewer's active feed shows every pin on the first page, before the
+  // pages by activity. Pins are not paged, so the cursor stays a plain
+  // activity position.
+  const pinsFirst = filter?.kind === "viewer" && status === "active";
+  const feedQuery = {
     ...(options.codeRepositoryId
       ? {
           codeRepository: {
@@ -456,11 +477,30 @@ export async function readConversationFeedFromSql(
       : undefined),
     filter,
     includePrivateBriefs: filter?.kind === "viewer",
-    limit: options.limit ?? CONVERSATION_FEED_LIMIT,
     query,
     status,
-  });
-  if (filter?.kind === "viewer" && status === "active") {
+  };
+  const [pinnedRows, pageRows] = await Promise.all([
+    pinsFirst && !cursor
+      ? conversationRows(db, {
+          ...feedQuery,
+          pinnedForUserId: { pinned: true, userId: filter.userId },
+        })
+      : [],
+    conversationRows(db, {
+      ...feedQuery,
+      ...(cursor ? { cursor } : undefined),
+      // One more row than the page tells if another page follows.
+      limit: limit + 1,
+      ...(pinsFirst
+        ? { pinnedForUserId: { pinned: false, userId: filter.userId } }
+        : undefined),
+    }),
+  ]);
+  const page = pageRows.slice(0, limit);
+  const lastRow = pageRows.length > limit ? page.at(-1) : undefined;
+  const rows = [...pinnedRows, ...page];
+  if (pinsFirst && !cursor) {
     rows.push(...(await waitingRowsOutsidePage(db, filter, rows)));
   }
   const conversations = rows.map((row) => conversationFromRecordRow(row));
@@ -483,7 +523,6 @@ export async function readConversationFeedFromSql(
     briefByConversation,
     automationTitleByConversation,
     firstHumanMessageTextByConversation,
-    unreadConversationIds,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
     conversationViewerMarks(
@@ -517,9 +556,6 @@ export async function readConversationFeedFromSql(
     readConversationFeedBriefs(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
     readFirstHumanMessageTexts(db, conversations),
-    filter?.kind === "viewer"
-      ? readUnreadConversationIds(db, conversationIds, filter.userId)
-      : new Set<string>(),
   ]);
   const visibleActivityPreviews = await attachActivityPreviewMentions(
     getSqlExecutor(),
@@ -567,7 +603,6 @@ export async function readConversationFeedFromSql(
       const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
       const summary = conversationSummaryFromStoredConversation({
         ...viewerMarksByConversation.get(conversation.conversationId),
-        unreadReply: unreadConversationIds.has(conversation.conversationId),
         automationTitle: automationTitleByConversation.get(
           conversation.conversationId,
         ),
@@ -647,6 +682,14 @@ export async function readConversationFeedFromSql(
       };
     }),
     generatedAt: new Date(nowMs).toISOString(),
+    ...(lastRow
+      ? {
+          nextCursor: encodeConversationFeedCursor({
+            at: lastRow.activityCursor,
+            conversationId: lastRow.conversation.conversationId,
+          }),
+        }
+      : undefined),
     source: "conversation_index",
   };
 }
@@ -663,6 +706,7 @@ export async function readConversationFeed(
   options: {
     actorEmail?: string;
     codeRepositoryId?: string;
+    cursor?: string;
     q?: string;
     status?: "active" | "archived";
     viewer?: User;

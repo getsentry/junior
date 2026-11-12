@@ -1,16 +1,10 @@
 import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
-import {
-  Archive,
-  ArchiveRestore,
-  Pin,
-  SquarePen,
-} from "lucide-react";
+import { Archive, ArchiveRestore, Pin, SquarePen } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useArchiveConversation } from "./conversationArchive";
 import { useConversationActionToasts } from "./conversationActionToasts";
-import { useMarkConversationUnread } from "./useMarkConversationUnread";
 import { usePinConversation } from "./usePinConversation";
 import { useRenameConversation } from "./useRenameConversation";
 import { RenameConversationDialog } from "./RenameConversationDialog";
@@ -26,7 +20,6 @@ import type { ReorderPins } from "./useReorderPinnedConversations";
 import { conversationPath, OPEN_EVENT_LOG_STATE } from "./conversationRoutes";
 import {
   conversationDisplayTitle,
-  isIdleConversation,
   visualStatusForConversation,
 } from "../format";
 import { formatCompactAge } from "./conversationAge";
@@ -36,6 +29,10 @@ import { AnimatedList } from "./AnimatedList";
 import { WaitingChip } from "./WaitingChip";
 import type { ConversationSection } from "./conversationSections";
 import { ConversationSectionList } from "./ConversationSectionList";
+import {
+  ConversationFeedLoadMore,
+  type ConversationFeedMorePages,
+} from "./ConversationFeedLoadMore";
 import { ConversationStatusText } from "./ConversationListStatusIcon";
 import { ConversationSectionHeading } from "./ConversationSectionHeading";
 import {
@@ -43,6 +40,11 @@ import {
   ConversationSidebarThreadToggle,
 } from "./ConversationSidebarThreadRow";
 import { sidebarThreads } from "./sidebarThreads";
+import {
+  ROW_ACTION_BUTTON_CLASS,
+  ROW_ACTIONS_FADE_CLASS,
+  ROW_ACTIONS_REVEAL_CLASS,
+} from "./sidebarRowActions";
 import {
   prefetchConversationDetail,
   usePrefetchConversation,
@@ -85,14 +87,6 @@ type ConversationSidebarEntry =
       rootId: string;
     };
 
-const ROW_ACTION_BUTTON_CLASS =
-  "grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed";
-
-// While the row actions show, the row content fades out under them, so the
-// title does not end in a hard cut. --row-actions-width is set per row.
-const ROW_ACTIONS_FADE_CLASS =
-  "sm:group-hover:[mask-image:linear-gradient(to_left,transparent_var(--row-actions-width),black_calc(var(--row-actions-width)+2rem))] sm:group-focus-within:[mask-image:linear-gradient(to_left,transparent_var(--row-actions-width),black_calc(var(--row-actions-width)+2rem))]";
-
 const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 
 /** Render the compact personal conversation picker beside the workspace. */
@@ -100,6 +94,8 @@ export function ConversationSidebar(props: {
   conversations: Conversation[];
   error?: string;
   loading: boolean;
+  /** Older feed pages, loaded as the reader scrolls to the end. */
+  morePages: ConversationFeedMorePages;
   selectedId?: string;
   timeZone: string;
   waitingConversations: ReadonlyMap<string, WaitingConversation>;
@@ -113,17 +109,6 @@ export function ConversationSidebar(props: {
       showActionError(
         conversation,
         wasPinning ? "Could not pin" : "Could not unpin",
-      );
-    },
-    [showActionError],
-  );
-  const handleUnreadError = useCallback(
-    (conversation: Conversation, wasMarkingUnread: boolean) => {
-      showActionError(
-        conversation,
-        wasMarkingUnread
-          ? "Could not mark as unread"
-          : "Could not mark as read",
       );
     },
     [showActionError],
@@ -151,6 +136,7 @@ export function ConversationSidebar(props: {
         {/* The chip centers on the rows' icon column, so the label lines up
           with the conversation titles below. */}
         <Button
+          variant="ghost"
           className="grid grid-cols-[0.875rem_minmax(0,1fr)] gap-2 rounded-lg px-3 py-2 font-medium leading-snug hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover [&_svg]:text-dashboard-accent-text hover:[&_svg]:text-dashboard-accent-text focus-visible:[&_svg]:text-dashboard-accent-text"
           onClick={props.onNewConversation}
           size="menu"
@@ -213,6 +199,9 @@ export function ConversationSidebar(props: {
                     <ConversationSidebarThreadRow
                       conversation={entry.conversation}
                       depth={entry.depth}
+                      onArchiveError={showArchiveError}
+                      onArchived={showArchived}
+                      onRowAction={releaseHold}
                       selected={entry.conversation.id === props.selectedId}
                       waiting={props.waitingConversations.has(
                         entry.conversation.id,
@@ -225,7 +214,6 @@ export function ConversationSidebar(props: {
                       onArchived={showArchived}
                       onPinError={handlePinError}
                       onPinned={clearActionError}
-                      onUnreadError={handleUnreadError}
                       onActionError={showActionError}
                       onRowAction={releaseHold}
                       selected={entry.conversation.id === props.selectedId}
@@ -235,6 +223,12 @@ export function ConversationSidebar(props: {
                     />
                   )
                 }
+              />
+            )}
+            {props.error ? null : (
+              <ConversationFeedLoadMore
+                {...props.morePages}
+                loadedCount={props.conversations.length}
               />
             )}
           </ScrollArea>
@@ -379,7 +373,6 @@ type ConversationSidebarRowProps = {
   onArchived(conversation: Conversation): void;
   onPinError(conversation: Conversation, wasPinning: boolean): void;
   onPinned(conversation: Conversation): void;
-  onUnreadError(conversation: Conversation, wasMarkingUnread: boolean): void;
   onActionError(conversation: Conversation, title: string): void;
   /** Runs before a row action that can move rows, so its result shows. */
   onRowAction(): void;
@@ -423,9 +416,6 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
     onError: (pinned) => props.onPinError(props.conversation, pinned),
     onSuccess: () => props.onPinned(props.conversation),
   });
-  const markUnread = useMarkConversationUnread(props.conversation.id, {
-    onError: (unread) => props.onUnreadError(props.conversation, unread),
-  });
   const rename = useRenameConversation(props.conversation.id, {
     onError: () => props.onActionError(props.conversation, "Could not rename"),
   });
@@ -445,28 +435,15 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   const pinned = Boolean(props.conversation.pinnedAt);
   const status = visualStatusForConversation(props.conversation);
   const title = conversationDisplayTitle(props.conversation);
-  // Unread and waiting rows read like unread mail: a dot and a bold title.
-  const unread = Boolean(props.conversation.unread);
-  const emphasized = unread || Boolean(props.waiting);
   const drag = props.drag;
-  // Unread tracks idle conversations only.
-  const canMarkUnread = isIdleConversation(props.conversation);
   const archived = Boolean(props.conversation.archivedAt);
-  // The leading marker toggles read state. A waiting row's marker is about
-  // its review item, so it stays a plain marker.
   // The API takes row actions only from participants.
   const participant = props.conversation.isParticipant;
-  const canToggleRead =
-    participant && !props.waiting && (unread || canMarkUnread);
   const setPinned = (next: boolean) => {
     props.onRowAction();
     pin.mutate(next);
   };
   const togglePin = () => setPinned(!pinned);
-  const setUnread = (next: boolean) => {
-    props.onRowAction();
-    markUnread.mutate(next);
-  };
   const toggleArchive = () => {
     props.onRowAction();
     archive.mutate({
@@ -511,25 +488,17 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
           to={conversationPath(props.conversation.id)}
         >
           <span className="grid place-items-center">
-            {emphasized ? (
+            {props.waiting ? (
               <span
-                aria-label={props.waiting ? "Waiting on you" : "Unread"}
+                aria-label="Waiting on you"
                 className="size-1.5 shrink-0 rounded-full bg-dashboard-accent"
                 role="img"
               />
             ) : null}
           </span>
-          <span
-            className={cn(
-              // The title fills its grid column, so the fade reaches only a
-              // title that does not fit, in place of an ellipsis.
-              "min-w-0 overflow-hidden whitespace-nowrap font-sans text-sm leading-snug [mask-image:linear-gradient(to_left,transparent,black_2rem)]",
-              emphasized ? "font-semibold" : props.selected && "font-medium",
-              emphasized || props.selected || status === "active"
-                ? "text-dashboard-text"
-                : "text-dashboard-text-muted",
-            )}
-          >
+          {/* The title fills its grid column, so the fade reaches only a
+            title that does not fit, in place of an ellipsis. */}
+          <span className="min-w-0 overflow-hidden whitespace-nowrap font-sans text-sm leading-snug text-dashboard-text [mask-image:linear-gradient(to_left,transparent,black_2rem)]">
             {title}
           </span>
           <ConversationRowState
@@ -537,35 +506,6 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
             status={status}
           />
         </Link>
-        {canToggleRead ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  aria-label={`Mark ${title} as ${unread ? "read" : "unread"}`}
-                  className="group/read absolute top-1 left-[0.4375rem] z-10 grid size-6 cursor-pointer place-items-center rounded-md transition hover:bg-dashboard-surface-active focus-visible:bg-dashboard-surface-active focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed"
-                  disabled={markUnread.isPending}
-                  onClick={() => setUnread(!unread)}
-                  type="button"
-                >
-                  {/* On hover, preview the state that a click sets. */}
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "hidden size-1.5 rounded-full group-hover/read:block group-focus-visible/read:block",
-                      unread
-                        ? "border border-dashboard-text-muted"
-                        : "bg-dashboard-accent",
-                    )}
-                  />
-                </button>
-              }
-            />
-            <TooltipContent size="compact">
-              {unread ? "Mark as read" : "Mark as unread"}
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
         {props.waiting ? (
           <WaitingChip
             conversationId={props.conversation.id}
@@ -575,7 +515,12 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
         {/* Mobile rows pin from the conversation menu, so only the archive
           button takes row space there. Archived rows restore before they pin. */}
         {participant ? (
-          <div className="absolute top-0.5 right-1.5 z-10 flex gap-0.5 transition sm:pointer-events-none sm:opacity-0 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100">
+          <div
+            className={cn(
+              "absolute top-0.5 right-1.5",
+              ROW_ACTIONS_REVEAL_CLASS,
+            )}
+          >
             {archived ? null : (
               <Tooltip>
                 <TooltipTrigger
@@ -641,7 +586,6 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
                 state: OPEN_EVENT_LOG_STATE,
               }),
             pin: setPinned,
-            read: setUnread,
             rename: () => setRenaming(true),
             subscription: (subscribed) => subscription.mutate(subscribed),
           }}
@@ -651,7 +595,6 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
             archive: archive.isPending,
             delivery: delivery.isPending,
             pin: pin.isPending,
-            read: markUnread.isPending,
             subscription: subscription.isPending,
           }}
         />

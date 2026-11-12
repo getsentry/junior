@@ -144,6 +144,7 @@ export function AutomationOutcomeFields(props: {
                 {props.value.length > 1 ? (
                   <>
                     <Button
+                      variant="ghost"
                       size="icon"
                       className="ml-auto sm:ml-0"
                       aria-label={`Move message ${index + 1} up`}
@@ -160,6 +161,7 @@ export function AutomationOutcomeFields(props: {
                       <ArrowUp size={16} />
                     </Button>
                     <Button
+                      variant="ghost"
                       size="icon"
                       aria-label={`Remove message ${index + 1}`}
                       onClick={() =>
@@ -177,6 +179,7 @@ export function AutomationOutcomeFields(props: {
           })}
           {props.value.length < 5 ? (
             <Button
+              variant="outline"
               className="w-fit"
               onClick={() =>
                 props.onChange([

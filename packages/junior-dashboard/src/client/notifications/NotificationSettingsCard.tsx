@@ -185,6 +185,7 @@ function DeviceSection({ settings }: { settings: NotificationSettings }) {
         {subscribed ? (
           <>
             <Button
+              variant="outline"
               disabled={disable.isPending}
               onClick={() => disable.mutate()}
               type="button"
@@ -192,6 +193,7 @@ function DeviceSection({ settings }: { settings: NotificationSettings }) {
               {disable.isPending ? "Turning off…" : "Turn off on this device"}
             </Button>
             <Button
+              variant="outline"
               disabled={test.isPending}
               onClick={() => test.mutate()}
               type="button"
@@ -206,7 +208,7 @@ function DeviceSection({ settings }: { settings: NotificationSettings }) {
             }
             onClick={() => enable.mutate(publicKey)}
             type="button"
-            variant="primary"
+            variant="default"
           >
             {enable.isPending ? "Turning on…" : "Turn on for this device"}
           </Button>
@@ -391,7 +393,11 @@ function ScheduleForm({ settings }: { settings: NotificationSettings }) {
           : "Notifications are paused right now. Replies still show here."}
       </p>
       <div className="mt-5 flex items-center gap-3">
-        <Button disabled={!changed || !valid || save.isPending} type="submit">
+        <Button
+          variant="outline"
+          disabled={!changed || !valid || save.isPending}
+          type="submit"
+        >
           {save.isPending ? "Saving…" : "Save hours"}
         </Button>
         {save.isSuccess ? (

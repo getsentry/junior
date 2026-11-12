@@ -5,6 +5,7 @@ import {
   type User,
   type Actor,
   type PluginLogger,
+  type PluginDecider,
   type PluginEgress,
   type Source,
   definePluginTool,
@@ -22,6 +23,10 @@ import {
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
 import type { GitHubDb } from "../db/database.js";
+import {
+  CONVERT_PULL_REQUEST_TO_DRAFT,
+  MARK_PULL_REQUEST_READY_FOR_REVIEW,
+} from "../graphql-documents.js";
 import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 import { appendGitHubFooter } from "./footer.js";
 import {
@@ -30,6 +35,7 @@ import {
   parseRepo,
   repoPath,
 } from "../tool-support/github-api.js";
+import { checkPullRequestDescription } from "../tool-support/pull-request-description.js";
 
 const inputSchema = z
   .object({
@@ -75,18 +81,6 @@ const inputSchema = z
     { message: "At least one pull request field must be provided." },
   );
 
-// GitHub's REST API cannot change draft state; only these GraphQL mutations can.
-// Both alias the mutation field to `result` so one schema reads either response.
-const MARK_READY_FOR_REVIEW = {
-  operationName: "MarkPullRequestReadyForReview",
-  query:
-    "mutation MarkPullRequestReadyForReview($id: ID!) { result: markPullRequestReadyForReview(input: {pullRequestId: $id}) { pullRequest { isDraft } } }",
-};
-const CONVERT_TO_DRAFT = {
-  operationName: "ConvertPullRequestToDraft",
-  query:
-    "mutation ConvertPullRequestToDraft($id: ID!) { result: convertPullRequestToDraft(input: {pullRequestId: $id}) { pullRequest { isDraft } } }",
-};
 const draftMutationResponseSchema = z.object({
   data: z.object({
     result: z.object({ pullRequest: z.object({ isDraft: z.boolean() }) }),
@@ -127,14 +121,15 @@ async function setPullRequestDraft(input: {
   nodeId: string;
   repo: string;
 }): Promise<boolean> {
-  const mutation = input.draft ? CONVERT_TO_DRAFT : MARK_READY_FOR_REVIEW;
+  const mutation = input.draft
+    ? CONVERT_PULL_REQUEST_TO_DRAFT
+    : MARK_PULL_REQUEST_READY_FOR_REVIEW;
   const response = await githubApi(input.egress, {
     operation: `github.pull.draft.update:${input.repo.toLowerCase()}`,
     method: "POST",
     path: "/graphql",
     body: {
-      operationName: mutation.operationName,
-      query: mutation.query,
+      ...mutation,
       variables: { id: input.nodeId },
     },
   });
@@ -151,20 +146,24 @@ async function setPullRequestDraft(input: {
 }
 
 /** Update mutable PR metadata while preserving runtime-owned body attribution. */
-export function createGitHubUpdatePullRequestTool(ctx: {
-  actor?: Actor;
-  automationLink?: { url: string };
-  conversationId?: string;
-  db: unknown;
-  egress: PluginEgress;
-  log: PluginLogger;
-  events: { canSubscribe: boolean };
-  slack?: { conversationLink?: { url?: string } };
-  source?: Source;
-  users: {
-    resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
-  };
-}) {
+export function createGitHubUpdatePullRequestTool(
+  ctx: {
+    actor?: Actor;
+    automationLink?: { url: string };
+    conversationId?: string;
+    db: unknown;
+    egress: PluginEgress;
+    log: PluginLogger;
+    events: { canSubscribe: boolean };
+    conversationLink?: { url: string };
+    source?: Source;
+    users: {
+      resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
+    };
+  },
+  /** Set when the description check experiment is on. */
+  descriptionDecider?: PluginDecider,
+) {
   return definePluginTool({
     annotations: {
       destructiveHint: true,
@@ -185,6 +184,9 @@ export function createGitHubUpdatePullRequestTool(ctx: {
         );
       }
       const update = parsedInput.data;
+      if (descriptionDecider && update.body !== undefined) {
+        await checkPullRequestDescription(descriptionDecider, update.body);
+      }
       const repo = parseRepo(update.repo);
       const requester = await resolveGitHubRequester(ctx);
       const currentBody =
@@ -206,7 +208,7 @@ export function createGitHubUpdatePullRequestTool(ctx: {
                   currentBody,
                 ),
                 nonEmptyString(ctx.conversationId, "conversationId"),
-                ctx.slack?.conversationLink?.url,
+                ctx.conversationLink?.url,
               ),
             }
           : undefined),

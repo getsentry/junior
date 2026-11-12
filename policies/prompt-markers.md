@@ -15,8 +15,8 @@ runtime, not the markers, enforces approval.
   the kind in an attribute (no `change="submitted"`).
 - `<current-instruction>` holds only words that a person wrote. Each other
   input gets its own tag: `<task>`, `<parent-agent-task>`,
-  `<agent-result>`, `<agent-message>`, `<review-item-answer id>`,
-  `<review-item-dismissed id>`. Do not use bracket headers such as `[task]`.
+  `<agent-result>`, `<agent-message>`, `<review-item-answer id>`. Do not use
+  bracket headers such as `[task]`.
 - A child tag never reuses an input tag.
 - Give each input its own content part, in order. Never join inputs.
 
@@ -75,8 +75,8 @@ runtime, not the markers, enforces approval.
   milliseconds in model-read text.
 - An answer to a question that the model asked uses the ID the ask tool
   returned. Send the question again, at most 512 characters, then one
-  `Label (field_id): value` line for each field. A dismiss sends only the
-  question. A notice has no question, so send `Title: ...` instead.
+  `Label (field_id): value` line for each field. A dismiss sends nothing: it
+  starts no Turn.
 
 ### Escaping
 

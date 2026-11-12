@@ -1,6 +1,6 @@
 import { and, eq, max } from "drizzle-orm";
 import { Hono } from "hono";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
@@ -93,10 +93,16 @@ function feedMoved(before: Versions, after: Versions) {
 
 describe("versions API", () => {
   afterEach(async () => {
+    vi.useRealTimers();
     await closeDb();
   });
 
   it("moves only the token whose read changed", async () => {
+    // Fixture writes such as `replaceHistory` stamp the clock. The test starts
+    // on a whole minute, so its run does not reach the next minute and its
+    // Turns stay newer than those stamps.
+    vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+    vi.setSystemTime(Date.parse("2026-10-01T12:05:00.000Z"));
     const { app, viewer } = await authenticatedApi();
     await recordRoot(OWN, "private", SLACK_ACTOR);
     await recordRoot(OTHER, "private");
@@ -375,8 +381,7 @@ describe("versions API", () => {
       "conversations",
     ]);
 
-    // Scrolling moves the read position, but the feed row shows only
-    // whether the reply is unread.
+    // Reading moves the read position, which no feed row shows.
     const [reply] = await getDb()
       .select({ seq: max(juniorConversationEvents.seq) })
       .from(juniorConversationEvents)
@@ -397,17 +402,9 @@ describe("versions API", () => {
           },
         )
       ).json();
-    expect(await reportRead(reply!.seq! - 1)).toEqual({
-      lastReadSeq: reply!.seq! - 1,
-      unreadReply: true,
+    expect(await reportRead(reply!.seq!)).toEqual({
+      lastReadSeq: reply!.seq!,
     });
-    const scrolled = await read();
-    expect(changed(withReply, scrolled)).toEqual([]);
-    expect(await reportRead(reply!.seq!)).toMatchObject({
-      unreadReply: false,
-    });
-    const cleared = await read();
-    expect(changed(scrolled, cleared)).toEqual(["conversations"]);
-    expect(feedMoved(scrolled, cleared)).toEqual(["unread"]);
+    expect(changed(withReply, await read())).toEqual([]);
   });
 });

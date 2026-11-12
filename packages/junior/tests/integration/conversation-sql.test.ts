@@ -489,21 +489,6 @@ ORDER BY table_name ASC, ordinal_position ASC
       );
 
       for (const columns of actual.values()) columns.sort();
-      // TODO(dcramer): Remove this after migration 0058 drops these columns.
-      // Migration 0057 keeps them because old workers still name them.
-      const pendingColumnDrops = new Map([
-        ["junior_automation_versions", ["kind"]],
-        ["junior_conversations", ["origin_id", "origin_run_id", "origin_type"]],
-      ]);
-      for (const [table, dropped] of pendingColumnDrops) {
-        actual.set(
-          table,
-          (actual.get(table) ?? []).filter(
-            (column) => !dropped.includes(column),
-          ),
-        );
-      }
-
       expect(actual).toEqual(expected);
       expect(actual.has("junior_conversation_inbound_messages")).toBe(false);
 

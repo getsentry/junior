@@ -11,7 +11,6 @@ import {
 import { slackAttachmentsVersionQuery } from "@/chat/slack/attachments";
 import {
   juniorConversationParticipants,
-  juniorConversationReadPositions,
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
@@ -31,7 +30,6 @@ import {
   conversationRecordJoins,
   type ConversationRecord,
 } from "./record";
-import { unreadReplySql } from "./unread";
 import type { ConversationReadPosition } from "../schema/conversation-read-position";
 
 const detailViewer = alias(juniorUsers, "detail_viewer");
@@ -188,7 +186,7 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
     )
     .orderBy(asc(fork.createdAt))
     .limit(50);
-  // Marks, the auto-archive choice, and unread live on the root.
+  // Marks and the auto-archive choice live on the root.
   const viewerParticipant = viewer
     ? and(
         eq(juniorConversationParticipants.userId, viewer.id),
@@ -219,25 +217,6 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
       pinnedAt: juniorConversationParticipants.pinnedAt,
       pinPosition: juniorConversationParticipants.pinPosition,
       rootConversationId,
-      unreadReply: viewer
-        ? unreadReplySql(
-            db,
-            viewer.id,
-            rootConversationId,
-            sql`(${db
-              .select({ seq: juniorConversationReadPositions.lastReadSeq })
-              .from(juniorConversationReadPositions)
-              .where(
-                and(
-                  eq(juniorConversationReadPositions.userId, viewer.id),
-                  eq(
-                    juniorConversationReadPositions.conversationId,
-                    rootConversationId,
-                  ),
-                ),
-              )})`,
-          )
-        : sql<boolean>`false`,
       unsubscribedAt: juniorConversationParticipants.unsubscribedAt,
       version: sql<
         string | null
@@ -279,8 +258,6 @@ export type ConversationDetailState = {
    * so an `appendCursor` from before it cannot extend them.
    */
   transcriptVersion: string;
-  /** The root has a visible Junior reply after the viewer's read position. */
-  unreadReply?: boolean;
   viewerMarks?: ConversationViewerMarks;
 };
 
@@ -348,7 +325,6 @@ async function readDetailState(
         : undefined),
       ...(viewer ? { subscribed: !row?.unsubscribedAt } : undefined),
       transcriptVersion,
-      ...(viewer && row ? { unreadReply: row.unreadReply } : undefined),
       ...(viewerMarks ? { viewerMarks } : undefined),
     },
     version: row?.version ?? undefined,
@@ -425,9 +401,6 @@ export async function readConversationDetailEtag(
     limit: options.limit ?? null,
     subscribed: state.subscribed ?? null,
     version,
-    // The read position is not hashed, but whether it leaves a reply unread
-    // is, so the next poll after a read or a mark shows the new state.
-    unreadReply: state.unreadReply ?? false,
     viewerMarks: state.viewerMarks ?? null,
   });
   return {

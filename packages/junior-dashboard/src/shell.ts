@@ -72,9 +72,6 @@ export function dashboardPagePaths(
       path: basePath === "/" ? "/admin" : `${basePath}/admin`,
     },
     {
-      path: basePath === "/" ? "/board" : `${basePath}/board`,
-    },
-    {
       nested: true,
       path: basePath === "/" ? "/code" : `${basePath}/code`,
     },

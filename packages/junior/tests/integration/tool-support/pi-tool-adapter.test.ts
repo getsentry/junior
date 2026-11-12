@@ -292,13 +292,26 @@ describe("Pi tool adapter integration", () => {
         tool_name: "hiddenDemo",
         arguments: {},
       }),
-    ).rejects.toThrow("can only call catalog tools");
+    ).rejects.toThrow(
+      /^executeTool can only call catalog tools returned by searchTools: hiddenDemo\.$/,
+    );
     await expect(
       executeTool.execute("tool-missing", {
         tool_name: "missingDemo",
         arguments: {},
       }),
-    ).rejects.toThrow("can only call catalog tools");
+    ).rejects.toThrow(
+      /^executeTool can only call catalog tools returned by searchTools: missingDemo\.$/,
+    );
+    // A close name gets a hint, never a guessed call.
+    await expect(
+      executeTool.execute("tool-misspelled", {
+        tool_name: "catalog_only_demo",
+        arguments: {},
+      }),
+    ).rejects.toThrow(
+      "executeTool can only call catalog tools returned by searchTools: catalog_only_demo. Did you mean `catalogOnlyDemo`?",
+    );
   });
 
   it("keeps model-only runtime tools out of the tool catalog", async () => {
@@ -312,10 +325,10 @@ describe("Pi tool adapter integration", () => {
         messageAgent,
         parentConversationId: "local:test:parent",
         spawnAgent,
-        // Every model-only tool at once, which no single Turn kind loads.
+        // Every model-only tool at once, as an agent Turn on a child loads.
         turnTools: {
           ...runtimeContext().turnTools,
-          reply: true,
+          reply: "parent",
           noReply: true,
           reportBlocked: "parent",
         },

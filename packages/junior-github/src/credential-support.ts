@@ -91,11 +91,13 @@ type InstallationCredentialOptions = InstallationCredentialBaseOptions &
         loadPermissions?: never;
         permissions?: GitHubAppPermissions;
         repositories?: string[];
+        repositoryIds?: number[];
       }
     | {
         loadPermissions: LoadInstallationReadPermissions;
         permissions?: never;
         repositories?: never;
+        repositoryIds?: never;
       }
   );
 
@@ -139,7 +141,8 @@ class GitHubUserRefreshRejectedError extends Error {
   }
 }
 
-class GitHubRequestError extends Error {
+/** A GitHub API response with an error status. */
+export class GitHubRequestError extends Error {
   status: number;
 
   constructor(message: string, status: number) {
@@ -844,9 +847,12 @@ export async function issueInstallationToken(
         : undefined;
   const repositories =
     "repositories" in options ? options.repositories : undefined;
+  const repositoryIds =
+    "repositoryIds" in options ? options.repositoryIds : undefined;
   const body = {
     ...(permissions ? { permissions } : undefined),
     ...(repositories ? { repositories } : undefined),
+    ...(repositoryIds ? { repository_ids: repositoryIds } : undefined),
   };
   const accessTokenResponse = await githubRequest(
     "https://api.github.com",

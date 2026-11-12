@@ -8,42 +8,61 @@ const rootTurn = {
   delivery: "location",
   promptMode: "conversation",
   gated: false,
+  failureNotice: "none",
+  sessionTasks: true,
   tools: {
     agents: "children",
     reviewDesk: true,
     subscriptions: true,
     userCustomization: true,
-    reply: false,
+    reply: "none",
     reportBlocked: "none",
     noReply: true,
   },
 };
 
+// Memory is public, so a Thread never captures it.
 const personInThreadTurn = {
   ...rootTurn,
+  sessionTasks: false,
   tools: { ...rootTurn.tools, agents: "none" },
 };
 
-const childAgentTurn = {
+const agentInThreadTurn = {
   delivery: "conversation",
   promptMode: "child_agent",
-  gated: false,
+  gated: true,
+  failureNotice: "none",
+  sessionTasks: false,
   tools: {
     agents: "children_and_parent",
     reviewDesk: false,
     subscriptions: false,
     userCustomization: false,
-    reply: false,
+    reply: "parent",
     reportBlocked: "parent",
     noReply: true,
   },
+};
+
+// A Task's parent learns that it failed or that no reply was sent.
+const agentInTaskTurn = {
+  ...agentInThreadTurn,
+  missingAnswerError: "No reply was sent.",
+  failureNotice: "parent",
 };
 
 const automationTurn = {
   delivery: "conversation",
   promptMode: "automation",
   gated: true,
-  tools: { ...rootTurn.tools, reply: true, reportBlocked: "automation" },
+  failureNotice: "none",
+  sessionTasks: true,
+  tools: {
+    ...rootTurn.tools,
+    reply: "automation",
+    reportBlocked: "automation",
+  },
 };
 
 describe("turnBehavior", () => {
@@ -55,8 +74,8 @@ describe("turnBehavior", () => {
     // The dispatch Turn and every Watch Event Turn.
     { kind: "automation", personInput: false, expected: automationTurn },
     { kind: "thread", personInput: true, expected: personInThreadTurn },
-    { kind: "thread", personInput: false, expected: childAgentTurn },
-    { kind: "task", personInput: false, expected: childAgentTurn },
+    { kind: "thread", personInput: false, expected: agentInThreadTurn },
+    { kind: "task", personInput: false, expected: agentInTaskTurn },
   ] as const)(
     "gives a $kind Turn with person input $personInput its behavior",
     ({ kind, personInput, expected }) => {

@@ -23,10 +23,13 @@ import {
   type AssistantMessage,
 } from "@earendil-works/pi-ai/compat";
 import type { Platform } from "@sentry/junior-plugin-api";
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { getChatConfig } from "@/chat/config";
 import { logInfo, logWarn, withSpan } from "@/chat/logging";
 import { resolveGatewayModel } from "@/chat/pi/client";
+import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { metrics } from "@/chat/sentry";
+import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import type { ThinkingLevel } from "@/chat/pi/sdk";
 import {
   buildDeploymentSystemPrompt,
@@ -42,7 +45,11 @@ import {
   NO_REPLY_GAP_MS,
   parentGapSegment,
   segmentNeedsParent,
+  TIMER_START_DELAY_MS,
+  timerFloorMaxDueIdleMs,
+  waitingGapSegment,
   type GapSegmentInput,
+  type WaitingOn,
   type WorkState,
 } from "./model";
 import { sendCacheWarmup, type CacheWarmupMessage } from "./queue";
@@ -61,6 +68,7 @@ import {
 } from "./request";
 import { loadSnapshot, saveSnapshot, type SnapshotSize } from "./snapshot";
 import { createToolWaitWarmer } from "./tool-wait";
+import { earliestTimerDueIdleMs, readPendingWork } from "./waiting";
 import { readSegmentState } from "./work-state";
 
 /** Gaps kept in each segment list. */
@@ -71,7 +79,15 @@ const CONVERSATION_GAPS_MAX = 50;
 /** The Turn count of a Conversation resets after this long with no call. */
 export const CONVERSATION_STATE_TTL_MS = 7 * 24 * 60 * MINUTE_MS;
 /** How the Turn before an idle period ended. */
-type TurnEnding = "reply" | "no_reply";
+type TurnEnding = "reply" | "no_reply" | "blocked";
+// Answer tools that end the run without a final response. A child agent
+// answers its parent with `reply`. People often answer a Turn that posted
+// nothing or that ended blocked, so it warms like a reply.
+const ANSWER_TOOL_ENDINGS: Partial<Record<string, TurnEnding>> = {
+  [REPLY_TOOL_NAME]: "reply",
+  [NO_REPLY_TOOL_NAME]: "no_reply",
+  [REPORT_BLOCKED_TOOL_NAME]: "blocked",
+};
 
 /** Warming stops when the snapshot of the idle period is deleted. */
 interface WarmState {
@@ -81,6 +97,14 @@ interface WarmState {
   turnEnding?: TurnEnding;
   /** The `parentGapSegment` that a thin `segment` leans on. */
   parentSegment?: string;
+  /**
+   * A child agent or a Review item that the idle period also waits on. The
+   * gap is also recorded in the segment's `waitingGapSegment` child, which
+   * the decision reads first.
+   */
+  waitingOn?: WaitingOn;
+  /** Idle time at which a timer is due, for the timer floor. */
+  timerDueIdleMs?: number;
   /**
    * The system prompt of the snapshot. Unset in snapshots from before it was
    * stored; those warm without the check.
@@ -136,7 +160,27 @@ const segmentAttributes = (warm: WarmState) => ({
   ...(warm.turnEnding
     ? { "app.cache_warming.turn_ending": warm.turnEnding }
     : undefined),
+  ...(warm.waitingOn
+    ? { "app.cache_warming.waiting_on": warm.waitingOn }
+    : undefined),
+  ...(warm.timerDueIdleMs !== undefined
+    ? { "app.cache_warming.timer_due_ms": warm.timerDueIdleMs }
+    : undefined),
 });
+// Segment whose gaps decide the warmups of an idle period. The Conversation's
+// gaps use it too, so a child agent's return does not count as a person's.
+const decisionSegment = (warm: WarmState) =>
+  warm.waitingOn
+    ? waitingGapSegment(warm.segment, warm.waitingOn)
+    : warm.segment;
+// Segments that record the gap of an idle period, most specific first. The
+// segment keeps every gap, so its waiting children can lean on it.
+const recordedSegments = (warm: WarmState) =>
+  warm.waitingOn ? [decisionSegment(warm), warm.segment] : [warm.segment];
+// Whether the timer floor still warms after the horizon.
+const timerPending = (warm: WarmState, idleMs: number) =>
+  warm.timerDueIdleMs !== undefined &&
+  idleMs < warm.timerDueIdleMs + TIMER_START_DELAY_MS;
 const snapshotAttributes = (size: SnapshotSize) => ({
   "app.cache_warming.snapshot_bytes": size.bytes,
   "app.cache_warming.snapshot_image_count": size.imageCount,
@@ -177,12 +221,14 @@ async function recordGap(
   if (!claimed) {
     return;
   }
-  await state.appendToList(segmentGapsKey(warm.segment), gapMs, {
-    maxLength: GLOBAL_GAPS_MAX,
-    ttlMs: GLOBAL_GAPS_TTL_MS,
-  });
+  for (const segment of recordedSegments(warm)) {
+    await state.appendToList(segmentGapsKey(segment), gapMs, {
+      maxLength: GLOBAL_GAPS_MAX,
+      ttlMs: GLOBAL_GAPS_TTL_MS,
+    });
+  }
   await state.appendToList(
-    conversationGapsKey(conversationId, warm.segment),
+    conversationGapsKey(conversationId, decisionSegment(warm)),
     gapMs,
     {
       maxLength: CONVERSATION_GAPS_MAX,
@@ -191,6 +237,8 @@ async function recordGap(
   );
 }
 
+// Start the idle period of a Turn that ended. Return none for an ending that
+// starts no idle period.
 async function startIdlePeriod(
   state: ConnectedState,
   conversationId: string,
@@ -199,7 +247,18 @@ async function startIdlePeriod(
   turn: Pick<GapSegmentInput, "userActor" | "endedTurns">,
   systemPrompt: SystemPromptKey,
   turnEnding: TurnEnding,
-): Promise<IdlePeriod> {
+): Promise<IdlePeriod | undefined> {
+  const automation = systemPrompt.mode === "automation";
+  // Read once here, not on each model call.
+  const { watches, waitingOn } = await readPendingWork(
+    conversationId,
+    request.context.messages,
+    message,
+    automation,
+  );
+  // An Automation run almost never gets an answer. Its ending starts an idle
+  // period only while a child agent or a Watch can start its next Turn.
+  if (automation && !waitingOn) return undefined;
   const idle: IdlePeriod = {
     generation: randomUUID(),
     sinceMs: request.startedAtMs,
@@ -209,12 +268,25 @@ async function startIdlePeriod(
   if (ttlMs === undefined || prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
     return idle;
   }
+  const timerDueIdleMs = earliestTimerDueIdleMs(
+    watches,
+    idle.sinceMs,
+    timerFloorMaxDueIdleMs({
+      cacheReadPrice: request.model.cost.cacheRead,
+      cacheWritePrice: request.model.cost.cacheWrite,
+      cacheTtlMs: ttlMs,
+    }),
+  );
   const { skipReason, ...snapshot } = await saveSnapshot(
     state,
     conversationId,
     snapshotKey(conversationId, idle.generation),
     request.context,
-    IDLE_HORIZON_MS,
+    // The timer floor can warm after the horizon, until the timer's Turn.
+    Math.max(
+      IDLE_HORIZON_MS,
+      (timerDueIdleMs ?? 0) + TIMER_START_DELAY_MS + idle.sinceMs - Date.now(),
+    ),
   );
   // Spans are sampled. These metrics show the size distribution of every
   // snapshot, so the limit can be tuned.
@@ -252,6 +324,8 @@ async function startIdlePeriod(
       segment: gapSegment(segmentInput),
       turnEnding,
       ...(parentSegment ? { parentSegment } : undefined),
+      ...(waitingOn ? { waitingOn } : undefined),
+      ...(timerDueIdleMs !== undefined ? { timerDueIdleMs } : undefined),
       ...(request.context.systemPrompt !== undefined
         ? {
             systemPrompt: {
@@ -307,19 +381,19 @@ async function recordModelCall(
   // Mid-turn calls arrive seconds apart. Only the call that ends a turn
   // starts an idle period.
   const endedTurns = previous?.endedTurns ?? 0;
-  const next: ConversationCacheState = turnEnding
-    ? {
-        endedTurns: endedTurns + 1,
-        idle: await startIdlePeriod(
-          state,
-          conversationId,
-          request,
-          message,
-          { userActor, endedTurns },
-          systemPrompt,
-          turnEnding,
-        ),
-      }
+  const nextIdle = turnEnding
+    ? await startIdlePeriod(
+        state,
+        conversationId,
+        request,
+        message,
+        { userActor, endedTurns },
+        systemPrompt,
+        turnEnding,
+      )
+    : undefined;
+  const next: ConversationCacheState = nextIdle
+    ? { endedTurns: endedTurns + 1, idle: nextIdle }
     : { endedTurns };
   if (!idle && !next.idle) {
     return;
@@ -378,10 +452,11 @@ export interface CacheWarmingRecorder {
   /** Mark that the tools of the last request returned. */
   toolsReturned(): void;
   /**
-   * Mark that a `noReply` call of the last request ended the run. Then `stop`
-   * starts the idle period from that request, as a final response would.
+   * Mark that an answer tool call of the last request ended the run. After
+   * `reply`, `noReply` or `reportBlocked`, `stop` starts the idle period from
+   * that request, as a final response would.
    */
-  noReplyEnded(): void;
+  answerToolEnded(toolName: string): void;
   /** Stop the warmups of this run. Call it when the run ends. */
   stop(): Promise<void>;
 }
@@ -406,11 +481,11 @@ export function createCacheWarmingRecorder(
   systemPrompt: SystemPromptKey,
 ): CacheWarmingRecorder {
   let lastRequest: ModelRequest | undefined;
-  // The last finished call, for an idle period that `noReply` starts.
+  // The last finished call, for an idle period that an answer tool starts.
   let lastCall:
     | { request: ModelRequest; message: AssistantMessage }
     | undefined;
-  let noReplyEnded = false;
+  let answerToolEnding: TurnEnding | undefined;
   // After the first call of the run ends the idle period, the next mid-turn
   // calls have nothing to record. This keeps them free of state reads.
   let idleEnded = false;
@@ -485,8 +560,8 @@ export function createCacheWarmingRecorder(
       }
     },
     toolsReturned: toolWait.toolsReturned,
-    noReplyEnded: () => {
-      noReplyEnded = true;
+    answerToolEnded: (toolName) => {
+      answerToolEnding = ANSWER_TOOL_ENDINGS[toolName];
     },
     stop: async () => {
       try {
@@ -497,9 +572,9 @@ export function createCacheWarmingRecorder(
             error instanceof Error ? error.message : String(error),
         });
       }
-      // The `noReply` call stopped the run, so no final response came. Its
+      // The answer tool call stopped the run, so no final response came. Its
       // request holds the prefix that the next Turn reads.
-      if (!noReplyEnded || !lastCall) return;
+      if (!answerToolEnding || !lastCall) return;
       try {
         await recordModelCall(
           conversationId,
@@ -507,7 +582,7 @@ export function createCacheWarmingRecorder(
           systemPrompt,
           lastCall.request,
           lastCall.message,
-          "no_reply",
+          answerToolEnding,
         );
       } catch (error) {
         logWarn("cache_warming.model_call.record_failed", {
@@ -548,10 +623,18 @@ export function createCacheWarmingRecorder(
  * with `app.cache_warming.stored` false for a snapshot over a limit.
  *
  * `work_state` and `archived` are read when the idle period starts and pick
- * its `gapSegment`. `turn_ending` is `reply` or `no_reply`: how the Turn
- * before the idle period ended. The `conversation.returned` log has the same
- * three. Decision attributes are absent when the warmup skipped before the
- * decision. Cost and usage are absent when no call completed.
+ * its `gapSegment`. `turn_ending` is how the Turn before the idle period
+ * ended: `reply` (a final response or `reply`), `no_reply` (`noReply`), or
+ * `blocked` (`reportBlocked`). `waiting_on` is `child` (a child agent still
+ * ran), `review` (the Turn asked a Review item), or `watch` (an Automation
+ * run had an active Watch and no child agent) when the idle period starts,
+ * and picks the segment's `waitingGapSegment` child. `timer_due_ms`
+ * is the idle time at which a timer is due, when it is due within
+ * `timerFloorMaxDueIdleMs`. The `conversation.returned` log has the same
+ * five. Decision attributes are absent when the warmup skipped before the
+ * decision. Of them, `timer_floor` is true for a warmup that only the timer
+ * floor sends (`decideWarmup` reason `timer`). Cost and usage are absent
+ * when no call completed.
  */
 export async function runCacheWarmup(
   message: CacheWarmupMessage,
@@ -570,7 +653,10 @@ export async function runCacheWarmup(
   const stop = () => state.delete(snapshotKey(conversationId, generation));
 
   if (message.kind === "horizon") {
-    await stop();
+    // The timer floor keeps warming until the timer's Turn.
+    if (!timerPending(warm, Date.now() - idle.sinceMs)) {
+      await stop();
+    }
     await recordGap(state, conversationId, generation, warm, NO_REPLY_GAP_MS);
     return;
   }
@@ -643,21 +729,30 @@ export async function runCacheWarmup(
       }
 
       const model = resolveGatewayModel(warm.modelId);
+      // Most specific first: the waiting child, its segment, and the parent.
+      const [segment, ...parents] = [
+        ...recordedSegments(warm),
+        ...(warm.parentSegment ? [warm.parentSegment] : []),
+      ];
       const globalGapsMs = await state.getList<number>(
-        segmentGapsKey(warm.segment),
+        segmentGapsKey(segment!),
       );
+      // Only a thin list reads the list of its parent.
+      const priorGapsMs: number[][] = [];
+      for (const parent of parents) {
+        if (!segmentNeedsParent((priorGapsMs.at(-1) ?? globalGapsMs).length)) {
+          break;
+        }
+        priorGapsMs.push(await state.getList<number>(segmentGapsKey(parent)));
+      }
       const decision = decideWarmup({
         conversationGapsMs: await state.getList<number>(
-          conversationGapsKey(conversationId, warm.segment),
+          conversationGapsKey(conversationId, decisionSegment(warm)),
         ),
         globalGapsMs,
-        // Only a thin segment reads its parent's list.
-        ...(warm.parentSegment && segmentNeedsParent(globalGapsMs.length)
-          ? {
-              parentGapsMs: await state.getList<number>(
-                segmentGapsKey(warm.parentSegment),
-              ),
-            }
+        priorGapsMs,
+        ...(warm.timerDueIdleMs !== undefined
+          ? { timerDueIdleMs: warm.timerDueIdleMs }
           : undefined),
         idleMs: Date.now() - idle.sinceMs,
         cacheExpiryIdleMs: message.cacheExpiresAtMs - idle.sinceMs,
@@ -672,6 +767,7 @@ export async function runCacheWarmup(
         decision.returnsPerWarmup;
       attributes["app.cache_warming.threshold"] = decision.threshold;
       attributes["app.cache_warming.parent_prior"] = decision.parentPrior;
+      attributes["app.cache_warming.timer_floor"] = decision.reason === "timer";
       if (!decision.warm) {
         await skip(decision.reason);
         return;

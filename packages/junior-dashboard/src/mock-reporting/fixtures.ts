@@ -58,6 +58,7 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
     activityDays,
     changes: [
       {
+        draft: false,
         id: "00000000-0000-4000-8000-000000000001",
         number: 42,
         openedAt: new Date(nowMs - 2 * 86_400_000).toISOString(),
@@ -68,6 +69,7 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
         url: "https://github.com/getsentry/payments/pull/42",
       },
       {
+        draft: false,
         id: "00000000-0000-4000-8000-000000000002",
         mergedAt: new Date(nowMs - 4 * 86_400_000).toISOString(),
         number: 781,
@@ -122,6 +124,8 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
 }
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+// Mock text links to dashboard pages on this origin.
+const MOCK_DASHBOARD_ORIGIN = "https://junior.example.com";
 const INCIDENT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 const PRIVATE_CONVERSATION_ID = "slack:DQA123:1770007200.000300";
 const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
@@ -147,8 +151,6 @@ const DASHBOARD_QA_NESTED_THREAD_ID =
 const mockPinnedConversationIds = new Set<string>();
 /** Process-local Pinned order from drag reorders. */
 const mockPinPositions = new Map<string, number>();
-/** Process-local conversations that the viewer marked unread. */
-const mockUnreadConversationIds = new Set<string>();
 
 /** Process-local renames so rename can be exercised in visual QA. */
 const mockTitles = new Map<string, string>();
@@ -177,13 +179,12 @@ const mockSlackChannelByConversationId = new Map<
 >();
 
 /**
- * Restore process-local archive, pin, unread, and auto-archive state so
+ * Restore process-local archive, pin, and auto-archive state so
  * tests sharing a worker do not leak state.
  */
 export function resetMockConversationViewerState(): void {
   mockPinnedConversationIds.clear();
   mockPinPositions.clear();
-  mockUnreadConversationIds.clear();
   mockTitles.clear();
   mockAutoArchiveByConversationId.clear();
   mockUnsubscribedConversationIds.clear();
@@ -195,7 +196,7 @@ export function resetMockConversationViewerState(): void {
 }
 
 /**
- * Add the mock archive, the viewer's pin and unread marks, and any rename to
+ * Add the mock archive, the viewer's pin, and any rename to
  * one conversation. Like the API, a child reports the pin of its root.
  */
 function withMockViewerState<
@@ -207,20 +208,14 @@ function withMockViewerState<
   archivedAt: string | undefined;
   pinnedAt: string | null;
   pinPosition?: number;
-  unread?: true;
 } {
   const pinPosition = mockPinPositions.get(pinConversationId);
-  // Match the API: only idle conversations are unread.
-  const unread =
-    (report.status === "completed" || report.status === "stopped") &&
-    mockUnreadConversationIds.has(report.conversationId);
   return {
     ...report,
     displayTitle: mockTitles.get(report.conversationId) ?? report.displayTitle,
     archivedAt: mockArchivedAt.get(report.conversationId),
     pinnedAt: mockPinnedConversationIds.has(pinConversationId) ? NOW : null,
     ...(pinPosition === undefined ? undefined : { pinPosition }),
-    ...(unread ? { unread: true as const } : undefined),
   };
 }
 
@@ -1377,7 +1372,17 @@ function longConversation(nowMs: number): ConversationDetailReport {
       type: "message",
       messageId: "release-assistant",
       role: "assistant",
-      text: "Released the package.\nOpened the update pull request.\nDeployment is ready.",
+      // Links to the Annotations below show as a chip, a hover card, and a
+      // full card.
+      text: [
+        "Released the package.",
+        "Opened the update pull request https://github.com/getsentry/junior/pull/2201. The [relay fix](https://github.com/getsentry/relay/pull/44) is merged.",
+        "",
+        "https://github.com/getsentry/payments/pull/91",
+        "",
+        // No Annotations: the API resolves these dashboard links.
+        `Deployment is ready. Next, ${MOCK_DASHBOARD_ORIGIN}/people/dev%40example.com picks up ${MOCK_DASHBOARD_ORIGIN}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}.`,
+      ].join("\n"),
     }),
   );
   return detail(nowMs, {
@@ -1729,6 +1734,43 @@ function simpleConversation(
   });
 }
 
+const HISTORY_TOPICS = [
+  "Release notes draft",
+  "Flaky test triage",
+  "Quota alert follow-up",
+  "Onboarding doc review",
+  "Dependency bump",
+  "Billing export check",
+  "Incident timeline",
+  "SDK changelog summary",
+];
+
+/**
+ * Older finished conversations from the last 80 days. They fill more than one
+ * feed page, so the conversation list loads pages as the reader scrolls.
+ */
+function historyConversations(nowMs: number): ConversationDetailReport[] {
+  return Array.from({ length: 64 }, (_, index) => {
+    const conversationId = `internal:history-${index + 1}`;
+    const startedAt = iso(nowMs, -(2 + index * 1.2) * 24 * 60 * 60_000);
+    return detail(nowMs, {
+      conversationId,
+      displayTitle: `${HISTORY_TOPICS[index % HISTORY_TOPICS.length]} ${index + 1}`,
+      actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+      cumulativeDurationMs: 8_000,
+      startedAt,
+      events: [
+        reportEvent(0, startedAt, {
+          type: "message",
+          messageId: `${conversationId}:message`,
+          role: "assistant",
+          text: "Done.",
+        }),
+      ],
+    });
+  });
+}
+
 const MOCK_MENTION_MORGAN: ActorIdentity = {
   email: "dev@example.com",
   fullName: "Morgan Lee",
@@ -1952,6 +1994,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       displayTitle: "Archived restore target",
       surface: "internal",
     }),
+    ...historyConversations(nowMs),
   ];
 }
 
@@ -2401,8 +2444,6 @@ export function setMockConversationArchived(
     for (const id of [conversationId, ...unarchived]) {
       mockArchivedAt.set(id, archivedAt);
     }
-    // Match the API: archive also marks it read.
-    mockUnreadConversationIds.delete(conversationId);
     return { archivedAt };
   }
   // Name the topmost archived ancestor, like the API.
@@ -2460,23 +2501,6 @@ export function setMockConversationPinned(
     mockPinnedConversationIds.delete(conversationId);
   }
   return { pinnedAt: pinned ? NOW : null };
-}
-
-/**
- * Set the feed's unread flag of one mock conversation for local dashboard
- * visual QA. The mock read position moves on its own, in `read-positions`.
- */
-export function setMockConversationUnread(
-  conversationId: string,
-  unread: boolean,
-): boolean {
-  const exists = mockConversations(NOW_MS).some(
-    (conversation) => conversation.conversationId === conversationId,
-  );
-  if (!exists) return false;
-  if (unread) mockUnreadConversationIds.add(conversationId);
-  else mockUnreadConversationIds.delete(conversationId);
-  return true;
 }
 
 /** Rename one mock conversation for local dashboard visual QA. */
@@ -2796,6 +2820,15 @@ export function readMockConversationChildAgents(
   };
 }
 
+/** Agent types and forks of mock children. Other children start fresh. */
+const MOCK_CHILD_AGENTS: Readonly<
+  Record<string, { agentType?: string; fork?: true }>
+> = {
+  [DASHBOARD_QA_PLAN_ID]: { agentType: "reviewer", fork: true },
+  [DASHBOARD_QA_REVIEW_ID]: { agentType: "reviewer" },
+  [DASHBOARD_QA_PLAN_CHECK_ID]: { fork: true },
+};
+
 /** Build the agent tree of a mock child Conversation, like the API. */
 function mockAgentTree(
   conversation: MockConversation,
@@ -2830,6 +2863,7 @@ function mockAgentTree(
         agent?.title ??
         agent?.name ??
         (item.kind === "thread" ? "Thread" : "Task"),
+      ...MOCK_CHILD_AGENTS[item.conversationId],
     };
   });
 }
@@ -3583,11 +3617,114 @@ export function readMockPeopleCode(
   );
   if (!person) return undefined;
   const overview = readMockCodeOverview();
+  // Two weeks of merges and several open changes, so the home summary shows
+  // a weekly delta and a stale change.
+  const merges = [0, 1, 0, 1, 0, 1, 0, 1, 0, 2, 0, 1, 1, 0];
+  const activityDays = overview.activityDays.map((day, index) => ({
+    ...day,
+    merged: merges[index - (overview.activityDays.length - merges.length)] ?? 0,
+  }));
+  const daysAgo = (days: number) =>
+    new Date(NOW_MS - days * 86_400_000).toISOString();
+  const openChange = (
+    number: number,
+    repository: string,
+    title: string,
+    days: number,
+    idleHours?: number,
+  ) => ({
+    draft: false,
+    id: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
+    lastActivityAt:
+      idleHours === undefined ? undefined : daysAgo(idleHours / 24),
+    number,
+    openedAt: daysAgo(days),
+    provider: "github",
+    repository,
+    state: "open" as const,
+    title,
+    url: `https://github.com/${repository}/pull/${number}`,
+  });
+  const doneChange = (
+    number: number,
+    repository: string,
+    title: string,
+    openedDays: number,
+    done: { closed: number } | { merged: number },
+  ) => ({
+    ...openChange(number, repository, title, openedDays),
+    ...("merged" in done
+      ? { mergedAt: daysAgo(done.merged), state: "merged" as const }
+      : { closedAt: daysAgo(done.closed), state: "closed" as const }),
+  });
+  const openChanges = [
+    openChange(2440, "getsentry/junior", "Show your week on the home page", 0),
+    openChange(42, "getsentry/payments", "Reduce checkout latency", 3, 20),
+    openChange(
+      2391,
+      "getsentry/junior",
+      "Retry Slack uploads after a rate limit",
+      6,
+      120,
+    ),
+    openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12, 264),
+    openChange(2402, "getsentry/junior", "Cache plugin manifests", 1, 0.3),
+    openChange(512, "getsentry/sentry-docs", "Document Review desk", 1, 26),
+    openChange(2419, "getsentry/junior", "Trim Slack thread context", 2, 36),
+    openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4, 3),
+    openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5, 96),
+    openChange(61, "getsentry/payments", "Drop legacy refund path", 8, 30),
+    // Recorded before code changes stored titles.
+    {
+      ...openChange(
+        523,
+        "getsentry/sentry-docs",
+        "Fix broken SDK links",
+        10,
+        216,
+      ),
+      title: undefined,
+    },
+    openChange(2350, "getsentry/junior", "Migrate memory schema", 320, 2),
+  ];
+  // Merges land on the days that `merges` counts in the last 7 days.
+  const doneThisWeek = [
+    doneChange(2330, "getsentry/junior", "Stream tool output in Slack", 9, {
+      merged: 6,
+    }),
+    doneChange(2361, "getsentry/junior", "Add Review desk filters", 6, {
+      merged: 4,
+    }),
+    doneChange(519, "getsentry/sentry-docs", "Document code changes", 7, {
+      merged: 4,
+    }),
+    doneChange(2384, "getsentry/junior", "Fix sandbox snapshot reuse", 3, {
+      merged: 2,
+    }),
+    doneChange(58, "getsentry/payments", "Try a shorter retry policy", 4, {
+      closed: 2,
+    }),
+    doneChange(85, "getsentry/sentry-mcp", "Pin Node 22 in CI", 2, {
+      merged: 1,
+    }),
+  ];
+  // Older changes stay off the home day strip, so its counts match `merges`.
+  const weekStartMs = Date.parse(activityDays.at(-7)!.date);
+  const beforeWeek = (change: (typeof overview.changes)[number]) =>
+    [change.openedAt, change.mergedAt, change.closedAt].every(
+      (at) => at === undefined || Date.parse(at) < weekStartMs,
+    );
   return {
-    activityDays: overview.activityDays,
-    changes: overview.changes,
+    activityDays,
+    changes: [
+      ...openChanges,
+      ...doneThisWeek,
+      ...overview.changes.filter(
+        (change) => change.state !== "open" && beforeWeek(change),
+      ),
+    ],
     generatedAt: overview.generatedAt,
-    summary: overview.summary,
+    summary: { ...overview.summary, open: openChanges.length },
     windowEnd: overview.windowEnd,
     windowStart: overview.windowStart,
   };

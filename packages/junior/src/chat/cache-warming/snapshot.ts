@@ -43,10 +43,11 @@ const SNAPSHOT_ZSTD_PARAMS = {
 };
 // The limit applies to the snapshot without its image data.
 const MAX_SNAPSHOT_BYTES = 1024 * 1024;
-// The limit of the base64 data of all images of one snapshot. It holds one
-// image at the 5 MiB limit of Slack attachments and `viewImage` (6.7 MiB as
-// base64), or a few typical screenshots.
-const MAX_SNAPSHOT_IMAGE_BYTES = 8 * 1024 * 1024;
+// The limit of the base64 data of all images of one snapshot. It holds the
+// images of the largest real requests seen. A replay sends only what its
+// original request sent, so Anthropic's limits (10 MB per image, 128 MB per
+// request) also bound what a snapshot can hold.
+const MAX_SNAPSHOT_IMAGE_BYTES = 32 * 1024 * 1024;
 
 const IMAGE_REF_PREFIX = "sha256:";
 // Images are user content of the Conversation, so their keys have the same

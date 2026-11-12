@@ -242,11 +242,10 @@ test.describe("conversation sections", () => {
     await expect(sidebar.getByRole("button").first()).toHaveText(/^Needs you/);
   });
 
-  test("keeps an unread conversation in its place until marked read", async ({
+  test("lists the rows of the conversation menu in the row menu", async ({
     page,
     dashboard,
   }) => {
-    // Only participants can mark read.
     await viewAsParticipant(page);
     await page.goto(dashboard.baseURL);
 
@@ -256,49 +255,12 @@ test.describe("conversation sections", () => {
     const finishedRow = sidebar.getByRole("link", {
       name: /Closed issue summary/,
     });
-    const unreadDot = finishedRow.getByRole("img", { name: "Unread" });
-    const finishedSection = () =>
-      sidebarSectionOf(sidebar, /Closed issue summary/);
-    await expect(finishedRow).toBeVisible();
-    await expect(unreadDot).toHaveCount(0);
-    // Unread does not move a row: only a Review item that waits on the
-    // viewer puts it in Needs you.
-    await expect.poll(finishedSection).toMatch(/^(?!Needs you)./);
-    const home = await finishedSection();
-
-    const unreadRequest = page.waitForRequest(
-      (request) =>
-        request.method() === "PATCH" && request.url().endsWith("/unread"),
-    );
-    await finishedRow.click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Mark as unread" }).click();
-    expect((await unreadRequest).postDataJSON()).toEqual({ unread: true });
-    await expect(unreadDot).toBeVisible();
-    await expect.poll(finishedSection).toBe(home);
-
-    // The server keeps it, so a reload or another device sees it too.
-    await page.reload();
-    await expect(unreadDot).toBeVisible();
-
-    // Opening it is not an act on it, so it stays unread and in place.
-    await finishedRow.click();
-    await expect(finishedRow).toHaveAttribute("aria-current", "page");
-    await expect(unreadDot).toBeVisible();
-    await expect.poll(finishedSection).toBe(home);
-    await screenshot(page, "conversation-open-unread", { view: "desktop" });
-    await sidebar
-      .getByRole("link", { name: /Checkout latency triage/ })
-      .click();
-    await expect(finishedRow).not.toHaveAttribute("aria-current", "page");
-    await expect(unreadDot).toBeVisible();
-
     await finishedRow.click({ button: "right" });
     // The row menu shows the rows of the `⋯` menu, in the same order.
     await expect(page.getByRole("menuitem")).toHaveText([
       "Share",
       "Copy as Markdown",
       "Open event log",
-      "Mark as read",
       "Pin",
       "Rename",
       "Subscribe",
@@ -308,86 +270,6 @@ test.describe("conversation sections", () => {
       lightTheme: true,
       view: "desktop",
     });
-    await page.getByRole("menuitem", { name: "Mark as read" }).click();
-    await expect(unreadDot).toHaveCount(0);
-    await expect.poll(finishedSection).toBe(home);
-
-    await page.reload();
-    await expect(finishedRow).toBeVisible();
-    await expect(unreadDot).toHaveCount(0);
-
-    // The leading marker toggles read state too.
-    const markUnread = sidebar.getByRole("button", {
-      name: /^Mark Closed issue summary.* as unread$/,
-    });
-    await markUnread.hover();
-    await screenshot(page, "conversation-sidebar-read-toggle", {
-      view: "desktop",
-    });
-    await markUnread.click();
-    await expect(unreadDot).toBeVisible();
-    await expect.poll(finishedSection).toBe(home);
-    await sidebar
-      .getByRole("button", { name: /^Mark Closed issue summary.* as read$/ })
-      .click();
-    await expect(unreadDot).toHaveCount(0);
-
-    // Reading it is an act: input in the transcript reports the rows in view.
-    await markUnread.click();
-    await finishedRow.click();
-    await expect(unreadDot).toBeVisible();
-    await page.getByLabel("Conversation transcript").hover();
-    await page.mouse.wheel(0, 1);
-    await expect(unreadDot).toHaveCount(0);
-    await expect.poll(finishedSection).toBe(home);
-  });
-
-  test("marks a conversation read or unread from its menu on mobile", async ({
-    page,
-    dashboard,
-  }) => {
-    // Below 768px there is no sidebar, so the conversation menu is the way.
-    await page.setViewportSize({ height: 844, width: 390 });
-    // Only participants can mark read. Make the viewer one of this mock.
-    await page.route(
-      /\/api\/conversations\/agent-dispatch%3Aevent-1(?:\?.*)?$/,
-      async (route) => {
-        const response = await route.fetch();
-        if (response.status() !== 200) return route.fulfill({ response });
-        const detail = await response.json();
-        await route.fulfill({
-          response,
-          json: { ...detail, isParticipant: true },
-        });
-      },
-    );
-    // A deep link, so the menu cannot lean on a loaded feed row.
-    await page.goto(
-      `${dashboard.baseURL}/conversations/${encodeURIComponent("agent-dispatch:event-1")}`,
-    );
-    await expect(
-      page.getByRole("heading", { name: "Closed issue summary" }),
-    ).toBeVisible();
-
-    const menu = page.getByRole("button", { name: "Conversation menu" });
-    const requests: unknown[] = [];
-    page.on("request", (request) => {
-      if (request.method() === "PATCH" && request.url().endsWith("/unread")) {
-        requests.push(request.postDataJSON());
-      }
-    });
-    // The menu stays open, like Pin, so the label flips in place.
-    await menu.click();
-    await expect(
-      page.getByRole("menuitem", { name: "Mark as unread" }),
-    ).toBeVisible();
-    await screenshot(page, "conversation-menu-mark-unread", { view: "mobile" });
-    await page.getByRole("menuitem", { name: "Mark as unread" }).click();
-    await page.getByRole("menuitem", { name: "Mark as read" }).click();
-    await expect(
-      page.getByRole("menuitem", { name: "Mark as unread" }),
-    ).toBeVisible();
-    expect(requests).toEqual([{ unread: true }, { unread: false }]);
   });
 
   test("renames a conversation from the row menu", async ({

@@ -77,6 +77,8 @@ export type AgentSteeringMessage = {
 /** Model-safe input for one asynchronously delegated child-agent task. */
 export type SpawnAgentInput = {
   agentType?: AgentType;
+  /** The child starts with the parent's history. */
+  fork?: boolean;
   /** Omitted means a Task. */
   kind?: ChildAgentKind;
   name?: string;
@@ -228,6 +230,11 @@ export type AgentDurability = {
    * Lease. The run checks it before each saved step and each reply.
    */
   checkIn?: () => Promise<boolean>;
+  /**
+   * Read the stored stop of the Conversation and abort the Run's signal when
+   * it stopped. The run calls it before each later model step.
+   */
+  checkStop?: () => Promise<void>;
   drainSteeringMessages?: (
     accept: (messages: AgentSteeringMessage[]) => Promise<void>,
   ) => Promise<AgentSteeringMessage[]>;

@@ -117,10 +117,10 @@ export function ContinueInSlackDialog(props: {
               thread to continue. Replies to dashboard messages stay here.
             </p>
             <DialogFooter>
-              <DialogClose render={<Button>Close</Button>} />
+              <DialogClose render={<Button variant="outline">Close</Button>} />
               {move.data.locationUrl ? (
                 <OutboundLink
-                  className={buttonVariants({ variant: "primary" })}
+                  className={buttonVariants({ variant: "default" })}
                   href={move.data.locationUrl}
                 >
                   Open in Slack
@@ -212,10 +212,10 @@ export function ContinueInSlackDialog(props: {
             <DialogFooter>
               <DialogClose
                 disabled={move.isPending}
-                render={<Button>Cancel</Button>}
+                render={<Button variant="outline">Cancel</Button>}
               />
               <Button
-                variant="primary"
+                variant="default"
                 type="submit"
                 disabled={!selected || move.isPending}
               >
