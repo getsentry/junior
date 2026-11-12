@@ -44,6 +44,14 @@ describe("suggestToolNames", () => {
     expect(suggestToolNames("sendEmail", catalogTools)).toEqual([]);
   });
 
+  it("never suggests a tool from another source", () => {
+    expect(
+      suggestToolNames("slack_createCanvas", {
+        github_createCanvas: demo({ source: "github" }),
+      }),
+    ).toEqual([]);
+  });
+
   it("never suggests a tool that the caller cannot call", () => {
     expect(suggestToolNames("operatorSql", catalogTools)).toEqual([]);
   });

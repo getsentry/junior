@@ -60,9 +60,10 @@ function editDistance(a: string, b: string): number {
 /**
  * Return up to three names from `tools` that are close to `name`, closest
  * first. The match ignores case, `.`, `_`, `-`, and a source id prefix on
- * either name, so `agents.stopAgent` finds `stopAgent`. Otherwise a name
- * matches within about a third of its length in edits. Pass only the tools
- * that the caller can call, so a hidden tool is never named.
+ * either name, so `agents.stopAgent` finds `stopAgent`. Otherwise the
+ * full names must be within about a third of the name's length in edits.
+ * Pass only the tools that the caller can call, so a hidden tool is never
+ * named.
  */
 export function suggestToolNames(
   name: string,
@@ -80,22 +81,16 @@ export function suggestToolNames(
     return [];
   }
 
+  const allowed = Math.max(1, Math.floor(wanted.length / 3));
   const ranked = Object.keys(tools).flatMap((candidate) => {
     const [full, ...withoutSource] = nameForms(candidate, sourceIds);
-    // Strip a source id from one side only. Stripped from both sides,
-    // `slack_createCanvas` would match `github_createCanvas`.
-    const pairs = [
-      ...[wanted, ...wantedWithoutSource].map((form) => [form, full!]),
-      ...withoutSource.map((form) => [wanted, form]),
-    ];
-    const distances = pairs.flatMap(([from, to]) => {
-      const distance = editDistance(from!, to!);
-      const allowed = Math.max(1, Math.floor(from!.length / 3));
-      return distance <= allowed ? [distance] : [];
-    });
-    return distances.length > 0
-      ? [{ candidate, distance: Math.min(...distances) }]
-      : [];
+    // A source id stripped from one side must leave an exact match. With
+    // edits on top, deleting a short prefix fits the edit budget, so
+    // `slack_createCanvas` would find `github_createCanvas`.
+    const exact =
+      wantedWithoutSource.includes(full!) || withoutSource.includes(wanted);
+    const distance = exact ? 0 : editDistance(wanted, full!);
+    return distance <= allowed ? [{ candidate, distance }] : [];
   });
 
   return ranked
