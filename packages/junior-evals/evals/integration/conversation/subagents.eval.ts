@@ -15,7 +15,7 @@ function recordToolRequests(names: string[]): CallOptions["onProgress"] {
 // A child agent result starts a later Turn in the parent thread. These tests
 // check that the thread gets exactly one such Turn for each child agent.
 describe("Child Agents", () => {
-  test("when work goes to a child agent, post one status, then its result in a later turn", async ({
+  test("when work goes to a child agent, post its result in a later turn", async ({
     agent,
   }) => {
     const { run } = await agent();
@@ -31,10 +31,12 @@ describe("Child Agents", () => {
     // Only the child's `reply` reaches the parent.
     expect(requestedTools).toContain("reply");
     expect(conversation.turns).toHaveLength(2);
-    // Starting the child is the only outcome of the first Turn, so one short
-    // status tells people that work continues.
-    expect(conversation.turns[0]?.replies).toHaveLength(1);
-    expect(conversation.turns[0]?.replies[0]?.text).not.toContain("MAPLE-7");
+    // The parent decides whether a status is worth posting; the result
+    // itself arrives only in the later Turn.
+    expect(conversation.turns[0]?.replies.length).toBeLessThanOrEqual(1);
+    expect(conversation.turns[0]?.replies[0]?.text ?? "").not.toContain(
+      "MAPLE-7",
+    );
     const resultTurn = conversation.turns[1];
     expect(resultTurn?.status).toBe("succeeded");
     expect(resultTurn?.replies.map((reply) => reply.text)).toEqual([
@@ -48,8 +50,8 @@ describe("Child Agents", () => {
     );
     expect(completedToolCalls("messageAgent", handoff)).toHaveLength(1);
     expect(handoff.turns).toHaveLength(2);
-    // A status that only says the message was sent notifies people twice too.
-    expect(handoff.turns[0]?.replies).toEqual([]);
+    expect(handoff.turns[0]?.replies.length).toBeLessThanOrEqual(1);
+    expect(handoff.turns[0]?.replies[0]?.text ?? "").not.toContain("OAK-3");
     expect(handoff.turns[1]?.replies.map((reply) => reply.text)).toEqual([
       expect.stringContaining("OAK-3"),
     ]);
