@@ -182,7 +182,7 @@ describeEval("Pull Request Descriptions", pullRequestDescriptionEvals, (it) => {
     );
   });
 
-  it("when the context changes a tool input without saying why or what breaks, the writer reports gaps instead of guessing", async ({
+  it("when the context changes a tool input without saying why, the writer reports gaps instead of guessing", async ({
     run,
   }) => {
     const result = await run({
@@ -199,7 +199,8 @@ describeEval("Pull Request Descriptions", pullRequestDescriptionEvals, (it) => {
           "The description says the `channel_name` input is renamed to `channel` and now also accepts a channel ID.",
         ],
         fail: [
-          "The description states a reason for the rename, or says whether existing callers break, because the context gives neither.",
+          "The description states a reason for the rename. The context gives none.",
+          "The description says existing callers keep working with `channel_name`.",
         ],
       }),
     );
