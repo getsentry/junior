@@ -1782,14 +1782,17 @@ async function executeAgentRunInPrivacyContext(
     if (durability.onInputCommitted && !resume?.inputCommitted) {
       throw error;
     }
-
-    const providerError = findProviderError(error);
-    logException(error, "assistant.reply.generation.failed", {
-      "gen_ai.request.model": activeModelId,
-      ...(providerError
-        ? getProviderErrorAttributes(providerError)
-        : undefined),
-    });
+    // The caller aborted the run, such as when a person stops the Turn. The
+    // caller owns that outcome; it is not a reply failure to report.
+    if (!signal?.aborted || error !== signal.reason) {
+      const providerError = findProviderError(error);
+      logException(error, "assistant.reply.generation.failed", {
+        "gen_ai.request.model": activeModelId,
+        ...(providerError
+          ? getProviderErrorAttributes(providerError)
+          : undefined),
+      });
+    }
 
     // Raw exception text is diagnostics-only; the failure-response service
     // owns the sanitized user-visible fallback for empty provider errors.
