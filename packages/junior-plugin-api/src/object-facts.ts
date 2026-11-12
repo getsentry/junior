@@ -59,6 +59,14 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     participants: z.array(text).max(5).optional(),
     lastActivityAt: z.iso.datetime({ offset: true }).optional(),
   }),
+  // Messages: where and when, never the text. The card description holds a
+  // short snippet only for a viewer who may read the message.
+  z.strictObject({
+    type: z.literal("message"),
+    channel: text.optional(),
+    author: text.optional(),
+    sentAt: z.iso.datetime({ offset: true }).optional(),
+  }),
   // People: only what the dashboard People pages already show.
   z.strictObject({
     type: z.literal("person"),
@@ -135,6 +143,19 @@ export function objectFactFields(
         "Last activity",
         facts.lastActivityAt &&
           new Date(facts.lastActivityAt).toLocaleString(undefined, {
+            dateStyle: "medium",
+            timeStyle: "short",
+          }),
+      );
+      break;
+    case "message":
+      add("channel", "Channel", facts.channel);
+      add("author", "Author", facts.author);
+      add(
+        "sentAt",
+        "Sent",
+        facts.sentAt &&
+          new Date(facts.sentAt).toLocaleString(undefined, {
             dateStyle: "medium",
             timeStyle: "short",
           }),

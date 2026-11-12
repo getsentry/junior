@@ -381,3 +381,13 @@ export function normalizeSlackStatusText(text: string): string {
 export function slackMention(userId: string): string {
   return `<@${userId}>`;
 }
+
+/** Slack user mentions: `<@U123>` or `<@U123|label>`. */
+export const SLACK_USER_MENTION_RE = /<@([UW][A-Z0-9]+)(?:\|[^<>]*)?>/g;
+
+/** Return the Slack user IDs that the text mentions, once each, in order. */
+export function slackMentionedUserIds(text: string): string[] {
+  return [
+    ...new Set([...text.matchAll(SLACK_USER_MENTION_RE)].map((m) => m[1]!)),
+  ];
+}

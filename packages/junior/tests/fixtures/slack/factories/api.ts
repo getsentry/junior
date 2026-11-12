@@ -414,6 +414,19 @@ export function conversationsJoinOk(
   });
 }
 
+export function conversationsMembersPage(
+  input: { members?: string[]; nextCursor?: string } = {},
+): {
+  ok: true;
+  members: string[];
+  response_metadata: { next_cursor: string };
+} {
+  return slackOk({
+    members: input.members ?? [],
+    response_metadata: { next_cursor: input.nextCursor ?? "" },
+  });
+}
+
 export function conversationsListPage(
   input: {
     channels?: Array<{
