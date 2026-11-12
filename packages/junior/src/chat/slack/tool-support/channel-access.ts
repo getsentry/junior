@@ -1,6 +1,7 @@
 import { getConversationStore } from "@/chat/db";
 import {
   getConversationInfo,
+  isPublicSlackChannel,
   joinPublicChannel,
 } from "@/chat/slack/channel";
 import { SlackActionError } from "@/chat/slack/client";
@@ -72,16 +73,16 @@ export async function checkSlackChannelReadAccess(args: {
   // Persisted public visibility may be stale after a channel is converted.
   try {
     const info = await getConversationInfo(args.targetChannelId);
-    const isPublicChannel =
-      info.isChannel && !info.isPrivate && !info.isIm && !info.isMpim;
-    if (!isPublicChannel) {
+    if (!isPublicSlackChannel(info)) {
       return deny("private", DENIED_PRIVATE);
     }
     return {
       allowed: true,
       isPublic: true,
       ...(info.name ? { channelName: info.name } : undefined),
-      ...(typeof info.isMember === "boolean" ? { isMember: info.isMember } : undefined),
+      ...(typeof info.isMember === "boolean"
+        ? { isMember: info.isMember }
+        : undefined),
     };
   } catch (error) {
     if (error instanceof SlackActionError) {

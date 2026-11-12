@@ -32,7 +32,11 @@ export {
   resolveMessageCards,
 } from "../chat/conversations/cards";
 export type { MessageCard } from "../chat/conversations/cards";
-export { conversationObjectCard, personObjectCard } from "./objects/cards";
+export {
+  conversationObjectCard,
+  messageObjectCard,
+  personObjectCard,
+} from "./objects/cards";
 export {
   MAX_OBJECT_LINKS,
   objectLinksQuerySchema,

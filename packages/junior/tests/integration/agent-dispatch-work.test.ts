@@ -1,3 +1,4 @@
+import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createOrGetDispatch,
@@ -392,6 +393,7 @@ describe("agent dispatch conversation work", () => {
       },
       messageKey: "call-child-reply",
       sender: child,
+      turnId: getAgentInvocationTurnId(child.invocationId),
       state,
     });
     await processNext();

@@ -78,3 +78,28 @@ test("links without an Annotation resolve to a chip and a hover card", async ({
     view: "desktop",
   });
 });
+
+test("a Slack message link resolves to a chip and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  const chip = page.getByRole("link", { name: /#proj-release/ });
+  await expect(chip).toHaveAttribute(
+    "href",
+    "https://acme.slack.com/archives/CQA456/p1770021700000100",
+  );
+  await chip.hover();
+  const card = page.getByRole("region", {
+    name: /^Message: Release notes are ready for review/,
+  });
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("Morgan Lee");
+  await screenshot(page, "conversation-slack-message-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
