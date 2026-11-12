@@ -23,6 +23,7 @@ import {
 } from "../pull-request-outcomes/store.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import { checkSuitePullRequests } from "./check-suite.js";
+import { logFailOpenFailure } from "./fail-open-log.js";
 import {
   loadPullRequestMergeState,
   type GitHubInstallationEnv,
@@ -190,7 +191,7 @@ export async function syncGitHubPullRequestReadyNotices(args: {
   db: GitHubDb;
   deliveryId: string;
   env: GitHubInstallationEnv;
-  log?: Pick<PluginLogger, "error">;
+  log?: Pick<PluginLogger, "error" | "warn">;
   reviewItems: PluginConversationReviewItems;
   targets: GitHubPullRequestTarget[];
 }): Promise<void> {
@@ -198,12 +199,16 @@ export async function syncGitHubPullRequestReadyNotices(args: {
     try {
       await syncOne(args, target);
     } catch (error) {
-      args.log?.error("GitHub pull request ready notice failed", {
-        deliveryId: args.deliveryId,
-        errorType: error instanceof Error ? error.name : "UnknownError",
-        number: target.number,
-        repository: target.repositoryFullName,
-      });
+      logFailOpenFailure(
+        args.log,
+        "GitHub pull request ready notice failed",
+        error,
+        {
+          deliveryId: args.deliveryId,
+          number: target.number,
+          repository: target.repositoryFullName,
+        },
+      );
     }
   }
 }

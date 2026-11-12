@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { logWarn } from "@/chat/logging";
-import { SlackActionError, withSlackRetries } from "@/chat/slack/client";
+import {
+  isSlackRequestTimeout,
+  SlackActionError,
+  withSlackRetries,
+} from "@/chat/slack/client";
 
 vi.mock("@/chat/logging", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/logging")>()),
@@ -117,14 +121,16 @@ describe("withSlackRetries", () => {
       original: { code: "ETIMEDOUT" },
     });
 
-    await expect(
-      withSlackRetries(task, 3, { action: "chat.postMessage" }),
-    ).rejects.toEqual(
+    const error = await withSlackRetries(task, 3, {
+      action: "chat.postMessage",
+    }).catch((caught: unknown) => caught);
+    expect(error).toEqual(
       expect.objectContaining<Partial<SlackActionError>>({
         name: "SlackActionError",
         code: "internal_error",
       }),
     );
+    expect(isSlackRequestTimeout(error)).toBe(true);
     expect(task).toHaveBeenCalledTimes(1);
   });
 

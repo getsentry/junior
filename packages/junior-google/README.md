@@ -26,15 +26,24 @@ not use the Google credentials of the people it helps.
    `junior google connect`.
 
 Anyone who can talk to Junior can read what the Junior account can see. Share
-calendars and files with that account only when that is acceptable. Junior
-edits a Doc only for a requester who can edit it through their own email,
-their domain, or an editable link. Access through a Google group is not
+calendars and files with that account only when that is acceptable. Given a
+link, Junior opens any Doc, Sheet, or Slides file shared with its account.
+Search finds only files that any employee could already find in Drive, and
+files shared with the requester by name. Files shared by link, or only with
+other people or groups, never show up in search. Search also drops every file
+that no account in `GOOGLE_WORKSPACE_ALLOWED_DOMAINS` owns. Shared-drive files
+have no owner, so search shows them only when they are shared with the
+requester by name. Search returns nothing for a requester outside those
+domains.
+
+Junior edits a Doc only for a requester who can edit it through their own
+email, their domain, or an editable link. Access through a Google group is not
 checked. Anyone who can talk to Junior can read a Doc that Junior edits, if
-they give Junior its link. Junior makes the requester the owner of a Doc it creates, then
-removes its own access. Google emails the requester about the new ownership.
-Junior cannot read or edit that Doc again unless the requester shares it back.
-This only works for requesters in the same Workspace organization as Junior's
-account.
+they give Junior its link. Junior makes the requester the owner of a Doc it
+creates, then removes its own access. Google emails the requester about the
+new ownership. Junior cannot read or edit that Doc again unless the requester
+shares it back. This only works for requesters in the same Workspace
+organization as Junior's account.
 
 Each edit of an existing Doc needs the `revision_id` that `readGoogleDoc` or
 the last edit returned. If someone changed the Doc after that, the edit is
