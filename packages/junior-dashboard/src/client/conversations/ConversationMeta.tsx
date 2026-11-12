@@ -1,4 +1,5 @@
 import { ObjectIcon } from "../components/ObjectIcon";
+import { Badge } from "../components/ui/badge";
 import { objectPresentation } from "@sentry/junior-plugin-api";
 import {
   CircleDashed,
@@ -141,9 +142,12 @@ export function ConversationSidebarAnnotations(props: {
                   <SidebarAnnotationGroupChip group={group} key={group.label} />
                 ))}
                 {badges.overflowGroupCount > 0 ? (
-                  <span className="inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs tabular-nums leading-none text-dashboard-text-muted">
+                  <Badge
+                    className="inline-flex h-5 min-w-7 shrink-0 items-center justify-center"
+                    variant="count"
+                  >
                     +{badges.overflowGroupCount}
-                  </span>
+                  </Badge>
                 ) : null}
               </span>
             )}
@@ -152,7 +156,9 @@ export function ConversationSidebarAnnotations(props: {
       />
       <TooltipContent align="start">
         <TooltipTitle>Linked work</TooltipTitle>
-        <ul className="m-0 list-none space-y-1 p-0">
+        {/* A row can link many items. Scroll the list so the tooltip stays on
+            screen; Base UI keeps the popup open while the pointer is on it. */}
+        <ul className="thin-scrollbar m-0 max-h-80 list-none space-y-1 overflow-y-auto overscroll-contain p-0 pr-1">
           {annotations.map((annotation, index) => (
             <li
               className="flex min-w-0 items-center gap-1.5"
@@ -208,16 +214,17 @@ function SidebarAnnotationIconFacepile(props: {
           />
         ))}
         overflow={(count) => (
-          <span
+          <Badge
             aria-hidden="true"
-            className="relative -ml-0.5 box-border inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full border border-dashboard-border-strong bg-dashboard-control px-1 font-sans text-2xs tabular-nums leading-none text-dashboard-text-muted"
+            className="relative -ml-0.5 box-border inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center px-1"
             style={{
               boxShadow: `0 0 0 2px ${props.cutoutColor}`,
               zIndex: props.annotations.length + 1,
             }}
+            variant="count"
           >
             +{count}
-          </span>
+          </Badge>
         )}
       />
     </span>
@@ -293,7 +300,7 @@ function SidebarAnnotationGroupChip(props: {
   return (
     // No min-w-0: a chip shrinks only to one icon and its label, so the
     // longest group gives up icons before a shorter one loses its label.
-    <span className="inline-flex h-5 items-center gap-1 rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
+    <Badge className="inline-flex h-5 items-center gap-1" variant="count">
       <FittingIcons
         className="h-3.5 min-w-3.5 gap-x-1"
         icons={props.group.annotations.flatMap((annotation) =>
@@ -323,7 +330,7 @@ function SidebarAnnotationGroupChip(props: {
       <span className="max-w-40 shrink-0 truncate whitespace-nowrap">
         {props.group.label}
       </span>
-    </span>
+    </Badge>
   );
 }
 

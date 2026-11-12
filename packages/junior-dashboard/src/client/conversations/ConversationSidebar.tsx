@@ -29,6 +29,10 @@ import { AnimatedList } from "./AnimatedList";
 import { WaitingChip } from "./WaitingChip";
 import type { ConversationSection } from "./conversationSections";
 import { ConversationSectionList } from "./ConversationSectionList";
+import {
+  ConversationFeedLoadMore,
+  type ConversationFeedMorePages,
+} from "./ConversationFeedLoadMore";
 import { ConversationStatusText } from "./ConversationListStatusIcon";
 import { ConversationSectionHeading } from "./ConversationSectionHeading";
 import {
@@ -90,6 +94,8 @@ export function ConversationSidebar(props: {
   conversations: Conversation[];
   error?: string;
   loading: boolean;
+  /** Older feed pages, loaded as the reader scrolls to the end. */
+  morePages: ConversationFeedMorePages;
   selectedId?: string;
   timeZone: string;
   waitingConversations: ReadonlyMap<string, WaitingConversation>;
@@ -130,6 +136,7 @@ export function ConversationSidebar(props: {
         {/* The chip centers on the rows' icon column, so the label lines up
           with the conversation titles below. */}
         <Button
+          variant="ghost"
           className="grid grid-cols-[0.875rem_minmax(0,1fr)] gap-2 rounded-lg px-3 py-2 font-medium leading-snug hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover [&_svg]:text-dashboard-accent-text hover:[&_svg]:text-dashboard-accent-text focus-visible:[&_svg]:text-dashboard-accent-text"
           onClick={props.onNewConversation}
           size="menu"
@@ -216,6 +223,12 @@ export function ConversationSidebar(props: {
                     />
                   )
                 }
+              />
+            )}
+            {props.error ? null : (
+              <ConversationFeedLoadMore
+                {...props.morePages}
+                loadedCount={props.conversations.length}
               />
             )}
           </ScrollArea>

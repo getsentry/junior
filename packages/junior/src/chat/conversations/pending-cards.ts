@@ -5,6 +5,7 @@ import {
   getAgentInvocationTurnId,
   parseAgentInvocationResultMessageId,
   parseAgentReplyMessageId,
+  parseTurnReplyMessageId,
 } from "@/chat/agent-invocations/ids";
 import { getAgentInvocation } from "@/chat/agent-invocations/store";
 import {
@@ -87,7 +88,10 @@ async function selectChildResultCards(
       ? await getAgentInvocation(invocationId)
       : undefined;
     if (!invocation) continue;
-    const turnId = getAgentInvocationTurnId(invocation.invocationId);
+    // A Turn on the child's Conversation loop names its own Turn.
+    const turnId =
+      parseTurnReplyMessageId(messageId) ??
+      getAgentInvocationTurnId(invocation.invocationId);
     // The child records its terminal Turn event before it reports the result.
     const terminal = await events.loadByIdempotencyKey(
       invocation.childConversationId,

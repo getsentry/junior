@@ -40,6 +40,8 @@ export const conversationFeedSchema = z
     conversations: z.array(conversationFeedItemSchema),
     source: z.literal("conversation_index"),
     generatedAt: z.string(),
+    /** Present when older conversations follow this page. */
+    nextCursor: z.string().optional(),
   })
   .strict();
 

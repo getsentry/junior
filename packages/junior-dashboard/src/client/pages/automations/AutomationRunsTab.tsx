@@ -2,7 +2,6 @@ import { useMemo, type ReactNode } from "react";
 import type {
   AutomationExecution,
   AutomationExecutionList,
-  AutomationRun,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
 
@@ -34,6 +33,7 @@ import {
   useAutomationRunSelection,
 } from "./AutomationRunDetails";
 import {
+  automationRunOf,
   automationRunStatusTone,
   automationRunTitle,
   formatAutomationRunTime,
@@ -71,13 +71,8 @@ export function AutomationRunsTab(props: {
   // Details look up every loaded run, so a filter never hides the open run.
   const runs = useMemo(
     () =>
-      (query.data?.executions ?? []).map(
-        (execution): AutomationRun => ({
-          ...execution,
-          automationId: automation.id,
-          automationTitle: automation.title,
-          kind: automation.kind,
-        }),
+      (query.data?.executions ?? []).map((execution) =>
+        automationRunOf(execution, automation),
       ),
     [automation, query.data],
   );
@@ -113,7 +108,9 @@ export function AutomationRunsTab(props: {
       ) : query.error ? (
         <InlineError>
           Runs could not be loaded.{" "}
-          <Button onClick={() => void query.refetch()}>Try again</Button>
+          <Button variant="outline" onClick={() => void query.refetch()}>
+            Try again
+          </Button>
         </InlineError>
       ) : (
         <PageContentSkeleton label="Loading runs" variant="list" />

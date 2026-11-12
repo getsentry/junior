@@ -1720,6 +1720,43 @@ function simpleConversation(
   });
 }
 
+const HISTORY_TOPICS = [
+  "Release notes draft",
+  "Flaky test triage",
+  "Quota alert follow-up",
+  "Onboarding doc review",
+  "Dependency bump",
+  "Billing export check",
+  "Incident timeline",
+  "SDK changelog summary",
+];
+
+/**
+ * Older finished conversations from the last 80 days. They fill more than one
+ * feed page, so the conversation list loads pages as the reader scrolls.
+ */
+function historyConversations(nowMs: number): ConversationDetailReport[] {
+  return Array.from({ length: 64 }, (_, index) => {
+    const conversationId = `internal:history-${index + 1}`;
+    const startedAt = iso(nowMs, -(2 + index * 1.2) * 24 * 60 * 60_000);
+    return detail(nowMs, {
+      conversationId,
+      displayTitle: `${HISTORY_TOPICS[index % HISTORY_TOPICS.length]} ${index + 1}`,
+      actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+      cumulativeDurationMs: 8_000,
+      startedAt,
+      events: [
+        reportEvent(0, startedAt, {
+          type: "message",
+          messageId: `${conversationId}:message`,
+          role: "assistant",
+          text: "Done.",
+        }),
+      ],
+    });
+  });
+}
+
 const MOCK_MENTION_MORGAN: ActorIdentity = {
   email: "dev@example.com",
   fullName: "Morgan Lee",
@@ -1943,6 +1980,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       displayTitle: "Archived restore target",
       surface: "internal",
     }),
+    ...historyConversations(nowMs),
   ];
 }
 
@@ -2768,6 +2806,15 @@ export function readMockConversationChildAgents(
   };
 }
 
+/** Agent types and forks of mock children. Other children start fresh. */
+const MOCK_CHILD_AGENTS: Readonly<
+  Record<string, { agentType?: string; fork?: true }>
+> = {
+  [DASHBOARD_QA_PLAN_ID]: { agentType: "reviewer", fork: true },
+  [DASHBOARD_QA_REVIEW_ID]: { agentType: "reviewer" },
+  [DASHBOARD_QA_PLAN_CHECK_ID]: { fork: true },
+};
+
 /** Build the agent tree of a mock child Conversation, like the API. */
 function mockAgentTree(
   conversation: MockConversation,
@@ -2802,6 +2849,7 @@ function mockAgentTree(
         agent?.title ??
         agent?.name ??
         (item.kind === "thread" ? "Thread" : "Task"),
+      ...MOCK_CHILD_AGENTS[item.conversationId],
     };
   });
 }

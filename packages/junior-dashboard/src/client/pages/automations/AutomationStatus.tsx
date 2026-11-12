@@ -228,21 +228,21 @@ export function AutomationAttention({
       ) : null}
       {unavailable ? (
         <Link
-          className={cn(buttonVariants({ variant: "primary" }), "mt-3")}
+          className={cn(buttonVariants({ variant: "default" }), "mt-3")}
           to={editPath}
         >
           Change trigger
         </Link>
       ) : automation.lastConversationId ? (
         <Link
-          className={cn(buttonVariants({ variant: "primary" }), "mt-3")}
+          className={cn(buttonVariants({ variant: "default" }), "mt-3")}
           to={conversationPath(automation.lastConversationId)}
         >
           Open last run
         </Link>
       ) : automation.totalRuns > 0 ? (
         <Link
-          className={cn(buttonVariants({ variant: "primary" }), "mt-3")}
+          className={cn(buttonVariants({ variant: "default" }), "mt-3")}
           to={automationPath(automation.id, "runs")}
         >
           View run history

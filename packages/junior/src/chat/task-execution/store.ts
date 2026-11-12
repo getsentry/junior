@@ -550,6 +550,21 @@ export async function cancelHumanFacingPendingMessages(args: {
   return result;
 }
 
+/** Drop pending mailbox rows by id without requiring a worker lease. */
+export async function dropPendingMessages(args: {
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const dropped = await workState.dropPendingMessages(args);
+  if (dropped.length > 0) {
+    await recordExecutionMetadata(args);
+  }
+  return dropped;
+}
+
 /** Mark one author's queued web messages as interrupts. */
 export async function steerWebPendingMessages(args: {
   authorIds: readonly string[];

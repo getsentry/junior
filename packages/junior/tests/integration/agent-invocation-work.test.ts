@@ -15,9 +15,6 @@ import {
 import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result";
 import { stopChildAgentsBelow } from "@/chat/agent-invocations/stop";
 import { EVENT_MESSAGE_AUTHOR, EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
-import { getEventCatalog } from "@/chat/events/runtime-catalog";
-import { runTimerWatchHeartbeat } from "@/chat/events/timers";
-import { createEventTools } from "@/chat/tools/events";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
   CONVERSATION_WORK_MAX_RETRIES,
@@ -34,7 +31,6 @@ import {
   upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
-import { context, execute } from "../fixtures/event-automations";
 import {
   createModelAgentRunner,
   neverRunAgentRunner,
@@ -529,46 +525,25 @@ describe("agent invocation conversation work", () => {
     },
   );
 
-  // A child watch event runs with an event Source. When its Turn yields, the
-  // next wake must still reach the agent invocation. Production once sent it
-  // to the root Event Turn worker, which needs a Destination that a child
-  // does not have. That also holds when the agent invocation ended or was
-  // stopped while its Turn stayed paused. A resume wake has no messages, but
-  // its last try is still final, so a resume that keeps failing tells the
-  // parent.
+  // When an agent invocation's Turn yields, the next wake must still reach
+  // that agent invocation, also when it was stopped while its Turn stayed
+  // paused. A resume wake has no messages, but its last try is still final,
+  // so a resume that keeps failing tells the parent.
   const resumed = { result: "Resumed child result", status: "completed" };
   it.each([
     {
       name: "a parent task",
-      watchEvent: false,
-      endBeforeWake: false,
       runs: 2,
       expected: resumed,
-    },
-    {
-      name: "a watch event",
-      watchEvent: true,
-      endBeforeWake: false,
-      runs: 3,
-      expected: resumed,
-    },
-    {
-      name: "an ended watch event",
-      watchEvent: true,
-      endBeforeWake: true,
-      runs: 2,
-      expected: { parentMailboxStatus: "appended", status: "failed" },
     },
     {
       name: "a stopped child",
-      watchEvent: false,
       stopBeforeWake: true,
       runs: 1,
       expected: { parentMailboxStatus: "skipped", status: "stopped" },
     },
     {
       name: "a resume that keeps failing",
-      watchEvent: false,
       // The last try is final, so it fails the invocation, not the work.
       failedResumes: CONVERSATION_WORK_MAX_RETRIES - 1,
       runs: CONVERSATION_WORK_MAX_RETRIES + 1,
@@ -580,14 +555,7 @@ describe("agent invocation conversation work", () => {
     },
   ])(
     "gives the wake after a yielded child invocation for $name to that invocation",
-    async ({
-      endBeforeWake,
-      expected,
-      failedResumes = 0,
-      runs,
-      stopBeforeWake = false,
-      watchEvent,
-    }) => {
+    async ({ expected, failedResumes = 0, runs, stopBeforeWake = false }) => {
       const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
       const markDone = vi.fn((_input: { itemId: string }) => ({}));
       await createApp({
@@ -624,15 +592,6 @@ describe("agent invocation conversation work", () => {
       const { conversationStore, fixture } = await prepareParentConversation();
       const agentRunner = createModelAgentRunner(
         createModelStream([
-          ...(watchEvent
-            ? [
-                {
-                  type: "toolCall" as const,
-                  name: "reply",
-                  arguments: { text: "Watching" },
-                },
-              ]
-            : []),
           {
             type: "toolCall",
             name: "upkeep_markDone",
@@ -674,26 +633,6 @@ describe("agent invocation conversation work", () => {
                 : { softYieldAfterMs }),
             },
           );
-        if (watchEvent) {
-          // Finish the parent task, then set a timer on the child. The timer
-          // event waits for its burst window, then starts an agent invocation
-          // with the event Source.
-          await processChild();
-          await execute(
-            createEventTools(
-              { ...context(), conversationId: childConversationId },
-              getEventCatalog(),
-            ).watchTimer!,
-            { after_ms: 60_000, intent: "Check the PR checks." },
-            "child-timer",
-          );
-          clock.mockReturnValue(clock() + 120_000);
-          await runTimerWatchHeartbeat({ nowMs: clock(), queue });
-          await processChild();
-          clock.mockReturnValue(clock() + 120_000);
-          await processChild(0);
-        }
-
         await expect(processChild(0)).resolves.toMatchObject({
           status: "yielded",
         });
@@ -707,7 +646,7 @@ describe("agent invocation conversation work", () => {
         ).resolves.toMatchObject({
           state: "paused",
           resumeReason: "yield",
-          source: { kind: watchEvent ? "event" : "agent_invocation" },
+          source: { kind: "agent_invocation" },
           piMessages: expect.arrayContaining([
             expect.objectContaining({
               role: "toolResult",
@@ -715,13 +654,6 @@ describe("agent invocation conversation work", () => {
             }),
           ]),
         });
-        if (endBeforeWake) {
-          await completeAgentInvocation({
-            errorMessage: "Agent invocation ended",
-            invocationId,
-            status: "failed",
-          });
-        }
         if (stopBeforeWake) {
           // The stop request outlives the paused run. The stopped agent
           // invocation takes the resume wake and does not run again.

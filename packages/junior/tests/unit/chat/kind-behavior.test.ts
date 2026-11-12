@@ -8,6 +8,8 @@ const rootTurn = {
   delivery: "location",
   promptMode: "conversation",
   gated: false,
+  failureNotice: "none",
+  sessionTasks: true,
   tools: {
     agents: "children",
     reviewDesk: true,
@@ -19,8 +21,10 @@ const rootTurn = {
   },
 };
 
+// Memory is public, so a Thread never captures it.
 const personInThreadTurn = {
   ...rootTurn,
+  sessionTasks: false,
   tools: { ...rootTurn.tools, agents: "none" },
 };
 
@@ -28,6 +32,8 @@ const agentInThreadTurn = {
   delivery: "conversation",
   promptMode: "child_agent",
   gated: true,
+  failureNotice: "none",
+  sessionTasks: false,
   tools: {
     agents: "children_and_parent",
     reviewDesk: false,
@@ -39,16 +45,19 @@ const agentInThreadTurn = {
   },
 };
 
-// A Task's parent learns that no reply was sent.
+// A Task's parent learns that it failed or that no reply was sent.
 const agentInTaskTurn = {
   ...agentInThreadTurn,
   missingAnswerError: "No reply was sent.",
+  failureNotice: "parent",
 };
 
 const automationTurn = {
   delivery: "conversation",
   promptMode: "automation",
   gated: true,
+  failureNotice: "none",
+  sessionTasks: true,
   tools: {
     ...rootTurn.tools,
     reply: "automation",

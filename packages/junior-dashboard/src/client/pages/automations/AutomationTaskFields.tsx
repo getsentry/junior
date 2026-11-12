@@ -148,7 +148,7 @@ function SkillFields(props: {
           <div className="flex items-center justify-between gap-3">
             <FieldLabel htmlFor="task.context">Additional context</FieldLabel>
             <Button
-              variant="quiet"
+              variant="ghost"
               onClick={() => {
                 props.onChange({ ...task, context: "" });
                 props.onContextOpen(false);
@@ -184,7 +184,7 @@ function SkillFields(props: {
         </Field>
       ) : (
         <Button
-          variant="quiet"
+          variant="ghost"
           className="w-fit"
           onClick={() => props.onContextOpen(true)}
         >

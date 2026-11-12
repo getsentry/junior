@@ -171,7 +171,7 @@ export const plugins = defineJuniorPlugins([
 ```
 
 - **Define:** `githubPlugin({ pullRequestEvents: { ... } })` in `plugins.ts`
-- **Default:** Off. Junior only watches a new pull request when asked, or when a tool result includes a subscribable resource and the model chooses to watch it.
+- **Default:** On when GitHub webhooks are enabled. After it creates a pull request, Junior watches review feedback, failed checks, and an unmerged close. It replies on GitHub to review comments and questions and pushes scoped fixes without asking first. Set `subscribeAfterCreate` to replace that Watch, or to `false` to turn it off.
 - **Required:** No
 - **Environment override:** None
 
@@ -342,8 +342,9 @@ lowercase. The filter does not check that the creator can see the repository,
 so a broad deployment automation can post private repository names in its
 channel. See [Automations](/concepts/automations/).
 
-To always watch selected events after Junior creates a pull request in this
-app, set `pullRequestEvents.subscribeAfterCreate` in `plugins.ts`. That watch
+Junior watches each pull request that it creates. To change the events or
+the instruction of that watch, set `pullRequestEvents.subscribeAfterCreate` in
+`plugins.ts`, or set it to `false` to turn it off. That watch
 also always gets `pull_request.review.approved`, `pull_request.merged`, and
 `pull_request.merge_conflict`. To add short
 app guidance for one pull request event type, set

@@ -5,8 +5,9 @@ import {
   markConversationsStopped,
 } from "@/chat/conversations/session-stop";
 import { getSqlExecutor } from "@/chat/db";
-import { cancelSignInWait } from "@/chat/task-execution/conversation-turn";
+import { cancelSignInWait } from "@/chat/task-execution/turn-cancel";
 import {
+  dropPendingMessages,
   getConversationWorkState,
   stopConversationWork,
 } from "@/chat/task-execution/store";
@@ -17,6 +18,7 @@ import {
   getChildAgentLockName,
   parseAgentInvocationResultMessageId,
   parseAgentReplyMessageId,
+  parseTurnReplyMessageId,
 } from "./ids";
 import {
   getLatestAgentInvocationForConversation,
@@ -58,6 +60,11 @@ export async function stopChildAgent(args: {
     cancelWatches: true,
     state: args.state,
   });
+  await dropUnreadLoopReplies(
+    [args.parentConversationId, ...tree.conversationIds],
+    tree.conversationIds,
+    args.state,
+  );
   return { stopped: tree.stopped.length > 0 || !wasStopped };
 }
 
@@ -97,11 +104,14 @@ export async function stopChildAgentsOf(
   await skipUnreadResults(conversationId, nowMs, state);
   // They take the stop of this Conversation, so input that ends it ends
   // theirs too.
-  await finishStoppedTree(
-    tree,
-    tree.conversationIds.filter((id) => id !== conversationId),
-    { cancelWatches: false, nowMs: stoppedAtMs, state },
-  );
+  const stoppedIds = tree.conversationIds.filter((id) => id !== conversationId);
+  await finishStoppedTree(tree, stoppedIds, {
+    cancelWatches: false,
+    nowMs: stoppedAtMs,
+    state,
+  });
+  await dropUnreadLoopReplies(tree.conversationIds, stoppedIds, state);
+  await dropOwnUnreadLoopReplies(conversationId, state);
 }
 
 /**
@@ -124,11 +134,13 @@ export async function stopChildAgentsBelow(
     includeRoot: false,
   });
   await skipUnreadResults(conversationId, nowMs, state);
-  await finishStoppedTree(
-    tree,
-    tree.conversationIds.filter((id) => id !== conversationId),
-    { cancelWatches: false, nowMs: stoppedAtMs, state },
-  );
+  const stoppedIds = tree.conversationIds.filter((id) => id !== conversationId);
+  await finishStoppedTree(tree, stoppedIds, {
+    cancelWatches: false,
+    nowMs: stoppedAtMs,
+    state,
+  });
+  await dropUnreadLoopReplies(tree.conversationIds, stoppedIds, state);
 }
 
 /**
@@ -149,11 +161,15 @@ async function skipUnreadResults(
 ): Promise<void> {
   const messages =
     (await getConversationWorkState({ conversationId, state }))?.messages ?? [];
-  // A child's `reply` is its result, so a stop skips it too.
+  // A child's `reply` is its result, so a stop skips it too. A reply from a
+  // Turn on the Conversation loop names no work of its own:
+  // `dropUnreadLoopReplies` drops it instead.
   const invocationIds = messages.flatMap((message) => {
     const invocationId =
       parseAgentInvocationResultMessageId(message.inboundMessageId) ??
-      parseAgentReplyMessageId(message.inboundMessageId);
+      (parseTurnReplyMessageId(message.inboundMessageId) === undefined
+        ? parseAgentReplyMessageId(message.inboundMessageId)
+        : undefined);
     return invocationId ? [invocationId] : [];
   });
   if (invocationIds.length === 0) {
@@ -170,6 +186,88 @@ async function skipUnreadResults(
         eq(juniorAgentInvocations.parentMailboxStatus, "appended"),
       ),
     );
+}
+
+/**
+ * Drop the unread replies that Turns on the Conversation loop of the stopped
+ * Conversations left in each mailbox of `mailboxIds`. Such a reply names the
+ * sender's newest finished agent invocation, not work that the stop skips,
+ * so the stop drops it by its message id. A reply sent after the stop is
+ * dropped when it is read, while the sender is stopped. Call this after the
+ * stop is stored.
+ *
+ * A reply that a running Turn already took leaves the mailbox like one that
+ * it read: the Turn's own ack removes nothing more.
+ */
+async function dropUnreadLoopReplies(
+  mailboxIds: readonly string[],
+  stoppedIds: readonly string[],
+  state: StateAdapter | undefined,
+): Promise<void> {
+  const stopped = new Set(stoppedIds);
+  for (const conversationId of mailboxIds) {
+    const messages =
+      (await getConversationWorkState({ conversationId, state }))?.messages ??
+      [];
+    const replies = messages.flatMap((message) => {
+      const invocationId =
+        parseTurnReplyMessageId(message.inboundMessageId) === undefined
+          ? undefined
+          : parseAgentReplyMessageId(message.inboundMessageId);
+      return invocationId
+        ? [{ invocationId, messageId: message.inboundMessageId }]
+        : [];
+    });
+    if (replies.length === 0) {
+      continue;
+    }
+    const senders = await getSqlExecutor()
+      .db()
+      .select({
+        childConversationId: juniorAgentInvocations.childConversationId,
+        invocationId: juniorAgentInvocations.invocationId,
+      })
+      .from(juniorAgentInvocations)
+      .where(
+        inArray(
+          juniorAgentInvocations.invocationId,
+          replies.map((reply) => reply.invocationId),
+        ),
+      );
+    const stoppedSenders = new Set(
+      senders
+        .filter((sender) => stopped.has(sender.childConversationId))
+        .map((sender) => sender.invocationId),
+    );
+    const inboundMessageIds = replies
+      .filter((reply) => stoppedSenders.has(reply.invocationId))
+      .map((reply) => reply.messageId);
+    if (inboundMessageIds.length > 0) {
+      await dropPendingMessages({ conversationId, inboundMessageIds, state });
+    }
+  }
+}
+
+/**
+ * Drop the unread loop replies that a Conversation that a person stopped
+ * left in its parent's mailbox, outside its tree. Call this after its stop
+ * is stored: the parent mailbox lock then drops a later reply.
+ */
+export async function dropOwnUnreadLoopReplies(
+  conversationId: string,
+  state?: StateAdapter,
+): Promise<void> {
+  // A child agent has one parent, so this finds at most one mailbox.
+  const parents = await getSqlExecutor()
+    .db()
+    .selectDistinct({ id: juniorAgentInvocations.parentConversationId })
+    .from(juniorAgentInvocations)
+    .where(eq(juniorAgentInvocations.childConversationId, conversationId));
+  await dropUnreadLoopReplies(
+    parents.map((parent) => parent.id),
+    [conversationId],
+    state,
+  );
 }
 
 /**

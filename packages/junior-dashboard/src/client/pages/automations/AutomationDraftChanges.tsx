@@ -71,6 +71,7 @@ export function AutomationDraftChanges(props: {
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-medium">{changeLabel(key)}</span>
                   <Button
+                    variant="outline"
                     aria-label={`Undo ${changeLabel(key).toLowerCase()} change`}
                     disabled={props.disabled}
                     onClick={() => props.onUndo(key)}

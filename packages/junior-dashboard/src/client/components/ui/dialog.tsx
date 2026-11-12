@@ -26,7 +26,7 @@ function DialogContent({ className, ...props }: DialogPrimitive.Popup.Props) {
         data-dashboard-modal=""
         data-slot="dialog-content"
         className={cn(
-          "fixed top-[max(1rem,env(safe-area-inset-top))] left-1/2 z-50 grid max-h-[calc(100dvh-max(1rem,env(safe-area-inset-top))-max(1rem,env(safe-area-inset-bottom)))] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 gap-4 overflow-y-auto rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-raised p-5 text-sm text-dashboard-text shadow-lg outline-none transition-[opacity,scale] duration-180 motion-reduce:transition-none data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0 sm:top-1/2 sm:max-h-[calc(100dvh-2rem)] sm:-translate-y-1/2",
+          "fixed top-[max(1rem,env(safe-area-inset-top))] left-1/2 z-50 grid max-h-[calc(100dvh-max(1rem,env(safe-area-inset-top))-max(1rem,env(safe-area-inset-bottom)))] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 gap-4 overflow-y-auto rounded-xl border border-input bg-secondary p-5 text-sm text-foreground shadow-lg outline-none transition-[opacity,scale] duration-180 motion-reduce:transition-none data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0 sm:top-1/2 sm:max-h-[calc(100dvh-2rem)] sm:-translate-y-1/2",
           className,
         )}
         {...props}

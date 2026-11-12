@@ -46,6 +46,8 @@ const RANKING_CASES = [
   ["edit the issue title", "github", "github_updateIssue"],
   ["closing an issue", "github", "github_updateIssue"],
   ["add a comment to an issue", "github", "github_commentOnIssue"],
+  ["edit my issue comment", "github", "github_updateIssueComment"],
+  ["react to an issue", "github", "github_reactToIssue"],
   ["get CI check status for a commit", "github", "github_getStatus"],
   ["get the latest release", "github", "github_getRelease"],
   ["get repository details", "github", "github_getRepository"],

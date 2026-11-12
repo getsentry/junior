@@ -346,6 +346,39 @@ test("reuses the fresh conversation feed after window focus", async ({
   expect(requests).toBe(1);
 });
 
+test("loads more conversations as the list scrolls and retries a failed page", async ({
+  page,
+  dashboard,
+}) => {
+  let failNextPage = true;
+  await page.route("**/api/conversations?*cursor=*", async (route) => {
+    if (failNextPage) {
+      failNextPage = false;
+      await route.abort();
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto(dashboard.baseURL);
+  const list = page.getByRole("navigation", { name: "Your conversations" });
+  const firstRow = list
+    .getByRole("link", { name: /Investigate checkout latency/ })
+    .first();
+  const lastRow = list.getByRole("link", { name: /SDK changelog summary 64/ });
+  await expect(firstRow).toBeVisible();
+  await expect(lastRow).toHaveCount(0);
+
+  // A failed page keeps the loaded rows and waits for Retry.
+  await list.getByRole("link").last().scrollIntoViewIfNeeded();
+  await expect(page.getByText("Could not load more.")).toBeVisible();
+  await expect(firstRow).toBeAttached();
+
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(lastRow.first()).toBeAttached();
+  await expect(page.getByText("Could not load more.")).toHaveCount(0);
+});
+
 test("keeps cached conversation and draft available through reconnect", async ({
   context,
   page,

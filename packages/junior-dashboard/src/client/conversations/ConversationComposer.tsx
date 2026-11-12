@@ -617,6 +617,7 @@ export const ConversationComposer = memo(function ConversationComposer(
                 <TooltipTrigger
                   render={
                     <Button
+                      variant="ghost"
                       focusableWhenDisabled
                       aria-label="Attach images"
                       disabled={sendLocked || readingImages}
@@ -643,6 +644,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           <div className="flex shrink-0 items-center gap-2">
             {props.onStop ? (
               <Button
+                variant="outline"
                 aria-label={props.stopPending ? "Stopping" : "Stop"}
                 disabled={props.stopPending || !online}
                 onClick={() => void stopTurn()}
@@ -665,7 +667,7 @@ export const ConversationComposer = memo(function ConversationComposer(
                 sendLocked ||
                 readingImages
               }
-              variant="primary"
+              variant="default"
               type="submit"
             >
               <Send aria-hidden="true" size={14} />

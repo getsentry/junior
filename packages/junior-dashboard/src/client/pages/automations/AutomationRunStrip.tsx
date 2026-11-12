@@ -16,13 +16,15 @@ import {
   formatAutomationRunTime,
 } from "./automationFormat";
 
-/** One bar in the strip. `to` makes the bar open that run. */
+/** One bar in the strip. `to` makes the bar open that run in place. */
 export type AutomationRunStripRun = {
   costUsd?: number;
   durationMs?: number;
   error?: string;
   executedAt: string;
   key: string;
+  /** Tags the bar, so closing run details can return focus to it. */
+  runId?: string;
   status: AutomationExecution["status"];
   to?: string;
 };
@@ -93,6 +95,9 @@ export function AutomationRunStrip(props: {
                       className,
                       "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
                     )}
+                    data-run-id={run.runId}
+                    // Bars open run details over the current page.
+                    replace
                     style={style}
                     to={run.to}
                   />

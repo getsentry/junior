@@ -108,6 +108,7 @@ export function ReviewItemView(props: {
               </p>
             </div>
             <Button
+              variant="outline"
               aria-label="Review item details"
               aria-pressed={props.detailsOpen}
               className="shrink-0"
