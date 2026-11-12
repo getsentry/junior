@@ -122,6 +122,7 @@ describe("people code API", () => {
         closed: 0,
         costUsd: 0,
         created: 1,
+        idle: 0,
         medianMergeTimeMs: 2 * 24 * 60 * 60 * 1_000,
         merged: 1,
         mergeRate: 1,
