@@ -15,6 +15,7 @@ import {
   conversationTurnFailureReasonSchema,
 } from "@/chat/conversations/history";
 import { conversationBriefSchema } from "@/chat/briefs/schema";
+import { agentTypeSchema } from "@/chat/agent-invocations/agent-types";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
 import { conversationChildAgentTotalsSchema } from "./child-agent-totals";
 import {
@@ -801,6 +802,16 @@ export const conversationAgentTreeNodeSchema = z
     conversationId: z.string().min(1),
     kind: conversationKindSchema,
     label: z.string().min(1),
+    /**
+     * Agent type of a child, such as `explore`. Absent for a root, a child
+     * without a type, or a viewer who cannot see private content.
+     */
+    agentType: agentTypeSchema.optional(),
+    /**
+     * The child started with its parent's history. Absent like `agentType`,
+     * or when the child started fresh.
+     */
+    fork: z.literal(true).optional(),
   })
   .strict();
 

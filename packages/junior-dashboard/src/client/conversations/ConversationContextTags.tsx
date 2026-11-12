@@ -40,7 +40,8 @@ function singleGitHubRepository(annotations: Conversation["annotations"]) {
   return repository;
 }
 
-function ContextTag(props: {
+/** A compact header tag: an icon and a label, optionally an outbound link. */
+export function ContextTag(props: {
   className?: string;
   /** Text after the label that names the object, such as a pull request title. */
   detail?: string;
@@ -79,7 +80,7 @@ function ContextTag(props: {
       {content}
     </OutboundLink>
   ) : (
-    <span className={className} title={props.label}>
+    <span className={className} title={props.title ?? props.label}>
       {content}
     </span>
   );
