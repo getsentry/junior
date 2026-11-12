@@ -1,5 +1,6 @@
 import {
   definePluginTool,
+  PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
@@ -9,6 +10,7 @@ import {
   docReferenceSchema,
   requireEditableDoc,
 } from "./doc-edits";
+import { googleFileRequest } from "./files";
 import type { GoogleToolContext } from "./shared";
 
 const inputSchema = z
@@ -52,6 +54,12 @@ const replySchema = z.object({
     .default([]),
 });
 
+const tabsSchema = z.object({
+  tabs: z
+    .array(z.object({ tabProperties: z.object({ tabId: z.string() }) }))
+    .default([]),
+});
+
 /** Replace every match of a text in a Google Doc. */
 export function createReplaceGoogleDocTextTool(ctx: GoogleToolContext) {
   return definePluginTool({
@@ -65,17 +73,38 @@ export function createReplaceGoogleDocTextTool(ctx: GoogleToolContext) {
       return `In Google Doc ${input.document}, replace every "${input.find}" with "${input.replace}".`;
     },
     description:
-      "Replace every match of a text in a Google Doc, as your own Google account. Matches keep their formatting. Works only when that account and the requester can both edit the Doc. Anyone who can talk to you can read a Doc your account can edit, if they give you its link.",
+      "Replace every match of a text in a Google Doc, as your own Google account. Matches keep their formatting. Only the first tab of a Doc with tabs is changed. Works only when that account and the requester can both edit the Doc. Anyone who can talk to you can read a Doc your account can edit, if they give you its link.",
     inputSchema,
     outputSchema,
     async execute(input) {
       const doc = await requireEditableDoc(ctx, input.document);
+      // Without tabsCriteria, replaceAllText changes every tab. The other
+      // edit tools change only the first tab, so this one does too.
+      const { tabs } = tabsSchema.parse(
+        (
+          await googleFileRequest(ctx, doc.ref, {
+            operation: "google.docs.document.get",
+            path: `/v1/documents/${doc.ref.fileId}`,
+            query: {
+              fields: "tabs(tabProperties(tabId))",
+              includeTabsContent: "true",
+            },
+          })
+        ).body,
+      );
+      const tabId = tabs[0]?.tabProperties.tabId;
+      if (!tabId) {
+        throw new PluginToolInputError(
+          `Google did not return the tabs of "${doc.title}", so the text was not replaced.`,
+        );
+      }
       const body = replySchema.parse(
         await batchUpdateDoc(ctx, doc.ref, [
           {
             replaceAllText: {
               containsText: { matchCase: input.match_case, text: input.find },
               replaceText: input.replace,
+              tabsCriteria: { tabIds: [tabId] },
             },
           },
         ]),

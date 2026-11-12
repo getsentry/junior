@@ -258,7 +258,7 @@ describe("Google Docs write tools", () => {
     });
   });
 
-  it("replaces the whole body, and replaces text without reading the body", async () => {
+  it("replaces the whole body, and replaces text only in the first tab", async () => {
     const { calls, run } = docTools([
       driveFile(),
       permissions({ domain: "example.com", role: "writer", type: "domain" }),
@@ -266,6 +266,12 @@ describe("Google Docs write tools", () => {
       Response.json({ documentId: DOC_ID, replies: [] }),
       driveFile(),
       permissions({ role: "writer", type: "anyone" }),
+      Response.json({
+        tabs: [
+          { tabProperties: { tabId: "t.0" } },
+          { tabProperties: { tabId: "t.1" } },
+        ],
+      }),
       Response.json({
         documentId: DOC_ID,
         replies: [{ replaceAllText: { occurrencesChanged: 3 } }],
@@ -290,14 +296,16 @@ describe("Google Docs write tools", () => {
     expect(all.slice(4).map((call) => call.operation)).toEqual([
       "google.drive.file.get",
       "google.drive.permissions.list",
+      "google.docs.document.get",
       "google.docs.document.batchUpdate",
     ]);
-    expect(all[6]!.body).toEqual({
+    expect(all[7]!.body).toEqual({
       requests: [
         {
           replaceAllText: {
             containsText: { matchCase: true, text: "Q3" },
             replaceText: "Q4",
+            tabsCriteria: { tabIds: ["t.0"] },
           },
         },
       ],
