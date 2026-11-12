@@ -33,8 +33,6 @@ that no account in `GOOGLE_WORKSPACE_ALLOWED_DOMAINS` owns. Shared-drive files
 have no owner, so search shows them only when they are shared with the
 requester by name.
 
-`searchGoogleFiles` is off until `GOOGLE_DRIVE_SEARCH_ENABLED=true`.
-
 Google Meet shares transcripts and Gemini notes with every invitee, Junior's
 account too. The file tools refuse files whose titles end in "- Transcript" or
 "- Notes by Gemini". Only `readMeetingTranscript` reads them, and only for

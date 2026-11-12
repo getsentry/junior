@@ -54,10 +54,7 @@ function run(
 }
 
 describe("Google Docs, Sheets, and Slides tools", () => {
-  beforeEach(() => {
-    stubGoogleEnv();
-    vi.stubEnv("GOOGLE_DRIVE_SEARCH_ENABLED", "true");
-  });
+  beforeEach(() => stubGoogleEnv());
   afterEach(() => vi.unstubAllEnvs());
 
   it("finds a Doc, reads it from a shared link, and lists its comments", async () => {
@@ -201,11 +198,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     ).rejects.toThrow("Use readMeetingTranscript");
   });
 
-  it("keeps search off by default, and shows only company-owned files", async () => {
-    vi.stubEnv("GOOGLE_DRIVE_SEARCH_ENABLED", "");
-    expect(toolsFor(REQUESTER).tools.searchGoogleFiles).toBeUndefined();
-    vi.stubEnv("GOOGLE_DRIVE_SEARCH_ENABLED", "true");
-
+  it("shows only company-owned files in search", async () => {
     const inSharedDrive = { driveId: "drive", owners: undefined };
     const { tools } = docsTools(
       Response.json({

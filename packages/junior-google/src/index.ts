@@ -15,7 +15,6 @@ import { createGoogleCliCommand } from "./cli";
 import {
   GOOGLE_ACCOUNT_EMAIL_ENV,
   GOOGLE_ALLOWED_DOMAINS_ENV,
-  GOOGLE_DRIVE_SEARCH_ENV,
   GOOGLE_CLIENT_ID_ENV,
   GOOGLE_CLIENT_SECRET_ENV,
   readGoogleConfig,
@@ -54,7 +53,6 @@ export function googlePlugin(): PluginRegistration {
         [GOOGLE_CLIENT_SECRET_ENV]: {},
         [GOOGLE_ACCOUNT_EMAIL_ENV]: {},
         [GOOGLE_ALLOWED_DOMAINS_ENV]: {},
-        [GOOGLE_DRIVE_SEARCH_ENV]: {},
       },
     },
     cli: {
@@ -82,7 +80,7 @@ export function googlePlugin(): PluginRegistration {
           sandbox: ctx.sandbox,
           users: ctx.users,
         };
-        const tools: Record<string, PluginToolDefinition> = {
+        return {
           cancelCalendarEvent: createCancelCalendarEventTool(toolContext),
           createCalendarEvent: createCreateCalendarEventTool(toolContext),
           findMeetingTimes: createFindMeetingTimesTool(toolContext),
@@ -92,13 +90,9 @@ export function googlePlugin(): PluginRegistration {
           readGoogleSheet: createReadGoogleSheetTool(toolContext),
           readGoogleSlides: createReadGoogleSlidesTool(toolContext),
           readMeetingTranscript: createReadMeetingTranscriptTool(toolContext),
+          searchGoogleFiles: createSearchGoogleFilesTool(toolContext),
           updateCalendarEvent: createUpdateCalendarEventTool(toolContext),
         };
-        // Off by default until the search filter is verified live.
-        if (config.driveSearch) {
-          tools.searchGoogleFiles = createSearchGoogleFilesTool(toolContext);
-        }
-        return tools;
       },
     },
   });
