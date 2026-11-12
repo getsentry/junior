@@ -1,5 +1,6 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { stopConversation } from "@/chat/conversations/stop";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createModelAgentRunnerForRun } from "../../fixtures/agent-runner";
 import {
@@ -162,7 +163,7 @@ describe("Slack MCP authorization", { timeout: 20_000 }, () => {
   });
 
   it("stops sending links when the person cannot get the required scope", async () => {
-    await askWithoutScopeAccess({ user: "UDENIED", ts: "1712345.4001" });
+    await askWithoutScopeAccess({ user: "UDENIED", ts: "1712345.7001" });
   });
 
   it("stops sending links when the MCP server publishes no resource metadata", async () => {
@@ -194,4 +195,58 @@ describe("Slack MCP authorization", { timeout: 20_000 }, () => {
     expect(slackApiOutbox.authorizationLinks(user)).toHaveLength(3);
     expect(harness.replies().at(-1)).toBe(ANSWER);
   });
+
+  it.each([
+    {
+      name: "the `stop` keyword",
+      stop: async (harness: ConversationWorkSlackHarness, threadTs: string) =>
+        await harness.send({
+          threadTs,
+          ts: "1712345.4101",
+          text: `<@${SLACK_BOT_USER_ID}> stop`,
+        }),
+    },
+    {
+      name: "Slack's native stop button",
+      stop: async (harness: ConversationWorkSlackHarness, threadTs: string) =>
+        await harness.sendSessionStop({ eventTs: "1712345.4101", threadTs }),
+    },
+    {
+      name: "a dashboard stop",
+      stop: async (harness: ConversationWorkSlackHarness, threadTs: string) =>
+        await stopConversation({
+          conversationId: `slack:C123:${threadTs}`,
+          queue: harness.wakes,
+          state: harness.state,
+        }),
+    },
+  ])(
+    "drops a request that waits for sign-in when the person stops it with $name",
+    async ({ stop }) => {
+      const user = "USTOP";
+      const threadTs = "1712345.4001";
+      const harness = await askForBudget({ user, ts: threadTs });
+      const [link] = slackApiOutbox.authorizationLinks(user);
+
+      await stop(harness, threadTs);
+      await harness.drain();
+      // A sign-in after the stop saves the credential but does not resume
+      // the stopped request.
+      await approve(harness, link!);
+      await harness.drain();
+      expect(harness.replies()).not.toContain(ANSWER);
+
+      // A later request uses the saved credential without a new link.
+      await harness.send({
+        user,
+        ts: "1712345.4201",
+        text: `<@${SLACK_BOT_USER_ID}> look up the budget`,
+      });
+      await harness.drain();
+      expect({
+        answered: harness.replies().includes(ANSWER),
+        links: slackApiOutbox.authorizationLinks(user).length,
+      }).toEqual({ answered: true, links: 1 });
+    },
+  );
 });

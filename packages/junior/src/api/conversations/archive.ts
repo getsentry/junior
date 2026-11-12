@@ -109,8 +109,8 @@ export async function setConversationArchive(
     );
     if (args.conversationId === rootConversationId) {
       // A manual restore means the conversation is not done for this person,
-      // so no auto-archive may archive it again. The root actor may not have
-      // a participant row yet.
+      // so no auto-archive may archive it again, and it subscribes them
+      // again (contract: `subscription.ts`).
       // oxlint-disable-next-line junior/touch-conversation-detail -- the detail ETag reads the auto-archive choice on each request.
       await db
         .insert(juniorConversationParticipants)
@@ -125,7 +125,7 @@ export async function setConversationArchive(
             juniorConversationParticipants.userId,
             juniorConversationParticipants.rootConversationId,
           ],
-          set: { autoArchive: false },
+          set: { autoArchive: false, unsubscribedAt: null },
         });
     }
     return { status: "restored" as const };

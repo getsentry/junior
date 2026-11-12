@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createWebSource,
@@ -13,6 +14,11 @@ import { closeDb } from "@/chat/db";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createTools } from "@/chat/tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
 
 const CONVERSATION_ID = "local:test:tool-search-ranking";
 
@@ -40,6 +46,8 @@ const RANKING_CASES = [
   ["edit the issue title", "github", "github_updateIssue"],
   ["closing an issue", "github", "github_updateIssue"],
   ["add a comment to an issue", "github", "github_commentOnIssue"],
+  ["edit my issue comment", "github", "github_updateIssueComment"],
+  ["react to an issue", "github", "github_reactToIssue"],
   ["get CI check status for a commit", "github", "github_getStatus"],
   ["get the latest release", "github", "github_getRelease"],
   ["get repository details", "github", "github_getRepository"],
@@ -155,6 +163,7 @@ function catalogTools(): AgentTools {
       [],
       {},
       {
+        turnTools: rootTurnTools,
         conversationId: CONVERSATION_ID,
         destination: { platform: "local", conversationId: CONVERSATION_ID },
         egress: {
@@ -162,7 +171,6 @@ function catalogTools(): AgentTools {
             return new Response("ok");
           },
         },
-        // Memory writes are registered only for public Conversations.
         source: createWebSource(CONVERSATION_ID, "public"),
         workspace: {} as Parameters<typeof createTools>[2]["workspace"],
       },

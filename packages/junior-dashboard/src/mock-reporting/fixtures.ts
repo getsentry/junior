@@ -33,6 +33,7 @@ import type {
   AutomationList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
+import { mockQuestionConversations } from "./review-items";
 import { isUnlistedMockConversation, withMockSends } from "./sends";
 
 /** Fixed current time for mock reports and browser tests. */
@@ -57,6 +58,7 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
     activityDays,
     changes: [
       {
+        draft: false,
         id: "00000000-0000-4000-8000-000000000001",
         number: 42,
         openedAt: new Date(nowMs - 2 * 86_400_000).toISOString(),
@@ -67,6 +69,7 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
         url: "https://github.com/getsentry/payments/pull/42",
       },
       {
+        draft: false,
         id: "00000000-0000-4000-8000-000000000002",
         mergedAt: new Date(nowMs - 4 * 86_400_000).toISOString(),
         number: 781,
@@ -121,11 +124,14 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
 }
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+// Mock text links to dashboard pages on this origin.
+const MOCK_DASHBOARD_ORIGIN = "https://junior.example.com";
 const INCIDENT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 const PRIVATE_CONVERSATION_ID = "slack:DQA123:1770007200.000300";
 const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
 const FAILED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const LONG_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
+const MANY_TURNS_CONVERSATION_ID = "slack:CQA456:1770025200.000700";
 const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 /** Event automation run. Its trigger message id equals the conversation id. */
 const EVENT_AUTOMATION_RUN_CONVERSATION_ID = "agent-dispatch:event-1";
@@ -145,14 +151,18 @@ const DASHBOARD_QA_NESTED_THREAD_ID =
 const mockPinnedConversationIds = new Set<string>();
 /** Process-local Pinned order from drag reorders. */
 const mockPinPositions = new Map<string, number>();
-/** Process-local conversations that the viewer marked unread. */
-const mockUnreadConversationIds = new Set<string>();
 
 /** Process-local renames so rename can be exercised in visual QA. */
 const mockTitles = new Map<string, string>();
 
 /** Process-local auto-archive choices for mock visual QA. */
 const mockAutoArchiveByConversationId = new Map<string, boolean>();
+
+/** Process-local unsubscribes for mock visual QA. */
+const mockUnsubscribedConversationIds = new Set<string>();
+
+/** Process-local Slack detaches for mock visual QA. */
+const mockDeliveryPausedConversationIds = new Set<string>();
 
 /** Process-local archives. Like the API, an archive applies to everyone. */
 const initialMockArchives: [string, string][] = [
@@ -169,15 +179,16 @@ const mockSlackChannelByConversationId = new Map<
 >();
 
 /**
- * Restore process-local archive, pin, unread, and auto-archive state so
+ * Restore process-local archive, pin, and auto-archive state so
  * tests sharing a worker do not leak state.
  */
 export function resetMockConversationViewerState(): void {
   mockPinnedConversationIds.clear();
   mockPinPositions.clear();
-  mockUnreadConversationIds.clear();
   mockTitles.clear();
   mockAutoArchiveByConversationId.clear();
+  mockUnsubscribedConversationIds.clear();
+  mockDeliveryPausedConversationIds.clear();
   mockArchivedAt.clear();
   mockArchiveCount = 0;
   for (const [id, at] of initialMockArchives) mockArchivedAt.set(id, at);
@@ -185,7 +196,7 @@ export function resetMockConversationViewerState(): void {
 }
 
 /**
- * Add the mock archive, the viewer's pin and unread marks, and any rename to
+ * Add the mock archive, the viewer's pin, and any rename to
  * one conversation. Like the API, a child reports the pin of its root.
  */
 function withMockViewerState<
@@ -197,20 +208,14 @@ function withMockViewerState<
   archivedAt: string | undefined;
   pinnedAt: string | null;
   pinPosition?: number;
-  unread?: true;
 } {
   const pinPosition = mockPinPositions.get(pinConversationId);
-  // Match the API: only idle conversations are unread.
-  const unread =
-    (report.status === "completed" || report.status === "stopped") &&
-    mockUnreadConversationIds.has(report.conversationId);
   return {
     ...report,
     displayTitle: mockTitles.get(report.conversationId) ?? report.displayTitle,
     archivedAt: mockArchivedAt.get(report.conversationId),
     pinnedAt: mockPinnedConversationIds.has(pinConversationId) ? NOW : null,
     ...(pinPosition === undefined ? undefined : { pinPosition }),
-    ...(unread ? { unread: true as const } : undefined),
   };
 }
 
@@ -432,9 +437,11 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     ],
     annotations: [
       {
-        kind: "resource_link",
+        kind: "object",
         key: "getsentry/payments#42",
         label: "getsentry/payments#42",
+        title: "Retry checkout writes after lock timeouts",
+        displayType: "Pull request",
         objectType: "code_change",
         plugin: "github",
         status: "open",
@@ -444,8 +451,14 @@ function activeConversation(nowMs: number): ConversationDetailReport {
       },
     ],
     auxiliaryCosts: {
-      costUsd: 0.0021,
+      costUsd: 0.003,
       operations: [
+        {
+          costUsd: 0.0009,
+          events: 2,
+          name: "compaction",
+          namespace: "junior",
+        },
         {
           costUsd: 0.0001,
           events: 1,
@@ -1062,6 +1075,12 @@ Run targeted tests before broad suites, and keep durable explanations beside the
             contentType: "text/plain",
             bytes: 42,
           },
+          {
+            id: "qa-readme-md",
+            filename: "README.md",
+            contentType: "text/markdown",
+            bytes: 173,
+          },
         ],
       }),
       reportEvent(16, iso(Date.parse(startedAt), 64_000), {
@@ -1250,6 +1269,40 @@ function threadConversation(
   });
 }
 
+/**
+ * Add a Watch Event that reached a child after its last reply. The child runs
+ * it as an agent invocation, so the input names the invocation and the Event.
+ */
+function withChildWatchEvent(conversation: MockConversation): MockConversation {
+  const last = conversation.events.at(-1)!;
+  const at = iso(Date.parse(last.createdAt), 60_000);
+  const { conversationId } = conversation;
+  return {
+    ...conversation,
+    events: [
+      ...conversation.events,
+      reportEvent(last.seq + 1, at, {
+        type: "message",
+        messageId: `${conversationId}:watch-event`,
+        role: "user",
+        agentInvocationId: `${conversationId}:watch-invocation`,
+        eventType: "pull_request.checks.failed",
+        eventNamespace: "github",
+        eventObjectType: "code_change",
+        trustedSummary:
+          "GitHub PR getsentry/junior#2950 checks failed (1) for 705a328 on fix/pin-order.",
+        text: '<task about="GitHub PR getsentry/junior#2950" event="pull_request.checks.failed">\n<instructions>Fix failed checks that the pull request causes.</instructions>\n</task>',
+      }),
+      reportEvent(last.seq + 2, iso(Date.parse(at), 20_000), {
+        type: "message",
+        messageId: `${conversationId}:watch-output`,
+        role: "assistant",
+        text: "The failed check was a flaky runner, so I re-ran it.",
+      }),
+    ],
+  };
+}
+
 function longConversation(nowMs: number): ConversationDetailReport {
   const startedAt = iso(nowMs, -92 * 60_000);
   const events: ConversationReportEvent[] = [
@@ -1319,7 +1372,17 @@ function longConversation(nowMs: number): ConversationDetailReport {
       type: "message",
       messageId: "release-assistant",
       role: "assistant",
-      text: "Released the package.\nOpened the update pull request.\nDeployment is ready.",
+      // Links to the Annotations below show as a chip, a hover card, and a
+      // full card.
+      text: [
+        "Released the package.",
+        "Opened the update pull request https://github.com/getsentry/junior/pull/2201. The [relay fix](https://github.com/getsentry/relay/pull/44) is merged.",
+        "",
+        "https://github.com/getsentry/payments/pull/91",
+        "",
+        // No Annotations: the API resolves these dashboard links.
+        `Deployment is ready. Next, ${MOCK_DASHBOARD_ORIGIN}/people/dev%40example.com picks up ${MOCK_DASHBOARD_ORIGIN}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}.`,
+      ].join("\n"),
     }),
   );
   return detail(nowMs, {
@@ -1365,9 +1428,11 @@ function longConversation(nowMs: number): ConversationDetailReport {
         updatedAt: iso(Date.parse(startedAt), 80_000),
       },
       {
-        kind: "resource_link",
+        kind: "object",
         key: "getsentry/payments#91",
         label: "getsentry/payments#91",
+        title: "Pin the release train to payments 4.2",
+        displayType: "Pull request",
         objectType: "code_change",
         plugin: "github",
         status: "open",
@@ -1445,9 +1510,11 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
     ],
     annotations: [
       {
-        kind: "resource_link",
+        kind: "object",
         key: "getsentry/payments#77",
         label: "getsentry/payments#77",
+        title: "Cache tax rates per checkout session",
+        displayType: "Pull request",
         objectType: "code_change",
         plugin: "github",
         status: "merged",
@@ -1456,9 +1523,11 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
         updatedAt: iso(Date.parse(startedAt), 30_000),
       },
       {
-        kind: "resource_link",
+        kind: "object",
         key: "getsentry/payments#61",
         label: "getsentry/payments#61",
+        title: "Checkout p95 regressed after tax lookup change",
+        displayType: "Issue",
         objectType: "task",
         plugin: "github",
         status: "closed",
@@ -1488,7 +1557,7 @@ function privateConversation(nowMs: number): ConversationDetailReport {
     surface: "slack",
     visibility: "private",
     channel: "DQA123",
-    // Owner-visible private DM: type label, not a privacy restatement.
+    // Participant-visible private DM: type label, not a privacy restatement.
     channelName: "Direct Message",
     channelNameRedacted: true,
     actorIdentity: actor("avery@sentry.io", "Avery Chen", "avery"),
@@ -1585,6 +1654,55 @@ function failedConversation(nowMs: number): ConversationDetailReport {
   });
 }
 
+/** A Conversation longer than its detail page, for the outline. */
+function manyTurnsConversation(nowMs: number): ConversationDetailReport {
+  const startedAt = iso(nowMs, -26 * 60 * 60_000);
+  const topics = [
+    "the checkout error budget",
+    "the canary rollout order",
+    "the payments retry policy",
+    "the alert thresholds",
+    "the on-call handoff notes",
+  ];
+  return detail(nowMs, {
+    conversationId: MANY_TURNS_CONVERSATION_ID,
+    displayTitle: "Quarterly reliability review",
+    surface: "slack",
+    channel: "CQA456",
+    startedAt,
+    actorIdentity: actor("jordan@example.com", "Jordan Blake", "jordan"),
+    events: Array.from({ length: 24 }, (_, turn) => [
+      reportEvent(turn * 2, iso(Date.parse(startedAt), turn * 60_000), {
+        type: "message" as const,
+        messageId: `many-turns-user-${turn}`,
+        role: "user" as const,
+        text:
+          turn % 2 === 0
+            ? `Question ${turn + 1}: review ${topics[turn % topics.length]}.`
+            : `Question ${turn + 1}: review ${topics[turn % topics.length]}. Check last quarter's numbers, list the open follow-ups with their owners, and tell me whether anything blocks the next release or needs a decision from the team this week.`,
+      }),
+      reportEvent(
+        turn * 2 + 1,
+        iso(Date.parse(startedAt), turn * 60_000 + 20_000),
+        {
+          type: "message" as const,
+          messageId: `many-turns-reply-${turn}`,
+          role: "assistant" as const,
+          text: [
+            `Reviewed ${topics[turn % topics.length]}.`,
+            "",
+            "- Last quarter's numbers stay inside the target.",
+            "- Two follow-ups are open, and both have owners.",
+            "- No change blocks the next release.",
+            "",
+            "I will flag it in the weekly summary if the trend changes.",
+          ].join("\n"),
+        },
+      ),
+    ]).flat(),
+  });
+}
+
 function simpleConversation(
   nowMs: number,
   options: {
@@ -1613,6 +1731,43 @@ function simpleConversation(
         text: "Scheduled operation completed successfully.",
       }),
     ],
+  });
+}
+
+const HISTORY_TOPICS = [
+  "Release notes draft",
+  "Flaky test triage",
+  "Quota alert follow-up",
+  "Onboarding doc review",
+  "Dependency bump",
+  "Billing export check",
+  "Incident timeline",
+  "SDK changelog summary",
+];
+
+/**
+ * Older finished conversations from the last 80 days. They fill more than one
+ * feed page, so the conversation list loads pages as the reader scrolls.
+ */
+function historyConversations(nowMs: number): ConversationDetailReport[] {
+  return Array.from({ length: 64 }, (_, index) => {
+    const conversationId = `internal:history-${index + 1}`;
+    const startedAt = iso(nowMs, -(2 + index * 1.2) * 24 * 60 * 60_000);
+    return detail(nowMs, {
+      conversationId,
+      displayTitle: `${HISTORY_TOPICS[index % HISTORY_TOPICS.length]} ${index + 1}`,
+      actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+      cumulativeDurationMs: 8_000,
+      startedAt,
+      events: [
+        reportEvent(0, startedAt, {
+          type: "message",
+          messageId: `${conversationId}:message`,
+          role: "assistant",
+          text: "Done.",
+        }),
+      ],
+    });
   });
 }
 
@@ -1665,7 +1820,7 @@ function eventAutomationRunConversation(
             '<created-by><@U123>. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person. Where the instructions refer to this person, write this mention in the message. If they do not, do not mention this person.</created-by>',
             "<instructions>Summarize the closed issue</instructions>",
             "<summary>ACME-42 Checkout fails for saved cards was closed by Morgan Lee.</summary>",
-            "End with `finishAutomationRun`.",
+            "End with `reply`, `noReply`, or `reportBlocked`.",
             "</task>",
           ].join("\n"),
         },
@@ -1728,6 +1883,9 @@ function mockConversations(nowMs: number): MockConversation[] {
 function fixtureConversations(nowMs: number): MockConversation[] {
   return [
     activeConversation(nowMs),
+    ...mockQuestionConversations(nowMs).map((options) =>
+      detail(nowMs, options),
+    ),
     dashboardQaConversation(nowMs),
     advisorConversation(
       nowMs,
@@ -1780,12 +1938,14 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       },
     ),
     {
-      ...threadConversation(
-        nowMs,
-        DASHBOARD_QA_THREAD_ID,
-        "Check pinned row order",
-        "Check that pinned rows keep their order after a reload.",
-        -3 * 60 * 60_000,
+      ...withChildWatchEvent(
+        threadConversation(
+          nowMs,
+          DASHBOARD_QA_THREAD_ID,
+          "Check pinned row order",
+          "Check that pinned rows keep their order after a reload.",
+          -3 * 60 * 60_000,
+        ),
       ),
       // The nested Thread below.
       childAgentTotals: { count: 1, cumulativeDurationMs: 12_000 },
@@ -1806,6 +1966,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       -3.5 * 60 * 60_000,
     ),
     longConversation(nowMs),
+    manyTurnsConversation(nowMs),
     incidentConversation(nowMs),
     privateConversation(nowMs),
     failedConversation(nowMs),
@@ -1833,6 +1994,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       displayTitle: "Archived restore target",
       surface: "internal",
     }),
+    ...historyConversations(nowMs),
   ];
 }
 
@@ -2032,6 +2194,37 @@ function windowBounds(nowMs: number) {
   };
 }
 
+/** Count a completed mock conversation as an answered or done outcome. */
+function addMockOutcome(
+  bucket: ConversationStatsReport["metricDays"][number],
+  summary: ConversationSummaryReport,
+) {
+  if (summary.status !== "completed") return;
+  bucket.outcomes = (bucket.outcomes ?? 0) + 1;
+  bucket.outcomeCostUsd =
+    (bucket.outcomeCostUsd ?? 0) + (summary.cumulativeUsage?.cost?.total ?? 0);
+}
+
+/** Add two mock merged code changes, with split conversation cost. */
+function addMockMergedCodeChanges(
+  buckets: Map<string, ConversationStatsReport["metricDays"][number]>,
+  nowMs: number,
+  keyLength: number,
+) {
+  for (const change of [
+    { at: iso(nowMs, -3 * 86_400_000), costUsd: 4.25 },
+    { at: iso(nowMs, -4 * 86_400_000), costUsd: 2.1 },
+  ]) {
+    const bucket = buckets.get(change.at.slice(0, keyLength));
+    if (!bucket) continue;
+    bucket.mergedCodeChanges = (bucket.mergedCodeChanges ?? 0) + 1;
+    bucket.mergedCodeChangeCostUsd =
+      (bucket.mergedCodeChangeCostUsd ?? 0) + change.costUsd;
+    bucket.outcomes = (bucket.outcomes ?? 0) + 1;
+    bucket.outcomeCostUsd = (bucket.outcomeCostUsd ?? 0) + change.costUsd;
+  }
+}
+
 function conversationMetricDays(
   nowMs: number,
   summaries: ConversationSummaryReport[],
@@ -2049,6 +2242,7 @@ function conversationMetricDays(
     if (!day) continue;
     day.conversations += 1;
     day.durationMs += summary.cumulativeDurationMs;
+    addMockOutcome(day, summary);
     const tokens = summaryTokenTotal(summary);
     if (tokens) day.tokens = (day.tokens ?? 0) + tokens;
     const inputTokens = summary.cumulativeUsage?.inputTokens;
@@ -2064,6 +2258,7 @@ function conversationMetricDays(
       day.costUsd = (day.costUsd ?? 0) + costUsd;
     }
   }
+  addMockMergedCodeChanges(days, nowMs, 10);
   return [...days.values()];
 }
 
@@ -2088,6 +2283,7 @@ function conversationMetricHours(
     if (!hour) continue;
     hour.conversations += 1;
     hour.durationMs += summary.cumulativeDurationMs;
+    addMockOutcome(hour, summary);
     const tokens = summaryTokenTotal(summary);
     if (tokens) hour.tokens = (hour.tokens ?? 0) + tokens;
     const inputTokens = summary.cumulativeUsage?.inputTokens;
@@ -2104,6 +2300,7 @@ function conversationMetricHours(
       hour.costUsd = (hour.costUsd ?? 0) + costUsd;
     }
   }
+  addMockMergedCodeChanges(hours, nowMs, 13);
   return [...hours.values()];
 }
 
@@ -2187,8 +2384,9 @@ export function readMockConversationFeed(
     .filter((conversation) =>
       status === "archived"
         ? Boolean(conversation.archivedAt)
-        : !conversation.archivedAt ||
-          Date.parse(conversation.archivedAt) >= recentArchiveCutoffMs,
+        : !mockUnsubscribedConversationIds.has(conversation.conversationId) &&
+          (!conversation.archivedAt ||
+            Date.parse(conversation.archivedAt) >= recentArchiveCutoffMs),
     )
     .filter(
       (conversation) =>
@@ -2246,8 +2444,6 @@ export function setMockConversationArchived(
     for (const id of [conversationId, ...unarchived]) {
       mockArchivedAt.set(id, archivedAt);
     }
-    // Match the API: archive also marks it read.
-    mockUnreadConversationIds.delete(conversationId);
     return { archivedAt };
   }
   // Name the topmost archived ancestor, like the API.
@@ -2307,23 +2503,6 @@ export function setMockConversationPinned(
   return { pinnedAt: pinned ? NOW : null };
 }
 
-/**
- * Set the feed's unread flag of one mock conversation for local dashboard
- * visual QA. The mock read position moves on its own, in `read-positions`.
- */
-export function setMockConversationUnread(
-  conversationId: string,
-  unread: boolean,
-): boolean {
-  const exists = mockConversations(NOW_MS).some(
-    (conversation) => conversation.conversationId === conversationId,
-  );
-  if (!exists) return false;
-  if (unread) mockUnreadConversationIds.add(conversationId);
-  else mockUnreadConversationIds.delete(conversationId);
-  return true;
-}
-
 /** Rename one mock conversation for local dashboard visual QA. */
 export function setMockConversationTitle(
   conversationId: string,
@@ -2367,6 +2546,53 @@ export function archiveMockDoneConversations(): { archived: number } {
     archived += 1;
   }
   return { archived };
+}
+
+/**
+ * Subscribe to or unsubscribe from one mock root for local dashboard visual
+ * QA. Like the API, an unsubscribe drops the pin. The mock viewer is never
+ * the last subscriber, so it never archives.
+ */
+export function setMockConversationSubscribed(
+  conversationId: string,
+  subscribed: boolean,
+): { archivedAt: string | null; subscribed: boolean } | undefined {
+  const conversation = mockConversations(NOW_MS).find(
+    (candidate) => candidate.conversationId === conversationId,
+  );
+  if (!conversation) return undefined;
+  const rootId =
+    mockAgentTree(conversation)?.[0]?.conversationId ?? conversationId;
+  if (subscribed) {
+    mockUnsubscribedConversationIds.delete(rootId);
+  } else {
+    mockUnsubscribedConversationIds.add(rootId);
+    mockPinnedConversationIds.delete(rootId);
+    mockPinPositions.delete(rootId);
+  }
+  return { archivedAt: mockArchivedAt.get(rootId) ?? null, subscribed };
+}
+
+/**
+ * Detach a mock root from its Slack thread, or attach it again, for local
+ * dashboard visual QA. Like the API, only a participant's root with a Slack
+ * thread can change.
+ */
+export function setMockConversationDeliveryPaused(
+  conversationId: string,
+  paused: boolean,
+): { paused: boolean } | { error: string } | undefined {
+  const detail = readMockConversationDetail(conversationId);
+  if (!detail?.isParticipant) return undefined;
+  if (detail.deliveryPaused === undefined) {
+    return { error: "Only a conversation with a Slack thread can detach." };
+  }
+  if (paused) {
+    mockDeliveryPausedConversationIds.add(conversationId);
+  } else {
+    mockDeliveryPausedConversationIds.delete(conversationId);
+  }
+  return { paused };
 }
 
 /** Save a mock auto-archive choice for local dashboard visual QA. */
@@ -2594,6 +2820,15 @@ export function readMockConversationChildAgents(
   };
 }
 
+/** Agent types and forks of mock children. Other children start fresh. */
+const MOCK_CHILD_AGENTS: Readonly<
+  Record<string, { agentType?: string; fork?: true }>
+> = {
+  [DASHBOARD_QA_PLAN_ID]: { agentType: "reviewer", fork: true },
+  [DASHBOARD_QA_REVIEW_ID]: { agentType: "reviewer" },
+  [DASHBOARD_QA_PLAN_CHECK_ID]: { fork: true },
+};
+
 /** Build the agent tree of a mock child Conversation, like the API. */
 function mockAgentTree(
   conversation: MockConversation,
@@ -2628,6 +2863,7 @@ function mockAgentTree(
         agent?.title ??
         agent?.name ??
         (item.kind === "thread" ? "Thread" : "Task"),
+      ...MOCK_CHILD_AGENTS[item.conversationId],
     };
   });
 }
@@ -2654,6 +2890,9 @@ export function readMockConversationDetail(
       ? {
           autoArchive:
             mockAutoArchiveByConversationId.get(conversationId) ?? false,
+          subscribed: !mockUnsubscribedConversationIds.has(
+            agentTree?.[0]?.conversationId ?? conversationId,
+          ),
         }
       : undefined),
   };
@@ -2661,7 +2900,9 @@ export function readMockConversationDetail(
     detail,
     agentTree?.[0]?.conversationId,
   );
-  const events = withViewerState.events.slice(-limit);
+  const events = withViewerState.events.slice(
+    -mockPageLimit(conversationId, limit),
+  );
   const bounded =
     events.length < withViewerState.events.length && events[0]
       ? {
@@ -2677,9 +2918,17 @@ export function readMockConversationDetail(
       ? // Stands in for a public dashboard conversation.
         { ...bounded, canContinueInSlack: true as const }
       : bounded;
-  return located.channel && PUBLIC_MOCK_CHANNEL_IDS.has(located.channel)
-    ? { ...located, locationId: `mock:${located.channel}` }
-    : located;
+  const withDelivery =
+    located.isParticipant && !located.parentConversationId && located.channel
+      ? {
+          ...located,
+          deliveryPaused: mockDeliveryPausedConversationIds.has(conversationId),
+        }
+      : located;
+  return withDelivery.channel &&
+    PUBLIC_MOCK_CHANNEL_IDS.has(withDelivery.channel)
+    ? { ...withDelivery, locationId: `mock:${withDelivery.channel}` }
+    : withDelivery;
 }
 
 /** Move the mock dashboard conversation to a mock channel thread, once. */
@@ -2719,14 +2968,7 @@ export function readMockConversationEvents(
   if (!conversation) return undefined;
   if (before === conversation.previousCursor) {
     return {
-      events: [
-        reportEvent(0, iso(Date.parse(conversation.startedAt), -60_000), {
-          type: "message",
-          messageId: `${conversationId}:earlier`,
-          role: "user",
-          text: "Prepare the release and include the complete earlier context.",
-        }),
-      ],
+      events: mockEarlierEvents(conversation),
       eventHistory: conversation.eventHistory,
       generatedAt: NOW,
     };
@@ -2737,7 +2979,7 @@ export function readMockConversationEvents(
   const olderEvents = conversation.events.filter(
     (event) => event.seq < beforeSeq,
   );
-  const events = olderEvents.slice(-limit);
+  const events = olderEvents.slice(-mockPageLimit(conversationId, limit));
   return {
     events,
     eventHistory: conversation.eventHistory,
@@ -2748,6 +2990,36 @@ export function readMockConversationEvents(
         ? { previousCursor: conversation.previousCursor }
         : {}),
   };
+}
+
+/** Return every event of a mock Conversation, with its earlier page. */
+export function readMockConversationAllEvents(
+  conversationId: string,
+): ConversationEventPage | undefined {
+  const conversation = mockConversations(NOW_MS).find(
+    (candidate) => candidate.conversationId === conversationId,
+  );
+  if (!conversation) return undefined;
+  return {
+    events: [...mockEarlierEvents(conversation), ...conversation.events],
+    eventHistory: conversation.eventHistory,
+    generatedAt: NOW,
+  };
+}
+
+/** The fixed earlier page of a Conversation that has a previous cursor. */
+function mockEarlierEvents(
+  conversation: ConversationDetailReport,
+): ConversationReportEvent[] {
+  if (!conversation.previousCursor) return [];
+  return [
+    reportEvent(0, iso(Date.parse(conversation.startedAt), -60_000), {
+      type: "message",
+      messageId: `${conversation.conversationId}:earlier`,
+      role: "user",
+      text: "Prepare the release and include the complete earlier context.",
+    }),
+  ];
 }
 
 /**
@@ -2773,6 +3045,14 @@ export function readMockConversationEventsAround(
   ) {
     return "turn-not-found";
   }
+  const earlier = mockEarlierEvents(conversation);
+  if ("event" in link && earlier.some(({ seq }) => seq === link.event)) {
+    return {
+      events: [...earlier, ...conversation.events],
+      eventHistory: conversation.eventHistory,
+      generatedAt: NOW,
+    };
+  }
   return {
     events: conversation.events,
     eventHistory: conversation.eventHistory,
@@ -2781,6 +3061,16 @@ export function readMockConversationEventsAround(
       ? { previousCursor: conversation.previousCursor }
       : undefined),
   };
+}
+
+/**
+ * Mock transcripts fit one page, except one that pages by 3 Turns, like the
+ * API, so the outline lists messages that have not loaded.
+ */
+function mockPageLimit(conversationId: string, limit: number): number {
+  return conversationId === MANY_TURNS_CONVERSATION_ID
+    ? Math.min(limit, 6)
+    : limit;
 }
 
 function mockBeforeCursor(conversationId: string, seq: number): string {
@@ -3327,11 +3617,114 @@ export function readMockPeopleCode(
   );
   if (!person) return undefined;
   const overview = readMockCodeOverview();
+  // Two weeks of merges and several open changes, so the home summary shows
+  // a weekly delta and a stale change.
+  const merges = [0, 1, 0, 1, 0, 1, 0, 1, 0, 2, 0, 1, 1, 0];
+  const activityDays = overview.activityDays.map((day, index) => ({
+    ...day,
+    merged: merges[index - (overview.activityDays.length - merges.length)] ?? 0,
+  }));
+  const daysAgo = (days: number) =>
+    new Date(NOW_MS - days * 86_400_000).toISOString();
+  const openChange = (
+    number: number,
+    repository: string,
+    title: string,
+    days: number,
+    idleHours?: number,
+  ) => ({
+    draft: false,
+    id: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
+    lastActivityAt:
+      idleHours === undefined ? undefined : daysAgo(idleHours / 24),
+    number,
+    openedAt: daysAgo(days),
+    provider: "github",
+    repository,
+    state: "open" as const,
+    title,
+    url: `https://github.com/${repository}/pull/${number}`,
+  });
+  const doneChange = (
+    number: number,
+    repository: string,
+    title: string,
+    openedDays: number,
+    done: { closed: number } | { merged: number },
+  ) => ({
+    ...openChange(number, repository, title, openedDays),
+    ...("merged" in done
+      ? { mergedAt: daysAgo(done.merged), state: "merged" as const }
+      : { closedAt: daysAgo(done.closed), state: "closed" as const }),
+  });
+  const openChanges = [
+    openChange(2440, "getsentry/junior", "Show your week on the home page", 0),
+    openChange(42, "getsentry/payments", "Reduce checkout latency", 3, 20),
+    openChange(
+      2391,
+      "getsentry/junior",
+      "Retry Slack uploads after a rate limit",
+      6,
+      120,
+    ),
+    openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12, 264),
+    openChange(2402, "getsentry/junior", "Cache plugin manifests", 1, 0.3),
+    openChange(512, "getsentry/sentry-docs", "Document Review desk", 1, 26),
+    openChange(2419, "getsentry/junior", "Trim Slack thread context", 2, 36),
+    openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4, 3),
+    openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5, 96),
+    openChange(61, "getsentry/payments", "Drop legacy refund path", 8, 30),
+    // Recorded before code changes stored titles.
+    {
+      ...openChange(
+        523,
+        "getsentry/sentry-docs",
+        "Fix broken SDK links",
+        10,
+        216,
+      ),
+      title: undefined,
+    },
+    openChange(2350, "getsentry/junior", "Migrate memory schema", 320, 2),
+  ];
+  // Merges land on the days that `merges` counts in the last 7 days.
+  const doneThisWeek = [
+    doneChange(2330, "getsentry/junior", "Stream tool output in Slack", 9, {
+      merged: 6,
+    }),
+    doneChange(2361, "getsentry/junior", "Add Review desk filters", 6, {
+      merged: 4,
+    }),
+    doneChange(519, "getsentry/sentry-docs", "Document code changes", 7, {
+      merged: 4,
+    }),
+    doneChange(2384, "getsentry/junior", "Fix sandbox snapshot reuse", 3, {
+      merged: 2,
+    }),
+    doneChange(58, "getsentry/payments", "Try a shorter retry policy", 4, {
+      closed: 2,
+    }),
+    doneChange(85, "getsentry/sentry-mcp", "Pin Node 22 in CI", 2, {
+      merged: 1,
+    }),
+  ];
+  // Older changes stay off the home day strip, so its counts match `merges`.
+  const weekStartMs = Date.parse(activityDays.at(-7)!.date);
+  const beforeWeek = (change: (typeof overview.changes)[number]) =>
+    [change.openedAt, change.mergedAt, change.closedAt].every(
+      (at) => at === undefined || Date.parse(at) < weekStartMs,
+    );
   return {
-    activityDays: overview.activityDays,
-    changes: overview.changes,
+    activityDays,
+    changes: [
+      ...openChanges,
+      ...doneThisWeek,
+      ...overview.changes.filter(
+        (change) => change.state !== "open" && beforeWeek(change),
+      ),
+    ],
     generatedAt: overview.generatedAt,
-    summary: overview.summary,
+    summary: { ...overview.summary, open: openChanges.length },
     windowEnd: overview.windowEnd,
     windowStart: overview.windowStart,
   };
@@ -3525,25 +3918,20 @@ export function readMockLocationDetail(
   };
 }
 
-function mockAutomationExecutionDays(
-  nowMs: number,
-): AutomationList["executionDays"] {
-  return Array.from({ length: 90 }, (_, index) => {
-    const date = new Date(nowMs - (89 - index) * 86_400_000)
-      .toISOString()
-      .slice(0, 10);
-    const event = index % 11 === 0 ? 1 : 0;
-    const scheduled = index % 5 === 0 ? 2 : index % 3 === 0 ? 1 : 0;
-    return {
-      costUsd:
-        Math.round(
-          (event * 0.12 + scheduled * 0.08 + (index % 7) * 0.01) * 100,
-        ) / 100,
-      date,
-      event,
-      scheduled,
-    };
-  });
+/** Recent runs for the list strip, oldest first, one per `everyMs`. */
+function mockRecentRuns(
+  results: string,
+  lastAtMs: number,
+  everyMs: number,
+): AutomationSummary["recentRuns"] {
+  const status = { b: "blocked", c: "completed", f: "failed" } as const;
+  return [...results].map((letter, index) => ({
+    durationMs: 30_000 + ((index * 37) % 50) * 1_000,
+    executedAt: new Date(
+      lastAtMs - (results.length - 1 - index) * everyMs,
+    ).toISOString(),
+    status: status[letter as keyof typeof status],
+  }));
 }
 
 function mockTasks(): AutomationSummary[] {
@@ -3559,7 +3947,10 @@ function mockTasks(): AutomationSummary[] {
         visibility: "public",
       },
       id: "scheduled-1",
-      instruction: "Send the weekly project summary",
+      task: {
+        kind: "instruction",
+        instruction: "Send the weekly project summary",
+      },
       kind: "scheduled",
       lastConversationId: "scheduler:daily-ops-digest",
       lastRunAt: "2026-08-06T16:00:00.000Z",
@@ -3567,6 +3958,11 @@ function mockTasks(): AutomationSummary[] {
       credentialMode: "creator",
       ownedByViewer: true,
       costUsd: { 1: 0.42, 7: 1.02, 30: 4.18, 90: 16.4 },
+      recentRuns: mockRecentRuns(
+        "cccccccccccccccfccbc",
+        Date.parse("2026-08-06T16:00:00.000Z"),
+        7 * 86_400_000,
+      ),
       runs: { 1: 1, 7: 3, 30: 12, 90: 48 },
       timezone: "America/Los_Angeles",
       schedule: "Every Monday at 9:00 AM",
@@ -3578,6 +3974,7 @@ function mockTasks(): AutomationSummary[] {
         },
       ],
       title: "Weekly project summary",
+      totalCostUsd: 18.62,
       totalRuns: 48,
     },
     {
@@ -3591,7 +3988,7 @@ function mockTasks(): AutomationSummary[] {
         visibility: "public",
       },
       id: "event-1",
-      instruction: "Summarize the closed issue",
+      task: { kind: "instruction", instruction: "Summarize the closed issue" },
       kind: "event",
       lastConversationId: "agent-dispatch:event-1",
       lastRunAt: "2026-08-05T18:30:00.000Z",
@@ -3599,10 +3996,16 @@ function mockTasks(): AutomationSummary[] {
       ownedByViewer: true,
       resource: "Issue · ACME-42",
       costUsd: { 1: 0, 7: 0.12, 30: 0.48, 90: 0.84 },
+      recentRuns: mockRecentRuns(
+        "ccccccc",
+        Date.parse("2026-08-05T18:30:00.000Z"),
+        4 * 86_400_000,
+      ),
       runs: { 1: 0, 7: 1, 30: 4, 90: 7 },
       source: "github",
       outcomes: [],
       title: "Closed issue summary",
+      totalCostUsd: 0.84,
       totalRuns: 7,
       trigger: {
         events: ["issue closed"],
@@ -3622,12 +4025,16 @@ function mockTasks(): AutomationSummary[] {
         visibility: "public",
       },
       id: "event-2",
-      instruction: "Notify responders when the incident changes",
+      task: {
+        kind: "instruction",
+        instruction: "Notify responders when the incident changes",
+      },
       kind: "event",
       credentialMode: "creator",
       ownedByViewer: false,
       resource: "Incident · INC-17",
       costUsd: { 1: 0, 7: 0, 30: 0, 90: 0 },
+      recentRuns: [],
       runs: { 1: 0, 7: 0, 30: 0, 90: 0 },
       source: "pagerduty",
       outcomes: [
@@ -3637,6 +4044,7 @@ function mockTasks(): AutomationSummary[] {
         },
       ],
       title: "Incident change alerts",
+      totalCostUsd: 0,
       totalRuns: 0,
       trigger: {
         events: ["incident updated"],
@@ -3649,27 +4057,8 @@ function mockTasks(): AutomationSummary[] {
 }
 
 /** Build mock Tasks list for local dashboard development. */
-export function readMockAutomationList(nowMs = NOW_MS): AutomationList {
-  return mockAutomationCollection({
-    executionDays: mockAutomationExecutionDays(nowMs),
-    executionHours: trailingMetricHours(nowMs, (date) => ({
-      costUsd: 0,
-      date,
-      event: 0,
-      scheduled: 0,
-    })),
-    executionSixHours: sumMockHoursIntoSixHours(
-      nowMs,
-      trailingMetricHours(nowMs, (date) => ({
-        costUsd: 0,
-        date,
-        event: 0,
-        scheduled: 0,
-      })),
-      (date) => ({ costUsd: 0, date, event: 0, scheduled: 0 }),
-    ),
-    automations: mockTasks(),
-  });
+export function readMockAutomationList(): AutomationList {
+  return mockAutomationCollection({ automations: mockTasks() });
 }
 
 function mockStatusDays(
@@ -3682,7 +4071,8 @@ function mockStatusDays(
     const completed = index % 4 === 0 ? 2 : index % 2 === 0 ? 1 : 0;
     const failed = index % 9 === 0 ? 1 : 0;
     const blocked = index % 13 === 0 ? 1 : 0;
-    return { blocked, completed, date, failed };
+    const costUsd = Math.round((completed + failed) * 0.21 * 100) / 100;
+    return { blocked, completed, costUsd, date, failed };
   });
 }
 
@@ -3699,6 +4089,7 @@ export function readMockAutomationExecutions(
       executionHours: trailingMetricHours(nowMs, (date) => ({
         blocked: 0,
         completed: 0,
+        costUsd: 0,
         date,
         failed: 0,
       })),
@@ -3707,10 +4098,11 @@ export function readMockAutomationExecutions(
         trailingMetricHours(nowMs, (date) => ({
           blocked: 0,
           completed: 0,
+          costUsd: 0,
           date,
           failed: 0,
         })),
-        (date) => ({ blocked: 0, completed: 0, date, failed: 0 }),
+        (date) => ({ blocked: 0, completed: 0, costUsd: 0, date, failed: 0 }),
       ),
       executions: [],
       automation: task,
@@ -3776,6 +4168,7 @@ export function readMockAutomationExecutions(
     executionHours: trailingMetricHours(nowMs, (date) => ({
       blocked: 0,
       completed: 0,
+      costUsd: 0,
       date,
       failed: 0,
     })),
@@ -3784,10 +4177,11 @@ export function readMockAutomationExecutions(
       trailingMetricHours(nowMs, (date) => ({
         blocked: 0,
         completed: 0,
+        costUsd: 0,
         date,
         failed: 0,
       })),
-      (date) => ({ blocked: 0, completed: 0, date, failed: 0 }),
+      (date) => ({ blocked: 0, completed: 0, costUsd: 0, date, failed: 0 }),
     ),
     executions,
     automation: task,

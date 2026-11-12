@@ -17,7 +17,7 @@ function childId(call: ToolCall): string {
   return (toolOutput(call) as { conversation_id: string }).conversation_id;
 }
 
-// The pick case never names a kind. These cases measure whether Junior picks a
+// The pick cases never name a kind. These cases measure whether Junior picks a
 // Thread for work that people will talk to, and when it archives one.
 describe("Threads", () => {
   test("when people will work through a long effort with Junior directly, start it as a Thread", async ({
@@ -26,6 +26,21 @@ describe("Threads", () => {
     const conversation = await run(
       slackMention(
         "Put a dedicated agent on the Postgres 17 upgrade plan. Priya and I will check in with it directly over the next couple of weeks to steer it. Have it start with a first-pass checklist.",
+      ),
+    );
+
+    const spawned = completedToolCalls("spawnAgent", conversation);
+    expect(spawned.map((call) => spawnInput(call).kind)).toContain("thread");
+  });
+
+  // In Slack, "thread" can also mean a Slack thread, which Junior cannot start.
+  // The work item is small so that the Thread finishes within the idle budget.
+  test("when someone in Slack asks for a thread for one work item, start it as a Thread", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        "can you create a thread to write a short runbook entry for rotating our webhook signing secret?",
       ),
     );
 
@@ -70,5 +85,32 @@ describe("Threads", () => {
     expect((await conversation.child(childId(changelog!))).archived).toBe(
       false,
     );
+  });
+
+  test("when a person writes in a Thread, the Thread answers them there", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      webMessage(
+        "Start a thread that I can talk to directly. It drafts a three-line changelog entry for the new CSV export.",
+      ),
+    );
+    const [thread] = completedToolCalls("spawnAgent", conversation).filter(
+      (call) => spawnInput(call).kind === "thread",
+    );
+    expect(
+      thread,
+      "No Thread: this run does not test a person's Turn",
+    ).toBeDefined();
+
+    const answered = await (
+      await conversation.child(childId(thread!))
+    ).continue(webMessage("What is the first line of the entry?"));
+
+    // A person's Turn in a Thread is not gated. Its final response is
+    // delivered in the Thread.
+    const last = answered.turns.at(-1);
+    expect(last?.status).toBe("succeeded");
+    expect(last?.replies).not.toEqual([]);
   });
 });

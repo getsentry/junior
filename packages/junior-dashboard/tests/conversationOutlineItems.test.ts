@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   conversationOutlineItems,
+  mergeConversationOutlineItems,
   outlineItemAtSeq,
 } from "../src/client/conversations/conversationOutlineItems";
 import type { TranscriptViewMessage } from "../src/client/types";
@@ -32,6 +33,28 @@ describe("conversation outline", () => {
       { seq: 2, title: "url local para verlo?", reply: "Es la misma URL." },
       { seq: 7, title: "second question" },
     ]);
+  });
+
+  it("joins the whole outline with the loaded items", () => {
+    const outline = {
+      items: [
+        { seq: 2, text: "**old** question" },
+        { seq: 7, text: "loaded question cut" },
+      ],
+    };
+
+    expect(
+      mergeConversationOutlineItems(outline, [
+        { seq: 7, title: "loaded question in full", reply: "Done." },
+        // Newer than the outline, from a live poll.
+        { seq: 12, title: "new question" },
+      ]),
+    ).toEqual([
+      { seq: 2, title: "old question" },
+      { seq: 7, title: "loaded question in full", reply: "Done." },
+      { seq: 12, title: "new question" },
+    ]);
+    expect(mergeConversationOutlineItems(undefined, [])).toEqual([]);
   });
 
   it("finds the item whose section holds a row", () => {

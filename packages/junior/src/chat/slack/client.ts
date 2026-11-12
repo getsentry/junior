@@ -38,6 +38,8 @@ export class SlackActionError extends Error {
   detail?: string;
   detailLine?: number;
   detailRule?: string;
+  /** Network error code, such as `ECONNABORTED`, when no Slack response arrived. */
+  networkCode?: string;
 
   constructor(
     message: string,
@@ -53,6 +55,7 @@ export class SlackActionError extends Error {
       detail?: string;
       detailLine?: number;
       detailRule?: string;
+      networkCode?: string;
     } = {},
   ) {
     super(message);
@@ -68,6 +71,7 @@ export class SlackActionError extends Error {
     this.detail = options.detail;
     this.detailLine = options.detailLine;
     this.detailRule = options.detailRule;
+    this.networkCode = options.networkCode;
   }
 }
 
@@ -82,6 +86,11 @@ interface SlackRetryContext {
    * post).
    */
   idempotent?: boolean;
+  /**
+   * Error codes that the caller handles as success, such as `already_reacted`.
+   * They still throw, but they do not log `slack.action.failed`.
+   */
+  expectedErrorCodes?: readonly SlackActionErrorCode[];
   /** Extra attributes forwarded onto the per-attempt Sentry span. */
   spanAttributes?: Record<string, string | number | boolean>;
 }
@@ -278,6 +287,7 @@ function mapSlackError(error: unknown): SlackActionError {
   const message = candidate.message ?? "Slack action failed";
   const baseOptions = {
     apiError,
+    networkCode: findNetworkErrorCode(error),
     statusCode: candidate.statusCode,
     requestId: getHeaderString(candidate.headers, "x-slack-req-id"),
     errorData: serializeSlackErrorData(candidate.data),
@@ -405,6 +415,15 @@ function findNetworkErrorCode(error: unknown, depth = 0): string | undefined {
     findNetworkErrorCode(candidate.original, depth + 1) ??
     findNetworkErrorCode(candidate.cause, depth + 1)
   );
+}
+
+/** Report whether a Slack call failed because its request deadline elapsed. */
+export function isSlackRequestTimeout(error: unknown): boolean {
+  const networkCode =
+    error instanceof SlackActionError
+      ? error.networkCode
+      : findNetworkErrorCode(error);
+  return networkCode !== undefined && TIMEOUT_ERROR_CODES.has(networkCode);
 }
 
 function hasSocketHangUpMessage(error: unknown): boolean {
@@ -546,6 +565,9 @@ export async function withSlackRetries<T>(
         attempt >= maxAttempts ||
         remainingDelayBudgetMs <= 0
       ) {
+        if (context.expectedErrorCodes?.includes(mapped.code)) {
+          throw mapped;
+        }
         logWarn("slack.action.failed", {
           ...baseLogAttributes,
           ...(mapped.errorData

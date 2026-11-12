@@ -3,6 +3,8 @@ import { botConfig } from "@/chat/config";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
+import { recordPreviewOrigin } from "@/personal-tokens/preview-origins";
+import { runBestEffort } from "@/chat/logging";
 import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
 import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import type { SkillMetadata } from "@/chat/skills";
@@ -19,7 +21,8 @@ import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
-import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
+import { createReplyTool } from "@/chat/tools/runtime/reply";
+import { createNoReplyTool } from "@/chat/tools/runtime/no-reply";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
 import {
   createAddReviewItemTool,
@@ -27,7 +30,8 @@ import {
   createUpdateReviewItemTool,
 } from "@/chat/tools/review-items";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
-import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
+import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
+import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import { createEventTools } from "@/chat/tools/events";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { createAutomationTools } from "@/chat/tools/automations";
@@ -55,6 +59,7 @@ import { createUserLookupTool } from "@/chat/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
 import { createOperatorTools } from "@/chat/tools/operator-sql";
 import { createUserCustomizationTools } from "@/chat/tools/user-customization";
+import { createConversationSubscriptionTools } from "@/chat/tools/conversation-subscription";
 import { createPublishImageTool } from "@/chat/tools/publish-image";
 import { createUnpublishImageTool } from "@/chat/tools/unpublish-image";
 import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
@@ -89,6 +94,12 @@ function createToolState(): ToolState {
 export type { ToolHooks, ToolRuntimeContext };
 
 export interface CreateToolsOptions {
+  /**
+   * Every discovered skill, for the skill an Automation runs. Unlike the
+   * skills that `loadSkill` gets, it includes skills with
+   * `disable-model-invocation`.
+   */
+  automationSkills?: readonly SkillMetadata[];
   pluginSandbox?: PluginSandbox;
 }
 
@@ -105,6 +116,7 @@ export function createTools(
   options: CreateToolsOptions = {},
 ) {
   const state = createToolState();
+  const turnTools = context.turnTools;
   const slackContext = getSlackToolContext(context);
   const slackLocationCapabilities = slackContext
     ? resolveChannelCapabilities(slackContext.locationChannelId)
@@ -138,10 +150,15 @@ export function createTools(
       canSendFilesToActiveConversation,
     }),
     ...createEventTools(context, eventCatalog),
-    ...createAutomationTools(context, eventCatalog),
+    ...createAutomationTools(
+      context,
+      eventCatalog,
+      options.automationSkills ?? [],
+    ),
     ...createWorkspaceTools(context),
     ...createOperatorTools(context),
     ...createUserCustomizationTools(context),
+    ...createConversationSubscriptionTools(context),
   };
   tools.searchConversationEvents = createSearchConversationEventsTool(context);
   tools.readConversationEvent = createReadConversationEventTool(context);
@@ -153,10 +170,21 @@ export function createTools(
         : undefined,
     );
   }
-  if (context.workspace.createPreview) {
-    tools.createPreview = createCreatePreviewTool(
-      context.workspace.createPreview,
-    );
+  const createPreview = context.workspace.createPreview?.bind(
+    context.workspace,
+  );
+  if (createPreview) {
+    tools.createPreview = createCreatePreviewTool(async (port) => {
+      const url = await createPreview(port);
+      // Lets the requester send this Preview a personal token for live data.
+      // The Preview works without the record: Connect then refuses it, and
+      // the viewer pastes a token instead.
+      await runBestEffort(async () => {
+        const owner = (await context.resolveActorIdentity?.())?.user;
+        if (owner) await recordPreviewOrigin({ ownerEmail: owner.email, url });
+      }, "sandbox.preview_origin.record.failed");
+      return url;
+    });
   }
   if (context.supportsImageInput) {
     tools.viewImage = createViewImageTool(
@@ -231,15 +259,16 @@ export function createTools(
     tools.messageAgent = createMessageAgentTool(context.messageAgent);
   }
 
-  // An Agent invocation reports to its parent.
-  if (context.agentInvocationId) {
-    tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool();
+  if (turnTools.reply !== "none") {
+    tools[REPLY_TOOL_NAME] = createReplyTool(turnTools.reply);
   }
-
-  if (context.automation) {
-    tools[FINISH_AUTOMATION_RUN_TOOL_NAME] = createFinishAutomationRunTool(
-      context.automation,
+  if (turnTools.reportBlocked !== "none") {
+    tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool(
+      turnTools.reportBlocked,
     );
+  }
+  if (turnTools.noReply) {
+    tools[NO_REPLY_TOOL_NAME] = createNoReplyTool();
   }
 
   if (context.mcpToolManager) {
@@ -358,7 +387,7 @@ export function createTools(
           reviewItemServices,
         ),
       },
-      context.agentInvocationId
+      !turnTools.reviewDesk
         ? `A child agent cannot use the review desk. Use ${REPORT_BLOCKED_TOOL_NAME} to tell the parent agent what needs a person.`
         : undefined,
     ),

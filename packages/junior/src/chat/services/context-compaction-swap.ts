@@ -28,6 +28,7 @@ import { setSpanAttributes } from "@/chat/logging";
 import { loadLatestBackgroundCompaction } from "@/chat/services/background-compaction";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { ContextSummary } from "@/chat/agent/context-summary";
 import { trimTrailingAssistantMessages } from "@/chat/pi/transcript";
 import {
   calculateContextCompactionTargetTokens,
@@ -62,6 +63,11 @@ type PreparedCompaction = Extract<
   { type: "compaction_prepared"; outcome: "ready" }
 >;
 
+/**
+ * Why a ready summary was not used (`app.compaction.discard_reason`).
+ * `conflict`: another replacement committed first. `split_tool_call`: the
+ * mark falls between a tool call and its result.
+ */
 type DiscardReason =
   | "conflict"
   | "history_version_changed"
@@ -117,7 +123,10 @@ function discard(reason: DiscardReason): CompactContextResult {
  */
 export async function compactWithPreparedSummary(
   args: ActiveContextCompactionArgs,
-  summarize: (messages: PiMessage[], signal?: AbortSignal) => Promise<string>,
+  summarize: (
+    messages: PiMessage[],
+    signal?: AbortSignal,
+  ) => Promise<ContextSummary>,
 ): Promise<CompactContextResult> {
   const swapped = await swapPreparedCompaction(args);
   // After a conflict the active messages are stale. A blocking summary
@@ -223,6 +232,8 @@ async function swapPreparedCompaction(
       prepared?.type !== "compaction_prepared" ||
       prepared.outcome !== "ready"
     ) {
+      // The request is older than the wait, the job failed, or the wait
+      // ended. A blocking compaction can still follow at the threshold.
       setSpanAttributes({ "app.compaction.outcome": "not_ready" });
       return { compacted: false };
     }

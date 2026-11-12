@@ -8,19 +8,20 @@
  * messages, the summary, then the new instruction. Checkpoints can append
  * fresh runtime context; the next replacement removes it again.
  */
-import {
-  estimateContextTokens,
-  estimateTokens,
-} from "@earendil-works/pi-agent-core";
+import { estimateContextTokens } from "@earendil-works/pi-agent-core";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { ContextSummary } from "@/chat/agent/context-summary";
 import {
   calculateContextCompactionTargetTokens,
-  estimateTextTokens,
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
-  getTokenEstimateProfile,
 } from "@/chat/services/context-budget";
+import {
+  estimateMessagesTokens,
+  estimateTextTokens,
+  textCharsForTokens,
+} from "@/chat/services/token-estimate";
 import {
   contextProvenance,
   type ConversationMessageProvenance,
@@ -30,6 +31,7 @@ import { getConversationEventStore } from "@/chat/db";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
   isStandaloneRuntimeContextMessage,
+  latestTurnContextSection,
   retainRuntimeTurnContext,
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
@@ -44,7 +46,9 @@ import {
   isCompactionSummaryText,
 } from "@/chat/services/context-compaction-marker";
 import {
+  CAPABILITY_SECTION_TAG,
   REQUEST_CONTEXT_SECTION_TAG,
+  SCRIPT_TOOLS_SECTION_TAG,
   SESSION_CONTEXT_SECTION_TAG,
   TURN_CONTEXT_TAG,
 } from "@/chat/turn-context-tag";
@@ -163,7 +167,7 @@ function sanitizeText(text: string): string {
 }
 
 function truncateToTokenBudget(text: string, maxTokens: number): string {
-  const maxChars = Math.max(0, maxTokens * 4);
+  const maxChars = Math.max(0, textCharsForTokens(maxTokens));
   if (text.length <= maxChars) {
     return text;
   }
@@ -207,9 +211,8 @@ function isSessionTurnContext(text: string | undefined): text is string {
   );
 }
 
-/** Remove the sections that only the Turn that received them can use. */
-function withoutRequestContext(text: string): string {
-  return Object.values(REQUEST_CONTEXT_SECTION_TAG).reduce(
+function withoutSections(text: string, tags: string[]): string {
+  return tags.reduce(
     (result, tag) =>
       result.replace(
         new RegExp(`\\n\\n<${tag}>\\n[\\s\\S]*?\\n</${tag}>`, "g"),
@@ -217,6 +220,56 @@ function withoutRequestContext(text: string): string {
       ),
     text,
   );
+}
+
+/** Remove the sections that only the Turn that received them can use. */
+function withoutRequestContext(text: string): string {
+  return withoutSections(text, Object.values(REQUEST_CONTEXT_SECTION_TAG));
+}
+
+/**
+ * Turn context sections that a Turn sends only when they differ from the
+ * latest copy in history. Compaction keeps exactly that copy, byte for byte.
+ */
+const LATEST_COPY_SECTION_TAGS: string[] = [
+  ...Object.values(CAPABILITY_SECTION_TAG),
+  SCRIPT_TOOLS_SECTION_TAG,
+];
+
+function latestSections(
+  messages: PiMessage[],
+  tags = LATEST_COPY_SECTION_TAGS,
+): string[] {
+  return tags.flatMap((tag) => latestTurnContextSection(messages, tag) ?? []);
+}
+
+/**
+ * Remove every copy of the latest-copy sections, then put the given copies in
+ * the first Turn context part. Callers leave out a section that kept history
+ * already has.
+ */
+function withLatestSections(content: unknown[], sections: string[]): unknown[] {
+  const closingTag = `\n</${TURN_CONTEXT_TAG}>`;
+  const added = sections.map((section) => `\n\n${section}`).join("");
+  let pending = sections.length > 0;
+  const result = content.map((part) => {
+    const text = textPart(part);
+    if (!text?.startsWith(`<${TURN_CONTEXT_TAG}>`)) {
+      return part;
+    }
+    let stripped = withoutSections(text, LATEST_COPY_SECTION_TAGS);
+    if (pending && stripped.endsWith(closingTag)) {
+      stripped = `${stripped.slice(0, -closingTag.length)}${added}${closingTag}`;
+      pending = false;
+    }
+    return { ...(part as object), text: stripped };
+  });
+  return pending
+    ? [
+        { type: "text", text: `<${TURN_CONTEXT_TAG}>${added}${closingTag}` },
+        ...result,
+      ]
+    : result;
 }
 
 /** Find the latest session context and keep only its session sections. */
@@ -249,12 +302,17 @@ function effectiveRuntimeContext(messages: PiMessage[]): {
   }
   const effectiveMessages =
     latestBootstrapIndex < 0 ? messages : messages.slice(latestBootstrapIndex);
-  return runtimeContextContent(effectiveMessages, effectiveMessages);
+  return runtimeContextContent(
+    effectiveMessages,
+    effectiveMessages,
+    latestSections(messages),
+  );
 }
 
 function runtimeContextContent(
   messages: PiMessage[],
   agentsMessages: PiMessage[],
+  latest: string[],
 ): {
   content: unknown[];
   timestamp: number;
@@ -263,8 +321,11 @@ function runtimeContextContent(
   const firstAgentsIndex = allContent.findIndex(
     (part) => textPart(part)?.startsWith("# AGENTS.md instructions") === true,
   );
-  const content = allContent.filter(
-    (part) => textPart(part)?.startsWith("# AGENTS.md instructions") !== true,
+  const content = withLatestSections(
+    allContent.filter(
+      (part) => textPart(part)?.startsWith("# AGENTS.md instructions") !== true,
+    ),
+    latest,
   );
   const visibleAgents = findVisibleAgentsInstructions(agentsMessages);
   if (visibleAgents?.active === true) {
@@ -317,7 +378,8 @@ function runtimeContextMessage(
  *
  * Request context, such as plugin context and disabled tools, is true only for
  * the Turn that received it. From earlier Turns, keep only the latest session
- * context and AGENTS.md instructions.
+ * context, the latest copy of each capability section and `<script-tools>`,
+ * and AGENTS.md instructions.
  */
 function turnRuntimeContextMessage(
   messages: PiMessage[],
@@ -342,6 +404,7 @@ function turnRuntimeContextMessage(
     runtimeContextContent(
       sessionContext ? [sessionContext, ...turnContext] : turnContext,
       [...earlierContext, ...turnContext],
+      latestSections([...earlierContext, ...turnContext]),
     ),
     timestamp,
   );
@@ -349,8 +412,9 @@ function turnRuntimeContextMessage(
 
 /**
  * Build the runtime context of summarized history that the kept history
- * does not carry: the latest session context and the AGENTS.md
- * instructions. Request context of earlier Turns is left out.
+ * does not carry: the latest session context, the latest copy of each
+ * capability section and `<script-tools>`, and the AGENTS.md instructions.
+ * Request context of earlier Turns is left out.
  */
 export function summarizedRuntimeContextMessage(
   summarized: PiMessage[],
@@ -367,6 +431,12 @@ export function summarizedRuntimeContextMessage(
     runtimeContextContent(
       sessionContext ? [sessionContext] : [],
       findVisibleAgentsInstructions(kept) ? [] : earlierContext,
+      latestSections(
+        earlierContext,
+        LATEST_COPY_SECTION_TAGS.filter(
+          (tag) => !latestTurnContextSection(keptContext, tag),
+        ),
+      ),
     ),
   );
 }
@@ -619,25 +689,6 @@ export function estimateReplacementTokens(
   return requestOverheadTokens + estimateMessagesTokens(messages, modelId);
 }
 
-/** Estimate messages from their size at the model's characters per token. */
-function estimateMessagesTokens(
-  messages: PiMessage[],
-  modelId: string,
-): number {
-  const profile = getTokenEstimateProfile(modelId);
-  return messages.reduce((total, message) => {
-    // Pi counts characters / 4. Scale that to the model's characters per token.
-    const tokens = Math.ceil(
-      (estimateTokens(message) * 4) / profile.charsPerToken,
-    );
-    const overhead =
-      (message as { role?: unknown }).role === "toolResult"
-        ? profile.toolResultOverheadTokens
-        : 0;
-    return total + tokens + overhead;
-  }, 0);
-}
-
 async function loadLastInstruction(conversationId: string) {
   const event =
     await getConversationEventStore().loadLatestInstruction(conversationId);
@@ -689,7 +740,10 @@ function loadCompactionSource(
  */
 export async function compactActiveContextIfNeeded(
   args: ActiveContextCompactionArgs,
-  summarize: (messages: PiMessage[], signal?: AbortSignal) => Promise<string>,
+  summarize: (
+    messages: PiMessage[],
+    signal?: AbortSignal,
+  ) => Promise<ContextSummary>,
 ): Promise<CompactContextResult> {
   const pendingMessages = args.pendingMessages ?? [];
   const source = loadCompactionSource(
@@ -711,7 +765,10 @@ export async function compactActiveContextIfNeeded(
 
 async function compactActiveAboveThreshold(
   args: ActiveContextCompactionArgs,
-  summarize: (messages: PiMessage[], signal?: AbortSignal) => Promise<string>,
+  summarize: (
+    messages: PiMessage[],
+    signal?: AbortSignal,
+  ) => Promise<ContextSummary>,
   source: { estimatedTokens: number; messages: PiMessage[] },
   triggerTokens: number,
 ): Promise<CompactContextResult> {
@@ -719,6 +776,11 @@ async function compactActiveAboveThreshold(
   const retainUserMessages =
     args.mode === "blocking" && pendingMessages.length > 0;
   const inputLimitTokens = getAgentContextInputLimitTokens(args.modelId);
+  // `app.compaction.skip_reason`. `over_target`: the kept context is above
+  // the target without a summary. `last_over_threshold`: the first model call
+  // after the latest full compaction was above the threshold.
+  // `over_input_limit`: the kept context is at the input limit, so no summary
+  // fits. The first two compact again at the input limit.
   const skip = (
     reason: "last_over_threshold" | "over_input_limit" | "over_target",
   ) => {
@@ -800,8 +862,9 @@ async function compactActiveAboveThreshold(
 
   await args.onCompactionStart?.();
   let summary: string;
+  let costUsd: number | undefined;
   try {
-    summary = await summarize(args.piMessages, args.signal);
+    ({ summary, costUsd } = await summarize(args.piMessages, args.signal));
   } catch (error) {
     if (source.estimatedTokens >= inputLimitTokens) {
       throw new ContextInputLimitExceededError(
@@ -867,6 +930,7 @@ async function compactActiveAboveThreshold(
         retainedMessageCount,
         summaryChars: summary.length,
       },
+      ...(costUsd === undefined ? undefined : { costUsd }),
       summary,
       replacementHistory: replacement.map((entry) => ({
         item: historyItemFromPiMessage(entry.message, entry.provenance),

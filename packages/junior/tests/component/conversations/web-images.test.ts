@@ -13,7 +13,7 @@ import {
   closeConversationFixture,
 } from "../../fixtures/conversation";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
-import { testViewer } from "../../fixtures/user";
+import { signedInViewer } from "../../fixtures/user";
 
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aU1sAAAAASUVORK5CYII=";
@@ -46,7 +46,7 @@ describe("web image input", () => {
     const app = new Hono<JuniorApiEnv>();
     app.use("*", async (context, next) => {
       const email = context.req.header("x-test-viewer");
-      if (email) context.set("viewer", testViewer(email));
+      if (email) context.set("viewer", await signedInViewer(email));
       await next();
     });
     app.route(

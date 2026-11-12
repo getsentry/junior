@@ -817,8 +817,15 @@ export function createPiAgentTools(
     workspace: codeMode?.workspace,
   });
   if (codeMode) {
+    const modelOnlyTools = [
+      ...Object.keys(visibleTools).filter(
+        (name) => !Object.hasOwn(plannedTools.scriptTools, name),
+      ),
+      CODEMODE_TOOL_NAME,
+    ];
     visibleTools[CODEMODE_TOOL_NAME] = createCodeModeTool({
       countToolCall: codeMode.countToolCall,
+      modelOnlyTools,
       pipeline,
       scriptTools: plannedTools.scriptTools,
     });

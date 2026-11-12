@@ -26,6 +26,7 @@ import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
+import { anchorTitleId } from "../../components/layout/AnchorHeading";
 import { SectionHeader } from "../../components/layout/SectionHeader";
 import { SectionIntro } from "../../components/layout/SectionIntro";
 import { SectionTitle } from "../../components/layout/SectionTitle";
@@ -111,8 +112,8 @@ export function Profile(props: {
         title={displayName}
       />
 
-      <section className="grid gap-4" aria-labelledby="profile-metrics-title">
-        <SectionIntro id="profile-metrics-title" title="Usage over time" />
+      <section className="grid gap-4" aria-labelledby={anchorTitleId("usage")}>
+        <SectionIntro anchor="usage" title="Usage over time" />
         <SystemMetricCharts
           bucketUnit={timeRangeBucketUnit(range)}
           days={selectTimeSeries({

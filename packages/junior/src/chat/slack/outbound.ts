@@ -179,6 +179,39 @@ export async function postSlackMessage(input: {
   };
 }
 
+/**
+ * Set or replace the link previews that Junior shows on a posted message.
+ * Pass the `unfurl_id` of a sent message's `link_shared` event when it has
+ * one: Slack accepts it in channels that Junior has not joined.
+ */
+export async function unfurlSlackLinks(input: {
+  channelId: string;
+  messageTs: string;
+  unfurlId?: string;
+  unfurls: Record<string, { blocks: KnownBlock[] }>;
+}): Promise<void> {
+  const channelId = requireSlackConversationId(
+    input.channelId,
+    "Slack link unfurl",
+  );
+  const ts = requireSlackMessageTimestamp(input.messageTs, "Slack link unfurl");
+  const target = input.unfurlId
+    ? { source: "conversations_history" as const, unfurl_id: input.unfurlId }
+    : { channel: channelId, ts };
+  await withSlackRetries(
+    () => getSlackClient().chat.unfurl({ ...target, unfurls: input.unfurls }),
+    3,
+    {
+      action: "chat.unfurl",
+      idempotent: true,
+      spanAttributes: {
+        "app.slack.channel_id": channelId,
+        "app.slack.message_ts": ts,
+      },
+    },
+  );
+}
+
 /** Delete a previously posted Slack message through the shared outbound boundary. */
 export async function deleteSlackMessage(input: {
   channelId: string;
@@ -429,6 +462,7 @@ export async function addReactionToMessage(input: {
       input.timeoutMs === undefined ? 3 : 1,
       {
         action: "reactions.add",
+        expectedErrorCodes: ["already_reacted"],
         idempotent: true,
         spanAttributes: {
           "app.slack.channel_id": channelId,
@@ -477,6 +511,7 @@ export async function removeReactionFromMessage(input: {
       3,
       {
         action: "reactions.remove",
+        expectedErrorCodes: ["no_reaction"],
         idempotent: true,
         spanAttributes: {
           "app.slack.channel_id": channelId,
