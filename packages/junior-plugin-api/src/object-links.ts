@@ -63,9 +63,8 @@ function hasPathFilter(filter: {
 }
 
 function normalizedPath(url: URL): string {
-  return url.pathname.length > 1
-    ? url.pathname.replace(/\/+$/, "")
-    : url.pathname;
+  const path = url.pathname;
+  return path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
 }
 
 /** Return whether a filter claims a URL. A trailing slash does not count. */

@@ -36,8 +36,10 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
     url.protocol === "mailto:"
       ? decodeURIComponent(url.pathname)
       : pageSegment(url, "people");
+  // The directory read is slow, so read it only for a person link.
+  if (!email) return [];
   const person = readMockPeopleDirectory().people.find(
-    (candidate) => candidate.actor.email === email?.toLowerCase(),
+    (candidate) => candidate.actor.email === email.toLowerCase(),
   );
   if (!person) return [];
   const object = personObjectCard({ person: person.actor, url: href });

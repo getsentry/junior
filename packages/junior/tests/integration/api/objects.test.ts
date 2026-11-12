@@ -84,7 +84,7 @@ describe("object links API", () => {
 
     const participant = await (
       await viewerApi("alice@example.com")
-    )(CONVERSATION_URL);
+    )(CONVERSATION_URL, `${CONVERSATION_URL}/`);
     expect(participant.objects.get(CONVERSATION_URL)).toMatchObject({
       description: PRIVATE_BRIEF,
       facts: {
@@ -98,6 +98,10 @@ describe("object links API", () => {
       plugin: "junior",
       status: "idle",
       title: "Plan the private launch",
+      url: CONVERSATION_URL,
+    });
+    // A trailing slash names the same Conversation.
+    expect(participant.objects.get(`${CONVERSATION_URL}/`)).toMatchObject({
       url: CONVERSATION_URL,
     });
 

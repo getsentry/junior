@@ -4,7 +4,7 @@ import {
   type OwnedObjectAnnotation,
 } from "@sentry/junior/api/schema";
 import { useQuery, type QueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState, type RefCallback } from "react";
 
 import { fetchDashboardJson } from "../http";
 
@@ -98,24 +98,22 @@ export function useResolvedObject(href: string | undefined): {
   return { card: data ?? undefined, request };
 }
 
-/** Call `onVisible` once, when the element first scrolls into view. */
+/** Return a ref that calls `onVisible` once, when its element first shows. */
 export function useWhenVisible(
   onVisible: () => void,
-  enabled: boolean,
-): (element: Element | null) => void {
-  const [element, setElement] = useState<Element | null>(null);
-  useEffect(() => {
-    if (!enabled || !element || typeof IntersectionObserver === "undefined") {
-      return;
-    }
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        observer.disconnect();
-        onVisible();
-      }
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [element, enabled, onVisible]);
-  return setElement;
+): RefCallback<HTMLAnchorElement> {
+  return useCallback(
+    (element: HTMLAnchorElement | null) => {
+      if (!element || typeof IntersectionObserver === "undefined") return;
+      const observer = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          observer.disconnect();
+          onVisible();
+        }
+      });
+      observer.observe(element);
+      return () => observer.disconnect();
+    },
+    [onVisible],
+  );
 }

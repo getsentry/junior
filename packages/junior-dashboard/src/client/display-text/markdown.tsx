@@ -1,4 +1,4 @@
-import { Children, type ReactNode } from "react";
+import { Children, type ReactNode, type RefCallback } from "react";
 import type { OwnedObjectAnnotation } from "@sentry/junior/api/schema";
 import Markdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
@@ -466,7 +466,7 @@ function ResolvedAnchor(props: {
   href: string;
 }) {
   const { card, request } = useResolvedObject(props.href);
-  const observe = useWhenVisible(request, !card);
+  const observe = useWhenVisible(request);
   if (card) {
     return (
       <ObjectAnchor bare={props.bare} card={card} href={props.href} live>
@@ -508,7 +508,7 @@ function ObjectAnchor(props: {
 function PlainAnchor(props: {
   children: ReactNode;
   href: string;
-  observe?: (element: Element | null) => void;
+  observe?: RefCallback<HTMLAnchorElement>;
   onPointerEnter?: () => void;
 }) {
   if (!/^https?:/i.test(props.href)) {

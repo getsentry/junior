@@ -105,7 +105,9 @@ function parseDashboardPageLink(
   if (link.origin !== base.origin || !link.pathname.startsWith(base.pathname)) {
     return undefined;
   }
-  const segment = link.pathname.slice(base.pathname.length);
+  // A trailing slash names the same page, as in link filters.
+  const path = link.pathname.slice(base.pathname.length);
+  const segment = path.endsWith("/") ? path.slice(0, -1) : path;
   if (!segment || segment.includes("/")) return undefined;
   try {
     return decodeURIComponent(segment);
