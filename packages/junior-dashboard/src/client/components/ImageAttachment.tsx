@@ -3,11 +3,14 @@ import { ChevronLeft, ChevronRight, ExternalLink, X } from "lucide-react";
 import {
   type MouseEvent,
   type PointerEvent,
+  useCallback,
+  useEffect,
   useRef,
   useState,
   type ComponentPropsWithoutRef,
 } from "react";
 
+import { cn } from "../styles";
 import { Button } from "./ui/button";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "./ui/dialog";
 import { useSheet } from "./ui/useSheet";
@@ -220,8 +223,14 @@ function ImagePreview(props: {
   );
 }
 
+/** Least zoom limit. A larger image can zoom to its natural size. */
 const MAX_ZOOM = 4;
-const DOUBLE_TAP_ZOOM = 2.5;
+/** Least zoom of a click or double tap. Most images zoom to natural size. */
+const DETAIL_ZOOM = 2.5;
+/** Zoom per wheel delta unit, for ctrl+wheel and trackpad pinches. */
+const WHEEL_ZOOM_RATE = 0.01;
+/** A mouse wheel notch is about 100. Clamp it so one notch zooms one step. */
+const WHEEL_ZOOM_MAX_DELTA = 50;
 const DOUBLE_TAP_MS = 300;
 /** Distance before a one-finger drag picks its axis. */
 const SWIPE_LOCK_PX = 10;
@@ -247,9 +256,12 @@ type Swipe = { axis: "x" | "y"; offset: number; settling?: boolean };
 const NO_ZOOM: Zoom = { scale: 1, x: 0, y: 0 };
 
 /**
- * Let touch readers pinch, drag, and double-tap to zoom one image. The page
- * viewport blocks browser zoom, so the preview owns these gestures. On an
- * unzoomed image, a sideways swipe pages and a downward swipe dismisses.
+ * Fit one image to the frame and let readers zoom it. A click or a double tap
+ * on the image zooms to its natural size at that point, and the next one
+ * zooms back out. Pinch and ctrl+wheel zoom; a drag or the wheel pans. The
+ * page viewport blocks browser zoom, so the preview owns these gestures. On
+ * an unzoomed image, a sideways touch swipe pages and a downward touch swipe
+ * dismisses.
  */
 function ZoomableImage(props: {
   alt: string;
@@ -259,6 +271,10 @@ function ZoomableImage(props: {
 }) {
   const [zoom, setZoom] = useState(NO_ZOOM);
   const [swipe, setSwipe] = useState<Swipe>();
+  // True while a click or double-tap zoom animates. Pinch, drag, and wheel
+  // follow the input, so they do not animate.
+  const [animate, setAnimate] = useState(false);
+  const frame = useRef<HTMLDivElement>(null);
   const image = useRef<HTMLImageElement>(null);
   const pointers = useRef(new Map<number, Point>());
   const gesture = useRef<Gesture>(undefined);
@@ -266,57 +282,137 @@ function ZoomableImage(props: {
   // pinch, until every finger lifts.
   const swipeAxis = useRef<"none" | "x" | "y">(undefined);
   const lastTapAt = useRef(0);
+  // Where a mouse press started, until it moves far enough to be a drag.
+  const click = useRef<Point>(undefined);
 
   const startGesture = (from: Zoom) => {
-    const points = [...pointers.current.values()];
-    // The rendered rect still shows the current zoom, even when `from` is a
-    // zoom that was just set.
-    const rect = image.current!.getBoundingClientRect();
-    gesture.current = {
-      center: {
-        x: rect.left + rect.width / 2 - zoom.x,
-        y: rect.top + rect.height / 2 - zoom.y,
-      },
-      distance: pointDistance(points),
-      start: midpoint(points),
-      zoom: from,
-    };
+    gesture.current = gestureAt(
+      [...pointers.current.values()],
+      from,
+      image.current!,
+    );
   };
 
+  /**
+   * Stop a click or double-tap animation at the zoom it shows now, so input
+   * that interrupts it starts from what the reader sees. Returns that zoom.
+   */
+  const interruptZoom = useCallback((): Zoom => {
+    if (!animate) return zoom;
+    const shown = renderedZoom(image.current!);
+    setAnimate(false);
+    setZoom(shown);
+    return shown;
+  }, [animate, zoom]);
+
+  /**
+   * Zoom in from `from` on the image point under `point`, or zoom out to fit.
+   * An unzoomed image ignores points beside it. Returns the zoom it set.
+   */
+  const toggleZoom = (point: Point, from: Zoom): Zoom | undefined => {
+    const element = image.current!;
+    if (from.scale === 1 && !contains(element.getBoundingClientRect(), point)) {
+      return undefined;
+    }
+    const next =
+      from.scale > 1
+        ? NO_ZOOM
+        : zoomAt(
+            gestureAt([point], from, element),
+            point,
+            Math.max(DETAIL_ZOOM, naturalZoom(element)),
+            element,
+          );
+    setAnimate(true);
+    setZoom(next);
+    return next;
+  };
+
+  // React wheel listeners are passive, so they cannot stop the page or the
+  // browser from zooming.
+  useEffect(() => {
+    const element = frame.current!;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const point = clientPoint(event);
+      const from = interruptZoom();
+      const start = gestureAt([point], from, image.current!);
+      // Trackpad pinches arrive as ctrl+wheel.
+      if (event.ctrlKey) {
+        const delta = clamp(
+          event.deltaY,
+          -WHEEL_ZOOM_MAX_DELTA,
+          WHEEL_ZOOM_MAX_DELTA,
+        );
+        setZoom(
+          zoomAt(
+            start,
+            point,
+            from.scale * Math.exp(-delta * WHEEL_ZOOM_RATE),
+            image.current!,
+          ),
+        );
+      } else if (from.scale > 1) {
+        // Other wheel input scrolls the zoomed image, like a page. zoomAt at
+        // the same scale pans and keeps the edges in the frame.
+        setZoom(
+          zoomAt(
+            start,
+            { x: point.x - event.deltaX, y: point.y - event.deltaY },
+            from.scale,
+            image.current!,
+          ),
+        );
+      }
+    };
+    element.addEventListener("wheel", onWheel, { passive: false });
+    return () => element.removeEventListener("wheel", onWheel);
+  }, [interruptZoom]);
+
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === "mouse") return;
-    // Keep move and end events when a finger slides out of the frame.
+    const mouse = event.pointerType === "mouse";
+    if (mouse && event.button !== 0) return;
+    // Keep move and end events when a pointer slides out of the frame.
     event.currentTarget.setPointerCapture(event.pointerId);
-    const point = { x: event.clientX, y: event.clientY };
+    const point = clientPoint(event);
     pointers.current.set(event.pointerId, point);
-    swipeAxis.current = pointers.current.size > 1 ? "none" : undefined;
+    // A mouse drag only pans. Swipes to page or dismiss are for touch.
+    swipeAxis.current = mouse || pointers.current.size > 1 ? "none" : undefined;
     if (swipe) setSwipe(undefined);
+    const from = interruptZoom();
+    click.current = mouse ? point : undefined;
+    // A mouse zooms on one click, in onPointerEnd. Touch needs a double tap,
+    // because one tap also starts a swipe or a pan.
     if (
+      !mouse &&
       pointers.current.size === 1 &&
       event.timeStamp - lastTapAt.current < DOUBLE_TAP_MS
     ) {
       lastTapAt.current = 0;
-      startGesture(zoom);
-      const next =
-        zoom.scale > 1
-          ? NO_ZOOM
-          : zoomAt(gesture.current!, point, DOUBLE_TAP_ZOOM, image.current!);
-      setZoom(next);
-      startGesture(next);
+      startGesture(toggleZoom(point, from) ?? from);
       return;
     }
-    if (pointers.current.size === 1) lastTapAt.current = event.timeStamp;
-    startGesture(zoom);
+    if (!mouse && pointers.current.size === 1) {
+      lastTapAt.current = event.timeStamp;
+    }
+    startGesture(from);
   };
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const start = gesture.current;
     if (!start || !pointers.current.has(event.pointerId)) return;
-    pointers.current.set(event.pointerId, {
-      x: event.clientX,
-      y: event.clientY,
-    });
+    pointers.current.set(event.pointerId, clientPoint(event));
     const points = [...pointers.current.values()];
+    // A drag, pan, or swipe is not a click or the first tap of a double tap.
+    if (
+      points.length === 1 &&
+      pointDistance([points[0]!, start.start]) >= SWIPE_LOCK_PX
+    ) {
+      lastTapAt.current = 0;
+      click.current = undefined;
+    }
+    // A mouse press pans only once it is a drag, so a click stays a click.
+    if (click.current) return;
     if (
       points.length === 1 &&
       start.zoom.scale === 1 &&
@@ -327,8 +423,6 @@ function ZoomableImage(props: {
       const axis = swipeAxis.current ?? lockSwipeAxis(dx, dy, props.pageable);
       swipeAxis.current = axis;
       if (axis === "x" || axis === "y") {
-        // A swipe is not the first tap of a double tap.
-        lastTapAt.current = 0;
         setSwipe({ axis, offset: axis === "x" ? dx : Math.max(dy, 0) });
       }
       return;
@@ -342,6 +436,13 @@ function ZoomableImage(props: {
 
   const onPointerEnd = (event: PointerEvent<HTMLDivElement>) => {
     if (!pointers.current.delete(event.pointerId)) return;
+    const clicked = event.type === "pointerup" ? click.current : undefined;
+    click.current = undefined;
+    if (clicked) {
+      gesture.current = undefined;
+      toggleZoom(clicked, zoom);
+      return;
+    }
     if (swipe && !swipe.settling) {
       const action =
         event.type === "pointerup" ? swipeAction(swipe) : undefined;
@@ -355,23 +456,31 @@ function ZoomableImage(props: {
   };
 
   return (
+    // Explicit tracks give the image a definite area, so `max-h-full` fits a
+    // tall image to the frame instead of clipping it.
     <div
-      className="grid min-h-0 touch-none place-items-center overflow-hidden p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:p-6"
+      className={cn(
+        "grid min-h-0 touch-none grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] place-items-center overflow-hidden p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:p-6",
+        zoom.scale > 1 && "cursor-grab active:cursor-grabbing",
+      )}
       onPointerCancel={onPointerEnd}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerEnd}
+      ref={frame}
     >
       <img
         alt={props.alt}
-        className={`max-h-full max-w-full object-contain select-none ${
-          swipe?.settling
-            ? "transition-[opacity,transform] duration-180 ease-out motion-reduce:transition-none"
-            : ""
-        }`}
+        className={cn(
+          "max-h-full max-w-full object-contain select-none",
+          zoom.scale === 1 && "cursor-zoom-in",
+          (swipe?.settling || (animate && !swipe)) &&
+            "transition-[opacity,transform] duration-180 ease-out motion-reduce:transition-none",
+        )}
         draggable={false}
         onTransitionEnd={() => {
           if (swipe?.settling) setSwipe(undefined);
+          setAnimate(false);
         }}
         ref={image}
         src={props.src}
@@ -393,6 +502,56 @@ function ZoomableImage(props: {
         }
       />
     </div>
+  );
+}
+
+/** Start a gesture at `points` from zoom `from`. */
+function gestureAt(
+  points: readonly Point[],
+  from: Zoom,
+  element: HTMLElement,
+): Gesture {
+  // Read the shown transform, not zoom state: it can differ for one render
+  // after a double tap, or for a whole animation. The transform scales around
+  // the center, so only its translation moves it.
+  const rect = element.getBoundingClientRect();
+  const shown = renderedZoom(element);
+  return {
+    center: {
+      x: rect.left + rect.width / 2 - shown.x,
+      y: rect.top + rect.height / 2 - shown.y,
+    },
+    distance: pointDistance(points),
+    start: midpoint(points),
+    zoom: from,
+  };
+}
+
+/** Read the zoom that the image shows now, also partway through a transition. */
+function renderedZoom(element: HTMLElement): Zoom {
+  const matrix = new DOMMatrixReadOnly(getComputedStyle(element).transform);
+  return { scale: matrix.a, x: matrix.e, y: matrix.f };
+}
+
+/**
+ * Zoom that shows the image at its natural size. An image that is still
+ * loading has no size yet, so it reports 1.
+ */
+function naturalZoom(element: HTMLImageElement): number {
+  if (!element.naturalWidth || !element.offsetWidth) return 1;
+  return element.naturalWidth / element.offsetWidth;
+}
+
+function clientPoint(event: { clientX: number; clientY: number }): Point {
+  return { x: event.clientX, y: event.clientY };
+}
+
+function contains(rect: DOMRect, point: Point): boolean {
+  return (
+    point.x >= rect.left &&
+    point.x <= rect.right &&
+    point.y >= rect.top &&
+    point.y <= rect.bottom
   );
 }
 
@@ -423,9 +582,9 @@ function zoomAt(
   gesture: Gesture,
   point: Point,
   scale: number,
-  element: HTMLElement,
+  element: HTMLImageElement,
 ): Zoom {
-  const next = clamp(scale, 1, MAX_ZOOM);
+  const next = clamp(scale, 1, Math.max(MAX_ZOOM, naturalZoom(element)));
   const ratio = next / gesture.zoom.scale;
   const x =
     point.x -
