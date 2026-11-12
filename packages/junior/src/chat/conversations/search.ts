@@ -1,8 +1,9 @@
 /**
- * Search the root Conversations that one requester may find: public roots of
- * any surface, and roots at the Destination of the requester's root. No other
- * private Conversation is returned, so no result leaks private data into the
- * requester. See `policies/conversation-access.md`.
+ * Search the Conversations that one requester may find: Conversations whose
+ * root is public, of any surface, and Conversations whose root is at the
+ * Destination of the requester's root. No other private Conversation is
+ * returned, so no result leaks private data into the requester. See
+ * `policies/conversation-access.md`.
  */
 import {
   and,
@@ -27,9 +28,14 @@ import {
   type BriefLink,
   type BriefOutcomeStatus,
 } from "@/chat/briefs/schema";
-import { treeHasAnnotationKey } from "@/chat/conversations/sql/annotation-filter";
-import { listedConversation } from "@/chat/conversations/sql/listed";
-import type { ConversationStatus } from "@/chat/conversations/store";
+import {
+  hasAnnotationKey,
+  treeHasAnnotationKey,
+} from "@/chat/conversations/sql/annotation-filter";
+import type {
+  ConversationKind,
+  ConversationStatus,
+} from "@/chat/conversations/store";
 import {
   juniorConversationBriefs,
   juniorConversations,
@@ -38,21 +44,23 @@ import {
 
 const MAX_LINKS = 5;
 
-/** One root Conversation that the requester may find. */
-export interface RootConversation {
+/** One Conversation that the requester may find. */
+export interface ConversationSearchResult {
   /** The Conversation is archived, for everyone. */
   archived: boolean;
   /** Provider display name of the Destination, such as a Slack channel name. */
   channelName?: string;
   conversationId: string;
-  /** Matching Brief text for a query, else the Brief summary. */
+  /** Matching Brief text for a query. */
   excerpt?: string;
+  kind?: ConversationKind;
   /** Top links of the latest Brief. */
   links: BriefLink[];
   /** Outcome status of the latest Brief. */
   outcomeStatus?: BriefOutcomeStatus;
   /** Provider Destination id, such as a Slack channel id. */
   providerDestinationId?: string;
+  rootConversationId: string;
   status: ConversationStatus;
   /** Summary of the latest Brief. A new Conversation may have none yet. */
   summary?: string;
@@ -62,15 +70,15 @@ export interface RootConversation {
   updatedAtMs: number;
 }
 
-/** Filters for one root Conversation search. All are optional. */
-export interface RootConversationSearch {
-  /** Only roots with activity at or after this time. */
+/** Filters for one Conversation search. All are optional. */
+export interface ConversationSearch {
+  /** Only Conversations with activity at or after this time. */
   afterMs?: number;
   /** Annotation key, such as a pull request key. Nested keys continue with `#`. */
   annotation?: string;
-  /** Only roots with activity before this time. */
+  /** Only Conversations with activity before this time. */
   beforeMs?: number;
-  /** Provider Destination id, such as a Slack channel id. */
+  /** Provider Destination id of the root, such as a Slack channel id. */
   channelId?: string;
   conversationIds?: readonly string[];
   /** Include archived Conversations. */
@@ -80,22 +88,26 @@ export interface RootConversationSearch {
   outcomeStatus?: BriefOutcomeStatus;
   /** Words to match in the latest Brief or the title. */
   query?: string;
+  /** Return only root Conversations, not their child agents. */
+  rootsOnly: boolean;
 }
 
 /**
- * Search the root Conversations, outside the requester's own tree, that the
+ * Search the Conversations, outside the requester's own tree, that the
  * requester may find. Newest activity first, or best match for a query.
  */
-export async function searchRootConversations(
+export async function searchConversations(
   db: JuniorDatabase,
   args: {
     requesterConversationId: string;
-    search: RootConversationSearch;
+    search: ConversationSearch;
   },
-): Promise<RootConversation[]> {
+): Promise<ConversationSearchResult[]> {
   const { requesterConversationId, search } = args;
+  const conversations = juniorConversations;
   const briefs = juniorConversationBriefs;
   const newer = alias(juniorConversationBriefs, "newer_briefs");
+  const roots = alias(juniorConversations, "target_roots");
   const requesterRoot = alias(juniorConversations, "requester_roots");
   const query = search.query?.trim() || undefined;
   const tsquery = sql`websearch_to_tsquery('english', ${query ?? ""})`;
@@ -104,24 +116,25 @@ export async function searchRootConversations(
   // A child requester searches with the access of its root, and its own
   // tree is never a result.
   const [requester] = await db
-    .select({ rootId: juniorConversations.rootConversationId })
-    .from(juniorConversations)
-    .where(eq(juniorConversations.conversationId, requesterConversationId))
+    .select({ rootId: conversations.rootConversationId })
+    .from(conversations)
+    .where(eq(conversations.conversationId, requesterConversationId))
     .limit(1);
   const requesterRootId = requester?.rootId ?? requesterConversationId;
   const conditions: (SQL | undefined)[] = [
-    listedConversation(),
-    // Only valid roots, so `limit` counts only real results.
-    eq(
-      juniorConversations.rootConversationId,
-      juniorConversations.conversationId,
-    ),
-    ne(juniorConversations.conversationId, requesterRootId),
+    // The root decides visibility. Lists hide an unkept Quick question and
+    // its children.
+    isNull(roots.quickQuestionAt),
+    isNull(conversations.quickQuestionAt),
+    search.rootsOnly
+      ? eq(conversations.conversationId, conversations.rootConversationId)
+      : undefined,
+    ne(conversations.rootConversationId, requesterRootId),
     or(
       eq(juniorDestinations.visibility, "public"),
       // Conversations share a Destination only when they share an audience.
       eq(
-        juniorConversations.destinationId,
+        roots.destinationId,
         db
           .select({ destinationId: requesterRoot.destinationId })
           .from(requesterRoot)
@@ -129,15 +142,16 @@ export async function searchRootConversations(
       ),
     ),
     search.annotation
-      ? treeHasAnnotationKey(
-          juniorConversations.conversationId,
-          search.annotation,
+      ? or(
+          // A root matches when any Conversation in its tree has the key.
+          treeHasAnnotationKey(conversations.conversationId, search.annotation),
+          hasAnnotationKey(conversations.conversationId, search.annotation),
         )
       : undefined,
     search.conversationIds
-      ? inArray(juniorConversations.conversationId, [...search.conversationIds])
+      ? inArray(conversations.conversationId, [...search.conversationIds])
       : undefined,
-    search.includeArchived ? undefined : isNull(juniorConversations.archivedAt),
+    search.includeArchived ? undefined : isNull(conversations.archivedAt),
     search.channelId
       ? eq(juniorDestinations.providerDestinationId, search.channelId)
       : undefined,
@@ -145,20 +159,20 @@ export async function searchRootConversations(
       ? sql`${outcomeStatus} = ${search.outcomeStatus}`
       : undefined,
     search.afterMs !== undefined
-      ? gte(juniorConversations.lastActivityAt, new Date(search.afterMs))
+      ? gte(conversations.lastActivityAt, new Date(search.afterMs))
       : undefined,
     search.beforeMs !== undefined
-      ? lt(juniorConversations.lastActivityAt, new Date(search.beforeMs))
+      ? lt(conversations.lastActivityAt, new Date(search.beforeMs))
       : undefined,
     query
       ? or(
           sql`${searchVector} @@ ${tsquery}`,
-          ilike(juniorConversations.title, `%${escapeLike(query)}%`),
+          ilike(conversations.title, `%${escapeLike(query)}%`),
         )
       : undefined,
   ];
 
-  const newestFirst = desc(juniorConversations.lastActivityAt);
+  const newestFirst = desc(conversations.lastActivityAt);
   const order = query
     ? [
         desc(sql`coalesce(ts_rank_cd(${searchVector}, ${tsquery}), 0)`),
@@ -172,26 +186,32 @@ export async function searchRootConversations(
     : sql<string | null>`null`;
   const rows = await db
     .select({
-      archivedAt: juniorConversations.archivedAt,
+      archivedAt: conversations.archivedAt,
       briefContent: briefs.content,
       channelName: juniorDestinations.displayName,
-      conversationId: juniorConversations.conversationId,
+      conversationId: conversations.conversationId,
       excerpt: excerpt.as("excerpt"),
-      lastActivityAt: juniorConversations.lastActivityAt,
+      kind: conversations.kind,
+      lastActivityAt: conversations.lastActivityAt,
       providerDestinationId: juniorDestinations.providerDestinationId,
-      status: juniorConversations.executionStatus,
-      title: juniorConversations.title,
-      transcriptPurgedAt: juniorConversations.transcriptPurgedAt,
+      rootConversationId: roots.conversationId,
+      status: conversations.executionStatus,
+      title: conversations.title,
+      transcriptPurgedAt: conversations.transcriptPurgedAt,
     })
-    .from(juniorConversations)
+    .from(conversations)
+    .innerJoin(
+      roots,
+      eq(roots.conversationId, conversations.rootConversationId),
+    )
     .innerJoin(
       juniorDestinations,
-      eq(juniorDestinations.id, juniorConversations.destinationId),
+      eq(juniorDestinations.id, roots.destinationId),
     )
     .leftJoin(
       briefs,
       and(
-        eq(briefs.conversationId, juniorConversations.conversationId),
+        eq(briefs.conversationId, conversations.conversationId),
         notExists(
           db
             .select({ one: sql`1` })
@@ -218,11 +238,13 @@ export async function searchRootConversations(
       ...(row.channelName ? { channelName: row.channelName } : undefined),
       conversationId: row.conversationId,
       ...(row.excerpt ? { excerpt: row.excerpt } : undefined),
+      ...(row.kind ? { kind: row.kind } : undefined),
       links: brief?.links.slice(0, MAX_LINKS) ?? [],
       ...(brief ? { outcomeStatus: brief.outcome.status } : undefined),
       ...(row.providerDestinationId
         ? { providerDestinationId: row.providerDestinationId }
         : undefined),
+      rootConversationId: row.rootConversationId,
       status: row.status,
       ...(brief ? { summary: brief.summary } : undefined),
       ...(row.title ? { title: row.title } : undefined),

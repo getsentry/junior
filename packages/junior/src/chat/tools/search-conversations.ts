@@ -4,9 +4,9 @@ import {
   briefOutcomeStatusSchema,
 } from "@/chat/briefs/schema";
 import {
-  searchRootConversations,
-  type RootConversation,
-} from "@/chat/conversations/root-search";
+  searchConversations,
+  type ConversationSearchResult,
+} from "@/chat/conversations/search";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
@@ -22,7 +22,7 @@ const MAX_LIMIT = 25;
 /** Provider-owned channel filter and match details for Conversation search. */
 export interface ConversationSearchChannelPort {
   channelFilterSchema: z.ZodString;
-  describeMatch(match: RootConversation): Promise<{
+  describeMatch(match: ConversationSearchResult): Promise<{
     channel_id?: string;
     channel_name?: string;
     permalink?: string;
@@ -46,7 +46,20 @@ const conversationMatchSchema = z
       .string()
       .min(1)
       .describe(
-        "Pass it to searchConversationEvents to read its history, or to messageAgent to message its agent.",
+        "Pass it to searchConversationEvents to read its history. For a root conversation, pass it to messageAgent to message its agent.",
+      ),
+    kind: z
+      .enum(["root", "automation", "thread", "task"])
+      .optional()
+      .describe(
+        "root or automation: a root conversation. thread or task: a child agent.",
+      ),
+    root_conversation_id: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Root of a child agent. To message about its work, pass this to messageAgent.",
       ),
     status: z
       .enum(CONVERSATION_STATUSES)
@@ -88,31 +101,36 @@ const conversationMatchSchema = z
 type ConversationMatch = z.output<typeof conversationMatchSchema>;
 
 async function conversationMatch(
-  root: RootConversation,
+  match: ConversationSearchResult,
   channels: ConversationSearchChannelPort | undefined,
 ): Promise<ConversationMatch> {
-  const dashboardUrl = getDashboardConversationLink(root.conversationId);
+  const dashboardUrl = getDashboardConversationLink(match.conversationId);
   const channelFields = channels
-    ? await channels.describeMatch(root)
+    ? await channels.describeMatch(match)
     : undefined;
   return {
-    conversation_id: root.conversationId,
-    // A Conversation whose Turn failed waits for new input.
-    status: root.status === "failed" ? "idle" : root.status,
-    ...(root.title ? { title: root.title } : undefined),
-    ...(root.summary
-      ? { summary: truncate(root.summary, SUMMARY_MAX_LENGTH) }
+    conversation_id: match.conversationId,
+    ...(match.kind ? { kind: match.kind } : undefined),
+    // Only a child agent has a different root.
+    ...(match.rootConversationId !== match.conversationId
+      ? { root_conversation_id: match.rootConversationId }
       : undefined),
-    ...(root.outcomeStatus ? { outcome: root.outcomeStatus } : undefined),
-    ...(root.excerpt ? { excerpt: root.excerpt } : undefined),
-    ...(root.links.length > 0 ? { links: root.links } : undefined),
+    // A Conversation whose Turn failed waits for new input.
+    status: match.status === "failed" ? "idle" : match.status,
+    ...(match.title ? { title: match.title } : undefined),
+    ...(match.summary
+      ? { summary: truncate(match.summary, SUMMARY_MAX_LENGTH) }
+      : undefined),
+    ...(match.outcomeStatus ? { outcome: match.outcomeStatus } : undefined),
+    ...(match.excerpt ? { excerpt: match.excerpt } : undefined),
+    ...(match.links.length > 0 ? { links: match.links } : undefined),
     ...channelFields,
     ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
-    ...(root.archived ? { archived: true as const } : undefined),
-    ...(root.transcriptPurged
+    ...(match.archived ? { archived: true as const } : undefined),
+    ...(match.transcriptPurged
       ? { transcript_purged: true as const }
       : undefined),
-    updated_at: new Date(root.updatedAtMs).toISOString(),
+    updated_at: new Date(match.updatedAtMs).toISOString(),
   };
 }
 
@@ -176,6 +194,13 @@ function searchConversationsInputSchema(
               .describe("Channel of the conversation."),
           }
         : undefined),
+      roots_only: z
+        .boolean()
+        .nullable()
+        .optional()
+        .describe(
+          "Return only root conversations. Set false to also find child agents (Threads and Tasks) by their own Brief, title, or linked resources. Default true.",
+        ),
       include_archived: z
         .boolean()
         .nullable()
@@ -198,8 +223,8 @@ function searchConversationsInputSchema(
 }
 
 /**
- * Create the read-only tool that searches the root Conversations, outside
- * this Conversation's tree, that it may find, with their latest Brief.
+ * Create the read-only tool that searches the Conversations, outside this
+ * Conversation's tree, that it may find, with their latest Brief.
  */
 export function createSearchConversationsTool(context: {
   channels?: ConversationSearchChannelPort;
@@ -210,7 +235,7 @@ export function createSearchConversationsTool(context: {
     exposure: "deferred",
     source: CONVERSATIONS_TOOL_SOURCE,
     description:
-      "Search other conversations for past or current work, with the summary, outcome, and links of their latest Brief. Finds public root conversations and root conversations in the same private channel or DM. Briefs remain after transcripts are purged.",
+      "Search other conversations for past or current work, with the summary, outcome, and links of their latest Brief. Finds conversations in public channels and in the same private channel or DM. Root conversations only, unless roots_only is false. A root Brief covers the work of its child agents. Briefs remain after transcripts are purged.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -242,7 +267,7 @@ export function createSearchConversationsTool(context: {
         channels && channelInput
           ? await channels.resolveChannel(channelInput)
           : undefined;
-      const roots = await searchRootConversations(getDb(), {
+      const matches = await searchConversations(getDb(), {
         requesterConversationId: context.conversationId,
         search: {
           ...(afterMs !== undefined ? { afterMs } : undefined),
@@ -254,11 +279,12 @@ export function createSearchConversationsTool(context: {
           limit: input.limit ?? DEFAULT_LIMIT,
           ...(outcomeStatus ? { outcomeStatus } : undefined),
           ...(query ? { query } : undefined),
+          rootsOnly: input.roots_only ?? true,
         },
       });
       return {
         conversations: await Promise.all(
-          roots.map((root) => conversationMatch(root, channels)),
+          matches.map((match) => conversationMatch(match, channels)),
         ),
       };
     },

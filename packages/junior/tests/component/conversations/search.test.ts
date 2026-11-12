@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { appendConversationBrief } from "@/chat/briefs/store";
-import { searchRootConversations } from "@/chat/conversations/root-search";
+import { searchConversations } from "@/chat/conversations/search";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
@@ -9,7 +9,7 @@ import { juniorConversations } from "@/db/schema";
 import { conversationBriefFixture } from "../../fixtures/conversation-brief";
 import { createJuniorSqlFixture } from "../../fixtures/sql";
 
-describe("root Conversation search", () => {
+describe("Conversation search", () => {
   it("searches the latest Brief of public roots of every surface", async () => {
     const fixture = await createJuniorSqlFixture();
     try {
@@ -143,7 +143,7 @@ describe("root Conversation search", () => {
       await append({
         conversationId: childId,
         searchText: "child deployment decision",
-        summary: "The child deployment decision stays excluded.",
+        summary: "The child deployment decision is a child agent.",
         turnId: "child-turn",
       });
       await append({
@@ -172,10 +172,11 @@ describe("root Conversation search", () => {
         url: "https://example.com/acme/widget/12",
       });
 
-      const deploymentMatches = await searchRootConversations(db, {
+      const deploymentMatches = await searchConversations(db, {
         requesterConversationId: currentConversationId,
         search: {
           includeArchived: false,
+          rootsOnly: true,
           limit: 10,
           query: "deployment decision",
         },
@@ -186,9 +187,32 @@ describe("root Conversation search", () => {
         deploymentMatches.map((match) => match.conversationId).sort(),
       ).toEqual([otherTenantId, targetConversationId].sort());
 
-      const matches = await searchRootConversations(db, {
+      // Child agents match only when the search asks for them.
+      const withChildren = await searchConversations(db, {
         requesterConversationId: currentConversationId,
-        search: { includeArchived: false, limit: 10, query: "blue rollout" },
+        search: {
+          includeArchived: false,
+          limit: 10,
+          query: "child deployment decision",
+          rootsOnly: false,
+        },
+      });
+      expect(withChildren).toContainEqual(
+        expect.objectContaining({
+          kind: "task",
+          conversationId: childId,
+          rootConversationId: targetConversationId,
+        }),
+      );
+
+      const matches = await searchConversations(db, {
+        requesterConversationId: currentConversationId,
+        search: {
+          includeArchived: false,
+          rootsOnly: true,
+          limit: 10,
+          query: "blue rollout",
+        },
       });
       expect(matches).toEqual([
         expect.objectContaining({
@@ -209,10 +233,11 @@ describe("root Conversation search", () => {
       expect(matches[0]?.excerpt).toContain("**blue**");
 
       await expect(
-        searchRootConversations(db, {
+        searchConversations(db, {
           requesterConversationId: currentConversationId,
           search: {
             includeArchived: false,
+            rootsOnly: true,
             limit: 10,
             query: "obsolete migration",
           },
@@ -220,10 +245,11 @@ describe("root Conversation search", () => {
       ).resolves.toEqual([]);
 
       await expect(
-        searchRootConversations(db, {
+        searchConversations(db, {
           requesterConversationId: currentConversationId,
           search: {
             includeArchived: false,
+            rootsOnly: true,
             limit: 10,
             afterMs: Date.parse("2026-07-02T00:00:00.000Z"),
             annotation: "ACME/WIDGET",
@@ -237,10 +263,11 @@ describe("root Conversation search", () => {
       ]);
 
       await expect(
-        searchRootConversations(db, {
+        searchConversations(db, {
           requesterConversationId: currentConversationId,
           search: {
             includeArchived: false,
+            rootsOnly: true,
             limit: 10,
             query: "browser launch",
           },

@@ -98,6 +98,7 @@ describe("searchConversations", () => {
           conversation_id: conversationId,
           dashboard_url: `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`,
           excerpt: expect.stringContaining("**launch**"),
+          kind: "root",
           links: [
             {
               kind: "code_change",
