@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubGetPullRequestTool } from "../src/tools/get-pull-request";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
 const HEAD_SHA = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
@@ -96,6 +96,10 @@ function toolContext(
 }
 
 describe("getPullRequest", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("returns a subscribable hint for an existing pull request", async () => {
     const { adapter, tool } = toolContext();
 
@@ -141,6 +145,50 @@ describe("getPullRequest", () => {
         provider: "github",
       }),
     ]);
+  });
+
+  it("saves the public artifact images as previews", async () => {
+    vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
+    const artifact =
+      "https://junior.example.com/public/artifacts/0123456789abcdef.png";
+    const after =
+      "https://junior.example.com/public/artifacts/fedcba9876543210.png";
+    const withBody = (body: string) => {
+      const response = pullRequestResponse();
+      return { body: { ...response.body, body } };
+    };
+    const checks = checksResponse({ contexts: [] });
+    const { tool } = toolContext(true, [
+      withBody(
+        [
+          "![Private](https://github.com/user-attachments/assets/1)",
+          "![Other](https://example.com/public/artifacts/0123456789abcdef.png)",
+          "```md",
+          "![Example](https://junior.example.com/public/artifacts/code.png)",
+          "```",
+          `| Before | After |\n| --- | --- |\n| ![Before][before] | <img src="${after}"> |`,
+          `![Again](${artifact})`,
+          "",
+          `[before]: ${artifact}`,
+        ].join("\n"),
+      ),
+      checks,
+      withBody("![Private](https://github.com/user-attachments/assets/1)"),
+      checks,
+      withBody("No image."),
+      checks,
+    ]);
+    const preview = async () => {
+      const result = (await tool.execute?.(
+        { repo: "getsentry/junior", number: 691 },
+        { toolCallId: "get-pr" },
+      )) as { objectAnnotations: Array<{ facts: Record<string, unknown> }> };
+      return result.objectAnnotations[0]?.facts.previewImageUrls;
+    };
+
+    expect(await preview()).toEqual([artifact, after]);
+    expect(await preview()).toBeUndefined();
+    expect(await preview()).toBeUndefined();
   });
 
   it("returns the required checks and the merge state", async () => {
