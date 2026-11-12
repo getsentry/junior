@@ -229,6 +229,10 @@ export function sendReplyRating(props: {
 export function initDashboardSentry(): void {
   const config = window.__JUNIOR_DASHBOARD_SENTRY__;
   if (!config) return;
+  // The Junior desktop app (`apps/desktop`) starts its own client before page
+  // scripts run. With the same SDK version, both share one global client, so
+  // replacing it would stop the app's error capture.
+  if (getClient()) return;
   // `init()` bundles every default integration (about 24 KB of error,
   // breadcrumb, and session code), even with `defaultIntegrations: false`.
   // A client built directly bundles only browser tracing.

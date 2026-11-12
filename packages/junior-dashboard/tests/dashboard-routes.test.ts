@@ -3,7 +3,12 @@ import { JUNIOR_VERSION } from "@sentry/junior/version";
 import { createDashboardApp } from "../src/app";
 import { DASHBOARD_VERSION_HEADER } from "../src/dashboard-version";
 import type { DashboardSession } from "../src/auth";
-import { auth, resetDashboardEnv } from "./dashboard-test-helpers";
+import {
+  auth,
+  DESKTOP_CODE,
+  DESKTOP_VERIFIER,
+  resetDashboardEnv,
+} from "./dashboard-test-helpers";
 
 const {
   readUserAutoArchiveSettings,
@@ -305,6 +310,65 @@ describe("dashboard routes", () => {
     expect(response.headers.get("location")).toBe(
       "https://accounts.google.com/o/oauth2/v2/auth",
     );
+  });
+
+  it("hands a browser session to the desktop app over a loopback redirect", async () => {
+    const session = {
+      user: { email: "person@sentry.io", emailVerified: true },
+    };
+    const start = (redirectUri: string, extra = "") =>
+      new Request(
+        `http://localhost/auth/desktop?redirect_uri=${encodeURIComponent(redirectUri)}&code_challenge=${"c".repeat(43)}&state=s1${extra}`,
+      );
+    const loopback = "http://127.0.0.1:4567/callback";
+    let callbackURL: string | undefined;
+    const signedOut = createDashboardApp({
+      allowedDomains: ["sentry.io"],
+      auth: auth(null, (value) => {
+        callbackURL = value;
+      }),
+    });
+    const app = createDashboardApp({
+      allowedDomains: ["sentry.io"],
+      auth: auth(session),
+    });
+
+    // Only loopback IP redirects: a code must never leave the machine.
+    for (const unsafe of [
+      "https://evil.example/callback",
+      "http://localhost:4567/callback",
+      "http://127.0.0.1/callback",
+    ]) {
+      expect((await app.fetch(start(unsafe))).status).toBe(400);
+    }
+
+    // Without a session, Google sign-in runs and comes back to this route.
+    expect((await signedOut.fetch(start(loopback))).status).toBe(302);
+    expect(callbackURL).toBe(start(loopback).url);
+
+    const signedIn = await app.fetch(start(loopback));
+    expect(signedIn.headers.get("location")).toBe(
+      `${loopback}?code=${DESKTOP_CODE}&state=s1`,
+    );
+    const failed = await app.fetch(start(loopback, "&error=state_mismatch"));
+    expect(failed.headers.get("location")).toBe(
+      `${loopback}?error=sign_in_failed&state=s1`,
+    );
+
+    const redeem = (code_verifier: string) =>
+      app.fetch(
+        new Request("http://localhost/auth/desktop/token", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ code: DESKTOP_CODE, code_verifier }),
+        }),
+      );
+    expect((await redeem("w".repeat(43))).status).toBe(400);
+    expect(await (await redeem(DESKTOP_VERIFIER)).json()).toEqual({
+      cookies: [
+        { maxAgeSeconds: 60, name: "session", secure: true, value: "s" },
+      ],
+    });
   });
 
   it("falls back to the dashboard root for unsafe login return paths", async () => {

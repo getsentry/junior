@@ -7,7 +7,7 @@
  * identity.
  */
 import { createAuthMiddleware } from "better-auth/api";
-import { getSessionCookie } from "better-auth/cookies";
+import { getCookies, getSessionCookie } from "better-auth/cookies";
 import { betterAuth } from "better-auth/minimal";
 import type { GoogleProfile } from "better-auth/social-providers";
 import { decodeJwt } from "jose";
@@ -23,6 +23,11 @@ import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { getActiveSpan, getRootSpan } from "@/chat/sentry";
 import { readSignInSecret } from "@/chat/secrets";
 import { isAllowedDomain, readEnvList } from "./allowlist";
+import {
+  createDesktopHandoffCode,
+  redeemDesktopHandoffCode,
+  type SessionCookie,
+} from "./desktop-handoff";
 
 const DEFAULT_AUTH_PATH = "/api/auth";
 const DEFAULT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
@@ -75,6 +80,19 @@ export interface SignInAuth {
     callbackURL: string,
     errorCallbackURL?: string,
   ): Promise<Response>;
+  /**
+   * Encrypt the session cookies of a signed-in request into a desktop sign-in
+   * code. Returns undefined when the request has no session cookie.
+   */
+  createDesktopCode(
+    request: Request,
+    codeChallenge: string,
+  ): Promise<string | undefined>;
+  /** Redeem a desktop sign-in code with its PKCE verifier. */
+  redeemDesktopCode(
+    code: string,
+    codeVerifier: string,
+  ): Promise<SessionCookie[] | undefined>;
 }
 
 /** Settings for the dashboard Google sign-in session. */
@@ -145,11 +163,26 @@ function required(value: string | undefined, name: string): string {
   return value.trim();
 }
 
-function createBetterAuth(config: SignInAuthConfig) {
-  const secret = required(
+function signInSecret(config: SignInAuthConfig): string {
+  return required(
     config.secret ?? readSignInSecret(),
     "JUNIOR_SECRET or BETTER_AUTH_SECRET",
   );
+}
+
+// Raw values, not decoded ones: the desktop app sets them back unchanged.
+function rawRequestCookies(request: Request): Map<string, string> {
+  const cookies = new Map<string, string>();
+  for (const pair of (request.headers.get("cookie") ?? "").split(";")) {
+    const eq = pair.indexOf("=");
+    if (eq > 0)
+      cookies.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
+  }
+  return cookies;
+}
+
+function createBetterAuth(config: SignInAuthConfig) {
+  const secret = signInSecret(config);
   const sessionMaxAgeSeconds =
     config.sessionMaxAgeSeconds ?? DEFAULT_SESSION_MAX_AGE_SECONDS;
   // `hd` limits the Google account chooser: to the one allowed domain, or to
@@ -302,6 +335,39 @@ export function createSignInAuth(config: SignInAuthConfig): SignInAuth {
       }
       result.headers.set("location", result.response.url);
       return new Response(null, { status: 302, headers: result.headers });
+    },
+    async createDesktopCode(request, codeChallenge) {
+      const { sessionToken, sessionData } = getCookies(getAuth().options);
+      const cookies = rawRequestCookies(request);
+      if (!cookies.has(sessionToken.name)) return undefined;
+      // Large cached sessions split into `<name>.0`, `<name>.1`, and so on.
+      const kinds = [sessionToken, sessionData];
+      const sessionCookies: SessionCookie[] = [];
+      for (const [name, value] of cookies) {
+        const kind = kinds.find(
+          (cookie) =>
+            name === cookie.name || name.startsWith(`${cookie.name}.`),
+        );
+        if (!kind?.attributes.maxAge) continue;
+        sessionCookies.push({
+          maxAgeSeconds: kind.attributes.maxAge,
+          name,
+          secure: kind.attributes.secure,
+          value,
+        });
+      }
+      return await createDesktopHandoffCode({
+        codeChallenge,
+        cookies: sessionCookies,
+        secret: signInSecret(config),
+      });
+    },
+    async redeemDesktopCode(code, codeVerifier) {
+      return await redeemDesktopHandoffCode({
+        code,
+        codeVerifier,
+        secret: signInSecret(config),
+      });
     },
   };
 }
