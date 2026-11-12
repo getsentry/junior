@@ -10,6 +10,7 @@ import {
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { actorSchema } from "@sentry/junior-plugin-api";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
@@ -40,9 +41,15 @@ import type {
 } from "@/chat/task-execution/worker";
 import {
   childAgentInput,
-  getChildAgentInputInvocation,
+  getChildAgentInputSender,
+  readChildConversationSender,
   routeChildInput,
 } from "./child-input";
+import {
+  logDroppedParentMessage,
+  parentMessageText,
+  readParentMessage,
+} from "./parent-message";
 import { createAgentInvocationFromLatest } from "./create";
 import {
   getAgentInvocationIdForEvents,
@@ -50,10 +57,17 @@ import {
   getAgentInvocationIdForResult,
   getAgentInvocationResultMessageId,
   getAgentReplyMessageId,
+  getAgentInvocationTurnId,
   getTurnReplyKey,
-  isAgentReplyMessageId,
-  parseTurnReplyMessageId,
 } from "./ids";
+import {
+  childMessageSenderMetadata,
+  hasAgentInvocationReply,
+  listChildMessages,
+  ownAgentInvocation,
+  type ChildMessage,
+} from "./child-message";
+import type { InboundMessageSender } from "@/chat/task-execution/message-sender";
 import {
   getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
@@ -73,8 +87,8 @@ import {
   AGENT_REPLY_EVENT_TYPE,
 } from "./result-event-type";
 import type {
-  AgentInvocation,
   ChildAgent,
+  ChildAgentSender,
   TerminalAgentInvocation,
 } from "./types";
 import {
@@ -135,7 +149,7 @@ function trustedSummary(
  * do for each status, so the input repeats no guidance.
  */
 function renderResultInput(
-  sender: AgentInvocation,
+  sender: ChildAgentSender,
   result: { output: string; status: TerminalAgentInvocation["status"] },
   openSiblings: readonly ChildAgent[],
 ): string {
@@ -171,17 +185,17 @@ function siblingLabel(sibling: ChildAgent): string {
  * sent at the same moment, so two siblings cannot each name the other.
  */
 function renderResultUnderLock(
-  sender: AgentInvocation,
+  sender: ChildAgentSender,
   result: { output: string; status: TerminalAgentInvocation["status"] },
 ): RenderInboundText {
-  return async (parentInboundMessageIds) =>
+  return async (parentInboundMessageIds, messageSenders) =>
     renderResultInput(
       sender,
       result,
       await listUnreportedSiblingAgents(
         sender.parentConversationId,
         sender.childConversationId,
-        parentInboundMessageIds,
+        await listChildMessages(parentInboundMessageIds, messageSenders),
       ),
     );
 }
@@ -217,6 +231,11 @@ function buildResultInboundMessage(
       namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
       trustedSummary: summary,
     },
+    ...childMessageSenderMetadata({
+      agentInvocationId: invocation.invocationId,
+      conversationId: invocation.childConversationId,
+      turnId: getAgentInvocationTurnId(invocation.invocationId),
+    }),
   };
   return {
     conversationId: invocation.parentConversationId,
@@ -258,17 +277,18 @@ export async function enqueueAgentInvocationResult(
     return;
   }
   const nowMs = options.nowMs ?? Date.now();
-  const parentInboundMessageIds = await readParentInboundMessageIds(
+  const parentMessages = await readParentChildMessages(
     invocation.parentConversationId,
     options.state,
   );
-  if (!sendsResultToParent(invocation, parentInboundMessageIds)) {
+  if (!sendsResultToParent(invocation, parentMessages)) {
     await markAgentInvocationParentMailboxAppended(
       invocation.invocationId,
       nowMs,
     );
-    const replied = parentInboundMessageIds.some((messageId) =>
-      isAgentReplyMessageId(messageId, invocation.invocationId),
+    const replied = hasAgentInvocationReply(
+      parentMessages,
+      invocation.invocationId,
     );
     // A child that sent its parent nothing starts no later agent invocation
     // there, so a `replaced` result of the parent reports now.
@@ -297,27 +317,50 @@ export async function enqueueAgentInvocationResult(
 }
 
 /**
- * Read the ids of every message that reached the parent's mailbox. A sibling
- * whose `reply` is among them has answered.
+ * Read every child reply and result that reached the parent's mailbox. A
+ * sibling whose `reply` is among them has answered.
  */
-async function readParentInboundMessageIds(
+async function readParentChildMessages(
   parentConversationId: string,
   state: StateAdapter | undefined,
-): Promise<readonly string[]> {
+): Promise<ChildMessage[]> {
   const work = await getConversationWorkState({
     conversationId: parentConversationId,
     state,
   });
-  return work?.execution.inboundMessageIds ?? [];
+  return await listChildMessages(
+    work?.execution.inboundMessageIds ?? [],
+    work?.execution.messageSenders ?? {},
+  );
 }
 
-function childAgentLabel(invocation: AgentInvocation): string {
-  return invocation.agentName
-    ? `Child agent "${invocation.agentName}"`
-    : "Child agent";
+function childAgentLabel(sender: ChildAgentSender): string {
+  return sender.agentName ? `Child agent "${sender.agentName}"` : "Child agent";
 }
 
-function renderMessageInput(sender: AgentInvocation, text: string): string {
+/**
+ * Mailbox metadata of a reply or message from a child that no Agent
+ * invocation names. It carries the Actor of the child's Turn, so the parent
+ * runs with no more authority than that Turn. The author id must match it.
+ */
+function senderEventMetadata(
+  sender: ChildAgentSender,
+  actor: Actor,
+  event: EventMailboxMetadata["event"],
+): EventMailboxMetadata & { actor?: Actor } {
+  return sender.invocationId
+    ? { kind: "event", event }
+    : { kind: "event", event, actor };
+}
+
+/** Read the Actor that a reply or message from a child without an Agent invocation carries. */
+function senderActorFromMetadata(metadata: unknown): Actor | undefined {
+  const actor = (metadata as { actor?: unknown } | undefined)?.actor;
+  const parsed = actorSchema.safeParse(actor);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function renderMessageInput(sender: ChildAgentSender, text: string): string {
   return renderUntrustedTag(
     "agent-message",
     {
@@ -342,23 +385,21 @@ export async function enqueueAgentMessageToParent(args: {
   messageKey: string;
   nowMs?: number;
   queue: ConversationWorkQueue;
-  sender: AgentInvocation;
+  sender: ChildAgentSender;
   state?: StateAdapter;
   text: string;
 }): Promise<void> {
   const nowMs = args.nowMs ?? Date.now();
-  const inboundMessageId = `agent-invocation:${args.sender.invocationId}:message:${args.messageKey}`;
+  const senderId = args.sender.invocationId ?? args.sender.childConversationId;
+  const inboundMessageId = `agent-invocation:${senderId}:message:${args.messageKey}`;
   const summary = `${childAgentLabel(args.sender)} sent a message.`;
-  const metadata: EventMailboxMetadata = {
-    kind: "event",
-    event: {
-      eventKey: inboundMessageId,
-      eventType: AGENT_MESSAGE_EVENT_TYPE,
-      identifier: args.sender.invocationId,
-      namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
-      trustedSummary: summary,
-    },
-  };
+  const metadata = senderEventMetadata(args.sender, args.actor, {
+    eventKey: inboundMessageId,
+    eventType: AGENT_MESSAGE_EVENT_TYPE,
+    identifier: senderId,
+    namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
+    trustedSummary: summary,
+  });
   await appendAndEnqueueInboundMessage({
     message: {
       conversationId: args.sender.parentConversationId,
@@ -389,11 +430,11 @@ const RESULT_SUMMARIES = {
 /**
  * Append the result of one child agent Turn to its parent mailbox and wake
  * the parent: a `reply`, which the parent reads as a completed
- * `<agent-result>`, or a blocked or failed result. `sender` is the agent
- * invocation that names the child, open or not. `actor` is the Actor of the
- * child's Turn; the parent never runs with more authority than it. The key
- * of the result, the `reply` tool call id or the Turn id, keys the message,
- * so a repeat call is safe.
+ * `<agent-result>`, or a blocked or failed result. `sender` names the child:
+ * an agent invocation, open or not, or the child Conversation when none
+ * names it. `actor` is the Actor of the child's Turn; the parent never runs
+ * with more authority than it. The key of the result, the `reply` tool call
+ * id or the Turn id, keys the message, so a repeat call is safe.
  */
 export async function enqueueChildResultToParent(args: {
   actor?: Actor;
@@ -401,27 +442,40 @@ export async function enqueueChildResultToParent(args: {
   messageKey: string;
   nowMs?: number;
   queue: ConversationWorkQueue;
-  sender: AgentInvocation;
+  sender: ChildAgentSender;
   state?: StateAdapter;
+  /** The child Turn that sent the result. */
+  turnId: string;
 }): Promise<void> {
   const nowMs = args.nowMs ?? Date.now();
-  const inboundMessageId = getAgentReplyMessageId(
-    args.sender.invocationId,
-    args.messageKey,
-  );
+  const actor = args.actor ?? args.sender.actor;
+  if (!actor) {
+    throw new Error(
+      `Reply of ${args.sender.childConversationId} has no Actor for its parent`,
+    );
+  }
+  const senderId = args.sender.invocationId ?? args.sender.childConversationId;
+  const inboundMessageId = getAgentReplyMessageId(senderId, args.messageKey);
   const rendered =
     args.result.kind === "reply"
       ? { output: args.result.reply.text, status: "completed" as const }
       : { output: args.result.text, status: args.result.kind };
-  const metadata: EventMailboxMetadata = {
-    kind: "event",
-    event: {
+  const sender: InboundMessageSender = {
+    ...(args.sender.invocationId
+      ? { agentInvocationId: args.sender.invocationId }
+      : undefined),
+    conversationId: args.sender.childConversationId,
+    turnId: args.turnId,
+  };
+  const metadata = {
+    ...senderEventMetadata(args.sender, actor, {
       eventKey: inboundMessageId,
       eventType: AGENT_REPLY_EVENT_TYPE,
-      identifier: args.sender.invocationId,
+      identifier: senderId,
       namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
       trustedSummary: `${childAgentLabel(args.sender)} ${RESULT_SUMMARIES[args.result.kind]}`,
-    },
+    }),
+    ...childMessageSenderMetadata(sender),
   };
   await appendAndEnqueueInboundMessage({
     message: {
@@ -430,7 +484,7 @@ export async function enqueueChildResultToParent(args: {
       delivery: "defer",
       inboundMessageId,
       input: {
-        authorId: resultAuthorId(args.actor ?? args.sender.actor),
+        authorId: resultAuthorId(actor),
         authorIdentityId: SYSTEM_IDENTITY_ID,
         metadata,
         text: renderResultInput(args.sender, rendered, []),
@@ -438,18 +492,18 @@ export async function enqueueChildResultToParent(args: {
       receivedAtMs: nowMs,
       source: "event",
     },
-    renderText: async (parentInboundMessageIds) =>
+    renderText: async (parentInboundMessageIds, messageSenders) =>
       // A stop drops the unread replies of a Turn on the Conversation loop
       // from the parent's mailbox. One sent before the stop can reach this
       // lock after that drop, so a stopped sender's reply is dropped here.
-      parseTurnReplyMessageId(inboundMessageId) !== undefined &&
+      !ownAgentInvocation(sender) &&
       (await getConversationStoppedAtMs(args.sender.childConversationId)) !==
         undefined
         ? undefined
-        : await renderResultUnderLock(
-            args.sender,
-            rendered,
-          )(parentInboundMessageIds),
+        : await renderResultUnderLock(args.sender, rendered)(
+            parentInboundMessageIds,
+            messageSenders,
+          ),
     queue: args.queue,
     queueDelayMs: EVENT_WAIT_MS,
     state: args.state,
@@ -459,23 +513,23 @@ export async function enqueueChildResultToParent(args: {
 /**
  * Build the parent delivery of child agent Turns that run on the
  * Conversation loop. Such a Turn has no open agent invocation, so its
- * newest finished agent invocation names the child for the parent.
+ * newest finished agent invocation names the child for the parent. A child
+ * that no agent invocation names is named by its child Conversation.
  */
 export function createDeliverToParent(options: {
   queue: ConversationWorkQueue;
   state?: StateAdapter;
 }): DeliverToParent {
   return async ({ actor, result, conversationId, turnId }) => {
-    const sender = (
-      await listAgentInvocationsForConversation(
-        conversationId,
-        TERMINAL_AGENT_INVOCATION_STATUSES,
-      )
-    ).at(-1);
+    const sender =
+      (
+        await listAgentInvocationsForConversation(
+          conversationId,
+          TERMINAL_AGENT_INVOCATION_STATUSES,
+        )
+      ).at(-1) ?? (await readChildConversationSender(conversationId));
     if (!sender) {
-      throw new Error(
-        `Child conversation ${conversationId} has no agent invocation`,
-      );
+      throw new Error(`Conversation ${conversationId} has no parent agent`);
     }
     await enqueueChildResultToParent({
       actor,
@@ -487,6 +541,7 @@ export function createDeliverToParent(options: {
       queue: options.queue,
       sender,
       state: options.state,
+      turnId,
     });
   };
 }
@@ -535,23 +590,19 @@ export function createEndStoppedChildWork(options: {
         buildDeterministicTurnId(message.inboundMessageId),
       ),
     ]);
-    const sender =
+    const latest =
       await getLatestAgentInvocationForConversation(conversationId);
+    const sender =
+      latest ?? (await readChildConversationSender(conversationId));
     if (
       sender &&
       (
-        await readParentInboundMessageIds(
-          sender.parentConversationId,
-          undefined,
-        )
-      ).some((messageId) => {
-        const turnId = parseTurnReplyMessageId(messageId);
-        return (
-          turnId !== undefined &&
-          turnIds.has(turnId) &&
-          isAgentReplyMessageId(messageId, sender.invocationId)
-        );
-      })
+        await readParentChildMessages(sender.parentConversationId, undefined)
+      ).some(
+        (message) =>
+          message.sender.conversationId === conversationId &&
+          turnIds.has(message.sender.turnId),
+      )
     ) {
       return;
     }
@@ -597,7 +648,10 @@ async function startAgentInvocationsForChildInput(
     return undefined;
   }
   const inputs = messages.map(childAgentInput);
-  const isAgentInput = inputs.every((input) => input !== undefined);
+  const isAgentInput = messages.every(
+    (message, index) =>
+      inputs[index] !== undefined || readParentMessage(message) !== undefined,
+  );
   const events = isAgentInput ? [] : parseEventMessages(messages);
   if (!isAgentInput && events.length === 0) {
     return undefined;
@@ -639,22 +693,51 @@ async function startAgentInvocationsForChildInput(
     return { status: "completed" };
   }
   for (const [index, message] of messages.entries()) {
+    const parentMessage = readParentMessage(message);
     if (routes[index] === "dropped") {
+      if (parentMessage) {
+        logDroppedParentMessage(message, parentMessage);
+      }
+      continue;
+    }
+    if (parentMessage) {
+      // A parent message to a child with an open Agent invocation queues
+      // behind it, as `messageAgent` does with a row.
+      await enqueueAgentInvocation(
+        await createAgentInvocationFromLatest({
+          input: message.input.text.trim(),
+          invocationId: getAgentInvocationIdForMessage(
+            message.inboundMessageId,
+          ),
+          latest,
+          runAs: {
+            actor: parentMessage.actor,
+            credentialContext: parentMessage.credentialContext,
+            fork: parentMessage.fork,
+            parentToolCallId: parentMessage.parentToolCallId,
+          },
+        }),
+        options,
+      );
       continue;
     }
     const input = inputs[index]!;
-    const source = await getChildAgentInputInvocation(message, input);
+    // Only an agent invocation sends a result.
+    const { invocation: source } = await getChildAgentInputSender(
+      message,
+      input,
+    );
     const invocation = await createAgentInvocationFromLatest({
       input: message.input.text.trim(),
       invocationId:
-        input.kind === "result"
+        input.kind === "result" && source
           ? getAgentInvocationIdForResult(source.invocationId)
           : getAgentInvocationIdForMessage(message.inboundMessageId),
       latest,
       // A result continues the work of the Turn that spawned its child
       // agent, with that Turn's Actor and grants, such as a timer Turn that
       // ran on the Conversation loop after `latest` ended.
-      ...(input.kind === "result"
+      ...(input.kind === "result" && source
         ? {
             runAs: {
               actor: source.actor,
@@ -702,6 +785,7 @@ export function createChildConversationWorker(
         queue: options.queue,
         sender,
         state: options.state,
+        turnId: getAgentInvocationTurnId(sender.invocationId),
       }),
   });
   return async (
@@ -739,15 +823,45 @@ export function createChildConversationWorker(
       await context.attempt.ack();
       return { status: "completed" };
     }
-    return await options.runTurn(context, kept);
+    const result = await options.runTurn(context, kept);
+    if (result.status === "completed") {
+      await reportParentWithoutOpenWork(context.conversationId, options);
+    }
+    return result;
   };
+}
+
+/**
+ * A completed Turn of a child that no Agent invocation names can end the
+ * last open work of its parent, such as a Turn that ends with `noReply`. A
+ * `replaced` result of that parent then reports, as when a child row ends.
+ * A child with a row reports when its row ends, as on `main`.
+ *
+ * TODO(dcramer): Remove with the `replaced` result (#3060 step 7).
+ */
+async function reportParentWithoutOpenWork(
+  conversationId: string,
+  options: { queue: ConversationWorkQueue; state?: StateAdapter },
+): Promise<void> {
+  if (await getLatestAgentInvocationForConversation(conversationId)) {
+    return;
+  }
+  const sender = await readChildConversationSender(conversationId);
+  const replaced = sender
+    ? await reportReplacedWithoutOpenWork(sender.parentConversationId)
+    : undefined;
+  if (replaced && isTerminalAgentInvocation(replaced)) {
+    await enqueueAgentInvocationResult(replaced, options);
+  }
 }
 
 /**
  * Run each agent invocation result or message as the Actor that triggered the
  * child, user or system, with its grants. This is on purpose: the result
- * continues that Actor's work. The Actor comes from SQL, not from mailbox
- * metadata, so the parent Turn has the same authority it had at spawn time.
+ * continues that Actor's work. The Actor comes from SQL when an agent
+ * invocation names the child, so the parent Turn has the same authority it
+ * had at spawn time. Otherwise the input carries it, and so does a parent
+ * task to a child.
  * Input that a child's Turn with another Actor sent runs as the Event system
  * Actor, so it never gets more authority than that Turn. A result that a stop
  * skipped is dropped. Returns undefined when no input is left.
@@ -767,6 +881,30 @@ export async function withAgentInvocationResultActors(
     : [undefined, undefined];
   const batch = await Promise.all(
     work.batch.map(async (entry) => {
+      // A parent message from the stored parent runs as the Actor of the
+      // parent's Turn, with its grants and text, as on an Agent invocation.
+      const parentMessage = readParentMessage(entry.message);
+      if (parentMessage) {
+        if (
+          (await routeChildInput(entry.message, latest, stoppedAtMs)) ===
+          "dropped"
+        ) {
+          logDroppedParentMessage(entry.message, parentMessage);
+          return undefined;
+        }
+        const text = await parentMessageText(entry.message, parentMessage);
+        return {
+          ...entry,
+          actor: parentMessage.actor,
+          ...(parentMessage.credentialContext
+            ? { credentialContext: parentMessage.credentialContext }
+            : undefined),
+          message: {
+            ...entry.message,
+            input: { ...entry.message.input, text },
+          },
+        };
+      }
       const input = childAgentInput(entry.message);
       if (!input) {
         return entry;
@@ -777,23 +915,28 @@ export async function withAgentInvocationResultActors(
       ) {
         return undefined;
       }
-      const invocation = await getChildAgentInputInvocation(
+      const { invocation } = await getChildAgentInputSender(
         entry.message,
         input,
       );
-      if (entry.message.input.authorId !== resultAuthorId(invocation.actor)) {
+      // A child that no agent invocation names sends its Turn's Actor with
+      // the input. The author id must match either Actor.
+      const actor =
+        invocation?.actor ??
+        senderActorFromMetadata(entry.message.input.metadata);
+      if (!actor || entry.message.input.authorId !== resultAuthorId(actor)) {
         return { ...entry, actor: EVENT_SYSTEM_ACTOR };
       }
       // Only a result continues the work of the Turn that spawned the child,
       // so only a result keeps that Turn's grants, such as a timer owner's. A
       // reply or message runs as the Actor only.
-      return input.kind === "result" && invocation.credentialContext
+      return input.kind === "result" && invocation?.credentialContext
         ? {
             ...entry,
-            actor: invocation.actor,
+            actor,
             credentialContext: invocation.credentialContext,
           }
-        : { ...entry, actor: invocation.actor };
+        : { ...entry, actor };
     }),
   );
   const kept = batch.filter((entry) => entry !== undefined);

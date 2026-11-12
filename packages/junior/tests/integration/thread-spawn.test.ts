@@ -1,5 +1,5 @@
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createAgentInvocation,
   createAgentInvocationForMessage,
@@ -15,6 +15,7 @@ import {
 import type { AgentInvocation } from "@/chat/agent-invocations/types";
 import type { AgentRun } from "@/chat/agent/types";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { CONVERSATION_WORK_MAX_RETRIES } from "@/chat/task-execution/store";
 import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
 import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
@@ -24,12 +25,17 @@ import {
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
 import {
+  sendParentMessage,
+  spawnChildWithoutAgentInvocation,
+} from "../fixtures/child-without-agent-invocation";
+import {
   createHarness,
   finishInvocation,
   sendPersonMessage,
   startThread,
   type Harness,
 } from "../fixtures/thread-input";
+import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
 import { mockTitleModel } from "../fixtures/title-model";
 
 const parentRun: AgentRun = {
@@ -87,6 +93,14 @@ async function archiveAgent(
     }),
     {},
   );
+}
+
+/** Run a Thread's queued Turn until its last try fails, as the runner throws. */
+async function failQueuedTurn(harness: Harness, conversationId: string) {
+  for (let tries = 0; tries < CONVERSATION_WORK_MAX_RETRIES; tries++) {
+    await harness.drain(conversationId);
+    await runHeartbeatAfterLeasesExpire(harness.queue);
+  }
 }
 
 async function archivedAtMs(harness: Harness, conversationId: string) {
@@ -332,6 +346,49 @@ describe("Thread spawn and archive", () => {
         }),
       ).resolves.toMatchObject({ conversation_id: thread });
     } finally {
+      await harness.close();
+    }
+  });
+
+  it("archives a Thread that no Agent invocation names after new parent work", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const spawn = {
+        actor: slackInvocationInput.actor,
+        idempotencyKey: "thread-without-agent-invocation",
+        parentConversationId: slackParentConversationId,
+        queue: harness.queue,
+        state: harness.state,
+      };
+      const thread = await spawnChildWithoutAgentInvocation({
+        ...spawn,
+        conversationStore: harness.conversationStore,
+        kind: "thread",
+      });
+      await failQueuedTurn(harness, thread);
+      vi.setSystemTime(Date.now() + 1_000);
+      await sendPersonMessage(harness, thread, "person-1");
+      await failQueuedTurn(harness, thread);
+      await expect(
+        archiveAgent(slackParentConversationId, thread),
+      ).rejects.toMatchObject({
+        message: expect.stringContaining("a person still uses it"),
+      });
+
+      // New work from the parent gives the Thread back to the parent.
+      vi.setSystemTime(Date.now() + 1_000);
+      await sendParentMessage({
+        ...spawn,
+        childConversationId: thread,
+        idempotencyKey: "thread-without-agent-invocation:again",
+      });
+      await failQueuedTurn(harness, thread);
+      await expect(
+        archiveAgent(slackParentConversationId, thread),
+      ).resolves.toMatchObject({ conversation_id: thread });
+    } finally {
+      vi.useRealTimers();
       await harness.close();
     }
   });

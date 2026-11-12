@@ -692,11 +692,18 @@ describe("merge conflict check on webhook events", () => {
         [950, "open", null, null],
         [951, "open", null, null],
       ]);
+      // An open pull request keeps its state and gets its current title.
       expect(
-        codeChanges.map((change) => [change.number, change.state]),
+        codeChanges.map((change) => [
+          change.number,
+          change.state,
+          change.title,
+          change.conversationIds,
+        ]),
       ).toEqual([
-        [946, "merged"],
-        [949, "closed"],
+        [946, "merged", "Pull request 946", ["slack:C1:1.0"]],
+        [947, "open", "Pull request 947", []],
+        [949, "closed", "Pull request 949", ["slack:C1:1.0"]],
       ]);
       expect(
         annotations.map(({ annotation, conversationId }) => [
