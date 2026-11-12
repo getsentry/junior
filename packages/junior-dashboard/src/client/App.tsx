@@ -228,12 +228,9 @@ export function DashboardShell() {
   const serverVersion = useDashboardServerVersion(data?.config.version);
   const userPages = userPagesQuery.data ?? [];
   const loading = !data && !query.error;
-  // Mock data serves the local viewer's own items, so that viewer counts as
-  // signed in when auth is off.
-  const loggedIn = Boolean(
-    data?.me.user.email &&
-    (data.config.authRequired || data.config.mockConversations),
-  );
+  // With auth off, the server still resolves the local viewer for every API
+  // read, so that viewer counts as signed in.
+  const loggedIn = Boolean(data?.me.user.email);
   const personalSpendQuery = usePersonalSpendData(loggedIn);
   const desktopTopBar = useDesktopTopBar();
   const primaryUserPages = loggedIn

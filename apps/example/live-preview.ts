@@ -105,11 +105,8 @@ async function proxyRequest(
   responseHeaders.set(VERSION_HEADER, JUNIOR_VERSION);
   let body: BodyInit | null = upstream.body;
   if (url.pathname === "/api/config" && upstream.ok) {
-    // The live deployment never serves mock data, and its older versions do
-    // not send `mockConversations`.
     body = JSON.stringify({
       ...(await upstream.json()),
-      mockConversations: false,
       version: JUNIOR_VERSION,
     });
   }

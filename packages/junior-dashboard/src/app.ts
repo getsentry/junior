@@ -647,7 +647,6 @@ export function createDashboardApp(
     authRequired,
     authPath,
     basePath,
-    mockConversations: Boolean(options.mockConversations),
     sentryConversationLinks: hasSentryConversationLinks(),
     version: JUNIOR_VERSION,
   });
