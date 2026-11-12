@@ -14,6 +14,7 @@ import {
 } from "../components/ui/tooltip";
 import { cn } from "../styles";
 import { SidebarAnnotationIcon } from "./ConversationMeta";
+import { HomeMergeDelta } from "./HomeMergeDelta";
 
 // Section order in the tooltip. Icons match the PR states in Conversations.
 // `count` names the day field that holds the full count for the kind.
@@ -39,18 +40,21 @@ type ActivityEvent = {
 const SECTION_LIMIT = 3;
 
 /**
- * Show one cell per day in GitHub greens, shaded by merges. Hover names the
- * PRs merged, opened, and closed that day.
+ * Show one cell per day in GitHub greens, shaded by merges. Hover compares the
+ * day's merges with the same weekday a week before, and names the PRs merged,
+ * opened, and closed that day.
  */
 export function HomeDayStrip(props: {
   changes: CodeChangeSummaryReport[];
   days: CodeActivityDay[];
+  /** The 7 days before `days`, in the same order. */
+  previousDays: CodeActivityDay[];
 }) {
   const max = Math.max(1, ...props.days.map((day) => day.merged));
   const eventsByDay = groupByDay(props.changes.flatMap(changeEvents));
   return (
     <div className="flex gap-0.5" role="list" aria-label="Activity per day">
-      {props.days.map((day) => {
+      {props.days.map((day, index) => {
         const events = eventsByDay.get(day.date) ?? [];
         return (
           <Tooltip key={day.date}>
@@ -68,7 +72,11 @@ export function HomeDayStrip(props: {
               }
             />
             <TooltipContent className="w-80 p-0 leading-5" sideOffset={8}>
-              <DayActivity day={day} events={events} />
+              <DayActivity
+                day={day}
+                events={events}
+                weekBefore={props.previousDays[index]}
+              />
             </TooltipContent>
           </Tooltip>
         );
@@ -82,7 +90,11 @@ export function HomeDayStrip(props: {
  * Counts come from the day, which counts every PR. Names come from the code
  * report, which is capped, so a section can name fewer PRs than it counts.
  */
-function DayActivity(props: { day: CodeActivityDay; events: ActivityEvent[] }) {
+function DayActivity(props: {
+  day: CodeActivityDay;
+  events: ActivityEvent[];
+  weekBefore: CodeActivityDay | undefined;
+}) {
   const sections = ACTIVITY_KINDS.map((kind) => ({
     ...kind,
     events: props.events
@@ -93,8 +105,26 @@ function DayActivity(props: { day: CodeActivityDay; events: ActivityEvent[] }) {
   return (
     <>
       <div className="px-3.5 py-2.5">
-        <div className="font-medium text-dashboard-text">
-          {formatDay(props.day.date)}
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="font-medium text-dashboard-text">
+            {formatDay(props.day.date)}
+          </span>
+          <span className="text-dashboard-text-faint">
+            <span className="font-medium text-dashboard-text tabular-nums">
+              {props.day.merged}
+            </span>{" "}
+            merged
+            {props.weekBefore ? (
+              <>
+                {" · "}
+                <HomeMergeDelta
+                  current={props.day.merged}
+                  period={`last ${formatWeekday(props.weekBefore.date)}`}
+                  previous={props.weekBefore.merged}
+                />
+              </>
+            ) : null}
+          </span>
         </div>
         {sections.length === 0 ? (
           <div className="text-dashboard-text-muted">No PR activity</div>
@@ -187,6 +217,13 @@ function activitySummary(day: CodeActivityDay): string {
 // The owner repeats on most rows; the full name is on the list below.
 function repositoryName(repository: string): string {
   return repository.slice(repository.lastIndexOf("/") + 1);
+}
+
+function formatWeekday(date: string): string {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, {
+    timeZone: "UTC",
+    weekday: "short",
+  });
 }
 
 function formatDay(date: string): string {

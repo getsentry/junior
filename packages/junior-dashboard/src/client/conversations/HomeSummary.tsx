@@ -18,6 +18,7 @@ import {
 } from "../components/ui/tooltip";
 import { SidebarAnnotationIcon } from "./ConversationMeta";
 import { HomeDayStrip } from "./HomeDayStrip";
+import { HomeMergeDelta } from "./HomeMergeDelta";
 
 const DAY_MS = 86_400_000;
 const WEEK_DAYS = 7;
@@ -31,6 +32,7 @@ function rollingMerges(days: CodeActivityDay[]) {
     values.reduce((total, day) => total + day.merged, 0);
   return {
     days: recent.slice(-WEEK_DAYS),
+    previousDays: recent.slice(0, -WEEK_DAYS),
     previous7Days: sum(recent.slice(0, -WEEK_DAYS)),
     last7Days: sum(recent.slice(-WEEK_DAYS)),
   };
@@ -78,9 +80,16 @@ export function HomeSummary() {
               // changes fit in the report's limit.
               changes={code.data.changes}
               days={merges.days}
+              previousDays={merges.previousDays}
             />
           }
-          detail={<MergeDelta {...merges} />}
+          detail={
+            <HomeMergeDelta
+              current={merges.last7Days}
+              period="the 7 days before"
+              previous={merges.previous7Days}
+            />
+          }
           label="Merged"
           value={merges.last7Days}
         />
@@ -162,24 +171,6 @@ function StatusText(props: { children: ReactNode; tone: string }) {
       />
       <span>{props.children}</span>
     </span>
-  );
-}
-
-function MergeDelta(props: { previous7Days: number; last7Days: number }) {
-  const delta = props.last7Days - props.previous7Days;
-  if (delta === 0) return <>same as the 7 days before</>;
-  return (
-    <>
-      <span
-        className={cn(
-          "font-medium",
-          delta > 0 ? "text-emerald-300" : "text-dashboard-text",
-        )}
-      >
-        {delta > 0 ? `+${delta}` : `−${-delta}`}
-      </span>{" "}
-      vs the 7 days before
-    </>
   );
 }
 
