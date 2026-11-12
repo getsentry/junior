@@ -2,7 +2,9 @@ import { createHmac, generateKeyPairSync } from "node:crypto";
 import type {
   PluginConversationReviewItems,
   PluginRoute,
+  PluginState,
 } from "@sentry/junior-plugin-api";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   juniorGitHubPullRequestRequesters,
@@ -10,6 +12,7 @@ import {
 } from "../src/db/schema";
 import { githubPlugin } from "../src/index";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
+import { mswServer } from "./msw";
 
 const CONVERSATION_ID = "slack:C123:1712345.0001";
 const PULL_URL = "https://github.com/getsentry/junior/pull/946";
@@ -79,7 +82,35 @@ type ReviewItemCall =
   | { kind: "upsert"; notice: unknown }
   | { input: unknown; kind: "close" };
 
-function route(fixture: GitHubFixture, calls: ReviewItemCall[]): PluginRoute {
+/** Plugin state that the tool and the webhook share. */
+function memoryState(): PluginState {
+  const values = new Map<string, unknown>();
+  return {
+    async delete(key) {
+      values.delete(key);
+    },
+    async get<T>(key: string) {
+      return values.get(key) as T | undefined;
+    },
+    async set(key, value) {
+      values.set(key, value);
+    },
+    async setIfNotExists(key, value) {
+      if (values.has(key)) return false;
+      values.set(key, value);
+      return true;
+    },
+    async withLock(_key, _ttlMs, callback) {
+      return await callback();
+    },
+  };
+}
+
+function route(
+  fixture: GitHubFixture,
+  calls: ReviewItemCall[],
+  options: { state?: PluginState; warnings?: string[] } = {},
+): PluginRoute {
   const reviewItems: PluginConversationReviewItems = {
     forConversation(conversationId) {
       expect(conversationId).toBe(CONVERSATION_ID);
@@ -115,9 +146,14 @@ function route(fixture: GitHubFixture, calls: ReviewItemCall[]): PluginRoute {
     },
     db: fixture.db(),
     events: { hasMatch: async () => false, async publish() {} },
-    log: { error() {}, info() {}, warn() {} },
+    log: {
+      error() {},
+      info() {},
+      warn: (message: string) => options.warnings?.push(message),
+    },
     plugin: { name: "github" },
     reviewItems,
+    state: options.state ?? memoryState(),
     // The requester linked the GitHub account `Requester`.
     users: {
       readIdentity: async (identityId: string) =>
@@ -301,6 +337,156 @@ describe("review requested ask", () => {
       );
       expect(calls.at(-1)).toEqual(ask);
       expect(calls).toHaveLength(6);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  /** Open a draft through the tool, as the requester asked in Slack. */
+  async function createDraft(
+    fixture: GitHubFixture,
+    state: PluginState,
+    reviewers?: string[],
+  ): Promise<string[]> {
+    const operations: string[] = [];
+    const tool = githubPlugin().hooks!.tools!({
+      actor: { platform: "slack", teamId: "T1", userId: "U1" },
+      conversationId: CONVERSATION_ID,
+      db: fixture.db(),
+      destination: { platform: "local", conversationId: CONVERSATION_ID },
+      egress: {
+        async fetch({ operation }: { operation: string }) {
+          operations.push(operation);
+          return operation === "github.pull.create"
+            ? Response.json(
+                { draft: true, html_url: PULL_URL, number: 946 },
+                { status: 201 },
+              )
+            : Response.json({});
+        },
+      },
+      events: { canSubscribe: false, async subscribe() {} },
+      log: { error() {}, info() {}, warn() {} },
+      plugin: { name: "github" },
+      state,
+      users: {
+        resolveActor: async () => ({
+          identity: { id: "identity-requester", provider: "slack" },
+          user: { identities: [{ handle: "Requester", provider: "github" }] },
+        }),
+      },
+    } as never).createPullRequest!;
+    await tool.execute!(
+      {
+        base: "main",
+        draft: true,
+        head: "feat/review-desk-ask",
+        repo: "getsentry/junior",
+        title: pullRequest.title,
+        ...(reviewers ? { reviewers } : undefined),
+      } as never,
+      { toolCallId: `call-${reviewers?.join("-") ?? "requester"}` } as never,
+    );
+    return operations;
+  }
+
+  function readyForReview() {
+    return signedRequest(
+      {
+        action: "ready_for_review",
+        pull_request: {
+          ...pullRequest,
+          draft: false,
+          head: { ref: "feat/review-desk-ask" },
+          state: "open",
+        },
+      },
+      "pull_request",
+    );
+  }
+
+  it.each([
+    { expected: ["Requester"], name: "the requester", reviewers: undefined },
+    {
+      expected: ["octocat"],
+      name: "the named reviewers",
+      reviewers: ["octocat"],
+    },
+  ])(
+    "asks $name to review a draft only when it becomes ready",
+    async ({ expected, reviewers }) => {
+      const fixture = await createGitHubFixture();
+      const requests: unknown[] = [];
+      mswServer.use(
+        http.post(
+          "https://api.github.com/app/installations/456/access_tokens",
+          () =>
+            HttpResponse.json({
+              expires_at: "2027-01-01T00:00:00.000Z",
+              token: "installation-token",
+            }),
+        ),
+        http.get(
+          "https://api.github.com/repos/getsentry/junior/pulls/946",
+          () =>
+            HttpResponse.json({
+              draft: false,
+              html_url: PULL_URL,
+              number: 946,
+            }),
+        ),
+        http.post(
+          "https://api.github.com/repos/getsentry/junior/pulls/946/requested_reviewers",
+          async ({ request }) => {
+            requests.push(await request.json());
+            return HttpResponse.json({}, { status: 201 });
+          },
+        ),
+      );
+      try {
+        const state = memoryState();
+        const operations = await createDraft(fixture, state, reviewers);
+        expect(operations).not.toContain("github.pull.request_reviewers");
+
+        const response = await route(fixture, [], { state }).handler(
+          readyForReview(),
+        );
+        expect(response.status).toBe(202);
+        expect(requests).toEqual([{ reviewers: expected }]);
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
+  it("keeps the delivery when GitHub rejects the review request", async () => {
+    const fixture = await createGitHubFixture();
+    mswServer.use(
+      http.post(
+        "https://api.github.com/app/installations/456/access_tokens",
+        () =>
+          HttpResponse.json({
+            expires_at: "2027-01-01T00:00:00.000Z",
+            token: "installation-token",
+          }),
+      ),
+      http.get("https://api.github.com/repos/getsentry/junior/pulls/946", () =>
+        HttpResponse.json({ draft: false, html_url: PULL_URL, number: 946 }),
+      ),
+      http.post(
+        "https://api.github.com/repos/getsentry/junior/pulls/946/requested_reviewers",
+        () =>
+          HttpResponse.json({ message: "Validation Failed" }, { status: 422 }),
+      ),
+    );
+    try {
+      await seedJuniorPullRequest(fixture);
+      const warnings: string[] = [];
+      const response = await route(fixture, [], { warnings }).handler(
+        readyForReview(),
+      );
+      expect(response.status).toBe(202);
+      expect(warnings).toEqual(["GitHub pull request review request failed"]);
     } finally {
       await fixture.close();
     }
