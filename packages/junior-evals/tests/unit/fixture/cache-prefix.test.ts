@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import { requestContextSummary } from "@/chat/agent/context-summary";
 import { COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import {
+  PROMPT_MODE_JOB_TAGS,
+  type PromptMode,
+} from "@/chat/system-prompt-rules";
+import {
   findCachePrefixBreaks,
   type AgentGatewayRequest,
 } from "@junior-evals/fixture/cache-prefix";
@@ -87,12 +91,25 @@ describe("findCachePrefixBreaks", () => {
     ]);
   });
 
-  it("accepts a conversation-mode Turn after an Automation run", () => {
+  it("accepts a Turn in another prompt mode, and only that change", () => {
+    const system = (mode: PromptMode, rules = "") => {
+      const tag = PROMPT_MODE_JOB_TAGS[mode];
+      return [{ type: "text", text: `<${tag}>\n${rules}</${tag}>` }];
+    };
     const run = request(first.messages, {
-      system: [{ type: "text", text: "Automation run." }],
-      tools: [...tools, { name: "finishAutomationRun" }],
+      system: system("automation"),
+      tools: [...tools, { name: "reply" }],
     });
-    expect(findCachePrefixBreaks([run, second])).toEqual([]);
+    const personTurn = request(second.messages, {
+      system: system("conversation"),
+    });
+    const changed = request(second.messages, {
+      system: system("conversation", "Now.\n"),
+    });
+    expect(findCachePrefixBreaks([run, personTurn])).toEqual([]);
+    expect(findCachePrefixBreaks([personTurn, changed])).toEqual([
+      { request: 1, part: "system", detail: expect.any(String) },
+    ]);
   });
 
   it("compares requests only within their Conversation", () => {

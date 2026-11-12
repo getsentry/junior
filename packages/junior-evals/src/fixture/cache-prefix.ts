@@ -9,12 +9,13 @@
  * - Context compaction replaces the history. Its summary requests branch off
  *   the prefix: they must extend it, but the next agent request does not
  *   extend them.
- * - A person who replies after an Automation run starts a conversation-mode
- *   Turn, which has another system prompt and tool list.
+ * - A Turn in another prompt mode has another system prompt and tool list.
+ *   This happens when a person replies after an Automation run, or when
+ *   person Turns and agent Turns alternate in a Thread.
  */
 import { isContextSummaryRequestText } from "@/chat/agent/context-summary";
-import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import { isCompactionSummaryText } from "@/chat/services/context-compaction-marker";
+import { PROMPT_MODE_JOB_TAGS } from "@/chat/system-prompt-rules";
 
 /** The cache-relevant parts of one Anthropic Messages request. */
 export interface AgentGatewayRequest {
@@ -117,9 +118,12 @@ function compactedBetween(before: SeenRequest, after: SeenRequest): boolean {
   );
 }
 
-function offersFinishAutomationRun(request: AgentGatewayRequest): boolean {
-  const tools = (request.tools ?? []) as Array<{ name: string }>;
-  return tools.some((tool) => tool.name === FINISH_AUTOMATION_RUN_TOOL_NAME);
+/** The prompt mode whose job section the system prompt has. */
+function promptMode(request: AgentGatewayRequest): string | undefined {
+  const system = JSON.stringify(request.system);
+  return Object.entries(PROMPT_MODE_JOB_TAGS).find(([, tag]) =>
+    system.includes(`<${tag}>`),
+  )?.[0];
 }
 
 function prefixBreak(
@@ -129,9 +133,7 @@ function prefixBreak(
 ): Omit<CachePrefixBreak, "request"> | undefined {
   const previous = before.request;
   const next = after.request;
-  if (offersFinishAutomationRun(previous) && !offersFinishAutomationRun(next)) {
-    return undefined;
-  }
+  if (promptMode(previous) !== promptMode(next)) return undefined;
   if (previous.model !== next.model) {
     return { part: "model", detail: `${previous.model} became ${next.model}` };
   }

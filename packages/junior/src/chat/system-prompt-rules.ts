@@ -224,16 +224,28 @@ function renderRuleSection(tag: string, lines: string[]): string {
   return [`<${tag}>`, ...lines, `</${tag}>`].join("\n");
 }
 
+/**
+ * Tag of the Block 2 job section of each prompt mode. Each mode has another
+ * system prompt, so a Turn in another mode cannot read the cached prompt
+ * prefix of the Turn before it.
+ */
+export const PROMPT_MODE_JOB_TAGS: Record<PromptMode, string> = {
+  automation: "automation-run",
+  child_agent: "child-agent-run",
+  conversation: "task-execution",
+};
+
 function buildWorkingPrinciplesSection(mode: PromptMode): string {
+  const tag = PROMPT_MODE_JOB_TAGS[mode];
   const job =
     mode === "automation"
-      ? renderRuleSection("automation-run", AUTOMATION_RUN_RULES)
+      ? renderRuleSection(tag, AUTOMATION_RUN_RULES)
       : mode === "child_agent"
-        ? renderRuleSection("child-agent-run", [
+        ? renderRuleSection(tag, [
             ...CHILD_AGENT_RUN_RULES,
             ...AGENT_INPUT_RULES,
           ])
-        : renderRuleSection("task-execution", [
+        : renderRuleSection(tag, [
             ...TASK_EXECUTION_RULES,
             ...AGENT_INPUT_RULES,
           ]);
