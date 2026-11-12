@@ -243,6 +243,23 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("with the description check experiment on, rejects a blank body without asking the decision model", async () => {
+    const decider = { decide: vi.fn() };
+    const { fetch, tool } = toolContext(undefined, { decider });
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", number: 691, body: "  " },
+        { toolCallId: "update-pr" },
+      ),
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message: expect.stringContaining("- Say why the change is needed."),
+    });
+    expect(decider.decide).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("preserves merged status when updating a merged pull request", async () => {
     const { fetch, tool } = toolContext(
       new Response(

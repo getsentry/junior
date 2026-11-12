@@ -601,10 +601,10 @@ export function createGitHubPullRequestTool(
               "GitHub pull request creation for this tool call has an uncertain pending result; refusing to create a duplicate pull request.",
             );
           }
-          if (descriptionDecider && parsedInput.body?.trim()) {
+          if (descriptionDecider) {
             await checkPullRequestDescription(
               descriptionDecider,
-              parsedInput.body,
+              parsedInput.body ?? "",
             );
           }
           const requester = await resolveGitHubRequester(ctx);

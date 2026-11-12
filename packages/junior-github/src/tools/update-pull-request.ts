@@ -184,7 +184,7 @@ export function createGitHubUpdatePullRequestTool(
         );
       }
       const update = parsedInput.data;
-      if (descriptionDecider && update.body?.trim()) {
+      if (descriptionDecider && update.body !== undefined) {
         await checkPullRequestDescription(descriptionDecider, update.body);
       }
       const repo = parseRepo(update.repo);

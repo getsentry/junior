@@ -8,6 +8,8 @@ import {
 // classifier with no reasoning answers one plain fact well, so each question
 // asks one thing. A "yes" rejects the body, and the fix tells the agent what
 // to send instead.
+const MISSING_REASON_FIX = "Say why the change is needed.";
+
 const DESCRIPTION_CHECKS = [
   {
     question:
@@ -27,7 +29,7 @@ const DESCRIPTION_CHECKS = [
   {
     question:
       "Does the description leave out why the change is needed or what problem it fixes?",
-    fix: "Say why the change is needed.",
+    fix: MISSING_REASON_FIX,
   },
 ] as const;
 
@@ -36,6 +38,11 @@ export async function pullRequestDescriptionFixes(
   decider: PluginDecider,
   body: string,
 ): Promise<string[]> {
+  // A blank body says nothing, so it cannot say why. Do not let a retry with
+  // an empty body skip the checks.
+  if (!body.trim()) {
+    return [MISSING_REASON_FIX];
+  }
   const answers = await Promise.all(
     DESCRIPTION_CHECKS.map(({ question }) =>
       decider.decide({
