@@ -11,22 +11,22 @@ import {
 const DESCRIPTION_CHECKS = [
   {
     question:
-      "Does the description report test, lint, typecheck, or CI results, include a test plan, or list commands that were run?",
+      "Does the description say that the author ran tests, lint, typecheck, or CI and give the outcome, or have a test plan section? Text about what the product does with such commands does not count.",
     fix: "Remove check results, test plans, and commands. Reviewers see checks on the pull request.",
   },
   {
     question:
-      "Does the description tell how the work was done, such as investigation steps, evidence or run counts, or approaches and names that were tried and replaced?",
+      "Does the description narrate the author's own work session, such as what the author investigated, approaches or names the author tried first and dropped, or how many runs the author looked at? Old behavior compared with new behavior does not count.",
     fix: "Remove the work log. Describe the change as it is now.",
   },
   {
     question:
-      "Does the description list the changed files or functions one by one instead of saying what changed?",
+      "Is most of the description a list of file paths, each with what changed in it?",
     fix: "Replace the file list with what changed and why, in plain words.",
   },
   {
     question:
-      "Does the description talk about the chat that led to the change, such as who asked, Slack messages or threads, or what the user said?",
+      "Does the description mention the request for this pull request, such as who asked for it or a chat message about it? A product feature that involves Slack or chat does not count.",
     fix: "Remove the conversation. The runtime adds who asked.",
   },
   {
