@@ -36,6 +36,7 @@ import {
   type CodeModeTelemetry,
 } from "@/chat/codemode/telemetry";
 import type { CodeModeCall, CodeModeResult } from "@/chat/codemode/result";
+import { redirectDeclarations, scriptRedirect } from "@/chat/codemode/redirect";
 
 /** Deadline of one script, including the time its nested calls take. */
 export const CODE_MODE_SCRIPT_TIMEOUT_MS = 120_000;
@@ -148,16 +149,27 @@ function provenanceStatus(call: ScriptCall): ScriptCallStatus | undefined {
   }
 }
 
+/** pi's `tools` proxy throws this when a script reads an undeclared name. */
+const MISSING_TOOL_MESSAGE = /^tools\.\S+ does not exist\./;
+
 function vmErrorKind(result: CodemodeResult): CodeModeErrorKind | undefined {
   if (result.ok) {
     return undefined;
   }
   const { error } = result;
-  return error.kind === "script" &&
+  if (error.kind !== "script") {
+    return error.kind;
+  }
+  if (
     error.name === "InternalError" &&
     error.message.includes("out of memory")
-    ? "memory"
-    : error.kind;
+  ) {
+    return "memory";
+  }
+  if (error.name === "TypeError" && MISSING_TOOL_MESSAGE.test(error.message)) {
+    return "missing_tool";
+  }
+  return "script";
 }
 
 /** The script output as text. The tool pipeline cuts long text for the model. */
@@ -209,12 +221,25 @@ export async function runCodeModeScript(
     peakConcurrentCalls: 0,
     rejectedCallCount: 0,
     batchLimitRejectedCallCount: 0,
+    redirectedCallCount: 0,
     outputBytes: 0,
   };
   let drain: CodemodeHostCall[] = [];
   let lastSeq = 0;
   let runningCalls = 0;
   let pauseError: unknown;
+
+  const redirectOf = (host: CodemodeHostCall) => {
+    const redirect =
+      host.target === "tool" && !Object.hasOwn(run.tools, host.name)
+        ? scriptRedirect(host.name, host.args, run.tools)
+        : undefined;
+    // Each call reaches this once: when its drain starts, or at the end.
+    if (redirect) {
+      telemetry.redirectedCallCount += 1;
+    }
+    return redirect;
+  };
 
   const track = (work: Promise<void>) => {
     pending.add(work);
@@ -347,14 +372,20 @@ export async function runCodeModeScript(
         toolName: host.name,
       };
       calls.push(call);
-      // The VM only declares script tools. Check again, so no other tool
-      // runs from a script.
+      // The VM declares script tools and the redirected dispatchers. Check
+      // again, so no other tool runs from a script. A redirected
+      // dispatcher only gets its error.
       const tool =
         host.target === "tool" && Object.hasOwn(run.tools, host.name)
           ? run.tools[host.name]
           : undefined;
       if (!tool) {
-        fail(call, host.id, "error", `${host.name} is not a script tool.`);
+        fail(
+          call,
+          host.id,
+          "error",
+          redirectOf(host) ?? `${host.name} is not a script tool.`,
+        );
         continue;
       }
       // Past the limit, the call gets the wrap-up message of a blocked
@@ -446,10 +477,13 @@ export async function runCodeModeScript(
     vm = sandbox.start(run.source, {
       startedAt: Date.now(),
       seed: randomInt(0, 2 ** 32),
-      tools: Object.entries(run.tools).map(([name, tool]) => ({
-        name,
-        description: tool.description,
-      })),
+      tools: [
+        ...Object.entries(run.tools).map(([name, tool]) => ({
+          name,
+          description: tool.description,
+        })),
+        ...redirectDeclarations(run.tools),
+      ],
       signal: controller.signal,
       timeoutMs: CODE_MODE_SCRIPT_TIMEOUT_MS,
       onStarted: () => {
@@ -480,13 +514,16 @@ export async function runCodeModeScript(
       }
     }
     // Calls of the last drain never reached an idle, so they did not start.
+    // A redirected dispatcher keeps its error, so the model still sees it.
     for (const host of drain) {
+      const error = redirectOf(host);
       calls.push({
         id: `${run.toolCallId}/c${host.id}`,
         input: host.args,
         started: false,
         status: "not_started",
         toolName: host.name,
+        ...(error ? { error } : undefined),
       });
     }
     if (pauseError !== undefined) {

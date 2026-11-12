@@ -34,7 +34,7 @@ Inspect the code and describe what you would do — do not run commands or open 
 
 ## Use public threads by default
 
-Ask in a public project or team channel when the work can be shared. Public threads are searchable, teammates can add missing context, and the final answer is visible to people who need the same fix later.
+Ask in a public project or team channel when the work can be shared. Public threads are searchable, teammates can add missing context, and the final response is visible to people who need the same fix later.
 
 Use a DM only for private work. DM context stays private, so teammates cannot learn from the thread or carry that context into a later channel conversation. If you are not sure where to start, `#proj-junior` is a good place for Junior usage questions.
 

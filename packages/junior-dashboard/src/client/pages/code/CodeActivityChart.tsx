@@ -16,6 +16,7 @@ import {
 import { ChartLegend } from "../../components/charts/ChartLegend";
 
 import { Card } from "../../components/layout/Card";
+import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { ChartContainer, ChartTooltip } from "../../components/ui/chart";
 import { formatActivityChartAverage } from "../../format";
 
@@ -53,9 +54,11 @@ export function CodeActivityChart(props: {
     <Card className="min-h-[17rem] p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
-            Changes over time
-          </h2>
+          <AnchorHeading
+            anchor="changes"
+            className="m-0 font-display text-xl font-medium text-dashboard-text"
+            title="Changes over time"
+          />
           <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
             Code changes created, merged, and closed each day.
           </p>

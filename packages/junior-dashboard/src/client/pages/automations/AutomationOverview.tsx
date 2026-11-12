@@ -1,187 +1,426 @@
 /**
- * Read view of one Automation. The sections match the editor, so edit mode
- * changes the same rows in place. The side column holds status and activity.
+ * Read view of one Automation. Runs lead, because most visits ask "did it
+ * work". The instruction follows in the main column, where long text has
+ * room; the rail keeps short settings, cost, and ownership beside the runs.
  */
 import type { ReactNode } from "react";
+import { MessageSquareText } from "lucide-react";
 import { Link, useLocation } from "react-router";
-import type { AutomationSummary } from "@sentry/junior/api/schema";
+import type {
+  AutomationExecution,
+  AutomationSummary,
+} from "@sentry/junior/api/schema";
 
 import {
   useAutomationExecutionsData,
   useAutomationVersionsData,
 } from "../../api";
-import {
-  selectTimeSeries,
-  type TimeRangeDays,
-} from "../../components/controls/TimeRangeSelector";
+import { ActorAvatar } from "../../components/ActorAvatar";
+import { ClampedPreview } from "../../components/ClampedPreview";
+import { Fact, FactList, FactSection } from "../../components/FactSection";
+import { InlineError } from "../../components/InlineError";
+import { SkillLink } from "../../components/SkillLink";
+import { StatusDot } from "../../components/StatusDot";
 import { Card } from "../../components/layout/Card";
+import { Button } from "../../components/ui/button";
+import { Skeleton } from "../../components/ui/skeleton";
+import { conversationPath } from "../../conversations/conversationRoutes";
 import { DisplayText } from "../../display-text/DisplayText";
-import { automationPath, formatCostSummary, peoplePath } from "../../format";
+import {
+  automationPath,
+  formatCostSummary,
+  formatRelativeTime,
+  formatRuntime,
+  peoplePath,
+} from "../../format";
 import { pathWithSearch } from "../../searchParams";
 import { dashboardInlineLinkClass } from "../../styles";
-import { AutomationFormSection } from "./AutomationFormSection";
+import { AutomationCost } from "./AutomationCost";
 import { AutomationOutcomeList } from "./AutomationOutcomeFields";
-import { AutomationRecentRuns } from "./AutomationRecentRuns";
-import { AutomationAttention, AutomationStatus } from "./AutomationStatus";
-import { TriggerFilters } from "./TriggerFilters";
 import {
+  AUTOMATION_RUN_PARAM,
+  AutomationRunDetails,
+  useAutomationRunSelection,
+} from "./AutomationRunDetails";
+import { AutomationRunStrip } from "./AutomationRunStrip";
+import { AutomationAttention } from "./AutomationStatus";
+import {
+  automationRunOf,
+  automationRunStatusTone,
   automationScheduleLabel,
   formatAutomationRunTime,
 } from "./automationFormat";
+import { SectionTitle } from "../../components/layout/SectionTitle";
 
-/** Settings on the left; status, activity, and ownership on the right. */
+const STRIP_RUNS = 48;
+const LISTED_RUNS = 6;
+
+/** Problems, runs, and the instruction on the left; settings on the right. */
 export function AutomationOverview(props: {
   automation: AutomationSummary;
   editPath: string;
-  range: TimeRangeDays;
 }) {
   const { automation } = props;
+  const executions = useAutomationExecutionsData(true, automation.id);
+  const latest = executions.data?.executions[0];
   return (
-    <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-10">
-      <div className="grid min-w-0 content-start gap-6">
+    <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-8">
+      <div className="grid min-w-0 content-start gap-4">
         <AutomationAttention
           automation={automation}
           editPath={props.editPath}
+          lastRunError={
+            latest && latest.status !== "completed" ? latest.error : undefined
+          }
         />
-        <AutomationSettings automation={automation} />
-        <Card padding="sm">
-          <AutomationRecentRuns automation={automation} />
-        </Card>
-        {/* On small screens, status leads and About follows the settings. */}
-        <div className="lg:hidden">
-          <AutomationAbout automation={automation} />
-        </div>
+        <AutomationActivity automation={automation} query={executions} />
+        <AutomationInstruction automation={automation} />
       </div>
       <aside
-        aria-label="Automation status"
-        className="grid min-w-0 content-start gap-3 max-lg:row-start-1"
+        aria-label="Automation details"
+        className="grid min-w-0 content-start gap-3"
       >
-        <RailCard title="Status">
-          <AutomationStatus automation={automation} />
-        </RailCard>
-        <AutomationActivity automation={automation} range={props.range} />
-        <div className="max-lg:hidden">
-          <AutomationAbout automation={automation} />
-        </div>
+        <AutomationSettings automation={automation} />
+        <AutomationCost
+          automation={automation}
+          days={executions.data?.executionDays}
+        />
+        <AutomationAbout automation={automation} />
       </aside>
     </div>
   );
 }
 
-/** Saved settings, in the same sections and order as the editor. */
-function AutomationSettings(props: { automation: AutomationSummary }) {
-  const { automation } = props;
-  const creator = automation.ownedByViewer ? "you" : automation.createdBy;
+/**
+ * Recent results as a strip and a short list, with what happens next. A run
+ * opens its details over this page, so reading a run keeps your place.
+ */
+function AutomationActivity(props: {
+  automation: AutomationSummary;
+  query: ReturnType<typeof useAutomationExecutionsData>;
+}) {
+  const { automation, query } = props;
+  const location = useLocation();
+  const runs = query.data?.executions ?? [];
+  const selection = useAutomationRunSelection(
+    runs.map((run) => run.executionId),
+  );
+  const runPath = (run: AutomationExecution) => {
+    const search = new URLSearchParams(location.search);
+    search.set(AUTOMATION_RUN_PARAM, run.executionId);
+    return pathWithSearch(location.pathname, search);
+  };
+  const selectedRun = runs.find((run) => run.executionId === selection.runId);
   return (
-    <div className="min-w-0 [&>section:first-child]:border-t-0 [&>section:first-child]:pt-0">
-      <AutomationFormSection title="What to do">
-        <div className="text-base leading-relaxed [overflow-wrap:anywhere]">
-          <DisplayText
-            mentions={automation.mentions ?? []}
-            text={automation.instruction}
-          />
+    <div
+      aria-label="Recent runs"
+      className="min-w-0 outline-none"
+      ref={selection.listRef}
+      role="region"
+      // Closing details on a run with no bar or row focuses the section.
+      tabIndex={-1}
+    >
+      <Card>
+        <div className="flex items-baseline justify-between gap-3 px-4 pt-4">
+          <SectionTitle>Recent runs</SectionTitle>
+          {/* Older runs stay reachable while recent history loads or fails. */}
+          {runs.length > 0 || automation.totalRuns > 0 ? (
+            <Link
+              className={`${dashboardInlineLinkClass} text-xs`}
+              to={pathWithSearch(
+                automationPath(automation.id, "runs"),
+                location.search,
+              )}
+            >
+              View all runs
+            </Link>
+          ) : null}
         </div>
-      </AutomationFormSection>
-      <AutomationFormSection title="When to run">
-        {automation.kind === "scheduled" ? (
-          <p className="m-0 text-sm">{automationScheduleLabel(automation)}</p>
-        ) : (
-          <div className="grid gap-1 text-sm">
-            <p className="m-0 break-words">{automation.resource}</p>
-            <p className="m-0 break-words text-dashboard-text-muted">
-              {automation.trigger.events.join(", ")}
-            </p>
-            <TriggerFilters filters={automation.trigger.filters} />
+        <div className="flex min-w-0 flex-col gap-3 px-4 pt-3 pb-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
+          {query.isPending ? (
+            <Skeleton className="h-16 w-full max-w-md rounded-md" />
+          ) : (
+            <AutomationRunStrip
+              label={`Last ${Math.min(runs.length, STRIP_RUNS)} runs`}
+              runs={runs
+                .slice(0, STRIP_RUNS)
+                .reverse()
+                .map((run) => ({
+                  ...run,
+                  key: run.executionId,
+                  runId: run.executionId,
+                  to: runPath(run),
+                }))}
+              size="default"
+              slots={STRIP_RUNS}
+            />
+          )}
+          <AutomationNext automation={automation} />
+        </div>
+        {query.error ? (
+          <div className="px-4 pb-4">
+            <InlineError>
+              Recent runs could not be loaded.{" "}
+              <Button onClick={() => void query.refetch()}>Try again</Button>
+            </InlineError>
           </div>
-        )}
-      </AutomationFormSection>
-      <AutomationFormSection title="Where results go">
-        <AutomationOutcomeList
-          outcomes={automation.outcomes}
-          destination={automation.destination}
+        ) : null}
+        {query.data && runs.length === 0 ? (
+          <p className="m-0 border-t border-dashboard-border-subtle px-4 py-4 text-sm text-dashboard-text-muted">
+            {automation.totalRuns === 0
+              ? "No runs yet. Results will appear here after the first run."
+              : "No recent runs are available. Older run details may have expired."}
+          </p>
+        ) : null}
+        {runs.length > 0 ? (
+          <ol className="m-0 list-none border-t border-dashboard-border-subtle p-0">
+            {runs.slice(0, LISTED_RUNS).map((run) => (
+              <AutomationRunLine
+                automation={automation}
+                key={run.executionId}
+                run={run}
+                to={runPath(run)}
+              />
+            ))}
+          </ol>
+        ) : null}
+      </Card>
+      {selection.runId ? (
+        <AutomationRunDetails
+          loading={query.isPending}
+          onClose={selection.close}
+          run={selectedRun && automationRunOf(selectedRun, automation)}
+          showAutomation={false}
         />
-      </AutomationFormSection>
-      <AutomationFormSection title="Credentials">
-        <p className="m-0 text-sm">
-          {automation.credentialMode === "creator"
-            ? `Uses accounts connected by ${creator}.`
-            : "System credentials only. Junior does not use anyone’s connected accounts."}
-        </p>
-      </AutomationFormSection>
+      ) : null}
     </div>
   );
 }
 
-/** Runs, problems, and spend in the selected range. */
-function AutomationActivity(props: {
+/** One run: when, what went wrong if anything, and what it cost. */
+function AutomationRunLine(props: {
   automation: AutomationSummary;
-  range: TimeRangeDays;
+  run: AutomationExecution;
+  to: string;
 }) {
-  const { automation, range } = props;
-  // AutomationRecentRuns reads the same query, so this adds no request.
-  const executions = useAutomationExecutionsData(true, automation.id);
-  const problems = executions.data
-    ? selectTimeSeries({
-        days: executions.data.executionDays,
-        hours: executions.data.executionHours,
-        sixHours: executions.data.executionSixHours,
-        range,
-      }).reduce(
-        (total, bucket) => ({
-          blocked: total.blocked + bucket.blocked,
-          failed: total.failed + bucket.failed,
-        }),
-        { blocked: 0, failed: 0 },
-      )
-    : undefined;
+  const { run } = props;
+  const metrics = [
+    run.durationMs !== undefined ? formatRuntime(run.durationMs) : undefined,
+    run.costUsd !== undefined
+      ? formatCostSummary({ total: run.costUsd })
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  // The Automation title repeats on every run. Show only a different one.
+  const title =
+    run.title && run.title !== props.automation.title ? run.title : undefined;
   return (
-    <RailCard title={range === 1 ? "Last 24 hours" : `Last ${range} days`}>
-      <dl className="m-0 grid grid-cols-2 gap-x-4 gap-y-3">
-        <RailMetric label="Runs" value={automation.runs[range]} />
-        <RailMetric
-          label="Spend"
-          value={formatCostSummary({ total: automation.costUsd[range] })}
+    <li
+      className="grid grid-cols-[minmax(0,1fr)_auto_2.25rem] items-center gap-x-4 border-t border-dashboard-border-subtle pl-4 first:border-t-0"
+      data-run-id={run.executionId}
+    >
+      <Link
+        aria-label={`Open ${run.status} run from ${formatAutomationRunTime(run.executedAt)}`}
+        className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 py-2.5 text-xs text-inherit no-underline focus-visible:outline-2 focus-visible:outline-dashboard-focus sm:grid-cols-[auto_8rem_minmax(0,1fr)]"
+        // Opening a run only changes the panel, not the page, so Back leaves.
+        replace
+        to={props.to}
+      >
+        <StatusDot
+          className="self-center"
+          label={run.status}
+          tone={automationRunStatusTone(run.status)}
         />
-        <RailMetric label="Failed" value={problems?.failed ?? "—"} />
-        <RailMetric label="Blocked" value={problems?.blocked ?? "—"} />
-      </dl>
-    </RailCard>
+        <time
+          className="truncate text-dashboard-text"
+          dateTime={run.executedAt}
+          title={formatAutomationRunTime(run.executedAt)}
+        >
+          {formatRelativeTime(run.executedAt)}
+        </time>
+        {run.error ? (
+          <span
+            className="col-start-2 line-clamp-2 text-rose-300 sm:col-start-auto sm:truncate"
+            title={run.error}
+          >
+            {run.error}
+          </span>
+        ) : run.status === "blocked" ? (
+          // A blocked run without a reason still needs a word; the dot alone is easy to miss.
+          <span className="col-start-2 truncate text-amber-300 sm:col-start-auto">
+            Blocked
+          </span>
+        ) : (
+          <span className="col-start-2 truncate text-dashboard-text-muted sm:col-start-auto">
+            {title}
+          </span>
+        )}
+      </Link>
+      <span className="text-right text-xs tabular-nums text-dashboard-text-muted">
+        {metrics}
+      </span>
+      {run.conversationId ? (
+        <Link
+          aria-label="Open conversation"
+          className="grid size-9 place-items-center rounded-md text-dashboard-text-muted hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+          title="Open conversation"
+          to={conversationPath(run.conversationId)}
+        >
+          <MessageSquareText aria-hidden="true" size={15} />
+        </Link>
+      ) : (
+        <span />
+      )}
+    </li>
   );
 }
 
-/** Who owns the Automation, where it lives, and which version is active. */
-function AutomationAbout(props: { automation: AutomationSummary }) {
+/** What runs next, at the end of the strip. */
+function AutomationNext({ automation }: { automation: AutomationSummary }) {
+  let label: string;
+  let detail: ReactNode;
+  if (automation.status === "paused") {
+    label = "Paused";
+    detail = "No runs until resumed";
+  } else if (automation.status === "completed") {
+    label = "Completed";
+    detail = "No future runs";
+  } else if (automation.status === "blocked") {
+    label = "Blocked";
+    detail = "New runs wait for a fix";
+  } else if (automation.kind === "scheduled") {
+    label = automation.nextRunAt
+      ? `Next ${formatRelativeTime(automation.nextRunAt)}`
+      : "No next run";
+    detail = automation.nextRunAt
+      ? formatAutomationRunTime(automation.nextRunAt, automation.timezone)
+      : undefined;
+  } else if (automation.trigger.problems.length > 0) {
+    label = "Not listening";
+    detail = "Trigger unavailable";
+  } else {
+    label = "Listening";
+    detail = automation.trigger.events.join(", ");
+  }
+  return (
+    <div className="grid min-w-0 shrink-0 gap-1 sm:justify-items-end sm:text-right">
+      <span className="text-sm text-dashboard-text">{label}</span>
+      {detail ? (
+        <span className="max-w-56 truncate text-xs text-dashboard-text-muted">
+          {detail}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * What the Automation does, in full width. Long instructions show their
+ * first lines and expand in place, so they never push the runs off screen.
+ */
+function AutomationInstruction(props: { automation: AutomationSummary }) {
   const { automation } = props;
+  const { task } = automation;
+  const written = task.kind === "skill" ? task.context : task.instruction;
+  return (
+    <section aria-label="Instruction" className="min-w-0">
+      <Card className="grid gap-3 p-4">
+        <SectionTitle>Instruction</SectionTitle>
+        {task.kind === "skill" ? (
+          <p className="m-0 text-sm text-dashboard-text-muted">
+            Runs <SkillLink name={task.skill} />
+            {task.context ? " with this context:" : "."}
+          </p>
+        ) : null}
+        {written ? (
+          <ClampedPreview
+            className="text-sm leading-relaxed text-dashboard-text [overflow-wrap:anywhere]"
+            label="instruction"
+            lines={8}
+          >
+            <DisplayText mentions={automation.mentions ?? []} text={written} />
+          </ClampedPreview>
+        ) : null}
+      </Card>
+    </section>
+  );
+}
+
+/** When it runs, where it posts, and as whom. */
+function AutomationSettings(props: { automation: AutomationSummary }) {
+  const { automation } = props;
+  const creator = automation.ownedByViewer ? "you" : automation.createdBy;
+  return (
+    <FactSection title="Settings">
+      <FactList>
+        {automation.kind === "scheduled" ? (
+          <Fact label="When">{automationScheduleLabel(automation)}</Fact>
+        ) : (
+          <>
+            <Fact label="When">{automation.trigger.events.join(", ")}</Fact>
+            <Fact label="Resource">{automation.resource}</Fact>
+            {automation.trigger.filters.map((filter) => (
+              <Fact key={filter} label="Filter">
+                {filter}
+              </Fact>
+            ))}
+          </>
+        )}
+        <Fact label="Posts to">
+          {automation.outcomes.length ? (
+            <AutomationOutcomeList
+              destination={automation.destination}
+              outcomes={automation.outcomes}
+            />
+          ) : (
+            automation.destination.label
+          )}
+        </Fact>
+        <Fact label="Accounts">
+          {automation.credentialMode === "creator"
+            ? `Connected by ${creator}`
+            : "Junior’s only"}
+        </Fact>
+      </FactList>
+    </FactSection>
+  );
+}
+
+/** Ownership and history, below the definition. */
+function AutomationAbout({ automation }: { automation: AutomationSummary }) {
   const location = useLocation();
   const versions = useAutomationVersionsData(true, automation.id);
   const activeVersion = versions.data?.activeVersion;
+  const creator = (
+    <span className="inline-flex items-center gap-2">
+      <ActorAvatar
+        imageUrl={automation.createdByAvatarUrl}
+        name={automation.createdBy}
+        size="list"
+      />
+      {automation.ownedByViewer ? "You" : automation.createdBy}
+    </span>
+  );
   return (
-    <RailCard title="About">
-      <dl className="m-0 grid gap-3 text-sm">
-        <RailFact label="Created by">
+    <FactSection title="About">
+      <FactList>
+        <Fact label="Created by">
           {automation.createdByEmail ? (
             <Link
-              className={dashboardInlineLinkClass}
+              className="text-inherit no-underline hover:underline"
               to={peoplePath(automation.createdByEmail)}
             >
-              {automation.ownedByViewer ? "You" : automation.createdBy}
+              {creator}
             </Link>
-          ) : automation.ownedByViewer ? (
-            "You"
           ) : (
-            automation.createdBy
+            creator
           )}
-        </RailFact>
-        <RailFact label="Created">
+        </Fact>
+        <Fact label="Created">
           {formatAutomationRunTime(automation.createdAt)}
-        </RailFact>
-        <RailFact label="Destination">
-          {automation.destination.label} ·{" "}
-          {automation.destination.visibility === "private"
-            ? "private"
-            : "public"}
-        </RailFact>
-        <RailFact label="Version">
+        </Fact>
+        <Fact label="Version">
           <Link
             className={dashboardInlineLinkClass}
             to={pathWithSearch(
@@ -189,12 +428,12 @@ function AutomationAbout(props: { automation: AutomationSummary }) {
               location.search,
             )}
           >
-            {activeVersion ? `Version ${activeVersion}` : "Version history"}
+            {activeVersion ? `Version ${activeVersion}` : "History"}
           </Link>
-        </RailFact>
-      </dl>
+        </Fact>
+      </FactList>
       {automation.ownedByViewer ? null : (
-        <p className="mt-3 mb-0 text-xs leading-relaxed text-dashboard-text-muted">
+        <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted">
           {automation.destination.visibility === "private"
             ? null
             : "You can edit, pause, or delete it because it is in a public channel. "}
@@ -202,37 +441,6 @@ function AutomationAbout(props: { automation: AutomationSummary }) {
           resume or run it while it uses them.
         </p>
       )}
-    </RailCard>
-  );
-}
-
-function RailCard(props: { children: ReactNode; title: string }) {
-  return (
-    <Card as="section" padding="sm">
-      <h2 className="m-0 mb-3 font-sans text-xs font-medium text-dashboard-text-muted">
-        {props.title}
-      </h2>
-      {props.children}
-    </Card>
-  );
-}
-
-function RailMetric(props: { label: string; value: ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-xs text-dashboard-text-muted">{props.label}</dt>
-      <dd className="m-0 mt-0.5 font-display text-xl font-light tabular-nums text-dashboard-text">
-        {props.value}
-      </dd>
-    </div>
-  );
-}
-
-function RailFact(props: { children: ReactNode; label: string }) {
-  return (
-    <div className="grid min-w-0 gap-0.5">
-      <dt className="text-xs text-dashboard-text-muted">{props.label}</dt>
-      <dd className="m-0 min-w-0 break-words">{props.children}</dd>
-    </div>
+    </FactSection>
   );
 }

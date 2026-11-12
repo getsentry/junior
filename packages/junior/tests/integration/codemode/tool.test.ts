@@ -9,9 +9,15 @@ import { restoreToolActionRejections } from "@/chat/guardian/history";
 import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 import type { PiMessage } from "@/chat/pi/messages";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { createTools } from "@/chat/tools";
 import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
+
+const ROOT_TURN_TOOLS = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
 
 const CONVERSATION_ID = "local:test:codemode-tool";
 const DESTINATION = {
@@ -55,6 +61,7 @@ describe("codemode tool", () => {
         },
       },
       source: SOURCE,
+      turnTools: ROOT_TURN_TOOLS,
       workspace: {} as never,
     } as never);
     const resume = createResumeState({

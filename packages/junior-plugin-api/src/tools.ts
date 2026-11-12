@@ -11,7 +11,6 @@ import type {
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
 import { objectAnnotationSchema } from "./object-annotations";
-import type { SlackConversationLink } from "./operations";
 import type { WatchResult, SubscribableResource } from "./events";
 import type { PluginState } from "./state";
 import * as z from "zod";
@@ -422,6 +421,11 @@ export interface PluginToolDefinition<
   TExecuteOutput = TOutput,
 > extends ToolApprovalMetadata<TInput> {
   description: string;
+  /**
+   * Why the current Turn cannot run this tool. The host keeps the tool in the
+   * tool list, so the cached prompt stays the same, and rejects its calls.
+   */
+  disabledReason?: string;
   executionMode?: unknown;
   /** Override the host's default tool exposure. */
   exposure?: ToolExposure;
@@ -633,8 +637,6 @@ export interface SlackToolRegistrationHookContext {
     canCreateCanvas: boolean;
     canPostToChannel: boolean;
   };
-  /** Host-owned link to this conversation, preferring the dashboard when enabled. */
-  conversationLink?: SlackConversationLink;
   credentialSubject?: Extract<
     PluginCredentialSubject,
     { allowedWhen: "private-direct-conversation" }
@@ -681,6 +683,8 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   annotations?: PluginAnnotations;
   /** Host-owned dashboard link to the Automation that started this run. */
   automationLink?: { url: string };
+  /** Host-owned dashboard link to this conversation, when the dashboard is enabled. */
+  conversationLink?: { url: string };
   embedder: PluginEmbedder;
   egress: PluginEgress;
   mcp?: PluginMcp;

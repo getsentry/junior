@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
@@ -12,23 +12,47 @@ import { slackAttachmentsVersionQuery } from "@/chat/slack/attachments";
 import {
   juniorConversationParticipants,
   juniorConversations,
+  juniorDestinations,
+  juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
 import { JUNIOR_VERSION } from "@/version";
 import type { ConversationAccess, ConversationAccessReader } from "./access";
-import { readConversationAgentTree } from "./agent-tree";
 import { readConversationForks } from "./fork";
 import {
   viewerMarksFromParticipant,
   type ConversationViewerMarks,
 } from "./membership";
 import { conversationReadPositionQuery } from "./read-position";
-import { readUnreadConversationIds } from "./unread";
+import {
+  conversationRecordColumns,
+  conversationRecordFromRow,
+  conversationRecordJoins,
+  type ConversationRecord,
+} from "./record";
 import type { ConversationReadPosition } from "../schema/conversation-read-position";
 
-const detailConversation = alias(juniorConversations, "detail_conversation");
+const detailViewer = alias(juniorUsers, "detail_viewer");
 const forkSource = alias(juniorConversations, "detail_fork_source");
 const fork = alias(juniorConversations, "detail_fork");
+const agentTreeRoot = alias(juniorConversations, "detail_agent_tree_root");
+
+/**
+ * Return the root fields that label the agent tree of a child: its title and
+ * channel name. The other labels cannot change once the child exists. An
+ * agent invocation keeps its title and agent name after insert, and only the
+ * spawn sets a title. Access to each node comes from the shared root, so the
+ * viewer's access covers it. This keeps the recursive lineage read out of
+ * every poll.
+ */
+function agentTreeRootLabel(db: JuniorDatabase, rootConversationId: SQL) {
+  return db
+    .select({
+      label: sql<string>`row(${agentTreeRoot.title}, ${agentTreeRoot.channelName})::text`,
+    })
+    .from(agentTreeRoot)
+    .where(eq(agentTreeRoot.conversationId, rootConversationId));
+}
 
 /**
  * Sum the detail versions of a Conversation and its child agents. Child
@@ -141,14 +165,16 @@ export function conversationVersionQuery(
 }
 
 /**
- * Read the stored rows that the detail state needs in one query. A detail
- * request reads this beside access on every poll, so separate reads would
- * each hold a pool connection and add rounds. Returns undefined for a
- * missing Conversation.
+ * Read the record and the stored rows that the detail state needs in one
+ * query. A detail request reads this beside access on every poll, so
+ * separate reads would each hold a pool connection and add rounds. One
+ * statement also reads one snapshot, so the record is never older than the
+ * version token that the ETag hashes. Returns undefined for a missing
+ * Conversation.
  */
 async function readDetailStateRow(conversationId: string, viewer?: User) {
   const db = getDb();
-  const rootConversationId = sql`coalesce(${detailConversation.rootConversationId}, ${detailConversation.conversationId})`;
+  const rootConversationId = sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`;
   const forkIds = db
     .select({ conversationId: fork.conversationId })
     .from(fork)
@@ -172,9 +198,14 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
     : sql`false`;
   const [row] = await db
     .select({
+      ...conversationRecordColumns,
+      // A root Conversation has no agent tree.
+      agentTreeRootLabel: sql<
+        string | null
+      >`case when ${juniorConversations.parentConversationId} is null then null else (${agentTreeRootLabel(db, rootConversationId)}) end`,
       attachmentsVersion: sql<string>`(${slackAttachmentsVersionQuery(db, conversationId)})`,
       autoArchive: juniorConversationParticipants.autoArchive,
-      autoArchiveDefault: juniorUsers.autoArchiveDefault,
+      autoArchiveDefault: detailViewer.autoArchiveDefault,
       forkIds: sql<string[]>`array${forkIds}`,
       forkSourceId: forkSource.conversationId,
       forkSourceTitle: forkSource.title,
@@ -183,36 +214,40 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
             number | null
           >`(${conversationReadPositionQuery(viewer, conversationId)})`
         : sql<null>`null`,
-      parentConversationId: detailConversation.parentConversationId,
       pinnedAt: juniorConversationParticipants.pinnedAt,
       pinPosition: juniorConversationParticipants.pinPosition,
-      rootConversationId: sql<string>`${rootConversationId}`,
+      rootConversationId,
       unsubscribedAt: juniorConversationParticipants.unsubscribedAt,
       version: sql<
         string | null
       >`(${conversationVersionQuery(db, conversationId, viewer?.id)})`,
     })
-    .from(detailConversation)
+    .from(juniorConversations)
+    .leftJoin(juniorDestinations, conversationRecordJoins.location)
+    .leftJoin(juniorIdentities, conversationRecordJoins.identity)
+    .leftJoin(juniorUsers, conversationRecordJoins.user)
     .leftJoin(
       forkSource,
       eq(
         forkSource.conversationId,
-        detailConversation.forkedFromConversationId,
+        juniorConversations.forkedFromConversationId,
       ),
     )
     .leftJoin(juniorConversationParticipants, viewerParticipant)
-    .leftJoin(juniorUsers, viewer ? eq(juniorUsers.id, viewer.id) : sql`false`)
-    .where(eq(detailConversation.conversationId, conversationId));
+    .leftJoin(
+      detailViewer,
+      viewer ? eq(detailViewer.id, viewer.id) : sql`false`,
+    )
+    .where(eq(juniorConversations.conversationId, conversationId));
   return row;
 }
 
 /**
  * Viewer state (access, marks, read position, auto-archive choice) and data
- * that other Conversations own (forks, agent tree labels).
+ * that other Conversations own (forks).
  */
 export type ConversationDetailState = {
   access?: ConversationAccess;
-  agentTree?: Awaited<ReturnType<typeof readConversationAgentTree>>;
   autoArchive?: boolean;
   forks: Awaited<ReturnType<typeof readConversationForks>>;
   readPosition?: ConversationReadPosition;
@@ -223,8 +258,6 @@ export type ConversationDetailState = {
    * so an `appendCursor` from before it cannot extend them.
    */
   transcriptVersion: string;
-  /** The root has a visible Junior reply after the viewer's read position. */
-  unreadReply?: boolean;
   viewerMarks?: ConversationViewerMarks;
 };
 
@@ -232,13 +265,16 @@ async function readDetailState(
   conversationId: string,
   viewer: User | undefined,
   readAccess: ConversationAccessReader,
-): Promise<{
-  state: ConversationDetailState;
-  /** `conversationVersionQuery` token, or undefined when missing. */
-  version: string | undefined;
-}> {
+): Promise<
+  DetailStateRead & {
+    /** `agentTreeRootLabel` of a child, or undefined for a root. */
+    agentTreeRootLabel: string | undefined;
+    /** `conversationVersionQuery` token, or undefined when missing. */
+    version: string | undefined;
+  }
+> {
   const rowRead = readDetailStateRow(conversationId, viewer);
-  const [accessById, row, forks, agentTree, unreadIds] = await Promise.all([
+  const [accessById, row, forks] = await Promise.all([
     readAccess([conversationId]),
     rowRead,
     rowRead.then((stored) =>
@@ -254,31 +290,10 @@ async function readDetailState(
                 },
               }
             : undefined),
-          isChild: Boolean(stored?.parentConversationId),
+          isChild: Boolean(stored?.conversation.parentConversationId),
         },
         readAccess,
       ),
-    ),
-    rowRead.then((stored) =>
-      readConversationAgentTree(
-        {
-          conversationId,
-          ...(stored?.parentConversationId
-            ? { parentConversationId: stored.parentConversationId }
-            : undefined),
-        },
-        readAccess,
-      ),
-    ),
-    // Unread belongs to the root, like the marks.
-    rowRead.then((stored) =>
-      viewer && stored
-        ? readUnreadConversationIds(
-            getDb(),
-            [stored.rootConversationId],
-            viewer.id,
-          )
-        : new Set<string>(),
     ),
   ]);
   const access = accessById.get(conversationId);
@@ -296,9 +311,10 @@ async function readDetailState(
     .digest("base64url");
   const viewerMarks = row ? viewerMarksFromParticipant(row) : undefined;
   return {
+    agentTreeRootLabel: row?.agentTreeRootLabel ?? undefined,
+    record: row ? conversationRecordFromRow(row) : undefined,
     state: {
       access,
-      agentTree,
       // The viewer's choice for the root, else their default.
       ...(viewer
         ? { autoArchive: row?.autoArchive ?? row?.autoArchiveDefault ?? false }
@@ -309,28 +325,40 @@ async function readDetailState(
         : undefined),
       ...(viewer ? { subscribed: !row?.unsubscribedAt } : undefined),
       transcriptVersion,
-      ...(viewer && row
-        ? { unreadReply: unreadIds.has(row.rootConversationId) }
-        : undefined),
       ...(viewerMarks ? { viewerMarks } : undefined),
     },
     version: row?.version ?? undefined,
   };
 }
 
-/** Read the detail state that the ETag hashes and the report shows. */
+/** The detail state and the record from the same read. */
+export type DetailStateRead = {
+  /** Undefined for a missing Conversation. */
+  record: ConversationRecord | undefined;
+  state: ConversationDetailState;
+};
+
+/**
+ * Read the detail state that the ETag hashes and the report shows, with the
+ * Conversation record.
+ */
 export async function readConversationDetailState(
   conversationId: string,
   viewer: User | undefined,
   readAccess: ConversationAccessReader,
-): Promise<ConversationDetailState> {
-  return (await readDetailState(conversationId, viewer, readAccess)).state;
+): Promise<DetailStateRead> {
+  const { record, state } = await readDetailState(
+    conversationId,
+    viewer,
+    readAccess,
+  );
+  return { record, state };
 }
 
 /**
  * Return the detail ETag without building the report, or undefined for a
- * missing Conversation. The state comes back too, so the report reuses it
- * and matches the ETag.
+ * missing Conversation. The state and record come back too, so the report
+ * reuses them and matches the ETag.
  *
  * Shared content is covered by `detail_version`. The detail state is cheap,
  * so it is read on each request. Names, avatars, Automation titles, and
@@ -350,36 +378,34 @@ export async function readConversationDetailEtag(
     viewer?: User;
   },
 ): Promise<
-  | {
+  | (DetailStateRead & {
       etag: string;
-      state: ConversationDetailState;
       /** `conversationVersionQuery` token of the same read. */
       version: string;
-    }
+    })
   | undefined
 > {
-  const { state, version } = await readDetailState(
+  const { agentTreeRootLabel, record, state, version } = await readDetailState(
     conversationId,
     options.viewer,
     options.readAccess,
   );
   if (!version) return undefined;
   const basis = JSON.stringify({
+    // The report reads the agent tree itself. Its access is in `access`.
     access: state.access ?? null,
-    agentTree: state.agentTree ?? null,
+    agentTree: agentTreeRootLabel ?? null,
     autoArchive: state.autoArchive ?? null,
     forks: state.forks,
     junior: JUNIOR_VERSION,
     limit: options.limit ?? null,
     subscribed: state.subscribed ?? null,
     version,
-    // The read position is not hashed, but whether it leaves a reply unread
-    // is, so the next poll after a read or a mark shows the new state.
-    unreadReply: state.unreadReply ?? false,
     viewerMarks: state.viewerMarks ?? null,
   });
   return {
     etag: createHash("sha256").update(basis).digest("hex"),
+    record,
     state,
     version,
   };

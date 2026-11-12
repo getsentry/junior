@@ -8,20 +8,20 @@
  * messages, the summary, then the new instruction. Checkpoints can append
  * fresh runtime context; the next replacement removes it again.
  */
-import {
-  estimateContextTokens,
-  estimateTokens,
-} from "@earendil-works/pi-agent-core";
+import { estimateContextTokens } from "@earendil-works/pi-agent-core";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { ContextSummary } from "@/chat/agent/context-summary";
 import {
   calculateContextCompactionTargetTokens,
-  estimateTextTokens,
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
-  getTokenEstimateProfile,
 } from "@/chat/services/context-budget";
+import {
+  estimateMessagesTokens,
+  estimateTextTokens,
+  textCharsForTokens,
+} from "@/chat/services/token-estimate";
 import {
   contextProvenance,
   type ConversationMessageProvenance,
@@ -164,7 +164,7 @@ function sanitizeText(text: string): string {
 }
 
 function truncateToTokenBudget(text: string, maxTokens: number): string {
-  const maxChars = Math.max(0, maxTokens * 4);
+  const maxChars = Math.max(0, textCharsForTokens(maxTokens));
   if (text.length <= maxChars) {
     return text;
   }
@@ -620,25 +620,6 @@ export function estimateReplacementTokens(
   return requestOverheadTokens + estimateMessagesTokens(messages, modelId);
 }
 
-/** Estimate messages from their size at the model's characters per token. */
-function estimateMessagesTokens(
-  messages: PiMessage[],
-  modelId: string,
-): number {
-  const profile = getTokenEstimateProfile(modelId);
-  return messages.reduce((total, message) => {
-    // Pi counts characters / 4. Scale that to the model's characters per token.
-    const tokens = Math.ceil(
-      (estimateTokens(message) * 4) / profile.charsPerToken,
-    );
-    const overhead =
-      (message as { role?: unknown }).role === "toolResult"
-        ? profile.toolResultOverheadTokens
-        : 0;
-    return total + tokens + overhead;
-  }, 0);
-}
-
 async function loadLastInstruction(conversationId: string) {
   const event =
     await getConversationEventStore().loadLatestInstruction(conversationId);
@@ -726,6 +707,11 @@ async function compactActiveAboveThreshold(
   const retainUserMessages =
     args.mode === "blocking" && pendingMessages.length > 0;
   const inputLimitTokens = getAgentContextInputLimitTokens(args.modelId);
+  // `app.compaction.skip_reason`. `over_target`: the kept context is above
+  // the target without a summary. `last_over_threshold`: the first model call
+  // after the latest full compaction was above the threshold.
+  // `over_input_limit`: the kept context is at the input limit, so no summary
+  // fits. The first two compact again at the input limit.
   const skip = (
     reason: "last_over_threshold" | "over_input_limit" | "over_target",
   ) => {

@@ -110,9 +110,7 @@ const pullRequestConversationSchema = z
         user: z.object({ login: z.string().min(1) }).passthrough(),
       })
       .passthrough(),
-    repository: z
-      .object({ full_name: z.string().min(1) })
-      .passthrough(),
+    repository: z.object({ full_name: z.string().min(1) }).passthrough(),
     sender: z.object({ login: z.string().min(1) }).passthrough(),
   })
   .passthrough()
@@ -128,7 +126,7 @@ const pullRequestConversationSchema = z
     }),
   );
 
-/** Parse a provider timestamp, rejecting missing or invalid lifecycle values. */
+/** Parse a provider timestamp. A missing or invalid value is undefined. */
 function timestamp(value: string | null | undefined): Date | undefined {
   if (!value) return undefined;
   const parsed = new Date(value);
@@ -172,14 +170,14 @@ export function normalizeGitHubPullRequestOutcome(args: {
       : pullRequest.merged
         ? "merged"
         : "closed_unmerged";
-  const closedAt = timestamp(pullRequest.closed_at);
-  const mergedAt = timestamp(pullRequest.merged_at);
-  if (
-    parsed.action === "closed" &&
-    (pullRequest.merged ? !mergedAt : !closedAt)
-  ) {
-    throw new Error("GitHub pull request terminal timestamp is invalid");
-  }
+  // A close without a valid terminal time is still a close. Use the update
+  // time, so the pull request does not stay open in Junior.
+  const closed = parsed.action === "closed";
+  const closedAt =
+    timestamp(pullRequest.closed_at) ?? (closed ? updatedAt : undefined);
+  const mergedAt =
+    timestamp(pullRequest.merged_at) ??
+    (closed && pullRequest.merged ? updatedAt : undefined);
   return {
     candidateOwned,
     closedAt,

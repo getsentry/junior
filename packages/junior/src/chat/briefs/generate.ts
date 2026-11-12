@@ -67,7 +67,6 @@ type BriefCompleteObject = (request: {
   prompt: string;
   schema: ZodTypeAny;
   system: string;
-  temperature: number;
 }) => Promise<{ costUsd?: number; object: unknown }>;
 
 /** Evidence-check diagnostics, rendered by the local replay CLI. */
@@ -553,7 +552,6 @@ export async function generateBrief(
     }),
     schema: modelBriefSchema,
     system: args.prompt,
-    temperature: 0,
   });
   const model = modelBriefSchema.parse(result.object);
   const { droppedUrls, keptUrlCount, links } = buildEvidenceLinks({

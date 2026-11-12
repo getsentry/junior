@@ -74,7 +74,7 @@ function ClosedSummary(props: { item: ReviewItemPayload }) {
 
 /**
  * Show the actions that the viewer can take on one Review item, or how it
- * closed. The review desk, the transcript card, and the side panel use it.
+ * closed. The review desk and the side panel use it.
  */
 export function ReviewItemActions(props: { item: ReviewItemPayload }) {
   const { item } = props;

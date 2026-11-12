@@ -1,5 +1,8 @@
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
-import { estimateTextTokens } from "@/chat/services/context-budget";
+import {
+  estimateTextTokens,
+  textCharsForTokens,
+} from "@/chat/services/token-estimate";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import {
   buildSubscribedReplyRouterQuestions,
@@ -199,7 +202,7 @@ function truncateEvidenceText(text: string, maxTokens: number): string {
   if (tokenCount <= maxTokens) {
     return text;
   }
-  const maxChars = maxTokens * 4;
+  const maxChars = textCharsForTokens(maxTokens);
   const omittedTokens = Math.max(1, tokenCount - maxTokens);
   const marker = `<truncated omitted_approx_tokens="${omittedTokens}" />`;
   if (maxChars <= marker.length) {

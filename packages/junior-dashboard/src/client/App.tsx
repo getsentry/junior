@@ -30,6 +30,7 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
 } from "./format";
+import { useDesktopTopBar } from "./navLayout";
 import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { useDashboardServerVersion } from "./dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
@@ -42,6 +43,7 @@ import {
   SystemPageLayout,
   SystemRouteLoading,
 } from "./pages/system/SystemPageLayout";
+import { hasWorkspaceDetailsFrame } from "./pages/system/SystemNavigation";
 import {
   isMemoryLibraryPath,
   MemoryRouteLoading,
@@ -228,6 +230,7 @@ export function DashboardShell() {
   const loading = !data && !query.error;
   const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
   const personalSpendQuery = usePersonalSpendData(loggedIn);
+  const desktopTopBar = useDesktopTopBar();
   const primaryUserPages = loggedIn
     ? userPages.filter((page) => page.navigation === "primary")
     : [];
@@ -302,31 +305,35 @@ export function DashboardShell() {
           onOpenChange={setCommandPaletteOpen}
           open={commandPaletteOpen}
         />
-        <NavRail
-          navItems={primaryNavItems}
-          onSearch={openCommandPalette}
-          profile={
-            loggedIn ? (
-              <ProfileMenu
-                identity={data!.me}
-                onSignOut={signOut}
-                spend={personalSpendQuery.data}
-                pages={profileNavItems}
-              />
-            ) : undefined
-          }
-          workspaceActive={workspace}
-        />
+        {desktopTopBar ? null : (
+          <NavRail
+            navItems={primaryNavItems}
+            onSearch={openCommandPalette}
+            profile={
+              loggedIn ? (
+                <ProfileMenu
+                  identity={data!.me}
+                  onSignOut={signOut}
+                  spend={personalSpendQuery.data}
+                  pages={profileNavItems}
+                />
+              ) : undefined
+            }
+            workspaceActive={workspace}
+          />
+        )}
         <VisualViewportShell
           className="min-w-0 flex-1 bg-dashboard-bg"
           enabled={
             workspace ||
             location.pathname === "/review" ||
             hasAutomationDetailsFrame(location.pathname) ||
+            hasWorkspaceDetailsFrame(location.pathname) ||
             isMemoryLibraryPath(location.pathname)
           }
         >
           <DashboardChrome
+            desktopTopBar={desktopTopBar}
             banner={
               <>
                 <VersionDriftBanner serverVersion={serverVersion} />
@@ -335,6 +342,7 @@ export function DashboardShell() {
             }
             header={
               <DashboardHeader
+                desktopTopBar={desktopTopBar}
                 mobileBackTo={conversationId ? "/" : undefined}
                 mobileTitle={mobileConversationTitle}
                 mobileNavigationOpen={mobileNavigationOpen}
@@ -435,7 +443,6 @@ export function DashboardShell() {
                       description="Newest runs across your automations and automations in public destinations."
                       label="Loading automation runs"
                       title="Runs"
-                      variant="list"
                     />
                   </AutomationsPageLayout>
                 ) : loggedIn ? (
@@ -449,24 +456,7 @@ export function DashboardShell() {
               path="/automations/runs"
             />
             <Route
-              element={
-                loading ? (
-                  <AutomationsPageLayout>
-                    <AutomationsRouteLoading
-                      description="Find and manage automations across your linked workspaces."
-                      label="Loading automations"
-                      title="All automations"
-                      variant="list"
-                    />
-                  </AutomationsPageLayout>
-                ) : loggedIn ? (
-                  <AutomationsPageLayout>
-                    <AutomationsPage enabled={loggedIn} view="list" />
-                  </AutomationsPageLayout>
-                ) : (
-                  <Navigate replace to="/" />
-                )
-              }
+              element={<LegacyAutomationListRedirect />}
               path="/automations/list"
             />
             <Route
@@ -484,15 +474,13 @@ export function DashboardShell() {
                 loading ? (
                   <AutomationsPageLayout>
                     <AutomationsRouteLoading
-                      description="Scheduled and event-driven work created by users."
                       label="Loading automations"
                       title="Automations"
-                      variant="stats"
                     />
                   </AutomationsPageLayout>
                 ) : loggedIn ? (
                   <AutomationsPageLayout>
-                    <AutomationsPage enabled={loggedIn} view="overview" />
+                    <AutomationsPage enabled={loggedIn} />
                   </AutomationsPageLayout>
                 ) : (
                   <Navigate replace to="/" />
@@ -804,6 +792,14 @@ function LegacyAutomationsRedirect() {
       replace
       to={`/automations${suffix}${location.search}${location.hash}`}
     />
+  );
+}
+
+/** The list became the Automations landing page. */
+function LegacyAutomationListRedirect() {
+  const location = useLocation();
+  return (
+    <Navigate replace to={`/automations${location.search}${location.hash}`} />
   );
 }
 

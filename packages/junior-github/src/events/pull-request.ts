@@ -36,6 +36,14 @@ const STACK_CHECK =
 const STACK_CONFLICT_STEPS =
   "run `gh stack rebase`, resolve each conflict so that both changes stay intact, stage the files, and run `gh stack rebase --continue`. Run the checks again, run `gh stack push`, and confirm that each open pull request in the stack can merge. Report the files that had conflicts.";
 
+/**
+ * Every comment on a pull request gets the same feedback status: a
+ * conversation comment, an inline review comment, and a review body. A review
+ * sets comment_id only when it has a body.
+ */
+const PULL_REQUEST_FEEDBACK =
+  'When Verified details include comment_id, call github_updatePullRequestFeedback after acting on actionable feedback, with the exact repo, pull_request, comment_id, and comment_kind from Verified details, and status "addressed" or "declined".';
+
 const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
   Record<GitHubPullRequestEvent, string>
 > = {
@@ -43,12 +51,11 @@ const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
     "Fix only failures that the pull request causes. Do not skip, disable, or weaken a check to make it pass.",
   // An approval with a body also arrives as review.commented in the same
   // Turn, so this guidance must not tell the agent to hold off on that body.
-  "pull_request.review.approved":
-    "When the approval includes actionable feedback, address it like any other review feedback.",
-  "pull_request.comment.created":
-    'After acting on actionable feedback, call github_updatePullRequestFeedback with the exact repo, comment_id, and comment_kind from Verified details, and status "addressed" or "declined".',
-  "pull_request.review_comment.created":
-    'After acting on actionable feedback, call github_updatePullRequestFeedback with the exact repo, comment_id, and comment_kind from Verified details, and status "addressed" or "declined". Then resolve the thread with github_resolvePullRequestReviewThread.',
+  "pull_request.review.approved": `When the approval includes actionable feedback, address it like any other review feedback. ${PULL_REQUEST_FEEDBACK}`,
+  "pull_request.review.changes_requested": PULL_REQUEST_FEEDBACK,
+  "pull_request.review.commented": PULL_REQUEST_FEEDBACK,
+  "pull_request.comment.created": PULL_REQUEST_FEEDBACK,
+  "pull_request.review_comment.created": `${PULL_REQUEST_FEEDBACK} Then resolve the thread with github_resolvePullRequestReviewThread.`,
   "pull_request.merge_conflict": `${STACK_CHECK} If it is, run \`gh stack checkout NUMBER\`, then ${STACK_CONFLICT_STEPS} If it is not, fetch base_branch from Verified details and merge it into the pull request branch. Do not rebase. Resolve each conflict so that both the pull request change and the base branch change stay intact. Run the checks again, push, and confirm that the pull request can merge. Report the files that had conflicts.`,
 };
 
@@ -70,14 +77,42 @@ export function gitHubPullRequestEventGuidance(
 export interface GitHubPullRequestEventOptions {
   /** App guidance applied within the matching subscription or event automation instruction. */
   guidance?: Partial<Record<GitHubPullRequestEvent, string>>;
-  /** Temporary subscription created after Junior creates a pull request. */
-  subscribeAfterCreate?: GitHubPullRequestSubscriptionConfig;
+  /**
+   * Temporary subscription created after Junior creates a pull request.
+   * Defaults to the maintenance Watch below. `false` turns it off.
+   */
+  subscribeAfterCreate?: GitHubPullRequestSubscriptionConfig | false;
 }
 
 /** Temporary subscription created after Junior creates a pull request. */
 export interface GitHubPullRequestSubscriptionConfig {
   events: GitHubPullRequestEvent[];
   intent: string;
+}
+
+/**
+ * Junior maintains the pull requests it creates. The pull request is its own
+ * work, so it answers and fixes review feedback without asking first.
+ */
+const DEFAULT_PULL_REQUEST_SUBSCRIPTION: GitHubPullRequestSubscriptionConfig = {
+  events: [
+    "pull_request.checks.failed",
+    "pull_request.closed_unmerged",
+    "pull_request.comment.created",
+    "pull_request.review.changes_requested",
+    "pull_request.review.commented",
+    "pull_request.review_comment.created",
+  ],
+  intent:
+    "Maintain pull requests Junior creates. For actionable review feedback or failed checks, inspect the evidence, make scoped fixes, verify them, and push, without asking first. Reply on GitHub to review comments and questions, in the thread where they were asked. Report completed work or blockers in the originating thread. Report when the pull request closes unmerged. When a reviewer submits a review, notify the person who asked for the pull request by mentioning them, with the reviewer, the review outcome, and the pull request link. Stay silent on other events that are not feedback.",
+};
+
+/** Resolve the Watch to create after Junior creates a pull request, if any. */
+export function gitHubPullRequestSubscription(
+  config: GitHubPullRequestSubscriptionConfig | false | undefined,
+): GitHubPullRequestSubscriptionConfig | undefined {
+  if (config === false) return undefined;
+  return config ?? DEFAULT_PULL_REQUEST_SUBSCRIPTION;
 }
 
 /**
@@ -92,12 +127,13 @@ const MERGE_STATE_CHECK =
  * Watch guidance for outcomes that the people involved need to hear about.
  * The Watch made after Junior creates a pull request always receives these
  * events. The webhook adds the people involved in the pull request to them.
- * A merge also restacks the open pull requests above it, because Junior owns
- * that stack and GitHub sends them no event when its own rebase stops.
+ * A merge does not ask the agent to check for a stack: GitHub rebases the
+ * next pull request in a stack itself, and most merges are not stacked.
  */
 const GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE = {
   "pull_request.review.approved": `Mention each person in People involved, or the person who asked for the pull request if that line is missing. Say who approved it and link it. Do not merge it unless asked. ${MERGE_STATE_CHECK}`,
-  "pull_request.merged": `${STACK_CHECK} If open pull requests in the stack remain above it and Junior pushed their branches, restack them before you reply. Do not ask first. Run \`gh stack checkout NUMBER\` with the lowest open pull request, then \`gh stack sync\`. If sync reports a conflict, ${STACK_CONFLICT_STEPS} Then mention each person in People involved, or the person who asked for the pull request if that line is missing. Say that it merged and link it. When you restacked, say so in the same reply.`,
+  "pull_request.merged":
+    "Mention each person in People involved, or the person who asked for the pull request if that line is missing. Say that it merged and link it.",
 } as const satisfies Partial<Record<GitHubPullRequestEvent, string>>;
 
 /** Build the Watch created after Junior creates a pull request. */

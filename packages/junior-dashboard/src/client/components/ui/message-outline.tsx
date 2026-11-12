@@ -130,12 +130,18 @@ function MessageOutlineList({ className, ...props }: ComponentProps<"ol">) {
     }
   }, [activeIndex, listRef, previewIndex]);
 
+  // A wheel scrolls the items under a still pointer without a pointer
+  // move, so a scroll points again from the last pointer position.
+  const pointerYRef = useRef<number>(undefined);
+  const pointAt = (list: HTMLOListElement, clientY: number) => {
+    pointerYRef.current = clientY;
+    const y = clientY - list.getBoundingClientRect().top + list.scrollTop;
+    movePointer(y / ITEM_PX - 0.5);
+  };
   const onPointerMove = (event: PointerEvent<HTMLOListElement>) => {
     // A tap is not a hover.
     if (event.pointerType === "touch") return;
-    const list = event.currentTarget;
-    const y = event.clientY - list.getBoundingClientRect().top + list.scrollTop;
-    movePointer(y / ITEM_PX - 0.5);
+    pointAt(event.currentTarget, event.clientY);
   };
 
   return (
@@ -150,8 +156,23 @@ function MessageOutlineList({ className, ...props }: ComponentProps<"ol">) {
           movePointer(undefined);
         }
       }}
-      onPointerLeave={() => movePointer(undefined)}
+      onFocus={(event) => {
+        // Keyboard focus points at its item until the pointer moves, so
+        // the scroll that shows the item does not point at the pointer.
+        if (event.target.matches(":focus-visible")) {
+          pointerYRef.current = undefined;
+        }
+      }}
+      onPointerLeave={() => {
+        pointerYRef.current = undefined;
+        movePointer(undefined);
+      }}
       onPointerMove={onPointerMove}
+      onScroll={(event) => {
+        if (pointerYRef.current !== undefined) {
+          pointAt(event.currentTarget, pointerYRef.current);
+        }
+      }}
       ref={listRef}
       {...props}
     />
@@ -207,8 +228,17 @@ function MessageOutlineItem({
 function MessageOutlinePreview({ className, ...props }: ComponentProps<"div">) {
   const { listRef, previewIndex } = useMessageOutline();
   if (previewIndex === undefined) return null;
-  const offset =
-    previewIndex * ITEM_PX + ITEM_PX / 2 - (listRef.current?.scrollTop ?? 0);
+  const list = listRef.current;
+  const offset = previewIndex * ITEM_PX + ITEM_PX / 2 - (list?.scrollTop ?? 0);
+  // The card centers on its item but stays inside the outline, so a card at
+  // the first or last item does not make the page around it scroll.
+  const wrapper = list?.offsetParent;
+  let translate = `calc(${offset}px - 50%)`;
+  if (wrapper instanceof HTMLElement && wrapper.parentElement) {
+    const top = -wrapper.offsetTop;
+    const bottom = top + wrapper.parentElement.clientHeight;
+    translate = `clamp(${top}px, ${translate}, calc(${bottom}px - 100%))`;
+  }
   return (
     <div
       aria-hidden="true"
@@ -218,13 +248,17 @@ function MessageOutlinePreview({ className, ...props }: ComponentProps<"div">) {
         "pointer-events-none absolute top-0 left-full ml-2 grid w-72 origin-left gap-1.5 rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-raised px-3.5 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-[translate,scale,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] starting:scale-[0.97] starting:opacity-0 motion-reduce:transition-[opacity] motion-reduce:starting:scale-100",
         className,
       )}
-      style={{ translate: `0 calc(${offset}px - 50%)` }}
+      style={{ translate: `0 ${translate}` }}
       {...props}
     />
   );
 }
 
-/** Name the previewed message in one line. */
+/**
+ * Name the previewed message in one line. With no description, it shows as
+ * much of the message as a title and a description hold, so the preview
+ * keeps its height as it glides between items.
+ */
 function MessageOutlinePreviewTitle({
   className,
   ...props
@@ -234,6 +268,8 @@ function MessageOutlinePreviewTitle({
       data-slot="message-outline-preview-title"
       className={cn(
         "m-0 truncate text-sm font-medium text-dashboard-text",
+        // One title line, the gap, and three description lines.
+        "only:min-h-[calc(var(--text-sm)*(var(--text-sm--line-height)+3*var(--leading-relaxed))+--spacing(1.5))] only:line-clamp-4 only:leading-relaxed only:whitespace-normal",
         className,
       )}
       {...props}

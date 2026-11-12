@@ -27,16 +27,20 @@ import { OutboundLink } from "../components/OutboundLink";
  * replies also use Slack-style `•` bullets, `<url|label>` links, and
  * bold-only section labels, so those render as lists, links, and headings
  * too. Inline mode keeps only inline formatting, so the text fits in one
- * line or in a button.
+ * line or in a button. Document mode reads a Markdown file: plain CommonMark
+ * plus GFM, where a newline in a paragraph does not break the line.
  */
 export function MarkdownText(props: {
   chat?: boolean;
   compact?: boolean;
+  document?: boolean;
   inline?: boolean;
   text: string;
 }): ReactNode {
   if (!props.text.trim()) return null;
-  const source = normalizeSlackBullets(slackLinksToMarkdown(props.text));
+  const source = props.document
+    ? props.text
+    : normalizeSlackBullets(slackLinksToMarkdown(props.text));
 
   if (props.inline) {
     return (
@@ -63,12 +67,16 @@ export function MarkdownText(props: {
       <div className={cn("grid min-w-0", props.chat ? "gap-3" : "gap-2")}>
         <Markdown
           components={COMPONENTS}
-          remarkPlugins={[
-            remarkGfm,
-            remarkBreaks,
-            remarkBareUrlStops,
-            remarkSectionLabels,
-          ]}
+          remarkPlugins={
+            props.document
+              ? [remarkGfm]
+              : [
+                  remarkGfm,
+                  remarkBreaks,
+                  remarkBareUrlStops,
+                  remarkSectionLabels,
+                ]
+          }
           urlTransform={safeHref}
         >
           {source}

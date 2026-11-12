@@ -6,6 +6,8 @@ import {
   type ConversationWorkQueue,
 } from "./queue";
 import * as workState from "./state";
+
+export type { RenderInboundText } from "./state";
 export {
   CONVERSATION_ACTIVE_INDEX_KEY,
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
@@ -14,17 +16,20 @@ export {
   CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
   CONVERSATION_WORK_MAX_RETRIES,
   CONVERSATION_WORK_STALE_ENQUEUE_MS,
+  countPendingConversationMessages,
   hasConversationStop,
+  hasRunnableConversationWork,
   isFinalAttempt,
   isInvalidConversationRecordError,
   moveIdleConversationDestination,
+  pruneActiveConversation,
   releaseInboundMessage,
   type AgentInput,
   type AttemptFailure,
   type AppendAndEnqueueInboundMessageResult,
   type AppendInboundMessageResult,
   type CompleteConversationStopResult,
-  type Conversation,
+  type ConversationExecutionState,
   type ConversationExecution,
   type ConversationStop,
   type ConversationWorkLease,
@@ -45,10 +50,13 @@ import type {
   AppendAndEnqueueExclusiveInboundMessageResult,
   AppendAndEnqueueInboundMessageResult,
   AppendExclusiveInboundMessageResult,
-  Conversation,
+  ConversationExecutionState,
   InboundMessage,
 } from "@/chat/task-execution/state";
-import { CONVERSATION_WORK_STALE_ENQUEUE_MS } from "@/chat/task-execution/state";
+import {
+  CONVERSATION_WORK_STALE_ENQUEUE_MS,
+  hasRunnableConversationWork,
+} from "@/chat/task-execution/state";
 
 interface MetadataOptions {
   conversationStore?: ConversationStore;
@@ -76,7 +84,7 @@ function duplicateInboundNudgeIdempotencyKey(
 }
 
 function hasRecentEnqueueMarker(
-  conversation: Conversation,
+  conversation: ConversationExecutionState,
   nowMs: number,
 ): boolean {
   const lastEnqueuedAtMs = conversation.execution.lastEnqueuedAtMs;
@@ -150,23 +158,6 @@ export async function recordConversationRetry(args: {
   const result = await workState.recordConversationRetry(args);
   await recordExecutionMetadata(args);
   return result;
-}
-
-/** Count mailbox messages that have not yet reached the conversation event log. */
-export function countPendingConversationMessages(
-  conversation: Conversation,
-): number {
-  return conversation.execution.pendingMessages.length;
-}
-
-/** Return whether a conversation has pending or resumable execution work. */
-export function hasRunnableConversationWork(
-  conversation: Conversation,
-): boolean {
-  return (
-    conversation.execution.status !== "idle" ||
-    countPendingConversationMessages(conversation) > 0
-  );
 }
 
 /**
@@ -353,6 +344,8 @@ export async function appendAndEnqueueInboundMessage(args: {
   nowMs?: number;
   queue: ConversationWorkQueue;
   queueDelayMs?: number;
+  /** Render the message text under the mailbox lock. */
+  renderText?: workState.RenderInboundText;
   replaceExistingWake?: true;
   state?: StateAdapter;
 }): Promise<AppendAndEnqueueInboundMessageResult> {
@@ -362,6 +355,7 @@ export async function appendAndEnqueueInboundMessage(args: {
     appendResult: await workState.appendInboundMessage({
       message: args.message,
       nowMs,
+      renderText: args.renderText,
       state: args.state,
     }),
     nowMs,
@@ -556,6 +550,21 @@ export async function cancelHumanFacingPendingMessages(args: {
   return result;
 }
 
+/** Drop pending mailbox rows by id without requiring a worker lease. */
+export async function dropPendingMessages(args: {
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const dropped = await workState.dropPendingMessages(args);
+  if (dropped.length > 0) {
+    await recordExecutionMetadata(args);
+  }
+  return dropped;
+}
+
 /** Mark one author's queued web messages as interrupts. */
 export async function steerWebPendingMessages(args: {
   authorIds: readonly string[];
@@ -669,14 +678,6 @@ export async function clearExpiredConversationLease(args: {
   const result = await workState.clearExpiredConversationLease(args);
   await recordExecutionMetadata(args);
   return result;
-}
-
-/** Remove one conversation from the active index after it is missing or idle. */
-export async function removeActiveConversation(args: {
-  conversationId: string;
-  state?: StateAdapter;
-}) {
-  return await workState.removeActiveConversation(args);
 }
 
 /** List active conversation ids by oldest execution update first. */

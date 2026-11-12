@@ -97,10 +97,8 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await page.keyboard.press("ArrowRight");
   await expect.poll(transcriptSize).toBeGreaterThan(startTranscriptSize);
   const resizedTranscriptSize = await transcriptSize();
+  // Details stay open after a reload because the reader opened them.
   await page.reload();
-  await page
-    .getByRole("button", { name: "Conversation details", exact: true })
-    .click();
   await expect(details).toBeVisible();
   // The saved width rounds to whole pixels.
   await expect.poll(transcriptSize).toBeCloseTo(resizedTranscriptSize, 0);
@@ -260,6 +258,49 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await expect(preview).toBeHidden();
 });
 
+test("previews text attachments in a drawer", async ({ page, dashboard }) => {
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
+    { waitUntil: "networkidle" },
+  );
+  // The server sends text files as downloads. The dashboard reads and
+  // renders them itself.
+  const readme = page.getByRole("button", { name: /README\.md/ });
+  await readme.scrollIntoViewIfNeeded();
+  await readme.click();
+  const preview = page.getByRole("dialog", { name: "README.md" });
+  await expect(
+    preview.getByRole("heading", { name: "Release notes" }),
+  ).toBeVisible();
+  // A newline in a Markdown file paragraph does not break the line.
+  await expect(
+    preview.getByText("This line wraps in the source."),
+  ).toBeVisible();
+  // A reference link after a fence still resolves.
+  await expect(preview.getByRole("link", { name: "docs" })).toHaveAttribute(
+    "href",
+    "https://example.com/docs",
+  );
+  await expect(
+    preview.getByRole("link", { name: "Download README.md" }),
+  ).toHaveAttribute("download", "README.md");
+  await screenshot(page, "conversation-text-attachment", { lightTheme: true });
+
+  await preview.getByRole("button", { name: "Raw" }).click();
+  await expect(preview.getByText("# Release notes")).toBeVisible();
+  await screenshot(page, "conversation-text-attachment-raw", {
+    view: "desktop",
+  });
+  await page.keyboard.press("Escape");
+  await expect(preview).toBeHidden();
+
+  await page.getByRole("button", { name: /notes\.txt/ }).click();
+  const notes = page.getByRole("dialog", { name: "notes.txt" });
+  await expect(notes.getByText("mock attachment notes")).toBeVisible();
+  // Plain text has no Markdown view to pick.
+  await expect(notes.getByRole("button", { name: "Raw" })).toHaveCount(0);
+});
+
 test("reuses the fresh conversation feed after window focus", async ({
   page,
   dashboard,
@@ -338,7 +379,7 @@ test("keeps cached conversation and draft available through reconnect", async ({
   await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
 });
 
-test("shows the repo name for one annotation scope on mobile", async ({
+test("shows the repo name on linked work tags on mobile", async ({
   page,
   dashboard,
 }) => {
@@ -349,8 +390,9 @@ test("shows the repo name for one annotation scope on mobile", async ({
     has: page.getByRole("heading", { name: "Checkout latency triage" }),
   });
   await expect(conversation).toBeVisible();
+  // Mobile shows the first linked work tag.
   await expect(
-    conversation.getByText("payments", { exact: true }),
+    conversation.getByText("payments", { exact: true }).first(),
   ).toBeVisible();
 });
 
@@ -476,8 +518,10 @@ test("scrolls long conversation and transcript panes independently", async ({
   ).toBeVisible();
 
   const conversationList = page
-    .getByRole("navigation", { name: "Your conversations" })
-    .locator("..");
+    .locator('[data-slot="scroll-area-viewport"]')
+    .filter({
+      has: page.getByRole("navigation", { name: "Your conversations" }),
+    });
   const transcript = page.getByLabel("Conversation transcript");
   const geometry = await page.evaluate(() => ({
     documentHeight: document.documentElement.scrollHeight,
@@ -527,7 +571,7 @@ test("shows personal spend and groups profile and session actions", async ({
   page,
   dashboard,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 1050 });
+  await page.setViewportSize({ width: 1440, height: 1150 });
   await page.goto(dashboard.baseURL);
 
   const topBarTrigger = page.getByRole("button", {
@@ -556,24 +600,26 @@ test("shows personal spend and groups profile and session actions", async ({
   await expect(popover).toContainText("7d $0.46");
   await expect(popover).toContainText("30d $0.46");
   await expect(
-    popover.getByRole("link", { name: "My profile" }),
+    popover.getByRole("menuitem", { name: "My profile" }),
   ).toHaveAttribute("href", "/people/dev%40example.com");
   await expect(
-    popover.getByRole("link", { name: "Settings", exact: true }),
+    popover.getByRole("menuitem", { name: "Settings", exact: true }),
   ).toHaveAttribute("href", "/settings");
   // Low-traffic pages live here instead of the primary nav.
   await expect(
-    popover.getByRole("link", { name: "Code", exact: true }),
+    popover.getByRole("menuitem", { name: "Code", exact: true }),
   ).toHaveAttribute("href", "/code");
   await expect(
-    popover.getByRole("link", { name: "System", exact: true }),
+    popover.getByRole("menuitem", { name: "System", exact: true }),
   ).toHaveAttribute("href", "/system");
   await expect(
     rail
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: /^(Code|System)$/ }),
   ).toHaveCount(0);
-  await expect(popover.getByRole("button", { name: "Log out" })).toBeVisible();
+  await expect(
+    popover.getByRole("menuitem", { name: "Log out" }),
+  ).toBeVisible();
 
   await page.keyboard.press("Escape");
   await expect(popover).toHaveCount(0);
@@ -585,7 +631,7 @@ test("shows personal spend and groups profile and session actions", async ({
       request.url().endsWith("/api/auth/sign-out") &&
       request.method() === "POST",
   );
-  await page.getByRole("button", { name: "Log out" }).click();
+  await page.getByRole("menuitem", { name: "Log out" }).click();
   // Better Auth returns 415 for a sign-out body without a JSON content type.
   expect((await signOutRequest).headers()["content-type"]).toBe(
     "application/json",
@@ -789,7 +835,7 @@ test("inspects and copies a child agent transcript", async ({
   );
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await expect(
-    page.getByRole("button", { name: "Pin", exact: true }),
+    page.getByRole("menuitem", { name: "Pin", exact: true }),
   ).toBeDisabled();
 });
 

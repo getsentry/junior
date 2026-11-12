@@ -9,6 +9,7 @@ import {
   type Message,
   type Model,
   type ThinkingLevel,
+  type Tool,
 } from "@/chat/pi/sdk";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
@@ -65,6 +66,7 @@ import {
   isProviderRetryError,
 } from "@/chat/services/provider-error";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
+import { requestPrefixAttributes } from "@/chat/pi/request-prefix-attributes";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
 const GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh";
@@ -268,14 +270,17 @@ export async function completeText(params: {
   modelId: string;
   system?: string;
   messages: Message[];
+  /** Tool definitions to send. They are part of the cached prompt prefix. */
+  tools?: Tool[];
   messageAttributeMode?: "content" | "metadata";
   cacheRetention?: CacheRetention;
   thinkingLevel?: ThinkingLevel;
-  temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
   promptName?: string;
+  /** AI Gateway session ID. Pass the Conversation ID to share its session. */
+  sessionId?: string;
 }) {
   const model = resolveGatewayModel(params.modelId);
   const credential = await resolveGatewayCredential();
@@ -310,9 +315,6 @@ export async function completeText(params: {
     ...(params.thinkingLevel
       ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
       : undefined),
-    ...(params.temperature !== undefined
-      ? { "gen_ai.request.temperature": params.temperature }
-      : undefined),
     ...(params.maxTokens !== undefined
       ? { "gen_ai.request.max_tokens": params.maxTokens }
       : undefined),
@@ -343,15 +345,20 @@ export async function completeText(params: {
           {
             systemPrompt: params.system,
             messages: params.messages,
+            ...(params.tools ? { tools: params.tools } : undefined),
           },
           {
             apiKey,
-            temperature: params.temperature,
             maxTokens: params.maxTokens,
             reasoning: params.thinkingLevel,
             cacheRetention: params.cacheRetention,
             signal: params.signal,
             metadata: params.metadata,
+            sessionId: params.sessionId,
+            onPayload: (payload) => {
+              setSpanAttributes(requestPrefixAttributes(payload));
+              return undefined;
+            },
           },
         );
       } catch (error) {
@@ -495,7 +502,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   system?: string;
   prompt: string;
   thinkingLevel?: ThinkingLevel;
-  temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
@@ -516,9 +522,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           prompt: params.prompt,
           ...(params.system !== undefined
             ? { system: params.system }
-            : undefined),
-          ...(params.temperature !== undefined
-            ? { temperature: params.temperature }
             : undefined),
           ...(params.maxTokens !== undefined
             ? { maxOutputTokens: params.maxTokens }
@@ -546,9 +549,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         "gen_ai.provider.auth_mode": credential.mode,
         ...(params.thinkingLevel
           ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
-          : undefined),
-        ...(params.temperature !== undefined
-          ? { "gen_ai.request.temperature": params.temperature }
           : undefined),
         ...(params.maxTokens !== undefined
           ? { "gen_ai.request.max_tokens": params.maxTokens }

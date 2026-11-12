@@ -171,39 +171,13 @@ actor's own connection always wins. Everyone who can talk to Junior can read wha
 service account can read, so give that account only the access that all of
 them may have.
 
-### Audit tools
+### Audit events
 
-List the MCP tools that change provider data in `mcp.audit-tools`. Each tool
-must be in `mcp.allowed-tools` or `mcp.wrapped-tools` when the plugin sets an
-allow-list:
-
-```yaml title="plugin.yaml"
-mcp:
-  url: https://api.my-provider.example/mcp
-  allowed-tools:
-    - search
-    - create-page
-  audit-tools:
-    - create-page
-```
-
-Each successful call to an audit tool emits the `mcp.tool_call.completed`
-audit event. Sentry keeps audit events in production. The event records the
-accountable person, the Conversation, the tool, and the account that made the
-call: `service_account` or `actor`. It does not record the tool arguments. The
-Conversation history keeps them.
-
-An install can change the list in `plugins.ts`:
-
-```ts title="plugins.ts"
-export const plugins = defineJuniorPlugins(["@sentry/junior-notion"], {
-  manifests: {
-    notion: { mcp: { auditTools: ["notion-create-pages"] } },
-  },
-});
-```
-
-Set `auditTools: null` to stop audit events for the plugin.
+Each successful MCP tool call emits the `mcp.tool_call.completed` audit event.
+Sentry keeps audit events in production. The event records the accountable
+person, the Conversation, the run Source, the tool, and the account that made
+the call: `service_account` or `actor`. It does not record the tool arguments.
+The Conversation history keeps them.
 
 ## Runtime dependencies
 
@@ -439,6 +413,12 @@ Use `privateTraceResult` only for fields that are safe to retain when the
 conversation is private. Without it, Junior records bounded result metadata
 instead of the raw structured result.
 
+Return the same tools from `tools(ctx)` in every Turn of a Conversation. A
+change to the tool list invalidates the model provider's prompt cache. When one
+Turn cannot use a tool, set `disabledReason` on it instead of omitting it.
+Junior keeps the tool in the tool list, lists it as disabled in the Turn
+context, and rejects its calls before review or execution.
+
 Every hook context has `ctx.cache`. Use it to keep short-lived copies of
 provider reads, such as a user's role. It is not durable. Junior can drop an
 entry at any time, so keep data that must survive in `ctx.state`. Return a
@@ -456,7 +436,8 @@ const role = await ctx.cache.getOrLoad(`role:${repo}:${login}`, async () => ({
 `heartbeat(ctx)` is for plugins that need server-side background work.
 Use `ctx.state` for plugin-namespaced durable state. Use
 `ctx.agent.dispatch(...)` when the heartbeat needs Junior to run an autonomous
-agent task, and `ctx.agent.get(...)` to reconcile that dispatch later.
+agent task, and `ctx.agent.get(...)` to reconcile that dispatch later. Use
+`ctx.events`, `ctx.annotations`, and `ctx.codeChanges` as from a plugin route.
 
 ```ts title="index.ts"
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
@@ -488,7 +469,9 @@ export function myProviderPlugin() {
 
 Heartbeat dispatches are durable, signed, bounded, and scoped to the plugin
 that created them. Plugins can dispatch only to validated Slack destinations
-and receive projection records, not raw runtime state.
+and receive projection records, not raw runtime state. Pass `title` to name
+the dispatch Conversation. When you omit it, Junior generates one from
+`input`.
 
 ## Validate
 

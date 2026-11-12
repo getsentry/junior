@@ -5,7 +5,7 @@ import { createConversationRoutes } from "./api/conversations/routes";
 import { createCodeRoutes } from "./api/code/routes";
 import { createConnectionRoutes } from "./api/connections/routes";
 import { createNotificationRoutes } from "./api/notifications/routes";
-import { jsonResponse } from "./api/http";
+import { jsonResponse, throwApiError } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
@@ -22,9 +22,12 @@ import {
   pluginOperationalReportFeedSchema,
   pluginsSchema,
   runtimeInfoReportSchema,
+  skillDetailReportSchema,
   skillReportsSchema,
   statsReportSchema,
 } from "./api/schema";
+import { readReplyTimeSegments } from "./api/reply-times";
+import { replyTimeSegmentsReportSchema } from "./api/schema/reply-times";
 import { readStatsReport } from "./api/stats";
 import { validateRequest } from "./api/validation";
 import { readVersions } from "./api/versions";
@@ -40,6 +43,7 @@ import {
   readPluginOperationalReportFeed,
   readPlugins,
   readRuntimeInfoReport,
+  readSkillDetailReport,
   readSkillReports,
 } from "./reporting";
 
@@ -83,6 +87,11 @@ export function createJuniorApi(
   app.get("/api/skills", async () =>
     jsonResponse(skillReportsSchema, await readSkillReports()),
   );
+  app.get("/api/skills/:name", async (context) => {
+    const skill = await readSkillDetailReport(context.req.param("name"));
+    if (!skill) throwApiError(404, "Skill not found.");
+    return jsonResponse(skillDetailReportSchema, skill);
+  });
   app.get("/api/plugin-reports", async () =>
     jsonResponse(
       pluginOperationalReportFeedSchema,
@@ -91,6 +100,9 @@ export function createJuniorApi(
   );
   app.get("/api/stats", async () =>
     jsonResponse(statsReportSchema, await readStatsReport()),
+  );
+  app.get("/api/reply-times", async () =>
+    jsonResponse(replyTimeSegmentsReportSchema, await readReplyTimeSegments()),
   );
   app.get(
     "/api/versions",

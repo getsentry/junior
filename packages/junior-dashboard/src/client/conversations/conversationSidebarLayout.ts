@@ -1,9 +1,12 @@
 import { useState, useSyncExternalStore } from "react";
+import { DESKTOP_LAYOUT_QUERY } from "../layoutMedia";
+
+import { hasPanelSpace } from "../components/DetailsPanel";
 
 const OPEN_KEY = "junior:conversation:sidebar-open";
+const DETAILS_OPEN_KEY = "junior:conversation:details-open";
 const WIDTH_KEY = "junior:conversation:sidebar-width";
 const DETAILS_WIDTH_KEY = "junior:conversation:details-width";
-const WIDE_QUERY = "(min-width: 768px)";
 
 /** Pixel limits for the conversation list beside a selected conversation. */
 export const SIDEBAR_WIDTH = { default: 320, max: 480, min: 240 } as const;
@@ -23,6 +26,20 @@ export function useConversationSidebarOpen() {
   }
 
   return [open, updateOpen] as const;
+}
+
+/** Read whether the reader left details open in this browser, if they chose. */
+export function readDetailsOpen(): boolean | undefined {
+  const value = readStorage(DETAILS_OPEN_KEY);
+  return value === null ? undefined : value === "true";
+}
+
+/**
+ * Save whether the reader keeps details open. A bottom sheet on a narrow
+ * screen is a one-off, so only a panel beside the transcript saves.
+ */
+export function saveDetailsOpen(open: boolean) {
+  if (hasPanelSpace()) writeStorage(DETAILS_OPEN_KEY, String(open));
 }
 
 /** Read the conversation list width saved in this browser. */
@@ -55,11 +72,26 @@ function readWidth(key: string, limits: WidthLimits): number {
 export function useSidebarFits(): boolean {
   return useSyncExternalStore(
     (onChange) => {
-      const media = window.matchMedia(WIDE_QUERY);
+      const media = window.matchMedia(DESKTOP_LAYOUT_QUERY);
       media.addEventListener("change", onChange);
       return () => media.removeEventListener("change", onChange);
     },
-    () => window.matchMedia(WIDE_QUERY).matches,
+    () => window.matchMedia(DESKTOP_LAYOUT_QUERY).matches,
+    () => false,
+  );
+}
+
+const DETAILS_DEFAULT_OPEN_QUERY = "(min-width: 1440px)";
+
+/** Report whether a Conversation opens with its details panel. */
+export function useDetailsDefaultOpen(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const media = window.matchMedia(DETAILS_DEFAULT_OPEN_QUERY);
+      media.addEventListener("change", onChange);
+      return () => media.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(DETAILS_DEFAULT_OPEN_QUERY).matches,
     () => false,
   );
 }

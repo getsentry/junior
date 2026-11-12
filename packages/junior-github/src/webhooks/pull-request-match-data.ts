@@ -279,11 +279,7 @@ export async function withGitHubPullRequestMatchData(args: {
   const rest = new Set(ALL_LOOKUPS.filter((lookup) => !filtered.has(lookup)));
   const { hasMatch } = args;
   if (rest.size === 0 || !hasMatch) return events;
-  const matches = await Promise.all(
-    events
-      .filter((event) => numbers.has(event.eventKey))
-      .map((event) => hasMatch(event)),
-  );
-  if (!matches.some(Boolean)) return events;
+  const matchEvents = events.filter((event) => numbers.has(event.eventKey));
+  if (!(await hasMatch(matchEvents))) return events;
   return await withLookups(context, events, rest);
 }

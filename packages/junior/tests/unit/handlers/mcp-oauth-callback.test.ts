@@ -291,6 +291,32 @@ describe("mcp oauth callback handler", () => {
     expect(deleteMcpAuthSessionMock).toHaveBeenCalledWith("state-123");
   });
 
+  it("saves the credential when the request no longer waits for it", async () => {
+    getPersistedThreadStateMock.mockResolvedValue({
+      conversation: { processing: {} },
+    });
+    finalizeMcpAuthorizationMock.mockImplementationOnce(
+      async (_provider, _state, _code, runCredentialMutation) => {
+        await runCredentialMutation(async () => undefined);
+        return await getMcpAuthSessionMock();
+      },
+    );
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/mcp/demo?code=auth-code&state=state-123",
+      ),
+      "demo",
+      waitUntil.fn,
+      {},
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain(
+      "The request that asked for it no longer waits",
+    );
+  });
+
   it("rechecks the exact attempt inside shared credential mutations", async () => {
     const mutation = vi.fn();
     getPersistedThreadStateMock

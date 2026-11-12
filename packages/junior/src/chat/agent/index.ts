@@ -30,6 +30,7 @@ import {
   withLogContext,
   withSpan,
   type LogContext,
+  type SetSpanAttributes,
 } from "@/chat/logging";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
@@ -52,7 +53,7 @@ import {
   sameActorIdentity,
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
-import type { Actor } from "@/chat/actor";
+import { isUserActor, type Actor } from "@/chat/actor";
 import {
   actorLogContext,
   credentialUserSubjectId,
@@ -71,6 +72,7 @@ import {
   isAssistantMessage,
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
+import { createCacheWarmingRecorder } from "@/chat/cache-warming/warmup";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
   isTurnInputCommitLostError,
@@ -78,19 +80,21 @@ import {
 } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
-import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import {
-  FINISH_AUTOMATION_RUN_TOOL_NAME,
-  readAutomationResult,
-  remindMissingAutomationResult,
-} from "@/chat/automation-result";
+  isAnswerToolName,
+  readTurnAnswer,
+  remindMissingAnswer,
+} from "@/chat/turn-answer";
 import { decideReply } from "@/chat/services/assistant-reply";
 import {
   findProviderError,
   getProviderErrorAttributes,
   isProviderRetryError,
 } from "@/chat/services/provider-error";
-import { nextProviderRetry } from "@/chat/services/provider-retry";
+import {
+  nextProviderRetry,
+  nextRefusalFallback,
+} from "@/chat/services/provider-retry";
 import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
 import { getDiscardedRetryUsage } from "@/chat/agent/retry-usage";
 import { projectTimedOutToolResult } from "@/chat/tool-support/timed-out-tool-result";
@@ -107,6 +111,7 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import {
+  GATED_TURN_LIMIT_WRAP_UP_MESSAGE,
   TURN_LIMIT_WRAP_UP_MESSAGE,
   TurnBudgetExceededError,
   TurnToolCallLimitExceededError,
@@ -123,6 +128,10 @@ import {
 import { getConversationStore } from "@/chat/db";
 import type { ConversationKind } from "@/chat/conversations/store";
 import {
+  isPersonInput,
+  turnBehavior,
+} from "@/chat/conversations/kind-behavior";
+import {
   RetryableDeliveryError,
   assertRunConsistency,
   actorFromRun,
@@ -133,6 +142,7 @@ import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmatio
 import { readParentAgentTask } from "@/chat/input-tags";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { discoverRunSkills, loadRunSkill } from "@/chat/agent/skills";
+import { missingAutomationSkillReason } from "@/chat/automations/skill";
 import {
   assemblePrompt,
   buildPromptInput,
@@ -146,27 +156,30 @@ import {
 } from "@/chat/agent/tools";
 import { createResumeState, type ResumeState } from "@/chat/agent/resume";
 import { sleep } from "@/chat/sleep";
-import {
-  estimateRequestOverheadTokens,
-  getAgentContextCompactionTriggerTokens,
-} from "@/chat/services/context-budget";
+import { getAgentContextCompactionTriggerTokens } from "@/chat/services/context-budget";
+import { estimateRequestOverheadTokens } from "@/chat/services/token-estimate";
 import { compactWithPreparedSummary } from "@/chat/services/context-compaction-swap";
 import {
   lastRequestInputSize,
   requestBackgroundCompaction,
 } from "@/chat/services/background-compaction";
-import {
-  logInputAfterCompaction,
-  type CompactionMode,
-} from "@/chat/services/context-compaction-telemetry";
+import { createNextInputTracker } from "@/chat/services/context-compaction-telemetry";
 import {
   buildAgentModelRequest,
   CONTEXT_COMPACTION_PROMPT_NAME,
   requestContextSummary,
 } from "@/chat/agent/context-summary";
 import { exclusiveToolName } from "@/chat/agent/exclusive-tools";
+import {
+  createToolBatchStats,
+  recordToolBatch,
+  toolBatchSpanAttributes,
+} from "@/chat/agent/tool-batch";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
+// Past a turn limit, a gated Turn gets this many failed answer calls before
+// its run ends without an answer.
+const MAX_FAILED_ANSWER_CALLS_PAST_LIMIT = 2;
 
 /** Preserve delivery-error ownership across the agent generation boundary. */
 class AssistantMessageDeliveryError extends Error {
@@ -230,6 +243,13 @@ export async function executeAgentRun(
   const conversation = await getConversationStore().get({
     conversationId: run.conversationId,
   });
+  // Spawning a child writes its row first. Only a root can run before its
+  // row exists.
+  if (!conversation && run.parentConversationId) {
+    throw new Error(
+      `Child Conversation ${run.conversationId} has no Conversation row`,
+    );
+  }
   const visibility = conversation?.visibility;
   const conversationPrivacy = resolveConversationPrivacy({
     visibility,
@@ -264,7 +284,11 @@ export async function executeAgentRun(
     runWithConversationPrivacy(conversationPrivacy, () =>
       executeAgentRunInPrivacyContext(
         run,
-        conversation?.kind,
+        // TODO(dcramer): Remove the `root` case one release after #3060 step
+        // 3. An Automation run in progress at deploy is stored as `root`.
+        run.dispatch?.declaresResult
+          ? "automation"
+          : (conversation?.kind ?? "root"),
         conversationPrivacy,
         runLogContext,
         streamFn,
@@ -275,7 +299,7 @@ export async function executeAgentRun(
 
 async function executeAgentRunInPrivacyContext(
   run: AgentRun,
-  conversationKind: ConversationKind | undefined,
+  conversationKind: ConversationKind,
   conversationPrivacy: ConversationPrivacy | undefined,
   runLogContext: LogContext,
   streamFn: StreamFn | undefined,
@@ -283,7 +307,10 @@ async function executeAgentRunInPrivacyContext(
   // Local views keep the existing loop body readable while the public edge is flat.
   const conversationId = run.conversationId;
   const turnId = run.turnId;
-  const requireAutomationResult = run.dispatch?.declaresResult === true;
+  const behavior = turnBehavior({
+    kind: conversationKind,
+    personInput: isPersonInput(run.source.kind),
+  });
   const input = {
     actor: run.instruction.actor,
     messageText: run.instruction.text,
@@ -387,7 +414,9 @@ async function executeAgentRunInPrivacyContext(
   let shouldTrace = false;
   let getSandboxRef: (() => typeof state.sandboxRef) | undefined;
   const reasoningLevel = policy.reasoningLevel ?? botConfig.reasoningLevel;
-  const activeModelId = botConfig.modelId;
+  // A refusal fallback replaces this for the rest of the run slice, so
+  // compaction limits and input support follow the model that runs.
+  let activeModelId = botConfig.modelId;
   const actor = actorFromRun(run);
   const surface = surfaceFromRun(run);
   const runSource = routing.source;
@@ -452,10 +481,18 @@ async function executeAgentRunInPrivacyContext(
         "messaging.message.id": slackSource?.messageTs ?? "",
       });
     }
-    const skillInvocation = parseSkillInvocation(userInput, availableSkills);
+    // An Automation in skill mode names its skill in the dispatch, so its
+    // text is not parsed for one.
+    const dispatchSkill = run.dispatch?.skill;
+    const skillInvocation = dispatchSkill
+      ? { skillName: dispatchSkill }
+      : parseSkillInvocation(userInput, availableSkills);
     const invokedSkill = skillInvocation
       ? findSkillByName(skillInvocation.skillName, availableSkills)
       : null;
+    if (dispatchSkill && !invokedSkill) {
+      throw new Error(missingAutomationSkillReason(dispatchSkill));
+    }
     const activeSkills: Skill[] = [];
     const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
 
@@ -642,6 +679,12 @@ async function executeAgentRunInPrivacyContext(
 
     // ── Mutable turn state ───────────────────────────────────────────
     let pendingPiHookError: Error | undefined;
+    // A gated Turn's answer calls past a limit, and how many of them failed.
+    const answerCallsPastLimit = new Set<string>();
+    let failedAnswerCallsPastLimit = 0;
+    // Tool calls that Junior ended the run with. Pi stops after a batch only
+    // when every call in it is one of these.
+    const terminatingToolCallIds = new Set<string>();
     // Model calls that a retry discarded. They still cost money.
     let discardedRetryUsage: AgentTurnUsage | undefined;
     const turnLimitGate = createTurnLimitGate(runResume.turnLimitWrappedUp);
@@ -669,6 +712,7 @@ async function executeAgentRunInPrivacyContext(
     const wiring = await wireAgentTools({
       abortAgent: () => agent?.abort(),
       activeSkills,
+      behavior,
       currentActor: actor,
       currentAgentMessages,
       currentTurnMessages,
@@ -732,6 +776,7 @@ async function executeAgentRunInPrivacyContext(
       contextContentParts: promptContextContentParts,
       inputMessages,
       inputMessagesAttribute,
+      platform: promptPlatform,
       promptTimestamp: restoredPromptTimestamp,
       promptHistoryMessages,
       shouldPromptAgent,
@@ -739,6 +784,7 @@ async function executeAgentRunInPrivacyContext(
       userContentParts: promptUserContentParts,
     } = await assemblePrompt({
       activeMcpCatalogs: wiring.activeMcpCatalogs,
+      promptMode: behavior.promptMode,
       currentActor: actor,
       availableSkills,
       configurationValues,
@@ -794,29 +840,7 @@ async function executeAgentRunInPrivacyContext(
       promptName: CONTEXT_COMPACTION_PROMPT_NAME,
       ...(streamFn ? { base: streamFn } : undefined),
     });
-    // The replacement waiting for the provider-reported input of the next
-    // model request.
-    let replacementAwaitingInput:
-      | { messageCount: number; mode: CompactionMode }
-      | undefined;
-    /** Log the first provider-reported input after a replacement. */
-    const logFirstInputAfterReplacement = (): void => {
-      if (!replacementAwaitingInput) {
-        return;
-      }
-      const inputSize = lastRequestInputSize(
-        agent!.state.messages.slice(replacementAwaitingInput.messageCount),
-      );
-      if (!inputSize) {
-        return;
-      }
-      logInputAfterCompaction({
-        inputSize,
-        mode: replacementAwaitingInput.mode,
-        threshold: getAgentContextCompactionTriggerTokens(activeModelId),
-      });
-      replacementAwaitingInput = undefined;
-    };
+    const nextInputAfterReplacement = createNextInputTracker();
     /** Commit and adopt an active capacity replacement before another model call. */
     const applyActiveContextCompaction = async (
       messages: PiMessage[],
@@ -885,7 +909,10 @@ async function executeAgentRunInPrivacyContext(
         throw error;
       }
       agent!.state.messages = replacement;
-      replacementAwaitingInput = { messageCount: replacement.length, mode };
+      nextInputAfterReplacement.replaced(
+        mode,
+        getAgentContextCompactionTriggerTokens(activeModelId),
+      );
       runResume.setBeforeMessageCount(replacement.length);
       runResume.adoptCommittedBoundary(replacement);
       if (clearSteeringQueueOnCommit && pendingMessages?.length) {
@@ -1000,6 +1027,17 @@ async function executeAgentRunInPrivacyContext(
     // Pi converts prepareNextTurn exceptions into error turns instead of
     // rejecting. Preserve Junior's yield so runAgentStep can restore it after
     // the Pi run settles without leaking Pi mechanics into the resume API.
+    // A Task inherits the person's actor, but only its parent agent sends it
+    // Turns. Keep its gaps out of the histograms of people.
+    const cacheWarming = createCacheWarmingRecorder(
+      conversationId,
+      isUserActor(actor) && conversationKind !== "task",
+      { platform: promptPlatform, mode: behavior.promptMode },
+    );
+    // Batch counts go on the `gen_ai.invoke_agent` span, because production
+    // drops info logs.
+    const toolBatchStats = createToolBatchStats();
+    let setAgentSpanAttributes: SetSpanAttributes | undefined;
     agent = new Agent({
       // Resolve on every provider call so runtime OIDC tokens stay fresh.
       getApiKey: getGatewayApiKey,
@@ -1007,13 +1045,19 @@ async function executeAgentRunInPrivacyContext(
       sessionId: conversationId,
       streamFn: createTracedStreamFn({
         conversationPrivacy,
-        ...(streamFn ? { base: streamFn } : undefined),
+        base: cacheWarming.wrap(streamFn),
+        endAttributes: (message) =>
+          nextInputAfterReplacement.attributes(lastRequestInputSize([message])),
       }),
       steeringMode: "all",
-      beforeToolCall: async ({ assistantMessage }) => {
+      beforeToolCall: async ({ assistantMessage, context, toolCall }) => {
         const toolCalls = assistantMessage.content.filter(
           (part) => part.type === "toolCall",
         );
+        if (toolCalls.length > 1 && toolCall.id === toolCalls[0]!.id) {
+          recordToolBatch(toolBatchStats, toolCalls, context.tools ?? []);
+          setAgentSpanAttributes?.(toolBatchSpanAttributes(toolBatchStats));
+        }
         const exclusiveTool = exclusiveToolName(toolCalls);
         if (exclusiveTool && toolCalls.length !== 1) {
           return {
@@ -1035,11 +1079,16 @@ async function executeAgentRunInPrivacyContext(
             ),
           ) ?? 0;
         const overBudget = turnCostUsd >= botConfig.maxTurnCostUsd;
-        const decision = turnLimitGate({
-          assistantMessage,
-          overLimit:
-            overBudget || toolCallCount > botConfig.maxToolCallsPerTurn,
-        });
+        const overLimit =
+          overBudget || toolCallCount > botConfig.maxToolCallsPerTurn;
+        // A gated Turn must answer, so its answer tool runs past a limit.
+        if (behavior.gated && isAnswerToolName(toolCall.name)) {
+          if (overLimit || runResume.turnLimitWrappedUp) {
+            answerCallsPastLimit.add(toolCall.id);
+          }
+          return undefined;
+        }
+        const decision = turnLimitGate({ assistantMessage, overLimit });
         if (decision === "allow") {
           return undefined;
         }
@@ -1049,7 +1098,12 @@ async function executeAgentRunInPrivacyContext(
             "app.ai.cost.total_usd": turnCostUsd,
             "app.ai.tool_call_count": toolCallCount,
           });
-          return { block: true, reason: TURN_LIMIT_WRAP_UP_MESSAGE };
+          return {
+            block: true,
+            reason: behavior.gated
+              ? GATED_TURN_LIMIT_WRAP_UP_MESSAGE
+              : TURN_LIMIT_WRAP_UP_MESSAGE,
+          };
         }
         // The tool-call total only grows, so a stop under it came from spend.
         const limitError =
@@ -1057,6 +1111,7 @@ async function executeAgentRunInPrivacyContext(
             ? new TurnToolCallLimitExceededError(botConfig.maxToolCallsPerTurn)
             : new TurnBudgetExceededError(botConfig.maxTurnCostUsd);
         pendingPiHookError ??= limitError;
+        terminatingToolCallIds.add(toolCall.id);
         return {
           block: true,
           reason: limitError.message,
@@ -1081,29 +1136,36 @@ async function executeAgentRunInPrivacyContext(
           timedOutResult || projectedResult !== result
             ? projectedResult
             : undefined;
-        // A declared Automation result or blocked report is the last step of
-        // the run.
-        if (
-          (toolCall.name === FINISH_AUTOMATION_RUN_TOOL_NAME ||
-            toolCall.name === REPORT_BLOCKED_TOOL_NAME) &&
-          !isError &&
-          !override
-        ) {
+        // A reply, blocked report, or no-reply is the last step of the run.
+        if (isAnswerToolName(toolCall.name) && !isError && !override) {
+          cacheWarming.answerToolEnded(toolCall.name);
+          terminatingToolCallIds.add(toolCall.id);
           return { terminate: true };
+        }
+        // Past a limit, the second failed answer call ends the run without
+        // an answer.
+        if (
+          isError &&
+          answerCallsPastLimit.has(toolCall.id) &&
+          ++failedAnswerCallsPastLimit >= MAX_FAILED_ANSWER_CALLS_PAST_LIMIT
+        ) {
+          terminatingToolCallIds.add(toolCall.id);
+          return { ...override, terminate: true };
         }
         return override;
       },
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {
-          // A model call can complete before an abort, such as an auth
-          // pause, so log its input first. An aborted call reports none.
-          logFirstInputAfterReplacement();
           // Pi runs this hook after an abort, such as an auth pause, but no
           // model call follows. Sandbox work here fails on the aborted signal
           // and hides why the run stopped. Steering stays queued.
           if (hookSignal?.aborted) {
             return undefined;
           }
+          // A stop of this Conversation ends the Turn at the next step, also
+          // when no stop request reached this worker.
+          await durability.checkStop?.();
+          signal?.throwIfAborted();
           // Pi waits for this hook before each later model call. The span
           // shows that wait between `gen_ai.chat` spans.
           const stepUpdate = await withSpan(
@@ -1118,12 +1180,16 @@ async function executeAgentRunInPrivacyContext(
                   nextTurn.context,
                 );
               const pendingMessages = await drainSteeringMessages();
-              // Pi also runs this hook after the final reply. Another model
-              // call follows only after tool results or steering. Compaction
-              // here would drop the delivered reply and start a retry. A
-              // background request does not change history, so it still runs.
+              // Pi also runs this hook after the final response and after a
+              // batch that ended the run, such as a `noReply` call. Another
+              // model call follows only after steering or a tool result that
+              // did not end the run. Compaction here would drop the answer and
+              // start a retry. A background request does not change history,
+              // so it still runs.
               if (
-                nextTurn.toolResults.length === 0 &&
+                nextTurn.toolResults.every((result) =>
+                  terminatingToolCallIds.has(result.toolCallId),
+                ) &&
                 pendingMessages.length === 0
               ) {
                 await requestBackgroundCompactionAfterModelCall();
@@ -1174,6 +1240,7 @@ async function executeAgentRunInPrivacyContext(
         return recordParentToolExecutionStart(event);
       }
       if (event.type === "turn_end" && event.toolResults.length > 0) {
+        cacheWarming.toolsReturned();
         return requireConversationLease("save")
           .then(() => runResume.persistSafeBoundary([...agent!.state.messages]))
           .then(
@@ -1188,18 +1255,34 @@ async function executeAgentRunInPrivacyContext(
           );
       }
       if (event.type === "message_end" && isAssistantMessage(event.message)) {
-        if (
-          event.message.stopReason === "error" ||
-          event.message.stopReason === "aborted"
-        ) {
-          return;
-        }
-        return deliverAssistantMessage(event.message);
+        const message = event.message;
+        const delivery =
+          message.stopReason === "error" || message.stopReason === "aborted"
+            ? undefined
+            : deliverAssistantMessage(message);
+        // Record after delivery, so the reply is not late. Record also when
+        // delivery fails: the model call wrote the cache and ended the idle
+        // period either way.
+        return Promise.resolve(delivery).then(
+          () => cacheWarming.record(message),
+          async (error: unknown) => {
+            await cacheWarming.record(message);
+            throw error;
+          },
+        );
       }
       return undefined;
     });
 
     let newMessages: PiMessage[] = [];
+    // A resumed slice can prompt again, which moves the live Turn start, so
+    // read the answer from the saved start. A slice from before saved Turn
+    // starts reads only its own messages.
+    const turnStartIndex = () =>
+      existingSessionRecord?.turnStartMessageIndex ??
+      runResume.turnStartMessageIndex ??
+      runResume.beforeMessageCount;
+    const turnMessages = () => agent!.state.messages.slice(turnStartIndex());
     try {
       if (resumedFromSessionRecord) {
         agent.state.messages = shouldPromptAgent
@@ -1224,14 +1307,11 @@ async function executeAgentRunInPrivacyContext(
         `invoke_agent ${botConfig.userName}`,
         "gen_ai.invoke_agent",
         spanContext,
-        async () => {
-          // A declared Automation result is final. Each Automation run owns
-          // its dispatch Conversation, so a result in this history belongs to
-          // this run. A resumed slice returns it without calling the model.
-          if (
-            requireAutomationResult &&
-            readAutomationResult(agent!.state.messages)
-          ) {
+        async (setInvokeAgentSpanAttributes) => {
+          setAgentSpanAttributes = setInvokeAgentSpanAttributes;
+          // An answer is final. A resumed slice of a gated Turn returns it
+          // without calling the model.
+          if (behavior.gated && readTurnAnswer(turnMessages())) {
             return undefined;
           }
           const promptTimestamp = restoredPromptTimestamp ?? Date.now();
@@ -1402,8 +1482,9 @@ async function executeAgentRunInPrivacyContext(
               : agent!.continue();
           discardedRetryUsage = undefined;
           let actionConfirmationRetryUsed = false;
-          let automationResultReminderUsed = !requireAutomationResult;
+          let answerReminderUsed = !behavior.gated;
           let providerRetryAttempt = 0;
+          let refusalFallbackUsed = false;
           let emptyOutputAttempt = 0;
           const prepareRetry = async (messages: PiMessage[]): Promise<void> => {
             discardedRetryUsage = addAgentTurnUsage(
@@ -1476,14 +1557,19 @@ async function executeAgentRunInPrivacyContext(
                 continue;
               }
 
-              const automationResultReminder = automationResultReminderUsed
-                ? undefined
-                : remindMissingAutomationResult(agent!.state.messages);
-              if (automationResultReminder) {
-                automationResultReminderUsed = true;
-                agent!.state.messages = automationResultReminder;
-                await runResume.persistSafeBoundary(automationResultReminder);
-                logWarn("agent.turn.automation_result.reminded", {});
+              const answerReminder =
+                answerReminderUsed ||
+                failedAnswerCallsPastLimit >= MAX_FAILED_ANSWER_CALLS_PAST_LIMIT
+                  ? undefined
+                  : remindMissingAnswer(
+                      agent!.state.messages,
+                      turnStartIndex(),
+                    );
+              if (answerReminder) {
+                answerReminderUsed = true;
+                agent!.state.messages = answerReminder;
+                await runResume.persistSafeBoundary(answerReminder);
+                logWarn("agent.turn.answer.reminded", {});
                 run = agent!.continue();
                 continue;
               }
@@ -1514,7 +1600,31 @@ async function executeAgentRunInPrivacyContext(
                 messages: agent!.state.messages,
               });
               if (!providerRetry) {
-                break;
+                const refusalFallback = refusalFallbackUsed
+                  ? undefined
+                  : nextRefusalFallback({
+                      failure: lastAssistant,
+                      fallbackModelId: botConfig.refusalFallbackModelId,
+                      messages: agent!.state.messages,
+                    });
+                if (!refusalFallback) {
+                  break;
+                }
+                // Only the rest of this run slice uses the fallback model. A
+                // later slice or Turn starts again on the main model.
+                refusalFallbackUsed = true;
+                await prepareRetry(refusalFallback.messages);
+                // `gen_ai.request.model` is the main model that refused.
+                // `app.ai.refusal_fallback.model` is the model of the next
+                // `gen_ai.chat` span.
+                logWarn("agent.turn.refusal_fallback", {
+                  "gen_ai.request.model": activeModelId,
+                  "app.ai.refusal_fallback.model": refusalFallback.modelId,
+                });
+                activeModelId = refusalFallback.modelId;
+                agent!.state.model = resolveGatewayModel(activeModelId);
+                run = agent!.continue();
+                continue;
               }
 
               providerRetryAttempt += 1;
@@ -1560,6 +1670,7 @@ async function executeAgentRunInPrivacyContext(
       }
     } finally {
       unsubscribe();
+      await cacheWarming.stop();
     }
 
     // The caller saves the completed Turn after this returns.
@@ -1584,7 +1695,16 @@ async function executeAgentRunInPrivacyContext(
       reasoningLevel,
       assistantUserName: botConfig.userName,
       modelId: activeModelId,
-      requireAutomationResult,
+      ...(behavior.gated
+        ? {
+            answer: readTurnAnswer(turnMessages()) ?? "missing",
+            // The dispatch Turn of an Automation run fails without an
+            // answer, so the run history shows it.
+            missingAnswerError: run.dispatch
+              ? "Automation run ended without an answer."
+              : behavior.missingAnswerError,
+          }
+        : undefined),
     });
     return {
       status: "completed",
