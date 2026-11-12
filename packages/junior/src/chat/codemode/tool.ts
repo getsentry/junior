@@ -45,6 +45,7 @@ const DECLARATION_BUDGET_TOKENS = 3_000;
 export interface CodeModeToolOptions {
   /** Tools a script may call: `scriptTools` from `planToolExposure`. */
   scriptTools: Record<string, AnyToolDefinition>;
+  modelOnlyTools: CodeModeScriptRun["modelOnlyTools"];
   pipeline: CodeModeScriptRun["pipeline"];
   /** Charge one nested call to the Turn's durable tool-call total. */
   countToolCall(): number;
@@ -236,7 +237,7 @@ function renderResult(result: CodeModeResult): string {
 
 /** Create the `codemode` tool for one Run's script tools and pipeline. */
 export function createCodeModeTool(options: CodeModeToolOptions) {
-  const { countToolCall, pipeline, scriptTools } = options;
+  const { countToolCall, modelOnlyTools, pipeline, scriptTools } = options;
   return zodTool({
     annotations: {
       destructiveHint: true,
@@ -265,6 +266,7 @@ export function createCodeModeTool(options: CodeModeToolOptions) {
       }
       const result = await runCodeModeScript({
         countToolCall,
+        modelOnlyTools,
         pipeline,
         signal,
         source: code,
