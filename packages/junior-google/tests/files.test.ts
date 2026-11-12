@@ -66,6 +66,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
         mimeType: "application/vnd.google-apps.document",
         name: "Q4 plan",
       }),
+      Response.json({ revisionId: "rev-1" }),
       new Response("# Q4 plan\n\nShip it.", {
         headers: { "content-type": "text/markdown" },
       }),
@@ -119,14 +120,18 @@ describe("Google Docs, Sheets, and Slides tools", () => {
 
     const link = `https://docs.google.com/document/d/${DOC_ID}/edit?resourcekey=0-key`;
     const doc = await run(tools, "readGoogleDoc", { document: link });
-    const [get, exported] = [fetch.mock.calls[2]![0], fetch.mock.calls[3]![0]];
+    const [get, revision, exported] = [2, 3, 4].map(
+      (index) => fetch.mock.calls[index]![0],
+    );
     expect(get.operation).toBe("google.drive.file.get");
+    // The edit tools check this revision before they change the Doc.
+    expect(revision.operation).toBe("google.docs.document.get");
     expect(exported.operation).toBe("google.drive.file.export");
     expect(new URL(exported.request.url).pathname).toBe(
       `/drive/v3/files/${DOC_ID}/export`,
     );
     // Google needs the resource key of an older Doc shared by link.
-    for (const call of [get, exported]) {
+    for (const call of [get, revision, exported]) {
       expect(call.request.headers.get("X-Goog-Drive-Resource-Keys")).toBe(
         `${DOC_ID}/0-key`,
       );
@@ -134,6 +139,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     expect(doc).toMatchObject({
       content: "# Q4 plan\n\nShip it.",
       document_id: DOC_ID,
+      revision_id: "rev-1",
       title: "Q4 plan",
       truncated: false,
     });
@@ -141,7 +147,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     const comments = await run(tools, "listGoogleFileComments", {
       file: DOC_ID,
     });
-    expect(fetch.mock.calls.slice(4).map(([call]) => call.operation)).toEqual([
+    expect(fetch.mock.calls.slice(5).map(([call]) => call.operation)).toEqual([
       "google.drive.file.get",
       "google.drive.comments.list",
     ]);
@@ -163,6 +169,33 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       file_id: DOC_ID,
       next_page_token: "page-2",
     });
+
+    // Reading needs only Drive. Before an admin enables the Docs API, the
+    // text still comes back, without a revision for the edit tools.
+    const noDocsApi = docsTools(
+      Response.json({
+        id: DOC_ID,
+        mimeType: "application/vnd.google-apps.document",
+        name: "Q4 plan",
+      }),
+      Response.json(
+        {
+          error: {
+            details: [{ reason: "SERVICE_DISABLED" }],
+            message: "Docs API has not been used",
+          },
+        },
+        { status: 403 },
+      ),
+      new Response("# Q4 plan", {
+        headers: { "content-type": "text/markdown" },
+      }),
+    );
+    const unrevised = await run(noDocsApi.tools, "readGoogleDoc", {
+      document: DOC_ID,
+    });
+    expect(unrevised).toMatchObject({ content: "# Q4 plan" });
+    expect(unrevised).not.toHaveProperty("revision_id");
   });
 
   it("searches only with the requester's terms", async () => {
