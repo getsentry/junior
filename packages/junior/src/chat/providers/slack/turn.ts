@@ -12,6 +12,10 @@ import { botConfig } from "@/chat/config";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
 import { readSlackActionToken } from "@/chat/slack/action-token";
 import {
+  readSlackMessageAttachments,
+  type SlackMessageAttachment,
+} from "@/chat/slack/attachments";
+import {
   logException,
   getActiveTraceId,
   logInfo,
@@ -226,7 +230,7 @@ interface SlackTurnDeps {
   getSlackAdapter: () => SlackAdapter;
   pausedTurns: PausedTurns;
   resolveUserAttachments: (
-    attachments: Message["attachments"] | undefined,
+    attachments: SlackMessageAttachment[] | undefined,
     context: {
       conversationId?: string;
       threadId?: string;
@@ -474,7 +478,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         ): Promise<AgentSteeringMessage[]> => {
           return await Promise.all(
             queuedMessages.map(async (queued) => {
-              const attachments = queued.message.attachments;
+              const attachments = readSlackMessageAttachments(queued.message);
               // An answer steers in as its Review item tag.
               const reviewItemInput = await loadReviewItemInput(
                 getMessageReviewItemChange(queued.message),

@@ -11,6 +11,10 @@ import {
 } from "@/chat/conversations/projection";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { QueuedTurnMessage } from "@/chat/runtime/turn-input";
+import {
+  readSlackMessageAttachments,
+  type SlackMessageAttachment,
+} from "@/chat/slack/attachments";
 import { getConversationInfo } from "@/chat/slack/channel";
 import { SlackActionError } from "@/chat/slack/client";
 import {
@@ -111,10 +115,12 @@ export async function resolveSlackChannelFacts(
 export function collectAttachments(
   message: Message,
   batchedMessages?: QueuedTurnMessage[],
-): Message["attachments"] {
+): SlackMessageAttachment[] {
   return [
-    ...(batchedMessages ?? []).flatMap((queued) => queued.message.attachments),
-    ...message.attachments,
+    ...(batchedMessages ?? []).flatMap((queued) =>
+      readSlackMessageAttachments(queued.message),
+    ),
+    ...readSlackMessageAttachments(message),
   ];
 }
 

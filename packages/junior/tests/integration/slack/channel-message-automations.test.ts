@@ -13,6 +13,8 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createWatchEventsTool } from "@/chat/tools/watch-events";
 import { createTools, type ToolRuntimeContext } from "@/chat/tools";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
+import { createJuniorRuntimeServices } from "@/chat/app/services";
+import { collectAttachments } from "@/chat/providers/slack/input";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { juniorAutomations } from "@/db/schema/automations";
 import { context, execute } from "../../fixtures/event-automations";
@@ -332,9 +334,10 @@ describe("Slack channel-message automations", () => {
         written.push(...files.map((file) => file.content.toString()));
       },
     };
+    const attachmentStorage = createMemoryAttachmentStorage();
     const { loadAttachment } = createTools([], {}, {
       ...context("U123", "C123", "public", rootTs, TEAM_ID),
-      attachmentStorage: createMemoryAttachmentStorage(),
+      attachmentStorage,
       conversationId: runConversationId,
       location: stored?.location,
       workspace,
@@ -401,6 +404,37 @@ describe("Slack channel-message automations", () => {
       repliesCalls + 2,
     );
 
+    // A Turn stores a file of a person's message under the Slack file id from
+    // the Slack event, so it opens without a Slack read or another download.
+    const notesFile = {
+      ...slackFile("F0NOTESTXT", "notes.txt"),
+      mimetype: "text/plain",
+    };
+    const notesMessage = createSlackAdapterFixture().parseMessage({
+      type: "message",
+      channel: "C123",
+      files: [notesFile],
+      team: TEAM_ID,
+      text: "my notes",
+      thread_ts: rootTs,
+      ts: "1712350.0004",
+      user: "U123",
+    });
+    queueSlackPrivateFileDownload({ body: "notes" });
+    await createJuniorRuntimeServices({
+      visionContext: { attachmentStorage },
+    }).visionContext.resolveUserAttachments(collectAttachments(notesMessage), {
+      conversationId: runConversationId,
+    });
+    await expect(
+      execute(loadAttachment!, { attachment_id: notesFile.id }),
+    ).resolves.toMatchObject({ filename: "notes.txt", bytes: 5 });
+    expect(written.at(-1)).toBe("notes");
+    expect(getCapturedSlackFileDownloadUrls()).toHaveLength(3);
+    expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(
+      repliesCalls + 2,
+    );
+
     // A file that is not in the run's thread, or whose URL is not on Slack's
     // file host, is refused and not downloaded.
     for (const fileId of ["F0OTHERPNG", "F0APIURL1"]) {
@@ -409,7 +443,7 @@ describe("Slack channel-message automations", () => {
         execute(loadAttachment!, { attachment_id: fileId }),
       ).rejects.toThrow("not in this conversation's thread");
     }
-    expect(getCapturedSlackFileDownloadUrls()).toHaveLength(2);
+    expect(getCapturedSlackFileDownloadUrls()).toHaveLength(3);
     expect(getCapturedSlackApiCalls("auth.test")).toEqual([]);
   });
 
