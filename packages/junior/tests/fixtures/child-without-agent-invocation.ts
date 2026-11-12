@@ -23,10 +23,12 @@ import { juniorConversations } from "@/db/schema";
 /**
  * Send a parent message as a parent that writes no Agent invocation does: an
  * Event in the child's mailbox with the Actor and grants of the parent's
- * Turn. `from` overrides the parent that the message names.
+ * Turn. `from` overrides the parent that the message names, and `authorId`
+ * its author id.
  */
 export async function sendParentMessage(args: {
   actor: Actor;
+  authorId?: string;
   childConversationId: string;
   credentialContext?: CredentialContext;
   fork?: true;
@@ -49,7 +51,7 @@ export async function sendParentMessage(args: {
       delivery: "defer",
       inboundMessageId,
       input: {
-        authorId: parentMessageAuthorId(from),
+        authorId: args.authorId ?? parentMessageAuthorId(from),
         authorIdentityId: SYSTEM_IDENTITY_ID,
         metadata: {
           actor: args.actor,
@@ -86,6 +88,7 @@ export async function sendParentMessage(args: {
  */
 export async function spawnChildWithoutAgentInvocation(args: {
   actor: Actor;
+  authorId?: string;
   conversationStore: ConversationStore;
   credentialContext?: CredentialContext;
   from?: string;

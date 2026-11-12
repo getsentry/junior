@@ -12,7 +12,10 @@ import { FORK_INSTRUCTIONS } from "@/chat/agent-invocations/fork-history";
 import { getAgentInvocationIdForMessage } from "@/chat/agent-invocations/ids";
 import { listUnreportedSiblingAgents } from "@/chat/agent-invocations/list";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
-import { createDeliverToParent } from "@/chat/agent-invocations/result";
+import {
+  createDeliverToParent,
+  enqueueAgentInvocationResult,
+} from "@/chat/agent-invocations/result";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 import {
   completeAgentInvocation,
@@ -24,7 +27,12 @@ import { getConversationEventStore } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { getConversationWorkState } from "@/chat/task-execution/store";
+import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
+import {
+  CONVERSATION_WORK_MAX_RETRIES,
+  getConversationWorkState,
+} from "@/chat/task-execution/store";
 import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
@@ -36,6 +44,7 @@ import {
   spawnChildWithoutAgentInvocation,
 } from "../fixtures/child-without-agent-invocation";
 import { webTestActor } from "../fixtures/conversation";
+import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
 import { createHarness, type Harness } from "../fixtures/thread-input";
 
 async function parentMessageTexts() {
@@ -418,6 +427,203 @@ describe("child agents that no Agent invocation names", () => {
           status: "completed",
         }),
       ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("keeps a child's result as on main when only a grandchild with a row replied", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const open = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "open-row",
+      });
+      const helper = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "helper",
+        parentConversationId: open.childConversationId,
+      });
+      await completeAgentInvocation({
+        invocationId: helper.invocationId,
+        result: "",
+        status: "completed",
+      });
+      await createDeliverToParent({
+        queue: harness.queue,
+        state: harness.state,
+      })({
+        actor: slackInvocationInput.actor,
+        conversationId: helper.childConversationId,
+        result: {
+          kind: "reply",
+          reply: { text: "Helper fact.", toolCallId: "call-reply" },
+        },
+        turnId: "turn_helper",
+      });
+
+      await expect(
+        completeAgentInvocation({
+          invocationId: open.invocationId,
+          result: "Done.",
+          status: "completed",
+        }),
+      ).resolves.toMatchObject({ parentMailboxStatus: "pending" });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("keeps a child's result while its grandchild's Turn yields", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const open = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "open-row",
+      });
+      const grandchildId = await spawnChild(harness, "child-turn:call-1", {
+        parentConversationId: open.childConversationId,
+      });
+      await completeAgentInvocation({
+        invocationId: open.invocationId,
+        result: "Done.",
+        status: "completed",
+      });
+      // The grandchild's Turn takes its input and yields between slices.
+      // This fake runner saves no slice, so only the Turn's end status
+      // holds the child's result back.
+      harness.onPersonRun(async (run) => {
+        await run.durability?.onInputCommitted?.();
+        return { reason: "yield", resumeVersion: 1, status: "suspended" };
+      });
+      await harness.processUntilRun(grandchildId);
+
+      await expect(
+        getAgentInvocation(open.invocationId),
+      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("resumes a parent task as the instruction that Guardian reads", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await spawnChild(harness, "parent-turn:call-1");
+      // The first attempt takes its input and saves a slice. The retry
+      // resumes that Turn.
+      harness.onPersonRun(async (run) => {
+        if (harness.runs.length === 1) {
+          await run.durability?.onInputCommitted?.();
+          await saveTurnCheckpoint({
+            actor: run.actor!,
+            conversationId: childId,
+            destination: undefined,
+            messages: [
+              {
+                role: "user",
+                content: [{ type: "text", text: "Check the deploy." }],
+                timestamp: 1,
+              },
+            ],
+            mode: "paused",
+            reason: "yield",
+            sliceId: 1,
+            source: run.source!,
+            surface: "api",
+            turnId: run.turnId!,
+          });
+        }
+        throw new Error("stop after reading the run");
+      });
+      await harness.processUntilRun(childId);
+      await harness.processUntilRun(childId);
+
+      const [first, resumed] = harness.runs;
+      expect(resumed).toMatchObject({
+        conversationId: childId,
+        instruction: { provenance: { authority: "instruction" } },
+        turnId: first!.turnId,
+      });
+      await expect(
+        readRootConversation({ actor: undefined, conversationId: childId }),
+      ).resolves.toMatchObject({
+        messages: expect.arrayContaining([
+          {
+            author: "user",
+            text: expect.stringContaining("Check the deploy."),
+          },
+        ]),
+      });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("drops a parent message with another author id", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await spawnChild(harness, "parent-turn:call-1", {
+        authorId: "agent-invocation:slack:T123:U123",
+      });
+      await harness.drain(childId);
+
+      expect(harness.runs).toEqual([]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("refuses an ancestor's timer grant on input that is not a parent message", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await spawnChild(harness, "parent-turn:call-1");
+      for (let tries = 0; tries < CONVERSATION_WORK_MAX_RETRIES; tries++) {
+        await harness.drain(childId);
+        await runHeartbeatAfterLeasesExpire(harness.queue);
+      }
+      // The grandchild's grants name a timer Watch of the child's parent.
+      const helper = await createAgentInvocation({
+        ...slackInvocationInput,
+        actor: EVENT_SYSTEM_ACTOR,
+        credentialContext: {
+          actor: EVENT_SYSTEM_ACTOR,
+          subject: bindTimerWatchCredentialSubject({
+            conversationId: slackParentConversationId,
+            userId: webTestActor.userId,
+            watchId: "watch-1",
+          })!,
+        },
+        idempotencyKey: "helper",
+        parentConversationId: childId,
+      });
+      await enqueueAgentInvocationResult(
+        (await completeAgentInvocation({
+          errorMessage: "Needs a token.",
+          invocationId: helper.invocationId,
+          status: "blocked",
+        })) as TerminalAgentInvocation,
+        { queue: harness.queue, state: harness.state },
+      );
+      const runCount = harness.runs.length;
+      // The result waits out its batch window.
+      await runHeartbeatAfterLeasesExpire(harness.queue);
+      await harness.processUntilRun(childId);
+
+      expect(harness.runs.length).toBe(runCount + 1);
+      expect(harness.runs.at(-1)).toMatchObject({
+        actor: EVENT_SYSTEM_ACTOR,
+        conversationId: childId,
+        credentialContext: { actor: EVENT_SYSTEM_ACTOR },
+      });
+      expect(harness.runs.at(-1)!.credentialContext).not.toHaveProperty(
+        "subject",
+      );
     } finally {
       await harness.close();
     }

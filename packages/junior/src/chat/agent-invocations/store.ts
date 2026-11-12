@@ -10,7 +10,7 @@ import { AGENT_INVOCATION_EVENT_NAMESPACE } from "./result-event-type";
 import {
   getAgentInvocationResultMessageId,
   isAgentReplyMessageId,
-  parseTurnReplyMessageId,
+  parseChildReplyMessageId,
 } from "./ids";
 import { readChildConversationSender } from "./child-input";
 import { listOpenChildAgentsWithoutAgentInvocations } from "./list";
@@ -245,7 +245,7 @@ export function sendsResultToParent(
  * invocation on it: another open agent invocation, an open child agent, or a
  * child agent result that is sent but still waits in its mailbox. A child
  * agent that no Agent invocation names is open as `searchAgents` shows it,
- * and its Turn's unread result or reply also waits.
+ * and its unread result or reply also waits.
  */
 async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
   const conversationId = invocation.childConversationId;
@@ -257,11 +257,14 @@ async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
   ) {
     return true;
   }
+  // Only a child that no Agent invocation names sends a reply that names
+  // its child Conversation. A reply from a child with a row counts as on
+  // `main`.
   const work = await getConversationWorkState({ conversationId });
   if (
     work?.messages.some(
       (message) =>
-        parseTurnReplyMessageId(message.inboundMessageId) !== undefined,
+        parseChildReplyMessageId(message.inboundMessageId) !== undefined,
     )
   ) {
     return true;

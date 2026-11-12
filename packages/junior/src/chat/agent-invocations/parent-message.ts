@@ -65,8 +65,8 @@ export function readParentMessage(
 
 /**
  * Return whether a parent message names the stored parent of the child that
- * received it, with that parent's author id. Another message is logged, and
- * the caller drops it.
+ * received it, with that parent's author id. The caller drops another
+ * message.
  */
 export async function isFromStoredParent(
   message: InboundMessage,
@@ -89,15 +89,22 @@ export async function isFromStoredParent(
             ),
           )
       : [];
-  if (rows.length > 0) {
-    return true;
-  }
+  return rows.length > 0;
+}
+
+/**
+ * Log a parent message that a child dropped: its sender check failed, or a
+ * stop skipped it. Call it once, where the child drops the message.
+ */
+export function logDroppedParentMessage(
+  message: InboundMessage,
+  parentMessage: ParentMessage,
+): void {
   logWarn("agent.parent_message.dropped", {
     "app.conversation_id": message.conversationId,
     "app.inbound_message_id": message.inboundMessageId,
     "app.parent_conversation_id": parentMessage.event.identifier,
   });
-  return false;
 }
 
 /**

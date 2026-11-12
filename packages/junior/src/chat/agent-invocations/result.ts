@@ -45,7 +45,11 @@ import {
   readChildConversationSender,
   routeChildInput,
 } from "./child-input";
-import { parentMessageText, readParentMessage } from "./parent-message";
+import {
+  logDroppedParentMessage,
+  parentMessageText,
+  readParentMessage,
+} from "./parent-message";
 import { createAgentInvocationFromLatest } from "./create";
 import {
   getAgentInvocationIdForEvents,
@@ -667,10 +671,13 @@ async function startAgentInvocationsForChildInput(
     return { status: "completed" };
   }
   for (const [index, message] of messages.entries()) {
+    const parentMessage = readParentMessage(message);
     if (routes[index] === "dropped") {
+      if (parentMessage) {
+        logDroppedParentMessage(message, parentMessage);
+      }
       continue;
     }
-    const parentMessage = readParentMessage(message);
     if (parentMessage) {
       // A parent message to a child with an open Agent invocation queues
       // behind it, as `messageAgent` does with a row.
@@ -794,15 +801,18 @@ export function createChildConversationWorker(
       return { status: "completed" };
     }
     const result = await options.runTurn(context, kept);
-    await reportParentWithoutOpenWork(context.conversationId, options);
+    if (result.status === "completed") {
+      await reportParentWithoutOpenWork(context.conversationId, options);
+    }
     return result;
   };
 }
 
 /**
- * A Turn of a child that no Agent invocation names can end the last open
- * work of its parent, such as a Turn that ends with `noReply`. A `replaced`
- * result of that parent then reports, as when a child row ends.
+ * A completed Turn of a child that no Agent invocation names can end the
+ * last open work of its parent, such as a Turn that ends with `noReply`. A
+ * `replaced` result of that parent then reports, as when a child row ends.
+ * A child with a row reports when its row ends, as on `main`.
  *
  * TODO(dcramer): Remove with the `replaced` result (#3060 step 7).
  */
@@ -810,6 +820,9 @@ async function reportParentWithoutOpenWork(
   conversationId: string,
   options: { queue: ConversationWorkQueue; state?: StateAdapter },
 ): Promise<void> {
+  if (await getLatestAgentInvocationForConversation(conversationId)) {
+    return;
+  }
   const sender = await readChildConversationSender(conversationId);
   const replaced = sender
     ? await reportReplacedWithoutOpenWork(sender.parentConversationId)
@@ -853,6 +866,7 @@ export async function withAgentInvocationResultActors(
           (await routeChildInput(entry.message, latest, stoppedAtMs)) ===
           "dropped"
         ) {
+          logDroppedParentMessage(entry.message, parentMessage);
           return undefined;
         }
         const text = await parentMessageText(entry.message, parentMessage);
