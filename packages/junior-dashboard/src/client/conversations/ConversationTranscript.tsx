@@ -228,14 +228,18 @@ function SegmentEvents(
   return (
     <TranscriptRows>
       {props.conversation.eventHistory.status === "expired" ? (
-        <ExpiredTranscriptView
-          brief={props.conversation.brief}
-          expiredAt={props.conversation.eventHistory.expiredAt}
-        />
+        <>
+          <ExpiredTranscriptView
+            brief={props.conversation.brief}
+            expiredAt={props.conversation.eventHistory.expiredAt}
+          />
+          {props.responding ? <TranscriptThinkingRow /> : null}
+        </>
       ) : props.conversation.eventHistory.status === "available" ? (
         <VisibleTranscriptEntries
           {...placement}
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+          responding={props.responding}
           transcript={props.messages}
           conversation={props.conversation}
           unread={props.unread}
@@ -247,25 +251,33 @@ function SegmentEvents(
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           conversation={props.conversation}
           messages={props.messages}
+          responding={props.responding}
         />
       ) : props.messages.length > 0 ? (
         <VisibleTranscriptEntries
           {...placement}
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+          responding={props.responding}
           transcript={props.messages}
           conversation={props.conversation}
         />
       ) : (
-        <EmptyTelemetry>
-          {unavailableTranscriptLabel(props.conversation)}
-        </EmptyTelemetry>
+        <>
+          <EmptyTelemetry>
+            {unavailableTranscriptLabel(props.conversation)}
+          </EmptyTelemetry>
+          {props.responding ? <TranscriptThinkingRow /> : null}
+        </>
       )}
-      {props.responding ? (
-        <TranscriptRow indent>
-          <TranscriptTypingIndicator />
-        </TranscriptRow>
-      ) : null}
     </TranscriptRows>
+  );
+}
+
+function TranscriptThinkingRow() {
+  return (
+    <TranscriptRow indent>
+      <TranscriptTypingIndicator />
+    </TranscriptRow>
   );
 }
 
@@ -311,6 +323,7 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
       part: TranscriptViewSubagentPart;
       conversation: ConversationTranscript;
     }) => void;
+    responding?: boolean;
     transcript: TranscriptViewMessage[];
     conversation: ConversationTranscript;
     unread?: TranscriptUnreadRange;
@@ -326,6 +339,7 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
       // Open rows and row sizes belong to one Conversation.
       key={props.conversation.conversationId}
       keyPrefix={props.conversation.conversationId}
+      responding={props.responding}
       revealSeq={props.revealSeq}
       scrollAnchorKey={props.scrollAnchorKey}
       unread={props.unread}
@@ -470,6 +484,8 @@ function TranscriptEntryList(
     TranscriptListPlacement & {
       entries: TranscriptEntry[];
       keyPrefix: string;
+      /** A Turn is running, so the list ends with its progress. */
+      responding?: boolean;
       unread?: TranscriptUnreadRange;
     },
 ) {
@@ -651,33 +667,53 @@ function TranscriptEntryList(
     ],
   );
 
+  // The running Turn shows its progress in its trailing activity row. With
+  // no activity yet, the thinking row shows instead.
+  const liveIndex =
+    props.responding && !search.active && rows.at(-1)?.kind === "activity"
+      ? rows.length - 1
+      : undefined;
+  const thinking =
+    props.responding && liveIndex === undefined ? (
+      <TranscriptThinkingRow />
+    ) : null;
+
   if (search.active && rows.length === 0) {
-    return <EmptyTelemetry>No events match your search.</EmptyTelemetry>;
+    return (
+      <>
+        <EmptyTelemetry>No events match your search.</EmptyTelemetry>
+        {thinking}
+      </>
+    );
   }
 
   return (
-    <TranscriptOpenRows value={openRows}>
-      <TranscriptReplyRatings value={replyRatings}>
-        <div
-          className="relative min-w-0"
-          ref={listRef}
-          style={{ height: virtualizer.getTotalSize() }}
-        >
-          {virtualizer.getVirtualItems().map((item) => (
-            <VirtualTranscriptRow
-              current={matchCount > 0 && item.index === match}
-              index={item.index}
-              key={item.key}
-              measure={virtualizer.measureElement}
-              offset={item.start - virtualizer.options.scrollMargin}
-              renderEntry={renderEntry}
-              renderTasks={renderTasks}
-              row={rows[item.index]!}
-            />
-          ))}
-        </div>
-      </TranscriptReplyRatings>
-    </TranscriptOpenRows>
+    <>
+      <TranscriptOpenRows value={openRows}>
+        <TranscriptReplyRatings value={replyRatings}>
+          <div
+            className="relative min-w-0"
+            ref={listRef}
+            style={{ height: virtualizer.getTotalSize() }}
+          >
+            {virtualizer.getVirtualItems().map((item) => (
+              <VirtualTranscriptRow
+                current={matchCount > 0 && item.index === match}
+                index={item.index}
+                key={item.key}
+                live={item.index === liveIndex}
+                measure={virtualizer.measureElement}
+                offset={item.start - virtualizer.options.scrollMargin}
+                renderEntry={renderEntry}
+                renderTasks={renderTasks}
+                row={rows[item.index]!}
+              />
+            ))}
+          </div>
+        </TranscriptReplyRatings>
+      </TranscriptOpenRows>
+      {thinking}
+    </>
   );
 }
 
@@ -697,6 +733,8 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
   /** The current search match. */
   current: boolean;
   index: number;
+  /** The activity row of the running Turn. */
+  live: boolean;
   measure: (element: HTMLElement | null) => void;
   offset: number;
   renderEntry: (entry: TranscriptEntry) => ReactNode;
@@ -720,6 +758,7 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
         <TranscriptRow anchorKey={row.key} indent seq={row.seq}>
           <TranscriptActivityGroup
             entries={row.entries}
+            live={props.live}
             openKey={row.key}
             renderEntry={props.renderEntry}
           />
@@ -745,6 +784,7 @@ function RedactedTranscriptView(
     }) => void;
     conversation: ConversationTranscript;
     messages: TranscriptViewMessage[];
+    responding?: boolean;
   },
 ) {
   return (
@@ -752,6 +792,7 @@ function RedactedTranscriptView(
       entries={groupTranscriptMessages(props.messages)}
       key={props.conversation.conversationId}
       keyPrefix={`${props.conversation.conversationId}:redacted`}
+      responding={props.responding}
       revealSeq={props.revealSeq}
       scrollAnchorKey={props.scrollAnchorKey}
       renderContext={(entry) => (

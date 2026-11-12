@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Wrench } from "lucide-react";
 
 import { ShimmerText } from "../components/ShimmerText";
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
@@ -8,7 +8,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
+import { DisplayText } from "../display-text/DisplayText";
 import { formatMs } from "../format";
+import type { TranscriptViewToolCallPart } from "../types";
 import { isMemoryCaptureEvent } from "./conversationMemory";
 import {
   isAgentInvocationResultMessage,
@@ -19,6 +21,7 @@ import { useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptActivityNesting } from "./TranscriptRailEvent";
 import { useTranscriptRowOpen } from "./TranscriptRows";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
+import { toolCallPreview } from "./toolCallPreview";
 
 function countLabel(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : `${count} ${plural}`;
@@ -178,6 +181,67 @@ export function activityGroupSummary(
   return parts.length > 0 ? parts.join(" · ") : activityGroupLabel(entries);
 }
 
+/**
+ * Pick what a running Turn shows while its activity is closed: the latest
+ * reasoning, and the latest tool call after it. A tool call from before the
+ * latest reasoning is an earlier step, so it does not show.
+ */
+export function liveActivityStep(entries: readonly RenderedTranscriptEntry[]): {
+  reasoning?: string;
+  tool?: TranscriptViewToolCallPart;
+} {
+  let tool: TranscriptViewToolCallPart | undefined;
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]!;
+    if (entry.kind === "tool") {
+      tool ??= entry.part;
+      continue;
+    }
+    if (entry.kind !== "reasoning") continue;
+    const text = entry.part.redacted ? "" : entry.part.text.trim();
+    if (text) return { reasoning: text, tool };
+  }
+  return { tool };
+}
+
+function LiveActivityStep(props: { entries: RenderedTranscriptEntry[] }) {
+  const { reasoning, tool } = liveActivityStep(props.entries);
+  if (!reasoning && !tool) return null;
+  const preview = tool ? toolCallPreview(tool.name, tool.input) : null;
+  return (
+    <div aria-live="polite" className="mt-1.5 grid min-w-0 gap-1.5">
+      {reasoning ? (
+        // A new step replaces the text, so it fades in instead of jumping.
+        <div
+          className="line-clamp-3 text-sm leading-relaxed text-dashboard-text-muted motion-safe:animate-in motion-safe:fade-in-0"
+          key={reasoning}
+        >
+          <DisplayText inline links={false} text={reasoning} />
+        </div>
+      ) : null}
+      {tool ? (
+        <div className="flex min-w-0 items-center gap-1.5 text-xs leading-5 text-dashboard-text-muted">
+          <Wrench
+            aria-hidden="true"
+            className="size-3.5 shrink-0 text-dashboard-text-faint"
+            strokeWidth={2}
+          />
+          <ShimmerText
+            active={tool.status === "running"}
+            as="strong"
+            className="shrink-0 font-semibold"
+          >
+            {tool.name}
+          </ShimmerText>
+          {preview ? (
+            <code className="min-w-0 truncate font-mono">{preview}</code>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function hasLiveActivity(entries: RenderedTranscriptEntry[]): boolean {
   return entries.some(
     (entry) => entry.kind === "tool" && entry.part.status === "running",
@@ -187,6 +251,11 @@ function hasLiveActivity(entries: RenderedTranscriptEntry[]): boolean {
 /** Collapse completed non-message activity so chat messages stay primary. */
 export function TranscriptActivityGroup(props: {
   entries: RenderedTranscriptEntry[];
+  /**
+   * The activity of the running Turn. Closed, it also shows the latest step,
+   * so the reader can follow along without opening it.
+   */
+  live?: boolean;
   /** Keeps the group open while it unmounts outside the viewport. */
   openKey?: string;
   renderEntry: (entry: RenderedTranscriptEntry) => ReactNode;
@@ -199,7 +268,7 @@ export function TranscriptActivityGroup(props: {
   ));
   const label = activityGroupLabel(props.entries);
   const summary = activityGroupSummary(props.entries);
-  const live = hasLiveActivity(props.entries);
+  const live = props.live || hasLiveActivity(props.entries);
 
   if (searchActive) {
     return (
@@ -238,6 +307,9 @@ export function TranscriptActivityGroup(props: {
           <TooltipContent>{summary}</TooltipContent>
         </Tooltip>
       </TranscriptSummaryTrigger>
+      {props.live && !open ? (
+        <LiveActivityStep entries={props.entries} />
+      ) : null}
       {/* Closed rows stay in the page, so browser find can open the group. */}
       <CollapsibleContent hiddenUntilFound>
         <TranscriptActivityNesting.Provider value>

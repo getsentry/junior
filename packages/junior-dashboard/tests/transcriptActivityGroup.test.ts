@@ -4,6 +4,7 @@ import {
   activityGroupLabel,
   activityGroupSummary,
   isCollapsibleActivityEntry,
+  liveActivityStep,
   quietTurnEntryKeys,
 } from "../src/client/conversations/TranscriptActivityGroup";
 import type { RenderedTranscriptEntry } from "../src/client/conversations/transcriptRenderModel";
@@ -198,5 +199,25 @@ describe("transcript activity group", () => {
       "2 tool calls · context compacted",
     );
     expect(activityGroupSummary([compaction()])).toBe("context compacted");
+  });
+
+  it("shows the latest reasoning and only a tool call that came after it", () => {
+    const thought = (key: string, text: string): RenderedTranscriptEntry => ({
+      key,
+      kind: "reasoning",
+      part: { text, type: "reasoning" },
+      timestamp: 1,
+    });
+    const first = thought("r1", "Read the PR.");
+    const second = thought("r2", "Compare the spans.");
+    expect(liveActivityStep([first, tool("1"), second])).toEqual({
+      reasoning: "Compare the spans.",
+      tool: undefined,
+    });
+    expect(
+      liveActivityStep([first, tool("1"), second, tool("2", "running")]).tool
+        ?.id,
+    ).toBe("2");
+    expect(liveActivityStep([tool("1", "running")]).reasoning).toBeUndefined();
   });
 });
