@@ -319,6 +319,40 @@ describe("stopping child agents", () => {
       await sendLateReply();
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
       expect(runner.runs).toHaveLength(0);
+
+      // A person's stop of a child drops its unread reply too.
+      const watcher = await harness.spawn({
+        agentName: "builder",
+        idempotencyKey: "person-stop-loop-reply",
+        input: "watch builds",
+      });
+      await completeAgentInvocation({
+        invocationId: watcher.invocationId,
+        result: "Watching.",
+        status: "completed",
+      });
+      await createDeliverToParent({
+        queue: harness.queue,
+        state: harness.state,
+      })({
+        actor: EVENT_SYSTEM_ACTOR,
+        conversationId: watcher.childConversationId,
+        result: {
+          kind: "reply",
+          reply: { text: "Build finding.", toolCallId: "call-build-reply" },
+        },
+        turnId: "turn_build-event",
+      });
+      await expect(harness.mailbox(parentConversationId)).resolves.toHaveLength(
+        1,
+      );
+      await stopConversation({
+        conversationId: watcher.childConversationId,
+        conversationStore: harness.conversationStore,
+        queue: harness.queue,
+        state: harness.state,
+      });
+      await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
     } finally {
       await harness.close();
     }

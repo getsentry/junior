@@ -110,7 +110,12 @@ export async function stopChildAgentsOf(
     nowMs: stoppedAtMs,
     state,
   });
-  await dropUnreadLoopReplies(tree.conversationIds, stoppedIds, state);
+  await dropUnreadLoopRepliesOfStop(
+    conversationId,
+    tree.conversationIds,
+    stoppedIds,
+    state,
+  );
 }
 
 /**
@@ -139,7 +144,12 @@ export async function stopChildAgentsBelow(
     nowMs: stoppedAtMs,
     state,
   });
-  await dropUnreadLoopReplies(tree.conversationIds, stoppedIds, state);
+  await dropUnreadLoopRepliesOfStop(
+    conversationId,
+    tree.conversationIds,
+    stoppedIds,
+    state,
+  );
 }
 
 /**
@@ -245,6 +255,30 @@ async function dropUnreadLoopReplies(
       await dropPendingMessages({ conversationId, inboundMessageIds, state });
     }
   }
+}
+
+/**
+ * Drop the unread loop replies of a Conversation that a person stopped and
+ * of the child agents below it. The stopped Conversation's own replies wait
+ * in its parent's mailbox, outside the tree.
+ */
+async function dropUnreadLoopRepliesOfStop(
+  conversationId: string,
+  treeIds: readonly string[],
+  stoppedIds: readonly string[],
+  state: StateAdapter | undefined,
+): Promise<void> {
+  // A child agent has one parent, so this finds at most one mailbox.
+  const parents = await getSqlExecutor()
+    .db()
+    .selectDistinct({ id: juniorAgentInvocations.parentConversationId })
+    .from(juniorAgentInvocations)
+    .where(eq(juniorAgentInvocations.childConversationId, conversationId));
+  await dropUnreadLoopReplies(
+    [...parents.map((parent) => parent.id), ...treeIds],
+    [conversationId, ...stoppedIds],
+    state,
+  );
 }
 
 /**
