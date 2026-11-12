@@ -5,13 +5,28 @@ import { ACCOUNT_EMAIL, stubGoogleEnv } from "./fixture";
 
 const DOC_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcd";
 
+const REQUESTER = "alice@example.com";
+
 function docsTools(...responses: Response[]) {
+  return toolsFor(REQUESTER, ...responses);
+}
+
+const SEARCH_DOC = {
+  id: DOC_ID,
+  mimeType: "application/vnd.google-apps.document",
+  modifiedTime: "2026-10-01T10:00:00Z",
+  name: "Q4 plan",
+  owners: [{ emailAddress: "bob@example.com" }],
+  webViewLink: `https://docs.google.com/document/d/${DOC_ID}/edit`,
+};
+
+function toolsFor(email: string | undefined, ...responses: Response[]) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
   const tools = googlePlugin().hooks!.tools!({
     egress: { fetch },
     users: {
-      resolveActor: async () => undefined,
+      resolveActor: async () => (email ? { user: { email } } : undefined),
       resolveTimezone: async () => "America/Los_Angeles",
     },
   } as never);
@@ -44,18 +59,8 @@ describe("Google Docs, Sheets, and Slides tools", () => {
 
   it("finds a Doc, reads it from a shared link, and lists its comments", async () => {
     const { fetch, tools } = docsTools(
-      Response.json({
-        files: [
-          {
-            id: DOC_ID,
-            mimeType: "application/vnd.google-apps.document",
-            modifiedTime: "2026-10-01T10:00:00Z",
-            name: "Q4 plan",
-            webViewLink: `https://docs.google.com/document/d/${DOC_ID}/edit`,
-          },
-        ],
-        nextPageToken: "more",
-      }),
+      Response.json({ files: [SEARCH_DOC], nextPageToken: "more" }),
+      Response.json({ files: [SEARCH_DOC] }),
       Response.json({
         id: DOC_ID,
         mimeType: "application/vnd.google-apps.document",
@@ -95,10 +100,17 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       query: "Bob's plan",
       types: ["document"],
     });
-    const searchUrl = new URL(fetch.mock.calls[0]![0].request.url);
-    expect(searchUrl.pathname).toBe("/drive/v3/files");
-    expect(searchUrl.searchParams.get("q")).toBe(
-      "(mimeType = 'application/vnd.google-apps.document') and trashed = false and fullText contains 'Bob\\'s plan'",
+    const [named, findable] = [0, 1].map(
+      (call) => new URL(fetch.mock.calls[call]![0].request.url),
+    );
+    expect(named!.pathname).toBe("/drive/v3/files");
+    const terms =
+      "(mimeType = 'application/vnd.google-apps.document') and trashed = false and fullText contains 'Bob\\'s plan'";
+    expect(named!.searchParams.get("q")).toBe(
+      `${terms} and ('alice@example.com' in readers or 'alice@example.com' in writers or 'alice@example.com' in owners)`,
+    );
+    expect(findable!.searchParams.get("q")).toBe(
+      `${terms} and (visibility = 'domainCanFind' or visibility = 'anyoneCanFind')`,
     );
     expect(search).toMatchObject({
       files: [{ file_id: DOC_ID, title: "Q4 plan", type: "document" }],
@@ -107,7 +119,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
 
     const link = `https://docs.google.com/document/d/${DOC_ID}/edit?resourcekey=0-key`;
     const doc = await run(tools, "readGoogleDoc", { document: link });
-    const [get, exported] = [fetch.mock.calls[1]![0], fetch.mock.calls[2]![0]];
+    const [get, exported] = [fetch.mock.calls[2]![0], fetch.mock.calls[3]![0]];
     expect(get.operation).toBe("google.drive.file.get");
     expect(exported.operation).toBe("google.drive.file.export");
     expect(new URL(exported.request.url).pathname).toBe(
@@ -129,7 +141,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     const comments = await run(tools, "listGoogleFileComments", {
       file: DOC_ID,
     });
-    expect(fetch.mock.calls.slice(3).map(([call]) => call.operation)).toEqual([
+    expect(fetch.mock.calls.slice(4).map(([call]) => call.operation)).toEqual([
       "google.drive.file.get",
       "google.drive.comments.list",
     ]);
@@ -151,6 +163,60 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       file_id: DOC_ID,
       next_page_token: "page-2",
     });
+  });
+
+  it("searches only with the requester's terms", async () => {
+    const unknown = toolsFor(undefined);
+    await expect(
+      run(unknown.tools, "searchGoogleFiles", { query: "plan" }),
+    ).rejects.toThrow("paste a link");
+    // Without the requester's email, Junior never searches.
+    expect(unknown.fetch).not.toHaveBeenCalled();
+    // Domain-findable files are not findable for someone outside the company.
+    const outside = toolsFor("eve@other.com");
+    await expect(
+      run(outside.tools, "searchGoogleFiles", { query: "plan" }),
+    ).rejects.toBeInstanceOf(PluginToolInputError);
+    expect(outside.fetch).not.toHaveBeenCalled();
+
+    const { fetch, tools } = docsTools(
+      Response.json({ error: { message: "Invalid Value" } }, { status: 400 }),
+      Response.json({ files: [] }),
+    );
+    await expect(
+      run(tools, "searchGoogleFiles", { query: "plan" }),
+    ).rejects.toThrow("Google rejected the search.");
+    // A rejected query is not retried without the requester's terms.
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows only company-owned files in search", async () => {
+    const inSharedDrive = { driveId: "drive", owners: undefined };
+    const { tools } = docsTools(
+      Response.json({
+        files: [{ ...SEARCH_DOC, ...inSharedDrive, id: "named-drive-file" }],
+      }),
+      Response.json({
+        files: [
+          { ...SEARCH_DOC, ...inSharedDrive, id: "findable-drive-file" },
+          {
+            ...SEARCH_DOC,
+            id: "external-file",
+            owners: [{ emailAddress: "eve@other.com" }],
+          },
+          { ...SEARCH_DOC, id: "no-owner-file", owners: undefined },
+          SEARCH_DOC,
+        ],
+      }),
+    );
+    // A shared-drive file shows only when it names the requester. A file
+    // owned outside the allowed domains, or without owner data, never shows.
+    const search = await run(tools, "searchGoogleFiles", { query: "plan" });
+    expect(
+      (search as { files: { file_id: string }[] }).files.map(
+        (file) => file.file_id,
+      ),
+    ).toEqual(["named-drive-file", DOC_ID]);
   });
 
   it("explains a file Junior cannot open, a file of the wrong type, and a grant without Drive access", async () => {

@@ -24,6 +24,14 @@ not use the Google credentials of the people it helps.
    `junior google connect`.
 
 Anyone who can talk to Junior can read what the Junior account can see. Share
-calendars and files with that account only when that is acceptable.
+calendars and files with that account only when that is acceptable. Given a
+link, Junior opens any Doc, Sheet, or Slides file shared with its account.
+Search finds only files that any employee could already find in Drive, and
+files shared with the requester by name. Files shared by link, or only with
+other people or groups, never show up in search. Search also drops every file
+that no account in `GOOGLE_WORKSPACE_ALLOWED_DOMAINS` owns. Shared-drive files
+have no owner, so search shows them only when they are shared with the
+requester by name. Search returns nothing for a requester outside those
+domains.
 
 Plugin setup: https://junior.sentry.dev/extend/
