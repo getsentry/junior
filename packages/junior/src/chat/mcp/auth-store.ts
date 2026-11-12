@@ -445,14 +445,20 @@ export async function getMcpStoredOAuthCredentials(
       await readCredentials(state, credentialsKey(userId, provider)),
     );
     if (current) return current;
+    // Read the legacy key again under the lock, so a move cannot undo an
+    // unlink that deleted it after the read above.
+    const lockedLegacy = parseStoredCredentials(
+      await readCredentials(state, legacyKey),
+    );
+    if (!lockedLegacy) return undefined;
     await fence();
     await createEncryptedState(state).set(
       credentialsKey(userId, provider),
-      legacy,
+      lockedLegacy,
       MCP_AUTH_CREDENTIALS_TTL_MS,
     );
     await state.delete(legacyKey);
-    return legacy;
+    return lockedLegacy;
   });
 }
 
