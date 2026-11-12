@@ -142,7 +142,7 @@ const GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE = {
  * review request.
  */
 const DRAFT_CHECKS_RECOVERED_GUIDANCE =
-  "If the pull request is still a draft, run `gh pr checks NUMBER --repo OWNER/REPO --required`. When every required check passes and no decision is open, in the pull request body or in an open review item that waits on the person who asked for it, mark it ready with github_updatePullRequest and draft false, and report that in the originating thread. When a required check fails, fix it like a failed check. Otherwise stay silent.";
+  "If the pull request is still a draft, call github_getPullRequest and read its `checks`. When `checks.required` is `passing` and no decision is open, in the pull request body or in an open review item that waits on the person who asked for it, mark it ready with github_updatePullRequest and draft false, and report that in the originating thread. When it is `failing`, fix the failing checks like a failed check. When it is `not_reported`, the required checks may not have started on the latest commit yet. It does not mean that none are required. Otherwise stay silent.";
 
 /**
  * Build the Watch created after Junior creates a pull request. Only a draft
