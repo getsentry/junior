@@ -56,5 +56,5 @@ the prototypes.
 6. **Visuals only where they are evidence.** Do not use json-render
    (it was more code and twice the cost). Do not use slides or stories.
 
-The `scratch/walkthrough-why` work (the why format, slice 16) is added on top
-of this branch as its own commit.
+The why-format prototype (slice 16) is not on this branch. It was never
+pushed, and its sandbox was reset. The list above records what it showed.
