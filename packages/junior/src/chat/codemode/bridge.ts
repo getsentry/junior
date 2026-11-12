@@ -149,16 +149,27 @@ function provenanceStatus(call: ScriptCall): ScriptCallStatus | undefined {
   }
 }
 
+/** pi's `tools` proxy throws this when a script reads an undeclared name. */
+const MISSING_TOOL_MESSAGE = /^tools\.\S+ does not exist\./;
+
 function vmErrorKind(result: CodemodeResult): CodeModeErrorKind | undefined {
   if (result.ok) {
     return undefined;
   }
   const { error } = result;
-  return error.kind === "script" &&
+  if (error.kind !== "script") {
+    return error.kind;
+  }
+  if (
     error.name === "InternalError" &&
     error.message.includes("out of memory")
-    ? "memory"
-    : error.kind;
+  ) {
+    return "memory";
+  }
+  if (error.name === "TypeError" && MISSING_TOOL_MESSAGE.test(error.message)) {
+    return "missing_tool";
+  }
+  return "script";
 }
 
 /** The script output as text. The tool pipeline cuts long text for the model. */
@@ -210,6 +221,7 @@ export async function runCodeModeScript(
     peakConcurrentCalls: 0,
     rejectedCallCount: 0,
     batchLimitRejectedCallCount: 0,
+    redirectedCallCount: 0,
     outputBytes: 0,
   };
   let drain: CodemodeHostCall[] = [];
@@ -217,10 +229,17 @@ export async function runCodeModeScript(
   let runningCalls = 0;
   let pauseError: unknown;
 
-  const redirectOf = (host: CodemodeHostCall) =>
-    host.target === "tool" && !Object.hasOwn(run.tools, host.name)
-      ? scriptRedirect(host.name, host.args, run.tools)
-      : undefined;
+  const redirectOf = (host: CodemodeHostCall) => {
+    const redirect =
+      host.target === "tool" && !Object.hasOwn(run.tools, host.name)
+        ? scriptRedirect(host.name, host.args, run.tools)
+        : undefined;
+    // Each call reaches this once: when its drain starts, or at the end.
+    if (redirect) {
+      telemetry.redirectedCallCount += 1;
+    }
+    return redirect;
+  };
 
   const track = (work: Promise<void>) => {
     pending.add(work);

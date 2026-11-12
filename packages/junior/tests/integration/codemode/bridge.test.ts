@@ -266,6 +266,16 @@ describe("Code Mode bridge", () => {
     expect(result.ok).toBe(true);
     expect(result.value).toContain("tools.spawnAgent does not exist.");
     expect(result.calls).toEqual([]);
+
+    const uncaught = await runCodeModeScript({
+      countToolCall: turnCount().countToolCall,
+      pipeline: pipelineFor(fakeGuardian()),
+      source: `await tools.spawnAgent({ task: "Inspect the failing checks." });`,
+      toolCallId: CODEMODE_CALL_ID,
+      tools: scriptTools,
+    });
+
+    expect(uncaught.error?.kind).toBe("missing_tool");
     expect(spawnAgent).not.toHaveBeenCalled();
   });
 
