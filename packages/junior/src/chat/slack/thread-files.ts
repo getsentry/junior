@@ -15,14 +15,15 @@ import type { JuniorSqlDatabase } from "@/db/db";
 // Stored attachment ids are lowercase hex, so this never matches one.
 const SLACK_FILE_ID_PATTERN = /^F[A-Z0-9]+$/;
 
-/** Private file URLs get the bot token, so send it only to Slack hosts. */
+/**
+ * Private file URLs get the bot token, so send it only to Slack's file host.
+ * Other Slack hosts, such as the Web API, must not get it from a URL that a
+ * message attachment can set.
+ */
 function isSlackFileUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    return (
-      url.protocol === "https:" &&
-      (url.hostname === "slack.com" || url.hostname.endsWith(".slack.com"))
-    );
+    return url.protocol === "https:" && url.hostname === "files.slack.com";
   } catch {
     return false;
   }

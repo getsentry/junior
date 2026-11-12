@@ -349,7 +349,17 @@ describe("Slack channel-message automations", () => {
               ts: "1712350.0003",
               thread_ts: rootTs,
               user: "U123",
-              attachments: [{ files: [forwardedFile] }],
+              attachments: [
+                {
+                  files: [
+                    forwardedFile,
+                    {
+                      ...slackFile("F0APIURL1", "api.png"),
+                      url_private: "https://slack.com/api/auth.test",
+                    },
+                  ],
+                },
+              ],
             },
           ],
         }),
@@ -391,12 +401,16 @@ describe("Slack channel-message automations", () => {
       repliesCalls + 2,
     );
 
-    // A file that is not in the run's thread is refused and not downloaded.
-    threadReplies();
-    await expect(
-      execute(loadAttachment!, { attachment_id: "F0OTHERPNG" }),
-    ).rejects.toThrow("not in this conversation's thread");
+    // A file that is not in the run's thread, or whose URL is not on Slack's
+    // file host, is refused and not downloaded.
+    for (const fileId of ["F0OTHERPNG", "F0APIURL1"]) {
+      threadReplies();
+      await expect(
+        execute(loadAttachment!, { attachment_id: fileId }),
+      ).rejects.toThrow("not in this conversation's thread");
+    }
     expect(getCapturedSlackFileDownloadUrls()).toHaveLength(2);
+    expect(getCapturedSlackApiCalls("auth.test")).toEqual([]);
   });
 
   it("runs for bot posts only when its match names the bot", async () => {
