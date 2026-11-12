@@ -7,7 +7,7 @@ import {
 } from "../schema/object-link";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
-import { resolveObjectLinks } from "./resolve";
+import { OBJECT_LINK_TTL_MS, resolveObjectLinks } from "./resolve";
 
 /** Create the viewer-scoped route that resolves links to object cards. */
 export function createObjectRoutes(): Hono<JuniorApiEnv> {
@@ -25,8 +25,15 @@ export function createObjectRoutes(): Hono<JuniorApiEnv> {
             context.req.valid("query").url,
           ),
         },
-        // Each card holds only what this viewer may read.
-        { headers: { "cache-control": "private, no-store" } },
+        // Each card holds only what this viewer may read. Only this browser
+        // keeps it, as long as the server cache does, and not for a session
+        // of another viewer.
+        {
+          headers: {
+            "cache-control": `private, max-age=${OBJECT_LINK_TTL_MS / 1000}`,
+            vary: "Authorization, Cookie",
+          },
+        },
       ),
   );
   return app;
