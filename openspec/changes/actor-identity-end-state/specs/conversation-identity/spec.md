@@ -195,8 +195,8 @@ label the Message and feed the trust check.
 ### Requirement: Trusted Event Authors
 
 An event author SHALL be trusted when Junior verifies their linked account on
-an allowed domain, with the same check that Identity dispatch and Watch
-requester instructions use. An event author SHALL also be trusted when the
+an allowed domain, with the same check that Identity dispatch and Slack
+ingress use. An event author SHALL also be trusted when the
 plugin's `trustedAuthors` list has their login. Every other author SHALL be
 untrusted. An unknown sender SHALL NOT be trusted.
 

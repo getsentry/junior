@@ -150,6 +150,13 @@ export interface GitHubPluginOptions {
   privateKeyEnv?: string;
   /** App-configured pull request event behavior. */
   pullRequestEvents?: GitHubPullRequestEventOptions;
+  /**
+   * GitHub logins whose comments and reviews Junior trusts without a linked
+   * account, such as review bots like `cursor[bot]`. Logins compare without
+   * case. GitHub can give a deleted account's login to a new account, so list
+   * only logins that cannot be reused, such as GitHub App bots.
+   */
+  trustedAuthors?: readonly string[];
 }
 
 /** Register GitHub runtime hooks for repository workflows. */
@@ -385,6 +392,9 @@ export function githubPlugin(
             annotations: ctx.annotations,
             appIdEnv,
             botEmail: () => readEnv(botEmailEnv),
+            ...(options.trustedAuthors
+              ? { trustedAuthors: options.trustedAuthors }
+              : undefined),
             classifyPullRequestCommits: async (pullRequest) =>
               await classifyGitHubPullRequestCommitComposition({
                 botEmail: requireEnv(botEmailEnv),

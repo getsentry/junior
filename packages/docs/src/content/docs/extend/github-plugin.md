@@ -186,6 +186,19 @@ When the base of a new pull request is the head branch of another open pull requ
 </details>
 
 <details class="plugin-config">
+<summary><code>trustedAuthors</code></summary>
+
+GitHub logins that Junior trusts as comment and review authors without a linked account, such as review bots. Junior runs comments, reviews, and issue updates only from trusted authors, so a bot that is not on this list does not start work. Logins compare without case.
+
+GitHub can give the login of a deleted account to a new account. That new account then passes as a trusted author. List only logins that cannot be reused in this way, such as GitHub App bots (`cursor[bot]`, `sentry[bot]`). For people, link their GitHub account instead.
+
+- **Define:** `githubPlugin({ trustedAuthors: ["cursor[bot]", "sentry[bot]"] })` in `plugins.ts`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+<details class="plugin-config">
 <summary><code>experimental</code></summary>
 
 Turns on GitHub plugin behavior that is still being tested.
@@ -437,7 +450,7 @@ trusted data.
 <details class="event">
 <summary><code>issue.comment.created</code></summary>
 
-A comment was added. Trusted data includes `senderId`, the numeric GitHub user id of the commenter, and `senderLogin`. When `GITHUB_APP_BOT_EMAIL` is set, `mentionsBot` is `true` if the comment mentions the App, such as `@your-app`. Mentions in quoted lines and code do not count. GitHub sends mentions only as comment text, so `mentionsBot` shows that the comment addresses the App. It does not show who is trusted. Issue, pull request, and repository watches and event automations can match these keys. To let only some people start work, match `senderId` with a list of ids. Do not match `senderLogin` for this, because a GitHub login can be renamed and then used by another account. Edited comments do not publish this event. The comment text stays untrusted content.
+A comment was added. Trusted data includes `senderId`, the numeric GitHub user id of the commenter, and `senderLogin`. When `GITHUB_APP_BOT_EMAIL` is set, `mentionsBot` is `true` if the comment mentions the App, such as `@your-app`. Mentions in quoted lines, in code, and after an HTML `<blockquote>` do not count. GitHub sends mentions only as comment text, so `mentionsBot` shows that the comment addresses the App. It does not show who is trusted. Issue, pull request, and repository watches and event automations can match these keys. To let only some people start work, match `senderId` with a list of ids. Do not match `senderLogin` for this, because a GitHub login can be renamed and then used by another account. Edited comments do not publish this event. The comment text stays untrusted content.
 
 </details>
 
@@ -474,7 +487,9 @@ The title or body was edited, or a label, assignee, or milestone was added or re
 One pull request: `owner/repo#number`. Every pull request event has `repo` and
 `pull_request` in trusted data.
 
-Comment and review text is untrusted, with one exception. A person asks Junior in Slack for work, and Junior creates a watch for it. When that person writes a comment or review on the pull request, Junior treats their own text as a message from them, with the same limits as a Slack message. Quoted lines are not their own text. Junior matches the numeric GitHub user id of a linked account, never the login. Text from other people stays untrusted.
+Comments, reviews, and issue updates have an author. Junior runs them only for a trusted author: a person whose linked GitHub account maps to a current Slack member on the allowed domains, or a login in the `trustedAuthors` option. Junior matches the numeric GitHub user id of a linked account, never the login. It drops events from every other author before they reach a watch or an event automation. Other events, such as checks and deployments, have no author and run as before.
+
+The own text of a trusted author counts as a message from them, with the same limits as a Slack message. Quoted lines are not their own text. All other comment and review text stays untrusted content.
 
 <details class="event">
 <summary><code>pull_request.checks.failed</code></summary>

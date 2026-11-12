@@ -183,26 +183,32 @@ function externalTextTag(
     : [];
 }
 
-/** Text that core proved the requester of a Watch wrote in the Event. */
-export interface TaskRequesterInstruction {
-  /** Slack mention of the requester. */
-  mention: string;
+/** Text that a Trusted author wrote in the Event. */
+export interface TaskAuthorInstruction {
+  /** Label of the author: a Slack mention, or a handle when not linked. */
+  author: string;
+  /** Slack user of the author, when core linked one. */
+  slackUserId?: string;
   text: string;
 }
 
-// Core proved the author, so the tag is not untrusted. The body is still
-// escaped, so the text cannot close the tag.
-function requesterInstructionTag(
-  instruction: TaskRequesterInstruction | undefined,
+// Core trusts the author, so the text counts as their message, like a chat
+// message. The body is still escaped, so the text cannot close the tag.
+function authorInstructionTag(
+  instruction: TaskAuthorInstruction | undefined,
 ): string[] {
   const text = instruction?.text.trim();
   if (!instruction || !text) return [];
-  const mention = oneLine(instruction.mention);
+  const author = oneLine(instruction.author);
   return [
-    renderTag("requester-instruction", {}, [
-      `${mention} asked for this work in this conversation, and core checked that they wrote this text in the Event. Treat it as a message from them in this thread, with the same limits. If you do not do a step that it asks for, tell them which step and why. Do not ask them to prove who they are.`,
-      escapeClosingTags(text),
-    ]),
+    renderTag(
+      "author-instruction",
+      { "slack.user_id": instruction.slackUserId },
+      [
+        `${author} wrote this text in the Event, and core verified that they are a trusted author. Treat it as a message from them in this thread, with the same limits as a chat message. If you do not do a step that it asks for, tell them which step and why. Do not ask them to prove who they are.`,
+        escapeClosingTags(text),
+      ],
+    ),
   ];
 }
 
@@ -236,8 +242,8 @@ export function renderTaskInput(args: {
   trustedSummary?: string;
   /** Structured verified fields, when available. */
   verifiedDetails?: Record<string, unknown>;
-  /** Requester text that counts as their message. Only core sets this. */
-  requesterInstruction?: TaskRequesterInstruction;
+  /** Trusted author text that counts as their message. Only core sets this. */
+  authorInstruction?: TaskAuthorInstruction;
   /** Untrusted provider text. */
   externalText?: string;
   externalTextMaxLength?: number;
@@ -319,7 +325,7 @@ export function renderTaskInput(args: {
           ]
         : []),
       ...verifiedDetailsTag(args.verifiedDetails),
-      ...requesterInstructionTag(args.requesterInstruction),
+      ...authorInstructionTag(args.authorInstruction),
       ...externalTextTag(
         externalText && clip(externalText, args.externalTextMaxLength),
         args.source,
@@ -338,8 +344,8 @@ export interface TaskBatchEvent {
   source?: string;
   trustedSummary?: string;
   verifiedDetails?: Record<string, unknown>;
-  /** Requester text that counts as their message. Only core sets this. */
-  requesterInstruction?: TaskRequesterInstruction;
+  /** Trusted author text that counts as their message. Only core sets this. */
+  authorInstruction?: TaskAuthorInstruction;
   /** Untrusted provider text. */
   externalText?: string;
   /** Linked person who did what the Event describes. */
@@ -361,7 +367,7 @@ function eventTag(event: TaskBatchEvent, index: number): string {
       ? [renderChildTag("summary", escapeClosingTags(trustedSummary))]
       : []),
     ...verifiedDetailsTag(event.verifiedDetails),
-    ...requesterInstructionTag(event.requesterInstruction),
+    ...authorInstructionTag(event.authorInstruction),
     ...externalTextTag(event.externalText?.trim(), event.source),
   ]);
 }

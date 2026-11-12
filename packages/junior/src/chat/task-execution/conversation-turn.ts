@@ -105,16 +105,12 @@ import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
   eventBatchMessageMeta,
-  eventRequesterInstructions,
   isEventMailboxMetadata,
   renderEventBatchInputs,
+  savedEventBatchMeta,
   timerWatchCredentialSubject,
 } from "@/chat/events/notification";
 import { isEventConversationMessage } from "@/chat/events/actor";
-import {
-  parseRequesterInstructions,
-  type RequesterInstruction,
-} from "@/chat/events/requester";
 import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { CredentialSubject } from "@/chat/credentials/context";
@@ -253,7 +249,6 @@ export function createConversationTurnWorker(
     let eventMeta: ReturnType<typeof eventBatchMessageMeta> = {};
     let authorIdentityId: string | undefined;
     let webInputMessages: ConversationMessage[] = [];
-    let requesterInstructions: RequesterInstruction[] = [];
 
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
@@ -285,7 +280,6 @@ export function createConversationTurnWorker(
           await eventReviewItemInputs(messages),
         ).map((text) => ({ kind: "runtime", text }));
         eventMeta = eventBatchMessageMeta(messages);
-        requesterInstructions = eventRequesterInstructions(messages);
       } else {
         inputs = await webTurnInputs(messages.map((message) => message.input));
         webInputMessages = resolved.batch.map((entry) =>
@@ -325,9 +319,7 @@ export function createConversationTurnWorker(
         );
       }
       savedMessageIsEvent = isEventConversationMessage(userMessage);
-      requesterInstructions = savedMessageIsEvent
-        ? parseRequesterInstructions(userMessage.meta?.requesterInstructions)
-        : [];
+      eventMeta = savedEventBatchMeta(userMessage);
       // Resume has no new input. Restore Source and Actor from the Turn.
       // TODO(dcramer): Remove the saved Message fallback after no deployed Turn
       // cursor can omit Source or Actor.
@@ -535,9 +527,6 @@ export function createConversationTurnWorker(
                 explicitMention: true,
                 replied: false,
                 ...eventMeta,
-                ...(requesterInstructions.length > 0
-                  ? { requesterInstructions }
-                  : undefined),
               },
             });
           }
@@ -685,9 +674,7 @@ export function createConversationTurnWorker(
                 actor,
                 credentialSubject,
               ),
-              ...(requesterInstructions.length > 0
-                ? { requesterInstructions }
-                : undefined),
+              authorInstructions: eventMeta.authorInstructions,
               // TODO(dcramer): Remove AgentRun.destination after agent and tool
               // code reads AgentRun.location and no Run consumer needs it.
               destination,

@@ -79,11 +79,12 @@ export interface RootConversation {
 }
 
 /**
- * Text that core proved the requester of a Watch wrote in the Event that
- * started this Turn. Guardian treats it as that person's message.
+ * Text that a Trusted author wrote in an Event of this Turn. Guardian treats
+ * it as a message from that author.
  */
-export interface RequesterInstructionProposal {
-  actor: { platform: "slack"; teamId: string; userId: string };
+export interface AuthorInstructionProposal {
+  /** One-line author label from `authorInstructionLabel`. */
+  author: string;
   text: string;
 }
 
@@ -133,8 +134,8 @@ export interface ToolActionProposal {
   evidence?: ToolActionEvidence;
   input: Record<string, unknown>;
   priorRejectedActions?: ToolActionPriorRejection[];
-  /** Requester instructions of an Event Turn. Only core sets them. */
-  requesterInstructions?: RequesterInstructionProposal[];
+  /** Author instructions of an Event Turn. Only core sets them. */
+  authorInstructions?: AuthorInstructionProposal[];
   /** The root Conversation, with each message labeled by its real author. */
   rootConversation?: RootConversation;
   /** Set when a Code Mode script made the call. */

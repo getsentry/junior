@@ -38,10 +38,14 @@ import {
   slackChannelMessageReplyThreadTs,
   slackChannelMessageRunsAutomation,
 } from "@/chat/slack/channel-message-events";
-import { logWarn } from "@/chat/logging";
+import { logInfo, logWarn } from "@/chat/logging";
 import { captureMessage } from "@/chat/sentry";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import {
+  requireEventAuthorTrust,
+  type EventAuthorTrust,
+} from "@/chat/events/author";
 import { eventGuidance, type EventCatalog } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 
@@ -93,6 +97,11 @@ function eventInput(
 export async function ingestEventAutomations(
   input: unknown,
   options: {
+    /**
+     * Trust decision for the Event author (`eventAuthorTrustOnce`). An
+     * authored Event without it starts no run.
+     */
+    authorTrust?: () => Promise<EventAuthorTrust>;
     nowMs?: number;
     queue: ConversationWorkQueue;
     teamId: string;
@@ -111,6 +120,18 @@ export async function ingestEventAutomations(
   const tasks = matches.filter((task) =>
     slackChannelMessageRunsAutomation(event, task),
   );
+  if (tasks.length === 0) return { dispatched: 0 };
+  // The author's text stays external text here: an Automation run carries
+  // no author instruction to action review yet.
+  const trust = await requireEventAuthorTrust(event, options.authorTrust);
+  if (trust.status === "untrusted") {
+    logInfo("event_automation.author.untrusted", {
+      "app.event.event_type": event.eventType,
+      "app.event.namespace": event.namespace,
+      "app.event.author.reason": trust.reason,
+    });
+    return { dispatched: 0 };
+  }
   let dispatched = 0;
   const errors: unknown[] = [];
   for (const task of tasks) {

@@ -11,6 +11,7 @@ import {
   type TaskBatchEvent,
 } from "@/chat/task-input";
 import type {
+  ConversationMessage,
   ConversationMessageEvent,
   ConversationMessageMeta,
 } from "@/chat/state/conversation";
@@ -23,13 +24,17 @@ import {
 import type { Watch } from "@/chat/events/store";
 import { eventGuidance } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
-import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
+import {
+  EVENT_AUTHOR_ID,
+  isEventConversationMessage,
+} from "@/chat/events/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import {
-  requesterInstructionSchema,
-  type RequesterInstruction,
-} from "@/chat/events/requester";
-import { slackMention } from "@/chat/slack/mrkdwn";
+  authorInstructionLabel,
+  authorInstructionSchema,
+  parseAuthorInstructions,
+  type AuthorInstruction,
+} from "@/chat/events/author";
 import {
   credentialSubjectSchema,
   type CredentialSubject,
@@ -62,8 +67,12 @@ const eventTaskFactsSchema = z.object({
   doneBy: z
     .object({ mention: z.string(), handle: z.string().optional() })
     .optional(),
-  requesterInstruction: z
-    .object({ mention: z.string(), text: z.string() })
+  authorInstruction: z
+    .object({
+      author: z.string(),
+      slackUserId: z.string().optional(),
+      text: z.string(),
+    })
     .optional(),
 });
 
@@ -86,8 +95,8 @@ export function eventTaskFacts(
   people: readonly string[] = [],
   /** Resolved person who did what the Event describes. */
   doneBy?: EventDoneBy,
-  /** Text that core proved the requester of this Watch wrote. */
-  requesterInstruction?: RequesterInstruction,
+  /** Text that a Trusted author wrote in this Event. */
+  authorInstruction?: AuthorInstruction,
 ): EventTaskFacts {
   // Plugin guidance for the event applies to every Watch. Watch guidance comes from
   // the tool that created this Watch and applies only here.
@@ -104,11 +113,14 @@ export function eventTaskFacts(
     ...(people.length > 0 ? { people: [...people] } : undefined),
     trustedSummary: event.trustedSummary,
     ...(event.data ? { verifiedDetails: event.data } : undefined),
-    ...(requesterInstruction
+    ...(authorInstruction
       ? {
-          requesterInstruction: {
-            mention: slackMention(requesterInstruction.actor.userId),
-            text: requesterInstruction.text,
+          authorInstruction: {
+            author: authorInstructionLabel(authorInstruction),
+            ...(authorInstruction.actor
+              ? { slackUserId: authorInstruction.actor.userId }
+              : undefined),
+            text: authorInstruction.text,
           },
         }
       : undefined),
@@ -135,8 +147,8 @@ export type EventMailboxMetadata = {
   };
   /** Signed timer creator subject. Verified before the Turn uses it. */
   credentialSubject?: CredentialSubject;
-  /** Text that core proved the requester of the Watch wrote. */
-  requesterInstruction?: RequesterInstruction;
+  /** Text that a Trusted author wrote in the Event. */
+  authorInstruction?: AuthorInstruction;
   /**
    * Watch task facts. A batch of several Events uses them to write one
    * message. Input without them keeps its own text.
@@ -206,20 +218,17 @@ export function timerWatchCredentialSubject(
   return shared;
 }
 
-/**
- * Return the requester instructions of an Event batch, in batch order. Only
- * core writes Event mailbox input, so these values come from ingestion.
- */
-export function eventRequesterInstructions(
+// Only core writes Event mailbox input, so these values come from ingestion.
+function eventAuthorInstructions(
   messages: readonly InboundMessage[],
-): RequesterInstruction[] {
+): AuthorInstruction[] {
   return messages.flatMap((message) => {
     const metadata = message.input.metadata;
     if (message.source !== "event" || !isEventMailboxMetadata(metadata)) {
       return [];
     }
-    const parsed = requesterInstructionSchema.safeParse(
-      metadata.requesterInstruction,
+    const parsed = authorInstructionSchema.safeParse(
+      metadata.authorInstruction,
     );
     return parsed.success ? [parsed.data] : [];
   });
@@ -292,7 +301,7 @@ export function renderEventBatchInputs(
       source: metadata.event.namespace,
       trustedSummary: facts.trustedSummary,
       verifiedDetails: facts.verifiedDetails,
-      requesterInstruction: facts.requesterInstruction,
+      authorInstruction: facts.authorInstruction,
       externalText: facts.externalText,
       doneBy: facts.doneBy,
     });
@@ -344,6 +353,7 @@ export function eventBatchMessageMeta(
   messages: readonly InboundMessage[],
 ): Pick<
   ConversationMessageMeta,
+  | "authorInstructions"
   | "eventNamespace"
   | "eventObjectType"
   | "eventType"
@@ -359,6 +369,7 @@ export function eventBatchMessageMeta(
   const primary = watched[0] ?? own[0];
   const metadata = (primary ?? messages[0])?.input.metadata;
   if (!isEventMailboxMetadata(metadata)) return {};
+  const authorInstructions = eventAuthorInstructions(messages);
   const events =
     watched.length > 1
       ? watched.flatMap(messageEvent)
@@ -374,13 +385,27 @@ export function eventBatchMessageMeta(
       : undefined),
     ...(events.length ? { events } : undefined),
     ...(reviewItemChanges.length ? { reviewItemChanges } : undefined),
+    ...(authorInstructions.length ? { authorInstructions } : undefined),
   };
+}
+
+/**
+ * Return the author instructions that a resumed Event Turn saved on its
+ * Message. Other Messages give none, so a resume never gains authority.
+ */
+export function savedEventBatchMeta(
+  message: ConversationMessage,
+): Pick<ConversationMessageMeta, "authorInstructions"> {
+  const authorInstructions = isEventConversationMessage(message)
+    ? parseAuthorInstructions(message.meta?.authorInstructions)
+    : [];
+  return authorInstructions.length ? { authorInstructions } : {};
 }
 
 /** Build plain conversation mailbox input for one matched watch. */
 export function createEventInboundMessage(input: {
+  authorInstruction?: AuthorInstruction;
   event: EventNotification;
-  requesterInstruction?: RequesterInstruction;
   subscription: Pick<Watch, "conversationId" | "credentialSubject" | "id">;
   text: string;
   /** Facts behind `text`, used when several Events share one message. */
@@ -393,8 +418,8 @@ export function createEventInboundMessage(input: {
     ...(input.subscription.credentialSubject
       ? { credentialSubject: input.subscription.credentialSubject }
       : undefined),
-    ...(input.requesterInstruction
-      ? { requesterInstruction: input.requesterInstruction }
+    ...(input.authorInstruction
+      ? { authorInstruction: input.authorInstruction }
       : undefined),
     event: {
       eventKey: input.event.eventKey,
@@ -431,14 +456,14 @@ export function createEventInboundMessage(input: {
  * user Turn, later wakes stay quiet until a user message clears the pause.
  */
 export async function enqueueEventNotification(args: {
+  /** Text that a Trusted author wrote in the Event. */
+  authorInstruction?: AuthorInstruction;
   /** Resolved person who did what the Event describes. */
   doneBy?: EventDoneBy;
   event: EventNotification;
   /** Mentions resolved from the Event people. */
   people?: readonly string[];
   queue: ConversationWorkQueue;
-  /** Text that core proved the requester of this Watch wrote. */
-  requesterInstruction?: RequesterInstruction;
   subscription: Watch;
   state?: Parameters<typeof appendAndEnqueueInboundMessage>[0]["state"];
 }): Promise<AppendAndEnqueueInboundMessageResult> {
@@ -475,12 +500,12 @@ export async function enqueueEventNotification(args: {
     args.event,
     args.people,
     args.doneBy,
-    args.requesterInstruction,
+    args.authorInstruction,
   );
   return await appendAndEnqueueInboundMessage({
     message: createEventInboundMessage({
+      authorInstruction: args.authorInstruction,
       event: args.event,
-      requesterInstruction: args.requesterInstruction,
       subscription: {
         conversationId: args.subscription.conversationId,
         credentialSubject: args.subscription.credentialSubject,

@@ -185,6 +185,26 @@ Finish #2482.
   - where Junior drops untrusted authored events, so that none joins a batch
     or a Turn.
   - the exact Bugbot and Sentry logins, from real event senders.
+- **Trust part, built with #2217 and #2260:**
+  - one core decision, `decideAuthorTrust` in `chat/identities/trust.ts`, for
+    Slack ingress, Identity dispatch, and event authors.
+  - a plugin reports one `author` on an Event: `handle`, `subjectId`, `bot`,
+    `trusted`, and `text`. Its provider is always the Event namespace. The
+    GitHub plugin derives it in `gitHubEventAuthor` and reads own text with
+    one parser, `ownCommentText`.
+  - Junior decides trust once per published Event, in the app publisher.
+    Watch delivery and Event automations drop an untrusted authored Event
+    before it reaches a mailbox or a dispatch.
+  - trusted text reaches the model in `<author-instruction>` and Guardian in
+    `author_instructions`. A linked author's label is their Slack mention.
+    Another author's label is the handle, the provider, and "(a bot)" for a
+    bot.
+  - the Bugbot and Sentry logins are `cursor[bot]` (id 206951365) and
+    `sentry[bot]` (id 39604003).
+  - still open: real Message author Identities (web, mock, bot, event), the
+    batch Message author, and author text as an instruction in Event
+    automation runs. Those runs drop untrusted authors, and keep the text of
+    trusted authors as external text.
 
 ## 5. Dry Run
 

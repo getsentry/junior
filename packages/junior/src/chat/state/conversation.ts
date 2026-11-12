@@ -2,7 +2,7 @@ import type { ObjectType } from "@sentry/junior-plugin-api";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import type { MessageCard, MessageCardRef } from "@/chat/conversations/cards";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
-import type { RequesterInstruction } from "@/chat/events/requester";
+import type { AuthorInstruction } from "@/chat/events/author";
 import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 
 type ConversationRole = "assistant" | "system" | "user";
@@ -47,10 +47,10 @@ export interface ConversationMessageMeta {
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
   /**
-   * Text that core proved the requester of a Watch wrote, saved on the
-   * Message that started an Event Turn so a resumed Run can use it.
+   * Text that Trusted authors wrote, saved on the Message that started an
+   * Event Turn so a resumed Run can use it.
    */
-  requesterInstructions?: RequesterInstruction[];
+  authorInstructions?: AuthorInstruction[];
   imageAttachmentCount?: number;
   imageFileIds?: string[];
   imagesHydrated?: boolean;

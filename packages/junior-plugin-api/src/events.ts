@@ -613,21 +613,41 @@ export const eventPersonSchema = z.union([
 export type EventPerson = z.output<typeof eventPersonSchema>;
 
 /**
- * The person who did what an Event describes. A provider identity may also
- * carry `subjectId`, the account id that the provider never changes or gives
- * to another account, such as the numeric GitHub user id. Only `subjectId`
- * can show that the doer is a linked user. Handles can be renamed and reused.
+ * The account that wrote the content of an Event, such as a commenter or a
+ * reviewer. It is always an account of the publishing plugin's provider.
+ * Core decides from it whether the author is a Trusted author. An Event with
+ * no author is a system Event.
  */
-const eventDoerSchema = z.union([
-  z
-    .object({
-      provider: z.string().min(1),
-      handle: z.string().min(1),
-      subjectId: z.string().min(1).optional(),
-    })
-    .strict(),
-  z.object({ email: z.string().trim().min(3) }).strict(),
-]);
+export const eventAuthorSchema = z
+  .object({
+    /** Display handle, such as a login. It never proves who the author is. */
+    handle: z.string().min(1),
+    /**
+     * The account id that the provider never changes or gives to another
+     * account, such as the numeric GitHub user id. Set it only when the
+     * provider authenticated that this account wrote the content. Core
+     * matches it to an account that the OAuth account-linking flow linked.
+     */
+    subjectId: z.string().min(1).optional(),
+    /** The account is a bot, not a person. */
+    bot: z.boolean().optional(),
+    /**
+     * The plugin's trusted authors list names this account. Core trusts the
+     * author without a linked account. Core never reads the list itself.
+     */
+    trusted: z.boolean().optional(),
+    /**
+     * The author's own text, without what they quote. When core trusts the
+     * author, this text counts as a message from them.
+     */
+    text: z
+      .string()
+      .transform((value) => value.slice(0, EVENT_TEXT_MAX_LENGTH))
+      .optional(),
+  })
+  .strict();
+
+export type EventAuthor = z.output<typeof eventAuthorSchema>;
 
 export const eventInputSchema = z
   .object({
@@ -655,21 +675,10 @@ export const eventInputSchema = z
     /** People involved in the change. Watch Events list them as mentions. */
     people: z.array(eventPersonSchema).max(20).optional(),
     /**
-     * The person who did what the Event describes, such as a reviewer or a
-     * commenter. Core resolves them like `people`, so the agent knows when a
-     * mention and a provider name are the same person.
+     * The account that wrote the content. Core drops an Event whose author it
+     * does not trust before any Turn sees it.
      */
-    doneBy: eventDoerSchema.optional(),
-    /**
-     * Text that `doneBy` wrote, such as a comment body without the lines that
-     * quote other text. It stays untrusted. Core can treat it as the doer's
-     * instruction only when it proves, from `doneBy.subjectId`, that the doer
-     * is the user who created the Watch.
-     */
-    doneByText: z
-      .string()
-      .transform((value) => value.slice(0, EVENT_TEXT_MAX_LENGTH))
-      .optional(),
+    author: eventAuthorSchema.optional(),
   })
   .strict();
 

@@ -72,9 +72,14 @@ Canonical words for Junior code and docs. One concept, one word.
   key) from core or a plugin. It can wake a Conversation.
 - **Watch**: a temporary link that delivers matching Events to a Conversation.
   Not an Automation.
-- **Requester instruction**: Event text that core proved the requester of a
-  Watch wrote, through their linked provider account. It counts as their
-  message for one Event Turn.
+- **Event author**: the account that wrote the content of an Event, such as
+  a commenter. An Event with no author is a system Event. The author never
+  becomes the Turn Actor.
+- **Trusted author**: an author whose words Junior accepts as their
+  instruction. Core decides it once, in `decideAuthorTrust`, for Slack
+  members, plugin accounts, and verified emails. Core drops an Event from an
+  untrusted author before it joins a batch. A Trusted author's own Event text
+  counts as their message, like a chat message.
 - **Stopped Conversation**: a Conversation with `stopped_at` set. Its Watch
   Events are saved as skipped Messages and start no Turn. A stop marks the
   Conversation and its child agents. A run that sees its stop late also stops

@@ -1,6 +1,6 @@
 import { and, eq, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import type { EventPerson } from "@sentry/junior-plugin-api";
+import type { EventAuthor, EventPerson } from "@sentry/junior-plugin-api";
 import { getSqlExecutor } from "@/chat/db";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { slackMention } from "@/chat/slack/mrkdwn";
@@ -35,24 +35,32 @@ function personCondition(person: EventPerson) {
 export interface EventMentions {
   /** Mentions of the Event people, in input order, with no duplicates. */
   people: string[];
-  /** The person who did what the Event describes, when they resolve. */
+  /** The Event author, when they resolve. */
   doneBy?: EventDoneBy;
 }
 
 /**
- * Resolve the Event people and the Event doer to Slack mentions through
+ * Resolve the Event people and the Event author to Slack mentions through
  * linked user identities in one Slack workspace, with one query.
  *
  * A person resolves only when exactly one linked Slack user in that workspace
  * matches. Core drops unlinked and ambiguous people, so a provider value never
- * guesses a mention.
+ * guesses a mention. A mention is wording only. It never makes an author
+ * trusted.
  */
 export async function resolveEventMentions(
-  event: { doneBy?: EventPerson; people?: readonly EventPerson[] },
+  event: {
+    author?: EventAuthor;
+    namespace: string;
+    people?: readonly EventPerson[];
+  },
   slackTeamId: string,
 ): Promise<EventMentions> {
   const people = event.people ?? [];
-  const lookup = event.doneBy ? [...people, event.doneBy] : people;
+  const author: EventPerson | undefined = event.author
+    ? { provider: event.namespace, handle: event.author.handle }
+    : undefined;
+  const lookup = author ? [...people, author] : people;
   if (lookup.length === 0) return { people: [] };
 
   const rows = await getSqlExecutor()
@@ -105,15 +113,10 @@ export async function resolveEventMentions(
     const mention = mentionOf(person);
     if (mention && !mentions.includes(mention)) mentions.push(mention);
   }
-  const doneByMention = event.doneBy ? mentionOf(event.doneBy) : undefined;
-  if (!doneByMention || !event.doneBy) return { people: mentions };
+  const authorMention = author ? mentionOf(author) : undefined;
+  if (!authorMention || !author) return { people: mentions };
   return {
     people: mentions,
-    doneBy: {
-      mention: doneByMention,
-      ...("handle" in event.doneBy
-        ? { handle: event.doneBy.handle }
-        : undefined),
-    },
+    doneBy: { mention: authorMention, handle: author.handle },
   };
 }

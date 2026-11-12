@@ -183,23 +183,31 @@ describe("tool action review", () => {
     expect(JSON.stringify(proposal)).not.toContain("must-not-reach-guardian");
   });
 
-  it("sends requester instructions to Guardian only for an Event Source", async () => {
+  it("sends author instructions to Guardian only for an Event Source", async () => {
     const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
       decision: "allow",
-      reason: "The requester asked for it.",
+      reason: "The trusted author asked for it.",
       riskLevel: "low",
       userAuthorization: "high",
     }));
     const tool = definition({ approvalMode: "review" });
-    const requesterInstructions = [
+    const authorInstructions = [
       {
         actor: {
-          email: "requester@example.com",
+          email: "author@example.com",
           platform: "slack" as const,
           teamId: "T123",
           userId: "U123",
         },
+        handle: "dcramer",
+        provider: "github",
         text: "File the follow-up issue.",
+      },
+      {
+        bot: true as const,
+        handle: "cursor[bot]",
+        provider: "github",
+        text: "Possible race.",
       },
     ];
     const eventSource = {
@@ -216,19 +224,16 @@ describe("tool action review", () => {
         "createIssue",
         tool,
         { repo: "getsentry/other" },
-        reviewContext({ review }, { requesterInstructions, source }),
+        reviewContext({ review }, { authorInstructions, source }),
       );
     }
 
-    expect(review.mock.calls[0]![0].requesterInstructions).toEqual([
-      {
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        text: "File the follow-up issue.",
-      },
+    // Guardian gets only the one-line author label, not the profile email.
+    expect(review.mock.calls[0]![0].authorInstructions).toEqual([
+      { author: "<@U123>", text: "File the follow-up issue." },
+      { author: "cursor[bot] on github (a bot)", text: "Possible race." },
     ]);
-    expect(review.mock.calls[1]![0]).not.toHaveProperty(
-      "requesterInstructions",
-    );
+    expect(review.mock.calls[1]![0]).not.toHaveProperty("authorInstructions");
   });
 
   it("reviews auto actions when tool annotations are missing", async () => {

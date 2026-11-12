@@ -11,6 +11,10 @@ import {
 } from "@sentry/junior-plugin-api";
 import type { Actor } from "@/chat/actor";
 import type { CredentialContext } from "@/chat/credentials/context";
+import {
+  authorInstructionLabel,
+  type AuthorInstruction,
+} from "@/chat/events/author";
 import type {
   AnyToolDefinition,
   ToolApprovalResolution,
@@ -24,7 +28,6 @@ import {
   projectToolActionRejection,
 } from "@/chat/guardian/history";
 import type {
-  RequesterInstructionProposal,
   RootConversation,
   ScriptCallStatus,
   ToolActionDecision,
@@ -44,10 +47,10 @@ export interface ToolActionReviewContext {
   credentialContext?: CredentialContext;
   destination: Destination;
   /**
-   * Text in this Event Turn's input that core proved the requester of the
-   * Watch wrote. Core sends it only for an Event Source.
+   * Text in this Event Turn's input that Trusted authors wrote. Core sends
+   * it only for an Event Source.
    */
-  requesterInstructions?: readonly RequesterInstructionProposal[];
+  authorInstructions?: readonly AuthorInstruction[];
   source: Source;
   userIntent?: () => string;
   evidence?: () => ToolActionEvidence;
@@ -308,16 +311,12 @@ function buildProposal(
   script: ToolAction["script"],
 ): ToolActionProposal {
   const credential = actionCredential(context.credentialContext);
-  // Only an Event Turn has a requester. Other Sources have the person's own
-  // messages as user intent.
-  const requesterInstructions =
+  // Only an Event Turn has author instructions. Other Sources have the
+  // person's own messages as user intent.
+  const authorInstructions =
     context.source.kind === "event"
-      ? (context.requesterInstructions ?? []).map((instruction) => ({
-          actor: {
-            platform: "slack" as const,
-            teamId: instruction.actor.teamId,
-            userId: instruction.actor.userId,
-          },
+      ? (context.authorInstructions ?? []).map((instruction) => ({
+          author: authorInstructionLabel(instruction),
           text: instruction.text,
         }))
       : [];
@@ -339,9 +338,7 @@ function buildProposal(
           })),
         }
       : undefined),
-    ...(requesterInstructions.length > 0
-      ? { requesterInstructions }
-      : undefined),
+    ...(authorInstructions.length > 0 ? { authorInstructions } : undefined),
     ...(rootConversation ? { rootConversation } : undefined),
     ...(script ? { script: boundedScript(script) } : undefined),
     tool: proposalTool(toolName, tool, input, resolved),

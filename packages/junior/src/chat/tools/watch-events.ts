@@ -10,7 +10,7 @@ import {
   requireValidEventTrigger,
   type EventCatalog,
 } from "@/chat/events/catalog";
-import { createWatch, watchRequester } from "@/chat/events/store";
+import { createWatch } from "@/chat/events/store";
 import {
   RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
   RESOURCE_SUBSCRIPTION_MAX_TTL_MS,
@@ -158,7 +158,6 @@ export function createWatchEventsTool(
           ...input,
           resourceType: input.resource_type,
         }),
-        requester: watchRequester(context),
         resourceType: input.resource_type.trim(),
       });
       const details = {

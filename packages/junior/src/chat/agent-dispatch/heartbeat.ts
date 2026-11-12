@@ -5,7 +5,6 @@ import {
   getPlugins,
   type AppEventPublisher,
 } from "@/chat/plugins/agent-hooks";
-import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
@@ -199,13 +198,10 @@ export async function runHeartbeat(args: {
   conversationWorkQueue?: ConversationWorkQueue;
   dispatchForIdentity: IdentityDispatcher;
   /** The app's event publisher. */
-  events?: AppEventPublisher;
+  events: AppEventPublisher;
   nowMs: number;
 }): Promise<void> {
   const queue = args.conversationWorkQueue ?? getVercelConversationWorkQueue();
-  const events =
-    args.events ??
-    createEventAppPublisher({ conversationWork: () => ({ queue }) });
   // Runs before result recovery, so an invocation that this ends is sent to
   // its parent in the same heartbeat.
   await recoverConversationWork({
@@ -247,7 +243,7 @@ export async function runHeartbeat(args: {
   await runPluginHeartbeats({
     conversationWorkQueue: queue,
     dispatchForIdentity: args.dispatchForIdentity,
-    events,
+    events: args.events,
     nowMs: args.nowMs,
   });
   try {

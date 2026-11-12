@@ -28,7 +28,7 @@ import {
 } from "@/chat/db";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRun } from "@/chat/agent/types";
-import type { RequesterInstruction } from "@/chat/events/requester";
+import type { AuthorInstruction } from "@/chat/events/author";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import {
@@ -271,11 +271,13 @@ export async function createConversationWebHarness(
   };
 }
 
-/** A requester instruction that core proved for one Event. */
-export const eventRequesterInstruction = {
+/** Text that a Trusted author wrote in one Event, as core saves it. */
+export const eventAuthorInstruction = {
   actor: { platform: "slack", teamId: "T123", userId: "U123" },
+  handle: "dcramer",
+  provider: "github",
   text: "Please also retry the flaky job.",
-} as const satisfies RequesterInstruction;
+} as const satisfies AuthorInstruction;
 
 /** Return the texts of Messages that saved Events for a stopped Conversation. */
 export async function stoppedConversationMessageTexts(

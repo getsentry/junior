@@ -546,6 +546,21 @@ const result = await ctx.agent.dispatchForIdentity({
 });
 ```
 
+When a person or bot wrote an Event, such as a comment, set `author` on it.
+Your plugin reports facts, and Junior decides trust:
+
+- `handle`: the provider login, for labels only.
+- `subjectId`: the provider account id, only when the provider authenticated
+  that account as the author.
+- `bot`: the author is a bot account.
+- `trusted`: your plugin config lists the author, such as a review bot.
+- `text`: the author's own words, without quoted text.
+
+Junior trusts the author with the same check as `dispatchForIdentity`, or when
+`trusted` is set. It drops an Event from any other author before the Event
+reaches a watch or an event automation. Leave `author` out when no person
+wrote the Event, such as a check result.
+
 ## Validate
 
 Run validation before deploy:
