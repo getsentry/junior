@@ -42,7 +42,14 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
     (candidate) => candidate.actor.email === email.toLowerCase(),
   );
   if (!person) return [];
-  const object = personObjectCard({ person: person.actor, url: href });
+  const object = personObjectCard({
+    // One mock person has a linked GitHub account, to show the handle.
+    ...(person.actor.email === "dev@example.com"
+      ? { githubHandle: "dev-example" }
+      : undefined),
+    person: person.actor,
+    url: href,
+  });
   return [{ object: { ...object, plugin: "junior" }, url: href }];
 }
 

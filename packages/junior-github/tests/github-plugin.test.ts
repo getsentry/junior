@@ -2489,9 +2489,11 @@ Conversation: \`local:test:old-conversation\`
         },
         { toolCallId: "call-invalid-pr-base" },
       ),
-    ).rejects.toThrow(
-      "GitHub pull request creation failed with HTTP 422: Validation Failed: resource=PullRequest field=base code=invalid",
-    );
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message:
+        "GitHub pull request creation failed with HTTP 422: Validation Failed: resource=PullRequest field=base code=invalid",
+    });
 
     await expect(
       tool?.execute?.(

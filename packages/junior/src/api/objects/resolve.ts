@@ -22,8 +22,8 @@ import {
 } from "./link-types";
 import { resolvePersonLink } from "./person";
 
-// A card is a short-lived read. A changed object shows within this time.
-const OBJECT_LINK_TTL_MS = 60_000;
+/** A card is a short-lived read. A changed object shows within this time. */
+export const OBJECT_LINK_TTL_MS = 60_000;
 
 function coreLinkTypes(): ObjectLinkType[] {
   const conversations = getDashboardLinkFilter("/conversations/*");

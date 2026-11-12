@@ -97,7 +97,16 @@ export function ObjectCard({
                   {field.label}
                 </dt>
                 <dd className="m-0 mt-1 break-words text-sm text-dashboard-text">
-                  {field.value}
+                  {field.href ? (
+                    <OutboundLink
+                      href={field.href}
+                      className="hover:underline focus-visible:outline-dashboard-focus"
+                    >
+                      {field.value}
+                    </OutboundLink>
+                  ) : (
+                    field.value
+                  )}
                 </dd>
               </div>
             ))}
