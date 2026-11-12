@@ -68,13 +68,11 @@ function sourceHint(
   const wanted = normalize(remainder);
   const id = normalize(source);
   // Plugin tools carry the source as a name prefix (`agentBrowser_`).
-  const exact = tools.filter((tool) => {
+  const forms = (tool: string) => {
     const full = normalize(tool);
-    return (
-      full === wanted ||
-      (full.startsWith(id) && full.slice(id.length) === wanted)
-    );
-  });
+    return full.startsWith(id) ? [full, full.slice(id.length)] : [full];
+  };
+  const exact = tools.filter((tool) => forms(tool).includes(wanted));
   if (exact.length > 0) {
     return { suggestions: exact.slice(0, MAX_SUGGESTIONS) };
   }
@@ -90,6 +88,22 @@ function sourceHint(
   if (byWords.length > 0) {
     return { suggestions: byWords.slice(0, MAX_SUGGESTIONS) };
   }
+  // Only this source's tools are candidates, so an edit cannot cross into
+  // another source.
+  const allowed = editBudget(wanted);
+  const byEdits = tools
+    .map((tool) => ({
+      tool,
+      distance: Math.min(
+        ...forms(tool).map((form) => editDistance(wanted, form)),
+      ),
+    }))
+    .filter(({ distance }) => distance <= allowed)
+    .sort((left, right) => left.distance - right.distance)
+    .map(({ tool }) => tool);
+  if (byEdits.length > 0) {
+    return { suggestions: byEdits.slice(0, MAX_SUGGESTIONS) };
+  }
   return { source, tools };
 }
 
@@ -102,6 +116,11 @@ function nameForms(name: string, sourceIds: readonly string[]): string[] {
       .filter((id) => base.length > id.length && base.startsWith(id))
       .map((id) => base.slice(id.length)),
   ];
+}
+
+/** Most edits a match may need: about a third of the name, at least one. */
+function editBudget(name: string): number {
+  return Math.max(1, Math.floor(name.length / 3));
 }
 
 /** Edit distance where swapping two neighbors costs one edit. */
@@ -131,10 +150,11 @@ function editDistance(a: string, b: string): number {
  *
  * A name whose first `.` or `_` part is a source id, such as `agents.stop`,
  * matches only tools of that source: an exact match on the rest, then the
- * tools whose words start with its words in order, else a list of the
- * source's tools. Other names match ignoring case, `.`, `_`, `-`, and a
- * source id prefix on either name, then by full names within about a third
- * of the name's length in edits. A match returns up to three names.
+ * tools whose words start with its words in order, then the tools within
+ * about a third of its length in edits, else a list of the source's tools.
+ * Other names match ignoring case, `.`, `_`, `-`, and a source id prefix on
+ * either name, then by full names within about a third of the name's
+ * length in edits. A match returns up to three names.
  */
 export function findToolNameHint(
   name: string,
@@ -167,7 +187,7 @@ export function findToolNameHint(
     return { suggestions: [] };
   }
 
-  const allowed = Math.max(1, Math.floor(wanted.length / 3));
+  const allowed = editBudget(wanted);
   const ranked = Object.keys(tools).flatMap((candidate) => {
     const [full, ...withoutSource] = nameForms(candidate, sourceIds);
     // A source id stripped from one side must leave an exact match. With

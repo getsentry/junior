@@ -52,6 +52,9 @@ describe("findToolNameHint", () => {
     ["agents_spawn", "spawnAgent"],
     ["slack.canvasCreate", "slackCanvasCreate"],
     ["agentBrowser_snap", "agentBrowser_snapshot"],
+    // Edits within the source.
+    ["github_createPullReqest", "github_createPullRequest"],
+    ["agents.stopAgnet", "stopAgent"],
     // Edits on the full name.
     ["stopAgnet", "stopAgent"],
     ["serachAgents", "searchAgents"],
