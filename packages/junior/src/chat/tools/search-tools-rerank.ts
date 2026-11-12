@@ -4,8 +4,9 @@
 // - `app.tool_search.rerank.ran`: the model reranked the word match.
 // - `app.tool_search.rerank.candidate.count`: candidates sent to the model.
 // - `app.tool_search.rerank.outcome`: `picked`, `none`, or `fallback`.
-//   `fallback` means a timeout or a transient provider failure. The result is
-//   the word match, and `tool_search.rerank.failed` is logged.
+//   `fallback` means a timeout, a transient provider failure, or only names
+//   that are not candidates. The result is the word match, and
+//   `tool_search.rerank.failed` is logged.
 // - `app.tool_search.rerank_ms`: time of the rerank model call.
 // An empty query lists tools and sets no rerank attributes.
 // Policy: policies/observability.md.
@@ -68,7 +69,8 @@ export function renderRerankPrompt(
 /**
  * Ask the fast model which candidates fit the query. Returns up to three
  * candidate names, best first, or none. Returns undefined after an expected
- * transient model failure, so the caller keeps the word match.
+ * transient model failure or an answer with no candidate name, so the caller
+ * keeps the word match.
  */
 export async function rerankSearchCandidates(args: {
   query: string;
@@ -120,6 +122,15 @@ export async function rerankSearchCandidates(args: {
   const picked = [...new Set(names)]
     .filter((name) => candidateNames.has(name))
     .slice(0, MAX_PICKED_TOOLS);
+  // Names that are all wrong are a bad answer, not a choice of none.
+  if (names.length > 0 && picked.length === 0) {
+    telemetry("fallback");
+    logWarn("tool_search.rerank.failed", {
+      "error.type": "unknown_tool_names",
+      "app.tool_search.rerank.candidate.count": args.candidates.length,
+    });
+    return undefined;
+  }
   telemetry(picked.length > 0 ? "picked" : "none");
   return picked;
 }
