@@ -22,6 +22,7 @@ import {
   formatRelativeMessageTimestamp,
   formatRuntime,
   formatTime,
+  formatTranscriptMessageTime,
   formatTranscriptTimestampDetails,
   formatTranscriptDuration,
   formatUsageTotal,
@@ -163,6 +164,20 @@ describe("dashboard conversation formatting", () => {
     expect(formatRelativeMessageTimestamp(NOW_MS - 86_400_000)).toBe(
       "yesterday",
     );
+  });
+
+  it("formats message times with the date only when they are not from today", () => {
+    vi.stubEnv("TZ", "America/Los_Angeles");
+    const now = Date.parse("2026-08-10T20:00:00.000Z");
+    expect(
+      formatTranscriptMessageTime(Date.parse("2026-08-10T16:05:09.000Z"), now),
+    ).toBe("9:05 AM");
+    expect(
+      formatTranscriptMessageTime(Date.parse("2026-08-07T16:05:09.000Z"), now),
+    ).toBe("Aug 7, 9:05 AM");
+    expect(
+      formatTranscriptMessageTime(Date.parse("2025-12-30T17:05:09.000Z"), now),
+    ).toBe("Dec 30, 2025, 9:05 AM");
   });
 
   it("formats canonical transcript timestamp details in local time and UTC", () => {

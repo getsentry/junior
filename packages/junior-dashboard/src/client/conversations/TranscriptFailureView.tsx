@@ -5,12 +5,12 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
-import { formatMessageTimestamp } from "../format";
 import {
   transcriptFailureDescription,
   transcriptFailureTitle,
 } from "./transcriptFailure";
 import { OutboundLink } from "../components/OutboundLink";
+import { TranscriptTimestamp } from "./TranscriptTimestamp";
 
 /** Render a terminal transcript failure as a distinct alert surface. */
 export function TranscriptFailureView(props: {
@@ -20,17 +20,21 @@ export function TranscriptFailureView(props: {
   sentryEventUrl?: string;
   timestamp?: number;
 }) {
-  const timestamp = formatMessageTimestamp(props.timestamp);
-  const eventReference = props.eventId ? (
+  const eventLabel = props.eventId ? `event_id=${props.eventId}` : undefined;
+  // A narrow screen truncates the id, so the outbound icon stays on its line.
+  const eventReference = eventLabel ? (
     props.sentryEventUrl ? (
       <OutboundLink
-        className="font-mono text-rose-100/80 underline decoration-rose-100/30 underline-offset-2 transition-colors hover:text-rose-50 hover:decoration-rose-100/70"
+        className="flex min-w-0 items-baseline font-mono text-rose-100/80 underline decoration-rose-100/30 underline-offset-2 transition-colors hover:text-rose-50 hover:decoration-rose-100/70"
         href={props.sentryEventUrl}
+        title={eventLabel}
       >
-        {`event_id=${props.eventId}`}
+        <span className="truncate">{eventLabel}</span>
       </OutboundLink>
     ) : (
-      <span className="font-mono text-rose-100/80">{`event_id=${props.eventId}`}</span>
+      <span className="truncate font-mono text-rose-100/80" title={eventLabel}>
+        {eventLabel}
+      </span>
     )
   ) : null;
 
@@ -51,16 +55,17 @@ export function TranscriptFailureView(props: {
           {transcriptFailureDescription(props.failureCode, props.failureReason)}
         </AlertDescription>
         {eventReference ? (
-          <div className="mt-2 text-xs leading-relaxed text-rose-100/65">
-            Reference: {eventReference}
+          <div className="mt-2 flex min-w-0 items-baseline gap-1 text-xs leading-relaxed text-rose-100/65">
+            <span className="shrink-0">Reference:</span>
+            {eventReference}
           </div>
         ) : null}
       </div>
-      {timestamp ? (
-        <span className="font-mono text-xs leading-none text-rose-100/55 max-md:col-start-2">
-          {timestamp}
+      {props.timestamp === undefined ? null : (
+        <span className="text-xs leading-5 text-rose-100/55 max-md:col-start-2">
+          <TranscriptTimestamp value={props.timestamp} />
         </span>
-      ) : null}
+      )}
     </Alert>
   );
 }
