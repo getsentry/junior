@@ -99,12 +99,7 @@ test("each entry lists its own rows under its name", async ({
   await expect(
     page.getByRole("heading", { level: 1, name: "Pull requests" }),
   ).toBeVisible();
-  await expect(sections).toHaveText([
-    /^Waiting on you/,
-    /^Idle/,
-    /^Open/,
-    /^Other/,
-  ]);
+  await expect(sections).toHaveText([/^Waiting on you/, /^Waiting on others/]);
   await expect(
     nav.getByRole("link", { name: /^Pull requests/ }),
   ).toHaveAttribute("aria-current", "page");
@@ -370,7 +365,7 @@ test("the asks and Done load their next pages at the end of the list", async ({
   // Each PR is on its own page; the list loads the next as its end shows.
   await expect(
     page.locator("section[aria-label] section[aria-label]"),
-  ).toHaveText([/^Waiting on you/, /^Other/]);
+  ).toHaveText([/^Waiting on you/, /^Waiting on others/]);
   await expect(page.getByText("Loading more…")).toHaveCount(0);
 
   await page
@@ -386,7 +381,7 @@ test("the asks and Done load their next pages at the end of the list", async ({
   expect(cursors).toEqual(expect.arrayContaining(["1", "2"]));
 });
 
-test("Pull requests lists your open changes, the one waiting on you first", async ({
+test("Pull requests sorts your open changes into Waiting on you and Waiting on others", async ({
   dashboard,
   page,
 }) => {
@@ -406,7 +401,7 @@ test("Pull requests lists your open changes, the one waiting on you first", asyn
   await page.goto(`${dashboard.baseURL}/?view=prs`);
   await expect(
     page.locator("section[aria-label] section[aria-label]"),
-  ).toHaveText([/^Waiting on you/, /^Idle/, /^Open/]);
+  ).toHaveText([/^Waiting on you/, /^Waiting on others/]);
   const waiting = page
     .getByRole("region", { name: "Waiting on you" })
     .getByRole("listitem", { name: "Pin the release train" });
@@ -417,16 +412,13 @@ test("Pull requests lists your open changes, the one waiting on you first", asyn
   await expect(
     waiting.getByRole("link", { name: new RegExp(prReview.title) }),
   ).toBeVisible();
+  // The rest wait on a reviewer, CI or Junior: newest activity first, so
+  // the idle one comes last.
   await expect(
     page
-      .getByRole("region", { name: "Idle" })
-      .getByRole("link", { name: "Drop the legacy webhook" }),
-  ).toBeVisible();
-  await expect(
-    page
-      .getByRole("region", { name: "Open" })
-      .getByRole("link", { name: "Tune the retry backoff" }),
-  ).toBeVisible();
+      .getByRole("region", { name: "Waiting on others" })
+      .getByRole("listitem"),
+  ).toHaveText([/Tune the retry backoff/, /Drop the legacy webhook/]);
   await expect(page.getByText("Rename the payments queue")).toHaveCount(0);
 
   // The ask keeps its actions: Done closes it.
@@ -491,7 +483,7 @@ test("a failed next page waits for Try again", async ({ dashboard, page }) => {
   // The retried page loads, and the pages after it load on their own.
   await expect(
     page.locator("section[aria-label] section[aria-label]"),
-  ).toHaveText([/^Waiting on you/, /^Other/]);
+  ).toHaveText([/^Waiting on you/, /^Waiting on others/]);
   await expect(retry).toHaveCount(0);
 });
 

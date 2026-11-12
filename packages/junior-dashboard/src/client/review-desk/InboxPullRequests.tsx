@@ -4,11 +4,7 @@ import type { ReactNode } from "react";
 
 import { useActorCodeData, useDashboardCoreData } from "../api";
 import { SidebarAnnotationIcon } from "../conversations/ConversationMeta";
-import {
-  IdleText,
-  isIdleChange,
-  lastActivity,
-} from "../conversations/codeChangeIdle";
+import { IdleText, lastActivity } from "../conversations/codeChangeIdle";
 import { cn } from "../styles";
 import { inboxCardClass } from "./inboxRowStyles";
 import type { InboxBundle } from "./reviewItemFormat";
@@ -38,16 +34,16 @@ const waitedSince = (row: PullRequestChangeRow) =>
   );
 
 /**
- * Group the viewer's open code changes with the pull request asks. A change
- * with an ask that waits on the viewer comes first, longest wait first; then
- * idle changes, longest idle first; then the rest, newest activity first.
- * An ask whose pull request is not an open change of the viewer's still
- * shows, so nothing gets lost. Empty groups drop out.
+ * Sort the viewer's open code changes and the pull request asks into two
+ * piles. Waiting on you: changes with an ask that waits on the viewer,
+ * longest wait first, and such asks that name no open change of theirs.
+ * Waiting on others: every other open change, waiting on a reviewer, CI or
+ * Junior, newest activity first, and the other asks, so nothing gets lost.
+ * Empty piles drop out.
  */
 export function pullRequestSections(
   changes: readonly CodeChangeSummaryReport[],
   itemRows: readonly InboxBundle[],
-  nowMs: number,
 ): PullRequestSection[] {
   const rows = changes
     .filter((change) => change.state === "open")
@@ -68,14 +64,8 @@ export function pullRequestSections(
   const waiting = rows
     .filter((row) => row.items.some((item) => item.needsYou))
     .sort((a, b) => waitedSince(a) - waitedSince(b));
-  const rest = rows.filter((row) => !waiting.includes(row));
-  const idle = rest
-    .filter((row) => isIdleChange(nowMs, row.change))
-    .sort((a, b) =>
-      lastActivity(a.change).localeCompare(lastActivity(b.change)),
-    );
-  const moving = rest
-    .filter((row) => !idle.includes(row))
+  const others = rows
+    .filter((row) => !waiting.includes(row))
     .sort((a, b) =>
       lastActivity(b.change).localeCompare(lastActivity(a.change)),
     );
@@ -86,13 +76,11 @@ export function pullRequestSections(
       key: "pr-waiting",
       label: "Waiting on you",
     },
-    { changes: idle, items: [], key: "pr-idle", label: "Idle" },
-    { changes: moving, items: [], key: "pr-open", label: "Open" },
     {
-      changes: [],
+      changes: others,
       items: loose.filter((row) => !row.needsYou),
-      key: "pr-other",
-      label: "Other",
+      key: "pr-others",
+      label: "Waiting on others",
     },
   ].filter((section) => section.changes.length + section.items.length > 0);
 }
@@ -116,7 +104,7 @@ export function usePullRequestSections(
   return {
     loading: enabled && Boolean(email) && code.isPending,
     nowMs,
-    sections: pullRequestSections(changes, itemRows, nowMs),
+    sections: pullRequestSections(changes, itemRows),
   };
 }
 
