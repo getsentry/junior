@@ -20,6 +20,11 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     changedFiles: count.optional(),
     additions: count.optional(),
     deletions: count.optional(),
+    /** A public image from the description that the dashboard can show. */
+    previewImageUrl: z
+      .url({ protocol: /^https?$/ })
+      .max(2048)
+      .optional(),
   }),
   // Tasks: ownership and priority first; planning context comes next.
   z.strictObject({

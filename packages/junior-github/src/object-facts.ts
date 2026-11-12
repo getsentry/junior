@@ -23,7 +23,8 @@ const short = (value: string | undefined) => {
   return text ? (text.length > 64 ? `${text.slice(0, 63)}…` : text) : undefined;
 };
 
-function description(body: string | null | undefined): string | undefined {
+/** Remove Junior's footers and HTML comments from a GitHub body. */
+function visibleBody(body: string | null | undefined): string {
   let text = (body ?? "").replace(
     /<!-- junior-(session-footer|request-attribution):start -->[\s\S]*?<!-- junior-\1:end -->/g,
     "",
@@ -32,9 +33,56 @@ function description(body: string | null | undefined): string | undefined {
   while (text.includes("<!--")) {
     text = text.replace(/<!--[\s\S]*?(?:-->|$)/g, "");
   }
-  text = text.trim();
+  return text.trim();
+}
+
+function description(body: string | null | undefined): string | undefined {
+  const text = visibleBody(body);
   if (!text) return undefined;
   return text.length > 4000 ? `${text.slice(0, 3999)}…` : text;
+}
+
+const IMAGE_PATTERN =
+  /!\[[^\]]*\]\(\s*<?([^\s)>]+)|<img\b[^>]*?\ssrc\s*=\s*["']?([^"'\s>]+)/gi;
+
+/**
+ * Keep only images that the dashboard can load without GitHub auth. GitHub
+ * attachment URLs (`github.com/user-attachments/...` and
+ * `private-user-images.githubusercontent.com`) need auth on private
+ * repositories, so only Junior's own public artifacts, under the configured
+ * `JUNIOR_BASE_URL`, qualify.
+ */
+function publicArtifactUrl(value: string): string | undefined {
+  const baseUrl = process.env.JUNIOR_BASE_URL?.trim().replace(/\/+$/, "");
+  if (!baseUrl) return undefined;
+  let url: URL;
+  let prefix: URL;
+  try {
+    url = new URL(value);
+    prefix = new URL(`${baseUrl}/public/artifacts/`);
+  } catch {
+    return undefined;
+  }
+  return (url.protocol === "https:" || url.protocol === "http:") &&
+    url.origin === prefix.origin &&
+    url.pathname.length > prefix.pathname.length &&
+    url.pathname.startsWith(prefix.pathname) &&
+    !url.username &&
+    !url.password &&
+    url.href.length <= 2048
+    ? url.href
+    : undefined;
+}
+
+/** Return the first public image in a pull request body, for card previews. */
+export function githubPreviewImageUrl(
+  body: string | null | undefined,
+): string | undefined {
+  for (const match of visibleBody(body).matchAll(IMAGE_PATTERN)) {
+    const url = publicArtifactUrl(match[1] ?? match[2] ?? "");
+    if (url) return url;
+  }
+  return undefined;
 }
 
 /** Select card facts from GitHub REST responses; never infer reviews or checks. */
@@ -64,6 +112,7 @@ export function githubObjectFacts(
             changedFiles: data.changed_files,
             additions: data.additions,
             deletions: data.deletions,
+            previewImageUrl: githubPreviewImageUrl(data.body),
           }
         : {
             type,

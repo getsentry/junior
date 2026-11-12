@@ -272,6 +272,19 @@ export async function listGitHubAssignedWork(
   return conversationIdsForPullRequests(rows, conversationIds);
 }
 
+/** Return the conversations linked to one Junior-owned pull request. */
+export async function readGitHubPullRequestConversationIds(
+  db: GitHubDb,
+  pullRequestId: string,
+): Promise<string[]> {
+  const [row] = await db
+    .select({ conversationIds: juniorGitHubPullRequests.conversationIds })
+    .from(juniorGitHubPullRequests)
+    .where(eq(juniorGitHubPullRequests.pullRequestId, pullRequestId))
+    .limit(1);
+  return row?.conversationIds ?? [];
+}
+
 /** Append native conversation ids to an existing Junior-owned PR projection. */
 export async function recordGitHubPullRequestConversations(
   db: GitHubDb,
