@@ -99,7 +99,11 @@ describe("dashboard live preview", () => {
     expect(html).toContain(`${liveOrigin}/settings/api-tokens?preview=`);
     expect(html).toContain("?name=Live+preview+on+preview");
     expect(stale.status).toBe(200);
+    expect(stale.headers.get("set-cookie")).toContain(
+      "junior_live_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+    );
     expect(accepted.status).toBe(302);
+    expect(accepted.headers.get("set-cookie")).toBeNull();
     expect(accepted.headers.get("location")).toBe("http://preview/");
   });
 
@@ -196,5 +200,22 @@ describe("dashboard live preview", () => {
     );
 
     expect(response.status).toBe(403);
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+  });
+
+  it("goes back to demo data on request", async () => {
+    const app = dashboard();
+
+    const live = await app.fetch(
+      new Request("http://preview/", { headers: withToken(TOKEN) }),
+    );
+    const demo = await app.fetch(
+      new Request("http://preview/?demo", { headers: withToken(TOKEN) }),
+    );
+
+    expect(await live.text()).toContain('href="/?demo"');
+    expect(demo.status).toBe(302);
+    expect(demo.headers.get("location")).toBe("/");
+    expect(demo.headers.get("set-cookie")).toContain("Max-Age=0");
   });
 });
