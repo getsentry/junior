@@ -1,5 +1,5 @@
 import { renderBlockText } from "@/chat/slack/message/blocks";
-import type { SlackFileRef } from "@/chat/slack/channel";
+import type { SlackFileRef, SlackThreadReply } from "@/chat/slack/channel";
 
 const MAX_ATTACHMENTS = 10;
 const MAX_FIELDS_PER_ATTACHMENT = 20;
@@ -52,6 +52,24 @@ export function extractAttachmentFiles(input: unknown): SlackFileRef[] {
     }
   }
 
+  return files;
+}
+
+/**
+ * Combine top-level `files` with files nested inside `attachments`
+ * (forwarded/shared messages carry their files there), deduped by id.
+ */
+export function collectMessageFiles(msg: SlackThreadReply): SlackFileRef[] {
+  const seen = new Set<string>();
+  const files: SlackFileRef[] = [];
+  for (const file of [
+    ...(msg.files ?? []),
+    ...extractAttachmentFiles(msg.attachments),
+  ]) {
+    if (!file.id || seen.has(file.id)) continue;
+    seen.add(file.id);
+    files.push(file);
+  }
   return files;
 }
 

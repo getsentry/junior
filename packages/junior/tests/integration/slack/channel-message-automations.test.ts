@@ -11,6 +11,9 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createWatchEventsTool } from "@/chat/tools/watch-events";
+import { createTools, type ToolRuntimeContext } from "@/chat/tools";
+import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { juniorAutomations } from "@/db/schema/automations";
 import { context, execute } from "../../fixtures/event-automations";
 import {
@@ -27,10 +30,16 @@ import {
   createConfiguredJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../../fixtures/sql";
-import { botsInfoOk, usersInfoOk } from "../../fixtures/slack/factories/api";
+import {
+  botsInfoOk,
+  conversationsRepliesPage,
+  usersInfoOk,
+} from "../../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
+  getCapturedSlackFileDownloadUrls,
   queueSlackApiResponse,
+  queueSlackPrivateFileDownload,
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
 
@@ -75,6 +84,7 @@ async function postChannelMessage(input: {
   botProfile?: Record<string, unknown>;
   channel?: string;
   envelope?: Record<string, unknown>;
+  files?: Array<Record<string, unknown>>;
   /** Post as an app integration: a `bot_message` with a `bot_id` and no `user`. */
   noUser?: boolean;
   text?: string;
@@ -90,6 +100,7 @@ async function postChannelMessage(input: {
     botId,
     botProfile,
     envelope: fields,
+    files,
     noUser,
     ...message
   } = input;
@@ -101,6 +112,7 @@ async function postChannelMessage(input: {
   if (botId) Object.assign(envelope.event, { bot_id: botId });
   if (blocks) Object.assign(envelope.event, { blocks });
   if (botProfile) Object.assign(envelope.event, { bot_profile: botProfile });
+  if (files) Object.assign(envelope.event, { files });
   if (noUser) {
     Reflect.deleteProperty(envelope.event, "user");
     Object.assign(envelope.event, { subtype: "bot_message" });
@@ -251,6 +263,140 @@ describe("Slack channel-message automations", () => {
     expect(
       await getEventAutomation(fixture.sql.db(), automation.id),
     ).toMatchObject({ credentialMode: "system" });
+  });
+
+  it("opens files of the triggering post after a person mentions Junior in the run's thread", async () => {
+    const channelContext = context(
+      "U123",
+      "C123",
+      "public",
+      undefined,
+      TEAM_ID,
+    );
+    await execute(
+      createAutomationTool(
+        automationToolContext(channelContext),
+        getEventCatalog(),
+      ),
+      {
+        instruction: "Answer questions about charts.",
+        title: "Triage charts",
+        outcomes: [
+          { action: "send_message", destination: "current_conversation" },
+        ],
+        trigger: trigger(),
+      },
+    );
+    const rootTs = "1712350.0001";
+    const slackFile = (id: string, name: string) => ({
+      id,
+      name,
+      mimetype: "image/png",
+      url_private: `https://files.slack.com/files-pri/${TEAM_ID}-${id}/${name}`,
+    });
+    const rootFile = slackFile("F0ROOTPNG1", "chart.png");
+    const forwardedFile = slackFile("F0FWDPNG1", "forwarded.png");
+
+    // The run starts on a post with an image. The run's input is the post's
+    // text, so no Turn stores the post's files.
+    await postChannelMessage({
+      files: [rootFile],
+      text: "Why did this chart drop?",
+      ts: rootTs,
+    });
+    const runConversationId = queue.sentRecords()[0]!.conversationId;
+
+    // A person's mention in the thread joins the run's Conversation, so no
+    // new Conversation reads the thread root and stores its files.
+    await postChannelMessage({
+      text: `<@${SLACK_BOT_USER_ID}> can you look at the chart?`,
+      threadTs: rootTs,
+      ts: "1712350.0002",
+    });
+    expect(
+      queue.sentRecords().map((record) => record.conversationId),
+    ).not.toContain(`slack:C123:${rootTs}`);
+    const stored = await getConversationStore().get({
+      conversationId: runConversationId,
+    });
+    expect(stored?.location).toMatchObject({
+      channelId: "C123",
+      threadTs: rootTs,
+    });
+
+    const written: string[] = [];
+    const workspace: SandboxWorkspace = {
+      readFileToBuffer: async () => null,
+      runCommand: async () => ({ exitCode: 0, stderr: "", stdout: "" }),
+      writeFiles: async (files) => {
+        written.push(...files.map((file) => file.content.toString()));
+      },
+    };
+    const { loadAttachment } = createTools([], {}, {
+      ...context("U123", "C123", "public", rootTs, TEAM_ID),
+      attachmentStorage: createMemoryAttachmentStorage(),
+      conversationId: runConversationId,
+      location: stored?.location,
+      workspace,
+    } as ToolRuntimeContext);
+    const threadReplies = () =>
+      queueSlackApiResponse("conversations.replies", {
+        body: conversationsRepliesPage({
+          threadTs: rootTs,
+          messages: [
+            { ts: rootTs, user: "U123", files: [rootFile] },
+            {
+              ts: "1712350.0003",
+              thread_ts: rootTs,
+              user: "U123",
+              attachments: [{ files: [forwardedFile] }],
+            },
+          ],
+        }),
+      });
+    const repliesCalls = getCapturedSlackApiCalls(
+      "conversations.replies",
+    ).length;
+
+    // The root file and a file under a forwarded message open by their Slack
+    // file ids.
+    threadReplies();
+    queueSlackPrivateFileDownload({ body: "root-chart" });
+    await expect(
+      execute(loadAttachment!, { attachment_id: rootFile.id }),
+    ).resolves.toMatchObject({ filename: "chart.png", bytes: 10 });
+    threadReplies();
+    queueSlackPrivateFileDownload({ body: "forwarded" });
+    await expect(
+      execute(loadAttachment!, { attachment_id: forwardedFile.id }),
+    ).resolves.toMatchObject({ filename: "forwarded.png", bytes: 9 });
+    expect(written).toEqual(["root-chart", "forwarded"]);
+    expect(
+      getCapturedSlackApiCalls("conversations.replies")
+        .slice(repliesCalls)
+        .map((call) => call.params),
+    ).toEqual([
+      expect.objectContaining({ channel: "C123", ts: rootTs }),
+      expect.objectContaining({ channel: "C123", ts: rootTs }),
+    ]);
+
+    // A stored file opens again without another Slack read or download.
+    await execute(loadAttachment!, { attachment_id: rootFile.id });
+    expect(written.at(-1)).toBe("root-chart");
+    expect(getCapturedSlackFileDownloadUrls()).toEqual([
+      rootFile.url_private,
+      forwardedFile.url_private,
+    ]);
+    expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(
+      repliesCalls + 2,
+    );
+
+    // A file that is not in the run's thread is refused and not downloaded.
+    threadReplies();
+    await expect(
+      execute(loadAttachment!, { attachment_id: "F0OTHERPNG" }),
+    ).rejects.toThrow("not in this conversation's thread");
+    expect(getCapturedSlackFileDownloadUrls()).toHaveLength(2);
   });
 
   it("runs for bot posts only when its match names the bot", async () => {
