@@ -3,7 +3,8 @@
  *
  * Junior's own Google account reads the event from its own calendar, so the
  * card shows only when the viewer organizes, created, or is invited to the
- * event. Any unclear case gets no card.
+ * event. Any unclear case gets no card. The card shows the title only, never
+ * the guests or the description.
  */
 import type {
   ObjectAnnotation,
@@ -13,29 +14,18 @@ import type {
 import * as z from "zod";
 import { readGoogleConfig } from "../config";
 import {
-  formatInterval,
   googleApiError,
   googleApiRequest,
   googleAttendeeSchema,
-  isTimeZone,
 } from "../tools/shared";
 
 const EVENT_ID_PATTERN = /^[A-Za-z0-9_]{5,1024}$/;
 
-const eventTimeSchema = z.object({
-  date: z.string().optional(),
-  dateTime: z.string().optional(),
-  timeZone: z.string().optional(),
-});
-
 const linkedEventSchema = z.object({
   attendees: z.array(googleAttendeeSchema).optional(),
   creator: z.object({ email: z.string().optional() }).optional(),
-  end: eventTimeSchema,
-  guestsCanSeeOtherGuests: z.boolean().optional(),
   id: z.string(),
   organizer: z.object({ email: z.string().optional() }).optional(),
-  start: eventTimeSchema,
   status: z.string().optional(),
   summary: z.string().optional(),
   updated: z.string().optional(),
@@ -62,20 +52,6 @@ function parseEventLink(url: URL, calendarEmail: string): string | undefined {
     calendar?.toLowerCase() === calendarEmail
     ? eventId
     : undefined;
-}
-
-function eventWhen(event: LinkedEvent): string | undefined {
-  const { start, end } = event;
-  if (start.dateTime && end.dateTime) {
-    const timeZone =
-      start.timeZone && isTimeZone(start.timeZone) ? start.timeZone : "UTC";
-    return formatInterval(
-      Date.parse(start.dateTime),
-      Date.parse(end.dateTime),
-      timeZone,
-    );
-  }
-  return start.date;
 }
 
 /** Return whether the viewer organizes, created, or is invited to it. */
@@ -109,10 +85,6 @@ async function resolveGoogleCalendarLink(
   const event = parsed.data;
   const viewer = ctx.viewer.email.toLowerCase();
   if (!viewerIsOnEvent(event, viewer)) return undefined;
-  // Guests see the guest list only when the organizer allows it.
-  const showGuests =
-    event.guestsCanSeeOtherGuests !== false ||
-    event.organizer?.email?.toLowerCase() === viewer;
   const title = event.summary?.trim() || "Untitled event";
   return {
     kind: "object",
@@ -122,18 +94,6 @@ async function resolveGoogleCalendarLink(
     title: title.slice(0, 512),
     url: url.href,
     sourceUpdatedAt: event.updated,
-    facts: {
-      type: "calendar_event",
-      when: eventWhen(event),
-      attendees: showGuests
-        ? (event.attendees ?? [])
-            .filter((attendee) => attendee.resource !== true)
-            .slice(0, 5)
-            .map((attendee) =>
-              (attendee.displayName?.trim() || attendee.email).slice(0, 160),
-            )
-        : undefined,
-    },
   };
 }
 

@@ -42,7 +42,8 @@ viewer's email as a reader, writer, or owner, be open to anyone with the
 link, or be open to the viewer's domain and owned in that domain. Access
 through a Google group gets no card. An event must be on the Junior
 account's calendar, with the viewer as its organizer, creator, or a guest.
-The card shows the title, owner, and time, never the content.
+A file card shows the title, type, owner, and modified time. An event card
+shows the title. Cards never show content or guests.
 
 Junior edits a Doc only for a requester who can edit it through their own
 email, their domain, or an editable link. Access through a Google group is not

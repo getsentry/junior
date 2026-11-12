@@ -38,11 +38,6 @@ const GOOGLE_OBJECTS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
     key: "rel42gonogo",
     label: "Release 4.2 go/no-go",
     title: "Release 4.2 go/no-go",
-    facts: {
-      type: "calendar_event",
-      when: "Mon, Feb 2, 15:00 – 15:30 PST",
-      attendees: ["Morgan Lee", "Ari Chen"],
-    },
     plugin: "google",
   },
 };

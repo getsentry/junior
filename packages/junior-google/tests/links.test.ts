@@ -172,16 +172,8 @@ describe("Google link cards", () => {
         { email: "room@resource.calendar.google.com", resource: true },
       ],
       creator: { email: ACCOUNT_EMAIL },
-      end: {
-        dateTime: "2026-10-05T17:30:00Z",
-        timeZone: "America/Los_Angeles",
-      },
       id: "evt123abc",
       organizer: { email: ACCOUNT_EMAIL },
-      start: {
-        dateTime: "2026-10-05T17:00:00Z",
-        timeZone: "America/Los_Angeles",
-      },
       summary: "Launch review",
       updated: "2026-10-01T10:00:00.000Z",
     };
@@ -199,11 +191,6 @@ describe("Google link cards", () => {
         title: "Launch review",
         url: EVENT_URL,
         sourceUpdatedAt: EVENT.updated,
-        facts: {
-          type: "calendar_event",
-          when: "Mon, Oct 5, 10:00 – 10:30 PDT",
-          attendees: ["Alice", "bob@example.com"],
-        },
       });
       expect(new URL(google.fetch.mock.calls[0]![0].request.url).pathname).toBe(
         "/calendar/v3/calendars/primary/events/evt123abc",
@@ -219,19 +206,6 @@ describe("Google link cards", () => {
       );
 
       expect(card).toBeUndefined();
-    });
-
-    it("hides the guest list when guests may not see it", async () => {
-      await expect(
-        resolveAs(
-          "bob@example.com",
-          fakeGoogle({ event: { ...EVENT, guestsCanSeeOtherGuests: false } }),
-          "calendar_event",
-          EVENT_URL,
-        ),
-      ).resolves.toMatchObject({
-        facts: { type: "calendar_event", attendees: undefined },
-      });
     });
 
     it("does not read events on another calendar", async () => {
