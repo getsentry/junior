@@ -135,7 +135,9 @@ describe("Child Agents", () => {
             stopRan();
           } else if (progress.type === "tool_request") {
             if (requestsTool(progress, "stopAgent")) {
-              await childAskedOnce;
+              // A script that also spawns the child must run before the
+              // child can ask.
+              if (!requestsTool(progress, "spawnAgent")) await childAskedOnce;
               stopRequested = true;
             } else if (requestsTool(progress, "webSearch")) {
               childAsked();
