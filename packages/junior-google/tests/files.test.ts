@@ -157,6 +157,33 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       file_id: DOC_ID,
       next_page_token: "page-2",
     });
+
+    // Reading needs only Drive. Before an admin enables the Docs API, the
+    // text still comes back, without a revision for the edit tools.
+    const noDocsApi = docsTools(
+      Response.json({
+        id: DOC_ID,
+        mimeType: "application/vnd.google-apps.document",
+        name: "Q4 plan",
+      }),
+      Response.json(
+        {
+          error: {
+            details: [{ reason: "SERVICE_DISABLED" }],
+            message: "Docs API has not been used",
+          },
+        },
+        { status: 403 },
+      ),
+      new Response("# Q4 plan", {
+        headers: { "content-type": "text/markdown" },
+      }),
+    );
+    const unrevised = await run(noDocsApi.tools, "readGoogleDoc", {
+      document: DOC_ID,
+    });
+    expect(unrevised).toMatchObject({ content: "# Q4 plan" });
+    expect(unrevised).not.toHaveProperty("revision_id");
   });
 
   it("explains a file Junior cannot open, a file of the wrong type, and a grant without Drive access", async () => {

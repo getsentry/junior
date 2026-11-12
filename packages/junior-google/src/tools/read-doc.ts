@@ -10,8 +10,9 @@ import {
   MAX_CONTENT_CHARS,
   parseFileReference,
   readGoogleFile,
+  resourceKeyHeaders,
 } from "./files";
-import type { GoogleToolContext } from "./shared";
+import { googleApiRequest, type GoogleToolContext } from "./shared";
 
 const inputSchema = z
   .object({
@@ -25,8 +26,9 @@ const outputSchema = pluginToolOutputSchema.extend({
   document_id: z.string(),
   revision_id: z
     .string()
+    .optional()
     .describe(
-      "Revision of the Doc that this content comes from. Pass it to the Doc edit tools, which refuse the edit if the Doc changed after this read.",
+      "Revision of the Doc that this content comes from. Pass it to the Doc edit tools, which refuse the edit if the Doc changed after this read. Missing when the Docs API is not available; then the Doc cannot be edited.",
     ),
   modified_at: z.string().optional(),
   title: z.string(),
@@ -63,11 +65,19 @@ export function createReadGoogleDocTool(ctx: GoogleToolContext) {
       const file = await readGoogleFile(ctx, ref, ["document"]);
       // Read the revision before the text. If the Doc changes in between, the
       // text is newer than the revision, and an edit is refused, not misplaced.
-      const revision = await googleFileRequest(ctx, ref, {
+      // Reading needs only Drive. When the Docs API fails, for example before
+      // an admin enables it, the text is still returned without a revision,
+      // and the edit tools cannot run.
+      const revision = await googleApiRequest(ctx, {
+        headers: resourceKeyHeaders(ref),
         operation: "google.docs.document.get",
         path: `/v1/documents/${ref.fileId}`,
         query: { fields: "revisionId" },
       });
+      const revisionId =
+        revision.status === 200
+          ? revisionSchema.safeParse(revision.body).data?.revisionId
+          : undefined;
       const response = await googleFileRequest(ctx, ref, {
         headers: { Accept: "text/markdown" },
         operation: "google.drive.file.export",
@@ -79,7 +89,7 @@ export function createReadGoogleDocTool(ctx: GoogleToolContext) {
         target: "readGoogleDoc" as const,
         content: content.slice(0, MAX_CONTENT_CHARS),
         document_id: file.id,
-        revision_id: revisionSchema.parse(revision.body).revisionId,
+        ...(revisionId ? { revision_id: revisionId } : undefined),
         ...fileOutputFields(file),
         title: file.name,
         truncated: content.length > MAX_CONTENT_CHARS,

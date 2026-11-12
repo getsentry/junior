@@ -88,6 +88,15 @@ export function parseFileReference(value: string): FileReference {
   return { fileId, ...(resourceKey ? { resourceKey } : undefined) };
 }
 
+/** Return the header that carries a file's resource key, when known. */
+export function resourceKeyHeaders(
+  file: FileReference,
+): Record<string, string> {
+  return file.resourceKey
+    ? { "X-Goog-Drive-Resource-Keys": `${file.fileId}/${file.resourceKey}` }
+    : {};
+}
+
 /** Call one Google operation on a file, with its resource key when known. */
 export async function googleFileRequest(
   ctx: GoogleToolContext,
@@ -102,14 +111,7 @@ export async function googleFileRequest(
 ): Promise<{ body: unknown; status: number }> {
   const response = await googleApiRequest(ctx, {
     ...input,
-    headers: {
-      ...input.headers,
-      ...(file.resourceKey
-        ? {
-            "X-Goog-Drive-Resource-Keys": `${file.fileId}/${file.resourceKey}`,
-          }
-        : undefined),
-    },
+    headers: { ...input.headers, ...resourceKeyHeaders(file) },
   });
   // Google returns 404 for a file that Junior's account cannot open.
   if (response.status === 404) {
