@@ -292,6 +292,36 @@ function isGitHubIssueRead(input: {
 const PULL_REQUEST_COMMENT_REACTIONS_PATH =
   /^\/repos\/[^/]+\/[^/]+\/(issues|pulls)\/comments\/[^/]+\/reactions(?:\/[^/]+)?$/;
 
+/**
+ * REST writes that only the tool that owns them may send. Sandbox requests
+ * carry no egress operation, so they stay denied. The comment edit tool also
+ * checks that the bot posted the comment, which the endpoint does not.
+ */
+const TOOL_ONLY_REST_WRITES = [
+  {
+    denialMessage:
+      "GitHub issue comment edits must use the github_updateIssueComment tool, which only edits comments the bot posted.",
+    method: "PATCH",
+    operation: "github.issue.comment.update",
+    restPath: /^\/repos\/[^/]+\/[^/]+\/issues\/comments\/\d+$/,
+  },
+  {
+    denialMessage:
+      "Reactions on a GitHub issue or pull request must use the github_reactToIssue tool.",
+    method: "POST",
+    operation: "github.issue.reaction.create",
+    restPath: /^\/repos\/[^/]+\/[^/]+\/issues\/\d+\/reactions$/,
+  },
+] as const;
+
+function toolOnlyRestWrite(method: string, upstreamUrl: URL) {
+  if (!isGitHubApiUrl(upstreamUrl)) return undefined;
+  const pathname = upstreamUrl.pathname.toLowerCase();
+  return TOOL_ONLY_REST_WRITES.find(
+    (write) => write.method === method && write.restPath.test(pathname),
+  );
+}
+
 const GITHUB_BODY_WRITES = [
   {
     denialMessage: `GitHub issue creation must use the github_createIssue tool, which owns idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
@@ -431,6 +461,9 @@ function githubApiWriteGrantName(
     // Feedback-status reactions on conversation and inline review comments.
     return "installation-write";
   }
+  if (toolOnlyRestWrite(method, upstreamUrl)) {
+    return "installation-write";
+  }
   return undefined;
 }
 
@@ -533,6 +566,14 @@ function applyGitHubEgressPolicy(input: {
       allowed: input.operation === expectedOperation,
       denialMessage:
         "GitHub pull request feedback reactions must use the github_updatePullRequestFeedback tool.",
+    });
+  }
+
+  const toolOnlyWrite = toolOnlyRestWrite(input.method, input.upstreamUrl);
+  if (toolOnlyWrite) {
+    enforceEgressPolicy({
+      allowed: input.operation === toolOnlyWrite.operation,
+      denialMessage: toolOnlyWrite.denialMessage,
     });
   }
 
