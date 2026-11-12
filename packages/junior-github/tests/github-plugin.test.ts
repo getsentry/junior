@@ -440,8 +440,6 @@ function githubToolsContext(input?: {
         );
       },
     },
-    // Every description check passes.
-    decider: { decide: vi.fn(async () => ({ choice: "no" })) },
     model: {},
     events: {
       canSubscribe: true,

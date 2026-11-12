@@ -50,9 +50,6 @@ function toolContext(
       userName: "david",
     },
     conversationId: "slack:C123:123.456",
-    decider: options.decider ?? {
-      decide: vi.fn(async () => ({ choice: "no" })),
-    },
     egress: { fetch },
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     events: { canSubscribe: true },
@@ -62,7 +59,10 @@ function toolContext(
       resolveActor: async () => options.requester,
     },
   };
-  return { fetch, tool: createGitHubUpdatePullRequestTool(ctx as any) };
+  return {
+    fetch,
+    tool: createGitHubUpdatePullRequestTool(ctx as any, options.decider as any),
+  };
 }
 
 async function patchedBody(fetch: ReturnType<typeof toolContext>["fetch"]) {
@@ -216,7 +216,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
     expect(body).toContain(`\n${expected}\n`);
   });
 
-  it("rejects a body that fails a description check and does not write it", async () => {
+  it("with the description check experiment on, rejects a body that fails a check and does not write it", async () => {
     // The decision model finds a test plan and nothing else.
     const decider = {
       decide: vi.fn(async ({ instructions }: { instructions: string }) => ({

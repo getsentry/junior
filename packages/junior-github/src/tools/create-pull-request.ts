@@ -8,6 +8,7 @@ import {
   PluginToolInputError,
   type WatchResult,
   type SubscribableResource,
+  type PluginDecider,
   type PluginToolExecuteOptions,
   type PluginToolOutput,
   type ToolRegistrationHookContext,
@@ -75,7 +76,7 @@ const createPullRequestInputSchema = Type.Object(
     body: Type.Optional(
       Type.String({
         description:
-          "Pull request body. The runtime appends the conversation footer. It is rejected when it has check results, a test plan or test coverage notes, a work log, or chat talk, or does not say why.",
+          "Pull request body. The runtime appends the conversation footer.",
       }),
     ),
     draft: Type.Optional(
@@ -97,7 +98,7 @@ const createPullRequestToolInputSchema = z
     body: z
       .string()
       .describe(
-        "Pull request body. The runtime appends the conversation footer. It is rejected when it has check results, a test plan or test coverage notes, a work log, or chat talk, or does not say why.",
+        "Pull request body. The runtime appends the conversation footer.",
       )
       .optional(),
     draft: z
@@ -440,6 +441,8 @@ async function gitHubPullRequestStructuredResult(
 export function createGitHubPullRequestTool(
   ctx: ToolRegistrationHookContext,
   subscriptionConfig?: GitHubPullRequestSubscriptionConfig,
+  /** Set when the description check experiment is on. */
+  descriptionDecider?: PluginDecider,
 ) {
   return definePluginTool({
     annotations: {
@@ -499,8 +502,11 @@ export function createGitHubPullRequestTool(
               "GitHub pull request creation for this tool call has an uncertain pending result; refusing to create a duplicate pull request.",
             );
           }
-          if (parsedInput.body?.trim()) {
-            await checkPullRequestDescription(ctx.decider, parsedInput.body);
+          if (descriptionDecider && parsedInput.body?.trim()) {
+            await checkPullRequestDescription(
+              descriptionDecider,
+              parsedInput.body,
+            );
           }
           const requester = await resolveGitHubRequester(ctx);
           const identityId = requester?.identity?.id;

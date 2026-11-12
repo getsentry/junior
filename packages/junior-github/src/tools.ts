@@ -20,12 +20,26 @@ import { createGitHubUpdatePullRequestFeedbackTool } from "./tools/update-pull-r
 import { createGitHubResolvePullRequestReviewThreadTool } from "./tools/resolve-pull-request-review-thread.js";
 import { createGitHubSubmitPullRequestReviewTool } from "./tools/submit-pull-request-review.js";
 
+/** Opt-ins for GitHub plugin behavior that is still being tested. */
+export interface GitHubPluginExperiments {
+  /**
+   * Check pull request descriptions with the decision model before a create
+   * or update, and reject ones with check results, a work log, chat talk, or
+   * no reason.
+   */
+  pullRequestDescriptionChecks?: boolean;
+}
+
 /** Build the GitHub plugin's runtime tools from their per-tool modules. */
 export function createGitHubTools(
   ctx: ToolRegistrationHookContext,
   botEmail?: string,
   pullRequestSubscription?: GitHubPullRequestSubscriptionConfig,
+  experimental: GitHubPluginExperiments = {},
 ): Record<string, PluginToolDefinition> {
+  const descriptionDecider = experimental.pullRequestDescriptionChecks
+    ? ctx.decider
+    : undefined;
   return {
     cloneRepository: createGitHubCloneRepositoryTool(ctx),
     commentOnIssue: createGitHubCommentOnIssueTool(ctx.egress),
@@ -34,6 +48,7 @@ export function createGitHubTools(
     createPullRequest: createGitHubPullRequestTool(
       ctx,
       pullRequestSubscription,
+      descriptionDecider,
     ),
     getDeployment: createGitHubGetDeploymentTool(ctx),
     getIssue: createGitHubGetIssueTool(ctx),
@@ -47,7 +62,10 @@ export function createGitHubTools(
       ctx.egress,
     ),
     updateIssue: createGitHubUpdateIssueTool(ctx),
-    updatePullRequest: createGitHubUpdatePullRequestTool(ctx),
+    updatePullRequest: createGitHubUpdatePullRequestTool(
+      ctx,
+      descriptionDecider,
+    ),
     updatePullRequestFeedback: createGitHubUpdatePullRequestFeedbackTool(
       ctx,
       botEmail,

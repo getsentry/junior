@@ -2974,7 +2974,6 @@ describe("GitHub-owned pull request outcomes", () => {
         visibility: "private",
         conversationId: "local:test",
       },
-      decider: { decide: async () => ({ choice: "no" }) },
       egress: {
         async fetch({ operation }: { operation: string }) {
           if (operation === "github.pull.create") return createResponse();
