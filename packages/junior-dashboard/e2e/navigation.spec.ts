@@ -186,7 +186,7 @@ test("keeps the density choice", async ({ page, dashboard }) => {
     .getByRole("menuitemradio", { name: "Comfortable density" })
     .click();
   await expect(root).toHaveAttribute("data-density", "comfortable");
-  await expect(summary).toHaveClass(/line-clamp-2/);
+  await expect(summary).toHaveClass(/line-clamp-3/);
   await page.reload();
   await expect(root).toHaveAttribute("data-density", "comfortable");
 });
