@@ -53,113 +53,91 @@ export interface PullRequestDescription {
   gaps: string[];
 }
 
-interface NoteCheck {
-  instructions: string;
-  /** The first choice is the one that needs no action. */
-  criteria: Record<string, string>;
-  /** Text for the writer, by choice. */
-  directives?: Record<string, string>;
-  /** Question for the agent, by choice. */
-  gaps?: Record<string, string>;
-}
+// A decision model answers fixed yes/no questions about the notes before the
+// writer runs. Each question asks one plain fact, because a classifier with no
+// reasoning answers compound questions poorly. The answers become exact keep
+// and drop rules for the writer, and fixed gaps for the agent. Missing facts
+// go only to the agent: a writer told about them writes "not specified".
+const NOTE_QUESTIONS = {
+  reason: "Do the notes give a reason for the change, or the problem it fixes?",
+  contract:
+    "Does the change rename, remove, or change the meaning of a public API, tool input, config key, environment variable, CLI flag, or stored data format?",
+  impact:
+    "Do the notes say whether existing users or callers must change anything, or that nothing breaks?",
+  ui: "Does the change alter a screen, page, or visual element of a web or desktop app?",
+  screenshots: "Do the notes include screenshots or image links?",
+  checks:
+    "Do the notes report test, lint, typecheck, or CI results, local or sandbox failures, or the commands that ran them?",
+  process:
+    "Do the notes describe how the work was done, such as investigation steps, evidence, run counts, or approaches and names that were tried and replaced?",
+  conversation:
+    'Do the notes talk about the agent or the conversation, such as "I", who asked, Slack messages, mentions, or thread links?',
+} as const;
 
-// A decision model answers fixed questions about the notes before the writer
-// runs. Its answers become exact keep, drop, and gap rules for this PR, which
-// a fast writer follows more reliably than a general rule list.
-const NOTE_CHECKS: NoteCheck[] = [
-  {
-    instructions: "Do the notes say why the change is needed?",
-    criteria: {
-      given: "The notes give the reason, or the problem that the change fixes.",
-      missing: "The notes say what changed but not why.",
-    },
-    directives: {
-      missing: "The notes do not say why. Do not give a reason.",
-    },
-    gaps: { missing: "Why is this change needed?" },
-  },
-  {
-    instructions:
-      "Does the change touch an API, tool input, config, stored data, or behavior that other code or people rely on? If it does, do the notes say whether it breaks anything?",
-    criteria: {
-      none: "Nothing that others rely on changes.",
-      stated:
-        "Something that others rely on changes, and the notes say whether it breaks and what to do.",
-      missing:
-        "Something that others rely on changes, and the notes do not say whether it breaks.",
-    },
-    directives: {
-      stated: "Say clearly what might break and what to do.",
-      missing:
-        "The notes do not say whether this breaks anything. Do not guess.",
-    },
-    gaps: {
-      missing:
-        "Does this break existing callers or data, and what should they do?",
-    },
-  },
-  {
-    instructions:
-      "Does the change alter what people see in a UI? If it does, do the notes include screenshots?",
-    criteria: {
-      none: "Nothing visible in a UI changes.",
-      included:
-        "A visible UI change, and the notes include screenshot images or links.",
-      missing: "A visible UI change, and the notes include no screenshots.",
-    },
-    directives: { included: "Keep the screenshots as images." },
-    gaps: { missing: "Can you add before and after screenshots?" },
-  },
-  {
-    instructions:
-      "Do the notes report test, lint, typecheck, or CI results, local or sandbox failures, or the commands that ran them?",
-    criteria: { absent: "No.", present: "Yes." },
-    directives: {
-      present: "The notes include check results. Leave them out.",
-    },
-  },
-  {
-    instructions:
-      "Do the notes describe how the work was done, such as investigation steps, evidence, run counts, or approaches and names that were tried and replaced?",
-    criteria: { absent: "No.", present: "Yes." },
-    directives: {
-      present:
-        "The notes describe how the work was done. Leave out the investigation and the approaches that were tried.",
-    },
-  },
-  {
-    instructions:
-      'Do the notes talk about the agent or the conversation, such as "I", who asked, Slack messages, mentions, or thread links?',
-    criteria: { absent: "No.", present: "Yes." },
-    directives: {
-      present:
-        "The notes talk about the agent or the conversation. Leave that out.",
-    },
-  },
-];
+type NoteAnswers = Record<keyof typeof NOTE_QUESTIONS, boolean>;
 
-async function checkNotes(
+async function answerNoteQuestions(
   decider: PluginDecider,
   state: string,
-): Promise<{ directives: string[]; gaps: string[] }> {
-  const choices = await Promise.all(
-    NOTE_CHECKS.map(
-      async (check) =>
-        (
-          await decider.decide({
-            criteria: check.criteria,
-            instructions: `Judge the pull request notes. ${check.instructions}`,
-            state,
-          })
-        ).choice,
-    ),
+): Promise<NoteAnswers> {
+  const entries = await Promise.all(
+    Object.entries(NOTE_QUESTIONS).map(async ([key, question]) => {
+      const { choice } = await decider.decide({
+        criteria: { no: "No.", yes: "Yes." },
+        instructions: `Judge the pull request notes. ${question}`,
+        state,
+      });
+      return [key, choice === "yes"] as const;
+    }),
   );
-  const pick = (key: "directives" | "gaps") =>
-    NOTE_CHECKS.flatMap((check, index) => {
-      const text = check[key]?.[choices[index]!];
-      return text ? [text] : [];
-    });
-  return { directives: pick("directives"), gaps: pick("gaps") };
+  return Object.fromEntries(entries) as NoteAnswers;
+}
+
+function noteDirectives(answers: NoteAnswers): string[] {
+  return [
+    ...(answers.contract && answers.impact
+      ? ["Say clearly what might break and what to do."]
+      : []),
+    ...(answers.screenshots ? ["Keep the screenshots as images."] : []),
+    ...(answers.checks
+      ? ["The notes include check results. Leave them out."]
+      : []),
+    ...(answers.process
+      ? [
+          "The notes describe how the work was done. Leave out the investigation and the approaches that were tried.",
+        ]
+      : []),
+    ...(answers.conversation
+      ? ["The notes talk about the agent or the conversation. Leave that out."]
+      : []),
+  ];
+}
+
+function noteGaps(answers: NoteAnswers): string[] {
+  return [
+    ...(answers.reason ? [] : ["Why is this change needed?"]),
+    ...(answers.contract && !answers.impact
+      ? ["Does this break existing callers or data, and what should they do?"]
+      : []),
+    ...(answers.ui && !answers.screenshots
+      ? ["Can you add before and after screenshots?"]
+      : []),
+  ];
+}
+
+// GitHub closes issues from these keywords, so they must survive the rewrite.
+const ISSUE_REFERENCE =
+  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?)\s+(?:[\w.-]+\/[\w.-]+)?#\d+/gi;
+
+function keepIssueReferences(context: string, description: string): string {
+  const normalize = (text: string) => text.toLowerCase().replace(/\s+/g, " ");
+  const written = normalize(description);
+  const missing = [...new Set(context.match(ISSUE_REFERENCE) ?? [])].filter(
+    (reference) => !written.includes(normalize(reference)),
+  );
+  return missing.length > 0
+    ? `${description}\n\n${missing.join("\n")}`
+    : description;
 }
 
 function escapeXml(value: string): string {
@@ -185,7 +163,8 @@ export async function writePullRequestDescription(
     escapeXml(input.context),
     "</description-context>",
   ].join("\n");
-  const checks = await checkNotes(models.decider, notes);
+  const answers = await answerNoteQuestions(models.decider, notes);
+  const directives = noteDirectives(answers);
   const result = await models.model.completeObject({
     schema: descriptionSchema,
     system: SYSTEM,
@@ -197,19 +176,18 @@ export async function writePullRequestDescription(
       '<description-context source="agent">',
       escapeXml(input.context),
       "</description-context>",
-      ...(checks.directives.length > 0
-        ? [
-            "",
-            "Checks on these notes:",
-            ...checks.directives.map((d) => `- ${d}`),
-          ]
+      ...(directives.length > 0
+        ? ["", "Checks on these notes:", ...directives.map((d) => `- ${d}`)]
         : []),
     ].join("\n"),
     // Room for a long description of a large change; a cut-off reply fails to parse.
     maxTokens: 2_000,
   });
   return {
-    description: descriptionSchema.parse(result.object).body.trim(),
-    gaps: checks.gaps,
+    description: keepIssueReferences(
+      input.context,
+      descriptionSchema.parse(result.object).body.trim(),
+    ),
+    gaps: noteGaps(answers),
   };
 }

@@ -77,7 +77,7 @@ function checkSuitePullRequest(
 }
 
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
-import { echoDescriptionModel, firstChoiceDecider } from "./description-model";
+import { echoDescriptionModel, noteDecider } from "./description-model";
 import { mswServer } from "./msw";
 
 it("combines open, merged, and closed pull requests into conversation work", async () => {
@@ -2995,7 +2995,7 @@ describe("GitHub-owned pull request outcomes", () => {
         },
       },
       events: { canSubscribe: false },
-      decider: firstChoiceDecider(),
+      decider: noteDecider(),
       model: echoDescriptionModel(),
       users: {
         async resolveActor() {

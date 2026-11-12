@@ -21,15 +21,9 @@ export function echoDescriptionModel() {
   } satisfies PluginModel;
 }
 
-/** Fake decision model that picks the first choice, which needs no action in PR description checks. */
-export function firstChoiceDecider() {
+/** Fake decision model that answers yes to every PR note question, so no gaps come back. */
+export function noteDecider() {
   return {
-    decide: vi.fn(
-      async <TChoice extends string>({
-        criteria,
-      }: {
-        criteria: Record<TChoice, string>;
-      }) => ({ choice: Object.keys(criteria)[0] as TChoice }),
-    ),
+    decide: vi.fn(async () => ({ choice: "yes" as never })),
   } satisfies PluginDecider;
 }

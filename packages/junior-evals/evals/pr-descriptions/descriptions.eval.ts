@@ -15,6 +15,7 @@ describeEval("Pull Request Descriptions", pullRequestDescriptionEvals, (it) => {
         "Fixes #2233",
         "https://docs.slack.dev/apis/web-api/pagination",
       ],
+      expectGaps: false,
     });
     await expect(result).toSatisfyJudge(
       RubricJudge,
@@ -147,6 +148,7 @@ describeEval("Pull Request Descriptions", pullRequestDescriptionEvals, (it) => {
       context:
         "Rename `SANDBOX_TIMEOUT` to `JUNIOR_SANDBOX_TIMEOUT_MS` so it matches the other settings and states its unit. Breaking: the old name is no longer read. Set `JUNIOR_SANDBOX_TIMEOUT_MS` before you deploy, or sandboxes fall back to the 5 minute default.",
       mustInclude: ["`SANDBOX_TIMEOUT`", "`JUNIOR_SANDBOX_TIMEOUT_MS`"],
+      expectGaps: false,
     });
     await expect(result).toSatisfyJudge(
       RubricJudge,
@@ -170,6 +172,7 @@ describeEval("Pull Request Descriptions", pullRequestDescriptionEvals, (it) => {
         "https://github.com/user-attachments/assets/5f0c2d1e-before.png",
         "https://github.com/user-attachments/assets/5f0c2d1e-after.png",
       ],
+      expectGaps: false,
     });
     await expect(result).toSatisfyJudge(
       RubricJudge,

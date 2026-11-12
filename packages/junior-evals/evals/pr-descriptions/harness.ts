@@ -24,7 +24,7 @@ interface PullRequestDescriptionEvalInput {
   mustNotInclude?: string[];
   /** Longest allowed description, for notes that reviewers called too long. */
   maxChars?: number;
-  /** The notes leave out a fact a reviewer needs, so the writer must report a gap. */
+  /** True: the notes leave out a fact a reviewer needs. False: the notes are complete, so any gap is noise. */
   expectGaps?: boolean;
   title?: string;
 }
@@ -79,7 +79,12 @@ export const pullRequestDescriptionHarness = createHarness<
       ...(input.maxChars && description.length > input.maxChars
         ? [`is ${description.length} characters, over ${input.maxChars}`]
         : []),
-      ...(input.expectGaps && gaps.length === 0 ? ["reported no gaps"] : []),
+      ...(input.expectGaps === true && gaps.length === 0
+        ? ["reported no gaps"]
+        : []),
+      ...(input.expectGaps === false && gaps.length > 0
+        ? [`reported gaps for complete notes (${gaps.join(" | ")})`]
+        : []),
     ];
     if (problems.length > 0) {
       throw new Error(`Description ${problems.join("; ")}:\n${description}`);
