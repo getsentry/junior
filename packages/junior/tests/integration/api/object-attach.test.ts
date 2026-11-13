@@ -53,19 +53,22 @@ async function recordConversation(participants: string[]) {
   }
 }
 
-async function attachAs(
-  email: string,
-  url: string,
-  conversationId = CONVERSATION_ID,
-) {
-  const viewer = await signedInViewer(email);
+function apiAs(viewer: Awaited<ReturnType<typeof signedInViewer>>) {
   const app = new Hono<JuniorApiEnv>();
   app.use("*", async (context, next) => {
     context.set("viewer", viewer);
     await next();
   });
   app.route("/", createJuniorApi());
-  const response = await app.request(
+  return app;
+}
+
+async function attachAs(
+  email: string,
+  url: string,
+  conversationId = CONVERSATION_ID,
+) {
+  const response = await apiAs(await signedInViewer(email)).request(
     `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/annotations`,
     {
       body: JSON.stringify({ url }),
@@ -152,14 +155,26 @@ describe("attach a linked object", () => {
       expect.objectContaining({
         kind: "resource_link",
         key: "/d/1",
-        label: TITLE,
+        label: DOC_URL,
         objectType: "document",
         plugin: "docs",
         url: DOC_URL,
       }),
     ]);
-    // The card text is never saved.
+    // The card text and the title are never saved.
     expect(JSON.stringify(annotations)).not.toContain(SECRET);
+    expect(JSON.stringify(annotations)).not.toContain("Launch <plan>");
+
+    // Bob takes part, but cannot open the object, so he sees only the link.
+    const bob = apiAs(await signedInViewer("bob@example.com"));
+    const path = `http://localhost/api/conversations/${encodeURIComponent(CONVERSATION_ID)}`;
+    for (const url of [path, `${path}/events?event=0&limit=50`]) {
+      const response = await bob.request(url);
+      expect(response.status).toBe(200);
+      const body = await response.text();
+      expect(body).toContain(DOC_URL);
+      expect(body).not.toContain("Launch <plan>");
+    }
 
     const notes = await nextTurnNotes("next-turn");
     expect(notes).toHaveLength(1);
@@ -168,10 +183,11 @@ describe("attach a linked object", () => {
       conversationNotes: notes,
       includeSessionContext: false,
     });
+    // The note names the type and the read tool. The agent reads the title.
     expect(context).toContain(
-      `attached the Document &quot;Launch &lt;plan&gt; &amp; &quot;notes&quot;&quot; (${DOC_URL}) to this Conversation.`,
+      `attached a Document (${DOC_URL}) to this Conversation. Read it live with \`readDocsFile\` when the work needs its content.`,
     );
-    expect(context).toContain("Read it live with `readDocsFile`");
+    expect(context).not.toContain("Launch");
     expect(context).not.toContain(SECRET);
   });
 
@@ -182,6 +198,7 @@ describe("attach a linked object", () => {
       expect.stringContaining(`(${EVENT_URL}) to this Conversation.`),
     ]);
     expect(notes[0]).not.toContain("Read it live");
+    expect(notes[0]).not.toContain("Launch");
   });
 
   it("attaches nothing for a viewer who cannot see the object or write to the Conversation", async () => {

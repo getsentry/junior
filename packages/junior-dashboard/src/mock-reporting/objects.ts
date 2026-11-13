@@ -134,7 +134,7 @@ export function attachMockObjectLink(
   addMockAnnotation(conversationId, {
     kind: "resource_link",
     key: object.key,
-    label: object.title,
+    label: url,
     objectType: object.objectType,
     plugin: object.plugin,
     url,

@@ -17,14 +17,11 @@ function sameLink(left: string, right: string): boolean {
   return key(left) === key(right);
 }
 
-// A short title keeps the URL inside the length limit of a note.
-const NOTE_TITLE_CHARS = 120;
-
 /**
  * Attach a linked object to a Conversation for one participant. The
- * Annotation saves only the link: its URL, object type, and title. The next
- * Turn gets a Conversation note that names the read tool of the object, so
- * the agent reads it live. Nothing is attached when the viewer cannot write
+ * Annotation and the Conversation note save no title. The note tells the
+ * next Turn the type and the read tool of the object, so the agent reads it
+ * live. Nothing is attached when the viewer cannot write
  * to the Conversation, the Conversation takes no web input from people (a
  * Task), or the viewer cannot see the object now.
  */
@@ -69,11 +66,10 @@ export async function attachObjectLink(
     return { status: "unchanged" };
   }
 
+  // Readers of the Conversation see the note, so it names only the type.
+  // The agent learns the title when it reads the object.
   const type = object.displayType ?? objectPresentation(object).label;
-  const title =
-    object.title.length > NOTE_TITLE_CHARS
-      ? `${object.title.slice(0, NOTE_TITLE_CHARS - 1)}…`
-      : object.title;
+  const article = /^[aeiou]/i.test(type) ? "an" : "a";
   const readTool = linkType.readTool?.(parsed);
   // The note goes first. Its key makes it safe to add again, so a retry
   // after a failed Annotation write still tells the next Turn once.
@@ -82,7 +78,7 @@ export async function attachObjectLink(
     createdAtMs: Date.now(),
     key: `object_attached:${linkType.owner}:${object.key}`,
     text: [
-      `${viewer.displayName ?? viewer.email} attached the ${type} "${title}" (${link}) to this Conversation.`,
+      `${viewer.displayName ?? viewer.email} attached ${article} ${type} (${link}) to this Conversation.`,
       readTool
         ? `Read it live with \`${readTool}\` when the work needs its content.`
         : "",
@@ -97,7 +93,9 @@ export async function attachObjectLink(
   }).upsert({
     kind: "resource_link",
     key: object.key,
-    label: object.title.slice(0, 256),
+    // The bare link is the label. The title would show to readers who
+    // cannot open the object.
+    label: link.slice(0, 256),
     objectType: object.objectType,
     url: link,
   });

@@ -25,7 +25,8 @@ async function viewAsParticipant(
       await route.fulfill({
         json: {
           ...detail,
-          annotations: [...(detail.annotations ?? []), ...extraAnnotations],
+          // Linked work lists the newest Annotation first.
+          annotations: [...extraAnnotations, ...(detail.annotations ?? [])],
           isParticipant: true,
         },
         response,
@@ -224,7 +225,7 @@ test("a Doc attached by another link shows as attached", async ({
     {
       kind: "resource_link",
       key: "1MockReleaseChecklist_0123456789",
-      label: "Release 4.2 checklist",
+      label: `${DOC_URL}?usp=sharing`,
       objectType: "document",
       plugin: "google",
       url: `${DOC_URL}?usp=sharing`,
@@ -245,6 +246,51 @@ test("a Doc attached by another link shows as attached", async ({
   });
   await expect(docCard).toContainText("Attached");
   await expect(docCard.getByRole("button", { name: "Attach" })).toHaveCount(0);
+});
+
+test("Linked work shows an attached link's title only to a viewer who can open it", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  const now = new Date().toISOString();
+  // An attached link saves no title: its label is the link.
+  await viewAsParticipant(page, [
+    {
+      kind: "resource_link",
+      key: "1MockReleaseChecklist_0123456789",
+      label: DOC_URL,
+      objectType: "document",
+      plugin: "google",
+      url: DOC_URL,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ]);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  const linkedWork = page.getByTestId("conversation-side-panel");
+  await expect(
+    linkedWork.getByRole("link", { name: /Release 4\.2 checklist/ }),
+  ).toBeVisible();
+  await screenshot(page, "conversation-attached-linked-work", {
+    lightTheme: true,
+    view: "desktop",
+  });
+
+  // A viewer who cannot open the Doc gets no card, so the row is the link.
+  await page.route(
+    (url) => url.pathname === "/api/objects",
+    (route) => route.fulfill({ json: { objects: [] } }),
+  );
+  await page.reload();
+  await expect(linkedWork.getByRole("link", { name: DOC_URL })).toBeVisible();
+  await expect(linkedWork).not.toContainText("Release 4.2 checklist");
+  await screenshot(page, "conversation-attached-linked-work-denied", {
+    lightTheme: true,
+    view: "desktop",
+  });
 });
 
 test("one request asks for the cards of every link in a message", async ({
