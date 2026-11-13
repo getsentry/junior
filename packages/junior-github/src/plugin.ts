@@ -67,6 +67,7 @@ import {
 import type { GitHubDb } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
 import { githubSidebarAnnotations } from "./annotations.js";
+import { githubImageSource } from "./images.js";
 import {
   listGitHubAssignedWork,
   listGitHubFinishedWork,
@@ -175,6 +176,7 @@ export function githubPlugin(
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
+    images: githubImageSource,
     objectLinks: [githubAccountLinks],
     events: {
       resourceTypes: [

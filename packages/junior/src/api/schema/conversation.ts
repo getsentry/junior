@@ -21,6 +21,7 @@ import {
   conversationSidebarAnnotationSchema,
   conversationEventPresentationSchema,
 } from "@sentry/junior-plugin-api";
+import { objectPreviewImageSchema } from "./object-preview-image";
 
 export {
   conversationTurnFailureCodeSchema,
@@ -244,6 +245,7 @@ const conversationAnnotationReportSchema =
       plugin: z.string().min(1),
       createdAt: z.string().datetime(),
       updatedAt: z.string().datetime(),
+      previewImages: z.array(objectPreviewImageSchema).optional(),
     }),
   );
 

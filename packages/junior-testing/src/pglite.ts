@@ -1,16 +1,8 @@
 import { randomUUID } from "node:crypto";
-import {
-  PGlite,
-  type PGliteOptions,
-  type Transaction,
-} from "@electric-sql/pglite";
-import { btree_gin as pgliteBtreeGinExtension } from "@electric-sql/pglite/contrib/btree_gin";
-import { vector as pgliteVectorExtension } from "@electric-sql/pglite/vector";
+import { PGlite, type Transaction } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 
 type PgliteQueryClient = PGlite | Transaction;
-
-export { pgliteBtreeGinExtension, pgliteVectorExtension };
 
 export interface LocalPgliteFixture<TDatabase> {
   client: PGlite;
@@ -102,12 +94,8 @@ class LocalPgliteExecutor<TDatabase> implements LocalPgliteFixture<TDatabase> {
  */
 export async function createLocalPgliteFixture<TDatabase>(
   schema: Record<string, unknown>,
-  options: Pick<PGliteOptions, "extensions" | "loadDataDir"> = {},
 ): Promise<LocalPgliteFixture<TDatabase>> {
-  const client = await PGlite.create(
-    `memory://junior-sql-${randomUUID()}`,
-    options,
-  );
+  const client = await PGlite.create(`memory://junior-sql-${randomUUID()}`);
 
   return new LocalPgliteExecutor<TDatabase>(client, schema);
 }

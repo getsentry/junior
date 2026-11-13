@@ -348,9 +348,7 @@ async function withChildAgentsTaskedAfter(
     .from(juniorConversations)
     .where(
       and(
-        inArray(juniorConversations.parentConversationId, [
-          ...conversationIds,
-        ]),
+        inArray(juniorConversations.parentConversationId, [...conversationIds]),
         isNotNull(juniorConversations.agentConfig),
         or(
           ne(juniorConversations.parentConversationId, conversationId),
