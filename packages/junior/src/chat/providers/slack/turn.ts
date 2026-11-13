@@ -139,7 +139,7 @@ import {
 } from "@/chat/conversations/projection";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { trimTrailingAssistantMessages } from "@/chat/pi/transcript";
-import { requireSlackDestination } from "@/chat/destination";
+import { requireSlackDestination, sameDestination } from "@/chat/destination";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { toConversationMessage } from "@/chat/runtime/conversation-message";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
@@ -847,14 +847,19 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   threadTs: outcome.destination.threadTs,
                 });
                 slackMessageTs.push(...messageIds);
+                // A Conversation keeps one destination. A reply in a thread
+                // in another channel, such as the creator's DM, starts its
+                // own Conversation; binding it here would reject that reply.
                 // A thread reply binds the thread, so replies there reach
                 // this Conversation.
-                messageDestinations.push(
-                  ...messageIds.map((messageId) => ({
-                    destination: outcome.destination,
-                    messageId: outcome.destination.threadTs ?? messageId,
-                  })),
-                );
+                if (sameDestination(outcome.destination, destination)) {
+                  messageDestinations.push(
+                    ...messageIds.map((messageId) => ({
+                      destination: outcome.destination,
+                      messageId: outcome.destination.threadTs ?? messageId,
+                    })),
+                  );
+                }
               }
             } else {
               slackMessageTs = await sendSlackReply({

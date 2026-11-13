@@ -35,7 +35,11 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { getUserMessageInstructionText } from "@/chat/pi/transcript";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
-import { resetSlackApiMockState } from "../msw/handlers/slack-api";
+import {
+  queueSlackApiResponse,
+  resetSlackApiMockState,
+} from "../msw/handlers/slack-api";
+import { chatPostMessageOk } from "../fixtures/slack/factories/api";
 import { createModelStream } from "../fixtures/model-stream";
 import {
   createModelAgentRunner,
@@ -469,6 +473,9 @@ describe("agent dispatch conversation work", () => {
     const { queue, run, state } = await createConversationWorkHarness(
       createModelAgentRunner(createModelStream([sendMessage("Work complete")])),
     );
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({ channel: "D123", ts: "1700000000.000401" }),
+    });
 
     await enqueueAgentDispatch(dispatch, { queue, state });
     await processConversationQueueMessage(queue.takeMessage(), {
@@ -495,6 +502,16 @@ describe("agent dispatch conversation work", () => {
         personThread,
       ),
     ).resolves.toBe(personConversationId);
+    // A post outside the run's destination stays unbound, so a reply in the
+    // D123 thread starts its own Conversation.
+    await expect(
+      getConversationStore().getConversationIdByProviderConversation({
+        provider: "slack",
+        providerConversationId: "1700000000.000401",
+        providerDestinationId: "D123",
+        providerTenantId: destination.teamId,
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it("posts nothing for a run without a reply or outcomes, also when it fails", async () => {
