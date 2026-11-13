@@ -14,13 +14,12 @@ import { createWatchEventsTool } from "@/chat/tools/watch-events";
 import { juniorAutomations } from "@/db/schema/automations";
 import { context, execute } from "../../fixtures/event-automations";
 import {
+  channelMessageTrigger,
+  postChannelMessage,
+} from "../../fixtures/slack-channel-messages";
+import {
   createConversationWorkQueueTestAdapter,
-  createNoopSlackWebhookRuntime,
-  createSlackAdapterFixture,
-  handleSlackWebhookAndFlush,
   SLACK_BOT_USER_ID,
-  slackEnvelope,
-  slackWebhookRequest,
   type ConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
 import {
@@ -45,16 +44,6 @@ const TEAM_ID = "T123";
 let fixture: LocalJuniorSqlFixture;
 let queue: ConversationWorkQueueTestAdapter;
 
-function trigger(match?: Record<string, string | string[]>) {
-  return {
-    type: "event" as const,
-    namespace: "slack",
-    label: "New messages in #discuss-integration",
-    events: ["message.posted"],
-    ...(match ? { match } : undefined),
-  };
-}
-
 // Envelope fields of a channel that only workspace T123 can post in.
 const WORKSPACE_CHANNEL = {
   context_enterprise_id: null,
@@ -68,54 +57,6 @@ const ENTERPRISE_CHANNEL = {
   context_enterprise_id: "E123",
   enterprise_id: "E123",
 };
-
-async function postChannelMessage(input: {
-  blocks?: unknown[];
-  botId?: string;
-  botProfile?: Record<string, unknown>;
-  channel?: string;
-  envelope?: Record<string, unknown>;
-  /** Post as an app integration: a `bot_message` with a `bot_id` and no `user`. */
-  noUser?: boolean;
-  text?: string;
-  threadTs?: string;
-  ts: string;
-  user?: string;
-}) {
-  const state = getStateAdapter();
-  await state.connect();
-  const slackAdapter = createSlackAdapterFixture();
-  const {
-    blocks,
-    botId,
-    botProfile,
-    envelope: fields,
-    noUser,
-    ...message
-  } = input;
-  const envelope = slackEnvelope({
-    eventType: "message",
-    text: "How do I connect the Jira integration?",
-    ...message,
-  });
-  if (botId) Object.assign(envelope.event, { bot_id: botId });
-  if (blocks) Object.assign(envelope.event, { blocks });
-  if (botProfile) Object.assign(envelope.event, { bot_profile: botProfile });
-  if (noUser) {
-    Reflect.deleteProperty(envelope.event, "user");
-    Object.assign(envelope.event, { subtype: "bot_message" });
-  }
-  if (fields) Object.assign(envelope, fields);
-  return await handleSlackWebhookAndFlush({
-    request: slackWebhookRequest(envelope),
-    services: {
-      getSlackAdapter: () => slackAdapter,
-      queue,
-      runtime: createNoopSlackWebhookRuntime(),
-      state,
-    },
-  });
-}
 
 describe("Slack channel-message automations", () => {
   beforeEach(async () => {
@@ -164,7 +105,7 @@ describe("Slack channel-message automations", () => {
         outcomes: [
           { action: "send_message", destination: "current_conversation" },
         ],
-        trigger: trigger(),
+        trigger: channelMessageTrigger(),
       },
     )) as { automation: { id: string } };
 
@@ -179,24 +120,29 @@ describe("Slack channel-message automations", () => {
     // A thread reply, a bot post, and a message in another channel do not run it.
     expect(
       (
-        await postChannelMessage({
+        await postChannelMessage(queue, {
           threadTs: "1712345.0001",
           ts: "1712345.0002",
         })
       ).status,
     ).toBe(200);
     expect(
-      (await postChannelMessage({ botId: "B123", ts: "1712345.0005" })).status,
+      (await postChannelMessage(queue, { botId: "B123", ts: "1712345.0005" }))
+        .status,
     ).toBe(200);
     expect(
-      (await postChannelMessage({ channel: "C999", ts: "1712345.0003" }))
+      (await postChannelMessage(queue, { channel: "C999", ts: "1712345.0003" }))
         .status,
     ).toBe(200);
     expect(queue.sentRecords()).toEqual([]);
 
     // A new top-level message runs it once, even when Slack delivers it twice.
-    expect((await postChannelMessage({ ts: "1712345.0004" })).status).toBe(200);
-    expect((await postChannelMessage({ ts: "1712345.0004" })).status).toBe(200);
+    expect(
+      (await postChannelMessage(queue, { ts: "1712345.0004" })).status,
+    ).toBe(200);
+    expect(
+      (await postChannelMessage(queue, { ts: "1712345.0004" })).status,
+    ).toBe(200);
     const sent = queue.sentRecords();
     expect(sent).toHaveLength(1);
     const dispatch = await getDispatchRecord(
@@ -217,7 +163,7 @@ describe("Slack channel-message automations", () => {
 
     // A person's mention in the thread before the run replies joins the run.
     const runConversationId = sent[0]!.conversationId;
-    await postChannelMessage({
+    await postChannelMessage(queue, {
       text: `<@${SLACK_BOT_USER_ID}> any update?`,
       threadTs: "1712345.0004",
       ts: "1712345.0006",
@@ -270,12 +216,12 @@ describe("Slack channel-message automations", () => {
         outcomes: [
           { action: "send_message", destination: "current_conversation" },
         ],
-        trigger: trigger({ user_id: "U777" }),
+        trigger: channelMessageTrigger({ user_id: "U777" }),
       },
     )) as { automation: { id: string } };
 
     // A post from another bot does not run it.
-    await postChannelMessage({
+    await postChannelMessage(queue, {
       botId: "B888",
       ts: "1712346.0001",
       user: "U888",
@@ -283,7 +229,7 @@ describe("Slack channel-message automations", () => {
     expect(queue.sentRecords()).toEqual([]);
 
     // A post from the named bot runs it and replies in the alert thread.
-    await postChannelMessage({
+    await postChannelMessage(queue, {
       botId: "B777",
       ts: "1712346.0002",
       user: "U777",
@@ -316,7 +262,7 @@ describe("Slack channel-message automations", () => {
         outcomes: [
           { action: "send_message", destination: "current_conversation" },
         ],
-        trigger: trigger({ user_id: "B777" }),
+        trigger: channelMessageTrigger({ user_id: "B777" }),
       },
     )) as { automation: { id: string } };
 
@@ -358,7 +304,7 @@ describe("Slack channel-message automations", () => {
       },
     ];
     for (const [index, post] of rejected.entries()) {
-      await postChannelMessage({
+      await postChannelMessage(queue, {
         ...post,
         noUser: true,
         ts: `1712348.000${index + 1}`,
@@ -369,7 +315,7 @@ describe("Slack channel-message automations", () => {
     // A post from the named bot in a workspace-only channel runs it once and
     // replies in its thread, with system credentials. This bot has no bot
     // user, so bots.info is its only lookup.
-    await postChannelMessage({
+    await postChannelMessage(queue, {
       botId: "B777",
       envelope: WORKSPACE_CHANNEL,
       noUser: true,
@@ -410,7 +356,7 @@ describe("Slack channel-message automations", () => {
         outcomes: [
           { action: "send_message", destination: "current_conversation" },
         ],
-        trigger: trigger({
+        trigger: channelMessageTrigger({
           user_id: ["B701", "B702", "B703", "B704", "B705", "B706", "B707"],
         }),
       },
@@ -421,7 +367,7 @@ describe("Slack channel-message automations", () => {
       botProfile?: { deleted: boolean; team_id: string },
       envelope: Record<string, unknown> = WORKSPACE_CHANNEL,
     ) =>
-      postChannelMessage({
+      postChannelMessage(queue, {
         botId,
         ...(botProfile
           ? { botProfile: { id: botId, app_id: "A123", ...botProfile } }
@@ -494,7 +440,7 @@ describe("Slack channel-message automations", () => {
       outcomes: [
         { action: "send_message", destination: "current_conversation" },
       ],
-      trigger: trigger({ user_id: "U777" }),
+      trigger: channelMessageTrigger({ user_id: "U777" }),
     });
     const { automation } = (await execute(
       create,
@@ -504,14 +450,17 @@ describe("Slack channel-message automations", () => {
         outcomes: [
           { action: "send_message", destination: "current_conversation" },
         ],
-        trigger: trigger({ user_id: "U777", location: ["channel", "thread"] }),
+        trigger: channelMessageTrigger({
+          user_id: "U777",
+          location: ["channel", "thread"],
+        }),
       },
       "thread-automation-call",
     )) as { automation: { id: string } };
 
     // A bot reply in a Slack thread runs only the automation that names
     // the thread location, and Junior replies in that Slack thread.
-    await postChannelMessage({
+    await postChannelMessage(queue, {
       botId: "B777",
       threadTs: "1712347.0001",
       ts: "1712347.0002",
@@ -528,7 +477,7 @@ describe("Slack channel-message automations", () => {
     });
 
     // A top-level bot post still runs both.
-    await postChannelMessage({
+    await postChannelMessage(queue, {
       botId: "B777",
       ts: "1712347.0003",
       user: "U777",
@@ -553,7 +502,7 @@ describe("Slack channel-message automations", () => {
           instruction: "Summarize new messages.",
           title: "Summarize secrets",
           outcomes: [],
-          trigger: trigger({ channel_id: "C999" }),
+          trigger: channelMessageTrigger({ channel_id: "C999" }),
         },
       ),
     ).rejects.toThrow("can watch only the channel where it posts");
@@ -566,7 +515,7 @@ describe("Slack channel-message automations", () => {
         instruction: "Summarize new messages.",
         title: "Summarize messages",
         outcomes: [],
-        trigger: trigger(),
+        trigger: channelMessageTrigger(),
       },
     )) as { automation: { id: string } };
     await fixture.sql
@@ -577,7 +526,9 @@ describe("Slack channel-message automations", () => {
         record: sql`jsonb_set(${juniorAutomations.record}, '{destination,channelId}', '"C999"')`,
       })
       .where(eq(juniorAutomations.id, automation.id));
-    expect((await postChannelMessage({ ts: "1712345.0006" })).status).toBe(200);
+    expect(
+      (await postChannelMessage(queue, { ts: "1712345.0006" })).status,
+    ).toBe(200);
     expect(queue.sentRecords()).toEqual([]);
 
     // An update cannot drop the channel filter.
@@ -587,7 +538,7 @@ describe("Slack channel-message automations", () => {
         instruction: "Summarize new messages.",
         title: "Summarize scoped messages",
         outcomes: [],
-        trigger: trigger(),
+        trigger: channelMessageTrigger(),
       },
       "create-scoped",
     )) as { automation: { id: string } };
@@ -598,7 +549,7 @@ describe("Slack channel-message automations", () => {
       ),
       {
         automation_id: scoped.id,
-        trigger: { ...trigger(), match: { channel_id: null } },
+        trigger: { ...channelMessageTrigger(), match: { channel_id: null } },
       },
       "drop-channel",
     );
@@ -618,7 +569,9 @@ describe("Slack channel-message automations", () => {
     const saved = await getEventAutomation(fixture.sql.db(), scoped.id);
     expect(saved?.trigger).toMatchObject({ identifier: "C123" });
     expect(saved?.trigger.match).toBeUndefined();
-    expect((await postChannelMessage({ ts: "1712345.0007" })).status).toBe(200);
+    expect(
+      (await postChannelMessage(queue, { ts: "1712345.0007" })).status,
+    ).toBe(200);
     expect(queue.sentRecords()).toHaveLength(1);
 
     // A DM is not a channel, so the automation could never run there.
@@ -634,7 +587,7 @@ describe("Slack channel-message automations", () => {
           instruction: "Summarize new messages.",
           title: "Summarize DMs",
           outcomes: [],
-          trigger: trigger(),
+          trigger: channelMessageTrigger(),
         },
       ),
     ).rejects.toThrow("not in a DM");

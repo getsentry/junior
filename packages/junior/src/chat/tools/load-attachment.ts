@@ -1,8 +1,12 @@
 import path from "node:path";
 import * as z from "zod";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { readLiveAttachment } from "@/chat/attachments/store";
+import {
+  readLiveAttachment,
+  type StoredAttachment,
+} from "@/chat/attachments/store";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { recordAttachmentsDelivered } from "@/chat/conversations/projection";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -21,16 +25,26 @@ async function readStream(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-/** Create a tool that restores one stored conversation attachment to the sandbox. */
+/** Create a tool that restores one conversation attachment to the sandbox. */
 export function createLoadAttachmentTool(args: {
   conversationId: string;
   db: JuniorSqlDatabase;
   storage: AttachmentStorage;
+  /**
+   * Store a file of the Conversation's provider thread by its provider file
+   * id. Returns `undefined` when the id is not a provider file id.
+   */
+  storeProviderFile?: (fileId: string) => Promise<StoredAttachment | undefined>;
   workspace: SandboxWorkspace;
 }) {
+  const readAttachment = async (attachmentId: string) =>
+    await readLiveAttachment({
+      attachmentId,
+      conversationId: args.conversationId,
+      db: args.db,
+    });
   return zodTool({
-    description:
-      "Load a stored attachment for this conversation into the sandbox.",
+    description: "Load a file of this conversation into the sandbox.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -42,16 +56,16 @@ export function createLoadAttachmentTool(args: {
         .string()
         .min(1)
         .describe(
-          "Stored attachment ID, as shown in attachment context or Slack read results.",
+          "Attachment id from attachment context, or the Slack file id (`F…`) of a file in the current thread.",
         ),
     }),
     outputSchema: juniorToolOutputSchema,
-    execute: async ({ attachment_id }) => {
-      const attachment = await readLiveAttachment({
-        attachmentId: attachment_id,
-        conversationId: args.conversationId,
-        db: args.db,
-      });
+    execute: async ({ attachment_id }, options) => {
+      let attachment = await readAttachment(attachment_id);
+      if (!attachment && args.storeProviderFile) {
+        const stored = await args.storeProviderFile(attachment_id);
+        if (stored) attachment = await readAttachment(stored.id);
+      }
       if (!attachment || attachment.storageProvider !== args.storage.provider) {
         throw new ToolInputError("Attachment not found in this conversation.");
       }
@@ -83,6 +97,14 @@ export function createLoadAttachmentTool(args: {
         );
       }
       await args.workspace.writeFiles([{ content: data, path: sandboxPath }]);
+      // The transcript shows the file at the tool call that read it.
+      if (options?.toolCallId) {
+        await recordAttachmentsDelivered({
+          attachments: [attachment],
+          conversationId: args.conversationId,
+          toolCallId: options.toolCallId,
+        });
+      }
       return {
         path: sandboxPath,
         filename: attachment.filename,

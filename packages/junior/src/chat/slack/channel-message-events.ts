@@ -230,3 +230,20 @@ export function slackChannelMessageReplyThreadTs(
   const messageTs = event.data?.threadTs ?? event.data?.messageTs;
   return typeof messageTs === "string" ? messageTs : undefined;
 }
+
+/** Dispatch metadata key of the Slack message that started an Automation run. */
+export const SLACK_MESSAGE_TS_METADATA_KEY = "slackMessageTs";
+
+/**
+ * Name the message of a Slack channel-message Event in dispatch metadata, so
+ * its run can read the message, and its files, from Slack when it starts.
+ */
+export function slackChannelMessageMetadata(
+  event: Event,
+): Record<string, string> | undefined {
+  if (event.namespace !== SLACK_EVENT_NAMESPACE) return undefined;
+  const messageTs = event.data?.messageTs;
+  return typeof messageTs === "string"
+    ? { [SLACK_MESSAGE_TS_METADATA_KEY]: messageTs }
+    : undefined;
+}

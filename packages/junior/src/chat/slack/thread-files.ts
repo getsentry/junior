@@ -1,0 +1,75 @@
+import {
+  storeAttachment,
+  type StoredAttachment,
+} from "@/chat/attachments/store";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { matchSlackAttachments } from "@/chat/slack/attachments";
+import { listThreadReplies } from "@/chat/slack/channel";
+import type { SlackChannelId } from "@/chat/slack/ids";
+import {
+  downloadSlackFile,
+  isSlackFileId,
+  readSlackMessageFiles,
+  slackFileDownloadUrl,
+} from "@/chat/slack/message-files";
+import type { SlackMessageTs } from "@/chat/slack/timestamp";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import type { JuniorSqlDatabase } from "@/db/db";
+
+/**
+ * Store a file of the Conversation's own Slack thread, found by its Slack
+ * file id.
+ *
+ * A Turn stores the files of its input messages when it starts. This covers
+ * the other files of the thread: earlier messages that a first Turn reads as
+ * history, and messages that started no Turn. A stored file matches first
+ * and is not downloaded again. Other files must be in this thread, so a
+ * Conversation never stores a file from a thread that it does not belong
+ * to. Returns `undefined` when the id is not a Slack file id, or when the
+ * Conversation has no Slack thread and has not stored the file.
+ */
+export async function storeSlackThreadFile(args: {
+  channelId: SlackChannelId;
+  conversationId: string;
+  db: JuniorSqlDatabase;
+  fileId: string;
+  storage: AttachmentStorage;
+  threadTs?: SlackMessageTs;
+}): Promise<StoredAttachment | undefined> {
+  if (!isSlackFileId(args.fileId)) return undefined;
+  const [stored] = await matchSlackAttachments({
+    conversationId: args.conversationId,
+    db: args.db,
+    providerIds: [args.fileId],
+  });
+  if (stored) return { id: stored.id };
+  if (!args.threadTs) return undefined;
+
+  const replies = await listThreadReplies({
+    channelId: args.channelId,
+    threadTs: args.threadTs,
+  });
+  const file = replies
+    .flatMap((reply) => readSlackMessageFiles(reply))
+    .find((candidate) => candidate.id === args.fileId);
+  if (!file || !slackFileDownloadUrl(file)) {
+    throw new ToolInputError(
+      `Slack file ${args.fileId} is not in this conversation's thread.`,
+    );
+  }
+  const data = await downloadSlackFile(file);
+  const filename = file.name ?? "attachment";
+  return await storeAttachment({
+    conversationId: args.conversationId,
+    db: args.db,
+    file: {
+      bytes: data.byteLength,
+      data,
+      filename,
+      mimeType: file.mimetype ?? "application/octet-stream",
+      path: filename,
+    },
+    source: { id: args.fileId, provider: "slack" },
+    storage: args.storage,
+  });
+}

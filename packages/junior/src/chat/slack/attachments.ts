@@ -1,4 +1,3 @@
-import type { Attachment } from "chat";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
@@ -94,14 +93,4 @@ export function slackAttachmentsVersionQuery(
         isNull(juniorAttachments.deleteRequestedAt),
       ),
     );
-}
-
-/** Read the Slack file identity retained by the Chat SDK. */
-export function getSlackFileId(attachment: Attachment): string | undefined {
-  const metadataId = attachment.fetchMetadata?.fileId;
-  if (metadataId) return metadataId;
-  const match = (attachment.url ?? attachment.fetchMetadata?.url ?? "").match(
-    /(?:^|[-/])(F[A-Z0-9]+)(?:[-/]|$)/i,
-  );
-  return match?.[1];
 }

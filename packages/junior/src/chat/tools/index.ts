@@ -56,6 +56,7 @@ import { createSlackListCreateTool } from "@/chat/slack/tools/list/create";
 import { createSlackListGetItemsTool } from "@/chat/slack/tools/list/get-items";
 import { createSlackListUpdateItemTool } from "@/chat/slack/tools/list/update-item";
 import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
+import { storeSlackThreadFile } from "@/chat/slack/thread-files";
 import { createUserLookupTool } from "@/chat/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
 import { createOperatorTools } from "@/chat/tools/operator-sql";
@@ -223,10 +224,24 @@ export function createTools(
         },
       );
     }
+    const attachmentStorage = context.attachmentStorage;
     tools.loadAttachment = createLoadAttachmentTool({
       conversationId: context.conversationId,
       db: getSqlExecutor(),
-      storage: context.attachmentStorage,
+      storage: attachmentStorage,
+      ...(slackContext
+        ? {
+            storeProviderFile: async (fileId: string) =>
+              await storeSlackThreadFile({
+                channelId: slackContext.locationChannelId,
+                conversationId: context.conversationId,
+                db: getSqlExecutor(),
+                fileId,
+                storage: attachmentStorage,
+                threadTs: slackContext.threadTs,
+              }),
+          }
+        : undefined),
       workspace: context.workspace,
     });
     tools.publishImage = createPublishImageTool({
@@ -281,10 +296,7 @@ export function createTools(
     tools.slackCanvasRead = createSlackCanvasReadTool();
     tools.slackCanvasEdit = createSlackCanvasEditTool(state);
     tools.slackCanvasWrite = createSlackCanvasWriteTool(state);
-    tools.slackThreadRead = createSlackThreadReadTool(slackContext, {
-      conversationId: context.conversationId,
-      db: getSqlExecutor(),
-    });
+    tools.slackThreadRead = createSlackThreadReadTool(slackContext);
     tools.slackChannelJoin = createSlackChannelJoinTool(slackContext);
     if (context.conversationPrivacy === "public") {
       tools.searchConversationMessages =

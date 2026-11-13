@@ -346,7 +346,7 @@ const structuredConversationEventDataSchema = z
   })
   .strict();
 
-/** Durable attachment metadata on host-owned delivery events. */
+/** Durable attachment metadata on host-owned attachment events. */
 const deliveredAttachmentSchema = z
   .object({
     id: z.string().min(1),
@@ -356,7 +356,11 @@ const deliveredAttachmentSchema = z
   })
   .strict();
 
-/** Host-owned transcript item for files delivered to humans this turn. */
+/**
+ * Host-owned transcript item for files that Junior sent, or read with a tool.
+ * The name predates read files. A new type or field would break replay on
+ * instances that do not know it, so read files reuse this one.
+ */
 const attachmentsDeliveredEventDataSchema = z
   .object({
     type: z.literal("attachments_delivered"),

@@ -35,6 +35,7 @@ import {
 } from "@/chat/automations/skill";
 import { botConfig } from "@/chat/config";
 import {
+  slackChannelMessageMetadata,
   slackChannelMessageReplyThreadTs,
   slackChannelMessageRunsAutomation,
 } from "@/chat/slack/channel-message-events";
@@ -196,7 +197,10 @@ export async function ingestEventAutomations(
           destinationVisibility: task.destinationVisibility,
           input: eventInput(task, event, outcomes, catalog),
           ...(skill ? { skill } : undefined),
-          metadata: { eventAutomationId: task.id },
+          metadata: {
+            ...slackChannelMessageMetadata(event),
+            eventAutomationId: task.id,
+          },
           replyAttribution: automationReplyAttribution(task.title),
           outcomes,
         },

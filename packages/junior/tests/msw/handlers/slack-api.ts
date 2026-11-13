@@ -117,6 +117,7 @@ export interface CapturedSlackFileUploadCall {
 const queuedResponses = new Map<string, SlackMockHttpResponse[]>();
 const capturedSlackApiCalls: CapturedSlackApiCall[] = [];
 const capturedSlackFileUploads: CapturedSlackFileUploadCall[] = [];
+const capturedSlackFileDownloadUrls: string[] = [];
 
 function isSlackApiMethod(value: string): value is SlackApiMethod {
   return (SUPPORTED_SLACK_API_METHODS as readonly string[]).includes(value);
@@ -445,10 +446,16 @@ export function getCapturedSlackFileUploadCalls(): CapturedSlackFileUploadCall[]
   return [...capturedSlackFileUploads];
 }
 
+/** URLs of private Slack file downloads, in request order. */
+export function getCapturedSlackFileDownloadUrls(): string[] {
+  return [...capturedSlackFileDownloadUrls];
+}
+
 export function resetSlackApiMockState(): void {
   queuedResponses.clear();
   capturedSlackApiCalls.length = 0;
   capturedSlackFileUploads.length = 0;
+  capturedSlackFileDownloadUrls.length = 0;
 }
 
 export const slackApiHandlers = [
@@ -528,7 +535,8 @@ export const slackApiHandlers = [
     return toHttpResponse(response);
   }),
 
-  http.get("https://files.slack.com/:path*", async () => {
+  http.get("https://files.slack.com/:path*", async ({ request }) => {
+    capturedSlackFileDownloadUrls.push(request.url);
     const response = dequeueResponse(PRIVATE_FILE_DOWNLOAD_KEY) ?? {
       status: 200,
       body: "",
