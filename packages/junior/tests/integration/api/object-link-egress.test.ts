@@ -55,6 +55,7 @@ it("reads link cards through plugin-owned credentials as a system Actor", async 
           {
             filters: [{ host: "docs.test", pathPrefix: "/d/" }],
             objectType: "document",
+            canView: async () => true,
             async resolve(ctx, url) {
               const response = await ctx.egress.fetch({
                 operation: "docs.file.get",

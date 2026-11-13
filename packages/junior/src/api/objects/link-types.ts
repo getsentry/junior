@@ -14,6 +14,8 @@ export interface ObjectLinkType {
    * change shows at once instead of after the card cache expires.
    */
   cacheCards?: false;
+  /** Whether the viewer may see the object. Called before `resolve`. */
+  canView(viewer: User, url: URL): Promise<boolean>;
   filters: readonly ObjectLinkFilter[];
   objectType: ObjectType;
   /** `junior` for core, or the plugin name. */
