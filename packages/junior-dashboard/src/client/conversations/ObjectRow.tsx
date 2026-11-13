@@ -82,11 +82,15 @@ export function ObjectRow(props: {
         {reference}
       </span>
       {card.warning ? (
-        <CircleAlert
+        // Positioned above the row's link so a pointer gets the tooltip.
+        <span
           aria-label={card.warning}
-          className="size-3.5 shrink-0 text-amber-500"
+          className="relative shrink-0"
           role="img"
-        />
+          title={card.warning}
+        >
+          <CircleAlert aria-hidden className="size-3.5 text-amber-500" />
+        </span>
       ) : null}
       {card.status ? (
         <StatusChip
