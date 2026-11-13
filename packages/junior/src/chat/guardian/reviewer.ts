@@ -135,15 +135,15 @@ const NO_CONFIRMATION_REASON =
   "No person can confirm this action in this run, so do not ask for confirmation.";
 
 const TRUNCATED_INPUT_REASON =
-  "Guardian saw only a shortened input, so a person must confirm this action.";
+  "The input is too large to review in full. Make the input smaller or split the action into smaller calls.";
 
 /**
  * Derive allow, ask, or deny from the model's assessment. The named rule
  * sets the decision. Code also asks for high or critical risk with weak
- * authorization, and for a shortened input, because the tool gets input that
- * Guardian did not see, as Codex asks when its reviewer is over budget. Code
- * turns an ask into deny when no person can answer. That deny gets a reason
- * that says so, so the agent does not try to ask.
+ * authorization, and turns an ask into deny when no person can answer. That
+ * deny gets a reason that says so, so the agent does not try to ask. A
+ * shortened input is denied, because the tool gets input that Guardian did
+ * not see.
  */
 export function guardianDecision(
   assessment: GuardianAssessment,
@@ -161,15 +161,22 @@ export function guardianDecision(
   ) {
     decision = "ask";
   }
-  let reason = assessment.reason;
-  if (decision === "allow" && proposal.inputTruncated) {
-    decision = "ask";
-    reason = `${reason} ${TRUNCATED_INPUT_REASON}`;
+  // Deny, not ask: an ask only rejects the call, and a retry with the same
+  // input is shortened again, so a person's yes cannot let it through. This
+  // becomes `ask` once the code-enforced ask from #3320 lands.
+  if (decision !== "deny" && proposal.inputTruncated) {
+    return {
+      decision: "deny",
+      reason: `${assessment.reason} ${TRUNCATED_INPUT_REASON}`,
+    };
   }
   if (decision === "ask" && noPersonCanConfirm(proposal)) {
-    return { decision: "deny", reason: `${reason} ${NO_CONFIRMATION_REASON}` };
+    return {
+      decision: "deny",
+      reason: `${assessment.reason} ${NO_CONFIRMATION_REASON}`,
+    };
   }
-  return { decision, reason };
+  return { decision, reason: assessment.reason };
 }
 
 /** Create the structured Guardian reviewer used for permissioned tool actions. */
