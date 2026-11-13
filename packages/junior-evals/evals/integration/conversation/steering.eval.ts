@@ -6,6 +6,7 @@ import {
   webMessage,
 } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
+import { savedAgentHistory } from "@junior-evals/fixture/saved-history";
 import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
 import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
@@ -14,6 +15,10 @@ import { test } from "@junior-evals/fixture/test";
 // under test, not the summary.
 const INCIDENT_REQUEST =
   "In two sentences, summarize the checkout outage: payments failed for 20 minutes after the 14:05 deploy.";
+
+// A repository that the eval creates, and the AGENTS.md block Junior adds.
+const NOTES_REPO = "/vercel/sandbox/repos/notes";
+const AGENTS_MD_BLOCK = `# AGENTS.md instructions for ${NOTES_REPO}`;
 
 // With passive routing, Junior can answer a thread message that has no
 // mention. Without it, no such message starts a turn, so a check for "no
@@ -59,8 +64,7 @@ describe("Slack Turn Steering", () => {
     // The bash step adds a Git worktree with AGENTS.md. Junior adds the
     // AGENTS.md context and the steered mention at the same step boundary,
     // and every later checkpoint of the Turn must accept that order.
-    const request =
-      "Run this exact bash command once: `mkdir -p /vercel/sandbox/repos/notes && cd /vercel/sandbox/repos/notes && git init -q && printf 'Keep notes short.\\n' > AGENTS.md`. Then reply in one sentence that the repo exists.";
+    const request = `Run this exact bash command once: \`mkdir -p ${NOTES_REPO} && cd ${NOTES_REPO} && git init -q && printf 'Keep notes short.\\n' > AGENTS.md\`. Then reply in one sentence that the repo exists.`;
     const conversation = await run(slackMention(request), {
       onProgress: sendDuringFirstModelRequest([
         slackMention("also say that Dana owns the rollback"),
@@ -84,6 +88,29 @@ describe("Slack Turn Steering", () => {
     expect(conversation.replies.map((reply) => reply.text).join("\n")).toMatch(
       /Dana/,
     );
+    // Saved history around the AGENTS.md block: the bash result, AGENTS.md,
+    // then the steered mention at the same boundary, then the final reply.
+    const history = await savedAgentHistory(conversation.conversationId);
+    const agentsAt = history.findIndex(
+      (item) =>
+        item.type === "user_message" && item.text.startsWith(AGENTS_MD_BLOCK),
+    );
+    expect(agentsAt).toBeGreaterThan(0);
+    expect(history.slice(agentsAt - 1)).toEqual([
+      expect.objectContaining({ type: "tool_result", toolName: "bash" }),
+      expect.objectContaining({
+        type: "user_message",
+        text: expect.stringContaining("Keep notes short."),
+      }),
+      expect.objectContaining({
+        type: "user_message",
+        text: expect.stringContaining("also say that Dana owns the rollback"),
+      }),
+      expect.objectContaining({
+        type: "assistant_message",
+        text: expect.stringContaining("Dana"),
+      }),
+    ]);
   });
 
   test("when other people mention Junior during a turn, each person gets a follow-up turn, even with !!", async ({
