@@ -12,6 +12,7 @@ import { vercelSandboxProvider } from "@/chat/sandbox/vercel/provider";
 import type {
   CreateSandboxSessionInput,
   SandboxSession,
+  SandboxSessionCost,
   SandboxSessionOptions,
 } from "@/chat/sandbox/workspace";
 
@@ -65,6 +66,17 @@ export interface SandboxProvider {
   ): Promise<WorkspaceSnapshotBuilder>;
   /** Permanently delete named Workspace builders. Missing builders are ignored. */
   deleteWorkspaceSnapshotBuilders(names: Iterable<string>): Promise<void>;
+  /**
+   * Read the estimated cost of one VM session of a conversation Sandbox.
+   * `createdSandbox` adds the creation charge. A provider without usage data
+   * leaves it unset, and Junior records no Sandbox cost.
+   */
+  readSessionCost?(input: {
+    sandboxId: string;
+    sessionId: string;
+    createdSandbox: boolean;
+    signal?: AbortSignal;
+  }): Promise<SandboxSessionCost>;
   /**
    * Narrow what a snapshot installs. Without it, a snapshot installs every
    * declared runtime dependency and postinstall command.

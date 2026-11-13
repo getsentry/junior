@@ -40,6 +40,7 @@ import {
   readRepositoryInstructions,
   type RepositoryInstructions,
 } from "@/chat/repository-instructions";
+import type { SandboxCostOwner } from "@/chat/sandbox/cost";
 import { createSandboxRuntime } from "@/chat/sandbox/session";
 import {
   isHostFileMissingError,
@@ -111,6 +112,8 @@ export interface SandboxOptions {
     signal?: AbortSignal,
   ) => Promise<() => Promise<void>>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
+  /** Run that owns the Sandbox cost of the sessions this Sandbox opens. */
+  costOwner?: SandboxCostOwner;
 }
 
 interface SandboxToolCallContext {
@@ -277,6 +280,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     onSandboxPrepare: options.prepare,
     onWorkspacePrepare: options.prepareWorkspace,
     onSandboxRefChanged: options.onSandboxRefChanged,
+    costOwner: options.costOwner,
   });
   const createToolCallContext = (
     signal?: AbortSignal,

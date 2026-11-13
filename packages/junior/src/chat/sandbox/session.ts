@@ -27,7 +27,11 @@ import {
 import { requireReadyWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
-  stopSession,
+  recordSandboxSession,
+  stopSandboxSession,
+  type SandboxCostOwner,
+} from "@/chat/sandbox/cost";
+import {
   type CreateSandboxSessionInput,
   type SandboxCommandResult,
   type SandboxFileSystem,
@@ -128,6 +132,8 @@ interface SandboxRuntimeOptions {
     signal?: AbortSignal,
   ) => Promise<WorkspaceFinalize | void>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
+  /** Run that owns the Sandbox cost of the sessions this runtime opens. */
+  costOwner?: SandboxCostOwner;
 }
 
 function captureOutput(output: string): { value: string; truncated: boolean } {
@@ -199,13 +205,19 @@ export function createSandboxRuntime(
     }
   };
 
-  const createSession = (
+  const recordSession = (session: SandboxSession, createdSandbox: boolean) =>
+    recordSandboxSession({ owner: options.costOwner, session, createdSandbox });
+
+  const createSession = async (
     input: Omit<CreateSandboxSessionInput, "onUnavailable">,
-  ): Promise<SandboxSession> =>
-    getSandboxProvider().createSession({
+  ): Promise<SandboxSession> => {
+    const session = await getSandboxProvider().createSession({
       ...input,
       onUnavailable: invalidateSession,
     });
+    await recordSession(session, true);
+    return session;
+  };
 
   const createSandboxName = (): string =>
     `${SANDBOX_NAME_PREFIX}${randomUUID()}`;
@@ -510,7 +522,7 @@ export function createSandboxRuntime(
       try {
         await persistSandboxRef(ref);
       } catch (error) {
-        await stopSession(createdSandbox);
+        await stopSandboxSession(createdSandbox);
         throw error;
       }
     }
@@ -533,7 +545,7 @@ export function createSandboxRuntime(
       await prepareSandbox(createdSandbox);
     } catch (error) {
       // A Workspace candidate has no durable owner until preparation succeeds.
-      if (workspace) await stopSession(createdSandbox);
+      if (workspace) await stopSandboxSession(createdSandbox);
       return failSetup(error);
     }
 
@@ -560,7 +572,7 @@ export function createSandboxRuntime(
       dependencyProfileHash = candidate.profileHash ?? nextProfileHash;
       return rememberSandbox(candidate.session, candidate.networkPolicyKey);
     } catch (error) {
-      await stopSession(candidate.session);
+      await stopSandboxSession(candidate.session);
       throw error;
     }
   };
@@ -603,6 +615,7 @@ export function createSandboxRuntime(
       }
       throw new Error("sandbox restore failed", { cause: error });
     }
+    await recordSession(hintedSandbox, false);
 
     try {
       // Wait for every step so none keeps running on a sandbox we give up on.
@@ -931,7 +944,7 @@ export function createSandboxRuntime(
         signal?.throwIfAborted();
         await persistSandboxRef(candidate.ref);
       } catch (error) {
-        await stopSession(candidate?.session);
+        await stopSandboxSession(candidate?.session);
         throw error;
       } finally {
         signal?.removeEventListener("abort", stopSwitching);
@@ -952,7 +965,7 @@ export function createSandboxRuntime(
         networkPolicyKey: candidate.networkPolicyKey,
       };
       startKeepAlive(candidate.session);
-      await stopSession(previous?.session);
+      await stopSandboxSession(previous?.session);
     },
     async acquire(signal) {
       return (await getOrAcquireSandbox(signal)).session;

@@ -900,6 +900,7 @@ export function buildConversations(
       lastSeenAt: summary.lastSeenAt,
       locationId: summary.locationId,
       locationUrl: summary.locationUrl,
+      sandboxCostUsd: summary.sandboxCostUsd,
       actorIdentity: summary.actorIdentity,
       participants: summary.participants,
       sentryTraceUrl: summary.sentryTraceUrl,

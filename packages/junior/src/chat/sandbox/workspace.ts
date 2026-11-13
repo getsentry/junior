@@ -105,6 +105,16 @@ export interface SandboxWorkspace {
   ): Promise<void>;
 }
 
+/**
+ * Estimated cost of one VM session. A provider knows it only after the
+ * session stops. `pending` means read it again later. `missing` means the
+ * provider no longer has the usage, so stop trying.
+ */
+export type SandboxSessionCost =
+  | { status: "ready"; costUsd: number }
+  | { status: "pending" }
+  | { status: "missing" };
+
 export interface SandboxSession extends SandboxWorkspace {
   readonly sandboxId: string;
   readonly sessionId: string;
@@ -112,7 +122,8 @@ export interface SandboxSession extends SandboxWorkspace {
   extendTimeout(duration: number): Promise<void>;
   mkDir(path: string): Promise<void>;
   snapshot(options?: { signal?: AbortSignal }): Promise<{ snapshotId: string }>;
-  stop(): Promise<unknown>;
+  /** Stop the session. A provider that reports usage returns its cost. */
+  stop(): Promise<SandboxSessionCost | void>;
   update(params: { networkPolicy?: SandboxNetworkPolicy }): Promise<void>;
 }
 
@@ -141,12 +152,13 @@ export interface CreateSandboxSessionInput extends SandboxSessionOptions {
 
 /** Best-effort stop; ignore secondary stop failures during cleanup. */
 export async function stopSession(
-  session: { stop: () => Promise<unknown> } | null | undefined,
-): Promise<void> {
-  if (!session) return;
+  session: Pick<SandboxSession, "stop"> | null | undefined,
+): Promise<SandboxSessionCost | undefined> {
+  if (!session) return undefined;
   try {
-    await session.stop();
+    return (await session.stop()) ?? undefined;
   } catch {
     // Best-effort stop during cleanup.
+    return undefined;
   }
 }

@@ -172,6 +172,7 @@ type MetricRow = {
   mergedCodeChanges: number | null;
   outcomeCostUsd: number | null;
   outcomes: number | null;
+  sandboxCostUsd: number | null;
   tokens: number | null;
 };
 
@@ -188,6 +189,7 @@ function emptyMetricRow(date: string): MetricRow {
     mergedCodeChanges: null,
     outcomeCostUsd: null,
     outcomes: null,
+    sandboxCostUsd: null,
     tokens: null,
   };
 }
@@ -223,6 +225,8 @@ function applyMetricBuckets(
       row.durationMs = metric.value;
     } else if (metric.metric === "input_tokens") {
       row.inputTokens = metric.value;
+    } else if (metric.metric === "sandbox_cost_usd") {
+      row.sandboxCostUsd = metric.value;
     } else if (metric.metric === "total_tokens") {
       row.tokens = metric.value;
     }
@@ -254,6 +258,7 @@ function metricPoint(
         mergedCodeChanges?: number | null;
         outcomeCostUsd?: number | null;
         outcomes?: number | null;
+        sandboxCostUsd?: number | null;
         tokens?: number | null;
       }
     | undefined,
@@ -285,6 +290,9 @@ function metricPoint(
           outcomeCostUsd: addUsd(undefined, row.outcomeCostUsd ?? 0),
           outcomes: row.outcomes,
         }
+      : undefined),
+    ...(row?.sandboxCostUsd !== null && row?.sandboxCostUsd !== undefined
+      ? { sandboxCostUsd: addUsd(undefined, row.sandboxCostUsd) }
       : undefined),
     ...(row?.tokens !== null && row?.tokens !== undefined
       ? { tokens: row.tokens }

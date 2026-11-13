@@ -611,6 +611,7 @@ export async function readConversationFeedFromSql(
         auxiliaryCosts: auxiliaryCosts?.total,
         ...(childAgentTotals ? { childAgentTotals } : undefined),
         durationMs: metrics?.durationMs ?? row.conversation.durationMs,
+        sandboxCostUsd: metrics?.sandboxCostUsd,
         firstHumanMessageText: firstHumanMessageTextByConversation.get(
           conversation.conversationId,
         ),

@@ -266,6 +266,12 @@ export const conversationSummaryReportSchema = z
     cumulativeUsage: conversationUsageSchema.optional(),
     auxiliaryCosts: conversationAuxiliaryCostsSchema.optional(),
     childAgentTotals: conversationChildAgentTotalsSchema.optional(),
+    /**
+     * Estimated Sandbox cost of this Conversation and its child agents, at
+     * list price. It lands some time after each Sandbox session stops, and is
+     * not part of `cumulativeUsage`.
+     */
+    sandboxCostUsd: z.number().finite().nonnegative().optional(),
     conversationId: z.string(),
     kind: conversationKindSchema,
     /** Present on Threads and Tasks. */

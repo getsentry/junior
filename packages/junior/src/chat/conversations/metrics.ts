@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversationMetrics, juniorConversations } from "@/db/schema";
 import {
@@ -101,28 +101,22 @@ export async function replaceConversationMetrics(
     usage?: AgentTurnUsage;
   },
 ): Promise<void> {
+  // The sandbox cost sweep owns `sandbox_cost_usd`. It can land before the
+  // Run's last summary write, so this rewrite leaves it alone.
+  const runSummaryRows = and(
+    eq(juniorConversationMetrics.conversationId, args.conversationId),
+    eq(juniorConversationMetrics.runId, args.runId),
+    ne(juniorConversationMetrics.metric, "sandbox_cost_usd"),
+  );
   const [current] = await executor
     .db()
     .select({ updatedAt: juniorConversationMetrics.updatedAt })
     .from(juniorConversationMetrics)
-    .where(
-      and(
-        eq(juniorConversationMetrics.conversationId, args.conversationId),
-        eq(juniorConversationMetrics.runId, args.runId),
-      ),
-    )
+    .where(runSummaryRows)
     .limit(1);
   if (current && current.updatedAt.getTime() > args.updatedAtMs) return;
 
-  await executor
-    .db()
-    .delete(juniorConversationMetrics)
-    .where(
-      and(
-        eq(juniorConversationMetrics.conversationId, args.conversationId),
-        eq(juniorConversationMetrics.runId, args.runId),
-      ),
-    );
+  await executor.db().delete(juniorConversationMetrics).where(runSummaryRows);
   const metricValues = conversationMetricValues({
     durationMs: args.durationMs,
     usage: args.usage,

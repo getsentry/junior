@@ -51,6 +51,7 @@ interface UsageAggregateRow {
   costCacheRead: number | null;
   costCacheWrite: number | null;
   costTotal: number | null;
+  sandboxCostUsd: number | null;
 }
 
 function usageFromAggregate(
@@ -99,6 +100,8 @@ export interface ChildAgentMetrics {
 export interface ConversationTreeMetrics {
   durationMs: number;
   usage?: AgentTurnUsage;
+  /** Estimated Sandbox cost, kept apart from model usage. */
+  sandboxCostUsd?: number;
   /** Present only when the Conversation has child agents. */
   childAgents?: ChildAgentMetrics;
 }
@@ -142,6 +145,10 @@ export async function readConversationTreeMetricsFromSql(
       costCacheRead: summedCostNumber("cacheRead"),
       costCacheWrite: summedCostNumber("cacheWrite"),
       costTotal: summedCostNumber("total"),
+      sandboxCostUsd: sql<number | null>`round(
+        sum(${juniorConversations.sandboxCostUsd})::numeric,
+        12
+      )::double precision`,
     })
     .from(juniorConversations)
     .innerJoin(
@@ -164,9 +171,15 @@ export async function readConversationTreeMetricsFromSql(
     const child = childRows.get(conversationId);
     const childUsage = child ? usageFromAggregate(child) : undefined;
     const usage = addAgentTurnUsage(ownUsage, childUsage);
+    const childSandboxCostUsd = child?.sandboxCostUsd ?? null;
+    const sandboxCostUsd =
+      own.sandboxCostUsd === null && childSandboxCostUsd === null
+        ? undefined
+        : (own.sandboxCostUsd ?? 0) + (childSandboxCostUsd ?? 0);
     result.set(conversationId, {
       durationMs: own.durationMs + (child?.durationMs ?? 0),
       ...(usage ? { usage } : undefined),
+      ...(sandboxCostUsd !== undefined ? { sandboxCostUsd } : undefined),
       ...(child
         ? {
             childAgents: {

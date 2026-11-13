@@ -2,7 +2,7 @@ import type {
   ConversationMetricDay,
   ConversationStatsReport,
 } from "@sentry/junior/api/schema";
-import { CircleDollarSign, MessageSquare, Sigma } from "lucide-react";
+import { Box, CircleDollarSign, MessageSquare, Sigma } from "lucide-react";
 
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import {
@@ -25,11 +25,13 @@ function periodTotals(days: ConversationMetricDay[]) {
     (total, day) => ({
       conversations: total.conversations + day.conversations,
       costUsd: total.costUsd + (day.costUsd ?? 0),
+      sandboxCostUsd: total.sandboxCostUsd + (day.sandboxCostUsd ?? 0),
       tokens: total.tokens + (day.tokens ?? 0),
     }),
     {
       conversations: 0,
       costUsd: 0,
+      sandboxCostUsd: 0,
       tokens: 0,
     },
   );
@@ -98,7 +100,7 @@ export function SystemActivity(props: {
           Metrics refresh failed. Showing cached data.
         </p>
       ) : null}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           detail={`Root conversations in the ${timeRangeDetail(props.range)}`}
           icon={MessageSquare}
@@ -116,6 +118,12 @@ export function SystemActivity(props: {
           icon={CircleDollarSign}
           label="Model spend"
           value={formatCostSummary({ total: totals.costUsd })}
+        />
+        <StatCard
+          detail="Estimated at list price, after each session stops"
+          icon={Box}
+          label="Sandbox spend"
+          value={formatCostSummary({ total: totals.sandboxCostUsd })}
         />
       </div>
       <OutcomeCostChart
