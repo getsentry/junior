@@ -370,7 +370,43 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           );
         }
         repositoryState.available ||= repositoryState.availableAtBoundary;
-        if (!(await this.endTurn(this.state.messages.at(-1), []))) {
+        // A yield needs a step that does not end the run: a tool batch that
+        // a model call follows, or steering.
+        const toolResults: unknown[] = [];
+        if (agentMode.value === "cooperativeYield") {
+          const toolResult = {
+            role: "toolResult",
+            toolCallId: "yield-tool-call",
+            toolName: "systemTime",
+            isError: false,
+            content: [{ type: "text", text: "ok" }],
+          };
+          this.pushMessages(
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "toolCall",
+                  id: "yield-tool-call",
+                  name: "systemTime",
+                  arguments: {},
+                },
+              ],
+              stopReason: "toolUse",
+              usage: { input: 2, output: 1 },
+            },
+            toolResult,
+          );
+          toolResults.push(toolResult);
+        }
+        if (
+          !(await this.endTurn(
+            toolResults.length > 0
+              ? this.state.messages.at(-2)
+              : this.state.messages.at(-1),
+            toolResults,
+          ))
+        ) {
           return {};
         }
         if (agentMode.value === "steeringDelivery") {
@@ -1176,13 +1212,15 @@ describe("agent run continuation", () => {
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
       "user",
       "user",
+      "assistant",
+      "toolResult",
       "user",
     ]);
     // A resumed Turn finds AGENTS.md only in context messages.
-    expect(JSON.stringify(sessionRecord?.piMessages[2])).toContain(
+    expect(JSON.stringify(sessionRecord?.piMessages[4])).toContain(
       "# AGENTS.md instructions for /vercel/sandbox/repo",
     );
-    expect(sessionRecord?.piMessageProvenance[2]).toEqual({
+    expect(sessionRecord?.piMessageProvenance[4]).toEqual({
       authority: "context",
     });
     await expect(
@@ -1338,6 +1376,8 @@ describe("agent run continuation", () => {
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
       "user",
       "user",
+      "assistant",
+      "toolResult",
       "user",
     ]);
     const serializedMessages = JSON.stringify(sessionRecord?.piMessages);
