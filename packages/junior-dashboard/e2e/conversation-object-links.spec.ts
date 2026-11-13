@@ -205,7 +205,7 @@ test("Google Doc and Calendar links resolve to links and hover cards", async ({
   });
 });
 
-test("a Sentry issue link resolves to a chip and a hover card", async ({
+test("a Sentry issue link resolves to a titled link and a hover card", async ({
   page,
   dashboard,
 }) => {
@@ -213,9 +213,13 @@ test("a Sentry issue link resolves to a chip and a hover card", async ({
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
   );
-  // A bare issue URL in a sentence is a chip with the short id and state.
-  const chip = page.getByRole("link", { name: /JUNIOR-3ZK · Unresolved/ });
-  await expect(chip).toHaveAttribute(
+  // A bare issue URL in a sentence is a plain link with the issue title and
+  // short id. Its state shows in the hover card.
+  const issue = page.getByRole("link", {
+    exact: true,
+    name: "TypeError: cart.total is undefined (JUNIOR-3ZK)",
+  });
+  await expect(issue).toHaveAttribute(
     "href",
     "https://acme.sentry.io/issues/JUNIOR-3ZK/",
   );
@@ -224,7 +228,7 @@ test("a Sentry issue link resolves to a chip and a hover card", async ({
   ).toHaveCount(0);
 
   await waitForResolvedLinks(page);
-  await chip.hover();
+  await issue.hover();
   const card = page.getByRole("region", {
     name: "Sentry issue: TypeError: cart.total is undefined",
   });
