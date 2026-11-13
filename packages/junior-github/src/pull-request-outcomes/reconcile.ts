@@ -21,7 +21,7 @@ import type {
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import { gitHubPullRequestTerminalEvents } from "../webhooks/events.js";
-import { closeGitHubConflictNotices } from "../merge-conflict-checks/policy.js";
+import { closeGitHubConflictNotice } from "../merge-conflict-checks/policy.js";
 import { GitHubRepositoryUnreachableError } from "../webhooks/installation-requests.js";
 import {
   loadGitHubPullRequestPeople,
@@ -248,12 +248,11 @@ async function reconcileRepository(
       for (const event of events) {
         await args.events.publish({ ...event, objectType: "code_change" });
       }
-      // No webhook closed the merge conflict notice either.
-      await closeGitHubConflictNotices({
+      // No webhook closed the merge conflict notice either. Like the
+      // publish, a failed close keeps the row open for the next reconcile.
+      await closeGitHubConflictNotice({
         db: args.db,
-        log: args.log,
-        numbers: [pullRequest.number],
-        repositoryFullName: nameWithOwner,
+        ref: { number: pullRequest.number, repositoryFullName: nameWithOwner },
         reviewItems: args.reviewItems,
         ...(pullRequest.merged
           ? { reason: "The pull request merged.", status: "done" }

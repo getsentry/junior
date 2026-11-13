@@ -219,7 +219,7 @@ async function addNotice(
   // conflict that has a notice adds no second one.
   await args.reviewItems.forConversation(opener.conversationId).upsert({
     assigneeIdentityIds: [opener.identityId],
-    body: `${name} has merge conflicts with \`${conflict.baseBranch}\`. Junior does not fix them on its own, because ${reason}. Ask Junior in this thread to fix them: ${url}`,
+    body: `${name} has merge conflicts with \`${conflict.baseBranch}\`. Junior stopped fixing them on its own, because ${reason}. If they are still there, ask Junior in this thread to fix them: ${url}`,
     dedupeKey: gitHubConflictNoticeKey(ref),
     subject: {
       id: url,
@@ -259,20 +259,10 @@ export async function applyGitHubConflictPolicy(args: {
   if (!row) return args.events;
   const history = parseGitHubConflictHistory(await args.loadHistory(args.ref));
   const action = gitHubConflictAction(history, args.now.getTime());
-  if (action === "fix") {
-    // A notice from an earlier check says Junior does not fix the conflict.
-    // That is no longer true, so it closes.
-    await closeGitHubConflictNotices({
-      db: args.db,
-      log: args.log,
-      numbers: [args.ref.number],
-      reason: "Junior is fixing the merge conflicts.",
-      repositoryFullName: args.ref.repositoryFullName,
-      reviewItems: args.reviewItems,
-      status: "done",
-    });
-    return args.events;
-  }
+  // A fix keeps an open notice. Core delivers one fix per head commit, so
+  // a fix of a head that Junior failed to fix starts no turn, and the
+  // notice is the only ask left. It closes when the conflict is gone.
+  if (action === "fix") return args.events;
   if (action === "notice") {
     try {
       await addNotice(args, history.fixes);
@@ -294,6 +284,32 @@ export async function applyGitHubConflictPolicy(args: {
 /** Why a merge conflict notice closes when GitHub reports no conflict. */
 export const GITHUB_CONFLICT_GONE_REASON =
   "The pull request no longer has merge conflicts.";
+
+/**
+ * Close the merge conflict notice of one Junior pull request. Throws when
+ * the review desk fails, so a caller with no later check can try again.
+ */
+export async function closeGitHubConflictNotice(args: {
+  db: GitHubDb;
+  reason: string;
+  ref: GitHubPullRequestRef;
+  reviewItems: PluginConversationReviewItems;
+  status: "done" | "dismissed";
+}): Promise<void> {
+  const { ref } = args;
+  const opener = (
+    await listGitHubPullRequestOpeners(args.db, {
+      numbers: [ref.number],
+      repositoryFullName: ref.repositoryFullName,
+    })
+  ).get(ref.number);
+  if (!opener?.conversationId) return;
+  await args.reviewItems.forConversation(opener.conversationId).close({
+    dedupeKey: gitHubConflictNoticeKey(ref),
+    reason: args.reason,
+    status: args.status,
+  });
+}
 
 /**
  * Close the merge conflict notices of some Junior pull requests, such as

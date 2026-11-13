@@ -157,8 +157,8 @@ describe("daily reconcile of open pull requests", () => {
     vi.restoreAllMocks();
   });
 
-  it("records closes that GitHub did not deliver, once a day", async () => {
-    // Pull request 949 has a merge conflict notice.
+  /** Add a merge conflict notice for pull request 949. */
+  async function noticeFor949(): Promise<void> {
     await fixture
       .db()
       .insert(juniorGitHubPullRequestRequesters)
@@ -176,6 +176,10 @@ describe("daily reconcile of open pull requests", () => {
       dedupeKey: "merge-conflict:getsentry/junior#949",
       title: "Merge conflict · #949",
     });
+  }
+
+  it("records closes that GitHub did not deliver, once a day", async () => {
+    await noticeFor949();
     await h.heartbeat(now);
     expect(h.closedNotices).toEqual(["merge-conflict:getsentry/junior#949"]);
 
@@ -357,6 +361,31 @@ describe("daily reconcile of open pull requests", () => {
     expect(new Set((await rowStates()).map(([, state]) => state))).toEqual(
       new Set(["open"]),
     );
+  });
+
+  it("keeps a close open for the next reconcile when its notice close fails", async () => {
+    await noticeFor949();
+    const desk = h.reviewItems.forConversation("slack:C1:1.0");
+    vi.spyOn(h.reviewItems, "forConversation").mockReturnValueOnce({
+      ...desk,
+      close: () => Promise.reject(new Error("The review desk is down")),
+    });
+    await h.heartbeat(now);
+    const state949 = async () =>
+      (
+        await fixture
+          .db()
+          .select({ state: juniorGitHubPullRequests.state })
+          .from(juniorGitHubPullRequests)
+          .where(eq(juniorGitHubPullRequests.number, 949))
+      )[0]?.state;
+    expect(await state949()).toBe("open");
+    expect(h.closedNotices).toEqual([]);
+
+    vi.setSystemTime(now + day);
+    await h.heartbeat(now + day);
+    expect(await state949()).toBe("closed_unmerged");
+    expect(h.closedNotices).toEqual(["merge-conflict:getsentry/junior#949"]);
   });
 
   it("keeps a close open for the next reconcile when its event fails", async () => {

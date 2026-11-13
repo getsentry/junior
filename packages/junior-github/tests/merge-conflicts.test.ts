@@ -534,7 +534,7 @@ describe("merge conflict check on webhook events", () => {
           conversationId: "slack:C1:1.0",
           notice: {
             assigneeIdentityIds: ["identity-jane"],
-            body: "**Pull request 946** has merge conflicts with `main`. Junior does not fix them on its own, because Junior already fixed conflicts 3 times. Ask Junior in this thread to fix them: https://github.com/getsentry/junior/pull/946",
+            body: "**Pull request 946** has merge conflicts with `main`. Junior stopped fixing them on its own, because Junior already fixed conflicts 3 times. If they are still there, ask Junior in this thread to fix them: https://github.com/getsentry/junior/pull/946",
             dedupeKey: "merge-conflict:getsentry/junior#946",
             subject: {
               id: "https://github.com/getsentry/junior/pull/946",
@@ -580,8 +580,8 @@ describe("merge conflict check on webhook events", () => {
       await checkAt(pushedAt + 4 * day + 2 * hour, "6");
       await checkAt(pushedAt + 4 * day + 3 * hour, "7");
       expect(fixedShas()).toEqual(["4", "5", "6"]);
-      // The first fix closes the notice that said Junior does not fix it.
-      expect(h.closedNotices).toEqual(["merge-conflict:getsentry/junior#946"]);
+      // The notice stays until the conflict is gone.
+      expect(h.closedNotices).toEqual([]);
     });
   });
 });
