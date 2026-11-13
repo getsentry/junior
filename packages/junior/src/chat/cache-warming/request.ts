@@ -167,13 +167,16 @@ export async function breakerOpen(
 }
 
 // Count one warmup outcome. Open the breaker when too many recent warmups
-// missed. Only the call that opens it reports to Sentry.
+// missed. Only the call that opens it reports to Sentry. Warmups that started
+// before it opened are not counted, so their misses cannot reopen it right
+// after the pause.
 async function countOutcome(
   state: ConnectedState,
   modelId: string,
   miss: boolean,
 ): Promise<void> {
   const provider = providerOf(modelId);
+  if (await breakerOpen(state, modelId)) return;
   await state.appendToList(breakerOutcomesKey(provider), miss ? 1 : 0, {
     maxLength: BREAKER_OUTCOMES_MAX,
     ttlMs: BREAKER_OUTCOMES_TTL_MS,
