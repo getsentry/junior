@@ -10,7 +10,7 @@ import { ObjectIcon } from "../components/ObjectIcon";
 import { OutboundLink } from "../components/OutboundLink";
 import { StatusChip } from "../components/StatusChip";
 import { ObjectAttachAction } from "./ObjectAttach";
-import { ObjectCard } from "./ObjectCard";
+import { ObjectCard, webPageMeta } from "./ObjectCard";
 import { ObjectImage } from "./ObjectImage";
 import { useObjectPreviewImages } from "./objectPreviewImages";
 
@@ -32,12 +32,14 @@ export function ObjectRow(props: {
   }
   const presentation = objectPresentation(card);
   const type = card.displayType ?? presentation.label;
-  // A label that repeats the title says nothing, so a fact such as the
-  // site of a web page names the object instead.
+  // A web page names its site and author, as its full card does. Another
+  // label that repeats the title says nothing, so a fact names the object.
   const reference =
-    card.label === card.title
-      ? (objectFactFields(card.facts)[0]?.value ?? type)
-      : card.label;
+    card.objectType === "web_page"
+      ? (webPageMeta(card) ?? type)
+      : card.label === card.title
+        ? (objectFactFields(card.facts)[0]?.value ?? type)
+        : card.label;
   const images = [
     ...((card.facts?.type === "document" || card.facts?.type === "web_page") &&
     card.facts.thumbnailUrl

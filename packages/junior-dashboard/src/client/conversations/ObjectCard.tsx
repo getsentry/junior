@@ -21,6 +21,37 @@ import { displayPlainText } from "../display-text/plainText";
 import { ObjectAttachAction } from "./ObjectAttach";
 import { ObjectImage } from "./ObjectImage";
 import { useObjectPreviewImages } from "./objectPreviewImages";
+import { objectSource } from "./objectSource";
+
+// Its type and its core plugin tell the viewer nothing, and the label of a
+// web page is its title.
+function cardMeta(card: OwnedObjectAnnotation, type: string): string {
+  if (card.objectType === "web_page") return webPageMeta(card) ?? type;
+  return (
+    [
+      type,
+      objectSource(card.plugin),
+      card.label === card.title ? "" : card.label,
+    ]
+      .filter(Boolean)
+      .join(" · ") || type
+  );
+}
+
+/** Name a web page by its site, then its author, such as "YouTube · Sentry". */
+export function webPageMeta(card: OwnedObjectAnnotation): string | undefined {
+  const author =
+    card.facts?.type === "web_page" ? card.facts.author : undefined;
+  return [webPageSite(card), author].filter(Boolean).join(" · ") || undefined;
+}
+
+function webPageSite(card: OwnedObjectAnnotation): string | undefined {
+  if (card.facts?.type === "web_page" && card.facts.siteName) {
+    return card.facts.siteName;
+  }
+  if (!card.url || !URL.canParse(card.url)) return undefined;
+  return new URL(card.url).hostname.replace(/^www\./, "");
+}
 
 /**
  * Show the full card of the latest saved annotation, or a `live` card that
@@ -50,7 +81,12 @@ export function ObjectCard({
       />
     );
   }
-  const fields = objectFactFields(card.facts);
+  // The header already names the site and author of a web page.
+  const fields = objectFactFields(card.facts).filter(
+    (field) =>
+      card.facts?.type !== "web_page" ||
+      (field.key !== "siteName" && field.key !== "author"),
+  );
   const presentation = objectPresentation(card);
   const type = card.displayType ?? presentation.label;
   return (
@@ -67,9 +103,7 @@ export function ObjectCard({
             <ObjectIcon {...card} size={18} />
           )
         }
-        meta={[type, card.plugin, card.label === card.title ? "" : card.label]
-          .filter(Boolean)
-          .join(" · ")}
+        meta={cardMeta(card, type)}
         title={
           card.url ? (
             <OutboundLink
