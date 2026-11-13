@@ -21,6 +21,7 @@ import { createGitHubUpdatePullRequestTool } from "./tools/update-pull-request.j
 import { createGitHubUpdatePullRequestFeedbackTool } from "./tools/update-pull-request-feedback.js";
 import { createGitHubResolvePullRequestReviewThreadTool } from "./tools/resolve-pull-request-review-thread.js";
 import { createGitHubSubmitPullRequestReviewTool } from "./tools/submit-pull-request-review.js";
+import { withGitHubText } from "./tool-support/github-text.js";
 
 /** Opt-ins for GitHub plugin behavior that is still being tested. */
 export interface GitHubPluginExperiments {
@@ -42,40 +43,43 @@ export function createGitHubTools(
   const descriptionDecider = experimental.pullRequestDescriptionChecks
     ? ctx.decider
     : undefined;
-  return {
-    reactToIssue: createGitHubReactToIssueTool(ctx.egress),
-    cloneRepository: createGitHubCloneRepositoryTool(ctx),
-    commentOnIssue: createGitHubCommentOnIssueTool(ctx.egress),
-    commentOnPullRequest: createGitHubCommentOnPullRequestTool(ctx.egress),
-    createIssue: createGitHubIssueTool(ctx),
-    createPullRequest: createGitHubPullRequestTool(
-      ctx,
-      pullRequestSubscription,
-      descriptionDecider,
-    ),
-    getDeployment: createGitHubGetDeploymentTool(ctx),
-    getIssue: createGitHubGetIssueTool(ctx),
-    getPullRequest: createGitHubGetPullRequestTool(ctx),
-    getRelease: createGitHubGetReleaseTool(ctx),
-    getRepository: createGitHubGetRepositoryTool(ctx),
-    getStatus: createGitHubGetStatusTool(ctx),
-    resolvePullRequestReviewThread:
-      createGitHubResolvePullRequestReviewThreadTool(ctx, botEmail),
-    submitPullRequestReview: createGitHubSubmitPullRequestReviewTool(
-      ctx.egress,
-    ),
-    updateIssue: createGitHubUpdateIssueTool(ctx),
-    updateIssueComment: createGitHubUpdateIssueCommentTool(
-      ctx.egress,
-      botEmail,
-    ),
-    updatePullRequest: createGitHubUpdatePullRequestTool(
-      ctx,
-      descriptionDecider,
-    ),
-    updatePullRequestFeedback: createGitHubUpdatePullRequestFeedbackTool(
-      ctx,
-      botEmail,
-    ),
-  };
+  return withGitHubText(
+    {
+      reactToIssue: createGitHubReactToIssueTool(ctx.egress),
+      cloneRepository: createGitHubCloneRepositoryTool(ctx),
+      commentOnIssue: createGitHubCommentOnIssueTool(ctx.egress),
+      commentOnPullRequest: createGitHubCommentOnPullRequestTool(ctx.egress),
+      createIssue: createGitHubIssueTool(ctx),
+      createPullRequest: createGitHubPullRequestTool(
+        ctx,
+        pullRequestSubscription,
+        descriptionDecider,
+      ),
+      getDeployment: createGitHubGetDeploymentTool(ctx),
+      getIssue: createGitHubGetIssueTool(ctx),
+      getPullRequest: createGitHubGetPullRequestTool(ctx),
+      getRelease: createGitHubGetReleaseTool(ctx),
+      getRepository: createGitHubGetRepositoryTool(ctx),
+      getStatus: createGitHubGetStatusTool(ctx),
+      resolvePullRequestReviewThread:
+        createGitHubResolvePullRequestReviewThreadTool(ctx, botEmail),
+      submitPullRequestReview: createGitHubSubmitPullRequestReviewTool(
+        ctx.egress,
+      ),
+      updateIssue: createGitHubUpdateIssueTool(ctx),
+      updateIssueComment: createGitHubUpdateIssueCommentTool(
+        ctx.egress,
+        botEmail,
+      ),
+      updatePullRequest: createGitHubUpdatePullRequestTool(
+        ctx,
+        descriptionDecider,
+      ),
+      updatePullRequestFeedback: createGitHubUpdatePullRequestFeedbackTool(
+        ctx,
+        botEmail,
+      ),
+    },
+    ctx.users,
+  );
 }

@@ -189,6 +189,28 @@ async function fetchDashboard(
 }
 
 /**
+ * Check that an authenticated dashboard file can be downloaded, without
+ * downloading it, and throw the server's reason when it cannot. A HEAD
+ * response has no body, so a refused check asks again with GET to read the
+ * error. That GET fails before it sends file bytes.
+ */
+export async function checkDashboardDownload(path: string): Promise<void> {
+  const head = await fetchDashboard(path, {
+    credentials: "same-origin",
+    method: "HEAD",
+  });
+  if (head.status === 401) restartDashboardSignIn();
+  if (head.ok) return;
+  const response = await fetchDashboard(path, { credentials: "same-origin" });
+  if (response.ok) {
+    // The file became readable after the check. Do not read it here.
+    await response.body?.cancel();
+    return;
+  }
+  await throwDashboardApiError(path, response);
+}
+
+/**
  * Read at most `maxBytes` from the start of an authenticated dashboard file.
  * It asks for one byte range, so a large file does not download whole.
  */

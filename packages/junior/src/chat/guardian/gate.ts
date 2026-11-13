@@ -4,11 +4,10 @@
  * Deterministic host checks establish authority before the model evaluates
  * untrusted action evidence.
  */
-import {
-  missingToolAnnotationKeys,
-  type Destination,
-  type Source,
-  type ToolPermission,
+import type {
+  Destination,
+  Source,
+  ToolPermission,
 } from "@sentry/junior-plugin-api";
 import type { Actor } from "@/chat/actor";
 import type { CredentialContext } from "@/chat/credentials/context";
@@ -187,21 +186,19 @@ export class ToolActionReviewLimitError extends Error {
 }
 
 /**
- * True when an `auto` action must enter review. Only a core action with a
- * complete set of annotations that marks it read-only, closed-world, and not
- * destructive skips review. Missing or partial annotations are unknown risk.
+ * True when an `auto` action must enter review. The tool's annotations alone
+ * decide: an action marked read-only and not destructive skips review, like
+ * MCP clients such as Codex do. MCP annotations come from the server, and
+ * plugin annotations from the plugin. Anything else, including missing
+ * annotations, is unknown risk.
  */
 function autoActionNeedsReview(
   tool: AnyToolDefinition,
   resolved: ToolApprovalResolution | undefined,
 ): boolean {
   const annotations = resolved?.annotations ?? tool.annotations;
-  return (
-    missingToolAnnotationKeys(annotations).length > 0 ||
-    annotations?.destructiveHint === true ||
-    annotations?.openWorldHint === true ||
-    annotations?.readOnlyHint === false ||
-    Boolean(tool.identity || resolved?.source || tool.source)
+  return !(
+    annotations?.readOnlyHint === true && annotations.destructiveHint !== true
   );
 }
 

@@ -82,12 +82,12 @@ const fileListSchema = z.object({
 type DriveFile = z.infer<typeof fileListSchema>["files"][number];
 
 /** Quote a value for a Drive search query. */
-function driveQueryString(value: string): string {
+export function driveQueryString(value: string): string {
   return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
 }
 
 /** Drive search terms for files that name the requester in a permission. */
-function namedQuery(requester: string): string {
+export function namedQuery(requester: string): string {
   const email = driveQueryString(requester);
   return `(${email} in readers or ${email} in writers or ${email} in owners)`;
 }
@@ -206,7 +206,7 @@ export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "Find Google Docs, Sheets, and Slides by title or text. Finds only company-owned files that anyone in the company can find in Drive, or that are shared with the requester by name. Shared-drive files are found only when shared with the requester by name. Files shared by link, shared only with other people or groups, or owned outside the company are never found; ask the requester for their link instead. Returns file ids for readGoogleDoc, readGoogleSheet, readGoogleSlides, and listGoogleFileComments.",
+      "Find Google Docs, Sheets, and Slides by title or text. Finds only company-owned files that anyone in the company can find in Drive, or that are shared with the requester by name. Shared-drive files are found only when shared with the requester by name. Files shared by link, shared only with other people or groups, or owned outside the company are never found; ask the requester for their link instead. Returns file ids for readGoogleFile and listGoogleFileComments.",
     inputSchema,
     outputSchema,
     async execute(input) {

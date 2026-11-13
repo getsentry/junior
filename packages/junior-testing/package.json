@@ -8,6 +8,9 @@
     "./http": "./src/http/index.ts",
     "./pglite": "./src/pglite.ts",
     "./postgres": "./src/postgres/index.ts",
+    "./postgres/fixture": "./src/postgres/fixture.ts",
+    "./postgres/global-setup": "./src/postgres/global-setup.ts",
+    "./postgres/setup": "./src/postgres/setup.ts",
     "./structured-output": "./src/structured-output.ts"
   },
   "scripts": {
@@ -22,6 +25,10 @@
   "devDependencies": {
     "@types/node": "^25.9.1",
     "@types/pg": "^8.15.6",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12"
+  },
+  "peerDependencies": {
+    "vitest": "^4.1.12"
   }
 }

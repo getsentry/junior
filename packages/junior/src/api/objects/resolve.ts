@@ -7,7 +7,9 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 import { getDashboardLinkFilter } from "@/chat/dashboard-link";
+import { credentialContextForActor } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
+import { createPluginEgress } from "@/chat/egress/plugin";
 import { logException } from "@/chat/logging";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginCache } from "@/chat/plugins/cache";
@@ -20,14 +22,23 @@ import {
   findObjectLinkType,
   type ObjectLinkType,
 } from "./link-types";
-import { resolvePersonLink } from "./person";
+import { resolvePersonByAccount, resolvePersonLink } from "./person";
 import {
   resolveSlackMessageLink,
   SLACK_MESSAGE_LINK_FILTER,
 } from "./slack-message";
+import { webPageLinkType } from "./web-page/resolve";
 
 /** A card is a short-lived read. A changed object shows within this time. */
 export const OBJECT_LINK_TTL_MS = 60_000;
+
+// Links resolve outside a Turn, so no person is the credential subject. This
+// system Actor gets only credentials that a plugin owns, never the viewer's.
+// Each plugin checks that the viewer may see an object before it returns it.
+const OBJECT_LINK_SYSTEM_ACTOR = {
+  platform: "system",
+  name: "object-link",
+} as const;
 
 function coreLinkTypes(): ObjectLinkType[] {
   // Slack runtime is in core until Slack is a plugin.
@@ -39,10 +50,13 @@ function coreLinkTypes(): ObjectLinkType[] {
   };
   const conversations = getDashboardLinkFilter("/conversations/*");
   const people = getDashboardLinkFilter("/people/*");
+  // Any other public page. Its filters are the least specific.
+  const webPages = webPageLinkType();
   // These links need the dashboard: each card links to a dashboard page.
-  if (!conversations || !people) return [slack];
+  if (!conversations || !people) return [slack, webPages];
   return [
     slack,
+    webPages,
     {
       filters: [conversations],
       objectType: "conversation",
@@ -66,11 +80,20 @@ function pluginLinkTypes(plugin: PluginRegistration): ObjectLinkType[] {
     filters: link.filters,
     objectType: link.objectType,
     owner: name,
+    readTool: link.readTool,
     resolve: (viewer, url) =>
       link.resolve(
         {
           cache: createPluginCache(name),
           db: getDb(),
+          egress: createPluginEgress({
+            credentialContext: credentialContextForActor(
+              OBJECT_LINK_SYSTEM_ACTOR,
+            ),
+            // A card is optional. It must never ask anyone to authorize.
+            pluginAuth: { async handleAuthRequired() {} },
+          }),
+          findPerson: resolvePersonByAccount,
           log: createPluginLogger(name),
           plugin: { name },
           viewer,
@@ -109,6 +132,23 @@ async function resolveWithLinkType(
     ...object,
     plugin: linkType.owner,
   });
+}
+
+/**
+ * Resolve one link for one viewer without the card cache, so a change of
+ * access counts at once. Returns nothing when no link type claims the URL
+ * or the viewer cannot see the object.
+ */
+export async function resolveObjectLinkNow(
+  viewer: User,
+  url: URL,
+): Promise<
+  { linkType: ObjectLinkType; object: OwnedObjectAnnotation } | undefined
+> {
+  const linkType = findObjectLinkType(readObjectLinkTypes(), url);
+  if (!linkType) return undefined;
+  const object = await resolveWithLinkType(linkType, viewer, url);
+  return object ? { linkType, object } : undefined;
 }
 
 /**

@@ -319,7 +319,8 @@ export async function getDefaultRedisStateAdapterFor(
     : undefined;
 }
 
-function redisCacheKey(key: string): string {
+/** The Redis key that the default Redis adapter uses for one state value key. */
+export function redisStateKey(key: string): string {
   const prefix = getChatConfig().state.keyPrefix;
   return `${REDIS_STATE_KEY_PREFIX}:cache:${prefix ? `${prefix}:` : ""}${key}`;
 }
@@ -334,7 +335,7 @@ export async function getStateValues(
   if (!redis) {
     return await Promise.all(keys.map((key) => state.get(key)));
   }
-  const values = await redis.getClient().mGet(keys.map(redisCacheKey));
+  const values = await redis.getClient().mGet(keys.map(redisStateKey));
   return values.map((value) => {
     if (value === null) return null;
     // Match `RedisStateAdapter.get`, which returns a value that is not JSON as is.
@@ -362,7 +363,7 @@ export async function setStateValues(
   }
   const pipeline = redis.getClient().multi();
   for (const { key, value } of entries) {
-    pipeline.set(redisCacheKey(key), JSON.stringify(value), { PX: ttlMs });
+    pipeline.set(redisStateKey(key), JSON.stringify(value), { PX: ttlMs });
   }
   await pipeline.execAsPipeline();
 }

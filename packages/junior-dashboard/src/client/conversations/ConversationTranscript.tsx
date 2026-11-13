@@ -4,6 +4,7 @@ import {
   use,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -23,6 +24,7 @@ import {
 import { Card } from "../components/layout/Card";
 import { formatTime, unavailableTranscriptLabel } from "../format";
 import { KnownObjectsProvider } from "../display-text/DisplayText";
+import { ObjectAttachProvider } from "./ObjectAttach";
 import { ConversationBrief } from "./ConversationBrief";
 import { transcriptMessagesFromEvents } from "./eventTranscript";
 import type {
@@ -58,6 +60,13 @@ import {
   TranscriptMessageView,
 } from "./TranscriptMessageView";
 import { TranscriptEventView } from "./TranscriptEventView";
+import {
+  createVisibleRowsStore,
+  TranscriptAnswerLinks,
+  TranscriptAnswerLinkSegments,
+  transcriptAnswerLinks,
+  transcriptAnswerLinksValue,
+} from "./TranscriptAnswerLinks";
 import {
   isAutomationTriggerMessage,
   TranscriptAutomationTriggerView,
@@ -191,17 +200,19 @@ export const ConversationTranscriptView = memo(
           messages={messages}
         >
           <KnownObjectsProvider annotations={annotations}>
-            <section className="min-w-0 pt-1">
-              <SegmentEvents
-                onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-                conversation={props.conversation}
-                messages={messages}
-                responding={props.responding}
-                revealSeq={props.revealSeq}
-                scrollAnchorKey={props.scrollAnchorKey}
-                unread={props.unread}
-              />
-            </section>
+            <ObjectAttachProvider conversation={props.conversation}>
+              <section className="min-w-0 pt-1">
+                <SegmentEvents
+                  onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+                  conversation={props.conversation}
+                  messages={messages}
+                  responding={props.responding}
+                  revealSeq={props.revealSeq}
+                  scrollAnchorKey={props.scrollAnchorKey}
+                  unread={props.unread}
+                />
+              </section>
+            </ObjectAttachProvider>
           </KnownObjectsProvider>
         </TranscriptImagesProvider>
       </TranscriptTimestampProvider>
@@ -602,6 +613,11 @@ function TranscriptEntryList(
     return () => observer.disconnect();
   }, [askIndex, askReveal]);
   useEffect(() => () => window.clearTimeout(askHighlight.current?.timer), []);
+  const [visibleRows] = useState(createVisibleRowsStore);
+  const answerLinks = useMemo(
+    () => transcriptAnswerLinksValue(transcriptAnswerLinks(rows), visibleRows),
+    [rows, visibleRows],
+  );
   const anchorKey = props.scrollAnchorKey?.();
   const markerIndex = indexByKey.get(UNREAD_MARKER_KEY);
   // A memory row can sit at its event or on the message before it.
@@ -629,6 +645,9 @@ function TranscriptEntryList(
     listRef,
     sizeClass: (index) => transcriptRowSizeClass(rows[index]!),
   });
+  // An answer quotes its question only while the question row is out of
+  // the scroll pane. Before paint, so the quote does not flash.
+  useLayoutEffect(() => visibleRows.set(virtualizer.range));
   // Rows render again only when the renderers change, not on each scroll.
   const {
     renderAttachmentsDelivered,
@@ -690,7 +709,7 @@ function TranscriptEntryList(
   }
 
   return (
-    <>
+    <TranscriptAnswerLinks value={answerLinks}>
       <TranscriptOpenRows value={openRows}>
         <TranscriptReplyRatings value={replyRatings}>
           <div
@@ -715,7 +734,7 @@ function TranscriptEntryList(
         </TranscriptReplyRatings>
       </TranscriptOpenRows>
       {thinking}
-    </>
+    </TranscriptAnswerLinks>
   );
 }
 
@@ -757,6 +776,7 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
       ref={props.measure}
       style={{ transform: `translateY(${props.offset}px)` }}
     >
+      <TranscriptAnswerLinkSegments index={props.index} />
       {row.kind === "unread_marker" ? (
         <TranscriptUnreadMarker />
       ) : row.kind === "activity" ? (

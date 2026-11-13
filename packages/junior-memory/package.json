@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-memory",
-  "version": "0.299.0",
+  "version": "0.300.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -41,8 +41,10 @@
     "@oxlint/plugins": "1.79.0",
     "@sentry/junior-testing": "workspace:*",
     "@types/node": "^25.9.1",
+    "@types/pg": "^8.15.6",
     "drizzle-kit": "catalog:",
     "oxlint": "^1.79.0",
+    "pg": "^8.16.3",
     "tsdown": "0.23.1",
     "typescript": "^7.0.2",
     "vitest": "^4.1.12"

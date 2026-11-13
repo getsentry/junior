@@ -33,6 +33,7 @@ import {
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { getConversationEventStore } from "@/chat/db";
 import { logWarn, setSpanAttributes, withLogContext } from "@/chat/logging";
+import { readAgentHistory } from "@/chat/pi/agent-history";
 import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
@@ -185,7 +186,9 @@ export async function requestBackgroundCompaction(args: {
   if (!args.queue) {
     return;
   }
-  const inputSize = lastRequestInputSize(args.agent.state.messages);
+  const inputSize = lastRequestInputSize(
+    readAgentHistory(args.agent.state.messages),
+  );
   if (
     inputSize === undefined ||
     inputSize < getAgentBackgroundCompactionMarkTokens(args.modelId)
