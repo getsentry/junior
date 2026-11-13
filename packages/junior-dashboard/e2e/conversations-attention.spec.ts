@@ -11,6 +11,15 @@ function conversationsList(page: Page): Locator {
   return page.getByRole("region", { name: "Conversations", exact: true });
 }
 
+// A row's own link. Other rows' summaries can link the same Conversation
+// by its title.
+function rowLink(scope: Page | Locator, title: string): Locator {
+  const page = "page" in scope ? scope.page() : scope;
+  return scope
+    .getByRole("link", { exact: true, name: title })
+    .and(page.locator('a[aria-controls^="inbox-row-"]'));
+}
+
 /** Label of the list section that holds the first row matching `title`. */
 async function sectionOf(
   list: Locator,
@@ -19,7 +28,7 @@ async function sectionOf(
   return list
     .locator("section[aria-label]")
     .filter({
-      has: list.page().getByRole("link", { exact: true, name: title }),
+      has: rowLink(list.page(), title),
     })
     .first()
     .getAttribute("aria-label");
@@ -33,11 +42,7 @@ test.describe("conversation rows", () => {
     await viewAsParticipant(page);
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const list = conversationsList(page);
-    // Other rows' summaries link to it too, by its chip.
-    const row = list.getByRole("link", {
-      exact: true,
-      name: "Investigate checkout latency",
-    });
+    const row = rowLink(list, "Investigate checkout latency");
     await expect(row).toBeVisible();
     await expect
       .poll(() => sectionOf(list, "Investigate checkout latency"))
