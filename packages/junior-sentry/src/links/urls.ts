@@ -7,7 +7,8 @@
  */
 import type { ObjectLinkFilter } from "@sentry/junior-plugin-api";
 
-const ORG_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,49}$/;
+/** A Sentry org slug. */
+export const ORG_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,49}$/;
 const NUMERIC_ISSUE_ID_PATTERN = /^[1-9]\d{0,18}$/;
 // `<PROJECT>-<suffix>`. The suffix is Crockford base32, and Sentry reads
 // I, L, and O as 1, 1, and 0 (`base32_decode`).
