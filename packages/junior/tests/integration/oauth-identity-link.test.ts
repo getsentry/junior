@@ -1,5 +1,12 @@
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+} from "vitest";
 import {
   createConversationId,
   recordWebConversationActivity,
@@ -12,6 +19,7 @@ import {
   getSqlExecutor,
 } from "@/chat/db";
 import type { IdentityLinkedHookContext } from "@sentry/junior-plugin-api";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import {
   identityLinkRequestDedupeKey,
@@ -182,7 +190,14 @@ describe("oauth identity link", () => {
     await createEvalOAuthAccountApp(
       { id: "eval-account-request", handle: "person-handle" },
       "eval-oauth",
-      { dashboard: true, identityLinked: (ctx) => void linked.push(ctx) },
+      { identityLinked: (ctx) => void linked.push(ctx) },
+    );
+    // The request links to the dashboard connections page.
+    const previousLinks = setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+    onTestFinished(
+      () => void setDashboardConversationLinkOptions(previousLinks),
     );
     const actor = webActorFromUser({
       displayName: "Web Person",
