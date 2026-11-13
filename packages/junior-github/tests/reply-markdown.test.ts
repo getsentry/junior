@@ -140,6 +140,16 @@ describe("GitHub reply markdown", () => {
     ).toContain(", #3");
   });
 
+  it("does not pair a stray < with the > of a later Slack token", () => {
+    expect(
+      linkifyGitHubReferences(
+        "a < b in getsentry/junior#1 for @byk, Vec<T> #2, cc <@U123>",
+      ),
+    ).toBe(
+      "a < b in [getsentry/junior#1](https://github.com/getsentry/junior/issues/1) for [@byk](https://github.com/byk), Vec<T> [#2](https://github.com/getsentry/junior/issues/2), cc <@U123>",
+    );
+  });
+
   it("links unknown @login mentions only when the text names a repository", () => {
     expect(
       linkifyGitHubReferences(

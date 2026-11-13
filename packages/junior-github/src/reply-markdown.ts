@@ -98,12 +98,14 @@ function readMarkdownLink(text: string, start: number): number | undefined {
   return closeParens === -1 ? undefined : closeParens + 1;
 }
 
+// A Slack token or autolink, such as `<@U123>`, `<#C1|eng>`, `<!here>`, or
+// `<https://x|label>`. Other `<` characters, such as `a < b` or `Vec<T>`,
+// are text: they must not pair with the `>` of a later token.
+const ANGLE_TOKEN = /^<(?:[@#!]|[a-z][a-z0-9+.-]*:)[^<>]*>/i;
+
 function readAngleToken(text: string, start: number): number | undefined {
-  if (text[start] !== "<") {
-    return undefined;
-  }
-  const end = text.indexOf(">", start + 1);
-  return end === -1 ? undefined : end + 1;
+  const match = ANGLE_TOKEN.exec(text.slice(start));
+  return match ? start + match[0].length : undefined;
 }
 
 function readUrl(text: string, start: number): number | undefined {
