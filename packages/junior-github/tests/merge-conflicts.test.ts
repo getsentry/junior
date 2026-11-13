@@ -228,6 +228,7 @@ describe("merge conflict check on webhook events", () => {
     let mergeability: Record<number, string>;
     let headSha: string;
     let drafts: Set<number>;
+    let approvals: Set<number>;
     let duringRead: (() => Promise<void>) | undefined;
 
     function pushRequest(ref: string, repo = "getsentry/junior"): Request {
@@ -248,6 +249,7 @@ describe("merge conflict check on webhook events", () => {
       mergeability = { 946: "CONFLICTING", 947: "MERGEABLE" };
       headSha = "1111111111111111111111111111111111111111";
       drafts = new Set();
+      approvals = new Set();
       duringRead = undefined;
       vi.stubEnv(
         "GITHUB_APP_BOT_EMAIL",
@@ -269,6 +271,7 @@ describe("merge conflict check on webhook events", () => {
                   isDraft: drafts.has(number),
                   mergeable: mergeability[number],
                   number,
+                  reviewDecision: approvals.has(number) ? "APPROVED" : null,
                   state: "OPEN",
                   title: `Pull request ${number}`,
                   url: `https://github.com/getsentry/junior/pull/${number}`,
@@ -479,7 +482,7 @@ describe("merge conflict check on webhook events", () => {
       ]);
     });
 
-    it("adds one notice when nobody worked on it for 2 days, then stops", async () => {
+    it("adds one notice when nobody worked on it for 2 days, then stops until it is approved", async () => {
       await askedInSlack();
       // The pull request opened an hour before `pushedAt`.
       await checkAt(pushedAt + 2 * day, "1");
@@ -500,6 +503,11 @@ describe("merge conflict check on webhook events", () => {
       await checkAt(pushedAt + 3 * day, "3");
       expect(fixedShas()).toEqual([]);
       expect(h.notices).toEqual([]);
+
+      // An approved pull request is about to merge, so it still gets a fix.
+      approvals.add(946);
+      await checkAt(pushedAt + 4 * day, "4");
+      expect(fixedShas()).toEqual(["4"]);
     });
   });
 });

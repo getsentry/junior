@@ -9,6 +9,8 @@
  *   to the Conversation that asked for the pull request. New activity by a
  *   person allows one more notice.
  * - After 3 days without activity by a person, nothing.
+ * - An approved pull request is about to merge, so it gets fixes after the
+ *   2 days too, within the same daily and total limits.
  *
  * Opening the pull request counts as activity, because a person asked for
  * it. A conflict on a pull request that Junior did not open goes to its
@@ -59,14 +61,15 @@ type GitHubConflictAction = "fix" | "notice" | "skip";
 function gitHubConflictAction(
   history: GitHubConflictHistory,
   nowMs: number,
+  approved: boolean,
 ): GitHubConflictAction {
   const activeAtMs = Math.max(
     history.openedAt.getTime(),
     history.lastActivityAt?.getTime() ?? 0,
   );
   const idleMs = nowMs - activeAtMs;
-  if (idleMs > IDLE_MS) return "skip";
-  if (idleMs <= ACTIVE_MS && history.conflictFixes < MAX_FIXES) {
+  if (idleMs > IDLE_MS && !approved) return "skip";
+  if ((idleMs <= ACTIVE_MS || approved) && history.conflictFixes < MAX_FIXES) {
     const fixedAtMs = history.conflictFixedAt?.getTime();
     return fixedAtMs !== undefined && nowMs - fixedAtMs < FIX_INTERVAL_MS
       ? "skip"
@@ -150,6 +153,8 @@ async function addNotice(
  * optional, so a failure is logged, and the next idle stretch tries again.
  */
 export async function applyGitHubConflictPolicy(args: {
+  /** GitHub's review decision is `APPROVED`. */
+  approved: boolean;
   conflict: GitHubMergeConflict;
   db: GitHubDb;
   draft: boolean;
@@ -168,7 +173,7 @@ export async function applyGitHubConflictPolicy(args: {
     .where(and(pullRequestRow(args.ref), eq(t.state, "open")))
     .limit(1);
   if (!row) return args.events;
-  const action = gitHubConflictAction(row, args.now.getTime());
+  const action = gitHubConflictAction(row, args.now.getTime(), args.approved);
   if (action === "fix") {
     await args.db
       .update(t)

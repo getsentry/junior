@@ -52,6 +52,7 @@ const searchNodeSchema = z.union([
     isDraft: z.boolean(),
     mergeable: z.enum(["CONFLICTING", "MERGEABLE", "UNKNOWN"]),
     number: z.number().int().positive(),
+    reviewDecision: z.string().nullable(),
     state: z.string(),
     title: z.string(),
     url: z.string().min(1),
@@ -101,6 +102,7 @@ async function checkRepository(
       // Conflict events match only `repo` and `pullRequest`.
       if (!(await args.events.hasMatch?.(events))) continue;
       for (const event of await applyGitHubConflictPolicy({
+        approved: node.reviewDecision === "APPROVED",
         conflict,
         db: args.db,
         draft: node.isDraft,

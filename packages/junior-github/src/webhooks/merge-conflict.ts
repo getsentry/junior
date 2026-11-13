@@ -167,6 +167,9 @@ export async function loadGitHubMergeConflictEvents(args: {
       };
       conflicts.push(
         ...(await applyGitHubConflictPolicy({
+          // The REST pull request has no review decision. A review webhook
+          // is activity by a person, so it allows a fix anyway.
+          approved: false,
           conflict,
           db: args.db,
           draft: loaded.draft === true,

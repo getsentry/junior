@@ -600,6 +600,9 @@ people work on it:
   request. New activity by a person allows one more notice. The notice closes
   when the conflict is gone.
 - After 3 days without activity by a person, Junior does nothing.
+- An approved pull request still gets the event after those 2 days, within
+  the same daily and total limits, because it is about to merge. Only the
+  check after a push to the default branch reads the approval.
 
 </details>
 
