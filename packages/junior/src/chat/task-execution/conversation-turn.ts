@@ -69,6 +69,7 @@ import {
 import { recordFinishedTurnForAutomatedLimit } from "@/chat/services/automated-turn-limit";
 import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
+import { setPendingAuth } from "@/chat/services/pending-auth";
 import {
   coerceThreadConversationState,
   type ConversationMessage,
@@ -712,7 +713,7 @@ export function createConversationTurnWorker(
                   });
                 },
                 recordPendingAuth: async (pendingAuth) => {
-                  conversation.processing.pendingAuth = pendingAuth;
+                  setPendingAuth(conversation, pendingAuth);
                   await persistThreadStateById(context.conversationId, {
                     conversation,
                     sandboxRef,
@@ -944,7 +945,6 @@ export function createConversationTurnWorker(
           try {
             markTurnFailed({
               conversation,
-              nowMs: Date.now(),
               sessionId: turnId,
               userMessageId,
               markConversationMessage,

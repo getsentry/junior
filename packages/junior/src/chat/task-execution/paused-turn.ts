@@ -56,8 +56,8 @@ import {
 } from "@/chat/services/conversation-memory";
 import {
   markTurnClosed,
-  markTurnCompleted,
   markTurnFailed,
+  startActiveTurn,
 } from "@/chat/runtime/turn";
 import {
   getPausedTurnRequest,
@@ -91,7 +91,11 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { executeTurn } from "@/chat/runtime/turn-execution";
 import type { AgentDurability, AgentRun } from "@/chat/agent/types";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
-import { clearPendingAuth } from "@/chat/services/pending-auth";
+import {
+  clearPendingAuth,
+  isPendingAuthFor,
+  setPendingAuth,
+} from "@/chat/services/pending-auth";
 import { requireSlackDestination } from "@/chat/destination";
 import {
   credentialContextForActor,
@@ -190,7 +194,6 @@ async function persistFailedReplyState(
 
   markTurnFailed({
     conversation,
-    nowMs: Date.now(),
     sessionId: turn.turnId,
     userMessageId: getTurnUserMessage(conversation, turn.turnId)?.id,
     markConversationMessage,
@@ -228,7 +231,6 @@ async function persistStoppedTurnState(turn: TurnRecord): Promise<void> {
   }
   markTurnClosed({
     conversation,
-    nowMs: Date.now(),
     sessionId: turn.turnId,
   });
   await persistThreadStateById(turn.conversationId, { conversation });
@@ -518,13 +520,10 @@ async function runPausedTurnInContext(
           const pendingAuth = conversation.processing.pendingAuth;
           if (
             pendingAuth &&
-            (pendingAuth.sessionId !== turn.turnId ||
-              pendingAuth.actorId !== authorization.actorId ||
-              pendingAuth.provider !== authorization.provider ||
-              pendingAuth.kind !== authorization.kind ||
-              pendingAuth.scope !== authorization.scope ||
-              (pendingAuth.kind === "mcp" &&
-                pendingAuth.authSessionId !== authorization.authSessionId))
+            !isPendingAuthFor(pendingAuth, {
+              ...authorization,
+              turnId: turn.turnId,
+            })
           ) {
             await abandonTurnRecord({
               conversationId: payload.conversationId,
@@ -574,7 +573,7 @@ async function runPausedTurnInContext(
             conversationId: payload.conversationId,
             ...authorization,
           });
-          conversation.processing.activeTurnId = turn.turnId;
+          startActiveTurn({ conversation, nextTurnId: turn.turnId });
           await persistThreadStateById(payload.conversationId, {
             conversation,
           });
@@ -667,7 +666,7 @@ async function runPausedTurnInContext(
               shouldYield: runOptions.shouldYield,
               checkIn: runOptions.checkIn,
               recordPendingAuth: async (nextPendingAuth) => {
-                conversation.processing.pendingAuth = nextPendingAuth;
+                setPendingAuth(conversation, nextPendingAuth);
                 await persistThreadStateById(payload.conversationId, {
                   conversation,
                 });
@@ -755,7 +754,6 @@ async function failStrandedTurnWithFallback(args: {
   });
   markTurnFailed({
     conversation,
-    nowMs: Date.now(),
     sessionId: failed.turnId,
     userMessageId: getTurnUserMessage(conversation, failed.turnId)?.id,
     markConversationMessage,
@@ -878,9 +876,8 @@ async function runNextPausedTurnInContext(
         turnId: running.turnId,
       });
       if (!completed) return false;
-      markTurnCompleted({
+      markTurnClosed({
         conversation,
-        nowMs: Date.now(),
         sessionId: running.turnId,
       });
       await persistThreadStateById(conversationId, { conversation });

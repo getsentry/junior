@@ -70,9 +70,13 @@ export interface ConversationMessage {
   text: string;
 }
 
+/**
+ * Live control state of one Conversation. `chat/runtime/turn.ts` owns
+ * `activeTurnId`. `chat/services/pending-auth.ts` owns `pendingAuth`, the one
+ * sign-in wait. Other code reads these fields and does not write them.
+ */
 export interface ConversationProcessingState {
   activeTurnId?: string;
-  lastCompletedAtMs?: number;
   pendingAuth?: ConversationPendingAuthState;
 }
 
@@ -181,7 +185,6 @@ export function coerceThreadConversationState(
     : {};
   const processing: ConversationProcessingState = {
     activeTurnId: toOptionalString(rawProcessing.activeTurnId),
-    lastCompletedAtMs: toOptionalNumber(rawProcessing.lastCompletedAtMs),
     pendingAuth: coercePendingAuthState(rawProcessing.pendingAuth),
   };
 

@@ -32,6 +32,7 @@ import {
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { startActiveTurn, markTurnFailed } from "@/chat/runtime/turn";
+import { setPendingAuth } from "@/chat/services/pending-auth";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
@@ -380,7 +381,7 @@ async function runLocalAgentTurnInContext(
             });
           },
           recordPendingAuth: async (pendingAuth) => {
-            conversation.processing.pendingAuth = pendingAuth;
+            setPendingAuth(conversation, pendingAuth);
             await persistThreadStateById(input.conversationId, {
               conversation,
               sandboxRef,
@@ -464,7 +465,6 @@ async function runLocalAgentTurnInContext(
     try {
       markTurnFailed({
         conversation,
-        nowMs: Date.now(),
         sessionId: turnId,
         userMessageId,
         markConversationMessage,

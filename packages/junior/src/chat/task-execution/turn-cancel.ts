@@ -47,7 +47,6 @@ export async function completeCancelledConversationTurn(args: {
   });
   markTurnClosed({
     conversation: args.conversation,
-    nowMs: Date.now(),
     sessionId: args.turnId,
   });
   if (pendingAuthorization) {

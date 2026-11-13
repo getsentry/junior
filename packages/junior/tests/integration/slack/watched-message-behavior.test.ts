@@ -720,9 +720,7 @@ describe("Slack behavior: subscribed messages", () => {
           }),
         ]),
       );
-      expect(conversation.processing?.lastCompletedAtMs).toEqual(
-        expect.any(Number),
-      );
+      expect(conversation.processing.activeTurnId).toBeUndefined();
     },
   );
 
