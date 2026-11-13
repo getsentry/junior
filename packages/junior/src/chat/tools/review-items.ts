@@ -199,7 +199,7 @@ export function createAddReviewItemTool(
   services: ReviewItemToolServices,
 ) {
   return zodTool({
-    description: `Ask a person for input, or tell them about work that needs them. This is how you ask a person anything: the item goes on the review desk, and in a Slack thread it also shows as a card with buttons. Write the question so it stands alone: a person who sees only the card must understand it. Put the option that you recommend first, set \`recommended: true\` on it, and say why in its description. Use kind \`action\` with a \`request\` to ask: a question and 1-4 fields. Each field is \`choice\` (pick one), \`multi_choice\` (pick any), or \`text\` (a short answer). For a simple decision, use one \`choice\` field. Ask for related input in one item. Use kind \`notice\` only to tell a person something. Assignees default to the person in this Turn, to the Automation creator in an Automation run, or else to the people still subscribed to the Conversation. The current Conversation is always linked. The answer arrives later as a \`<review-item-answer>\` with the item id. A dismiss sends you nothing. A reply that the assignee types in the thread also closes the item when the reply answers it. If your next step needs the answer, end the Turn now: the card is your reply, so do not write text: call \`${NO_REPLY_TOOL_NAME}\`. If other work does not need the answer, continue with it. If an open item has the same \`dedupe_key\`, this updates that item instead of adding another.`,
+    description: `Ask a person for input, or tell them about work that needs them. This is how you ask a person anything: the item goes on the review desk and, in a Slack thread, shows as a card with buttons. The answer arrives later as a \`<review-item-answer>\` with the item id. A dismiss sends you nothing. An assignee's thread reply that answers the item also closes it. If your next step needs the answer, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply. Continue other work that does not need the answer.`,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -208,14 +208,18 @@ export function createAddReviewItemTool(
     },
     inputSchema: z
       .object({
-        kind: z.enum(["notice", "action"]),
+        kind: z
+          .enum(["notice", "action"])
+          .describe(
+            "Use `action` with a `request` to ask. Use `notice` only to tell a person something.",
+          ),
         title: titleSchema,
         body: bodySchema,
         assignees: assigneesSchema
           .nullable()
           .optional()
           .describe(
-            "Who can act on the item. Omit to assign the default person. Each entry is `everyone`, an email, or a Slack mention such as `<@U123>`. Everyone means any person who can see the item.",
+            "Who can act on the item. Omit for the person in this Turn, else the Automation creator in an Automation run, else the people still subscribed to the Conversation.",
           ),
         dedupe_key: z
           .string()
@@ -225,17 +229,21 @@ export function createAddReviewItemTool(
           .nullable()
           .optional()
           .describe(
-            "Stable key for what the item is about, such as `fair-source:entry:acme`. Use the same key on each run. Omit for a one-time question.",
+            "Stable key for what the item is about, such as `fair-source:entry:acme`. If an open item has this key, the call updates that item instead of adding another. Use the same key on each run. Omit for a one-time question.",
           ),
         request: userInputRequestSchema
           .nullable()
           .optional()
-          .describe("Required for an action item. Not allowed for a notice."),
+          .describe(
+            "Required for an action item. Not allowed for a notice. Ask for related input in one item. Write the question so it stands alone: a person who sees only the card must understand it.",
+          ),
         subject: subjectSchema.nullable().optional(),
         conversation_ids: conversationIdsSchema
           .nullable()
           .optional()
-          .describe("Other Conversations to link."),
+          .describe(
+            "Other Conversations to link. The current Conversation is always linked.",
+          ),
       })
       .strict(),
     outputSchema: juniorToolOutputSchema,
