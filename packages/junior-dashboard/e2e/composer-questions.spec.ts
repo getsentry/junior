@@ -128,6 +128,55 @@ test("a record's Answer shows its own question in the dock", async ({
   await expect(question).toBeFocused();
 });
 
+test("a record's Answer waits for its question to load", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  // The last question sits on a second page that loads after the click.
+  let releasePage = () => {};
+  const pageHeld = new Promise<void>((resolve) => {
+    releasePage = resolve;
+  });
+  let held: { title: string }[] = [];
+  await page.route(
+    (url) =>
+      url.pathname === "/api/review-items" &&
+      url.searchParams.get("conversationId") === THREE_QUESTIONS_ID,
+    async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.has("cursor")) {
+        await pageHeld;
+        return route.fulfill({ json: { items: held } });
+      }
+      const response = await route.fetch();
+      const body = (await response.json()) as { items: { title: string }[] };
+      held = body.items.slice(2);
+      await route.fulfill({
+        json: { ...body, items: body.items.slice(0, 2), nextCursor: "page-2" },
+      });
+    },
+  );
+  await openConversation(page, dashboard.baseURL, THREE_QUESTIONS_ID);
+  const question = page.getByRole("region", { name: /^Question:/ });
+  await expect(question).toContainText("1 of 2", { useInnerText: true });
+  const title = held[0]!.title;
+  await page
+    .getByRole("region", { name: `Asked ${title}` })
+    .getByRole("button", { name: "Answer" })
+    .click();
+  // Let the focus request run before the page lands.
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  releasePage();
+  await expect(question.getByRole("heading", { name: title })).toBeVisible();
+  await expect(question).toBeFocused();
+});
+
 test("steps through several questions with the keyboard", async ({
   dashboard,
   page,

@@ -259,9 +259,13 @@ function ReplyFooter(props: {
   const draftFrom = props.focusRequest?.draftFrom;
   const focusQuestionId = props.focusRequest?.questionId;
   const questionShown = questions.length > 0;
+  // A request for one question waits until a later page brings it in.
+  const questionReady = focusQuestionId
+    ? questions.some((question) => question.id === focusQuestionId)
+    : questionShown;
   useEffect(() => {
     // A docked question takes the focus at once, before the reader types.
-    if (!focusKey || (questionsPending && !questionShown)) return;
+    if (!focusKey || (questionsPending && !questionReady)) return;
     onFocusRequestDone(focusKey);
     // A new Conversation opens here after its first send. The reader was
     // typing in its pending reply box, so the text and the cursor move here,
@@ -279,6 +283,7 @@ function ReplyFooter(props: {
     focusKey,
     focusQuestionId,
     onFocusRequestDone,
+    questionReady,
     questionShown,
     questionsPending,
   ]);
