@@ -220,7 +220,7 @@ const app = await createApp({
 ```
 
 Child agents are always on: every app gives the model `spawnAgent`,
-`messageAgent`, `searchAgents`, `stopAgent`, and `archiveAgent`.
+`messageAgent`, `listAgents`, `stopAgent`, and `archiveAgent`.
 `experimental.subagents` was removed; remove it from your config, because
 Junior rejects unknown experimental keys.
 

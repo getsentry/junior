@@ -161,17 +161,16 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
     expect(tools).toHaveProperty("searchConversationMessages");
-    expect(tools).toHaveProperty("searchConversationBriefs");
     expect(tools).toHaveProperty("searchConversationEvents");
     expect(tools).toHaveProperty("stopWatchingResources");
     expect(tools).toHaveProperty("listWatches");
     expect(tools.searchConversationMessages?.exposure).toBe("deferred");
     expect(tools.searchConversationMessages?.source?.id).toBe("conversations");
-    expect(tools.searchConversationBriefs?.exposure).toBe("deferred");
-    expect(tools.searchConversationBriefs?.source?.id).toBe("conversations");
-    expect(
-      tools.searchConversationBriefs?.inputSchema.properties,
-    ).toHaveProperty("channel_id");
+    expect(tools.searchConversations?.exposure).toBe("deferred");
+    expect(tools.searchConversations?.source?.id).toBe("conversations");
+    expect(tools.searchConversations?.inputSchema.properties).toHaveProperty(
+      "channel_id",
+    );
     expect(tools.searchConversationEvents?.exposure).toBe("deferred");
     expect(tools.searchConversationEvents?.source?.id).toBe("conversations");
     expect(tools.stopWatchingResources?.exposure).toBe("deferred");
@@ -187,23 +186,23 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackChannelJoin");
   });
 
-  it("does not register conversation search for a private Conversation", () => {
+  it("does not register message search for a private Conversation", () => {
     const tools = createTools([], {}, ctx("C12345", "private"));
 
     expect(tools).not.toHaveProperty("searchConversationMessages");
-    expect(tools).not.toHaveProperty("searchConversationBriefs");
+    expect(tools).toHaveProperty("searchConversations");
   });
 
-  it("registers Brief search for public non-Slack Conversations", () => {
+  it("registers Conversation search without a channel filter outside Slack", () => {
     const tools = createTools(
       [],
       {},
       { ...ctx(), conversationPrivacy: "public" },
     );
 
-    expect(tools).toHaveProperty("searchConversationBriefs");
+    expect(tools).toHaveProperty("searchConversations");
     expect(
-      tools.searchConversationBriefs?.inputSchema.properties,
+      tools.searchConversations?.inputSchema.properties,
     ).not.toHaveProperty("channel_id");
     expect(tools).not.toHaveProperty("searchConversationMessages");
   });

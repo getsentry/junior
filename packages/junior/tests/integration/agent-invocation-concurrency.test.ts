@@ -40,7 +40,7 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { loadMessageEvents } from "../fixtures/agent-invocations";
 import { stoppedConversationMessageTexts } from "../fixtures/conversation";
@@ -62,8 +62,8 @@ const baseInput = {
   parentConversationId,
 };
 
-async function searchAgents() {
-  return await createSearchAgentsTool({ conversationId: parentConversationId })
+async function listAgents() {
+  return await createListAgentsTool({ conversationId: parentConversationId })
     .execute!({}, {});
 }
 
@@ -222,7 +222,7 @@ describe("agent invocation identity and concurrency", () => {
         idempotencyKey: "named-2",
         input: "second named task",
       });
-      await expect(searchAgents()).resolves.toEqual({
+      await expect(listAgents()).resolves.toEqual({
         agents: [
           {
             conversation_id: first.childConversationId,
@@ -405,7 +405,7 @@ describe("agent invocation identity and concurrency", () => {
         task: "failing sibling",
         updated_at: expect.any(String),
       };
-      const listed = await searchAgents();
+      const listed = await listAgents();
       expect(listed.agents).toHaveLength(2);
       expect(listed.agents).toEqual(
         expect.arrayContaining([
@@ -415,7 +415,7 @@ describe("agent invocation identity and concurrency", () => {
       );
       // A child agent sees itself, its parent, and its sibling.
       await expect(
-        createSearchAgentsTool({
+        createListAgentsTool({
           conversationId: successful.childConversationId,
           parentConversationId,
         }).execute!({}, {}),
@@ -523,8 +523,8 @@ describe("agent invocation identity and concurrency", () => {
           conversationId: child.childConversationId,
         }),
       ).resolves.toMatchObject({ consecutiveAutomatedTurns: 1 });
-      // searchAgents still shows the task from the parent.
-      await expect(searchAgents()).resolves.toMatchObject({
+      // listAgents still shows the task from the parent.
+      await expect(listAgents()).resolves.toMatchObject({
         agents: [{ status: "idle", task: "Watch the deploy." }],
       });
 
@@ -557,7 +557,7 @@ describe("agent invocation identity and concurrency", () => {
       await expect(
         stoppedConversationMessageTexts(child.childConversationId),
       ).resolves.toEqual([expect.stringContaining("Check once more.")]);
-      await expect(searchAgents()).resolves.toMatchObject({
+      await expect(listAgents()).resolves.toMatchObject({
         agents: [{ status: "stopped" }],
       });
 
@@ -574,7 +574,7 @@ describe("agent invocation identity and concurrency", () => {
           conversationId: child.childConversationId,
         }),
       ).resolves.toMatchObject({ consecutiveAutomatedTurns: 0 });
-      await expect(searchAgents()).resolves.toMatchObject({
+      await expect(listAgents()).resolves.toMatchObject({
         agents: [{ status: "idle" }],
       });
       await execute(
