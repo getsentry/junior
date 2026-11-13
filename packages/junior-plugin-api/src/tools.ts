@@ -703,6 +703,13 @@ interface BaseToolRegistrationHookContext extends PluginContext {
      * Junior knows it, else the install default. Always returns a timezone.
      */
     resolveTimezone(): Promise<string>;
+    /**
+     * Rewrite Slack mention syntax in every string of `value`, such as a tool
+     * input that goes to `provider`. A Slack user becomes `@handle` of their
+     * linked `provider` account, or else their name. Markdown code stays as
+     * written. Call it before you send model text out.
+     */
+    replaceSlackMentions<T>(value: T, provider: string): Promise<T>;
   };
   userText?: string;
   workspaces: PluginWorkspaceToolContext;

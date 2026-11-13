@@ -2999,6 +2999,7 @@ describe("GitHub-owned pull request outcomes", () => {
       },
       events: { canSubscribe: false },
       users: {
+        replaceSlackMentions: async (value: unknown) => value,
         async resolveActor() {
           return identityOf(person);
         },

@@ -133,6 +133,15 @@ export interface ObjectLinkContext extends PluginContext {
    * you return it.
    */
   egress: PluginEgress;
+  /**
+   * Return the Junior person card of the one known person with this
+   * provider account, or undefined. Return it for a profile link of that
+   * account, so the card shows the person and not only the account.
+   */
+  findPerson(account: {
+    handle: string;
+    provider: string;
+  }): Promise<ObjectAnnotation | undefined>;
   /** The signed-in person who sees the card. */
   viewer: User;
 }
