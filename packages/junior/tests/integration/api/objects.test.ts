@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { githubPlugin } from "@sentry/junior-github";
 import { createJuniorApi } from "@/api";
+import { createApp, defineJuniorPlugins } from "@/app";
 import type { JuniorApiEnv } from "@/api/route";
 import { objectLinksReportSchema } from "@/api/schema";
 import { appendConversationBrief } from "@/chat/briefs/store";
@@ -201,6 +203,41 @@ describe("object links API", () => {
       unlinkedUrl,
       daveUrl,
     ]);
+  });
+
+  it("resolves GitHub profile links to known people and GitHub accounts", async () => {
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    // App setup reads the dashboard URL from the environment.
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    const alice = await linkSlackUser("alice@example.com", "UALICE");
+    await upsertLinkedIdentity(getSqlExecutor(), alice.id, {
+      handle: "alice_acme",
+      kind: "user",
+      provider: "github",
+      providerSubjectId: "1001",
+    });
+
+    const { objects } = await (
+      await viewerApi("bob@example.com")
+    )(
+      "https://github.com/Alice_Acme",
+      "https://github.com/octocat",
+      "https://github.com/features",
+    );
+    expect(objects.get("https://github.com/Alice_Acme")).toMatchObject({
+      facts: { email: "alice@example.com", githubHandle: "alice_acme" },
+      objectType: "person",
+      plugin: "github",
+      url: `${DASHBOARD}/people/${encodeURIComponent("alice@example.com")}`,
+    });
+    expect(objects.get("https://github.com/octocat")).toMatchObject({
+      displayType: "GitHub account",
+      facts: { githubHandle: "octocat", type: "person" },
+      label: "@octocat",
+      objectType: "person",
+      url: "https://github.com/octocat",
+    });
+    expect(objects.has("https://github.com/features")).toBe(false);
   });
 
   // Reads in the first seconds after an Identity write skip the cache.
