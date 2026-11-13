@@ -101,8 +101,11 @@ The dashboard package owns these routes:
 | `/api/auth/*`                   | Better Auth Google login and callbacks.           |
 
 `/code` summarizes native Junior code-change records across repositories.
-Each repository links to its own page. That page has Overview, Conversations,
-and Changes tabs. A conversation belongs to a repository when one of its code
+Add one `repository` query parameter for each repository to show only those
+repositories, for example
+`/code?repository=getsentry/sentry-python&repository=getsentry/sentry-go`.
+Names are not case-sensitive. Each repository links to its own page. That
+page has Overview, Conversations, and Changes tabs. A conversation belongs to a repository when one of its code
 changes links the conversation. Person profiles load the same person-scoped
 code stats under their Code section. Existing `/people/*` and `/locations/*` links redirect to their
 corresponding System routes.
@@ -125,7 +128,7 @@ The current authenticated product API slices are:
 | `/api/skills/:name`                       | One skill with its `SKILL.md` body, without frontmatter.                                                                                                                                              |
 | `/api/conversations`                      | Recent SQL conversation feed; optional `actorEmail` is a normalized presentation filter, not authorization; optional `codeRepositoryId` lists conversations linked to that repository's code changes. |
 | `/api/conversations/stats`                | Complete 90-day conversation stats and people/place leaderboards aggregated by SQL.                                                                                                                   |
-| `/api/code`                               | Native code-change overview across repositories.                                                                                                                                                      |
+| `/api/code`                               | Native code-change overview across repositories; repeat optional `repository` to scope it to those repository names.                                                                                  |
 | `/api/code/repositories/:repository`      | One repository's code-change summary, recent changes, and Workspaces.                                                                                                                                 |
 | `/api/people`                             | Actor directory.                                                                                                                                                                                      |
 | `/api/people/:email`                      | Actor profile and recent conversation resources.                                                                                                                                                      |

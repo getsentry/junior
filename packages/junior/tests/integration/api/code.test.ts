@@ -137,7 +137,7 @@ describe("code API", () => {
     }
   });
 
-  test("reports one repository with its conversations and Workspaces", async () => {
+  test("reports one repository, a repository filter, and Workspaces", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     vi.setSystemTime(new Date("2026-08-24T12:00:00.000Z"));
     try {
@@ -243,6 +243,39 @@ describe("code API", () => {
           (conversation) => conversation.conversationId,
         ),
       ).toEqual(["slack:C123:linked"]);
+
+      const filtered = codeOverviewReportSchema.parse(
+        await (
+          await api.request(
+            "http://localhost/api/code?repository=GetSentry/Junior",
+          )
+        ).json(),
+      );
+      expect(filtered.summary).toMatchObject({ created: 1, open: 1 });
+      expect(filtered.repositories.map((row) => row.name)).toEqual([
+        "getsentry/junior",
+      ]);
+      expect(filtered.changes.map((row) => row.title)).toEqual([
+        "Fix the dashboard route",
+      ]);
+      expect(
+        filtered.activityDays.reduce((sum, day) => sum + day.created, 0),
+      ).toBe(1);
+
+      const both = codeOverviewReportSchema.parse(
+        await (
+          await api.request(
+            "http://localhost/api/code?repository=getsentry/junior&repository=getsentry/sentry-docs",
+          )
+        ).json(),
+      );
+      expect(both.summary).toMatchObject({ created: 2, open: 2 });
+      expect(both.repositories).toHaveLength(2);
+
+      const invalid = await api.request(
+        "http://localhost/api/code?repository=",
+      );
+      expect(invalid.status).toBe(400);
 
       const missing = await api.request(
         "http://localhost/api/code/repositories/00000000-0000-4000-8000-000000000000",

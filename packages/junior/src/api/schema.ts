@@ -57,6 +57,7 @@ export {
   codeActivityDaySchema,
   codeChangeSummaryReportSchema,
   codeChangeSummarySchema,
+  codeOverviewQuerySchema,
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryParamsSchema,

@@ -194,9 +194,23 @@ export function createMockReportingApi(): Hono<{
     return mockNotificationSettings(parsed.data);
   });
 
-  app.get("/code", () =>
-    jsonResponse(codeOverviewReportSchema, readMockCodeOverview()),
-  );
+  app.get("/code", (c) => {
+    const report = readMockCodeOverview();
+    const names = new Set(
+      (c.req.queries("repository") ?? []).map((name) => name.toLowerCase()),
+    );
+    if (names.size === 0) return jsonResponse(codeOverviewReportSchema, report);
+    // Mock totals stay fixed; the lists show which repositories matched.
+    return jsonResponse(codeOverviewReportSchema, {
+      ...report,
+      changes: report.changes.filter((change) =>
+        names.has(change.repository.toLowerCase()),
+      ),
+      repositories: report.repositories.filter((repository) =>
+        names.has(repository.name.toLowerCase()),
+      ),
+    });
+  });
   app.get("/code/repositories/:repositoryId", (c) => {
     const params = codeRepositoryParamsSchema.safeParse(c.req.param());
     if (!params.success) {

@@ -12,6 +12,21 @@ test("shows code activity", async ({ page, dashboard }) => {
   ).toBeVisible();
   await screenshot(page, "code");
 
+  await page.goto(`${dashboard.baseURL}/code?repository=getsentry/junior`);
+  const filter = page.getByRole("group", { name: "Repositories" });
+  await expect(
+    filter.getByRole("link", { name: "Remove getsentry/junior" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "getsentry/payments", exact: true }),
+  ).toHaveCount(0);
+  await screenshot(page, "code-filtered");
+  await filter.getByRole("link", { name: "Clear" }).click();
+  await expect(page).toHaveURL(/\/code$/);
+  await expect(
+    page.getByRole("link", { name: "getsentry/payments", exact: true }),
+  ).toBeVisible();
+
   await page
     .getByRole("link", { name: "getsentry/junior", exact: true })
     .click();
