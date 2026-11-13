@@ -44,10 +44,12 @@ function customerDomainOrg(host: string): string | undefined {
 }
 
 /**
- * Return the issue that a Sentry URL names, or nothing for another page.
- * Run it after a filter matched, so the path has the filter's shape.
+ * Split a Sentry web URL into its org and the path segments after the org,
+ * for both URL forms. Nothing when the URL names no valid org.
  */
-export function parseSentryIssueLink(url: URL): SentryIssueLink | undefined {
+export function sentryOrgPath(
+  url: URL,
+): { org: string; segments: string[] } | undefined {
   const segments = url.pathname.split("/").filter(Boolean);
   const host = url.host.toLowerCase();
   const [org, rest] =
@@ -55,7 +57,18 @@ export function parseSentryIssueLink(url: URL): SentryIssueLink | undefined {
       ? [segments[1], segments.slice(2)]
       : [customerDomainOrg(host), segments];
   if (!org || !ORG_SLUG_PATTERN.test(org)) return undefined;
-  const [issues, issueId, events, eventId, ...extra] = rest;
+  return { org, segments: rest };
+}
+
+/**
+ * Return the issue that a Sentry URL names, or nothing for another page.
+ * Run it after a filter matched, so the path has the filter's shape.
+ */
+export function parseSentryIssueLink(url: URL): SentryIssueLink | undefined {
+  const orgPath = sentryOrgPath(url);
+  if (!orgPath) return undefined;
+  const { org } = orgPath;
+  const [issues, issueId, events, eventId, ...extra] = orgPath.segments;
   if (issues !== "issues" || !issueId || !isIssueId(issueId)) return undefined;
   if (extra.length > 0) return undefined;
   if (events !== undefined) {
