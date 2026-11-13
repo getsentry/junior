@@ -134,8 +134,10 @@ describe("personal spend API", () => {
       const first = personalSpendReportSchema.parse(await firstResponse.json());
       // Seeded Turns cost 0.25 and 0.17. The older Turn adds 0.4.
       expect(first).toMatchObject({
+        monthlySoftCapUsd: 2000,
         sevenDaysUsd: 0.42,
         thirtyDaysUsd: 0.82,
+        weeklySoftCapUsd: 500,
       });
 
       await store.recordExecution({

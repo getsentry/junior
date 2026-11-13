@@ -3812,9 +3812,11 @@ export function readMockPersonalSpend(
     ) / 1e12;
   return {
     generatedAt: profile.generatedAt,
+    monthlySoftCapUsd: 2000,
     sevenDaysUsd: spend(7),
     source: "conversation_index",
     thirtyDaysUsd: spend(30),
+    weeklySoftCapUsd: 500,
     windowEnd: profile.generatedAt,
     windowStart: profile.activityDays.at(-30)!.date + "T00:00:00.000Z",
   };

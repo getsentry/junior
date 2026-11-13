@@ -16,6 +16,7 @@ import {
   type PageContentSkeletonVariant,
 } from "./components/PageContentSkeleton";
 import { ProfileMenu } from "./components/ProfileMenu";
+import { UsageMeter } from "./components/UsageMeter";
 import {
   DashboardChrome,
   DashboardChromeProvider,
@@ -29,6 +30,7 @@ import {
   buildConversations,
   conversationDetailTitle,
   conversationDisplayTitle,
+  peoplePath,
 } from "./format";
 import { useDesktopTopBar } from "./navLayout";
 import { isNewConversationPath } from "./conversations/conversationRoutes";
@@ -316,8 +318,17 @@ export function DashboardShell() {
                 <ProfileMenu
                   identity={data!.me}
                   onSignOut={signOut}
-                  spend={personalSpendQuery.data}
                   pages={profileNavItems}
+                />
+              ) : undefined
+            }
+            usage={
+              loggedIn ? (
+                <UsageMeter
+                  detailsTo={peoplePath(data!.me.user.email!)}
+                  spend={personalSpendQuery.data}
+                  unavailable={personalSpendQuery.isError}
+                  variant="sidebar"
                 />
               ) : undefined
             }
@@ -356,8 +367,17 @@ export function DashboardShell() {
                     <ProfileMenu
                       identity={data!.me}
                       onSignOut={signOut}
-                      spend={personalSpendQuery.data}
                       pages={profileNavItems}
+                      variant="top-bar"
+                    />
+                  ) : undefined
+                }
+                usage={
+                  loggedIn ? (
+                    <UsageMeter
+                      detailsTo={peoplePath(data!.me.user.email!)}
+                      spend={personalSpendQuery.data}
+                      unavailable={personalSpendQuery.isError}
                       variant="top-bar"
                     />
                   ) : undefined
@@ -367,7 +387,6 @@ export function DashboardShell() {
                     <ProfileMenu
                       identity={data!.me}
                       onSignOut={signOut}
-                      spend={personalSpendQuery.data}
                       pages={profileNavItems}
                       variant="sheet-identity"
                     />
@@ -378,20 +397,18 @@ export function DashboardShell() {
                     <ProfileMenu
                       identity={data!.me}
                       onSignOut={signOut}
-                      spend={personalSpendQuery.data}
                       pages={profileNavItems}
                       variant="sheet-links"
                     />
                   ) : undefined
                 }
-                mobileSpend={
+                mobileUsage={
                   loggedIn ? (
-                    <ProfileMenu
-                      identity={data!.me}
-                      onSignOut={signOut}
+                    <UsageMeter
+                      detailsTo={peoplePath(data!.me.user.email!)}
                       spend={personalSpendQuery.data}
-                      pages={profileNavItems}
-                      variant="sheet-spend"
+                      unavailable={personalSpendQuery.isError}
+                      variant="sheet"
                     />
                   ) : undefined
                 }
