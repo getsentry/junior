@@ -7,6 +7,7 @@ import { ChevronRight } from "lucide-react";
 import { ActorAvatar } from "../components/ActorAvatar";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { AutomationCard } from "../components/AutomationCard";
+import { Sparkline } from "../components/charts/Sparkline";
 import { StatusChip } from "../components/StatusChip";
 import {
   Collapsible,
@@ -85,12 +86,13 @@ export function ObjectCard({
         }
       />
       <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
-        {card.facts?.type === "web_page" && card.facts.thumbnailUrl && (
-          <ObjectImage
-            className="aspect-video max-h-44 w-full"
-            src={card.facts.thumbnailUrl}
-          />
-        )}
+        {(card.facts?.type === "document" || card.facts?.type === "web_page") &&
+          card.facts.thumbnailUrl && (
+            <ObjectImage
+              className="aspect-video max-h-44 w-full"
+              src={card.facts.thumbnailUrl}
+            />
+          )}
         {images.length > 0 && (
           // Screenshots often come as a before and after pair, side by side.
           <div className="grid grid-cols-2 gap-2">
@@ -109,6 +111,9 @@ export function ObjectCard({
           <p className="m-0 max-w-[80ch] break-words text-sm text-dashboard-text-muted">
             {displayPlainText(card.facts.summary)}
           </p>
+        )}
+        {card.facts?.type === "task" && card.facts.trend && (
+          <Sparkline {...card.facts.trend} />
         )}
         {(card.status || fields.length > 0) && (
           // Facts sit side by side and wrap to a stack in a narrow column.

@@ -21,7 +21,7 @@ export interface ObjectLinkType {
   /** `junior` for core, or the plugin name. */
   owner: string;
   /** The tool that reads the object live, for a Turn after an attach. */
-  readTool?: string;
+  readTool?(object: ObjectAnnotation): string | undefined;
   resolve(viewer: User, url: URL): Promise<ObjectAnnotation | undefined>;
 }
 
