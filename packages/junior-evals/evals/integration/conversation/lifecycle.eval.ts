@@ -12,11 +12,13 @@ import {
   rejectNextModelRequestAsTooLong,
 } from "@junior-evals/fixture/gateway";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
+import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
 import {
   completedMcpToolCalls,
   completedToolCalls,
   toolOutput,
 } from "@junior-evals/fixture/results";
+import { savedAgentHistory } from "@junior-evals/fixture/saved-history";
 import { test } from "@junior-evals/fixture/test";
 
 /** Release tools of the eval MCP server. */
@@ -154,9 +156,9 @@ describe("Lifecycle and Resilience", () => {
   test("when a noReply call puts the context over the compaction limit, end the Turn without compacting", async ({
     agent,
   }) => {
-    // Pi also prepares a next step after a batch that ends the run. A
-    // compaction there drops the noReply call, and a retry calls the model
-    // again.
+    // Junior compacts after each model call, before Pi stops the run. A
+    // compaction after a batch that ends the run drops the noReply call, and
+    // a retry calls the model again.
     const { run } = await agent({
       limits: { contextWindowTokens: SMALL_CONTEXT_WINDOW_TOKENS },
     });
@@ -176,6 +178,42 @@ describe("Lifecycle and Resilience", () => {
     expect(conversation.replies).toHaveLength(0);
     expect(conversation.compactions).toBe(0);
     expect(conversation.turns.map((turn) => turn.status)).toEqual(["no_reply"]);
+  });
+
+  test("when a steered mention arrives in a step that compacts the context, the next model call gets it once", async ({
+    agent,
+  }) => {
+    // The measured usage of the first model call is over the compaction
+    // limit, so Junior compacts in that step. The replacement ends with the
+    // steered mention, so Pi must not add it again.
+    const steeredText = "also say that Dana owns the rollback";
+    const { run } = await agent({
+      limits: { contextWindowTokens: SMALL_CONTEXT_WINDOW_TOKENS },
+    });
+    const conversation = await run(
+      slackMention("In one sentence, say what the export is for."),
+      {
+        history: [
+          slackMention(`Glossary export for the thread record:\n${CJK_EXPORT}`),
+          reply("Noted."),
+        ],
+        onProgress: sendDuringFirstModelRequest([slackMention(steeredText)]),
+      },
+    );
+
+    expect(conversation.turns.map((turn) => turn.status)).toEqual([
+      "succeeded",
+    ]);
+    expect(conversation.compactions).toBeGreaterThan(0);
+    expect(
+      conversation.replies.map((message) => message.text).join("\n"),
+    ).toMatch(/Dana/);
+    const steered = (
+      await savedAgentHistory(conversation.conversationId)
+    ).filter(
+      (item) => item.type === "user_message" && item.text.includes(steeredText),
+    );
+    expect(steered).toHaveLength(1);
   });
 
   test("when the provider rejects a context over the input limit, skip the summary and post a safe failure reply", async ({
