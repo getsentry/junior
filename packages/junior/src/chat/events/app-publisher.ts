@@ -7,6 +7,7 @@ import {
   collectEventAutomationMatchKeys,
   findMatchingEventAutomations,
 } from "@/chat/event-automations/store";
+import { eventAuthorTrustOnce } from "@/chat/events/author";
 import { ingestEvent } from "@/chat/events/ingest";
 import {
   collectEventMatchKeys,
@@ -34,6 +35,11 @@ export type EventAppPublisher = {
 
 /** Build the core event publisher used by plugin routes. */
 export function createEventAppPublisher(args: {
+  /**
+   * Allowed Slack email domains, read when an Event is published. They
+   * decide which Event authors are trusted.
+   */
+  allowedDomains: () => readonly string[];
   conversationWork: () => {
     queue?: ConversationWorkQueue;
     state?: StateAdapter;
@@ -99,8 +105,14 @@ export function createEventAppPublisher(args: {
       const work = args.conversationWork();
       const queue = work.queue ?? getVercelConversationWorkQueue();
       const eventAutomationTeamId = await resolveEventAutomationTeamId();
+      // Watches and Event automations share one trust decision.
+      const authorTrust = eventAuthorTrustOnce(event, {
+        allowedDomains: args.allowedDomains(),
+        slackTeamId: eventAutomationTeamId,
+      });
       await Promise.all([
         ingestEvent(event, {
+          authorTrust,
           queue,
           // Junior runs one Slack bot, so every Watch is in this workspace.
           slackTeamId: eventAutomationTeamId,
@@ -108,6 +120,7 @@ export function createEventAppPublisher(args: {
         }),
         eventAutomationTeamId
           ? ingestEventAutomations(event, {
+              authorTrust,
               queue,
               teamId: eventAutomationTeamId,
             })

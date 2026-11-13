@@ -174,6 +174,8 @@ export function createGitHubWebhookRoute(args: {
   events: EventPublisher;
   reviewItems: PluginConversationReviewItems;
   state: PluginState;
+  /** Logins from the `trustedAuthors` plugin option. */
+  trustedAuthors?: readonly string[];
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -372,6 +374,9 @@ export function createGitHubWebhookRoute(args: {
             ...(checkSuiteFacts ? { checkSuiteFacts } : undefined),
             deliveryId,
             eventName,
+            ...(args.trustedAuthors
+              ? { trustedAuthors: args.trustedAuthors }
+              : undefined),
           }),
           hasMatch,
           ...(commitPages

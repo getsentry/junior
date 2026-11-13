@@ -207,15 +207,17 @@ with the Watch or Automation grant.
   deactivated employee with a linked account is not trusted.
 - Text from a trusted author counts exactly like a chat message from that
   author.
-- An event from an untrusted or unknown author does not start a run.
+- An event from an untrusted or unknown author runs, but only as context.
+  The task input and Guardian say that the author is untrusted, and their
+  text is never an instruction. David changed this from the first decision,
+  "does not start a run", when the trust layer was built (#2217, #2260).
 - Only the author's own text counts. Lines that the author only quotes do
   not.
 - Core gets only a provider-neutral trusted result. Core does not read
   provider logins.
-- The agent never sees an untrusted authored event. Junior decides trust for
-  each event and drops an untrusted one before it joins a batch or a Turn.
-- Only trusted and system entries are batched. When none is left, no Turn
-  starts.
+- Junior decides trust once for each event and stores the result with the
+  mailbox entry. An untrusted entry is batched like any other entry. A failed
+  trust check gives an untrusted author, not a dropped event.
 - Batch Message author: current proposal, to confirm in step 4. The shared
   author when every entry has the same one, else the system Identity.
 - A system event can carry untrusted external text, such as check output.

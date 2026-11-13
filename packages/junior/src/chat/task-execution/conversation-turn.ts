@@ -110,6 +110,7 @@ import {
   eventBatchMessageMeta,
   isEventMailboxMetadata,
   renderEventBatchInputs,
+  savedEventBatchMeta,
   timerWatchCredentialSubject,
 } from "@/chat/events/notification";
 import { isEventConversationMessage } from "@/chat/events/actor";
@@ -296,6 +297,7 @@ export function createConversationTurnWorker(
       }
       savedMessageIsEvent = isEventConversationMessage(userMessage);
       savedParentMessage = isParentMessageMeta(userMessage.meta);
+      eventMeta = savedEventBatchMeta(userMessage);
       // Resume has no new input. Restore Source and Actor from the Turn.
       // TODO(dcramer): Remove the saved Message fallback after no deployed Turn
       // cursor can omit Source or Actor.
@@ -663,6 +665,8 @@ export function createConversationTurnWorker(
                 actor,
                 credentialSubject,
               ),
+              authorInstructions: eventMeta.authorInstructions,
+              untrustedAuthors: eventMeta.untrustedAuthors,
               // TODO(dcramer): Remove AgentRun.destination after agent and tool
               // code reads AgentRun.location and no Run consumer needs it.
               destination,

@@ -13,6 +13,7 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
+import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { executeAgentRun } from "@/chat/agent";
 import { getConversationStore } from "@/chat/db";
@@ -582,6 +583,10 @@ export async function runTestHeartbeat(
     dispatchForIdentity: createIdentityDispatcher({
       allowedDomains: [],
       conversationWorkQueue: () => queue,
+    }),
+    events: createEventAppPublisher({
+      allowedDomains: () => [],
+      conversationWork: () => ({ queue }),
     }),
     nowMs,
   });

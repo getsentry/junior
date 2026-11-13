@@ -65,7 +65,7 @@ import {
   isSlackWorkspaceMember,
   slackWorkspaceBotId,
 } from "@/chat/ingress/workspace-membership";
-import { isSlackAuthorDomainAllowed } from "@/chat/ingress/slack-allowed-domain";
+import { isSlackAuthorTrusted } from "@/chat/ingress/slack-author-trust";
 import { slackMessageAttributes } from "./slack-message-telemetry";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
@@ -412,8 +412,8 @@ async function routeParsedMessage(args: {
     text: args.event.text ?? "",
     isExplicitMention: isMention,
   });
-  const isAuthorDomainAllowed = () =>
-    isSlackAuthorDomainAllowed({
+  const isAuthorTrusted = () =>
+    isSlackAuthorTrusted({
       allowedBotUserIds: args.allowedBotUserIds,
       allowedDomains: args.allowedDomains,
       state: args.state,
@@ -421,11 +421,7 @@ async function routeParsedMessage(args: {
       user: args.event.user,
     });
   // Passive thread messages and stops are not checked for the allowed domains.
-  if (
-    !stopDecision &&
-    route === "mention" &&
-    !(await isAuthorDomainAllowed())
-  ) {
+  if (!stopDecision && route === "mention" && !(await isAuthorTrusted())) {
     return;
   }
 
@@ -503,9 +499,7 @@ async function routeParsedMessage(args: {
   const closeAnswered = async () => {
     if (message.author.isBot === true) return;
     await closeReviewItemsAnsweredByReply({
-      ...(route === "subscribed"
-        ? { canAnswer: isAuthorDomainAllowed }
-        : undefined),
+      ...(route === "subscribed" ? { canAnswer: isAuthorTrusted } : undefined),
       conversationId,
       delivery: {
         queue: args.queue,
@@ -835,7 +829,7 @@ export async function handleSlackWebhook(args: {
       body,
       getUserTokenStore: () => getUserTokenStore(args.services),
       isAuthorAllowed: (userId, installation) =>
-        isSlackAuthorDomainAllowed({
+        isSlackAuthorTrusted({
           allowedBotUserIds: args.services.allowedBotUserIds ?? [],
           allowedDomains: args.services.allowedDomains ?? [],
           state,

@@ -11,6 +11,7 @@ import {
   type TaskBatchEvent,
 } from "@/chat/task-input";
 import type {
+  ConversationMessage,
   ConversationMessageEvent,
   ConversationMessageMeta,
 } from "@/chat/state/conversation";
@@ -23,8 +24,22 @@ import {
 import type { Watch } from "@/chat/events/store";
 import { eventGuidance } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
-import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
+import {
+  EVENT_AUTHOR_ID,
+  isEventConversationMessage,
+} from "@/chat/events/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
+import {
+  authorInstructionSchema,
+  eventAuthorLabel,
+  parseAuthorInstructions,
+  parseUntrustedAuthors,
+  untrustedAuthorLabels,
+  untrustedAuthorSchema,
+  type AuthorInstruction,
+  type EventAuthorFacts,
+  type UntrustedAuthor,
+} from "@/chat/events/author";
 import {
   credentialSubjectSchema,
   type CredentialSubject,
@@ -57,6 +72,16 @@ const eventTaskFactsSchema = z.object({
   doneBy: z
     .object({ mention: z.string(), handle: z.string().optional() })
     .optional(),
+  authorInstruction: z
+    .object({
+      author: z.string(),
+      slackUserId: z.string().optional(),
+      text: z.string(),
+    })
+    .optional(),
+  untrustedAuthor: z
+    .object({ author: z.string(), reason: z.string() })
+    .optional(),
 });
 
 /** Facts for one Watch Event, saved so several Events can share one message. */
@@ -78,7 +103,10 @@ export function eventTaskFacts(
   people: readonly string[] = [],
   /** Resolved person who did what the Event describes. */
   doneBy?: EventDoneBy,
+  /** Core's trust decision for the Event author. */
+  author: EventAuthorFacts = {},
 ): EventTaskFacts {
+  const { authorInstruction, untrustedAuthor } = author;
   // Plugin guidance for the event applies to every Watch. Watch guidance comes from
   // the tool that created this Watch and applies only here.
   const guidance = [
@@ -94,6 +122,20 @@ export function eventTaskFacts(
     ...(people.length > 0 ? { people: [...people] } : undefined),
     trustedSummary: event.trustedSummary,
     ...(event.data ? { verifiedDetails: event.data } : undefined),
+    ...(authorInstruction
+      ? {
+          authorInstruction: {
+            author: eventAuthorLabel(authorInstruction),
+            ...(authorInstruction.actor
+              ? { slackUserId: authorInstruction.actor.userId }
+              : undefined),
+            text: authorInstruction.text,
+          },
+        }
+      : undefined),
+    ...(untrustedAuthor
+      ? { untrustedAuthor: untrustedAuthorLabels(untrustedAuthor) }
+      : undefined),
     ...(event.untrustedText
       ? { externalText: event.untrustedText }
       : undefined),
@@ -117,6 +159,10 @@ export type EventMailboxMetadata = {
   };
   /** Signed timer creator subject. Verified before the Turn uses it. */
   credentialSubject?: CredentialSubject;
+  /** Text that a Trusted author wrote in the Event. */
+  authorInstruction?: AuthorInstruction;
+  /** The Event author, when core does not trust them. */
+  untrustedAuthor?: UntrustedAuthor;
   /**
    * Watch task facts. A batch of several Events uses them to write one
    * message. Input without them keeps its own text.
@@ -186,6 +232,28 @@ export function timerWatchCredentialSubject(
   return shared;
 }
 
+// Only core writes Event mailbox input, so these values come from ingestion.
+function eventBatchAuthors(messages: readonly InboundMessage[]): {
+  authorInstructions: AuthorInstruction[];
+  untrustedAuthors: UntrustedAuthor[];
+} {
+  const authorInstructions: AuthorInstruction[] = [];
+  const untrustedAuthors: UntrustedAuthor[] = [];
+  for (const message of messages) {
+    const metadata = message.input.metadata;
+    if (message.source !== "event" || !isEventMailboxMetadata(metadata)) {
+      continue;
+    }
+    const instruction = authorInstructionSchema.safeParse(
+      metadata.authorInstruction,
+    );
+    if (instruction.success) authorInstructions.push(instruction.data);
+    const untrusted = untrustedAuthorSchema.safeParse(metadata.untrustedAuthor);
+    if (untrusted.success) untrustedAuthors.push(untrusted.data);
+  }
+  return { authorInstructions, untrustedAuthors };
+}
+
 /**
  * Read the saved Watch task facts from one Event mailbox entry. Entries
  * without a Watch or saved facts, such as child agent results and input queued
@@ -253,6 +321,8 @@ export function renderEventBatchInputs(
       source: metadata.event.namespace,
       trustedSummary: facts.trustedSummary,
       verifiedDetails: facts.verifiedDetails,
+      authorInstruction: facts.authorInstruction,
+      untrustedAuthor: facts.untrustedAuthor,
       externalText: facts.externalText,
       doneBy: facts.doneBy,
     });
@@ -304,6 +374,8 @@ export function eventBatchMessageMeta(
   messages: readonly InboundMessage[],
 ): Pick<
   ConversationMessageMeta,
+  | "authorInstructions"
+  | "untrustedAuthors"
   | "eventNamespace"
   | "eventObjectType"
   | "eventType"
@@ -319,6 +391,7 @@ export function eventBatchMessageMeta(
   const primary = watched[0] ?? own[0];
   const metadata = (primary ?? messages[0])?.input.metadata;
   if (!isEventMailboxMetadata(metadata)) return {};
+  const { authorInstructions, untrustedAuthors } = eventBatchAuthors(messages);
   const events =
     watched.length > 1
       ? watched.flatMap(messageEvent)
@@ -334,11 +407,34 @@ export function eventBatchMessageMeta(
       : undefined),
     ...(events.length ? { events } : undefined),
     ...(reviewItemChanges.length ? { reviewItemChanges } : undefined),
+    ...(authorInstructions.length ? { authorInstructions } : undefined),
+    ...(untrustedAuthors.length ? { untrustedAuthors } : undefined),
+  };
+}
+
+/**
+ * Return the Event authors that a resumed Event Turn saved on its Message.
+ * Other Messages give none, so a resume never gains authority.
+ */
+export function savedEventBatchMeta(
+  message: ConversationMessage,
+): Pick<ConversationMessageMeta, "authorInstructions" | "untrustedAuthors"> {
+  if (!isEventConversationMessage(message)) return {};
+  const authorInstructions = parseAuthorInstructions(
+    message.meta?.authorInstructions,
+  );
+  const untrustedAuthors = parseUntrustedAuthors(
+    message.meta?.untrustedAuthors,
+  );
+  return {
+    ...(authorInstructions.length ? { authorInstructions } : undefined),
+    ...(untrustedAuthors.length ? { untrustedAuthors } : undefined),
   };
 }
 
 /** Build plain conversation mailbox input for one matched watch. */
 export function createEventInboundMessage(input: {
+  author?: EventAuthorFacts;
   event: EventNotification;
   subscription: Pick<Watch, "conversationId" | "credentialSubject" | "id">;
   text: string;
@@ -351,6 +447,12 @@ export function createEventInboundMessage(input: {
     ...(input.task ? { task: input.task } : undefined),
     ...(input.subscription.credentialSubject
       ? { credentialSubject: input.subscription.credentialSubject }
+      : undefined),
+    ...(input.author?.authorInstruction
+      ? { authorInstruction: input.author.authorInstruction }
+      : undefined),
+    ...(input.author?.untrustedAuthor
+      ? { untrustedAuthor: input.author.untrustedAuthor }
       : undefined),
     event: {
       eventKey: input.event.eventKey,
@@ -387,6 +489,8 @@ export function createEventInboundMessage(input: {
  * user Turn, later wakes stay quiet until a user message clears the pause.
  */
 export async function enqueueEventNotification(args: {
+  /** Core's trust decision for the Event author. */
+  author?: EventAuthorFacts;
   /** Resolved person who did what the Event describes. */
   doneBy?: EventDoneBy;
   event: EventNotification;
@@ -429,9 +533,11 @@ export async function enqueueEventNotification(args: {
     args.event,
     args.people,
     args.doneBy,
+    args.author,
   );
   return await appendAndEnqueueInboundMessage({
     message: createEventInboundMessage({
+      author: args.author,
       event: args.event,
       subscription: {
         conversationId: args.subscription.conversationId,

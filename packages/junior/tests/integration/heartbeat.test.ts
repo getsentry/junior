@@ -5,6 +5,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { createHeartbeatContext } from "@/chat/agent-dispatch/context";
 import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
+import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import {
   getDispatchConversationId,
   getDispatchRecord,
@@ -70,6 +71,12 @@ function testHeartbeat(
       createIdentityDispatcher({
         allowedDomains: [],
         conversationWorkQueue: () => queue,
+      }),
+    events:
+      options.events ??
+      createEventAppPublisher({
+        allowedDomains: () => [],
+        conversationWork: () => ({ queue }),
       }),
   });
 }

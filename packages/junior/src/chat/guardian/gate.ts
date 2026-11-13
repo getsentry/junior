@@ -7,6 +7,11 @@
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { Actor } from "@/chat/actor";
 import type { CredentialContext } from "@/chat/credentials/context";
+import {
+  eventAuthorLabel,
+  type AuthorInstruction,
+  type UntrustedAuthor,
+} from "@/chat/events/author";
 import type {
   AnyToolDefinition,
   ToolApprovalResolution,
@@ -38,6 +43,13 @@ export interface ToolActionReviewContext {
   conversationId: string;
   credentialContext?: CredentialContext;
   destination: Destination;
+  /**
+   * Text in this Event Turn's input that Trusted authors wrote. Core sends
+   * it only for an Event Source.
+   */
+  authorInstructions?: readonly AuthorInstruction[];
+  /** Authors of this Event Turn's input that core does not trust. */
+  untrustedAuthors?: readonly UntrustedAuthor[];
   source: Source;
   userIntent?: () => string;
   evidence?: () => ToolActionEvidence;
@@ -296,6 +308,20 @@ function buildProposal(
   script: ToolAction["script"],
 ): ToolActionProposal {
   const credential = actionCredential(context.credentialContext);
+  // Only an Event Turn has author instructions. Other Sources have the
+  // person's own messages as user intent.
+  const isEvent = context.source.kind === "event";
+  const authorInstructions = isEvent
+    ? (context.authorInstructions ?? []).map((instruction) => ({
+        author: eventAuthorLabel(instruction),
+        text: instruction.text,
+      }))
+    : [];
+  const untrustedAuthors = isEvent
+    ? (context.untrustedAuthors ?? []).map((author) => ({
+        author: eventAuthorLabel(author),
+      }))
+    : [];
   return {
     context: {
       actor: actionActor(context.actor),
@@ -314,6 +340,8 @@ function buildProposal(
           })),
         }
       : undefined),
+    ...(authorInstructions.length > 0 ? { authorInstructions } : undefined),
+    ...(untrustedAuthors.length > 0 ? { untrustedAuthors } : undefined),
     ...(rootConversation ? { rootConversation } : undefined),
     ...(script ? { script: boundedScript(script) } : undefined),
     tool: proposalTool(toolName, tool, input, resolved),

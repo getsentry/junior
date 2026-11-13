@@ -183,6 +183,69 @@ describe("tool action review", () => {
     expect(JSON.stringify(proposal)).not.toContain("must-not-reach-guardian");
   });
 
+  it("sends author instructions to Guardian only for an Event Source", async () => {
+    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
+      decision: "allow",
+      reason: "The trusted author asked for it.",
+      riskLevel: "low",
+      userAuthorization: "high",
+    }));
+    const tool = definition({ approvalMode: "review" });
+    const authorInstructions = [
+      {
+        actor: {
+          email: "author@example.com",
+          platform: "slack" as const,
+          teamId: "T123",
+          userId: "U123",
+        },
+        handle: "dcramer",
+        provider: "github",
+        text: "File the follow-up issue.",
+      },
+      {
+        bot: true as const,
+        handle: "cursor[bot]",
+        provider: "github",
+        text: "Possible race.",
+      },
+    ];
+    const untrustedAuthors = [
+      { handle: "stranger", provider: "github", reason: "no_single_link" },
+    ];
+    const eventSource = {
+      kind: "event",
+      eventKey: "comment-1",
+      eventType: "pull_request.comment.created",
+      identifier: "getsentry/junior#1",
+      namespace: "github",
+    } as const;
+
+    for (const source of [eventSource, LOCAL_SOURCE]) {
+      await reviewToolAction(
+        `call-${source.kind}`,
+        "createIssue",
+        tool,
+        { repo: "getsentry/other" },
+        reviewContext(
+          { review },
+          { authorInstructions, source, untrustedAuthors },
+        ),
+      );
+    }
+
+    // Guardian gets only the one-line author label, not the profile email.
+    expect(review.mock.calls[0]![0].authorInstructions).toEqual([
+      { author: "<@U123>", text: "File the follow-up issue." },
+      { author: "cursor[bot] on github (a bot)", text: "Possible race." },
+    ]);
+    expect(review.mock.calls[0]![0].untrustedAuthors).toEqual([
+      { author: "stranger on github" },
+    ]);
+    expect(review.mock.calls[1]![0]).not.toHaveProperty("authorInstructions");
+    expect(review.mock.calls[1]![0]).not.toHaveProperty("untrustedAuthors");
+  });
+
   it("reviews auto actions when tool annotations are missing", async () => {
     const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
       decision: "allow",

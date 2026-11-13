@@ -9,7 +9,7 @@ import type { WaitUntilFn } from "@/handlers/types";
 export interface HeartbeatHandlerOptions {
   conversationWorkQueue?: ConversationWorkQueue;
   dispatchForIdentity: IdentityDispatcher;
-  events?: AppEventPublisher;
+  events: AppEventPublisher;
 }
 
 /** Handle the authenticated internal heartbeat. */
