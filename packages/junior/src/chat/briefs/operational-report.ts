@@ -1,10 +1,9 @@
-import type {
-  PluginConversationEventCostDay,
-  PluginOperationalReportContent,
-} from "@sentry/junior-plugin-api";
 import { and, gte, lt, sql } from "drizzle-orm";
-import type { JuniorDatabase } from "@/db/db";
+import { getDb } from "@/chat/db";
+import { readConversationEventCostsByDay } from "@/chat/plugins/conversation-event-stats";
 import { juniorConversationBriefs } from "@/db/schema";
+import type { PluginOperationalReport } from "@/reporting-schema";
+import { BRIEF_EVENT_NAMESPACE, BRIEF_UPDATED_EVENT } from "./events";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const WINDOWS = [7, 30, 90] as const;
@@ -34,16 +33,21 @@ function formatUsd(value: number): string {
  * comes from retained Conversation events, so spend on purged private
  * Conversations leaves the report with them; the labels say so.
  */
-export async function buildBriefsOperationalReport(args: {
-  briefDays: PluginConversationEventCostDay[];
-  db: JuniorDatabase;
-  nowMs: number;
-}): Promise<PluginOperationalReportContent> {
-  const newestDay = startOfUtcDay(args.nowMs);
+export async function buildBriefsOperationalReport(
+  nowMs: number,
+): Promise<PluginOperationalReport> {
+  const db = getDb();
+  const newestDay = startOfUtcDay(nowMs);
   const windowStart = new Date(newestDay.getTime() - 29 * DAY_MS);
   const windowEnd = new Date(newestDay.getTime() + DAY_MS);
-  const [[counts], recentCounts] = await Promise.all([
-    args.db
+  const [briefDays, [counts], recentCounts] = await Promise.all([
+    readConversationEventCostsByDay({
+      days: 90,
+      eventName: BRIEF_UPDATED_EVENT,
+      namespace: BRIEF_EVENT_NAMESPACE,
+      nowMs,
+    }),
+    db
       .select({
         conversations:
           sql<number>`count(distinct ${juniorConversationBriefs.conversationId})`.mapWith(
@@ -52,7 +56,7 @@ export async function buildBriefsOperationalReport(args: {
         stored: sql<number>`count(*)`.mapWith(Number),
       })
       .from(juniorConversationBriefs),
-    args.db
+    db
       .select({ stored: sql<number>`count(*)`.mapWith(Number) })
       .from(juniorConversationBriefs)
       .where(
@@ -62,7 +66,7 @@ export async function buildBriefsOperationalReport(args: {
         ),
       ),
   ]);
-  const recentDays = args.briefDays.filter((day) => {
+  const recentDays = briefDays.filter((day) => {
     const dayStart = Date.parse(`${day.date}T00:00:00.000Z`);
     return dayStart >= windowStart.getTime() && dayStart < windowEnd.getTime();
   });
@@ -70,7 +74,9 @@ export async function buildBriefsOperationalReport(args: {
   const recentBriefs = recentDays.reduce((total, day) => total + day.events, 0);
 
   return {
-    generatedAt: new Date(args.nowMs).toISOString(),
+    generatedAt: new Date(nowMs).toISOString(),
+    // The report feed name predates core Briefs; keep it stable.
+    pluginName: BRIEF_EVENT_NAMESPACE,
     title: "Briefs",
     metrics: [
       {
@@ -94,7 +100,7 @@ export async function buildBriefsOperationalReport(args: {
     ],
     widgets: [
       {
-        categories: args.briefDays.map((day) => ({
+        categories: briefDays.map((day) => ({
           id: day.date,
           label: day.date,
           values: { briefs: day.events, costUsd: day.costUsd },

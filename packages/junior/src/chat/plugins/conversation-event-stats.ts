@@ -183,6 +183,25 @@ function registeredEventName(
   return eventName;
 }
 
+/** Read daily cost buckets of one structured event, newest day last. */
+export async function readConversationEventCostsByDay(args: {
+  days: number;
+  eventName: string;
+  namespace: string;
+  nowMs: number;
+}): Promise<PluginConversationEventCostDay[]> {
+  const end = new Date(args.nowMs);
+  end.setUTCHours(0, 0, 0, 0);
+  return await readCostBuckets({
+    count: args.days,
+    eventName: args.eventName,
+    namespace: args.namespace,
+    nowMs: args.nowMs,
+    start: new Date(end.getTime() - (args.days - 1) * DAY_MS),
+    unit: DAY,
+  });
+}
+
 /** Create aggregate event-cost reads bound to one plugin's registered namespace. */
 export function createPluginConversationEventStats(
   plugin: PluginRegistration,
@@ -204,16 +223,11 @@ export function createPluginConversationEventStats(
       });
     },
     async costsByDay(input) {
-      const nowMs = now();
-      const end = new Date(nowMs);
-      end.setUTCHours(0, 0, 0, 0);
-      return await readCostBuckets({
-        count: input.days,
+      return await readConversationEventCostsByDay({
+        days: input.days,
         eventName: registeredEventName(plugin, input.eventName),
         namespace: plugin.manifest.name,
-        nowMs,
-        start: new Date(end.getTime() - (input.days - 1) * DAY_MS),
-        unit: DAY,
+        nowMs: now(),
       });
     },
   };

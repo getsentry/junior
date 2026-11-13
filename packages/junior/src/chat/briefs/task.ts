@@ -1,49 +1,65 @@
-import type {
-  PluginRegistration,
-  PluginRunContext,
-  PluginTaskContext,
-} from "@sentry/junior-plugin-api";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationEvents } from "@/db/schema";
 import { botConfig } from "@/chat/config";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { getSqlExecutor } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import { completeObject } from "@/chat/core-model";
 import {
   createConversationEmbedder,
   storeConversationEmbedding,
 } from "@/chat/conversations/embedding";
-import { briefUpdatedEvent, briefUpdatedEventV1 } from "./events";
+import { logInfo } from "@/chat/logging";
+import {
+  getUserMessageInstructionText,
+  stripRuntimeTurnContext,
+} from "@/chat/pi/transcript";
+import { resolveConversationRouting } from "@/chat/services/turn-session-routing";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { withLock } from "@/chat/state/locks";
+import {
+  getTurnRecord,
+  type TurnRecord,
+} from "@/chat/task-execution/checkpoint";
+import { appendBriefUpdatedEvent } from "./events";
 import { generateBrief } from "./generate";
 import { briefInputFromSql } from "./input";
-import { buildBriefsOperationalReport } from "./operational-report";
 import { BRIEF_PROMPT } from "./prompt";
 import {
   appendConversationBrief,
   readConversationBriefForTurn,
   readLatestConversationBrief,
-  type ConversationBriefVersion,
 } from "./store";
+
+/**
+ * Queue identity of the Brief task. It rides the session-completed task queue
+ * and predates core Briefs, so in-flight messages and task ids stay valid.
+ */
+export const BRIEF_TASK = { plugin: "briefs", name: "updateBrief" } as const;
 
 const BRIEF_LOCK_TTL_MS = 10 * 60 * 1_000;
 
-function hasUserInstruction(run: PluginRunContext): boolean {
-  return run.transcript.some(
-    (entry) =>
-      entry.type === "message" &&
-      entry.role === "user" &&
-      entry.provenance?.authority === "instruction",
-  );
+/** Return whether a user gave this Turn an instruction. */
+function hasUserInstruction(record: TurnRecord): boolean {
+  const start = record.turnStartMessageIndex ?? 0;
+  return record.piMessages
+    .slice(start)
+    .some(
+      (message, offset) =>
+        record.piMessageProvenance[start + offset]?.authority ===
+          "instruction" &&
+        stripRuntimeTurnContext([message]).some(
+          (stripped) => getUserMessageInstructionText(stripped) !== "",
+        ),
+    );
 }
 
-function logSkip(
-  context: PluginTaskContext,
-  conversationId: string,
-  reason: string,
-): void {
-  context.log.info("Brief update skipped", { conversationId, reason });
+function logSkip(conversationId: string, reason: string): void {
+  logInfo("brief.update.skipped", {
+    "app.brief.skip_reason": reason,
+    "gen_ai.conversation.id": conversationId,
+  });
 }
 
 async function readTurnCompletedSeq(
@@ -72,94 +88,94 @@ async function readTurnCompletedSeq(
   return seq;
 }
 
-async function emitBriefUpdated(
-  context: PluginTaskContext,
-  stored: ConversationBriefVersion,
-): Promise<void> {
-  await context.events.emit(
-    briefUpdatedEvent({
-      version: stored.version,
-      modelId: stored.modelId,
-      ...(stored.costUsd !== undefined
-        ? { costUsd: stored.costUsd }
-        : undefined),
-      decisions: stored.content.decisions.length,
-      links: stored.content.links.length,
-    }),
-  );
-}
-
-/** Generate and store the next Brief after one completed Turn. */
-export async function updateConversationBrief(
-  context: PluginTaskContext,
-): Promise<void> {
-  const run = await context.run.load();
+/**
+ * Generate and store the next Brief after one completed Turn. `operationId`
+ * is the stable task id that makes the `brief_updated` event idempotent.
+ */
+export async function updateConversationBrief(args: {
+  conversationId: string;
+  operationId: string;
+  turnId: string;
+}): Promise<void> {
+  const { conversationId, turnId } = args;
+  const record = await getTurnRecord(conversationId, turnId);
+  if (record?.state !== "completed") {
+    throw new Error(`Turn ${turnId} is not completed for its Brief`);
+  }
+  // TODO(dcramer): Remove the routing Source fallback after every deployed
+  // Turn cursor stores Source.
+  const source =
+    record.source ??
+    (await resolveConversationRouting({ conversationId }))?.source;
+  if (!source) {
+    throw new Error(`Completed Turn ${turnId} is missing Source`);
+  }
   if (
-    run.source.kind !== "slack" &&
-    run.source.kind !== "web" &&
-    run.source.kind !== "local"
+    source.kind !== "slack" &&
+    source.kind !== "web" &&
+    source.kind !== "local"
   ) {
-    logSkip(context, run.conversationId, "unsupported_source");
+    logSkip(conversationId, "unsupported_source");
     return;
   }
   const executor = getSqlExecutor();
-  const conversation = await createSqlStore(executor).get({
-    conversationId: run.conversationId,
-  });
+  const conversation = await createSqlStore(executor).get({ conversationId });
   if (conversation?.kind === "task") {
-    logSkip(context, run.conversationId, "task_conversation");
+    logSkip(conversationId, "task_conversation");
     return;
   }
   if (conversation?.transcriptPurgedAtMs !== undefined) {
-    const root = await resolveRootVisibility(executor, run.conversationId);
+    const root = await resolveRootVisibility(executor, conversationId);
     if (root.visibility !== "public") {
-      logSkip(context, run.conversationId, "purged_private");
+      logSkip(conversationId, "purged_private");
       return;
     }
   }
-  if (!hasUserInstruction(run)) {
-    logSkip(context, run.conversationId, "no_user_instruction");
+  if (!hasUserInstruction(record)) {
+    logSkip(conversationId, "no_user_instruction");
     return;
   }
 
-  await context.state.withLock(
-    `brief:${run.conversationId}`,
-    BRIEF_LOCK_TTL_MS,
+  const state = getStateAdapter();
+  await state.connect();
+  const locked = await withLock(
+    state,
+    `briefs:conversation:${conversationId}`,
     async () => {
-      const db = context.db as JuniorDatabase;
+      const db = getDb();
       const embed = createConversationEmbedder({
-        cost: { conversationId: run.conversationId, turnId: run.runId },
+        cost: { conversationId, turnId },
         operation: "conversation_embedding",
       });
       const existing = await readConversationBriefForTurn(
         db,
-        run.conversationId,
-        run.runId,
+        conversationId,
+        turnId,
       );
       if (existing) {
-        // The event writer uses the stable task operation id, so this repairs a
-        // failed first emission without adding a second event on normal retries.
-        await emitBriefUpdated(context, existing);
+        // The event key uses the stable task operation id, so this repairs a
+        // failed first append without adding a second event on normal retries.
+        await appendBriefUpdatedEvent({
+          operationId: args.operationId,
+          stored: existing,
+        });
         await storeConversationEmbedding(db, embed, existing);
-        logSkip(context, run.conversationId, "turn_already_stored");
+        logSkip(conversationId, "turn_already_stored");
         return;
       }
       const terminalSeq = await readTurnCompletedSeq(
         db,
-        run.conversationId,
-        run.runId,
+        conversationId,
+        turnId,
       );
-      const previous = await readLatestConversationBrief(
-        db,
-        run.conversationId,
-      );
+      const previous = await readLatestConversationBrief(db, conversationId);
       if (previous && previous.throughSeq >= terminalSeq) {
-        logSkip(context, run.conversationId, "turn_already_covered");
+        logSkip(conversationId, "turn_already_covered");
         return;
       }
       const input = await briefInputFromSql(
         executor,
-        run.conversationId,
+        conversationId,
         terminalSeq,
       );
       // Same request as `junior briefs run`, so the tuned prompt applies in
@@ -181,8 +197,8 @@ export async function updateConversationBrief(
         throughIndex: terminalSeq,
       });
       const stored = await appendConversationBrief(db, {
-        conversationId: run.conversationId,
-        turnId: run.runId,
+        conversationId,
+        turnId,
         throughSeq: terminalSeq,
         content: generation.brief,
         searchText: generation.searchText,
@@ -191,44 +207,22 @@ export async function updateConversationBrief(
           ? { costUsd: generation.costUsd }
           : undefined),
       });
-      await emitBriefUpdated(context, stored.value);
+      await appendBriefUpdatedEvent({
+        operationId: args.operationId,
+        stored: stored.value,
+      });
       // The Brief is stored first, so an embedding failure cannot lose it.
       // The failure fails the task, and its retry takes the
       // `turn_already_stored` path above and embeds again.
       await storeConversationEmbedding(db, embed, stored.value);
       if (!stored.inserted) {
-        logSkip(context, run.conversationId, "turn_already_stored");
+        logSkip(conversationId, "turn_already_stored");
       }
     },
+    { ttlMs: BRIEF_LOCK_TTL_MS },
   );
+  if (!locked.acquired) {
+    // The queue retries the task after the current owner finishes.
+    throw new Error(`Could not acquire the Brief lock for ${conversationId}`);
+  }
 }
-
-/** Core task registration kept outside the installed plugin catalog. */
-export const briefsTaskRegistration: PluginRegistration = {
-  manifest: {
-    name: "briefs",
-    displayName: "Briefs",
-    description: "Durable Conversation Brief generation",
-  },
-  conversationEvents: [briefUpdatedEventV1, briefUpdatedEvent],
-  hooks: {
-    async operationalReport(context) {
-      const briefDays = await context.eventStats.costsByDay({
-        days: 90,
-        eventName: "brief_updated",
-      });
-      return await buildBriefsOperationalReport({
-        briefDays,
-        db: context.db as JuniorDatabase,
-        nowMs: context.nowMs,
-      });
-    },
-  },
-  tasks: {
-    updateBrief: {
-      async run(context) {
-        await updateConversationBrief(context);
-      },
-    },
-  },
-};

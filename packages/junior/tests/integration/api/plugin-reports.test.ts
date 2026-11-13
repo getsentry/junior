@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import { pluginOperationalReportFeedSchema } from "@/api/schema";
-import { setBriefsConfig } from "@/chat/briefs/registration";
+import { setBriefsConfig } from "@/chat/briefs/config";
 import { getDb } from "@/chat/db";
 import {
   juniorConversationBriefs,

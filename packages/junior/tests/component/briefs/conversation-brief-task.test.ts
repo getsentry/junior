@@ -13,7 +13,7 @@ import {
   type CodeChangeInput,
 } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
-import { setBriefsConfig } from "@/chat/briefs/registration";
+import { setBriefsConfig } from "@/chat/briefs/config";
 import { botConfig } from "@/chat/config";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {

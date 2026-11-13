@@ -1,5 +1,6 @@
 /**
- * Delivery for plugin-registered tasks.
+ * Delivery for session-completed tasks: plugin-registered tasks and the core
+ * Brief task.
  *
  * Plugins register named tasks. This module owns the shared signed message,
  * send path, and HTTP/local callback. Core keeps one topic and one runner.

@@ -236,7 +236,7 @@ async function prepareLocalChatRun(
 ) {
   defaultStateAdapterForLocalChat();
   await configureLocalChatPlugins(pluginSet);
-  const { setBriefsConfig } = await import("@/chat/briefs/registration");
+  const { setBriefsConfig } = await import("@/chat/briefs/config");
   setBriefsConfig({ enabled: true });
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const { startLocalOAuthCallbackServer } =

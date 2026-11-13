@@ -28,7 +28,7 @@ import {
   setExperimentalFeatures,
   type ExperimentalFeaturesConfig,
 } from "@/chat/experimental";
-import { setBriefsConfig } from "@/chat/briefs/registration";
+import { setBriefsConfig } from "@/chat/briefs/config";
 import {
   getSandboxResourceConfig,
   setSandboxResourceConfig,
