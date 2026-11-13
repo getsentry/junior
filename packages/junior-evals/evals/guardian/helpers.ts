@@ -4,9 +4,11 @@
  * Cases feed exact ToolActionProposal objects to the real reviewer. Keep
  * proposals realistic and free of eval-shaped instructions in userIntent.
  *
- * A person's root Run gets the shape that core sends: the visible messages
- * in an author-labeled root section, ending with the current message, and
- * the full evidence, which keeps the order of messages and tool calls.
+ * A case records the Run's transcript. The proposal gets the shape that core
+ * sends: for a person's root Run, the visible messages in an author-labeled
+ * root section, ending with the current message. The evidence keeps the
+ * user messages and tool calls in order, without assistant text or tool
+ * result bodies.
  */
 import {
   type RootConversationMessage,
@@ -15,6 +17,7 @@ import {
   type ToolActionProposal,
   type ToolActionScript,
 } from "@/chat/guardian/proposal";
+import { TOOL_RESULT_NOT_SHOWN } from "@/chat/guardian/evidence";
 import type { ToolActionPriorRejection } from "@/chat/guardian/history";
 import { agentToolSpec } from "../../src/guardian-tools";
 
@@ -87,20 +90,33 @@ export function slackContext(
   };
 }
 
+/** One entry of a Run's transcript, in order and without aligned authors. */
+export interface TranscriptEntry {
+  role: ToolActionEvidence["entries"][number]["role"] | "assistant";
+  text: string;
+}
+
+/** The bounded transcript of a Run, as a case records it. */
+export interface Transcript {
+  entries: TranscriptEntry[];
+  omittedEntries: number;
+}
+
 /**
- * Build the root section of a person's root Run from unlabeled evidence, as
- * core reads it: each visible message in order. Core persists the current
- * message before the Run, so it is added last when the snapshot lacks it.
+ * Build the root section of a person's root Run from the transcript, as core
+ * reads it: each visible message in order. Core persists the current message
+ * before the Run, so it is added last when the snapshot lacks it.
  */
 function personRoot(
-  evidence: ToolActionEvidence | undefined,
+  transcript: Transcript | undefined,
   userIntent: string,
 ): RootConversationMessage[] {
-  const messages: RootConversationMessage[] = (evidence?.entries ?? []).flatMap(
-    (entry) =>
-      entry.role === "user" || entry.role === "assistant"
-        ? [{ author: entry.role, text: entry.text }]
-        : [],
+  const messages: RootConversationMessage[] = (
+    transcript?.entries ?? []
+  ).flatMap((entry) =>
+    entry.role === "user" || entry.role === "assistant"
+      ? [{ author: entry.role, text: entry.text }]
+      : [],
   );
   // A snapshot can already hold the current message, followed by steering
   // that the user sent during the Turn. Core reads each message once.
@@ -112,6 +128,26 @@ function personRoot(
     messages.push({ author: "user", text: userIntent });
   }
   return messages;
+}
+
+/**
+ * Project the transcript to the evidence that core builds: assistant text is
+ * left out, and a tool result shows only that its call returned.
+ */
+function shownEvidence(transcript: Transcript): ToolActionEvidence {
+  return {
+    entries: transcript.entries.flatMap(({ role, text }) =>
+      role === "assistant"
+        ? []
+        : [
+            {
+              role,
+              text: role.endsWith(" result") ? TOOL_RESULT_NOT_SHOWN : text,
+            },
+          ],
+    ),
+    omittedEntries: transcript.omittedEntries,
+  };
 }
 
 /**
@@ -136,7 +172,8 @@ async function resolveTool(
 /** Build one exact ToolActionProposal snapshot. */
 export async function proposal(input: {
   context: ToolActionProposal["context"];
-  evidence?: ToolActionEvidence;
+  /** The Run's transcript. The proposal gets the evidence that core builds. */
+  evidence?: Transcript;
   input: Record<string, unknown>;
   priorRejectedActions?: PriorRejectionSnapshot[];
   /**
@@ -164,7 +201,7 @@ export async function proposal(input: {
   );
   return {
     context: input.context,
-    ...(input.evidence ? { evidence: input.evidence } : {}),
+    ...(input.evidence ? { evidence: shownEvidence(input.evidence) } : {}),
     input: input.input,
     ...(priorRejectedActions.length > 0 ? { priorRejectedActions } : {}),
     ...(root ? { rootConversation: { messages: root, truncated: false } } : {}),
@@ -173,14 +210,11 @@ export async function proposal(input: {
   };
 }
 
-/** Chronological visible-conversation evidence without author identity. */
+/** The Run's transcript, in order and without author identity. */
 export function evidence(
-  entries: Array<{
-    role: ToolActionEvidence["entries"][number]["role"];
-    text: string;
-  }>,
+  entries: TranscriptEntry[],
   omittedEntries = 0,
-): ToolActionEvidence {
+): Transcript {
   return { entries, omittedEntries };
 }
 

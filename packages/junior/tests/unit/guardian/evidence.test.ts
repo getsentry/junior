@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
-import { buildToolActionEvidence } from "@/chat/guardian/evidence";
+import {
+  buildToolActionEvidence,
+  TOOL_RESULT_NOT_SHOWN,
+} from "@/chat/guardian/evidence";
 
 /** Incomplete transcript fixtures for evidence selection tests. */
 function piMessage(value: unknown): PiMessage {
@@ -8,7 +11,7 @@ function piMessage(value: unknown): PiMessage {
 }
 
 describe("tool action review evidence", () => {
-  it("keeps user, assistant, tool-call, and tool-result evidence without reasoning", () => {
+  it("keeps user messages and tool calls, and marks results without their body", () => {
     const transcript = [
       {
         role: "user",
@@ -41,21 +44,20 @@ describe("tool action review evidence", () => {
       entries: [
         { role: "user", text: "Create the weekly report." },
         {
-          role: "assistant",
-          text: "I will inspect the report first.",
-        },
-        {
           role: "tool readReport call",
           text: '{"cadence":"weekly"}',
         },
         {
           role: "tool readReport result",
-          text: "The weekly report exists.",
+          text: TOOL_RESULT_NOT_SHOWN,
         },
       ],
       omittedEntries: 0,
     });
-    expect(JSON.stringify(evidence)).not.toContain("Hidden chain");
+    const shown = JSON.stringify(evidence);
+    expect(shown).not.toContain("Hidden chain");
+    expect(shown).not.toContain("I will inspect");
+    expect(shown).not.toContain("report exists");
   });
 
   it("preserves first and latest user anchors while retaining recent tool evidence", () => {
@@ -110,7 +112,7 @@ describe("tool action review evidence", () => {
     });
     expect(evidence.entries).toContainEqual({
       role: "tool inspectTarget result",
-      text: "target is an empty preview",
+      text: TOOL_RESULT_NOT_SHOWN,
     });
     expect(evidence.omittedEntries).toBeGreaterThan(0);
   });

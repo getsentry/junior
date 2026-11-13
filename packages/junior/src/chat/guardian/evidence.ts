@@ -1,6 +1,5 @@
 import type { PiMessage } from "@/chat/pi/messages";
 import {
-  extractAssistantText,
   getUserMessageInstructionText,
   isAssistantMessage,
   isToolResultMessage,
@@ -18,11 +17,15 @@ const MAX_MESSAGE_ENTRY_TOKENS = 2_000;
 const MAX_TOOL_ENTRY_TOKENS = 1_000;
 const RECENT_NON_USER_ENTRY_LIMIT = 40;
 
-type EvidenceEntry = ToolActionEvidence["entries"][number];
+/**
+ * Text of each tool result entry. Guardian reads the name and input of each
+ * earlier call, which show where data came from, and only that the call
+ * returned. A result body is untrusted content, often the largest part of a
+ * Run. The Claude Code auto-mode classifier does not read it either.
+ */
+export const TOOL_RESULT_NOT_SHOWN = "Not shown.";
 
-function isToolEntry(entry: EvidenceEntry): boolean {
-  return entry.role.startsWith("tool ");
-}
+type EvidenceEntry = ToolActionEvidence["entries"][number];
 
 function truncateText(text: string, maxTokens: number): string {
   const tokenCount = estimateTextTokens(text);
@@ -55,40 +58,20 @@ function serializedText(value: unknown): string {
   }
 }
 
-function contentText(content: unknown): string {
-  if (typeof content === "string") {
-    return content;
-  }
-  if (!Array.isArray(content)) {
-    return serializedText(content);
-  }
-  return content
-    .flatMap((part) => {
-      if (!part || typeof part !== "object") {
-        return [];
-      }
-      const record = part as { text?: unknown };
-      return typeof record.text === "string" ? [record.text] : [];
-    })
-    .join("\n");
-}
-
-function assistantEntries(
+// Assistant text is agent output, so it is not evidence. The root section
+// shows the replies that people saw, with their author.
+function toolCallEntries(
   message: PiMessage,
   finishedCallIds: ReadonlySet<string>,
 ): EvidenceEntry[] {
   if (!isAssistantMessage(message)) {
     return [];
   }
-  const entries: EvidenceEntry[] = [];
-  const text = extractAssistantText(message).trim();
-  if (text) {
-    entries.push({ role: "assistant", text });
-  }
   const content = (message as { content?: unknown }).content;
   if (!Array.isArray(content)) {
-    return entries;
+    return [];
   }
+  const entries: EvidenceEntry[] = [];
   for (const part of content) {
     if (!part || typeof part !== "object") {
       continue;
@@ -137,25 +120,24 @@ function collectEvidenceEntries(
       continue;
     }
     if (isAssistantMessage(message)) {
-      entries.push(...assistantEntries(message, finishedCallIds));
+      entries.push(...toolCallEntries(message, finishedCallIds));
       continue;
     }
     if (isToolResultMessage(message)) {
       const toolName = normalizeToolNameFromResult(message) ?? "unknown";
-      const text = contentText(
-        (message as { content?: unknown }).content,
-      ).trim();
-      if (text) {
-        entries.push({ role: `tool ${toolName} result`, text });
-      }
+      entries.push({
+        role: `tool ${toolName} result`,
+        text: TOOL_RESULT_NOT_SHOWN,
+      });
     }
   }
   return entries;
 }
 
 /**
- * Project the Codex Guardian transcript selection into structured evidence.
- * It holds only tool calls that have a result.
+ * Project the Codex Guardian transcript selection into structured evidence:
+ * the Run's user messages, and its tool calls that have a result, with their
+ * input but not their result.
  */
 export function buildToolActionEvidence(
   messages: readonly PiMessage[],
@@ -163,7 +145,7 @@ export function buildToolActionEvidence(
   const candidates = collectEvidenceEntries(messages).map((entry) => {
     const text = truncateText(
       entry.text,
-      isToolEntry(entry) ? MAX_TOOL_ENTRY_TOKENS : MAX_MESSAGE_ENTRY_TOKENS,
+      entry.role === "user" ? MAX_MESSAGE_ENTRY_TOKENS : MAX_TOOL_ENTRY_TOKENS,
     );
     return {
       entry: { ...entry, text },
@@ -208,24 +190,14 @@ export function buildToolActionEvidence(
     const candidate = candidates[index]!;
     if (
       candidate.entry.role === "user" ||
-      retainedNonUserEntries >= RECENT_NON_USER_ENTRY_LIMIT
+      retainedNonUserEntries >= RECENT_NON_USER_ENTRY_LIMIT ||
+      toolTokens + candidate.tokens > MAX_TOOL_TRANSCRIPT_TOKENS
     ) {
-      continue;
-    }
-    const toolEntry = isToolEntry(candidate.entry);
-    const withinBudget = toolEntry
-      ? toolTokens + candidate.tokens <= MAX_TOOL_TRANSCRIPT_TOKENS
-      : messageTokens + candidate.tokens <= MAX_MESSAGE_TRANSCRIPT_TOKENS;
-    if (!withinBudget) {
       continue;
     }
     included[index] = true;
     retainedNonUserEntries += 1;
-    if (toolEntry) {
-      toolTokens += candidate.tokens;
-    } else {
-      messageTokens += candidate.tokens;
-    }
+    toolTokens += candidate.tokens;
   }
 
   return {
