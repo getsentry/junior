@@ -44,11 +44,16 @@ async function waitForResolvedLinks(page: Page): Promise<void> {
     /#proj-release/,
     /Junior 4\.2 launch demo/,
   ]) {
-    await expect(page.getByRole("link", { name })).toBeVisible();
+    await expect(page.getByRole("link", { name }).first()).toBeVisible();
   }
 }
 
-test("links to saved objects show as a chip, a hover card, and a card", async ({
+// The paragraph of the release reply that links to six kinds of objects.
+function linksParagraph(page: Page) {
+  return page.locator("p", { hasText: "Deployment is ready." });
+}
+
+test("links to saved objects show as a titled link, a hover card, and a card", async ({
   page,
   dashboard,
 }) => {
@@ -58,11 +63,12 @@ test("links to saved objects show as a chip, a hover card, and a card", async ({
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
   );
-  // A bare URL in a sentence is a chip with the label and status.
-  const chip = page.getByRole("link", {
-    name: /getsentry\/junior#2201 · Draft/,
+  // A bare URL in a sentence is a plain link with the title, and no status.
+  const link = page.getByRole("link", {
+    name: "getsentry/junior#2201",
+    exact: true,
   });
-  await expect(chip).toHaveAttribute(
+  await expect(link).toHaveAttribute(
     "href",
     "https://github.com/getsentry/junior/pull/2201",
   );
@@ -76,6 +82,13 @@ test("links to saved objects show as a chip, a hover card, and a card", async ({
     name: "Pull request: Pin the release train to payments 4.2",
   });
   await expect(card).toBeVisible();
+  // The reply links to it on its own line twice, so the second is a link.
+  await expect(card).toHaveCount(1);
+  await expect(
+    page.getByRole("link", {
+      name: "Pin the release train to payments 4.2 (#91)",
+    }),
+  ).toBeVisible();
   const before = card.getByRole("img", { name: "Description image 1" });
   await expect(before).toHaveAttribute(
     "src",
@@ -108,28 +121,37 @@ test("links to saved objects show as a chip, a hover card, and a card", async ({
   });
 });
 
-test("links without an Annotation resolve to a chip and a hover card", async ({
+test("links without an Annotation resolve to plain links, a person chip, and a hover card", async ({
   page,
   dashboard,
 }) => {
-  // The screenshot uses this size. A resize would move the chip from under
+  // The screenshot uses this size. A resize would move the link from under
   // the pointer and close the hover card.
   await page.setViewportSize(desktop);
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
   );
   // The reply links to another Conversation that has no saved Annotation.
-  const chip = page.getByRole("link", {
-    name: /Investigate checkout latency · Running/,
+  const link = page.getByRole("link", {
+    name: "Investigate checkout latency",
+    exact: true,
   });
-  await expect(chip).toHaveAttribute(
+  await expect(link).toHaveAttribute(
     "href",
     `https://junior.example.com/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
   );
-  await expect(page.getByRole("link", { name: /Morgan Lee/ })).toBeVisible();
-
   await waitForResolvedLinks(page);
-  await chip.hover();
+
+  // Only the person keeps a chip: its icon is the one icon in the
+  // paragraph. The other links show no icon, status, or outbound mark.
+  const paragraph = linksParagraph(page);
+  const person = paragraph.getByRole("link", { name: "Morgan Lee" });
+  await expect(person.locator("svg, img")).toHaveCount(1);
+  await expect(paragraph.locator("svg, img")).toHaveCount(1);
+  await expect(paragraph).not.toContainText("·");
+  await expect(paragraph).not.toContainText("Running");
+
+  await link.hover();
   await expect(
     page.getByRole("region", {
       name: "Conversation: Investigate checkout latency",
@@ -141,7 +163,7 @@ test("links without an Annotation resolve to a chip and a hover card", async ({
   });
 });
 
-test("Google Doc and Calendar links resolve to chips and hover cards", async ({
+test("Google Doc and Calendar links resolve to links and hover cards", async ({
   page,
   dashboard,
 }) => {
@@ -178,6 +200,47 @@ test("Google Doc and Calendar links resolve to chips and hover cards", async ({
   // Only a participant can attach the object.
   await expect(docCard.getByRole("button", { name: "Attach" })).toHaveCount(0);
   await screenshot(page, "conversation-google-document-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
+test("a Sentry issue link resolves to a chip and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  // A bare issue URL in a sentence is a chip with the short id and state.
+  const chip = page.getByRole("link", { name: /JUNIOR-3ZK · Unresolved/ });
+  await expect(chip).toHaveAttribute(
+    "href",
+    "https://acme.sentry.io/issues/JUNIOR-3ZK/",
+  );
+  await expect(
+    page.getByText("https://acme.sentry.io/issues/JUNIOR-3ZK/"),
+  ).toHaveCount(0);
+
+  await waitForResolvedLinks(page);
+  await chip.hover();
+  const card = page.getByRole("region", {
+    name: "Sentry issue: TypeError: cart.total is undefined",
+  });
+  for (const text of [
+    "app/checkout.ts in submitOrder",
+    "Morgan Lee",
+    "High",
+    "junior",
+    "error, regressed",
+  ]) {
+    await expect(card).toContainText(text);
+  }
+  await expect(
+    card.getByRole("figure", { name: "Events, last 24 hours" }),
+  ).toBeVisible();
+  await screenshot(page, "conversation-sentry-issue-link", {
     lightTheme: true,
     view: "desktop",
   });
@@ -348,7 +411,7 @@ test("one request asks for the cards of every link in a message", async ({
   await expect(page.getByText("More release notes.").first()).toBeAttached();
   await expect(
     page
-      .getByRole("link", { name: /Investigate checkout latency · Running/ })
+      .getByRole("link", { name: "Investigate checkout latency", exact: true })
       .or(page.getByRole("link", { name: /Morgan Lee/ }))
       .first(),
   ).toBeVisible();
@@ -364,7 +427,7 @@ test("one request asks for the cards of every link in a message", async ({
   );
 });
 
-test("a Slack message link resolves to a chip and a hover card", async ({
+test("a Slack message link resolves to a link, a card, and a hover card", async ({
   page,
   dashboard,
 }) => {
@@ -372,25 +435,29 @@ test("a Slack message link resolves to a chip and a hover card", async ({
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
   );
-  const chip = page.getByRole("link", { name: /#proj-release/ });
-  await expect(chip).toHaveAttribute(
+  const link = linksParagraph(page).getByRole("link", {
+    name: "#proj-release",
+  });
+  await expect(link).toHaveAttribute(
     "href",
     "https://acme.slack.com/archives/CQA456/p1770021700000100",
   );
-  await waitForResolvedLinks(page);
-  await chip.hover();
+  // The reply also links to it on its own line, which shows the card.
   const card = page.getByRole("region", {
     name: /^Message: Release notes are ready for review/,
   });
-  await expect(card).toBeVisible();
+  await expect(card).toHaveCount(1);
   await expect(card).toContainText("Morgan Lee");
+  await waitForResolvedLinks(page);
+  await link.hover();
+  await expect(card).toHaveCount(2);
   await screenshot(page, "conversation-slack-message-link", {
     lightTheme: true,
     view: "desktop",
   });
 });
 
-test("a public web page link resolves to a chip, a card, and a hover card", async ({
+test("a public web page link resolves to a link, a card, and a hover card", async ({
   page,
   dashboard,
 }) => {
@@ -410,13 +477,22 @@ test("a public web page link resolves to a chip, a card, and a hover card", asyn
     view: "desktop",
   });
 
-  const chip = page.getByRole("link", { name: /Junior 4\.2 launch demo/ });
-  await expect(chip).toHaveAttribute(
+  // A video on its own line shows only its thumbnail.
+  const thumbnail = page.getByRole("img", { name: "Junior 4.2 launch demo" });
+  await expect(thumbnail).toHaveAttribute("src", /^\/api\/images\//);
+  await expect(
+    page.getByRole("link").filter({ has: thumbnail }),
+  ).toHaveAttribute("href", "https://www.youtube.com/watch?v=MockLaunchDemo");
+
+  const link = linksParagraph(page).getByRole("link", {
+    name: "Junior 4.2 launch demo",
+  });
+  await expect(link).toHaveAttribute(
     "href",
     "https://www.youtube.com/watch?v=MockLaunchDemo",
   );
   await waitForResolvedLinks(page);
-  await chip.hover();
+  await link.hover();
   const card = page.getByRole("region", {
     name: "Web page: Junior 4.2 launch demo",
   });
@@ -426,4 +502,29 @@ test("a public web page link resolves to a chip, a card, and a hover card", asyn
     lightTheme: true,
     view: "desktop",
   });
+});
+
+test("a hover card opens only after a short delay", async ({
+  page,
+  dashboard,
+}) => {
+  await page.clock.install();
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  await waitForResolvedLinks(page);
+  const link = linksParagraph(page).getByRole("link", {
+    name: "Release 4.2 checklist",
+  });
+  const card = page.getByRole("region", {
+    name: "Google Doc: Release 4.2 checklist",
+  });
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await link.hover();
+  // A pointer that only passes over the link opens no card.
+  await page.clock.runFor(250);
+  await expect(card).toBeHidden();
+  await page.clock.runFor(200);
+  await expect(card).toBeVisible();
 });

@@ -140,6 +140,7 @@ export function messageObjectCard(args: {
 export function webPageObjectCard(args: {
   author?: string;
   description?: string;
+  media?: "video" | "image";
   siteName?: string;
   thumbnailUrl?: string;
   title: string;
@@ -163,6 +164,7 @@ export function webPageObjectCard(args: {
       ...(args.author
         ? { author: truncate(args.author, MAX_FACT_CHARS) }
         : undefined),
+      ...(args.media ? { media: args.media } : undefined),
       ...(args.thumbnailUrl ? { thumbnailUrl: args.thumbnailUrl } : undefined),
     },
   };

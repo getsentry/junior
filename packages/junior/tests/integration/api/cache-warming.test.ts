@@ -67,19 +67,18 @@ describe("cache warming API", () => {
     ).toBe(403);
     expect(await state.get(OPEN_KEY)).toBe(true);
 
-    expect(await listBreakers(admin)).toContainEqual({
-      provider: "anthropic",
-      open: true,
-    });
+    // Only providers of the models Junior runs are listed.
+    expect(await listBreakers(admin)).toEqual([
+      { provider: "anthropic", open: true },
+    ]);
     const closed = await admin.request(
       `${BASE_URL}/api/cache-warming/breakers/anthropic`,
       { method: "DELETE" },
     );
     expect(closed.status).toBe(200);
-    expect(await listBreakers(admin)).toContainEqual({
-      provider: "anthropic",
-      open: false,
-    });
+    expect(await listBreakers(admin)).toEqual([
+      { provider: "anthropic", open: false },
+    ]);
     // Old misses must not reopen the breaker on the next miss.
     expect(await state.getList(OUTCOMES_KEY)).toEqual([]);
 

@@ -10,6 +10,14 @@ export const OBJECT_SUMMARY_MAX_LENGTH = 280;
 // card shows it. Return it only to a viewer who may read the object.
 const summary = z.string().trim().min(1).max(OBJECT_SUMMARY_MAX_LENGTH);
 
+// A short series, oldest first, that the full card draws as a sparkline,
+// such as events per hour. The label says what the points count and over
+// which time. The card shows the shape, not exact values.
+const trend = z.strictObject({
+  label: text,
+  points: z.array(z.number().finite().nonnegative()).min(2).max(60),
+});
+
 /** Small, provider-neutral facts. Missing values mean unknown, not success. */
 export const objectFactsSchema = z.discriminatedUnion("type", [
   // Code changes: keep lifecycle, review, and checks separate.
@@ -48,6 +56,7 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     cycle: text.optional(),
     dueDate: z.iso.date().optional(),
     labels: z.array(text).max(5).optional(),
+    trend: trend.optional(),
   }),
   // Deployments: never copy environment values or logs.
   z.strictObject({
@@ -95,6 +104,9 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     summary: summary.optional(),
     siteName: text.optional(),
     author: text.optional(),
+    // A video or image page. A link alone on its line shows only the
+    // thumbnail of such a page.
+    media: z.enum(["video", "image"]).optional(),
     // A Junior image path. Browsers never load a third-party image URL.
     thumbnailUrl: z
       .string()

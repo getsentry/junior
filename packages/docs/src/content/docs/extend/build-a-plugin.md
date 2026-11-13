@@ -529,8 +529,12 @@ defineJuniorPlugin({
   open the object, and false when you cannot tell. For a public object,
   return true. `ctx.egress` calls your provider as a system Actor. It gets
   only credentials that your plugin owns, never the viewer's, so `canView`
-  must check the viewer, not only that the call works. Junior calls it
-  before each card read and again on each Attach.
+  must check the viewer, not only that the call works.
+  `ctx.viewerEgress` uses only the viewer's own stored OAuth token for your
+  provider. It never asks the viewer to connect. A viewer without a token
+  gets HTTP 401. Use it in `canView` to ask the provider whether the viewer
+  can open the object. Junior calls `canView` before each card read and
+  again on each Attach.
 - **Resolver.** Return the card, or `undefined` for a missing object. To
   share one provider read with `canView`, read through `ctx.cache` with a
   short TTL. Junior caches the card for one minute for each viewer and URL,
