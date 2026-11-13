@@ -97,9 +97,9 @@ export function splitStandaloneUrls(text: string): {
   const parts: string[] = [];
   const keepProse = (prose: string) => {
     const kept = prose.split(/\n[ \t]*\n/).filter((paragraph) => {
-      const bare = STANDALONE_URL_RE.exec(
+      const bare = standaloneUrl(
         slackLinksToMarkdown(paragraph).replace(/^\n+/, ""),
-      )?.[1];
+      );
       if (bare) urls.push(bare);
       return !bare && paragraph.trim();
     });
