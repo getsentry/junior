@@ -124,10 +124,11 @@ function pageSummary(text: string | undefined): string | undefined {
   for (const raw of body.split("\n")) {
     const line = raw.trim();
     if (!line || SKIPPED_LINE.test(line)) continue;
+    // Drop inline tags, then any stray angle bracket, so the summary is
+    // plain text even when a tag is cut or nested.
     const plain = line
-      // Drop inline tags, then any stray angle bracket, so the summary is
-      // plain text even when a tag is cut or nested.
-      .replace(/<[^>]*>/g, "")
+      .split(/<[^>]*>/)
+      .join("")
       .replace(/[<>]/g, "")
       .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
       .replace(/^([-*+]|\d+\.)\s+/, "")
