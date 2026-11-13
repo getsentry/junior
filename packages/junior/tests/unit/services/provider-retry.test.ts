@@ -25,12 +25,17 @@ function assistantError(errorMessage: string | undefined): AssistantMessage {
 const XAI_SERVICE_UNAVAILABLE =
   '503 {"error":{"message":"Service temporarily unavailable","statusCode":503},"providerMetadata":{"gateway":{"routing":{"originalModelId":"xai/grok-4.5","providerAttempts":[{"credentialType":"system"}]}}}}';
 
+const ANTHROPIC_IMAGE_TOO_LARGE =
+  '400 {"error":{"message":"messages.7.content.77.image.source.base64.data: At least one of the image dimensions exceed max allowed size for many-image requests: 3000 pixels","type":"AI_APICallError","isRetryable":false},"providerMetadata":{"gateway":{"routing":{"originalModelId":"anthropic/claude-opus-4.8","providerAttempts":[{"provider":"anthropic","statusCode":400}]}}}}';
+
 describe("provider retry helpers", () => {
   it("marks retryable provider-boundary exceptions", () => {
     const cause = new Error("Anthropic stream ended before message_stop");
     const error = createProviderError(cause);
 
-    expect(error.message).toBe("AI provider error: network");
+    expect(error.message).toBe(
+      "AI provider error: network: Anthropic stream ended before message_stop",
+    );
     expect(error.cause).toBe(cause);
     expect(error).toBeInstanceOf(ProviderError);
     expect(error).toMatchObject({
@@ -51,19 +56,80 @@ describe("provider retry helpers", () => {
     expect(isProviderRetryError(new Error(error.message))).toBe(false);
   });
 
-  it("keeps a bounded provider summary without gateway JSON payloads", () => {
-    expect(
-      getProviderErrorAttributes(
-        createProviderError(XAI_SERVICE_UNAVAILABLE, {
-          modelId: "xai/grok-4.5",
-        }),
-      ),
-    ).toMatchObject({
+  it("keeps the gateway error message without other JSON fields", () => {
+    const attributes = getProviderErrorAttributes(
+      createProviderError(XAI_SERVICE_UNAVAILABLE, {
+        modelId: "xai/grok-4.5",
+      }),
+    );
+    expect(attributes).toMatchObject({
       "app.ai.provider_error.kind": "server",
       "app.ai.provider_error.status": 503,
-      "app.ai.provider_error.summary": "503",
+      "app.ai.provider_error.summary": "Service temporarily unavailable",
       "gen_ai.request.model": "xai/grok-4.5",
     });
+    expect(String(attributes["app.ai.provider_error.summary"])).not.toContain(
+      "providerMetadata",
+    );
+  });
+
+  it("puts the provider validation message on the error and its attributes", () => {
+    const error = createProviderError(ANTHROPIC_IMAGE_TOO_LARGE, {
+      modelId: "anthropic/claude-opus-4.8",
+    });
+    const summary =
+      "messages.7.content.77.image.source.base64.data: At least one of the image dimensions exceed max allowed size for many-image requests: 3000 pixels";
+
+    expect(error).toMatchObject({
+      kind: "invalid_request",
+      retryable: false,
+      status: 400,
+      summary,
+    });
+    expect(error.message).toBe(
+      `AI provider error: invalid_request: ${summary}`,
+    );
+    expect(getProviderErrorAttributes(error)).toMatchObject({
+      "app.ai.provider_error.summary": summary,
+    });
+  });
+
+  it.each([
+    ["a plain string", "400 Bad request", "400 Bad request"],
+    [
+      "an envelope without a message",
+      '400 {"error":{"type":"invalid_request_error"}}',
+      "400",
+    ],
+    [
+      "JSON that is not an error envelope",
+      'Type validation failed: Value: {"error":{"message":"model output"}}',
+      "Type validation failed: Value:",
+    ],
+    ["unparseable JSON", '400 {"error":{"message":"cut', "400"],
+  ])("summarizes %s", (_name, message, summary) => {
+    expect(createProviderError(message).summary).toBe(summary);
+  });
+
+  it("omits the summary when the provider gives no message", () => {
+    const error = createProviderError("");
+
+    expect(error.summary).toBeUndefined();
+    expect(error.message).toBe("AI provider error: unknown");
+    expect(getProviderErrorAttributes(error)).not.toHaveProperty(
+      "app.ai.provider_error.summary",
+    );
+  });
+
+  it("redacts opaque data and bounds the summary length", () => {
+    const base64 = "iVBORw0KGgo".repeat(10);
+    const error = createProviderError(
+      `400 {"error":{"message":"bad image ${base64} ${"x ".repeat(200)}"}}`,
+    );
+
+    expect(error.summary).not.toContain(base64);
+    expect(error.summary).toMatch(/^bad image <redacted> x/);
+    expect(error.summary).toHaveLength(243);
   });
 
   it("finds provider errors preserved by domain wrappers", () => {

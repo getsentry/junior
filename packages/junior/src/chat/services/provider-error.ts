@@ -33,6 +33,7 @@ interface ProviderErrorDetails {
   retryable: boolean;
   retryAfterMs?: number;
   status?: number;
+  summary?: string;
 }
 
 /** Structured failure produced at an AI provider boundary. */
@@ -43,10 +44,16 @@ export class ProviderError extends Error {
   readonly retryable: boolean;
   readonly retryAfterMs?: number;
   readonly status?: number;
+  /** Bounded provider text for diagnostics. Never user copy. */
+  readonly summary?: string;
 
   constructor(details: ProviderErrorDetails) {
+    // The summary makes the Sentry issue title readable. Sentry groups an
+    // error that has in-app frames by its stack, not by this text.
     super(
-      `AI provider error: ${details.kind}`,
+      details.summary
+        ? `AI provider error: ${details.kind}: ${details.summary}`
+        : `AI provider error: ${details.kind}`,
       details.cause !== undefined ? { cause: details.cause } : {},
     );
     this.name = "ProviderError";
@@ -55,6 +62,7 @@ export class ProviderError extends Error {
     this.retryable = details.retryable;
     this.retryAfterMs = details.retryAfterMs;
     this.status = details.status;
+    this.summary = details.summary;
   }
 }
 
@@ -120,17 +128,54 @@ function providerMessage(error: unknown): string {
 }
 
 const PROVIDER_ERROR_SUMMARY_MAX_CHARS = 240;
+// Long unbroken runs are base64 data, ids, or keys, never useful diagnosis.
+const OPAQUE_TOKEN_PATTERN = /[A-Za-z0-9+/=_-]{64,}/g;
 
-/** Short provider-boundary text for telemetry. Drop trailing JSON bodies. */
+/**
+ * Read `error.message` from a `<status> {"error":{"message":...}}` body, the
+ * shape that AI Gateway and provider SDKs use. Other JSON can hold model
+ * output, so only this envelope is read.
+ */
+function extractEnvelopeMessage(
+  lead: string,
+  body: string,
+): string | undefined {
+  if (lead && !/^(?:Error:\s*)?[45]\d\d$/i.test(lead)) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+  const error =
+    parsed && typeof parsed === "object"
+      ? (parsed as { error?: unknown }).error
+      : undefined;
+  const message =
+    error && typeof error === "object"
+      ? (error as { message?: unknown }).message
+      : undefined;
+  return typeof message === "string" ? message.trim() || undefined : undefined;
+}
+
+/**
+ * Short provider-boundary text for telemetry. Keep the provider's error
+ * message from a JSON envelope and drop every other JSON field.
+ */
 function summarizeProviderErrorMessage(message: string): string | undefined {
   const normalized = message.trim().replace(/\s+/g, " ");
   if (!normalized) return undefined;
 
   // Gateway errors often look like `503 {"error":...}`. Keep the lead text.
   const jsonStart = normalized.indexOf("{");
-  const summary = (
+  const lead = (
     jsonStart >= 0 ? normalized.slice(0, jsonStart) : normalized
   ).trim();
+  const summary = (
+    (jsonStart >= 0
+      ? extractEnvelopeMessage(lead, normalized.slice(jsonStart))
+      : undefined) ?? lead
+  ).replace(OPAQUE_TOKEN_PATTERN, "<redacted>");
   if (!summary) return undefined;
   return summary.length > PROVIDER_ERROR_SUMMARY_MAX_CHARS
     ? `${summary.slice(0, PROVIDER_ERROR_SUMMARY_MAX_CHARS)}...`
@@ -248,6 +293,10 @@ export function createProviderError(
     retryable,
     retryAfterMs: extractRetryAfterMs(error, message),
     status,
+    summary:
+      error instanceof Error || typeof error === "string"
+        ? summarizeProviderErrorMessage(message)
+        : undefined,
   });
 }
 
@@ -334,16 +383,6 @@ export function getProviderErrorUserMessage(error: ProviderError): string {
 export function getProviderErrorAttributes(
   error: ProviderError,
 ): Record<string, unknown> {
-  const cause = error.cause;
-  const causeMessage =
-    cause instanceof Error
-      ? cause.message
-      : typeof cause === "string"
-        ? cause
-        : undefined;
-  const summary = causeMessage
-    ? summarizeProviderErrorMessage(causeMessage)
-    : undefined;
   return {
     "app.ai.provider_error.kind": error.kind,
     "app.ai.provider_error.retryable": error.retryable,
@@ -353,7 +392,9 @@ export function getProviderErrorAttributes(
     ...(error.retryAfterMs !== undefined
       ? { "app.ai.provider_error.retry_after_ms": error.retryAfterMs }
       : undefined),
-    ...(summary ? { "app.ai.provider_error.summary": summary } : undefined),
+    ...(error.summary
+      ? { "app.ai.provider_error.summary": error.summary }
+      : undefined),
     ...(error.modelId ? { "gen_ai.request.model": error.modelId } : undefined),
   };
 }

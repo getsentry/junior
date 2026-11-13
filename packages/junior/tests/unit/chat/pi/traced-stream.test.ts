@@ -705,6 +705,42 @@ describe("createTracedStreamFn", () => {
     ).toBeUndefined();
   });
 
+  it("records the provider error message on a failed stream span", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const stream = createAssistantMessageEventStream();
+    const base = vi.fn(() => stream);
+
+    const traced = createTracedStreamFn(base as StreamFn);
+    await traced(
+      fakeModel("anthropic/claude-opus-4.8"),
+      { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+      undefined,
+    );
+
+    const errorMessage = {
+      ...fakeMessage(),
+      stopReason: "error" as const,
+      errorMessage:
+        '400 {"error":{"message":"messages.7.content.77.image.source.base64.data: image exceeds 3000 pixels","type":"AI_APICallError"},"providerMetadata":{"gateway":{}}}',
+    };
+    stream.push({ type: "error", reason: "error", error: errorMessage });
+    await stream.result();
+    await new Promise((r) => setImmediate(r));
+
+    const span = getSpan();
+    const summary =
+      "messages.7.content.77.image.source.base64.data: image exceeds 3000 pixels";
+    expect(span.setStatus).toHaveBeenCalledWith({ code: 2, message: summary });
+    const endAttributes = Object.fromEntries(
+      span.setAttribute.mock.calls.map((c) => [c[0], c[1]]),
+    );
+    expect(endAttributes).toMatchObject({
+      "error.type": "invalid_request",
+      "app.ai.provider_error.status": 400,
+      "app.ai.provider_error.summary": summary,
+    });
+  });
+
   it("sets error status and ends the span when base() throws", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const base = vi.fn(() => {

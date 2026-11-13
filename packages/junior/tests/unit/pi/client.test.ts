@@ -398,9 +398,11 @@ describe("completeText", () => {
     ).rejects.toSatisfy((error: Error) => {
       expect(error).toMatchObject({
         kind: "invalid_response",
-        message: "AI provider error: invalid_response",
+        message:
+          "AI provider error: invalid_response: No object generated: could not parse the response.",
         retryable: false,
       });
+      expect(error.message).not.toContain("model output");
       expect(error.cause).toMatchObject({
         name: "AI_NoObjectGeneratedError",
         message: "No object generated: could not parse the response.",
