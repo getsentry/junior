@@ -266,6 +266,15 @@ function wrapBareReferences(text: string, urls = true): string {
   return out.join("\n");
 }
 
+/**
+ * Wrap bare `@U123` Slack user IDs as `<@U123>` mentions. Call it before
+ * plugin Markdown rewrites of chat text, so a plugin does not read `@U123`
+ * as an account name of its provider.
+ */
+export function wrapBareSlackUserIds(text: string): string {
+  return wrapBareReferences(text, false);
+}
+
 const LIST_ITEM_PATTERN = /^[-*•]\s|^\d+\.\s/;
 
 /**
@@ -370,12 +379,8 @@ export function normalizeSlackReplyMarkdown(
   text: string,
   format?: PluginMarkdownFormat,
 ): string {
-  // Wrap bare Slack user IDs before plugins, so a plugin does not read
-  // `@U123` as its own account name. URLs wait, because plugins rewrite them.
-  let normalized = applyPluginFormatMarkdown(
-    wrapBareReferences(text, false),
-    format,
-  )
+  // URLs wait, because plugins rewrite them.
+  let normalized = applyPluginFormatMarkdown(wrapBareSlackUserIds(text), format)
     .replace(/\r\n?/g, "\n")
     .replace(/[ \t]+$/gm, "");
   normalized = wrapBareReferences(normalized);

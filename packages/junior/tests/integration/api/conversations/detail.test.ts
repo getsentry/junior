@@ -599,7 +599,7 @@ describe("conversation detail API", () => {
         data: {
           messageId: "reply-1",
           role: "assistant",
-          text: "Fixed getsentry/junior#12 for @octocat: https://github.com/getsentry/junior/pull/13",
+          text: "Fixed getsentry/junior#12 for @octocat and @U012ABCDEF: https://github.com/getsentry/junior/pull/13",
           type: "message",
         },
       },
@@ -628,15 +628,16 @@ describe("conversation detail API", () => {
           text: "<task>@octocat asked a question.</task>",
           trustedSummary: `${octocat} commented on ${pr12}.`,
         }),
-        // A reply that names a repository. Bare links stay for their cards.
+        // A reply that names a repository. Bare links stay for their cards,
+        // and a bare Slack user ID is a Slack mention, not a GitHub login.
         expect.objectContaining({
-          text: `Fixed ${pr12} for ${octocat}: https://github.com/getsentry/junior/pull/13`,
+          text: `Fixed ${pr12} for ${octocat} and <@U012ABCDEF>: https://github.com/getsentry/junior/pull/13`,
         }),
         // Text posted to GitHub names GitHub accounts.
         expect.objectContaining({ text: `Thanks ${octocat}.` }),
       ]),
     );
-    expect(JSON.stringify(data)).not.toMatch(/<@U/);
+    expect(JSON.stringify(data)).not.toContain("github.com/U012ABCDEF");
   });
 
   it("names the participant who wrote each message", async () => {
