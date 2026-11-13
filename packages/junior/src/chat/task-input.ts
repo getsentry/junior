@@ -5,12 +5,15 @@
  * `tests/unit/chat/task-input.test.ts` own the exact text. Event data stays in
  * its own child tags, and the outcome rule is always last.
  */
-import { agentEventKeys, type TaskOutcome } from "@sentry/junior-plugin-api";
+import {
+  agentEventKeys,
+  renderExternalText,
+  type TaskOutcome,
+} from "@sentry/junior-plugin-api";
 import {
   escapeClosingTags,
   renderChildTag,
   renderTag,
-  renderUntrustedTag,
   tagJson,
 } from "@/chat/input-tags";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
@@ -171,16 +174,7 @@ function externalTextTag(
   text: string | undefined,
   source: string | undefined,
 ): string[] {
-  return text
-    ? [
-        renderUntrustedTag(
-          "external-text",
-          { source: source ?? "external" },
-          source ? `The ${source} provider` : "An external source",
-          text,
-        ),
-      ]
-    : [];
+  return text ? [renderExternalText(text, source)] : [];
 }
 
 /**

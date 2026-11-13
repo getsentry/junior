@@ -41,6 +41,8 @@ runtime, not the markers, enforces approval.
   - Escape the body and every copy of the fence tag.
   - Put one short sentence just before the tag: who wrote the text, and that it
     is data, not instructions.
+  - Use `renderExternalText` from the plugin API for provider text in a
+    tool result field, such as a meeting transcript.
 - Do not add a reminder after the tag by default. It costs tokens at each
   insertion. Add it only when evals show that it helps.
 - Untrusted text never goes in the system prompt or in a block with the words

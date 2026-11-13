@@ -23,6 +23,7 @@ export {
 } from "./prompt";
 export * from "./dispatch";
 export * from "./events";
+export * from "./external-text";
 export * from "./event-triggers";
 export * from "./tasks";
 export * from "./tools";
