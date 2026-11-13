@@ -64,6 +64,7 @@ const agentDispatchMailboxMetadataSchema = z
 export const AGENT_DISPATCH_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 interface DurableDispatchTurnResult extends DispatchTurnResult {
+  authorizationProvider?: string;
   hasResumableRun?: boolean;
 }
 
@@ -312,6 +313,9 @@ async function readDispatchTurnResult(
   const errorMessage = storedSession?.errorMessage;
   if (dispatchOutcome) {
     return {
+      ...(summary?.authorizationProvider
+        ? { authorizationProvider: summary.authorizationProvider }
+        : undefined),
       ...(errorMessage ? { errorMessage } : undefined),
       outcome: dispatchOutcome,
       ...(resultMessageTs ? { resultMessageTs } : undefined),
@@ -344,14 +348,23 @@ async function readDispatchTurnResult(
 }
 
 async function projectDispatchTurnResult(
-  dispatchId: string,
-  result: DispatchTurnResult,
+  dispatch: DispatchRecord,
+  result: DurableDispatchTurnResult,
 ): Promise<void> {
+  const dispatchId = dispatch.id;
   switch (result.outcome) {
     case "awaiting_resume":
       await markDispatchAwaitingResume(dispatchId);
       break;
     case "blocked":
+      // A retry after a lost dispatch write knows the block only from the
+      // Turn summary, so the provider there keeps the connect fix.
+      if (result.authorizationProvider) {
+        await markMissingAuthorization(dispatch, result.authorizationProvider, {
+          resultMessageTs: result.resultMessageTs,
+        });
+        break;
+      }
       await markDispatchBlocked(
         dispatchId,
         result.errorMessage ??
@@ -392,6 +405,24 @@ function missingAuthorizationReason(
     : `This run uses system credentials, which have no ${provider} access. Switch it to creator credentials and connect a ${provider} account.`;
 }
 
+async function markMissingAuthorization(
+  dispatch: DispatchRecord,
+  provider: string,
+  options?: { resultMessageTs?: string },
+): Promise<void> {
+  await markDispatchBlocked(
+    dispatch.id,
+    missingAuthorizationReason(dispatch, provider),
+    {
+      // Only a run with creator credentials has an account to connect.
+      ...(dispatch.credentialSubject
+        ? { authorizationProvider: provider }
+        : undefined),
+      ...options,
+    },
+  );
+}
+
 async function persistBlockedDispatchTurn(
   dispatch: DispatchRecord,
   error: AuthorizationFlowDisabledError | PluginCredentialFailureError,
@@ -400,6 +431,9 @@ async function persistBlockedDispatchTurn(
   const sessionId = getDispatchTurnId(dispatch.id);
   const session = await getTurnRecord(conversationId, sessionId);
   await recordTurnSummary({
+    ...(error instanceof AuthorizationFlowDisabledError
+      ? { authorizationProvider: error.provider }
+      : undefined),
     actor: dispatch.actor,
     conversationId,
     destination: dispatch.destination,
@@ -415,14 +449,7 @@ async function persistBlockedDispatchTurn(
     await markDispatchBlocked(dispatch.id, error.message);
     return;
   }
-  await markDispatchBlocked(
-    dispatch.id,
-    missingAuthorizationReason(dispatch, error.provider),
-    // Only a run with creator credentials has an account to connect.
-    dispatch.credentialSubject
-      ? { authorizationProvider: error.provider }
-      : undefined,
-  );
+  await markMissingAuthorization(dispatch, error.provider);
 }
 
 /** Run one dispatch start or resume under the owning conversation lease. */
@@ -478,7 +505,7 @@ export function createAgentDispatchConversationWorker(
       durableResult.outcome === "completed" ||
       durableResult.outcome === "failed"
     ) {
-      await projectDispatchTurnResult(dispatch.id, durableResult);
+      await projectDispatchTurnResult(dispatch, durableResult);
       await acknowledge();
       return { status: "completed" };
     }
@@ -531,7 +558,7 @@ export function createAgentDispatchConversationWorker(
           `Dispatch turn ${dispatch.id} returned without a durable outcome`,
         );
       }
-      await projectDispatchTurnResult(dispatch.id, result);
+      await projectDispatchTurnResult(dispatch, result);
       if (result.outcome && !acknowledged) {
         await acknowledge();
       }
