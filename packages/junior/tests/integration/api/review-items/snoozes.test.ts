@@ -257,6 +257,21 @@ describe("snoozes", () => {
     // The first timer is due, but the row stays asleep until the second.
     vi.setSystemTime(NOW_MS + 60_000);
     expect((await asAna.inbox()).count).toBe(0);
+
+    // Overlapping snoozes replace in turn and both succeed.
+    const overlapping = await Promise.all([
+      snooze(NOW_MS + 180_000),
+      snooze(NOW_MS + 240_000),
+      snooze(NOW_MS + 300_000),
+    ]);
+    expect(overlapping.map((response) => response.status)).toEqual([
+      201, 201, 201,
+    ]);
+    const active = await getDb()
+      .select({ id: juniorAutomations.id })
+      .from(juniorAutomations)
+      .where(eq(juniorAutomations.status, "active"));
+    expect(active).toHaveLength(1);
   });
 
   it("does not let a viewer snooze a row they cannot see", async () => {

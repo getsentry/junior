@@ -155,7 +155,16 @@ export async function createWakeAutomation(
   });
   const event = wakeEventTrigger(record.triggers);
   const timer = wakeTimerTrigger(record.triggers);
+  // Serialize snoozes of one User on one row, so two overlapping requests
+  // replace in turn and do not collide on `junior_automations_one_wake_idx`.
+  const lockKey = [
+    "junior:wake",
+    [...input.identityIds].sort()[0] ?? input.creatorIdentityId,
+    record.subject.conversationId,
+    record.subject.reviewItemId ?? "",
+  ].join(":");
   return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
     await tx
       .update(juniorAutomations)
       .set({ status: "completed", statusReason: WAKE_REASON.replaced })
