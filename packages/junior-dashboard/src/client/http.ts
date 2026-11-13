@@ -190,8 +190,9 @@ async function fetchDashboard(
 
 /**
  * Check that an authenticated dashboard file can be downloaded, without
- * downloading it. A HEAD response has no body, so a refused check asks again
- * with GET to read the error. That GET fails before it sends file bytes.
+ * downloading it, and throw the server's reason when it cannot. A HEAD
+ * response has no body, so a refused check asks again with GET to read the
+ * error. That GET fails before it sends file bytes.
  */
 export async function checkDashboardDownload(path: string): Promise<void> {
   const head = await fetchDashboard(path, {

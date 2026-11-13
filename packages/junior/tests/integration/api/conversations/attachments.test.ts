@@ -423,8 +423,8 @@ describe("conversation attachment API", () => {
     const api = apiWithViewer("viewer@example.com", storage);
     const path = `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/attachments/${stored.id}?download=true`;
 
-    // The dashboard checks with HEAD first. That asks Slack about the file
-    // but downloads nothing.
+    // HEAD asks Slack about the file but downloads nothing. The dashboard
+    // uses it to learn why a download failed.
     const check = await api.request(path, { method: "HEAD" });
     expect(check.status).toBe(200);
     expect(getCapturedSlackFileDownloadCalls()).toEqual([]);
@@ -490,6 +490,24 @@ describe("conversation attachment API", () => {
 
     expect(outsider.status).toBe(404);
     expect(anonymous.status).toBe(404);
+    expect(getCapturedSlackApiCalls("files.info")).toEqual([]);
+    expect(getCapturedSlackFileDownloadCalls()).toEqual([]);
+  });
+
+  it("needs a signed-in viewer for a Slack download in a public conversation", async () => {
+    const { conversationId, storage, stored } =
+      await recordPendingSlackFile("FPUBLICANON");
+    const path = `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/attachments/${stored.id}?download=true`;
+    const anonymous = apiWithViewer(undefined, storage);
+
+    const check = await anonymous.request(path, { method: "HEAD" });
+    const response = await anonymous.request(path);
+
+    expect(check.status).toBe(401);
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({
+      error: "Authentication required.",
+    });
     expect(getCapturedSlackApiCalls("files.info")).toEqual([]);
     expect(getCapturedSlackFileDownloadCalls()).toEqual([]);
   });

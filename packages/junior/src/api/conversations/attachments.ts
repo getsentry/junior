@@ -128,7 +128,8 @@ async function slackFileResponse(args: {
  * when the request asks for it. Media players need ranges to play and seek.
  *
  * Missing conversations, missing attachments, purge-marked rows, and viewers
- * without private-content access all answer 404. The row lookup is scoped to
+ * without private-content access all answer 404. A large Slack file that
+ * Junior never stored also needs a signed-in viewer. The row lookup is scoped to
  * the conversation, so a Slack download only ever starts from a row that
  * ingest created there.
  */
@@ -155,6 +156,9 @@ export async function conversationAttachmentResponse(args: {
     notFound();
   }
   if (attachment.storageKey === null) {
+    // Each read downloads up to the cap from Slack with the bot token, so
+    // only a signed-in viewer can start one, even in a public conversation.
+    if (!args.viewer) throwApiError(401, "Authentication required.");
     return await slackFileResponse({
       attachment,
       download: args.download,

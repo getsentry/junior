@@ -347,24 +347,10 @@ const FILE_ROW_CLASS = `${FILE_ROW_BASE_CLASS} cursor-pointer transition-colors 
 const PENDING_FILE_ROW_CLASS = `${FILE_ROW_SHELL_CLASS} grid-cols-[auto_minmax(0,1fr)_auto]`;
 
 /**
- * Save one file from its download URL.
- *
- * The click runs after the download check, so it has no user activation,
- * and browsers block a new window then. The URL asks for an attachment, so
- * a same-window link saves the file and stays on the page. Some browsers
- * ignore `download` for a file served inline, such as a video.
- */
-function startBrowserDownload(downloadHref: string, filename: string) {
-  const link = document.createElement("a");
-  link.download = filename;
-  link.href = downloadHref;
-  link.rel = "noreferrer";
-  link.click();
-}
-
-/**
- * Render a large Slack file that Junior never stores. Download checks that
- * Slack still has it, then the server streams it from Slack to the browser.
+ * Render a large Slack file that Junior never stores. Download loads the
+ * file URL in a hidden frame, and the server streams it from Slack. A saved
+ * file never loads a document in the frame. An error response does, and the
+ * conversation page stays in place, so the row then asks the server why.
  */
 function PendingFileRow(props: {
   attachment: MessageAttachment;
@@ -375,9 +361,9 @@ function PendingFileRow(props: {
     props.attachment.id,
   )}?download=true`;
   const { filename } = props.attachment;
+  const [attempt, setAttempt] = useState(0);
   const check = useMutation({
     mutationFn: () => checkDashboardDownload(downloadHref),
-    onSuccess: () => startBrowserDownload(downloadHref, filename),
   });
   const error = check.error
     ? (check.error instanceof DashboardApiError && check.error.apiError) ||
@@ -399,7 +385,10 @@ function PendingFileRow(props: {
         aria-label={`Download ${filename}`}
         className={DOWNLOAD_BUTTON_CLASS}
         disabled={check.isPending}
-        onClick={() => check.mutate()}
+        onClick={() => {
+          check.reset();
+          setAttempt((value) => value + 1);
+        }}
         type="button"
       >
         {check.isPending ? (
@@ -412,6 +401,15 @@ function PendingFileRow(props: {
           <Download size={13} />
         )}
       </button>
+      {attempt > 0 ? (
+        <iframe
+          hidden
+          key={attempt}
+          onLoad={() => check.mutate()}
+          src={downloadHref}
+          title={`Download ${filename}`}
+        />
+      ) : null}
     </div>
   );
 }
