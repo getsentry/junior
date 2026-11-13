@@ -54,6 +54,9 @@ test("links to saved objects show as a chip, a hover card, and a card", async ({
   page,
   dashboard,
 }) => {
+  await page.route("**/api/images/payments-91-after**", (route) =>
+    route.fulfill({ status: 404 }),
+  );
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
   );
@@ -69,12 +72,31 @@ test("links to saved objects show as a chip, a hover card, and a card", async ({
     page.getByText("https://github.com/getsentry/junior/pull/2201"),
   ).toHaveCount(0);
 
-  // A bare URL on its own line is the full card.
+  // A bare URL on its own line is the full card. Its description images
+  // load through the Junior image route, never from their own host.
+  const card = page.getByRole("region", {
+    name: "Pull request: Pin the release train to payments 4.2",
+  });
+  await expect(card).toBeVisible();
+  const before = card.getByRole("img", { name: "Description image 1" });
+  await expect(before).toHaveAttribute(
+    "src",
+    "/api/images/payments-91-before?w=320",
+  );
+  await expect(before).toHaveAttribute(
+    "srcset",
+    "/api/images/payments-91-before?w=320 1x, /api/images/payments-91-before?w=640 2x",
+  );
+  // The image route answers 404 to a viewer who cannot see the source.
+  // That image does not render.
   await expect(
-    page.getByRole("region", {
-      name: "Pull request: Pin the release train to payments 4.2",
-    }),
-  ).toBeVisible();
+    card.getByRole("img", { name: "Description image 2" }),
+  ).toHaveCount(0);
+  await expect
+    .poll(() =>
+      before.evaluate((image: HTMLImageElement) => image.naturalWidth),
+    )
+    .toBeGreaterThan(0);
 
   await waitForResolvedLinks(page);
   // A labeled link keeps its text and previews the card on hover.

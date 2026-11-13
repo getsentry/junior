@@ -5,8 +5,9 @@
  */
 import { createHash } from "node:crypto";
 import type { PluginRegistration, User } from "@sentry/junior-plugin-api";
+import { credentialContextForActor } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
-import { createViewerReadEgress } from "@/chat/egress/plugin";
+import { createPluginEgress } from "@/chat/egress/plugin";
 import { readAvatarFetch } from "@/chat/identities/avatar";
 import { logWarn } from "@/chat/logging";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
@@ -33,6 +34,8 @@ type ImageSource = (
   ref: string,
 ) => Promise<ImageRequest | undefined>;
 
+const IMAGE_SYSTEM_ACTOR = { platform: "system", name: "image" } as const;
+
 // Core sources. A plugin source has the name of its plugin.
 const CORE_SOURCES: Record<string, ImageSource> = {
   // Every signed-in viewer sees profile photos, as on the People pages.
@@ -50,7 +53,11 @@ function pluginSource(plugin: PluginRegistration): ImageSource | undefined {
       {
         cache: createPluginCache(name),
         db: getDb(),
-        egress: createViewerReadEgress(),
+        egress: createPluginEgress({
+          credentialContext: credentialContextForActor(IMAGE_SYSTEM_ACTOR),
+          // An image is optional. It must never ask anyone to authorize.
+          pluginAuth: { async handleAuthRequired() {} },
+        }),
         log: createPluginLogger(name),
         plugin: { name },
         viewer,

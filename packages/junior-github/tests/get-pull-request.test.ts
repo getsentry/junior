@@ -147,12 +147,14 @@ describe("getPullRequest", () => {
     ]);
   });
 
-  it("saves the public artifact images as previews", async () => {
+  it("saves the artifact and GitHub attachment images as previews", async () => {
     vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
     const artifact =
       "https://junior.example.com/public/artifacts/0123456789abcdef.png";
     const after =
       "https://junior.example.com/public/artifacts/fedcba9876543210.png";
+    const attachment =
+      "https://github.com/user-attachments/assets/0f8c2d6e-5a4b-4c3d-9e8f-7a6b5c4d3e2f";
     const withBody = (body: string) => {
       const response = pullRequestResponse();
       return { body: { ...response.body, body } };
@@ -161,7 +163,10 @@ describe("getPullRequest", () => {
     const { tool } = toolContext(true, [
       withBody(
         [
-          "![Private](https://github.com/user-attachments/assets/1)",
+          "![Unknown](https://github.com/user-attachments/assets/1)",
+          // A signed attachment URL expires in minutes.
+          "![Signed](https://private-user-images.githubusercontent.com/1/2.png?jwt=signed)",
+          `![Attachment](${attachment})`,
           "![Other](https://example.com/public/artifacts/0123456789abcdef.png)",
           "```md",
           "![Example](https://junior.example.com/public/artifacts/code.png)",
@@ -187,7 +192,7 @@ describe("getPullRequest", () => {
       return result.objectAnnotations[0]?.facts.previewImageUrls;
     };
 
-    expect(await preview()).toEqual([artifact, after]);
+    expect(await preview()).toEqual([attachment, artifact, after]);
     expect(await preview()).toBeUndefined();
     expect(await preview()).toBeUndefined();
   });
