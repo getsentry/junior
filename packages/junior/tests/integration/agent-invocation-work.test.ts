@@ -709,9 +709,7 @@ describe("agent invocation conversation work", () => {
         const events =
           await getConversationEventStore().loadHistory(childConversationId);
         expect(
-          events.filter(
-            (event) => event.data.type === "guardian_action_reviewed",
-          ),
+          events.filter((event) => event.data.type === "action_decided"),
         ).toEqual([]);
       } finally {
         await fixture.close();

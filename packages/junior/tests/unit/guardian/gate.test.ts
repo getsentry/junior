@@ -8,13 +8,12 @@ import {
   type ToolAction,
   type ToolActionReview,
   type ToolActionReviewContext,
-  type ToolApprovals,
+  type RequestToolApproval,
 } from "@/chat/guardian/gate";
 import type {
   ToolActionReviewDecision,
   ToolActionReviewer,
 } from "@/chat/guardian/proposal";
-import { noToolApprovals } from "../../fixtures/tool-approvals";
 
 const LOCAL_SOURCE = {
   kind: "local",
@@ -29,10 +28,13 @@ const LOCAL_DESTINATION = {
 function reviewContext(
   reviewer: ToolActionReviewer,
   overrides: Partial<ToolActionReviewContext> = {},
-  approvals: ToolApprovals = noToolApprovals,
+  requestApproval: RequestToolApproval = async () => undefined,
+  onDecision: Parameters<
+    typeof createToolActionReview
+  >[0]["onDecision"] = async () => undefined,
 ): ToolActionReview {
   return createToolActionReview({
-    approvals,
+    requestApproval,
     context: {
       actor: {
         platform: "system",
@@ -68,34 +70,24 @@ function reviewContext(
       }),
       ...overrides,
     },
-    onDecision: vi.fn(async () => undefined),
+    onDecision,
     onFatal: vi.fn(),
     reviewer,
   });
 }
 
-/** Tool approvals that record each request and file it as `item-<n>`. */
-function recordingApprovals(options: { pending?: string } = {}) {
+/** An approval request that records each call and files it as `item-<n>`. */
+function recordingApprovals() {
   const requested: Array<{
     input: Record<string, unknown>;
     reason: string;
     toolName: string;
   }> = [];
-  const approvals: ToolApprovals & { requested: typeof requested } = {
-    requested,
-    async findPending() {
-      return options.pending ? { reviewItemId: options.pending } : undefined;
-    },
-    async request(action, _proposal, reason) {
-      requested.push({
-        input: action.input,
-        reason,
-        toolName: action.toolName,
-      });
-      return { reviewItemId: `item-${requested.length}` };
-    },
+  const request: RequestToolApproval = async (action, _proposal, reason) => {
+    requested.push({ input: action.input, reason, toolName: action.toolName });
+    return `item-${requested.length}`;
   };
-  return approvals;
+  return Object.assign(request, { requested });
 }
 
 /** Review a batch of one action, as the tool adapter does. */
@@ -447,46 +439,46 @@ describe("tool action review", () => {
       }),
     ]) {
       const approvals = recordingApprovals();
+      const onDecision = vi.fn(async () => undefined);
       await expect(
         reviewToolAction(
           "tool-call",
           "deleteThing",
           tool,
           { id: "a" },
-          reviewContext({ review }, {}, approvals),
+          reviewContext({ review }, {}, approvals, onDecision),
         ),
       ).rejects.toMatchObject({ decision: "ask" });
       expect(approvals.requested).toHaveLength(1);
+      expect(onDecision).toHaveBeenCalledWith({
+        decider: "rule",
+        decision: expect.objectContaining({ decision: "ask" }),
+        toolCallId: "tool-call",
+        toolName: "deleteThing",
+      });
     }
     expect(review).not.toHaveBeenCalled();
   });
 
-  it("reuses the pending approval of the same call", async () => {
-    const approvals = recordingApprovals({ pending: "item-0" });
-    await expect(
-      reviewToolAction(
-        "tool-call-2",
-        "deleteThing",
-        definition({ permission: "ask" }),
-        { id: "a" },
-        reviewContext({ review: vi.fn() }, {}, approvals),
-      ),
-    ).rejects.toThrow("review item item-0");
-    expect(approvals.requested).toEqual([]);
-  });
-
   it("denies a deny tool without Guardian", async () => {
     const review = vi.fn<ToolActionReviewer["review"]>();
+    const onDecision = vi.fn(async () => undefined);
     await expect(
       reviewToolAction(
         "tool-call",
         "neverRun",
         definition({ permission: "deny" }),
         {},
-        reviewContext({ review }, {}, recordingApprovals()),
+        reviewContext({ review }, {}, recordingApprovals(), onDecision),
       ),
     ).rejects.toMatchObject({ decision: "deny" });
     expect(review).not.toHaveBeenCalled();
+    expect(onDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        decider: "rule",
+        decision: expect.objectContaining({ decision: "deny" }),
+      }),
+    );
   });
 
   it("shows prior denials to alternate tools", async () => {
@@ -624,7 +616,7 @@ describe("tool action review", () => {
   it("fails closed when the Guardian decision cannot be recorded", async () => {
     const failure = new Error("event log unavailable");
     const actionReview = createToolActionReview({
-      approvals: noToolApprovals,
+      requestApproval: async () => undefined,
       context: {
         actor: { platform: "local", userId: "local-user" },
         conversationId: "local:approval-test",
@@ -706,7 +698,7 @@ describe("tool action review", () => {
       };
     });
     const actionReview = createToolActionReview({
-      approvals: noToolApprovals,
+      requestApproval: async () => undefined,
       context: {
         actor: { platform: "local", userId: "local-user" },
         conversationId: "local:approval-test",

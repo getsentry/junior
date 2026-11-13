@@ -13,7 +13,6 @@ import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { createTools } from "@/chat/tools";
 import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
-import { noToolApprovals } from "../../fixtures/tool-approvals";
 
 const ROOT_TURN_TOOLS = turnBehavior({
   kind: "root",
@@ -88,7 +87,7 @@ describe("codemode tool", () => {
         },
         conversationPrivacy: "private",
         actionReview: createToolActionReview({
-          approvals: noToolApprovals,
+          requestApproval: async () => undefined,
           context: {
             actor: { platform: "local", userId: "local-user" },
             conversationId: CONVERSATION_ID,

@@ -971,10 +971,11 @@ describe("executeAgentRun progressive MCP loading", () => {
     const events =
       await getConversationEventStore().loadCurrentHistory("conversation-2");
     expect(events.map((event) => event.data)).toContainEqual({
-      type: "guardian_action_reviewed",
+      type: "action_decided",
       turnId: "turn-2",
       toolCallId: expect.any(String),
       toolName: "mcp__demo__ping",
+      decider: "guardian",
       decision: "allow",
       riskLevel: "low",
       userAuthorization: "high",
@@ -1097,10 +1098,11 @@ describe("executeAgentRun progressive MCP loading", () => {
       const events =
         await getConversationEventStore().loadCurrentHistory(conversationId);
       expect(events.map((event) => event.data)).toContainEqual({
-        type: "guardian_action_reviewed",
+        type: "action_decided",
         turnId: "turn-guardian-deny",
         toolCallId: expect.any(String),
         toolName: "mcp__demo__ping",
+        decider: "guardian",
         decision: "deny",
         riskLevel: "high",
         userAuthorization: "low",

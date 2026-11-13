@@ -927,30 +927,54 @@ export async function recordAttachmentsDelivered(args: {
   ]);
 }
 
-/** Record one privacy-safe Guardian decision before the reviewed action continues. */
-export async function recordGuardianActionReviewed(args: {
+/**
+ * Record one privacy-safe decision on a tool action, before the action
+ * continues. Return whether this call wrote it: a person's decision has an
+ * idempotency key, so only one writer gets `true`.
+ */
+export async function recordActionDecided(args: {
   conversationId: string;
   turnId: string;
   toolCallId: string;
   toolName: string;
-  costUsd?: number;
+  decider: "guardian" | "rule" | "person";
   decision: "allow" | "ask" | "deny";
-  riskLevel: "low" | "medium" | "high" | "critical";
-  userAuthorization: "high" | "medium" | "low" | "unknown";
-}): Promise<void> {
-  await getConversationEventStore().append(args.conversationId, [
-    {
-      data: {
-        type: "guardian_action_reviewed",
-        turnId: args.turnId,
-        toolCallId: args.toolCallId,
-        toolName: args.toolName,
-        ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined),
-        decision: args.decision,
-        riskLevel: args.riskLevel,
-        userAuthorization: args.userAuthorization,
+  costUsd?: number;
+  idempotencyKey?: string;
+  reviewItemId?: string;
+  riskLevel?: "low" | "medium" | "high" | "critical";
+  userAuthorization?: "high" | "medium" | "low" | "unknown";
+}): Promise<boolean> {
+  const written = await getConversationEventStore().append(
+    args.conversationId,
+    [
+      {
+        data: {
+          type: "action_decided",
+          turnId: args.turnId,
+          toolCallId: args.toolCallId,
+          toolName: args.toolName,
+          decider: args.decider,
+          decision: args.decision,
+          ...(args.costUsd !== undefined
+            ? { costUsd: args.costUsd }
+            : undefined),
+          ...(args.reviewItemId
+            ? { reviewItemId: args.reviewItemId }
+            : undefined),
+          ...(args.riskLevel ? { riskLevel: args.riskLevel } : undefined),
+          ...(args.userAuthorization
+            ? { userAuthorization: args.userAuthorization }
+            : undefined),
+        },
+        createdAtMs: Date.now(),
+        ...(args.idempotencyKey
+          ? { idempotencyKey: args.idempotencyKey }
+          : undefined),
       },
-      createdAtMs: Date.now(),
-    },
-  ]);
+    ],
+    // A person's decision is not new Conversation activity.
+    args.idempotencyKey ? { activity: "preserve" } : undefined,
+  );
+  return written.length > 0;
 }

@@ -1,6 +1,6 @@
 import { withSpan } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { deliverToolApprovalAnswer } from "@/chat/tool-approvals/delivery";
+import { deliverToolApprovalAnswer } from "@/chat/tool-approvals";
 import { sendReviewItemMessages, type ReviewItemChange } from "./messages";
 import type { ReviewItem } from "./store";
 

@@ -34,7 +34,6 @@ import {
   slackInvocationInput,
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
-import { noToolApprovals } from "../fixtures/tool-approvals";
 
 const user = slackInvocationInput.actor;
 let messageCount = 0;
@@ -157,7 +156,7 @@ describe("user approval for child agents", () => {
                 bindMessageAgent(parent, { queue, state })!,
               );
         const review = createToolActionReview({
-          approvals: noToolApprovals,
+          requestApproval: async () => undefined,
           context: {
             actor: user,
             conversationId: slackParentConversationId,

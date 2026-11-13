@@ -15,6 +15,7 @@ import {
   getConversationStore,
 } from "@/chat/db";
 import { purgeConversation } from "@/chat/conversations/retention";
+import { juniorConversationEvents } from "@/db/schema";
 
 async function recordConversation(conversationId: string): Promise<void> {
   await getConversationStore().recordActivity({
@@ -437,13 +438,18 @@ describe("conversation event list API", () => {
     ).toBeUndefined();
   });
 
-  it("reports privacy-safe Guardian decisions", async () => {
+  it("reports privacy-safe action decisions, also old Guardian rows", async () => {
     const conversationId = "local:test:guardian-events";
     await recordConversation(conversationId);
-    await getConversationEventStore().append(conversationId, [
-      {
-        data: {
-          type: "guardian_action_reviewed",
+    // An old row, written before `action_decided`.
+    await getSqlExecutor()
+      .db()
+      .insert(juniorConversationEvents)
+      .values({
+        conversationId,
+        createdAt: new Date(2),
+        historyVersion: 0,
+        payload: {
           turnId: "turn-guardian",
           toolCallId: "tool-guardian",
           toolName: "createIssue",
@@ -451,7 +457,21 @@ describe("conversation event list API", () => {
           riskLevel: "medium",
           userAuthorization: "high",
         },
-        createdAtMs: 2,
+        seq: 0,
+        type: "guardian_action_reviewed",
+      });
+    await getConversationEventStore().append(conversationId, [
+      {
+        data: {
+          type: "action_decided",
+          turnId: "turn-guardian",
+          toolCallId: "tool-delete",
+          toolName: "deleteWorkspace",
+          decider: "person",
+          decision: "deny",
+          reviewItemId: "item-1",
+        },
+        createdAtMs: 3,
       },
     ]);
 
@@ -460,18 +480,26 @@ describe("conversation event list API", () => {
     );
     expect(response.status).toBe(200);
     const detail = conversationDetailReportSchema.parse(await response.json());
-    expect(detail.events).toEqual([
-      expect.objectContaining({
-        data: {
-          type: "guardian_action_reviewed",
-          turnId: "turn-guardian",
-          toolCallId: "tool-guardian",
-          toolName: "createIssue",
-          decision: "allow",
-          riskLevel: "medium",
-          userAuthorization: "high",
-        },
-      }),
+    expect(detail.events.map((event) => event.data)).toEqual([
+      {
+        type: "action_decided",
+        turnId: "turn-guardian",
+        toolCallId: "tool-guardian",
+        toolName: "createIssue",
+        decider: "guardian",
+        decision: "allow",
+        riskLevel: "medium",
+        userAuthorization: "high",
+      },
+      {
+        type: "action_decided",
+        turnId: "turn-guardian",
+        toolCallId: "tool-delete",
+        toolName: "deleteWorkspace",
+        decider: "person",
+        decision: "deny",
+        reviewItemId: "item-1",
+      },
     ]);
   });
 

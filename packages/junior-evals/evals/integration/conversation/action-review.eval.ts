@@ -59,9 +59,7 @@ describe("Action Review", () => {
     // Core stores the call and asks the person. The agent adds no item.
     await expect(
       openToolApprovals(conversation.conversationId),
-    ).resolves.toEqual([
-      { itemStatus: "open", status: "pending", toolName: "spawnAgent" },
-    ]);
+    ).resolves.toEqual([{ itemStatus: "open", toolName: "spawnAgent" }]);
     expect(completedToolCalls("addReviewItem", conversation)).toEqual([]);
   });
 

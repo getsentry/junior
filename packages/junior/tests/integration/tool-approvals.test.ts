@@ -2,7 +2,7 @@ import { createSlackSource, type Source } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Type } from "@sinclair/typebox";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
-import { getDb } from "@/chat/db";
+import { getConversationEventStore, getDb } from "@/chat/db";
 import {
   createToolActionReview,
   reviewToolActions,
@@ -18,13 +18,11 @@ import {
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import {
-  claimToolApproval,
+  createToolApprovalRequest,
   listToolApprovals,
-  type ToolApproval,
-} from "@/chat/tool-approvals/log";
-import { createToolApprovals } from "@/chat/tool-approvals/request";
-import type { ToolApprovalRunContext } from "@/chat/tool-approvals/request";
-import { runApprovedToolCalls } from "@/chat/tool-approvals/run";
+  runApprovedToolCalls,
+  type ToolApprovalRunContext,
+} from "@/chat/tool-approvals";
 import { createToolPipeline } from "@/chat/tool-support/pi-tool-adapter";
 import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
 import {
@@ -79,7 +77,6 @@ function runContext(
  */
 function wireRun(run: ToolApprovalRunContext) {
   const review = createToolActionReview({
-    approvals: createToolApprovals(run, async () => {}),
     context: {
       actor: run.actor,
       conversationId: run.conversationId,
@@ -91,6 +88,7 @@ function wireRun(run: ToolApprovalRunContext) {
     onFatal: (error) => {
       throw error;
     },
+    requestApproval: createToolApprovalRequest(run, async () => {}),
     reviewer: {
       review: async () => {
         throw new Error("Guardian must not review an ask call");
@@ -113,31 +111,22 @@ function wireRun(run: ToolApprovalRunContext) {
       );
       return results.get(toolCallId)!;
     },
-    async runApproved(replay = true) {
+    async runApproved() {
       return await runApprovedToolCalls({
         pipeline: approved,
-        replay,
         run,
+        show: async () => {},
         tools: { [TOOL]: deleteRecord },
       });
     },
   };
 }
 
-/** One stored call from the event log, with a status for assertions. */
+/** The one stored call of a Conversation, from its event log. */
 async function onlyApproval(conversationId: string) {
   const approvals = await listToolApprovals(conversationId);
   expect(approvals).toHaveLength(1);
-  const approval = approvals[0]!;
-  return {
-    ...approval,
-    result: approval.end?.result,
-    status: status(approval),
-  };
-}
-
-function status(approval: ToolApproval): string {
-  return approval.end?.status ?? (approval.claimTurnId ? "running" : "pending");
+  return approvals[0]!;
 }
 
 function answer(args: {
@@ -200,7 +189,6 @@ describe("tool approvals", () => {
     expect(approval).toMatchObject({
       approverUserId: aliceUser.id,
       input: { id: "r-1" },
-      status: "pending",
       toolName: TOOL,
     });
     await expect(
@@ -212,10 +200,18 @@ describe("tool approvals", () => {
       kind: "action",
       status: "open",
     });
-    // The same call again reuses the open approval.
+    // A retry of the same tool call, and an identical new call, reuse the
+    // open item and its stored request.
     const again = wireRun(runContext({ turnId: "turn-2" }));
-    expect((await again.call("call-2", { id: "r-1" })).allowed).toBe(false);
-    await onlyApproval(rootId);
+    expect((await again.call("call-1", { id: "r-1" })).allowed).toBe(false);
+    const retry = await again.call("call-2", { id: "r-1" });
+    expect(retry.allowed ? undefined : retry.error.message).toContain(
+      `review item ${approval.reviewItemId}`,
+    );
+    await expect(onlyApproval(rootId)).resolves.toMatchObject({
+      reviewItemId: approval.reviewItemId,
+      toolCallId: "call-1",
+    });
   });
 
   it("runs the exact stored call once after the approver approves, also when the approval is replayed", async () => {
@@ -239,9 +235,19 @@ describe("tool approvals", () => {
       ),
     ]);
     expect(await onlyApproval(rootId)).toMatchObject({
-      result: expect.stringContaining("r-1"),
-      status: "completed",
+      decision: "allow",
     });
+    // One person decision, the claim, exists for the request.
+    const decisions = (
+      await getConversationEventStore().loadHistory(rootId)
+    ).filter((event) => event.data.type === "action_decided");
+    expect(decisions.map((event) => event.data)).toEqual([
+      expect.objectContaining({
+        decider: "person",
+        decision: "allow",
+        reviewItemId: approval.reviewItemId,
+      }),
+    ]);
 
     // The same answer again, then a new Turn, run nothing.
     await answer({
@@ -271,7 +277,7 @@ describe("tool approvals", () => {
       wireRun(runContext({ turnId: "turn-2" })).runApproved(),
     ).resolves.toEqual([]);
     expect(executions).toEqual([]);
-    expect(await onlyApproval(rootId)).toMatchObject({ status: "declined" });
+    expect(await onlyApproval(rootId)).toMatchObject({ decision: "deny" });
   });
 
   it("does not run a call on an answer from someone who is not the approver", async () => {
@@ -289,43 +295,10 @@ describe("tool approvals", () => {
     ).resolves.toEqual([]);
 
     expect(executions).toEqual([]);
-    expect(await onlyApproval(rootId)).toMatchObject({ status: "pending" });
+    expect(await onlyApproval(rootId)).not.toHaveProperty("decision");
     await expect(
       getReviewItem(getDb(), approval.reviewItemId),
     ).resolves.toMatchObject({ status: "open" });
-  });
-
-  it("marks a claimed call that did not end as unknown and never runs it again", async () => {
-    const { approval } = await askInRoot();
-    await answer({
-      action: "submit",
-      itemId: approval.reviewItemId,
-      user: aliceUser,
-    });
-    // Turn 2 claims the call, then crashes before the call ends.
-    await claimToolApproval({
-      conversationId: rootId,
-      nowMs: Date.now(),
-      toolCallId: approval.toolCallId,
-      turnId: "turn-2",
-    });
-
-    // Another Turn, and turn 2 later in its slice, do not run it.
-    await expect(
-      wireRun(runContext({ turnId: "turn-3" })).runApproved(),
-    ).resolves.toEqual([]);
-    await expect(
-      wireRun(runContext({ turnId: "turn-2" })).runApproved(false),
-    ).resolves.toEqual([]);
-    // The retry of turn 2 records the unknown outcome and tells the model.
-    await expect(
-      wireRun(runContext({ turnId: "turn-2" })).runApproved(),
-    ).resolves.toEqual([expect.stringContaining('status="failed"')]);
-    expect(executions).toEqual([]);
-    expect(await onlyApproval(rootId)).toMatchObject({
-      result: expect.stringContaining("outcome is unknown"),
-      status: "failed",
-    });
   });
 
   it("expires an approval that waits too long, and then never runs it", async () => {
@@ -343,7 +316,7 @@ describe("tool approvals", () => {
     }
 
     expect(executions).toEqual([]);
-    expect(await onlyApproval(rootId)).toMatchObject({ status: "declined" });
+    expect(await onlyApproval(rootId)).toMatchObject({ decision: "deny" });
     await expect(
       getReviewItem(getDb(), approval.reviewItemId),
     ).resolves.toMatchObject({ status: "dismissed" });

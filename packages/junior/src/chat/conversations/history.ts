@@ -183,16 +183,24 @@ const toolExecutionStartedEventDataSchema = z
   })
   .strict();
 
-const guardianActionReviewedEventDataSchema = z
+/**
+ * One decision on a tool action: by Guardian, by the tool's permission rule,
+ * or by the person on its review item. Ratings and cost come only from
+ * Guardian. A person's decision names its review item, and its idempotency
+ * key allows one per call, so its `allow` write is the claim to run it.
+ */
+const actionDecidedEventDataSchema = z
   .object({
-    type: z.literal("guardian_action_reviewed"),
+    type: z.literal("action_decided"),
     turnId: z.string().min(1),
     toolCallId: z.string().min(1),
     toolName: z.string().min(1),
-    costUsd: z.number().finite().nonnegative().optional(),
+    decider: z.enum(["guardian", "rule", "person"]),
     decision: z.enum(["allow", "ask", "deny"]),
-    riskLevel: z.enum(["low", "medium", "high", "critical"]),
-    userAuthorization: z.enum(["high", "medium", "low", "unknown"]),
+    costUsd: z.number().finite().nonnegative().optional(),
+    reviewItemId: z.string().min(1).optional(),
+    riskLevel: z.enum(["low", "medium", "high", "critical"]).optional(),
+    userAuthorization: z.enum(["high", "medium", "low", "unknown"]).optional(),
   })
   .strict();
 
@@ -470,7 +478,7 @@ const appendableConversationEventDataSchema = z.union([
   authorizationRequestedEventDataSchema,
   authorizationCompletedEventDataSchema,
   toolExecutionStartedEventDataSchema,
-  guardianActionReviewedEventDataSchema,
+  actionDecidedEventDataSchema,
   messageHandledEventDataSchema,
   messagesSummarizedEventDataSchema,
   turnStartedEventDataSchema,
@@ -500,6 +508,19 @@ export type ConversationEventData = z.output<
   typeof conversationEventDataSchema
 >;
 
+/**
+ * Type of Guardian decisions written before `action_decided`. Decode reads
+ * them as `action_decided` with `decider: "guardian"`. Remove it once those
+ * rows age out.
+ */
+export const LEGACY_GUARDIAN_DECISION_TYPE = "guardian_action_reviewed";
+
+/** Row types of action decisions, for SQL readers. Old rows are Guardian's. */
+export const ACTION_DECIDED_EVENT_TYPES = [
+  "action_decided",
+  LEGACY_GUARDIAN_DECISION_TYPE,
+] as const;
+
 // This list distinguishes unsupported rows from corrupt known rows. Add every
 // canonical event type here with its data schema.
 /** Event type names recognized by current readers and observational queries. */
@@ -514,7 +535,8 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "authorization_requested",
   "authorization_completed",
   "tool_execution_started",
-  "guardian_action_reviewed",
+  "action_decided",
+  LEGACY_GUARDIAN_DECISION_TYPE,
   "message_handled",
   "messages_summarized",
   "turn_started",
@@ -619,6 +641,17 @@ export function decodeStoredConversationEvent(
     return conversationEventSchema.parse({
       ...envelope,
       data: { ...decodeHistoryPayload(type, payload), type },
+    });
+  }
+  // The only read of old Guardian rows. Remove with the legacy type.
+  if (stored.schemaVersion === 1 && type === LEGACY_GUARDIAN_DECISION_TYPE) {
+    return conversationEventSchema.parse({
+      ...envelope,
+      data: {
+        ...(payload as Record<string, unknown>),
+        decider: "guardian",
+        type: "action_decided",
+      },
     });
   }
   if (stored.schemaVersion === 1 && knownType) {

@@ -14,7 +14,6 @@ import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import type { Skill } from "@/chat/skills";
 import type { PluginHookRunner } from "@/chat/plugins/agent-hooks";
-import { noToolApprovals } from "../../fixtures/tool-approvals";
 
 const { handleToolExecutionError } = vi.hoisted(() => ({
   handleToolExecutionError: vi.fn((error: unknown) => {
@@ -41,7 +40,7 @@ function actionReview(
   onFatal = vi.fn(),
 ): ToolActionReview {
   return createToolActionReview({
-    approvals: noToolApprovals,
+    requestApproval: async () => undefined,
     context: {
       actor: { platform: "local", userId: "local-user" },
       conversationId: "local:tool-review",

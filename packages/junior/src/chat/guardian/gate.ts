@@ -124,11 +124,11 @@ const ACTION_REVIEW_LIMIT_INSTRUCTIONS = [
 
 /** Rejection instructions for the agent that proposed the action. */
 function rejectionInstructions(
-  step: { approval?: ToolApprovalRef },
+  step: { reviewItemId?: string },
   options: { exhausted: boolean },
 ): string {
-  if (step.approval) {
-    return approvalPendingInstructions(step.approval.reviewItemId);
+  if (step.reviewItemId) {
+    return approvalPendingInstructions(step.reviewItemId);
   }
   return options.exhausted
     ? ACTION_REVIEW_LIMIT_INSTRUCTIONS
@@ -534,29 +534,16 @@ type ActionRejection = {
   reason: string;
 } & Partial<Pick<ToolActionReviewDecision, "riskLevel" | "userAuthorization">>;
 
-/** The review item where one stored call waits for the person's approval. */
-export interface ToolApprovalRef {
-  reviewItemId: string;
-}
-
 /**
- * Core path for actions that wait for a person. It stores the exact call
- * with the Run's context and files its review item. Only the person's answer
- * on that item can run the call; the agent cannot.
+ * Store the exact call with the Run's context and file its review item.
+ * Return the item id, or undefined when no person can approve it in this
+ * Run. Only the person's answer on that item can run the call.
  */
-export interface ToolApprovals {
-  /** Return the waiting approval of this exact call, if there is one. */
-  findPending(action: ToolAction): Promise<ToolApprovalRef | undefined>;
-  /**
-   * Store the exact call and file it for the person's approval. Return
-   * undefined when no person can approve it in this Run.
-   */
-  request(
-    action: ToolAction,
-    proposal: ToolActionProposal,
-    reason: string,
-  ): Promise<ToolApprovalRef | undefined>;
-}
+export type RequestToolApproval = (
+  action: ToolAction,
+  proposal: ToolActionProposal,
+  reason: string,
+) => Promise<string | undefined>;
 
 const ASK_PERMISSION_REASON =
   "This tool runs only after the person approves each call.";
@@ -571,29 +558,36 @@ type ReviewStep =
       kind: "reviewed";
       decision: ToolActionReviewDecision;
       proposal: ToolActionProposal;
-      approval?: ToolApprovalRef;
+      reviewItemId?: string;
     }
   | {
       /** Core decided by the tool's permission, without Guardian. */
       kind: "decided";
       decision: ActionRejection;
       proposal: ToolActionProposal;
-      approval?: ToolApprovalRef;
+      reviewItemId?: string;
     }
   | { kind: "unavailable"; error: ToolActionReviewUnavailableError };
 
 /** Create the core review path that prepares actions and enforces Guardian decisions. */
 export function createToolActionReview(options: {
-  approvals: ToolApprovals;
   context: ToolActionReviewContext;
-  /** Persist the Guardian decision before the reviewed action can continue. */
+  /** Persist a Guardian or rule decision before the action can continue. */
   onDecision(event: {
+    decider: "guardian" | "rule";
     toolCallId: string;
     toolName: string;
-    decision: ToolActionReviewDecision;
+    decision: Pick<ToolActionReviewDecision, "decision"> &
+      Partial<
+        Pick<
+          ToolActionReviewDecision,
+          "costUsd" | "riskLevel" | "userAuthorization"
+        >
+      >;
   }): Promise<void>;
   /** Escalate unavailable review to the owning agent-run boundary. */
   onFatal(error: ToolActionReviewUnavailableError): void;
+  requestApproval: RequestToolApproval;
   priorRejections?: ToolActionPriorRejection[];
   reviewer: ToolActionReviewer;
 }): ToolActionReview {
@@ -618,10 +612,14 @@ export function createToolActionReview(options: {
     action: ToolAction,
     proposal: ToolActionProposal,
     reason: string,
-  ): Promise<{ approval?: ToolApprovalRef; decision: ActionRejection }> => {
-    const approval = await options.approvals.request(action, proposal, reason);
-    return approval
-      ? { approval, decision: { decision: "ask", reason } }
+  ): Promise<{ decision: ActionRejection; reviewItemId?: string }> => {
+    const reviewItemId = await options.requestApproval(
+      action,
+      proposal,
+      reason,
+    );
+    return reviewItemId
+      ? { decision: { decision: "ask", reason }, reviewItemId }
       : {
           decision: {
             decision: "deny",
@@ -645,36 +643,25 @@ export function createToolActionReview(options: {
         return { kind: "skipped" };
       }
       const { proposal } = plan;
-      if (plan.kind === "deny") {
-        return {
-          kind: "decided",
-          decision: { decision: "deny", reason: DENY_PERMISSION_REASON },
-          proposal,
-        };
-      }
-      // A retry of a call that already waits gets the same item, so only
-      // the person's answer can run it.
-      const pending = await options.approvals.findPending(action);
-      if (pending) {
-        return {
-          kind: "decided",
-          approval: pending,
-          decision: { decision: "ask", reason: ASK_PERMISSION_REASON },
-          proposal,
-        };
-      }
-      if (plan.kind === "ask") {
-        return {
-          kind: "decided",
-          ...(await askPerson(action, proposal, ASK_PERMISSION_REASON)),
-          proposal,
-        };
+      if (plan.kind !== "review") {
+        const decided: { decision: ActionRejection; reviewItemId?: string } =
+          plan.kind === "deny"
+            ? { decision: { decision: "deny", reason: DENY_PERMISSION_REASON } }
+            : await askPerson(action, proposal, ASK_PERMISSION_REASON);
+        await options.onDecision({
+          decider: "rule",
+          decision: decided.decision,
+          toolCallId: action.toolCallId,
+          toolName: proposal.tool.name,
+        });
+        return { kind: "decided", ...decided, proposal };
       }
       const decision = await options.reviewer.review(
         proposal,
         signal ? { signal } : {},
       );
       await options.onDecision({
+        decider: "guardian",
         toolCallId: action.toolCallId,
         toolName: proposal.tool.name,
         decision,
@@ -685,7 +672,9 @@ export function createToolActionReview(options: {
       const asked = await askPerson(action, proposal, decision.reason);
       return {
         kind: "reviewed",
-        ...(asked.approval ? { approval: asked.approval } : undefined),
+        ...(asked.reviewItemId
+          ? { reviewItemId: asked.reviewItemId }
+          : undefined),
         decision: { ...decision, ...asked.decision },
         proposal,
       };

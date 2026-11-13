@@ -22,7 +22,6 @@ import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
 import { planToolExposure } from "@/chat/tool-exposure";
 import { createToolPipeline } from "@/chat/tool-support/pi-tool-adapter";
 import { mswServer } from "../../msw/server";
-import { noToolApprovals } from "../../fixtures/tool-approvals";
 
 const ROOT_TURN_TOOLS = turnBehavior({
   kind: "root",
@@ -81,7 +80,7 @@ function pipelineFor(
   options: { onToolCall?: () => void | Promise<void> } = {},
 ) {
   const actionReview = createToolActionReview({
-    approvals: noToolApprovals,
+    requestApproval: async () => undefined,
     context: {
       actor: { platform: "local", userId: "local-user" },
       conversationId: CONVERSATION_ID,

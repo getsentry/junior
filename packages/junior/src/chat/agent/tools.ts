@@ -56,10 +56,10 @@ import {
 } from "@/chat/tool-support/pi-tool-adapter";
 import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
 import {
-  createToolApprovals,
+  createToolApprovalRequest,
+  runApprovedToolCalls,
   type ToolApprovalRunContext,
-} from "@/chat/tool-approvals/request";
-import { runApprovedToolCalls } from "@/chat/tool-approvals/run";
+} from "@/chat/tool-approvals";
 import { planToolExposure } from "@/chat/tool-exposure";
 import { renderScriptTools } from "@/chat/codemode/tool";
 import type { SandboxRef } from "@/chat/sandbox/ref";
@@ -100,7 +100,7 @@ import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
 import { restoreToolActionRejections } from "@/chat/guardian/history";
-import { recordGuardianActionReviewed } from "@/chat/conversations/projection";
+import { recordActionDecided } from "@/chat/conversations/projection";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 
@@ -322,10 +322,9 @@ export interface ToolWiring {
   pluginHooks: PluginHookRunner;
   /**
    * Run each call that its approver approved and that this Run may run.
-   * Return one rendered result input for each call that ran. `replay` is
-   * true at the start of a Turn that is not resumed.
+   * Return one rendered result input for each call that ran.
    */
-  runApprovedToolCalls(options: { replay: boolean }): Promise<string[]>;
+  runApprovedToolCalls(): Promise<string[]>;
   /** Project core-owned review state into one durable Pi tool result. */
   projectActionReviewResult<
     TResult extends { details?: unknown; isError?: boolean },
@@ -514,8 +513,8 @@ export async function wireAgentTools(
     source: runSource,
     turnId: args.run.turnId,
   };
+  const showReviewItem = createSlackReviewItemShow();
   const actionReview = createToolActionReview({
-    approvals: createToolApprovals(approvalRun, createSlackReviewItemShow()),
     context: {
       actor: args.currentActor,
       conversationId: args.run.conversationId,
@@ -544,18 +543,21 @@ export async function wireAgentTools(
           }
         : undefined),
     },
-    onDecision: ({ toolCallId, toolName, decision }) =>
-      recordGuardianActionReviewed({
+    onDecision: async ({ decider, toolCallId, toolName, decision }) => {
+      await recordActionDecided({
         conversationId: args.run.conversationId,
         turnId: args.run.turnId,
         toolCallId,
         toolName,
+        decider,
         costUsd: decision.costUsd,
         decision: decision.decision,
         riskLevel: decision.riskLevel,
         userAuthorization: decision.userAuthorization,
-      }),
+      });
+    },
     onFatal: args.onFatalToolError,
+    requestApproval: createToolApprovalRequest(approvalRun, showReviewItem),
     priorRejections: restoreToolActionRejections(args.currentTurnMessages),
     reviewer: createGuardianActionReviewer({
       completeObject,
@@ -723,11 +725,11 @@ export async function wireAgentTools(
   return {
     activeMcpCatalogs,
     agentTools,
-    async runApprovedToolCalls({ replay }) {
+    async runApprovedToolCalls() {
       return await runApprovedToolCalls({
         pipeline: approvedCalls,
-        replay,
         run: approvalRun,
+        show: showReviewItem,
         tools: tools as Record<string, AnyToolDefinition>,
       });
     },

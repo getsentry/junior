@@ -1,4 +1,5 @@
-import { and, eq, gte, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
+import { ACTION_DECIDED_EVENT_TYPES } from "@/chat/conversations/history";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
@@ -611,7 +612,9 @@ async function aggregateGuardianStats(
   };
   const where = (windowStart: Date) =>
     and(
-      eq(juniorConversationEvents.type, "guardian_action_reviewed"),
+      inArray(juniorConversationEvents.type, [...ACTION_DECIDED_EVENT_TYPES]),
+      // Old rows have no decider; they are all Guardian's.
+      sql`COALESCE(${juniorConversationEvents.payload}->>'decider', 'guardian') = 'guardian'`,
       gte(juniorConversationEvents.createdAt, windowStart),
       lte(juniorConversationEvents.createdAt, end),
     );
