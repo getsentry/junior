@@ -6,8 +6,6 @@
  * the tags and the escaping rules.
  */
 
-import { escapeTagText } from "@sentry/junior-plugin-api";
-
 // Top-level tags of runtime-created Turn inputs.
 const RUNTIME_INPUT_TAGS = [
   "task",
@@ -23,8 +21,17 @@ const RUNTIME_INPUT_TAGS = [
 
 type TagAttrs = Record<string, string | number | undefined>;
 
-// Provider tools and core escape tag bodies the same way.
-export { escapeTagText };
+/**
+ * Escape text that a person, an agent, or an external source wrote, for a
+ * tag body. Quotes stay as they are. Escaping `<` also keeps the text from
+ * imitating one of our tags.
+ */
+export function escapeTagText(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
 
 /**
  * Escape each closing-tag start (`</`) in text that the runtime puts in a job

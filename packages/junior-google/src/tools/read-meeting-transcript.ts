@@ -2,7 +2,6 @@ import {
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
-  renderExternalText,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
@@ -326,7 +325,7 @@ export function createReadMeetingTranscriptTool(ctx: GoogleToolContext) {
             : undefined;
         truncated ||= path !== undefined;
         records.push({
-          content: renderExternalText(content, "google"),
+          content,
           kind: meetingRecordKind(file.name) ?? "document",
           ...(path ? { path } : undefined),
           title: file.name,
