@@ -102,7 +102,10 @@ function SavingsChart(props: { days: Day[] }) {
   const values = props.days.map((day) => day.netSavingsUsd);
   const maximum = Math.max(0.01, ...values);
   const minimum = Math.min(0, ...values);
-  const empty = props.days.every((day) => day.idlePeriods === 0);
+  // Warmup cost lands when a warmup runs, before a call ends its idle period.
+  const empty = props.days.every(
+    (day) => day.idlePeriods === 0 && day.warmupCostUsd === 0,
+  );
   return (
     <div className="relative px-2 py-3 sm:px-4 sm:py-4">
       <ChartContainer className="aspect-auto h-50 w-full" config={chartConfig}>
@@ -164,7 +167,7 @@ function SavingsChart(props: { days: Day[] }) {
       </ChartContainer>
       {empty ? (
         <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-sans text-xs text-dashboard-text-muted">
-          No idle periods in this period.
+          No idle periods or warmups in this period.
         </div>
       ) : null}
     </div>

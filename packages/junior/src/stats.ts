@@ -29,15 +29,18 @@ export async function incrementStat(
   await addStats([{ ...key, count: 1 }], options);
 }
 
-/** Add amounts to daily named counters in one statement. Zero amounts add no row. */
+/**
+ * Add amounts to daily named counters in one statement. An amount without a
+ * `date` adds to the day of `nowMs`. Zero amounts add no row.
+ */
 export async function addStats(
-  amounts: Array<StatKey & { count: number }>,
+  amounts: Array<StatKey & { count: number; date?: string }>,
   options: { nowMs?: number } = {},
 ): Promise<void> {
   const date = utcDate(options.nowMs ?? Date.now());
   const values = amounts
     .filter((amount) => amount.count !== 0)
-    .map((amount) => ({ ...amount, date }));
+    .map((amount) => ({ ...amount, date: amount.date ?? date }));
   if (!values.length) return;
   await getDb()
     .insert(juniorStats)

@@ -181,7 +181,7 @@ export async function addBackfilledSavings(
   nowMs: number,
 ): Promise<string[]> {
   const firstDate = (await firstStatDate(SAVINGS_NAMESPACE)) ?? utcDate(nowMs);
-  // Sums per day and model, so one statement writes each counter once.
+  // Sums per day and model, so the statement writes each counter once.
   const byDate = new Map<string, Map<string, Counts>>();
   for (const { endedAtMs, modelId, savings } of periods) {
     const date = utcDate(endedAtMs);
@@ -199,14 +199,16 @@ export async function addBackfilledSavings(
     byModel.set(modelId, sums);
     byDate.set(date, byModel);
   }
-  for (const [date, byModel] of byDate) {
-    await addStats(
+  // One statement for every day. A run that stops after some days land would
+  // make the oldest of them the first day with counters, and a retry would
+  // then skip the days that did not land.
+  await addStats(
+    [...byDate].flatMap(([date, byModel]) =>
       [...byModel].flatMap(([modelId, counts]) =>
-        savingsStats(modelId, counts),
+        savingsStats(modelId, counts).map((stat) => ({ ...stat, date })),
       ),
-      { nowMs: Date.parse(date) },
-    );
-  }
+    ),
+  );
   return [...byDate.keys()].sort();
 }
 
