@@ -5,19 +5,66 @@ import type { Hono } from "hono";
 import type { JuniorApiEnv } from "@/api/route";
 import {
   acceptedConversationMessageSchema,
+  attachmentUploadSchema,
   steerConversationPendingMessagesResponseSchema,
 } from "@/api/schema";
 import type { FileInput } from "./inputs";
 import { VIEWER_HEADER } from "./results";
 
-/** An image as the dashboard sends it with a message. */
-export function webImage(image: FileInput) {
-  if (!image.content) throw new Error(`Image ${image.name} needs content`);
-  return {
-    contentType: image.mimeType,
-    data: image.content.toString("base64"),
-    filename: image.name,
-  };
+/**
+ * Upload files as the dashboard does before a send, and return the upload
+ * ids for the message.
+ */
+export async function uploadWebFiles(
+  api: Hono<JuniorApiEnv>,
+  message: {
+    conversationId?: string;
+    files: FileInput[];
+    idempotencyKey: string;
+    viewerEmail: string;
+  },
+): Promise<string[]> {
+  const ids: string[] = [];
+  for (const file of message.files) {
+    if (!file.content) throw new Error(`File ${file.name} needs content`);
+    const response = await api.request(
+      "/api/conversations/attachment-uploads",
+      jsonRequest(message.viewerEmail, {
+        bytes: file.content.byteLength,
+        contentType: file.mimeType,
+        ...(message.conversationId
+          ? { conversationId: message.conversationId }
+          : undefined),
+        filename: file.name,
+        idempotencyKey: message.idempotencyKey,
+      }),
+    );
+    if (response.status !== 200) {
+      throw new Error(
+        `Upload returned ${response.status}: ${await response.text()}`,
+      );
+    }
+    const { target, uploadId } = attachmentUploadSchema.parse(
+      await response.json(),
+    );
+    const body = new Uint8Array(file.content);
+    // Storage that signs browser writes returns its own URL. Other storage
+    // takes the bytes through the API.
+    const write = target.url.startsWith("/")
+      ? await api.request(target.url, {
+          body,
+          headers: { ...target.headers, [VIEWER_HEADER]: message.viewerEmail },
+          method: target.method,
+        })
+      : await fetch(target.url, {
+          body,
+          headers: target.headers,
+          method: target.method,
+        });
+    if (!write.ok) throw new Error(`Upload write returned ${write.status}`);
+    ids.push(uploadId);
+  }
+  return ids;
 }
 
 /** A JSON POST signed in as `viewerEmail`. */

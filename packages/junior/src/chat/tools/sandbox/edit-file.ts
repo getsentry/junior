@@ -108,7 +108,7 @@ export function createEditFileTool() {
       readOnlyHint: false,
     },
     description:
-      "Edit one sandbox workspace file with exact text replacements. Use for precise changes to existing files; prefer this over writeFile for targeted changes. Each old_text must match exactly, be unique, and not overlap another edit. Returns a diff. Multiple changes to the same file: use one edits[] call.",
+      "Edit one sandbox workspace file with exact text replacements. Use for precise changes to existing files; prefer this over writeFile for targeted changes. Returns a diff. Multiple changes to the same file: use one edits[] call.",
     prepareArguments: prepareEditFileArguments,
     executionMode: "sequential",
     inputSchema: z.object({

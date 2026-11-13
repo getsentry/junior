@@ -1,5 +1,7 @@
 // Draft pull requests whose check suite just passed. Each draft has the same
 // passing suite; they differ in other required checks and in the body.
+// #695's checks are not required, like a suite that reports before the
+// required checks start.
 const repo = "getsentry/junior";
 const web = `https://github.com/${repo}`;
 const api = `/repos/${repo}`;
@@ -8,6 +10,7 @@ interface DraftFixture {
   body: string;
   failingCheck?: string;
   number: number;
+  requiredNotReported?: true;
   sha: string;
 }
 
@@ -30,6 +33,12 @@ const drafts: DraftFixture[] = [
     failingCheck: "lint",
     number: 694,
     sha: "6940000000000000000000000000000000000694",
+  },
+  {
+    body: draftBody,
+    number: 695,
+    requiredNotReported: true,
+    sha: "6950000000000000000000000000000000000695",
   },
 ];
 
@@ -88,7 +97,7 @@ function graphqlPullRequest(draft: DraftFixture) {
                 completedAt: "2026-05-27T00:05:00Z",
                 conclusion: check.conclusion.toUpperCase(),
                 detailsUrl: check.details_url,
-                isRequired: true,
+                isRequired: draft.requiredNotReported !== true,
                 name: check.name,
                 startedAt: "2026-05-27T00:00:00Z",
                 status: "COMPLETED",

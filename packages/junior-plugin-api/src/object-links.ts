@@ -9,6 +9,7 @@ import * as z from "zod";
 import type { PluginContext, User } from "./context";
 import type { ObjectAnnotation } from "./object-annotations";
 import type { ObjectType } from "./object-presentation";
+import type { PluginEgress } from "./tools";
 
 const hostSchema = z
   .string()
@@ -125,14 +126,30 @@ export function objectLinkFilterSpecificity(
 
 /** Trusted host context for one link resolution. */
 export interface ObjectLinkContext extends PluginContext {
+  /**
+   * Provider egress as a system Actor. It gets only credentials that the
+   * plugin owns, such as an app or Junior's own account, and never the
+   * viewer's credentials. Check that the viewer may see the object before
+   * you return it.
+   */
+  egress: PluginEgress;
+  /**
+   * Return the Junior person card of the one known person with this
+   * provider account, or undefined. Return it for a profile link of that
+   * account, so the card shows the person and not only the account.
+   */
+  findPerson(account: {
+    handle: string;
+    provider: string;
+  }): Promise<ObjectAnnotation | undefined>;
   /** The signed-in person who sees the card. */
   viewer: User;
 }
 
 /**
- * One link type of a plugin. `resolve` reads the object with the viewer's
- * own access. Return nothing when the viewer cannot read the object, so the
- * card does not show that it exists. Junior does not save the result.
+ * One link type of a plugin. Return nothing when the viewer cannot read the
+ * object, so the card does not show that it exists. Junior does not save the
+ * result.
  */
 export interface PluginObjectLinkDefinition {
   filters: ObjectLinkFilter[];
@@ -141,4 +158,10 @@ export interface PluginObjectLinkDefinition {
     ctx: ObjectLinkContext,
     url: URL,
   ): Promise<ObjectAnnotation | undefined>;
+  /**
+   * The plugin tool that reads the object live, such as `readGoogleFile`.
+   * When a person attaches the link to a Conversation, its next Turn is told
+   * to read the object with this tool. Omit it when no tool reads the object.
+   */
+  readTool?: string;
 }

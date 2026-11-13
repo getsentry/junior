@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior",
-  "version": "0.298.0",
+  "version": "0.300.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -65,6 +65,7 @@
     "skills:check": "node --test scripts/check-skills.test.mjs && node scripts/check-skills.mjs",
     "tool-annotations:check": "node --test scripts/check-tool-annotations.test.mjs && node scripts/check-tool-annotations.mjs",
     "tool-key-casing:check": "node --test scripts/check-tool-key-casing.test.mjs && node scripts/check-tool-key-casing.mjs",
+    "tool-descriptions:check": "node --test scripts/check-tool-descriptions.test.mjs && node scripts/check-tool-descriptions.mjs",
     "tool-error-classification:check": "node --test scripts/check-tool-error-classification.test.mjs && node scripts/check-tool-error-classification.mjs",
     "test:coverage": "vitest run --maxWorkers=4 --coverage --reporter=default --reporter=junit --outputFile.junit=coverage/results.junit.xml"
   },
@@ -107,6 +108,7 @@
     "just-bash": "3.0.1",
     "node-html-markdown": "^2.0.0",
     "p-limit": "^7.3.1",
+    "parse5": "^7.3.0",
     "pg": "^8.16.3",
     "sharp": "^0.35.3",
     "undici": "7.30.1",

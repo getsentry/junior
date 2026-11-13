@@ -11,6 +11,7 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
+import { logWarn } from "@/chat/logging";
 import {
   getConversationTurnBoundaryError,
   isCooperativeTurnYieldError,
@@ -37,6 +38,7 @@ import {
   claimDispatchMailboxAppend,
   confirmDispatchMailboxAppend,
   getDispatchConversationId,
+  getDispatchIdForConversation,
   getDispatchInputMessageId,
   getDispatchRecord,
   getDispatchTurnId,
@@ -537,6 +539,13 @@ export function createAgentDispatchConversationWorker(
         return { status: "yielded" };
       }
       if (isTurnInputCommitLostError(error)) {
+        // Several checks throw this error. Only its message names the one
+        // that failed, and spans keep only the error type.
+        logWarn("agent.dispatch.lost_lease", {
+          "app.dispatch.id": dispatch.id,
+          "error.type": error.name,
+          "exception.message": error.message,
+        });
         return { status: "lost_lease" };
       }
       const blockingError = getDispatchBlockingError(error);
@@ -556,4 +565,20 @@ export function createAgentDispatchConversationWorker(
       return { status: "completed" };
     }
   };
+}
+
+/**
+ * Fail the dispatch of stopped Conversation work, so the Automation run that
+ * waits on it settles instead of blocking later runs.
+ */
+export async function failStoppedDispatch(
+  conversationId: string,
+): Promise<void> {
+  const dispatchId = getDispatchIdForConversation(conversationId);
+  if (dispatchId) {
+    await markDispatchFailed(
+      dispatchId,
+      "Dispatch work stopped after repeated failed attempts.",
+    );
+  }
 }

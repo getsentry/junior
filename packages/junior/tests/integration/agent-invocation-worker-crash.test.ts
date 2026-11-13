@@ -222,6 +222,7 @@ describe("agent invocation worker crash", () => {
             reply: { text: "Helper fact.", toolCallId: "helper-reply" },
           },
           sender: helper,
+          turnId: getAgentInvocationTurnId(helper.invocationId),
           state,
         });
         vi.setSystemTime(Date.now() + 60_000);

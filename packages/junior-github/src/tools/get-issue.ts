@@ -158,8 +158,12 @@ export function createGitHubGetIssueTool(ctx: {
 }
 
 function issueRepoRef(repositoryUrl: string | undefined): string | undefined {
-  const match = repositoryUrl?.match(
-    /^https:\/\/api\.github\.com\/repos\/([^/]+\/[^/]+)$/,
-  );
-  return match?.[1];
+  const url = repositoryUrl ? URL.parse(repositoryUrl) : null;
+  if (url?.origin !== "https://api.github.com" || url.search || url.hash) {
+    return undefined;
+  }
+  const [repos, owner, repo, ...rest] = url.pathname.slice(1).split("/");
+  return repos === "repos" && owner && repo && rest.length === 0
+    ? `${owner}/${repo}`
+    : undefined;
 }

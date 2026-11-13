@@ -109,7 +109,9 @@ function trimSlashes(value: string, leading: boolean): string {
 }
 
 function withHttps(host: string): string {
-  return /^https?:\/\//.test(host) ? host : `https://${host}`;
+  return host.startsWith("https://") || host.startsWith("http://")
+    ? host
+    : `https://${host}`;
 }
 
 /** Resolve sign-in settings from dashboard options and environment. */

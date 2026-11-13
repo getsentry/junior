@@ -6,10 +6,10 @@
  * memory. The eval configs set a fake `BLOB_READ_WRITE_TOKEN`.
  *
  * The Blob SDK sends every request with its own `undici` fetch, which MSW
- * does not see. So a local server answers the SDK. The mock points uploads
- * and deletes at it with `VERCEL_BLOB_API_URL`. Reads go to the URL of the
- * store, which no setting changes, so an `undici` interceptor sends them to
- * the local server.
+ * does not see. So a local server answers the SDK. The mock points uploads,
+ * deletes, signed tokens, and presigned uploads at it with
+ * `VERCEL_BLOB_API_URL`. Reads go to the URL of the store, which no setting
+ * changes, so an `undici` interceptor sends them to the local server.
  */
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -64,6 +64,18 @@ export async function installBlobMock(): Promise<BlobMock> {
     }
     response.setHeader("content-type", "application/json");
     if (request.method === "PUT" && url.pathname === "/") {
+      // A presigned upload carries its options in the signed URL. Reject one
+      // that would add a suffix or overwrite, or that has no store id.
+      if (
+        url.searchParams.has("vercel-blob-delegation") &&
+        (url.searchParams.get("vercel-blob-add-random-suffix") !== "false" ||
+          url.searchParams.get("vercel-blob-allow-overwrite") !== "false" ||
+          !request.headers["x-vercel-blob-store-id"])
+      ) {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ error: { code: "bad_request" } }));
+        return;
+      }
       const pathname = url.searchParams.get("pathname") ?? "";
       const contentType =
         (request.headers["x-content-type"] as string | undefined) ??
@@ -78,6 +90,21 @@ export async function installBlobMock(): Promise<BlobMock> {
           etag: `"${pathname}"`,
           pathname,
           url: blobUrl,
+        }),
+      );
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/signed-token") {
+      // The SDK reads the scope from the token payload and signs presigned
+      // URLs with `clientSigningToken`. The mock does not check signatures.
+      const scope = JSON.parse(body.toString() || "{}") as object;
+      const payload = Buffer.from(
+        JSON.stringify({ ...scope, storeId: "store_evalstore" }),
+      ).toString("base64url");
+      response.end(
+        JSON.stringify({
+          clientSigningToken: "eval-signing-token",
+          delegationToken: `${payload}.eval`,
         }),
       );
       return;
