@@ -349,6 +349,9 @@ describe("event delivery", () => {
                   "Address actionable review feedback.",
               },
             },
+            // The comment author has no linked account, so only this list
+            // makes them a Trusted author.
+            trustedAuthors: ["Reviewer"],
           }),
         ]),
       });

@@ -20,6 +20,7 @@ import {
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { GET as heartbeat } from "@/handlers/heartbeat";
 import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
+import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { installTestSkills } from "../fixtures/skill-dirs";
 import { createWaitUntilCollector } from "../fixtures/wait-until";
@@ -52,6 +53,12 @@ function testHeartbeat(
       createIdentityDispatcher({
         allowedDomains: [],
         conversationWorkQueue: () => queue,
+      }),
+    events:
+      options.events ??
+      createEventAppPublisher({
+        allowedDomains: () => [],
+        conversationWork: () => ({ queue }),
       }),
   });
 }

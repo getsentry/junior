@@ -12,6 +12,7 @@ import type { Location } from "@/chat/conversations/location";
 import type { ConversationKind } from "@/chat/conversations/store";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 import type { CredentialContext } from "@/chat/credentials/context";
+import type { AuthorInstruction, UntrustedAuthor } from "@/chat/events/author";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { Actor } from "@/chat/actor";
 import type { SandboxRef } from "@/chat/sandbox/ref";
@@ -61,7 +62,7 @@ export type AgentInstructionActor = {
 
 /** One mid-turn steered user message drained from the durable mailbox. */
 export type AgentSteeringMessage = {
-  actor?: AgentInstructionActor | undefined;
+  actor?: AgentInstructionActor;
   /** `runtime` text is already a rendered input tag. Omitted means `person`. */
   kind?: AgentInstructionInput["kind"];
   /** Provenance of this queued/steered message, carrying its original author. */
@@ -162,7 +163,7 @@ export type AgentInstruction = {
   inboundAttachmentCount?: number;
   omittedImageAttachmentCount?: number;
   /** Host-owned turn context shown to the model near the instruction. */
-  context?: string | undefined;
+  context?: string;
   actor?: AgentInstructionActor;
 };
 
@@ -170,11 +171,11 @@ export type AgentInstruction = {
 export type AgentDispatch = {
   actor?: SystemActor;
   id: string;
-  metadata?: Record<string, string> | undefined;
+  metadata?: Record<string, string>;
   plugin?: string;
-  replyAttribution?: ReplyAttribution | undefined;
+  replyAttribution?: ReplyAttribution;
   /** Visible effects after successful work. */
-  outcomes?: TaskOutcome[] | undefined;
+  outcomes?: TaskOutcome[];
   /**
    * Skill that an Automation in skill mode runs. The run invokes it like an
    * explicit skill, so a skill with `disable-model-invocation` loads too.
@@ -195,9 +196,9 @@ export type AgentFeature = (typeof AGENT_RUN_FEATURES)[number];
 
 /** Already-loaded resume state for this conversation. */
 export type AgentRunState = {
-  pendingAuth?: ConversationPendingAuthState | undefined;
+  pendingAuth?: ConversationPendingAuthState;
   /** Persisted sandbox reuse state from prior slices of this conversation. */
-  sandboxRef?: SandboxRef | undefined;
+  sandboxRef?: SandboxRef;
 };
 
 /**
@@ -222,24 +223,22 @@ export class RetryableDeliveryError extends Error {
 
 /** Durable-worker ports that commit or update resumable run state. */
 export type AgentDurability = {
-  onInputCommitted?: (() => void | Promise<void>) | undefined;
+  onInputCommitted?: () => void | Promise<void>;
   /** Return true when the durable worker should pause at the next Pi boundary. */
-  shouldYield?: (() => boolean) | undefined;
+  shouldYield?: () => boolean;
   /**
    * Return false when the durable worker no longer holds the Conversation
    * Lease. The run checks it before each saved step and each reply.
    */
-  checkIn?: (() => Promise<boolean>) | undefined;
+  checkIn?: () => Promise<boolean>;
   /**
    * Read the stored stop of the Conversation and abort the Run's signal when
    * it stopped. The run calls it before each later model step.
    */
-  checkStop?: (() => Promise<void>) | undefined;
-  drainSteeringMessages?:
-    | ((
-        accept: (messages: AgentSteeringMessage[]) => Promise<void>,
-      ) => Promise<AgentSteeringMessage[]>)
-    | undefined;
+  checkStop?: () => Promise<void>;
+  drainSteeringMessages?: (
+    accept: (messages: AgentSteeringMessage[]) => Promise<void>,
+  ) => Promise<AgentSteeringMessage[]>;
   recordPendingAuth?: (
     pendingAuth: ConversationPendingAuthState | undefined,
   ) => void | Promise<void>;
@@ -259,12 +258,12 @@ export type AgentEvent =
 
 /** Resolved environment and optional per-run tool test overrides. */
 export type AgentEnvironment = {
-  attachmentStorage?: AttachmentStorage | undefined;
+  attachmentStorage?: AttachmentStorage;
   /** Queue for background compaction jobs. Without it, Turns request none. */
-  backgroundCompactionQueue?: BackgroundCompactionQueue | undefined;
-  configuration?: Record<string, unknown> | undefined;
+  backgroundCompactionQueue?: BackgroundCompactionQueue;
+  configuration?: Record<string, unknown>;
   /** Queue of the app, for tools that wake other Conversations. */
-  conversationWorkQueue?: ConversationWorkQueue | undefined;
+  conversationWorkQueue?: ConversationWorkQueue;
   /**
    * Bind spawnAgent to a Run, with the authority of that Run. Tool wiring
    * binds it only when the Turn's behavior gives it agent tools.
@@ -275,12 +274,12 @@ export type AgentEnvironment = {
     run: AgentRun,
     agents: AgentTools,
   ) => MessageAgent | undefined;
-  locationConfiguration?: LocationConfigurationService | undefined;
+  locationConfiguration?: LocationConfigurationService;
   skillDirs?: string[];
   /** Per-slice override for app-owned sandbox egress trace propagation. */
-  sandboxTracePropagation?: SandboxEgressTracePropagationConfig | undefined;
+  sandboxTracePropagation?: SandboxEgressTracePropagationConfig;
   /** Per-slice sandbox egress signal storage override. */
-  sandboxEgressSignals?: SandboxEgressSignalTransport | undefined;
+  sandboxEgressSignals?: SandboxEgressSignalTransport;
   toolOverrides?: {
     imageGenerate?: ImageGenerateToolDeps;
     viewImage?: ViewImageToolDeps;
@@ -313,7 +312,7 @@ export type AgentRun = {
 
   instruction: AgentInstruction;
   /** Durable Pi transcript for this conversation, excluding ephemeral turn context. */
-  history?: readonly PiMessage[] | undefined;
+  history?: readonly PiMessage[];
 
   /**
    * Who this run executes as. Prefer always setting this. Derive
@@ -322,7 +321,14 @@ export type AgentRun = {
    */
   actor?: Actor;
   /** Credential authority projected from actor (plus optional subject). */
-  credentialContext?: CredentialContext | undefined;
+  credentialContext?: CredentialContext;
+  /**
+   * Text in this Event Turn's input that Trusted authors wrote. Action
+   * review treats it as their instruction.
+   */
+  authorInstructions?: readonly AuthorInstruction[];
+  /** Authors of this Event Turn's input that core does not trust. */
+  untrustedAuthors?: readonly UntrustedAuthor[];
   source: Source;
   /** Conversation Location available to this Run. */
   location?: Location;
@@ -330,18 +336,18 @@ export type AgentRun = {
   // feature-owned targets and place context comes from Location.
   destination: Destination;
   surface?: AgentTurnSurface;
-  dispatch?: AgentDispatch | undefined;
+  dispatch?: AgentDispatch;
 
   /**
    * TODO(dcramer): Move ephemeral Slack credentials and conversation labels into
    * provider-owned tool/prompt context so the shared run edge stays neutral.
    */
-  slackConversation?: SlackConversationContext | undefined;
-  slackActionToken?: SlackActionToken | undefined;
-  toolChannelId?: string | undefined;
+  slackConversation?: SlackConversationContext;
+  slackActionToken?: SlackActionToken;
+  toolChannelId?: string;
 
   /** Surface-owned OAuth state and private delivery capabilities. */
-  authorization?: OAuthAuthorization | undefined;
+  authorization?: OAuthAuthorization;
 
   /**
    * Optional agent capabilities disabled for this run slice.
@@ -351,11 +357,11 @@ export type AgentRun = {
    * force interactive auth when a delegated tool requires credentials the
    * parent can already request. Children currently disable it.
    */
-  disabledFeatures?: readonly AgentFeature[] | undefined;
+  disabledFeatures?: readonly AgentFeature[];
   /** Absolute wall-clock deadline for this host request, in milliseconds. */
-  deadlineAtMs?: number | undefined;
+  deadlineAtMs?: number;
   /** Cancels provider work when the owning host request is abandoned. */
-  signal?: AbortSignal | undefined;
+  signal?: AbortSignal;
   /** Explicit per-agent reasoning level. Overrides the configured default. */
   reasoning?: TurnReasoningLevel;
   environment?: AgentEnvironment;

@@ -3,11 +3,12 @@ import { getSlackClient } from "@/chat/slack/client";
 
 /**
  * Resolve the single-bot Slack team id for event-automation indexing, Event
- * people mentions, and Identity dispatches.
+ * people mentions, and author trust.
  *
  * Watch matching does not use this. Event automations still key by
- * destination team until that store is conversation-owned. Event delivery
- * itself is not gated on Slack.
+ * destination team until that store is conversation-owned. System Events are
+ * not gated on Slack. Without a Slack bot, only a listed Event author is
+ * trusted.
  */
 export function createEventTeamIdResolver(): () => Promise<string | undefined> {
   let pending: Promise<string> | undefined;

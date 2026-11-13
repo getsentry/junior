@@ -78,6 +78,25 @@ export interface RootConversation {
   truncated: boolean;
 }
 
+/**
+ * Text that a Trusted author wrote in an Event of this Turn. Guardian treats
+ * it as a message from that author.
+ */
+export interface AuthorInstructionProposal {
+  /** One-line author label from `eventAuthorLabel`. */
+  author: string;
+  text: string;
+}
+
+/**
+ * An author of an Event in this Turn that core does not trust. Guardian
+ * treats their text as untrusted content.
+ */
+export interface UntrustedAuthorProposal {
+  /** One-line author label from `eventAuthorLabel`. */
+  author: string;
+}
+
 /** Outcome of one earlier tool call of a Code Mode script. */
 export type ScriptCallStatus = "completed" | "failed" | "rejected";
 
@@ -124,6 +143,10 @@ export interface ToolActionProposal {
   evidence?: ToolActionEvidence;
   input: Record<string, unknown>;
   priorRejectedActions?: ToolActionPriorRejection[];
+  /** Author instructions of an Event Turn. Only core sets them. */
+  authorInstructions?: AuthorInstructionProposal[];
+  /** Untrusted authors of an Event Turn. Only core sets them. */
+  untrustedAuthors?: UntrustedAuthorProposal[];
   /** The root Conversation, with each message labeled by its real author. */
   rootConversation?: RootConversation;
   /** Set when a Code Mode script made the call. */

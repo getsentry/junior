@@ -544,6 +544,7 @@ export async function createApp(
   let pluginRoutes: PluginRouteRegistration[] = [];
   let pluginApiRoutes: PluginApiRouteRegistration[] = [];
   const events = createEventAppPublisher({
+    allowedDomains: () => allowedDomains,
     conversationWork: () => ({
       ...getConversationWorkOptions(),
       queue: conversationWorkQueue,
