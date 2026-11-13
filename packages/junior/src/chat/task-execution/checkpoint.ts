@@ -39,6 +39,7 @@ import {
   getStoredTurnFields,
   getTurnRecordForResume,
   listTurnSummaries,
+  pausedTurnReason,
   recordTurnSummary,
   TurnAlreadyFinishedError,
   upsertTurnRecord,
@@ -63,6 +64,7 @@ export {
   getStoredTurnFields,
   getTurnRecord,
   listTurnSummaries,
+  pausedTurnReason,
   recordTurnSummary,
 };
 
@@ -183,7 +185,8 @@ export async function loadTurnCheckpoint(args: {
  * Save turn progress.
  *
  * - `running` / `paused`: best-effort; returns the stored record or undefined
- * - `completed` / `failed`: retries until write accepts; throws on hard failure
+ * - `completed` / `failed`: retries until write accepts; throws on hard failure.
+ *   A Turn that already finished in another state keeps that state.
  */
 export function saveTurnCheckpoint(
   args: ProgressCheckpointArgs,
@@ -393,24 +396,42 @@ async function saveDone(
       "Completed turn checkpoint requires a slice id from the caller or the latest stored record",
     );
   }
+  let finishedAs: TurnAlreadyFinishedError | undefined;
   await persistWithRetry(async () => {
-    await upsertTurnRecord({
-      ...sharedWrite(args, traceContext, latest),
-      ...definedProps({
-        cumulativeDurationMs: addDurationMs(
-          latest?.cumulativeDurationMs,
-          args.durationMs,
-        ),
-        cumulativeUsage: addAgentTurnUsage(latest?.cumulativeUsage, args.usage),
-        dispatchOutcome: args.dispatchOutcome ?? latest?.dispatchOutcome,
-        errorMessage: args.errorMessage,
-        resultMessageId: args.resultMessageId ?? latest?.resultMessageId,
-      }),
-      piMessages: args.messages,
-      sliceId,
-      state: args.mode,
-    });
+    try {
+      await upsertTurnRecord({
+        ...sharedWrite(args, traceContext, latest),
+        ...definedProps({
+          cumulativeDurationMs: addDurationMs(
+            latest?.cumulativeDurationMs,
+            args.durationMs,
+          ),
+          cumulativeUsage: addAgentTurnUsage(
+            latest?.cumulativeUsage,
+            args.usage,
+          ),
+          dispatchOutcome: args.dispatchOutcome ?? latest?.dispatchOutcome,
+          errorMessage: args.errorMessage,
+          resultMessageId: args.resultMessageId ?? latest?.resultMessageId,
+        }),
+        piMessages: args.messages,
+        sliceId,
+        state: args.mode,
+      });
+    } catch (error) {
+      // A stop or recovery finished the Turn first. Its state stays.
+      if (!(error instanceof TurnAlreadyFinishedError)) throw error;
+      finishedAs = error;
+    }
   });
+  if (finishedAs) {
+    logWarn("agent.turn.checkpoint.finish_ignored", {
+      "app.ai.conversation_id": args.conversationId,
+      "app.ai.session_id": args.turnId,
+      "app.turn.checkpoint.mode": args.mode,
+      "app.turn.state": finishedAs.state,
+    });
+  }
 }
 
 /** Recovery resumes a turn at most once after its worker stops checking in. */

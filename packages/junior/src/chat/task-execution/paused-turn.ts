@@ -29,6 +29,7 @@ import {
   failTurnRecord,
   getTurnRecord,
   listTurnSummaries,
+  pausedTurnReason,
   recordTurnSummary,
   type TurnRecord,
   type TurnSummary,
@@ -361,16 +362,6 @@ async function resolveResumeExecutionIdentity(args: {
   };
 }
 
-function isPausedTurn(summary: TurnSummary): boolean {
-  return (
-    summary.state === "paused" &&
-    (summary.resumeReason === "timeout" ||
-      summary.resumeReason === "yield" ||
-      summary.resumeReason === "retry" ||
-      summary.resumeReason === "auth")
-  );
-}
-
 async function failPausedTurn(args: {
   conversationId: string;
   errorMessage: string;
@@ -469,11 +460,7 @@ async function runPausedTurnInContext(
         turn = checkpoint.record;
         if (
           !turn ||
-          turn.state !== "paused" ||
-          (turn.resumeReason !== "timeout" &&
-            turn.resumeReason !== "yield" &&
-            turn.resumeReason !== "retry" &&
-            turn.resumeReason !== "auth") ||
+          !pausedTurnReason(turn) ||
           turn.version !== payload.expectedVersion
         ) {
           return false;
@@ -904,7 +891,7 @@ async function runNextPausedTurnInContext(
   }
 
   for (const summary of summaries) {
-    if (!isPausedTurn(summary)) {
+    if (!pausedTurnReason(summary)) {
       continue;
     }
     // Recovery runs the resumed turn right away. If a later wake still finds
