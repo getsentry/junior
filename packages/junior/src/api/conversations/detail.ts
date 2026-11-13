@@ -15,6 +15,7 @@ import {
   readConversationEventPageAround,
 } from "./event-page";
 import { conversationEventPageReport } from "./event-list";
+import { formatConversationEventText } from "./display-markdown";
 import { attachConversationMentions } from "./mentions";
 import {
   conversationEventHistory,
@@ -269,7 +270,7 @@ async function readConversationDetailFromSql(
       startSpan({ name: "Attach conversation mentions", op: "function" }, () =>
         attachConversationMentions(executor, conversationId, {
           ...(brief ? { brief } : undefined),
-          events: page.events,
+          events: page.events.map(formatConversationEventText),
         }),
       ),
       // Only the first read of a visit asks for this page, not each poll. The

@@ -600,6 +600,85 @@ describe("conversation detail API", () => {
     ]);
   });
 
+  it("links GitHub references and accounts in the text it shows", async () => {
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    const conversationId = "slack:C123:github-links-detail";
+    await getConversationStore().recordActivity({
+      actor: {
+        email: "owner@example.com",
+        fullName: "Owner Person",
+        platform: "slack",
+        slackUserId: "UOWNER1",
+        teamId: "T123",
+      },
+      conversationId,
+      destination: { channelId: "C123", platform: "slack", teamId: "T123" },
+      nowMs: 1,
+      source: "slack",
+      title: "GitHub links",
+      visibility: "public",
+    });
+    await getConversationEventStore().append(conversationId, [
+      {
+        createdAtMs: 2,
+        data: {
+          messageId: "event-1",
+          meta: {
+            eventNamespace: "github",
+            eventType: "pull_request.comment.created",
+            trustedSummary: "@octocat commented on getsentry/junior#12.",
+          },
+          role: "user",
+          text: "<task>@octocat asked a question.</task>",
+          type: "message",
+        },
+      },
+      {
+        createdAtMs: 3,
+        data: {
+          messageId: "reply-1",
+          role: "assistant",
+          text: "Fixed getsentry/junior#12 for @octocat and @U012ABCDEF: https://github.com/getsentry/junior/pull/13",
+          type: "message",
+        },
+      },
+      {
+        createdAtMs: 4,
+        data: {
+          plugin: "github",
+          text: "Thanks @octocat.",
+          toolCallId: "comment-1",
+          type: "reply_posted",
+        },
+      },
+    ]);
+
+    const detail = await readConversationDetail(conversationId, {
+      viewer: await signedInViewer("owner@example.com"),
+    });
+    const data = detail?.events.map((event) => event.data);
+    const octocat = "[@octocat](https://github.com/octocat)";
+    const pr12 =
+      "[getsentry/junior#12](https://github.com/getsentry/junior/issues/12)";
+    expect(data).toEqual(
+      expect.arrayContaining([
+        // An Event from GitHub: its summary links, its raw text shows as is.
+        expect.objectContaining({
+          text: "<task>@octocat asked a question.</task>",
+          trustedSummary: `${octocat} commented on ${pr12}.`,
+        }),
+        // A reply that names a repository. Bare links stay for their cards,
+        // and a bare Slack user ID is a Slack mention, not a GitHub login.
+        expect.objectContaining({
+          text: `Fixed ${pr12} for ${octocat} and <@U012ABCDEF>: https://github.com/getsentry/junior/pull/13`,
+        }),
+        // Text posted to GitHub names GitHub accounts.
+        expect.objectContaining({ text: `Thanks ${octocat}.` }),
+      ]),
+    );
+    expect(JSON.stringify(data)).not.toContain("github.com/U012ABCDEF");
+  });
+
   it("names the participant who wrote each message", async () => {
     const conversationId = "slack:C123:author-photos";
     await getConversationStore().recordActivity({
