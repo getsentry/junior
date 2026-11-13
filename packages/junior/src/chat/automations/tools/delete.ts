@@ -22,7 +22,7 @@ export function createDeleteAutomationTool(
   return zodTool({
     exposure: "deferred",
     source: AUTOMATIONS_TOOL_SOURCE,
-    approvalMode: "review",
+    permission: "ask",
     annotations: {
       destructiveHint: true,
       idempotentHint: true,

@@ -896,7 +896,7 @@ export function getPluginTools(
           "app.tool.missing_annotations": missingAnnotationKeys.join(","),
         });
       }
-      definition.approvalMode ??= "auto";
+      definition.permission ??= "auto";
       definition.identity = {
         id: `${pluginName}.${localName}`,
         name: localName,

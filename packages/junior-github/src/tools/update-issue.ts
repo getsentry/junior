@@ -119,6 +119,7 @@ export function createGitHubUpdateIssueTool(ctx: {
   };
 }) {
   return definePluginTool({
+    permission: "review",
     annotations: {
       destructiveHint: true,
       idempotentHint: true,

@@ -57,7 +57,7 @@ function missingToolMessage(toolName: string, provider: string | undefined) {
 // disclose MCP tool schemas and the execution catalog keeps them active.
 export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
   return zodTool({
-    approvalMode: "auto",
+    permission: "auto",
     annotations: {
       destructiveHint: true,
       idempotentHint: false,

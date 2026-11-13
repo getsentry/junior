@@ -32,6 +32,7 @@ import {
 } from "./schema/review-items";
 import { juniorPushSubscriptions } from "./schema/push-subscriptions";
 import { juniorSnapshots } from "./schema/snapshots";
+import { juniorToolApprovals } from "./schema/tool-approvals";
 import { juniorUsers } from "./schema/users";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "./schema/workspaces";
 
@@ -62,6 +63,7 @@ export {
   juniorPushSubscriptions,
   juniorSnapshots,
   juniorStats,
+  juniorToolApprovals,
   juniorAutomationRuns,
   juniorAutomationVersions,
   juniorAutomations,
@@ -97,6 +99,7 @@ export const juniorSqlSchema = {
   juniorPushSubscriptions,
   juniorSnapshots,
   juniorStats,
+  juniorToolApprovals,
   juniorAutomationRuns,
   juniorAutomationVersions,
   juniorAutomations,

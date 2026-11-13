@@ -132,6 +132,12 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation, open / open or done.
 - **Review item**: work for a person, shown on the **Review desk**. Not an
   Item. **Assignee**: a User or Everyone (anyone who can see it).
+- **Permission**: what core does with a tool call: `allow` (run), `review`
+  (Guardian decides), `ask` (the person approves each call), or `deny`.
+  `auto` derives one from the tool's annotations. Not "approval mode".
+- **Tool approval**: one stored `ask` call and the Review item that asks its
+  person. Only that person's Approve answer runs it, once, in a Run with the
+  same Actor and credentials. Not "confirmation".
 
 ## Naming
 

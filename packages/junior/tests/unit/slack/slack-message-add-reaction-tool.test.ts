@@ -50,7 +50,7 @@ describe("addReaction tool", () => {
       createState() as any,
     );
 
-    expect(tool.approvalMode).toBe("approve");
+    expect(tool.permission).toBe("allow");
   });
 
   it("rejects non-alias emoji input", async () => {

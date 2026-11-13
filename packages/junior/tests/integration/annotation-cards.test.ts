@@ -62,7 +62,7 @@ it("saves plugin object results once per reply, leaves background updates silent
       hooks: {
         tools: () => ({
           save: definePluginTool({
-            approvalMode: "approve",
+            permission: "allow",
             exposure: "direct",
             annotations: {
               destructiveHint: false,

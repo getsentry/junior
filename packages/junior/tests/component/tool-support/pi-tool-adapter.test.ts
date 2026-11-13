@@ -14,6 +14,7 @@ import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import type { Skill } from "@/chat/skills";
 import type { PluginHookRunner } from "@/chat/plugins/agent-hooks";
+import { noToolApprovals } from "../../fixtures/tool-approvals";
 
 const { handleToolExecutionError } = vi.hoisted(() => ({
   handleToolExecutionError: vi.fn((error: unknown) => {
@@ -40,6 +41,7 @@ function actionReview(
   onFatal = vi.fn(),
 ): ToolActionReview {
   return createToolActionReview({
+    approvals: noToolApprovals,
     context: {
       actor: { platform: "local", userId: "local-user" },
       conversationId: "local:tool-review",
@@ -376,7 +378,7 @@ describe("Pi tool adapter", () => {
     const [demoTool] = createPiAgentTools(
       {
         demo: {
-          approvalMode: "review",
+          permission: "review",
           description: "Create the report.",
           inputSchema: {} as any,
           execute,
@@ -409,16 +411,16 @@ describe("Pi tool adapter", () => {
   it("reviews an active MCP tool before execution", async () => {
     const sandbox = new SkillSandbox([], []);
     const execute = vi.fn(async () => ({
-      content: [{ type: "text" as const, text: "deleted" }],
+      content: [{ type: "text" as const, text: "archived" }],
     }));
     const managedTool = {
-      name: "mcp__demo__delete-workspace",
-      rawName: "delete-workspace",
+      name: "mcp__demo__archive-workspace",
+      rawName: "archive-workspace",
       provider: "demo",
-      description: "Permanently delete a workspace.",
+      description: "Archive a workspace.",
       parameters: {},
       annotations: {
-        destructiveHint: true,
+        destructiveHint: false,
         openWorldHint: true,
         readOnlyHint: false,
       },
@@ -427,7 +429,7 @@ describe("Pi tool adapter", () => {
     const activeTools = [managedTool];
     const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
       decision: "allow" as const,
-      reason: "The user explicitly requested this deletion.",
+      reason: "The user explicitly requested this archive.",
       riskLevel: "high" as const,
       userAuthorization: "high" as const,
     }));
@@ -438,7 +440,7 @@ describe("Pi tool adapter", () => {
       spanContext: {},
       searchToolsCost: { owner: "none" },
       conversationPrivacy: "private",
-      actionReview: actionReview({ review }, "Delete preview-42."),
+      actionReview: actionReview({ review }, "Archive preview-42."),
     });
     const piCallMcpTool = tools.find(
       (candidate) => candidate.name === "callMcpTool",
@@ -503,7 +505,7 @@ describe("Pi tool adapter", () => {
     const [demoTool] = createPiAgentTools(
       {
         demo: {
-          approvalMode: "review",
+          permission: "review",
           description: "Create the report.",
           inputSchema: {} as any,
           execute,
@@ -546,7 +548,7 @@ describe("Pi tool adapter", () => {
     const onToolResult = vi.fn();
     const onFatal = vi.fn();
     const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
-      decision: "ask",
+      decision: "deny",
       reason: "Recurring work should be confirmed.",
       riskLevel: "medium",
       userAuthorization: "low",
@@ -559,7 +561,7 @@ describe("Pi tool adapter", () => {
     const [demoTool] = createPiAgentTools(
       {
         demo: {
-          approvalMode: "review",
+          permission: "review",
           description: "Create the recurring report.",
           inputSchema: {} as any,
           execute,
@@ -577,16 +579,14 @@ describe("Pi tool adapter", () => {
 
     await expect(
       demoTool!.execute("tool-demo", { cadence: "weekly" }),
-    ).rejects.toThrow(
-      "Ask for that confirmation now, the way your instructions say to ask. Name the exact action, target, and material side effects.",
-    );
+    ).rejects.toThrow("This action was rejected due to unacceptable risk.");
     expect(execute).not.toHaveBeenCalled();
     expect(
       reviewState.projectToolResult("tool-demo", { isError: true }),
     ).toMatchObject({
       details: {
         guardianActionRejection: {
-          decision: "ask",
+          decision: "deny",
           reason: "Recurring work should be confirmed.",
           version: 1,
         },
@@ -594,13 +594,9 @@ describe("Pi tool adapter", () => {
       isError: true,
     });
     expect(onToolResult).toHaveBeenCalledWith({
-      error: [
-        "The action was not executed because explicit user confirmation is required.",
-        "Do not retry it, or get the same outcome another way, until the user explicitly confirms this exact action.",
-        "Ask for that confirmation now, the way your instructions say to ask. Name the exact action, target, and material side effects.",
-        "Do not mention Guardian, the runtime, policy, or internal review mechanics.",
+      error: expect.stringContaining(
         "Reason: Recurring work should be confirmed.",
-      ].join("\n"),
+      ),
       ok: false,
       params: { cadence: "weekly" },
       toolCallId: "tool-demo",
@@ -613,7 +609,7 @@ describe("Pi tool adapter", () => {
     expect(review).toHaveBeenCalledTimes(2);
     expect(review.mock.calls[1]?.[0].priorRejectedActions).toEqual([
       expect.objectContaining({
-        decision: "ask",
+        decision: "deny",
         input: { cadence: "weekly" },
         reason: "Recurring work should be confirmed.",
       }),
@@ -623,7 +619,7 @@ describe("Pi tool adapter", () => {
     ).toMatchObject({
       details: {
         guardianActionRejection: {
-          decision: "ask",
+          decision: "deny",
           reason: "Recurring work should be confirmed.",
         },
       },
@@ -641,7 +637,7 @@ describe("Pi tool adapter", () => {
     ).toMatchObject({
       details: {
         guardianActionRejection: {
-          decision: "ask",
+          decision: "deny",
           reason: "Recurring work should be confirmed.",
         },
       },
@@ -665,7 +661,7 @@ describe("Pi tool adapter", () => {
     const [demoTool] = createPiAgentTools(
       {
         demo: {
-          approvalMode: "review",
+          permission: "review",
           description: "Create the report.",
           inputSchema: {} as any,
           execute: vi.fn(),
@@ -753,14 +749,14 @@ describe("Pi tool adapter", () => {
     const [automaticReviewTool, requiredReviewTool] = createPiAgentTools(
       {
         automaticReview: {
-          approvalMode: "auto",
+          permission: "auto",
           description: "automatic review",
           inputSchema: {} as any,
           executionMode: "parallel",
           execute: async () => ({ ok: true }),
         },
         requiredReview: {
-          approvalMode: "review",
+          permission: "review",
           description: "required review",
           inputSchema: {} as any,
           executionMode: "parallel",

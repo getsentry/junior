@@ -18,6 +18,7 @@ import { planToolExposure } from "@/chat/tool-exposure";
 import { createToolPipeline } from "@/chat/tool-support/pi-tool-adapter";
 import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { noToolApprovals } from "../fixtures/tool-approvals";
 
 const rootTurnTools = turnBehavior({
   kind: "root",
@@ -60,6 +61,7 @@ async function runScript(source: string) {
     userAuthorization: "high",
   }));
   const actionReview = createToolActionReview({
+    approvals: noToolApprovals,
     context: {
       actor: { platform: "slack", teamId: "T123", userId: "U123" },
       conversationId: CURRENT_CONVERSATION_ID,

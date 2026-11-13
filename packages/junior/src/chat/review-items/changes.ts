@@ -1,5 +1,6 @@
 import { withSpan } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { deliverToolApprovalAnswer } from "@/chat/tool-approvals/delivery";
 import { sendReviewItemMessages, type ReviewItemChange } from "./messages";
 import type { ReviewItem } from "./store";
 
@@ -21,7 +22,8 @@ export interface ReviewItemDelivery {
  * A person action or an agent close (`change`) also goes to every other open
  * linked Conversation. A content change from an agent has no `change`, so
  * only the surfaces change. `exceptConversationId` is the Conversation that
- * made the change: it already knows. A retry of the same change is safe,
+ * made the change: it already knows. The answer to a child's Tool approval
+ * also goes to that child. A retry of the same change is safe,
  * because each message has an idempotency key.
  */
 export async function deliverReviewItemChange(args: {
@@ -46,6 +48,7 @@ export async function deliverReviewItemChange(args: {
         nowMs: args.nowMs,
         queue: delivery.queue,
       });
+      await deliverToolApprovalAnswer({ change, item, queue: delivery.queue });
     },
     {
       "app.review_item.id": item.id,

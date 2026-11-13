@@ -8,11 +8,13 @@ import {
   type ToolAction,
   type ToolActionReview,
   type ToolActionReviewContext,
+  type ToolApprovals,
 } from "@/chat/guardian/gate";
 import type {
   ToolActionReviewDecision,
   ToolActionReviewer,
 } from "@/chat/guardian/proposal";
+import { noToolApprovals } from "../../fixtures/tool-approvals";
 
 const LOCAL_SOURCE = {
   kind: "local",
@@ -27,8 +29,10 @@ const LOCAL_DESTINATION = {
 function reviewContext(
   reviewer: ToolActionReviewer,
   overrides: Partial<ToolActionReviewContext> = {},
+  approvals: ToolApprovals = noToolApprovals,
 ): ToolActionReview {
   return createToolActionReview({
+    approvals,
     context: {
       actor: {
         platform: "system",
@@ -68,6 +72,30 @@ function reviewContext(
     onFatal: vi.fn(),
     reviewer,
   });
+}
+
+/** Tool approvals that record each request and file it as `item-<n>`. */
+function recordingApprovals(options: { pending?: string } = {}) {
+  const requested: Array<{
+    input: Record<string, unknown>;
+    reason: string;
+    toolName: string;
+  }> = [];
+  const approvals: ToolApprovals & { requested: typeof requested } = {
+    requested,
+    async findPending() {
+      return options.pending ? { reviewItemId: options.pending } : undefined;
+    },
+    async request(action, _proposal, reason) {
+      requested.push({
+        input: action.input,
+        reason,
+        toolName: action.toolName,
+      });
+      return { reviewItemId: `item-${requested.length}` };
+    },
+  };
+  return approvals;
 }
 
 /** Review a batch of one action, as the tool adapter does. */
@@ -125,7 +153,7 @@ describe("tool action review", () => {
       userAuthorization: "high",
     }));
     const tool = definition({
-      approvalMode: "auto",
+      permission: "auto",
       annotations: {
         destructiveHint: false,
         idempotentHint: true,
@@ -195,7 +223,7 @@ describe("tool action review", () => {
       "tool-call",
       "callMcpTool",
       definition({
-        approvalMode: "auto",
+        permission: "auto",
         // Partial annotations are still unknown risk.
         annotations: {
           destructiveHint: false,
@@ -229,7 +257,7 @@ describe("tool action review", () => {
       "tool-call",
       "callMcpTool",
       definition({
-        approvalMode: "auto",
+        permission: "auto",
         resolveApprovalMetadata: async () => ({
           description: "Call a remote MCP tool with no annotations.",
           name: "mcp__demo__search",
@@ -249,7 +277,7 @@ describe("tool action review", () => {
       "tool-call",
       "localSafeTool",
       definition({
-        approvalMode: "auto",
+        permission: "auto",
         annotations: {
           destructiveHint: false,
           idempotentHint: true,
@@ -264,33 +292,146 @@ describe("tool action review", () => {
     expect(review).not.toHaveBeenCalled();
   });
 
-  it("returns ask and deny decisions as expected tool rejections", async () => {
-    for (const decision of ["ask", "deny"] as const) {
-      const action = reviewToolAction(
-        "tool-call",
-        "generateReport",
-        definition({ approvalMode: "review" }),
-        { reportId: "weekly" },
-        reviewContext({
+  it("files a Guardian ask for the person's approval", async () => {
+    const approvals = recordingApprovals();
+    const action = reviewToolAction(
+      "tool-call",
+      "generateReport",
+      definition({ permission: "review" }),
+      { reportId: "weekly" },
+      reviewContext(
+        {
           review: async () => ({
-            decision,
+            decision: "ask",
             reason: "The destination is surprising.",
             riskLevel: "medium",
             userAuthorization: "low",
           }),
-        }),
-      );
+        },
+        {},
+        approvals,
+      ),
+    );
 
-      await expect(action).rejects.toMatchObject({
-        decision,
-        name: "ToolActionRejectedError",
-      });
-      await expect(action).rejects.toThrow(
-        decision === "ask"
-          ? "Ask for that confirmation now, the way your instructions say to ask."
-          : "If the reason is missing or withheld authorization",
-      );
+    await expect(action).rejects.toMatchObject({
+      decision: "ask",
+      name: "ToolActionRejectedError",
+    });
+    await expect(action).rejects.toThrow(
+      "It waits for the person's approval on review item item-1",
+    );
+    expect(approvals.requested).toEqual([
+      {
+        input: { reportId: "weekly" },
+        reason: "The destination is surprising.",
+        toolName: "generateReport",
+      },
+    ]);
+  });
+
+  it("denies an ask when no person can approve", async () => {
+    const action = reviewToolAction(
+      "tool-call",
+      "generateReport",
+      definition({ permission: "review" }),
+      { reportId: "weekly" },
+      reviewContext({
+        review: async () => ({
+          decision: "ask",
+          reason: "The destination is surprising.",
+          riskLevel: "medium",
+          userAuthorization: "low",
+        }),
+      }),
+    );
+
+    await expect(action).rejects.toMatchObject({
+      decision: "deny",
+      name: "ToolActionRejectedError",
+    });
+    await expect(action).rejects.toThrow("No person can approve this action");
+  });
+
+  it("returns a Guardian deny as an expected tool rejection", async () => {
+    const action = reviewToolAction(
+      "tool-call",
+      "generateReport",
+      definition({ permission: "review" }),
+      { reportId: "weekly" },
+      reviewContext({
+        review: async () => ({
+          decision: "deny",
+          reason: "The destination is surprising.",
+          riskLevel: "medium",
+          userAuthorization: "low",
+        }),
+      }),
+    );
+
+    await expect(action).rejects.toMatchObject({
+      decision: "deny",
+      name: "ToolActionRejectedError",
+    });
+    await expect(action).rejects.toThrow(
+      "If the reason is missing or withheld authorization",
+    );
+  });
+
+  it("asks for an ask tool, or a destructive auto call, without Guardian", async () => {
+    const review = vi.fn<ToolActionReviewer["review"]>();
+    for (const tool of [
+      definition({ permission: "ask" }),
+      definition({
+        permission: "auto",
+        annotations: {
+          destructiveHint: true,
+          idempotentHint: false,
+          openWorldHint: true,
+          readOnlyHint: false,
+        },
+      }),
+    ]) {
+      const approvals = recordingApprovals();
+      await expect(
+        reviewToolAction(
+          "tool-call",
+          "deleteThing",
+          tool,
+          { id: "a" },
+          reviewContext({ review }, {}, approvals),
+        ),
+      ).rejects.toMatchObject({ decision: "ask" });
+      expect(approvals.requested).toHaveLength(1);
     }
+    expect(review).not.toHaveBeenCalled();
+  });
+
+  it("reuses the pending approval of the same call", async () => {
+    const approvals = recordingApprovals({ pending: "item-0" });
+    await expect(
+      reviewToolAction(
+        "tool-call-2",
+        "deleteThing",
+        definition({ permission: "ask" }),
+        { id: "a" },
+        reviewContext({ review: vi.fn() }, {}, approvals),
+      ),
+    ).rejects.toThrow("review item item-0");
+    expect(approvals.requested).toEqual([]);
+  });
+
+  it("denies a deny tool without Guardian", async () => {
+    const review = vi.fn<ToolActionReviewer["review"]>();
+    await expect(
+      reviewToolAction(
+        "tool-call",
+        "neverRun",
+        definition({ permission: "deny" }),
+        {},
+        reviewContext({ review }, {}, recordingApprovals()),
+      ),
+    ).rejects.toMatchObject({ decision: "deny" });
+    expect(review).not.toHaveBeenCalled();
   });
 
   it("shows prior denials to alternate tools", async () => {
@@ -315,7 +456,7 @@ describe("tool action review", () => {
       reviewToolAction(
         "delete-call",
         "deleteWorkspace",
-        definition({ approvalMode: "review" }),
+        definition({ permission: "review" }),
         input,
         context,
       ),
@@ -324,7 +465,7 @@ describe("tool action review", () => {
       reviewToolAction(
         "cleanup-call",
         "runWorkspaceCleanup",
-        definition({ approvalMode: "review" }),
+        definition({ permission: "review" }),
         { target: "workspace-123", mode: "permanent" },
         context,
       ),
@@ -347,7 +488,7 @@ describe("tool action review", () => {
       reviewToolAction(
         "tool-call",
         "generateReport",
-        definition({ approvalMode: "review" }),
+        definition({ permission: "review" }),
         { reportId: "weekly" },
         actionReview,
       ),
@@ -386,7 +527,7 @@ describe("tool action review", () => {
     "fails closed when %s preparation fails",
     async (_name, arrangeFailure) => {
       const reviewer = { review: vi.fn() };
-      const tool = definition({ approvalMode: "review" });
+      const tool = definition({ permission: "review" });
       const failure = new Error("review setup failed");
       const contextOverrides = arrangeFailure(tool, failure);
       const actionReview = reviewContext(reviewer, contextOverrides);
@@ -411,7 +552,7 @@ describe("tool action review", () => {
     const action = reviewToolAction(
       "tool-call",
       "generateReport",
-      definition({ approvalMode: "review" }),
+      definition({ permission: "review" }),
       { reportId: "weekly" },
       reviewContext({
         review: async () => {
@@ -428,6 +569,7 @@ describe("tool action review", () => {
   it("fails closed when the Guardian decision cannot be recorded", async () => {
     const failure = new Error("event log unavailable");
     const actionReview = createToolActionReview({
+      approvals: noToolApprovals,
       context: {
         actor: { platform: "local", userId: "local-user" },
         conversationId: "local:approval-test",
@@ -453,7 +595,7 @@ describe("tool action review", () => {
       reviewToolAction(
         "tool-call",
         "generateReport",
-        definition({ approvalMode: "review" }),
+        definition({ permission: "review" }),
         { reportId: "weekly" },
         actionReview,
       ),
@@ -471,7 +613,7 @@ describe("tool action review", () => {
       (_, index) => ({
         toolCallId: `call-${index}`,
         toolName: "generateReport",
-        tool: definition(index === 0 ? { approvalMode: "review" } : {}),
+        tool: definition(index === 0 ? { permission: "review" } : {}),
         input: {},
       }),
     );
@@ -509,6 +651,7 @@ describe("tool action review", () => {
       };
     });
     const actionReview = createToolActionReview({
+      approvals: noToolApprovals,
       context: {
         actor: { platform: "local", userId: "local-user" },
         conversationId: "local:approval-test",
@@ -520,7 +663,7 @@ describe("tool action review", () => {
       onFatal: vi.fn(),
       reviewer: { review },
     });
-    const reviewed = definition({ approvalMode: "review" });
+    const reviewed = definition({ permission: "review" });
 
     const results = await reviewToolActions(
       [
@@ -574,7 +717,7 @@ describe("tool action review", () => {
         userAuthorization: "low",
       })),
     });
-    const reviewed = definition({ approvalMode: "review" });
+    const reviewed = definition({ permission: "review" });
     const exhausted = "rejected three consecutive tool execution attempts";
     const attempt = async (
       attemptId: string,
@@ -632,7 +775,7 @@ describe("tool action review", () => {
         {
           toolCallId: "script-call",
           toolName: "generateReport",
-          tool: definition({ approvalMode: "review" }),
+          tool: definition({ permission: "review" }),
           input: { reportId: "weekly" },
           script: { calls, source: "y".repeat(40_000) },
         },

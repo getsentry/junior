@@ -745,6 +745,13 @@ async function executeAgentRunInPrivacyContext(
     });
     mcpToolManager = wiring.mcpToolManager;
     closeTools = wiring.close;
+    // A new Turn runs the calls that their approver approved since the last
+    // one. A resumed Turn gets them with its steering messages instead.
+    if (!resumedFromSessionRecord) {
+      for (const text of await wiring.runApprovedToolCalls()) {
+        contextContentParts.push({ type: "text", text });
+      }
+    }
     const [initialRepositoryInstructions, promptTurnContext] =
       await Promise.all([
         repositoryInstructionsPromise,
@@ -969,7 +976,19 @@ async function executeAgentRunInPrivacyContext(
       }> = [];
       try {
         let steeredMessageCount = 0;
-        await durability.drainSteeringMessages(async (messages) => {
+        await durability.drainSteeringMessages(async (drained) => {
+          // An approval answer can arrive while the asking Turn still runs.
+          const approvedResults = drained.length
+            ? await wiring.runApprovedToolCalls()
+            : [];
+          const messages = [
+            ...drained,
+            ...approvedResults.map((text) => ({
+              kind: "runtime" as const,
+              provenance: contextProvenance,
+              text,
+            })),
+          ];
           const piMessages = messages.map(buildSteeringPiMessage);
           if (piMessages.length === 0) {
             return;

@@ -34,6 +34,7 @@ const outputSchema = pluginToolOutputSchema.extend({
 /** Replace the whole body of a Google Doc with Markdown content. */
 export function createReplaceGoogleDocContentTool(ctx: GoogleToolContext) {
   return definePluginTool({
+    permission: "review",
     annotations: {
       destructiveHint: true,
       idempotentHint: true,

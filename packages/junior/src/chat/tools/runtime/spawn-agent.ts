@@ -62,7 +62,7 @@ export function createSpawnAgentTool(
     ].join(" "),
     exposure: "modelOnly",
     // Action review judges the actions that the task names.
-    approvalMode: "auto",
+    permission: "auto",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

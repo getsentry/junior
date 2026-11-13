@@ -144,6 +144,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
   }
   return {
     deploymentCreate: definePluginTool({
+      permission: "review",
       annotations: {
         destructiveHint: true,
         idempotentHint: false,
@@ -249,6 +250,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
       },
     }),
     aliasAssign: definePluginTool({
+      permission: "review",
       annotations: {
         destructiveHint: true,
         idempotentHint: true,

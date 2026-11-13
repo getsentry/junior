@@ -25,7 +25,7 @@ export function createRunAutomationNowTool(
   return zodTool({
     exposure: "deferred",
     source: AUTOMATIONS_TOOL_SOURCE,
-    approvalMode: "review",
+    permission: "review",
     annotations: {
       destructiveHint: false,
       idempotentHint: false,

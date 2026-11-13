@@ -17,6 +17,7 @@ import {
   TOOL_RESULT_MAX_CHARS,
 } from "@/chat/tool-support/result-cap";
 import { mswServer } from "../../msw/server";
+import { noToolApprovals } from "../../fixtures/tool-approvals";
 
 const BIG_TEXT = "x".repeat(TOOL_RESULT_MAX_CHARS + 5_000);
 
@@ -42,6 +43,7 @@ const CONVERSATION_ID = "local:test:result-cap";
 
 /** MCP calls need action review. Guardian's model is faked to allow them. */
 const allowAll = createToolActionReview({
+  approvals: noToolApprovals,
   context: {
     actor: { platform: "local", userId: "local-user" },
     conversationId: CONVERSATION_ID,

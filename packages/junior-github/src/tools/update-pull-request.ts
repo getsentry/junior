@@ -165,6 +165,7 @@ export function createGitHubUpdatePullRequestTool(
   descriptionDecider?: PluginDecider,
 ) {
   return definePluginTool({
+    permission: "review",
     annotations: {
       destructiveHint: true,
       idempotentHint: true,

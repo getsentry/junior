@@ -8,6 +8,7 @@ import {
   missingToolAnnotationKeys,
   type Destination,
   type Source,
+  type ToolPermission,
 } from "@sentry/junior-plugin-api";
 import type { Actor } from "@/chat/actor";
 import type { CredentialContext } from "@/chat/credentials/context";
@@ -97,12 +98,15 @@ export interface ToolActionReview {
   ): TResult;
 }
 
-const ACTION_CONFIRMATION_INSTRUCTIONS = [
-  "The action was not executed because explicit user confirmation is required.",
-  "Do not retry it, or get the same outcome another way, until the user explicitly confirms this exact action.",
-  "Ask for that confirmation now, the way your instructions say to ask. Name the exact action, target, and material side effects.",
-  "Do not mention Guardian, the runtime, policy, or internal review mechanics.",
-].join("\n");
+/** Instructions for an action that waits for the person's approval. */
+function approvalPendingInstructions(reviewItemId: string): string {
+  return [
+    `The action did not run. It waits for the person's approval on review item ${reviewItemId}, which is already on their review desk. When they approve it, the runtime runs this exact call and sends you its result.`,
+    "Do not call it again, ask for approval yourself, or get the same outcome another way.",
+    "Tell the person in one short sentence that it waits for their approval, the way your instructions say to report. Then continue other work that does not need it.",
+    "Do not mention Guardian, the runtime, policy, or internal review mechanics.",
+  ].join("\n");
+}
 
 const ACTION_DENIAL_INSTRUCTIONS = [
   "This action was rejected due to unacceptable risk.",
@@ -121,14 +125,14 @@ const ACTION_REVIEW_LIMIT_INSTRUCTIONS = [
 
 /** Rejection instructions for the agent that proposed the action. */
 function rejectionInstructions(
-  decision: Exclude<ToolActionDecision, "allow">,
+  step: { approval?: ToolApprovalRef },
   options: { exhausted: boolean },
 ): string {
-  if (options.exhausted) {
-    return ACTION_REVIEW_LIMIT_INSTRUCTIONS;
+  if (step.approval) {
+    return approvalPendingInstructions(step.approval.reviewItemId);
   }
-  return decision === "ask"
-    ? ACTION_CONFIRMATION_INSTRUCTIONS
+  return options.exhausted
+    ? ACTION_REVIEW_LIMIT_INSTRUCTIONS
     : ACTION_DENIAL_INSTRUCTIONS;
 }
 
@@ -150,11 +154,7 @@ export class ToolActionRejectedError extends Error {
       reviewedAction?: ToolActionPriorRejection;
     } = {},
   ) {
-    const instructions =
-      assessment.instructions ??
-      (decision === "ask"
-        ? ACTION_CONFIRMATION_INSTRUCTIONS
-        : ACTION_DENIAL_INSTRUCTIONS);
+    const instructions = assessment.instructions ?? ACTION_DENIAL_INSTRUCTIONS;
     super(`${instructions}\nReason: ${reason}`);
     this.name = "ToolActionRejectedError";
     this.decision = decision;
@@ -203,6 +203,31 @@ function autoActionNeedsReview(
     annotations?.readOnlyHint === false ||
     Boolean(tool.identity || resolved?.source || tool.source)
   );
+}
+
+/**
+ * Resolve what core does with one action. A core tool without a permission
+ * stays outside review. `auto` asks for a call whose own annotations say
+ * `destructiveHint: true`. A dispatcher, such as `callMcpTool`, describes
+ * itself, not the call, so only its resolved metadata can ask. Each other
+ * `auto` call is reviewed or allowed by `autoActionNeedsReview`. A permission
+ * that is not known is reviewed.
+ */
+function effectivePermission(
+  tool: AnyToolDefinition,
+  resolved: ToolApprovalResolution | undefined,
+): Exclude<ToolPermission, "auto"> {
+  const permission = tool.permission;
+  if (permission === undefined || permission === "allow") return "allow";
+  if (permission === "ask" || permission === "deny") return permission;
+  if (permission !== "auto") return "review";
+  const callAnnotations = resolved
+    ? resolved.annotations
+    : tool.resolveApprovalMetadata
+      ? undefined
+      : tool.annotations;
+  if (callAnnotations?.destructiveHint === true) return "ask";
+  return autoActionNeedsReview(tool, resolved) ? "review" : "allow";
 }
 
 function actionActor(actor: Actor): ToolActionProposal["context"]["actor"] {
@@ -407,7 +432,7 @@ function canonicalJson(value: unknown): unknown {
 
 function projectedRejection(
   proposal: ToolActionProposal,
-  decision: ToolActionReviewDecision,
+  decision: ActionRejection,
 ): ToolActionPriorRejection {
   const inputJson = JSON.stringify(canonicalJson(proposal.input));
   const input =
@@ -422,47 +447,56 @@ function projectedRejection(
           )}`,
         };
   return {
-    decision: decision.decision as Exclude<ToolActionDecision, "allow">,
+    decision: decision.decision,
     input,
     reason: decision.reason,
-    riskLevel: decision.riskLevel,
+    ...(decision.riskLevel ? { riskLevel: decision.riskLevel } : undefined),
     tool: proposal.tool,
-    userAuthorization: decision.userAuthorization,
+    ...(decision.userAuthorization
+      ? { userAuthorization: decision.userAuthorization }
+      : undefined),
   };
 }
 
 /** A core tool stays outside review unless it opts in. Plugin tools default to `auto`. */
 function mayNeedReview(tool: AnyToolDefinition): boolean {
-  return tool.approvalMode !== undefined && tool.approvalMode !== "approve";
+  return tool.permission !== undefined && tool.permission !== "allow";
 }
 
-/** Prepare the exact action that Guardian must review, when review is required. */
-async function prepareToolActionReview(
+/** How the gate handles one action before it runs. */
+type ActionPlan =
+  | { kind: "allow" }
+  | { kind: "ask" | "deny" | "review"; proposal: ToolActionProposal };
+
+/** Prepare the exact action that core or Guardian must decide, when needed. */
+async function planToolAction(
   action: ToolAction,
   context: ToolActionReviewContext,
   priorRejections: ToolActionPriorRejection[],
-): Promise<ToolActionProposal | undefined> {
+): Promise<ActionPlan> {
   const { tool, input } = action;
   if (!mayNeedReview(tool)) {
-    return;
+    return { kind: "allow" };
   }
   const resolved = await tool.resolveApprovalMetadata?.(input);
-  // Each mode other than `auto`, also one that is not known, needs review.
-  if (tool.approvalMode === "auto" && !autoActionNeedsReview(tool, resolved)) {
-    return;
+  const permission = effectivePermission(tool, resolved);
+  if (permission === "allow") {
+    return { kind: "allow" };
   }
   assertAuthoritativeContext(context);
-  return buildProposal(
+  const proposal = buildProposal(
     action.toolName,
     tool,
     input,
     resolved,
     context,
     priorRejections,
-    // Read at review time, so a later message in the root counts.
-    await context.rootConversation?.(),
+    // Only Guardian reads it. Read at review time, so a later message in the
+    // root counts.
+    permission === "review" ? await context.rootConversation?.() : undefined,
     action.script,
   );
+  return { kind: permission, proposal };
 }
 
 /**
@@ -497,6 +531,42 @@ async function mapConcurrent<T, R>(
   return results;
 }
 
+/** A rejection from core or Guardian, with Guardian's ratings when it decided. */
+type ActionRejection = {
+  decision: Exclude<ToolActionDecision, "allow">;
+  reason: string;
+} & Partial<Pick<ToolActionReviewDecision, "riskLevel" | "userAuthorization">>;
+
+/** The review item where one stored call waits for the person's approval. */
+export interface ToolApprovalRef {
+  reviewItemId: string;
+}
+
+/**
+ * Core path for actions that wait for a person. It stores the exact call
+ * with the Run's context and files its review item. Only the person's answer
+ * on that item can run the call; the agent cannot.
+ */
+export interface ToolApprovals {
+  /** Return the waiting approval of this exact call, if there is one. */
+  findPending(action: ToolAction): Promise<ToolApprovalRef | undefined>;
+  /**
+   * Store the exact call and file it for the person's approval. Return
+   * undefined when no person can approve it in this Run.
+   */
+  request(
+    action: ToolAction,
+    proposal: ToolActionProposal,
+    reason: string,
+  ): Promise<ToolApprovalRef | undefined>;
+}
+
+const ASK_PERMISSION_REASON =
+  "This tool runs only after the person approves each call.";
+const DENY_PERMISSION_REASON = "This tool never runs.";
+const NO_APPROVER_REASON =
+  "No person can approve this action in this run: an automation has no person, and a person without a Junior account (made when they sign in to the Junior dashboard) cannot answer. Do not ask for approval in text.";
+
 /** Outcome of the review step of one action, before gate state changes. */
 type ReviewStep =
   | { kind: "skipped" }
@@ -504,11 +574,20 @@ type ReviewStep =
       kind: "reviewed";
       decision: ToolActionReviewDecision;
       proposal: ToolActionProposal;
+      approval?: ToolApprovalRef;
+    }
+  | {
+      /** Core decided by the tool's permission, without Guardian. */
+      kind: "decided";
+      decision: ActionRejection;
+      proposal: ToolActionProposal;
+      approval?: ToolApprovalRef;
     }
   | { kind: "unavailable"; error: ToolActionReviewUnavailableError };
 
 /** Create the core review path that prepares actions and enforces Guardian decisions. */
 export function createToolActionReview(options: {
+  approvals: ToolApprovals;
   context: ToolActionReviewContext;
   /** Persist the Guardian decision before the reviewed action can continue. */
   onDecision(event: {
@@ -535,8 +614,28 @@ export function createToolActionReview(options: {
   >();
 
   /**
-   * Review one action and record its decision. Gate state does not change
-   * here, so concurrent reviews in one batch cannot corrupt it.
+   * File an approval for an action that must wait for a person. Without a
+   * person who can approve, the action is denied.
+   */
+  const askPerson = async (
+    action: ToolAction,
+    proposal: ToolActionProposal,
+    reason: string,
+  ): Promise<{ approval?: ToolApprovalRef; decision: ActionRejection }> => {
+    const approval = await options.approvals.request(action, proposal, reason);
+    return approval
+      ? { approval, decision: { decision: "ask", reason } }
+      : {
+          decision: {
+            decision: "deny",
+            reason: `${reason} ${NO_APPROVER_REASON}`,
+          },
+        };
+  };
+
+  /**
+   * Decide one action and record Guardian's decision. Gate state does not
+   * change here, so concurrent reviews in one batch cannot corrupt it.
    */
   const reviewStep = async (
     action: ToolAction,
@@ -544,13 +643,35 @@ export function createToolActionReview(options: {
     signal: AbortSignal | undefined,
   ): Promise<ReviewStep> => {
     try {
-      const proposal = await prepareToolActionReview(
-        action,
-        options.context,
-        rejections,
-      );
-      if (!proposal) {
+      const plan = await planToolAction(action, options.context, rejections);
+      if (plan.kind === "allow") {
         return { kind: "skipped" };
+      }
+      const { proposal } = plan;
+      if (plan.kind === "deny") {
+        return {
+          kind: "decided",
+          decision: { decision: "deny", reason: DENY_PERMISSION_REASON },
+          proposal,
+        };
+      }
+      // A retry of a call that already waits gets the same item, so only
+      // the person's answer can run it.
+      const pending = await options.approvals.findPending(action);
+      if (pending) {
+        return {
+          kind: "decided",
+          approval: pending,
+          decision: { decision: "ask", reason: ASK_PERMISSION_REASON },
+          proposal,
+        };
+      }
+      if (plan.kind === "ask") {
+        return {
+          kind: "decided",
+          ...(await askPerson(action, proposal, ASK_PERMISSION_REASON)),
+          proposal,
+        };
       }
       const decision = await options.reviewer.review(
         proposal,
@@ -561,7 +682,16 @@ export function createToolActionReview(options: {
         toolName: proposal.tool.name,
         decision,
       });
-      return { kind: "reviewed", decision, proposal };
+      if (decision.decision !== "ask") {
+        return { kind: "reviewed", decision, proposal };
+      }
+      const asked = await askPerson(action, proposal, decision.reason);
+      return {
+        kind: "reviewed",
+        ...(asked.approval ? { approval: asked.approval } : undefined),
+        decision: { ...decision, ...asked.decision },
+        proposal,
+      };
     } catch (error) {
       if (signal?.aborted) {
         throw error;
@@ -645,26 +775,31 @@ export function createToolActionReview(options: {
       options.onFatal(step.error);
       return { allowed: false, error: step.error };
     }
-    const { decision, proposal } = step;
-    if (decision.decision === "allow") {
-      return { allowed: true, decision };
+    const { proposal } = step;
+    const verdict = step.decision.decision;
+    if (verdict === "allow") {
+      return {
+        allowed: true,
+        decision: { ...step.decision, decision: verdict },
+      };
     }
+    const decision: ActionRejection = { ...step.decision, decision: verdict };
     const reviewedAction = projectedRejection(proposal, decision);
     addPriorRejection(priorRejections, reviewedAction);
     pendingRejections.set(toolCallId, {
       decision: decision.decision,
       priorRejection: reviewedAction,
       reason: reviewedAction.reason,
-      riskLevel: decision.riskLevel,
-      userAuthorization: decision.userAuthorization,
+      ...(decision.riskLevel ? { riskLevel: decision.riskLevel } : undefined),
+      ...(decision.userAuthorization
+        ? { userAuthorization: decision.userAuthorization }
+        : undefined),
       version: 1,
     });
     return {
       allowed: false,
       error: new ToolActionRejectedError(decision.decision, decision.reason, {
-        instructions: rejectionInstructions(decision.decision, {
-          exhausted,
-        }),
+        instructions: rejectionInstructions(step, { exhausted }),
         riskLevel: decision.riskLevel,
         reviewedAction,
         userAuthorization: decision.userAuthorization,
