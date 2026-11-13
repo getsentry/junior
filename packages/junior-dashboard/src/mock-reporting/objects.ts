@@ -113,6 +113,27 @@ const SENTRY_ISSUE: Omit<OwnedObjectAnnotation, "url"> = {
 };
 const SENTRY_ISSUE_PATH = "/issues/JUNIOR-3ZK/";
 
+// The mock release thread links to one Notion page, inline and alone on
+// its line.
+const NOTION_PAGE_ID = "4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3";
+const NOTION_PAGE: Omit<OwnedObjectAnnotation, "url"> = {
+  kind: "object",
+  objectType: "document",
+  key: NOTION_PAGE_ID,
+  label: "🚀 Release 4.2 launch plan",
+  title: "🚀 Release 4.2 launch plan",
+  displayType: "Notion page",
+  sourceUpdatedAt: "2026-02-02T09:30:00.000Z",
+  facts: {
+    type: "document",
+    summary:
+      "Ship 4.2 to every team by Friday. Support gets the release notes a day early, and marketing posts the blog after the deploy finishes.",
+    modifiedAt: "2026-02-02T09:30:00.000Z",
+    thumbnailUrl: `/api/images/mock-notion-cover.signature?w=640&v=1770024600000`,
+  },
+  plugin: "notion",
+};
+
 // The mock release thread links to one Slack message.
 const SLACK_MESSAGE_PATH = "/archives/CQA456/p1770021700000100";
 
@@ -151,6 +172,12 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
     ? GOOGLE_OBJECTS[url.pathname]
     : undefined;
   if (google) return [{ object: { ...google, url: href }, url: href }];
+  if (
+    url.hostname === "www.notion.so" &&
+    url.pathname.endsWith(`-${NOTION_PAGE_ID}`)
+  ) {
+    return [{ object: { ...NOTION_PAGE, url: href }, url: href }];
+  }
   if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_ISSUE_PATH) {
     return [{ object: { ...SENTRY_ISSUE, url: href }, url: href }];
   }

@@ -343,6 +343,9 @@ importers:
       '@sentry/junior-memory':
         specifier: workspace:*
         version: file:packages/junior-memory(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
+      '@sentry/junior-notion':
+        specifier: workspace:*
+        version: link:../junior-notion
       '@sentry/junior-sentry':
         specifier: workspace:*
         version: link:../junior-sentry
@@ -828,7 +831,30 @@ importers:
         specifier: ^4.1.12
         version: 4.1.12(@types/node@25.9.1)(tsx@4.22.3)
 
-  packages/junior-notion: {}
+  packages/junior-notion:
+    dependencies:
+      '@sentry/junior-plugin-api':
+        specifier: workspace:*
+        version: link:../junior-plugin-api
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
+    devDependencies:
+      '@oxlint/plugins':
+        specifier: 1.79.0
+        version: 1.79.0
+      '@types/node':
+        specifier: ^25.9.1
+        version: 25.9.1
+      oxlint:
+        specifier: ^1.79.0
+        version: 1.79.0
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(tsx@4.22.3)(typescript@7.0.2)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
 
   packages/junior-octolens: {}
 
@@ -13600,6 +13626,7 @@ snapshots:
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sinclair/typebox': 0.34.52
       drizzle-orm: 0.45.4
+      ignore: 7.0.5
       marked: 18.1.2
       mdast-util-from-markdown: 2.0.3
       mdast-util-gfm: 3.1.0
@@ -13646,6 +13673,7 @@ snapshots:
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sinclair/typebox': 0.34.52
       drizzle-orm: 0.45.4(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
+      ignore: 7.0.5
       marked: 18.1.2
       mdast-util-from-markdown: 2.0.3
       mdast-util-gfm: 3.1.0

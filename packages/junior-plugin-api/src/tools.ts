@@ -175,6 +175,30 @@ export interface PluginMcp {
   prepare(): Promise<"authorization_pending" | "ready">;
 }
 
+/** The result of one tool call as the viewer, or `not_connected`. */
+export type PluginViewerMcpToolResult =
+  | PluginMcpToolError
+  | PluginMcpToolSuccess
+  | { status: "not_connected" };
+
+/**
+ * Read-only access to this plugin's hosted MCP provider as the viewer, for
+ * link cards and their images.
+ */
+export interface PluginViewerMcp {
+  /**
+   * Call one tool of this plugin's `allowedTools` that the provider marks
+   * read-only, with only the viewer's own stored login. It never asks the
+   * viewer to sign in: a viewer without a usable login gets
+   * `not_connected`. Provider rejections return an error result. Transport
+   * failures throw.
+   */
+  callTool(input: {
+    arguments?: Record<string, unknown>;
+    name: string;
+  }): Promise<PluginViewerMcpToolResult>;
+}
+
 /** Complete Workspace repository preparation after credential egress is removed. */
 export type WorkspaceFinalize = () => Promise<void> | void;
 
