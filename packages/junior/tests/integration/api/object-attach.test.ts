@@ -110,20 +110,18 @@ describe("attach a linked object", () => {
               filters: [{ host: "docs.test", pathPrefix: "/d/" }],
               objectType: "document",
               readTool: () => "readDocsFile",
-              async resolve(ctx, url) {
-                return READERS.has(ctx.viewer.email)
-                  ? object("document", url)
-                  : undefined;
-              },
+              // Only `canView` checks access: Junior must not call
+              // `resolve` for anyone else.
+              canView: async (ctx) => READERS.has(ctx.viewer.email),
+              resolve: async (_ctx, url) => object("document", url),
             },
             {
               filters: [{ host: "docs.test", pathPrefix: "/e/" }],
               objectType: "calendar_event",
-              async resolve(ctx, url) {
-                return READERS.has(ctx.viewer.email)
-                  ? object("calendar_event", url)
-                  : undefined;
-              },
+              // Only `canView` checks access: Junior must not call
+              // `resolve` for anyone else.
+              canView: async (ctx) => READERS.has(ctx.viewer.email),
+              resolve: async (_ctx, url) => object("calendar_event", url),
             },
           ],
         }),
@@ -202,7 +200,12 @@ describe("attach a linked object", () => {
   });
 
   it("attaches nothing for a viewer who cannot see the object or write to the Conversation", async () => {
-    // Bob is a participant, but cannot see the object.
+    // Bob is a participant, but cannot see the object. He gets no card and
+    // no Attach, even though `resolve` would return it.
+    const card = await apiAs(await signedInViewer("bob@example.com")).request(
+      `http://localhost/api/objects?url=${encodeURIComponent(DOC_URL)}`,
+    );
+    expect(await card.json()).toEqual({ objects: [] });
     const denied = await attachAs("bob@example.com", DOC_URL);
     expect(denied.status).toBe(404);
     expect(denied.body).not.toContain("Launch");

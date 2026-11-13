@@ -117,7 +117,7 @@ function fakeGoogle(input: {
       ? Response.json(body)
       : Response.json({ error: { message: "Not found" } }, { status: 404 });
   });
-  return { fetch, queries };
+  return { cache: memoryCache(), fetch, queries };
 }
 
 function linkType(objectType: string): PluginObjectLinkDefinition {
@@ -126,22 +126,36 @@ function linkType(objectType: string): PluginObjectLinkDefinition {
   )!;
 }
 
-function resolveAs(
+// A plugin cache in memory, the same for every call of one test.
+function memoryCache() {
+  const entries = new Map<string, unknown>();
+  return {
+    async getOrLoad<T>(key: string, load: () => Promise<{ value: T }>) {
+      if (!entries.has(key)) entries.set(key, (await load()).value);
+      return entries.get(key) as T;
+    },
+  };
+}
+
+/** Check access, then read the card, the same as Junior does. */
+async function resolveAs(
   email: string,
   google: ReturnType<typeof fakeGoogle>,
   objectType: string,
   url: string,
 ) {
-  return linkType(objectType).resolve(
-    {
-      egress: { fetch: google.fetch },
-      imagePath: (ref: string, version?: string) =>
-        `/api/images/${Buffer.from(ref).toString("base64url")}.sig?w=640${version ? `&v=${version}` : ""}`,
-      log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
-      viewer: { email, id: `test:${email}`, identities: [] },
-    } as never,
-    new URL(url),
-  );
+  const ctx = {
+    cache: google.cache,
+    egress: { fetch: google.fetch },
+    imagePath: (ref: string, version?: string) =>
+      `/api/images/${Buffer.from(ref).toString("base64url")}.sig?w=640${version ? `&v=${version}` : ""}`,
+    log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+    viewer: { email, id: `test:${email}`, identities: [] },
+  } as never;
+  const link = linkType(objectType);
+  return (await link.canView(ctx, new URL(url)))
+    ? await link.resolve(ctx, new URL(url))
+    : undefined;
 }
 
 describe("Google link cards", () => {
@@ -313,6 +327,18 @@ describe("Google link cards", () => {
           `https://docs.google.com/spreadsheets/d/${DOC_ID}/edit`,
         ),
       ).resolves.toBeUndefined();
+    });
+
+    it("reads the file once for the access check and the card", async () => {
+      const google = fakeGoogle({ file: DOC, finds: [NAMED] });
+
+      await resolveAs("alice@example.com", google, "document", DOC_URL);
+
+      const fileReads = google.fetch.mock.calls.filter(
+        ([{ request }]) =>
+          new URL(request.url).pathname === `/drive/v3/files/${DOC_ID}`,
+      );
+      expect(fileReads).toHaveLength(1);
     });
 
     it("names the tool that reads an attached file live", async () => {
@@ -614,6 +640,8 @@ describe("Google link cards", () => {
       });
       // The guest list stays hidden.
       expect(JSON.stringify(card)).not.toContain("@example.com");
+      // The access check and the card share one read.
+      expect(google.fetch).toHaveBeenCalledOnce();
       expect(new URL(google.fetch.mock.calls[0]![0].request.url).pathname).toBe(
         "/calendar/v3/calendars/primary/events/evt123abc",
       );

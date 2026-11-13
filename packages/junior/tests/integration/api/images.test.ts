@@ -439,21 +439,19 @@ describe("image API", () => {
             {
               filters: [{ host: "files.example.com", pathPrefix: "/f/" }],
               objectType: "document",
-              resolve: async (ctx, url) =>
-                allowed(ctx.viewer.email)
-                  ? {
-                      kind: "object",
-                      objectType: "document",
-                      key: "report",
-                      label: "report.pdf",
-                      title: "report.pdf",
-                      url: url.href,
-                      facts: {
-                        type: "document",
-                        thumbnailUrl: ctx.imagePath("report", "7"),
-                      },
-                    }
-                  : undefined,
+              canView: async (ctx) => allowed(ctx.viewer.email),
+              resolve: async (ctx, url) => ({
+                kind: "object",
+                objectType: "document",
+                key: "report",
+                label: "report.pdf",
+                title: "report.pdf",
+                url: url.href,
+                facts: {
+                  type: "document",
+                  thumbnailUrl: ctx.imagePath("report", "7"),
+                },
+              }),
             },
           ],
           images: {

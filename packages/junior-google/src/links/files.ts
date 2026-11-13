@@ -215,20 +215,18 @@ async function viewerCanOpen(
   return checks.some(Boolean);
 }
 
-/**
- * Read a file that the viewer can open in Drive. Return nothing when Junior's
- * account cannot read it, the link does not fit its type, it is in the
- * trash, or the viewer cannot open it.
- */
-export async function readViewerFile(
+// Long enough that the access check and the card share one Drive read. The
+// access queries check `trashed` again, so a trashed file never shows.
+const FILE_READ_TTL_MS = 10_000;
+
+async function fetchFile(
   ctx: ViewerReadContext,
-  link: FileLink,
-  allowedDomains: string[],
-): Promise<LinkedFile | undefined> {
+  file: FileReference,
+): Promise<LinkedFile | null> {
   const response = await googleApiRequest(ctx, {
-    headers: resourceKeyHeaders(link.file),
+    headers: resourceKeyHeaders(file),
     operation: "google.drive.file.get",
-    path: `/drive/v3/files/${link.file.fileId}`,
+    path: `/drive/v3/files/${file.fileId}`,
     query: {
       fields:
         "driveId,id,mimeType,modifiedTime,name,owners(displayName,emailAddress),thumbnailLink,trashed",
@@ -236,12 +234,49 @@ export async function readViewerFile(
     },
   });
   // Google answers 404 for a file that Junior's account cannot open.
-  if (response.status === 403 || response.status === 404) return undefined;
+  if (response.status === 403 || response.status === 404) return null;
   if (response.status !== 200) {
     throw googleApiError("google.drive.file.get", response);
   }
-  const file = linkedFileSchema.parse(response.body);
-  if (file.trashed || !link.accepts(file.mimeType)) return undefined;
+  return linkedFileSchema.parse(response.body);
+}
+
+function fitsLink(file: LinkedFile | null, link: FileLink): file is LinkedFile {
+  return !!file && !file.trashed && link.accepts(file.mimeType);
+}
+
+/**
+ * Read the linked file with Junior's account, through the plugin cache.
+ * Nothing when the account cannot open it, it is trashed, or it does not fit
+ * the link.
+ */
+async function readLinkedFile(
+  ctx: ObjectLinkContext,
+  link: FileLink,
+): Promise<LinkedFile | undefined> {
+  const { fileId, resourceKey } = link.file;
+  const file = await ctx.cache.getOrLoad(
+    `drive-file:${fileId}:${resourceKey ?? ""}`,
+    async () => ({
+      value: await fetchFile(ctx, link.file),
+      ttlMs: FILE_READ_TTL_MS,
+    }),
+  );
+  return fitsLink(file, link) ? file : undefined;
+}
+
+/**
+ * Read a file that the viewer can open in Drive, with no cache. Return
+ * nothing when Junior's account cannot read it, the link does not fit its
+ * type, it is in the trash, or the viewer cannot open it.
+ */
+export async function readViewerFile(
+  ctx: ViewerReadContext,
+  link: FileLink,
+  allowedDomains: string[],
+): Promise<LinkedFile | undefined> {
+  const file = await fetchFile(ctx, link.file);
+  if (!fitsLink(file, link)) return undefined;
   return (await viewerCanOpen(ctx, file, allowedDomains)) ? file : undefined;
 }
 
@@ -264,15 +299,23 @@ export function thumbnailFileLink(ref: string): FileLink | undefined {
   };
 }
 
+async function canViewGoogleFileLink(
+  ctx: ObjectLinkContext,
+  url: URL,
+): Promise<boolean> {
+  const config = readGoogleConfig();
+  const link = parseFileLink(url);
+  const file = config && link && (await readLinkedFile(ctx, link));
+  return !!file && (await viewerCanOpen(ctx, file, config.allowedDomains));
+}
+
 async function resolveGoogleFileLink(
   ctx: ObjectLinkContext,
   url: URL,
 ): Promise<ObjectAnnotation | undefined> {
-  const config = readGoogleConfig();
   const link = parseFileLink(url);
-  if (!config || !link) return undefined;
-  const file = await readViewerFile(ctx, link, config.allowedDomains);
-  if (!file) return undefined;
+  const file = link && (await readLinkedFile(ctx, link));
+  if (!link || !file) return undefined;
   // A Drive link to a Doc, Sheet, or Slides file shows the same card as its
   // Docs link.
   const type = googleFileType(file.mimeType);
@@ -331,6 +374,7 @@ export const googleFileLinks: PluginObjectLinkDefinition = {
     ),
     { host: "drive.google.com", path: "/open" },
   ],
+  canView: canViewGoogleFileLink,
   objectType: "document",
   // One tool reads Docs, Sheets, and Slides. No tool reads other files.
   readTool: (object) =>

@@ -187,6 +187,7 @@ describe("web page cards", () => {
             {
               filters: [{ host: "tickets.example.com" }],
               objectType: "task",
+              canView: async () => true,
               resolve: async (_ctx, url) => ({
                 kind: "object",
                 objectType: "task",

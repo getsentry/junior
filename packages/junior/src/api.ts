@@ -12,6 +12,7 @@ import { createImageRoutes } from "./api/images/routes";
 import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
 import { createServiceAccountRoutes } from "./api/service-accounts/routes";
+import { createCacheWarmingRoutes } from "./api/cache-warming/routes";
 import { createUserPageRoutes } from "./api/user-pages/routes";
 import { createAutomationRoutes } from "./api/automations/routes";
 import { createUserCustomizationRoutes } from "./api/user-customization/routes";
@@ -141,6 +142,7 @@ export function createJuniorApi(
   app.route("/api/notifications", createNotificationRoutes());
   app.route("/api/personal-tokens", createPersonalTokenRoutes());
   app.route("/api/service-accounts", createServiceAccountRoutes());
+  app.route("/api/cache-warming", createCacheWarmingRoutes());
   app.route("/api/images", createImageRoutes());
   app.route("/api/objects", createObjectRoutes());
   app.route("/api/people", createPeopleRoutes());
