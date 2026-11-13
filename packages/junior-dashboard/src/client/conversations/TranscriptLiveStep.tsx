@@ -1,4 +1,3 @@
-import { formatDuration } from "../components/Duration";
 import { useEffect, useState } from "react";
 import { Bot, Globe, Sparkles, SquareTerminal, Wrench } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -88,13 +87,16 @@ export function LiveActivityStep(props: {
   );
 }
 
-// Whole seconds, so a ticking time does not jump in width. Past an hour the
-// two largest units read better than a minute count.
+// Every unit shows, even at zero, so a ticking time keeps its shape. A
+// Turn older than a day counts days and hours instead.
 function formatWorkingTime(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-  return formatDuration(seconds * 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  if (hours >= 24) return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+  if (hours > 0) return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+  if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+  return `${seconds}s`;
 }
 
 /** Tick the time a running Turn has worked since `startMs`, every second. */

@@ -224,12 +224,14 @@ function askStatus(item: ReviewItemPayload, answerShown: boolean): AskStatus {
 
 // The question docks above the message box, so the reader answers there. A
 // reply focus request moves focus to it, as it does when the page opens.
+// That request skips a touch screen, where the docked question is already
+// in sight, so the button is not shown there.
 function AnswerButton() {
   const location = useLocation();
   const navigate = useNavigate();
   return (
     <button
-      className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md bg-violet-500/15 px-2.5 py-1 text-xs font-medium text-dashboard-accent-text transition-colors hover:bg-violet-500/25 focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+      className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md bg-violet-500/15 pointer-coarse:hidden px-2.5 py-1 text-xs font-medium text-dashboard-accent-text transition-colors hover:bg-violet-500/25 focus-visible:outline-2 focus-visible:outline-dashboard-focus"
       onClick={() =>
         navigate(
           { pathname: location.pathname, search: location.search },
