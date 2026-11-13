@@ -299,6 +299,7 @@ export function filesInfoOk(
     name?: string;
     filetype?: string;
     mimetype?: string;
+    size?: number;
   } = {},
 ): {
   ok: true;
@@ -311,6 +312,7 @@ export function filesInfoOk(
     name?: string;
     filetype?: string;
     mimetype?: string;
+    size?: number;
   };
 } {
   const fileId = input.fileId ?? TEST_FILE_ID;
@@ -328,6 +330,7 @@ export function filesInfoOk(
       ...(input.name ? { name: input.name } : undefined),
       filetype: input.filetype ?? "quip",
       mimetype: input.mimetype ?? "text/plain",
+      ...(input.size !== undefined ? { size: input.size } : undefined),
     },
   });
 }

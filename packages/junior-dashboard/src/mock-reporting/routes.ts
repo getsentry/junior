@@ -81,11 +81,7 @@ import {
 import { mockChartPng } from "./chart-png";
 import { mockDemoMp4 } from "./demo-mp4";
 import { mockConversationFeedPage } from "./feed-page";
-import {
-  attachMockObjectLink,
-  MOCK_DRIVE_THUMBNAIL_ID,
-  readMockObjectLinks,
-} from "./objects";
+import { attachMockObjectLink, readMockObjectLinks } from "./objects";
 import { readMockConversationOutline } from "./outline";
 import {
   actOnMockReviewItem,
@@ -225,15 +221,16 @@ export function createMockReportingApi(): Hono<{
       readMockObjectLinks(query.data.url),
     );
   });
-  app.get("/images/:id", (c) =>
-    c.req.param("id") === MOCK_DRIVE_THUMBNAIL_ID
-      ? new Response(mockChartPng, {
-          headers: {
-            "cache-control": "private, no-store",
-            "content-type": "image/png",
-          },
-        })
-      : errorResponse("Image not found.", 404),
+  // Every mock image is the same chart.
+  app.get(
+    "/images/:id",
+    () =>
+      new Response(mockChartPng, {
+        headers: {
+          "cache-control": "private, max-age=86400",
+          "content-type": "image/png",
+        },
+      }),
   );
   app.get("/people", () =>
     jsonResponse(actorDirectoryReportSchema, readMockPeopleDirectory()),
@@ -726,6 +723,13 @@ export function createMockReportingApi(): Hono<{
     if (!readMockConversationDetail(conversationId)) {
       return errorResponse("Conversation not found.", 404);
     }
+    // A large Slack file that was deleted in Slack after Junior saw it.
+    if (attachmentId === "qa-deleted-pending") {
+      return errorResponse(
+        "deleted-recording.mov is no longer available: The Slack file was deleted, or Junior can no longer access it.",
+        409,
+      );
+    }
     if (attachmentId === "qa-chart-png") {
       return new Response(mockChartPng, {
         headers: {
@@ -736,11 +740,16 @@ export function createMockReportingApi(): Hono<{
         },
       });
     }
-    if (attachmentId === "qa-demo-mp4") {
+    if (
+      attachmentId === "qa-demo-mp4" ||
+      attachmentId === "qa-recording-pending"
+    ) {
+      const filename =
+        attachmentId === "qa-demo-mp4" ? "demo.mp4" : "standup-recording.mp4";
       return new Response(mockDemoMp4, {
         headers: {
           "cache-control": "private, no-store",
-          "content-disposition": 'inline; filename="demo.mp4"',
+          "content-disposition": `${c.req.query("download") === "true" ? "attachment" : "inline"}; filename="${filename}"`,
           "content-type": "video/mp4",
           "content-length": String(mockDemoMp4.byteLength),
         },

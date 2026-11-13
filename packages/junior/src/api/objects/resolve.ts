@@ -27,6 +27,7 @@ import {
   resolveSlackMessageLink,
   SLACK_MESSAGE_LINK_FILTER,
 } from "./slack-message";
+import { webPageLinkType } from "./web-page/resolve";
 
 /** A card is a short-lived read. A changed object shows within this time. */
 export const OBJECT_LINK_TTL_MS = 60_000;
@@ -41,10 +42,13 @@ function coreLinkTypes(): ObjectLinkType[] {
   };
   const conversations = getDashboardLinkFilter("/conversations/*");
   const people = getDashboardLinkFilter("/people/*");
+  // Any other public page. Its filters are the least specific.
+  const webPages = webPageLinkType();
   // These links need the dashboard: each card links to a dashboard page.
-  if (!conversations || !people) return [slack];
+  if (!conversations || !people) return [slack, webPages];
   return [
     slack,
+    webPages,
     {
       filters: [conversations],
       objectType: "conversation",
@@ -75,7 +79,7 @@ function pluginLinkTypes(plugin: PluginRegistration): ObjectLinkType[] {
           cache: createPluginCache(name),
           db: getDb(),
           egress: createViewerReadEgress(),
-          // Cards show thumbnails at most 320 CSS pixels wide.
+          // The width of web page thumbnails, so every card looks the same.
           imagePath: (ref, version) =>
             imagePath({ ref, source: name }, 640, version),
           log: createPluginLogger(name),

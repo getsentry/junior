@@ -36,7 +36,6 @@ const DISPLAY_TYPES = {
 
 const linkedFileSchema = z.object({
   driveId: z.string().optional(),
-  hasThumbnail: z.boolean().optional(),
   id: z.string(),
   mimeType: z.string(),
   modifiedTime: z.string().optional(),
@@ -232,7 +231,7 @@ export async function readViewerFile(
     path: `/drive/v3/files/${link.file.fileId}`,
     query: {
       fields:
-        "driveId,hasThumbnail,id,mimeType,modifiedTime,name,owners(displayName,emailAddress),thumbnailLink,trashed",
+        "driveId,id,mimeType,modifiedTime,name,owners(displayName,emailAddress),thumbnailLink,trashed",
       supportsAllDrives: "true",
     },
   });
@@ -283,7 +282,7 @@ async function resolveGoogleFileLink(
     ? Date.parse(file.modifiedTime)
     : Number.NaN;
   const thumbnailUrl =
-    !type && file.hasThumbnail && file.thumbnailLink
+    !type && file.thumbnailLink
       ? ctx.imagePath(
           thumbnailRef(file, link),
           Number.isFinite(modifiedAtMs) ? String(modifiedAtMs) : undefined,

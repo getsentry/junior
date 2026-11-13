@@ -8,7 +8,7 @@ import {
   createMemoryAttachmentStorage,
   type MemoryAttachmentStorage,
 } from "@/chat/attachments/memory";
-import type { AttachmentWrite } from "@/chat/attachments/storage";
+import { bufferBody, type AttachmentWrite } from "@/chat/attachments/storage";
 import { runRetentionPurge } from "@/chat/conversations/retention";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { juniorAttachments, juniorConversations } from "@/db/schema";
@@ -29,7 +29,8 @@ async function putObject(
   key: string,
 ): Promise<void> {
   await storage.put({
-    body: Buffer.from(key),
+    body: bufferBody(Buffer.from(key)),
+    bytes: Buffer.byteLength(key),
     contentType: "text/plain",
     key,
   });
@@ -237,11 +238,9 @@ describe("retention purge job: attachments", () => {
         conversationId: "purged-owner",
         db: fixture.sql,
         file: {
-          bytes: 4,
           data: Buffer.from("late"),
           filename: "late.txt",
           mimeType: "text/plain",
-          path: "/tmp/late.txt",
         },
         storage,
       }),
@@ -279,11 +278,9 @@ describe("retention purge job: attachments", () => {
         conversationId: "race-owner",
         db: fixture.sql,
         file: {
-          bytes: 4,
           data: Buffer.from("late"),
           filename: "late.txt",
           mimeType: "text/plain",
-          path: "/tmp/late.txt",
         },
         storage,
       }),
@@ -305,11 +302,9 @@ describe("retention purge job: attachments", () => {
     });
     const liveKey = "live-key";
     const file = {
-      bytes: 4,
       data: Buffer.from("late"),
       filename: "late.txt",
       mimeType: "text/plain",
-      path: "/tmp/late.txt",
     };
     const storage = createMemoryAttachmentStorage();
     const stored = await storeAttachment({

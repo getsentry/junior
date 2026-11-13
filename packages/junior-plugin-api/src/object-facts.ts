@@ -3,6 +3,12 @@ import * as z from "zod";
 const text = z.string().trim().min(1).max(160);
 const count = z.number().int().nonnegative();
 
+// A Junior image path. Browsers never load a third-party image URL.
+const imagePath = z
+  .string()
+  .max(4000)
+  .regex(/^\/api\/images\/[\w-]+\.[\w-]+\?w=\d+(&v=[\w-]+)?$/);
+
 /** The longest object summary, in UTF-16 code units. */
 export const OBJECT_SUMMARY_MAX_LENGTH = 280;
 
@@ -78,13 +84,8 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     summary: summary.optional(),
     owner: text.optional(),
     modifiedAt: z.iso.datetime({ offset: true }).optional(),
-    // A Junior image path from `ObjectLinkContext.imagePath`. Browsers never
-    // load a provider thumbnail URL.
-    thumbnailUrl: z
-      .string()
-      .max(1000)
-      .regex(/^\/api\/images\/[\w-]+\.[\w-]+\?w=\d+(&v=[\w-]+)?$/)
-      .optional(),
+    // A file thumbnail from `ObjectLinkContext.imagePath`.
+    thumbnailUrl: imagePath.optional(),
   }),
   // Messages: where and when, never the text. The card description holds a
   // short snippet only for a viewer who may read the message.
@@ -94,6 +95,14 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     channel: text.optional(),
     author: text.optional(),
     sentAt: z.iso.datetime({ offset: true }).optional(),
+  }),
+  // Public web pages: what the page or its oEmbed provider says about it.
+  z.strictObject({
+    type: z.literal("web_page"),
+    summary: summary.optional(),
+    siteName: text.optional(),
+    author: text.optional(),
+    thumbnailUrl: imagePath.optional(),
   }),
   // People: only what the dashboard People pages already show.
   z.strictObject({
@@ -223,6 +232,10 @@ export function objectFactFields(
             timeStyle: "short",
           }),
       );
+      break;
+    case "web_page":
+      add("siteName", "Site", facts.siteName);
+      add("author", "Author", facts.author);
       break;
     case "person":
       add("email", "Email", facts.email);

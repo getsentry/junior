@@ -259,32 +259,42 @@ describe("image API", () => {
     expect(fetches).toBe(0);
   });
 
-  test("fetches no private address, not after a redirect either", async () => {
+  test("fetches no private address, no plain http, and not after a redirect either", async () => {
+    // Count connections, not requests: a TLS hello to this server is no
+    // request, but it still reaches the private address.
     let privateHits = 0;
-    const server = createServer((_request, response) => {
+    const server = createServer();
+    server.on("connection", () => {
       privateHits += 1;
-      response.writeHead(200, { "content-type": "image/png" });
-      response.end(PHOTO);
     });
+    let plainHits = 0;
     await new Promise<void>((resolve) =>
       server.listen(0, "127.0.0.1", resolve),
     );
     const { port } = server.address() as AddressInfo;
     mswServer.use(
       http.get("https://images.example.com/redirect.png", () =>
-        HttpResponse.redirect(`http://127.0.0.1:${port}/photo.png`, 302),
+        HttpResponse.redirect(`https://127.0.0.1:${port}/photo.png`, 302),
       ),
+      http.get("http://images.example.com/plain.png", () => {
+        plainHits += 1;
+        return new HttpResponse(PHOTO, {
+          headers: { "content-type": "image/png" },
+        });
+      }),
     );
     try {
       for (const url of [
-        `http://127.0.0.1:${port}/photo.png`,
-        `http://localhost:${port}/photo.png`,
-        `http://[::1]:${port}/photo.png`,
+        `https://127.0.0.1:${port}/photo.png`,
+        `https://localhost:${port}/photo.png`,
+        `https://[::1]:${port}/photo.png`,
         "https://images.example.com/redirect.png",
+        "http://images.example.com/plain.png",
       ]) {
         expect((await requestImage(publicImage(url))).status).toBe(404);
       }
       expect(privateHits).toBe(0);
+      expect(plainHits).toBe(0);
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }

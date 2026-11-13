@@ -54,7 +54,8 @@ describe("object link types", () => {
       "any-path",
       "subdomains",
       "http",
-      undefined,
+      // Core's web page link type takes any URL that nothing else claims.
+      "junior",
     ]);
   });
 
@@ -71,7 +72,7 @@ describe("object link types", () => {
         "mailto:alice@example.com",
         "https://other.example.com/conversations/a",
       ].map((url) => findObjectLinkType(types, new URL(url))?.objectType),
-    ).toEqual(["conversation", undefined, "person", "person", undefined]);
+    ).toEqual(["conversation", "web_page", "person", "person", "web_page"]);
   });
 
   it("rejects two link types that claim the same URLs", () => {

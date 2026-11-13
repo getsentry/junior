@@ -829,6 +829,21 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
             contentType: "image/png",
             bytes: 6400,
           },
+          // Large Slack files that Junior never stores.
+          {
+            id: "qa-recording-pending",
+            filename: "standup-recording.mp4",
+            contentType: "video/mp4",
+            bytes: 214_000_000,
+            pending: true,
+          },
+          {
+            id: "qa-deleted-pending",
+            filename: "deleted-recording.mov",
+            contentType: "video/quicktime",
+            bytes: 98_000_000,
+            pending: true,
+          },
         ],
         role: "user",
         text: "Review the dashboard plan before editing.",
@@ -1402,6 +1417,9 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "Track it in https://docs.google.com/document/d/1MockReleaseChecklist_0123456789/edit before https://www.google.com/calendar/event?eid=cmVsNDJnb25vZ28ganVuaW9yQGV4YW1wbGUuY29t",
         "Metrics are in https://drive.google.com/file/d/1MockReleaseMetricsPdf_0123456789/view, and the assets are in https://drive.google.com/drive/folders/1MockReleaseAssets_0123456789",
         "Morgan asked to hold the deploy: https://acme.slack.com/archives/CQA456/p1770021700000100",
+        "The demo is at https://www.youtube.com/watch?v=MockLaunchDemo",
+        "",
+        "https://blog.example.com/posts/release-4-2",
       ].join("\n"),
     }),
   );

@@ -88,7 +88,8 @@
     {
       "files": ["src/**/*.ts", "**/src/**/*.ts"],
       "rules": {
-        "junior/no-raw-sql-queries": "error"
+        "junior/no-raw-sql-queries": "error",
+        "junior/no-regex-url-parsing": "error"
       }
     },
     {

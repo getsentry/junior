@@ -1,6 +1,7 @@
 import {
   OBJECT_SUMMARY_MAX_LENGTH,
   objectLinkFilterMatches,
+  objectLinkFilterSpecificity,
   type PluginObjectLinkDefinition,
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,7 +30,6 @@ const DOC = {
 const DRIVE = "https://drive.google.com";
 
 const PDF = {
-  hasThumbnail: true,
   id: DOC_ID,
   mimeType: "application/pdf",
   modifiedTime: "2026-10-02T09:30:00.000Z",
@@ -356,7 +356,12 @@ describe("Google link cards", () => {
       },
     };
 
-    it("claims every Drive file and folder link form", () => {
+    it("claims every Drive link form ahead of the web page card", () => {
+      // Core's catch-all web page card matches any https link with no host,
+      // so a matching filter with a host wins over it.
+      const [webPageHostRank = 0] = objectLinkFilterSpecificity({
+        scheme: "https",
+      });
       for (const url of [
         `${DRIVE}/file/d/${DOC_ID}/view`,
         `${DRIVE}/file/u/1/d/${DOC_ID}/view`,
@@ -365,12 +370,12 @@ describe("Google link cards", () => {
         `${DRIVE}/drive/u/0/folders/${DOC_ID}`,
         `${DRIVE}/drive/u/0/my-drive`,
       ]) {
-        expect(
-          linkType("document").filters.some((filter) =>
+        const hostRanks = linkType("document")
+          .filters.filter((filter) =>
             objectLinkFilterMatches(filter, new URL(url)),
-          ),
-          url,
-        ).toBe(true);
+          )
+          .map((filter) => objectLinkFilterSpecificity(filter)[0] ?? 0);
+        expect(Math.max(-1, ...hostRanks)).toBeGreaterThan(webPageHostRank);
       }
     });
 
@@ -462,7 +467,6 @@ describe("Google link cards", () => {
             "document",
             url,
           ),
-          url,
         ).resolves.toBeUndefined();
       }
     });
