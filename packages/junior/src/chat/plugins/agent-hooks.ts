@@ -33,6 +33,7 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { getDb } from "@/chat/db";
+import { replaceSlackMentions } from "@/chat/identities/slack-mention-text";
 import { resolveUserTimezone } from "@/chat/identities/timezone";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import {
@@ -836,6 +837,7 @@ export function getPluginTools(
             ...(resolved?.user ? { userId: resolved.user.id } : undefined),
           });
         },
+        replaceSlackMentions,
       },
       workspaces: {
         async active() {
