@@ -343,6 +343,79 @@ describe("review requested ask", () => {
     }
   });
 
+  it("ends the ask when the pull request is ready to merge", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: ReviewItemCall[] = [];
+    // Someone else approved it, and GitHub can merge it.
+    mswServer.use(
+      http.post(
+        "https://api.github.com/app/installations/456/access_tokens",
+        () =>
+          HttpResponse.json({
+            expires_at: "2027-01-01T00:00:00.000Z",
+            token: "installation-token",
+          }),
+      ),
+      http.get("https://api.github.com/repos/getsentry/junior/pulls/946", () =>
+        HttpResponse.json({
+          auto_merge: null,
+          draft: false,
+          html_url: PULL_URL,
+          mergeable_state: "clean",
+          merged: false,
+          state: "open",
+          title: pullRequest.title,
+        }),
+      ),
+      http.get(
+        "https://api.github.com/repos/getsentry/junior/pulls/946/reviews",
+        () =>
+          HttpResponse.json([
+            { state: "APPROVED", user: { login: "someone-else" } },
+          ]),
+      ),
+    );
+    try {
+      await seedJuniorPullRequest(fixture);
+      const webhook = route(fixture, calls);
+      await webhook.handler(
+        reviewRequest("review_requested", {
+          requested_reviewer: { login: "Requester" },
+        }),
+      );
+      expect(calls).toHaveLength(1);
+
+      // The requester merges or reviews, not both, so one item waits on them.
+      await webhook.handler(
+        signedRequest(
+          {
+            action: "submitted",
+            pull_request: pullRequest,
+            review: { state: "approved", user: { login: "someone-else" } },
+          },
+          "pull_request_review",
+        ),
+      );
+      expect(calls.at(-1)).toEqual({
+        input: {
+          dedupeKey: DEDUPE_KEY,
+          reason: "The pull request is ready to merge.",
+          status: "dismissed",
+        },
+        kind: "close",
+      });
+
+      await webhook.handler(
+        reviewRequest("review_requested", {
+          requested_reviewer: { login: "Requester" },
+        }),
+      );
+      expect(calls).toHaveLength(2);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   /** Open a draft through the tool, as the requester asked in Slack. */
   async function createDraft(
     fixture: GitHubFixture,

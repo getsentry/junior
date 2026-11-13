@@ -398,6 +398,18 @@ export async function claimGitHubPullRequestReadySync(
   };
 }
 
+/** Return whether Junior last saw a Junior pull request as ready to merge. */
+export async function readGitHubPullRequestReadyToMerge(
+  db: GitHubDb,
+  target: { number: number; repositoryFullName: string },
+): Promise<boolean> {
+  const [row] = await db
+    .select({ readyToMergeAt: juniorGitHubPullRequests.readyToMergeAt })
+    .from(juniorGitHubPullRequests)
+    .where(pullRequestRow(target));
+  return Boolean(row?.readyToMergeAt);
+}
+
 /** Save whether a Junior pull request is ready to merge. */
 export async function setGitHubPullRequestReadyToMerge(
   db: GitHubDb,

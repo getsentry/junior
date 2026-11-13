@@ -8,7 +8,8 @@
  * Conversation where a person asked Junior to open the pull request. It is
  * assigned to that person only when they are in that Conversation, and it
  * waits on them: the merge is their step. It closes when the pull request
- * merges, closes, or is no longer ready.
+ * merges, closes, or is no longer ready. It replaces the requester's
+ * "review requested" ask, so it closes that ask.
  */
 import type {
   PluginConversationReviewItems,
@@ -30,6 +31,7 @@ import {
   type GitHubPullRequestMergeState,
 } from "./installation-requests.js";
 import type { GitHubPullRequestTarget } from "./pull-request-people.js";
+import { reviewRequestDedupeKey } from "./pull-request-review-request.js";
 
 /**
  * A check normally takes a few seconds. After this time, a check that
@@ -162,6 +164,11 @@ async function syncOne(
             },
             title: `Ready to merge · #${target.number}`,
             waitsOnAssignees: true,
+          });
+          await items.close({
+            dedupeKey: reviewRequestDedupeKey(target),
+            reason: "The pull request is ready to merge.",
+            status: "dismissed",
           });
         } else {
           await items.close({ dedupeKey, ...closeReason(state) });

@@ -8,7 +8,11 @@
  * removed, or when the pull request closes. Reopening the pull request adds
  * it again while their request is still open, because GitHub does not send
  * a new request for it. GitHub sends each of these facts in the webhook, so
- * the ask needs no GitHub read and no saved state.
+ * the ask needs no GitHub read.
+ *
+ * "Ready to merge" replaces the ask: the requester then merges or reviews,
+ * not both. So the ready notice closes the ask, and a request for a pull
+ * request that Junior saved as ready to merge adds no ask.
  *
  * Only the requester can get the ask. Junior maps a GitHub login to a person
  * only through the requester's linked GitHub account, and other pull
@@ -20,6 +24,7 @@ import type {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
+import { readGitHubPullRequestReadyToMerge } from "../pull-request-outcomes/store.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 
 const login = z.object({ login: z.string().min(1) });
@@ -148,6 +153,14 @@ function reviewRequestChange(
   };
 }
 
+/** Return the review desk key of the "review requested" ask. */
+export function reviewRequestDedupeKey(target: {
+  number: number;
+  repositoryFullName: string;
+}): string {
+  return `pull-request-review-requested:${target.repositoryFullName.toLowerCase()}#${target.number}`;
+}
+
 function sameLogin(left: string, right: string): boolean {
   return left.toLowerCase() === right.toLowerCase();
 }
@@ -177,8 +190,8 @@ export async function syncGitHubPullRequestReviewRequest(args: {
       })
     ).get(number);
     if (!opener?.conversationId) return;
-    const name = `${repository}#${number}`;
-    const dedupeKey = `pull-request-review-requested:${name.toLowerCase()}`;
+    const target = { number, repositoryFullName: repository };
+    const dedupeKey = reviewRequestDedupeKey(target);
     const items = args.reviewItems.forConversation(opener.conversationId);
     // A change about named reviewers matters only when the requester is one.
     const reviewers =
@@ -204,6 +217,7 @@ export async function syncGitHubPullRequestReviewRequest(args: {
       });
       return;
     }
+    if (await readGitHubPullRequestReadyToMerge(args.db, target)) return;
     await items.upsert({
       assigneeIdentityIds: [opener.identityId],
       body: `GitHub asks you to review **${change.title}**: ${change.url}`,
