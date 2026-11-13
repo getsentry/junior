@@ -9,8 +9,10 @@
  *   to the Conversation that asked for the pull request. New activity by a
  *   person allows one more notice.
  * - After 3 days without activity by a person, nothing.
- * - An approved pull request is about to merge, so it gets fixes after the
- *   2 days too, within the same daily and total limits.
+ * - An approved pull request would be ready to merge but for the conflict,
+ *   so it gets a fix after the 2 days too, and without the daily wait. The
+ *   ready to merge notice needs a clean merge state, so it waits for the
+ *   fix. The total limit still holds.
  *
  * Opening the pull request counts as activity, because a person asked for
  * it. A conflict on a pull request that Junior did not open goes to its
@@ -71,7 +73,9 @@ function gitHubConflictAction(
   if (idleMs > IDLE_MS && !approved) return "skip";
   if ((idleMs <= ACTIVE_MS || approved) && history.conflictFixes < MAX_FIXES) {
     const fixedAtMs = history.conflictFixedAt?.getTime();
-    return fixedAtMs !== undefined && nowMs - fixedAtMs < FIX_INTERVAL_MS
+    return !approved &&
+      fixedAtMs !== undefined &&
+      nowMs - fixedAtMs < FIX_INTERVAL_MS
       ? "skip"
       : "fix";
   }

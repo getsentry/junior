@@ -504,10 +504,14 @@ describe("merge conflict check on webhook events", () => {
       expect(fixedShas()).toEqual([]);
       expect(h.notices).toEqual([]);
 
-      // An approved pull request is about to merge, so it still gets a fix.
+      // An approved pull request waits only for the fix to merge, so it
+      // gets one at once, until the total limit.
       approvals.add(946);
       await checkAt(pushedAt + 4 * day, "4");
-      expect(fixedShas()).toEqual(["4"]);
+      await checkAt(pushedAt + 4 * day + hour, "5");
+      await checkAt(pushedAt + 4 * day + 2 * hour, "6");
+      await checkAt(pushedAt + 4 * day + 3 * hour, "7");
+      expect(fixedShas()).toEqual(["4", "5", "6"]);
     });
   });
 });
