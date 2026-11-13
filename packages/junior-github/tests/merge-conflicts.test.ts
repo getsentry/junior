@@ -230,7 +230,15 @@ describe("merge conflict check on webhook events", () => {
     let drafts: Set<number>;
     let approvals: Set<number>;
     /** The timeline of 946 on GitHub. */
-    let timeline: unknown[];
+    let timeline: Array<{ __typename: string }>;
+    const pushes = () =>
+      timeline.filter((item) =>
+        ["HeadRefForcePushedEvent", "PullRequestCommit"].includes(
+          item.__typename,
+        ),
+      );
+    const discussion = () =>
+      timeline.filter((item) => !pushes().includes(item));
     let historyReads: number;
     let duringRead: (() => Promise<void>) | undefined;
 
@@ -276,7 +284,9 @@ describe("merge conflict check on webhook events", () => {
                     reviewDecision: approvals.has(variables.number)
                       ? "APPROVED"
                       : null,
-                    timelineItems: { nodes: timeline },
+                    // GitHub's `last` windows of the query.
+                    discussion: { nodes: discussion().slice(-50) },
+                    pushes: { nodes: pushes().slice(-100) },
                   },
                 },
               },
@@ -507,7 +517,15 @@ describe("merge conflict check on webhook events", () => {
       expect(fixedShas()).toEqual(["1", "3", "4"]);
       expect(h.notices).toEqual([]);
 
-      // After the third fix, Junior adds one notice.
+      // After the third fix, Junior adds one notice. Many comments do not
+      // hide the fixes.
+      for (let i = 0; i < 120; i += 1) {
+        timeline.push({
+          __typename: "IssueComment",
+          author: { __typename: "User" },
+          createdAt: new Date(pushedAt + 57 * hour).toISOString(),
+        });
+      }
       await checkAt(pushedAt + 3 * day, "5");
       await checkAt(pushedAt + 3 * day + 6 * hour, "6");
       expect(fixedShas()).toEqual(["1", "3", "4"]);

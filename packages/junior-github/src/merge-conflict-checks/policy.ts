@@ -87,10 +87,13 @@ const historyResponseSchema = z.object({
     repository: z.object({
       pullRequest: z.object({
         createdAt: z.string(),
-        reviewDecision: z.string().nullable(),
-        timelineItems: z.object({
+        discussion: z.object({
           nodes: z.array(timelineItemSchema.nullable()),
         }),
+        pushes: z.object({
+          nodes: z.array(timelineItemSchema.nullable()),
+        }),
+        reviewDecision: z.string().nullable(),
       }),
     }),
   }),
@@ -126,7 +129,10 @@ function parseGitHubConflictHistory(response: unknown): GitHubConflictHistory {
       fixedAtMs = Math.max(fixedAtMs ?? 0, atMs);
     }
   };
-  for (const item of pullRequest.timelineItems.nodes) {
+  for (const item of [
+    ...pullRequest.pushes.nodes,
+    ...pullRequest.discussion.nodes,
+  ]) {
     if (!item) continue;
     switch (item.__typename) {
       case "PullRequestCommit": {
