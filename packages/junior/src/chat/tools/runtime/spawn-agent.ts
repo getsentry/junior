@@ -103,7 +103,7 @@ export function createSpawnAgentTool(
           .nullable()
           .optional()
           .describe(
-            "thread: a work item about the size of one issue or code change, or long-lived work, that people open, message, follow, and steer. A request to create or start a thread means this kind, not a Slack thread. task (default): background work only you message.",
+            "thread: one work item about the size of one issue or code change, or long-lived work, that people open, message, follow, and steer. A request to create or start a thread means this kind, not a Slack thread. task (default): background work only you message.",
           ),
         agent_type: z
           .enum(AGENT_TYPES)
