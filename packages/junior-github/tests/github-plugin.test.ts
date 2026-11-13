@@ -452,6 +452,7 @@ function githubToolsContext(input?: {
         })),
     },
     users: {
+      replaceSlackMentions: async (value) => value,
       async requestIdentityLink(request: { reason: string }) {
         identityLinkRequests.push(request);
         return { status: "requested" as const };

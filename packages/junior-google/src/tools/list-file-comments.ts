@@ -8,7 +8,7 @@ import {
   GOOGLE_FILE_TYPES,
   googleFileRequest,
   parseFileReference,
-  readGoogleFile,
+  readGoogleFileMetadata,
 } from "./files";
 import type { GoogleToolContext } from "./shared";
 
@@ -103,14 +103,14 @@ export function createListGoogleFileCommentsTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "List the comments and replies on one Google Doc, Sheet, or Slides presentation, as your own Google account sees them. Each comment gives its author, text, the file text it is attached to, and whether it is resolved. Works for files shared with that account and files shared with anyone who has the link. Returns up to 100 comments per call; pass next_page_token as page_token to read more. Comments can be private: share only what the requester needs.",
+      "List the comments and replies on one Google Doc, Sheet, or Slides presentation, as your own Google account sees them. Each comment gives its author, text, the file text it is attached to, and whether it is resolved. Works for files shared with that account and files shared with anyone who has the link. Returns up to 100 comments per call. Comments can be private: share only what the requester needs.",
     inputSchema,
     outputSchema,
     async execute(input) {
       const ref = parseFileReference(input.file);
       // Check the type first: drive.readonly can also read comments on other
       // Drive files, such as PDFs.
-      await readGoogleFile(ctx, ref, GOOGLE_FILE_TYPES);
+      await readGoogleFileMetadata(ctx, ref, GOOGLE_FILE_TYPES);
       const response = await googleFileRequest(ctx, ref, {
         operation: "google.drive.comments.list",
         path: `/drive/v3/files/${ref.fileId}/comments`,

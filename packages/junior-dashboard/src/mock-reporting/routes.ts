@@ -5,6 +5,8 @@ import type { User } from "@sentry/junior-plugin-api";
 import {
   acceptedConversationMessageSchema,
   apiErrorSchema,
+  attachmentUploadSchema,
+  createAttachmentUploadBodySchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
   forkConversationBodySchema,
@@ -60,6 +62,8 @@ import {
   reviewItemWaitingConversationsSchema,
   objectLinksQuerySchema,
   objectLinksReportSchema,
+  attachObjectLinkBodySchema,
+  attachObjectLinkResponseSchema,
   versionsSchema,
   automationExecutionListSchema,
   automationListSchema,
@@ -77,7 +81,7 @@ import {
 import { mockChartPng } from "./chart-png";
 import { mockDemoMp4 } from "./demo-mp4";
 import { mockConversationFeedPage } from "./feed-page";
-import { readMockObjectLinks } from "./objects";
+import { attachMockObjectLink, readMockObjectLinks } from "./objects";
 import { readMockConversationOutline } from "./outline";
 import {
   actOnMockReviewItem,
@@ -217,6 +221,17 @@ export function createMockReportingApi(): Hono<{
       readMockObjectLinks(query.data.url),
     );
   });
+  // Every mock image is the same chart.
+  app.get(
+    "/images/:id",
+    () =>
+      new Response(mockChartPng, {
+        headers: {
+          "cache-control": "private, max-age=86400",
+          "content-type": "image/png",
+        },
+      }),
+  );
   app.get("/people", () =>
     jsonResponse(actorDirectoryReportSchema, readMockPeopleDirectory()),
   );
@@ -312,6 +327,28 @@ export function createMockReportingApi(): Hono<{
         conversation.displayTitle.toLowerCase().includes(search),
       ),
     });
+  });
+  // Uploads take the bytes and drop them. A mock send shows only the text.
+  app.post("/conversations/attachment-uploads", async (c) => {
+    if (!c.get("viewer"))
+      return errorResponse("Sign in to send messages.", 401);
+    const body = createAttachmentUploadBodySchema.safeParse(await c.req.json());
+    if (!body.success) return errorResponse("Invalid request body.", 400);
+    const uploadId = crypto.randomUUID();
+    return jsonResponse(attachmentUploadSchema, {
+      uploadId,
+      target: {
+        headers: { "content-type": body.data.contentType },
+        method: "PUT",
+        url: `/api/conversations/attachment-uploads/${uploadId}`,
+      },
+    });
+  });
+  app.put("/conversations/attachment-uploads/:uploadId", async (c) => {
+    if (!c.get("viewer"))
+      return errorResponse("Sign in to send messages.", 401);
+    await c.req.arrayBuffer();
+    return c.body(null, 204);
   });
   // Sends get a fixed reply instead of an agent run. See `./sends`.
   app.post("/conversations", async (c) => {
@@ -609,6 +646,20 @@ export function createMockReportingApi(): Hono<{
     if ("error" in result) return errorResponse(result.error, 409);
     return jsonResponse(conversationDeliveryResponseSchema, result);
   });
+  app.post("/conversations/:conversationId/annotations", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    const body = attachObjectLinkBodySchema.safeParse(await c.req.json());
+    if (!params.success || !body.success) {
+      return errorResponse("Invalid request.", 400);
+    }
+    const result = attachMockObjectLink(
+      params.data.conversationId,
+      body.data.url,
+    );
+    return result
+      ? jsonResponse(attachObjectLinkResponseSchema, result)
+      : errorResponse("Object not found.", 404);
+  });
   app.patch("/conversations/:conversationId/title", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
     if (!params.success) {
@@ -672,6 +723,13 @@ export function createMockReportingApi(): Hono<{
     if (!readMockConversationDetail(conversationId)) {
       return errorResponse("Conversation not found.", 404);
     }
+    // A large Slack file that was deleted in Slack after Junior saw it.
+    if (attachmentId === "qa-deleted-pending") {
+      return errorResponse(
+        "deleted-recording.mov is no longer available: The Slack file was deleted, or Junior can no longer access it.",
+        409,
+      );
+    }
     if (attachmentId === "qa-chart-png") {
       return new Response(mockChartPng, {
         headers: {
@@ -682,11 +740,16 @@ export function createMockReportingApi(): Hono<{
         },
       });
     }
-    if (attachmentId === "qa-demo-mp4") {
+    if (
+      attachmentId === "qa-demo-mp4" ||
+      attachmentId === "qa-recording-pending"
+    ) {
+      const filename =
+        attachmentId === "qa-demo-mp4" ? "demo.mp4" : "standup-recording.mp4";
       return new Response(mockDemoMp4, {
         headers: {
           "cache-control": "private, no-store",
-          "content-disposition": 'inline; filename="demo.mp4"',
+          "content-disposition": `${c.req.query("download") === "true" ? "attachment" : "inline"}; filename="${filename}"`,
           "content-type": "video/mp4",
           "content-length": String(mockDemoMp4.byteLength),
         },

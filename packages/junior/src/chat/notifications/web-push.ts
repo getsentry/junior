@@ -32,12 +32,14 @@ const PUSH_TIMEOUT_MS = 10_000;
 function subjectFromBaseUrl(): string | undefined {
   const baseUrl = process.env.JUNIOR_BASE_URL?.trim();
   if (!baseUrl) return undefined;
-  return /^https?:\/\//.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
+  return baseUrl.startsWith("https://") || baseUrl.startsWith("http://")
+    ? baseUrl
+    : `https://${baseUrl}`;
 }
 
 /** Web Push accepts only an `https:` or `mailto:` VAPID subject. */
 function isVapidSubject(subject: string): boolean {
-  return /^(https:\/\/|mailto:)/.test(subject);
+  return subject.startsWith("https://") || subject.startsWith("mailto:");
 }
 
 /**

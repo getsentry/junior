@@ -24,6 +24,7 @@ function transcript(
           arguments: { workspaceId: "production" },
         },
       ],
+      timestamp: 0,
     },
     {
       role: "toolResult",
@@ -31,6 +32,7 @@ function transcript(
       toolName: "deleteWorkspace",
       isError: true,
       content: [{ type: "text", text: error }],
+      timestamp: 0,
       details: {
         guardianActionRejection: {
           ...marker,

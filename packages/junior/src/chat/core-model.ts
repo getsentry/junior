@@ -31,6 +31,7 @@ type ConversationRecordedOperation =
   | "review_item_reply_match"
   | "run_title"
   | "task_title"
+  | "tool_search_rerank"
   | "vision_summary";
 
 /** No Conversation exists, such as an eval. The cost stays on the span. */

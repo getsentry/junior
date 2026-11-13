@@ -11,14 +11,17 @@ import {
 const FILE_TYPES = {
   document: {
     label: "Google Doc",
+    linkRoot: "document",
     mimeType: "application/vnd.google-apps.document",
   },
   presentation: {
     label: "Google Slides presentation",
+    linkRoot: "presentation",
     mimeType: "application/vnd.google-apps.presentation",
   },
   spreadsheet: {
     label: "Google Sheet",
+    linkRoot: "spreadsheets",
     mimeType: "application/vnd.google-apps.spreadsheet",
   },
 } as const;
@@ -37,6 +40,20 @@ export function googleFileType(mimeType: string): GoogleFileType | undefined {
   return GOOGLE_FILE_TYPES.find(
     (type) => FILE_TYPES[type].mimeType === mimeType,
   );
+}
+
+/** Return the first path segment of a file type's links, such as `spreadsheets`. */
+export function googleFileLinkRoot(type: GoogleFileType): string {
+  return FILE_TYPES[type].linkRoot;
+}
+
+/**
+ * Return the file type that a Docs, Sheets, or Slides link names in its
+ * path, such as `/spreadsheets/d/<id>`. Other links name no type.
+ */
+export function googleLinkFileType(url: URL): GoogleFileType | undefined {
+  const root = url.pathname.split("/")[1];
+  return GOOGLE_FILE_TYPES.find((type) => FILE_TYPES[type].linkRoot === root);
 }
 
 /** File id or link input for the tools that use one file. */
@@ -72,7 +89,7 @@ export interface FileReference {
 export function parseFileReference(value: string): FileReference {
   let fileId = value;
   let resourceKey: string | undefined;
-  if (/^https?:\/\//.test(value)) {
+  if (value.startsWith("https://") || value.startsWith("http://")) {
     const url = URL.parse(value);
     fileId =
       url?.pathname.match(/\/d\/([^/]+)/)?.[1] ??
@@ -140,7 +157,7 @@ const driveFileSchema = z.object({
  * `drive.readonly` can read any Drive file, so each tool checks the type
  * before it reads content or comments.
  */
-export async function readGoogleFile(
+export async function readGoogleFileMetadata(
   ctx: GoogleToolContext,
   file: FileReference,
   types: readonly GoogleFileType[],

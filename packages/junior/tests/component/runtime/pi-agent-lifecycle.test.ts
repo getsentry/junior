@@ -44,42 +44,83 @@ function assistantResponse(text = "done"): StreamResponse {
   } as StreamResponse;
 }
 
+const testState = {
+  systemPrompt: "System prompt",
+  model: {
+    id: "test",
+    name: "test",
+    api: "test",
+    provider: "test",
+    baseUrl: "",
+    reasoning: false,
+    input: [],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 0,
+    maxTokens: 0,
+  },
+  thinkingLevel: "off" as const,
+  tools: [],
+};
+
 describe("Pi Agent lifecycle", () => {
-  it("converts prepareNextTurn exceptions into error turns", async () => {
-    const prepareError = new Error("prepare hook failed");
-    const prepareNextTurn = vi.fn(async () => {
-      throw prepareError;
-    });
+  it("converts turn_end listener exceptions into error turns", async () => {
+    // Junior does its step work in an awaited `turn_end` listener and keeps
+    // the error, because Pi reports it only as an error turn. Pi emits
+    // `turn_end` again for that error turn.
+    const listenerError = new Error("turn_end listener failed");
     const agent = new Agent({
-      initialState: {
-        systemPrompt: "System prompt",
-        model: {
-          id: "test",
-          name: "test",
-          api: "test",
-          provider: "test",
-          baseUrl: "",
-          reasoning: false,
-          input: [],
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-          contextWindow: 0,
-          maxTokens: 0,
-        },
-        thinkingLevel: "off",
-        tools: [],
-      },
-      prepareNextTurn,
+      initialState: testState,
       streamFn: async () => assistantResponse(),
+    });
+    agent.subscribe(async (event) => {
+      if (
+        event.type === "turn_end" &&
+        isAssistantMessage(event.message) &&
+        event.message.stopReason !== "error"
+      ) {
+        throw listenerError;
+      }
     });
 
     await expect(agent.prompt("hello")).resolves.toBeUndefined();
 
-    expect(prepareNextTurn).toHaveBeenCalledOnce();
     expect(agent.state.messages.at(-1)).toMatchObject({
       role: "assistant",
       stopReason: "error",
-      errorMessage: prepareError.message,
+      errorMessage: listenerError.message,
     });
+  });
+
+  it("runs prepareNextTurn only before another model call", async () => {
+    // Junior compacts in `turn_end`, so a final answer never reaches this
+    // hook. Steering queued in `turn_end` starts one more model call.
+    const prepareNextTurn = vi.fn(async () => undefined);
+    const agent = new Agent({
+      initialState: testState,
+      prepareNextTurn,
+      streamFn: async () => assistantResponse(),
+    });
+    let steered = false;
+    agent.subscribe(async (event) => {
+      if (event.type === "turn_end" && !steered) {
+        steered = true;
+        agent.steer({
+          role: "user",
+          content: [{ type: "text", text: "one more thing" }],
+          timestamp: Date.now(),
+        });
+      }
+    });
+
+    await agent.prompt("hello");
+
+    expect(prepareNextTurn).toHaveBeenCalledOnce();
+    expect(agent.state.messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+      "assistant",
+    ]);
   });
 
   it("continues once after empty output without delivering it", async () => {
@@ -87,23 +128,7 @@ describe("Pi Agent lifecycle", () => {
     const streamFn = vi.fn(async () => assistantResponse(replies.shift()));
     const delivered: string[] = [];
     const agent = new Agent({
-      initialState: {
-        systemPrompt: "System prompt",
-        model: {
-          id: "test",
-          name: "test",
-          api: "test",
-          provider: "test",
-          baseUrl: "",
-          reasoning: false,
-          input: [],
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-          contextWindow: 0,
-          maxTokens: 0,
-        },
-        thinkingLevel: "off",
-        tools: [],
-      },
+      initialState: testState,
       streamFn,
     });
     agent.subscribe((event) => {

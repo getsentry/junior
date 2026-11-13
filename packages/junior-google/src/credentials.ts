@@ -1,9 +1,9 @@
 /**
  * Credential issuing and egress policy for Google APIs.
  *
- * Only this plugin's own tools may use Junior's Google account. The tools
- * enforce disclosure and invite rules in code, so the sandbox and other
- * callers get no Google credential at all.
+ * Only this plugin's own tools and link cards may use Junior's Google
+ * account. They enforce disclosure and invite rules in code, so the sandbox
+ * and other callers get no Google credential at all.
  */
 import {
   EgressPolicyDenied,

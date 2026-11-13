@@ -63,7 +63,7 @@ const SDK_REQUEST_HEADER_PREFIX = "http.request.header.";
 // Span names such as `GET https://slack.com/api/users.info?user=U1` repeat the
 // request URL. Query spans use `?` placeholders, so only method-and-URL names
 // are rewritten.
-const URL_SPAN_NAME = /^([A-Z]+ )((?:https?:\/\/|\/)\S*)$/;
+const SPAN_METHOD = /^[A-Z]+$/;
 
 /**
  * Drop the query and fragment, hide the sandbox egress credential token, and
@@ -79,8 +79,15 @@ function scrubUrl(value: string): string {
 }
 
 function scrubSpanName(name: string): string {
-  const match = URL_SPAN_NAME.exec(name);
-  return match ? `${match[1]}${scrubUrl(match[2] ?? "")}` : name;
+  const space = name.indexOf(" ");
+  if (space < 1) return name;
+  const method = name.slice(0, space);
+  const target = name.slice(space + 1);
+  const isUrl = ["https://", "http://", "/"].some((prefix) =>
+    target.startsWith(prefix),
+  );
+  if (!SPAN_METHOD.test(method) || !isUrl || /\s/.test(target)) return name;
+  return `${method} ${scrubUrl(target)}`;
 }
 
 function isSecretHeaderAttribute(key: string): boolean {

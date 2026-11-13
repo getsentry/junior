@@ -200,6 +200,35 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       );
     }
 
+    // Like Pi 0.85.1: await `turn_end` listeners. Only when another model
+    // call follows, prepare it and use its context. A failure of either
+    // becomes a failed model message.
+    private async endTurn(
+      message: unknown,
+      toolResults: unknown[],
+    ): Promise<boolean> {
+      try {
+        for (const subscriber of this.subscribers) {
+          await subscriber({ type: "turn_end", message, toolResults });
+        }
+        if (toolResults.length === 0 && this.steeringMessages.length === 0) {
+          return true;
+        }
+        const update = (await this.prepareNextTurn?.({
+          context: { messages: this.state.messages },
+          message,
+          toolResults,
+        })) as { context?: { messages?: unknown[] } } | undefined;
+        if (update?.context?.messages) {
+          this.state.messages = [...update.context.messages];
+        }
+        return true;
+      } catch (error) {
+        this.recordRunFailure(error);
+        return false;
+      }
+    }
+
     private recordRunFailure(error: unknown) {
       this.pushMessages({
         role: "assistant",
@@ -238,19 +267,9 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           usage: { input: 2, output: 2 },
         });
         this.pushMessages(toolResult);
-        await Promise.all(
-          this.subscribers.map((subscriber) =>
-            subscriber({
-              type: "turn_end",
-              message: this.state.messages.at(-2),
-              toolResults: [toolResult],
-            }),
-          ),
-        );
-        await this.prepareNextTurn?.({
-          context: { messages: this.state.messages },
-          toolResults: [toolResult],
-        });
+        if (!(await this.endTurn(this.state.messages.at(-2), [toolResult]))) {
+          return {};
+        }
         // The compaction checkpoint is the resume point if this slice stops.
         compactionState.checkpointTurnStartMessageIndex = (
           await turnSessionState.getTurnRecord(
@@ -327,23 +346,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
             subscriber({ type: "message_end", message: finalMessage }),
           ),
         );
-        await Promise.all(
-          this.subscribers.map((subscriber) =>
-            subscriber({
-              type: "turn_end",
-              message: finalMessage,
-              toolResults: [],
-            }),
-          ),
-        );
-        try {
-          await this.prepareNextTurn?.({
-            context: { messages: this.state.messages },
-            toolResults: [],
-          });
-        } catch (error) {
-          this.recordRunFailure(error);
-        }
+        await this.endTurn(finalMessage, []);
         return {};
       }
       if (
@@ -367,13 +370,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           );
         }
         repositoryState.available ||= repositoryState.availableAtBoundary;
-        try {
-          await this.prepareNextTurn?.({
-            context: { messages: this.state.messages },
-            toolResults: [],
-          });
-        } catch (error) {
-          this.recordRunFailure(error);
+        if (!(await this.endTurn(this.state.messages.at(-1), []))) {
           return {};
         }
         if (agentMode.value === "steeringDelivery") {
