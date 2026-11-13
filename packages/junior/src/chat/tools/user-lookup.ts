@@ -292,7 +292,7 @@ export function createUserLookupTool(
 ) {
   return zodTool({
     description:
-      "Look up people by identity provider and query. Pass an enabled `provider` and its provider subject ID or handle. For `slack`, pass the person's Slack user ID (`U…`) whenever the conversation shows one, such as the requester's `author_id`, a participant's `actor_id`, or a `<@U…>` mention. The `slack` provider also accepts email and name searches. Use name search only for people with no known ID, because it can miss people in large workspaces. Returns Slack `mention` values (`<@U…>`) for the current workspace. Slack results also list `linked_identities`: verified handles of other accounts the person linked to you, such as `github`. Use a mention or handle only when one person clearly matches; otherwise ask which person the user means.",
+      "Look up people by identity provider and query. Name search can miss people in large workspaces. Returns Slack `mention` values (`<@U…>`) for the current workspace. Slack results also list `linked_identities`: verified handles of other accounts the person linked to you, such as `github`. Use a mention or handle only when one person clearly matches; otherwise ask which person the user means.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -309,7 +309,7 @@ export function createUserLookupTool(
           .trim()
           .min(1)
           .describe(
-            "Provider subject ID, handle, Slack email, or Slack name. Prefer a Slack user ID (U…) when one is known.",
+            "Provider subject ID, handle, Slack email, or Slack name. For Slack, pass the user ID (`U…`) whenever the conversation shows one, such as the requester's `author_id`, a participant's `actor_id`, or a `<@U…>` mention. Search by name only with no known ID.",
           ),
       })
       .strict(),

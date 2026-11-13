@@ -15,7 +15,7 @@ import {
   getAgentInvocation,
   markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
-import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import {
   buildAgentInvocationInboundMessage,
   createAgentInvocationWorker,
@@ -398,7 +398,7 @@ describe("agent invocation worker", () => {
         status: "completed",
       });
       await expect(
-        createSearchAgentsTool({ conversationId: PARENT_CONVERSATION_ID })
+        createListAgentsTool({ conversationId: PARENT_CONVERSATION_ID })
           .execute!({}, {}),
       ).resolves.toMatchObject({
         agents: [

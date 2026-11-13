@@ -37,6 +37,10 @@ export const test = base.extend<DashboardFixtures, DashboardWorkerFixtures>({
     await resetDashboardMockState();
     await mockDashboardApis(page, { controlTimers });
     await use(page);
+    // A background read can still be in a route handler when the test ends.
+    // Closing the page then disposes its response, and the handler throws.
+    // Handler errors during the test still fail it.
+    await page.unrouteAll({ behavior: "ignoreErrors" });
   },
 });
 

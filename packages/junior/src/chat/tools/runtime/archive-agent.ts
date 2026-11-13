@@ -49,7 +49,7 @@ export function createArchiveAgentTool(conversationId: string) {
           .trim()
           .min(1)
           .describe(
-            "Thread conversation ID from spawnAgent or searchAgents to archive",
+            "Thread conversation ID from spawnAgent or listAgents to archive",
           ),
         apply_to_children: z
           .boolean()
@@ -68,7 +68,7 @@ export function createArchiveAgentTool(conversationId: string) {
       });
       if (!child || child.parentConversationId !== conversationId) {
         throw new ToolInputError(
-          `${childConversationId} is not a child agent of this conversation. Use searchAgents to find its conversation_id.`,
+          `${childConversationId} is not a child agent of this conversation. Use listAgents to find its conversation_id.`,
         );
       }
       if (child.kind !== "thread") {
@@ -133,7 +133,7 @@ export function createArchiveAgentTool(conversationId: string) {
           };
         case "conflict":
           throw new ToolInputError(
-            `${childConversationId} received new activity. Check it again with searchAgents before you archive it.`,
+            `${childConversationId} received new activity. Check it again with listAgents before you archive it.`,
           );
         case "unarchived_children":
           throw new ToolInputError(

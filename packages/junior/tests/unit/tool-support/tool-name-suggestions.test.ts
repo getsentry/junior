@@ -27,7 +27,7 @@ const { catalogTools } = planToolExposure({
   github_createPullRequest: demo({ source: "github" }),
   listWatches: demo(),
   operatorSql: demo({ exposure: "hidden", source: "agents" }),
-  searchAgents: demo({ source: "agents" }),
+  listAgents: demo({ source: "agents" }),
   slackCanvasCreate: demo({ source: "slack" }),
   spawnAgent: demo({ source: "agents" }),
   stopAgent: demo({ source: "agents" }),
@@ -57,14 +57,14 @@ describe("findToolNameHint", () => {
     ["agents.stopAgnet", "stopAgent"],
     // Edits on the full name.
     ["stopAgnet", "stopAgent"],
-    ["serachAgents", "searchAgents"],
+    ["lsitAgents", "listAgents"],
   ])("suggests %s as %s", (name, expected) => {
     expect(hint(name)).toBe(`Did you mean \`${expected}\`?`);
   });
 
   it("lists the source's tools when nothing in it matches", () => {
     expect(hint("agents.kill")).toBe(
-      "Tools in `agents`: archiveAgent, searchAgents, spawnAgent, stopAgent.",
+      "Tools in `agents`: archiveAgent, listAgents, spawnAgent, stopAgent.",
     );
   });
 

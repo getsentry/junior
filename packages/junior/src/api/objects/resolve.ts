@@ -7,7 +7,9 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 import { getDashboardLinkFilter } from "@/chat/dashboard-link";
+import { credentialContextForActor } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
+import { createPluginEgress } from "@/chat/egress/plugin";
 import { logException } from "@/chat/logging";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginCache } from "@/chat/plugins/cache";
@@ -28,6 +30,14 @@ import {
 
 /** A card is a short-lived read. A changed object shows within this time. */
 export const OBJECT_LINK_TTL_MS = 60_000;
+
+// Links resolve outside a Turn, so no person is the credential subject. This
+// system Actor gets only credentials that a plugin owns, never the viewer's.
+// Each plugin checks that the viewer may see an object before it returns it.
+const OBJECT_LINK_SYSTEM_ACTOR = {
+  platform: "system",
+  name: "object-link",
+} as const;
 
 function coreLinkTypes(): ObjectLinkType[] {
   // Slack runtime is in core until Slack is a plugin.
@@ -71,6 +81,13 @@ function pluginLinkTypes(plugin: PluginRegistration): ObjectLinkType[] {
         {
           cache: createPluginCache(name),
           db: getDb(),
+          egress: createPluginEgress({
+            credentialContext: credentialContextForActor(
+              OBJECT_LINK_SYSTEM_ACTOR,
+            ),
+            // A card is optional. It must never ask anyone to authorize.
+            pluginAuth: { async handleAuthRequired() {} },
+          }),
           log: createPluginLogger(name),
           plugin: { name },
           viewer,

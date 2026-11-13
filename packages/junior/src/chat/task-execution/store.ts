@@ -9,7 +9,7 @@ import {
 } from "./queue";
 import * as workState from "./state";
 
-export type { RenderInboundText } from "./state";
+export type { BeforeWorkStops, RenderInboundText } from "./state";
 export {
   CONVERSATION_ACTIVE_INDEX_KEY,
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
@@ -159,6 +159,7 @@ export async function getConversationWorkStates(
 
 /** Count one failed conversation execution and persist its terminal retry state. */
 export async function recordConversationRetry(args: {
+  beforeWorkStops?: workState.BeforeWorkStops;
   conversationId: string;
   conversationStore?: ConversationStore;
   leaseToken: string;
@@ -702,10 +703,7 @@ export async function deadLetterAttempt(args: {
 
 /** Recover an expired lease and persist the resulting retry state. */
 export async function clearExpiredConversationLease(args: {
-  beforeWorkStops?: (
-    conversationId: string,
-    inboundMessageIds: readonly string[],
-  ) => Promise<void>;
+  beforeWorkStops?: workState.BeforeWorkStops;
   conversationId: string;
   conversationStore?: ConversationStore;
   nowMs?: number;

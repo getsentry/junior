@@ -9,6 +9,7 @@ export const objectTypeSchema = z.enum([
   "calendar_event",
   "conversation",
   "person",
+  "document",
   "message",
   "item",
 ]);
@@ -22,6 +23,7 @@ const objectTypeLabels = {
   calendar_event: "Calendar event",
   conversation: "Conversation",
   person: "Person",
+  document: "Document",
   message: "Message",
   item: "Item",
 } satisfies Record<ObjectType, string>;
@@ -38,6 +40,7 @@ const objectIconNames = [
   "calendar",
   "comment-discussion",
   "person",
+  "file",
   "comment",
   "package",
 ] as const;
@@ -71,6 +74,7 @@ export function objectPresentation(object: {
       calendar_event: "calendar",
       conversation: "comment-discussion",
       person: "person",
+      document: "file",
       message: "comment",
       item: "package",
     } satisfies Record<ObjectType, ObjectIconName>
