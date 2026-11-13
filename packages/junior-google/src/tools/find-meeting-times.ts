@@ -40,7 +40,7 @@ const inputSchema = z
     optional_attendees: emailListSchema(20)
       .default([])
       .describe(
-        'Work emails of people the requester calls optional or "if free". Their conflicts do not block a slot; slots where they are free come first. Put the requester here when their own calendar must not block a slot, such as when they say some events are only holds.',
+        'Work emails of people the requester calls optional or "if free". Their conflicts do not block a slot; slots where they are free come first. Put the requester here when their own events must not block a slot, such as events they call holds.',
       ),
     duration_minutes: z.number().int().min(15).max(480).default(30),
     time_min: z.iso
@@ -101,7 +101,15 @@ const inputSchema = z
       .describe(
         "Only return slots on these days, in the time_zone of the slot labels. Omit to search every weekday.",
       ),
-    max_results: z.number().int().min(1).max(20).default(3),
+    max_results: z
+      .number()
+      .int()
+      .min(1)
+      .max(20)
+      .default(3)
+      .describe(
+        "Maximum slots to return. Slots come best first: days on which attendees already have meetings, so days without meetings stay free; then most focus time kept (free blocks of 2 hours, or 1 hour on days without one); then slots that join existing meetings.",
+      ),
   })
   .strict();
 
@@ -575,7 +583,7 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "Find meeting times when every required attendee is free and inside working hours in their own calendar time zone, using Google Calendar free/busy data from your own Google account. Returns open slots only, never event details. Slots come best first: first days on which the attendees already have meetings, so days without meetings stay free; then the slots that keep the most focus time (free blocks of 2 hours, or 1 hour on days without a 2-hour block) for the attendees, then the ones that join existing meetings instead of adding an interruption. Slots also leave each attendee a lunch break inside their lunch window and do not make a run of back-to-back meetings longer than max_back_to_back_minutes. Offer them as a short list in that order; when the requester leaves the choice to you, take the first. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so instead of treating them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
+      "Find meeting times when every required attendee is free and in working hours, using free/busy data from your own Google account. Returns open slots best first, never event details. Offer a short list in that order; if the requester lets you choose, take the first. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so, and never treat them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
     inputSchema,
     outputSchema,
     async execute(input) {
