@@ -10,6 +10,11 @@
  * The decision is the same cost model as idle warming (`decideWarmup`). The
  * "reply" is the next request of the run, and the gaps are tool waits: the
  * time from a request that ended with tool calls to the next request.
+ *
+ * Each tool wait that the next request ends counts in the savings counters,
+ * as an idle period does. An idle period starts only after a request that
+ * ends the Turn, and the first request of a run has no tool wait, so the two
+ * never count the same pair of requests.
  */
 import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
 import { logInfo, logWarn, setSpanStatus, withSpan } from "@/chat/logging";
@@ -24,12 +29,18 @@ import {
   cachedPrefixTokens,
   connectedState,
   KEY_PREFIX,
+  providerCacheTtlMs,
   sendWarmup,
   cacheTtlMs,
   warmupTiming,
   warmupTooLate,
   type ModelRequest,
 } from "./request";
+import {
+  idlePeriodSavings,
+  recordIdlePeriodSavings,
+  recordWarmupCost,
+} from "./savings";
 
 const TOOL_WAIT_GAPS_KEY = `${KEY_PREFIX}:gaps:tool_wait`;
 const TOOL_WAIT_GAPS_MAX = 2_000;
@@ -70,11 +81,18 @@ interface WarmCache {
   ttlMs: number;
 }
 
+// A request that ended with tool calls and waits for its tools.
+interface Waiting {
+  request: ModelRequest;
+  prefixTokens: number;
+  /** A warmup was scheduled for the wait. */
+  warmed: boolean;
+}
+
 /** Create the tool wait warmer of one agent run. */
 export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  // The request that ended with tool calls and waits for its tools.
-  let waiting: ModelRequest | undefined;
+  let waiting: Waiting | undefined;
   // When the tools of `waiting` returned, before the next request starts.
   let returnedAtMs: number | undefined;
   // A warmup that is in flight when warmups stop must not schedule another.
@@ -179,16 +197,19 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
             prefixTokens,
           });
           Object.assign(attributes, warmup.attributes);
-          if (!warmup.refreshed) {
+          if (warmup.refreshed) {
+            logInfo("cache_warming.warmup.completed", attributes);
+            setOutcome("completed");
+            if (current === generation) {
+              schedule(cache, startedAtMs, cycle + 1);
+            }
+          } else {
             logWarn("cache_warming.warmup.failed", attributes);
             setOutcome("missed");
-            return;
           }
-          logInfo("cache_warming.warmup.completed", attributes);
-          setOutcome("completed");
-          if (current === generation) {
-            schedule(cache, startedAtMs, cycle + 1);
-          }
+          // A missed warmup costs as much as one that refreshed the cache.
+          // Schedule first, so the write does not delay the next warmup.
+          await recordWarmupCost(request.model.id, warmup.costUsd);
         } catch (error) {
           // Nothing awaits this timer, so the failure ends here.
           logWarn("cache_warming.warmup.failed", {
@@ -221,23 +242,50 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
     });
   };
 
+  // Count the savings of the tool wait that this request ends.
+  const recordSavings = async (
+    previous: Waiting,
+    request: ModelRequest,
+    message: AssistantMessage,
+  ) => {
+    const ttlMs = providerCacheTtlMs(previous.request.model.id);
+    if (ttlMs === undefined) return;
+    const savings = idlePeriodSavings({
+      cacheTtlMs: ttlMs,
+      gapMs: request.startedAtMs - previous.request.startedAtMs,
+      prefixTokens: previous.prefixTokens,
+      cacheRead: message.usage.cacheRead,
+      cacheWrite: message.usage.cacheWrite,
+      cacheReadPrice: request.model.cost.cacheRead,
+      cacheWritePrice: request.model.cost.cacheWrite,
+    });
+    if (!savings) return;
+    await recordIdlePeriodSavings(
+      previous.request.model.id,
+      savings,
+      previous.warmed,
+    );
+  };
+
   return {
     async record(request, message) {
       stop();
       const previous = waiting;
-      waiting = message.stopReason === "toolUse" ? request : undefined;
       returnedAtMs = undefined;
       const prefixTokens = cachedPrefixTokens(message);
       const ttlMs = cacheTtlMs(request);
-      if (
-        waiting &&
-        prefixTokens >= MIN_WARMUP_PREFIX_TOKENS &&
-        ttlMs !== undefined
-      ) {
+      const warmed =
+        prefixTokens >= MIN_WARMUP_PREFIX_TOKENS && ttlMs !== undefined;
+      waiting =
+        message.stopReason === "toolUse"
+          ? { request, prefixTokens, warmed }
+          : undefined;
+      if (waiting && ttlMs !== undefined && warmed) {
         schedule({ request, prefixTokens, ttlMs }, request.startedAtMs, 1);
       }
       if (previous) {
-        await recordWait(request.startedAtMs - previous.startedAtMs);
+        await recordWait(request.startedAtMs - previous.request.startedAtMs);
+        await recordSavings(previous, request, message);
       }
     },
     stop,
@@ -253,12 +301,12 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
       returnedAtMs = undefined;
       if (!open) return;
       if (returned !== undefined) {
-        await recordWait(returned - open.startedAtMs);
+        await recordWait(returned - open.request.startedAtMs);
         return;
       }
       // Shorter waits are not recorded, so an open wait counts only when it
       // already ran as long as a recorded one.
-      if (Date.now() - open.startedAtMs >= MIN_RECORDED_TOOL_WAIT_MS) {
+      if (Date.now() - open.request.startedAtMs >= MIN_RECORDED_TOOL_WAIT_MS) {
         await recordWait(NO_REPLY_GAP_MS);
       }
     },

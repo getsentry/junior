@@ -43,10 +43,10 @@ export function CacheWarmingSavings(props: { range: TimeRangeDays }) {
         <div className="border-b border-dashboard-border-subtle px-4 py-4 sm:px-5">
           <SectionTitle>Cache warming</SectionTitle>
           <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
-            Cache writes that warmups saved when a Conversation came back after
-            the cache would have expired, less the cost of the warmups.
-            Effectiveness is net savings as a share of what an ideal warmer
-            would save.
+            Cache writes that warmups saved when a Conversation or a tool came
+            back after the cache would have expired, less the cost of the
+            warmups. Effectiveness is net savings as a share of what an ideal
+            warmer would save.
           </p>
           {query.data ? <Totals totals={query.data.totals} /> : null}
         </div>

@@ -8,8 +8,9 @@
  * warmer never covered. A hit saves the cache write that the call would have
  * made without warming. The oracle is what an ideal warmer saves: it knows the
  * gap, so it sends only the warmups that the gap needs, and only when they cost
- * less than the write. Each idle warmup adds its own cost when it runs, so
- * warmups of periods with no return count too.
+ * less than the write. Each warmup adds its own cost when it runs, so
+ * warmups of periods with no return count too. A tool wait counts as an idle
+ * period (`tool-wait.ts`).
  */
 import { logWarn } from "@/chat/logging";
 import { addStats, firstStatDate, type Stat } from "@/stats";
@@ -146,7 +147,7 @@ export async function recordIdlePeriodSavings(
   await addSavingsStats(modelId, periodCounts(savings, warmed));
 }
 
-/** Add the cost of one idle warmup call. */
+/** Add the cost of one warmup call. */
 export async function recordWarmupCost(
   modelId: string,
   costUsd: number,

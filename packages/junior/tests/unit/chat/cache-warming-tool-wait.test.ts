@@ -1,12 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
+import { createJuniorApi } from "@/api";
+import { cacheWarmingSavingsReportSchema } from "@/api/schema";
 import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
 import type { ModelRequest } from "@/chat/cache-warming/request";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 const mocks = vi.hoisted(() => ({
-  sendWarmup: vi.fn(async () => ({ refreshed: true, attributes: {} })),
+  sendWarmup: vi.fn(async () => ({
+    refreshed: true,
+    costUsd: 0.05,
+    attributes: {},
+  })),
 }));
 
 vi.mock("@/chat/cache-warming/request", async (importOriginal) => ({
@@ -144,7 +150,8 @@ describe("tool wait cache warming", () => {
     mocks.sendWarmup.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
-          finishWarmup = () => resolve({ refreshed: true, attributes: {} });
+          finishWarmup = () =>
+            resolve({ refreshed: true, costUsd: 0.05, attributes: {} });
         }),
     );
     const warmer = createToolWaitWarmer("local:test:tool-wait");
@@ -156,6 +163,37 @@ describe("tool wait cache warming", () => {
     finishWarmup();
     await vi.advanceTimersByTimeAsync(30 * MINUTE);
     expect(mocks.sendWarmup).toHaveBeenCalledTimes(1);
+  });
+
+  it("counts the warmup cost and the savings of a warmed tool wait", async () => {
+    // A day of its own, so the waits of the other cases do not count.
+    vi.setSystemTime(new Date("2031-04-01T12:00:00.000Z"));
+    await seedToolWaits(8 * MINUTE);
+    const warmer = createToolWaitWarmer("local:test:tool-wait");
+    await warmer.record(request(), message("toolUse"));
+    // One warmup at about 4 minutes keeps the cache until the tool returns.
+    await vi.advanceTimersByTimeAsync(7 * MINUTE);
+    expect(mocks.sendWarmup).toHaveBeenCalledTimes(1);
+    await warmer.record(request(), message("stop"));
+
+    const response = await createJuniorApi().request(
+      "http://localhost/api/cache-warming/savings?days=1",
+    );
+    const { totals } = cacheWarmingSavingsReportSchema.parse(
+      await response.json(),
+    );
+    // Prices are per million tokens. The 7-minute wait needs one warmup.
+    const read = (60_000 * model.cost.cacheRead) / 1_000_000;
+    const write = (60_000 * model.cost.cacheWrite) / 1_000_000;
+    const close = (usd: number) => expect.closeTo(usd, 3);
+    expect(totals).toMatchObject({
+      idlePeriods: 1,
+      hits: 1,
+      savedUsd: close(write - read),
+      warmupCostUsd: close(0.05),
+      oracleSavingsUsd: close(write - 2 * read),
+      unwarmedIdlePeriods: 0,
+    });
   });
 
   it("records only tool waits that can change a decision", async () => {
