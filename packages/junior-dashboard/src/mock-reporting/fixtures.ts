@@ -155,6 +155,12 @@ const mockPinPositions = new Map<string, number>();
 /** Process-local renames so rename can be exercised in visual QA. */
 const mockTitles = new Map<string, string>();
 
+/** Process-local attached links, newest first, like the attach API. */
+const mockAttachedAnnotations = new Map<
+  string,
+  NonNullable<ConversationDetailReport["annotations"]>
+>();
+
 /** Process-local auto-archive choices for mock visual QA. */
 const mockAutoArchiveByConversationId = new Map<string, boolean>();
 
@@ -186,6 +192,7 @@ export function resetMockConversationViewerState(): void {
   mockPinnedConversationIds.clear();
   mockPinPositions.clear();
   mockTitles.clear();
+  mockAttachedAnnotations.clear();
   mockAutoArchiveByConversationId.clear();
   mockUnsubscribedConversationIds.clear();
   mockDeliveryPausedConversationIds.clear();
@@ -2529,6 +2536,17 @@ export function setMockConversationTitle(
   return { title };
 }
 
+/** Save one attached link on a mock Conversation, like the attach API. */
+export function addMockAnnotation(
+  conversationId: string,
+  annotation: NonNullable<ConversationDetailReport["annotations"]>[number],
+): void {
+  mockAttachedAnnotations.set(conversationId, [
+    annotation,
+    ...(mockAttachedAnnotations.get(conversationId) ?? []),
+  ]);
+}
+
 /** Save the mock Pinned order, like the pin-order API. */
 export function setMockPinOrder(conversationIds: string[]): {
   conversationIds: string[];
@@ -2892,8 +2910,10 @@ export function readMockConversationDetail(
   if (!conversation) return undefined;
   const agentTree = mockAgentTree(conversation);
   // Match the API: only readable root Conversations can be forked.
+  const attached = mockAttachedAnnotations.get(conversationId) ?? [];
   const detail = {
     ...conversation,
+    annotations: [...attached, ...(conversation.annotations ?? [])],
     ...(agentTree ? { agentTree } : undefined),
     canFork:
       !conversation.parentConversationId &&
