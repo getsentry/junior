@@ -3,6 +3,8 @@
  * route that production uses. History items use the same builders.
  */
 
+import type { JsonValue } from "@earendil-works/pi-ai";
+
 /** A Slack person. The Slack mock answers `users.info` with these fields. */
 export interface SlackAuthor {
   fullName?: string;
@@ -159,9 +161,9 @@ export type Input =
 /** A completed tool call in loaded history. */
 export interface HistoryToolCall {
   name: string;
-  arguments: Record<string, unknown>;
+  arguments: Record<string, JsonValue>;
   /** The tool output that the model saw. */
-  result: unknown;
+  result: JsonValue;
 }
 
 /** An earlier Junior reply in loaded history. */
