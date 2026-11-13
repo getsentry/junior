@@ -115,10 +115,7 @@ async function sendCreate(
   }
 }
 
-/**
- * Create a GitHub organization repository. Core asks the user to confirm
- * each exact creation, and refuses it in Automation runs.
- */
+/** Create a GitHub organization repository with the GitHub App. */
 export function createGitHubCreateRepositoryTool(
   ctx: ToolRegistrationHookContext,
 ) {
@@ -129,11 +126,10 @@ export function createGitHubCreateRepositoryTool(
       openWorldHint: true,
       readOnlyHint: false,
     },
-    approvalMode: "confirm",
     describeProposal: (input) =>
       `Create ${visibility(input)} GitHub repository ${input.owner}/${input.name}`,
     description:
-      "Create a new GitHub repository in an organization. Use this instead of gh repo create. Each creation needs the user's explicit confirmation of the owner, name, and visibility. Call it when the user asks for the repository, without asking first: the first call is rejected so that you ask for that confirmation. After the user confirms, call it again with the same input.",
+      "Create a new GitHub repository in an organization where the GitHub App is installed. Use this instead of gh repo create.",
     exposure: "direct",
     inputSchema,
     outputSchema,

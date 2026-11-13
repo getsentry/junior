@@ -655,7 +655,7 @@ function repositoryCreateTarget(input: {
       owner?.toLowerCase() === org.toLowerCase() &&
       Boolean(name) &&
       extra.length === 0,
-    denialMessage: `GitHub repository creation must use the github_createRepository tool, which asks the user to confirm each repository. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    denialMessage: `GitHub repository creation must use the github_createRepository tool. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
   });
   return target;
 }

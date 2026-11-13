@@ -62,10 +62,9 @@ narrow write tokens.
    - Workflows: Write
 
    Optional: grant Repository creation: Write. Junior then creates
-   organization repositories with `github_createRepository`. Junior asks the
-   user to confirm each repository, and never creates one in an Automation
-   run. Do not grant Administration: Write for this. It also allows repository
-   deletion and transfer.
+   organization repositories with `github_createRepository`. Guardian reviews
+   each creation. Do not grant Administration: Write for this. It also allows
+   repository deletion and transfer.
 
    Optional: grant the account permission Email addresses: Read. Junior then
    reads the verified emails of a connected GitHub account to link it to a
@@ -330,7 +329,7 @@ Once configured, Junior can:
 - Create, update, and comment on issues and pull requests
 - Review pull requests and leave inline review comments as the App bot
 - Push branches and open draft pull requests
-- Create organization repositories after the user confirms each one
+- Create organization repositories
 - Dispatch workflows, rerun workflow runs or jobs, and cancel workflow runs
 - Look up deployments and releases
 - Check githubstatus.com for open or recent incidents when GitHub requests or

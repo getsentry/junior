@@ -974,7 +974,7 @@ describe("github plugin", () => {
     ).rejects.toThrow("This GitHub write request is not supported.");
   });
 
-  it("creates organization repositories with confirm approval", async () => {
+  it("creates organization repositories under Guardian review", async () => {
     let status = 422;
     const ctx = githubToolsContext({
       egressFetch: async () =>
@@ -999,7 +999,8 @@ describe("github plugin", () => {
     const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createRepository;
     const input = { owner: "getsentry", name: "new-service" };
 
-    expect(tool?.approvalMode).toBe("confirm");
+    expect(tool?.approvalMode).toBe("auto");
+    expect(tool?.annotations?.readOnlyHint).toBe(false);
     expect(tool?.describeProposal?.(input)).toBe(
       "Create private GitHub repository getsentry/new-service",
     );

@@ -863,9 +863,7 @@ export function createPiAgentTools(
     // A direct call is reviewed alone, so a tool that may need review runs
     // one at a time. Code Mode reviews a drain as one batch instead.
     executionMode:
-      toolDef.approvalMode === "auto" ||
-      toolDef.approvalMode === "review" ||
-      toolDef.approvalMode === "confirm"
+      toolDef.approvalMode === "auto" || toolDef.approvalMode === "review"
         ? "sequential"
         : toolDef.executionMode,
     execute: async (

@@ -22,6 +22,6 @@ change.
   pull request with `github_createPullRequest`. It does not create forks.
 - Grant `Repository creation: write` only if Junior may create organization
   repositories. Only `github_createRepository` uses it, with a token that has
-  no other permission. Junior asks the user to confirm each repository.
+  no other permission. Guardian reviews each creation.
 - Junior cannot detect force pushes or ref deletion. Use branch protection,
   and install the App only on repositories where Junior may push.

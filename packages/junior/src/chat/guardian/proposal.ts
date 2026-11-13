@@ -94,22 +94,8 @@ export interface ToolActionScript {
   source: string;
 }
 
-/**
- * Core facts for a tool with approval mode `confirm`. Code uses them to
- * require the user's confirmation; they are not in the model prompt.
- */
-export interface ToolActionConfirmation {
-  /**
-   * An earlier Turn of this Conversation rejected the same tool with the
-   * same input with `ask`. Only a later Turn can carry the user's answer.
-   */
-  askedInEarlierTurn: boolean;
-}
-
 /** Exact model-review request; only core-supplied context carries authority. */
 export interface ToolActionProposal {
-  /** Set when the tool's approval mode is `confirm`. */
-  confirmation?: ToolActionConfirmation;
   context: {
     actor:
       | { platform: "local"; userId: string }

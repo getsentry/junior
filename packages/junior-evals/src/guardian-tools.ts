@@ -125,22 +125,6 @@ async function buildAgentTools(): Promise<Record<string, AnyToolDefinition>> {
   };
 }
 
-async function agentTool(name: string): Promise<AnyToolDefinition> {
-  agentTools ??= buildAgentTools();
-  const tool = (await agentTools)[name];
-  if (!tool) {
-    throw new Error(`The agent has no tool named ${name}.`);
-  }
-  return tool;
-}
-
-/** The approval mode that the agent's tool `name` declares. */
-export async function agentToolApprovalMode(
-  name: string,
-): Promise<AnyToolDefinition["approvalMode"]> {
-  return (await agentTool(name)).approvalMode;
-}
-
 /**
  * The `tool` field that production sends when the agent calls `name` with
  * `input`. MCP tools go through `callMcpTool`, as they do for the agent.
@@ -149,7 +133,11 @@ export async function agentToolSpec(
   name: string,
   input: Record<string, unknown>,
 ): Promise<ToolActionProposal["tool"]> {
-  const tool = await agentTool(name);
+  agentTools ??= buildAgentTools();
+  const tool = (await agentTools)[name];
+  if (!tool) {
+    throw new Error(`The agent has no tool named ${name}.`);
+  }
   return proposalTool(
     name,
     tool,

@@ -16,7 +16,7 @@ import {
   type ToolActionScript,
 } from "@/chat/guardian/proposal";
 import type { ToolActionPriorRejection } from "@/chat/guardian/history";
-import { agentToolApprovalMode, agentToolSpec } from "../../src/guardian-tools";
+import { agentToolSpec } from "../../src/guardian-tools";
 
 const LOCAL_CONVERSATION_ID = "local:guardian-eval";
 
@@ -135,11 +135,6 @@ async function resolveTool(
 
 /** Build one exact ToolActionProposal snapshot. */
 export async function proposal(input: {
-  /**
-   * For a `confirm` tool: an earlier Turn asked the user about this exact
-   * action. The gate finds it in the Conversation history.
-   */
-  askedInEarlierTurn?: boolean;
   context: ToolActionProposal["context"];
   evidence?: ToolActionEvidence;
   input: Record<string, unknown>;
@@ -167,18 +162,7 @@ export async function proposal(input: {
       tool: await resolveTool(rejection.tool, rejection.input),
     })),
   );
-  // The gate adds these facts for each `confirm` tool.
-  const confirm =
-    typeof input.tool === "string" &&
-    (await agentToolApprovalMode(input.tool)) === "confirm";
   return {
-    ...(confirm
-      ? {
-          confirmation: {
-            askedInEarlierTurn: input.askedInEarlierTurn ?? false,
-          },
-        }
-      : {}),
     context: input.context,
     ...(input.evidence ? { evidence: input.evidence } : {}),
     input: input.input,

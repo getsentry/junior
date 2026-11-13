@@ -366,20 +366,12 @@ export type PluginToolExecute<
  * Tool-declared approval mode.
  *
  * `auto` delegates to core policy, `review` enters Guardian review, and
- * `approve` permits execution without review. `confirm` enters Guardian
- * review, and core then requires the current actor's explicit confirmation
- * of the exact action: the first call is always rejected so that the agent
- * asks, and no call runs in an Automation run. Plugin tool helpers normalize
+ * `approve` permits execution without review. Plugin tool helpers normalize
  * omission to `auto`.
  *
  * Core resolves the effective mode immediately before execution.
  */
-export const toolApprovalModeSchema = z.enum([
-  "auto",
-  "review",
-  "approve",
-  "confirm",
-]);
+export const toolApprovalModeSchema = z.enum(["auto", "review", "approve"]);
 
 export type ToolApprovalMode = z.output<typeof toolApprovalModeSchema>;
 

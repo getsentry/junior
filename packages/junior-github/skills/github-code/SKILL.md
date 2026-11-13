@@ -16,7 +16,7 @@ Use `git` and `gh` for repository work.
 | Comment on PR / reply in thread | `github_commentOnPullRequest` (`in_reply_to` for a thread reply)                                              |
 | Resolve review thread           | `github_resolvePullRequestReviewThread`                                                                       |
 | Clone missing repo              | `github_cloneRepository` (not `git clone` or `gh repo clone`); on Workspace match error use `switchWorkspace` |
-| Create repository               | `github_createRepository` (not `gh repo create`). It asks the user to confirm each one.                       |
+| Create repository               | `github_createRepository` (not `gh repo create`)                                                              |
 
 ## Open when needed
 
