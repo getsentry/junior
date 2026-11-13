@@ -931,3 +931,29 @@ test("comfortable cards grow near the pointer, except for reduced motion", async
   await page.evaluate(() => new Promise((done) => requestAnimationFrame(done)));
   await expect(card).not.toHaveAttribute("style", /scale/);
 });
+
+test("an open ask holds its pull request still under the pointer", async ({
+  dashboard,
+  page,
+}) => {
+  // Both changes wait on the viewer, so they share one list.
+  await mockReviewItems(page, { open: [prReview, prMerge] });
+  await mockViewerCodeChanges(page, [
+    { idleDays: 1, number: 91, title: "Pin the release train" },
+    { idleDays: 0, number: 42, title: "Tune the retry backoff" },
+  ]);
+  await page.addInitScript(() =>
+    localStorage.setItem("junior:density", "comfortable"),
+  );
+  await page.goto(`${dashboard.baseURL}/?view=prs`);
+  const change = page.getByRole("listitem", { name: "Pin the release train" });
+  await change.getByRole("link", { name: new RegExp(prReview.title) }).click();
+  await expect(change.locator("[data-expanded]")).toHaveCount(1);
+  await page.mouse.move(0, 0);
+  await change.hover();
+  // The other change still grows, so the pointer counts.
+  await expect(
+    page.getByRole("listitem", { name: "Tune the retry backoff" }),
+  ).toHaveAttribute("style", /scale/);
+  await expect(change).not.toHaveAttribute("style", /scale/);
+});

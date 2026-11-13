@@ -131,13 +131,19 @@ export function usePullRequestSections(
  */
 export function PullRequestChange(props: {
   children?: ReactNode;
+  /** One of its asks is open, so the dock leaves the change still. */
+  expanded: boolean;
   nowMs: number;
   row: PullRequestChangeRow;
 }) {
   const { change } = props.row;
   const title = change.title ?? `${change.repository} #${change.number}`;
   return (
-    <li aria-label={title} className="grid list-none gap-1.5">
+    <li
+      aria-label={title}
+      className="grid list-none gap-1.5"
+      data-expanded={props.expanded || undefined}
+    >
       <div
         className={cn(
           inboxCardClass(false),

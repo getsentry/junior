@@ -308,6 +308,11 @@ export function InboxRow(props: InboxRowProps) {
   );
 }
 
+/** The id of what a row's head opens. */
+function rowRegionId(rowKey: string): string {
+  return `inbox-row-${rowKey}`;
+}
+
 function ConversationInboxRow(
   props: InboxRowProps & { conversation: Conversation },
 ) {
@@ -419,7 +424,9 @@ function ConversationInboxRow(
                 />
               ) : null}
               {actionsBelow ? (
-                <div className="ml-auto pr-2">{rowActions(props)}</div>
+                <div className="ml-auto pr-2" id={rowRegionId(props.rowKey)}>
+                  {rowActions(props)}
+                </div>
               ) : null}
             </div>
           ) : null}
@@ -484,7 +491,14 @@ function InboxRowBody(
     MAX_ROW_PREVIEWS - workCards - media.length,
   );
   const canDone = rowCanDone(props);
-  const regionId = `inbox-row-${props.rowKey}`;
+  const regionId = rowRegionId(props.rowKey);
+  const asksShown =
+    props.expanded && (openItems.length > 0 || !props.actionsBelow);
+  // The head controls what it opens. `regionId` always wraps the row bar:
+  // the asks hold it, or, after the Threads, the line that holds it does.
+  const controls = props.actionsBelow
+    ? `${asksShown ? `${regionId}-asks ` : ""}${regionId}`
+    : regionId;
   const pinned = Boolean(conversation?.pinnedAt);
   const running = conversation?.status === "active";
   // Comfortable rows show files and linked work as cards in their own strip.
@@ -512,7 +526,7 @@ function InboxRowBody(
         ) : null}
         <Link
           {...props.linkProps}
-          aria-controls={regionId}
+          aria-controls={controls}
           aria-current={props.selected ? "page" : undefined}
           aria-expanded={props.expanded}
           className={cn(
@@ -622,7 +636,7 @@ function InboxRowBody(
             <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
               {pills.slice(0, 3).map((pill) => (
                 <button
-                  aria-controls={regionId}
+                  aria-controls={controls}
                   aria-expanded={props.expanded}
                   className="cursor-pointer rounded-full border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
                   key={pill.key}
@@ -660,11 +674,11 @@ function InboxRowBody(
           </div>
         ) : null}
       </div>
-      {props.expanded && (openItems.length > 0 || !props.actionsBelow) ? (
+      {asksShown ? (
         <div
           aria-label={`${props.title}: asks`}
           className="grid min-w-0 gap-3 border-t border-dashboard-border px-3 pt-3 pb-3"
-          id={regionId}
+          id={props.actionsBelow ? `${regionId}-asks` : regionId}
           role="region"
         >
           {openItems.map((item) => (

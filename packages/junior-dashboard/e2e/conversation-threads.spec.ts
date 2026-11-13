@@ -121,6 +121,20 @@ test("an open row's actions follow its Threads", async ({
   const bar = names.lastIndexOf("Open conversation");
   expect(lastThread).toBeGreaterThan(-1);
   expect(bar).toBeGreaterThan(lastThread);
+  // What the head controls is on the page, and its last part holds the bar.
+  const controls = await row
+    .getByRole("link", { name: /^Dashboard QA edge cases/ })
+    .first()
+    .getAttribute("aria-controls");
+  const ids = controls?.split(" ") ?? [];
+  expect(ids.length).toBeGreaterThan(0);
+  for (const id of ids)
+    await expect(page.locator(`[id="${id}"]`)).toHaveCount(1);
+  await expect(
+    page
+      .locator(`[id="${ids.at(-1)}"]`)
+      .getByRole("link", { exact: true, name: "Open conversation" }),
+  ).toBeVisible();
 });
 
 test("sends a message from a Thread page", async ({ page, dashboard }) => {

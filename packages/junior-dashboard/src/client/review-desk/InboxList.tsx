@@ -747,6 +747,9 @@ export function InboxList(props: {
         >
           {section.changes.map((row) => (
             <PullRequestChange
+              expanded={row.items.some(
+                (item) => state.expandedKey === item.key,
+              )}
               key={row.change.id}
               nowMs={pullRequests.nowMs}
               row={row}
