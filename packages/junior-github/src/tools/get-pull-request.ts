@@ -1,4 +1,5 @@
 import { githubObjectAnnotation } from "../annotations.js";
+import { readPullRequestCodeOwners } from "../code-owners.js";
 import { githubObjectFacts } from "../object-facts.js";
 import {
   type PluginEgress,
@@ -57,6 +58,12 @@ type Checks = z.output<typeof checksSchema>;
 const pullRequestSchema = z.object({
   base: z.string(),
   checks: checksSchema,
+  code_owners: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Draft only: the CODEOWNERS owners of the changed files. GitHub asks them to review when the pull request is marked ready for review.",
+    ),
   draft: z.boolean(),
   head: z.string(),
   head_sha: commitShaSchema,
@@ -205,7 +212,7 @@ export function createGitHubGetPullRequestTool(ctx: {
       readOnlyHint: true,
     },
     description:
-      "Get a GitHub pull request with its required checks and merge state. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
+      "Get a GitHub pull request with its required checks and merge state, and for a draft, the code owners that GitHub asks to review when it is marked ready. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -239,6 +246,14 @@ export function createGitHubGetPullRequestTool(ctx: {
         repo,
         providerResult.number,
       );
+      // Only a draft can still ask its code owners by being marked ready.
+      const codeOwners =
+        providerResult.draft && providerResult.state === "open"
+          ? await readPullRequestCodeOwners(ctx.egress, repo, {
+              base: providerResult.base.ref,
+              number: providerResult.number,
+            })
+          : undefined;
       const subscribable = gitHubPullRequestSubscribable({
         canSubscribe: ctx.events.canSubscribe,
         number: providerResult.number,
@@ -247,6 +262,7 @@ export function createGitHubGetPullRequestTool(ctx: {
       const data: PullRequest = {
         base: providerResult.base.ref,
         checks,
+        ...(codeOwners ? { code_owners: codeOwners } : undefined),
         draft: providerResult.draft,
         head: providerResult.head.ref,
         head_sha: providerResult.head.sha.toLowerCase(),

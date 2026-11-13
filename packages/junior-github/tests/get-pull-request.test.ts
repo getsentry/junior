@@ -288,6 +288,78 @@ describe("getPullRequest", () => {
     });
   });
 
+  it("returns the code owners that marking a draft ready asks", async () => {
+    const draft = pullRequestResponse();
+    const codeOwners = (
+      files: string[],
+      hasNextPage: boolean,
+      root: string | null = null,
+    ) => ({
+      body: {
+        data: {
+          repository: {
+            github: null,
+            root: root === null ? null : { text: root },
+            docs: null,
+            pullRequest: {
+              files: {
+                nodes: files.map((path) => ({ path })),
+                pageInfo: {
+                  endCursor: hasNextPage ? "page-2" : null,
+                  hasNextPage,
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const { adapter, tool } = toolContext(true, [
+      { body: { ...draft.body, draft: true } },
+      checksResponse({ contexts: [] }),
+      codeOwners(
+        ["docs/guide.txt", "docs/generated/api.txt"],
+        true,
+        [
+          "# Everything else",
+          "*  @getsentry/owners",
+          "/docs/ @getsentry/docs",
+          "/docs/generated/",
+          "*.md @alice # changelog owner",
+        ].join("\n"),
+      ),
+      codeOwners(["CHANGELOG.md"], false),
+    ]);
+
+    const result = await tool.execute?.(
+      { repo: "getsentry/junior", number: 691 },
+      { toolCallId: "get-draft-code-owners" },
+    );
+
+    // The last matching rule wins, and a rule with no owners clears them.
+    expect(result).toMatchObject({
+      code_owners: ["@alice", "@getsentry/docs"],
+      draft: true,
+    });
+    const pages = await Promise.all(
+      adapter
+        .requests()
+        .slice(2)
+        .map((request) => request.request.clone().json()),
+    );
+    expect(pages).toMatchObject([
+      {
+        operationName: "PullRequestCodeOwners",
+        variables: {
+          after: null,
+          githubExpression: "main:.github/CODEOWNERS",
+          number: 691,
+        },
+      },
+      { variables: { after: "page-2" } },
+    ]);
+  });
+
   it.each([
     { name: "no checks", rollup: null },
     {

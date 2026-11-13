@@ -83,13 +83,14 @@ function checkSuiteWebhook(conclusion: "failure" | "success") {
 
 // The shared GitHub HTTP fixture serves these drafts: #692 with every
 // required check passing, #693 with an open decision in its body, #694
-// with another required check failing, and #695 with no required check
-// reported yet.
+// with another required check failing, #695 with no required check
+// reported yet, and #696 with code owners for its changed file.
 const draftHeadShas = {
   692: "6920000000000000000000000000000000000692",
   693: "6930000000000000000000000000000000000693",
   694: "6940000000000000000000000000000000000694",
   695: "6950000000000000000000000000000000000695",
+  696: "6960000000000000000000000000000000000696",
 };
 type DraftNumber = keyof typeof draftHeadShas;
 
@@ -368,6 +369,29 @@ describe("Watches", () => {
     );
 
     expect(markReadyCalls(delivery)).toHaveLength(1);
+    expect(delivery.replies).toHaveLength(1);
+  });
+
+  test("when the checks of a Junior draft with code owners pass, keep it a draft and tell the requester", async ({
+    run,
+  }) => {
+    const conversation = await startDraftThread(run, 696);
+
+    const delivery = await conversation.continue(draftChecksPassedWebhook(696));
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply says the required checks of getsentry/junior#696 pass and the draft waits for the requester's review.",
+          "The reply names @getsentry/cache-owners as the code owners that marking it ready asks to review.",
+        ],
+        fail: [
+          "Do not say that getsentry/junior#696 is ready for review or was marked ready.",
+        ],
+      }),
+    );
+
+    expect(markReadyCalls(delivery)).toEqual([]);
     expect(delivery.replies).toHaveLength(1);
   });
 

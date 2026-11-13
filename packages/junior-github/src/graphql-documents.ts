@@ -156,6 +156,34 @@ export const PULL_REQUEST_CHECKS = githubGraphql(`
   }
 `);
 
+/**
+ * Read the CODEOWNERS files of a base branch and one page of the files that
+ * a pull request changes. Each `*Expression` is `<base>:<path>`.
+ */
+export const PULL_REQUEST_CODE_OWNERS = githubGraphql(`
+  query PullRequestCodeOwners(
+    $owner: String!
+    $name: String!
+    $number: Int!
+    $githubExpression: String!
+    $rootExpression: String!
+    $docsExpression: String!
+    $after: String
+  ) {
+    repository(owner: $owner, name: $name) {
+      github: object(expression: $githubExpression) { ... on Blob { text } }
+      root: object(expression: $rootExpression) { ... on Blob { text } }
+      docs: object(expression: $docsExpression) { ... on Blob { text } }
+      pullRequest(number: $number) {
+        files(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes { path }
+        }
+      }
+    }
+  }
+`);
+
 /** Read one page of a pull request search, with mergeability. */
 export const OPEN_PULL_REQUEST_MERGEABILITY = githubGraphql(`
   query OpenPullRequestMergeability($query: String!, $after: String) {

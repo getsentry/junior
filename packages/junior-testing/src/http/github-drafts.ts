@@ -1,13 +1,14 @@
 // Draft pull requests whose check suite just passed. Each draft has the same
 // passing suite; they differ in other required checks and in the body.
 // #695's checks are not required, like a suite that reports before the
-// required checks start.
+// required checks start. #696 changes a file that has code owners.
 const repo = "getsentry/junior";
 const web = `https://github.com/${repo}`;
 const api = `/repos/${repo}`;
 
 interface DraftFixture {
   body: string;
+  codeOwners?: string;
   failingCheck?: string;
   number: number;
   requiredNotReported?: true;
@@ -39,6 +40,12 @@ const drafts: DraftFixture[] = [
     number: 695,
     requiredNotReported: true,
     sha: "6950000000000000000000000000000000000695",
+  },
+  {
+    body: draftBody,
+    codeOwners: "/src/cache/ @getsentry/cache-owners\n",
+    number: 696,
+    sha: "6960000000000000000000000000000000000696",
   },
 ];
 
@@ -113,6 +120,10 @@ function graphqlPullRequest(draft: DraftFixture) {
     baseRefName: "main",
     body: draft.body,
     commits,
+    files: {
+      nodes: [{ path: "src/cache/warmup.ts" }],
+      pageInfo: { endCursor: null, hasNextPage: false },
+    },
     headRefName: `feat/cache-warmup-${draft.number}`,
     headRefOid: draft.sha,
     autoMergeRequest: null,
@@ -162,8 +173,13 @@ export async function interceptTestGitHubDraftsHttp(
     }
     if (/\bmutation\b/.test(body.query ?? "")) return undefined;
     const pullRequest = graphqlPullRequest(draft);
+    // The CODEOWNERS file of the base branch, in `.github/`.
+    const github = draft.codeOwners ? { text: draft.codeOwners } : null;
     return Response.json({
-      data: { node: pullRequest, repository: { pullRequest } },
+      data: {
+        node: pullRequest,
+        repository: { docs: null, github, pullRequest, root: null },
+      },
     });
   }
   if (request.method !== "GET") return undefined;
