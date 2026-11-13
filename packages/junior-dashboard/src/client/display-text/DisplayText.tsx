@@ -11,7 +11,7 @@ import { MentionPeopleProvider } from "./mentions";
 import { MessageObjectsProvider } from "./resolvedObjects";
 
 export { KnownObjectsProvider, useTextShowsObjectCard } from "./ObjectLinks";
-export { useResolvedObject } from "./resolvedObjects";
+export { MessageObjectsProvider, useResolvedObject } from "./resolvedObjects";
 
 const NO_MENTIONS: readonly ActorIdentity[] = [];
 

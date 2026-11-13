@@ -4,7 +4,10 @@ import { ObjectIcon } from "../components/ObjectIcon";
 import { OutboundLink } from "../components/OutboundLink";
 import { ConversationSidebarAnnotations } from "../conversations/ConversationMeta";
 import { linkStatusLabel } from "../conversations/ConversationLinkedWork";
-import { useResolvedObject } from "../display-text/DisplayText";
+import {
+  MessageObjectsProvider,
+  useResolvedObject,
+} from "../display-text/DisplayText";
 import type { Conversation } from "../types";
 
 type Annotation = NonNullable<Conversation["sidebarAnnotations"]>[number];
@@ -136,15 +139,18 @@ function LinkCard(props: { url: string }) {
 
 /** Cards for the web links in a Conversation's recent messages. */
 export function InboxLinkCards(props: { links: string[] }) {
+  // One provider per row: the row's links resolve in one request.
   return (
-    <div
-      aria-label="Links"
-      className="flex min-w-0 items-center gap-2 overflow-x-auto empty:hidden sm:flex-wrap sm:overflow-visible"
-      role="group"
-    >
-      {props.links.map((url) => (
-        <LinkCard key={url} url={url} />
-      ))}
-    </div>
+    <MessageObjectsProvider>
+      <div
+        aria-label="Links"
+        className="flex min-w-0 items-center gap-2 overflow-x-auto empty:hidden sm:flex-wrap sm:overflow-visible"
+        role="group"
+      >
+        {props.links.map((url) => (
+          <LinkCard key={url} url={url} />
+        ))}
+      </div>
+    </MessageObjectsProvider>
   );
 }
