@@ -235,7 +235,7 @@ export function createSearchConversationsTool(context: {
     exposure: "deferred",
     source: CONVERSATIONS_TOOL_SOURCE,
     description:
-      "Search other conversations for past or current work, with the summary, outcome, and links of their latest Brief. Finds conversations in public channels and in the same private channel or DM. Root conversations only, unless roots_only is false. A root Brief covers the work of its child agents. Briefs remain after transcripts are purged.",
+      "Search other conversations for past or current work, with the summary, outcome, and links of their latest Brief. Finds conversations in public channels and in the same private channel or DM. A root Brief covers the work of its child agents. Briefs remain after transcripts are purged.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
