@@ -1538,6 +1538,7 @@ Conversation: \`local:test:old-conversation\`
         ],
         supported_events: [
           "pull_request.checks.failed",
+          "pull_request.checks.passed",
           "pull_request.checks.recovered",
           "pull_request.comment.created",
           "pull_request.opened",

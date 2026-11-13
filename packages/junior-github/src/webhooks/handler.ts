@@ -39,6 +39,7 @@ import {
   loadCheckSuiteFacts,
   needsCheckSuitePullRequestFacts,
   parseCheckSuitePublishTargets,
+  wantsCheckSuitePassed,
 } from "./check-suite.js";
 import { normalizeGitHubEvents } from "./events.js";
 import {
@@ -339,6 +340,12 @@ export function createGitHubWebhookRoute(args: {
               appIdEnv: args.appIdEnv,
               body,
               installationIdEnv: args.installationIdEnv,
+              loadCheckSuites: await wantsCheckSuitePassed({
+                body,
+                deliveryId,
+                hasMatch: args.events.hasMatch,
+                neededMatchKeys: args.events.neededMatchKeys,
+              }),
               ...(args.loadGitHubIncidents
                 ? { loadGitHubIncidents: args.loadGitHubIncidents }
                 : undefined),
