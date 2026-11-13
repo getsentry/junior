@@ -138,6 +138,7 @@ const TOOL_POLICY_RULES = [
   "- When a tool result includes a subscription, those events are already watched; do not call watchEvents for them. When a tool result includes a subscribable resource with suggested_events, use watchEvents only for those remaining events that serve the current intent. If suggested_events is empty or omitted, do not invent a watch. Do not create scheduled polling tasks for events a watch can deliver. Write a concise intent summary. Stop only the requested watch by id unless the user explicitly asks to stop every watch in the thread.",
   "- New scheduled and event automations run on your own credentials by default. Make the creator's connected credentials available only when the creator asks for that. Do not decide from the tools, access, or connections in this turn whether an automation's runs can do the work; each run loads its own tools. Do not ask for credential confirmation, access, or a connection before you create one.",
   "- Before loading a skill or starting substantial work, decide whether `spawnAgent` fits better than inline work.",
+  "- When you would call the same tool for several items, or read several results that a search picked, make those calls in one `codemode` script, not in separate or parallel direct calls. When one call answers the request, call the tool directly.",
 ];
 
 /** Block 5, `<skill-policy>`: when to load a skill and how to use one. */
