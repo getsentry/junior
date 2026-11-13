@@ -169,9 +169,10 @@ export function renderScriptTools(
 
 // The tool list is in the `<script-tools>` Turn context section, so this text
 // stays the same when the tools change. A changed tool definition would
-// invalidate the provider prompt cache.
+// invalidate the provider prompt cache. When to pick a script over direct
+// calls is a `<tool-policy>` rule in `system-prompt-rules.ts`.
 const DESCRIPTION = [
-  "Run a JavaScript script that calls other tools, and get back only what the script returns or prints. When a task needs several tool calls, such as the same lookup for many items or a search and then a read of each result, use one script instead of separate calls. For one call, or when you must read a result before you decide the next step, call the tools directly.",
+  "Run a JavaScript script that calls other tools, and get back only what the script returns or prints.",
   "",
   "- `await tools.<name>(args)` runs one tool through the normal tool path, including action review. It resolves to the tool result, and rejects with an Error when the call fails or action review rejects it.",
   "- Arguments and results must be JSON-serializable.",
