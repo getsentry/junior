@@ -109,7 +109,7 @@ describe("attach a linked object", () => {
             {
               filters: [{ host: "docs.test", pathPrefix: "/d/" }],
               objectType: "document",
-              readTool: "readDocsFile",
+              readTool: () => "readDocsFile",
               // Only `canView` checks access: Junior must not call
               // `resolve` for anyone else.
               canView: async (ctx) => READERS.has(ctx.viewer.email),
