@@ -63,6 +63,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       }>;
     };
     private prepareNextTurn?: (context: unknown) => Promise<unknown> | unknown;
+    private listeners: Array<(event: unknown) => unknown> = [];
 
     constructor(input: {
       prepareNextTurnWithContext?: (
@@ -88,7 +89,8 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       selectedThinkingLevels.value.push(input.initialState.thinkingLevel);
     }
 
-    subscribe() {
+    subscribe(listener: (event: unknown) => unknown) {
+      this.listeners.push(listener);
       return () => undefined;
     }
 
@@ -163,6 +165,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           content: [{ type: "text", text: JSON.stringify(toolResult) }],
           isError: false,
         });
+        // Like Pi 0.84.1: `turn_end` listeners, then the next-turn hook.
+        for (const listener of this.listeners) {
+          await listener({
+            type: "turn_end",
+            message: assistantMessage,
+            toolResults: [toolResult],
+          });
+        }
         const update = (await this.prepareNextTurn?.({
           context: {
             messages: this.state.messages,

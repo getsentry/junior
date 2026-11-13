@@ -30,6 +30,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       tools: unknown[];
     };
     private prepareNextTurn?: (context?: unknown) => Promise<unknown> | unknown;
+    private listeners: Array<(event: unknown) => unknown> = [];
 
     constructor(input: {
       prepareNextTurn?: () => Promise<unknown> | unknown;
@@ -52,7 +53,8 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         input.prepareNextTurnWithContext ?? input.prepareNextTurn;
     }
 
-    subscribe() {
+    subscribe(listener: (event: unknown) => unknown) {
+      this.listeners.push(listener);
       return () => undefined;
     }
 
@@ -69,6 +71,10 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
 
     async prompt(message: unknown) {
       this.state.messages.push(message);
+      // Like Pi 0.84.1: `turn_end` listeners, then the next-turn hook.
+      for (const listener of this.listeners) {
+        await listener({ type: "turn_end", message, toolResults: [] });
+      }
       await this.prepareNextTurn?.({
         context: { messages: this.state.messages },
       });
