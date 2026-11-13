@@ -14,7 +14,7 @@ import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 
 const PULL_URL = "https://github.com/getsentry/junior/pull/946";
-const DEDUPE_KEY = "pull-request-ready:getsentry/junior#946";
+const DEDUPE_KEY = "pull-request-action:getsentry/junior#946";
 
 let delivery = 0;
 
@@ -106,6 +106,7 @@ interface GitHubState {
   /** When set, the next pull request read waits for it. */
   holdNextPullRead?: Promise<void>;
   merged: boolean;
+  requestedReviewers?: string[];
   reviews: Array<{ state: string; user: { login: string } }>;
   state: "closed" | "open";
 }
@@ -139,6 +140,9 @@ function mockGitHub(github: GitHubState, requests: string[]) {
           html_url: PULL_URL,
           mergeable_state: mergeableState,
           merged: github.merged,
+          requested_reviewers: (github.requestedReviewers ?? []).map(
+            (login) => ({ login }),
+          ),
           state: github.state,
           title: "Add the review desk notice",
         });
@@ -172,9 +176,8 @@ function route(
   errors: string[] = [],
   failures = { close: 0 },
 ): PluginRoute {
-  // Other review desk items, such as review requests, have their own tests.
-  const isReady = (dedupeKey: string) =>
-    dedupeKey.startsWith("pull-request-ready:");
+  // Closes of the items from before one item per pull request are left out.
+  const isReady = (dedupeKey: string) => dedupeKey === DEDUPE_KEY;
   const reviewItems: PluginConversationReviewItems = {
     forConversation(conversationId) {
       return {
@@ -221,7 +224,18 @@ function route(
     plugin: { name: "github" },
     events: { hasMatch: async () => false, async publish() {} },
     reviewItems,
-    users: { readIdentity: async () => undefined },
+    // The requester linked the GitHub account `Requester`.
+    users: {
+      readIdentity: async (identityId: string) =>
+        identityId === "identity-requester"
+          ? {
+              identity: { id: identityId },
+              user: {
+                identities: [{ handle: "Requester", provider: "github" }],
+              },
+            }
+          : undefined,
+    },
   });
   return webhook!;
 }
@@ -254,7 +268,7 @@ async function seedJuniorPullRequest(
   });
 }
 
-describe("ready to merge notice", () => {
+describe("next action item", () => {
   beforeEach(() => {
     const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
       .privateKey.export({ type: "pkcs8", format: "pem" })
@@ -406,7 +420,7 @@ describe("ready to merge notice", () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
       releaseMerge();
       await Promise.all([failing, queued]);
-      expect(errors).toEqual(["GitHub pull request ready notice failed"]);
+      expect(errors).toEqual(["GitHub pull request action failed"]);
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
         input: {
@@ -427,6 +441,79 @@ describe("ready to merge notice", () => {
         "close",
       ]);
       expect(errors).toHaveLength(1);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("shows one item that changes from review to merge", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: ReviewItemCall[] = [];
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["blocked"],
+      merged: false,
+      // Requests for other people or for a team do not wait on the requester.
+      requestedReviewers: ["someone-else"],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, []);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls);
+      await webhook.handler(pullRequestAction("review_requested"));
+      expect(calls).toEqual([]);
+
+      // The GitHub login matches the requester's linked account in any case.
+      github.requestedReviewers = ["requester"];
+      await webhook.handler(pullRequestAction("review_requested"));
+      const review = {
+        conversationId: "slack:C123:1712345.0001",
+        kind: "upsert",
+        notice: {
+          assigneeIdentityIds: ["identity-requester"],
+          body: `GitHub asks you to review **Add the review desk notice**: ${PULL_URL}`,
+          dedupeKey: DEDUPE_KEY,
+          subject: {
+            id: PULL_URL,
+            title: "Add the review desk notice (#946)",
+            url: PULL_URL,
+          },
+          title: "Review requested · #946",
+          waitsOnAssignees: true,
+        },
+      };
+      expect(calls).toEqual([review]);
+
+      github.requestedReviewers = [];
+      await webhook.handler(pullRequestAction("review_request_removed"));
+      expect(calls.at(-1)).toEqual({
+        conversationId: "slack:C123:1712345.0001",
+        input: {
+          dedupeKey: DEDUPE_KEY,
+          reason: "The review request ended.",
+          status: "done",
+        },
+        kind: "close",
+      });
+
+      // GitHub does not send a new request on reopen. The reopen reads the
+      // reviewers that are still requested.
+      github.requestedReviewers = ["Requester"];
+      await webhook.handler(pullRequestAction("reopened"));
+      expect(calls.at(-1)).toEqual(review);
+
+      // Someone else approves, and GitHub can merge it. The requester merges
+      // or reviews, not both, so the same item now asks for the merge.
+      github.mergeableStates = ["clean"];
+      github.reviews = [{ state: "APPROVED", user: { login: "someone-else" } }];
+      await webhook.handler(reviewSubmitted("approved"));
+      expect(calls.at(-1)).toMatchObject({
+        kind: "upsert",
+        notice: { dedupeKey: DEDUPE_KEY, title: "Ready to merge · #946" },
+      });
+      expect(calls).toHaveLength(4);
     } finally {
       await fixture.close();
     }
