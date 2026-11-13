@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-github",
-  "version": "0.300.0",
+  "version": "0.301.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -41,6 +41,7 @@
     "@sentry/junior-plugin-api": "workspace:*",
     "@sinclair/typebox": "^0.34.49",
     "drizzle-orm": "catalog:",
+    "ignore": "^7.0.5",
     "marked": "^18.1.2",
     "mdast-util-from-markdown": "^2.0.3",
     "mdast-util-gfm": "^3.1.0",

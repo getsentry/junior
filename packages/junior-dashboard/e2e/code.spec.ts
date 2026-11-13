@@ -10,6 +10,10 @@ test("shows code activity", async ({ page, dashboard }) => {
   await expect(
     page.getByText("Repositories and code changes created by Junior."),
   ).toBeVisible();
+  // Draft only shows on open changes; a merged change shows Merged.
+  const recentChanges = page.locator("section", { hasText: "Recent changes" });
+  await expect(recentChanges.getByText(/^draft$/i)).toHaveCount(1);
+  await expect(recentChanges.getByText(/^merged$/i)).toHaveCount(1);
   await screenshot(page, "code");
 
   await page

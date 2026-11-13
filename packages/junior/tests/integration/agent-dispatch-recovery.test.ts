@@ -97,7 +97,7 @@ describe("agent dispatch recovery", () => {
     });
   });
 
-  it("resumes paused dispatch work through production routing", async () => {
+  it("ends dispatch work at its reply when a yield is due", async () => {
     const dispatch = await createDispatch(
       "resume",
       {
@@ -130,8 +130,8 @@ describe("agent dispatch recovery", () => {
           name: "reply",
           arguments: { text: "Resumed scheduled digest" },
         },
-        // The reply is final. The resumed slice must not call the model
-        // again and replace it.
+        // The reply is final. The model must not be called again to replace
+        // it.
         {
           type: "toolCall",
           name: "reply",
@@ -153,7 +153,8 @@ describe("agent dispatch recovery", () => {
       await processConversationQueueMessage(queue.takeMessage(), {
         queue,
         run,
-        // Pause the first slice after the `reply` result is saved.
+        // A yield is due after the `reply` result. No step follows it, so the
+        // Turn ends instead.
         softYieldAfterMs: deliveries === 1 ? 0 : undefined,
         state,
       });
@@ -175,9 +176,10 @@ describe("agent dispatch recovery", () => {
       resultMessageTs: expect.any(String),
       status: "completed",
     });
-    expect(runAgent).toHaveBeenCalledTimes(2);
-    const resumedRun = runAgent.mock.calls[1]?.[0];
-    expect(resumedRun).toMatchObject({
+    expect(deliveries).toBe(1);
+    expect(runAgent).toHaveBeenCalledTimes(1);
+    const dispatchRun = runAgent.mock.calls[0]?.[0];
+    expect(dispatchRun).toMatchObject({
       actor: dispatch.actor,
       credentialContext: {
         actor: dispatch.actor,
@@ -192,9 +194,8 @@ describe("agent dispatch recovery", () => {
       source: { kind: "scheduled_automation" },
       surface: "api",
     });
-    expect(resumedRun).not.toHaveProperty("delivery");
-    expect(resumedRun?.instruction.text).toBe(dispatch.input);
-    expect(resumedRun?.instruction.context).toBeUndefined();
+    expect(dispatchRun?.instruction.text).toBe(dispatch.input);
+    expect(dispatchRun?.instruction.context).toBeUndefined();
   });
 
   it("fails the dispatch when every try of its worker is killed", async () => {

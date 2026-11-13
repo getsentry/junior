@@ -1121,17 +1121,19 @@ async function executeAgentRunInPrivacyContext(
         },
       );
       messagesChanged = boundary.contextUpdated;
+      // After the final response or a batch that ended the run, such as a
+      // `noReply` call, no step follows. A yield would resume the run, and the
+      // next slice would call the model again and post its text. Compaction
+      // would drop the answer and start a retry.
+      if (boundary.runEnded) {
+        return;
+      }
       // A yield is normal control flow, so it stays out of the span. It
       // comes before active compaction, so a resumed slice compacts at its
       // start.
       const yieldError = runResume.prepareYieldIfDue(currentAgentMessages());
       if (yieldError) {
         throw yieldError;
-      }
-      // After the final response or a batch that ended the run, such as a
-      // `noReply` call, compaction would drop the answer and start a retry.
-      if (boundary.runEnded) {
-        return;
       }
       // Pi polls steering after this listener. The replacement ends with the
       // pending steering, so compacting here takes it out of Pi's queue.

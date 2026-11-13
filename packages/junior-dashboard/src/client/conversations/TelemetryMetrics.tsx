@@ -329,9 +329,11 @@ export function auxiliaryOperationLabel(
 ): string {
   const knownLabels: Readonly<Record<string, string>> = {
     "junior/action_decided": "Guardian",
+    "junior/conversation_embedding": "Conversation embedding",
     "junior/cache_warmup": "Cache warmup",
     "junior/compaction": "Compaction",
     "junior/conversation_catch_up": "Catch-up",
+    "junior/conversation_search_embedding": "Conversation search",
     "junior/conversation_title": "Conversation title",
     "junior/image_prompt_enrichment": "Image prompt",
     "junior/passive_reply_routed": "Passive reply routing",

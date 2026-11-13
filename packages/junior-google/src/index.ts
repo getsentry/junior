@@ -26,6 +26,7 @@ import {
 } from "./credentials";
 import { googleCalendarLinks } from "./links/calendar";
 import { googleFileLinks } from "./links/files";
+import { googleImages } from "./links/thumbnails";
 import { createGoogleSetupPage, createGoogleSetupRoutes } from "./setup-routes";
 import type { GoogleDb } from "./store";
 import { createCancelCalendarEventTool } from "./tools/cancel-event";
@@ -64,6 +65,7 @@ export function googlePlugin(): PluginRegistration {
     },
     userPages: [createGoogleSetupPage()],
     objectLinks: [googleFileLinks, googleCalendarLinks],
+    images: googleImages,
     hooks: {
       apiRoutes(ctx) {
         const config = readGoogleConfig();
