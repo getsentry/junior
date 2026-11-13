@@ -38,7 +38,9 @@
 
 - Add `code-channels` to `EXPERIMENTAL_FEATURES`.
 - Add `features.code_channels.enabled` and the `code_channels:manage` bot
-  scope to `slack-manifest.yml`. Update the Slack app setup docs.
+  scope to `slack-manifest.yml`. Update the Slack app setup docs. Draft
+  #1915 already adds the feature flag to the manifest. Finish it or close it
+  in this step.
 - Add Slack-owned calls for `agents.conversations.create`,
   `agents.conversations.archive`, and `agents.sessions.setStatus` without
   `thread_ts`.
