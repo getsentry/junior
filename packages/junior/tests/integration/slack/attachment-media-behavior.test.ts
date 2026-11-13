@@ -105,6 +105,12 @@ describe("Slack behavior: mixed attachment media", () => {
           name: "repro.mp4",
           data: Buffer.from("mp4-bytes"),
         },
+        ...["two.png", "three.png", "four.png"].map((name) => ({
+          type: "image",
+          mimeType: "image/png",
+          name,
+          data: Buffer.concat([PNG_BYTES, Buffer.from(name)]),
+        })),
       ] as Message["attachments"],
     });
 
@@ -114,13 +120,18 @@ describe("Slack behavior: mixed attachment media", () => {
 
     expect(imageFetch).toHaveBeenCalledTimes(1);
     expect(capturedAttachments).toHaveLength(1);
-    const [image, pdf, video] = capturedAttachments[0]!;
+    const [image, pdf, video, two, three, four] = capturedAttachments[0]!;
     expect(image).toMatchObject({
       data: PNG_BYTES,
       filename: "chart.png",
       mediaType: "image/png",
     });
-    for (const file of [pdf, video]) {
+    // Three images go inline; the fourth is past the cap but still noted.
+    expect([two, three].map((file) => file?.data !== undefined)).toEqual([
+      true,
+      true,
+    ]);
+    for (const file of [pdf, video, four]) {
       expect(file?.data).toBeUndefined();
       expect(file?.attachmentId).toEqual(expect.any(String));
       expect(file?.promptText).toContain(
