@@ -155,6 +155,10 @@ describe("remote MCP HTTP", () => {
     expect(page.status).toBe(200);
     expect(page.html).toContain(`Connect ${MCP_CLIENT_NAME}`);
     expect(page.html).toContain("mcp-client.example.test");
+    // The client callback can redirect again, and Chrome checks every hop.
+    expect(page.contentSecurityPolicy).toContain(
+      `form-action 'self' ${new URL(MCP_TEST_REDIRECT_URI).origin} https:`,
+    );
     expect(otherPage.status).toBe(403);
     expect(`${callback.origin}${callback.pathname}`).toBe(
       MCP_TEST_REDIRECT_URI,
