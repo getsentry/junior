@@ -2,6 +2,7 @@ import {
   type PluginEgress,
   type PluginToolOutput,
   definePluginTool,
+  pluginToolDefinition,
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
@@ -39,6 +40,19 @@ interface Result extends PluginToolOutput {
   url: string;
 }
 
+export const gitHubUpdateIssueCommentToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description:
+    "Replace the text of a GitHub issue or pull request conversation comment that you posted, for example to update a progress comment. Only works on your own comments.",
+  inputSchema,
+  outputSchema,
+});
+
 /**
  * Replace the body of an issue or pull request conversation comment that the
  * App bot posted. Comments by other users are refused before the write.
@@ -48,16 +62,7 @@ export function createGitHubUpdateIssueCommentTool(
   botEmail: string | undefined,
 ) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: true,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description:
-      "Replace the text of a GitHub issue or pull request conversation comment that you posted, for example to update a progress comment. Only works on your own comments.",
-    inputSchema,
-    outputSchema,
+    ...gitHubUpdateIssueCommentToolDefinition,
     async execute(input): Promise<Result> {
       const repo = parseRepo(input.repo);
       const botUserId = botUserIdFromEmail(botEmail);

@@ -4,6 +4,7 @@ import {
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
@@ -68,6 +69,19 @@ async function threadRootId(
   return comment.in_reply_to_id ?? commentId;
 }
 
+export const gitHubCommentOnPullRequestToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description:
+    "Post a conversation comment on a GitHub pull request, or reply in an inline review thread. For issues, use github_commentOnIssue. Use it to answer a question asked in a pull request review or comment. Returns the comment id and URL.",
+  inputSchema,
+  outputSchema,
+});
+
 /**
  * Post a pull request comment as the App bot, or reply in an inline review
  * thread. GitHub keeps conversation comments under the issues endpoint and
@@ -75,16 +89,7 @@ async function threadRootId(
  */
 export function createGitHubCommentOnPullRequestTool(egress: PluginEgress) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description:
-      "Post a conversation comment on a GitHub pull request, or reply in an inline review thread. For issues, use github_commentOnIssue. Use it to answer a question asked in a pull request review or comment. Returns the comment id and URL.",
-    inputSchema,
-    outputSchema,
+    ...gitHubCommentOnPullRequestToolDefinition,
     async execute(input): Promise<Result> {
       const repo = parseRepo(input.repo);
       const prefix = repoPath(repo);

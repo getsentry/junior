@@ -54,6 +54,7 @@ import type {
   SandboxCommandInput,
   SandboxSession,
 } from "@/chat/sandbox/workspace";
+import { pluginToolsHook } from "../../fixtures/plugin-tools";
 
 const rootTurnTools = turnBehavior({
   kind: "root",
@@ -632,13 +633,18 @@ describe("agent plugin hooks", () => {
           events: { "demo.completed": { reach: "resource" } },
         },
         hooks: {
-          tools(ctx) {
-            expect(ctx.actor).toEqual(TEST_ACTOR);
-            expect(ctx.events.canSubscribe).toBe(true);
-            resolveActor = ctx.users.resolveActor;
-            return {
+          tools: {
+            definitions: () => ({
               demoTool: demoPluginTool("Demo tool", "review"),
-            };
+            }),
+            bind(ctx) {
+              expect(ctx.actor).toEqual(TEST_ACTOR);
+              expect(ctx.events.canSubscribe).toBe(true);
+              resolveActor = ctx.users.resolveActor;
+              return {
+                demoTool: demoPluginTool("Demo tool", "review"),
+              };
+            },
           },
         },
       }),
@@ -707,11 +713,16 @@ describe("agent plugin hooks", () => {
           isEnabled: () => enabled,
         },
         hooks: {
-          tools(ctx) {
-            expect(ctx.events.canSubscribe).toBe(enabled);
-            return {
+          tools: {
+            definitions: () => ({
               demoTool: demoPluginTool("Demo tool", "review"),
-            };
+            }),
+            bind(ctx) {
+              expect(ctx.events.canSubscribe).toBe(enabled);
+              return {
+                demoTool: demoPluginTool("Demo tool", "review"),
+              };
+            },
           },
         },
       }),
@@ -742,7 +753,7 @@ describe("agent plugin hooks", () => {
           description: "Agent demo",
         },
         hooks: {
-          tools() {
+          tools: pluginToolsHook(() => {
             return {
               demoTool: definePluginTool({
                 description: "Demo tool",
@@ -751,7 +762,7 @@ describe("agent plugin hooks", () => {
                 execute: () => ({ message: "done" }),
               }),
             };
-          },
+          }),
         },
       }),
     ]);
@@ -780,7 +791,7 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("preserves plugin tool methods while adding internal identity", async () => {
+  it("binds class-instance plugin tools while adding internal identity", async () => {
     const prototypeTool = new PrototypeTool();
     const previous = setPlugins([
       defineJuniorPlugin({
@@ -790,11 +801,12 @@ describe("agent plugin hooks", () => {
           description: "Agent demo",
         },
         hooks: {
-          tools(ctx) {
-            expect(ctx.events.canSubscribe).toBe(false);
-            return {
-              prototypeTool,
-            };
+          tools: {
+            definitions: () => ({ prototypeTool }),
+            bind(ctx) {
+              expect(ctx.events.canSubscribe).toBe(false);
+              return { prototypeTool };
+            },
           },
         },
       }),
@@ -809,9 +821,7 @@ describe("agent plugin hooks", () => {
         workspace: {} as any,
       });
 
-      expect(Object.getPrototypeOf(tools.agentDemo_prototypeTool)).toBe(
-        prototypeTool,
-      );
+      expect(tools.agentDemo_prototypeTool?.description).toBe("Prototype tool");
       expect(tools.prototypeTool).toBeUndefined();
       expect(tools.agentDemo_prototypeTool?.approvalMode).toBe("auto");
       expect(tools.agentDemo_prototypeTool?.identity).toEqual({
@@ -844,11 +854,11 @@ describe("agent plugin hooks", () => {
           description: "Agent demo",
         },
         hooks: {
-          tools() {
+          tools: pluginToolsHook(() => {
             return {
               demoTool: demoPluginTool(),
             };
-          },
+          }),
         },
       }),
     ]);
@@ -878,12 +888,12 @@ describe("agent plugin hooks", () => {
           description: "Agent demo",
         },
         hooks: {
-          tools() {
+          tools: pluginToolsHook(() => {
             return {
               directTool: demoPluginTool("Direct tool", undefined, "direct"),
               defaultTool: demoPluginTool(),
             };
-          },
+          }),
         },
       }),
     ]);
@@ -913,11 +923,11 @@ describe("agent plugin hooks", () => {
           description: "Agent demo",
         },
         hooks: {
-          tools() {
+          tools: pluginToolsHook(() => {
             return {
               deployment_create: demoPluginTool(),
             };
-          },
+          }),
         },
       }),
     ]);
@@ -949,11 +959,11 @@ describe("agent plugin hooks", () => {
           description: "Agent demo",
         },
         hooks: {
-          tools() {
+          tools: pluginToolsHook(() => {
             return {
               loadSkill: demoPluginTool(),
             };
-          },
+          }),
         },
       }),
     ]);
@@ -1005,10 +1015,10 @@ describe("agent plugin hooks", () => {
           },
         },
         hooks: {
-          tools(ctx) {
+          tools: pluginToolsHook((ctx) => {
             captured = ctx;
             return {};
-          },
+          }),
         },
       }),
     ]);
@@ -2021,10 +2031,10 @@ describe("getPluginTools channel resolution", () => {
           description: "Capture plugin context",
         },
         hooks: {
-          tools(ctx) {
+          tools: pluginToolsHook((ctx) => {
             captured = ctx;
             return {};
-          },
+          }),
         },
       }),
     ]);

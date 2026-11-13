@@ -7,10 +7,17 @@
  */
 import {
   defineJuniorPlugin,
+  definePluginTool,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import { createVercelDeploymentTool } from "./tools/deployment.js";
-import { createVercelActionTools } from "./tools/actions.js";
+import {
+  createVercelDeploymentTool,
+  vercelDeploymentToolDefinition,
+} from "./tools/deployment.js";
+import {
+  createVercelActionTools,
+  vercelActionToolDefinitions,
+} from "./tools/actions.js";
 import {
   VERCEL_DEPLOYMENT_EVENTS,
   VERCEL_DEPLOYMENT_MATCH_FIELDS,
@@ -77,11 +84,31 @@ export function vercelPlugin(): PluginRegistration {
           }),
         ];
       },
-      tools(ctx) {
-        return {
-          deployment: createVercelDeploymentTool(ctx),
-          ...createVercelActionTools(ctx),
-        };
+      tools: {
+        definitions: () => ({
+          deployment: definePluginTool(vercelDeploymentToolDefinition),
+          deploymentCreate: definePluginTool(
+            vercelActionToolDefinitions.deploymentCreate,
+          ),
+          deploymentInspect: definePluginTool(
+            vercelActionToolDefinitions.deploymentInspect,
+          ),
+          aliasAssign: definePluginTool(
+            vercelActionToolDefinitions.aliasAssign,
+          ),
+          aliasInspect: definePluginTool(
+            vercelActionToolDefinitions.aliasInspect,
+          ),
+          deploymentDelete: definePluginTool(
+            vercelActionToolDefinitions.deploymentDelete,
+          ),
+        }),
+        bind(ctx) {
+          return {
+            deployment: createVercelDeploymentTool(ctx),
+            ...createVercelActionTools(ctx),
+          };
+        },
       },
     },
   });

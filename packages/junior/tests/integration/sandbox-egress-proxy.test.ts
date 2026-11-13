@@ -20,6 +20,7 @@ import { githubPlugin } from "@sentry/junior-github";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
 import type { EmittedLogRecord } from "@/chat/logging";
 import { mswServer } from "../msw/server";
+import { pluginToolsHook } from "../fixtures/plugin-tools";
 
 const rootTurnTools = turnBehavior({
   kind: "root",
@@ -841,7 +842,7 @@ describe("sandbox egress proxy integration", () => {
     await registerManagedEgressPlugin({
       grantForEgress,
       issueCredential,
-      tools(ctx) {
+      tools: pluginToolsHook((ctx) => {
         return {
           managedEgressRead: definePluginTool({
             approvalMode: "approve",
@@ -875,7 +876,7 @@ describe("sandbox egress proxy integration", () => {
             },
           }),
         };
-      },
+      }),
     });
     const upstreamFetch = vi.fn(
       async (url: URL | string, init?: RequestInit) => {

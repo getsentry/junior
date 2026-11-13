@@ -1,5 +1,6 @@
 import {
   definePluginTool,
+  pluginToolDefinition,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
@@ -31,22 +32,26 @@ const outputSchema = pluginToolOutputSchema.extend({
   ...docOutputFields,
 });
 
+export const replaceGoogleDocContentToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  describeProposal(input) {
+    return `Delete all of the body of Google Doc ${input.document} and replace it with ${input.content.length} characters of new content.`;
+  },
+  description:
+    "Replace the whole body of a Google Doc with Markdown content, as your own Google account. Everything in the body is deleted, including tables, images, and text other people wrote; headers, footers, comments, and version history stay. Works only when that account and the requester can both edit the Doc. Anyone who can talk to you can read a Doc your account can edit, if they give you its link. Confirm with the requester first unless they asked to replace the whole Doc.",
+  inputSchema,
+  outputSchema,
+});
+
 /** Replace the whole body of a Google Doc with Markdown content. */
 export function createReplaceGoogleDocContentTool(ctx: GoogleToolContext) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: true,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    describeProposal(input) {
-      return `Delete all of the body of Google Doc ${input.document} and replace it with ${input.content.length} characters of new content.`;
-    },
-    description:
-      "Replace the whole body of a Google Doc with Markdown content, as your own Google account. Everything in the body is deleted, including tables, images, and text other people wrote; headers, footers, comments, and version history stay. Works only when that account and the requester can both edit the Doc. Anyone who can talk to you can read a Doc your account can edit, if they give you its link. Confirm with the requester first unless they asked to replace the whole Doc.",
-    inputSchema,
-    outputSchema,
+    ...replaceGoogleDocContentToolDefinition,
     async execute(input) {
       const converted = convertDocMarkdown(input.content);
       const doc = await requireEditableDoc(ctx, input.document);

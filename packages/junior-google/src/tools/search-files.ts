@@ -2,6 +2,7 @@ import {
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { emailDomain } from "../config";
@@ -193,22 +194,26 @@ async function searchFindableFiles(
   };
 }
 
+export const searchGoogleFilesToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Find Google Docs, Sheets, and Slides by title or text. Finds only company-owned files that anyone in the company can find in Drive, or that are shared with the requester by name. Shared-drive files are found only when shared with the requester by name. Files shared by link, shared only with other people or groups, or owned outside the company are never found; ask the requester for their link instead. Returns file ids for readGoogleFile and listGoogleFileComments.",
+  inputSchema,
+  outputSchema,
+});
+
 /**
  * Find Docs, Sheets, and Slides that the requester could find in Drive
  * themselves. Never search without the requester's terms.
  */
 export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "Find Google Docs, Sheets, and Slides by title or text. Finds only company-owned files that anyone in the company can find in Drive, or that are shared with the requester by name. Shared-drive files are found only when shared with the requester by name. Files shared by link, shared only with other people or groups, or owned outside the company are never found; ask the requester for their link instead. Returns file ids for readGoogleFile and listGoogleFileComments.",
-    inputSchema,
-    outputSchema,
+    ...searchGoogleFilesToolDefinition,
     async execute(input) {
       const requester = await requesterEmail(ctx);
       // Domain-findable files are findable only inside the allowed domains,

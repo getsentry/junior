@@ -1,5 +1,6 @@
 import {
   definePluginTool,
+  pluginToolDefinition,
   pluginToolOutputSchema,
   PluginToolInputError,
 } from "@sentry/junior-plugin-api";
@@ -50,6 +51,19 @@ const outputSchema = pluginToolOutputSchema.extend({
   ...slidesOutputFields,
 });
 
+export const readGoogleFileToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Read one Google Doc, Sheet, or Slides presentation by link or file id, as your own Google account sees it. A Doc returns Markdown and a revision_id for the Doc edit tools, a Sheet returns cells as CSV, and Slides return slide text and speaker notes. Works for files shared with that account or with anyone who has the link. Comments are not included; use listGoogleFileComments. Contents can be private: share only what the requester needs, and avoid repeating them in public channels.",
+  inputSchema,
+  outputSchema,
+});
+
 /**
  * Read one Google Doc, Sheet, or Slides file, whichever the link or file id
  * names.
@@ -60,16 +74,7 @@ const outputSchema = pluginToolOutputSchema.extend({
  */
 export function createReadGoogleFileTool(ctx: GoogleToolContext) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "Read one Google Doc, Sheet, or Slides presentation by link or file id, as your own Google account sees it. A Doc returns Markdown and a revision_id for the Doc edit tools, a Sheet returns cells as CSV, and Slides return slide text and speaker notes. Works for files shared with that account or with anyone who has the link. Comments are not included; use listGoogleFileComments. Contents can be private: share only what the requester needs, and avoid repeating them in public channels.",
-    inputSchema,
-    outputSchema,
+    ...readGoogleFileToolDefinition,
     async execute(input) {
       const ref = parseFileReference(input.file);
       const linkType = URL.canParse(input.file)

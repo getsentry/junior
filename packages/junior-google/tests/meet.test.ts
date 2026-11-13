@@ -20,7 +20,7 @@ function meetTools(...responses: Response[]) {
     run: vi.fn(async () => ({ exitCode: 0, stderr: "", stdout: "" })),
     writeFile: vi.fn(),
   };
-  const tools = googlePlugin().hooks!.tools!({
+  const tools = googlePlugin().hooks!.tools!.bind({
     egress: { fetch },
     sandbox,
     users: {

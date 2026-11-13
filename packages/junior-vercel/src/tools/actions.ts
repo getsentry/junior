@@ -1,5 +1,6 @@
 import {
   definePluginTool,
+  pluginToolDefinition,
   PluginToolInputError,
   pluginToolOutputSchema,
   type ToolRegistrationHookContext,
@@ -89,8 +90,104 @@ function deploymentResult(data: unknown) {
   };
 }
 
+/** Static definitions of the Vercel action tools. */
+export const vercelActionToolDefinitions = {
+  deploymentCreate: pluginToolDefinition({
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
+    description:
+      "Start a deployment from a Vercel project's linked GitHub repository. Uses project build settings and environment credentials, so builds may run migrations. Returns the new deployment; inspect it to check readiness.",
+    inputSchema: z
+      .object({
+        project: text.describe("Existing Vercel project name or ID."),
+        team,
+        ref: text.describe(
+          "Git branch, tag, or full commit SHA in the project's linked repository.",
+        ),
+        commit_sha: z
+          .string()
+          .regex(/^[a-f0-9]{40}$/i)
+          .describe(
+            "Full commit SHA to pin the source while retaining branch context in ref.",
+          )
+          .optional(),
+        target: z
+          .enum(["preview", "production"])
+          .describe("Deployment environment; defaults to preview.")
+          .optional(),
+      })
+      .strict(),
+    outputSchema: deploymentOutput,
+  }),
+  deploymentInspect: pluginToolDefinition({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: true,
+    },
+    description:
+      "Inspect a Vercel deployment by ID or hostname. Returns its ID, state, environment, and Git source when available. Use the CLI for logs.",
+    inputSchema: z
+      .object({
+        deployment: text.describe(
+          "Deployment ID or hostname, without a scheme or path.",
+        ),
+        team,
+      })
+      .strict(),
+    outputSchema: deploymentOutput,
+  }),
+  aliasAssign: pluginToolDefinition({
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
+    description:
+      "Assign an alias hostname to a deployment ID. This can replace live traffic. Reads the alias back and returns matches=false if its target changed or it redirects.",
+    inputSchema: z
+      .object({ deployment_id: deploymentIdSchema, alias: aliasName, team })
+      .strict(),
+    outputSchema: aliasOutput.extend({ matches: z.boolean() }),
+  }),
+  aliasInspect: pluginToolDefinition({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: true,
+    },
+    description: "Read a Vercel alias's current deployment ID or redirect.",
+    inputSchema: z.object({ alias: aliasName, team }).strict(),
+    outputSchema: aliasOutput,
+  }),
+  deploymentDelete: pluginToolDefinition({
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
+    description:
+      "Delete a Vercel deployment by ID. This can remove a live deployment. Does not delete its database or other external state.",
+    inputSchema: z.object({ deployment_id: deploymentIdSchema, team }).strict(),
+    outputSchema: pluginToolOutputSchema.extend({
+      target: z.literal("deployment"),
+      deployment_id: text,
+      deleted: z.literal(true),
+    }),
+  }),
+};
+
 /** Provide Vercel deployment and alias operations. */
 export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
+  const definitions = vercelActionToolDefinitions;
   async function request(
     operation: string,
     path: string,
@@ -144,35 +241,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
   }
   return {
     deploymentCreate: definePluginTool({
-      annotations: {
-        destructiveHint: true,
-        idempotentHint: false,
-        openWorldHint: true,
-        readOnlyHint: false,
-      },
-      description:
-        "Start a deployment from a Vercel project's linked GitHub repository. Uses project build settings and environment credentials, so builds may run migrations. Returns the new deployment; inspect it to check readiness.",
-      inputSchema: z
-        .object({
-          project: text.describe("Existing Vercel project name or ID."),
-          team,
-          ref: text.describe(
-            "Git branch, tag, or full commit SHA in the project's linked repository.",
-          ),
-          commit_sha: z
-            .string()
-            .regex(/^[a-f0-9]{40}$/i)
-            .describe(
-              "Full commit SHA to pin the source while retaining branch context in ref.",
-            )
-            .optional(),
-          target: z
-            .enum(["preview", "production"])
-            .describe("Deployment environment; defaults to preview.")
-            .optional(),
-        })
-        .strict(),
-      outputSchema: deploymentOutput,
+      ...definitions.deploymentCreate,
       async execute(input) {
         const project = z
           .object({
@@ -221,23 +290,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
       },
     }),
     deploymentInspect: definePluginTool({
-      annotations: {
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: true,
-        readOnlyHint: true,
-      },
-      description:
-        "Inspect a Vercel deployment by ID or hostname. Returns its ID, state, environment, and Git source when available. Use the CLI for logs.",
-      inputSchema: z
-        .object({
-          deployment: text.describe(
-            "Deployment ID or hostname, without a scheme or path.",
-          ),
-          team,
-        })
-        .strict(),
-      outputSchema: deploymentOutput,
+      ...definitions.deploymentInspect,
       async execute(input) {
         return deploymentResult(
           await request(
@@ -249,18 +302,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
       },
     }),
     aliasAssign: definePluginTool({
-      annotations: {
-        destructiveHint: true,
-        idempotentHint: true,
-        openWorldHint: true,
-        readOnlyHint: false,
-      },
-      description:
-        "Assign an alias hostname to a deployment ID. This can replace live traffic. Reads the alias back and returns matches=false if its target changed or it redirects.",
-      inputSchema: z
-        .object({ deployment_id: deploymentIdSchema, alias: aliasName, team })
-        .strict(),
-      outputSchema: aliasOutput.extend({ matches: z.boolean() }),
+      ...definitions.aliasAssign,
       async execute(input) {
         await request(
           "vercel.alias.assign",
@@ -278,36 +320,13 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
       },
     }),
     aliasInspect: definePluginTool({
-      annotations: {
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: true,
-        readOnlyHint: true,
-      },
-      description: "Read a Vercel alias's current deployment ID or redirect.",
-      inputSchema: z.object({ alias: aliasName, team }).strict(),
-      outputSchema: aliasOutput,
+      ...definitions.aliasInspect,
       async execute(input) {
         return inspectAlias(input.alias, input.team);
       },
     }),
     deploymentDelete: definePluginTool({
-      annotations: {
-        destructiveHint: true,
-        idempotentHint: true,
-        openWorldHint: true,
-        readOnlyHint: false,
-      },
-      description:
-        "Delete a Vercel deployment by ID. This can remove a live deployment. Does not delete its database or other external state.",
-      inputSchema: z
-        .object({ deployment_id: deploymentIdSchema, team })
-        .strict(),
-      outputSchema: pluginToolOutputSchema.extend({
-        target: z.literal("deployment"),
-        deployment_id: text,
-        deleted: z.literal(true),
-      }),
+      ...definitions.deploymentDelete,
       async execute(input) {
         await request(
           "vercel.deployment.delete",

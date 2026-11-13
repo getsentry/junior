@@ -10,6 +10,7 @@ import {
   type Identity,
   type User,
   pluginToolOutputSchema,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
@@ -398,21 +399,25 @@ function memoryToolResult<TData extends Record<string, unknown>>(
   };
 }
 
+export const memoryCreateToolDefinition = pluginToolDefinition({
+  approvalMode: "approve",
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: false,
+  },
+  description:
+    "Explicit memory-write tool. Use only when the latest user message directly asks you to remember, store, save, or forget-and-replace a fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. The runtime sets access, Location, Source, and subject. The memory agent rewrites the content and sets the memory kind.",
+  executionMode: "sequential",
+  inputSchema: createMemoryInputSchema,
+  outputSchema: memoryCreateOutputSchema,
+});
+
 /** Create a tool that submits an explicit memory candidate for storage. */
 export function createMemoryCreateTool(context: MemoryCreateToolContext) {
   return definePluginTool({
-    approvalMode: "approve",
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-      readOnlyHint: false,
-    },
-    description:
-      "Explicit memory-write tool. Use only when the latest user message directly asks you to remember, store, save, or forget-and-replace a fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. The runtime sets access, Location, Source, and subject. The memory agent rewrites the content and sets the memory kind.",
-    executionMode: "sequential",
-    inputSchema: createMemoryInputSchema,
-    outputSchema: memoryCreateOutputSchema,
+    ...memoryCreateToolDefinition,
     execute: async (input, options) => {
       const parsedInput = parseMemoryToolInput(createMemoryInputSchema, input);
       const toolCallId = requireToolCallId(options.toolCallId);
@@ -491,20 +496,24 @@ export function createMemoryCreateTool(context: MemoryCreateToolContext) {
   });
 }
 
+export const memoryArchiveToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: false,
+  },
+  description:
+    "Forget one active memory visible in the current context. Use only ids or short id prefixes returned by listMemories or searchMemories. Never remove memories by hidden Actor, provider, scope, or subject ids.",
+  executionMode: "sequential",
+  inputSchema: archiveMemoryInputSchema,
+  outputSchema: memorySingleOutputSchema,
+});
+
 /** Create a tool that archives a visible memory in the active context. */
 export function createMemoryArchiveTool(context: MemoryToolContext) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: true,
-      idempotentHint: true,
-      openWorldHint: false,
-      readOnlyHint: false,
-    },
-    description:
-      "Forget one active memory visible in the current context. Use only ids or short id prefixes returned by listMemories or searchMemories. Never remove memories by hidden Actor, provider, scope, or subject ids.",
-    executionMode: "sequential",
-    inputSchema: archiveMemoryInputSchema,
-    outputSchema: memorySingleOutputSchema,
+    ...memoryArchiveToolDefinition,
     execute: async (input) => {
       const parsedInput = parseMemoryToolInput(archiveMemoryInputSchema, input);
       const runtimeContext = await memoryRuntimeContext(context);
@@ -525,19 +534,23 @@ export function createMemoryArchiveTool(context: MemoryToolContext) {
   });
 }
 
+export const memoryListToolDefinition = pluginToolDefinition({
+  description:
+    "List active memories visible in the current context. Use when the user asks what you remember or when memory ids are needed before removing a memory.",
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: true,
+  },
+  inputSchema: listMemoriesInputSchema,
+  outputSchema: memoryManyOutputSchema,
+});
+
 /** Create a tool that lists visible active memories in the active context. */
 export function createMemoryListTool(context: MemoryToolContext) {
   return definePluginTool({
-    description:
-      "List active memories visible in the current context. Use when the user asks what you remember or when memory ids are needed before removing a memory.",
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-      readOnlyHint: true,
-    },
-    inputSchema: listMemoriesInputSchema,
-    outputSchema: memoryManyOutputSchema,
+    ...memoryListToolDefinition,
     execute: async (input) => {
       const parsedInput = parseMemoryToolInput(listMemoriesInputSchema, input);
       const runtimeContext = await memoryRuntimeContext(context);
@@ -551,19 +564,23 @@ export function createMemoryListTool(context: MemoryToolContext) {
   });
 }
 
+export const memorySearchToolDefinition = pluginToolDefinition({
+  description:
+    "Search active memories visible in the current context. Use when the model needs targeted memory recall.",
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: true,
+  },
+  inputSchema: searchMemoriesInputSchema,
+  outputSchema: memoryManyOutputSchema,
+});
+
 /** Create a tool that searches visible active memories in the active context. */
 export function createMemorySearchTool(context: MemoryToolContext) {
   return definePluginTool({
-    description:
-      "Search active memories visible in the current context. Use when the model needs targeted memory recall.",
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-      readOnlyHint: true,
-    },
-    inputSchema: searchMemoriesInputSchema,
-    outputSchema: memoryManyOutputSchema,
+    ...memorySearchToolDefinition,
     execute: async (input) => {
       const parsedInput = parseMemoryToolInput(
         searchMemoriesInputSchema,

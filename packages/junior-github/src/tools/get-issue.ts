@@ -12,6 +12,7 @@ import {
   subscribableResourceSchema,
   type PluginToolOutput,
   type SubscribableResource,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { gitHubIssueSubscribable } from "../events/issue.js";
@@ -73,6 +74,19 @@ const providerIssueSchema = z.object({
   user: z.object({ login: z.string() }).nullish(),
 });
 
+export const gitHubGetIssueToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Get a GitHub issue. Read its comments with gh api repos/OWNER/REPO/issues/NUMBER/comments.",
+  inputSchema,
+  outputSchema,
+});
+
 /**
  * Read one GitHub issue. Sandbox issue reads are routed here so the result can
  * tell the agent to claim an issue that the requester does not own yet.
@@ -87,16 +101,7 @@ export function createGitHubGetIssueTool(ctx: {
   };
 }) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "Get a GitHub issue. Read its comments with gh api repos/OWNER/REPO/issues/NUMBER/comments.",
-    inputSchema,
-    outputSchema,
+    ...gitHubGetIssueToolDefinition,
     async execute(input): Promise<Result> {
       const repo = parseRepo(input.repo);
       const [response, requester] = await Promise.all([

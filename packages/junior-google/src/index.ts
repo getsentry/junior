@@ -8,6 +8,7 @@
  */
 import {
   defineJuniorPlugin,
+  definePluginTool,
   type PluginRegistration,
   type PluginToolDefinition,
 } from "@sentry/junior-plugin-api";
@@ -29,19 +30,58 @@ import { googleFileLinks } from "./links/files";
 import { googleImages } from "./links/thumbnails";
 import { createGoogleSetupPage, createGoogleSetupRoutes } from "./setup-routes";
 import type { GoogleDb } from "./store";
-import { createCancelCalendarEventTool } from "./tools/cancel-event";
-import { createCreateGoogleDocTool } from "./tools/create-doc";
-import { createCreateCalendarEventTool } from "./tools/create-event";
-import { createFindMeetingTimesTool } from "./tools/find-meeting-times";
-import { createInsertGoogleDocContentTool } from "./tools/insert-doc-content";
-import { createListGoogleFileCommentsTool } from "./tools/list-file-comments";
-import { createListCalendarEventsTool } from "./tools/list-events";
-import { createReadGoogleFileTool } from "./tools/read-file";
-import { createReadMeetingTranscriptTool } from "./tools/read-meeting-transcript";
-import { createReplaceGoogleDocContentTool } from "./tools/replace-doc-content";
-import { createReplaceGoogleDocTextTool } from "./tools/replace-doc-text";
-import { createSearchGoogleFilesTool } from "./tools/search-files";
-import { createUpdateCalendarEventTool } from "./tools/update-event";
+import {
+  createCancelCalendarEventTool,
+  cancelCalendarEventToolDefinition,
+} from "./tools/cancel-event";
+import {
+  createCreateGoogleDocTool,
+  createGoogleDocToolDefinition,
+} from "./tools/create-doc";
+import {
+  createCreateCalendarEventTool,
+  createCalendarEventToolDefinition,
+} from "./tools/create-event";
+import {
+  createFindMeetingTimesTool,
+  findMeetingTimesToolDefinition,
+} from "./tools/find-meeting-times";
+import {
+  createInsertGoogleDocContentTool,
+  insertGoogleDocContentToolDefinition,
+} from "./tools/insert-doc-content";
+import {
+  createListGoogleFileCommentsTool,
+  listGoogleFileCommentsToolDefinition,
+} from "./tools/list-file-comments";
+import {
+  createListCalendarEventsTool,
+  listCalendarEventsToolDefinition,
+} from "./tools/list-events";
+import {
+  createReadGoogleFileTool,
+  readGoogleFileToolDefinition,
+} from "./tools/read-file";
+import {
+  createReadMeetingTranscriptTool,
+  readMeetingTranscriptToolDefinition,
+} from "./tools/read-meeting-transcript";
+import {
+  createReplaceGoogleDocContentTool,
+  replaceGoogleDocContentToolDefinition,
+} from "./tools/replace-doc-content";
+import {
+  createReplaceGoogleDocTextTool,
+  replaceGoogleDocTextToolDefinition,
+} from "./tools/replace-doc-text";
+import {
+  createSearchGoogleFilesTool,
+  searchGoogleFilesToolDefinition,
+} from "./tools/search-files";
+import {
+  createUpdateCalendarEventTool,
+  updateCalendarEventToolDefinition,
+} from "./tools/update-event";
 
 /** Register Junior's Google Workspace plugin. */
 export function googlePlugin(): PluginRegistration {
@@ -75,34 +115,78 @@ export function googlePlugin(): PluginRegistration {
       },
       grantForEgress: googleGrantForEgress,
       issueCredential: issueGoogleCredential,
-      tools(ctx): Record<string, PluginToolDefinition> {
-        const config = readGoogleConfig();
-        if (!config) {
-          return {};
-        }
-        const toolContext = {
-          accountEmail: config.accountEmail,
-          allowedDomains: config.allowedDomains,
-          egress: ctx.egress,
-          sandbox: ctx.sandbox,
-          users: ctx.users,
-        };
-        return {
-          cancelCalendarEvent: createCancelCalendarEventTool(toolContext),
-          createCalendarEvent: createCreateCalendarEventTool(toolContext),
-          createGoogleDoc: createCreateGoogleDocTool(toolContext),
-          findMeetingTimes: createFindMeetingTimesTool(toolContext),
-          insertGoogleDocContent: createInsertGoogleDocContentTool(toolContext),
-          listCalendarEvents: createListCalendarEventsTool(toolContext),
-          listGoogleFileComments: createListGoogleFileCommentsTool(toolContext),
-          readGoogleFile: createReadGoogleFileTool(toolContext),
-          readMeetingTranscript: createReadMeetingTranscriptTool(toolContext),
-          replaceGoogleDocContent:
-            createReplaceGoogleDocContentTool(toolContext),
-          replaceGoogleDocText: createReplaceGoogleDocTextTool(toolContext),
-          searchGoogleFiles: createSearchGoogleFilesTool(toolContext),
-          updateCalendarEvent: createUpdateCalendarEventTool(toolContext),
-        };
+      tools: {
+        definitions(): Record<string, PluginToolDefinition> {
+          if (!readGoogleConfig()) {
+            return {};
+          }
+          return {
+            cancelCalendarEvent: definePluginTool(
+              cancelCalendarEventToolDefinition,
+            ),
+            createCalendarEvent: definePluginTool(
+              createCalendarEventToolDefinition,
+            ),
+            createGoogleDoc: definePluginTool(createGoogleDocToolDefinition),
+            findMeetingTimes: definePluginTool(findMeetingTimesToolDefinition),
+            insertGoogleDocContent: definePluginTool(
+              insertGoogleDocContentToolDefinition,
+            ),
+            listCalendarEvents: definePluginTool(
+              listCalendarEventsToolDefinition,
+            ),
+            listGoogleFileComments: definePluginTool(
+              listGoogleFileCommentsToolDefinition,
+            ),
+            readGoogleFile: definePluginTool(readGoogleFileToolDefinition),
+            readMeetingTranscript: definePluginTool(
+              readMeetingTranscriptToolDefinition,
+            ),
+            replaceGoogleDocContent: definePluginTool(
+              replaceGoogleDocContentToolDefinition,
+            ),
+            replaceGoogleDocText: definePluginTool(
+              replaceGoogleDocTextToolDefinition,
+            ),
+            searchGoogleFiles: definePluginTool(
+              searchGoogleFilesToolDefinition,
+            ),
+            updateCalendarEvent: definePluginTool(
+              updateCalendarEventToolDefinition,
+            ),
+          };
+        },
+        bind(ctx): Record<string, PluginToolDefinition> {
+          const config = readGoogleConfig();
+          if (!config) {
+            return {};
+          }
+          const toolContext = {
+            accountEmail: config.accountEmail,
+            allowedDomains: config.allowedDomains,
+            egress: ctx.egress,
+            sandbox: ctx.sandbox,
+            users: ctx.users,
+          };
+          return {
+            cancelCalendarEvent: createCancelCalendarEventTool(toolContext),
+            createCalendarEvent: createCreateCalendarEventTool(toolContext),
+            createGoogleDoc: createCreateGoogleDocTool(toolContext),
+            findMeetingTimes: createFindMeetingTimesTool(toolContext),
+            insertGoogleDocContent:
+              createInsertGoogleDocContentTool(toolContext),
+            listCalendarEvents: createListCalendarEventsTool(toolContext),
+            listGoogleFileComments:
+              createListGoogleFileCommentsTool(toolContext),
+            readGoogleFile: createReadGoogleFileTool(toolContext),
+            readMeetingTranscript: createReadMeetingTranscriptTool(toolContext),
+            replaceGoogleDocContent:
+              createReplaceGoogleDocContentTool(toolContext),
+            replaceGoogleDocText: createReplaceGoogleDocTextTool(toolContext),
+            searchGoogleFiles: createSearchGoogleFilesTool(toolContext),
+            updateCalendarEvent: createUpdateCalendarEventTool(toolContext),
+          };
+        },
       },
     },
   });

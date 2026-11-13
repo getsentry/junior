@@ -6,6 +6,7 @@ import {
   subscribableResourceSchema,
   type PluginToolOutput,
   type SubscribableResource,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { gitHubDeploymentSourceSubscribable } from "../events/deployment.js";
@@ -123,22 +124,26 @@ function throwLookupError(
   throw new Error(message);
 }
 
+export const gitHubGetDeploymentToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Get the latest GitHub deployment and status for an exact repository and full commit SHA, optionally limited to one environment. The result remains subscribable when no deployment exists yet, so use it before waiting for a deployment outcome.",
+  inputSchema,
+  outputSchema,
+});
+
 /** Read deployment metadata and expose its stable subscription identity. */
 export function createGitHubGetDeploymentTool(ctx: {
   egress: PluginEgress;
   events: { canSubscribe: boolean };
 }) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "Get the latest GitHub deployment and status for an exact repository and full commit SHA, optionally limited to one environment. The result remains subscribable when no deployment exists yet, so use it before waiting for a deployment outcome.",
-    inputSchema,
-    outputSchema,
+    ...gitHubGetDeploymentToolDefinition,
     async execute(input): Promise<Result> {
       const repo = parseRepo(input.repo);
       const commitSha = input.commit_sha.toLowerCase();

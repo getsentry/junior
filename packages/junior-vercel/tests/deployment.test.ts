@@ -218,7 +218,7 @@ describe("Vercel deployment", () => {
       expect.objectContaining({ type: "deployment" }),
     ]);
     expect(
-      plugin.hooks?.tools?.({
+      plugin.hooks?.tools?.bind({
         egress: { fetch: vi.fn() },
       } as never),
     ).toHaveProperty("deployment");

@@ -10,7 +10,11 @@ import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import type { ToolState } from "@/chat/tools/types";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
-/** Create the tool that reacts to the current inbound Slack message. */
+/**
+ * Create the tool that reacts to the current inbound Slack message.
+ *
+ * @runBuilt addReaction
+ */
 export function createSlackMessageAddReactionTool(
   context: SlackToolContext,
   state: ToolState,

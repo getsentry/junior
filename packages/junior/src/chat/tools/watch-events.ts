@@ -17,7 +17,7 @@ import {
   STOP_WATCHING_TOOL_NAME,
 } from "@/chat/events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -109,12 +109,9 @@ function ttlMs(input: Input): number {
   return input.ttl_ms;
 }
 
-/** Create the tool that temporarily watches events in one conversation. */
-export function createWatchEventsTool(
-  context: ToolRuntimeContext,
-  catalog: EventCatalog,
-) {
-  return zodTool({
+/** Static definition of `watchEvents` for the deployment event catalog. */
+export function watchEventsToolDefinition(catalog: EventCatalog) {
+  return zodToolDefinition({
     annotations: {
       destructiveHint: false,
       idempotentHint: false,
@@ -125,6 +122,16 @@ export function createWatchEventsTool(
       "Watch one plugin resource in the current conversation for a limited time; matching events return to this conversation as updates. Use for watch, notify, or tell-me-when requests. This does not create an event automation or execute a durable automation instruction. Prefer a subscribable tool result when available.",
     inputSchema: inputSchema(catalog),
     outputSchema,
+  });
+}
+
+/** Create the tool that temporarily watches events in one conversation. */
+export function createWatchEventsTool(
+  context: ToolRuntimeContext,
+  catalog: EventCatalog,
+) {
+  return zodTool({
+    ...watchEventsToolDefinition(catalog),
     async execute(input: Input) {
       const unavailable = eventWatchUnavailable(
         catalog,

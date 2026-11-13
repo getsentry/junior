@@ -671,7 +671,7 @@ describe("memory plugin storage", () => {
     const toolStates = (source: PluginTaskContext["source"]) =>
       Object.fromEntries(
         Object.entries(
-          plugin.hooks?.tools?.({
+          plugin.hooks?.tools?.bind({
             db: {},
             model: {},
             source,

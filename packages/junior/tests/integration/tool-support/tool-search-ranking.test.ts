@@ -14,6 +14,7 @@ import { closeDb } from "@/chat/db";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createTools } from "@/chat/tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
+import { pluginToolsHook } from "../../fixtures/plugin-tools";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { searchCatalogTools } from "@/chat/tools/search-tools";
 import { planToolExposure } from "@/chat/tool-exposure";
@@ -159,7 +160,7 @@ const trackerPlugin = defineJuniorPlugin({
     description: "Issue tracking for project work",
   },
   hooks: {
-    tools: () => ({
+    tools: pluginToolsHook(() => ({
       create_issue: trackerTool(
         "Create an issue in a Tracker project.",
         z.object({
@@ -178,7 +179,7 @@ const trackerPlugin = defineJuniorPlugin({
           body: z.string().describe("Comment text."),
         }),
       ),
-    }),
+    })),
   },
 });
 

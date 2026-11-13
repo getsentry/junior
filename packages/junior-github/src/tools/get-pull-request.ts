@@ -8,6 +8,7 @@ import {
   pluginToolOutputSchema,
   type PluginToolOutput,
   type SubscribableResource,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
@@ -205,22 +206,26 @@ async function readPullRequestChecks(
   };
 }
 
+export const gitHubGetPullRequestToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Get a GitHub pull request with its required checks and merge state, and for a draft, what to check before marking it ready. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
+  inputSchema,
+  outputSchema,
+});
+
 /** Read one PR and expose its stable subscription identity when webhooks are enabled. */
 export function createGitHubGetPullRequestTool(ctx: {
   egress: PluginEgress;
   events: { canSubscribe: boolean };
 }) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "Get a GitHub pull request with its required checks and merge state, and for a draft, what to check before marking it ready. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
-    inputSchema,
-    outputSchema,
+    ...gitHubGetPullRequestToolDefinition,
     async execute(input): Promise<Result> {
       const repo = parseRepo(input.repo);
       const response = await githubApi(ctx.egress, {

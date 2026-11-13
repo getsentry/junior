@@ -3,6 +3,7 @@ import {
   type PluginCache,
   pluginToolOutputSchema,
   type PluginToolOutput,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { loadGitHubStatusIncidents } from "../github-status.js";
@@ -28,19 +29,23 @@ interface Result extends PluginToolOutput {
   incidents: z.output<typeof incidentSchema>[];
 }
 
+export const gitHubGetStatusToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "List GitHub incidents from githubstatus.com that are open or were resolved in the last 24 hours, with their affected components. Use when a GitHub request fails with a 5xx, a timeout, or a dropped connection, or when checks stay queued or fail with no cause in the logs.",
+  inputSchema,
+  outputSchema,
+});
+
 /** Read open and recent GitHub incidents to tell outages from other failures. */
 export function createGitHubGetStatusTool(ctx: { cache: PluginCache }) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "List GitHub incidents from githubstatus.com that are open or were resolved in the last 24 hours, with their affected components. Use when a GitHub request fails with a 5xx, a timeout, or a dropped connection, or when checks stay queued or fail with no cause in the logs.",
-    inputSchema,
-    outputSchema,
+    ...gitHubGetStatusToolDefinition,
     async execute(): Promise<Result> {
       const incidents = await loadGitHubStatusIncidents(
         ctx.cache,

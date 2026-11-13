@@ -23,7 +23,7 @@ const SEARCH_DOC = {
 function toolsFor(email: string | undefined, ...responses: Response[]) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
-  const tools = googlePlugin().hooks!.tools!({
+  const tools = googlePlugin().hooks!.tools!.bind({
     egress: { fetch },
     users: {
       resolveActor: async () => (email ? { user: { email } } : undefined),

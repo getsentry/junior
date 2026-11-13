@@ -4,6 +4,7 @@ import {
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
@@ -36,19 +37,23 @@ interface Result extends PluginToolOutput {
   url: string;
 }
 
+export const gitHubCommentOnIssueToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description:
+    "Post a comment on a GitHub issue. Returns the comment id and URL.",
+  inputSchema,
+  outputSchema,
+});
+
 /** Post a comment on a GitHub issue as the App bot. */
 export function createGitHubCommentOnIssueTool(egress: PluginEgress) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description:
-      "Post a comment on a GitHub issue. Returns the comment id and URL.",
-    inputSchema,
-    outputSchema,
+    ...gitHubCommentOnIssueToolDefinition,
     async execute(input): Promise<Result> {
       const repo = parseRepo(input.repo);
       const response = await githubApi(egress, {

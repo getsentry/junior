@@ -10,6 +10,7 @@ import {
   createWebSource,
   defineJuniorPlugin,
   definePluginTool,
+  pluginToolDefinition,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
@@ -41,8 +42,10 @@ interface ToolSearchEvalOutput extends Record<string, JsonValue> {
   found: string[];
 }
 
-function trackerTool(description: string, inputSchema: z.ZodTypeAny) {
-  return definePluginTool({
+const issueKey = z.string().describe("Issue key, such as ENG-123.");
+
+function trackerToolDefinition(description: string, inputSchema: z.ZodTypeAny) {
+  return pluginToolDefinition({
     annotations: {
       destructiveHint: false,
       idempotentHint: false,
@@ -52,15 +55,31 @@ function trackerTool(description: string, inputSchema: z.ZodTypeAny) {
     description,
     inputSchema,
     outputSchema: pluginToolOutputSchema,
-    async execute() {
-      return {};
-    },
   });
 }
 
-const issueKey = z.string().describe("Issue key, such as ENG-123.");
-
 // MCP-style snake_case names, like an issue tracker server exposes.
+const trackerToolDefinitions = {
+  create_issue: trackerToolDefinition(
+    "Create an issue in a Tracker project.",
+    z.object({
+      project: z.string().describe("Project key."),
+      title: z.string().describe("Issue title."),
+    }),
+  ),
+  get_issue: trackerToolDefinition(
+    "Get one Tracker issue by key.",
+    z.object({ key: issueKey }),
+  ),
+  comment_on_issue: trackerToolDefinition(
+    "Add a comment to a Tracker issue.",
+    z.object({
+      key: issueKey,
+      body: z.string().describe("Comment text."),
+    }),
+  ),
+};
+
 const trackerPlugin = defineJuniorPlugin({
   manifest: {
     name: "tracker",
@@ -68,26 +87,28 @@ const trackerPlugin = defineJuniorPlugin({
     description: "Issue tracking for project work",
   },
   hooks: {
-    tools: () => ({
-      create_issue: trackerTool(
-        "Create an issue in a Tracker project.",
-        z.object({
-          project: z.string().describe("Project key."),
-          title: z.string().describe("Issue title."),
-        }),
-      ),
-      get_issue: trackerTool(
-        "Get one Tracker issue by key.",
-        z.object({ key: issueKey }),
-      ),
-      comment_on_issue: trackerTool(
-        "Add a comment to a Tracker issue.",
-        z.object({
-          key: issueKey,
-          body: z.string().describe("Comment text."),
-        }),
-      ),
-    }),
+    tools: {
+      definitions: () =>
+        Object.fromEntries(
+          Object.entries(trackerToolDefinitions).map(([name, definition]) => [
+            name,
+            definePluginTool(definition),
+          ]),
+        ),
+      // Search never runs a tool.
+      bind: () =>
+        Object.fromEntries(
+          Object.entries(trackerToolDefinitions).map(([name, definition]) => [
+            name,
+            definePluginTool({
+              ...definition,
+              async execute() {
+                return {};
+              },
+            }),
+          ]),
+        ),
+    },
   },
 });
 

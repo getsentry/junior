@@ -1,5 +1,6 @@
 import {
   definePluginTool,
+  pluginToolDefinition,
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
@@ -41,6 +42,22 @@ const createdSchema = z.object({
 
 const aboutSchema = z.object({ user: z.object({ permissionId: z.string() }) });
 
+export const createGoogleDocToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  describeProposal(input) {
+    return `Create Google Doc "${input.title}"${input.content ? ` with ${input.content.length} characters of content` : ""}, make the requester its owner (Google emails them), and remove your own access.`;
+  },
+  description:
+    "Create a Google Doc with optional Markdown content and hand it to the requester: they become the owner, Google emails them about it, and your own Google account loses access. You cannot read or edit the Doc afterward unless the requester shares it with that account again. Only works for requesters in the same Google Workspace organization as that account.",
+  inputSchema,
+  outputSchema,
+});
+
 /**
  * Create a Google Doc, write its content, then hand it to the requester.
  *
@@ -52,19 +69,7 @@ const aboutSchema = z.object({ user: z.object({ permissionId: z.string() }) });
  */
 export function createCreateGoogleDocTool(ctx: GoogleToolContext) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    describeProposal(input) {
-      return `Create Google Doc "${input.title}"${input.content ? ` with ${input.content.length} characters of content` : ""}, make the requester its owner (Google emails them), and remove your own access.`;
-    },
-    description:
-      "Create a Google Doc with optional Markdown content and hand it to the requester: they become the owner, Google emails them about it, and your own Google account loses access. You cannot read or edit the Doc afterward unless the requester shares it with that account again. Only works for requesters in the same Google Workspace organization as that account.",
-    inputSchema,
-    outputSchema,
+    ...createGoogleDocToolDefinition,
     async execute(input) {
       const converted =
         input.content === undefined

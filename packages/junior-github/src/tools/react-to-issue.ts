@@ -2,6 +2,7 @@ import {
   type PluginEgress,
   type PluginToolOutput,
   definePluginTool,
+  pluginToolDefinition,
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
@@ -52,20 +53,24 @@ interface Result extends PluginToolOutput {
   reaction_id: number;
 }
 
+export const gitHubReactToIssueToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    // GitHub returns the existing reaction when the bot already added it.
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description:
+    "React with an emoji to a GitHub issue or pull request itself, for example to show that you started work on it. Reacting again with the same content changes nothing.",
+  inputSchema,
+  outputSchema,
+});
+
 /** Add the App bot's reaction to an issue or pull request itself. */
 export function createGitHubReactToIssueTool(egress: PluginEgress) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      // GitHub returns the existing reaction when the bot already added it.
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description:
-      "React with an emoji to a GitHub issue or pull request itself, for example to show that you started work on it. Reacting again with the same content changes nothing.",
-    inputSchema,
-    outputSchema,
+    ...gitHubReactToIssueToolDefinition,
     async execute(input): Promise<Result> {
       const repo = parseRepo(input.repo);
       const response = await githubApi(egress, {

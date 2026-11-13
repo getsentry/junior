@@ -1,6 +1,7 @@
 import {
   definePluginTool,
   pluginToolOutputSchema,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
@@ -34,6 +35,22 @@ const outputSchema = pluginToolOutputSchema
   })
   .partial({ attendees: true, end: true, label: true, start: true });
 
+export const cancelCalendarEventToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  describeProposal(input) {
+    return `Cancel Google Calendar event ${input.event_id} organized by the connected Google account. Google emails every attendee a cancellation.`;
+  },
+  description:
+    "Cancel a Google Calendar event organized by your own Google account. Google removes it from every attendee's calendar and emails them a cancellation. Only people invited to the event can ask to cancel it. You cannot cancel events other people organize. For a repeating event, an occurrence id cancels only that occurrence; its series_event_id cancels every occurrence. Confirm which event, and for a repeating event whether one occurrence or the series, unless the requester already made it clear.",
+  inputSchema,
+  outputSchema,
+});
+
 /**
  * Cancel an event that Junior organizes and email the attendees.
  *
@@ -43,19 +60,7 @@ const outputSchema = pluginToolOutputSchema
  */
 export function createCancelCalendarEventTool(ctx: GoogleToolContext) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: true,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    describeProposal(input) {
-      return `Cancel Google Calendar event ${input.event_id} organized by the connected Google account. Google emails every attendee a cancellation.`;
-    },
-    description:
-      "Cancel a Google Calendar event organized by your own Google account. Google removes it from every attendee's calendar and emails them a cancellation. Only people invited to the event can ask to cancel it. You cannot cancel events other people organize. For a repeating event, an occurrence id cancels only that occurrence; its series_event_id cancels every occurrence. Confirm which event, and for a repeating event whether one occurrence or the series, unless the requester already made it clear.",
-    inputSchema,
-    outputSchema,
+    ...cancelCalendarEventToolDefinition,
     async execute(input) {
       const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());
       const read = await readOwnEventForRequester(

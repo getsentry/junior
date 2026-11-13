@@ -194,7 +194,34 @@ export interface PluginHooks {
   ): SlackConversationLink | undefined;
   /** Pure Markdown rewrite. Emit ordinary Markdown only. */
   formatMarkdown?(ctx: FormatMarkdownHookContext): string;
-  tools?(
-    ctx: ToolRegistrationHookContext,
-  ): Record<string, PluginToolDefinition>;
+  tools?: PluginToolsHook;
+}
+
+/** What a plugin tool gets from one Turn. */
+export type PluginToolBinding = Pick<
+  PluginToolDefinition,
+  "disabledReason" | "execute"
+>;
+
+/**
+ * Plugin tools in two parts. The host reads `definitions()` with no Turn, so
+ * one deployment has one set of model-facing tool definitions. `bind()` adds
+ * what one Turn needs to run them.
+ */
+export interface PluginToolsHook {
+  /**
+   * Model-facing tool definitions by plugin-local camelCase name. Read only
+   * deployment configuration here, never Turn context. The host takes the
+   * name, description, schemas and metadata of each tool from here.
+   */
+  definitions(): Record<
+    string,
+    Omit<PluginToolDefinition, keyof PluginToolBinding>
+  >;
+  /**
+   * Bind each tool from `definitions()` to one Turn. Return the same names.
+   * Set `disabledReason` to keep a tool listed but reject its calls in this
+   * Turn.
+   */
+  bind(ctx: ToolRegistrationHookContext): Record<string, PluginToolBinding>;
 }

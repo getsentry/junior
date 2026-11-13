@@ -1,27 +1,117 @@
-import type {
-  PluginToolDefinition,
-  ToolRegistrationHookContext,
+import {
+  definePluginTool,
+  type PluginToolDefinition,
+  type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
-import { createGitHubReactToIssueTool } from "./tools/react-to-issue.js";
-import { createGitHubCloneRepositoryTool } from "./tools/clone-repository.js";
-import { createGitHubCommentOnIssueTool } from "./tools/comment-on-issue.js";
-import { createGitHubCommentOnPullRequestTool } from "./tools/comment-on-pull-request.js";
-import { createGitHubIssueTool } from "./tools/create-issue.js";
-import { createGitHubGetDeploymentTool } from "./tools/get-deployment.js";
-import { createGitHubGetIssueTool } from "./tools/get-issue.js";
-import { createGitHubPullRequestTool } from "./tools/create-pull-request.js";
+import {
+  createGitHubReactToIssueTool,
+  gitHubReactToIssueToolDefinition,
+} from "./tools/react-to-issue.js";
+import {
+  createGitHubCloneRepositoryTool,
+  gitHubCloneRepositoryToolDefinition,
+} from "./tools/clone-repository.js";
+import {
+  createGitHubCommentOnIssueTool,
+  gitHubCommentOnIssueToolDefinition,
+} from "./tools/comment-on-issue.js";
+import {
+  createGitHubCommentOnPullRequestTool,
+  gitHubCommentOnPullRequestToolDefinition,
+} from "./tools/comment-on-pull-request.js";
+import {
+  createGitHubIssueTool,
+  gitHubIssueToolDefinition,
+} from "./tools/create-issue.js";
+import {
+  createGitHubGetDeploymentTool,
+  gitHubGetDeploymentToolDefinition,
+} from "./tools/get-deployment.js";
+import {
+  createGitHubGetIssueTool,
+  gitHubGetIssueToolDefinition,
+} from "./tools/get-issue.js";
+import {
+  createGitHubPullRequestTool,
+  gitHubPullRequestToolDefinition,
+} from "./tools/create-pull-request.js";
 import type { GitHubPullRequestSubscriptionConfig } from "./events/pull-request.js";
-import { createGitHubGetPullRequestTool } from "./tools/get-pull-request.js";
-import { createGitHubGetReleaseTool } from "./tools/get-release.js";
-import { createGitHubGetRepositoryTool } from "./tools/get-repository.js";
-import { createGitHubGetStatusTool } from "./tools/get-status.js";
-import { createGitHubUpdateIssueTool } from "./tools/update-issue.js";
-import { createGitHubUpdateIssueCommentTool } from "./tools/update-issue-comment.js";
-import { createGitHubUpdatePullRequestTool } from "./tools/update-pull-request.js";
-import { createGitHubUpdatePullRequestFeedbackTool } from "./tools/update-pull-request-feedback.js";
-import { createGitHubResolvePullRequestReviewThreadTool } from "./tools/resolve-pull-request-review-thread.js";
-import { createGitHubSubmitPullRequestReviewTool } from "./tools/submit-pull-request-review.js";
+import {
+  createGitHubGetPullRequestTool,
+  gitHubGetPullRequestToolDefinition,
+} from "./tools/get-pull-request.js";
+import {
+  createGitHubGetReleaseTool,
+  gitHubGetReleaseToolDefinition,
+} from "./tools/get-release.js";
+import {
+  createGitHubGetRepositoryTool,
+  gitHubGetRepositoryToolDefinition,
+} from "./tools/get-repository.js";
+import {
+  createGitHubGetStatusTool,
+  gitHubGetStatusToolDefinition,
+} from "./tools/get-status.js";
+import {
+  createGitHubUpdateIssueTool,
+  gitHubUpdateIssueToolDefinition,
+} from "./tools/update-issue.js";
+import {
+  createGitHubUpdateIssueCommentTool,
+  gitHubUpdateIssueCommentToolDefinition,
+} from "./tools/update-issue-comment.js";
+import {
+  createGitHubUpdatePullRequestTool,
+  gitHubUpdatePullRequestToolDefinition,
+} from "./tools/update-pull-request.js";
+import {
+  createGitHubUpdatePullRequestFeedbackTool,
+  gitHubUpdatePullRequestFeedbackToolDefinition,
+} from "./tools/update-pull-request-feedback.js";
+import {
+  createGitHubResolvePullRequestReviewThreadTool,
+  gitHubResolvePullRequestReviewThreadToolDefinition,
+} from "./tools/resolve-pull-request-review-thread.js";
+import {
+  createGitHubSubmitPullRequestReviewTool,
+  gitHubSubmitPullRequestReviewToolDefinition,
+} from "./tools/submit-pull-request-review.js";
+
 import { withGitHubText } from "./tool-support/github-text.js";
+
+/** Model-facing definitions of the GitHub plugin's tools. */
+export function gitHubToolDefinitions(): Record<string, PluginToolDefinition> {
+  return {
+    reactToIssue: definePluginTool(gitHubReactToIssueToolDefinition),
+    cloneRepository: definePluginTool(gitHubCloneRepositoryToolDefinition),
+    commentOnIssue: definePluginTool(gitHubCommentOnIssueToolDefinition),
+    commentOnPullRequest: definePluginTool(
+      gitHubCommentOnPullRequestToolDefinition,
+    ),
+    createIssue: definePluginTool(gitHubIssueToolDefinition),
+    createPullRequest: definePluginTool(gitHubPullRequestToolDefinition),
+    getDeployment: definePluginTool(gitHubGetDeploymentToolDefinition),
+    getIssue: definePluginTool(gitHubGetIssueToolDefinition),
+    getPullRequest: definePluginTool(gitHubGetPullRequestToolDefinition),
+    getRelease: definePluginTool(gitHubGetReleaseToolDefinition),
+    getRepository: definePluginTool(gitHubGetRepositoryToolDefinition),
+    getStatus: definePluginTool(gitHubGetStatusToolDefinition),
+    resolvePullRequestReviewThread: definePluginTool(
+      gitHubResolvePullRequestReviewThreadToolDefinition,
+    ),
+    submitPullRequestReview: definePluginTool(
+      gitHubSubmitPullRequestReviewToolDefinition,
+    ),
+    updateIssue: definePluginTool(gitHubUpdateIssueToolDefinition),
+    updateIssueComment: definePluginTool(
+      gitHubUpdateIssueCommentToolDefinition,
+    ),
+    updatePullRequest: definePluginTool(gitHubUpdatePullRequestToolDefinition),
+    updatePullRequestFeedback: definePluginTool(
+      gitHubUpdatePullRequestFeedbackToolDefinition,
+    ),
+  };
+}
 
 /** Opt-ins for GitHub plugin behavior that is still being tested. */
 export interface GitHubPluginExperiments {
@@ -33,7 +123,7 @@ export interface GitHubPluginExperiments {
   pullRequestDescriptionChecks?: boolean;
 }
 
-/** Build the GitHub plugin's runtime tools from their per-tool modules. */
+/** Bind the GitHub plugin's tools to one Turn. */
 export function createGitHubTools(
   ctx: ToolRegistrationHookContext,
   botEmail?: string,

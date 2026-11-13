@@ -19,6 +19,7 @@ import {
   tool,
   type AnyToolDefinition,
 } from "@/chat/tools/definition";
+import { pluginToolsHook } from "../../fixtures/plugin-tools";
 
 const customerResultSchema = pluginToolOutputSchema.extend({
   customer_id: z.string(),
@@ -89,7 +90,7 @@ describe("Pi tool adapter integration", () => {
           description: "Agent demo",
         },
         hooks: {
-          tools() {
+          tools: pluginToolsHook(() => {
             return {
               lookupCustomer: zodTool({
                 annotations: {
@@ -123,7 +124,7 @@ describe("Pi tool adapter integration", () => {
                   }) as const,
               }),
             };
-          },
+          }),
         },
       }),
     ]);

@@ -17,7 +17,7 @@ function fixture(...responses: Response[]) {
   for (const response of responses) fetch.mockResolvedValueOnce(response);
   return {
     fetch,
-    tools: vercelPlugin().hooks!.tools!({ egress: { fetch } } as never),
+    tools: vercelPlugin().hooks!.tools!.bind({ egress: { fetch } } as never),
   };
 }
 

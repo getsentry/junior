@@ -6,6 +6,7 @@ import {
   subscribableResourceSchema,
   type PluginToolOutput,
   type SubscribableResource,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { gitHubRepositorySubscribable } from "../events/repository.js";
@@ -35,22 +36,26 @@ const outputSchema = pluginToolOutputSchema.merge(
   }),
 );
 
+export const gitHubGetRepositoryToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Get a GitHub repository. Use this when repository-wide issue activity may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
+  inputSchema,
+  outputSchema,
+});
+
 /** Read one repository and expose its stable subscription identity. */
 export function createGitHubGetRepositoryTool(ctx: {
   egress: PluginEgress;
   events: { canSubscribe: boolean };
 }) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "Get a GitHub repository. Use this when repository-wide issue activity may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
-    inputSchema,
-    outputSchema,
+    ...gitHubGetRepositoryToolDefinition,
     async execute(input): Promise<Result> {
       const repo = parseRepo(input.repo);
       const response = await githubApi(ctx.egress, {

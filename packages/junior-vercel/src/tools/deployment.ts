@@ -5,6 +5,7 @@ import {
   subscribableResourceSchema,
   type PluginToolOutput,
   type ToolRegistrationHookContext,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { vercelProjectIdSchema } from "../project.js";
@@ -72,19 +73,23 @@ function projectLookupUrl(project: string, team?: string): string {
   return url.toString();
 }
 
+export const vercelDeploymentToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Resolve a Vercel project name or ID and describe a subscribable deployment resource for one deployment or every deployment of the project. Use the user's explicit project and team, otherwise the vercel.project and vercel.team conversation defaults.",
+  inputSchema,
+  outputSchema,
+});
+
 /** Resolve and return the resource identity for one Vercel deployment. */
 export function createVercelDeploymentTool(ctx: ToolRegistrationHookContext) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "Resolve a Vercel project name or ID and describe a subscribable deployment resource for one deployment or every deployment of the project. Use the user's explicit project and team, otherwise the vercel.project and vercel.team conversation defaults.",
-    inputSchema,
-    outputSchema,
+    ...vercelDeploymentToolDefinition,
     async execute(input): Promise<Result> {
       const response = await ctx.egress.fetch({
         operation: "vercel.project.get",

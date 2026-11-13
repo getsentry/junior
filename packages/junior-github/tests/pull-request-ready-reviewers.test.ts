@@ -181,7 +181,7 @@ describe("review request when a draft is ready", () => {
     reviewers?: string[],
   ): Promise<string[]> {
     const operations: string[] = [];
-    const tool = githubPlugin().hooks!.tools!({
+    const tool = githubPlugin().hooks!.tools!.bind({
       actor: { platform: "slack", teamId: "T1", userId: "U1" },
       conversationId: CONVERSATION_ID,
       db: fixture.db(),

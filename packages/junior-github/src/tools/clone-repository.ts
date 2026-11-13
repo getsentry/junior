@@ -6,6 +6,7 @@ import {
   type PluginSandbox,
   type PluginToolOutput,
   type PluginWorkspaceToolContext,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { isReservedSandboxDirectory } from "../sandbox-paths.js";
@@ -137,6 +138,34 @@ async function removePartialClone(
   }
 }
 
+export const gitHubCloneRepositoryToolDefinition = pluginToolDefinition({
+  annotations: {
+    // Remote GitHub effect is contents-read only. Sandbox checkout creation is
+    // the same class of ephemeral local materialization as webFetch artifacts,
+    // so this stays a read-only inspection tool rather than a mutating write.
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Clone a GitHub repository into the sandbox as an ad-hoc checkout. The destination must not already exist. In the default Sandbox, a matching Workspace is a tool input error: call switchWorkspace instead, or opt in to an intentional ad-hoc checkout. Inside a Workspace, the clone proceeds and the result notes matching Workspaces.",
+  describeProposal(input) {
+    const directory =
+      typeof input.directory === "string" && input.directory.length > 0
+        ? input.directory
+        : undefined;
+    const adHoc =
+      input.allow_ad_hoc === true ? " as an intentional ad-hoc checkout" : "";
+    return directory
+      ? `Shallow-clone ${input.repo} into the local sandbox at ${directory}${adHoc} for inspection (no GitHub mutation).`
+      : `Shallow-clone ${input.repo} into the local sandbox${adHoc} for inspection (no GitHub mutation).`;
+  },
+  executionMode: "sequential",
+  inputSchema,
+  outputSchema,
+});
+
 /** Clone one GitHub repository into the sandbox as an ad-hoc checkout. */
 export function createGitHubCloneRepositoryTool(ctx: {
   log: PluginLogger;
@@ -144,31 +173,7 @@ export function createGitHubCloneRepositoryTool(ctx: {
   workspaces: PluginWorkspaceToolContext;
 }) {
   return definePluginTool({
-    annotations: {
-      // Remote GitHub effect is contents-read only. Sandbox checkout creation is
-      // the same class of ephemeral local materialization as webFetch artifacts,
-      // so this stays a read-only inspection tool rather than a mutating write.
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "Clone a GitHub repository into the sandbox as an ad-hoc checkout. The destination must not already exist. In the default Sandbox, a matching Workspace is a tool input error: call switchWorkspace instead, or opt in to an intentional ad-hoc checkout. Inside a Workspace, the clone proceeds and the result notes matching Workspaces.",
-    describeProposal(input) {
-      const directory =
-        typeof input.directory === "string" && input.directory.length > 0
-          ? input.directory
-          : undefined;
-      const adHoc =
-        input.allow_ad_hoc === true ? " as an intentional ad-hoc checkout" : "";
-      return directory
-        ? `Shallow-clone ${input.repo} into the local sandbox at ${directory}${adHoc} for inspection (no GitHub mutation).`
-        : `Shallow-clone ${input.repo} into the local sandbox${adHoc} for inspection (no GitHub mutation).`;
-    },
-    executionMode: "sequential",
-    inputSchema,
-    outputSchema,
+    ...gitHubCloneRepositoryToolDefinition,
     async execute(input, options): Promise<Result> {
       const repo = parseRepo(input.repo);
       const repoId = `${repo.owner}/${repo.name}`;

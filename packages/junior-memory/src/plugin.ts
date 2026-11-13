@@ -1,4 +1,7 @@
-import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import {
+  defineJuniorPlugin,
+  definePluginTool,
+} from "@sentry/junior-plugin-api";
 import { createMemoryAgent } from "./agent";
 import { createMemoryApi } from "./api";
 import { createMemoryCliCommand } from "./cli";
@@ -10,6 +13,10 @@ import {
   type MemoryCreateToolContext,
   type MemoryReviewer,
   type MemoryToolContext,
+  memoryArchiveToolDefinition,
+  memoryCreateToolDefinition,
+  memoryListToolDefinition,
+  memorySearchToolDefinition,
 } from "./tools";
 import { processMemorySession } from "./process-session";
 import { reembedMemories } from "./reembed";
@@ -163,44 +170,52 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
           users: ctx.users,
         });
       },
-      tools(ctx) {
-        const agent = createMemoryAgent(ctx.model);
-        const context = memoryToolContext({
-          ...ctx,
-          agent,
-          db: ctx.db as MemoryDb,
-          embedder: ctx.embedder,
-        });
-        // Only a person's message in a public Conversation may write memory.
-        // Disable the write tools instead of omitting them, so the tool list
-        // and the prompt cache stay the same in every Turn.
-        const writeAccess =
-          "visibility" in ctx.source && ctx.source.visibility === "public"
-            ? {}
-            : {
-                disabledReason:
-                  "Only a person's message in a public Conversation can write memory.",
-              };
-        return {
-          createMemory: {
-            ...createMemoryCreateTool(
-              memoryCreateToolContext({
-                ...ctx,
-                agent,
-                db: ctx.db as MemoryDb,
-                embedder: ctx.embedder,
-                supersessionDecider: agent,
-              }),
-            ),
-            ...writeAccess,
-          },
-          archiveMemory: {
-            ...createMemoryArchiveTool(context),
-            ...writeAccess,
-          },
-          listMemories: createMemoryListTool(context),
-          searchMemories: createMemorySearchTool(context),
-        };
+      tools: {
+        definitions: () => ({
+          createMemory: definePluginTool(memoryCreateToolDefinition),
+          archiveMemory: definePluginTool(memoryArchiveToolDefinition),
+          listMemories: definePluginTool(memoryListToolDefinition),
+          searchMemories: definePluginTool(memorySearchToolDefinition),
+        }),
+        bind(ctx) {
+          const agent = createMemoryAgent(ctx.model);
+          const context = memoryToolContext({
+            ...ctx,
+            agent,
+            db: ctx.db as MemoryDb,
+            embedder: ctx.embedder,
+          });
+          // Only a person's message in a public Conversation may write memory.
+          // Disable the write tools instead of omitting them, so the tool list
+          // and the prompt cache stay the same in every Turn.
+          const writeAccess =
+            "visibility" in ctx.source && ctx.source.visibility === "public"
+              ? {}
+              : {
+                  disabledReason:
+                    "Only a person's message in a public Conversation can write memory.",
+                };
+          return {
+            createMemory: {
+              ...createMemoryCreateTool(
+                memoryCreateToolContext({
+                  ...ctx,
+                  agent,
+                  db: ctx.db as MemoryDb,
+                  embedder: ctx.embedder,
+                  supersessionDecider: agent,
+                }),
+              ),
+              ...writeAccess,
+            },
+            archiveMemory: {
+              ...createMemoryArchiveTool(context),
+              ...writeAccess,
+            },
+            listMemories: createMemoryListTool(context),
+            searchMemories: createMemorySearchTool(context),
+          };
+        },
       },
       ...(!options.disableRecall
         ? {

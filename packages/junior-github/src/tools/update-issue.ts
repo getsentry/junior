@@ -13,6 +13,7 @@ import {
   subscribableResourceSchema,
   type PluginToolOutput,
   type SubscribableResource,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { gitHubIssueSubscribable } from "../events/issue.js";
@@ -104,6 +105,19 @@ function nonEmptyString(value: string | undefined, name: string): string {
   return value.trim();
 }
 
+export const gitHubUpdateIssueToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description:
+    "Update an existing GitHub issue's title, body, or open/closed state, or assign it to the requester. Use this instead of raw GitHub API calls when changing issue metadata.",
+  inputSchema,
+  outputSchema,
+});
+
 /** Update mutable issue metadata while preserving runtime-owned body attribution. */
 export function createGitHubUpdateIssueTool(ctx: {
   actor?: Actor;
@@ -119,16 +133,7 @@ export function createGitHubUpdateIssueTool(ctx: {
   };
 }) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: true,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description:
-      "Update an existing GitHub issue's title, body, or open/closed state, or assign it to the requester. Use this instead of raw GitHub API calls when changing issue metadata.",
-    inputSchema,
-    outputSchema,
+    ...gitHubUpdateIssueToolDefinition,
     async execute(input): Promise<Result> {
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {

@@ -12,6 +12,7 @@ import {
   type PluginToolOutput,
   type ToolRegistrationHookContext,
   pluginToolOutputSchema,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
@@ -276,19 +277,23 @@ async function createGitHubIssue(
   };
 }
 
+export const gitHubIssueToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description:
+    "Create a GitHub issue with a runtime-owned conversation footer. Use this instead of shelling out to gh issue create when creating issues.",
+  inputSchema: createIssueToolInputSchema,
+  outputSchema: gitHubIssueOutputSchema,
+});
+
 /** Own issue creation so provider writes use host egress and the footer stays deterministic. */
 export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description:
-      "Create a GitHub issue with a runtime-owned conversation footer. Use this instead of shelling out to gh issue create when creating issues.",
-    inputSchema: createIssueToolInputSchema,
-    outputSchema: gitHubIssueOutputSchema,
+    ...gitHubIssueToolDefinition,
     async execute(
       input: CreateGitHubIssueInput,
       options: PluginToolExecuteOptions,

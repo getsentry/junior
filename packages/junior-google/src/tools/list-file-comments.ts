@@ -1,6 +1,7 @@
 import {
   definePluginTool,
   pluginToolOutputSchema,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
@@ -93,19 +94,23 @@ const commentListSchema = z.object({
 const COMMENT_FIELDS =
   "comments(author/displayName,content,createdTime,id,quotedFileContent/value,resolved,replies(action,author/displayName,content,createdTime)),nextPageToken";
 
+export const listGoogleFileCommentsToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "List the comments and replies on one Google Doc, Sheet, or Slides presentation, as your own Google account sees them. Each comment gives its author, text, the file text it is attached to, and whether it is resolved. Works for files shared with that account and files shared with anyone who has the link. Returns up to 100 comments per call. Comments can be private: share only what the requester needs.",
+  inputSchema,
+  outputSchema,
+});
+
 /** List the comments and replies on one Google Doc, Sheet, or Slides file. */
 export function createListGoogleFileCommentsTool(ctx: GoogleToolContext) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "List the comments and replies on one Google Doc, Sheet, or Slides presentation, as your own Google account sees them. Each comment gives its author, text, the file text it is attached to, and whether it is resolved. Works for files shared with that account and files shared with anyone who has the link. Returns up to 100 comments per call. Comments can be private: share only what the requester needs.",
-    inputSchema,
-    outputSchema,
+    ...listGoogleFileCommentsToolDefinition,
     async execute(input) {
       const ref = parseFileReference(input.file);
       // Check the type first: drive.readonly can also read comments on other

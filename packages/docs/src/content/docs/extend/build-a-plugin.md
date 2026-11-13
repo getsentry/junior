@@ -286,7 +286,7 @@ Use the smallest surface that matches the deterministic boundary your plugin nee
 | `beforeToolExecute(ctx)` | Deny, redirect, or rewrite object-shaped tool input and set non-secret env values before a tool runs.                                                                                        |
 | `afterToolExecute(ctx)`  | Check a finished tool call, such as the files it changed. Add guidance to its result or reject the result.                                                                                   |
 | `afterMcpTool(ctx)`      | Run junior-owned side effects after a successful hosted MCP tool call. Prefer this for conversation annotations instead of inventing a parallel tool contract.                               |
-| `tools(ctx)`             | Return host-registered tool definitions for the current turn. Tool names must be plugin-local camelCase names.                                                                               |
+| `tools`                  | Declare tool definitions once with `definitions()`, and bind them to the current Turn with `bind(ctx)`. Tool names must be plugin-local camelCase names.                                     |
 | `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                                                                                            |
 | `apiRoutes(ctx)`         | Return a Hono or fetch-compatible app mounted under `/api/plugins/:pluginName/*` with auth already applied. Use `ctx.users.resolve(email)` only when the route must link work to one person. |
 | `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded run context with `ctx.run.load()`.                                                            |
@@ -324,16 +324,26 @@ checkout paths. To run a check in some Workspaces only, return early when
 
 A hook that throws is logged, and the tool result stays unchanged.
 
-`tools(ctx)` receives the active turn context, `ctx.state`, and `ctx.log`. Call
-`ctx.users.resolveActor()` only when a tool needs the active actor's linked
-identity or user. Call `ctx.users.resolveTimezone()` when a tool needs the
-active actor's IANA timezone. It returns the install default when Junior does
-not know the person's timezone. A tool that sends model text to your provider
-must call `ctx.users.replaceSlackMentions(input, provider)` first. The model
-reads Slack threads, so it can copy Slack syntax such as `<@U123>`. The call
-rewrites every string in `input`, outside Markdown code. A Slack user becomes
-`@handle` of their linked account at `provider`, or their name. Return tool definitions keyed by the plugin-local tool
-names your plugin owns.
+The `tools` hook has two parts:
+
+- `definitions()` returns the model-facing tool definitions, keyed by the
+  plugin-local tool names your plugin owns. Junior reads it with no Turn, so
+  read only deployment configuration here. Each name, description, schema,
+  and annotation comes from here.
+- `bind(ctx)` returns the same names, each with its `execute` and an optional
+  `disabledReason`. It receives the active Turn context, `ctx.state`, and
+  `ctx.log`. Call `ctx.users.resolveActor()` only when a tool needs the active
+  actor's linked identity or user. Call `ctx.users.resolveTimezone()` when a
+  tool needs the active actor's IANA timezone. It returns the install default
+  when Junior does not know the person's timezone. A tool that sends model
+  text to your provider must call
+  `ctx.users.replaceSlackMentions(input, provider)` first. The model reads
+  Slack threads, so it can copy Slack syntax such as `<@U123>`. The call
+  rewrites every string in `input`, outside Markdown code. A Slack user
+  becomes `@handle` of their linked account at `provider`, or their name.
+
+Declare the static part once with `pluginToolDefinition()` and spread it in
+both parts.
 Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 `pluginNamespace` is derived from the plugin manifest name. For example,
 `my-provider` tool `ping` is exposed as `myProvider_ping`.
@@ -341,6 +351,8 @@ Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 ```ts title="index.ts"
 import {
   defineJuniorPlugin,
+  definePluginTool,
+  pluginToolDefinition,
   pluginToolOutputSchema,
   zodTool,
 } from "@sentry/junior-plugin-api";
@@ -350,6 +362,20 @@ const pingOutputSchema = pluginToolOutputSchema.extend({
   latency_ms: z.number(),
 });
 
+const pingDefinition = pluginToolDefinition({
+  approvalMode: "auto",
+  annotations: {
+    readOnlyHint: true,
+    openWorldHint: true,
+  },
+  description: "Check my-provider connectivity.",
+  inputSchema: z.object({}),
+  outputSchema: pingOutputSchema,
+  privateTraceResult: (result) => ({
+    latency_ms: result.latency_ms,
+  }),
+});
+
 export function myProviderPlugin() {
   return defineJuniorPlugin({
     manifest: {
@@ -357,28 +383,21 @@ export function myProviderPlugin() {
       description: "My provider integration",
     },
     hooks: {
-      tools(ctx) {
-        return {
-          ping: zodTool({
-            approvalMode: "auto",
-            annotations: {
-              readOnlyHint: true,
-              openWorldHint: true,
-            },
-            description: "Check my-provider connectivity.",
-            inputSchema: z.object({}),
-            outputSchema: pingOutputSchema,
-            privateTraceResult: (result) => ({
-              latency_ms: result.latency_ms,
+      tools: {
+        definitions: () => ({ ping: definePluginTool(pingDefinition) }),
+        bind(ctx) {
+          return {
+            ping: zodTool({
+              ...pingDefinition,
+              execute: async () => {
+                ctx.log.info("Running my-provider ping");
+                return {
+                  latency_ms: 12,
+                };
+              },
             }),
-            execute: async () => {
-              ctx.log.info("Running my-provider ping");
-              return {
-                latency_ms: 12,
-              };
-            },
-          }),
-        };
+          };
+        },
       },
     },
   });
@@ -419,9 +438,9 @@ Use `privateTraceResult` only for fields that are safe to retain when the
 conversation is private. Without it, Junior records bounded result metadata
 instead of the raw structured result.
 
-Return the same tools from `tools(ctx)` in every Turn of a Conversation. A
-change to the tool list invalidates the model provider's prompt cache. When one
-Turn cannot use a tool, set `disabledReason` on it instead of omitting it.
+`bind(ctx)` must return exactly the tools from `definitions()`, in every Turn.
+A change to the tool list invalidates the model provider's prompt cache. When
+one Turn cannot use a tool, set `disabledReason` on it instead of omitting it.
 Junior keeps the tool in the tool list, lists it as disabled in the Turn
 context, and rejects its calls before review or execution.
 

@@ -11,7 +11,7 @@ const DOC_LINK = `https://docs.google.com/document/d/${DOC_ID}/edit`;
 function docTools(responses: Response[], requester: string | null = REQUESTER) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
-  const tools = googlePlugin().hooks!.tools!({
+  const tools = googlePlugin().hooks!.tools!.bind({
     egress: { fetch },
     users: {
       resolveActor: async () =>

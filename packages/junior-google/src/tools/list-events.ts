@@ -2,6 +2,7 @@ import {
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
@@ -131,6 +132,19 @@ function eventLabel(
     : `${first}, all day`;
 }
 
+export const listCalendarEventsToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "List events on a colleague's Google Calendar or on your own calendar, as seen by your own Google account. Shows titles, times, locations, organizer, and attendee responses when the calendar's sharing settings allow it. Use it to find an event to change or cancel, check who accepted, or see what someone has coming up. Events without a title are busy blocks the owner did not share. Calendar details can be private: share only what the requester needs, and avoid repeating them in public channels.",
+  inputSchema,
+  outputSchema,
+});
+
 /**
  * Read the events Junior's account can see on one person's calendar.
  *
@@ -140,16 +154,7 @@ function eventLabel(
  */
 export function createListCalendarEventsTool(ctx: GoogleToolContext) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "List events on a colleague's Google Calendar or on your own calendar, as seen by your own Google account. Shows titles, times, locations, organizer, and attendee responses when the calendar's sharing settings allow it. Use it to find an event to change or cancel, check who accepted, or see what someone has coming up. Events without a title are busy blocks the owner did not share. Calendar details can be private: share only what the requester needs, and avoid repeating them in public channels.",
-    inputSchema,
-    outputSchema,
+    ...listCalendarEventsToolDefinition,
     async execute(input) {
       const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());
       const timeMinMs = Date.parse(input.time_min);

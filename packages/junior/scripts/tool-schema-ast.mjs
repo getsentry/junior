@@ -4,7 +4,13 @@ import ts from "@typescript/typescript6";
 
 // Shared AST walk for the tool contract checks. It finds tool definitions and
 // follows schema names across files to the object literals that define them.
-const TOOL_CONSTRUCTORS = new Set(["definePluginTool", "tool", "zodTool"]);
+const TOOL_CONSTRUCTORS = new Set([
+  "definePluginTool",
+  "pluginToolDefinition",
+  "tool",
+  "zodTool",
+  "zodToolDefinition",
+]);
 const OBJECT_SCHEMA_CALLS = new Set([
   "Object",
   "extend",

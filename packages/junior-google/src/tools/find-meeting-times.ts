@@ -2,6 +2,7 @@ import {
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
@@ -569,6 +570,19 @@ async function calendarTimeZone(
   return timeZone && isTimeZone(timeZone) ? timeZone : undefined;
 }
 
+export const findMeetingTimesToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Find meeting times when every required attendee is free and in working hours, using free/busy data from your own Google account. Returns open slots best first, never event details. Offer a short list in that order; if the requester lets you choose, take the first. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so, and never treat them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
+  inputSchema,
+  outputSchema,
+});
+
 /**
  * Find times when everyone is free and inside their working hours.
  *
@@ -576,16 +590,7 @@ async function calendarTimeZone(
  */
 export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "Find meeting times when every required attendee is free and in working hours, using free/busy data from your own Google account. Returns open slots best first, never event details. Offer a short list in that order; if the requester lets you choose, take the first. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so, and never treat them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
-    inputSchema,
-    outputSchema,
+    ...findMeetingTimesToolDefinition,
     async execute(input) {
       const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());
       const timeMinMs = Math.max(

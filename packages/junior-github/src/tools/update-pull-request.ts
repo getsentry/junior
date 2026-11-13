@@ -13,6 +13,7 @@ import {
   pluginToolOutputSchema,
   type PluginToolOutput,
   type SubscribableResource,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
@@ -145,6 +146,19 @@ async function setPullRequestDraft(input: {
   return isDraft;
 }
 
+export const gitHubUpdatePullRequestToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description:
+    "Update an existing GitHub pull request's title, body, base branch, open/closed state, or draft state. Use this instead of raw GitHub API calls when changing PR metadata or marking a PR ready for review.",
+  inputSchema,
+  outputSchema,
+});
+
 /** Update mutable PR metadata while preserving runtime-owned body attribution. */
 export function createGitHubUpdatePullRequestTool(
   ctx: {
@@ -165,16 +179,7 @@ export function createGitHubUpdatePullRequestTool(
   descriptionDecider?: PluginDecider,
 ) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: true,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description:
-      "Update an existing GitHub pull request's title, body, base branch, open/closed state, or draft state. Use this instead of raw GitHub API calls when changing PR metadata or marking a PR ready for review.",
-    inputSchema,
-    outputSchema,
+    ...gitHubUpdatePullRequestToolDefinition,
     async execute(input): Promise<Result> {
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {

@@ -585,6 +585,29 @@ function createZodTool<
   >;
 }
 
+/**
+ * Static part of a Zod plugin tool: everything except the run-bound
+ * `execute`. Pass it to `definePluginTool` in `definitions()`, and spread it
+ * with `execute` in `bind()`.
+ */
+export type StaticPluginToolDefinition<
+  TInputSchema extends ZodTypeAny,
+  TOutputSchema extends ZodTypeAny,
+> = Omit<
+  ZodPluginToolDefinition<TInputSchema, TOutputSchema, z.input<TOutputSchema>>,
+  "execute" | "disabledReason"
+>;
+
+/** Declare the static part of a Zod plugin tool once, for `definitions()` and `bind()`. */
+export function pluginToolDefinition<
+  TInputSchema extends ZodTypeAny,
+  TOutputSchema extends ZodTypeAny,
+>(
+  definition: StaticPluginToolDefinition<TInputSchema, TOutputSchema>,
+): StaticPluginToolDefinition<TInputSchema, TOutputSchema> {
+  return definition;
+}
+
 /** Define a plugin tool with Zod input parsing and validated structured results. */
 export function zodTool<
   TInputSchema extends ZodTypeAny,

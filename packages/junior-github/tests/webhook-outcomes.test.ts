@@ -2973,7 +2973,7 @@ describe("GitHub-owned pull request outcomes", () => {
         { status: 201 },
       );
     const state = new Map<string, unknown>();
-    const tools = plugin.hooks!.tools!({
+    const tools = plugin.hooks!.tools!.bind({
       ...pluginCtx,
       actor: { platform: "slack", teamId: "T1", userId: "U1" },
       conversationId: "slack:C123:1712345.0001",

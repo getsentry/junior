@@ -5,6 +5,7 @@ import {
   subscribableResourceSchema,
   type PluginToolOutput,
   type SubscribableResource,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { gitHubReleaseSourceSubscribable } from "../events/release.js";
@@ -85,22 +86,26 @@ function mapRelease(
   };
 }
 
+export const gitHubGetReleaseToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Get a GitHub release for an exact repository, optionally limited to one tag. The result remains subscribable when no release exists yet, so use it before waiting for a published release. Omit the tag to watch every published release in the repository.",
+  inputSchema,
+  outputSchema,
+});
+
 /** Read release metadata and expose its stable subscription identity. */
 export function createGitHubGetReleaseTool(ctx: {
   egress: PluginEgress;
   events: { canSubscribe: boolean };
 }) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "Get a GitHub release for an exact repository, optionally limited to one tag. The result remains subscribable when no release exists yet, so use it before waiting for a published release. Omit the tag to watch every published release in the repository.",
-    inputSchema,
-    outputSchema,
+    ...gitHubGetReleaseToolDefinition,
     async execute(input): Promise<Result> {
       const repo = parseRepo(input.repo);
       const tag = input.tag?.trim() || undefined;

@@ -15,6 +15,7 @@ import {
   pluginToolOutputSchema,
   watchResultSchema,
   subscribableResourceSchema,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
@@ -536,6 +537,20 @@ async function gitHubPullRequestStructuredResult(
   }
 }
 
+export const gitHubPullRequestToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description:
+    "Create a GitHub pull request with a runtime-owned conversation footer. It assigns the pull request to the requester's linked GitHub account and asks for a review when available. Use this instead of shelling out to gh pr create when creating pull requests.",
+  exposure: "direct",
+  inputSchema: createPullRequestToolInputSchema,
+  outputSchema: gitHubPullRequestOutputSchema,
+});
+
 /** Own PR creation so provider writes use host egress and the footer stays deterministic. */
 export function createGitHubPullRequestTool(
   ctx: ToolRegistrationHookContext,
@@ -544,17 +559,7 @@ export function createGitHubPullRequestTool(
   descriptionDecider?: PluginDecider,
 ) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description:
-      "Create a GitHub pull request with a runtime-owned conversation footer. It assigns the pull request to the requester's linked GitHub account and asks for a review when available. Use this instead of shelling out to gh pr create when creating pull requests.",
-    exposure: "direct",
-    inputSchema: createPullRequestToolInputSchema,
-    outputSchema: gitHubPullRequestOutputSchema,
+    ...gitHubPullRequestToolDefinition,
     async execute(
       input: CreateGitHubPullRequestInput,
       options: PluginToolExecuteOptions,

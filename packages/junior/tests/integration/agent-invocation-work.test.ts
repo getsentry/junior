@@ -56,6 +56,7 @@ import {
   loadTurnEvents,
   loadSubagentEvents,
 } from "../fixtures/agent-invocations";
+import { pluginToolsHook } from "../fixtures/plugin-tools";
 
 describe("agent invocation conversation work", () => {
   afterEach(async () => {
@@ -573,7 +574,7 @@ describe("agent invocation conversation work", () => {
               description: "Upkeep test tools",
             },
             hooks: {
-              tools: () => ({
+              tools: pluginToolsHook(() => ({
                 markDone: definePluginTool({
                   // The tool checks in code that its effect is safe, so action
                   // review does not run, also in a child agent.
@@ -590,7 +591,7 @@ describe("agent invocation conversation work", () => {
                   outputSchema: pluginToolOutputSchema,
                   execute: markDone,
                 }),
-              }),
+              })),
             },
           }),
         ]),

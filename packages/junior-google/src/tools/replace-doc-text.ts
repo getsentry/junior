@@ -1,5 +1,6 @@
 import {
   definePluginTool,
+  pluginToolDefinition,
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
@@ -65,22 +66,26 @@ const tabsSchema = z.object({
     .default([]),
 });
 
+export const replaceGoogleDocTextToolDefinition = pluginToolDefinition({
+  annotations: {
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  describeProposal(input) {
+    return `In Google Doc ${input.document}, replace every "${input.find}" with "${input.replace}".`;
+  },
+  description:
+    "Replace every match of a text in a Google Doc, as your own Google account. Matches keep their formatting. Only the first tab of a Doc with tabs is changed. Works only when that account and the requester can both edit the Doc. Anyone who can talk to you can read a Doc your account can edit, if they give you its link.",
+  inputSchema,
+  outputSchema,
+});
+
 /** Replace every match of a text in a Google Doc. */
 export function createReplaceGoogleDocTextTool(ctx: GoogleToolContext) {
   return definePluginTool({
-    annotations: {
-      destructiveHint: true,
-      idempotentHint: false,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    describeProposal(input) {
-      return `In Google Doc ${input.document}, replace every "${input.find}" with "${input.replace}".`;
-    },
-    description:
-      "Replace every match of a text in a Google Doc, as your own Google account. Matches keep their formatting. Only the first tab of a Doc with tabs is changed. Works only when that account and the requester can both edit the Doc. Anyone who can talk to you can read a Doc your account can edit, if they give you its link.",
-    inputSchema,
-    outputSchema,
+    ...replaceGoogleDocTextToolDefinition,
     async execute(input) {
       const doc = await requireEditableDoc(ctx, input.document);
       // Read the revision to check, and the first tab. Without tabsCriteria,

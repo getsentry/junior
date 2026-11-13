@@ -4,6 +4,7 @@ import {
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
+  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
@@ -80,9 +81,8 @@ function throwReviewError(status: number, body: unknown): never {
   throw new Error(message);
 }
 
-/** Submit a comment or change-request review through GitHub's REST API. */
-export function createGitHubSubmitPullRequestReviewTool(egress: PluginEgress) {
-  return definePluginTool({
+export const gitHubSubmitPullRequestReviewToolDefinition = pluginToolDefinition(
+  {
     annotations: {
       destructiveHint: true,
       idempotentHint: false,
@@ -93,6 +93,13 @@ export function createGitHubSubmitPullRequestReviewTool(egress: PluginEgress) {
       "Submit a GitHub pull request review as a comment or change request. Use this instead of `gh pr review`, GraphQL, or direct REST calls. You cannot approve pull requests.",
     inputSchema,
     outputSchema,
+  },
+);
+
+/** Submit a comment or change-request review through GitHub's REST API. */
+export function createGitHubSubmitPullRequestReviewTool(egress: PluginEgress) {
+  return definePluginTool({
+    ...gitHubSubmitPullRequestReviewToolDefinition,
     async execute(review): Promise<Result> {
       const repo = parseRepo(review.repo);
       const comments = review.comments?.map((comment) => ({
