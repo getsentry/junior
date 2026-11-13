@@ -90,23 +90,23 @@ function ChangeRow(props: {
       </section>
     );
   }
-  // The quote is a tag on the top edge of the bubble, so it takes no line
-  // of its own. The row keeps one height while the tag shows and hides, and
-  // rows below it do not move.
+  // The quote keeps its small line while it is hidden, so the row keeps one
+  // height and rows below it do not move. The bubble is compact to make up
+  // for that line.
   const quoteHidden = linked && askInView;
   return (
     <section
       aria-label={`${verb} ${item.title}`}
-      className="relative grid min-w-0 pt-3"
+      className="grid min-w-0 gap-1"
     >
       <p
         aria-hidden={quoteHidden || undefined}
-        className={`absolute left-2.5 top-0 m-0 flex max-w-[calc(100%-1.25rem)] items-center gap-1.5 rounded-full border border-dashboard-border-emphasis bg-dashboard-surface-raised px-2.5 py-0.5 text-xs leading-4 text-dashboard-text-muted transition-[opacity,visibility] duration-150 ${quoteHidden ? "invisible opacity-0" : ""}`}
+        className={`m-0 flex min-w-0 items-center gap-1.5 text-xs leading-4 text-dashboard-text-muted transition-[opacity,visibility] duration-150 ${quoteHidden ? "invisible opacity-0" : ""}`}
       >
         <span className="shrink-0">{verb}</span>
         {title}
       </p>
-      <dl className="m-0 grid w-fit max-w-full gap-1.5 rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel px-3.5 pb-2 pt-3.5 font-sans text-base leading-relaxed">
+      <dl className="m-0 grid w-fit max-w-full gap-1 rounded-xl bg-dashboard-fill-soft px-3 py-1.5 font-sans text-base leading-relaxed">
         {rows.map((row) => (
           <div key={row.label}>
             {/* One answer needs no label: a quote or the question names it. */}
