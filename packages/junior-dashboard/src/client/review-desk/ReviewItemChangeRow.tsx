@@ -48,8 +48,16 @@ function ChangeRow(props: {
     record.kind === "submitted" && item.request && item.answer
       ? answerRows(item.request, item.answer)
       : [];
-  const linked = useAnswerLinked(item.id) && rows.length > 0;
+  const askLinked = useAnswerLinked(item.id);
+  const linked = askLinked && rows.length > 0;
   const askInView = useAskInView(item.id);
+  // The page can show a question that has a row here, or load the history
+  // around the Turn that asked it. A plugin item has neither, so it opens on
+  // the review desk, as does an item from another Conversation.
+  const scrollsToQuestion =
+    showQuestion !== undefined &&
+    item.addedByConversationId === props.conversationId &&
+    (askLinked || item.addedByTurnId !== undefined);
   return (
     <section
       aria-label={`${verb} ${item.title}`}
@@ -58,10 +66,7 @@ function ChangeRow(props: {
       {linked && askInView ? null : (
         <p className="m-0 flex min-w-0 items-center gap-1.5 border-l-2 border-dashboard-border-emphasis pl-2 text-sm text-dashboard-text-muted">
           <span className="shrink-0">{verb}</span>
-          {/* A question that this Conversation asked has a row to scroll to.
-              One from another Conversation opens on the review desk. */}
-          {showQuestion &&
-          item.addedByConversationId === props.conversationId ? (
+          {showQuestion && scrollsToQuestion ? (
             <button
               className={QUOTE_TITLE_CLASS}
               onClick={() => showQuestion(item)}
