@@ -3,8 +3,18 @@ import { useCallback, useEffect, useRef, type PointerEvent } from "react";
 import { dockFalloff } from "@dashboard/lib/dock";
 import { useConversationDensity } from "../conversations/conversationDensity";
 
-/** The card under the pointer grows this much; its neighbors half as much. */
-const MAX_GROW = 0.02;
+/**
+ * The card under the pointer grows this much; its neighbors about half as
+ * much. The list's side inset (`DOCK_GUTTER`) follows it.
+ */
+const DOCK_GROW = 0.02;
+
+/**
+ * The list's side inset: at least half of a grown card's extra width, so a
+ * grown card never reaches the scroll area's edge. A percent padding reads
+ * the scroll area's width, which is wider than any card.
+ */
+export const DOCK_GUTTER = `max(1.5rem, calc(${(DOCK_GROW / 2) * 100}% + 0.25rem))`;
 const RADIUS_CARDS = 2;
 const DOCK_MEDIA =
   "(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)";
@@ -62,7 +72,7 @@ export function useDockHover() {
             card.style.willChange = "";
             continue;
           }
-          card.style.transform = `scale(${(1 + MAX_GROW * grow).toFixed(4)})`;
+          card.style.transform = `scale(${(1 + DOCK_GROW * grow).toFixed(4)})`;
           card.style.willChange = "transform";
           scaled.current.add(card);
         }

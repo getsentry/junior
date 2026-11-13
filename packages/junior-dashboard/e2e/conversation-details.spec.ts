@@ -17,27 +17,33 @@ test("opens conversation details beside the chat", async ({
     exact: true,
     name: "Conversations",
   });
-  const privateConversation = list.getByRole("link", {
-    name: /Direct Message/,
-  });
+  // The lock and the status sit in the row's meta, outside its title link.
+  const rowOf = (name: RegExp) =>
+    list
+      .getByRole("listitem")
+      .filter({ has: page.getByRole("link", { name }) });
   await expect(
-    privateConversation.getByLabel("Private conversation"),
+    rowOf(/Direct Message/).getByLabel("Private conversation"),
   ).toBeVisible();
   const publicConversation = list.getByRole("link", {
     name: /Checkout latency triage/,
   });
+  const publicRow = rowOf(/Checkout latency triage/);
+  await expect(publicRow.getByLabel("Private conversation")).toHaveCount(0);
   await expect(
-    publicConversation.getByLabel("Private conversation"),
-  ).toHaveCount(0);
-  const runningConversation = list.getByRole("link", {
-    name: /Investigate checkout latency/,
-  });
-  await expect(
-    runningConversation.getByRole("status", { name: "Running" }),
+    list
+      .getByRole("listitem")
+      .filter({
+        has: page.getByRole("link", {
+          exact: true,
+          name: "Investigate checkout latency",
+        }),
+      })
+      .getByRole("status", { name: "Running" }),
   ).toBeVisible();
-  await expect(
-    publicConversation.getByRole("status", { name: "Running" }),
-  ).toHaveCount(0);
+  await expect(publicRow.getByRole("status", { name: "Running" })).toHaveCount(
+    0,
+  );
   await openRow(publicConversation);
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,

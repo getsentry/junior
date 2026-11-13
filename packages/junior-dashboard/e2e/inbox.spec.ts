@@ -132,7 +132,7 @@ test("each entry lists its own rows under its name", async ({
   await expect(
     page
       .getByRole("region", { name: "Today" })
-      .getByRole("link", { name: new RegExp(checkout) }),
+      .getByRole("link", { exact: true, name: checkout }),
   ).toBeVisible();
   await screenshot(page, "inbox-conversations", { lightTheme: true });
 

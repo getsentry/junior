@@ -14,11 +14,13 @@ function conversationsList(page: Page): Locator {
 /** Label of the list section that holds the first row matching `title`. */
 async function sectionOf(
   list: Locator,
-  title: RegExp,
+  title: string,
 ): Promise<string | undefined> {
   return list
     .locator("section[aria-label]")
-    .filter({ has: list.page().getByRole("link", { name: title }) })
+    .filter({
+      has: list.page().getByRole("link", { exact: true, name: title }),
+    })
     .first()
     .getAttribute("aria-label");
 }
@@ -31,12 +33,14 @@ test.describe("conversation rows", () => {
     await viewAsParticipant(page);
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const list = conversationsList(page);
+    // Other rows' summaries link to it too, by its chip.
     const row = list.getByRole("link", {
-      name: /^Investigate checkout latency/,
+      exact: true,
+      name: "Investigate checkout latency",
     });
     await expect(row).toBeVisible();
     await expect
-      .poll(() => sectionOf(list, /^Investigate checkout/))
+      .poll(() => sectionOf(list, "Investigate checkout latency"))
       .not.toBe("Pinned");
 
     // Pin from the row's hover action.
@@ -53,7 +57,7 @@ test.describe("conversation rows", () => {
     // The row shows only in Pinned, and In flight lists it.
     await expect(row).toHaveCount(1);
     await expect
-      .poll(() => sectionOf(list, /^Investigate checkout/))
+      .poll(() => sectionOf(list, "Investigate checkout latency"))
       .toBe("Pinned");
     await expect(
       page
@@ -80,7 +84,7 @@ test.describe("conversation rows", () => {
     await page.getByRole("link", { name: "Back to Conversations" }).click();
     await expect(row).toBeVisible();
     await expect
-      .poll(() => sectionOf(list, /^Investigate checkout/))
+      .poll(() => sectionOf(list, "Investigate checkout latency"))
       .not.toBe("Pinned");
   });
 

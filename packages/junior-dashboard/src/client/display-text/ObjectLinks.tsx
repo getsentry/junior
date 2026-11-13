@@ -33,6 +33,11 @@ const KnownObjectsContext = createContext<KnownObjectsValue>({
  */
 export function KnownObjectsProvider(props: {
   annotations: ConversationDetailReport["annotations"];
+  /**
+   * More saved objects, such as an Inbox row's linked work, for the links
+   * that no Annotation names.
+   */
+  cards?: readonly OwnedObjectAnnotation[];
   children: ReactNode;
 }) {
   const value = useMemo(() => {
@@ -42,15 +47,20 @@ export function KnownObjectsProvider(props: {
       const key = annotation.url ? objectUrlKey(annotation.url) : undefined;
       if (key && !kinds.has(key)) kinds.set(key, annotation.kind);
     }
+    const objects = new Map(knownObjectsFromAnnotations(props.annotations));
+    for (const card of props.cards ?? []) {
+      const key = card.url ? objectUrlKey(card.url) : undefined;
+      if (key && !objects.has(key)) objects.set(key, card);
+    }
     return {
       links: new Set(
         [...kinds].flatMap(([key, kind]) =>
           kind === "resource_link" ? [key] : [],
         ),
       ),
-      objects: knownObjectsFromAnnotations(props.annotations),
+      objects,
     };
-  }, [props.annotations]);
+  }, [props.annotations, props.cards]);
   return (
     <KnownObjectsContext.Provider value={value}>
       {props.children}

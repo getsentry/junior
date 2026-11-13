@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import type { AutomationSummary } from "@sentry/junior/api/schema";
 
 import { FormNotice } from "../components/FormNotice";
+import { useConversationDensity } from "../conversations/conversationDensity";
 import { Button } from "../components/ui/button";
 import { conversationPath } from "../conversations/conversationRoutes";
 import { automationPath, formatRelativeTime } from "../format";
@@ -11,8 +12,9 @@ import { useAutomationLifecycle } from "../pages/automations/useAutomationLifecy
 import { cn } from "../styles";
 import {
   INBOX_ROW_DETAIL_CLASS,
+  INBOX_ROW_META_CLASS,
   inboxCardClass,
-  inboxRowButtonClass,
+  inboxHeadGridClass,
 } from "./inboxRowStyles";
 import { automationAttentionGroup } from "./inboxModel";
 
@@ -35,9 +37,22 @@ function lastRunLine(automation: AutomationSummary): string | undefined {
 }
 
 /**
- * An Automation that needs attention, as an inbox row. A click expands it
- * in place with why it is here, its last run, and the actions that the
- * Automation API supports. Only the labelled buttons leave the inbox. A
+ * Why the Automation is here, as its status: the attention reason, or the
+ * last run's own result when that is the reason.
+ */
+function attentionStatus(automation: AutomationSummary): string {
+  const reason = automationAttentionGroup(automation);
+  return reason === "Last run failed or blocked"
+    ? (lastRunLine(automation) ?? reason)
+    : reason;
+}
+
+/**
+ * An Automation that needs attention, as an inbox row, on the same columns
+ * as a Conversation row: its icon in the dot's place, then its title, its
+ * status where the summary goes, and "Automation" with the ages. A click
+ * expands it in place with why it is here, its last run, and the actions
+ * that the Automation API supports. Only the labelled buttons leave the inbox. A
  * sweep never clears it; it leaves when the Automation is fixed or resumed.
  */
 export function InboxAutomationRow(props: {
@@ -48,7 +63,9 @@ export function InboxAutomationRow(props: {
   onToggle(): void;
 }) {
   const { automation } = props;
-  const reason = automationAttentionGroup(automation);
+  const [density] = useConversationDensity();
+  const comfortable = density === "comfortable";
+  const status = attentionStatus(automation);
   const problems =
     automation.kind === "event" ? automation.trigger.problems : [];
   const detail = automation.statusReason ?? problems[0];
@@ -63,27 +80,53 @@ export function InboxAutomationRow(props: {
       <button
         aria-controls={regionId}
         aria-expanded={props.expanded}
-        className={inboxRowButtonClass(props.expanded)}
+        className={cn(
+          inboxHeadGridClass(comfortable),
+          "w-full cursor-pointer border-0 bg-transparent pb-2.5 text-left font-sans text-inherit transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+          // Open, the header ends flat on the detail's rule, inside the
+          // card. A closed card lights as a whole instead.
+          props.expanded && "rounded-b-none hover:bg-dashboard-fill-hover",
+        )}
         data-inbox-row={props.rowKey}
         onClick={props.onToggle}
         type="button"
       >
         <TriangleAlert
           aria-hidden="true"
-          className="mt-0.5 size-3.5 justify-self-center text-amber-400 light:text-amber-700"
+          className={cn(
+            "col-start-1 row-start-1 mt-[0.15rem] size-3.5 justify-self-center text-amber-400 light:text-amber-700",
+            comfortable && "mt-[0.25rem]",
+          )}
+          data-inbox-slot="dot"
         />
-        <span className="grid min-w-0 gap-0.5">
-          <span className="truncate text-sm font-semibold leading-snug text-dashboard-text">
+        <span
+          className="col-start-2 row-start-1 grid min-w-0 gap-1"
+          data-inbox-slot="title"
+        >
+          <span
+            className={cn(
+              "truncate font-medium leading-snug text-dashboard-text",
+              comfortable ? "text-base" : "text-sm",
+            )}
+          >
             {automation.title}
           </span>
-          <span className="truncate text-xs text-dashboard-text-muted">
-            <span className="font-medium text-amber-400 light:text-amber-700">
-              {reason}
-            </span>
-            {detail ? ` · ${detail}` : null}
-          </span>
+          {comfortable ? null : (
+            <AttentionStatus detail={detail} status={status} />
+          )}
         </span>
-        <span className="shrink-0 pt-0.5 text-xs text-dashboard-text-faint">
+        {comfortable ? (
+          <span
+            className="col-start-2 row-start-2 min-w-0 sm:col-start-3 sm:row-start-1 sm:pt-0.5"
+            data-inbox-slot="summary"
+          >
+            <AttentionStatus detail={detail} status={status} />
+          </span>
+        ) : null}
+        <span
+          className={cn(INBOX_ROW_META_CLASS, comfortable && "sm:col-start-4")}
+          data-inbox-slot="meta"
+        >
           Automation
         </span>
       </button>
@@ -98,7 +141,7 @@ export function InboxAutomationRow(props: {
             <div className="flex min-w-0 gap-2">
               <dt className="w-20 shrink-0 text-dashboard-text-muted">Why</dt>
               <dd className="m-0 min-w-0 text-dashboard-text">
-                {detail ? `${reason}: ${detail}` : reason}
+                {detail ? `${status}: ${detail}` : status}
               </dd>
             </div>
             {problems.slice(automation.statusReason ? 0 : 1).map((problem) => (
@@ -157,5 +200,16 @@ export function InboxAutomationRow(props: {
         </div>
       ) : null}
     </li>
+  );
+}
+
+function AttentionStatus(props: { detail?: string; status: string }) {
+  return (
+    <span className="line-clamp-3 min-w-0 text-xs leading-snug text-dashboard-text-muted">
+      <span className="font-medium text-amber-400 light:text-amber-700">
+        {props.status}
+      </span>
+      {props.detail ? ` · ${props.detail}` : null}
+    </span>
   );
 }

@@ -46,10 +46,13 @@ import {
  * hover. Other links ask the API for a card when they scroll into view or
  * the reader hovers them, and stay plain links until a card arrives.
  * Outside document mode, a bare URL in running text shows as a chip, and a
- * bare URL alone in a top-level paragraph shows the full card.
+ * bare URL alone in a top-level paragraph shows the full card. Inline mode
+ * shows links only with `chips`, outside a link or a button.
  */
 export function MarkdownText(props: {
   chat?: boolean;
+  /** Inline mode: show links, and bare URLs as chips. */
+  chips?: boolean;
   compact?: boolean;
   document?: boolean;
   inline?: boolean;
@@ -63,8 +66,10 @@ export function MarkdownText(props: {
   if (props.inline) {
     return (
       <Markdown
-        components={INLINE_COMPONENTS}
-        remarkPlugins={[remarkGfm]}
+        components={props.chips ? INLINE_CHIP_COMPONENTS : INLINE_COMPONENTS}
+        remarkPlugins={
+          props.chips ? [remarkGfm, remarkBareUrlStops] : [remarkGfm]
+        }
         urlTransform={safeHref}
       >
         {source}
@@ -389,6 +394,11 @@ const INLINE_COMPONENTS: Components = {
   thead: InlineContainer,
   tr: InlineBlock,
   ul: InlineContainer,
+};
+
+const INLINE_CHIP_COMPONENTS: Components = {
+  ...INLINE_COMPONENTS,
+  a: COMPONENTS.a,
 };
 
 function alignClass(align: unknown): string | undefined {

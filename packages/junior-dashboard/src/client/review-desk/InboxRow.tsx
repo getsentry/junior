@@ -8,9 +8,12 @@ import {
   Pin,
   PinOff,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+import type {
+  OwnedObjectAnnotation,
+  ReviewItemPayload,
+} from "@sentry/junior/api/schema";
 
 import { Button, buttonVariants } from "../components/ui/button";
 import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
@@ -49,12 +52,15 @@ import type { PinnedRowDrag } from "../conversations/PinnedConversationOrder";
 import { sidebarThreads } from "../conversations/sidebarThreads";
 import { useConversationRowActions } from "../conversations/useConversationRowActions";
 import { usePinConversation } from "../conversations/usePinConversation";
-import { ClampedDisplayText } from "../display-text/DisplayText";
-import { displayPlainText } from "../display-text/plainText";
+import { ClampedDisplayText, DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { inboxItemKind } from "./inboxModel";
-import { inboxCardClass } from "./inboxRowStyles";
+import {
+  INBOX_ROW_META_CLASS,
+  inboxCardClass,
+  inboxHeadGridClass,
+} from "./inboxRowStyles";
 import { snoozeChoices, type SnoozeChoice } from "./inboxSnooze";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
@@ -63,11 +69,14 @@ import {
   InboxLinkCards,
   InboxLinkedWork,
   linkedWorkCardCount,
+  linkedWorkObjects,
   MAX_ROW_PREVIEWS,
 } from "./InboxLinkedWork";
 import { InboxMedia } from "./InboxMedia";
 import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
+
+const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
 
 const PLURALS: Record<string, string> = {
   Approval: "Approvals",
@@ -129,14 +138,16 @@ function rowSummary(conversation: Conversation | undefined) {
   const brief = conversation?.brief;
   if (brief)
     return {
-      line: displayPlainText(brief.summary || brief.intent),
+      mentions: undefined,
       status: brief.status,
+      text: brief.summary || brief.intent,
     };
   const preview = conversation?.activityPreview;
   if (!preview) return undefined;
   return {
-    line: displayPlainText(preview.text, preview.mentions),
+    mentions: preview.mentions,
     status: undefined,
+    text: preview.text,
   };
 }
 
@@ -438,7 +449,10 @@ function ConversationInboxRow(
 
 function RowSummary(props: {
   comfortable: boolean;
+  conversationId: string;
   expanded: boolean;
+  /** The row's linked work, so the summary's links show their chips. */
+  objects: readonly OwnedObjectAnnotation[];
   summary: NonNullable<ReturnType<typeof rowSummary>>;
 }) {
   return (
@@ -458,7 +472,19 @@ function RowSummary(props: {
               : "line-clamp-1",
         )}
       >
-        {props.summary.line}
+        {/* As messages show it: links show as chips, so the clamp ends on
+            a word or a chip, not inside a URL. */}
+        <ReviewItemObjects
+          cards={props.objects}
+          conversationId={props.conversationId}
+        >
+          <DisplayText
+            chips
+            inline
+            mentions={props.summary.mentions}
+            text={props.summary.text}
+          />
+        </ReviewItemObjects>
       </span>
     </span>
   );
@@ -478,7 +504,8 @@ function InboxRowBody(
   const pills = props.itemTitle ? [] : askPills(openItems);
   const waiting = bundle?.needsYou ?? false;
   const summary = props.itemTitle ? undefined : rowSummary(conversation);
-  const annotations = conversation?.sidebarAnnotations ?? [];
+  const annotations = conversation?.sidebarAnnotations ?? NO_ANNOTATIONS;
+  const objects = useMemo(() => linkedWorkObjects(annotations), [annotations]);
   // One budget for the strip, in order: linked work (with any PR image),
   // then files, then cards for message links.
   const workCards = linkedWorkCardCount(annotations);
@@ -513,7 +540,7 @@ function InboxRowBody(
     <>
       <div
         className={cn(
-          "relative rounded-xl [--inbox-lead:16rem]",
+          "relative rounded-xl",
           props.selected && "bg-dashboard-fill-soft",
           props.expanded && "rounded-b-none",
         )}
@@ -524,40 +551,28 @@ function InboxRowBody(
             className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-dashboard-accent"
           />
         ) : null}
-        <Link
-          {...props.linkProps}
-          aria-controls={controls}
-          aria-current={props.selected ? "page" : undefined}
-          aria-expanded={props.expanded}
+        {/* The head link is the row's keyboard target. A click anywhere else
+            on the head expands the row too, except on the links and buttons
+            in it, such as pills and summary chips. */}
+        <div
           className={cn(
-            "grid min-w-0 grid-cols-[0.5rem_minmax(0,1fr)_auto] items-start gap-x-2.5 rounded-xl px-3 pt-2.5 font-sans text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
-            columns &&
-              "gap-y-1 sm:grid-cols-[0.5rem_var(--inbox-lead)_minmax(0,1fr)_auto]",
-            // A long press opens the row menu or drags a pin, not the iOS
-            // link callout.
-            "[-webkit-touch-callout:none]",
-            hasChips || cards ? "pb-1" : "pb-2.5",
+            inboxHeadGridClass(columns),
+            "cursor-pointer",
+            cards ? "pb-1" : "pb-2.5",
           )}
-          // A plain click or Enter expands the row in place. A modified click
-          // keeps the link, so Ctrl/⌘-click opens a new tab.
           onClick={(event) => {
             if (
-              event.button !== 0 ||
-              event.metaKey ||
-              event.ctrlKey ||
-              event.shiftKey ||
-              event.altKey
+              event.target instanceof Element &&
+              event.target.closest("a, button")
             )
               return;
-            event.preventDefault();
             props.onToggle();
           }}
-          to={rowConversationPath(props)}
         >
           <span
             aria-label={waiting ? "Waiting on you" : undefined}
             className={cn(
-              "col-start-1 row-start-1 mt-[0.45rem] size-2 rounded-full",
+              "col-start-1 row-start-1 mt-[0.45rem] size-2 justify-self-center rounded-full",
               comfortable && "mt-[0.55rem]",
               waiting
                 ? "bg-dashboard-accent"
@@ -565,51 +580,115 @@ function InboxRowBody(
                   ? "border border-dashboard-text-faint"
                   : "",
             )}
+            data-inbox-slot="dot"
             role={waiting ? "img" : undefined}
           />
-          <span className="col-start-2 row-start-1 grid min-w-0 gap-1">
-            <span
+          <span
+            className="col-start-2 row-start-1 grid min-w-0 gap-1"
+            data-inbox-slot="title"
+          >
+            <Link
+              {...props.linkProps}
+              aria-controls={controls}
+              aria-current={props.selected ? "page" : undefined}
+              aria-expanded={props.expanded}
               className={cn(
-                "min-w-0 truncate font-medium leading-snug text-dashboard-text",
-                comfortable ? "text-base" : "text-sm",
+                "grid min-w-0 gap-1 rounded-md font-sans text-inherit no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
+                // A long press opens the row menu or drags a pin, not the iOS
+                // link callout.
+                "[-webkit-touch-callout:none]",
               )}
+              // A plain click or Enter expands the row in place. A modified
+              // click keeps the link, so Ctrl/⌘-click opens a new tab.
+              onClick={(event) => {
+                if (
+                  event.button !== 0 ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey
+                )
+                  return;
+                event.preventDefault();
+                props.onToggle();
+              }}
+              to={rowConversationPath(props)}
             >
-              {props.itemTitle ?? props.title}
-            </span>
-            {props.itemTitle ? (
-              props.itemSubtitle ? (
+              <span
+                className={cn(
+                  "min-w-0 truncate font-medium leading-snug text-dashboard-text",
+                  comfortable ? "text-base" : "text-sm",
+                )}
+              >
+                {props.itemTitle ?? props.title}
+              </span>
+              {props.itemTitle && props.itemSubtitle ? (
                 <span className="min-w-0 truncate text-xs text-dashboard-text-muted">
                   {props.itemSubtitle}
                 </span>
-              ) : null
-            ) : summary && !columns ? (
+              ) : null}
+              {comfortable && conversation ? (
+                <ConversationCast conversation={conversation} />
+              ) : null}
+            </Link>
+            {summary && !columns ? (
               <RowSummary
                 comfortable={comfortable}
+                conversationId={props.conversationId}
                 expanded={props.expanded}
+                objects={objects}
                 summary={summary}
               />
             ) : null}
-            {comfortable && conversation ? (
-              <ConversationCast conversation={conversation} />
+            {/* What the row asks sits right under its title and people. */}
+            {hasChips ? (
+              <span className="flex min-w-0 flex-wrap items-center gap-1">
+                {pills.slice(0, 3).map((pill) => (
+                  <button
+                    aria-controls={controls}
+                    aria-expanded={props.expanded}
+                    className="cursor-pointer rounded-full border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+                    key={pill.key}
+                    onClick={props.onToggle}
+                    type="button"
+                  >
+                    <Pill pill={pill} />
+                  </button>
+                ))}
+                {pills.length > 3 ? (
+                  <span className="text-2xs text-dashboard-text-faint">
+                    +{pills.length - 3}
+                  </span>
+                ) : null}
+                {cards ? null : (
+                  <ConversationSidebarAnnotations annotations={annotations} />
+                )}
+              </span>
             ) : null}
           </span>
           {columns ? (
-            <span className="col-start-2 row-start-2 min-w-0 sm:col-start-3 sm:row-start-1 sm:pt-0.5">
+            <span
+              className="col-start-2 row-start-2 min-w-0 sm:col-start-3 sm:row-start-1 sm:pt-0.5"
+              data-inbox-slot="summary"
+            >
               <RowSummary
                 comfortable
+                conversationId={props.conversationId}
                 expanded={props.expanded}
+                objects={objects}
                 summary={summary}
               />
             </span>
           ) : null}
           <span
             className={cn(
-              "col-start-3 row-start-1 flex items-center gap-1 pt-0.5 text-xs tabular-nums text-dashboard-text-faint",
+              INBOX_ROW_META_CLASS,
               columns && "sm:col-start-4",
               // The row actions take the meta's place on hover or focus.
               conversation &&
                 "sm:group-hover:invisible sm:group-focus-within:invisible",
             )}
+            data-inbox-slot="meta"
           >
             {conversation ? (
               <ConversationStatusText
@@ -630,33 +709,7 @@ function InboxRowBody(
               formatCompactAge(props.time)
             )}
           </span>
-        </Link>
-        {hasChips ? (
-          <div className="flex min-w-0 items-center gap-1 pr-2 pb-2 pl-[1.875rem]">
-            <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-              {pills.slice(0, 3).map((pill) => (
-                <button
-                  aria-controls={controls}
-                  aria-expanded={props.expanded}
-                  className="cursor-pointer rounded-full border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
-                  key={pill.key}
-                  onClick={props.onToggle}
-                  type="button"
-                >
-                  <Pill pill={pill} />
-                </button>
-              ))}
-              {pills.length > 3 ? (
-                <span className="text-2xs text-dashboard-text-faint">
-                  +{pills.length - 3}
-                </span>
-              ) : null}
-              {cards ? null : (
-                <ConversationSidebarAnnotations annotations={annotations} />
-              )}
-            </span>
-          </div>
-        ) : null}
+        </div>
         {cards ? (
           <div
             className={cn(

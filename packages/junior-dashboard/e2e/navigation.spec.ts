@@ -176,9 +176,15 @@ test("keeps the density choice", async ({ page, dashboard }) => {
   // more lines.
   const row = page
     .getByRole("region", { exact: true, name: "Conversations" })
-    .getByRole("link", { name: /Checkout latency triage/ });
+    .getByRole("listitem")
+    .filter({
+      has: page.getByRole("link", { name: /Checkout latency triage/ }),
+    });
   await expect(row.getByRole("img", { name: "Brief: Done" })).toBeVisible();
-  const summary = row.getByText(/traced to payments-v42/);
+  // The clamp holds the summary's display text.
+  const summary = row
+    .getByText(/traced to payments-v42/)
+    .locator("xpath=ancestor-or-self::*[contains(@class, 'line-clamp')][1]");
   await expect(summary).toHaveClass(/line-clamp-1/);
 
   await page.getByRole("button", { name: /Open profile menu/ }).click();

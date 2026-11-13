@@ -27,6 +27,11 @@ const NO_MENTIONS: readonly ActorIdentity[] = [];
 export const DisplayText = memo(function DisplayText(props: {
   /** Use the larger chat type of user and assistant messages. */
   chat?: boolean;
+  /**
+   * Inline mode: show links, and bare URLs as object chips, as messages do.
+   * Only outside a link or a button.
+   */
+  chips?: boolean;
   /** Keep body line height compact in narrow panels. */
   compact?: boolean;
   /** Read a Markdown file, not a chat message. */
@@ -48,7 +53,7 @@ export const DisplayText = memo(function DisplayText(props: {
         mentions={props.mentions ?? NO_MENTIONS}
       >
         {props.inline ? (
-          <MarkdownText inline text={props.text} />
+          <MarkdownText chips={props.chips} inline text={props.text} />
         ) : props.document ? (
           // One tree, so reference links and footnotes resolve across fences.
           <MarkdownText document text={props.text} />

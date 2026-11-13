@@ -32,7 +32,7 @@ import {
 } from "./inboxData";
 import { InboxDoneView } from "./InboxDoneView";
 import { PullRequestChange, usePullRequestSections } from "./InboxPullRequests";
-import { useDockHover } from "./useDockHover";
+import { DOCK_GUTTER, useDockHover } from "./useDockHover";
 import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
 import {
   automationSections,
@@ -813,8 +813,11 @@ export function InboxList(props: {
         <div
           className={cn(
             "mx-auto w-full max-w-6xl pb-16",
-            props.phone ? "px-2 pt-1" : "px-6 pt-3",
+            props.phone ? "px-2 pt-1" : "pt-3",
           )}
+          // The dock grows cards near the pointer; this inset keeps them off
+          // the scroll area's edge.
+          style={props.phone ? undefined : { paddingInline: DOCK_GUTTER }}
         >
           {action.isError ? (
             <InlineError className="py-2">

@@ -24,6 +24,26 @@ function isCard(annotation: Annotation): annotation is CardAnnotation {
   return Boolean(annotation.objectType && annotation.title && annotation.url);
 }
 
+/**
+ * A row's linked work as saved objects, so the links in its summary show
+ * their chips. The feed does not name the owning plugin, so the cards show
+ * none.
+ */
+export function linkedWorkObjects(
+  annotations: readonly Annotation[],
+): OwnedObjectAnnotation[] {
+  return annotations.filter(isCard).map((annotation) => ({
+    key: annotation.key,
+    kind: "object",
+    label: annotation.label,
+    objectType: annotation.objectType,
+    plugin: "",
+    status: annotation.status,
+    title: annotation.title,
+    url: annotation.url,
+  }));
+}
+
 /** Count the linked-work cards that a comfortable row shows. */
 export function linkedWorkCardCount(annotations: Annotation[]): number {
   return Math.min(annotations.filter(isCard).length, MAX_ROW_PREVIEWS);
