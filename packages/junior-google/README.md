@@ -36,6 +36,15 @@ have no owner, so search shows them only when they are shared with the
 requester by name. Search returns nothing for a requester outside those
 domains.
 
+The dashboard shows a card for a Doc, Sheet, Slides, or Calendar event link
+only when the signed-in viewer can open it too. A file must name the
+viewer's email as a reader, writer, or owner, be open to anyone with the
+link, or be open to the viewer's domain and owned in that domain. Access
+through a Google group gets no card. An event must be on the Junior
+account's calendar, with the viewer as its organizer, creator, or a guest.
+A file card shows the title, type, owner, and modified time. An event card
+shows the title and time. Cards never show content or guests.
+
 Junior edits a Doc only for a requester who can edit it through their own
 email, their domain, or an editable link. Access through a Google group is not
 checked. Anyone who can talk to Junior can read a Doc that Junior edits, if

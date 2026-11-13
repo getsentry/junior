@@ -1,9 +1,22 @@
+import type { Page } from "@playwright/test";
 import { desktop, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
 // The mock release Conversation saves Annotations for these pull requests,
 // and its last reply links to them.
 const CONVERSATION_ID = "slack:CQA456:1770021600.000600";
+
+// Resolved links render again when their cards arrive, which drops an
+// earlier hover. Wait for all of them before a hover.
+async function waitForResolvedLinks(page: Page): Promise<void> {
+  for (const name of [
+    /Release 4\.2 checklist/,
+    /Release 4\.2 go\/no-go/,
+    /#proj-release/,
+  ]) {
+    await expect(page.getByRole("link", { name })).toBeVisible();
+  }
+}
 
 test("links to saved objects show as a chip, a hover card, and a card", async ({
   page,
@@ -31,6 +44,7 @@ test("links to saved objects show as a chip, a hover card, and a card", async ({
     }),
   ).toBeVisible();
 
+  await waitForResolvedLinks(page);
   // A labeled link keeps its text and previews the card on hover.
   await page.getByRole("link", { name: "relay fix" }).hover();
   await expect(
@@ -62,6 +76,7 @@ test("links without an Annotation resolve to a chip and a hover card", async ({
   );
   await expect(page.getByRole("link", { name: /Morgan Lee/ })).toBeVisible();
 
+  await waitForResolvedLinks(page);
   await chip.hover();
   await expect(
     page.getByRole("region", {
@@ -69,6 +84,44 @@ test("links without an Annotation resolve to a chip and a hover card", async ({
     }),
   ).toBeVisible();
   await screenshot(page, "conversation-resolved-object-links", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
+test("Google Doc and Calendar links resolve to chips and hover cards", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  const event = page.getByRole("link", { name: /Release 4\.2 go\/no-go/ });
+  await expect(event).toHaveAttribute(
+    "href",
+    /^https:\/\/www\.google\.com\/calendar\/event\?eid=/,
+  );
+  await waitForResolvedLinks(page);
+  await event.hover();
+  const eventCard = page.getByRole("region", {
+    name: "Calendar event: Release 4.2 go/no-go",
+  });
+  await expect(eventCard).toContainText("Mon, Feb 2, 15:00 – 15:30 PST");
+  await screenshot(page, "conversation-google-calendar-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+
+  await page.mouse.move(0, 0);
+  await expect(eventCard).toBeHidden();
+  const doc = page.getByRole("link", { name: /Release 4\.2 checklist/ });
+  await doc.hover();
+  const docCard = page.getByRole("region", {
+    name: "Google Doc: Release 4.2 checklist",
+  });
+  await expect(docCard).toContainText("Morgan Lee");
+  await screenshot(page, "conversation-google-document-link", {
     lightTheme: true,
     view: "desktop",
   });
@@ -133,6 +186,7 @@ test("a Slack message link resolves to a chip and a hover card", async ({
     "href",
     "https://acme.slack.com/archives/CQA456/p1770021700000100",
   );
+  await waitForResolvedLinks(page);
   await chip.hover();
   const card = page.getByRole("region", {
     name: /^Message: Release notes are ready for review/,
