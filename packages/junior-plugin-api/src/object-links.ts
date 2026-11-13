@@ -134,6 +134,13 @@ export interface ObjectLinkContext extends PluginContext {
    */
   egress: PluginEgress;
   /**
+   * Return the Junior path of one image that this plugin serves through
+   * `images`, such as a file thumbnail. Put the path in facts, never the
+   * address of the image. The image route asks `images.resolve` again for
+   * each viewer. `version` changes the path when the image changes.
+   */
+  imagePath(ref: string, version?: string): string;
+  /**
    * Return the Junior person card of the one known person with this
    * provider account, or undefined. Return it for a profile link of that
    * account, so the card shows the person and not only the account.
@@ -178,9 +185,10 @@ export interface PluginObjectLinkDefinition {
     url: URL,
   ): Promise<ObjectAnnotation | undefined>;
   /**
-   * The plugin tool that reads the object live, such as `readGoogleFile`.
-   * When a person attaches the link to a Conversation, its next Turn is told
-   * to read the object with this tool. Omit it when no tool reads the object.
+   * Name the plugin tool that reads the resolved object live, such as
+   * `readGoogleFile`. When a person attaches the link to a Conversation, its
+   * next Turn is told to read the object with this tool. Return nothing when
+   * no tool reads this object.
    */
-  readTool?: string;
+  readTool?(object: ObjectAnnotation): string | undefined;
 }

@@ -3,6 +3,12 @@ import * as z from "zod";
 const text = z.string().trim().min(1).max(160);
 const count = z.number().int().nonnegative();
 
+// A Junior image path. Browsers never load a third-party image URL.
+const imagePath = z
+  .string()
+  .max(4000)
+  .regex(/^\/api\/images\/[\w-]+\.[\w-]+\?w=\d+(&v=[\w-]+)?$/);
+
 /** The longest object summary, in UTF-16 code units. */
 export const OBJECT_SUMMARY_MAX_LENGTH = 280;
 
@@ -88,6 +94,8 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     summary: summary.optional(),
     owner: text.optional(),
     modifiedAt: z.iso.datetime({ offset: true }).optional(),
+    // A file thumbnail from `ObjectLinkContext.imagePath`.
+    thumbnailUrl: imagePath.optional(),
   }),
   // Messages: where and when, never the text. The card description holds a
   // short snippet only for a viewer who may read the message.
@@ -107,12 +115,7 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     // A video or image page. A link alone on its line shows only the
     // thumbnail of such a page.
     media: z.enum(["video", "image"]).optional(),
-    // A Junior image path. Browsers never load a third-party image URL.
-    thumbnailUrl: z
-      .string()
-      .max(4000)
-      .regex(/^\/api\/images\/[\w-]+\.[\w-]+\?w=\d+$/)
-      .optional(),
+    thumbnailUrl: imagePath.optional(),
   }),
   // People: only what the dashboard People pages already show.
   z.strictObject({

@@ -50,7 +50,7 @@ Default Sentry organization slug when a request does not name one.
 <details class="plugin-config">
 <summary><code>sentry.project</code></summary>
 
-Default Sentry project slug when a request does not name one.
+Default Sentry project slug when a request does not name one. With `sentry.org`, Junior also links the issue short ids of this project in its replies, such as `JUNIOR-3ZK` for the `junior` project.
 
 - **Define:** `jr-rpc config set sentry.project <project>`
 - **Install-wide default:** `configDefaults["sentry.project"]`
