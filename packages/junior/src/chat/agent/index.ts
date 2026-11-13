@@ -12,7 +12,6 @@
 import {
   Agent,
   type AgentEvent,
-  type AgentLoopTurnUpdate,
   type StreamFn,
 } from "@earendil-works/pi-agent-core";
 import type { FileUpload } from "chat";
@@ -833,7 +832,10 @@ async function executeAgentRunInPrivacyContext(
       ...(streamFn ? { base: streamFn } : undefined),
     });
     const nextInputAfterReplacement = createNextInputTracker();
-    /** Commit and adopt an active capacity replacement before another model call. */
+    /**
+     * Commit and adopt an active capacity replacement. True when it replaced
+     * history.
+     */
     const applyActiveContextCompaction = async (
       messages: PiMessage[],
       hookSignal?: AbortSignal,
@@ -844,7 +846,7 @@ async function executeAgentRunInPrivacyContext(
       clearSteeringQueueOnCommit = false,
       pairPendingRuntimeContext = false,
       mode: "blocking" | "active" = "active",
-    ): Promise<AgentLoopTurnUpdate | undefined> => {
+    ): Promise<boolean> => {
       // A ready background summary replaces history without a model call.
       const compaction = await compactWithPreparedSummary(
         {
@@ -882,7 +884,7 @@ async function executeAgentRunInPrivacyContext(
           ),
       );
       if (!compaction.compacted || !compaction.piMessages) {
-        return undefined;
+        return false;
       }
 
       priorPhaseUsage = addAgentTurnUsage(
@@ -910,13 +912,7 @@ async function executeAgentRunInPrivacyContext(
       if (clearSteeringQueueOnCommit && pendingMessages?.length) {
         agent!.clearSteeringQueue();
       }
-      return {
-        context: {
-          systemPrompt: baseInstructions,
-          messages: replacement,
-          tools: agent!.state.tools,
-        },
-      };
+      return true;
     };
     /**
      * Request a background summary when the model call that just ended was at
@@ -1016,7 +1012,7 @@ async function executeAgentRunInPrivacyContext(
       return acceptedMessages;
     };
 
-    // Pi converts listener and prepareNextTurn exceptions into error turns
+    // Pi converts listener exceptions into error turns
     // instead of rejecting. Preserve Junior's yield so runAgentStep can
     // restore it after the Pi run settles without leaking Pi mechanics into
     // the resume API.
@@ -1031,17 +1027,9 @@ async function executeAgentRunInPrivacyContext(
     // drops info logs.
     const toolBatchStats = createToolBatchStats();
     let setAgentSpanAttributes: SetSpanAttributes | undefined;
-    // What the `turn_end` listener found for `prepareNextTurn` to use.
-    let stepBoundary:
-      | {
-          // AGENTS.md changed `agent.state.messages`, which Pi does not read.
-          messagesChanged: boolean;
-          pendingMessages: Awaited<ReturnType<typeof drainSteeringMessages>>;
-          // No model call follows: the response or the tool batch ended the
-          // run, and no steering is pending.
-          runEnded: boolean;
-        }
-      | undefined;
+    // The `turn_end` listener changed `agent.state.messages`, which Pi does
+    // not read. `prepareNextTurn` gives them to the next model call.
+    let messagesChanged = false;
     /**
      * Do Junior's work after a model call and its tool batch, before Pi polls
      * steering. Pi awaits this listener after every model call. Pi turns its
@@ -1102,13 +1090,10 @@ async function executeAgentRunInPrivacyContext(
           if (runEnded) {
             await requestBackgroundCompactionAfterModelCall();
           }
-          return {
-            messagesChanged: Boolean(contextUpdate),
-            pendingMessages,
-            runEnded,
-          };
+          return { contextUpdate, pendingMessages, runEnded };
         },
       );
+      messagesChanged = Boolean(boundary.contextUpdate);
       // A yield is normal control flow, so it stays out of the span. It
       // comes before active compaction, so a resumed slice compacts at its
       // start.
@@ -1116,7 +1101,29 @@ async function executeAgentRunInPrivacyContext(
       if (yieldError) {
         throw yieldError;
       }
-      stepBoundary = boundary;
+      // After the final response or a batch that ended the run, such as a
+      // `noReply` call, compaction would drop the answer and start a retry.
+      if (boundary.runEnded) {
+        return;
+      }
+      // Pi polls steering after this listener. The replacement ends with the
+      // pending steering, so compacting here takes it out of Pi's queue.
+      // After a batch that ends the run, Pi then stops, and the empty-output
+      // retry answers that steering. A separate path for a slice that already
+      // used the retry is left out until that case is shown to happen.
+      const compacted = await applyActiveContextCompaction(
+        currentAgentMessages(),
+        runSignal,
+        boundary.pendingMessages,
+        true,
+      );
+      if (compacted) {
+        messagesChanged = true;
+        return;
+      }
+      // After a replacement, the usage of the last model call counts the old
+      // history. The next model call reports the new size.
+      await requestBackgroundCompactionAfterModelCall();
     };
     agent = new Agent({
       // Resolve on every provider call so runtime OIDC tokens stay fresh.
@@ -1234,51 +1241,16 @@ async function executeAgentRunInPrivacyContext(
         }
         return override;
       },
-      // Pi 0.84.1 runs this hook after each `turn_end`, also when no model
-      // call follows. Only its return value changes the context of the next
-      // model call.
-      prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
-        const boundary = stepBoundary;
-        stepBoundary = undefined;
-        // The listener sets no boundary after an abort.
-        if (!boundary || hookSignal?.aborted) {
+      // Pi runs this hook only before another model call. Only its return
+      // value changes the context of that call.
+      prepareNextTurnWithContext: async (nextTurn) => {
+        if (!messagesChanged) {
           return undefined;
         }
-        try {
-          const contextUpdate: AgentLoopTurnUpdate | undefined =
-            boundary.messagesChanged
-              ? {
-                  context: {
-                    ...nextTurn.context,
-                    messages: currentAgentMessages(),
-                  },
-                }
-              : undefined;
-          // After the final response or a batch that ended the run, such as
-          // a `noReply` call, compaction would drop the answer and start a
-          // retry.
-          if (boundary.runEnded) {
-            return contextUpdate;
-          }
-          const capacityUpdate = await applyActiveContextCompaction(
-            contextUpdate
-              ? currentAgentMessages()
-              : (nextTurn.context.messages as PiMessage[]),
-            hookSignal,
-            boundary.pendingMessages,
-            true,
-          );
-          // After a replacement, the usage of the last model call counts the
-          // old history. The next model call reports the new size.
-          if (!capacityUpdate) {
-            await requestBackgroundCompactionAfterModelCall();
-          }
-          return capacityUpdate ?? contextUpdate;
-        } catch (error) {
-          pendingPiHookError ??=
-            error instanceof Error ? error : new Error(String(error));
-          throw error;
-        }
+        messagesChanged = false;
+        return {
+          context: { ...nextTurn.context, messages: currentAgentMessages() },
+        };
       },
       initialState: {
         systemPrompt: baseInstructions,
@@ -1504,7 +1476,7 @@ async function executeAgentRunInPrivacyContext(
 
           let run: Promise<unknown>;
           const compactionAbortController = new AbortController();
-          const capacityUpdate = await runAgentStep(
+          const compacted = await runAgentStep(
             applyActiveContextCompaction(
               [...agent!.state.messages],
               compactionAbortController.signal,
@@ -1524,7 +1496,7 @@ async function executeAgentRunInPrivacyContext(
             () => compactionAbortController.abort(),
           );
           run =
-            shouldPromptAgent && !capacityUpdate
+            shouldPromptAgent && !compacted
               ? agent!.prompt(freshPromptMessage)
               : agent!.continue();
           discardedRetryUsage = undefined;

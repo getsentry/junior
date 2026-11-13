@@ -200,8 +200,9 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       );
     }
 
-    // Like Pi 0.84.1: await `turn_end` listeners, then prepare the next turn
-    // and use its context. A failure of either becomes a failed model message.
+    // Like Pi 0.85.1: await `turn_end` listeners. Only when another model
+    // call follows, prepare it and use its context. A failure of either
+    // becomes a failed model message.
     private async endTurn(
       message: unknown,
       toolResults: unknown[],
@@ -209,6 +210,9 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       try {
         for (const subscriber of this.subscribers) {
           await subscriber({ type: "turn_end", message, toolResults });
+        }
+        if (toolResults.length === 0 && this.steeringMessages.length === 0) {
+          return true;
         }
         const update = (await this.prepareNextTurn?.({
           context: { messages: this.state.messages },
