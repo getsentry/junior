@@ -529,7 +529,9 @@ test("a public web page link resolves to a link, a card, and a hover card", asyn
   const post = page.getByRole("region", {
     name: "Web page: What's new in Release 4.2",
   });
-  await expect(post).toContainText("Example Blog");
+  // The card names the site and author, not its type and core plugin.
+  await expect(post).toContainText("Example Blog · Morgan Lee");
+  await expect(post).not.toContainText("Web page ·");
   await expect(post.locator("img")).toHaveJSProperty("complete", true);
   await screenshot(page, "conversation-web-page-card", {
     lightTheme: true,
@@ -556,7 +558,8 @@ test("a public web page link resolves to a link, a card, and a hover card", asyn
   const card = page.getByRole("region", {
     name: "Web page: Junior 4.2 launch demo",
   });
-  await expect(card).toContainText("YouTube");
+  await expect(card).toContainText("YouTube · Sentry");
+  await expect(card).not.toContainText("junior");
   await expect(card.locator("img")).toHaveAttribute("src", /^\/api\/images\//);
   await screenshot(page, "conversation-web-page-link", {
     lightTheme: true,
