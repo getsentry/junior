@@ -205,6 +205,44 @@ test("Google Doc and Calendar links resolve to links and hover cards", async ({
   });
 });
 
+test("a Sentry issue link resolves to a chip and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  // A bare issue URL in a sentence is a chip with the short id and state.
+  const chip = page.getByRole("link", { name: /JUNIOR-3ZK · Unresolved/ });
+  await expect(chip).toHaveAttribute(
+    "href",
+    "https://acme.sentry.io/issues/JUNIOR-3ZK/",
+  );
+  await expect(
+    page.getByText("https://acme.sentry.io/issues/JUNIOR-3ZK/"),
+  ).toHaveCount(0);
+
+  await waitForResolvedLinks(page);
+  await chip.hover();
+  const card = page.getByRole("region", {
+    name: "Sentry issue: TypeError: cart.total is undefined",
+  });
+  for (const text of [
+    "app/checkout.ts in submitOrder",
+    "Morgan Lee",
+    "High",
+    "junior",
+    "error, regressed",
+  ]) {
+    await expect(card).toContainText(text);
+  }
+  await screenshot(page, "conversation-sentry-issue-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
 test("a participant attaches a Google Doc from its hover card", async ({
   page,
   dashboard,

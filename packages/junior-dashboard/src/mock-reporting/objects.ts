@@ -53,6 +53,28 @@ const GOOGLE_OBJECTS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
     plugin: "google",
   },
 };
+// The mock release thread links to one Sentry issue.
+const SENTRY_ISSUE: Omit<OwnedObjectAnnotation, "url"> = {
+  kind: "object",
+  objectType: "task",
+  key: "acme/4567",
+  label: "JUNIOR-3ZK",
+  title: "TypeError: cart.total is undefined",
+  displayType: "Sentry issue",
+  status: "unresolved",
+  description: "1,234 events, 56 users",
+  facts: {
+    type: "task",
+    summary: "app/checkout.ts in submitOrder",
+    assignees: ["Morgan Lee"],
+    priority: "High",
+    project: "junior",
+    labels: ["error", "regressed"],
+  },
+  plugin: "sentry",
+};
+const SENTRY_ISSUE_PATH = "/issues/JUNIOR-3ZK/";
+
 // The mock release thread links to one Slack message.
 const SLACK_MESSAGE_PATH = "/archives/CQA456/p1770021700000100";
 
@@ -91,6 +113,9 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
     ? GOOGLE_OBJECTS[url.pathname]
     : undefined;
   if (google) return [{ object: { ...google, url: href }, url: href }];
+  if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_ISSUE_PATH) {
+    return [{ object: { ...SENTRY_ISSUE, url: href }, url: href }];
+  }
   if (url.hostname.endsWith(".slack.com")) {
     if (url.pathname !== SLACK_MESSAGE_PATH) return [];
     const object = messageObjectCard({
