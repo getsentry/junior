@@ -881,6 +881,7 @@ export function ConversationPage(props: {
                           history.newer ? undefined : detail.inlineMessages
                         }
                         pinRequestVersion={pinRequestVersion}
+                        onShowQuestion={showQuestion}
                         revealAsk={askReveal}
                         revealSeq={revealSeq}
                         responding={

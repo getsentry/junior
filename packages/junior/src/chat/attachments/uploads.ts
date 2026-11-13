@@ -5,7 +5,11 @@ import { juniorAttachmentUploads, juniorAttachments } from "@/db/schema";
 import type { InputFile, MessageAttachment } from "./input";
 import { detectImageMediaType, isVisionImageMediaType } from "./media";
 import { readLiveAttachment, recordUploadedAttachment } from "./store";
-import type { AttachmentStorage, AttachmentUploadTarget } from "./storage";
+import {
+  bufferBody,
+  type AttachmentStorage,
+  type AttachmentUploadTarget,
+} from "./storage";
 
 const MINUTE_MS = 60 * 1000;
 /** Time that a browser has to write the bytes after it asks to upload. */
@@ -155,7 +159,8 @@ export async function writeAttachmentUpload(args: {
     throw new AttachmentUploadError("Upload size does not match the file.");
   }
   await args.storage.put({
-    body: args.body,
+    body: bufferBody(args.body),
+    bytes: row.bytes,
     contentType: row.contentType,
     key: row.storageKey,
   });

@@ -18,7 +18,10 @@ export function createMemoryAttachmentStorage(): MemoryAttachmentStorage {
     objects,
     provider: "memory",
     async put(input) {
-      objects.set(input.key, Buffer.from(input.body));
+      objects.set(
+        input.key,
+        Buffer.from(await new Response(input.body).arrayBuffer()),
+      );
     },
     async get(key, range) {
       const body = objects.get(key);

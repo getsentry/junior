@@ -89,7 +89,7 @@ export interface FileReference {
 export function parseFileReference(value: string): FileReference {
   let fileId = value;
   let resourceKey: string | undefined;
-  if (/^https?:\/\//.test(value)) {
+  if (value.startsWith("https://") || value.startsWith("http://")) {
     const url = URL.parse(value);
     fileId =
       url?.pathname.match(/\/d\/([^/]+)/)?.[1] ??

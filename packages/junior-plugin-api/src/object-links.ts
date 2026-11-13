@@ -150,10 +150,9 @@ export interface PluginObjectLinkDefinition {
     url: URL,
   ): Promise<ObjectAnnotation | undefined>;
   /**
-   * Name the plugin tool that reads the object live, such as
-   * `readGoogleDoc`. When a person attaches the link to a Conversation, its
-   * next Turn is told to read the object with this tool. Return nothing when
-   * no tool reads this object.
+   * The plugin tool that reads the object live, such as `readGoogleFile`.
+   * When a person attaches the link to a Conversation, its next Turn is told
+   * to read the object with this tool. Omit it when no tool reads the object.
    */
-  readTool?(url: URL): string | undefined;
+  readTool?: string;
 }

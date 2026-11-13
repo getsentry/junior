@@ -870,7 +870,7 @@ function normalizeRuntimeDependencies(
       continue;
     }
 
-    if (!/^https:\/\//i.test(packageUrl)) {
+    if (URL.parse(packageUrl)?.protocol !== "https:") {
       throw new Error(
         `Plugin ${name} system runtime dependency url must be an https URL`,
       );

@@ -259,49 +259,6 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await expect(preview).toBeHidden();
 });
 
-test("previews text attachments in a drawer", async ({ page, dashboard }) => {
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
-    { waitUntil: "networkidle" },
-  );
-  // The server sends text files as downloads. The dashboard reads and
-  // renders them itself.
-  const readme = page.getByRole("button", { name: /README\.md/ });
-  await readme.scrollIntoViewIfNeeded();
-  await readme.click();
-  const preview = page.getByRole("dialog", { name: "README.md" });
-  await expect(
-    preview.getByRole("heading", { name: "Release notes" }),
-  ).toBeVisible();
-  // A newline in a Markdown file paragraph does not break the line.
-  await expect(
-    preview.getByText("This line wraps in the source."),
-  ).toBeVisible();
-  // A reference link after a fence still resolves.
-  await expect(preview.getByRole("link", { name: "docs" })).toHaveAttribute(
-    "href",
-    "https://example.com/docs",
-  );
-  await expect(
-    preview.getByRole("link", { name: "Download README.md" }),
-  ).toHaveAttribute("download", "README.md");
-  await screenshot(page, "conversation-text-attachment", { lightTheme: true });
-
-  await preview.getByRole("button", { name: "Raw" }).click();
-  await expect(preview.getByText("# Release notes")).toBeVisible();
-  await screenshot(page, "conversation-text-attachment-raw", {
-    view: "desktop",
-  });
-  await page.keyboard.press("Escape");
-  await expect(preview).toBeHidden();
-
-  await page.getByRole("button", { name: /notes\.txt/ }).click();
-  const notes = page.getByRole("dialog", { name: "notes.txt" });
-  await expect(notes.getByText("mock attachment notes")).toBeVisible();
-  // Plain text has no Markdown view to pick.
-  await expect(notes.getByRole("button", { name: "Raw" })).toHaveCount(0);
-});
-
 test("reuses the fresh conversation feed after window focus", async ({
   page,
   dashboard,

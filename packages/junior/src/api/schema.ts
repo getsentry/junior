@@ -4,7 +4,7 @@ export {
 } from "../chat/attachments/media";
 export {
   MAX_INPUT_ATTACHMENTS,
-  MAX_INPUT_ATTACHMENT_BYTES,
+  MAX_ATTACHMENT_BYTES,
 } from "../chat/attachments/input";
 export type { InputFile, MessageAttachment } from "../chat/attachments/input";
 export {
@@ -36,6 +36,7 @@ export {
   conversationObjectCard,
   messageObjectCard,
   personObjectCard,
+  webPageObjectCard,
 } from "./objects/cards";
 export {
   attachObjectLinkBodySchema,
