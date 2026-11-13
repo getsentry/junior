@@ -150,7 +150,7 @@ test("To do loads its next asks at its own end", async ({
   await expect(rows).toHaveCount(10);
   // Its end loads the next page while it shows fewer than its count.
   await expect(async () => {
-    await rows.last().scrollIntoViewIfNeeded();
+    await scrollToTodoEnd(page);
     await expect(rows).toHaveCount(30, { timeout: 1_000 });
   }).toPass();
 });
@@ -257,7 +257,7 @@ test("To do pages to its end when the count or the Automations fail", async ({
     .locator("[data-inbox-row]");
   await expect(rows).toHaveCount(10);
   await expect(async () => {
-    await rows.last().scrollIntoViewIfNeeded();
+    await scrollToTodoEnd(page);
     await expect(rows).toHaveCount(30, { timeout: 1_000 });
   }).toPass();
 });
@@ -347,3 +347,15 @@ test("the Automations entry counts from the server while its list fails", async 
     /^Automations\s*3$/,
   );
 });
+
+/**
+ * Bring the end of To do into view: the status line after its rows, which
+ * asks for the next page. The last row can show while that line does not.
+ */
+async function scrollToTodoEnd(page: Page) {
+  const end = page
+    .getByRole("region", { name: "To do" })
+    .getByRole("status")
+    .last();
+  if ((await end.count()) > 0) await end.scrollIntoViewIfNeeded();
+}
