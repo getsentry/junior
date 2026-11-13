@@ -16,6 +16,7 @@ import type { StoredSlackActor } from "@/chat/actor";
 import type { Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
+import type { AgentConfig } from "@/chat/conversations/agent-config";
 import type {
   ConversationKind,
   ConversationSource,
@@ -56,6 +57,11 @@ export const juniorConversations = pgTable(
     title: text("title"),
     createdAt: timestamptz("created_at").notNull(),
     lastActivityAt: timestamptz("last_activity_at").notNull(),
+    /**
+     * The newest Message that a reader would notice (`refreshLastMessageAt`).
+     * Null until the Conversation has one.
+     */
+    lastMessageAt: timestamptz("last_message_at"),
     updatedAt: timestamptz("updated_at").notNull(),
     executionUpdatedAt: timestamptz("execution_updated_at"),
     executionStatus: text("execution_status")
@@ -69,12 +75,20 @@ export const juniorConversations = pgTable(
     parentConversationId: text("parent_conversation_id").references(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
-    // `root` exactly when parent_conversation_id is null. Set once at create.
+    // `root` or `automation` exactly when parent_conversation_id is null. Set
+    // once at create.
     // The checks below enforce this. A writer of an older deploy leaves it null.
     // TODO(dcramer): After every deployed writer sets kind, rerun the
     // `kind IS NULL` backfill, add NOT NULL, and drop the `kind is null or`
     // arm of junior_conversations_kind_parent_check.
     kind: text("kind").$type<ConversationKind>(),
+    // The agent settings that every Turn keeps, typed as `AgentConfig` for
+    // every kind. Set once at create. Today only a spawn that creates a child
+    // without an Agent invocation row writes it, so a non-null value marks
+    // a child that a spawn created; readers that list or stop children
+    // without rows read only these. Agent invocation rows also hold the
+    // settings until #3060 step 7 drops the rows; readers read the row first.
+    agentConfig: jsonb("agent_config_json").$type<AgentConfig>(),
     // Archive applies to everyone, on a root or a child. A Conversation shows
     // only while it and every ancestor are unarchived.
     archivedAt: timestamptz("archived_at"),
@@ -103,6 +117,11 @@ export const juniorConversations = pgTable(
      * from its parent, clears it.
      */
     stoppedAt: timestamptz("stopped_at"),
+    /**
+     * Set while a root's Event Turn replies stay out of its Location. Junior
+     * still stores them. A person's next mention in the Location clears it.
+     */
+    deliveryPausedAt: timestamptz("delivery_paused_at"),
     durationMs: integer("duration_ms").notNull().default(0),
     usage: jsonb("usage_json").$type<AgentTurnUsage>(),
     executionDurationMs: integer("execution_duration_ms").notNull().default(0),
@@ -116,11 +135,11 @@ export const juniorConversations = pgTable(
   (table) => [
     check(
       "junior_conversations_kind_check",
-      sql`${table.kind} in ('root', 'thread', 'task')`,
+      sql`${table.kind} in ('root', 'automation', 'thread', 'task')`,
     ),
     check(
       "junior_conversations_kind_parent_check",
-      sql`${table.kind} is null or ((${table.kind} = 'root') = (${table.parentConversationId} is null))`,
+      sql`${table.kind} is null or ((${table.kind} in ('root', 'automation')) = (${table.parentConversationId} is null))`,
     ),
     index("junior_conversations_last_activity_idx").on(
       table.lastActivityAt.desc(),

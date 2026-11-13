@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { CONVERSATION_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { chooseTranscriptView } from "./conversationMenu";
 import { expect, test } from "./test";
@@ -10,19 +11,44 @@ import {
 
 test.use({ locale: "en-US", timezoneId: "America/New_York" });
 
-test("inspects all reporting events and searches full event data", async ({
-  context,
-  page,
-  dashboard,
-}) => {
-  const conversationId = "slack:CQA123:1770003600.000200";
+const conversationId = "slack:CQA123:1770003600.000200";
+
+/** Read the mock Conversation report, then open its transcript. */
+async function openConversation(page: Page, baseURL: string) {
   const response = await page.request.get(
-    `${dashboard.baseURL}/api/conversations/${encodeURIComponent(conversationId)}`,
+    `${baseURL}/api/conversations/${encodeURIComponent(conversationId)}`,
   );
   const report = await response.json();
   await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    `${baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
+  return report;
+}
+
+/** Open the Event log and the details of the first assistant message. */
+async function openEventDetails(page: Page) {
+  await chooseTranscriptView(page, "Event log");
+  const log = page.getByRole("region", { name: "Conversation event log" });
+  const entry = log.getByRole("button", {
+    name: "Event 3: assistant_message",
+    exact: true,
+  });
+  await entry.click();
+  const panel = page.getByRole("complementary", {
+    name: "Event details",
+    exact: true,
+  });
+  await expect(
+    panel.getByRole("heading", { name: "assistant_message", exact: true }),
+  ).toBeVisible();
+  return { entry, log, panel };
+}
+
+test("reveals a closed tool result in transcript search", async ({
+  page,
+  dashboard,
+}) => {
+  await openConversation(page, dashboard.baseURL);
   const transcript = page.getByLabel("Conversation transcript", {
     exact: true,
   });
@@ -56,7 +82,13 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(toolResult).toBeVisible();
   await page.getByPlaceholder("Search transcript…").fill("");
   await expect(toolResult).toBeHidden();
+});
 
+test("inspects all reporting events and steps through event details", async ({
+  page,
+  dashboard,
+}) => {
+  const report = await openConversation(page, dashboard.baseURL);
   await chooseTranscriptView(page, "Event log");
   const log = page.getByRole("region", { name: "Conversation event log" });
   const entries = log.getByRole("button", { name: /^Event \d+:/ });
@@ -149,6 +181,20 @@ test("inspects all reporting events and searches full event data", async ({
   await entry.click();
   await expect(conversationDetails).toBeHidden();
   await screenshot(page, "conversation-event-details");
+});
+
+test("switches event times between UTC and local time and copies raw JSON", async ({
+  context,
+  page,
+  dashboard,
+}) => {
+  const report = await openConversation(page, dashboard.baseURL);
+  const { entry, log, panel } = await openEventDetails(page);
+  const close = panel.getByRole("button", { name: "Close event details" });
+  const otherEntry = log.getByRole("button", {
+    name: "Event 1: turn_lifecycle",
+    exact: true,
+  });
   const localTime = log.getByRole("button", {
     name: "Use local time",
     exact: true,
@@ -242,9 +288,16 @@ test("inspects all reporting events and searches full event data", async ({
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
   await expect(entry).toBeFocused();
+});
 
+test("keeps the selected event in a mobile sheet and searches full event data", async ({
+  page,
+  dashboard,
+}) => {
+  const report = await openConversation(page, dashboard.baseURL);
+  const { entry, log } = await openEventDetails(page);
+  const entries = log.getByRole("button", { name: /^Event \d+:/ });
   // A resize keeps the selected event in a dismissable mobile sheet.
-  await entry.click();
   await page.setViewportSize({ width: 390, height: 844 });
   // The sheet title names the event, so find the sheet by its label.
   const sheet = page.locator('[role="dialog"][aria-label="Event details"]');
@@ -290,7 +343,14 @@ test("inspects all reporting events and searches full event data", async ({
       { exact: true },
     ),
   ).toBeVisible();
+});
 
+test("forks from the transcript and the event log with retry-safe requests", async ({
+  page,
+  dashboard,
+}) => {
+  const report = await openConversation(page, dashboard.baseURL);
+  const log = page.getByRole("region", { name: "Conversation event log" });
   // Both views fork and send the first message with retry-safe requests.
   const forkAction = page
     .getByRole("button", { name: "Fork after this message" })
@@ -680,7 +740,7 @@ for (const width of [1440, 390]) {
 }
 
 for (const view of [desktop, mobile]) {
-  test(`leads the reader to a new review item question (${view.name})`, async ({
+  test(`docks a tall question above the message box (${view.name})`, async ({
     page,
     dashboard,
   }) => {
@@ -779,31 +839,62 @@ for (const view of [desktop, mobile]) {
       `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
     );
 
-    // The reader must see the title and question first, not the end of the form.
-    const card = page.getByRole("region", {
-      name: `Review item: ${item.title}`,
+    // The form scrolls inside the dock, so its title and question stay in
+    // view, and the message box and queued messages stay below it.
+    const question = page.getByRole("region", {
+      name: `Question: ${item.title}`,
     });
-    await expect(card.getByRole("button", { name: "Send" })).toBeAttached();
     await expect(
-      card.getByRole("heading", { name: item.title }),
+      question.getByRole("radiogroup", { name: "Owner" }),
+    ).toBeAttached();
+    await expect(
+      question.getByRole("heading", { name: item.title }),
     ).toBeInViewport();
-    // The message box and queued messages hide while Junior waits, so the
-    // question is last and the reader does not type the answer as a new
-    // message.
     const composer = page.getByLabel("Continue this conversation");
     const queue = page.getByRole("button", { name: /queued messages/ });
-    await expect(composer).toBeHidden();
-    await expect(queue).toBeHidden();
-    await screenshot(page, "conversation-review-item-card", {
+    await expect(composer).toBeInViewport();
+    await expect(queue).toBeVisible();
+    const record = page.getByRole("region", { name: `Asked ${item.title}` });
+    await expect(record).toContainText("Waiting on you");
+    await screenshot(page, "conversation-question-form", {
       view: view.name,
     });
 
-    // Dismiss closes the item and shows the message box and queue again.
-    await card.getByRole("button", { name: "Dismiss" }).click();
-    await expect(composer).toBeVisible();
-    await expect(queue).toBeVisible();
-    await screenshot(page, "conversation-review-item-dismissed", {
+    // Esc dismisses the question, and its record says so.
+    await question.getByRole("heading", { name: item.title }).click();
+    await page.keyboard.press("Escape");
+    await expect(question).toHaveCount(0);
+    await expect(record).toContainText("Dismissed");
+    await screenshot(page, "conversation-question-dismissed", {
       view: view.name,
     });
   });
 }
+
+test("opens the event log from the sidebar row menu", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(dashboard.baseURL);
+  const row = page
+    .getByRole("navigation", { name: "Your conversations" })
+    .getByRole("link", { name: /Closed issue summary/ });
+  const log = page.getByRole("region", { name: "Conversation event log" });
+  await row.click({ button: "right" });
+  // The viewer is not a participant, so the menu disables changes.
+  await expect(page.getByRole("menuitem", { name: "Archive" })).toBeDisabled();
+  await page.getByRole("menuitem", { name: "Open event log" }).click();
+  await expect(row).toHaveAttribute("aria-current", "page");
+  await expect(log).toBeVisible();
+
+  // The page is open already, so the row menu switches its view.
+  await page.getByTitle("Back to conversation").click();
+  await expect(log).toBeHidden();
+  await row.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Open event log" }).click();
+  await expect(log).toBeVisible();
+  // That switch adds no history entry, so Back leaves the conversation.
+  await page.goBack();
+  await expect(row).not.toHaveAttribute("aria-current", "page");
+  await expect(log).toBeHidden();
+});

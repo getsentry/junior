@@ -2,6 +2,10 @@ import {
   readAttachmentStorageConfig,
   type AttachmentStorageConfig,
 } from "@/chat/attachments/config";
+import {
+  readEncryptionKeyring,
+  type EncryptionKeyring,
+} from "@/chat/encryption/keyring";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { readQueueConfig, type QueueConfig } from "@/chat/queue/config";
 import { resolveGatewayModel } from "@/chat/pi/client";
@@ -88,12 +92,12 @@ export interface BotModelConfig {
   guardianModelId?: string;
   /** Model used to generate images. */
   imageGenerationModelId?: string;
-  /** Model used to transcribe dictated audio. */
-  transcriptionModelId?: string;
   /** Model used to analyze images. */
   visionModelId?: string;
   /** Model used for web search. */
   webSearchModelId?: string;
+  /** Model that continues an agent Turn after the main model refuses it. Unset by default. */
+  refusalFallbackModelId?: string;
 }
 
 export interface BotConfig {
@@ -104,10 +108,10 @@ export interface BotConfig {
   guardianModelId: string;
   rerankingModelId: string;
   imageGenerationModelId: string;
-  transcriptionModelId: string;
   loadingMessages: string[];
   modelId: string;
   reasoningLevel: TurnReasoningLevel;
+  refusalFallbackModelId?: string;
   visionModelId?: string;
   maxAgentDepth: number;
   maxSlicesPerTurn: number;
@@ -132,6 +136,8 @@ export interface ChatConfig {
   cacheWarmingEnabled: boolean;
   conversationWorkEnabled: boolean;
   conversationWorkSoftYieldAfterMs: number;
+  /** Keys for secrets at rest. Startup fails when they are missing or invalid. */
+  encryption: EncryptionKeyring;
   sql: {
     databaseUrl: string;
     driver: SqlDriver;
@@ -254,7 +260,6 @@ const DEFAULT_DECISION_MODEL_ID = "typesafe-ai/jev";
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
 const DEFAULT_RERANKING_MODEL_ID = "voyage/rerank-2.5-lite";
 const DEFAULT_IMAGE_GENERATION_MODEL_ID = "openai/gpt-image-2";
-const DEFAULT_TRANSCRIPTION_MODEL_ID = "spacexai/grok-stt";
 const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
 
 function validateGatewayModelId(raw: string | undefined): string | undefined {
@@ -330,15 +335,15 @@ function readBotConfig(
     imageGenerationModelId:
       toOptionalTrimmed(env.AI_IMAGE_MODEL) ??
       DEFAULT_IMAGE_GENERATION_MODEL_ID,
-    transcriptionModelId:
-      toOptionalTrimmed(env.AI_TRANSCRIPTION_MODEL) ??
-      DEFAULT_TRANSCRIPTION_MODEL_ID,
     embeddingModelId:
       validateEmbeddingModelId(env.AI_EMBEDDING_MODEL) ??
       DEFAULT_EMBEDDING_MODEL_ID,
     rerankingModelId:
       toOptionalTrimmed(env.AI_RERANKING_MODEL) ?? DEFAULT_RERANKING_MODEL_ID,
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
+    refusalFallbackModelId: validateGatewayModelId(
+      env.AI_REFUSAL_FALLBACK_MODEL,
+    ),
     visionModelId:
       env.AI_VISION_MODEL === undefined
         ? DEFAULT_VISION_MODEL_ID
@@ -434,6 +439,7 @@ export function readChatConfig(
     conversationWorkSoftYieldAfterMs: resolveConversationWorkSoftYieldAfterMs(
       resolvedFunctionMaxDurationSeconds,
     ),
+    encryption: readEncryptionKeyring(env),
     sql: {
       databaseUrl,
       driver: readSqlDriver(env, databaseUrl),
@@ -721,17 +727,17 @@ export function setBotModelConfig(config: BotModelConfig): void {
       validateEmbeddingModelId,
     );
   }
-  if (config.transcriptionModelId !== undefined) {
-    botConfig.transcriptionModelId = requireModelId(
-      "transcriptionModelId",
-      config.transcriptionModelId,
-      toOptionalTrimmed,
-    );
-  }
   if (config.visionModelId !== undefined) {
     botConfig.visionModelId = requireModelId(
       "visionModelId",
       config.visionModelId,
+      validateGatewayModelId,
+    );
+  }
+  if (config.refusalFallbackModelId !== undefined) {
+    botConfig.refusalFallbackModelId = requireModelId(
+      "refusalFallbackModelId",
+      config.refusalFallbackModelId,
       validateGatewayModelId,
     );
   }
@@ -742,6 +748,16 @@ export function setBotModelConfig(config: BotModelConfig): void {
       validateGatewayModelId,
     );
   }
+}
+
+/** Apply the bot name from createApp(). It overrides `JUNIOR_BOT_NAME`. */
+export function setBotName(name: string | undefined): void {
+  if (name === undefined) return;
+  const trimmed = toOptionalTrimmed(name);
+  if (!trimmed) {
+    throw new Error("botName must not be empty");
+  }
+  botConfig.userName = trimmed;
 }
 
 /** Return the current Slack reaction emoji config. */

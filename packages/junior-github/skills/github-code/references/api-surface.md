@@ -13,7 +13,7 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 | `github.actions.read`        | `gh run list`, `gh run view`, `gh run watch`, `gh workflow list`, `gh workflow view` |
 | `github.actions.write`       | `gh workflow run`, `gh run rerun`, `gh run cancel`                                   |
 | `github.contents.read`       | `github_cloneRepository`, `git fetch`                                                |
-| `github.contents.write`      | Git smart-HTTP `git push` only                                                       |
+| `github.contents.write`      | Git smart-HTTP `git push` to branches other than the default branch only             |
 | `github.workflows.write`     | Workflow-file changes on push                                                        |
 | `github.pull-requests.read`  | `gh pr view`, `gh pr list`, `gh pr diff`, `gh pr checks`                             |
 | `github.pull-requests.write` | GitHub tools and supported REST writes                                               |

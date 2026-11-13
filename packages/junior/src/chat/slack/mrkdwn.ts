@@ -67,7 +67,11 @@ function readExistingSlackAngleToken(
   }
 
   const body = line.slice(start + 1, close);
-  if (/^(?:https?:\/\/|@|#|!)/.test(body)) {
+  if (
+    ["https://", "http://", "@", "#", "!"].some((prefix) =>
+      body.startsWith(prefix),
+    )
+  ) {
     return { text: line.slice(start, close + 1), end: close + 1 };
   }
 
@@ -156,7 +160,10 @@ function readBareUrl(
     peel();
   }
 
-  if (!/^https?:\/\/.+/.test(raw)) {
+  const scheme = ["https://", "http://"].find((prefix) =>
+    raw.startsWith(prefix),
+  );
+  if (!scheme || raw.length === scheme.length) {
     return undefined;
   }
 
@@ -380,4 +387,14 @@ export function normalizeSlackStatusText(text: string): string {
 /** Render a Slack user mention, which Slack shows as the person's name. */
 export function slackMention(userId: string): string {
   return `<@${userId}>`;
+}
+
+/** Slack user mentions: `<@U123>` or `<@U123|label>`. */
+export const SLACK_USER_MENTION_RE = /<@([UW][A-Z0-9]+)(?:\|[^<>]*)?>/g;
+
+/** Return the Slack user IDs that the text mentions, once each, in order. */
+export function slackMentionedUserIds(text: string): string[] {
+  return [
+    ...new Set([...text.matchAll(SLACK_USER_MENTION_RE)].map((m) => m[1]!)),
+  ];
 }

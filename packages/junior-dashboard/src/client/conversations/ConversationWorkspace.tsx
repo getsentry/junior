@@ -1,7 +1,7 @@
-import type { InputImage } from "@sentry/junior/api/schema";
 import { useEffect, useId, useMemo, useRef, useState, type Ref } from "react";
 import { Globe2, LockKeyhole, PanelLeft } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { flushSync } from "react-dom";
 import {
   NavigationType,
   useNavigate,
@@ -19,8 +19,12 @@ import {
   ResizablePanelGroup,
 } from "../components/ui/resizable";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
-import { pageCount, pageItems, PagePagination } from "../components/Pagination";
+import { composerDockClass } from "./ComposerDock";
 import { ConversationHomeList } from "./ConversationHomeList";
+import {
+  ConversationFeedLoadMore,
+  type ConversationFeedMorePages,
+} from "./ConversationFeedLoadMore";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { useConversationPageArchiveResult } from "./conversationArchive";
 import {
@@ -36,11 +40,21 @@ import {
 } from "./conversationArchive";
 import { useCreateConversation, type ConversationData } from "./queries";
 import { prefetchConversationDetail } from "./conversationPrefetch";
-import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import {
-  attentionConversationIds,
-  pinnedAndAttentionFirst,
-} from "./conversationSections";
+  newConversationDraftId,
+  NewConversationPending,
+  type PendingNewConversation,
+} from "./NewConversationPending";
+import {
+  restoreStoredDraftText,
+  takeStoredDraftText,
+} from "./ConversationComposer";
+import {
+  conversationPath,
+  FOCUS_REPLY_STATE,
+  NEW_CONVERSATION_PATH,
+} from "./conversationRoutes";
+import { pinnedAndWaitingFirst } from "./conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
 import { usePushNotificationsTip } from "../notifications/pushNotificationsTip";
@@ -48,12 +62,10 @@ import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationPage } from "./ConversationPage";
 import { FeedThreads, feedThreadsById } from "./feedThreads";
-import {
-  useWaitingConversationIds,
-  useWaitingConversations,
-} from "../review-desk/queries";
+import { useWaitingConversations } from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
 import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
+import { HomeSummary } from "./HomeSummary";
 import {
   readSidebarWidth,
   saveSidebarWidth,
@@ -62,7 +74,6 @@ import {
   useSidebarFits,
 } from "./conversationSidebarLayout";
 
-const CONVERSATION_PAGE_SIZE = 20;
 const SIDEBAR_PANEL_ID = "conversation-list";
 
 /**
@@ -73,7 +84,6 @@ export function ConversationWorkspace(props: {
   /** The selected Conversation's data, from the shell. */
   detail: ConversationData;
 }) {
-  const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useConversationSidebarOpen();
   // Home reports an archive that started on a conversation page. Do it here,
@@ -99,6 +109,10 @@ export function ConversationWorkspace(props: {
   const reorderPins = useReorderPinnedConversations();
   const createConversation = useCreateConversation();
   const offerPushNotifications = usePushNotificationsTip();
+  const [pendingCreate, setPendingCreate] = useState<PendingNewConversation>();
+  // A pending create shows only on home. Leaving home ends it, whether the
+  // route opened its Conversation or the reader went elsewhere.
+  if (!home && pendingCreate) setPendingCreate(undefined);
   const queryClient = useQueryClient();
   const createComposer = useRef<ConversationComposerHandle>(null);
   const createRequested = useRef(false);
@@ -127,31 +141,31 @@ export function ConversationWorkspace(props: {
     [conversations],
   );
   const waitingConversations = useWaitingConversations();
-  const waitingConversationIds = useWaitingConversationIds();
 
-  const totalPages = pageCount(conversations.length, CONVERSATION_PAGE_SIZE);
-  const pagedConversations = useMemo(
-    () =>
-      pageItems(
-        pinnedAndAttentionFirst(
-          conversations,
-          attentionConversationIds(conversations, waitingConversationIds),
-        ),
-        page,
-        CONVERSATION_PAGE_SIZE,
-      ),
-    [conversations, page, waitingConversationIds],
+  const homeConversations = useMemo(
+    () => pinnedAndWaitingFirst(conversations, waitingConversations),
+    [conversations, waitingConversations],
   );
+  const homeList = useRef<HTMLDivElement>(null);
+  // A new search starts at the top. Otherwise the shorter list leaves the
+  // load-more row in view, and it loads a page before the results arrive.
   useEffect(() => {
-    setPage(1);
+    homeList.current?.scrollTo({ top: 0 });
   }, [search]);
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+  // A failed next page keeps the loaded rows; the load-more row shows it.
+  const feedError = feed.isFetchNextPageError ? undefined : feed.error?.message;
+  const morePages: ConversationFeedMorePages = {
+    failed: feed.isFetchNextPageError,
+    hasMore: feed.hasNextPage,
+    loading: feed.isFetchingNextPage,
+    onLoadMore: () => void feed.fetchNextPage({ cancelRefetch: false }),
+  };
 
   // Aborts when the reader leaves home, so a late create does not pull them
   // back from the page they went to.
   const homeVisit = useRef<AbortSignal>(undefined);
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
   useEffect(() => {
     if (!home) return;
     const visit = new AbortController();
@@ -178,26 +192,59 @@ export function ConversationWorkspace(props: {
   const createView = (
     <NewConversationView
       composerRef={createComposer}
+      docked={!sidebarFits}
       error={
         createConversation.error
-          ? "Could not create the conversation. Try again."
+          ? "Message failed to send. Try again."
           : undefined
       }
-      onSubmit={async (message, idempotencyKey, visibility, images) => {
+      onSubmit={async (message, idempotencyKey, visibility, files) => {
         const visit = homeVisit.current;
-        const accepted = await createConversation.mutateAsync({
+        const pendingDraftId = newConversationDraftId(idempotencyKey);
+        // Show the Conversation at once. The create view stays mounted but
+        // hidden, so a failed create comes back with the draft and its key.
+        setPendingCreate({
+          createdAt: new Date().toISOString(),
           idempotencyKey,
+          files,
           message,
-          images,
           visibility,
         });
-        // Open the Conversation with its transcript and composer, not a
-        // skeleton. The draft stays on this page until the route changes, so
-        // the message moves from the composer to the transcript at once.
+        let accepted;
+        try {
+          accepted = await createConversation.mutateAsync({
+            idempotencyKey,
+            message,
+            files,
+            visibility,
+          });
+        } catch (error) {
+          // Show home before the composer takes the failure, so it can
+          // focus the draft for a retry. A reply typed meanwhile has no
+          // Conversation to go to.
+          flushSync(() => setPendingCreate(undefined));
+          takeStoredDraftText(pendingDraftId);
+          throw error;
+        }
+        // The page then opens with its transcript, not a skeleton. The
+        // pending view stays until the route shows it.
         await prefetchConversationDetail(queryClient, accepted.conversationId);
-        if (visit?.aborted) return;
+        const left = visit?.aborted;
+        if (left && selectedIdRef.current !== accepted.conversationId) {
+          // The reply typed meanwhile waits in the new Conversation.
+          restoreStoredDraftText(
+            accepted.conversationId,
+            takeStoredDraftText(pendingDraftId),
+          );
+          return;
+        }
+        // The reader may have opened the new Conversation already. Its
+        // reply box is mounted then, so pass the draft through the route.
         await navigate(conversationPath(accepted.conversationId), {
           flushSync: true,
+          replace: left,
+          // The page's reply box takes focus and the text typed meanwhile.
+          state: { ...FOCUS_REPLY_STATE, draftFrom: pendingDraftId },
         });
         offerPushNotifications();
       }}
@@ -221,32 +268,29 @@ export function ConversationWorkspace(props: {
     </HeaderIconButton>
   );
 
-  // One tree for every width, so the create draft and its images survive a
-  // resize across the breakpoint.
+  // One tree for every width, so the create draft and its files survive a
+  // resize across the breakpoint: the create view is always the child of the
+  // second div.
   const homePane = (
     <main
       className={cn(
-        "h-full min-h-0 w-full",
+        "h-full min-h-0 w-full overflow-hidden",
+        pendingCreate ? "hidden" : "grid",
         sidebarFits
-          ? "grid grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
-          : "overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6",
+          ? "grid-rows-[auto_minmax(0,1fr)]"
+          : "grid-rows-[minmax(0,1fr)_auto]",
       )}
     >
       {sidebarFits ? (
         <div className="flex h-13 items-center px-1">{sidebarToggle}</div>
-      ) : null}
-      <div
-        className={
-          sidebarFits
-            ? // The bottom pad matches the toggle row, so the create view
-              // sits in the middle of the pane.
-              "grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-6 pb-13"
-            : "mx-auto grid w-full max-w-6xl gap-8"
-        }
-      >
-        {createView}
-        {sidebarFits ? null : (
-          <section aria-label="Conversations" className="grid gap-3">
+      ) : (
+        // The top space is inside the content, not the scroller's padding,
+        // so the sticky section labels meet the page header.
+        <div
+          className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-3 sm:px-6"
+          ref={homeList}
+        >
+          <section aria-label="Conversations" className="grid gap-3 pt-4">
             <SearchInput
               className="w-full sm:ml-auto sm:w-72"
               label="Search your conversations"
@@ -255,31 +299,41 @@ export function ConversationWorkspace(props: {
               value={query}
             />
             <ConversationHomeList
-              conversations={pagedConversations}
-              emptyLabel={feed.error?.message}
+              conversations={homeConversations}
+              emptyLabel={feedError}
               loading={feed.isPending}
-              // Search, or more pins than one page holds, shows only some
-              // pins, so a drop could not place the rest.
-              onReorderPins={
-                search ||
-                conversations.filter((conversation) => conversation.pinnedAt)
-                  .length > CONVERSATION_PAGE_SIZE
-                  ? undefined
-                  : reorderPins
-              }
+              // The first page holds every pin. Search shows only some pins,
+              // so a drop could not place the rest.
+              onReorderPins={search ? undefined : reorderPins}
               timeZone={getDashboardTimeZone()}
-              waitingConversationIds={waitingConversationIds}
+              waitingConversations={waitingConversations}
             />
-            <PagePagination
-              className="pt-1"
-              onPageChange={setPage}
-              page={page}
-              pageCount={totalPages}
-              pageSize={CONVERSATION_PAGE_SIZE}
-              total={conversations.length}
-            />
+            {feedError || conversations.length === 0 ? null : (
+              <ConversationFeedLoadMore
+                {...morePages}
+                loadedCount={conversations.length}
+              />
+            )}
           </section>
-        )}
+        </div>
+      )}
+      <div
+        className={
+          sidebarFits
+            ? // The tall bottom pad lifts the create view above the middle,
+              // so the summary that hangs below it fits in the pane. Gutters
+              // on both edges keep it centered when the summary grows enough
+              // to show a scrollbar.
+              "grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-6 pb-48 [scrollbar-gutter:stable_both-edges]"
+            : // Narrow screens dock the composer at the bottom, in thumb
+              // reach.
+              cn(
+                composerDockClass,
+                "overflow-y-auto border-t border-dashboard-border-subtle sm:px-6",
+              )
+        }
+      >
+        {createView}
       </div>
     </main>
   );
@@ -303,8 +357,8 @@ export function ConversationWorkspace(props: {
             defaultSize={sidebarOpen ? readSidebarWidth() : 0}
             groupResizeBehavior="preserve-pixel-size"
             id={SIDEBAR_PANEL_ID}
-            maxSize={SIDEBAR_WIDTH.max}
-            minSize={SIDEBAR_WIDTH.min}
+            maxSize={`${SIDEBAR_WIDTH.max}rem`}
+            minSize={`${SIDEBAR_WIDTH.min}rem`}
             onResize={(size) => {
               // Dragging past the minimum width collapses the list too, so the
               // panel size is the one source for the open state.
@@ -322,8 +376,9 @@ export function ConversationWorkspace(props: {
             >
               <ConversationSidebar
                 conversations={conversations}
-                error={feed.error?.message}
+                error={feedError}
                 loading={feed.isPending}
+                morePages={morePages}
                 onNewConversation={openCreate}
                 onReorderPins={reorderPins}
                 selectedId={selectedId}
@@ -339,34 +394,46 @@ export function ConversationWorkspace(props: {
         </>
       ) : null}
       <ResizablePanel id="selected-conversation">
-        {home ? (
-          homePane
-        ) : (
+        {home ? homePane : null}
+        {/* A pending create shows in the same section as the page that
+            replaces it, so the swap keeps this element. */}
+        {selectedId || pendingCreate ? (
           <section
+            aria-busy={home || undefined}
             aria-label="Selected conversation"
             className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
           >
-            <UnsentAnswersProvider conversationId={selectedId} key={selectedId}>
-              <FeedThreads value={feedThreads}>
-                <ConversationPage
-                  conversationId={selectedId}
-                  detail={props.detail}
-                  data={
-                    feed.data
-                      ? {
-                          conversations: feed.data,
-                        }
-                      : undefined
-                  }
-                  pendingArchiveUpdate={pendingArchiveUpdates.find(
-                    (update) => update.conversationId === selectedId,
-                  )}
-                  sidebarToggle={sidebarToggle}
-                />
-              </FeedThreads>
-            </UnsentAnswersProvider>
+            {selectedId ? (
+              <UnsentAnswersProvider
+                conversationId={selectedId}
+                key={selectedId}
+              >
+                <FeedThreads value={feedThreads}>
+                  <ConversationPage
+                    conversationId={selectedId}
+                    detail={props.detail}
+                    data={
+                      feed.data
+                        ? {
+                            conversations: feed.data,
+                          }
+                        : undefined
+                    }
+                    pendingArchiveUpdate={pendingArchiveUpdates.find(
+                      (update) => update.conversationId === selectedId,
+                    )}
+                    sidebarToggle={sidebarToggle}
+                  />
+                </FeedThreads>
+              </UnsentAnswersProvider>
+            ) : pendingCreate ? (
+              <NewConversationPending
+                pending={pendingCreate}
+                sidebarToggle={sidebarToggle}
+              />
+            ) : null}
           </section>
-        )}
+        ) : null}
       </ResizablePanel>
     </ResizablePanelGroup>
   );
@@ -374,12 +441,14 @@ export function ConversationWorkspace(props: {
 
 function NewConversationView(props: {
   composerRef: Ref<ConversationComposerHandle>;
+  /** Docked at the bottom of the narrow home, where the list is above it. */
+  docked: boolean;
   error?: string;
   onSubmit(
     message: string,
     idempotencyKey: string,
     visibility: "private" | "public",
-    images?: InputImage[],
+    files?: File[],
   ): Promise<void>;
 }) {
   const [visibility, setVisibility] = useState<"private" | "public">("public");
@@ -387,9 +456,14 @@ function NewConversationView(props: {
   return (
     <section
       aria-label="New conversation"
-      className="mx-auto grid w-full max-w-3xl gap-3"
+      className="relative mx-auto grid w-full max-w-3xl gap-3"
     >
-      <h2 className="m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
+      <h2
+        className={cn(
+          "m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl",
+          props.docked && "sr-only",
+        )}
+      >
         What do you need?
       </h2>
       <ConversationComposer
@@ -418,10 +492,17 @@ function NewConversationView(props: {
         holdDraftUntilAccept
         ref={props.composerRef}
         submitLabel="Send"
-        onSubmit={(message, idempotencyKey, images) =>
-          props.onSubmit(message, idempotencyKey, visibility, images)
+        onSubmit={(message, idempotencyKey, files) =>
+          props.onSubmit(message, idempotencyKey, visibility, files)
         }
       />
+      {props.docked ? null : (
+        // Hangs below the composer and takes no layout space, so the
+        // composer stays centered while the summary loads.
+        <div className="absolute inset-x-0 top-full pt-8">
+          <HomeSummary />
+        </div>
+      )}
     </section>
   );
 }

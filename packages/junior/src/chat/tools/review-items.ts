@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import * as z from "zod";
 import { getDb } from "@/chat/db";
-import { NO_REPLY_MARKER } from "@/chat/no-reply";
+import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import {
   deliverReviewItemChange,
   type ReviewItemDelivery,
@@ -17,6 +17,7 @@ import {
   type ReviewItemAgentScope,
 } from "@/chat/review-items/access";
 import {
+  activeParticipantUserIds,
   automationCreatorUserId,
   EVERYONE_ASSIGNEE,
   resolveAssignee,
@@ -95,19 +96,28 @@ type ReviewItemToolContext = Pick<
 
 /**
  * Pick the assignees of a new item when the agent names none: the User of
- * the Actor, or else the creator of the Automation of this run. A Slack
- * Actor without a Junior User gets an item with no assignees, so that the
- * agent can still ask; any person in the thread can then answer it.
+ * the Actor, or else the creator of the Automation of this run. A Turn with
+ * a system Actor, such as an event Turn, falls back to the active
+ * Participants of the Conversation. A Slack Actor without a Junior User gets
+ * an item with no assignees, so that the agent can still ask; any person in
+ * the thread can then answer it.
  */
 async function defaultAssignees(
   scope: ReviewItemAgentScope,
+  conversationId: string,
 ): Promise<ResolvedAssignees> {
   const userId =
     scope.user?.id ??
     (scope.reader.automationId
       ? await automationCreatorUserId(getDb(), scope.reader.automationId)
       : undefined);
-  return { everyone: false, userIds: userId ? [userId] : [] };
+  if (userId) return { everyone: false, userIds: [userId] };
+  return {
+    everyone: false,
+    userIds: scope.actorIsPerson
+      ? []
+      : await activeParticipantUserIds(getDb(), conversationId),
+  };
 }
 
 /** What app setup gives the Review item tools. */
@@ -189,7 +199,7 @@ export function createAddReviewItemTool(
   services: ReviewItemToolServices,
 ) {
   return zodTool({
-    description: `Ask a person for input, or tell them about work that needs them. This is how you ask a person anything: the item goes on the review desk, and in a Slack thread it also shows as a card with buttons. Write the question so it stands alone: a person who sees only the card must understand it. Put the option that you recommend first, set \`recommended: true\` on it, and say why in its description. Use kind \`action\` with a \`request\` to ask: a question and 1-4 fields. Each field is \`choice\` (pick one), \`multi_choice\` (pick any), or \`text\` (a short answer). For a simple decision, use one \`choice\` field. Ask for related input in one item. Use kind \`notice\` only to tell a person something. Assignees default to the person in this Turn, or to the Automation creator in an Automation run. The current Conversation is always linked. The answer arrives later as a \`<review-item-answer>\` with the item id, or a \`<review-item-dismissed>\` when the person dismisses it. A reply that the assignee types in the thread also closes the item when the reply answers it. If your next step needs the answer, end the Turn now: the card is your reply, so end with exactly ${NO_REPLY_MARKER}, or finish the Automation run. If other work does not need the answer, continue with it. If an open item has the same \`dedupe_key\`, this updates that item instead of adding another.`,
+    description: `Ask a person for input, or tell them about work that needs them. This is how you ask a person anything: the item goes on the review desk and, in a Slack thread, shows as a card with buttons. The answer arrives later as a \`<review-item-answer>\` with the item id. A dismiss sends you nothing. An assignee's thread reply that answers the item also closes it. If your next step needs the answer, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply. Continue other work that does not need the answer.`,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -198,14 +208,18 @@ export function createAddReviewItemTool(
     },
     inputSchema: z
       .object({
-        kind: z.enum(["notice", "action"]),
+        kind: z
+          .enum(["notice", "action"])
+          .describe(
+            "Use `action` with a `request` to ask. Use `notice` only to tell a person something.",
+          ),
         title: titleSchema,
         body: bodySchema,
         assignees: assigneesSchema
           .nullable()
           .optional()
           .describe(
-            "Who can act on the item. Omit to assign the default person. Each entry is `everyone`, an email, or a Slack mention such as `<@U123>`. Everyone means any person who can see the item.",
+            "Who can act on the item. Omit for the person in this Turn, else the Automation creator in an Automation run, else the people still subscribed to the Conversation.",
           ),
         dedupe_key: z
           .string()
@@ -215,17 +229,21 @@ export function createAddReviewItemTool(
           .nullable()
           .optional()
           .describe(
-            "Stable key for what the item is about, such as `fair-source:entry:acme`. Use the same key on each run. Omit for a one-time question.",
+            "Stable key for what the item is about, such as `fair-source:entry:acme`. If an open item has this key, the call updates that item instead of adding another. Use the same key on each run. Omit for a one-time question.",
           ),
         request: userInputRequestSchema
           .nullable()
           .optional()
-          .describe("Required for an action item. Not allowed for a notice."),
+          .describe(
+            "Required for an action item. Not allowed for a notice. Ask for related input in one item. Write the question so it stands alone: a person who sees only the card must understand it.",
+          ),
         subject: subjectSchema.nullable().optional(),
         conversation_ids: conversationIdsSchema
           .nullable()
           .optional()
-          .describe("Other Conversations to link."),
+          .describe(
+            "Other Conversations to link. The current Conversation is always linked.",
+          ),
       })
       .strict(),
     outputSchema: juniorToolOutputSchema,
@@ -290,7 +308,18 @@ export function createAddReviewItemTool(
               everyone: existing.assignedToEveryone,
               userIds: existing.assignees.map((assignee) => assignee.userId),
             }
-          : await defaultAssignees(scope);
+          : await defaultAssignees(scope, context.conversationId);
+      // Only an assignee gets the item in their review desk count. A Turn
+      // without a person has nobody to show it to, so it needs an assignee.
+      if (
+        !assignees.everyone &&
+        assignees.userIds.length === 0 &&
+        !scope.actorIsPerson
+      ) {
+        throw new ToolInputError(
+          "No person would see this item: no default assignee has a Junior user, and this Turn has no person. Set `assignees`.",
+        );
+      }
       await requireReviewItemAssignees({
         assignees,
         automationId: existing
@@ -379,7 +408,7 @@ export function createUpdateReviewItemTool(
 ) {
   return zodTool({
     description:
-      "Change an open review desk item, or close it. Set `status` to `done` or `dismissed` with a `reason`, for example when its pull request merged. An item also closes when a person answers or dismisses it, when a person's reply in its thread answers it, when its Conversation is purged, when its Automation is deleted, or when the plugin that added it closes it. You cannot submit the answer to an action item: only an assignee can.",
+      "Change an open review desk item, or close it. An item also closes when a person answers or dismisses it, when a person's reply in its thread answers it, when its Conversation is purged, when its Automation is deleted, or when the plugin that added it closes it. You cannot submit the answer to an action item: only an assignee can.",
     exposure: "deferred",
     source: REVIEW_DESK_TOOL_SOURCE,
     annotations: {
@@ -403,7 +432,13 @@ export function createUpdateReviewItemTool(
           .describe(
             "Replaces every other linked Conversation. The Conversation that added the item stays linked.",
           ),
-        status: z.enum(["done", "dismissed"]).nullable().optional(),
+        status: z
+          .enum(["done", "dismissed"])
+          .nullable()
+          .optional()
+          .describe(
+            "Close the item, for example when its pull request merged.",
+          ),
         reason: z
           .string()
           .trim()

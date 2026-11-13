@@ -275,7 +275,6 @@ const mcpSourceSchema = z
     "oauth-client": mcpOauthClientSourceSchema.optional(),
     "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),
     "wrapped-tools": nonEmptyStringArraySchema("wrapped-tools").optional(),
-    "audit-tools": nonEmptyStringArraySchema("audit-tools").optional(),
   })
   .passthrough();
 
@@ -415,7 +414,6 @@ function manifestConfigPatch(
       );
       setDefined(mcp, "allowed-tools", config.mcp.allowedTools);
       setDefined(mcp, "wrapped-tools", config.mcp.wrappedTools);
-      setDefined(mcp, "audit-tools", config.mcp.auditTools);
       result.mcp = mcp;
     }
   }
@@ -872,7 +870,7 @@ function normalizeRuntimeDependencies(
       continue;
     }
 
-    if (!/^https:\/\//i.test(packageUrl)) {
+    if (URL.parse(packageUrl)?.protocol !== "https:") {
       throw new Error(
         `Plugin ${name} system runtime dependency url must be an https URL`,
       );
@@ -1035,20 +1033,6 @@ function normalizeMcp(
   if (!result.success) {
     throw new Error(issueMessage(result.error, `Plugin ${name} mcp`));
   }
-  const auditTools = result.data["audit-tools"];
-  const unknownAuditTools = unloadedMcpTools(
-    {
-      allowedTools: result.data["allowed-tools"],
-      wrappedTools: result.data["wrapped-tools"],
-    },
-    auditTools ?? [],
-  );
-  if (unknownAuditTools.length > 0) {
-    throw new Error(
-      `Plugin ${name} mcp.audit-tools must be listed in mcp.allowed-tools or mcp.wrapped-tools: ${unknownAuditTools.join(", ")}`,
-    );
-  }
-
   const headers = result.data.headers
     ? normalizeStringMap(result.data.headers, `Plugin ${name} mcp.headers`, {
         forbiddenKeys: FORBIDDEN_API_HEADER_NAMES,
@@ -1123,7 +1107,6 @@ function normalizeMcp(
     ...(result.data["wrapped-tools"]
       ? { wrappedTools: result.data["wrapped-tools"] }
       : undefined),
-    ...(auditTools ? { auditTools } : undefined),
   } satisfies PluginMcpConfig;
 }
 

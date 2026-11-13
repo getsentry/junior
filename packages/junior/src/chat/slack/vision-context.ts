@@ -9,7 +9,14 @@ import {
   detectImageMediaType,
   isVisionImageMediaType,
 } from "@/chat/attachments/media";
-import { storeAttachment } from "@/chat/attachments/store";
+import {
+  buildStoredAttachmentPromptText,
+  MAX_MODEL_ATTACHMENT_BYTES,
+  MAX_MODEL_ATTACHMENTS,
+} from "@/chat/attachments/model-input";
+import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
+import { storeAttachment, type AttachmentFile } from "@/chat/attachments/store";
+import { streamPrivateSlackFile } from "@/chat/slack/client";
 import {
   readAttachmentVisionSummary,
   recordSlackAttachment,
@@ -51,8 +58,13 @@ interface VisionThreadReply {
   files?: VisionThreadFile[];
 }
 
-const MAX_USER_ATTACHMENTS = 3;
-const MAX_USER_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+/**
+ * Largest non-image Slack file that Junior stores when the message arrives.
+ * A larger one gets a row and a loadAttachment pointer but is never stored:
+ * each load or dashboard download streams it from Slack, so it costs no
+ * storage, and an unused recording costs no download.
+ */
+export const MAX_EAGER_SLACK_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_MESSAGE_IMAGE_ATTACHMENTS = 3;
 const MAX_VISION_SUMMARY_CHARS = 500;
 
@@ -186,18 +198,37 @@ function buildImageAttachmentFailurePromptText(args: {
 function buildAttachmentResolutionFailurePromptText(args: {
   filename?: string;
   mediaType: string;
+  problem: string;
 }): string {
   return [
     "<attachment>",
     `filename: ${args.filename ?? "unnamed"}`,
     `media_type: ${args.mediaType}`,
     "<resolution-error>",
-    "The user attached this file, but you could not download its content " +
-      "from Slack. Tell the user the attachment could not be read; do not " +
-      "say no attachment was sent.",
+    `The user attached this file, but ${args.problem}. Tell the user the ` +
+      "attachment could not be read; do not say no attachment was sent.",
     "</resolution-error>",
     "</attachment>",
   ].join("\n");
+}
+
+/** Point the model at a stored file, or say that the file could not be stored. */
+function buildFileReferencePromptText(args: {
+  attachmentId?: string;
+  filename?: string;
+  mediaType: string;
+}): string {
+  return args.attachmentId
+    ? buildStoredAttachmentPromptText({
+        attachmentId: args.attachmentId,
+        filename: args.filename,
+        mediaType: args.mediaType,
+      })
+    : buildAttachmentResolutionFailurePromptText({
+        filename: args.filename,
+        mediaType: args.mediaType,
+        problem: "it could not be stored, so you cannot open it",
+      });
 }
 
 // Without a stored Conversation, such as a local run, the cost stays on the
@@ -222,7 +253,6 @@ async function summarizeImageWithVision(args: {
 
   const result = await args.completeText({
     modelId: visionModelId,
-    temperature: 0,
     maxTokens: args.maxTokens,
     operation: "vision_summary",
     cost: args.cost,
@@ -256,21 +286,6 @@ function truncateVisionSummary(summary: string): string {
   return summary.slice(0, MAX_VISION_SUMMARY_CHARS);
 }
 
-function buildStoredAttachmentPromptText(args: {
-  attachmentId: string;
-  filename?: string;
-  mediaType: string;
-}): string {
-  return [
-    "<attachment>",
-    `filename: ${args.filename ?? "unnamed"}`,
-    `media_type: ${args.mediaType}`,
-    `attachment_id: ${args.attachmentId}`,
-    "Use loadAttachment with this id to access the original file.",
-    "</attachment>",
-  ].join("\n");
-}
-
 function getCachedImageSummaries(args: {
   conversation?: ThreadConversationState;
   messageTs?: string;
@@ -300,6 +315,34 @@ function createImageAttachmentProcessingError(attachment: {
   );
 }
 
+/**
+ * Store one Slack file, or return no id when it cannot be stored. The model
+ * then gets a note that it cannot open the file.
+ */
+async function storeSlackFile(args: {
+  conversationId: string;
+  file: AttachmentFile;
+  storage: AttachmentStorage;
+}): Promise<string | undefined> {
+  try {
+    const stored = await storeAttachment({
+      conversationId: args.conversationId,
+      db: getSqlExecutor(),
+      file: args.file,
+      storage: args.storage,
+    });
+    return stored.id;
+  } catch (error) {
+    logWarn("attachment.storage.failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+      "app.file.mime_type": args.file.mimeType,
+      "file.name": args.file.filename,
+    });
+    return undefined;
+  }
+}
+
 async function resolveUserAttachmentsWithDeps(
   attachments: Attachment[] | undefined,
   context: ResolveUserAttachmentsContext,
@@ -310,6 +353,9 @@ async function resolveUserAttachmentsWithDeps(
   }
 
   const results: UserInputAttachment[] = [];
+  // Only images count against the cap. Every other file, and every image past
+  // the cap, still gets a note, so the model never misses an attachment.
+  let modelImageCount = 0;
   const cachedImageSummaries = getCachedImageSummaries({
     conversation: context.conversation,
     messageTs: context.messageTs,
@@ -319,6 +365,75 @@ async function resolveUserAttachmentsWithDeps(
   for (const attachment of attachments) {
     const mediaType = attachment.mimeType ?? "application/octet-stream";
     const isImageAttachment = isVisionImageMediaType(mediaType);
+    const declaredBytes =
+      typeof attachment.size === "number" && Number.isFinite(attachment.size)
+        ? attachment.size
+        : undefined;
+    if (declaredBytes !== undefined && declaredBytes > MAX_ATTACHMENT_BYTES) {
+      logWarn("attachment.size_limit.refused", {
+        "file.size": declaredBytes,
+        "app.file.mime_type": mediaType,
+      });
+      results.push({
+        mediaType,
+        filename: attachment.name,
+        promptText: buildAttachmentResolutionFailurePromptText({
+          filename: attachment.name,
+          mediaType,
+          problem: `it is larger than the ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB file limit, so it was not downloaded and you cannot open it`,
+        }),
+      });
+      continue;
+    }
+
+    const slackFileId = getSlackFileId(attachment);
+    const url = attachment.url;
+    // Only an image that may go to the model inline needs its bytes in
+    // memory. Stream every other Slack file into storage, or record a large
+    // one without storing it; each read downloads it from Slack.
+    if (
+      context.conversationId &&
+      deps.attachmentStorage &&
+      slackFileId &&
+      url &&
+      declaredBytes !== undefined &&
+      !(attachment.data instanceof Buffer) &&
+      !(isImageAttachment && declaredBytes <= MAX_MODEL_ATTACHMENT_BYTES)
+    ) {
+      const file = {
+        bytes: declaredBytes,
+        filename: attachment.name ?? "attachment",
+        mimeType: mediaType,
+        source: { id: slackFileId, provider: "slack" },
+      };
+      const attachmentId = await storeSlackFile({
+        conversationId: context.conversationId,
+        file:
+          !isImageAttachment && declaredBytes > MAX_EAGER_SLACK_FILE_BYTES
+            ? { ...file, deferred: true }
+            : { ...file, open: () => streamPrivateSlackFile(url) },
+        storage: deps.attachmentStorage,
+      });
+      results.push({
+        attachmentId,
+        mediaType,
+        filename: attachment.name,
+        promptText: attachmentId
+          ? buildStoredAttachmentPromptText({
+              attachmentId,
+              filename: attachment.name,
+              mediaType,
+            })
+          : buildAttachmentResolutionFailurePromptText({
+              filename: attachment.name,
+              mediaType,
+              problem:
+                "it could not be downloaded from Slack and stored, so you cannot open it",
+            }),
+      });
+      continue;
+    }
+
     let data: Buffer;
     try {
       if (attachment.fetchData) {
@@ -337,77 +452,67 @@ async function resolveUserAttachmentsWithDeps(
       // The user really did attach a file; only its bytes are unreachable.
       // Tell the model that instead of dropping the attachment silently, so
       // Junior does not falsely claim no attachment was sent.
-      if (results.length < MAX_USER_ATTACHMENTS) {
-        results.push({
-          mediaType,
+      results.push({
+        mediaType,
+        filename: attachment.name,
+        promptText: buildAttachmentResolutionFailurePromptText({
           filename: attachment.name,
-          promptText: buildAttachmentResolutionFailurePromptText({
-            filename: attachment.name,
-            mediaType,
-          }),
-        });
-      }
+          mediaType,
+          problem: "you could not download its content from Slack",
+        }),
+      });
       continue;
     }
 
-    let attachmentId: string | undefined;
-    const slackFileId = getSlackFileId(attachment);
-    if (context.conversationId && deps.attachmentStorage) {
-      try {
-        const stored = await storeAttachment({
-          conversationId: context.conversationId,
-          db: getSqlExecutor(),
-          file: {
-            bytes: data.byteLength,
-            data,
-            filename: attachment.name ?? "attachment",
-            mimeType: mediaType,
-            path: attachment.name ?? "attachment",
-          },
-          ...(slackFileId
-            ? { source: { id: slackFileId, provider: "slack" } }
-            : undefined),
-          storage: deps.attachmentStorage,
-        });
-        attachmentId = stored.id;
-      } catch (error) {
-        logWarn("attachment.storage.failed", {
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-          "app.file.mime_type": mediaType,
-          ...(attachment.name ? { "file.name": attachment.name } : undefined),
-        });
-      }
-    }
+    const attachmentId =
+      context.conversationId && deps.attachmentStorage
+        ? await storeSlackFile({
+            conversationId: context.conversationId,
+            file: {
+              data,
+              filename: attachment.name ?? "attachment",
+              mimeType: mediaType,
+              ...(slackFileId
+                ? { source: { id: slackFileId, provider: "slack" } }
+                : undefined),
+            },
+            storage: deps.attachmentStorage,
+          })
+        : undefined;
 
+    // Only images go to the model inline. Any other file, such as a video, a
+    // recording, or a PDF, gets the same loadAttachment pointer as a web file.
+    // So do images past the size limit or the per-turn image cap.
     if (
-      results.length >= MAX_USER_ATTACHMENTS ||
-      (attachment.type !== "image" && attachment.type !== "file")
+      !isImageAttachment ||
+      data.byteLength > MAX_MODEL_ATTACHMENT_BYTES ||
+      modelImageCount >= MAX_MODEL_ATTACHMENTS
     ) {
+      if (isImageAttachment && data.byteLength > MAX_MODEL_ATTACHMENT_BYTES) {
+        logWarn("attachment.size_limit.skipped", {
+          "file.size": data.byteLength,
+          "app.file.mime_type": mediaType,
+        });
+      }
+      results.push({
+        attachmentId,
+        mediaType,
+        filename: attachment.name,
+        promptText: buildFileReferencePromptText({
+          attachmentId,
+          filename: attachment.name,
+          mediaType,
+        }),
+      });
       continue;
     }
+    modelImageCount += 1;
 
     const resolvedAttachment: UserInputAttachment = {
       attachmentId,
       mediaType,
       filename: attachment.name,
     };
-    if (data.byteLength > MAX_USER_ATTACHMENT_BYTES) {
-      logWarn("attachment.size_limit.skipped", {
-        "file.size": data.byteLength,
-        "app.file.mime_type": mediaType,
-      });
-      if (attachmentId) {
-        resolvedAttachment.promptText = buildStoredAttachmentPromptText({
-          attachmentId,
-          filename: attachment.name,
-          mediaType,
-        });
-        results.push(resolvedAttachment);
-      }
-      continue;
-    }
-
     // Providers reject an image whose bytes do not match its media type, so
     // send the detected type. Slack's declared type can be wrong.
     const nativeImageMediaType =
@@ -511,7 +616,7 @@ async function resolveUserAttachmentsWithDeps(
       continue;
     }
 
-    if (isImageAttachment && attachmentId) {
+    if (attachmentId) {
       resolvedAttachment.promptText = buildStoredAttachmentPromptText({
         attachmentId,
         filename: attachment.name,
@@ -708,7 +813,7 @@ async function hydrateConversationVisionContextWithDeps(
         typeof file.size === "number" && Number.isFinite(file.size)
           ? file.size
           : undefined;
-      if (fileSize && fileSize > MAX_USER_ATTACHMENT_BYTES) {
+      if (fileSize && fileSize > MAX_MODEL_ATTACHMENT_BYTES) {
         logWarn("conversation.image.size_limit.skipped", {
           "app.file.id": fileId,
           "file.size": fileSize,
@@ -737,7 +842,7 @@ async function hydrateConversationVisionContextWithDeps(
         continue;
       }
 
-      if (imageData.byteLength > MAX_USER_ATTACHMENT_BYTES) {
+      if (imageData.byteLength > MAX_MODEL_ATTACHMENT_BYTES) {
         logWarn("conversation.image.size_limit.skipped", {
           "app.file.id": fileId,
           "file.size": imageData.byteLength,

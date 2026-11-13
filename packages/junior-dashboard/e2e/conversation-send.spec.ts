@@ -5,7 +5,7 @@ import {
 } from "@sentry/junior/api/schema";
 import type {
   ConversationPendingMessage,
-  InputImage,
+  CreateAttachmentUploadBody,
 } from "@sentry/junior/api/schema";
 import type { Route } from "@playwright/test";
 import { chooseTranscriptView } from "./conversationMenu";
@@ -23,13 +23,24 @@ test("starts and continues conversations from the dashboard", async ({
     idempotencyKey: string;
     message: string;
     visibility?: "private" | "public";
-    images?: InputImage[];
+    uploadIds?: string[];
   }> = [];
   const continueRequests: Array<{
     idempotencyKey: string;
     message: string;
-    images?: InputImage[];
+    uploadIds?: string[];
   }> = [];
+  // The mock API takes each upload. Keep what the browser asked to upload.
+  const uploadRequests: CreateAttachmentUploadBody[] = [];
+  const uploadedFiles = (idempotencyKey: string | undefined) =>
+    uploadRequests
+      .filter((upload) => upload.idempotencyKey === idempotencyKey)
+      .map((upload) => upload.filename)
+      .sort();
+  await page.route("**/api/conversations/attachment-uploads", async (route) => {
+    uploadRequests.push(route.request().postDataJSON());
+    await route.fallback();
+  });
   let releaseFirstContinue: (() => void) | undefined;
   const firstContinueHeld = new Promise<void>((resolve) => {
     releaseFirstContinue = resolve;
@@ -102,14 +113,35 @@ test("starts and continues conversations from the dashboard", async ({
   await page.getByRole("button", { name: "Private" }).click();
   const startComposer = page.getByLabel("Start a conversation");
   const imageBase64 = mockChartPng.toString("base64");
-  await page.getByLabel("Choose images").setInputFiles({
+  // Any file type goes. A file over the per-file cap does not. Build large
+  // files in the page: sending their bytes from the test is slow.
+  await startComposer.evaluate(
+    (element, bytes) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.items.add(
+        new File([new Uint8Array(bytes)], "huge.log", { type: "text/plain" }),
+      );
+      element.dispatchEvent(
+        new ClipboardEvent("paste", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData,
+        }),
+      );
+    },
+    250 * 1024 * 1024 + 1,
+  );
+  await expect(
+    page.getByText(
+      "Attach up to 10 files, 250 MB each. Files cannot be empty.",
+    ),
+  ).toBeVisible();
+  await page.getByLabel("Choose files").setInputFiles({
     name: "notes.txt",
     mimeType: "text/plain",
     buffer: Buffer.from("notes"),
   });
-  await expect(
-    page.getByText("Use PNG, JPEG, GIF, or WebP image files."),
-  ).toBeVisible();
+  await expect(page.getByText("notes.txt")).toBeVisible();
   await startComposer.evaluate((element, data) => {
     const clipboardData = new DataTransfer();
     clipboardData.items.add(
@@ -128,25 +160,54 @@ test("starts and continues conversations from the dashboard", async ({
     );
   }, imageBase64);
   await expect(page.getByRole("img", { name: "pasted.png" })).toBeVisible();
-  await screenshot(page, "conversation-image-draft");
+  await screenshot(page, "conversation-file-draft");
   await page.getByRole("button", { name: "Remove pasted.png" }).click();
+  await page.getByRole("button", { name: "Remove notes.txt" }).click();
   await expect(
     page.getByRole("button", { name: "Send", exact: true }),
   ).toBeDisabled();
-  await page.getByLabel("Choose images").setInputFiles({
-    name: "pasted.png",
-    mimeType: "image/png",
-    buffer: Buffer.from(imageBase64, "base64"),
-  });
+  // Files go to storage before the send, so an image can be over the old
+  // 3 MB message limit.
+  await startComposer.evaluate(
+    (element, { data, padding }) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.items.add(
+        new File(
+          [
+            Uint8Array.from(atob(data), (c) => c.charCodeAt(0)),
+            new Uint8Array(padding),
+          ],
+          "pasted.png",
+          { type: "image/png" },
+        ),
+      );
+      clipboardData.items.add(
+        new File(["notes"], "notes.txt", { type: "text/plain" }),
+      );
+      element.dispatchEvent(
+        new ClipboardEvent("paste", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData,
+        }),
+      );
+    },
+    { data: imageBase64, padding: 4 * 1024 * 1024 },
+  );
   await expect(page.getByRole("img", { name: "pasted.png" })).toBeVisible();
   await startComposer.fill("Check the deploy");
   await page.getByRole("button", { name: "Send" }).click();
   await expect.poll(() => createRequests.length).toBe(1);
-  // The draft stays in the locked composer while the first accept is open,
-  // so a later submit cannot send it twice.
+  // The new Conversation shows at once with the message and Junior at work.
+  // The draft stays in the hidden home composer while the first accept is
+  // open, so a later submit cannot send it twice.
+  const transcriptView = page.getByLabel("Conversation transcript");
+  await expect(transcriptView.getByText("Check the deploy")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Sending message" }),
-  ).toBeDisabled();
+    page.getByRole("status").filter({ hasText: "Junior is thinking" }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(startComposer).toBeHidden();
   await expect(startComposer).toHaveValue("Check the deploy");
   await startComposer.evaluate((element) => {
     element.closest("form")?.requestSubmit();
@@ -154,16 +215,24 @@ test("starts and continues conversations from the dashboard", async ({
   expect(createRequests).toHaveLength(1);
   releaseFirstCreate?.();
   await expect(
-    page.getByText("Could not create the conversation. Try again."),
+    page.getByText("Message failed to send. Try again."),
   ).toBeVisible();
   // New roots have no mailbox outbox, so a failed create keeps the draft and
-  // the same idempotency key for a safe retry.
+  // the same idempotency key for a safe retry. Focus returns, so Enter
+  // retries.
   await expect(startComposer).toHaveValue("Check the deploy");
+  await expect(startComposer).toBeFocused();
   await expect(page.getByRole("img", { name: "pasted.png" })).toBeVisible();
-  expect(createRequests[0]?.images).toEqual([
-    { filename: "pasted.png", contentType: "image/png", data: imageBase64 },
-  ]);
   const failedCreateKey = createRequests[0]?.idempotencyKey;
+  expect(createRequests[0]?.uploadIds).toHaveLength(2);
+  expect(uploadedFiles(failedCreateKey)).toEqual(["notes.txt", "pasted.png"]);
+  expect(uploadRequests).toContainEqual(
+    expect.objectContaining({
+      bytes: mockChartPng.byteLength + 4 * 1024 * 1024,
+      contentType: "image/png",
+      filename: "pasted.png",
+    }),
+  );
   expect(createRequests[0]?.message).toBe("Check the deploy");
   expect(createRequests[0]?.visibility).toBe("private");
   expect(failedCreateKey).toBeTruthy();
@@ -205,10 +274,11 @@ test("starts and continues conversations from the dashboard", async ({
     },
   );
   await page.getByRole("button", { name: "Send" }).click();
-  // The draft stays on the home page until the new Conversation can open
-  // with its transcript.
+  // The pending Conversation shows until the new one can open with its
+  // transcript.
   await expect.poll(() => createdDetailReads).toBe(1);
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(transcriptView.getByText("Check the deploy")).toBeVisible();
   await expect(startComposer).toHaveValue("Check the deploy");
   releaseCreatedDetail?.();
   await expect(page).toHaveURL(
@@ -217,11 +287,26 @@ test("starts and continues conversations from the dashboard", async ({
   await expect(
     page.getByLabel("Conversation transcript").getByText("Check the deploy"),
   ).toBeVisible();
+  // The cursor stays in the reply box from send to the opened Conversation.
+  const replyBox = page.getByLabel("Continue this conversation");
+  await expect(replyBox).toBeFocused();
+  // Coming back from the event log does not ask for the reply box again.
+  await chooseTranscriptView(page, "Event log");
+  await chooseTranscriptView(page, "Conversation");
+  await expect(replyBox).toBeVisible();
+  await expect(replyBox).not.toBeFocused();
   expect(createRequests).toHaveLength(2);
   expect(createRequests[1]?.idempotencyKey).toBe(failedCreateKey);
   expect(createRequests[1]?.message).toBe("Check the deploy");
   expect(createRequests[1]?.visibility).toBe("private");
-  expect(createRequests[1]?.images).toEqual(createRequests[0]?.images);
+  // A retry uploads the files again under the same message key.
+  expect(createRequests[1]?.uploadIds).toHaveLength(2);
+  expect(uploadedFiles(failedCreateKey)).toEqual([
+    "notes.txt",
+    "notes.txt",
+    "pasted.png",
+    "pasted.png",
+  ]);
 
   const slackConversationId = "slack:CQA123:1770000000.000100";
   await page.route(
@@ -273,7 +358,7 @@ test("starts and continues conversations from the dashboard", async ({
     );
   }, imageBase64);
   await expect(page.getByRole("img", { name: "dropped.png" })).toBeVisible();
-  await screenshot(page, "conversation-image-reply");
+  await screenshot(page, "conversation-file-reply");
   await page.getByRole("button", { name: "Send" }).click();
   const pending = page.getByLabel("Pending messages");
   // This history expired, so the transcript cannot show the send. It queues.
@@ -309,8 +394,12 @@ test("starts and continues conversations from the dashboard", async ({
   await pending.getByRole("button", { name: "Retry" }).click();
   await expect.poll(() => continueRequests.length).toBe(3);
   expect(continueRequests[2]?.idempotencyKey).toBe(failedIdempotencyKey);
-  expect(continueRequests[2]?.images).toEqual(continueRequests[0]?.images);
-  expect(continueRequests[2]?.images?.[0]?.filename).toBe("dropped.png");
+  expect(continueRequests[0]?.uploadIds).toHaveLength(1);
+  expect(continueRequests[2]?.uploadIds).toHaveLength(1);
+  expect(uploadedFiles(failedIdempotencyKey)).toEqual([
+    "dropped.png",
+    "dropped.png",
+  ]);
   // The accepted message stays out of the composer before background transcript
   // refreshes finish. Keep the local row until a server snapshot sees it.
   await expect(composer).toHaveValue("");
@@ -696,272 +785,84 @@ test("hands web and external messages from queue to history without gaps", async
   await expect(pending).toBeHidden();
 });
 
-test("stops the active Turn and returns queued text to the composer", async ({
+test("keeps details closed on a home send after the reader closed them", async ({
   page,
   dashboard,
 }) => {
-  const conversationId = "slack:CQA123:1770000000.000100";
-  const path = `**/api/conversations/${encodeURIComponent(conversationId)}`;
-  const createdAt = "2026-06-12T00:00:00.000Z";
-  const queuedMessage: ConversationPendingMessage & { text: string } = {
-    createdAt,
-    receivedAt: createdAt,
-    delivery: "defer",
-    inboundMessageId: "queued-before-stop",
-    messageId: "queued-before-stop",
-    role: "user",
-    source: "web",
-    text: "Queued follow-up",
-  };
-  // Sent from this tab. The server accepts it, but no poll lists it yet.
-  const sentMessage = { ...queuedMessage, text: "Sent before stop" };
-  let active = true;
-  let queued: ConversationPendingMessage[] = [queuedMessage];
-  let stopRequests = 0;
-  await page.route(`${path}/messages`, async (route) => {
-    const body = route.request().postDataJSON();
-    sentMessage.messageId = await webMessageId({
-      conversationId,
-      idempotencyKey: body.idempotencyKey,
-    });
-    sentMessage.inboundMessageId = sentMessage.messageId;
+  await page.setViewportSize({ height: 900, width: 1600 });
+  const createdConversationId = "local:web:details-closed";
+  let releaseCreate: (() => void) | undefined;
+  const createHeld = new Promise<void>((resolve) => {
+    releaseCreate = resolve;
+  });
+  await page.route("**/api/conversations", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await createHeld;
     await route.fulfill({
       json: {
-        conversationId,
-        messageId: sentMessage.messageId,
+        conversationId: createdConversationId,
+        messageId: "created-message",
         status: "accepted",
       },
     });
   });
-  await page.route(`${path}/stop`, async (route) => {
-    stopRequests += 1;
-    const stopped = [queuedMessage, sentMessage];
-    await route.fulfill({
-      json: {
-        conversationId,
-        status: "requested",
-        stoppedInboundMessageIds: stopped.map(
-          (message) => message.inboundMessageId,
-        ),
-        stoppedMessages: stopped.map((message) => ({
-          inboundMessageId: message.inboundMessageId,
-          text: message.text,
-        })),
-      },
-    });
-  });
-  await page.route(`${path}*`, async (route) => {
-    const response = await route.fetch({
-      headers: {
-        ...route.request().headers(),
-        [CONVERSATION_DETAIL_VERSION_HEADER]: "",
-      },
-    });
-    const detail = await response.json();
-    await route.fulfill({
-      response,
-      json: withRequestedMailbox(
-        route,
-        {
-          ...detail,
-          isParticipant: true,
-          status: active ? "active" : "completed",
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(createdConversationId)}*`,
+    async (route) => {
+      const response = await route.fetch({
+        headers: {
+          ...route.request().headers(),
+          [CONVERSATION_DETAIL_VERSION_HEADER]: "",
         },
-        { conversationId, generatedAt: createdAt, messages: queued },
-      ),
-    });
-  });
-
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
-  );
-  const composer = page.getByLabel("Continue this conversation");
-  const pending = page.getByLabel("Pending messages");
-  const stop = page.getByRole("button", { name: "Stop", exact: true });
-  await expect(pending.getByText(queuedMessage.text)).toBeVisible();
-  await expect(stop).toBeVisible();
-  await composer.fill(sentMessage.text);
-  await page.getByRole("button", { name: "Send", exact: true }).click();
-  await pending
-    .getByRole("button", { name: "2 queued messages" })
-    .press("Enter");
-  await expect(
-    pending.getByRole("button", { name: "Show fewer queued messages" }),
-  ).toBeFocused();
-  await expect(pending.getByText(sentMessage.text)).toBeVisible();
-  await screenshot(page, "conversation-stop-active");
-
-  // Queued text goes back ahead of the draft.
-  await composer.fill("Draft in progress");
-  await stop.click();
-  await expect(composer).toHaveValue(
-    `${queuedMessage.text}\n${sentMessage.text}\nDraft in progress`,
-  );
-  await expect(pending).toBeHidden();
-  expect(stopRequests).toBe(1);
-
-  // The worker removes stopped rows later, so polls can still list them. Keep
-  // them hidden, also after leaving the view remounts the footer.
-  queued = [queuedMessage, sentMessage];
-  await chooseTranscriptView(page, "Event log");
-  await chooseTranscriptView(page, "Conversation");
-  await expect(composer).toBeVisible();
-  await expect(pending).toBeHidden();
-
-  queued = [];
-  active = false;
-  await expect(stop).toBeHidden({ timeout: 15_000 });
-});
-
-test("edits a queued message back into the composer", async ({
-  page,
-  dashboard,
-}) => {
-  const conversationId = "slack:CQA123:1770000000.000100";
-  const path = `**/api/conversations/${encodeURIComponent(conversationId)}`;
-  const createdAt = "2026-06-12T00:00:00.000Z";
-  const queuedMessage: ConversationPendingMessage & { text: string } = {
-    actorIdentity: { email: "dev@example.com" },
-    attachments: [
-      {
-        bytes: 18211,
-        contentType: "image/png",
-        filename: "queued-chart.png",
-        id: "qa-chart-png",
-      },
-    ],
-    createdAt,
-    receivedAt: createdAt,
-    delivery: "defer",
-    inboundMessageId: "queued-edit",
-    messageId: "queued-edit",
-    role: "user",
-    source: "web",
-    text: "Queued follow-up",
-  };
-  // The reader steers this one. Junior reads it before the edit lands, so the
-  // cancel finds nothing.
-  const readMessage: ConversationPendingMessage & { text: string } = {
-    ...queuedMessage,
-    attachments: undefined,
-    inboundMessageId: "queued-read",
-    messageId: "queued-read",
-    text: "Already read",
-  };
-  let queued: ConversationPendingMessage[] = [queuedMessage, readMessage];
-  const steerRequests: string[][] = [];
-  await page.route(`${path}/pending-messages/steer`, async (route) => {
-    const ids = route.request().postDataJSON().inboundMessageIds as string[];
-    steerRequests.push(ids);
-    queued = queued.map((message) =>
-      ids.includes(message.inboundMessageId)
-        ? { ...message, delivery: "interrupt" }
-        : message,
-    );
-    await route.fulfill({
-      json: { conversationId, steeredInboundMessageIds: ids },
-    });
-  });
-  await page.route(`${path}/pending-messages`, async (route) => {
-    const [id] = route.request().postDataJSON().inboundMessageIds as string[];
-    const cancelled = id === queuedMessage.inboundMessageId ? [id] : [];
-    queued = queued.filter((message) => message.inboundMessageId !== id);
-    await route.fulfill({
-      json: {
-        cancelledCount: cancelled.length,
-        cancelledInboundMessageIds: cancelled,
-        conversationId,
-      },
-    });
-  });
-  await page.route(`${path}*`, async (route) => {
-    const response = await route.fetch({
-      headers: {
-        ...route.request().headers(),
-        [CONVERSATION_DETAIL_VERSION_HEADER]: "",
-      },
-    });
-    const detail = await response.json();
-    await route.fulfill({
-      response,
-      json: withRequestedMailbox(
-        route,
-        { ...detail, isParticipant: true, status: "active" },
-        { conversationId, generatedAt: createdAt, messages: queued },
-      ),
-    });
-  });
-
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
-  );
-  const composer = page.getByLabel("Continue this conversation");
-  const pending = page.getByLabel("Pending messages");
-  await pending.getByRole("button", { name: "2 queued messages" }).click();
-  await expect(pending.getByText(queuedMessage.text)).toBeVisible();
-  await expect(
-    pending.getByRole("img", { name: "queued-chart.png" }),
-  ).toBeVisible();
-  await screenshot(page, "conversation-queue-compact");
-
-  const readRow = pending.getByRole("article").filter({
-    hasText: readMessage.text,
-  });
-  await readRow.getByRole("button", { name: "Steer queued message" }).click();
-  await expect(readRow.getByLabel("Steered", { exact: true })).toBeVisible();
-  await expect(
-    readRow.getByRole("button", { name: "Steer queued message" }),
-  ).toBeHidden();
-  expect(steerRequests).toEqual([[readMessage.inboundMessageId]]);
-  // Close the delivery tooltip that opened under the pointer.
-  await page.mouse.move(0, 0);
-
-  // A draft with no room for the queued image keeps the message queued.
-  await composer.evaluate((element, data) => {
-    const dataTransfer = new DataTransfer();
-    for (const name of ["one.png", "two.png", "three.png"]) {
-      dataTransfer.items.add(
-        new File([Uint8Array.from(atob(data), (c) => c.charCodeAt(0))], name, {
-          type: "image/png",
+        // Any mock Conversation with available history.
+        url: route
+          .request()
+          .url()
+          .replace(
+            encodeURIComponent(createdConversationId),
+            encodeURIComponent("slack:CQA123:1770003600.000200"),
+          ),
+      });
+      await route.fulfill({
+        json: withRequestedMailbox(route, {
+          ...(await response.json()),
+          conversationId: createdConversationId,
+          events: [],
+          isParticipant: true,
+          previousCursor: undefined,
+          status: "active",
         }),
-      );
-    }
-    element.dispatchEvent(
-      new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }),
-    );
-  }, mockChartPng.toString("base64"));
-  await expect(page.getByRole("img", { name: "three.png" })).toBeVisible();
-  await pending
-    .getByRole("button", { name: "Edit queued message" })
-    .first()
-    .click();
-  await expect(
-    page.getByText("Remove some draft images to edit that message."),
-  ).toBeVisible();
-  await expect(pending.getByText(queuedMessage.text)).toBeVisible();
-  for (const name of ["one.png", "two.png", "three.png"]) {
-    await page.getByRole("button", { name: `Remove ${name}` }).click();
-  }
+      });
+    },
+  );
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+  });
 
-  // Text goes ahead of the draft and the image comes back with it.
-  await composer.fill("Draft in progress");
-  await pending
-    .getByRole("button", { name: "Edit queued message" })
-    .first()
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
+  );
+  await expect(details).toBeVisible();
+  await details
+    .getByRole("button", { name: "Close conversation details" })
     .click();
-  await expect(composer).toHaveValue(
-    `${queuedMessage.text}\nDraft in progress`,
-  );
-  await expect(page.getByRole("img", { name: "queued-chart.png" })).toHaveCount(
-    1,
-  );
-  await expect(pending.getByText(queuedMessage.text)).toBeHidden();
+  await expect(details).toBeHidden();
 
-  await pending.getByRole("button", { name: "Edit queued message" }).click();
-  await expect(
-    page.getByText("That message was already read or removed."),
-  ).toBeVisible();
-  await expect(composer).toHaveValue(
-    `${queuedMessage.text}\nDraft in progress`,
+  await page.goto(dashboard.baseURL);
+  await page.getByLabel("Start a conversation").fill("Check the deploy");
+  await page.getByRole("button", { name: "Send" }).click();
+  const transcript = page.getByLabel("Conversation transcript");
+  await expect(transcript.getByText("Check the deploy")).toBeVisible();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  // The pending view follows the saved choice, as the page does.
+  await expect(details).toBeHidden();
+  releaseCreate?.();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(createdConversationId)}`,
   );
+  await expect(transcript.getByText("Check the deploy")).toBeVisible();
+  await expect(details).toBeHidden();
 });

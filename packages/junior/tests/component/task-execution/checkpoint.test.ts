@@ -67,6 +67,7 @@ function failingConversationStore(): ConversationStore {
     get: vi.fn(),
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
+    claimProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
     recordDestinationVisibility: vi.fn(),
     getRunMetrics: vi.fn(async () => undefined),
@@ -593,6 +594,7 @@ describe("turn checkpoint", () => {
       get: vi.fn(),
       getConversationIdByProviderConversation: vi.fn(async () => undefined),
       bindProviderConversation: vi.fn(),
+      claimProviderConversation: vi.fn(),
       getDestinationVisibility: vi.fn(async () => undefined),
       recordDestinationVisibility: vi.fn(),
       getRunMetrics: vi.fn(async () => undefined),
@@ -676,8 +678,15 @@ describe("turn checkpoint", () => {
       await import("@/chat/task-execution/turn-cursor");
     const { turnCursorKey } =
       await import("@/chat/task-execution/turn-cursor-keys");
+    const { getSqlExecutor } = await import("@/chat/db");
+    const { resolveActorIdentityId } = await import("@/chat/identities/actor");
     const conversationId = "slack:C123:cursor-unknown-fields";
     const turnId = "turn-unknown-fields";
+    // The Identity id a newer worker saved. It is not this Actor's own id.
+    const savedIdentityId = await resolveActorIdentityId(getSqlExecutor(), {
+      ...SLACK_ACTOR,
+      userId: "U-saved",
+    });
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     await stateAdapter.set(
@@ -701,7 +710,7 @@ describe("turn checkpoint", () => {
           teamId: "T123",
           userId: "U123",
         },
-        actorIdentityId: "identity-1",
+        actorIdentityId: savedIdentityId,
         deprecatedFlag: true,
         resumeReason: "timeout",
       },
@@ -730,7 +739,7 @@ describe("turn checkpoint", () => {
     expect(record).not.toHaveProperty("destination");
     expect(record).toMatchObject({
       actor: SLACK_ACTOR,
-      actorIdentityId: "identity-1",
+      actorIdentityId: savedIdentityId,
       source: SLACK_SOURCE,
     });
     expect(record).not.toHaveProperty("deprecatedFlag");
@@ -749,7 +758,7 @@ describe("turn checkpoint", () => {
     await expect(
       stateAdapter.get(turnCursorKey(conversationId, turnId)),
     ).resolves.toMatchObject({
-      actorIdentityId: "identity-1",
+      actorIdentityId: savedIdentityId,
       sliceId: 2,
     });
   });

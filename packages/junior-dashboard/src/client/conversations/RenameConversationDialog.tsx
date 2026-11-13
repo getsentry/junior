@@ -22,16 +22,26 @@ export function RenameConversationDialog(props: {
   const inputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState(props.title);
   const sheet = useSheet(props.onClose, inputRef);
+  const savedRef = useRef(false);
   const next = title.trim();
   const changed = next.length > 0 && next !== props.title;
   return (
     <Dialog {...sheet.rootProps}>
-      <DialogContent {...sheet.contentProps}>
+      <DialogContent
+        {...sheet.contentProps}
+        finalFocus={() => {
+          // Base UI returns focus to the opener. After a save from the
+          // input, the browser rings that focus. Drop the ring before paint.
+          if (savedRef.current) requestAnimationFrame(focusWithoutRing);
+          return sheet.contentProps.finalFocus();
+        }}
+      >
         <form
           className="grid gap-4"
           onSubmit={(event) => {
             event.preventDefault();
             if (changed) props.onSave(next);
+            savedRef.current = true;
             sheet.rootProps.onOpenChange(false, { cancel() {} });
           }}
         >
@@ -48,8 +58,8 @@ export function RenameConversationDialog(props: {
             />
           </Field>
           <DialogFooter>
-            <DialogClose render={<Button>Cancel</Button>} />
-            <Button variant="primary" type="submit" disabled={!changed}>
+            <DialogClose render={<Button variant="outline">Cancel</Button>} />
+            <Button variant="default" type="submit" disabled={!changed}>
               Save
             </Button>
           </DialogFooter>
@@ -57,4 +67,12 @@ export function RenameConversationDialog(props: {
       </DialogContent>
     </Dialog>
   );
+}
+
+function focusWithoutRing() {
+  const element = document.activeElement;
+  if (!(element instanceof HTMLElement) || !element.matches(":focus-visible"))
+    return;
+  element.blur();
+  element.focus({ preventScroll: true, focusVisible: false });
 }

@@ -50,7 +50,7 @@ import {
   createConversationWorkHarness,
   deferred,
 } from "../../../fixtures/conversation-work";
-import { testViewer } from "../../../fixtures/user";
+import { signedInViewer } from "../../../fixtures/user";
 
 function stopRequest(
   fixture: ConversationFixture,
@@ -59,7 +59,7 @@ function stopRequest(
 ) {
   const app = new Hono<{ Variables: JuniorApiVariables }>();
   app.use("*", async (context, next) => {
-    context.set("viewer", testViewer(email));
+    context.set("viewer", await signedInViewer(email));
     await next();
   });
   app.route("/", createJuniorApi({ conversationWorkQueue: fixture.queue }));
@@ -144,7 +144,9 @@ describe("conversation stop API", () => {
       },
       { conversationStore, queue, state },
     );
-    const otherActor = webActorFromUser(testViewer("bob@example.com"));
+    const otherActor = webActorFromUser(
+      await signedInViewer("bob@example.com"),
+    );
     const otherQueued = await appendAndEnqueueWebMessage(
       {
         actor: otherActor,
@@ -281,7 +283,7 @@ describe("conversation stop API", () => {
     await expect(
       conversations.cancel({
         conversationId: created.conversationId,
-        user: testViewer(actor.email),
+        user: await signedInViewer(actor.email),
       }),
     ).resolves.toBe("cancelled");
     await expectChildAgentStopped(child, state);
@@ -416,15 +418,16 @@ describe("conversation stop API", () => {
       queue,
       state,
     });
+    // A completed child sends nothing, so this one ends blocked.
     const result = (await completeAgentInvocation({
+      errorMessage: "Child needs a token.",
       invocationId: child.invocationId,
-      result: "Child fact: 42.",
-      status: "completed",
+      status: "blocked",
     })) as TerminalAgentInvocation;
     await enqueueAgentInvocationResult(result, { queue, state });
     await expect(
       parentMailboxEventTypes(created.conversationId, state),
-    ).resolves.toEqual(["agent_invocation.completed"]);
+    ).resolves.toEqual(["agent_invocation.blocked"]);
 
     const response = await stopRequest(
       fixture,

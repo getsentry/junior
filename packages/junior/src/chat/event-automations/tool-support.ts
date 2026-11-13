@@ -26,6 +26,10 @@ import {
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { destinationFilterValue } from "@/chat/automations/creator";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
+import {
+  automationTaskDescription,
+  automationTaskSchema,
+} from "@/chat/automations/task";
 
 /** Model-facing shape of one event automation. */
 export const compactEventAutomationResultSchema = z
@@ -36,7 +40,7 @@ export const compactEventAutomationResultSchema = z
     status_reason: z.string().nullable(),
     title: z.string().min(1).nullable(),
     dashboard_url: z.string().url().nullable(),
-    instruction: z.string().min(1),
+    task: automationTaskSchema,
     trigger: z
       .object({
         namespace: z.string().min(1),
@@ -225,7 +229,7 @@ export function compactEventAutomation(
     status_reason: task.statusReason ?? null,
     title: task.title?.trim() || null,
     dashboard_url: getDashboardTaskLink(task.id) ?? null,
-    instruction: task.task.text,
+    task: task.task,
     trigger: {
       namespace: task.trigger.namespace,
       identifier: task.trigger.identifier ?? null,
@@ -270,8 +274,9 @@ export async function eventAutomationToolResult(
 ) {
   const automation = compactEventAutomation(task, catalog, isCreator);
   const description = describeEventAutomationTrigger(task.trigger, catalog);
+  const taskDescription = automationTaskDescription(task.task);
   const title =
-    automation.title ?? fallbackShortTitle(task.task.text, "Event automation");
+    automation.title ?? fallbackShortTitle(taskDescription, "Event automation");
   return {
     automation,
     objectCards: await saveObjectAnnotations(conversationId, "junior", [
@@ -282,7 +287,7 @@ export async function eventAutomationToolResult(
         key: task.id,
         title,
         url: automation.dashboard_url,
-        description: task.task.text,
+        description: taskDescription,
         status: description.problems.length === 0 ? "ready" : "unavailable",
         trigger: eventTriggerText(task.trigger.label, description),
         warning:

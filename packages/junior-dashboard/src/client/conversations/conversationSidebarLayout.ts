@@ -1,18 +1,22 @@
 import { useState, useSyncExternalStore } from "react";
+import type { RemSize } from "../components/ui/resizable";
 import { DESKTOP_LAYOUT_QUERY } from "../layoutMedia";
 
-import { hasPanelSpace } from "../components/DetailsPanel";
+import { hasPanelSpace, useDetailsPanel } from "../components/DetailsPanel";
 
 const OPEN_KEY = "junior:conversation:sidebar-open";
 const DETAILS_OPEN_KEY = "junior:conversation:details-open";
-const WIDTH_KEY = "junior:conversation:sidebar-width";
-const DETAILS_WIDTH_KEY = "junior:conversation:details-width";
+// Widths are in rem, so panels keep room for their text when the reader
+// changes the browser font size. The keys name the unit, so a width saved in
+// px before is not read as rem.
+const WIDTH_KEY = "junior:conversation:sidebar-width-rem";
+const DETAILS_WIDTH_KEY = "junior:conversation:details-width-rem";
 
-/** Pixel limits for the conversation list beside a selected conversation. */
-export const SIDEBAR_WIDTH = { default: 320, max: 480, min: 240 } as const;
+/** Rem limits for the conversation list beside a selected conversation. */
+export const SIDEBAR_WIDTH = { default: 20, max: 30, min: 15 } as const;
 
-/** Pixel limits for the details panel beside the transcript. */
-export const DETAILS_WIDTH = { default: 400, max: 720, min: 320 } as const;
+/** Rem limits for the details panel beside the transcript. */
+export const DETAILS_WIDTH = { default: 25, max: 45, min: 20 } as const;
 
 type WidthLimits = { default: number; max: number; min: number };
 
@@ -43,29 +47,39 @@ export function saveDetailsOpen(open: boolean) {
 }
 
 /** Read the conversation list width saved in this browser. */
-export function readSidebarWidth(): number {
+export function readSidebarWidth(): RemSize {
   return readWidth(WIDTH_KEY, SIDEBAR_WIDTH);
 }
 
-/** Save the conversation list width without a React render per drag step. */
-export function saveSidebarWidth(width: number) {
-  writeStorage(WIDTH_KEY, String(Math.round(width)));
+/** Save the conversation list width in px without a React render per drag step. */
+export function saveSidebarWidth(px: number) {
+  writeWidth(WIDTH_KEY, px);
 }
 
 /** Read the details panel width saved in this browser. */
-export function readDetailsWidth(): number {
+export function readDetailsWidth(): RemSize {
   return readWidth(DETAILS_WIDTH_KEY, DETAILS_WIDTH);
 }
 
-/** Save the details panel width without a React render per drag step. */
-export function saveDetailsWidth(width: number) {
-  writeStorage(DETAILS_WIDTH_KEY, String(Math.round(width)));
+/** Save the details panel width in px without a React render per drag step. */
+export function saveDetailsWidth(px: number) {
+  writeWidth(DETAILS_WIDTH_KEY, px);
 }
 
-function readWidth(key: string, limits: WidthLimits): number {
+function readWidth(key: string, limits: WidthLimits): RemSize {
   const saved = Number(readStorage(key));
-  if (!Number.isFinite(saved) || saved <= 0) return limits.default;
-  return Math.min(limits.max, Math.max(limits.min, saved));
+  if (!Number.isFinite(saved) || saved <= 0) return `${limits.default}rem`;
+  return `${Math.min(limits.max, Math.max(limits.min, saved))}rem`;
+}
+
+// Round to whole px before the rem conversion. The saved px is a little
+// over the panel width, and a finer rounding keeps that extra, so the panel
+// grows a little on each load.
+function writeWidth(key: string, px: number) {
+  const rootPx = parseFloat(
+    getComputedStyle(document.documentElement).fontSize,
+  );
+  writeStorage(key, String(Math.round(px) / rootPx));
 }
 
 /** Report whether the viewport has room for the list beside the transcript. */
@@ -77,6 +91,35 @@ export function useSidebarFits(): boolean {
       return () => media.removeEventListener("change", onChange);
     },
     () => window.matchMedia(DESKTOP_LAYOUT_QUERY).matches,
+    () => false,
+  );
+}
+
+const DETAILS_DEFAULT_OPEN_QUERY = "(min-width: 90rem)";
+
+/**
+ * Report whether a Conversation opens with its details panel. The pending
+ * view of a new Conversation and the page that replaces it both use this,
+ * so details do not open and then close when the page loads.
+ */
+export function useDetailsStartOpen(): boolean {
+  const defaultOpen = useDetailsDefaultOpen();
+  const panelFits = useDetailsPanel();
+  // Read once, so a choice made on this page does not change its default.
+  const [saved] = useState(readDetailsOpen);
+  // A saved open choice applies only beside the transcript, so a narrow
+  // screen does not load into a bottom sheet.
+  return saved === undefined ? defaultOpen : saved && panelFits;
+}
+
+function useDetailsDefaultOpen(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const media = window.matchMedia(DETAILS_DEFAULT_OPEN_QUERY);
+      media.addEventListener("change", onChange);
+      return () => media.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(DETAILS_DEFAULT_OPEN_QUERY).matches,
     () => false,
   );
 }

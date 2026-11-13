@@ -2,6 +2,19 @@ import { expect, test } from "./test";
 import { NOW_MS } from "../src/mock-reporting/fixtures";
 import { screenshot } from "./screenshot";
 
+/** Vary outcomes so the running cost lines move. */
+function unitCostDay(index: number) {
+  const merged = index % 5 === 3 ? 1 : 0;
+  const mergedCost = merged * (3 + (index % 7) * 0.5);
+  const answered = 2 + (index % 3);
+  return {
+    mergedCodeChangeCostUsd: mergedCost,
+    mergedCodeChanges: merged,
+    outcomeCostUsd: answered * 0.5 + (index % 4) * 0.4 + mergedCost,
+    outcomes: answered + merged,
+  };
+}
+
 test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   await page.route("**/api/conversations/stats", async (route) => {
@@ -18,6 +31,7 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
       cacheCreationTokens: index === 25 ? 190_000 : 10_000 + index * 100,
       tokens: 205_000,
       costUsd: 1.5,
+      ...unitCostDay(index),
     }));
     const metricHours = Array.from({ length: 24 }, (_, index) => ({
       ...metricDays[index],
@@ -39,6 +53,12 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await expect(page.getByLabel("Conversations per day")).toBeVisible();
   await expect(page.getByText("Input cache")).toBeVisible();
   await expect(
+    page.getByText(/6 merged changes and 90 answered or done conversations/),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("7-day rolling cost per outcome per day"),
+  ).toBeVisible();
+  await expect(
     page.getByRole("heading", { name: "Model spend", exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("region", { name: "Plugins" })).toHaveCount(0);
@@ -59,6 +79,9 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await page.evaluate(() => window.scrollTo(0, 0));
   await screenshot(page, "system-cache-tokens", { view: "desktop" });
   await page.getByRole("button", { name: "24h", exact: true }).click();
+  await expect(
+    page.getByLabel("6-hour rolling cost per outcome per hour"),
+  ).toBeVisible();
   await expect(page.getByLabel("Input cache tokens per hour")).toBeVisible();
   await page.getByText("Largest cache writes", { exact: true }).click();
   const largestWrites = page.getByRole("table", {

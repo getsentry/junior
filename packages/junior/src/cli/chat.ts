@@ -246,8 +246,10 @@ async function prepareLocalChatRun(
     await import("@/chat/local/sandbox-egress-signals");
   const { bindSpawnAgent } = await import("@/chat/agent-invocations/spawn");
   const { bindMessageAgent } = await import("@/chat/agent-invocations/message");
-  const { createChildConversationWorker } =
+  const { createChildConversationWorker, createDeliverToParent } =
     await import("@/chat/agent-invocations/result");
+  const { createConversationTurnWorker } =
+    await import("@/chat/task-execution/conversation-turn");
   const { skipInputAfterConversationStop } =
     await import("@/chat/conversations/session-stop");
   const { createLocalConversationWork } =
@@ -261,6 +263,11 @@ async function prepareLocalChatRun(
     }
     const childWorker = createChildConversationWorker(agentRunner, {
       queue: localConversationWork.queue,
+      runTurn: createConversationTurnWorker(
+        agentRunner,
+        undefined,
+        createDeliverToParent({ queue: localConversationWork.queue }),
+      ),
     });
     await processConversationWork(message, {
       queue: localConversationWork.queue,
@@ -275,9 +282,10 @@ async function prepareLocalChatRun(
   });
   agentRunner = createAgentRunner(executeAgentRun, {
     // The local CLI does not send child results or messages back to the
-    // root Conversation, so an Agent invocation gets no messageAgent here.
-    bindMessageAgent: (request) =>
-      request.agentInvocationId
+    // root Conversation, so a Turn that can message its parent gets no
+    // messageAgent here.
+    bindMessageAgent: (request, agents) =>
+      agents === "children_and_parent"
         ? undefined
         : bindMessageAgent(request, { queue: localConversationWork.queue }),
     bindSpawnAgent: (request) =>

@@ -94,11 +94,15 @@ function linkifyLine(line: string): string {
       continue;
     }
 
-    if (line.startsWith("https://", index) || line.startsWith("http://", index)) {
-      const match = /^https?:\/\/\S+/.exec(line.slice(index));
-      if (match) {
-        output += match[0];
-        index += match[0].length;
+    if (
+      line.startsWith("https://", index) ||
+      line.startsWith("http://", index)
+    ) {
+      const url = /^\S+/.exec(line.slice(index))![0];
+      const scheme = line.startsWith("https://", index) ? 8 : 7;
+      if (url.length > scheme) {
+        output += url;
+        index += url.length;
         continue;
       }
     }

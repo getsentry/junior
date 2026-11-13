@@ -9,6 +9,7 @@ import {
   ilike,
   inArray,
   isNull,
+  notLike,
   or,
   sql,
   type SQL,
@@ -27,10 +28,12 @@ import type {
   UserInputRequest,
 } from "@/chat/tools/runtime/user-input-request";
 import {
+  PLUGIN_REVIEW_ITEM_KEY_PREFIX,
   reviewItemAssignedTo,
   reviewItemForUser,
   reviewItemLinkedTo,
   reviewItemNeedsUser,
+  reviewItemPlugin,
   reviewItemVisibleTo,
   type ReviewItemReader,
 } from "./access";
@@ -255,7 +258,9 @@ export async function getReviewItem(
 
 /**
  * Read the action items that the agent added in one Conversation and that a
- * reply can answer: the open items, and the items that a reply closed.
+ * reply can answer: the open items, and the items that a reply closed. A
+ * plugin's items are left out: the plugin closes them when its provider
+ * state changes, such as when a pull request merges.
  */
 export async function listReplyActionItems(
   db: JuniorDatabase,
@@ -268,6 +273,10 @@ export async function listReplyActionItems(
       and(
         eq(juniorReviewItems.addedByConversationId, conversationId),
         eq(juniorReviewItems.kind, "action"),
+        notLike(
+          juniorReviewItems.dedupeKey,
+          `${PLUGIN_REVIEW_ITEM_KEY_PREFIX}%`,
+        ),
         or(
           eq(juniorReviewItems.status, "open"),
           eq(juniorReviewItems.closeReason, REVIEW_ITEM_REPLIED_REASON),
@@ -635,13 +644,20 @@ export async function searchReviewItems(
   return await hydrate(db, rows);
 }
 
-/** One Conversation that waits on a User, with its newest open Review item. */
+/** One open Review item that a Conversation waits on a User for. */
+type WaitingItem = {
+  /** The plugin that added the item, such as `github`. Unset for an agent. */
+  plugin?: string;
+  title: string;
+};
+
+/** One Conversation that waits on a User, with its open Review items. */
 export type WaitingConversation = {
   conversationId: string;
-  /** Title of the newest open Review item that needs the User. */
-  title: string;
-  /** Open Review items on this Conversation that need the User. */
-  count: number;
+  /** Open Review items on this Conversation that need the User, newest first. */
+  items: WaitingItem[];
+  /** When the oldest of those items was added: when the wait began. */
+  waitingSince: string;
 };
 
 /**
@@ -658,6 +674,7 @@ export async function listWaitingConversations(
     .selectDistinct({
       conversationId: sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorReviewItemConversations.conversationId})`,
       itemId: juniorReviewItems.id,
+      dedupeKey: juniorReviewItems.dedupeKey,
       title: juniorReviewItems.title,
       createdAt: juniorReviewItems.createdAt,
     })
@@ -677,13 +694,18 @@ export async function listWaitingConversations(
     .orderBy(desc(juniorReviewItems.createdAt), desc(juniorReviewItems.id));
   const waiting = new Map<string, WaitingConversation>();
   for (const row of rows) {
+    const plugin = reviewItemPlugin(row.dedupeKey);
+    const item = { title: row.title, ...(plugin ? { plugin } : undefined) };
     const current = waiting.get(row.conversationId);
-    if (current) current.count += 1;
-    else
+    // Rows come newest first, so each later row is older.
+    if (current) {
+      current.items.push(item);
+      current.waitingSince = row.createdAt.toISOString();
+    } else
       waiting.set(row.conversationId, {
         conversationId: row.conversationId,
-        title: row.title,
-        count: 1,
+        items: [item],
+        waitingSince: row.createdAt.toISOString(),
       });
   }
   return [...waiting.values()].sort((left, right) =>

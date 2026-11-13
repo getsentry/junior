@@ -2,7 +2,6 @@ import { resolveMessageCards } from "@sentry/junior/api/schema";
 import type {
   ConversationPendingMessage,
   ConversationReportEvent,
-  InputImage,
 } from "@sentry/junior/api/schema";
 
 import type {
@@ -11,9 +10,9 @@ import type {
   TranscriptViewPart,
 } from "../types";
 
-/** A mailbox row, or a local send that can still carry its own images. */
+/** A mailbox row, or a local send that can still carry its own files. */
 type PendingTranscriptInput = ConversationPendingMessage & {
-  images?: InputImage[];
+  files?: File[];
 };
 
 type ToolCall =
@@ -80,7 +79,7 @@ export function pendingTranscriptMessage(
       ? [{ type: "text", redacted: true }]
       : [{ type: "text", text: message.text ?? "" }],
     ...(message.attachments ? { attachments: message.attachments } : undefined),
-    ...(message.images?.length ? { images: message.images } : undefined),
+    ...(message.files?.length ? { files: message.files } : undefined),
     pending: true,
     role: "user",
     source: message.source,

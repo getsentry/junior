@@ -122,6 +122,7 @@ The current authenticated product API slices are:
 | `/api/automations`                        | Viewer-owned scheduled and event automations.                                                                                                                                                         |
 | `/api/automations/:id`                    | Deletes one viewer-owned scheduled or event automation.                                                                                                                                               |
 | `/api/skills`                             | Discovered skill list.                                                                                                                                                                                |
+| `/api/skills/:name`                       | One skill with its `SKILL.md` body, without frontmatter.                                                                                                                                              |
 | `/api/conversations`                      | Recent SQL conversation feed; optional `actorEmail` is a normalized presentation filter, not authorization; optional `codeRepositoryId` lists conversations linked to that repository's code changes. |
 | `/api/conversations/stats`                | Complete 90-day conversation stats and people/place leaderboards aggregated by SQL.                                                                                                                   |
 | `/api/code`                               | Native code-change overview across repositories.                                                                                                                                                      |
@@ -177,7 +178,8 @@ Dashboard callbacks use `dashboard.baseURL`, `JUNIOR_BASE_URL`, Vercel URL envs,
 The dashboard can send push notifications through Web Push. When Junior
 replies in a dashboard Conversation, the person who sent the message gets a
 notification on each device that they turned on. A Conversation in a Slack
-thread does not send these notifications. Slack notifies people there.
+thread does not send these notifications. Slack notifies people there. A
+quiet reply to a watch event sends no notification.
 
 1. Create one VAPID key pair for the deployment:
 
@@ -208,6 +210,15 @@ these hours, Junior does not send a notification. The reply still shows in the
 dashboard. The automatic timezone comes from the person's linked Slack profile,
 then the saved user timezone, then `JUNIOR_TIMEZONE`. Calendar working hours
 are not used, because Google Calendar does not make them available.
+
+For a person with a linked Slack account, push notifications follow their
+Slack notification schedule by default. Junior asks Slack at most one time
+each minute for each person and pauses when Slack pauses. A person with no Slack schedule
+gets notifications at any time. Slack does not show Junior a manual pause,
+only the schedule. To use only the working hours, clear **Follow my Slack
+notification schedule**. Junior uses the working hours when the person has no
+linked Slack account or Slack cannot answer. This needs the `dnd:read` bot
+scope. After you add the scope, reinstall the Slack app.
 
 If you change the key pair, every device must turn notifications on again.
 

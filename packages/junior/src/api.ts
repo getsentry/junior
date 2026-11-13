@@ -2,18 +2,18 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { getAttachmentStorage } from "./chat/attachments/storage";
 import { createConversationRoutes } from "./api/conversations/routes";
-import { createBoardRoutes } from "./api/board/routes";
 import { createCodeRoutes } from "./api/code/routes";
 import { createConnectionRoutes } from "./api/connections/routes";
 import { createNotificationRoutes } from "./api/notifications/routes";
-import { jsonResponse } from "./api/http";
+import { createObjectRoutes } from "./api/objects/routes";
+import { jsonResponse, throwApiError } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
+import { createImageRoutes } from "./api/images/routes";
 import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
 import { createServiceAccountRoutes } from "./api/service-accounts/routes";
 import { createUserPageRoutes } from "./api/user-pages/routes";
 import { createAutomationRoutes } from "./api/automations/routes";
-import { createTranscriptionRoutes } from "./api/transcriptions/routes";
 import { createUserCustomizationRoutes } from "./api/user-customization/routes";
 import { createReviewItemRoutes } from "./api/review-items/routes";
 import { createWorkspaceRoutes } from "./api/workspaces/routes";
@@ -24,9 +24,12 @@ import {
   pluginOperationalReportFeedSchema,
   pluginsSchema,
   runtimeInfoReportSchema,
+  skillDetailReportSchema,
   skillReportsSchema,
   statsReportSchema,
 } from "./api/schema";
+import { readReplyTimeSegments } from "./api/reply-times";
+import { replyTimeSegmentsReportSchema } from "./api/schema/reply-times";
 import { readStatsReport } from "./api/stats";
 import { validateRequest } from "./api/validation";
 import { readVersions } from "./api/versions";
@@ -42,6 +45,7 @@ import {
   readPluginOperationalReportFeed,
   readPlugins,
   readRuntimeInfoReport,
+  readSkillDetailReport,
   readSkillReports,
 } from "./reporting";
 
@@ -85,6 +89,11 @@ export function createJuniorApi(
   app.get("/api/skills", async () =>
     jsonResponse(skillReportsSchema, await readSkillReports()),
   );
+  app.get("/api/skills/:name", async (context) => {
+    const skill = await readSkillDetailReport(context.req.param("name"));
+    if (!skill) throwApiError(404, "Skill not found.");
+    return jsonResponse(skillDetailReportSchema, skill);
+  });
   app.get("/api/plugin-reports", async () =>
     jsonResponse(
       pluginOperationalReportFeedSchema,
@@ -93,6 +102,9 @@ export function createJuniorApi(
   );
   app.get("/api/stats", async () =>
     jsonResponse(statsReportSchema, await readStatsReport()),
+  );
+  app.get("/api/reply-times", async () =>
+    jsonResponse(replyTimeSegmentsReportSchema, await readReplyTimeSegments()),
   );
   app.get(
     "/api/versions",
@@ -124,16 +136,16 @@ export function createJuniorApi(
       },
     }),
   );
-  app.route("/api/board", createBoardRoutes());
   app.route("/api/code", createCodeRoutes());
   app.route("/api/connections", createConnectionRoutes());
   app.route("/api/notifications", createNotificationRoutes());
   app.route("/api/personal-tokens", createPersonalTokenRoutes());
   app.route("/api/service-accounts", createServiceAccountRoutes());
+  app.route("/api/images", createImageRoutes());
+  app.route("/api/objects", createObjectRoutes());
   app.route("/api/people", createPeopleRoutes());
   app.route("/api/locations", createLocationRoutes());
   app.route("/api/user-pages", createUserPageRoutes());
-  app.route("/api/transcriptions", createTranscriptionRoutes());
   app.route("/api/user-customization", createUserCustomizationRoutes());
   app.route("/api/automations", createAutomationRoutes());
   app.route("/api/workspaces", createWorkspaceRoutes());

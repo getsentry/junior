@@ -26,7 +26,6 @@ import {
   generateObject,
   NoObjectGeneratedError,
   rerank,
-  transcribe,
   type Experimental_DecisionQuestion,
   type Experimental_DecisionResult,
   type Experimental_DecisionState,
@@ -64,7 +63,6 @@ import {
 } from "@/chat/conversation-privacy";
 import {
   createProviderError,
-  getProviderErrorAttributes,
   isProviderRetryError,
 } from "@/chat/services/provider-error";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
@@ -191,7 +189,6 @@ const GEN_AI_OPERATION_CHAT = "chat" as const;
 const GEN_AI_OPERATION_EMBEDDINGS = "embeddings" as const;
 const GEN_AI_OPERATION_RERANK = "rerank" as const;
 const GEN_AI_OPERATION_DECIDE = "decide" as const;
-const GEN_AI_OPERATION_TRANSCRIPTION = "transcription" as const;
 // AI Gateway input rates in USD per million tokens. Keep estimates
 // model-specific so unlisted configured models remain explicitly unknown.
 const EMBEDDING_INPUT_COST_USD_PER_MILLION_TOKENS: Readonly<
@@ -278,7 +275,6 @@ export async function completeText(params: {
   messageAttributeMode?: "content" | "metadata";
   cacheRetention?: CacheRetention;
   thinkingLevel?: ThinkingLevel;
-  temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
@@ -319,9 +315,6 @@ export async function completeText(params: {
     ...(params.thinkingLevel
       ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
       : undefined),
-    ...(params.temperature !== undefined
-      ? { "gen_ai.request.temperature": params.temperature }
-      : undefined),
     ...(params.maxTokens !== undefined
       ? { "gen_ai.request.max_tokens": params.maxTokens }
       : undefined),
@@ -356,7 +349,6 @@ export async function completeText(params: {
           },
           {
             apiKey,
-            temperature: params.temperature,
             maxTokens: params.maxTokens,
             reasoning: params.thinkingLevel,
             cacheRetention: params.cacheRetention,
@@ -366,6 +358,14 @@ export async function completeText(params: {
             onPayload: (payload) => {
               setSpanAttributes(requestPrefixAttributes(payload));
               return undefined;
+            },
+            // The edge request id lets Vercel trace how the gateway routed
+            // the call, for example when a cache warmup misses.
+            onResponse: (response) => {
+              const vercelId = response.headers["x-vercel-id"];
+              if (vercelId) {
+                setSpanAttributes({ "app.ai.gateway.vercel_id": vercelId });
+              }
             },
           },
         );
@@ -400,6 +400,9 @@ export async function completeText(params: {
           : undefined),
         ...(message.model
           ? { "gen_ai.response.model": message.model }
+          : undefined),
+        ...(message.responseId
+          ? { "gen_ai.response.id": message.responseId }
           : undefined),
       };
       setSpanAttributes(endAttributes);
@@ -503,6 +506,17 @@ function bestEffortObjectCompletionCost(
   }
 }
 
+/**
+ * Keep only the fixed message and stack of a failed structured output. The SDK
+ * error's `text` and its parse or validation cause hold the raw model output.
+ */
+function structuredOutputErrorCause(error: NoObjectGeneratedError): Error {
+  const cause = new Error(error.message);
+  cause.name = error.name;
+  cause.stack = error.stack;
+  return cause;
+}
+
 /** Execute a schema-constrained completion using the AI SDK structured output path. */
 export async function completeObject<TSchema extends ZodTypeAny>(params: {
   modelId: string;
@@ -510,7 +524,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   system?: string;
   prompt: string;
   thinkingLevel?: ThinkingLevel;
-  temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
@@ -531,9 +544,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           prompt: params.prompt,
           ...(params.system !== undefined
             ? { system: params.system }
-            : undefined),
-          ...(params.temperature !== undefined
-            ? { temperature: params.temperature }
             : undefined),
           ...(params.maxTokens !== undefined
             ? { maxOutputTokens: params.maxTokens }
@@ -562,22 +572,19 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         ...(params.thinkingLevel
           ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
           : undefined),
-        ...(params.temperature !== undefined
-          ? { "gen_ai.request.temperature": params.temperature }
-          : undefined),
         ...(params.maxTokens !== undefined
           ? { "gen_ai.request.max_tokens": params.maxTokens }
           : undefined),
       },
     );
   } catch (error) {
-    const providerError = createProviderError(error, {
-      ...(NoObjectGeneratedError.isInstance(error)
-        ? { kind: "invalid_response" }
-        : undefined),
-      modelId: params.modelId,
-    });
-    throw providerError;
+    if (NoObjectGeneratedError.isInstance(error)) {
+      throw createProviderError(structuredOutputErrorCause(error), {
+        kind: "invalid_response",
+        modelId: params.modelId,
+      });
+    }
+    throw createProviderError(error, { modelId: params.modelId });
   }
   const costUsd = bestEffortObjectCompletionCost(params.modelId, result.usage);
   return {
@@ -856,58 +863,6 @@ export async function rerankTexts(params: {
     logException(providerError, "ai.rerank.failed", {
       "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
       "gen_ai.operation.name": GEN_AI_OPERATION_RERANK,
-      "gen_ai.request.model": params.modelId,
-    });
-    throw providerError;
-  }
-}
-
-/** Transcribe one recorded audio clip through AI Gateway. */
-export async function transcribeAudio(params: {
-  audio: Uint8Array;
-  modelId: string;
-  signal?: AbortSignal;
-}): Promise<{ text: string }> {
-  const credential = await resolveGatewayCredential();
-  const provider = createGatewayProvider({ apiKey: credential.token });
-  try {
-    return await withSpan(
-      `${GEN_AI_OPERATION_TRANSCRIPTION} ${params.modelId}`,
-      "gen_ai.transcription",
-      { modelId: params.modelId },
-      async (setSpanAttributes) => {
-        const result = await transcribe({
-          model: provider.transcriptionModel(params.modelId),
-          audio: params.audio,
-          ...(params.signal !== undefined
-            ? { abortSignal: params.signal }
-            : undefined),
-        });
-        if (result.durationInSeconds !== undefined) {
-          setSpanAttributes({
-            "app.transcription.audio_seconds": result.durationInSeconds,
-          });
-        }
-        return { text: result.text };
-      },
-      {
-        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-        "gen_ai.operation.name": GEN_AI_OPERATION_TRANSCRIPTION,
-        "gen_ai.request.model": params.modelId,
-        "server.address": GEN_AI_SERVER_ADDRESS,
-        "server.port": GEN_AI_SERVER_PORT,
-        "gen_ai.provider.auth_mode": credential.mode,
-        "app.transcription.audio_bytes": params.audio.byteLength,
-      },
-    );
-  } catch (error) {
-    const providerError = createProviderError(error, {
-      modelId: params.modelId,
-    });
-    logException(providerError, "ai.transcription.failed", {
-      ...getProviderErrorAttributes(providerError),
-      "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-      "gen_ai.operation.name": GEN_AI_OPERATION_TRANSCRIPTION,
       "gen_ai.request.model": params.modelId,
     });
     throw providerError;

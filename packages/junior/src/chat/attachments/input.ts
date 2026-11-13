@@ -1,30 +1,31 @@
-import { INPUT_IMAGE_TYPES } from "./media";
 import * as z from "zod";
 
-/** Bound JSON image input below the hosting platform's request size limit. */
-export const MAX_INPUT_IMAGE_BYTES = 3 * 1024 * 1024;
-export const MAX_INPUT_IMAGES = 3;
+/**
+ * Largest file that Junior stores from Slack or the web, or loads into the
+ * sandbox.
+ *
+ * Every path streams the bytes, so this cap does not depend on function
+ * memory. It bounds transfer time and sandbox disk use.
+ */
+export const MAX_ATTACHMENT_BYTES = 250 * 1024 * 1024;
+/** Most files on one web Message, as in one Slack message. */
+export const MAX_INPUT_ATTACHMENTS = 10;
 
-/** Base64 file bytes in a JSON request body, up to `maxBytes` once decoded. */
-export function base64DataSchema(maxBytes: number) {
-  return z
-    .string()
-    .min(4)
-    .max((maxBytes * 4) / 3)
-    .regex(/^[A-Za-z0-9+/]*={0,2}$/)
-    .refine((data) => data.length % 4 === 0);
-}
-
-/** Image bytes accepted with a web message, never stored in its mailbox row. */
-export const inputImageSchema = z
+/** File facts that a browser declares before it uploads the bytes. */
+export const inputFileSchema = z
   .object({
     filename: z.string().trim().min(1).max(255),
-    contentType: z.enum(INPUT_IMAGE_TYPES),
-    data: base64DataSchema(MAX_INPUT_IMAGE_BYTES),
+    contentType: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .max(127)
+      .regex(/^[a-z0-9][\w.+-]*\/[a-z0-9][\w.+-]*$/),
+    bytes: z.number().int().min(1).max(MAX_ATTACHMENT_BYTES),
   })
   .strict();
 
-export type InputImage = z.output<typeof inputImageSchema>;
+export type InputFile = z.output<typeof inputFileSchema>;
 
 /** Safe attachment facts shared by mailbox input and transcript messages. */
 export const messageAttachmentSchema = z
@@ -33,6 +34,11 @@ export const messageAttachmentSchema = z
     filename: z.string().min(1),
     contentType: z.string().min(1),
     bytes: z.number().int().nonnegative(),
+    /**
+     * True for a large Slack file that Junior never stores. Each read
+     * downloads it from Slack, so it has no preview.
+     */
+    pending: z.literal(true).optional(),
   })
   .strict();
 

@@ -4,6 +4,7 @@ import { getDashboardAgentName } from "../../agentName";
 
 import { Card } from "../../components/layout/Card";
 import { SectionIntro } from "../../components/layout/SectionIntro";
+import { SkillLink } from "../../components/SkillLink";
 import { formatCompactNumber } from "../../format";
 
 type SkillGroup = { pluginProvider?: string; skills: SkillReport[] };
@@ -26,6 +27,7 @@ export function SkillInventory(props: { skills: SkillReport[] }) {
               registered.
             </>
           }
+          anchor="skills"
           title="Skills"
         />
         <div className="grid min-w-[12rem] grid-cols-2 overflow-hidden rounded-lg border border-dashboard-border bg-dashboard-overlay-soft max-sm:w-full max-sm:min-w-0">
@@ -80,12 +82,7 @@ function SkillGroupCard(props: { group: SkillGroup }) {
       </div>
       <div className="flex flex-wrap gap-2">
         {props.group.skills.map((skill) => (
-          <span
-            className="rounded-md border border-dashboard-border bg-dashboard-overlay-soft px-2.5 py-1.5 font-mono text-xs text-dashboard-text-muted"
-            key={skill.name}
-          >
-            {skill.name}
-          </span>
+          <SkillLink chip key={skill.name} name={skill.name} />
         ))}
       </div>
     </article>

@@ -13,6 +13,7 @@ import { createSqlConversationEventStore } from "@/chat/conversations/sql/histor
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
+import { upsertLinkedIdentity } from "@/chat/identities/sql";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { legacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
@@ -163,6 +164,10 @@ describe("conversation list API", () => {
       expect(apiErrorSchema.parse(await invalid.json())).toEqual({
         error: "Invalid query parameters.",
       });
+      const invalidCursor = await app.request(
+        "http://localhost/api/conversations?cursor=not-a-cursor",
+      );
+      expect(invalidCursor.status).toBe(400);
     } finally {
       await fixture.close();
     }
@@ -579,16 +584,13 @@ describe("conversation list API", () => {
         .limit(1);
       const linkedUserId = linkedUser[0]?.id;
       expect(linkedUserId).toBeDefined();
-      await fixture.sql
-        .db()
-        .update(juniorIdentities)
-        .set({
-          email: null,
-          emailNormalized: null,
-          emailVerified: false,
-          userId: linkedUserId!,
-        })
-        .where(eq(juniorIdentities.providerSubjectId, "U1B"));
+      // A trusted account link gives the Slack Identity its User later.
+      await upsertLinkedIdentity(fixture.sql, linkedUserId!, {
+        kind: "user",
+        provider: "slack",
+        providerSubjectId: "U1B",
+        providerTenantId: "T1",
+      });
 
       const viewer = {
         ...testViewer("morgan@example.com"),

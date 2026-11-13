@@ -71,6 +71,7 @@ function failingMetadataStore(): ConversationStore {
     get: vi.fn(async () => undefined),
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
+    claimProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
     recordDestinationVisibility: vi.fn(),
     getRunMetrics: vi.fn(async () => undefined),
@@ -89,6 +90,7 @@ function metadataEventsStore(events: string[]): ConversationStore {
     get: vi.fn(async () => undefined),
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
+    claimProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
     recordDestinationVisibility: vi.fn(),
     getRunMetrics: vi.fn(async () => undefined),
@@ -1517,12 +1519,14 @@ describe("conversation work execution", () => {
   it("stops conversation work after repeated lost-lease retries", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;
+    const beforeWorkStops = vi.fn(async () => {});
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     for (let attempt = 1; attempt <= 5; attempt += 1) {
       currentNowMs = attempt * 1_000;
       await expect(
         processConversationWork(conversationQueueMessage(), {
+          beforeWorkStops,
           nowMs: () => currentNowMs,
           queue,
           run: async () => ({ status: "lost_lease" }),
@@ -1539,6 +1543,9 @@ describe("conversation work execution", () => {
     expect(state?.needsRun).toBe(false);
     expect(state ? countPendingConversationMessages(state) : 0).toBe(0);
     expect(queue.sentRecords()).toHaveLength(4);
+    // The owner of the work ends what it owns, such as a dispatch.
+    expect(beforeWorkStops).toHaveBeenCalledOnce();
+    expect(beforeWorkStops).toHaveBeenCalledWith(CONVERSATION_ID, ["m1"]);
   });
 
   it("drains pending messages and completes the leased conversation", async () => {
@@ -1665,6 +1672,30 @@ describe("conversation work execution", () => {
         delivery: "defer",
       }),
     ]);
+  });
+
+  it("gives each message with no known author its own attempt", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    for (const id of ["n1", "n2"]) {
+      await appendInboundMessage({
+        message: inboundMessage(id, { input: { text: id } }),
+        nowMs: 1_000,
+      });
+    }
+    const attempts: string[][] = [];
+    await processConversationWork(conversationQueueMessage(), {
+      queue,
+      run: async (context) => {
+        attempts.push(
+          context.attempt.messages.map((message) => message.inboundMessageId),
+        );
+        await context.attempt.ack();
+        return { status: "completed" };
+      },
+    });
+
+    // Neither message can show that it has the other's Actor.
+    expect(attempts).toEqual([["n1"], ["n2"]]);
   });
 
   it("resumes a yielded Turn before a newly steered web message", async () => {
