@@ -205,6 +205,37 @@ describe("Conversation search", () => {
         }),
       );
 
+      // Auto-archive marks only the root. Its child agents are archived too.
+      await db
+        .update(juniorConversations)
+        .set({ archivedAt: new Date("2026-07-04T12:00:00.000Z") })
+        .where(eq(juniorConversations.conversationId, targetConversationId));
+      const childSearch = {
+        limit: 10,
+        query: "child deployment decision",
+        rootsOnly: false,
+      };
+      await expect(
+        searchConversations(db, {
+          requesterConversationId: currentConversationId,
+          search: { ...childSearch, includeArchived: false },
+        }),
+      ).resolves.not.toContainEqual(
+        expect.objectContaining({ conversationId: childId }),
+      );
+      await expect(
+        searchConversations(db, {
+          requesterConversationId: currentConversationId,
+          search: { ...childSearch, includeArchived: true },
+        }),
+      ).resolves.toContainEqual(
+        expect.objectContaining({ archived: true, conversationId: childId }),
+      );
+      await db
+        .update(juniorConversations)
+        .set({ archivedAt: null })
+        .where(eq(juniorConversations.conversationId, targetConversationId));
+
       const matches = await searchConversations(db, {
         requesterConversationId: currentConversationId,
         search: {

@@ -151,7 +151,10 @@ export async function searchConversations(
     search.conversationIds
       ? inArray(conversations.conversationId, [...search.conversationIds])
       : undefined,
-    search.includeArchived ? undefined : isNull(conversations.archivedAt),
+    // Auto-archive marks only the root, so a child agent is archived with it.
+    search.includeArchived
+      ? undefined
+      : and(isNull(conversations.archivedAt), isNull(roots.archivedAt)),
     search.channelId
       ? eq(juniorDestinations.providerDestinationId, search.channelId)
       : undefined,
@@ -187,6 +190,7 @@ export async function searchConversations(
   const rows = await db
     .select({
       archivedAt: conversations.archivedAt,
+      rootArchivedAt: roots.archivedAt,
       briefContent: briefs.content,
       channelName: juniorDestinations.displayName,
       conversationId: conversations.conversationId,
@@ -234,7 +238,7 @@ export async function searchConversations(
       ? parseStoredBrief(row.briefContent)
       : undefined;
     return {
-      archived: row.archivedAt !== null,
+      archived: row.archivedAt !== null || row.rootArchivedAt !== null,
       ...(row.channelName ? { channelName: row.channelName } : undefined),
       conversationId: row.conversationId,
       ...(row.excerpt ? { excerpt: row.excerpt } : undefined),
