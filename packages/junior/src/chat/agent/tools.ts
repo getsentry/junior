@@ -154,14 +154,6 @@ export async function createRunSandbox(
       await pluginHooks.prepareWorkspace(sandbox, recipe.repos, signal),
     onSandboxRefChanged: args.onSandboxRefChanged,
     persistSandboxRef: args.durability.onSandboxRefChanged,
-    ...(args.run.runId
-      ? {
-          costOwner: {
-            conversationId: args.run.conversationId,
-            runId: args.run.runId,
-          },
-        }
-      : undefined),
   });
   return { agentSandbox, pluginHooks };
 }

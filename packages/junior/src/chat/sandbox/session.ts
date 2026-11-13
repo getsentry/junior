@@ -26,11 +26,7 @@ import {
 } from "@/chat/sandbox/snapshot/resolve";
 import { requireReadyWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
-import {
-  recordSandboxSession,
-  stopSandboxSession,
-  type SandboxCostOwner,
-} from "@/chat/sandbox/cost";
+import { recordSandboxSession, stopSandboxSession } from "@/chat/sandbox/cost";
 import {
   type CreateSandboxSessionInput,
   type SandboxCommandResult,
@@ -132,8 +128,8 @@ interface SandboxRuntimeOptions {
     signal?: AbortSignal,
   ) => Promise<WorkspaceFinalize | void>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
-  /** Run that owns the Sandbox cost of the sessions this runtime opens. */
-  costOwner?: SandboxCostOwner;
+  /** Conversation that owns the Sandbox cost of the sessions this opens. */
+  conversationId?: string;
 }
 
 function captureOutput(output: string): { value: string; truncated: boolean } {
@@ -206,7 +202,11 @@ export function createSandboxRuntime(
   };
 
   const recordSession = (session: SandboxSession, createdSandbox: boolean) =>
-    recordSandboxSession({ owner: options.costOwner, session, createdSandbox });
+    recordSandboxSession({
+      conversationId: options.conversationId,
+      session,
+      createdSandbox,
+    });
 
   const createSession = async (
     input: Omit<CreateSandboxSessionInput, "onUnavailable">,

@@ -127,7 +127,8 @@ export const juniorConversations = pgTable(
     usage: jsonb("usage_json").$type<AgentTurnUsage>(),
     executionDurationMs: integer("execution_duration_ms").notNull().default(0),
     executionUsage: jsonb("execution_usage_json").$type<AgentTurnUsage>(),
-    // Sum of the `sandbox_cost_usd` metric rows. Kept apart from `usage`.
+    // Sum of this Conversation's settled `junior_sandbox_sessions` costs.
+    // Kept apart from `usage`.
     sandboxCostUsd: doublePrecision("sandbox_cost_usd"),
     metricRunId: text("metric_run_id"),
     // Bumped by every write that changes this Conversation's detail report.

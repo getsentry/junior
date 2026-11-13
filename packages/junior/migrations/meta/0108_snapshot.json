@@ -1,5 +1,5 @@
 {
-  "id": "5708c96f-e182-4a84-b254-a7a981af1b8b",
+  "id": "521290e0-6c27-4c76-857f-6e77fdf159f3",
   "prevId": "60fd2cf9-e028-493b-996c-98c8196dbcf9",
   "version": "7",
   "dialect": "postgresql",
@@ -4126,12 +4126,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "run_id": {
-          "name": "run_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "created_sandbox": {
           "name": "created_sandbox",
           "type": "boolean",
@@ -4164,17 +4158,26 @@
         }
       },
       "indexes": {
-        "junior_sandbox_sessions_conversation_run_idx": {
-          "name": "junior_sandbox_sessions_conversation_run_idx",
+        "junior_sandbox_sessions_conversation_id_idx": {
+          "name": "junior_sandbox_sessions_conversation_id_idx",
           "columns": [
             {
               "expression": "conversation_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
-            },
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_sandbox_sessions_created_at_idx": {
+          "name": "junior_sandbox_sessions_created_at_idx",
+          "columns": [
             {
-              "expression": "run_id",
+              "expression": "created_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

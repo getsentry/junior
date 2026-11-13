@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, lte, min, sql, sum } from "drizzle-orm";
+import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { logException } from "@/chat/logging";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
@@ -8,18 +8,15 @@ import {
   type SandboxSession,
   type SandboxSessionCost,
 } from "@/chat/sandbox/workspace";
-import {
-  juniorConversationMetrics,
-  juniorConversations,
-  juniorSandboxSessions,
-} from "@/db/schema";
+import { juniorConversations, juniorSandboxSessions } from "@/db/schema";
 
-// Module overview: estimated Sandbox cost for each Run.
+// Module overview: estimated Sandbox cost for each Conversation.
 //
-// A Run records each VM session that it opens. The provider reports usage only
-// after the session stops, and Junior rarely stops a conversation Sandbox
-// itself: it times out after the Turn. So the heartbeat sweep reads the usage
-// later. A stop that Junior makes writes the cost at once.
+// Junior records each VM session that a Conversation's Sandbox opens. The
+// provider reports usage only after the session stops, and Junior rarely
+// stops a conversation Sandbox itself: it times out after the Turn. So the
+// heartbeat sweep reads the usage later. A stop that Junior makes writes the
+// cost at once.
 
 /** Wait this long before the first read. Most sessions are still running. */
 const FIRST_CHECK_DELAY_MS = 10 * 60 * 1000;
@@ -32,25 +29,18 @@ const MAX_RECORD_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const SWEEP_LIMIT = 20;
 const READ_TIMEOUT_MS = 10_000;
 
-/** Run that owns the Sandbox cost of the sessions it opens. */
-export interface SandboxCostOwner {
-  conversationId: string;
-  runId: string;
-}
-
 /**
- * Record a VM session that a Run opened. The first Run that opens a session
- * owns its cost. A failure costs only this estimate, so it is logged and the
- * Sandbox keeps working.
+ * Record a VM session that a Conversation's Sandbox opened. A failure costs
+ * only this estimate, so it is logged and the Sandbox keeps working.
  */
 export async function recordSandboxSession(args: {
-  /** Unset when no Run owns the Sandbox runtime. */
-  owner: SandboxCostOwner | undefined;
+  /** Unset when no Conversation owns the Sandbox runtime. */
+  conversationId: string | undefined;
   session: Pick<SandboxSession, "sandboxId" | "sessionId">;
   createdSandbox: boolean;
   nowMs?: number;
 }): Promise<void> {
-  if (!args.owner || !getSandboxProvider().readSessionCost) return;
+  if (!args.conversationId || !getSandboxProvider().readSessionCost) return;
   const nowMs = args.nowMs ?? Date.now();
   try {
     await getSqlExecutor()
@@ -59,8 +49,7 @@ export async function recordSandboxSession(args: {
       .values({
         sessionId: args.session.sessionId,
         sandboxId: args.session.sandboxId,
-        conversationId: args.owner.conversationId,
-        runId: args.owner.runId,
+        conversationId: args.conversationId,
         createdSandbox: args.createdSandbox,
         checkAfter: new Date(nowMs + FIRST_CHECK_DELAY_MS),
         createdAt: new Date(nowMs),
@@ -97,52 +86,24 @@ export async function settleSandboxSessionCost(args: {
           isNull(juniorSandboxSessions.settledAt),
         ),
       )
-      .returning({
-        conversationId: juniorSandboxSessions.conversationId,
-        runId: juniorSandboxSessions.runId,
-      });
+      .returning({ conversationId: juniorSandboxSessions.conversationId });
     if (!record || costUsd === null) return;
 
-    // The metric is the sum of the Run's settled sessions, so a repeat write
-    // gives the same value.
-    const [runTotal] = await db
-      .select({
-        costUsd: sum(juniorSandboxSessions.costUsd).mapWith(Number),
-        occurredAt: min(juniorSandboxSessions.createdAt),
-      })
-      .from(juniorSandboxSessions)
-      .where(
-        and(
-          eq(juniorSandboxSessions.conversationId, record.conversationId),
-          eq(juniorSandboxSessions.runId, record.runId),
-        ),
-      );
+    // The total is the sum of the settled sessions, so a repeat write gives
+    // the same value. Lock the Conversation first so that the sum below, a
+    // new statement, sees a concurrent settle that committed before it.
     await db
-      .insert(juniorConversationMetrics)
-      .values({
-        conversationId: record.conversationId,
-        runId: record.runId,
-        metric: "sandbox_cost_usd",
-        value: runTotal?.costUsd ?? costUsd,
-        occurredAt: runTotal?.occurredAt ?? now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [
-          juniorConversationMetrics.conversationId,
-          juniorConversationMetrics.runId,
-          juniorConversationMetrics.metric,
-        ],
-        set: { value: runTotal?.costUsd ?? costUsd, updatedAt: now },
-      });
+      .select({ conversationId: juniorConversations.conversationId })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, record.conversationId))
+      .for("update");
     await db
       .update(juniorConversations)
       .set({
         sandboxCostUsd: sql`(
-          select sum(${juniorConversationMetrics.value})
-          from ${juniorConversationMetrics}
-          where ${juniorConversationMetrics.conversationId} = ${record.conversationId}
-            and ${juniorConversationMetrics.metric} = 'sandbox_cost_usd'
+          select sum(${juniorSandboxSessions.costUsd})
+          from ${juniorSandboxSessions}
+          where ${juniorSandboxSessions.conversationId} = ${record.conversationId}
         )`,
         detailVersion: nextDetailVersion,
       })

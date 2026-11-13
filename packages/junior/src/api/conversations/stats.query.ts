@@ -12,7 +12,9 @@ import {
 import { conversationAggregateColumns } from "./aggregate";
 import {
   readConversationMetricBuckets,
+  readSandboxCostBuckets,
   type ConversationMetricBucket,
+  type SandboxCostBucket,
 } from "./metric-buckets";
 import { readOutcomeBuckets, type OutcomeBucket } from "./outcome-buckets";
 import type {
@@ -198,6 +200,7 @@ function applyMetricBuckets(
   rows: Array<Pick<MetricRow, "conversations" | "date">>,
   metrics: ConversationMetricBucket[],
   outcomes: OutcomeBucket[],
+  sandboxCosts: SandboxCostBucket[],
 ): MetricRow[] {
   const byDate = new Map<string, MetricRow>(
     rows.map((row) => [
@@ -225,12 +228,15 @@ function applyMetricBuckets(
       row.durationMs = metric.value;
     } else if (metric.metric === "input_tokens") {
       row.inputTokens = metric.value;
-    } else if (metric.metric === "sandbox_cost_usd") {
-      row.sandboxCostUsd = metric.value;
     } else if (metric.metric === "total_tokens") {
       row.tokens = metric.value;
     }
     byDate.set(metric.date, row);
+  }
+  for (const bucket of sandboxCosts) {
+    const row = byDate.get(bucket.date) ?? emptyMetricRow(bucket.date);
+    row.sandboxCostUsd = bucket.value;
+    byDate.set(bucket.date, row);
   }
   return [...byDate.values()];
 }
@@ -463,6 +469,8 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
     hourMetrics,
     dayOutcomes,
     hourOutcomes,
+    daySandboxCosts,
+    hourSandboxCosts,
   ] = await Promise.all([
     db
       .select(treeAggregateColumns)
@@ -576,6 +584,8 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
     }),
     readOutcomeBuckets(db, { bucket: "day", start, end }),
     readOutcomeBuckets(db, { bucket: "hour", start: hourStart, end }),
+    readSandboxCostBuckets(db, { bucket: "day", start, end }),
+    readSandboxCostBuckets(db, { bucket: "hour", start: hourStart, end }),
   ]);
   return {
     actorRows,
@@ -584,8 +594,14 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
       metricHourRows,
       hourMetrics,
       hourOutcomes,
+      hourSandboxCosts,
     ),
-    metricRows: applyMetricBuckets(metricRows, dayMetrics, dayOutcomes),
+    metricRows: applyMetricBuckets(
+      metricRows,
+      dayMetrics,
+      dayOutcomes,
+      daySandboxCosts,
+    ),
     totals: totalsRows[0],
   };
 }

@@ -19,9 +19,6 @@ export const CONVERSATION_METRICS = [
   "cache_creation_tokens",
   "reasoning_tokens",
   "cost_usd",
-  // Estimated Sandbox cost. A sweep writes it after the session stops, so
-  // the Run summary rewrite keeps it. People spend leaves it out.
-  "sandbox_cost_usd",
 ] as const;
 
 export type ConversationMetric = (typeof CONVERSATION_METRICS)[number];

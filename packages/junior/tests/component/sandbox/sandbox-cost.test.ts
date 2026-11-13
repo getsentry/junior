@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mswServer } from "../../msw/server";
@@ -10,8 +10,9 @@ import {
 } from "@/chat/sandbox/cost";
 import { getSandboxProvider } from "@/chat/sandbox/provider";
 import { estimateSessionCostUsd } from "@/chat/sandbox/vercel/pricing";
+import { readConversationStatsFromSql } from "@/api/conversations/stats.query";
 import { readConversationTreeMetricsFromSql } from "@/api/conversations/usage";
-import { juniorConversationMetrics, juniorSandboxSessions } from "@/db/schema";
+import { juniorConversations, juniorSandboxSessions } from "@/db/schema";
 import { inboundMessage } from "../../fixtures/conversation-work";
 
 /** One session record, in the shape the Vercel Sandbox API returns it. */
@@ -118,23 +119,15 @@ function useFakeVercelSandboxApi() {
 }
 
 const CONVERSATION_ID = "slack:C123:1718123456.000000";
-const RUN_ID = "conversation-run:1";
-const OWNER = { conversationId: CONVERSATION_ID, runId: RUN_ID };
 const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
 
-async function sandboxCostMetric(runId = RUN_ID) {
+async function conversationSandboxCost() {
   const [row] = await getDb()
-    .select({ value: juniorConversationMetrics.value })
-    .from(juniorConversationMetrics)
-    .where(
-      and(
-        eq(juniorConversationMetrics.conversationId, CONVERSATION_ID),
-        eq(juniorConversationMetrics.runId, runId),
-        eq(juniorConversationMetrics.metric, "sandbox_cost_usd"),
-      ),
-    );
-  return row?.value;
+    .select({ value: juniorConversations.sandboxCostUsd })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+  return row?.value ?? undefined;
 }
 
 async function createSession(name: string) {
@@ -163,11 +156,11 @@ describe("Sandbox cost estimate", () => {
     vi.unstubAllEnvs();
   });
 
-  it("adds a session's cost to its Run after the sandbox times out", async () => {
+  it("adds a session's cost to its Conversation after the sandbox times out", async () => {
     const startMs = Date.now();
     const session = await createSession("junior-timeout");
     await recordSandboxSession({
-      owner: OWNER,
+      conversationId: CONVERSATION_ID,
       session,
       createdSandbox: true,
       nowMs: startMs,
@@ -175,7 +168,7 @@ describe("Sandbox cost estimate", () => {
 
     // The session is still running, so the sweep waits for it.
     await runSandboxCostSweep({ nowMs: startMs + 15 * MINUTE_MS });
-    expect(await sandboxCostMetric()).toBeUndefined();
+    expect(await conversationSandboxCost()).toBeUndefined();
 
     // Injected fault: the Sandbox timed out after the Turn. No Junior code
     // stops it, so only Vercel's session record holds the usage.
@@ -192,7 +185,7 @@ describe("Sandbox cost estimate", () => {
       durationMs: 31 * MINUTE_MS,
       createdSandbox: true,
     });
-    expect(await sandboxCostMetric()).toBeCloseTo(expected, 12);
+    expect(await conversationSandboxCost()).toBeCloseTo(expected, 12);
     // The sweep reads the stopped Sandbox without resuming it.
     expect(vercel.gets).toEqual([
       { name: "junior-timeout", resume: "false" },
@@ -203,12 +196,16 @@ describe("Sandbox cost estimate", () => {
     await getConversationStore().recordExecution({
       conversationId: CONVERSATION_ID,
       createdAtMs: startMs,
-      execution: { runId: RUN_ID, status: "idle", updatedAtMs: startMs },
+      execution: {
+        runId: "conversation-run:1",
+        status: "idle",
+        updatedAtMs: startMs,
+      },
       lastActivityAtMs: startMs,
       metrics: { durationMs: 5_000, usage: { cost: { total: 0.25 } } },
       updatedAtMs: startMs,
     });
-    expect(await sandboxCostMetric()).toBeCloseTo(expected, 12);
+    expect(await conversationSandboxCost()).toBeCloseTo(expected, 12);
     const tree = await readConversationTreeMetricsFromSql(getDb(), [
       CONVERSATION_ID,
     ]);
@@ -216,38 +213,43 @@ describe("Sandbox cost estimate", () => {
       sandboxCostUsd: expect.closeTo(expected, 12),
       usage: { cost: { total: 0.25 } },
     });
+    // System stats read the session rows.
+    const stats = await readConversationStatsFromSql();
+    const statsSandboxCost = stats.metricDays.reduce(
+      (total, day) => total + (day.sandboxCostUsd ?? 0),
+      0,
+    );
+    expect(statsSandboxCost).toBeCloseTo(expected, 6);
   });
 
   it("writes the cost when Junior stops a session and gives up on gone sandboxes", async () => {
     const nowMs = Date.now();
     const replaced = await createSession("junior-replaced");
     await recordSandboxSession({
-      owner: OWNER,
+      conversationId: CONVERSATION_ID,
       session: replaced,
       createdSandbox: true,
       nowMs,
     });
     await stopSandboxSession(replaced);
-    expect(await sandboxCostMetric()).toBeCloseTo(
-      estimateSessionCostUsd({
-        activeCpuMs: 30_000,
-        memoryMb: 4096,
-        durationMs: 4 * MINUTE_MS,
-        createdSandbox: true,
-      }),
-      12,
-    );
+    const stoppedCost = estimateSessionCostUsd({
+      activeCpuMs: 30_000,
+      memoryMb: 4096,
+      durationMs: 4 * MINUTE_MS,
+      createdSandbox: true,
+    });
+    expect(await conversationSandboxCost()).toBeCloseTo(stoppedCost, 12);
 
     // Injected fault: Vercel already removed this Sandbox and its records.
     await recordSandboxSession({
-      owner: { ...OWNER, runId: "conversation-run:2" },
+      conversationId: CONVERSATION_ID,
       session: { sandboxId: "junior-removed", sessionId: "removed-session" },
       createdSandbox: false,
       nowMs,
     });
     // Too old to read: settled without a provider call.
     await recordSandboxSession({
-      owner: { ...OWNER, runId: "conversation-run:3" },
+      conversationId: CONVERSATION_ID,
       session: { sandboxId: "junior-old", sessionId: "old-session" },
       createdSandbox: false,
       nowMs: nowMs - 15 * DAY_MS,
@@ -270,7 +272,7 @@ describe("Sandbox cost estimate", () => {
       ["old-session", true],
       ["removed-session", true],
     ]);
-    expect(await sandboxCostMetric("conversation-run:2")).toBeUndefined();
-    expect(await sandboxCostMetric("conversation-run:3")).toBeUndefined();
+    // Sessions without a cost leave the Conversation total alone.
+    expect(await conversationSandboxCost()).toBeCloseTo(stoppedCost, 12);
   });
 });

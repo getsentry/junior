@@ -19,7 +19,6 @@ import { buildCommandScript } from "@/chat/sandbox/noninteractive-command";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { SandboxEgressSignalTransport } from "@/chat/sandbox/egress/signals";
-import type { SandboxCostOwner } from "@/chat/sandbox/cost";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import { createSandbox, type SandboxTools } from "@/chat/sandbox/sandbox";
@@ -52,8 +51,6 @@ export interface AgentSandboxOptions {
   ): Promise<() => Promise<void>>;
   onSandboxRefChanged(sandboxRef: SandboxRef): void;
   persistSandboxRef?(sandboxRef: SandboxRef): void | Promise<void>;
-  /** Run that owns the Sandbox cost of the sessions this Sandbox opens. */
-  costOwner?: SandboxCostOwner;
 }
 
 export interface AgentSandbox {
@@ -181,7 +178,6 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
       options.onSandboxRefChanged(sandboxRef);
       await options.persistSandboxRef?.(sandboxRef);
     },
-    costOwner: options.costOwner,
   });
 
   return {
