@@ -20,6 +20,7 @@ import { juniorConversationParticipants } from "@/db/schema";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
 import { createAddReviewItemTool } from "@/chat/tools/review-items";
+import type { UserInputRequest } from "@/chat/tools/runtime/user-input-request";
 import {
   closeConversationFixture,
   createConversationFixture,
@@ -29,7 +30,7 @@ import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conver
 
 const CLI_CONVERSATION_ID = "local:cli:review-items";
 
-const REQUEST = {
+const REQUEST: UserInputRequest = {
   question: "Approve or reject this entry?",
   fields: [
     {
