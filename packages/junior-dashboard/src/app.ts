@@ -49,6 +49,7 @@ import {
   type DashboardSession,
 } from "./auth";
 import { isAuthPath, type AuthenticatedRoute } from "./authenticated-routes";
+import { registerDesktopSignInRoutes } from "./desktop-sign-in";
 import { resetMockConversationViewerState } from "./mock-reporting/fixtures";
 import { resetMockReadPositions } from "./mock-reporting/read-positions";
 import { resetMockReviewItems } from "./mock-reporting/review-items";
@@ -445,6 +446,15 @@ export function createDashboardApp(
       signInRetryUrl(c.req.raw, basePath, { authenticatedRoutes }),
     );
   });
+
+  if (authRequired && auth) {
+    registerDesktopSignInRoutes(app, {
+      agentName,
+      allowedDomains,
+      auth,
+      path: basePath === "/" ? "/auth/desktop" : `${basePath}/auth/desktop`,
+    });
+  }
 
   if (auth) {
     app.on(["GET", "POST"], `${authPath}/*`, (c) => auth.handler(c.req.raw));

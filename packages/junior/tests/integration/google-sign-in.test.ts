@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { closeDb, getDb } from "@/chat/db";
@@ -93,6 +94,7 @@ async function signIn(
 
 describe("Google sign-in", () => {
   afterEach(async () => {
+    vi.useRealTimers();
     await closeDb();
   });
 
@@ -186,5 +188,39 @@ describe("Google sign-in", () => {
       code: "ID_TOKEN_NOT_SUPPORTED",
     });
     expect(direct.headers.getSetCookie()).toEqual([]);
+  });
+
+  it("moves a browser session to the desktop app with a PKCE-bound code", async () => {
+    const auth = createAuth(["example.org"]);
+    useGoogleAccount({ email: "person@example.org", hd: "example.org" });
+    const { session } = await signIn(auth);
+    const verifier = "desktop-verifier-0123456789abcdef0123456789";
+    const challenge = createHash("sha256").update(verifier).digest("base64url");
+
+    expect(
+      await auth.createDesktopCode(new Request(`${BASE_URL}/`), challenge),
+    ).toBeUndefined();
+    const code = await auth.createDesktopCode(session, challenge);
+    if (!code) throw new Error("expected a desktop sign-in code");
+
+    // Only the app that holds the verifier can redeem the code.
+    expect(
+      await auth.redeemDesktopCode(code, "other-verifier"),
+    ).toBeUndefined();
+    expect(await auth.redeemDesktopCode(`${code}x`, verifier)).toBeUndefined();
+    const cookies = await auth.redeemDesktopCode(code, verifier);
+    const desktop = new Request(`${BASE_URL}/`, {
+      headers: {
+        cookie: (cookies ?? [])
+          .map((cookie) => `${cookie.name}=${cookie.value}`)
+          .join("; "),
+      },
+    });
+    expect(await auth.getSession(desktop)).toMatchObject({
+      user: { email: "person@example.org", emailVerified: true },
+    });
+
+    vi.useFakeTimers({ now: Date.now() + 61_000, toFake: ["Date"] });
+    expect(await auth.redeemDesktopCode(code, verifier)).toBeUndefined();
   });
 });

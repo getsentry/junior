@@ -24,6 +24,9 @@ export function resetDashboardEnv(): void {
   for (const name of dashboardEnvNames) delete process.env[name];
 }
 
+export const DESKTOP_CODE = "desktop-code";
+export const DESKTOP_VERIFIER = "v".repeat(43);
+
 /** Build a fixed dashboard auth edge for route tests. */
 export function auth(
   session: DashboardSession | null,
@@ -42,6 +45,14 @@ export function auth(
         "https://accounts.google.com/o/oauth2/v2/auth",
         302,
       );
+    },
+    async createDesktopCode() {
+      return session ? DESKTOP_CODE : undefined;
+    },
+    async redeemDesktopCode(code, codeVerifier) {
+      return code === DESKTOP_CODE && codeVerifier === DESKTOP_VERIFIER
+        ? [{ maxAgeSeconds: 60, name: "session", secure: true, value: "s" }]
+        : undefined;
     },
   };
 }
