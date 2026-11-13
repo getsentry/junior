@@ -782,3 +782,85 @@ test("hands web and external messages from queue to history without gaps", async
     .click();
   await expect(pending).toBeHidden();
 });
+
+test("keeps details closed on a home send after the reader closed them", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 1600 });
+  const createdConversationId = "local:web:details-closed";
+  let releaseCreate: (() => void) | undefined;
+  const createHeld = new Promise<void>((resolve) => {
+    releaseCreate = resolve;
+  });
+  await page.route("**/api/conversations", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await createHeld;
+    await route.fulfill({
+      json: {
+        conversationId: createdConversationId,
+        messageId: "created-message",
+        status: "accepted",
+      },
+    });
+  });
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(createdConversationId)}*`,
+    async (route) => {
+      const response = await route.fetch({
+        headers: {
+          ...route.request().headers(),
+          [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+        },
+        // Any mock Conversation with available history.
+        url: route
+          .request()
+          .url()
+          .replace(
+            encodeURIComponent(createdConversationId),
+            encodeURIComponent("slack:CQA123:1770003600.000200"),
+          ),
+      });
+      await route.fulfill({
+        json: withRequestedMailbox(route, {
+          ...(await response.json()),
+          conversationId: createdConversationId,
+          events: [],
+          isParticipant: true,
+          previousCursor: undefined,
+          status: "active",
+        }),
+      });
+    },
+  );
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+  });
+
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
+  );
+  await expect(details).toBeVisible();
+  await details
+    .getByRole("button", { name: "Close conversation details" })
+    .click();
+  await expect(details).toBeHidden();
+
+  await page.goto(dashboard.baseURL);
+  await page.getByLabel("Start a conversation").fill("Check the deploy");
+  await page.getByRole("button", { name: "Send" }).click();
+  const transcript = page.getByLabel("Conversation transcript");
+  await expect(transcript.getByText("Check the deploy")).toBeVisible();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  // The pending view follows the saved choice, as the page does.
+  await expect(details).toBeHidden();
+  releaseCreate?.();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(createdConversationId)}`,
+  );
+  await expect(transcript.getByText("Check the deploy")).toBeVisible();
+  await expect(details).toBeHidden();
+});
