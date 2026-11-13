@@ -60,8 +60,8 @@ export function transcriptAnswerLinks(
 type LinkSegment = { lane: number; part: "start" | "middle" | "end" };
 
 /**
- * Hold the rows that the list shows in its scroll pane, so an answer can
- * quote a question that is out of view. Make one for each transcript list.
+ * Hold the rows that the list shows in its scroll pane, so a question can
+ * repeat an answer that is out of view. Make one for each transcript list.
  */
 export function createVisibleRowsStore() {
   let range: { endIndex: number; startIndex: number } | null = null;
@@ -142,15 +142,6 @@ function useRowInView(
     rows.subscribe,
     () => rowIndex !== undefined && rows.shows(rowIndex),
   );
-}
-
-/**
- * True while the scroll pane shows the row that asked an item. The list
- * knows its visible rows from layout, so this does not wait for the row to
- * mount or load its item.
- */
-export function useAskInView(itemId: string): boolean {
-  return useRowInView((value) => value.askIndexes.get(itemId));
 }
 
 /** True while the scroll pane shows the answer row of an item. */
