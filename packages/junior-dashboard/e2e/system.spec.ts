@@ -304,3 +304,25 @@ test("keeps System navigation usable on mobile", async ({
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
 });
+
+test("shows what cache warming saved in the range", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(`${dashboard.baseURL}/system`);
+  const panel = page.getByRole("region", { name: "Cache warming" });
+  await expect(panel.getByText("Net savings", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Of ideal warming")).toBeVisible();
+  await expect(
+    panel.getByText(/of possible savings had no warm state/),
+  ).toBeVisible();
+  await expect(
+    panel.getByLabel("Cache warming net savings per day"),
+  ).toBeVisible();
+  await screenshot(page, "system-cache-warming", { target: panel });
+
+  const week = page.waitForResponse("**/api/cache-warming/savings?days=7");
+  await page.getByRole("button", { name: "7d", exact: true }).click();
+  expect((await week).ok()).toBe(true);
+  await expect(panel.getByText("Net savings", { exact: true })).toBeVisible();
+});

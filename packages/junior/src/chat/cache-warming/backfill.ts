@@ -63,9 +63,11 @@ const BACKFILL_DONE_TTL_MS = GLOBAL_GAPS_TTL_MS;
 const CONVERSATION_BATCH_SIZE = 10;
 // Postgres `query_canceled`: the statement timeout stopped the query.
 const QUERY_CANCELED = "57014";
-// The heartbeat gives no deadline. This leaves most of its function time for
-// the gap writes and the other heartbeat work.
-const BACKFILL_BUDGET_MS = 60_000;
+/**
+ * Scan time of one backfill run. The heartbeat gives no deadline. This leaves
+ * most of its function time for the writes and the other heartbeat work.
+ */
+export const BACKFILL_BUDGET_MS = 60_000;
 // State lists have no atomic replace, so live recording can append to a
 // segment list while the backfill writes it. Each append over
 // `GLOBAL_GAPS_MAX` drops the oldest entry. The backfill writes at most half
@@ -104,20 +106,21 @@ interface EventRow {
   stopReason: string | null;
   /** Assistant message: Pi sets it when the model request starts. */
   startedAtMs: string | null;
+  modelId: string | null;
   cacheRead: string | null;
   cacheWrite: string | null;
 }
 
-interface IdlePeriod {
-  sinceMs: number;
-  segment: string;
-  eligible: boolean;
-}
-
-interface RecordedGap {
+/** One idle period of the stored history, as live recording would see it. */
+export interface ReplayedIdlePeriod {
   segment: string;
   sinceMs: number;
+  /** Real time until the call that ended it, or until now. */
   gapMs: number;
+  /** Read and write tokens of the call that started it. */
+  prefixTokens: number;
+  /** The call that ended it. Unset when no call came before now. */
+  next?: { modelId: string | null; cacheRead: number; cacheWrite: number };
 }
 
 // Each Conversation that had activity in the window, newest first, so a run
@@ -167,6 +170,7 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
       >`CASE WHEN ${isUserMessage} THEN (${events.payload}->'provenance'->'actor'->>'userId') IS NOT NULL END`,
       stopReason: sql<string | null>`(${message})->>'stopReason'`,
       startedAtMs: sql<string | null>`(${message})->>'timestamp'`,
+      modelId: sql<string | null>`(${message})->>'model'`,
       cacheRead: sql<string | null>`${events.payload}->'usage'->>'cacheRead'`,
       cacheWrite: sql<string | null>`${events.payload}->'usage'->>'cacheWrite'`,
     })
@@ -193,34 +197,30 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
 
 /**
  * Replay the model calls of one Conversation the way the recorder in
- * `warmup.ts` sees them, and return the gap of each idle period.
+ * `warmup.ts` sees them, and return each idle period.
  *
  * Live recording measures from the start of the request that ended a Turn to
  * the start of the next recorded request. Here both times are the
  * `timestamp` of the stored assistant message, which Pi sets when it starts
  * the request. That is the closest stored time to the recorder's clock.
- *
- * Live recording records gaps only for idle periods that it could warm. The
- * stored usage gives the prefix size, so periods with a prefix below
- * `MIN_WARMUP_PREFIX_TOKENS` are skipped. The model, cache retention, and
- * snapshot size of the request are not checked: this assumes that reply
- * timing does not depend on them.
  */
 function replayConversation(
   kind: ConversationKind,
   events: EventRow[],
   nowMs: number,
-): RecordedGap[] {
-  const gaps: RecordedGap[] = [];
-  const close = (idle: IdlePeriod, untilMs: number) => {
+): ReplayedIdlePeriod[] {
+  const periods: ReplayedIdlePeriod[] = [];
+  type Idle = Omit<ReplayedIdlePeriod, "gapMs" | "next">;
+  const close = (
+    idle: Idle,
+    untilMs: number,
+    next?: ReplayedIdlePeriod["next"],
+  ) => {
     const gapMs = untilMs - idle.sinceMs;
-    if (!idle.eligible || gapMs <= 0) return;
-    gaps.push({
-      segment: idle.segment,
-      sinceMs: idle.sinceMs,
-      // The horizon message records no reply before a later reply can.
-      gapMs: gapMs >= IDLE_HORIZON_MS ? NO_REPLY_GAP_MS : gapMs,
-    });
+    if (gapMs <= 0) return;
+    const period: ReplayedIdlePeriod = { ...idle, gapMs };
+    if (next) period.next = next;
+    periods.push(period);
   };
   let userActor = false;
   // Live recording takes the Actor when the Turn starts. A later instruction
@@ -228,7 +228,7 @@ function replayConversation(
   let inTurn = false;
   let endedTurns = 0;
   let lastCallMs: number | undefined;
-  let idle: IdlePeriod | undefined;
+  let idle: Idle | undefined;
   for (const event of events) {
     if (event.type === "user_message") {
       if (!inTurn) {
@@ -251,7 +251,15 @@ function replayConversation(
     ) {
       continue;
     }
-    if (idle) close(idle, startedAtMs);
+    const cacheRead = Number(event.cacheRead ?? 0);
+    const cacheWrite = Number(event.cacheWrite ?? 0);
+    if (idle) {
+      close(idle, startedAtMs, {
+        modelId: event.modelId,
+        cacheRead,
+        cacheWrite,
+      });
+    }
     idle = undefined;
     // The Conversation state expired, so the recorder starts the Turn count
     // again.
@@ -263,19 +271,17 @@ function replayConversation(
     }
     lastCallMs = startedAtMs;
     if (event.stopReason === "stop") {
-      const prefixTokens =
-        Number(event.cacheRead ?? 0) + Number(event.cacheWrite ?? 0);
       idle = {
         sinceMs: startedAtMs,
         segment: historySegment(userActor, endedTurns),
-        eligible: prefixTokens >= MIN_WARMUP_PREFIX_TOKENS,
+        prefixTokens: cacheRead + cacheWrite,
       };
       endedTurns += 1;
     }
   }
   // An idle period that is still in its horizon has no gap yet.
   if (idle && nowMs - idle.sinceMs >= IDLE_HORIZON_MS) close(idle, nowMs);
-  return gaps;
+  return periods;
 }
 
 function isQueryCanceled(error: unknown): boolean {
@@ -288,21 +294,29 @@ function isQueryCanceled(error: unknown): boolean {
   return false;
 }
 
-// Stop before the next batch when the budget is used. The budget uses the
-// monotonic clock, not `nowMs`.
-async function collectGaps(
-  nowMs: number,
-  budgetMs: number,
-): Promise<{
-  bySegment: Map<string, number[]>;
+/** Idle periods of a history scan, and how much of the history it read. */
+export interface HistoryScan {
+  periods: ReplayedIdlePeriod[];
   scanned: number;
   canceledBatches: number;
   budgetExceeded: boolean;
-}> {
+}
+
+/**
+ * Replay the stored history of each Conversation with activity since
+ * `windowStartMs`, newest first, and return its idle periods that started in
+ * the window, oldest first. The scan stops before the next batch when the
+ * budget is used. The budget uses the monotonic clock, not `nowMs`.
+ */
+export async function scanIdlePeriods(args: {
+  windowStartMs: number;
+  nowMs: number;
+  budgetMs: number;
+}): Promise<HistoryScan> {
+  const { windowStartMs, nowMs, budgetMs } = args;
   const startedAt = performance.now();
-  const windowStartMs = nowMs - GLOBAL_GAPS_TTL_MS;
   const conversations = await loadConversations(windowStartMs);
-  const recorded: RecordedGap[] = [];
+  const periods: ReplayedIdlePeriod[] = [];
   let scanned = 0;
   let canceledBatches = 0;
   let budgetExceeded = false;
@@ -329,28 +343,38 @@ async function collectGaps(
       events.set(event.conversationId, list);
     }
     for (const conversation of batch) {
-      const gaps = replayConversation(
+      const replayed = replayConversation(
         conversationKindFromRow(conversation),
         events.get(conversation.conversationId) ?? [],
         nowMs,
       );
-      recorded.push(...gaps.filter((gap) => gap.sinceMs >= windowStartMs));
+      periods.push(
+        ...replayed.filter((period) => period.sinceMs >= windowStartMs),
+      );
     }
     scanned += batch.length;
   }
-  recorded.sort((a, b) => a.sinceMs - b.sinceMs);
+  periods.sort((a, b) => a.sinceMs - b.sinceMs);
+  return { periods, scanned, canceledBatches, budgetExceeded };
+}
+
+// Live recording records gaps only for idle periods that it could warm. The
+// stored usage gives the prefix size, so periods with a prefix below
+// `MIN_WARMUP_PREFIX_TOKENS` are skipped. The model, cache retention, and
+// snapshot size of the request are not checked: this assumes that reply
+// timing does not depend on them.
+function gapsBySegment(
+  periods: readonly ReplayedIdlePeriod[],
+): Map<string, number[]> {
   const bySegment = new Map<string, number[]>();
-  for (const gap of recorded) {
-    const list = bySegment.get(gap.segment) ?? [];
-    list.push(gap.gapMs);
-    bySegment.set(gap.segment, list);
+  for (const period of periods) {
+    if (period.prefixTokens < MIN_WARMUP_PREFIX_TOKENS) continue;
+    const list = bySegment.get(period.segment) ?? [];
+    // The horizon message records no reply before a later reply can.
+    list.push(period.gapMs >= IDLE_HORIZON_MS ? NO_REPLY_GAP_MS : period.gapMs);
+    bySegment.set(period.segment, list);
   }
-  return {
-    bySegment,
-    scanned,
-    canceledBatches,
-    budgetExceeded,
-  };
+  return bySegment;
 }
 
 /**
@@ -391,8 +415,13 @@ export async function backfillCacheWarmingGaps(args: {
         const gaps = await state.getList(segmentGapsKey(segment));
         if (gaps.length === 0) emptySegments.add(segment);
       }
-      const { bySegment, scanned, canceledBatches, budgetExceeded } =
-        await collectGaps(args.nowMs, args.budgetMs ?? BACKFILL_BUDGET_MS);
+      const { periods, scanned, canceledBatches, budgetExceeded } =
+        await scanIdlePeriods({
+          windowStartMs: args.nowMs - GLOBAL_GAPS_TTL_MS,
+          nowMs: args.nowMs,
+          budgetMs: args.budgetMs ?? BACKFILL_BUDGET_MS,
+        });
+      const bySegment = gapsBySegment(periods);
       const logAttributes = {
         "app.cache_warming.backfill.conversation_count": scanned,
         "app.cache_warming.backfill.canceled_batch_count": canceledBatches,

@@ -4,9 +4,12 @@ import {
   createAssistantMessageEventStream,
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
+import { createJuniorApi } from "@/api";
+import { cacheWarmingSavingsReportSchema } from "@/api/schema";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { backfillCacheWarmingGaps } from "@/chat/cache-warming/backfill";
 import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
+import { recordWarmupCost } from "@/chat/cache-warming/savings";
 import { GLOBAL_GAPS_TTL_MS } from "@/chat/cache-warming/warmup";
 import {
   agentInstructionProvenance,
@@ -14,6 +17,7 @@ import {
   instructionProvenanceFor,
 } from "@/chat/conversations/provenance";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { resolveGatewayModel } from "@/chat/pi/client";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createAgent } from "../fixtures/agent";
@@ -25,6 +29,7 @@ const MINUTE = 60_000;
 const BACKFILL_KEY = "junior:cache_warming:backfill:work_state:v2";
 // Older releases wrote `done` here with no TTL.
 const LEGACY_BACKFILL_KEY = "junior:cache_warming:backfill:work_state";
+const SAVINGS_BACKFILL_KEY = "junior:cache_warming:backfill:savings:v1";
 const T0 = Date.parse("2026-06-01T09:00:00.000Z");
 const SEGMENTS = [
   "user:1:none",
@@ -103,6 +108,7 @@ describe("cache warming gap backfill", () => {
     const state = getStateAdapter();
     await state.delete(LEGACY_BACKFILL_KEY);
     await state.delete(BACKFILL_KEY);
+    await state.delete(SAVINGS_BACKFILL_KEY);
     for (const segment of SEGMENTS) {
       await state.delete(`junior:cache_warming:gaps:${segment}`);
     }
@@ -267,5 +273,112 @@ describe("cache warming gap backfill", () => {
     // The run completed, so a heartbeat does not scan the rest.
     await heartbeat(T0 + 131 * MINUTE);
     expect(await gaps("system:1:none")).toEqual([]);
+  });
+});
+
+describe("cache warming savings backfill", () => {
+  afterEach(async () => {
+    vi.useRealTimers();
+    const state = getStateAdapter();
+    await state.delete(BACKFILL_KEY);
+    await state.delete(SAVINGS_BACKFILL_KEY);
+    for (const segment of SEGMENTS) {
+      await state.delete(`junior:cache_warming:gaps:${segment}`);
+    }
+    await closeConversationFixture();
+  });
+
+  const MODEL_ID = "anthropic/claude-opus-5.5";
+  const DAY_1 = Date.parse("2031-07-01T09:00:00.000Z");
+  const DAY_2 = Date.parse("2031-07-02T09:00:00.000Z");
+
+  // Store the model calls of one Conversation, each at its own time and with
+  // its own cache usage.
+  async function storeCalls(
+    conversationId: string,
+    calls: Array<{ atMs: number; cacheRead: number; cacheWrite?: number }>,
+  ) {
+    await getConversationStore().recordActivity({
+      conversationId,
+      destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+      activityAtMs: calls.at(-1)!.atMs,
+      nowMs: calls[0]!.atMs,
+    });
+    await getConversationEventStore().append(
+      conversationId,
+      calls.map((call) => {
+        const message = reply(call.cacheRead, call.atMs);
+        return {
+          createdAtMs: call.atMs + 1_000,
+          data: historyItemFromPiMessage(
+            {
+              ...message,
+              model: MODEL_ID,
+              usage: { ...message.usage, cacheWrite: call.cacheWrite ?? 0 },
+            },
+            contextProvenance,
+          ),
+        };
+      }),
+    );
+  }
+
+  async function savings(nowMs: number) {
+    vi.setSystemTime(nowMs);
+    const response = await createJuniorApi().request(
+      "http://localhost/api/cache-warming/savings?days=7",
+    );
+    return cacheWarmingSavingsReportSchema.parse(await response.json()).days;
+  }
+
+  it("counts the stored idle periods of each day before live recording started", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // The first period ends with a read of the cache 7 minutes later, the
+    // second with a write, and the third within the cache TTL.
+    await storeCalls("local:test:savings-backfill", [
+      { atMs: DAY_1, cacheRead: 60_000 },
+      { atMs: DAY_1 + 7 * MINUTE, cacheRead: 60_000 },
+      { atMs: DAY_1 + 14 * MINUTE, cacheRead: 0, cacheWrite: 60_000 },
+      { atMs: DAY_1 + 18 * MINUTE, cacheRead: 60_000 },
+    ]);
+    // Live recording already wrote the next day, so its history is left out.
+    await storeCalls("local:test:savings-backfill-live-day", [
+      { atMs: DAY_2, cacheRead: 60_000 },
+      { atMs: DAY_2 + 7 * MINUTE, cacheRead: 60_000 },
+    ]);
+    vi.setSystemTime(DAY_2 + 10 * MINUTE);
+    await recordWarmupCost(MODEL_ID, 0.05);
+
+    const nowMs = DAY_2 + 26 * 60 * MINUTE;
+    await heartbeat(nowMs);
+    const days = await savings(nowMs);
+
+    const { cost } = resolveGatewayModel(MODEL_ID);
+    const read = (60_000 * cost.cacheRead) / 1_000_000;
+    const write = (60_000 * cost.cacheWrite) / 1_000_000;
+    const close = (usd: number) => expect.closeTo(usd, 3);
+    expect(days.at(-3)).toMatchObject({
+      date: "2031-07-01",
+      idlePeriods: 2,
+      hits: 1,
+      savedUsd: close(write - read),
+      // History has no warmups. The hit needed one to keep the cache.
+      warmupCostUsd: close(read),
+      oracleSavingsUsd: close(2 * (write - 2 * read)),
+      unwarmedIdlePeriods: 0,
+    });
+    expect(days.at(-2)).toMatchObject({
+      date: "2031-07-02",
+      idlePeriods: 0,
+      warmupCostUsd: close(0.05),
+    });
+
+    // The run completed, so a later heartbeat adds nothing. Without its
+    // marker, the backfilled day is the first day with counters.
+    await heartbeat(nowMs + MINUTE);
+    expect(await savings(nowMs + MINUTE)).toEqual(days);
+    await getStateAdapter().delete(SAVINGS_BACKFILL_KEY);
+    await heartbeat(nowMs + 2 * MINUTE);
+    expect(await savings(nowMs + 2 * MINUTE)).toEqual(days);
   });
 });

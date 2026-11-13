@@ -1,4 +1,4 @@
-import { and, asc, gte, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, lte, min, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { juniorStats } from "@/db/schema";
 
@@ -26,10 +26,22 @@ export async function incrementStat(
   key: StatKey,
   options: { nowMs?: number } = {},
 ): Promise<void> {
+  await addStats([{ ...key, count: 1 }], options);
+}
+
+/** Add amounts to daily named counters in one statement. Zero amounts add no row. */
+export async function addStats(
+  amounts: Array<StatKey & { count: number }>,
+  options: { nowMs?: number } = {},
+): Promise<void> {
   const date = utcDate(options.nowMs ?? Date.now());
+  const values = amounts
+    .filter((amount) => amount.count !== 0)
+    .map((amount) => ({ ...amount, date }));
+  if (!values.length) return;
   await getDb()
     .insert(juniorStats)
-    .values({ ...key, date, count: 1 })
+    .values(values)
     .onConflictDoUpdate({
       target: [
         juniorStats.date,
@@ -37,7 +49,7 @@ export async function incrementStat(
         juniorStats.metric,
         juniorStats.name,
       ],
-      set: { count: sql`${juniorStats.count} + 1` },
+      set: { count: sql`${juniorStats.count} + excluded.count` },
     });
 }
 
@@ -53,4 +65,15 @@ export async function readStats(start: string, end: string): Promise<Stat[]> {
       asc(juniorStats.metric),
       asc(juniorStats.name),
     );
+}
+
+/** Return the first day with a counter in the namespace, if any. */
+export async function firstStatDate(
+  namespace: string,
+): Promise<string | undefined> {
+  const [row] = await getDb()
+    .select({ date: min(juniorStats.date) })
+    .from(juniorStats)
+    .where(eq(juniorStats.namespace, namespace));
+  return row?.date ?? undefined;
 }

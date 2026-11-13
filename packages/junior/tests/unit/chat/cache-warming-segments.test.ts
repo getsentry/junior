@@ -3,7 +3,9 @@ import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import type { CacheWarmupMessage } from "@/chat/cache-warming/queue";
+import { createJuniorApi } from "@/api";
 import { setConversationArchive } from "@/api/conversations/archive";
+import { cacheWarmingSavingsReportSchema } from "@/api/schema";
 import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import {
   IDLE_HORIZON_MS,
@@ -815,6 +817,89 @@ describe("cache warming gap segments", () => {
       for (const imageData of [data, ...moreImages]) {
         await state.delete(imageKeyOf(imageData));
       }
+      await state.delete("junior:cache_warming:gaps:user:1:none");
+      await state.delete("junior:cache_warming:breaker:anthropic:outcomes");
+    }
+  });
+
+  it("counts the savings of each idle period that a call ends", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // A day of its own, so the idle periods of the other cases do not count.
+    vi.setSystemTime(new Date("2031-03-01T12:00:00.000Z"));
+    const state = getStateAdapter();
+    for (let i = 0; i < 20; i++) {
+      await state.appendToList(
+        "junior:cache_warming:gaps:user:1:none",
+        8 * MINUTE,
+      );
+    }
+    mockTitleModel("", { cacheReadTokens: 60_000 });
+    const minutesLater = (minutes: number) =>
+      vi.setSystemTime(Date.now() + minutes * MINUTE);
+    const endTurnWith = async (cacheRead: number, turnContext = context) => {
+      const recorder = createCacheWarmingRecorder(
+        conversationId,
+        true,
+        runPrompt,
+      );
+      recorder.wrap((() => undefined) as never)(model, turnContext, {});
+      await recorder.record({
+        ...finalReply,
+        usage: {
+          ...finalReply.usage,
+          cacheRead,
+          cacheWrite: 60_000 - cacheRead,
+        },
+      });
+    };
+    try {
+      const startedAtMs = Date.now();
+      await endTurnWith(60_000);
+      const warmup = scheduledWarmup();
+      vi.setSystemTime(warmup.cacheExpiresAtMs - WARMUP_MARGIN_MS);
+      await runCacheWarmup(warmup);
+      // The warmed cache still holds the prefix when the person returns.
+      vi.setSystemTime(startedAtMs + 7 * MINUTE);
+      await endTurnWith(60_000);
+      // No warmup ran, so the cache expired before the next return.
+      minutesLater(7);
+      await endTurnWith(0);
+      // The cache lives through a return within its TTL without warmups.
+      minutesLater(4);
+      // Random text does not compress, so its snapshot is too large to store.
+      await endTurnWith(60_000, {
+        ...context,
+        messages: [
+          {
+            role: "user",
+            content: randomBytes(2 * 1024 * 1024).toString("base64"),
+            timestamp: 1,
+          },
+        ],
+      });
+      minutesLater(7);
+      await endTurnWith(0);
+
+      const response = await createJuniorApi().request(
+        "http://localhost/api/cache-warming/savings?days=1",
+      );
+      const { totals } = cacheWarmingSavingsReportSchema.parse(
+        await response.json(),
+      );
+      // Prices are per million tokens. Each counted gap needs one warmup.
+      const read = (60_000 * model.cost.cacheRead) / 1_000_000;
+      const write = (60_000 * model.cost.cacheWrite) / 1_000_000;
+      const close = (usd: number) => expect.closeTo(usd, 3);
+      expect(totals).toMatchObject({
+        idlePeriods: 3,
+        hits: 1,
+        savedUsd: close(write - read),
+        warmupCostUsd: close(read),
+        oracleSavingsUsd: close(3 * (write - 2 * read)),
+        unwarmedIdlePeriods: 1,
+        unwarmedOracleSavingsUsd: close(write - 2 * read),
+      });
+    } finally {
       await state.delete("junior:cache_warming:gaps:user:1:none");
       await state.delete("junior:cache_warming:breaker:anthropic:outcomes");
     }

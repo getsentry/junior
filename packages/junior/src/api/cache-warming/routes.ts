@@ -11,19 +11,37 @@ import type { JuniorApiEnv } from "../route";
 import {
   cacheWarmingBreakerListSchema,
   cacheWarmingBreakerParamsSchema,
+  cacheWarmingSavingsQuerySchema,
+  cacheWarmingSavingsReportSchema,
   closeCacheWarmingBreakerResponseSchema,
 } from "../schema/cache-warming";
+import { readCacheWarmingSavings } from "./savings";
 import { validateRequest } from "../validation";
 import { requireAdmin } from "../viewer";
 
 /**
- * Create admin-only routes that show and close the cache warming breakers.
+ * Create the cache warming routes: its savings for the System page, and
+ * admin-only routes that show and close the breakers.
  *
  * A breaker stops warming for every Conversation, so only a Junior admin can
  * close one before it closes by itself.
  */
 export function createCacheWarmingRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
+
+  app.get(
+    "/savings",
+    validateRequest(
+      "query",
+      cacheWarmingSavingsQuerySchema,
+      "Invalid query parameters.",
+    ),
+    async (context) =>
+      jsonResponse(
+        cacheWarmingSavingsReportSchema,
+        await readCacheWarmingSavings(context.req.valid("query").days),
+      ),
+  );
 
   app.get("/breakers", requireAdmin, async () =>
     jsonResponse(cacheWarmingBreakerListSchema, {
