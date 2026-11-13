@@ -16,7 +16,7 @@ describe("resolveUserAttachments", () => {
   const { resolveUserAttachments } =
     createJuniorRuntimeServices().visionContext;
 
-  it("never inlines file bytes and stops at three files", async () => {
+  it("gives every file a note and never inlines file bytes", async () => {
     const attachments = await resolveUserAttachments(
       [
         textFile("unstored.txt"),
@@ -29,11 +29,12 @@ describe("resolveUserAttachments", () => {
       {},
     );
 
-    // The failed download counts as one of the three files of a turn.
+    // The image cap does not apply to other files, so none is dropped.
     expect(attachments.map((attachment) => attachment.filename)).toEqual([
       "unstored.txt",
       "unreadable.txt",
       "third.txt",
+      "fourth.txt",
     ]);
     expect(attachments.every((attachment) => !attachment.data)).toBe(true);
     // Without storage, the agent has no attachment id to load.

@@ -165,6 +165,12 @@ describe("Slack behavior: mixed attachment media", () => {
           name: "repro.mp4",
           data: Buffer.from("mp4-bytes"),
         },
+        ...["two.png", "three.png", "four.png"].map((name) => ({
+          type: "image",
+          mimeType: "image/png",
+          name,
+          data: Buffer.concat([PNG_BYTES, Buffer.from(name)]),
+        })),
       ] as Message["attachments"],
     });
 
@@ -174,13 +180,18 @@ describe("Slack behavior: mixed attachment media", () => {
 
     expect(imageFetch).toHaveBeenCalledTimes(1);
     expect(capturedAttachments).toHaveLength(1);
-    const [image, pdf, video] = capturedAttachments[0]!;
+    const [image, pdf, video, two, three, four] = capturedAttachments[0]!;
     expect(image).toMatchObject({
       data: PNG_BYTES,
       filename: "chart.png",
       mediaType: "image/png",
     });
-    for (const file of [pdf, video]) {
+    // Three images go inline; the fourth is past the cap but still noted.
+    expect([two, three].map((file) => file?.data !== undefined)).toEqual([
+      true,
+      true,
+    ]);
+    for (const file of [pdf, video, four]) {
       expect(file?.data).toBeUndefined();
       expect(file?.attachmentId).toEqual(expect.any(String));
       expect(file?.promptText).toContain(
@@ -310,24 +321,26 @@ describe("Slack behavior: mixed attachment media", () => {
     const conversationId = await recordSlackConversation("1700004014.000");
     const fetchData = vi.fn(async () => Buffer.alloc(0));
 
-    const [file] = await resolveUserAttachments(
-      [
-        {
-          type: "file",
-          mimeType: "application/octet-stream",
-          name: "capture.pcap",
-          size: MAX_ATTACHMENT_BYTES + 1,
-          url: "https://files.slack.com/files-pri/T0TEST-F0HUGE/capture.pcap",
-          fetchData,
-        },
-      ],
+    // More files than the image cap: each one still gets a note.
+    const files = await resolveUserAttachments(
+      Array.from({ length: 4 }, (_, index) => ({
+        type: "file" as const,
+        mimeType: "application/octet-stream",
+        name: `capture-${index}.pcap`,
+        size: MAX_ATTACHMENT_BYTES + 1,
+        url: `https://files.slack.com/files-pri/T0TEST-F0HUGE${index}/capture-${index}.pcap`,
+        fetchData,
+      })),
       { conversationId },
     );
 
     expect(fetchData).not.toHaveBeenCalled();
     expect(getCapturedSlackFileDownloadCalls()).toEqual([]);
     expect(storage.objects.size).toBe(0);
-    expect(file?.attachmentId).toBeUndefined();
-    expect(file?.promptText).toContain("larger than the 250 MB file limit");
+    expect(files).toHaveLength(4);
+    for (const file of files) {
+      expect(file.attachmentId).toBeUndefined();
+      expect(file.promptText).toContain("larger than the 250 MB file limit");
+    }
   });
 });
