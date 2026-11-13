@@ -1,5 +1,5 @@
 {
-  "id": "c4398277-71ab-4f60-b113-a90216ad1cc1",
+  "id": "0841b571-f89e-4038-a529-b2c840c32e76",
   "prevId": "60fd2cf9-e028-493b-996c-98c8196dbcf9",
   "version": "7",
   "dialect": "postgresql",
@@ -1062,42 +1062,23 @@
           "primaryKey": false,
           "notNull": true
         },
-        "action": {
-          "name": "action",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'run'"
-        },
         "team_id": {
           "name": "team_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "channel_id": {
           "name": "channel_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "creator_slack_user_id": {
           "name": "creator_slack_user_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
-        },
-        "subject_conversation_id": {
-          "name": "subject_conversation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "subject_review_item_id": {
-          "name": "subject_review_item_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "creator_identity_id": {
           "name": "creator_identity_id",
@@ -1356,24 +1337,6 @@
           "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "junior_automations_subject_conversation_fk": {
-          "name": "junior_automations_subject_conversation_fk",
-          "tableFrom": "junior_automations",
-          "tableTo": "junior_conversations",
-          "columnsFrom": ["subject_conversation_id"],
-          "columnsTo": ["conversation_id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "junior_automations_subject_review_item_fk": {
-          "name": "junior_automations_subject_review_item_fk",
-          "tableFrom": "junior_automations",
-          "tableTo": "junior_review_items",
-          "columnsFrom": ["subject_review_item_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1388,17 +1351,9 @@
           "name": "junior_automations_status_check",
           "value": "\"junior_automations\".\"status\" in ('active', 'blocked', 'paused', 'completed', 'deleted')"
         },
-        "junior_automations_action_check": {
-          "name": "junior_automations_action_check",
-          "value": "\"junior_automations\".\"action\" in ('run', 'wake')"
-        },
         "junior_automations_task_check": {
           "name": "junior_automations_task_check",
-          "value": "(\"junior_automations\".\"action\" = 'wake' and \"junior_automations\".\"instruction\" is null and \"junior_automations\".\"skill\" is null) or (\"junior_automations\".\"action\" = 'run' and (\"junior_automations\".\"instruction\" is null) <> (\"junior_automations\".\"skill\" is null))"
-        },
-        "junior_automations_destination_check": {
-          "name": "junior_automations_destination_check",
-          "value": "(\"junior_automations\".\"action\" = 'run' and \"junior_automations\".\"team_id\" is not null and \"junior_automations\".\"channel_id\" is not null and \"junior_automations\".\"creator_slack_user_id\" is not null and \"junior_automations\".\"subject_conversation_id\" is null and \"junior_automations\".\"subject_review_item_id\" is null) or (\"junior_automations\".\"action\" = 'wake' and \"junior_automations\".\"team_id\" is null and \"junior_automations\".\"channel_id\" is null and \"junior_automations\".\"creator_slack_user_id\" is null and \"junior_automations\".\"subject_conversation_id\" is not null)"
+          "value": "(\"junior_automations\".\"instruction\" is null) <> (\"junior_automations\".\"skill\" is null)"
         },
         "junior_automations_record_check": {
           "name": "junior_automations_record_check",
@@ -1406,7 +1361,7 @@
         },
         "junior_automations_trigger_check": {
           "name": "junior_automations_trigger_check",
-          "value": "(\"junior_automations\".\"kind\" = 'scheduled' and \"junior_automations\".\"namespace\" is null and \"junior_automations\".\"identifier\" is null) or (\"junior_automations\".\"kind\" = 'event' and \"junior_automations\".\"namespace\" is not null and \"junior_automations\".\"run_now_at_ms\" is null and (\"junior_automations\".\"action\" = 'wake' or (\"junior_automations\".\"next_run_at_ms\" is null and \"junior_automations\".\"status\" <> 'completed')))"
+          "value": "(\"junior_automations\".\"kind\" = 'scheduled' and \"junior_automations\".\"namespace\" is null and \"junior_automations\".\"identifier\" is null) or (\"junior_automations\".\"kind\" = 'event' and \"junior_automations\".\"namespace\" is not null and \"junior_automations\".\"next_run_at_ms\" is null and \"junior_automations\".\"run_now_at_ms\" is null and \"junior_automations\".\"status\" <> 'completed')"
         }
       },
       "isRLSEnabled": false
@@ -1975,6 +1930,77 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.junior_conversation_embeddings": {
+      "name": "junior_conversation_embeddings",
+      "schema": "",
+      "columns": {
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "brief_version": {
+          "name": "brief_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dimensions": {
+          "name": "dimensions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding": {
+          "name": "embedding",
+          "type": "vector",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "junior_conversation_embeddings_brief_fk": {
+          "name": "junior_conversation_embeddings_brief_fk",
+          "tableFrom": "junior_conversation_embeddings",
+          "tableTo": "junior_conversation_briefs",
+          "columnsFrom": ["conversation_id", "brief_version"],
+          "columnsTo": ["conversation_id", "version"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "junior_conversation_embeddings_dimensions_check": {
+          "name": "junior_conversation_embeddings_dimensions_check",
+          "value": "vector_dims(\"junior_conversation_embeddings\".\"embedding\") = \"junior_conversation_embeddings\".\"dimensions\""
+        }
+      },
       "isRLSEnabled": false
     },
     "public.junior_conversation_events": {

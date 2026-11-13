@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { PGlite, type Transaction } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { drizzle } from "drizzle-orm/pglite";
 
 type PgliteQueryClient = PGlite | Transaction;
@@ -95,7 +96,10 @@ class LocalPgliteExecutor<TDatabase> implements LocalPgliteFixture<TDatabase> {
 export async function createLocalPgliteFixture<TDatabase>(
   schema: Record<string, unknown>,
 ): Promise<LocalPgliteFixture<TDatabase>> {
-  const client = await PGlite.create(`memory://junior-sql-${randomUUID()}`);
+  // The Junior schema stores Conversation embeddings in a pgvector column.
+  const client = await PGlite.create(`memory://junior-sql-${randomUUID()}`, {
+    extensions: { vector },
+  });
 
   return new LocalPgliteExecutor<TDatabase>(client, schema);
 }

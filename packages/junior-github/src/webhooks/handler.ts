@@ -39,6 +39,7 @@ import {
   loadCheckSuiteFacts,
   needsCheckSuitePullRequestFacts,
   parseCheckSuitePublishTargets,
+  wantsCheckSuitePassed,
 } from "./check-suite.js";
 import { normalizeGitHubEvents } from "./events.js";
 import {
@@ -47,11 +48,10 @@ import {
 } from "./merge-conflict.js";
 import { scheduleGitHubPushConflictCheck } from "../merge-conflict-checks/webhooks.js";
 import {
-  pullRequestReadyTargets,
-  syncGitHubPullRequestReadyNotices,
-} from "./pull-request-ready.js";
+  pullRequestActionTargets,
+  syncGitHubPullRequestActions,
+} from "./pull-request-action.js";
 import { requestGitHubReviewersWhenReady } from "./pull-request-ready-reviewers.js";
-import { syncGitHubPullRequestReviewRequest } from "./pull-request-review-request.js";
 import {
   withGitHubPullRequestMatchData,
   type GitHubRoleTarget,
@@ -164,6 +164,10 @@ export function createGitHubWebhookRoute(args: {
   loadGitHubIncidents?(): Promise<GitHubStatusIncident[]>;
   /** Read one pull request for its mergeability. */
   loadPullRequest?(pullRequest: GitHubPullRequestRef): Promise<unknown>;
+  /** Read one pull request's history for the merge conflict policy. */
+  loadPullRequestConflictHistory?(
+    pullRequest: GitHubPullRequestRef,
+  ): Promise<unknown>;
   /** Load a repository role for `openerRole`. */
   loadRepositoryRole?(target: GitHubRoleTarget): Promise<string>;
   /** Linked GitHub login of the user of one Junior identity, if any. */
@@ -339,6 +343,12 @@ export function createGitHubWebhookRoute(args: {
               appIdEnv: args.appIdEnv,
               body,
               installationIdEnv: args.installationIdEnv,
+              loadCheckSuites: await wantsCheckSuitePassed({
+                body,
+                deliveryId,
+                hasMatch: args.events.hasMatch,
+                neededMatchKeys: args.events.neededMatchKeys,
+              }),
               ...(args.loadGitHubIncidents
                 ? { loadGitHubIncidents: args.loadGitHubIncidents }
                 : undefined),
@@ -413,12 +423,15 @@ export function createGitHubWebhookRoute(args: {
       // reaction, so a Watch that wants only conflicts does not mark a comment.
       events.push(
         ...(await loadGitHubMergeConflictEvents({
+          db: args.db,
           deliveryId,
           events,
           hasMatch,
+          loadConflictHistory: args.loadPullRequestConflictHistory,
           loadPullRequest: args.loadPullRequest,
           log: args.log,
           pullRequestPayload: eventName === "pull_request" ? body : undefined,
+          reviewItems: args.reviewItems,
         })),
       );
       for (const event of events) {
@@ -433,7 +446,7 @@ export function createGitHubWebhookRoute(args: {
                 : "item",
         });
       }
-      await syncGitHubPullRequestReadyNotices({
+      await syncGitHubPullRequestActions({
         db: args.db,
         deliveryId,
         env: {
@@ -441,9 +454,10 @@ export function createGitHubWebhookRoute(args: {
           installationIdEnv: args.installationIdEnv,
           privateKeyEnv: args.privateKeyEnv,
         },
+        loadGitHubLogin: args.loadGitHubLogin,
         log: args.log,
         reviewItems: args.reviewItems,
-        targets: pullRequestReadyTargets(eventName, body),
+        targets: pullRequestActionTargets(eventName, body),
       });
       await requestGitHubReviewersWhenReady({
         body,
@@ -458,15 +472,6 @@ export function createGitHubWebhookRoute(args: {
         loadGitHubLogin: args.loadGitHubLogin,
         log: args.log,
         state: args.state,
-      });
-      await syncGitHubPullRequestReviewRequest({
-        body,
-        db: args.db,
-        deliveryId,
-        eventName,
-        loadGitHubLogin: args.loadGitHubLogin,
-        log: args.log,
-        reviewItems: args.reviewItems,
       });
       if (
         !pullRequestOutcome &&

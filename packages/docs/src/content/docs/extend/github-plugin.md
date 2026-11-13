@@ -494,7 +494,14 @@ A check suite finished with failure or timeout. Trusted data includes the full h
 <details class="event">
 <summary><code>pull_request.checks.recovered</code></summary>
 
-A check suite finished successfully after a failure. Trusted data includes the full head SHA, suite id/url, optional `head_branch`, and the PR number when one is attached. This is for one suite only. It does not mean the whole PR or branch is green. Suites with no pull request publish only to the repository. When a watch or event automation uses `is_draft`, `opener_username`, `opener_email`, or `opener_role`, Junior loads those pull request fields for same-repo pull requests only. `authors` loads from the pull request commits. `head_branch` comes from the webhook and does not need that load.
+A check suite finished successfully. Trusted data includes the full head SHA, suite id/url, optional `head_branch`, and the PR number when one is attached. This is for one suite only. It does not mean the whole PR or branch is green. Use `pull_request.checks.passed` for that. Suites with no pull request publish only to the repository. When a watch or event automation uses `is_draft`, `opener_username`, `opener_email`, or `opener_role`, Junior loads those pull request fields for same-repo pull requests only. `authors` loads from the pull request commits. `head_branch` comes from the webhook and does not need that load.
+
+</details>
+
+<details class="event">
+<summary><code>pull_request.checks.passed</code></summary>
+
+Every check suite on the head commit passed. A suite passes when it finishes with success, neutral, or skipped, and the suite that finishes last can have any of these results. A queued suite with no check runs does not count, because GitHub makes one for each app that can write checks, even when the app adds no check run. GitHub Actions suites always count. Commit statuses do not count. A Watch or event automation gets this event once for each head commit, even when two suites finish at the same time. Trusted data is the same as `pull_request.checks.recovered`, for the suite that finished last. Junior reads the other suites of the commit only when a Watch or event automation wants this event, with one GitHub API read for each 100 suites.
 
 </details>
 
@@ -587,6 +594,26 @@ Junior creates after it opens a pull request always gets this event, and the
 default guidance tells the agent to merge the base branch, not rebase. For a
 pull request in a stack, the guidance tells the agent to restack with
 `gh stack rebase`, because a stack merges only with a linear history.
+
+A draft pull request never gets this event. Each event starts an agent turn,
+so for a pull request that Junior opened, the event publishes only while
+people work on it:
+
+- In the first 2 days after the latest push, review, or comment by a person,
+  or after the pull request opened, the event publishes at most once a day
+  and 3 times in total.
+- After that, or after the third event, Junior publishes no event. It adds
+  a review desk notice to the conversation that asked for the pull request.
+  The notice closes when the conflict is gone.
+- After 3 days without activity by a person, Junior does nothing.
+- An approved pull request would be ready to merge but for the conflict. It
+  gets the event after those 2 days too, and without the daily wait, until
+  the total limit. The ready to merge notice needs a clean merge state, so it
+  comes after the fix.
+
+Junior stores none of this. For each conflict, it reads the pull request's
+timeline and review decision from GitHub. Merges and force pushes by a bot
+count as earlier fixes. Each head commit publishes one event.
 
 </details>
 

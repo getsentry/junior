@@ -1,11 +1,19 @@
 import {
   OBJECT_SUMMARY_MAX_LENGTH,
   objectLinkFilterMatches,
+  objectLinkFilterSpecificity,
   type PluginObjectLinkDefinition,
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src";
-import { ACCOUNT_EMAIL, stubGoogleEnv } from "./fixture";
+import { saveGoogleAccount } from "../src/store";
+import {
+  ACCOUNT_EMAIL,
+  ADMIN_EMAIL,
+  API_SCOPES,
+  createGoogleDb,
+  stubGoogleEnv,
+} from "./fixture";
 
 const DOC_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcd";
 const DOC_URL = `https://docs.google.com/document/d/${DOC_ID}/edit`;
@@ -16,6 +24,25 @@ const DOC = {
   mimeType: "application/vnd.google-apps.document",
   modifiedTime: "2026-10-01T10:00:00.000Z",
   name: TITLE,
+  owners: [{ displayName: "Bob Example", emailAddress: "bob@example.com" }],
+};
+
+const DRIVE = "https://drive.google.com";
+
+const PDF = {
+  id: DOC_ID,
+  mimeType: "application/pdf",
+  modifiedTime: "2026-10-02T09:30:00.000Z",
+  name: "Q3 metrics.pdf",
+  owners: [{ displayName: "Bob Example", emailAddress: "bob@example.com" }],
+  thumbnailLink: "https://lh3.googleusercontent.com/drive-storage/thumb=s220",
+};
+
+const FOLDER = {
+  id: DOC_ID,
+  mimeType: "application/vnd.google-apps.folder",
+  modifiedTime: "2026-10-03T08:00:00.000Z",
+  name: "Launch assets",
   owners: [{ displayName: "Bob Example", emailAddress: "bob@example.com" }],
 };
 
@@ -120,6 +147,8 @@ async function resolveAs(
   const ctx = {
     cache: google.cache,
     egress: { fetch: google.fetch },
+    imagePath: (ref: string, version?: string) =>
+      `/api/images/${Buffer.from(ref).toString("base64url")}.sig?w=640${version ? `&v=${version}` : ""}`,
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     viewer: { email, id: `test:${email}`, identities: [] },
   } as never;
@@ -312,11 +341,250 @@ describe("Google link cards", () => {
       expect(fileReads).toHaveLength(1);
     });
 
-    it("names the tool that reads an attached file live", () => {
-      // readGoogleFile reads a Doc, Sheet, or Slides link.
-      expect(linkType("document").readTool).toBe("readGoogleFile");
-      // No tool reads a Calendar event.
+    it("names the tool that reads an attached file live", async () => {
+      const readTool = async (file: unknown, url: string) => {
+        const card = await resolveAs(
+          "alice@example.com",
+          fakeGoogle({ file, finds: [NAMED] }),
+          "document",
+          url,
+        );
+        return linkType("document").readTool?.(card!);
+      };
+      // readGoogleFile reads a Doc, Sheet, or Slides file from any link.
+      expect(await readTool(DOC, DOC_URL)).toBe("readGoogleFile");
+      expect(await readTool(DOC, `${DRIVE}/file/d/${DOC_ID}/view`)).toBe(
+        "readGoogleFile",
+      );
+      // No tool reads another Drive file or a Calendar event.
+      expect(await readTool(PDF, `${DRIVE}/file/d/${DOC_ID}/view`)).toBe(
+        undefined,
+      );
       expect(linkType("calendar_event").readTool).toBeUndefined();
+    });
+  });
+
+  describe("Drive files and folders", () => {
+    const pdfCard = {
+      kind: "object",
+      objectType: "document",
+      key: DOC_ID,
+      label: "Q3 metrics.pdf",
+      title: "Q3 metrics.pdf",
+      url: `${DRIVE}/file/d/${DOC_ID}/view`,
+      displayType: "PDF",
+      sourceUpdatedAt: PDF.modifiedTime,
+      facts: {
+        type: "document",
+        owner: "Bob Example",
+        modifiedAt: PDF.modifiedTime,
+        thumbnailUrl: `/api/images/${Buffer.from(DOC_ID).toString("base64url")}.sig?w=640&v=${Date.parse(PDF.modifiedTime)}`,
+      },
+    };
+
+    it("claims every Drive link form ahead of the web page card", () => {
+      // Core's catch-all web page card matches any https link with no host,
+      // so a matching filter with a host wins over it.
+      const [webPageHostRank = 0] = objectLinkFilterSpecificity({
+        scheme: "https",
+      });
+      for (const url of [
+        `${DRIVE}/file/d/${DOC_ID}/view`,
+        `${DRIVE}/file/u/1/d/${DOC_ID}/view`,
+        `${DRIVE}/open?id=${DOC_ID}`,
+        `${DRIVE}/drive/folders/${DOC_ID}`,
+        `${DRIVE}/drive/u/0/folders/${DOC_ID}`,
+        `${DRIVE}/drive/u/0/my-drive`,
+      ]) {
+        const hostRanks = linkType("document")
+          .filters.filter((filter) =>
+            objectLinkFilterMatches(filter, new URL(url)),
+          )
+          .map((filter) => objectLinkFilterSpecificity(filter)[0] ?? 0);
+        expect(Math.max(-1, ...hostRanks)).toBeGreaterThan(webPageHostRank);
+      }
+    });
+
+    it("shows a Drive link to a Doc as the same card as its Docs link", async () => {
+      const resolveDoc = (url: string) =>
+        resolveAs(
+          "alice@example.com",
+          fakeGoogle({ doc: DOC_BODY, file: DOC, finds: [NAMED] }),
+          "document",
+          url,
+        );
+      const docs = await resolveDoc(DOC_URL);
+      for (const url of [
+        `${DRIVE}/file/d/${DOC_ID}/view?usp=sharing`,
+        `${DRIVE}/open?id=${DOC_ID}`,
+      ]) {
+        expect(await resolveDoc(url)).toEqual({ ...docs, url });
+      }
+      expect(docs).toMatchObject({
+        displayType: "Google Doc",
+        facts: { summary: EXCERPT },
+      });
+    });
+
+    it("shows a PDF with a thumbnail from the image proxy", async () => {
+      for (const url of [
+        `${DRIVE}/file/d/${DOC_ID}/view`,
+        `${DRIVE}/file/u/1/d/${DOC_ID}/view`,
+        `${DRIVE}/open?id=${DOC_ID}`,
+      ]) {
+        const card = await resolveAs(
+          "alice@example.com",
+          fakeGoogle({ file: PDF, finds: [NAMED] }),
+          "document",
+          url,
+        );
+        expect(card).toEqual({ ...pdfCard, url });
+        // The card names a Junior image path, never Google's link.
+        expect(JSON.stringify(card)).not.toContain("googleusercontent");
+      }
+    });
+
+    it("shows a folder without a thumbnail", async () => {
+      for (const url of [
+        `${DRIVE}/drive/folders/${DOC_ID}`,
+        `${DRIVE}/drive/u/0/folders/${DOC_ID}?usp=sharing`,
+        `${DRIVE}/open?id=${DOC_ID}`,
+      ]) {
+        await expect(
+          resolveAs(
+            "alice@example.com",
+            fakeGoogle({ file: FOLDER, finds: [ANYONE] }),
+            "document",
+            url,
+          ),
+        ).resolves.toEqual({
+          kind: "object",
+          objectType: "document",
+          key: DOC_ID,
+          label: "Launch assets",
+          title: "Launch assets",
+          url,
+          displayType: "Google Drive folder",
+          sourceUpdatedAt: FOLDER.modifiedTime,
+          facts: {
+            type: "document",
+            owner: "Bob Example",
+            modifiedAt: FOLDER.modifiedTime,
+          },
+        });
+      }
+    });
+
+    it("hides a Drive link that does not fit the file", async () => {
+      for (const [file, url] of [
+        [FOLDER, `${DRIVE}/file/d/${DOC_ID}/view`],
+        [PDF, `${DRIVE}/drive/folders/${DOC_ID}`],
+        [{ ...PDF, trashed: true }, `${DRIVE}/file/d/${DOC_ID}/view`],
+        [
+          { ...PDF, mimeType: "application/vnd.google-apps.shortcut" },
+          `${DRIVE}/open?id=${DOC_ID}`,
+        ],
+        [PDF, `${DRIVE}/drive/u/0/my-drive`],
+      ] as const) {
+        await expect(
+          resolveAs(
+            "alice@example.com",
+            fakeGoogle({ file, finds: [NAMED] }),
+            "document",
+            url,
+          ),
+        ).resolves.toBeUndefined();
+      }
+    });
+
+    it("hides a Drive file shared only with a group", async () => {
+      // A group share names no viewer, so no Drive query finds the file.
+      await expect(
+        resolveAs(
+          "alice@example.com",
+          fakeGoogle({ file: PDF, finds: [] }),
+          "document",
+          `${DRIVE}/file/d/${DOC_ID}/view`,
+        ),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe("Drive thumbnails", () => {
+    let fixture: Awaited<ReturnType<typeof createGoogleDb>>;
+    beforeEach(async () => {
+      fixture = await createGoogleDb();
+      await saveGoogleAccount(fixture.db(), {
+        accountEmail: ACCOUNT_EMAIL,
+        connectedAtMs: Date.now(),
+        connectedBy: ADMIN_EMAIL,
+        refreshToken: "refresh-token",
+        scope: API_SCOPES,
+      });
+    });
+    afterEach(async () => {
+      vi.unstubAllGlobals();
+      await fixture.close();
+    });
+
+    function readThumbnail(
+      email: string,
+      google: ReturnType<typeof fakeGoogle>,
+      ref = DOC_ID,
+    ) {
+      // The token refresh is the only global fetch.
+      const tokenFetch = vi.fn(async () =>
+        Response.json({ access_token: "access-token", expires_in: 3600 }),
+      );
+      vi.stubGlobal("fetch", tokenFetch);
+      const result = googlePlugin().images!.resolve(
+        {
+          db: fixture.db(),
+          egress: { fetch: google.fetch },
+          log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+          viewer: { email, id: `test:${email}`, identities: [] },
+        } as never,
+        ref,
+      );
+      return { result, tokenFetch };
+    }
+
+    it("sends Junior's credential only to Google's thumbnail host", async () => {
+      const { result, tokenFetch } = readThumbnail(
+        "alice@example.com",
+        fakeGoogle({ file: PDF, finds: [NAMED] }),
+      );
+      await expect(result).resolves.toEqual({
+        headers: { authorization: "Bearer access-token" },
+        url: "https://lh3.googleusercontent.com/drive-storage/thumb=s640",
+      });
+      expect(tokenFetch).toHaveBeenCalledOnce();
+    });
+
+    it("serves no thumbnail and reads no token for a denied viewer", async () => {
+      for (const google of [
+        fakeGoogle({ file: PDF, finds: [] }),
+        fakeGoogle({ file: { ...PDF, trashed: true }, finds: [NAMED] }),
+        fakeGoogle({ file: FOLDER, finds: [NAMED] }),
+        fakeGoogle({
+          file: { ...PDF, thumbnailLink: "https://evil.example.com/t=s220" },
+          finds: [NAMED],
+        }),
+        fakeGoogle({}),
+      ]) {
+        const { result, tokenFetch } = readThumbnail(
+          "alice@example.com",
+          google,
+        );
+        await expect(result).resolves.toBeUndefined();
+        expect(tokenFetch).not.toHaveBeenCalled();
+      }
+      const { result } = readThumbnail(
+        "alice@example.com",
+        fakeGoogle({ file: PDF, finds: [NAMED] }),
+        "../other",
+      );
+      await expect(result).resolves.toBeUndefined();
     });
   });
 

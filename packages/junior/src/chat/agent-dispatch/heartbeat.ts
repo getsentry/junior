@@ -8,6 +8,7 @@ import {
   type AppEventPublisher,
 } from "@/chat/plugins/agent-hooks";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
+import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
@@ -68,6 +69,7 @@ export async function runPluginHeartbeats(args: {
   events: AppEventPublisher;
   limit?: number;
   nowMs: number;
+  showReviewItem?: ShowReviewItem;
 }): Promise<void> {
   let count = 0;
   for (const plugin of getPlugins()) {
@@ -89,6 +91,7 @@ export async function runPluginHeartbeats(args: {
               events: createPluginEventPublisher(plugin, args.events),
               plugin,
               nowMs: args.nowMs,
+              showReviewItem: args.showReviewItem,
             }),
           ),
         ),
@@ -203,6 +206,8 @@ export async function runHeartbeat(args: {
   /** The app's event publisher. */
   events?: AppEventPublisher;
   nowMs: number;
+  /** Shows a Review item that a plugin heartbeat changed. */
+  showReviewItem?: ShowReviewItem;
 }): Promise<void> {
   const queue = args.conversationWorkQueue ?? getVercelConversationWorkQueue();
   const events =
@@ -265,6 +270,7 @@ export async function runHeartbeat(args: {
     conversationWorkQueue: queue,
     events,
     nowMs: args.nowMs,
+    showReviewItem: args.showReviewItem,
   });
   try {
     // Last, so a long first run does not delay the work above.
