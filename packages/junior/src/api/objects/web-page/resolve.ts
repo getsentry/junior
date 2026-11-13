@@ -5,7 +5,7 @@
  */
 import { createHash } from "node:crypto";
 import type { ObjectAnnotation } from "@sentry/junior-plugin-api";
-import { getDashboardOrigin } from "@/chat/dashboard-link";
+import { isDashboardLink } from "@/chat/dashboard-link";
 import { imagePath } from "@/chat/images/ids";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createCache } from "@/chat/state/cache";
@@ -34,7 +34,7 @@ type Page = {
   author?: string;
   cacheAgeSeconds?: number;
   description?: string;
-  image?: string;
+  images: string[];
   siteName?: string;
   title?: string;
 };
@@ -60,7 +60,7 @@ async function readOembed(url: URL): Promise<Page | undefined> {
   return {
     author: oembed.author_name,
     cacheAgeSeconds: oembed.cache_age,
-    image: oembed.thumbnail_url,
+    images: oembed.thumbnail_url ? [oembed.thumbnail_url] : [],
     siteName: oembed.provider_name,
     title: oembed.title,
   };
@@ -89,13 +89,16 @@ async function readMetaTags(
   };
 }
 
-// Serve a thumbnail only through the Junior image route.
-function thumbnailPath(image: string | undefined, base: string) {
-  if (!image || !URL.canParse(image, base)) return undefined;
-  const url = new URL(image, base);
-  if (url.protocol !== "https:") return undefined;
-  if (url.href.length > MAX_THUMBNAIL_URL_CHARS) return undefined;
-  return imagePath({ ref: url.href, source: "public" }, THUMBNAIL_WIDTH);
+// Serve the first usable image only through the Junior image route. Many
+// pages list an `http` `og:image` before an `https` one.
+function thumbnailPath(images: string[], base: string) {
+  for (const image of images) {
+    const url = URL.parse(image, base);
+    if (url?.protocol !== "https:") continue;
+    if (url.href.length > MAX_THUMBNAIL_URL_CHARS) continue;
+    return imagePath({ ref: url.href, source: "public" }, THUMBNAIL_WIDTH);
+  }
+  return undefined;
 }
 
 async function loadWebPage(
@@ -114,7 +117,7 @@ async function loadWebPage(
       author: page.author,
       description: page.description,
       siteName: page.siteName ?? url.hostname,
-      thumbnailUrl: thumbnailPath(page.image, page.pageUrl),
+      thumbnailUrl: thumbnailPath(page.images, page.pageUrl),
       title: page.title,
       url: url.href,
     }),
@@ -130,7 +133,7 @@ async function loadWebPage(
 async function resolveWebPageLink(
   url: URL,
 ): Promise<ObjectAnnotation | undefined> {
-  if (url.origin === getDashboardOrigin()) return undefined;
+  if (isDashboardLink(url)) return undefined;
   if (url.username || url.password) return undefined;
   const key = createHash("sha256").update(url.href).digest("hex");
   const card = await createCache(getStateAdapter(), "web-pages").getOrLoad(

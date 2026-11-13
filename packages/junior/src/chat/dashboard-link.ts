@@ -89,10 +89,21 @@ export function getDashboardConversationLink(
   );
 }
 
-/** Return the dashboard origin when the core dashboard is enabled. */
-export function getDashboardOrigin(): string | undefined {
-  const link = resolveDashboardPath("/");
-  return link && new URL(link).origin;
+/**
+ * Return whether a URL is under the core dashboard base path. Other pages on
+ * the same host are not Junior's.
+ */
+export function isDashboardLink(url: URL): boolean {
+  const root = resolveDashboardPath("/");
+  if (!root) return false;
+  const base = new URL(root);
+  const prefix = base.pathname.endsWith("/")
+    ? base.pathname
+    : `${base.pathname}/`;
+  return (
+    url.origin === base.origin &&
+    (url.pathname.startsWith(prefix) || `${url.pathname}/` === prefix)
+  );
 }
 
 /** Build the dashboard settings URL when the core dashboard is enabled. */

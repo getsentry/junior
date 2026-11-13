@@ -9,6 +9,7 @@ import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { MAX_WEB_PAGE_BYTES } from "@/api/objects/web-page/resolve";
 import { objectLinksReportSchema } from "@/api/schema";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { decodeImageId } from "@/chat/images/ids";
 import { testViewer } from "../../fixtures/user";
 import { mswServer } from "../../msw/server";
@@ -229,6 +230,62 @@ describe("web page cards", () => {
       expect(plainHits).toBe(0);
     } finally {
       await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
+  test("uses the first https image when an earlier image tag is plain http", async () => {
+    mswServer.use(
+      http.get("https://news.example.com/story", () =>
+        HttpResponse.html(
+          page(
+            [
+              '<meta property="og:title" content="Story">',
+              '<meta property="og:image" content="http://cdn.example.com/plain.png">',
+              '<meta name="twitter:image" content="https://cdn.example.com/secure.png">',
+            ].join(""),
+          ),
+        ),
+      ),
+    );
+    const url = "https://news.example.com/story";
+    const facts = (await resolveLinks([url])).objects.get(url)?.facts;
+    const thumbnail =
+      facts?.type === "web_page" ? facts.thumbnailUrl : undefined;
+    const id = thumbnail?.match(/^\/api\/images\/([^?]+)\?w=640$/)?.[1];
+    expect(id && decodeImageId(id)).toEqual({
+      ref: "https://cdn.example.com/secure.png",
+      source: "public",
+    });
+  });
+
+  test("previews other pages on the dashboard host but not dashboard pages", async () => {
+    const previous = setDashboardConversationLinkOptions({
+      baseURL: "https://company.example.com",
+      basePath: "/junior",
+    });
+    let dashboardFetches = 0;
+    mswServer.use(
+      http.get("https://company.example.com/junior/*", () => {
+        dashboardFetches += 1;
+        return HttpResponse.html(
+          page('<meta property="og:title" content="Dashboard">'),
+        );
+      }),
+      http.get("https://company.example.com/blog", () =>
+        HttpResponse.html(
+          page('<meta property="og:title" content="Company blog">'),
+        ),
+      ),
+    );
+    try {
+      const { objects } = await resolveLinks([
+        "https://company.example.com/blog",
+        "https://company.example.com/junior/automations",
+      ]);
+      expect([...objects.keys()]).toEqual(["https://company.example.com/blog"]);
+      expect(dashboardFetches).toBe(0);
+    } finally {
+      setDashboardConversationLinkOptions(previous);
     }
   });
 

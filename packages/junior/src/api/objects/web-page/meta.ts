@@ -12,7 +12,8 @@ type Element = DefaultTreeAdapterMap["element"];
 export interface PageMeta {
   author?: string;
   description?: string;
-  image?: string;
+  /** Image candidates, best first. A page can list one Junior cannot use. */
+  images: string[];
   siteName?: string;
   title?: string;
 }
@@ -61,13 +62,13 @@ export function parsePageMeta(html: string): PageMeta {
   return {
     author: first("author", "twitter:creator"),
     description: first("og:description", "twitter:description", "description"),
-    image: first(
+    images: [
       "og:image:secure_url",
       "og:image",
       "og:image:url",
       "twitter:image",
       "twitter:image:src",
-    ),
+    ].flatMap((name) => tags.get(name) ?? []),
     siteName: first("og:site_name", "application-name"),
     title: first("og:title", "twitter:title") ?? title,
   };
