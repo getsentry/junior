@@ -144,6 +144,17 @@ describe("GitHub reply markdown", () => {
     ).toContain(", #3");
   });
 
+  it("links Enterprise Managed User logins", () => {
+    expect(
+      linkifyGitHubReferences("ask @ada_acme", {
+        mention: (login) => (login === "ada_acme" ? "Ada" : undefined),
+      }),
+    ).toBe("ask Ada");
+    expect(linkifyGitHubReferences("@bob_acme opened getsentry/junior#1")).toBe(
+      "[@bob_acme](https://github.com/bob_acme) opened [getsentry/junior#1](https://github.com/getsentry/junior/issues/1)",
+    );
+  });
+
   it("does not pair a stray < with the > of a later Slack token", () => {
     expect(
       linkifyGitHubReferences(

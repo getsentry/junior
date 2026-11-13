@@ -10,6 +10,8 @@ import {
 // GitHub autolinked references, rendered as Markdown links for chat replies.
 // https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/autolinked-references-and-urls
 const OWNER = "[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?";
+// Enterprise Managed User logins end in `_shortcode`, such as `ada_acme`.
+const LOGIN = `${OWNER}(?:_[A-Za-z0-9]+)?`;
 const REPO = "[A-Za-z0-9._-]+";
 const SHA = "[0-9a-f]{7,40}";
 // A reference must not continue a word, path, domain, email, HTML entity,
@@ -22,10 +24,10 @@ const TEXT_REFERENCE_PATTERN = new RegExp(
   [
     `${START}(?<issueOwner>${OWNER})\\/(?<issueRepo>${REPO})#(?<issue>\\d+)${END}`,
     `${START}(?<commitOwner>${OWNER})\\/(?<commitRepo>${REPO})@(?<commit>${SHA})${END}`,
-    `${START}(?<user>${OWNER})@(?<userCommit>[0-9a-f]{40})${END}`,
+    `${START}(?<user>${LOGIN})@(?<userCommit>[0-9a-f]{40})${END}`,
     `${START}(?:#|GH-)(?<bareIssue>\\d+)${END}`,
     // Not `@scope/name`, which is an npm package more often than a team.
-    `${START}@(?<mention>${OWNER})(?![\\w/-]|\\.\\w)`,
+    `${START}@(?<mention>${LOGIN})(?![\\w/-]|\\.\\w)`,
     // Only full SHAs: shorter hex runs are often other IDs, such as event IDs.
     `${START}(?<bareCommit>[0-9a-f]{40})${END}`,
   ].join("|"),
