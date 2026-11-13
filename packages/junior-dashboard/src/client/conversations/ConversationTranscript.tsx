@@ -4,7 +4,6 @@ import {
   use,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -62,7 +61,6 @@ import {
 } from "./TranscriptMessageView";
 import { TranscriptEventView } from "./TranscriptEventView";
 import {
-  createVisibleRowsStore,
   TranscriptAnswerLinks,
   TranscriptAnswerLinkSegments,
   transcriptAnswerLinks,
@@ -629,10 +627,9 @@ function TranscriptEntryList(
     return () => observer.disconnect();
   }, [askIndex, askReveal]);
   useEffect(() => () => window.clearTimeout(askHighlight.current?.timer), []);
-  const [visibleRows] = useState(createVisibleRowsStore);
   const answerLinks = useMemo(
-    () => transcriptAnswerLinksValue(transcriptAnswerLinks(rows), visibleRows),
-    [rows, visibleRows],
+    () => transcriptAnswerLinksValue(transcriptAnswerLinks(rows)),
+    [rows],
   );
   const anchorKey = props.scrollAnchorKey?.();
   const markerIndex = indexByKey.get(UNREAD_MARKER_KEY);
@@ -666,9 +663,6 @@ function TranscriptEntryList(
     listRef,
     sizeClass: (index) => transcriptRowSizeClass(rows[index]!),
   });
-  // A question repeats its answer only while the answer row is out of the
-  // scroll pane. Before paint, so the answer line does not flash.
-  useLayoutEffect(() => visibleRows.set(virtualizer.range));
   // Rows render again only when the renderers change, not on each scroll.
   const {
     redacted,

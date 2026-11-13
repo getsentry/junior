@@ -9,7 +9,6 @@ import type {
 import { MessageCard, MessageCardHeader } from "../components/MessageCard";
 import {
   TranscriptShowQuestion,
-  useAnswerInView,
   useAnswerLinked,
 } from "../conversations/TranscriptAnswerLinks";
 import { useConversationReviewItemData } from "./queries";
@@ -179,7 +178,7 @@ function askMeta(item: ReviewItemPayload): string {
 
 /**
  * Say what an open item waits for, or give the answer. A linked answer row
- * in view already shows the answer.
+ * already shows the answer.
  */
 function askOutcome(
   item: ReviewItemPayload,
@@ -210,8 +209,9 @@ export function ReviewItemAskRow(props: {
     props.conversationId,
     props.itemId,
   );
-  // The record repeats the answer only while its answer row is out of view.
-  const answerShown = useAnswerInView(props.itemId);
+  // The record repeats the answer only when the transcript has no answer row
+  // to link. It does not follow the scroll, so its height stays the same.
+  const answerShown = useAnswerLinked(props.itemId);
   if (isError) return props.fallback;
   if (!item) return null;
   const verb = item.kind === "action" ? "Asked" : "Added";

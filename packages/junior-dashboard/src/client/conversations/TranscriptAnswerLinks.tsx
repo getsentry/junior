@@ -1,4 +1,4 @@
-import { createContext, use, useSyncExternalStore } from "react";
+import { createContext, use } from "react";
 
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
@@ -59,46 +59,15 @@ export function transcriptAnswerLinks(
 
 type LinkSegment = { lane: number; part: "start" | "middle" | "end" };
 
-/**
- * Hold the rows that the list shows in its scroll pane, so a question can
- * repeat an answer that is out of view. Make one for each transcript list.
- */
-export function createVisibleRowsStore() {
-  let range: { endIndex: number; startIndex: number } | null = null;
-  const listeners = new Set<() => void>();
-  return {
-    shows: (index: number) =>
-      range !== null && index >= range.startIndex && index <= range.endIndex,
-    set(next: { endIndex: number; startIndex: number } | null) {
-      if (
-        range?.startIndex === next?.startIndex &&
-        range?.endIndex === next?.endIndex
-      ) {
-        return;
-      }
-      range = next && { endIndex: next.endIndex, startIndex: next.startIndex };
-      for (const listener of listeners) listener();
-    },
-    subscribe(listener: () => void) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-  };
-}
-
 type TranscriptAnswerLinksValue = {
-  /** The answer row of each item whose question has a row. */
-  answerIndexes: ReadonlyMap<string, number>;
   /** The row of each question that has an answer row. */
   askIndexes: ReadonlyMap<string, number>;
   segments: ReadonlyMap<number, readonly LinkSegment[]>;
-  visibleRows: ReturnType<typeof createVisibleRowsStore>;
 };
 
 /** Build the context value of one transcript list from its links. */
 export function transcriptAnswerLinksValue(
   links: readonly TranscriptAnswerLink[],
-  visibleRows: TranscriptAnswerLinksValue["visibleRows"],
 ): TranscriptAnswerLinksValue {
   const segments = new Map<number, LinkSegment[]>();
   const add = (index: number, segment: LinkSegment) =>
@@ -111,12 +80,8 @@ export function transcriptAnswerLinksValue(
     add(link.answerIndex, { lane: link.lane, part: "end" });
   }
   return {
-    answerIndexes: new Map(
-      links.map((link) => [link.itemId, link.answerIndex]),
-    ),
     askIndexes: new Map(links.map((link) => [link.itemId, link.askIndex])),
     segments,
-    visibleRows,
   };
 }
 
@@ -128,25 +93,6 @@ export const TranscriptAnswerLinks = createContext<
 /** True when the question of an item has a row and an answer row. */
 export function useAnswerLinked(itemId: string): boolean {
   return use(TranscriptAnswerLinks)?.askIndexes.has(itemId) ?? false;
-}
-
-const noRows = { shows: () => false, subscribe: () => () => {} };
-
-function useRowInView(
-  index: (value: TranscriptAnswerLinksValue) => number | undefined,
-): boolean {
-  const value = use(TranscriptAnswerLinks);
-  const rowIndex = value ? index(value) : undefined;
-  const rows = value?.visibleRows ?? noRows;
-  return useSyncExternalStore(
-    rows.subscribe,
-    () => rowIndex !== undefined && rows.shows(rowIndex),
-  );
-}
-
-/** True while the scroll pane shows the answer row of an item. */
-export function useAnswerInView(itemId: string): boolean {
-  return useRowInView((value) => value.answerIndexes.get(itemId));
 }
 
 /**
