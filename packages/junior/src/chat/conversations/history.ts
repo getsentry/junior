@@ -656,6 +656,11 @@ export interface ConversationEventQuery {
   limit: number;
   /** Optional event-type filter. Empty/undefined returns every type. */
   types?: readonly KnownConversationEventType[];
+  /**
+   * Optional filter on the stored author Identity of a message. Undefined
+   * returns every author. Empty returns nothing.
+   */
+  authorIdentityIds?: readonly string[];
 }
 
 /** One page of raw conversation events plus pagination hints. */

@@ -62,8 +62,12 @@ export function renderReviewItemMessage(
   const question = item.request ? [`Question: ${item.request.question}`] : [];
   switch (change.kind) {
     case "submitted":
+      // The answer names only field labels and options, so it carries the
+      // question that the person answered. Without it, a choice such as
+      // "Approve for the whole effort" does not say what it approves.
       return [
         `${personName(change.user)} answered ${label}. The item is done.`,
+        ...question,
         "",
         item.request && item.answer
           ? formatUserInputAnswer(item.request, item.answer)
