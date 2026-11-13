@@ -54,6 +54,7 @@ import {
   SEARCH_TOOLS_NAME,
 } from "@/chat/tools/search-tools";
 import {
+  mayNeedReview,
   reviewToolActions,
   ToolActionRejectedError,
   type ToolAction,
@@ -911,10 +912,9 @@ export function createPiAgentTools(
     prepareArguments: toolDef.prepareArguments,
     // A direct call is reviewed alone, so a tool that may need review runs
     // one at a time. Code Mode reviews a drain as one batch instead.
-    executionMode:
-      toolDef.permission !== undefined && toolDef.permission !== "allow"
-        ? "sequential"
-        : toolDef.executionMode,
+    executionMode: mayNeedReview(toolDef)
+      ? "sequential"
+      : toolDef.executionMode,
     execute: async (
       toolCallId: unknown,
       params: unknown,

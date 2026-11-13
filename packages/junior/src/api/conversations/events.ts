@@ -474,9 +474,6 @@ function reportEventData(args: {
         toolName: data.toolName,
         decider: data.decider,
         decision: data.decision,
-        ...(data.reviewItemId
-          ? { reviewItemId: data.reviewItemId }
-          : undefined),
         ...(data.riskLevel ? { riskLevel: data.riskLevel } : undefined),
         ...(data.userAuthorization
           ? { userAuthorization: data.userAuthorization }

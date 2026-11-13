@@ -413,7 +413,8 @@ export function proposalTool(
 const MAX_VISIBLE_DENIAL_INPUT_CHARS = 4_000;
 const MAX_CONSECUTIVE_REJECTIONS = 3;
 
-function canonicalJson(value: unknown): unknown {
+/** Sort object keys, so equal values have equal JSON. */
+export function canonicalJson(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(canonicalJson);
   }
@@ -456,7 +457,7 @@ function projectedRejection(
 }
 
 /** A core tool stays outside review unless it opts in. Plugin tools default to `auto`. */
-function mayNeedReview(tool: AnyToolDefinition): boolean {
+export function mayNeedReview(tool: AnyToolDefinition): boolean {
   return tool.permission !== undefined && tool.permission !== "allow";
 }
 
@@ -555,15 +556,10 @@ const NO_APPROVER_REASON =
 type ReviewStep =
   | { kind: "skipped" }
   | {
-      kind: "reviewed";
-      decision: ToolActionReviewDecision;
-      proposal: ToolActionProposal;
-      reviewItemId?: string;
-    }
-  | {
-      /** Core decided by the tool's permission, without Guardian. */
       kind: "decided";
-      decision: ActionRejection;
+      /** Guardian, or core by the tool's permission. */
+      decider: "guardian" | "rule";
+      decision: ToolActionReviewDecision | ActionRejection;
       proposal: ToolActionProposal;
       reviewItemId?: string;
     }
@@ -643,35 +639,26 @@ export function createToolActionReview(options: {
         return { kind: "skipped" };
       }
       const { proposal } = plan;
-      if (plan.kind !== "review") {
-        const decided: { decision: ActionRejection; reviewItemId?: string } =
-          plan.kind === "deny"
-            ? { decision: { decision: "deny", reason: DENY_PERMISSION_REASON } }
-            : await askPerson(action, proposal, ASK_PERMISSION_REASON);
-        await options.onDecision({
-          decider: "rule",
-          decision: decided.decision,
-          toolCallId: action.toolCallId,
-          toolName: proposal.tool.name,
-        });
-        return { kind: "decided", ...decided, proposal };
-      }
-      const decision = await options.reviewer.review(
-        proposal,
-        signal ? { signal } : {},
-      );
+      const decider = plan.kind === "review" ? "guardian" : "rule";
+      const decision: ToolActionReviewDecision | ActionRejection =
+        plan.kind === "review"
+          ? await options.reviewer.review(proposal, signal ? { signal } : {})
+          : plan.kind === "deny"
+            ? { decision: "deny", reason: DENY_PERMISSION_REASON }
+            : { decision: "ask", reason: ASK_PERMISSION_REASON };
       await options.onDecision({
-        decider: "guardian",
+        decider,
+        decision,
         toolCallId: action.toolCallId,
         toolName: proposal.tool.name,
-        decision,
       });
       if (decision.decision !== "ask") {
-        return { kind: "reviewed", decision, proposal };
+        return { kind: "decided", decider, decision, proposal };
       }
       const asked = await askPerson(action, proposal, decision.reason);
       return {
-        kind: "reviewed",
+        kind: "decided",
+        decider,
         ...(asked.reviewItemId
           ? { reviewItemId: asked.reviewItemId }
           : undefined),
@@ -718,7 +705,12 @@ export function createToolActionReview(options: {
     });
     states.forEach((state, index) => {
       const step = steps[index]!;
-      if (step.kind !== "reviewed" || state.rejected) {
+      // Only Guardian's decisions count toward the limit.
+      if (
+        step.kind !== "decided" ||
+        step.decider !== "guardian" ||
+        state.rejected
+      ) {
         return;
       }
       if (step.decision.decision === "allow") {
@@ -762,14 +754,13 @@ export function createToolActionReview(options: {
       return { allowed: false, error: step.error };
     }
     const { proposal } = step;
-    const verdict = step.decision.decision;
-    if (verdict === "allow") {
-      return {
-        allowed: true,
-        decision: { ...step.decision, decision: verdict },
-      };
+    if (step.decision.decision === "allow") {
+      return { allowed: true, decision: step.decision };
     }
-    const decision: ActionRejection = { ...step.decision, decision: verdict };
+    const decision: ActionRejection = {
+      ...step.decision,
+      decision: step.decision.decision,
+    };
     const reviewedAction = projectedRejection(proposal, decision);
     addPriorRejection(priorRejections, reviewedAction);
     pendingRejections.set(toolCallId, {

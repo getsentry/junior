@@ -941,7 +941,6 @@ export async function recordActionDecided(args: {
   decision: "allow" | "ask" | "deny";
   costUsd?: number;
   idempotencyKey?: string;
-  reviewItemId?: string;
   riskLevel?: "low" | "medium" | "high" | "critical";
   userAuthorization?: "high" | "medium" | "low" | "unknown";
 }): Promise<boolean> {
@@ -958,9 +957,6 @@ export async function recordActionDecided(args: {
           decision: args.decision,
           ...(args.costUsd !== undefined
             ? { costUsd: args.costUsd }
-            : undefined),
-          ...(args.reviewItemId
-            ? { reviewItemId: args.reviewItemId }
             : undefined),
           ...(args.riskLevel ? { riskLevel: args.riskLevel } : undefined),
           ...(args.userAuthorization

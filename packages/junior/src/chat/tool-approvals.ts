@@ -1,6 +1,10 @@
 /**
  * Tool approvals: `ask` calls that wait for their person's approval.
  *
+ * Junior never runs an action as another person. The approver is the Junior
+ * user of the asking Run's Actor, and the call runs as the approver, in the
+ * Turn their answer starts. That Turn's own credentials run it.
+ *
  * One call has two events in the asking Conversation's event log:
  * `action_review_requested` with the exact call, then at most one person
  * `action_decided`. Its idempotency key allows one per call, and the event
@@ -15,8 +19,6 @@ import { isUserActor, type Actor } from "@/chat/actor";
 import { createAgentInvocationFromLatest } from "@/chat/agent-invocations/create";
 import { getLatestAgentInvocationForConversation } from "@/chat/agent-invocations/store";
 import { enqueueAgentInvocation } from "@/chat/agent-invocations/work";
-import { canonicalJson } from "@/chat/automations/revision";
-import { sameActorIdentity } from "@/chat/conversations/provenance";
 import { recordActionDecided } from "@/chat/conversations/projection";
 import {
   JUNIOR_NATIVE_EVENT_NAMESPACE,
@@ -25,7 +27,7 @@ import {
 } from "@/chat/conversations/structured-events";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { getConversationEventStore, getDb } from "@/chat/db";
-import type { ToolAction } from "@/chat/guardian/gate";
+import { canonicalJson, type ToolAction } from "@/chat/guardian/gate";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 import { escapeTagText, renderTag } from "@/chat/input-tags";
 import { readActorIdentityFromSql } from "@/chat/plugins/viewer";
@@ -100,7 +102,11 @@ export async function listToolApprovals(
 ): Promise<ToolApproval[]> {
   const store = getConversationEventStore();
   const [requests, decisions] = await Promise.all([
-    store.loadEventsOfType(conversationId, "structured_event"),
+    store.loadStructuredEvents(
+      conversationId,
+      JUNIOR_NATIVE_EVENT_NAMESPACE,
+      actionReviewRequestedEvent.eventName,
+    ),
     store.loadEventsOfType(conversationId, "action_decided"),
   ]);
   const approvals = new Map<string, ToolApproval>();
@@ -108,8 +114,6 @@ export async function listToolApprovals(
     const { data } = event;
     if (
       data.type !== "structured_event" ||
-      data.namespace !== JUNIOR_NATIVE_EVENT_NAMESPACE ||
-      data.name !== actionReviewRequestedEvent.eventName ||
       data.version !== actionReviewRequestedEvent.version
     ) {
       continue;
@@ -135,14 +139,19 @@ async function getToolApproval(conversationId: string, toolCallId: string) {
 }
 
 /**
- * Names the asking Conversation and the exact call, so an identical retry
- * finds the open item and an answer finds its Conversation.
+ * Names the asking Conversation, the approver, and the exact call, so an
+ * identical retry finds the open item and an answer finds its Conversation.
+ * An identical call of another person gets its own item.
  */
-function reviewItemDedupeKey(conversationId: string, action: ToolAction) {
+function reviewItemDedupeKey(
+  conversationId: string,
+  approverUserId: string,
+  action: ToolAction,
+) {
   const input = createHash("sha256")
     .update(JSON.stringify(canonicalJson(action.input)))
     .digest("hex");
-  return `${KEY_PREFIX}${encodeURIComponent(conversationId)}:${encodeURIComponent(action.toolName)}:${input}`;
+  return `${KEY_PREFIX}${[conversationId, approverUserId, action.toolName].map(encodeURIComponent).join(":")}:${input}`;
 }
 
 /** Read the asking Conversation from a Tool approval item's dedupe key. */
@@ -220,7 +229,11 @@ export function createToolApprovalRequest(
     ).get(run.conversationId);
     if (!access?.rootConversationId) return undefined;
     const rootConversationId = access.rootConversationId;
-    const dedupeKey = reviewItemDedupeKey(run.conversationId, action);
+    const dedupeKey = reviewItemDedupeKey(
+      run.conversationId,
+      approver.id,
+      action,
+    );
     // The item comes first, so the request can name it. The request's key
     // is the item, so one item holds one request and runs at most one call,
     // also when identical calls race. After a crash between the two writes,
@@ -283,6 +296,7 @@ function isApproved(item: ReviewItem, approval: ToolApproval): boolean {
   return (
     item.status === "done" &&
     item.closedBy?.userId === approval.approverUserId &&
+    (item.closedAt?.getTime() ?? Infinity) <= approval.requestedAtMs + TTL_MS &&
     isDeepStrictEqual(item.answer?.values[FIELD_ID], [APPROVE])
   );
 }
@@ -329,11 +343,12 @@ async function runApproved(
 /**
  * Settle the Tool approvals of this Run's Conversation. A call that expired,
  * or whose item closed without its approver's Approve, gets a person
- * `deny`. An approved call runs only in a Run with the Actor, credential
- * context, and Destination that made it, since its credentials come from
- * that context, and only when this Run's append wrote the person `allow`.
- * A crash after that write leaves the call decided, so it never runs
- * again. Return one rendered result for each call that ran.
+ * `deny`. An approved call runs only in a Run whose Actor is the approver's
+ * Junior user, with the Destination that made it, and only when this Run's
+ * append wrote the person `allow`. It runs with this Run's credentials, so
+ * it runs as the approver. A crash after that write leaves the call
+ * decided, so it never runs again. Return one rendered result for each
+ * call that ran.
  */
 export async function runApprovedToolCalls(args: {
   /** A pipeline without action review: the approval replaced it. */
@@ -349,7 +364,6 @@ export async function runApprovedToolCalls(args: {
       decider: "person",
       decision,
       idempotencyKey: `action-decided:person:${approval.toolCallId}`,
-      reviewItemId: approval.reviewItemId,
       toolCallId: approval.toolCallId,
       toolName: approval.toolName,
       turnId: run.turnId,
@@ -357,7 +371,10 @@ export async function runApprovedToolCalls(args: {
   const results: string[] = [];
   for (const approval of await listToolApprovals(run.conversationId)) {
     if (approval.decision) continue;
-    if (Date.now() > approval.requestedAtMs + TTL_MS) {
+    const item = await getReviewItem(getDb(), approval.reviewItemId);
+    if (!item) continue;
+    if (item.status === "open") {
+      if (Date.now() <= approval.requestedAtMs + TTL_MS) continue;
       await decide(approval, "deny");
       const closed = await closeReviewItem(getDb(), {
         id: approval.reviewItemId,
@@ -368,15 +385,18 @@ export async function runApprovedToolCalls(args: {
       if (closed) await args.show(approval.reviewItemId);
       continue;
     }
-    const item = await getReviewItem(getDb(), approval.reviewItemId);
-    if (!item || item.status === "open") continue;
     if (!isApproved(item, approval)) {
       await decide(approval, "deny");
       continue;
     }
+    // The answer can come from another platform than the ask, such as a
+    // web answer to a Slack ask, so the Junior user matches, not the
+    // platform Actor. TODO(dcramer): Run with the stored credentials once a
+    // person has one identity across platforms (getsentry/junior#2439).
     if (
-      !sameActorIdentity(run.actor, approval.actor) ||
-      !sameStoredJson(run.credentialContext, approval.credentialContext) ||
+      !isUserActor(run.actor) ||
+      (await readActorIdentityFromSql(getDb(), run.actor))?.user?.id !==
+        approval.approverUserId ||
       !sameStoredJson(run.destination, approval.destination) ||
       !(await decide(approval, "allow"))
     ) {

@@ -198,7 +198,6 @@ const actionDecidedEventDataSchema = z
     decider: z.enum(["guardian", "rule", "person"]),
     decision: z.enum(["allow", "ask", "deny"]),
     costUsd: z.number().finite().nonnegative().optional(),
-    reviewItemId: z.string().min(1).optional(),
     riskLevel: z.enum(["low", "medium", "high", "critical"]).optional(),
     userAuthorization: z.enum(["high", "medium", "low", "unknown"]).optional(),
   })
@@ -732,6 +731,12 @@ export interface ConversationEventStore {
     namespace: string,
     name: string,
   ): Promise<ConversationEvent | undefined>;
+  /** Matching structured events across history versions in `seq` order. */
+  loadStructuredEvents(
+    conversationId: string,
+    namespace: string,
+    name: string,
+  ): Promise<ConversationEvent[]>;
   /** Latest durable instruction across history versions. */
   loadLatestInstruction(
     conversationId: string,

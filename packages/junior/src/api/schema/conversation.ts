@@ -543,7 +543,6 @@ const conversationReportActionDecidedEventDataSchema = z
     toolName: z.string().min(1),
     decider: z.enum(["guardian", "rule", "person"]),
     decision: z.enum(["allow", "ask", "deny"]),
-    reviewItemId: z.string().min(1).optional(),
     riskLevel: z.enum(["low", "medium", "high", "critical"]).optional(),
     userAuthorization: z.enum(["high", "medium", "low", "unknown"]).optional(),
   })

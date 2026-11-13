@@ -469,7 +469,6 @@ describe("conversation event list API", () => {
           toolName: "deleteWorkspace",
           decider: "person",
           decision: "deny",
-          reviewItemId: "item-1",
         },
         createdAtMs: 3,
       },
@@ -498,7 +497,6 @@ describe("conversation event list API", () => {
         toolName: "deleteWorkspace",
         decider: "person",
         decision: "deny",
-        reviewItemId: "item-1",
       },
     ]);
   });

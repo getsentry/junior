@@ -2,6 +2,8 @@ import { createSlackSource, type Source } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Type } from "@sinclair/typebox";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
+import { webActorFromUser } from "@/chat/conversations/web-input";
+import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import {
   createToolActionReview,
@@ -17,6 +19,7 @@ import {
 } from "@/chat/review-items/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
+import { getConversation } from "@/chat/task-execution/store";
 import {
   createToolApprovalRequest,
   listToolApprovals,
@@ -245,7 +248,7 @@ describe("tool approvals", () => {
       expect.objectContaining({
         decider: "person",
         decision: "allow",
-        reviewItemId: approval.reviewItemId,
+        toolCallId: approval.toolCallId,
       }),
     ]);
 
@@ -280,6 +283,42 @@ describe("tool approvals", () => {
     expect(await onlyApproval(rootId)).toMatchObject({ decision: "deny" });
   });
 
+  it("runs a Slack ask once, as the approver, in the Turn that their web answer starts", async () => {
+    await getStateAdapter().connect();
+    // Alice asks in Slack, so the call has her Slack Actor and credentials.
+    await wireRun(
+      runContext({ credentialContext: credentialContextForActor(alice) }),
+    ).call("call-1", { id: "r-1" });
+    const approval = await onlyApproval(rootId);
+
+    // She approves on the review desk. The answer reaches the Slack thread
+    // as her web message, so the Turn it starts has her web Actor.
+    await answer({
+      action: "submit",
+      itemId: approval.reviewItemId,
+      queue: createConversationWorkQueueTestAdapter(),
+      user: aliceUser,
+    });
+    const pending =
+      (await getConversation({ conversationId: rootId }))?.execution
+        .pendingMessages ?? [];
+    expect(pending.map((message) => message.input.authorId)).toEqual([
+      aliceUser.id,
+    ]);
+    const web = webActorFromUser(aliceUser);
+    const answerTurn = runContext({
+      actor: web,
+      credentialContext: credentialContextForActor(web),
+      turnId: "turn-2",
+    });
+
+    await expect(wireRun(answerTurn).runApproved()).resolves.toHaveLength(1);
+    await expect(
+      wireRun({ ...answerTurn, turnId: "turn-3" }).runApproved(),
+    ).resolves.toEqual([]);
+    expect(executions).toEqual([{ id: "r-1" }]);
+  });
+
   it("does not run a call on an answer from someone who is not the approver", async () => {
     const bob = await linkSlackUser("bob@example.com", "U456");
     const { approval } = await askInRoot();
@@ -299,6 +338,20 @@ describe("tool approvals", () => {
     await expect(
       getReviewItem(getDb(), approval.reviewItemId),
     ).resolves.toMatchObject({ status: "open" });
+
+    // Bob's identical call gets its own item, which only Bob can answer.
+    await wireRun(
+      runContext({ actor: { ...alice, userId: "U456" }, turnId: "turn-3" }),
+    ).call("call-2", { id: "r-1" });
+    const bobs = (await listToolApprovals(rootId)).find(
+      (candidate) => candidate.toolCallId === "call-2",
+    );
+    expect(bobs?.reviewItemId).not.toBe(approval.reviewItemId);
+    await expect(
+      getReviewItem(getDb(), bobs!.reviewItemId),
+    ).resolves.toMatchObject({
+      assignees: [expect.objectContaining({ userId: bob.id })],
+    });
   });
 
   it("expires an approval that waits too long, and then never runs it", async () => {

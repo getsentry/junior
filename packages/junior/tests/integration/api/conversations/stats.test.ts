@@ -204,7 +204,6 @@ describe("conversation stats API", () => {
             // A person's decision is not a Guardian review.
             decider: "person",
             decision: "allow",
-            reviewItemId: "item-ask",
           },
         },
       ]);
