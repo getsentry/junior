@@ -3,8 +3,8 @@
  *
  * Junior's own Google account reads the event from its own calendar, so the
  * card shows only when the viewer organizes, created, or is invited to the
- * event. Any unclear case gets no card. The card shows the title and time,
- * never the guests or the description.
+ * event. Any unclear case gets no card. The card shows the title, the time,
+ * and the start of the description, never the guests.
  */
 import type {
   ObjectAnnotation,
@@ -19,6 +19,7 @@ import {
   googleApiRequest,
   isTimeZone,
 } from "../tools/shared";
+import { htmlSummary } from "./summary";
 
 const EVENT_ID_PATTERN = /^[A-Za-z0-9_]{5,1024}$/;
 
@@ -32,6 +33,7 @@ const linkedEventSchema = z.object({
   // Google leaves out `email` for some guests.
   attendees: z.array(z.object({ email: z.string().optional() })).optional(),
   creator: z.object({ email: z.string().optional() }).optional(),
+  description: z.string().optional(),
   end: eventTimeSchema,
   id: z.string(),
   organizer: z.object({ email: z.string().optional() }).optional(),
@@ -133,7 +135,11 @@ async function resolveGoogleCalendarLink(
     title: title.slice(0, 512),
     url: url.href,
     sourceUpdatedAt: event.updated,
-    facts: { type: "calendar_event", when: eventWhen(event) },
+    facts: {
+      type: "calendar_event",
+      summary: htmlSummary(event.description),
+      when: eventWhen(event),
+    },
   };
 }
 

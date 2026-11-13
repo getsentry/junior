@@ -17,6 +17,7 @@ import {
 import { MessageCard, MessageCardHeader } from "../components/MessageCard";
 import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
+import { displayPlainText } from "../display-text/plainText";
 
 // A thumbnail that fails to load does not render.
 function Thumbnail({ src }: { src: string }) {
@@ -96,6 +97,11 @@ export function ObjectCard({
       <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
         {card.facts?.type === "web_page" && card.facts.thumbnailUrl && (
           <Thumbnail src={card.facts.thumbnailUrl} />
+        )}
+        {card.facts?.summary && (
+          <p className="m-0 max-w-[80ch] break-words text-sm text-dashboard-text-muted">
+            {displayPlainText(card.facts.summary)}
+          </p>
         )}
         {(card.status || fields.length > 0) && (
           // Facts sit side by side and wrap to a stack in a narrow column.
