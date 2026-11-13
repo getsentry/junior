@@ -27,12 +27,12 @@ const vector = customType<{ data: number[]; driverData: string }>({
 });
 
 /**
- * Embedding of the latest Brief of each Conversation, for semantic search. A
- * derived index: the next Brief replaces the row, and deleting the Brief row
- * deletes it.
+ * One embedding per Conversation, for semantic search. Its text is the latest
+ * Brief. A derived index: the next Brief replaces the row, and deleting that
+ * Brief row deletes it.
  */
-export const juniorConversationBriefEmbeddings = pgTable(
-  "junior_conversation_brief_embeddings",
+export const juniorConversationEmbeddings = pgTable(
+  "junior_conversation_embeddings",
   {
     conversationId: text("conversation_id").primaryKey(),
     briefVersion: integer("brief_version").notNull(),
@@ -44,7 +44,7 @@ export const juniorConversationBriefEmbeddings = pgTable(
   },
   (table) => [
     foreignKey({
-      name: "junior_conversation_brief_embeddings_brief_fk",
+      name: "junior_conversation_embeddings_brief_fk",
       columns: [table.conversationId, table.briefVersion],
       foreignColumns: [
         juniorConversationBriefs.conversationId,
@@ -52,7 +52,7 @@ export const juniorConversationBriefEmbeddings = pgTable(
       ],
     }).onDelete("cascade"),
     check(
-      "junior_conversation_brief_embeddings_dimensions_check",
+      "junior_conversation_embeddings_dimensions_check",
       sql`vector_dims(${table.embedding}) = ${table.dimensions}`,
     ),
   ],

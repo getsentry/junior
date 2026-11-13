@@ -328,7 +328,7 @@ export function auxiliaryOperationLabel(
   operation: ConversationAuxiliaryCosts["operations"][number],
 ): string {
   const knownLabels: Readonly<Record<string, string>> = {
-    "junior/brief_embedding": "Brief embedding",
+    "junior/conversation_embedding": "Conversation embedding",
     "junior/cache_warmup": "Cache warmup",
     "junior/compaction": "Compaction",
     "junior/conversation_catch_up": "Catch-up",

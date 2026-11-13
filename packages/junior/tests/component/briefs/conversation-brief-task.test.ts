@@ -17,7 +17,7 @@ import { setBriefsConfig } from "@/chat/briefs/registration";
 import { botConfig } from "@/chat/config";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
-  juniorConversationBriefEmbeddings,
+  juniorConversationEmbeddings,
   juniorConversationBriefs,
   juniorConversationEvents,
   juniorConversations,
@@ -321,13 +321,13 @@ describe("Conversation Brief task", () => {
     const readEmbeddings = () =>
       getDb()
         .select({
-          briefVersion: juniorConversationBriefEmbeddings.briefVersion,
-          conversationId: juniorConversationBriefEmbeddings.conversationId,
-          dimensions: juniorConversationBriefEmbeddings.dimensions,
-          model: juniorConversationBriefEmbeddings.model,
-          provider: juniorConversationBriefEmbeddings.provider,
+          briefVersion: juniorConversationEmbeddings.briefVersion,
+          conversationId: juniorConversationEmbeddings.conversationId,
+          dimensions: juniorConversationEmbeddings.dimensions,
+          model: juniorConversationEmbeddings.model,
+          provider: juniorConversationEmbeddings.provider,
         })
-        .from(juniorConversationBriefEmbeddings);
+        .from(juniorConversationEmbeddings);
     await expect(readEmbeddings()).resolves.toEqual([
       {
         briefVersion: 1,

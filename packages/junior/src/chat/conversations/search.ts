@@ -23,7 +23,10 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
-import { briefSimilarity, type BriefEmbedder } from "@/chat/briefs/embedding";
+import {
+  conversationSimilarity,
+  type ConversationEmbedder,
+} from "@/chat/conversations/embedding";
 import {
   parseStoredBrief,
   type BriefLink,
@@ -38,7 +41,7 @@ import type {
   ConversationStatus,
 } from "@/chat/conversations/store";
 import {
-  juniorConversationBriefEmbeddings,
+  juniorConversationEmbeddings,
   juniorConversationBriefs,
   juniorConversations,
   juniorDestinations,
@@ -109,7 +112,7 @@ export interface ConversationSearch {
 export async function searchConversations(
   db: JuniorDatabase,
   args: {
-    embedder?: BriefEmbedder;
+    embedder?: ConversationEmbedder;
     requesterConversationId: string;
     search: ConversationSearch;
   },
@@ -120,14 +123,16 @@ export async function searchConversations(
   const newer = alias(juniorConversationBriefs, "newer_briefs");
   const roots = alias(juniorConversations, "target_roots");
   const requesterRoot = alias(juniorConversations, "requester_roots");
-  const embeddings = juniorConversationBriefEmbeddings;
+  const embeddings = juniorConversationEmbeddings;
   const query = search.query?.trim() || undefined;
   const queryVector =
     query && embedder
       ? await embedder({ inputType: "query", text: query })
       : undefined;
   // SQL null for a stale vector or a vector of another model.
-  const similarity = queryVector ? briefSimilarity(queryVector) : undefined;
+  const similarity = queryVector
+    ? conversationSimilarity(queryVector)
+    : undefined;
   const tsquery = sql`websearch_to_tsquery('english', ${query ?? ""})`;
   const searchVector = sql`to_tsvector('english', ${briefs.searchText})`;
   const outcomeStatus = sql<string>`${briefs.content}->'outcome'->>'status'`;

@@ -1,5 +1,5 @@
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
-import { createBriefEmbedder } from "@/chat/briefs/embedding";
+import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { botConfig } from "@/chat/config";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
@@ -173,7 +173,7 @@ export function createTools(
         }
       : undefined),
     conversationId: context.conversationId,
-    embedder: createBriefEmbedder({
+    embedder: createConversationEmbedder({
       cost: {
         conversationId: context.conversationId,
         ...(context.turnId ? { turnId: context.turnId } : undefined),

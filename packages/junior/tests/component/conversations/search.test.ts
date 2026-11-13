@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import {
-  storeBriefEmbedding,
-  type BriefEmbedder,
-} from "@/chat/briefs/embedding";
+  storeConversationEmbedding,
+  type ConversationEmbedder,
+} from "@/chat/conversations/embedding";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { searchConversations } from "@/chat/conversations/search";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -337,7 +337,7 @@ describe("Conversation search", () => {
         "Stale rollout notes": [1, 0, 0],
         "Notes about lunch": [0, 0, 1],
       };
-      const embedder: BriefEmbedder = async ({ text }) => {
+      const embedder: ConversationEmbedder = async ({ text }) => {
         const vector = vectors[text];
         if (!vector) throw new Error(`No test vector for ${text}`);
         return { model: "test-embedding", provider: "test", vector };
@@ -372,7 +372,7 @@ describe("Conversation search", () => {
           // Only the first Brief is embedded, so a later Brief makes the
           // vector stale.
           if (index === 0) {
-            await storeBriefEmbedding(db, embedder, stored.value);
+            await storeConversationEmbedding(db, embedder, stored.value);
           }
         }
       };

@@ -24,9 +24,9 @@ type CallerRecordedOperation =
 // The name of the cost event in the `junior` namespace. Conversation cost
 // and the dashboard usage breakdown read these events.
 type ConversationRecordedOperation =
-  | "brief_embedding"
   | "cache_warmup"
   | "conversation_catch_up"
+  | "conversation_embedding"
   | "conversation_search_embedding"
   | "conversation_title"
   | "image_prompt_enrichment"

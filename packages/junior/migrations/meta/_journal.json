@@ -761,8 +761,8 @@
     {
       "idx": 108,
       "version": "7",
-      "when": 1794582836703,
-      "tag": "0108_conversation_brief_embeddings",
+      "when": 1794610551055,
+      "tag": "0108_conversation_embeddings",
       "breakpoints": true
     }
   ]
