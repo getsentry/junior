@@ -6,6 +6,7 @@ import type { JuniorApiEnv } from "@/api/route";
 import { apiErrorSchema } from "@/api/schema/common";
 import {
   reviewItemActionSchema,
+  reviewItemCountQuerySchema,
   reviewItemCountSchema,
   reviewItemListQuerySchema,
   reviewItemListSchema,
@@ -30,6 +31,8 @@ import {
   ReviewItemActionError,
 } from "@/chat/review-items/actions";
 import {
+  countOpenReviewItemsForUser,
+  countReviewItemBundlesNeedingUser,
   countReviewItemsNeedingUser,
   listWaitingConversations,
   searchReviewItems,
@@ -298,14 +301,35 @@ export function createReviewItemRoutes(services: {
       });
     },
   );
-  app.get("/count", requireViewer, async (context) => {
-    const viewer = context.get("viewer");
-    const [needsViewer, automations] = await Promise.all([
-      countReviewItemsNeedingUser(getDb(), viewer.id),
-      countOwnedAutomationsNeedingAttention(viewer),
-    ]);
-    return jsonResponse(reviewItemCountSchema, { automations, needsViewer });
-  });
+  app.get(
+    "/count",
+    requireViewer,
+    validateRequest(
+      "query",
+      reviewItemCountQuerySchema,
+      "Invalid review item count query.",
+    ),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const db = getDb();
+      const [needsViewer, bundles, snoozed, automations] = await Promise.all([
+        countReviewItemsNeedingUser(db, viewer.id),
+        countReviewItemBundlesNeedingUser(db, viewer.id),
+        countOpenReviewItemsForUser(
+          db,
+          { ...reviewItemReaderForUser(viewer), userId: viewer.id },
+          context.req.valid("query").snoozed,
+        ),
+        countOwnedAutomationsNeedingAttention(viewer),
+      ]);
+      return jsonResponse(reviewItemCountSchema, {
+        automations,
+        ...bundles,
+        needsViewer,
+        snoozed,
+      });
+    },
+  );
   app.get("/waiting-conversations", requireViewer, async (context) => {
     const viewer = context.get("viewer");
     return jsonResponse(reviewItemWaitingConversationsSchema, {

@@ -40,18 +40,12 @@ export const snoozeChoices: readonly SnoozeChoice[] = [
   { label: "Next week", untilMs: (nowMs) => nextMorning(nowMs, 7) },
 ];
 
-/**
- * Snooze inbox rows in this browser. A row is a Conversation bundle or one
- * item; its `key` names it. A Conversation bundle wakes at its time, or as
- * soon as its Conversation adds a newer item. Prototype: the server has no
- * snooze, so other browsers and the nav count do not see it.
- */
-export function useInboxSnoozes(nowMs: number) {
-  const [snoozes, setSnoozes] = useLocalStorage<Record<string, Snooze>>(
-    STORAGE_KEY,
-    {},
-  );
-  // Render again when the next snooze ends, so its row wakes on time.
+function useStoredSnoozes() {
+  return useLocalStorage<Record<string, Snooze>>(STORAGE_KEY, {});
+}
+
+/** Render again when the next snooze ends, so its row wakes on time. */
+function useWakeAtNextEnd(snoozes: Record<string, Snooze>, nowMs: number) {
   const [, wakeUp] = useReducer((count: number) => count + 1, 0);
   const nextWakeMs = Math.min(
     ...Object.values(snoozes)
@@ -66,6 +60,35 @@ export function useInboxSnoozes(nowMs: number) {
     );
     return () => clearTimeout(timer);
   }, [nextWakeMs]);
+}
+
+/**
+ * The newest item of each row that sleeps now, sorted, so the server can
+ * count the snoozed rows that are still open.
+ */
+export function useSnoozedItemIds(): string[] {
+  const [snoozes] = useStoredSnoozes();
+  const nowMs = Date.now();
+  useWakeAtNextEnd(snoozes, nowMs);
+  return [
+    ...new Set(
+      Object.values(snoozes)
+        .filter((snooze) => snooze.untilMs > nowMs)
+        .map((snooze) => snooze.newestItemId),
+    ),
+  ].sort();
+}
+
+/**
+ * Snooze inbox rows in this browser. A row is a Conversation bundle or one
+ * item; its `key` names it. A Conversation bundle wakes at its time, or as
+ * soon as its Conversation adds a newer item. The server has no snooze, so
+ * other browsers do not see it; the nav count names the snoozed items to
+ * the server (`useSnoozedItemIds`).
+ */
+export function useInboxSnoozes(nowMs: number) {
+  const [snoozes, setSnoozes] = useStoredSnoozes();
+  useWakeAtNextEnd(snoozes, nowMs);
   /** True while `key` sleeps and `newestItemId` is still its newest item. */
   const sleeps = (key: string, newestItemId: string) => {
     const snooze = snoozes[key];

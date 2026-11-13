@@ -205,12 +205,20 @@ export async function mockReviewItems(
     const path = url.pathname.replace(/^.*\/api\/review-items/, "");
     // The tab badge counts what waits on the viewer, as the server does.
     if (path === "/count") {
+      const needsViewer = open.filter(
+        (i) => i.kind === "action" && i.canAct && !i.assignedToEveryone,
+      );
+      const snoozed = url.searchParams.get("snoozed")?.split(",") ?? [];
       return route.fulfill({
         json: {
           automations: (options.automations ?? attentionCount)(),
-          needsViewer: open.filter(
-            (i) => i.kind === "action" && i.canAct && !i.assignedToEveryone,
+          decisions: needsViewer.filter((i) => "request" in i && i.request)
+            .length,
+          needsViewer: needsViewer.length,
+          prs: needsViewer.filter((i) =>
+            /\/pull\/\d+/.test(i.subject?.url ?? ""),
           ).length,
+          snoozed: open.filter((i) => snoozed.includes(i.id)).length,
         },
       });
     }

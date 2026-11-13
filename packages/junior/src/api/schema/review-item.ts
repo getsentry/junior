@@ -120,7 +120,25 @@ export const reviewItemListSchema = z
   })
   .strict();
 
-/** The counts behind the Inbox badge, which shows their sum. */
+/** `GET /api/review-items/count` query. */
+export const reviewItemCountQuerySchema = z
+  .object({
+    /**
+     * The newest item of each snoozed Inbox row, comma separated. Snoozes
+     * live in the browser, so the server counts only the ids it is given.
+     */
+    snoozed: z
+      .string()
+      .default("")
+      .transform((value) => [...new Set(value.split(",").filter(Boolean))])
+      .pipe(z.array(z.string().min(1).max(200)).max(100)),
+  })
+  .strict();
+
+/**
+ * The counts behind the Inbox badge, which shows the sum of `needsViewer`
+ * and `automations`, and behind the Inbox entries.
+ */
 export const reviewItemCountSchema = z
   .object({
     /**
@@ -128,11 +146,17 @@ export const reviewItemCountSchema = z
      * them (`scope=attention&owner=me`).
      */
     automations: z.number().int().nonnegative(),
+    /** The `needsViewer` items that ask with a form. */
+    decisions: z.number().int().nonnegative(),
     /**
      * Open action items assigned to the viewer as a User
      * (`reviewItemNeedsUser`). Notices and items for Everyone do not count.
      */
     needsViewer: z.number().int().nonnegative(),
+    /** The `needsViewer` items whose subject is a pull request. */
+    prs: z.number().int().nonnegative(),
+    /** The `snoozed` ids that are open and listed for the viewer. */
+    snoozed: z.number().int().nonnegative(),
   })
   .strict();
 

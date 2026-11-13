@@ -21,6 +21,7 @@ import {
 
 import { conversationDetailTitle } from "../format";
 import { fetchDashboardJson, post } from "../http";
+import { useSnoozedItemIds } from "./inboxSnooze";
 
 /** Prefix of every Review item read, for refreshes after a change. */
 export const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
@@ -177,17 +178,23 @@ export function useInboxTodoCount(enabled: boolean): number | undefined {
 }
 
 /**
- * Count the open action items assigned to the viewer, for the nav. The
- * versions poll refreshes it when it changes.
+ * Count what the Inbox entries and the badge show, as the server counts it:
+ * the open action items assigned to the viewer, by bundle, and the open
+ * snoozed rows. The versions poll refreshes it when it changes.
  */
 export function useReviewItemCountData(enabled: boolean) {
+  // The snoozed rows live in this browser; the server counts the open ones.
+  const snoozed = useSnoozedItemIds().join(",");
   return useQuery({
     enabled,
-    queryKey: REVIEW_ITEM_COUNT_QUERY_KEY,
+    placeholderData: keepPreviousData,
+    queryKey: [...REVIEW_ITEM_COUNT_QUERY_KEY, snoozed],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         reviewItemCountSchema,
-        "/api/review-items/count",
+        snoozed
+          ? `/api/review-items/count?${new URLSearchParams({ snoozed })}`
+          : "/api/review-items/count",
         signal,
       ),
     retry: false,

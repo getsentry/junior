@@ -661,6 +661,54 @@ export async function countReviewItemsNeedingUser(
 }
 
 /**
+ * Count the open Review items that need a User for each Inbox bundle, by
+ * the badge's rule (`reviewItemNeedsUser`): `decisions` ask with a form,
+ * and `prs` have a pull request as their subject.
+ */
+export async function countReviewItemBundlesNeedingUser(
+  db: JuniorDatabase,
+  userId: string,
+): Promise<{ decisions: number; prs: number }> {
+  const rows = await db
+    .select({
+      decisions: count(
+        sql`case when ${juniorReviewItems.request} is not null then 1 end`,
+      ),
+      prs: count(
+        sql`case when ${juniorReviewItems.subjectUrl} ~ '/pull/[0-9]+' then 1 end`,
+      ),
+    })
+    .from(juniorReviewItems)
+    .where(reviewItemNeedsUser(userId));
+  return { decisions: rows[0]?.decisions ?? 0, prs: rows[0]?.prs ?? 0 };
+}
+
+/**
+ * Count the items in `ids` that are still open and that the reader's Inbox
+ * lists (`reviewItemForUser`). Snoozes live in the browser, so the
+ * dashboard names the newest item of each snoozed row.
+ */
+export async function countOpenReviewItemsForUser(
+  db: JuniorDatabase,
+  reader: ReviewItemReader & { userId: string },
+  ids: readonly string[],
+): Promise<number> {
+  if (ids.length === 0) return 0;
+  const rows = await db
+    .select({ count: count() })
+    .from(juniorReviewItems)
+    .where(
+      and(
+        inArray(juniorReviewItems.id, [...ids]),
+        eq(juniorReviewItems.status, "open"),
+        reviewItemVisibleTo(reader),
+        reviewItemForUser(reader.userId),
+      ),
+    );
+  return rows[0]?.count ?? 0;
+}
+
+/**
  * Return a query for a token that changes when the open Review items that
  * need a User change. An item that is added or changed moves the newest
  * `updated_at`, and an item that closes or leaves the User changes the count.

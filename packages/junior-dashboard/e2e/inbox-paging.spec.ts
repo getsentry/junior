@@ -280,3 +280,54 @@ test("Done shows Try again when its first read fails", async ({
     page.getByRole("button", { name: new RegExp(answered.title) }),
   ).toBeVisible();
 });
+
+test("the entry counts cover the asks past the loaded pages", async ({
+  dashboard,
+  page,
+}) => {
+  // Each ask is in its own Conversation, and only the first page loads.
+  const decisions = Array.from({ length: 12 }, (_, index) => ({
+    ...license,
+    addedByConversationId: `slack:CCOUNT:17700${String(index).padStart(5, "0")}.000100`,
+    conversationIds: [],
+    createdAt: new Date(NOW_MS - index * 60_000).toISOString(),
+    id: `item-decision-${index}`,
+    title: `Approve rollout step ${index}`,
+  }));
+  const prs = [prMerge, prReview].map((item, index) => ({
+    ...item,
+    createdAt: new Date(NOW_MS - (20 + index) * 60_000).toISOString(),
+  }));
+  const asleep = decisions.at(-1)!;
+  // A row on a later page sleeps until tomorrow.
+  await page.addInitScript(
+    ({ conversationId, id }) =>
+      window.localStorage.setItem(
+        "junior:inbox:snoozed",
+        JSON.stringify({
+          [conversationId]: {
+            newestItemId: id,
+            untilMs: Date.now() + 86_400_000,
+          },
+        }),
+      ),
+    { conversationId: asleep.addedByConversationId, id: asleep.id },
+  );
+  await mockReviewItems(page, { open: [...decisions, ...prs], pageSize: 2 });
+  await holdLaterReviewItemPages(page);
+  await page.goto(`${dashboard.baseURL}/`);
+  const nav = page.getByRole("navigation", { name: "Inbox" });
+  await expect(
+    page.getByRole("region", { name: "To do" }).locator("[data-inbox-row]"),
+  ).toHaveCount(2);
+  // The server counts every page, and the snoozed row it was told about.
+  await expect(nav.getByRole("link", { name: /^Decisions/ })).toHaveText(
+    /^Decisions\s*12$/,
+  );
+  await expect(nav.getByRole("link", { name: /^Pull requests/ })).toHaveText(
+    /^Pull requests\s*2$/,
+  );
+  await expect(nav.getByRole("link", { name: /^Snoozed/ })).toHaveText(
+    /^Snoozed\s*1$/,
+  );
+});

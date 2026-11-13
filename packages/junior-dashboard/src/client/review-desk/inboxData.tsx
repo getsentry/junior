@@ -9,13 +9,14 @@ import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 import { pinnedFirst } from "../conversations/conversationSections";
 import type { Conversation } from "../types";
-import { itemsInView, type InboxView } from "./inboxModel";
+import type { InboxView } from "./inboxModel";
 import { useLinkedInboxItems } from "./inboxListState";
 import { useInboxSnoozes } from "./inboxSnooze";
 import {
   useAutomationAttentionData,
   useLinkedConversationTitles,
   useInboxTodoCount,
+  useReviewItemCountData,
   useReviewItemData,
   useReviewItemsData,
   scrollPages,
@@ -106,6 +107,7 @@ function useBuildInboxData(input: {
   // The server counts what waits on the viewer for the tab badge. To do
   // pages on its own reads, so a count that is pending or failed cannot
   // stop it.
+  const serverCounts = useReviewItemCountData(signedIn).data;
   const todoCount = useInboxTodoCount(signedIn) ?? 0;
   const automations = attention.data?.automations ?? [];
   const nowMs = Date.now();
@@ -193,13 +195,14 @@ function useBuildInboxData(input: {
     ...pinned.filter((conversation) => conversation.status !== "active"),
   ];
 
-  // Done has no count: it would need every closed item.
+  // The server counts each entry, so items past the loaded pages count
+  // too. Done has no count: it would need every closed item.
   const counts: Partial<Record<InboxView, number>> = {
     automations: automations.length,
-    decisions: itemsInView(awake, "decisions").length,
+    decisions: serverCounts?.decisions,
     inbox: todoCount,
-    prs: itemsInView(awake, "prs").length,
-    snoozed: snoozedRows.length,
+    prs: serverCounts?.prs,
+    snoozed: serverCounts?.snoozed,
   };
 
   return {

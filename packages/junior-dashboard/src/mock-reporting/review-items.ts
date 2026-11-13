@@ -451,9 +451,7 @@ export function readMockWaitingConversations(nowMs: number) {
       seed.plugin ? [[seed.id, seed.plugin] as const] : [],
     ),
   );
-  const open = readMockReviewItems(nowMs, {}).filter(
-    (item) => item.kind === "action" && !item.assignedToEveryone,
-  );
+  const open = mockItemsNeedingViewer(nowMs);
   const byConversation = new Map<string, ReviewItemPayload[]>();
   for (const item of open) {
     const id = item.addedByConversationId;
@@ -474,7 +472,31 @@ export function readMockWaitingConversations(nowMs: number) {
           createdAt < oldest ? createdAt : oldest,
         ),
     })),
-    needsViewer: open.length,
+  };
+}
+
+/** The open mock action items that the viewer must answer. */
+function mockItemsNeedingViewer(nowMs: number): ReviewItemPayload[] {
+  return readMockReviewItems(nowMs, {}).filter(
+    (item) => item.kind === "action" && !item.assignedToEveryone,
+  );
+}
+
+/** Count the mock items like `GET /api/review-items/count`, but Automations. */
+export function readMockReviewItemCounts(
+  nowMs: number,
+  snoozedIds: readonly string[],
+) {
+  const needsViewer = mockItemsNeedingViewer(nowMs);
+  return {
+    decisions: needsViewer.filter((item) => item.request).length,
+    needsViewer: needsViewer.length,
+    prs: needsViewer.filter((item) =>
+      /\/pull\/\d+/.test(item.subject?.url ?? ""),
+    ).length,
+    snoozed: readMockReviewItems(nowMs, {}).filter((item) =>
+      snoozedIds.includes(item.id),
+    ).length,
   };
 }
 

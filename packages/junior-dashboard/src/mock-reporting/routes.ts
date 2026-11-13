@@ -86,6 +86,7 @@ import {
   actOnMockReviewItem,
   answerMockReviewItemByReply,
   readMockReviewItem,
+  readMockReviewItemCounts,
   readMockReviewItems,
   readMockWaitingConversations,
 } from "./review-items";
@@ -771,13 +772,16 @@ export function createMockReportingApi(): Hono<{
       }),
     });
   });
-  app.get("/review-items/count", () =>
+  app.get("/review-items/count", (c) =>
     jsonResponse(reviewItemCountSchema, {
       automations: mockAutomationCollection(
         readMockAutomationList(),
         new URLSearchParams({ owner: "me", scope: "attention" }),
       ).total,
-      needsViewer: readMockWaitingConversations(NOW_MS).needsViewer,
+      ...readMockReviewItemCounts(
+        NOW_MS,
+        (c.req.query("snoozed") ?? "").split(",").filter(Boolean),
+      ),
     }),
   );
   app.get("/review-items/waiting-conversations", () =>

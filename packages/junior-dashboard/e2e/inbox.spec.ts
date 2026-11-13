@@ -88,12 +88,14 @@ test("each entry lists its own rows under its name", async ({
   });
   await page.goto(`${dashboard.baseURL}/`);
   const nav = page.getByRole("navigation", { name: "Inbox" });
+  // An entry counts what waits on the viewer, like the badge: the
+  // "Pull request ready for review" notice does not.
   await expect(nav.getByRole("link")).toHaveText([
     /^Inbox/,
     /^Snoozed/,
     /^Done$/,
     /^Conversations$/,
-    /^Pull requests\s*3$/,
+    /^Pull requests\s*2$/,
     /^Decisions\s*4$/,
     /^Automations/,
     new RegExp(checkout),
