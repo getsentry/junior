@@ -59,9 +59,10 @@ interface VisionThreadReply {
 }
 
 /**
- * Largest non-image Slack file that Junior downloads when the message
- * arrives. A larger one gets a row and a loadAttachment pointer, and its first
- * load downloads it, so an unused recording costs no download or storage.
+ * Largest non-image Slack file that Junior stores when the message arrives.
+ * A larger one gets a row and a loadAttachment pointer but is never stored:
+ * each load or dashboard download streams it from Slack, so it costs no
+ * storage, and an unused recording costs no download.
  */
 export const MAX_EAGER_SLACK_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_MESSAGE_IMAGE_ATTACHMENTS = 3;
@@ -389,7 +390,7 @@ async function resolveUserAttachmentsWithDeps(
     const url = attachment.url;
     // Only an image that may go to the model inline needs its bytes in
     // memory. Stream every other Slack file into storage, or record a large
-    // one for its first load to download.
+    // one without storing it; each read downloads it from Slack.
     if (
       context.conversationId &&
       deps.attachmentStorage &&

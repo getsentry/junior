@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
+import { ATTACHMENT_TOO_LARGE_MESSAGE } from "@/chat/attachments/download";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { storeAttachment } from "@/chat/attachments/store";
 import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
@@ -29,14 +30,18 @@ const run = promisify(execFile);
 
 /** A workspace backed by a local directory, so sandbox commands really run. */
 function localWorkspace(root: string): SandboxWorkspace & {
+  commands: string[];
   writes: Array<{ bytes: number; path: string }>;
 } {
+  const commands: string[] = [];
   const writes: Array<{ bytes: number; path: string }> = [];
   return {
+    commands,
     writes,
     readFileToBuffer: async (input) =>
       await fs.readFile(path.join(root, input.path)),
     runCommand: async (input) => {
+      commands.push([input.cmd, ...(input.args ?? [])].join(" "));
       try {
         const { stderr, stdout } = await run(input.cmd, input.args ?? [], {
           cwd: root,
@@ -81,6 +86,27 @@ function chunkedBody(count: number): ReadableStream<Uint8Array> {
       if (next.done) controller.close();
       else controller.enqueue(next.value);
     },
+  });
+}
+
+/** Record a large Slack file the way ingest does: a row with no object. */
+async function recordLargeSlackFile(args: {
+  conversationId?: string;
+  db: ReturnType<typeof getSqlExecutor>;
+  fileId: string;
+  storage: ReturnType<typeof createMemoryAttachmentStorage>;
+}) {
+  return await storeAttachment({
+    conversationId: args.conversationId ?? CONVERSATION_ID,
+    db: args.db,
+    file: {
+      bytes: 30 * MIB,
+      deferred: true,
+      filename: "standup.mp4",
+      mimeType: "video/mp4",
+      source: { id: args.fileId, provider: "slack" },
+    },
+    storage: args.storage,
   });
 }
 
@@ -240,55 +266,53 @@ describe("loadAttachment tool", () => {
     ).toBe(true);
   });
 
-  it("downloads a deferred Slack file on its first load and reuses it", async () => {
+  it("streams a large Slack file from Slack on every load and never stores it", async () => {
     const storage = createMemoryAttachmentStorage();
     const db = getSqlExecutor();
     await recordConversation();
-    const stored = await storeAttachment({
-      conversationId: CONVERSATION_ID,
+    const stored = await recordLargeSlackFile({
       db,
-      file: {
-        bytes: 20 * MIB,
-        deferred: true,
-        filename: "standup.mp4",
-        mimeType: "video/mp4",
-        source: { id: "F0STANDUP", provider: "slack" },
-      },
+      fileId: "F0STANDUP",
       storage,
     });
-    expect(storage.objects.size).toBe(0);
     const url =
       "https://files.slack.com/files-pri/T0TEST-F0STANDUP/standup.mp4";
-    queueSlackApiResponse("files.info", {
-      body: filesInfoOk({
-        fileId: "F0STANDUP",
-        size: 20 * MIB,
-        urlPrivate: url,
-      }),
-    });
-    queueSlackPrivateFileDownload({ body: chunkedBody(20) });
+    for (let load = 0; load < 2; load += 1) {
+      queueSlackApiResponse("files.info", {
+        body: filesInfoOk({
+          fileId: "F0STANDUP",
+          size: 20 * MIB,
+          urlPrivate: url,
+        }),
+      });
+      queueSlackPrivateFileDownload({ body: chunkedBody(20) });
+    }
+    const workspace = localWorkspace(root);
     const tool = createLoadAttachmentTool({
       conversationId: CONVERSATION_ID,
       db,
       readAttachmentSource: readSlackAttachmentSource,
       storage,
-      workspace: localWorkspace(root),
+      workspace,
     });
 
     const first = await tool.execute?.({ attachment_id: stored.id }, {});
     const second = await tool.execute?.({ attachment_id: stored.id }, {});
 
-    expect(getCapturedSlackApiCalls("files.info")).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("files.info")).toHaveLength(2);
     expect(getCapturedSlackFileDownloadCalls()).toEqual([
       expect.objectContaining({ url }),
+      expect.objectContaining({ url }),
     ]);
-    expect(storage.objects.size).toBe(1);
     expect(second).toEqual(first);
+    expect(first).toEqual(expect.objectContaining({ bytes: 20 * MIB }));
     const loaded = await fs.readFile(
       path.join(root, String((first as { path: string }).path)),
     );
-    expect(loaded.byteLength).toBe(20 * MIB);
     expect(loaded.equals(Buffer.concat([...chunks(20)]))).toBe(true);
+    // The sandbox gets bytes only: no Slack URL and no token.
+    expect(workspace.commands.join("\n")).not.toMatch(/slack\.com|xox/);
+    expect(storage.objects.size).toBe(0);
     const [row] = await db
       .db()
       .select({
@@ -297,39 +321,65 @@ describe("loadAttachment tool", () => {
       })
       .from(juniorAttachments)
       .where(eq(juniorAttachments.id, stored.id));
-    expect(row?.storageKey).toEqual(expect.any(String));
-    expect(row?.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(row).toEqual({ sha256: null, storageKey: null });
+  });
+
+  it("refuses a Slack file over the file limit before it downloads it", async () => {
+    const storage = createMemoryAttachmentStorage();
+    const db = getSqlExecutor();
+    await recordConversation();
+    const stored = await recordLargeSlackFile({
+      db,
+      fileId: "F0GREW",
+      storage,
+    });
+    // The file was replaced in Slack after ingest and is now over the limit.
+    queueSlackApiResponse("files.info", {
+      body: filesInfoOk({
+        fileId: "F0GREW",
+        size: MAX_ATTACHMENT_BYTES + 1,
+        urlPrivate: "https://files.slack.com/files-pri/T0TEST-F0GREW/x.mp4",
+      }),
+    });
+    const workspace = localWorkspace(root);
+    const tool = createLoadAttachmentTool({
+      conversationId: CONVERSATION_ID,
+      db,
+      readAttachmentSource: readSlackAttachmentSource,
+      storage,
+      workspace,
+    });
+
+    await expect(
+      tool.execute?.({ attachment_id: stored.id }, {}),
+    ).rejects.toThrow(new ToolInputError(ATTACHMENT_TOO_LARGE_MESSAGE));
+    expect(getCapturedSlackFileDownloadCalls()).toEqual([]);
+    expect(workspace.writes).toEqual([]);
   });
 
   it("reports a deleted Slack file as a tool error", async () => {
     const storage = createMemoryAttachmentStorage();
     const db = getSqlExecutor();
     await recordConversation();
-    const stored = await storeAttachment({
-      conversationId: CONVERSATION_ID,
+    const stored = await recordLargeSlackFile({
       db,
-      file: {
-        bytes: 30 * MIB,
-        deferred: true,
-        filename: "standup.mp4",
-        mimeType: "video/mp4",
-        source: { id: "F0GONE", provider: "slack" },
-      },
+      fileId: "F0GONE",
       storage,
     });
+    const workspace = localWorkspace(root);
     const tool = createLoadAttachmentTool({
       conversationId: CONVERSATION_ID,
       db,
       readAttachmentSource: readSlackAttachmentSource,
       storage,
-      workspace: localWorkspace(root),
+      workspace,
     });
     // Slack reports the file gone, or still lists it but refuses the download.
     queueSlackApiError("files.info", { error: "file_not_found" });
     queueSlackApiResponse("files.info", {
       body: filesInfoOk({
         fileId: "F0GONE",
-        size: 30 * MIB,
+        size: 20 * MIB,
         urlPrivate: "https://files.slack.com/files-pri/T0TEST-F0GONE/x.mp4",
       }),
     });
@@ -345,8 +395,52 @@ describe("loadAttachment tool", () => {
       );
     }
     expect(getCapturedSlackFileDownloadCalls()).toHaveLength(1);
-    expect(storage.objects.size).toBe(0);
-    expect(await fs.readdir(root)).toEqual([]);
+    expect(workspace.writes).toEqual([]);
+    expect(
+      await fs.readdir(path.join(root, ".junior/attachments"), {
+        recursive: true,
+      }),
+    ).toEqual([stored.id]);
+  });
+
+  it("starts a Slack download only from a row in this conversation", async () => {
+    const storage = createMemoryAttachmentStorage();
+    const db = getSqlExecutor();
+    await recordConversation();
+    const otherConversationId = "slack:C-load-attachment:other";
+    await getConversationStore().recordActivity({
+      conversationId: otherConversationId,
+      destination: { channelId: "CLOAD", platform: "slack", teamId: "TLOAD" },
+      nowMs: 1,
+      source: "slack",
+      title: "Other conversation",
+      visibility: "public",
+    });
+    const elsewhere = await recordLargeSlackFile({
+      conversationId: otherConversationId,
+      db,
+      fileId: "F0ELSEWHERE",
+      storage,
+    });
+    const tool = createLoadAttachmentTool({
+      conversationId: CONVERSATION_ID,
+      db,
+      readAttachmentSource: readSlackAttachmentSource,
+      storage,
+      workspace: localWorkspace(root),
+    });
+
+    // A row id from another conversation, a raw Slack file id, and an
+    // unknown id all miss the conversation-scoped lookup.
+    for (const attachmentId of [elsewhere.id, "F0ELSEWHERE", "att_unknown"]) {
+      await expect(
+        tool.execute?.({ attachment_id: attachmentId }, {}),
+      ).rejects.toThrow(
+        new ToolInputError("Attachment not found in this conversation."),
+      );
+    }
+    expect(getCapturedSlackApiCalls("files.info")).toEqual([]);
+    expect(getCapturedSlackFileDownloadCalls()).toEqual([]);
   });
 
   it("refuses an attachment over the file limit before it reads storage", async () => {

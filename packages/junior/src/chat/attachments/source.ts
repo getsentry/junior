@@ -8,12 +8,12 @@ export interface AttachmentSource {
 export interface AttachmentSourceFile {
   /** Size that the source reports now. */
   bytes: number;
-  /** Open the file. A retried write opens it again. */
+  /** Download the file. Each call downloads it again. */
   open: () => Promise<ReadableStream<Uint8Array>>;
 }
 
 /**
- * Look up a source file that Junior recorded without downloading it.
+ * Look up a source file that Junior recorded without storing it.
  *
  * Throw `AttachmentSourceUnavailableError` when the source no longer has the
  * file or Junior cannot read it.

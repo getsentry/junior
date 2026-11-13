@@ -1,10 +1,9 @@
 import {
   INLINE_VIDEO_TYPES,
   INPUT_IMAGE_TYPES,
-  messageAttachmentSchema,
   type MessageAttachment,
 } from "@sentry/junior/api/schema";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Download, FileText } from "lucide-react";
 import {
   type ReactNode,
@@ -20,10 +19,8 @@ import {
   type PreviewImage,
 } from "../components/ImageAttachment";
 import { Spinner } from "../components/ui/spinner";
-import { DashboardApiError, post } from "../http";
-import { isStandalone } from "../notifications/push";
+import { DashboardApiError, checkDashboardDownload } from "../http";
 import type { TranscriptViewMessage } from "../types";
-import { conversationDetailQueryKey } from "./queries";
 import { TextAttachmentPreview } from "./TextAttachmentPreview";
 import { textPreviewLanguage } from "./textPreview";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
@@ -341,8 +338,8 @@ function TranscriptMediaTile(props: {
 }
 
 // Every file row shares this look. A stored file is a preview button or a
-// download link; a file that is still sending is neither. A file Junior has
-// not downloaded yet has its own Download button.
+// download link; a file that is still sending is neither. A large Slack file
+// that Junior never stores has its own Download button.
 const FILE_ROW_SHELL_CLASS =
   "grid w-full min-w-0 items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-3 py-2 text-left font-sans no-underline";
 const FILE_ROW_BASE_CLASS = `${FILE_ROW_SHELL_CLASS} grid-cols-[auto_minmax(0,1fr)]`;
@@ -350,72 +347,62 @@ const FILE_ROW_CLASS = `${FILE_ROW_BASE_CLASS} cursor-pointer transition-colors 
 const PENDING_FILE_ROW_CLASS = `${FILE_ROW_SHELL_CLASS} grid-cols-[auto_minmax(0,1fr)_auto]`;
 
 /**
- * Save one stored file after its download was prepared.
+ * Save one file from its download URL.
  *
- * The click runs after a long request, so it has no user activation, and
- * browsers block a new window then. A same-window link that the byte route
- * serves as an attachment saves the file and stays on the page. An installed home screen app would open the
- * file in a preview with no way back (see the stored file row), so it skips
- * this step: the refreshed row has a Download link that the user can tap.
+ * The click runs after the download check, so it has no user activation,
+ * and browsers block a new window then. The URL asks for an attachment, so
+ * a same-window link saves the file and stays on the page. Some browsers
+ * ignore `download` for a file served inline, such as a video.
  */
-function startBrowserDownload(href: string, filename: string) {
-  if (isStandalone()) return;
+function startBrowserDownload(downloadHref: string, filename: string) {
   const link = document.createElement("a");
   link.download = filename;
-  // Some browsers ignore `download` for a file served inline, such as a
-  // video, and would replace the page with it.
-  link.href = `${href}?download=true`;
+  link.href = downloadHref;
   link.rel = "noreferrer";
   link.click();
 }
 
 /**
- * Render a large Slack file that Junior has not downloaded yet. Download asks
- * the server to fetch it from Slack first, then saves it.
+ * Render a large Slack file that Junior never stores. Download checks that
+ * Slack still has it, then the server streams it from Slack to the browser.
  */
 function PendingFileRow(props: {
   attachment: MessageAttachment;
   conversationId: string;
 }) {
-  const queryClient = useQueryClient();
-  const href = conversationAttachmentUrl(
+  const downloadHref = `${conversationAttachmentUrl(
     props.conversationId,
     props.attachment.id,
-  );
-  const prepare = useMutation({
-    mutationFn: () => post(messageAttachmentSchema, `${href}/download`, {}),
-    onSuccess: async (stored) => {
-      startBrowserDownload(href, stored.filename);
-      // The stored file now previews like any other.
-      await queryClient.invalidateQueries({
-        queryKey: conversationDetailQueryKey(props.conversationId),
-      });
-    },
-  });
+  )}?download=true`;
   const { filename } = props.attachment;
-  const error = prepare.error
-    ? (prepare.error instanceof DashboardApiError && prepare.error.apiError) ||
-      "Could not prepare the download. Try again."
+  const check = useMutation({
+    mutationFn: () => checkDashboardDownload(downloadHref),
+    onSuccess: () => startBrowserDownload(downloadHref, filename),
+  });
+  const error = check.error
+    ? (check.error instanceof DashboardApiError && check.error.apiError) ||
+      "Could not download the file. Try again."
     : undefined;
-  const status = prepare.isPending
-    ? "Preparing download…"
-    : "Too large to preview";
   return (
     <div className={PENDING_FILE_ROW_CLASS}>
       <FileRowLabel
         filename={filename}
         meta={attachmentMeta(props.attachment)}
-        status={error ? { error: true, label: error } : { label: status }}
+        status={
+          error
+            ? { error: true, label: error }
+            : { label: "Too large to preview" }
+        }
       />
       <button
-        aria-busy={prepare.isPending}
+        aria-busy={check.isPending}
         aria-label={`Download ${filename}`}
         className={DOWNLOAD_BUTTON_CLASS}
-        disabled={prepare.isPending}
-        onClick={() => prepare.mutate()}
+        disabled={check.isPending}
+        onClick={() => check.mutate()}
         type="button"
       >
-        {prepare.isPending ? (
+        {check.isPending ? (
           <Spinner
             aria-hidden="true"
             className="size-3.5"

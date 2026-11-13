@@ -15,8 +15,8 @@ export const juniorAttachments = pgTable(
     /** Service that stores the file bytes. */
     storageProvider: text("storage_provider").notNull(),
     /**
-     * Object key of the stored bytes. Null until a file that Junior records
-     * without downloading, such as a large Slack file, is first loaded.
+     * Object key of the stored bytes. Null for a file that Junior records
+     * without storing, such as a large Slack file.
      */
     storageKey: text("storage_key"),
     /** Provider that supplied the file. */
@@ -26,7 +26,7 @@ export const juniorAttachments = pgTable(
     filename: text("filename").notNull(),
     contentType: text("content_type").notNull(),
     bytes: integer("bytes").notNull(),
-    /** Digest of the stored bytes. Null while `storage_key` is null. */
+    /** Digest of the stored bytes. Null when `storage_key` is null. */
     sha256: text("sha256"),
     visionSummary: text("vision_summary"),
     createdAt: timestamptz("created_at").notNull(),

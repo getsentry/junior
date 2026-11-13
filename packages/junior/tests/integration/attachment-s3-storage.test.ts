@@ -11,11 +11,11 @@ import {
   type AttachmentStorage,
 } from "@/chat/attachments/storage";
 import {
+  ATTACHMENT_RETENTION_MS,
   collectAttachmentGarbage,
   readLiveAttachment,
   requestAttachmentDeletion,
   storeAttachment,
-  storeDeferredAttachment,
 } from "@/chat/attachments/store";
 import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAttachments } from "@/db/schema";
@@ -296,54 +296,56 @@ describe("S3 attachment storage", () => {
     await s3.delete([record!.storageKey!]);
   });
 
-  it("stores a deferred file on first load, and collects one never loaded", async () => {
+  it("records a large Slack file with no object, and GC deletes its row", async () => {
     const conversationId = "slack:CS3:deferred";
     await recordPublicConversation(conversationId);
     const storage = s3Storage();
     const db = getSqlExecutor();
-    const deferred = (id: string) =>
-      storeAttachment({
-        conversationId,
-        db,
-        file: {
-          bytes: 13,
-          deferred: true,
-          filename: `${id}.log`,
-          mimeType: "text/plain",
-          source: { id, provider: "slack" },
-        },
-        storage,
-      });
-    const loaded = await deferred("FLOADED");
-    const unloaded = await deferred("FUNLOADED");
-    const pending = await readLiveAttachment({
-      attachmentId: loaded.id,
+    const deferred = await storeAttachment({
       conversationId,
-      db,
-    });
-    expect(pending?.storageKey).toBeNull();
-
-    const record = await storeDeferredAttachment({
-      attachment: { ...pending!, source: pending!.source! },
       db,
       file: {
         bytes: 13,
-        open: async () =>
-          chunkedBody([Buffer.from("deploy "), Buffer.from("failed")]),
+        deferred: true,
+        filename: "standup.mp4",
+        mimeType: "video/mp4",
+        source: { id: "FDEFERRED", provider: "slack" },
       },
       storage,
     });
-    const body = await storage.get(record.storageKey);
-    expect(await new Response(body).text()).toBe("deploy failed");
+    const stored = await storeAttachment({
+      conversationId,
+      db,
+      file: {
+        data: Buffer.from("deploy failed"),
+        filename: "deploy.log",
+        mimeType: "text/plain",
+      },
+      storage,
+    });
+    const deferredRow = await readLiveAttachment({
+      attachmentId: deferred.id,
+      conversationId,
+      db,
+    });
+    expect(deferredRow?.storageKey).toBeNull();
+    const storedRow = await readLiveAttachment({
+      attachmentId: stored.id,
+      conversationId,
+      db,
+    });
 
-    // Purge marks both rows. GC deletes the one object and both rows.
-    await requestAttachmentDeletion(db, [conversationId], Date.now());
+    // After the retention period, GC deletes the one object and both rows.
     await expect(
-      collectAttachmentGarbage({ db, nowMs: Date.now(), storage }),
+      collectAttachmentGarbage({
+        db,
+        nowMs: Date.now() + ATTACHMENT_RETENTION_MS + 1,
+        storage,
+      }),
     ).resolves.toEqual({ deleted: 2 });
-    await expect(storage.get(record.storageKey)).resolves.toBeNull();
+    await expect(storage.get(storedRow!.storageKey!)).resolves.toBeNull();
     await expect(
-      readLiveAttachment({ attachmentId: unloaded.id, conversationId, db }),
+      readLiveAttachment({ attachmentId: deferred.id, conversationId, db }),
     ).resolves.toBeNull();
   });
 

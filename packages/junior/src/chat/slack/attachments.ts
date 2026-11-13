@@ -97,8 +97,7 @@ export function slackAttachmentsVersionQuery(
 ) {
   return db
     .select({
-      // A pending file changes the version again when its first load stores it.
-      version: sql<string>`coalesce(md5(string_agg(${juniorAttachments.id} || case when ${juniorAttachments.storageKey} is null then ':pending' else '' end, ',' order by ${juniorAttachments.id})), '')`,
+      version: sql<string>`coalesce(md5(string_agg(${juniorAttachments.id}, ',' order by ${juniorAttachments.id})), '')`,
     })
     .from(juniorAttachments)
     .where(
@@ -123,9 +122,10 @@ export function getSlackFileId(attachment: Attachment): string | undefined {
 }
 
 /**
- * Look up a Slack file that Junior recorded without downloading it.
+ * Look up a Slack file that Junior recorded without storing it.
  *
- * Uses the installation token that the current Slack turn binds.
+ * Uses the installation token that the caller binds: the Slack turn, or the
+ * dashboard route for the conversation's Slack team.
  */
 export const readSlackAttachmentSource: ReadAttachmentSource = async (
   source,

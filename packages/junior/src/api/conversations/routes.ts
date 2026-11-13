@@ -20,10 +20,7 @@ import {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
-import {
-  MAX_ATTACHMENT_BYTES,
-  messageAttachmentSchema,
-} from "@/chat/attachments/input";
+import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
 import {
   attachmentUploadParamsSchema,
   attachmentUploadSchema,
@@ -93,10 +90,7 @@ import {
 } from "./auto-archive";
 import { requireConversationChildAgents } from "./child-agents";
 import { continueConversationInSlackForViewer } from "./continue-in-slack";
-import {
-  conversationAttachmentResponse,
-  prepareConversationAttachmentDownload,
-} from "./attachments";
+import { conversationAttachmentResponse } from "./attachments";
 import {
   createAttachmentUploadForViewer,
   writeAttachmentUploadForViewer,
@@ -706,30 +700,6 @@ export function createConversationRoutes(
     },
   );
 
-  // POST, not GET: preparing a download can fetch a 250 MB Slack file, so
-  // a link prefetch must not trigger it.
-  app.post(
-    "/:conversationId/attachments/:attachmentId/download",
-    requireViewer,
-    validateRequest(
-      "param",
-      conversationAttachmentParamsSchema,
-      "Invalid route parameters.",
-    ),
-    async (context) => {
-      const { attachmentId, conversationId } = context.req.valid("param");
-      return jsonResponse(
-        messageAttachmentSchema,
-        await prepareConversationAttachmentDownload({
-          attachmentId,
-          conversationId,
-          storage: options.attachmentStorage,
-          viewer: context.get("viewer"),
-        }),
-      );
-    },
-  );
-
   app.get(
     "/:conversationId/attachments/:attachmentId",
     validateRequest(
@@ -750,6 +720,8 @@ export function createConversationRoutes(
         attachmentId,
         conversationId,
         download: download === true,
+        // Hono answers HEAD with the GET route and drops the body.
+        headOnly: context.req.method === "HEAD",
         range: context.req.header("range"),
         storage: options.attachmentStorage,
         ...(viewer ? { viewer } : undefined),

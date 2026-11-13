@@ -5,7 +5,6 @@ export {
 export {
   MAX_INPUT_ATTACHMENTS,
   MAX_ATTACHMENT_BYTES,
-  messageAttachmentSchema,
 } from "../chat/attachments/input";
 export type { InputFile, MessageAttachment } from "../chat/attachments/input";
 export {

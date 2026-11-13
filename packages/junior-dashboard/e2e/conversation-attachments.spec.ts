@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 
@@ -51,7 +52,8 @@ test("downloads a large Slack file on request", async ({ page, dashboard }) => {
     `${dashboard.baseURL}/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
     { waitUntil: "networkidle" },
   );
-  // A pending file has no bytes yet, so it shows as a file row, not a video.
+  // Junior never stores a large Slack file, so it shows as a file row with
+  // no preview, not a video.
   const recording = page.getByRole("button", {
     name: "Download standup-recording.mp4",
   });
@@ -61,15 +63,19 @@ test("downloads a large Slack file on request", async ({ page, dashboard }) => {
     page.getByRole("link", { name: /standup-recording/ }),
   ).toHaveCount(0);
 
+  const conversationUrl = page.url();
   const download = page.waitForEvent("download");
   await recording.click();
-  await expect(page.getByText("Preparing download…")).toBeVisible();
-  await expect(recording).toBeDisabled();
   const saved = await download;
   expect(saved.suggestedFilename()).toBe("standup-recording.mp4");
   // The byte route must send the video as an attachment, or some browsers
   // replace the conversation with it.
   expect(saved.url()).toMatch(/\?download=true$/);
+  expect(page.url()).toBe(conversationUrl);
+  const streamed = await readFile(await saved.path());
+  const expected = await (await page.request.get(saved.url())).body();
+  expect(streamed.byteLength).toBeGreaterThan(0);
+  expect(streamed.equals(expected)).toBe(true);
   await expect(recording).toBeEnabled();
 
   await page

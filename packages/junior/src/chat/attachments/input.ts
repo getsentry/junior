@@ -35,8 +35,8 @@ export const messageAttachmentSchema = z
     contentType: z.string().min(1),
     bytes: z.number().int().nonnegative(),
     /**
-     * True while a large Slack file waits for its first loadAttachment.
-     * Its bytes cannot be read yet.
+     * True for a large Slack file that Junior never stores. Each read
+     * downloads it from Slack, so it has no preview.
      */
     pending: z.literal(true).optional(),
   })

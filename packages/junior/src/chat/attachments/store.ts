@@ -7,11 +7,7 @@ import {
   conversationDetailTouch,
   touchConversationDetail,
 } from "@/chat/conversations/sql/detail-version";
-import {
-  AttachmentSourceUnavailableError,
-  type AttachmentSource,
-  type AttachmentSourceFile,
-} from "./source";
+import type { AttachmentSource } from "./source";
 import { bufferBody, type AttachmentStorage } from "./storage";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -33,7 +29,7 @@ export interface AttachmentRecord {
   id: string;
   /** Where the file came from, when a provider supplied it. */
   source: AttachmentSource | null;
-  /** Null until a file recorded without its bytes is first loaded. */
+  /** Null for a large Slack file, which Junior never stores. */
   storageKey: string | null;
   storageProvider: string;
 }
@@ -47,8 +43,9 @@ export interface AttachmentGarbageCollectionResult {
  *
  * A file with a source can stream. Its id comes from the source, so a retry
  * finds the stored copy before `open` downloads anything. A deferred file is
- * recorded without its bytes; the first `loadAttachment` downloads it. A file
- * without a source must be in memory, because its id comes from its digest.
+ * recorded without its bytes, and each read downloads it from its source. A
+ * file without a source must be in memory, because its id comes from its
+ * digest.
  */
 export type AttachmentFile = {
   filename: string;
@@ -175,11 +172,7 @@ async function writeAttachmentObject(args: {
     try {
       return await writeAttachmentObjectOnce(args);
     } catch (error) {
-      if (
-        error instanceof AttachmentSizeError ||
-        error instanceof AttachmentSourceUnavailableError ||
-        attempt >= WRITE_ATTEMPTS
-      ) {
+      if (error instanceof AttachmentSizeError || attempt >= WRITE_ATTEMPTS) {
         // A write that committed before it failed leaves an object no row
         // points to.
         await bestEffortDelete(args.storage, args.key);
@@ -363,7 +356,7 @@ export async function storeAttachment(args: {
 
   await assertConversationNotPurged(args.db, args.conversationId);
 
-  // A deferred file gets a row with no object. The first load writes one.
+  // A deferred file gets a row with no object. Each read downloads it.
   const { file } = args;
   let storageKey: string | null = null;
   let written: { bytes: number; sha256: string | null };
@@ -657,78 +650,6 @@ export async function readLiveAttachment(args: {
     storageKey: row.storageKey,
     storageProvider: row.storageProvider,
   };
-}
-
-/**
- * Download a file that was recorded without its bytes, and point its row at
- * the stored copy.
- *
- * The bytes stream to a fresh key with the same checks as `storeAttachment`.
- * When another load stored the file first, or the conversation was purged
- * meanwhile, the new object is deleted and the live row wins.
- */
-export async function storeDeferredAttachment(args: {
-  attachment: AttachmentRecord & { source: AttachmentSource };
-  db: JuniorSqlDatabase;
-  file: AttachmentSourceFile;
-  nowMs?: number;
-  storage: AttachmentStorage;
-}): Promise<AttachmentRecord & { storageKey: string }> {
-  const { attachment } = args;
-  const storageKey = attachmentKey({
-    attachmentId: attachment.id,
-    conversationId: attachment.conversationId,
-    filename: attachment.filename,
-    writeId: randomUUID(),
-  });
-  const written = await writeAttachmentObject({
-    file: {
-      bytes: args.file.bytes,
-      filename: attachment.filename,
-      mimeType: attachment.contentType,
-      open: args.file.open,
-      source: attachment.source,
-    },
-    key: storageKey,
-    storage: args.storage,
-  });
-  const updated = await args.db
-    .db()
-    .with(conversationDetailTouch(args.db.db(), [attachment.conversationId]))
-    .update(juniorAttachments)
-    .set({ ...written, storageKey })
-    .where(
-      and(
-        eq(juniorAttachments.id, attachment.id),
-        eq(juniorAttachments.conversationId, attachment.conversationId),
-        isNull(juniorAttachments.storageKey),
-        isNull(juniorAttachments.deleteRequestedAt),
-      ),
-    )
-    .returning({ id: juniorAttachments.id });
-  if (updated.length === 0) {
-    await bestEffortDelete(args.storage, storageKey);
-    const current = await readLiveAttachment({
-      attachmentId: attachment.id,
-      conversationId: attachment.conversationId,
-      db: args.db,
-    });
-    if (!current || current.storageKey === null) {
-      throw new Error(`Attachment ${attachment.id} is no longer available`);
-    }
-    return { ...current, storageKey: current.storageKey };
-  }
-  if (await isConversationPurged(args.db, attachment.conversationId)) {
-    await rejectPurgedAttachmentWrite({
-      conversationId: attachment.conversationId,
-      db: args.db,
-      id: attachment.id,
-      now: new Date(args.nowMs ?? Date.now()),
-      storage: args.storage,
-      storageKey,
-    });
-  }
-  return { ...attachment, bytes: written.bytes, storageKey };
 }
 
 /** Persist many conversation-owned files. */

@@ -46,7 +46,7 @@ function apiWithViewer(
   return app;
 }
 
-/** Record a Slack conversation with one large file not downloaded yet. */
+/** Record a Slack conversation with one large file that Junior never stores. */
 async function recordPendingSlackFile(
   slackFileId: string,
   visibility: "private" | "public" = "public",
@@ -369,33 +369,9 @@ describe("conversation attachment API", () => {
     expect(storage.objects.size).toBe(0);
   });
 
-  it("shows a deferred Slack file as pending and serves no bytes for it", async () => {
-    const conversationId = "slack:C-public:deferred-attachment";
-    await getConversationStore().recordActivity({
-      conversationId,
-      destination: {
-        channelId: "CPUBLIC",
-        platform: "slack",
-        teamId: "TPUBLIC",
-      },
-      nowMs: 1,
-      source: "slack",
-      title: "Deferred attachment conversation",
-      visibility: "public",
-    });
-    const storage = createMemoryAttachmentStorage();
-    const stored = await storeAttachment({
-      conversationId,
-      db: getSqlExecutor(),
-      file: {
-        bytes: 30_000_000,
-        deferred: true,
-        filename: "standup.mp4",
-        mimeType: "video/mp4",
-        source: { provider: "slack", id: "FDEFERRED" },
-      },
-      storage,
-    });
+  it("shows a large Slack file as pending in the transcript", async () => {
+    const { conversationId, storage, stored } =
+      await recordPendingSlackFile("FDEFERRED");
     await getConversationEventStore().append(conversationId, [
       {
         createdAtMs: 2,
@@ -424,88 +400,119 @@ describe("conversation attachment API", () => {
         pending: true,
       },
     ]);
-    const bytePath = `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/attachments/${stored.id}`;
-    const response = await api.request(bytePath);
-    expect(response.status).toBe(404);
-    expect(storage.objects.size).toBe(0);
+    expect(getCapturedSlackApiCalls("files.info")).toEqual([]);
   });
 
-  it("downloads a pending Slack file once, then serves the stored copy", async () => {
+  it("streams a large Slack file from Slack on every download and never stores it", async () => {
     const { conversationId, storage, stored } =
-      await recordPendingSlackFile("FPREPARED");
+      await recordPendingSlackFile("FSTREAMED");
     const body = "recording bytes";
-    queueSlackApiResponse("files.info", {
-      body: filesInfoOk({
-        fileId: "FPREPARED",
-        size: body.length,
-        urlPrivate:
-          "https://files.slack.com/files-pri/TPUBLIC-FPREPARED/standup.mp4",
-      }),
-    });
+    const url =
+      "https://files.slack.com/files-pri/TPUBLIC-FSTREAMED/standup.mp4";
+    for (let call = 0; call < 3; call += 1) {
+      queueSlackApiResponse("files.info", {
+        body: filesInfoOk({
+          fileId: "FSTREAMED",
+          size: body.length,
+          urlPrivate: url,
+        }),
+      });
+    }
+    queueSlackPrivateFileDownload({ body });
     queueSlackPrivateFileDownload({ body });
     const api = apiWithViewer("viewer@example.com", storage);
-    const attachmentPath = `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/attachments/${stored.id}`;
-    const prepare = () =>
-      api.request(`${attachmentPath}/download`, { method: "POST" });
+    const path = `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/attachments/${stored.id}?download=true`;
 
-    const first = await prepare();
-    expect(first.status).toBe(200);
-    expect(await first.json()).toEqual({
-      bytes: body.length,
-      contentType: "video/mp4",
-      filename: "standup.mp4",
-      id: stored.id,
-    });
-    const served = await api.request(attachmentPath);
-    expect(served.status).toBe(200);
-    expect(await served.text()).toBe(body);
+    // The dashboard checks with HEAD first. That asks Slack about the file
+    // but downloads nothing.
+    const check = await api.request(path, { method: "HEAD" });
+    expect(check.status).toBe(200);
+    expect(getCapturedSlackFileDownloadCalls()).toEqual([]);
 
-    // A stored file answers at once. Slack is not asked again.
-    const second = await prepare();
-    expect(second.status).toBe(200);
-    expect(getCapturedSlackApiCalls("files.info")).toHaveLength(1);
-    expect(getCapturedSlackFileDownloadCalls()).toHaveLength(1);
-    expect(storage.objects.size).toBe(1);
+    for (let download = 0; download < 2; download += 1) {
+      const response = await api.request(path);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-disposition")).toMatch(
+        /^attachment; filename="standup.mp4"/,
+      );
+      expect(response.headers.get("content-length")).toBe(String(body.length));
+      expect(await response.text()).toBe(body);
+    }
+    expect(getCapturedSlackApiCalls("files.info")).toHaveLength(3);
+    expect(getCapturedSlackFileDownloadCalls()).toEqual([
+      expect.objectContaining({ url }),
+      expect.objectContaining({ url }),
+    ]);
+    expect(storage.objects.size).toBe(0);
+    const [row] = await getSqlExecutor()
+      .db()
+      .select({
+        sha256: juniorAttachments.sha256,
+        storageKey: juniorAttachments.storageKey,
+      })
+      .from(juniorAttachments)
+      .where(eq(juniorAttachments.id, stored.id));
+    expect(row).toEqual({ sha256: null, storageKey: null });
   });
 
   it("reports a deleted Slack file when the dashboard asks for it", async () => {
     const { conversationId, storage, stored } =
       await recordPendingSlackFile("FDELETED");
     queueSlackApiError("files.info", { error: "file_not_found" });
+    queueSlackApiError("files.info", { error: "file_not_found" });
+    const api = apiWithViewer("viewer@example.com", storage);
+    const path = `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/attachments/${stored.id}`;
 
-    const response = await apiWithViewer("viewer@example.com", storage).request(
-      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/attachments/${stored.id}/download`,
-      { method: "POST" },
-    );
+    const check = await api.request(path, { method: "HEAD" });
+    const response = await api.request(path);
 
+    expect(check.status).toBe(409);
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
       error:
         "standup.mp4 is no longer available: The Slack file was deleted, or Junior can no longer access it.",
     });
     expect(getCapturedSlackFileDownloadCalls()).toEqual([]);
-    expect(storage.objects.size).toBe(0);
   });
 
-  it("refuses a download for viewers who cannot see the conversation", async () => {
+  it("refuses a Slack download for viewers who cannot see the conversation", async () => {
     const { conversationId, storage, stored } = await recordPendingSlackFile(
       "FPRIVATEPENDING",
       "private",
     );
-    const path = `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/attachments/${stored.id}/download`;
+    const path = `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/attachments/${stored.id}`;
 
     const outsider = await apiWithViewer(
       "outsider@example.com",
       storage,
-    ).request(path, { method: "POST" });
-    const anonymous = await apiWithViewer(undefined, storage).request(path, {
-      method: "POST",
-    });
+    ).request(path);
+    const anonymous = await apiWithViewer(undefined, storage).request(path);
 
     expect(outsider.status).toBe(404);
-    expect(anonymous.status).toBe(401);
+    expect(anonymous.status).toBe(404);
     expect(getCapturedSlackApiCalls("files.info")).toEqual([]);
-    expect(storage.objects.size).toBe(0);
+    expect(getCapturedSlackFileDownloadCalls()).toEqual([]);
+  });
+
+  it("starts a Slack download only from a row in the requested conversation", async () => {
+    const here = await recordPendingSlackFile("FHERE");
+    const elsewhere = await recordPendingSlackFile("FELSEWHERE");
+    const api = apiWithViewer("viewer@example.com", here.storage);
+    const base = `http://localhost/api/conversations/${encodeURIComponent(here.conversationId)}/attachments`;
+
+    // A row id from another conversation, a raw Slack file id, and an
+    // unknown id all miss the conversation-scoped lookup.
+    for (const attachmentId of [
+      elsewhere.stored.id,
+      "FELSEWHERE",
+      "att_unknown",
+    ]) {
+      const response = await api.request(`${base}/${attachmentId}`);
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({ error: "Attachment not found." });
+    }
+    expect(getCapturedSlackApiCalls("files.info")).toEqual([]);
+    expect(getCapturedSlackFileDownloadCalls()).toEqual([]);
   });
 
   it("hides purge-marked attachments", async () => {
