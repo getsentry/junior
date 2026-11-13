@@ -9,7 +9,6 @@ import {
   cacheWarmingSavingsRefillResponseSchema,
   cacheWarmingSavingsReportSchema,
 } from "@/api/schema";
-import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import {
   backfillCacheWarmingGaps,
   scanIdlePeriods,
@@ -35,7 +34,10 @@ import { getStateAdapter } from "@/chat/state/adapter";
 import { juniorAgentInvocations } from "@/db/schema";
 import { createAgent } from "../fixtures/agent";
 import { closeConversationFixture } from "../fixtures/conversation";
-import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import {
+  createConversationWorkQueueTestAdapter,
+  runTestHeartbeat,
+} from "../fixtures/conversation-work";
 import { mockTitleModel } from "../fixtures/title-model";
 import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
@@ -110,10 +112,7 @@ const gaps = (segment: string) =>
 
 async function heartbeat(nowMs: number) {
   vi.setSystemTime(nowMs);
-  await runHeartbeat({
-    conversationWorkQueue: createConversationWorkQueueTestAdapter(),
-    nowMs,
-  });
+  await runTestHeartbeat(createConversationWorkQueueTestAdapter(), nowMs);
 }
 
 describe("cache warming gap backfill", () => {

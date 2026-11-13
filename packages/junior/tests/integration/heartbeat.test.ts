@@ -4,6 +4,7 @@ import {
   type Destination,
 } from "@sentry/junior-plugin-api";
 import { createHeartbeatContext } from "@/chat/agent-dispatch/context";
+import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import {
   getDispatchConversationId,
   getDispatchRecord,
@@ -37,12 +38,16 @@ let conversationWorkQueue = createConversationWorkQueueTestAdapter();
 function createTestHeartbeatContext(
   args: Omit<
     Parameters<typeof createHeartbeatContext>[0],
-    "conversationWorkQueue" | "events"
+    "conversationWorkQueue" | "dispatchForIdentity" | "events"
   >,
 ) {
   return createHeartbeatContext({
     ...args,
     conversationWorkQueue,
+    dispatchForIdentity: createIdentityDispatcher({
+      allowedDomains: [],
+      conversationWorkQueue: () => conversationWorkQueue,
+    }),
     events: {
       async publish() {
         throw new Error("Dispatch tests do not publish events");
@@ -54,12 +59,18 @@ function createTestHeartbeatContext(
 function testHeartbeat(
   request: Parameters<typeof heartbeat>[0],
   waitUntil: Parameters<typeof heartbeat>[1],
-  options: Parameters<typeof heartbeat>[2] = {},
+  options: Partial<Parameters<typeof heartbeat>[2]> = {},
 ) {
+  const queue = options.conversationWorkQueue ?? conversationWorkQueue;
   return heartbeat(request, waitUntil, {
     ...options,
-    conversationWorkQueue:
-      options.conversationWorkQueue ?? conversationWorkQueue,
+    conversationWorkQueue: queue,
+    dispatchForIdentity:
+      options.dispatchForIdentity ??
+      createIdentityDispatcher({
+        allowedDomains: [],
+        conversationWorkQueue: () => queue,
+      }),
   });
 }
 
