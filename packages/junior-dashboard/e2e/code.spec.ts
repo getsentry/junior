@@ -40,7 +40,16 @@ test("opens Linked work toward the larger free space", async ({
   page,
   dashboard,
 }) => {
-  // The first repository conversation sits about 500px from the top.
+  // Some browsers default to a root font smaller than 16px. Set it before
+  // the page loads: a later change animates the sidebar width while the
+  // hover runs. The first repository conversation sits about 450px from the
+  // top.
+  await page.addInitScript(() => {
+    // The document has no elements yet, so adopt a sheet instead of a tag.
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync("html { font-size: 14px }");
+    document.adoptedStyleSheets = [sheet];
+  });
   for (const { height, side } of [
     { height: 1400, side: "bottom" },
     { height: 600, side: "top" },

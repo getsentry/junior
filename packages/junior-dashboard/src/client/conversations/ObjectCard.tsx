@@ -4,6 +4,7 @@ import {
   objectPresentation,
 } from "@sentry/junior-plugin-api";
 import { ChevronRight } from "lucide-react";
+import { useState } from "react";
 import { ActorAvatar } from "../components/ActorAvatar";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { AutomationCard } from "../components/AutomationCard";
@@ -16,10 +17,28 @@ import {
 import { MessageCard, MessageCardHeader } from "../components/MessageCard";
 import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
+import { displayPlainText } from "../display-text/plainText";
+import { ObjectAttachAction } from "./ObjectAttach";
+
+// A thumbnail that fails to load does not render.
+function Thumbnail({ src }: { src: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <img
+      alt=""
+      className="aspect-video max-h-44 w-full rounded-md border border-dashboard-border object-cover"
+      loading="lazy"
+      onError={() => setFailed(true)}
+      src={src}
+    />
+  );
+}
 
 /**
  * Show the latest saved annotation, or a `live` card that the API resolved
- * for a link. Opening a source is always explicit.
+ * for a link. Opening a source is always explicit. A live card can attach
+ * its object to the Conversation.
  */
 export function ObjectCard({
   card,
@@ -78,6 +97,14 @@ export function ObjectCard({
         }
       />
       <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
+        {card.facts?.type === "web_page" && card.facts.thumbnailUrl && (
+          <Thumbnail src={card.facts.thumbnailUrl} />
+        )}
+        {card.facts?.summary && (
+          <p className="m-0 max-w-[80ch] break-words text-sm text-dashboard-text-muted">
+            {displayPlainText(card.facts.summary)}
+          </p>
+        )}
         {(card.status || fields.length > 0) && (
           // Facts sit side by side and wrap to a stack in a narrow column.
           <dl className="m-0 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-3">
@@ -145,6 +172,9 @@ export function ObjectCard({
         )}
         {!live && (
           <span className="text-dashboard-text-muted">Latest saved state</span>
+        )}
+        {live && card.objectType !== "person" && (
+          <ObjectAttachAction card={card} />
         )}
       </div>
     </MessageCard>

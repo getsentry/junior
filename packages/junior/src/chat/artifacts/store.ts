@@ -4,7 +4,7 @@ import {
   detectImageMediaType,
   type InputImageType,
 } from "@/chat/attachments/media";
-import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { bufferBody, type AttachmentStorage } from "@/chat/attachments/storage";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorArtifacts } from "@/db/schema";
@@ -127,7 +127,8 @@ export async function publishImage(args: {
   const storageKey = artifactKey(filename);
 
   await args.storage.put({
-    body: args.body,
+    body: bufferBody(args.body),
+    bytes: args.body.byteLength,
     contentType,
     key: storageKey,
   });

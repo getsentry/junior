@@ -43,8 +43,21 @@ export function knownObjectsFromAnnotations(
   return objects;
 }
 
-// Four spaces of indent make a code block, so they do not count.
-const STANDALONE_URL_RE = /^ {0,3}<?(https?:\/\/[^\s<>]+?)>?\s*$/;
+// Return the bare URL that is the whole paragraph, maybe in `<...>`.
+function standaloneUrl(paragraph: string): string | undefined {
+  const text = paragraph.trimEnd();
+  const unindented = text.replace(/^ +/, "");
+  // Four spaces of indent make a code block, so they do not count.
+  if (text.length - unindented.length > 3) return undefined;
+  let url = unindented.startsWith("<") ? unindented.slice(1) : unindented;
+  if (url.endsWith(">")) url = url.slice(0, -1);
+  const scheme = ["https://", "http://"].find((prefix) =>
+    url.startsWith(prefix),
+  );
+  return scheme && url.length > scheme.length && !/[\s<>]/.test(url)
+    ? url
+    : undefined;
+}
 
 /**
  * Return whether a bare URL for `url` is alone in a paragraph of display
@@ -63,9 +76,7 @@ export function textHasStandaloneUrl(text: string, url: string): boolean {
         slackLinksToMarkdown(block.code)
           .split(/\n[ \t]*\n/)
           .some((paragraph) => {
-            const bare = STANDALONE_URL_RE.exec(
-              paragraph.replace(/^\n+/, ""),
-            )?.[1];
+            const bare = standaloneUrl(paragraph.replace(/^\n+/, ""));
             return bare !== undefined && objectUrlKey(bare) === key;
           }),
     )

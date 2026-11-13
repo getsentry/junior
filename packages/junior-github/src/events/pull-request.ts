@@ -139,10 +139,11 @@ const GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE = {
 /**
  * Junior finishes its own drafts. Passing checks start no other step, so the
  * Watch of a draft also gets them. Marking the pull request ready sends the
- * review request.
+ * review request. Each passing suite wakes the Watch, so a suite that leaves
+ * the required checks unfinished must stay silent, or every suite posts.
  */
 const DRAFT_CHECKS_RECOVERED_GUIDANCE =
-  "If the pull request is still a draft, call github_getPullRequest and read its `checks`. When `checks.required` is `passing` and no decision is open, in the pull request body or in an open review item that waits on the person who asked for it, mark it ready with github_updatePullRequest and draft false, and report that in the originating thread. When it is `failing`, fix the failing checks like a failed check. When it is `not_reported`, the required checks may not have started on the latest commit yet. It does not mean that none are required. Otherwise stay silent.";
+  "If the pull request is still a draft, call github_getPullRequest and read its `checks`. When `checks.required` is `passing` and no decision is open, in the pull request body or in an open review item that waits on the person who asked for it, mark it ready with github_updatePullRequest and draft false, and report that in the originating thread. When it is `failing`, fix the failing checks like a failed check. When it is `pending` or `not_reported`, stay silent: a later passing suite wakes you again. `not_reported` means the required checks may not have started on the latest commit yet, not that none are required.";
 
 /**
  * Build the Watch created after Junior creates a pull request. Only a draft

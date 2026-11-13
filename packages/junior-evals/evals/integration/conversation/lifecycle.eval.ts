@@ -12,11 +12,13 @@ import {
   rejectNextModelRequestAsTooLong,
 } from "@junior-evals/fixture/gateway";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
+import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
 import {
   completedMcpToolCalls,
   completedToolCalls,
   toolOutput,
 } from "@junior-evals/fixture/results";
+import { savedAgentHistory } from "@junior-evals/fixture/saved-history";
 import { test } from "@junior-evals/fixture/test";
 
 /** Release tools of the eval MCP server. */
@@ -154,9 +156,9 @@ describe("Lifecycle and Resilience", () => {
   test("when a noReply call puts the context over the compaction limit, end the Turn without compacting", async ({
     agent,
   }) => {
-    // Pi also prepares a next step after a batch that ends the run. A
-    // compaction there drops the noReply call, and a retry calls the model
-    // again.
+    // Junior compacts after each model call, before Pi stops the run. A
+    // compaction after a batch that ends the run drops the noReply call, and
+    // a retry calls the model again.
     const { run } = await agent({
       limits: { contextWindowTokens: SMALL_CONTEXT_WINDOW_TOKENS },
     });
@@ -177,6 +179,60 @@ describe("Lifecycle and Resilience", () => {
     expect(conversation.compactions).toBe(0);
     expect(conversation.turns.map((turn) => turn.status)).toEqual(["no_reply"]);
   });
+
+  // The measured usage of the first model call is over the compaction limit,
+  // so Junior compacts in that step. The replacement ends with the steered
+  // mention, so Pi must not add it again. Without tool calls, or with only a
+  // `noReply` call, the step ends the run, and Pi stops without a model call
+  // for the steering. The empty-output retry answers it.
+  test.for([
+    {
+      step: "answers",
+      prompt: "In one sentence, say what the export is for.",
+      steeredText: "also say that Dana owns the rollback",
+      noReplyCalls: 0,
+    },
+    {
+      step: "ends with noReply",
+      prompt:
+        "That was the whole export. Nothing for you to do with it, so stay silent.",
+      steeredText:
+        "Actually, do reply: say in one sentence that Dana owns the rollback.",
+      noReplyCalls: 1,
+    },
+  ])(
+    "when a steered mention arrives in a step that $step and compacts the context, the next model call gets it once",
+    async ({ prompt, steeredText, noReplyCalls }, { agent }) => {
+      const { run } = await agent({
+        limits: { contextWindowTokens: SMALL_CONTEXT_WINDOW_TOKENS },
+      });
+      const conversation = await run(slackMention(prompt), {
+        history: [
+          slackMention(`Glossary export for the thread record:\n${CJK_EXPORT}`),
+          reply("Noted."),
+        ],
+        onProgress: sendDuringFirstModelRequest([slackMention(steeredText)]),
+      });
+
+      expect(conversation.turns.map((turn) => turn.status)).toEqual([
+        "succeeded",
+      ]);
+      expect(conversation.compactions).toBeGreaterThan(0);
+      expect(completedToolCalls("noReply", conversation)).toHaveLength(
+        noReplyCalls,
+      );
+      expect(
+        conversation.replies.filter((message) => /Dana/.test(message.text)),
+      ).toHaveLength(1);
+      const steered = (
+        await savedAgentHistory(conversation.conversationId)
+      ).filter(
+        (item) =>
+          item.type === "user_message" && item.text.includes(steeredText),
+      );
+      expect(steered).toHaveLength(1);
+    },
+  );
 
   test("when the provider rejects a context over the input limit, skip the summary and post a safe failure reply", async ({
     agent,

@@ -1,5 +1,5 @@
 {
-  "id": "06dead94-fcfe-46e3-9c82-47174b3aca43",
+  "id": "60fd2cf9-e028-493b-996c-98c8196dbcf9",
   "prevId": "df55d2df-8ffd-443f-ab18-573457ae4c17",
   "version": "7",
   "dialect": "postgresql",
@@ -654,7 +654,7 @@
           "name": "storage_key",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "provider": {
           "name": "provider",
@@ -690,7 +690,7 @@
           "name": "sha256",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "vision_summary": {
           "name": "vision_summary",
@@ -1789,77 +1789,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.junior_conversation_brief_embeddings": {
-      "name": "junior_conversation_brief_embeddings",
-      "schema": "",
-      "columns": {
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "brief_version": {
-          "name": "brief_version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider": {
-          "name": "provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "model": {
-          "name": "model",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "dimensions": {
-          "name": "dimensions",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "embedding": {
-          "name": "embedding",
-          "type": "vector",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "junior_conversation_brief_embeddings_brief_fk": {
-          "name": "junior_conversation_brief_embeddings_brief_fk",
-          "tableFrom": "junior_conversation_brief_embeddings",
-          "tableTo": "junior_conversation_briefs",
-          "columnsFrom": ["conversation_id", "brief_version"],
-          "columnsTo": ["conversation_id", "version"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "junior_conversation_brief_embeddings_dimensions_check": {
-          "name": "junior_conversation_brief_embeddings_dimensions_check",
-          "value": "vector_dims(\"junior_conversation_brief_embeddings\".\"embedding\") = \"junior_conversation_brief_embeddings\".\"dimensions\""
-        }
-      },
       "isRLSEnabled": false
     },
     "public.junior_conversation_briefs": {

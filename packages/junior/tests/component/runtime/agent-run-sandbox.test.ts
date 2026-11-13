@@ -165,7 +165,8 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           content: [{ type: "text", text: JSON.stringify(toolResult) }],
           isError: false,
         });
-        // Like Pi 0.84.1: `turn_end` listeners, then the next-turn hook.
+        // Like Pi 0.85.1: `turn_end` listeners, then the next-turn hook before
+        // the next model call.
         for (const listener of this.listeners) {
           await listener({
             type: "turn_end",

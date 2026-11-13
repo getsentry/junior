@@ -284,7 +284,9 @@ function resolvePublicBaseURL(
     process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
     process.env.VERCEL_URL?.trim();
   if (!vercelURL) return undefined;
-  return /^https?:\/\//.test(vercelURL) ? vercelURL : `https://${vercelURL}`;
+  return vercelURL.startsWith("https://") || vercelURL.startsWith("http://")
+    ? vercelURL
+    : `https://${vercelURL}`;
 }
 
 type JuniorVirtualDashboardOptions = JuniorDashboardOptions;

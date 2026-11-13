@@ -43,6 +43,7 @@ import { createSearchConversationsTool } from "@/chat/tools/search-conversations
 import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
+import { readSlackAttachmentSource } from "@/chat/slack/attachments";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { createSlackSendFilesTool } from "@/chat/slack/tools/send-files";
@@ -234,6 +235,9 @@ export function createTools(
     tools.loadAttachment = createLoadAttachmentTool({
       conversationId: context.conversationId,
       db: getSqlExecutor(),
+      ...(slackContext
+        ? { readAttachmentSource: readSlackAttachmentSource }
+        : undefined),
       storage: context.attachmentStorage,
       workspace: context.workspace,
     });

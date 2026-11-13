@@ -15,7 +15,9 @@ let dashboardConversationLinkOptions:
   | undefined;
 
 function withHttps(host: string): string {
-  return /^https?:\/\//.test(host) ? host : `https://${host}`;
+  return host.startsWith("https://") || host.startsWith("http://")
+    ? host
+    : `https://${host}`;
 }
 
 function stripTrailingSlashes(value: string): string {
@@ -84,6 +86,23 @@ export function getDashboardConversationLink(
 ): string | undefined {
   return resolveDashboardPath(
     `/conversations/${encodeURIComponent(conversationId)}`,
+  );
+}
+
+/**
+ * Return whether a URL is under the core dashboard base path. Other pages on
+ * the same host are not Junior's.
+ */
+export function isDashboardLink(url: URL): boolean {
+  const root = resolveDashboardPath("/");
+  if (!root) return false;
+  const base = new URL(root);
+  const prefix = base.pathname.endsWith("/")
+    ? base.pathname
+    : `${base.pathname}/`;
+  return (
+    url.origin === base.origin &&
+    (url.pathname.startsWith(prefix) || `${url.pathname}/` === prefix)
   );
 }
 
