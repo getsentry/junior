@@ -52,6 +52,9 @@ test("links to saved objects show as a chip, a hover card, and a card", async ({
   page,
   dashboard,
 }) => {
+  await page.route("**/api/images/payments-91-after**", (route) =>
+    route.fulfill({ status: 404 }),
+  );
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
   );
@@ -82,9 +85,11 @@ test("links to saved objects show as a chip, a hover card, and a card", async ({
     "srcset",
     "/api/images/payments-91-before?w=320 1x, /api/images/payments-91-before?w=640 2x",
   );
+  // The image route answers 404 to a viewer who cannot see the source.
+  // That image does not render.
   await expect(
     card.getByRole("img", { name: "Description image 2" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect
     .poll(() =>
       before.evaluate((image: HTMLImageElement) => image.naturalWidth),

@@ -36,6 +36,30 @@ function Thumbnail({ src }: { src: string }) {
   );
 }
 
+// The image route answers 404 to a viewer who cannot see the source, so a
+// preview image that fails to load does not render.
+function PreviewImage({
+  alt,
+  image,
+}: {
+  alt: string;
+  image: { src: string; srcSet: string };
+}) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <img
+      alt={alt}
+      className="aspect-video w-full rounded-md border border-dashboard-border bg-dashboard-fill-faint object-cover object-top"
+      decoding="async"
+      loading="lazy"
+      onError={() => setFailed(true)}
+      src={image.src}
+      srcSet={image.srcSet}
+    />
+  );
+}
+
 /**
  * Show the latest saved annotation, or a `live` card that the API resolved
  * for a link. Opening a source is always explicit. A live card can attach
@@ -106,14 +130,10 @@ export function ObjectCard({
           // Screenshots often come as a before and after pair, side by side.
           <div className="grid grid-cols-2 gap-2">
             {images.map((image, index) => (
-              <img
+              <PreviewImage
                 key={image.src}
                 alt={`Description image ${index + 1}`}
-                className="aspect-video w-full rounded-md border border-dashboard-border bg-dashboard-fill-faint object-cover object-top"
-                decoding="async"
-                loading="lazy"
-                src={image.src}
-                srcSet={image.srcSet}
+                image={image}
               />
             ))}
           </div>

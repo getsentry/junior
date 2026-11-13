@@ -433,6 +433,7 @@ describe("image API", () => {
       "https://private-user-images.githubusercontent.com/1/2.png?jwt=signed";
     const attachmentReads: (string | null)[] = [];
     const signedReads: (string | null)[] = [];
+    let memberChecks = 0;
     mswServer.use(
       http.get("https://api.github.com/app/installations/456", () =>
         HttpResponse.json({
@@ -449,10 +450,16 @@ describe("image API", () => {
       ),
       http.get(
         "https://api.github.com/repos/getsentry/secret/collaborators/:login/permission",
-        ({ params }) =>
-          params.login === "member"
-            ? HttpResponse.json({ permission: "read" })
-            : HttpResponse.json({ permission: "none" }),
+        ({ params }) => {
+          if (params.login !== "member") {
+            return HttpResponse.json({ permission: "none" });
+          }
+          // The first read of the member's access fails for a short time.
+          memberChecks += 1;
+          return memberChecks === 1
+            ? HttpResponse.json({ message: "rate limited" }, { status: 502 })
+            : HttpResponse.json({ permission: "read" });
+        },
       ),
       // GitHub redirects a private attachment to a short-lived signed URL.
       http.get(attachment, ({ request }) => {
@@ -492,6 +499,12 @@ describe("image API", () => {
       expect(attachmentReads).toEqual([]);
       expect(signedReads).toEqual([]);
 
+      // A failed access read is not an answer, so it is not kept as a denial.
+      expect(
+        (await requestImage(imagePath(image, 640), gitHubViewer("member")))
+          .status,
+      ).not.toBe(200);
+      expect(attachmentReads).toEqual([]);
       await expectWebp(
         await requestImage(imagePath(image, 640), gitHubViewer("member")),
         { height: 400, width: 640 },

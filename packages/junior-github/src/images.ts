@@ -38,7 +38,13 @@ async function canSeeRepository(
         path: `${repoPath(repository)}/collaborators/${encodeURIComponent(login)}/permission`,
       });
       // GitHub answers 404 when the App cannot see the repository or does
-      // not know the login.
+      // not know the login. Other failures, such as a rate limit, are not
+      // an answer, so they are not cached.
+      if (!response.ok && response.status !== 404) {
+        throw new Error(
+          `GitHub repository permission read failed with HTTP ${response.status}`,
+        );
+      }
       const parsed = response.ok
         ? permissionSchema.safeParse(response.body)
         : undefined;
