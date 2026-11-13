@@ -1404,7 +1404,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
       type: "message",
       messageId: "release-assistant",
       role: "assistant",
-      // Links to the Annotations below show as a chip, a hover card, and a
+      // Links to the Annotations below show as a link, a hover card, and a
       // full card.
       text: [
         "Released the package.",
@@ -1419,6 +1419,15 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "The demo is at https://www.youtube.com/watch?v=MockLaunchDemo",
         "",
         "https://blog.example.com/posts/release-4-2",
+        "",
+        // Alone on their lines: the video shows only its thumbnail, the
+        // Slack message shows a card, and the repeated pull request shows
+        // no second card.
+        "https://www.youtube.com/watch?v=MockLaunchDemo",
+        "",
+        "https://acme.slack.com/archives/CQA456/p1770021700000100",
+        "",
+        "https://github.com/getsentry/payments/pull/91",
       ].join("\n"),
     }),
   );

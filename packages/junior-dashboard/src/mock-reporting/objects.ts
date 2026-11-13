@@ -62,6 +62,7 @@ const MOCK_THUMBNAIL_URL = "/api/images/mock-thumbnail.signature?w=640";
 const WEB_PAGES: Record<string, Parameters<typeof webPageObjectCard>[0]> = {
   "https://www.youtube.com/watch?v=MockLaunchDemo": {
     author: "Sentry",
+    media: "video",
     siteName: "YouTube",
     thumbnailUrl: MOCK_THUMBNAIL_URL,
     title: "Junior 4.2 launch demo",

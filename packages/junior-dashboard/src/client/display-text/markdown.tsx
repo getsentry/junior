@@ -18,12 +18,16 @@ import {
 } from "../conversations/transcriptSearch";
 import { cn } from "../styles";
 import { ANCHOR_CLASS, safeHref, slackLinksToMarkdown } from "./links";
+import { objectUrlKey } from "./knownObjects";
 import { renderTextTokens } from "./mentions";
 import { OutboundLink } from "../components/OutboundLink";
 import { ObjectRow } from "../conversations/ObjectRow";
 import {
-  ObjectLinkChip,
+  mediaThumbnail,
   ObjectLinkPreview,
+  ObjectThumbnailLink,
+  ObjectTitleLink,
+  PersonLinkChip,
   useKnownObject,
 } from "./ObjectLinks";
 import {
@@ -45,14 +49,18 @@ import {
  * A link to a known object (`KnownObjectsProvider`) previews its card on
  * hover. Other links ask the API for a card when they scroll into view or
  * the reader hovers them, and stay plain links until a card arrives.
- * Outside document mode, a bare URL in running text shows as a chip, and a
- * bare URL alone in a top-level paragraph shows the full card.
+ * Outside document mode, a bare URL in running text shows as a plain link
+ * with the object title, or a chip for a person. The first bare URL alone in
+ * a top-level paragraph shows the full card, or only the thumbnail of a
+ * video or image page. `shownCardUrls` lists the `objectUrlKey` of cards that
+ * earlier text of the same message already shows.
  */
 export function MarkdownText(props: {
   chat?: boolean;
   compact?: boolean;
   document?: boolean;
   inline?: boolean;
+  shownCardUrls?: readonly string[];
   text: string;
 }): ReactNode {
   if (!props.text.trim()) return null;
@@ -93,7 +101,7 @@ export function MarkdownText(props: {
                   remarkBreaks,
                   remarkBareUrlStops,
                   remarkSectionLabels,
-                  remarkObjectLinks,
+                  [remarkObjectLinks, { shown: props.shownCardUrls }],
                 ]
           }
           urlTransform={safeHref}
@@ -184,14 +192,18 @@ function splitSectionLabel(node: MarkdownNode): MarkdownNode[] {
 /**
  * Mark each top-level paragraph that holds only a bare URL, so the paragraph
  * can show the full card of a known object. A bare URL in a list, a quote,
- * or a sentence stays inline.
+ * or a sentence stays inline, and so does a URL whose card already shows.
  */
-function remarkObjectLinks() {
+function remarkObjectLinks(options: { shown?: readonly string[] } = {}) {
   return (tree: MarkdownNode) => {
+    const shown = new Set(options.shown);
     for (const node of tree.children ?? []) {
       const [link, ...rest] = node.children ?? [];
       if (node.type !== "paragraph" || rest.length > 0) continue;
-      if (link?.type !== "link" || !isBareLink(link)) continue;
+      if (link?.type !== "link" || !isBareLink(link) || !link.url) continue;
+      const key = objectUrlKey(link.url);
+      if (!key || shown.has(key)) continue;
+      shown.add(key);
       node.data = {
         ...node.data,
         hProperties: { ...node.data?.hProperties, dataObjectUrl: link.url },
@@ -401,7 +413,9 @@ function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
   const objectUrl =
     typeof props.objectUrl === "string" ? props.objectUrl : undefined;
   const known = useKnownObject(objectUrl);
-  if (known.card && !known.linkOnly) return <ObjectRow card={known.card} />;
+  if (objectUrl && known.card && !known.linkOnly) {
+    return <StandaloneObject card={known.card} href={objectUrl} />;
+  }
   if (objectUrl && resolvableUrl(objectUrl)) {
     return (
       <ResolvedParagraph objectUrl={objectUrl} saved={known.card}>
@@ -421,9 +435,27 @@ function ResolvedParagraph(props: {
 }) {
   const { card, request } = useResolvedObject(props.objectUrl);
   useRequestWhenSaved(props.saved, request);
-  if (card) return <ObjectRow card={card} live />;
-  if (props.saved) return <ObjectRow card={props.saved} />;
+  if (card) {
+    return <StandaloneObject card={card} href={props.objectUrl} live />;
+  }
+  if (props.saved) {
+    return <StandaloneObject card={props.saved} href={props.objectUrl} />;
+  }
   return <PlainParagraph>{props.children}</PlainParagraph>;
+}
+
+// A link alone on its line shows the full card. A video or image page shows
+// only its thumbnail.
+function StandaloneObject(props: {
+  card: OwnedObjectAnnotation;
+  href: string;
+  live?: boolean;
+}) {
+  const thumbnail = mediaThumbnail(props.card);
+  if (thumbnail) {
+    return <ObjectThumbnailLink {...props} src={thumbnail} />;
+  }
+  return <ObjectRow card={props.card} live={props.live} />;
 }
 
 // The saved card replaces the link, so no visible link asks for the card.
@@ -514,9 +546,14 @@ function ObjectAnchor(props: {
   href: string;
   live?: boolean;
 }) {
+  if (props.bare && props.card.objectType === "person") {
+    return (
+      <PersonLinkChip card={props.card} href={props.href} live={props.live} />
+    );
+  }
   if (props.bare) {
     return (
-      <ObjectLinkChip card={props.card} href={props.href} live={props.live} />
+      <ObjectTitleLink card={props.card} href={props.href} live={props.live} />
     );
   }
   return (
