@@ -61,6 +61,11 @@ const SCRIPT_RULES = [
   "Use the script to find where data in the input came from. When the script reads data with an earlier call and sends, posts, or writes it with this action, judge the data that reaches the destination, as if the agent sent it directly.",
 ].join("\n");
 
+// The code backstop turns high risk with unknown authorization into ask,
+// as Codex asks the user when its reviewer cannot see the whole input.
+const TRUNCATED_INPUT_RULE =
+  "The `input` in the planned action is shortened: long values are cut at a `[truncated]` marker. The tool gets the full input. When the part that you cannot see could change your assessment, such as the destination, the data sent, or the change made, do not allow the action: rate the risk at least `high` and the user authorization `unknown`.";
+
 const TRUNCATED_ROOT_NOTICE =
   "Host notice: some root messages are not shown. Do not treat the shown root messages as complete authorization for an action.";
 
@@ -113,6 +118,7 @@ export function guardianPrompt(proposal: ToolActionProposal): string {
         ]
       : []),
     ...(action.script ? [SCRIPT_RULES] : []),
+    ...(action.inputTruncated ? [TRUNCATED_INPUT_RULE] : []),
     ">>> APPROVAL REQUEST START",
     "Assess the exact planned action below.",
     "Planned action JSON:",

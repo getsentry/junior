@@ -302,6 +302,7 @@ function buildProposal(
   script: ToolAction["script"],
 ): ToolActionProposal {
   const credential = actionCredential(context.credentialContext);
+  const bounded = boundedInput(input);
   return {
     context: {
       actor: actionActor(context.actor),
@@ -312,7 +313,8 @@ function buildProposal(
       userIntent: context.userIntent(),
     },
     ...(context.evidence ? { evidence: context.evidence() } : undefined),
-    input,
+    input: bounded.input,
+    ...(bounded.truncated ? { inputTruncated: true } : undefined),
     ...(priorRejections.length > 0
       ? {
           priorRejectedActions: priorRejections.map((rejection) => ({
@@ -336,6 +338,61 @@ function truncateMiddle(text: string, maxChars: number): string {
   }
   const half = Math.floor(maxChars / 2);
   return `${text.slice(0, half)}\n[truncated]\n${text.slice(-half)}`;
+}
+
+// Guardian sees at most this much tool input JSON. With the evidence, prior
+// rejections, and script at their bounds, the proposal stays well under the
+// reviewer's MAX_PROPOSAL_CHARS (192,000), so a large PR body, file, or
+// message gets a decision instead of an unavailable review.
+const MAX_INPUT_CHARS = 48_000;
+const MIN_INPUT_STRING_CHARS = 250;
+
+function truncateStrings(value: unknown, maxChars: number): unknown {
+  if (typeof value === "string") {
+    return truncateMiddle(value, maxChars);
+  }
+  if (Array.isArray(value)) {
+    return value.map((child) => truncateStrings(child, maxChars));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [
+        key,
+        truncateStrings(child, maxChars),
+      ]),
+    );
+  }
+  return value;
+}
+
+/**
+ * Bound the tool input that Guardian sees. Long strings are cut in the
+ * middle, with a shorter limit until the input fits. An input with too many
+ * values to fit becomes its JSON text, cut in the middle. The tool still runs
+ * with the full input; only Guardian's view is shorter.
+ */
+function boundedInput(input: Record<string, unknown>): {
+  input: Record<string, unknown>;
+  truncated: boolean;
+} {
+  const json = JSON.stringify(input);
+  if (json.length <= MAX_INPUT_CHARS) {
+    return { input, truncated: false };
+  }
+  for (
+    let maxChars = MAX_INPUT_CHARS / 2;
+    maxChars >= MIN_INPUT_STRING_CHARS;
+    maxChars = Math.floor(maxChars / 2)
+  ) {
+    const bounded = truncateStrings(input, maxChars) as Record<string, unknown>;
+    if (JSON.stringify(bounded).length <= MAX_INPUT_CHARS) {
+      return { input: bounded, truncated: true };
+    }
+  }
+  return {
+    input: { summary: truncateMiddle(json, MAX_INPUT_CHARS) },
+    truncated: true,
+  };
 }
 
 /**

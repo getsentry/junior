@@ -13,6 +13,7 @@ import type {
   ToolActionReviewDecision,
   ToolActionReviewer,
 } from "@/chat/guardian/proposal";
+import { guardianPrompt } from "@/chat/guardian/reviewer";
 
 const LOCAL_SOURCE = {
   kind: "local",
@@ -651,5 +652,60 @@ describe("tool action review", () => {
     expect(script.calls[0]!.input.length).toBeLessThan(600);
     expect(script.source.length).toBeLessThan(17_000);
     expect(script.source).toContain("[truncated]");
+  });
+
+  it("reviews an oversized input with a shortened view and keeps the full input", async () => {
+    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
+      decision: "allow",
+      reason: "Matches the request.",
+      riskLevel: "low",
+      userAuthorization: "high",
+    }));
+    const body = `start ${"x".repeat(300_000)} end`;
+    const input = { title: "Weekly report", body };
+
+    const decision = await reviewToolAction(
+      "large-call",
+      "generateReport",
+      definition({ approvalMode: "review" }),
+      input,
+      reviewContext({ review }),
+    );
+
+    expect(decision?.decision).toBe("allow");
+    expect(input).toEqual({ title: "Weekly report", body });
+    const proposal = review.mock.calls[0]![0];
+    expect(proposal.inputTruncated).toBe(true);
+    expect(proposal.input.title).toBe("Weekly report");
+    expect(proposal.input.body).toMatch(/^start x+\n\[truncated\]\nx+ end$/);
+    // The prompt fits and tells Guardian that the input is shortened.
+    const prompt = guardianPrompt(proposal);
+    expect(prompt.length).toBeLessThan(100_000);
+    expect(prompt).toContain("The `input` in the planned action is shortened");
+  });
+
+  it("shows only a cut JSON summary when shortened strings still do not fit", async () => {
+    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
+      decision: "allow",
+      reason: "Matches the request.",
+      riskLevel: "low",
+      userAuthorization: "high",
+    }));
+    const input = { ids: Array.from({ length: 50_000 }, (_, index) => index) };
+
+    await reviewToolAction(
+      "many-values",
+      "generateReport",
+      definition({ approvalMode: "review" }),
+      input,
+      reviewContext({ review }),
+    );
+
+    const proposal = review.mock.calls[0]![0];
+    expect(proposal.inputTruncated).toBe(true);
+    expect(Object.keys(proposal.input)).toEqual(["summary"]);
+    expect(String(proposal.input.summary)).toContain("[truncated]");
+    expect(String(proposal.input.summary).length).toBeLessThan(49_000);
+    expect(input.ids).toHaveLength(50_000);
   });
 });

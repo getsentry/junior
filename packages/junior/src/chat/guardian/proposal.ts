@@ -123,6 +123,8 @@ export interface ToolActionProposal {
   };
   evidence?: ToolActionEvidence;
   input: Record<string, unknown>;
+  /** Long values in `input` are cut, so Guardian does not see all of it. */
+  inputTruncated?: true;
   priorRejectedActions?: ToolActionPriorRejection[];
   /** The root Conversation, with each message labeled by its real author. */
   rootConversation?: RootConversation;
