@@ -16,10 +16,12 @@ import {
 import { MessageCard, MessageCardHeader } from "../components/MessageCard";
 import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
+import { ObjectAttachAction } from "./ObjectAttach";
 
 /**
  * Show the latest saved annotation, or a `live` card that the API resolved
- * for a link. Opening a source is always explicit.
+ * for a link. Opening a source is always explicit. A live card can attach
+ * its object to the Conversation.
  */
 export function ObjectCard({
   card,
@@ -145,6 +147,9 @@ export function ObjectCard({
         )}
         {!live && (
           <span className="text-dashboard-text-muted">Latest saved state</span>
+        )}
+        {live && card.url && card.objectType !== "person" && (
+          <ObjectAttachAction url={card.url} />
         )}
       </div>
     </MessageCard>

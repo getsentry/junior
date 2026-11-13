@@ -34,6 +34,12 @@ const DISPLAY_TYPES = {
   spreadsheet: "Google Sheet",
 } as const satisfies Record<GoogleFileType, string>;
 
+const READ_TOOLS = {
+  document: "readGoogleDoc",
+  presentation: "readGoogleSlides",
+  spreadsheet: "readGoogleSheet",
+} as const satisfies Record<GoogleFileType, string>;
+
 const linkedFileSchema = z.object({
   driveId: z.string().optional(),
   id: z.string(),
@@ -205,5 +211,9 @@ export const googleFileLinks: PluginObjectLinkDefinition = {
     })),
   ),
   objectType: "document",
+  readTool: (url) => {
+    const type = parseFileLink(url)?.type;
+    return type && READ_TOOLS[type];
+  },
   resolve: resolveGoogleFileLink,
 };

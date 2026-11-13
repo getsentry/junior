@@ -6,6 +6,26 @@ import { expect, test } from "./test";
 // and its last reply links to them.
 const CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 
+const DOC_URL =
+  "https://docs.google.com/document/d/1MockReleaseChecklist_0123456789/edit";
+
+// The mock viewer is not a participant of the release Conversation. Make
+// them one, so the cards can attach.
+async function viewAsParticipant(page: Page): Promise<void> {
+  await page.route(
+    (url) =>
+      url.pathname ===
+      `/api/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+    async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        json: { ...(await response.json()), isParticipant: true },
+        response,
+      });
+    },
+  );
+}
+
 // Resolved links render again when their cards arrive, which drops an
 // earlier hover. Wait for all of them before a hover.
 async function waitForResolvedLinks(page: Page): Promise<void> {
@@ -121,10 +141,69 @@ test("Google Doc and Calendar links resolve to chips and hover cards", async ({
     name: "Google Doc: Release 4.2 checklist",
   });
   await expect(docCard).toContainText("Morgan Lee");
+  // Only a participant can attach the object.
+  await expect(docCard.getByRole("button", { name: "Attach" })).toHaveCount(0);
   await screenshot(page, "conversation-google-document-link", {
     lightTheme: true,
     view: "desktop",
   });
+});
+
+test("a participant attaches a Google Doc from its hover card", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await viewAsParticipant(page);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  await waitForResolvedLinks(page);
+  const doc = page.getByRole("link", { name: /Release 4\.2 checklist/ });
+  await doc.hover();
+  const docCard = page.getByRole("region", {
+    name: "Google Doc: Release 4.2 checklist",
+  });
+  const attach = docCard.getByRole("button", { name: "Attach" });
+  await expect(attach).toBeVisible();
+  await screenshot(page, "conversation-object-attach", {
+    lightTheme: true,
+    view: "desktop",
+  });
+
+  const request = page.waitForRequest(
+    (candidate) =>
+      candidate.method() === "POST" &&
+      new URL(candidate.url()).pathname ===
+        `/api/conversations/${encodeURIComponent(CONVERSATION_ID)}/annotations`,
+  );
+  await attach.click();
+  // Only the link goes to the API, never the card text.
+  expect((await request).postDataJSON()).toEqual({ url: DOC_URL });
+  await expect(docCard).toContainText("Attached");
+  await expect(attach).toHaveCount(0);
+  await screenshot(page, "conversation-object-attached", {
+    lightTheme: true,
+    view: "desktop",
+  });
+
+  // After a reload, Linked work lists the link. It has no facts, so the
+  // transcript still shows the live card, as attached.
+  await page.reload();
+  await expect(
+    page
+      .getByTestId("conversation-side-panel")
+      .getByRole("link", { name: /Release 4\.2 checklist/ }),
+  ).toBeVisible();
+  const transcript = page.getByTestId("conversation-transcript");
+  for (const name of [/Release 4\.2 go\/no-go/, /#proj-release/]) {
+    await expect(transcript.getByRole("link", { name })).toBeVisible();
+  }
+  await transcript
+    .getByRole("link", { name: /Release 4\.2 checklist/ })
+    .hover();
+  await expect(docCard).toContainText("Morgan Lee");
+  await expect(docCard).toContainText("Attached");
 });
 
 test("one request asks for the cards of every link in a message", async ({

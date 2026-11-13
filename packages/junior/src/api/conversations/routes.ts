@@ -68,6 +68,11 @@ import { conversationOutlineSchema } from "../schema/conversation-outline";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
 import {
+  attachObjectLinkBodySchema,
+  attachObjectLinkResponseSchema,
+} from "../schema/object-link";
+import { attachObjectLink } from "../objects/attach";
+import {
   continueConversationInSlackBodySchema,
   continueConversationInSlackResponseSchema,
 } from "../schema/conversation-continue-in-slack";
@@ -442,6 +447,30 @@ export function createConversationRoutes(
           context.get("viewer"),
           context.req.valid("param").conversationId,
           context.req.valid("json"),
+        ),
+      ),
+  );
+
+  app.post(
+    "/:conversationId/annotations",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      attachObjectLinkBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        attachObjectLinkResponseSchema,
+        await attachObjectLink(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json").url,
         ),
       ),
   );
