@@ -10,7 +10,8 @@ export function parsePreviewOrigin(value: string | null): string | undefined {
   if (!value) return undefined;
   try {
     const url = new URL(value);
-    return /^https?:$/.test(url.protocol) && url.origin === value
+    return (url.protocol === "https:" || url.protocol === "http:") &&
+      url.origin === value
       ? value
       : undefined;
   } catch {

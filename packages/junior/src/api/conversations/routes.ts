@@ -8,6 +8,7 @@ import {
   forkConversationBodySchema,
   forkConversationResponseSchema,
   conversationAttachmentParamsSchema,
+  conversationAttachmentQuerySchema,
   conversationDetailQuerySchema,
   CONVERSATION_DETAIL_VERSION_HEADER,
   CONVERSATION_VERSION_HEADER,
@@ -19,7 +20,7 @@ import {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
-import { MAX_INPUT_ATTACHMENT_BYTES } from "@/chat/attachments/input";
+import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
 import {
   attachmentUploadParamsSchema,
   attachmentUploadSchema,
@@ -198,9 +199,12 @@ export function createConversationRoutes(
     "/attachment-uploads/:uploadId",
     requireViewer,
     bodyLimit({
-      maxSize: MAX_INPUT_ATTACHMENT_BYTES,
+      maxSize: MAX_ATTACHMENT_BYTES,
       onError: () => {
-        throwApiError(413, "Files must be 25 MB or less.");
+        throwApiError(
+          413,
+          `Files must be ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB or less.`,
+        );
       },
     }),
     validateRequest(
@@ -732,12 +736,21 @@ export function createConversationRoutes(
       conversationAttachmentParamsSchema,
       "Invalid route parameters.",
     ),
+    validateRequest(
+      "query",
+      conversationAttachmentQuerySchema,
+      "Invalid query parameters.",
+    ),
     async (context) => {
       const { attachmentId, conversationId } = context.req.valid("param");
+      const { download } = context.req.valid("query");
       const viewer = context.get("viewer");
       return await conversationAttachmentResponse({
         attachmentId,
         conversationId,
+        download: download === true,
+        // Hono answers HEAD with the GET route and drops the body.
+        headOnly: context.req.method === "HEAD",
         range: context.req.header("range"),
         storage: options.attachmentStorage,
         ...(viewer ? { viewer } : undefined),

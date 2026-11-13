@@ -17,7 +17,10 @@ export function resolvePublicOrigin(
   const value = configured?.trim();
   let origin: string;
   if (value) {
-    origin = /^https?:\/\//.test(value) ? value : `https://${value}`;
+    origin =
+      value.startsWith("https://") || value.startsWith("http://")
+        ? value
+        : `https://${value}`;
   } else {
     const requestURL = new URL(request.url);
     if (!LOOPBACK_HOSTNAMES.includes(requestURL.hostname)) return undefined;

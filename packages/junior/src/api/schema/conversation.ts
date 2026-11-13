@@ -59,6 +59,16 @@ export const conversationAttachmentParamsSchema = z
   })
   .strict();
 
+export const conversationAttachmentQuerySchema = z
+  .object({
+    /**
+     * Send `Content-Disposition: attachment` even for a type that previews
+     * inline, so a same-window download link saves the file.
+     */
+    download: z.stringbool().optional(),
+  })
+  .strict();
+
 /**
  * Events in a default dashboard page. A read costs a fixed ~15 ms plus about
  * 0.1 ms and 600 bytes per event, so this cap keeps a page within about twice

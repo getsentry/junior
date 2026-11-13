@@ -2,6 +2,7 @@ import {
   conversationObjectCard,
   messageObjectCard,
   personObjectCard,
+  webPageObjectCard,
   type AttachObjectLinkResponse,
   type ObjectLinksReport,
 } from "@sentry/junior/api/schema";
@@ -77,9 +78,36 @@ const SENTRY_ISSUE_PATH = "/issues/JUNIOR-3ZK/";
 // The mock release thread links to one Slack message.
 const SLACK_MESSAGE_PATH = "/archives/CQA456/p1770021700000100";
 
+// The mock release thread links to one oEmbed video and one blog post. The
+// mock image route serves every thumbnail.
+const MOCK_THUMBNAIL_URL = "/api/images/mock-thumbnail.signature?w=640";
+const WEB_PAGES: Record<string, Parameters<typeof webPageObjectCard>[0]> = {
+  "https://www.youtube.com/watch?v=MockLaunchDemo": {
+    author: "Sentry",
+    siteName: "YouTube",
+    thumbnailUrl: MOCK_THUMBNAIL_URL,
+    title: "Junior 4.2 launch demo",
+    url: "https://www.youtube.com/watch?v=MockLaunchDemo",
+  },
+  "https://blog.example.com/posts/release-4-2": {
+    author: "Morgan Lee",
+    description:
+      "Release 4.2 adds cards for Slack messages, Google Docs, and any public web page.",
+    siteName: "Example Blog",
+    thumbnailUrl: MOCK_THUMBNAIL_URL,
+    title: "What's new in Release 4.2",
+    url: "https://blog.example.com/posts/release-4-2",
+  },
+};
+
 function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   if (!URL.canParse(href)) return [];
   const url = new URL(href);
+  const webPage = WEB_PAGES[url.href];
+  if (webPage) {
+    const object = webPageObjectCard(webPage);
+    return [{ object: { ...object, plugin: "junior" }, url: href }];
+  }
   const google = url.hostname.endsWith(".google.com")
     ? GOOGLE_OBJECTS[url.pathname]
     : undefined;
