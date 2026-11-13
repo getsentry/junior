@@ -193,7 +193,38 @@ export const OPEN_PULL_REQUEST_MERGEABILITY = githubGraphql(`
     search(query: $query, type: ISSUE, first: 100, after: $after) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        ... on PullRequest { number state mergeable headRefOid baseRefName url }
+        ... on PullRequest { number state isDraft mergeable headRefOid baseRefName title url }
+      }
+    }
+  }
+`);
+
+/**
+ * Read what decides a merge conflict fix on one pull request: the review
+ * decision, when it opened, and its latest pushes, reviews, and comments.
+ * Pushes have their own window, so comments, which anyone can add, cannot
+ * push Junior's earlier fixes out of it.
+ */
+export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
+  query PullRequestConflictHistory($owner: String!, $name: String!, $number: Int!) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) {
+        createdAt
+        reviewDecision
+        pushes: timelineItems(last: 100, itemTypes: [PULL_REQUEST_COMMIT, HEAD_REF_FORCE_PUSHED_EVENT]) {
+          nodes {
+            __typename
+            ... on PullRequestCommit { commit { committedDate parents { totalCount } author { user { login } } } }
+            ... on HeadRefForcePushedEvent { createdAt actor { __typename } }
+          }
+        }
+        discussion: timelineItems(last: 50, itemTypes: [PULL_REQUEST_REVIEW, ISSUE_COMMENT]) {
+          nodes {
+            __typename
+            ... on PullRequestReview { submittedAt author { __typename } }
+            ... on IssueComment { createdAt author { __typename } }
+          }
+        }
       }
     }
   }

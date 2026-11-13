@@ -26,6 +26,7 @@ import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl } from "./events/resource-url.js";
 import {
   loadPullRequest,
+  loadPullRequestConflictHistory,
   loadPullRequestLifecycles,
   loadPullRequestCommitPages,
   searchOpenPullRequestMergeability,
@@ -347,8 +348,11 @@ export function githubPlugin(
         await runGitHubConflictChecks({
           db,
           events: ctx.events,
+          loadHistory: async (ref) =>
+            await loadPullRequestConflictHistory(installationEnv, ref),
           log: ctx.log,
           now: new Date(ctx.nowMs),
+          reviewItems: ctx.reviewItems,
           search: async (input) => {
             const login = botLoginFromEmail(requireEnv(botEmailEnv));
             if (!login) {
@@ -373,6 +377,7 @@ export function githubPlugin(
             await loadPullRequestLifecycles(installationEnv, input),
           log: ctx.log,
           nowMs: ctx.nowMs,
+          reviewItems: ctx.reviewItems,
           state: ctx.state,
         });
       },
@@ -429,6 +434,11 @@ export function githubPlugin(
               ),
             loadPullRequest: async (pullRequest) =>
               await loadPullRequest(installationEnv, pullRequest),
+            loadPullRequestConflictHistory: async (pullRequest) =>
+              await loadPullRequestConflictHistory(
+                installationEnv,
+                pullRequest,
+              ),
             loadPullRequestCommitPages: async (pullRequest) =>
               await loadPullRequestCommitPages(installationEnv, pullRequest),
             log: ctx.log,
