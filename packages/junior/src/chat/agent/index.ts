@@ -1833,11 +1833,12 @@ async function executeAgentRunInPrivacyContext(
     // caller owns that outcome; it is not a reply failure to report.
     if (!signal?.aborted || error !== signal.reason) {
       const providerError = findProviderError(error);
-      logException(
-        error,
-        "assistant.reply.generation.failed",
-        providerError ? getProviderErrorAttributes(providerError) : {},
-      );
+      logException(error, "assistant.reply.generation.failed", {
+        "gen_ai.request.model": activeModelId,
+        ...(providerError
+          ? getProviderErrorAttributes(providerError)
+          : undefined),
+      });
     }
 
     // Raw exception text is diagnostics-only; the failure-response service

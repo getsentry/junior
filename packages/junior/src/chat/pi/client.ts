@@ -489,6 +489,13 @@ function objectCompletionCost(
   }).total;
 }
 
+/** Map AI SDK usage to span attributes. The SDK nests reasoning tokens. */
+function objectUsageAttributes(usage: LanguageModelUsage | undefined) {
+  return extractGenAiUsageAttributes(usage, {
+    reasoningTokens: usage?.outputTokenDetails.reasoningTokens,
+  });
+}
+
 /** Estimate cost without changing the outcome of a successful completion. */
 function bestEffortObjectCompletionCost(
   modelId: string,
@@ -538,23 +545,38 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
       "gen_ai.chat",
       logContextFromMetadata(params.modelId, params.metadata),
       async (setSpanAttributes) => {
-        const result = await generateObject({
-          model: provider.chat(params.modelId),
-          schema: params.schema,
-          prompt: params.prompt,
-          ...(params.system !== undefined
-            ? { system: params.system }
-            : undefined),
-          ...(params.maxTokens !== undefined
-            ? { maxOutputTokens: params.maxTokens }
-            : undefined),
-          ...(params.signal !== undefined
-            ? { abortSignal: params.signal }
-            : undefined),
-        });
+        let result: GenerateObjectResult<unknown>;
+        try {
+          result = await generateObject({
+            model: provider.chat(params.modelId),
+            schema: params.schema,
+            prompt: params.prompt,
+            ...(params.system !== undefined
+              ? { system: params.system }
+              : undefined),
+            ...(params.maxTokens !== undefined
+              ? { maxOutputTokens: params.maxTokens }
+              : undefined),
+            ...(params.signal !== undefined
+              ? { abortSignal: params.signal }
+              : undefined),
+          });
+        } catch (error) {
+          // A response that fails the schema still has a finish reason and
+          // usage, for example when the output budget ran out.
+          if (NoObjectGeneratedError.isInstance(error)) {
+            setSpanAttributes({
+              ...(error.finishReason !== undefined
+                ? { "gen_ai.response.finish_reasons": [error.finishReason] }
+                : undefined),
+              ...objectUsageAttributes(error.usage),
+            });
+          }
+          throw error;
+        }
         setSpanAttributes({
           "gen_ai.response.finish_reasons": [result.finishReason],
-          ...extractGenAiUsageAttributes(result.usage),
+          ...objectUsageAttributes(result.usage),
         });
         return result;
       },

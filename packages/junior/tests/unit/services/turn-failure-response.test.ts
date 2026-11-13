@@ -76,7 +76,7 @@ describe("finalizeFailedTurnReply", () => {
       "app.ai.provider_error.status": 503,
       "app.ai.provider_error.summary": "503",
       "app.ai.failure_reason": "server",
-      "gen_ai.request.model": "xai/grok-4.5",
+      "app.ai.provider_error.model": "xai/grok-4.5",
     });
     expect(attributes).not.toHaveProperty("exception.message");
     expect(
@@ -101,7 +101,7 @@ describe("finalizeFailedTurnReply", () => {
     expect(getTurnFailureReason(reply)).toBe("empty_output");
   });
 
-  it("records a provider failure preserved inside a domain error", () => {
+  it("records a wrapped provider failure without replacing the Turn model", () => {
     const logException = vi.fn().mockReturnValue("evt_guardian");
     const providerError = createProviderError("No object generated", {
       kind: "invalid_response",
@@ -123,7 +123,8 @@ describe("finalizeFailedTurnReply", () => {
     expect(logException.mock.calls[0]?.[2]).toMatchObject({
       "app.ai.provider_error.kind": "invalid_response",
       "app.ai.provider_error.retryable": false,
-      "gen_ai.request.model": "openai/gpt-6-luna",
+      "app.ai.provider_error.model": "openai/gpt-6-luna",
+      "gen_ai.request.model": "test-model",
     });
   });
 
