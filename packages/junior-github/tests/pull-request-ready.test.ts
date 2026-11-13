@@ -171,10 +171,10 @@ function route(
   calls: ReviewItemCall[],
   errors: string[] = [],
   failures = { close: 0 },
+  keyPrefix = "pull-request-ready:",
 ): PluginRoute {
   // Other review desk items, such as review requests, have their own tests.
-  const isReady = (dedupeKey: string) =>
-    dedupeKey.startsWith("pull-request-ready:");
+  const isReady = (dedupeKey: string) => dedupeKey.startsWith(keyPrefix);
   const reviewItems: PluginConversationReviewItems = {
     forConversation(conversationId) {
       return {
@@ -427,6 +427,41 @@ describe("ready to merge notice", () => {
         "close",
       ]);
       expect(errors).toHaveLength(1);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("closes the merge conflict notice when the conflict is gone", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: ReviewItemCall[] = [];
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["dirty"],
+      merged: false,
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, []);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls, [], undefined, "merge-conflict:");
+      await webhook.handler(checkSuiteCompleted());
+      expect(calls).toEqual([]);
+
+      github.mergeableStates = ["blocked"];
+      await webhook.handler(checkSuiteCompleted());
+      expect(calls).toEqual([
+        {
+          conversationId: "slack:C123:1712345.0001",
+          input: {
+            dedupeKey: "merge-conflict:getsentry/junior#946",
+            reason: "The pull request no longer has merge conflicts.",
+            status: "done",
+          },
+          kind: "close",
+        },
+      ]);
     } finally {
       await fixture.close();
     }

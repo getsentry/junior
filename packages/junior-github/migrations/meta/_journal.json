@@ -85,6 +85,13 @@
       "when": 1794493724681,
       "tag": "0011_pull_request_draft",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794593847515,
+      "tag": "0012_merge_conflict_policy",
+      "breakpoints": true
     }
   ]
 }

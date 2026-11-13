@@ -348,6 +348,7 @@ export function githubPlugin(
           events: ctx.events,
           log: ctx.log,
           now: new Date(ctx.nowMs),
+          reviewItems: ctx.reviewItems,
           search: async (input) => {
             const login = botLoginFromEmail(requireEnv(botEmailEnv));
             if (!login) {

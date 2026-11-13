@@ -45,6 +45,7 @@ import {
   loadGitHubMergeConflictEvents,
   type GitHubPullRequestRef,
 } from "./merge-conflict.js";
+import { recordGitHubPullRequestActivity } from "../merge-conflict-checks/policy.js";
 import { scheduleGitHubPushConflictCheck } from "../merge-conflict-checks/webhooks.js";
 import {
   pullRequestReadyTargets,
@@ -317,6 +318,7 @@ export function createGitHubWebhookRoute(args: {
       });
       if (pullRequestActivity) {
         await args.codeChanges.recordActivity(pullRequestActivity);
+        await recordGitHubPullRequestActivity(args.db, pullRequestActivity);
       }
       const recordedPullRequestLinkedIssues = pullRequestLinkedIssues
         ? await recordGitHubPullRequestLinkedIssues(
@@ -413,12 +415,14 @@ export function createGitHubWebhookRoute(args: {
       // reaction, so a Watch that wants only conflicts does not mark a comment.
       events.push(
         ...(await loadGitHubMergeConflictEvents({
+          db: args.db,
           deliveryId,
           events,
           hasMatch,
           loadPullRequest: args.loadPullRequest,
           log: args.log,
           pullRequestPayload: eventName === "pull_request" ? body : undefined,
+          reviewItems: args.reviewItems,
         })),
       );
       for (const event of events) {

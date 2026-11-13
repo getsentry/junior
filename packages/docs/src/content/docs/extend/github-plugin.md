@@ -588,6 +588,19 @@ default guidance tells the agent to merge the base branch, not rebase. For a
 pull request in a stack, the guidance tells the agent to restack with
 `gh stack rebase`, because a stack merges only with a linear history.
 
+A draft pull request never gets this event. Each event starts an agent turn,
+so for a pull request that Junior opened, the event publishes only while
+people work on it:
+
+- In the first 2 days after the latest push, review, or comment by a person,
+  or after the pull request opened, the event publishes at most once a day
+  and 3 times in total.
+- After that, or after the third event, Junior publishes no event. It adds
+  one review desk notice to the conversation that asked for the pull
+  request. New activity by a person allows one more notice. The notice closes
+  when the conflict is gone.
+- After 3 days without activity by a person, Junior does nothing.
+
 </details>
 
 #### `release_source`

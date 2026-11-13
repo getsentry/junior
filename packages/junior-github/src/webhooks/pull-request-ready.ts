@@ -8,7 +8,9 @@
  * Conversation where a person asked Junior to open the pull request. It is
  * assigned to that person only when they are in that Conversation, and it
  * waits on them: the merge is their step. It closes when the pull request
- * merges, closes, or is no longer ready.
+ * merges, closes, or is no longer ready. The same read closes the merge
+ * conflict notice from `merge-conflict-checks/policy.ts` when the conflict
+ * is gone.
  */
 import type {
   PluginConversationReviewItems,
@@ -21,6 +23,7 @@ import {
   releaseGitHubPullRequestReadySync,
   setGitHubPullRequestReadyToMerge,
 } from "../pull-request-outcomes/store.js";
+import { gitHubConflictNoticeKey } from "../merge-conflict-checks/policy.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import { checkSuitePullRequests } from "./check-suite.js";
 import { logFailOpenFailure } from "./fail-open-log.js";
@@ -135,6 +138,20 @@ async function syncOne(
   while (requests !== undefined) {
     try {
       const state = await loadPullRequestMergeState(args.env, target);
+      if (
+        state.state !== "open" ||
+        (state.mergeableState && state.mergeableState !== "dirty")
+      ) {
+        await items.close({
+          dedupeKey: gitHubConflictNoticeKey(target),
+          ...(state.state === "open"
+            ? {
+                reason: "The pull request no longer has merge conflicts.",
+                status: "done" as const,
+              }
+            : closeReason(state)),
+        });
+      }
       const open = state.state === "open" && !state.draft;
       const ready =
         open &&

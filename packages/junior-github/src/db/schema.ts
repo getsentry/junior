@@ -108,6 +108,16 @@ export const juniorGitHubPullRequests = pgTable(
     readySyncId: integer("ready_sync_id"),
     /** When the current check started. */
     readySyncAt: timestamp("ready_sync_at", { withTimezone: true }),
+    /** Latest push, review, or comment by a person. */
+    lastActivityAt: timestamp("last_activity_at", { withTimezone: true }),
+    /** Merge conflict events that asked Junior to fix a conflict. */
+    conflictFixes: integer("conflict_fixes").notNull().default(0),
+    /** When the latest of those events published. */
+    conflictFixedAt: timestamp("conflict_fixed_at", { withTimezone: true }),
+    /** When Junior last added the merge conflict notice. */
+    conflictNoticedAt: timestamp("conflict_noticed_at", {
+      withTimezone: true,
+    }),
   },
   (table) => [
     index("junior_github_pull_requests_opened_at_idx").on(table.openedAt),
