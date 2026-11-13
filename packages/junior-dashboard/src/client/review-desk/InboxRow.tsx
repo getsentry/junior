@@ -279,6 +279,8 @@ type InboxRowProps = {
   selected: boolean;
   /** Show the root's Threads under it, as the sidebar did. */
   showThreads?: boolean;
+  /** The row's Threads show the action bar on their last line instead. */
+  actionsBelow?: boolean;
   snoozeMenuOpen: boolean;
   time: string;
   title: string;
@@ -320,6 +322,12 @@ function ConversationInboxRow(
     ? sidebarThreads(conversation.threads, { expanded: threadsExpanded })
     : undefined;
   const participant = conversation.isParticipant;
+  const hasThreads = Boolean(threads && threads.threads.length > 0);
+  // An open row's actions close the card: after its Threads, on the line of
+  // "Show N more".
+  const actionsBelow = props.expanded && hasThreads;
+  const toggle =
+    threads?.collapsible && (threadsExpanded || threads.hiddenCount > 0);
   return (
     <li
       className={cn(
@@ -338,6 +346,7 @@ function ConversationInboxRow(
         >
           <InboxRowBody
             {...props}
+            actionsBelow={actionsBelow}
             linkProps={{
               "aria-keyshortcuts": drag
                 ? "Alt+ArrowUp Alt+ArrowDown"
@@ -398,13 +407,19 @@ function ConversationInboxRow(
               waiting={false}
             />
           ))}
-          {threads.collapsible &&
-          (threadsExpanded || threads.hiddenCount > 0) ? (
-            <ConversationSidebarThreadToggle
-              expanded={threadsExpanded}
-              hiddenCount={threads.hiddenCount}
-              onToggle={() => setThreadsExpanded(!threadsExpanded)}
-            />
+          {toggle || actionsBelow ? (
+            <div className="flex min-w-0 flex-wrap items-center gap-1">
+              {toggle ? (
+                <ConversationSidebarThreadToggle
+                  expanded={threadsExpanded}
+                  hiddenCount={threads.hiddenCount}
+                  onToggle={() => setThreadsExpanded(!threadsExpanded)}
+                />
+              ) : null}
+              {actionsBelow ? (
+                <div className="ml-auto pr-2">{rowActions(props)}</div>
+              ) : null}
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -466,7 +481,7 @@ function InboxRowBody(
     0,
     MAX_ROW_PREVIEWS - workCards - media.length,
   );
-  const canDone = openItems.some((item) => item.canAct);
+  const canDone = rowCanDone(props);
   const regionId = `inbox-row-${props.rowKey}`;
   const pinned = Boolean(conversation?.pinnedAt);
   const running = conversation?.status === "active";
@@ -643,7 +658,7 @@ function InboxRowBody(
           </div>
         ) : null}
       </div>
-      {props.expanded ? (
+      {props.expanded && (openItems.length > 0 || !props.actionsBelow) ? (
         <div
           aria-label={`${props.title}: asks`}
           className="grid min-w-0 gap-3 border-t border-dashboard-border px-3 pt-3 pb-3"
@@ -659,20 +674,33 @@ function InboxRowBody(
               key={item.id}
             />
           ))}
-          <ExpandedActions
-            canDone={canDone}
-            conversation={conversation}
-            openPath={rowConversationPath(props)}
-            donePending={props.donePending}
-            onDone={props.onDone}
-            onSnooze={props.onSnooze}
-            onSnoozeMenu={props.onSnoozeMenu}
-            onWake={props.onWake}
-            snoozeMenuOpen={props.snoozeMenuOpen}
-          />
+          {props.actionsBelow ? null : rowActions(props)}
         </div>
       ) : null}
     </>
+  );
+}
+
+function rowCanDone(props: InboxRowProps): boolean {
+  return (
+    props.bundle?.items.some((item) => item.status === "open" && item.canAct) ??
+    false
+  );
+}
+
+function rowActions(props: InboxRowProps) {
+  return (
+    <ExpandedActions
+      canDone={rowCanDone(props)}
+      conversation={props.conversation}
+      donePending={props.donePending}
+      onDone={props.onDone}
+      onSnooze={props.onSnooze}
+      onSnoozeMenu={props.onSnoozeMenu}
+      onWake={props.onWake}
+      openPath={rowConversationPath(props)}
+      snoozeMenuOpen={props.snoozeMenuOpen}
+    />
   );
 }
 

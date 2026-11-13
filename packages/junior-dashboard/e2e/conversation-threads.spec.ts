@@ -88,6 +88,41 @@ test("shows Threads under their parent and in details", async ({
   await expect(threads.getByRole("listitem")).toHaveCount(1);
 });
 
+test("an open row's actions follow its Threads", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
+  const row = conversationsList(page)
+    .locator("[data-inbox-row]")
+    .filter({
+      has: page.getByRole("link", { name: /^Dashboard QA edge cases/ }),
+    })
+    .first();
+  await row
+    .getByRole("link", { name: /^Dashboard QA edge cases/ })
+    .first()
+    .click();
+  await expect(
+    row.getByRole("link", { exact: true, name: "Open conversation" }).last(),
+  ).toBeVisible();
+  // Reading order: every Thread row, then the bar, which ends the card.
+  const names = await row
+    .locator("a, button")
+    .evaluateAll((elements) =>
+      elements.map(
+        (element) =>
+          element.getAttribute("aria-label") ?? element.textContent ?? "",
+      ),
+    );
+  const lastThread = names.findLastIndex((name) =>
+    /Check pinned row order|Recheck pin order in Safari/.test(name),
+  );
+  const bar = names.lastIndexOf("Open conversation");
+  expect(lastThread).toBeGreaterThan(-1);
+  expect(bar).toBeGreaterThan(lastThread);
+});
+
 test("sends a message from a Thread page", async ({ page, dashboard }) => {
   const message = "Check the row order again";
   const sends: Array<{ message: string; url: string }> = [];
