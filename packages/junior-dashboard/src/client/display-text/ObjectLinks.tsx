@@ -22,7 +22,6 @@ import {
   textHasStandaloneUrl,
   type KnownObjects,
 } from "./knownObjects";
-import { usePlainLinks } from "./linkMode";
 import { ANCHOR_CLASS } from "./links";
 import { PersonMention } from "./people";
 
@@ -103,13 +102,8 @@ export function useTextShowsObjectCard(
   url: string | undefined,
 ): boolean {
   const { card } = useKnownObject(url);
-  const plain = usePlainLinks();
   return Boolean(
-    !plain &&
-    card &&
-    url &&
-    !mediaThumbnail(card) &&
-    textHasStandaloneUrl(text, url),
+    card && url && !mediaThumbnail(card) && textHasStandaloneUrl(text, url),
   );
 }
 
