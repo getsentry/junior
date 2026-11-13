@@ -750,6 +750,13 @@
       "when": 1794521047106,
       "tag": "0106_conversation_agent_config",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1794546188261,
+      "tag": "0107_conversation_brief_embeddings",
+      "breakpoints": true
     }
   ]
 }

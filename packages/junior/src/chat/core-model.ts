@@ -1,10 +1,10 @@
 /**
  * Core model calls with required cost attribution.
  *
- * Core code calls the text, object, and decision models only through this
- * module. Each call names its operation and where its cost goes, so a new
- * call site cannot drop its cost. Plugins get the same rule through
- * `chat/plugins/model.ts`.
+ * Core code calls the text, object, decision, and embedding models only
+ * through this module. Each call names its operation and where its cost
+ * goes, so a new call site cannot drop its cost. Plugins get the same rule
+ * through `chat/plugins/model.ts`.
  */
 import type { ZodTypeAny } from "zod";
 import type * as z from "zod";
@@ -24,8 +24,10 @@ type CallerRecordedOperation =
 // The name of the cost event in the `junior` namespace. Conversation cost
 // and the dashboard usage breakdown read these events.
 type ConversationRecordedOperation =
+  | "brief_embedding"
   | "cache_warmup"
   | "conversation_catch_up"
+  | "conversation_search_embedding"
   | "conversation_title"
   | "image_prompt_enrichment"
   | "review_item_reply_match"
@@ -130,6 +132,22 @@ export async function completeDecision<
   const result = await gateway.completeDecision<TQuestions>(
     gatewayParams(params),
   );
+  await recordCost(params, result.costUsd);
+  return result;
+}
+
+/** Embed texts with the configured embedding model and attribute the cost. */
+export async function embedTexts(
+  params: Omit<Parameters<typeof gateway.embedTexts>[0], "metadata"> &
+    ModelCallAttribution,
+): Promise<Awaited<ReturnType<typeof gateway.embedTexts>>> {
+  const { cost, operation: _operation, ...rest } = params;
+  const result = await gateway.embedTexts({
+    ...rest,
+    ...("conversationId" in cost
+      ? { metadata: { conversationId: cost.conversationId } }
+      : undefined),
+  });
   await recordCost(params, result.costUsd);
   return result;
 }

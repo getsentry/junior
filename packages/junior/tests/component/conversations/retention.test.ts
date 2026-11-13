@@ -11,6 +11,7 @@ import {
 } from "@/chat/conversations/sql/purge";
 import {
   juniorConversationEvents,
+  juniorConversationBriefEmbeddings,
   juniorConversationBriefs,
   juniorConversations,
   juniorDestinations,
@@ -626,6 +627,20 @@ describe("retention purge job", () => {
           modelId: "test-model",
         },
       ]);
+    const embedding = {
+      briefVersion: 1,
+      dimensions: 2,
+      embedding: [1, 0],
+      model: "test-embedding-model",
+      provider: "test-provider",
+    };
+    await fixture.sql
+      .db()
+      .insert(juniorConversationBriefEmbeddings)
+      .values([
+        { conversationId: "pub", ...embedding },
+        { conversationId: "priv", ...embedding },
+      ]);
     const reviewItem = (
       conversationId: string,
       visibility: "public" | "private",
@@ -675,6 +690,10 @@ describe("retention purge job", () => {
     await expect(
       fixture.sql.db().select().from(juniorConversationBriefs),
     ).resolves.toMatchObject([{ conversationId: "pub", version: 1 }]);
+    // A Brief embedding goes with its Brief.
+    await expect(
+      fixture.sql.db().select().from(juniorConversationBriefEmbeddings),
+    ).resolves.toMatchObject([{ conversationId: "pub", briefVersion: 1 }]);
     // A private Review item holds content from its Conversation, so it goes
     // with the Brief. Its links go with it.
     await expect(

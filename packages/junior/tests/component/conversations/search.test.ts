@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
+import {
+  storeBriefEmbedding,
+  type BriefEmbedder,
+} from "@/chat/briefs/embedding";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { searchConversations } from "@/chat/conversations/search";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -306,6 +310,131 @@ describe("Conversation search", () => {
       ).resolves.toEqual([
         expect.objectContaining({ conversationId: publicLocalId }),
       ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("finds Briefs by meaning above the similarity floor, with the same access rules", async () => {
+    const fixture = await createJuniorSqlFixture();
+    try {
+      await migrateSchema(fixture.sql);
+      const db = fixture.sql.db();
+      const conversations = createSqlStore(fixture.sql);
+      const requesterId = "slack:CREQUEST:1700000000.100000";
+      const paraphraseId = "slack:CROLLOUT:1700000000.200000";
+      const unrelatedId = "slack:CBILLING:1700000000.300000";
+      const privateId = "slack:CPRIVATE:1700000000.400000";
+      const staleId = "slack:CSTALE:1700000000.500000";
+      const rollout = "Roll the release out to production in stages";
+      const query = "ship a new build to prod gradually";
+      // Fake model: one axis per topic. The query is close to the rollout
+      // Briefs and far from the invoice Brief.
+      const vectors: Record<string, number[]> = {
+        [rollout]: [1, 0, 0],
+        [query]: [0.9, 0.2, 0],
+        "Quarterly invoice totals": [0, 1, 0],
+        "Stale rollout notes": [1, 0, 0],
+        "Notes about lunch": [0, 0, 1],
+      };
+      const embedder: BriefEmbedder = async ({ text }) => {
+        const vector = vectors[text];
+        if (!vector) throw new Error(`No test vector for ${text}`);
+        return { model: "test-embedding", provider: "test", vector };
+      };
+      const seed = async (args: {
+        channelId: string;
+        conversationId: string;
+        searchTexts: string[];
+        visibility: "private" | "public";
+      }) => {
+        await conversations.recordActivity({
+          conversationId: args.conversationId,
+          destination: {
+            platform: "slack",
+            teamId: "T123",
+            channelId: args.channelId,
+          },
+          nowMs: Date.parse("2026-07-01T12:00:00.000Z"),
+          source: "slack",
+          title: `Title for ${args.channelId}`,
+          visibility: args.visibility,
+        });
+        for (const [index, searchText] of args.searchTexts.entries()) {
+          const stored = await appendConversationBrief(db, {
+            conversationId: args.conversationId,
+            turnId: `turn-${index}`,
+            throughSeq: index + 1,
+            content: conversationBriefFixture({ summary: searchText }),
+            searchText,
+            modelId: "test-model",
+          });
+          // Only the first Brief is embedded, so a later Brief makes the
+          // vector stale.
+          if (index === 0) {
+            await storeBriefEmbedding(db, embedder, stored.value);
+          }
+        }
+      };
+      await seed({
+        channelId: "CREQUEST",
+        conversationId: requesterId,
+        searchTexts: [rollout],
+        visibility: "public",
+      });
+      await seed({
+        channelId: "CROLLOUT",
+        conversationId: paraphraseId,
+        searchTexts: [rollout],
+        visibility: "public",
+      });
+      await seed({
+        channelId: "CBILLING",
+        conversationId: unrelatedId,
+        searchTexts: ["Quarterly invoice totals"],
+        visibility: "public",
+      });
+      await seed({
+        channelId: "CPRIVATE",
+        conversationId: privateId,
+        searchTexts: [rollout],
+        visibility: "private",
+      });
+      await seed({
+        channelId: "CSTALE",
+        conversationId: staleId,
+        searchTexts: ["Stale rollout notes", "Notes about lunch"],
+        visibility: "public",
+      });
+      const search = {
+        includeArchived: false,
+        limit: 10,
+        query,
+        rootsOnly: true,
+      };
+
+      // The query shares no word with any Brief, so only the vector of the
+      // public rollout Brief matches. The invoice Brief is under the floor,
+      // and private, own-tree, and stale vectors never count.
+      await expect(
+        searchConversations(db, {
+          embedder,
+          requesterConversationId: requesterId,
+          search,
+        }),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          conversationId: paraphraseId,
+          summary: rollout,
+        }),
+      ]);
+      // Without an embedder, search matches words only.
+      await expect(
+        searchConversations(db, {
+          requesterConversationId: requesterId,
+          search,
+        }),
+      ).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }

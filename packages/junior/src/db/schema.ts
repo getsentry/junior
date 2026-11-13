@@ -8,6 +8,7 @@ import { juniorConversationAnnotations } from "./schema/conversation-annotations
 import { juniorApiTokens } from "./schema/api-tokens";
 import { juniorConversationEvents } from "./schema/conversation-events";
 import { juniorConversationMetrics } from "./schema/conversation-metrics";
+import { juniorConversationBriefEmbeddings } from "./schema/conversation-brief-embeddings";
 import { juniorConversationBriefs } from "./schema/conversation-briefs";
 import { juniorConversationBindings } from "./schema/conversation-bindings";
 import { juniorConversationParticipants } from "./schema/conversation-participants";
@@ -47,6 +48,7 @@ export {
   juniorAgentInvocations,
   juniorConversationEvents,
   juniorConversationMetrics,
+  juniorConversationBriefEmbeddings,
   juniorConversationBriefs,
   juniorConversationBindings,
   juniorConversationParticipants,
@@ -82,6 +84,7 @@ export const juniorSqlSchema = {
   juniorAgentInvocations,
   juniorConversationEvents,
   juniorConversationMetrics,
+  juniorConversationBriefEmbeddings,
   juniorConversationBriefs,
   juniorConversationBindings,
   juniorConversationParticipants,

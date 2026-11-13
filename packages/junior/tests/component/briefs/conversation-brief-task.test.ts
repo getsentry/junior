@@ -17,6 +17,7 @@ import { setBriefsConfig } from "@/chat/briefs/registration";
 import { botConfig } from "@/chat/config";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
+  juniorConversationBriefEmbeddings,
   juniorConversationBriefs,
   juniorConversationEvents,
   juniorConversations,
@@ -29,6 +30,8 @@ import {
 
 const TEST = vi.hoisted(() => ({
   calls: [] as Array<{ modelId: string; prompt: string }>,
+  embedCalls: [] as Array<{ inputType?: string; texts: string[] }>,
+  failNextEmbed: false,
   sql: undefined as LocalJuniorSqlFixture["sql"] | undefined,
   originalDatabaseUrl: process.env.DATABASE_URL,
 }));
@@ -79,7 +82,21 @@ vi.mock("@/chat/pi/client", async (importOriginal) => ({
       },
     };
   }),
-  embedTexts: vi.fn(),
+  embedTexts: vi.fn(
+    async (input: { inputType?: string; modelId: string; texts: string[] }) => {
+      if (TEST.failNextEmbed) {
+        TEST.failNextEmbed = false;
+        throw new Error("embedding provider unavailable");
+      }
+      TEST.embedCalls.push({ inputType: input.inputType, texts: input.texts });
+      return {
+        dimensions: 2,
+        model: input.modelId,
+        provider: "test-provider",
+        vectors: input.texts.map(() => [1, 0]),
+      };
+    },
+  ),
 }));
 
 function piMessages(instruction: string, turnId: string): PiMessage[] {
@@ -199,6 +216,8 @@ describe("Conversation Brief task", () => {
     fixture = await createJuniorSqlFixture();
     TEST.sql = fixture.sql;
     TEST.calls.length = 0;
+    TEST.embedCalls.length = 0;
+    TEST.failNextEmbed = false;
     await migrateSchema(fixture.sql);
   });
 
@@ -295,6 +314,29 @@ describe("Conversation Brief task", () => {
     });
     expect(TEST.calls[0]?.modelId).toBe(botConfig.fastModelId);
     expect(rows[0]?.searchText).not.toBe("");
+    // The search text of the Brief is embedded as a document.
+    expect(TEST.embedCalls).toEqual([
+      { inputType: "document", texts: [rows[0]!.searchText] },
+    ]);
+    const readEmbeddings = () =>
+      getDb()
+        .select({
+          briefVersion: juniorConversationBriefEmbeddings.briefVersion,
+          conversationId: juniorConversationBriefEmbeddings.conversationId,
+          dimensions: juniorConversationBriefEmbeddings.dimensions,
+          model: juniorConversationBriefEmbeddings.model,
+          provider: juniorConversationBriefEmbeddings.provider,
+        })
+        .from(juniorConversationBriefEmbeddings);
+    await expect(readEmbeddings()).resolves.toEqual([
+      {
+        briefVersion: 1,
+        conversationId,
+        dimensions: 2,
+        model: botConfig.embeddingModelId,
+        provider: "test-provider",
+      },
+    ]);
     expect(rows[0]?.content.links).toEqual([
       expect.objectContaining({
         kind: "code_change",
@@ -362,6 +404,7 @@ describe("Conversation Brief task", () => {
       );
     await processPluginTask(firstTask);
     expect(TEST.calls).toHaveLength(1);
+    expect(TEST.embedCalls).toHaveLength(1);
     expect(await getDb().select().from(juniorConversationBriefs)).toHaveLength(
       1,
     );
@@ -383,11 +426,30 @@ describe("Conversation Brief task", () => {
       previousPiMessages: firstTurn.piMessages,
       turnId: "turn-2",
     });
-    await processPluginTask({
+    // An embedding failure fails the task but keeps the Brief. The retry
+    // embeds the stored Brief without generating it again.
+    const secondTask = {
       plugin: "briefs",
       name: "updateBrief",
       params: { conversationId, sessionId: "turn-2" },
-    });
+    };
+    TEST.failNextEmbed = true;
+    await expect(processPluginTask(secondTask)).rejects.toThrow(
+      "embedding provider unavailable",
+    );
+    expect(
+      (await getDb().select().from(juniorConversationBriefs)).map(
+        (row) => row.version,
+      ),
+    ).toEqual([1, 2]);
+    await expect(readEmbeddings()).resolves.toMatchObject([
+      { briefVersion: 1 },
+    ]);
+    await processPluginTask(secondTask);
+    expect(TEST.calls).toHaveLength(2);
+    await expect(readEmbeddings()).resolves.toMatchObject([
+      { briefVersion: 2 },
+    ]);
     rows = await getDb()
       .select()
       .from(juniorConversationBriefs)
@@ -422,6 +484,10 @@ describe("Conversation Brief task", () => {
       .from(juniorConversationBriefs)
       .orderBy(juniorConversationBriefs.version);
     expect(TEST.calls).toHaveLength(3);
+    // Only the latest Brief has a vector.
+    await expect(readEmbeddings()).resolves.toMatchObject([
+      { briefVersion: 3 },
+    ]);
     expect(rows.map((row) => row.turnId)).toEqual([
       "turn-1",
       "turn-2",
