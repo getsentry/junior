@@ -41,32 +41,56 @@ const ISSUE = {
   userCount: 56,
 };
 
+// Each org's region API host, as `links.regionUrl` names it.
+const REGION_URLS: Record<string, string> = {
+  "acme-eu": "https://de.sentry.io",
+  rogue: "https://sentry.example.com",
+  sentry: "https://us.sentry.io",
+};
+
 /**
- * Fake Sentry's issue API. Each viewer token opens the issue only when it
- * is listed in `allowed`. The org read token reads every issue.
+ * Fake Sentry's org and issue APIs. `sentry.io` names each org's region.
+ * The region host answers for its own orgs only. Each viewer token opens
+ * the issue only when it is listed in `allowed`. The org read token reads
+ * every issue.
  */
 function fakeSentry(allowed: string[]) {
   const reads: string[] = [];
+  const issueHosts: string[] = [];
+  const orgReads: string[] = [];
+  const issueRead: Parameters<typeof http.get>[1] = ({ params, request }) => {
+    const host = new URL(request.url).host;
+    const token = request.headers.get("authorization") ?? "none";
+    issueHosts.push(`${host} ${params.org}`);
+    reads.push(`${token} ${params.org}/${params.issueId}`);
+    const known =
+      REGION_URLS[String(params.org)] === `https://${host}` &&
+      [ISSUE.id, ISSUE.shortId].includes(String(params.issueId));
+    if (!known) return new HttpResponse(null, { status: 404 });
+    const canRead =
+      token === `Bearer ${ORG_READ_TOKEN}` ||
+      allowed.some((name) => token === `Bearer ${name}-token`);
+    return canRead
+      ? HttpResponse.json(ISSUE)
+      : new HttpResponse(null, { status: 403 });
+  };
   mswServer.use(
-    http.get(
-      "https://sentry.io/api/0/organizations/:org/issues/:issueId/",
-      ({ params, request }) => {
-        const token = request.headers.get("authorization") ?? "none";
-        reads.push(`${token} ${params.org}/${params.issueId}`);
-        const known =
-          params.org === "sentry" &&
-          [ISSUE.id, ISSUE.shortId].includes(String(params.issueId));
-        if (!known) return new HttpResponse(null, { status: 404 });
-        const canRead =
-          token === `Bearer ${ORG_READ_TOKEN}` ||
-          allowed.some((name) => token === `Bearer ${name}-token`);
-        return canRead
-          ? HttpResponse.json(ISSUE)
-          : new HttpResponse(null, { status: 403 });
-      },
+    http.get("https://sentry.io/api/0/organizations/:org/", ({ params }) => {
+      const org = String(params.org);
+      orgReads.push(org);
+      const regionUrl = REGION_URLS[org];
+      return regionUrl
+        ? HttpResponse.json({ slug: org, links: { regionUrl } })
+        : new HttpResponse(null, { status: 404 });
+    }),
+    ...Object.values(REGION_URLS).map((origin) =>
+      http.get(
+        `${origin}/api/0/organizations/:org/issues/:issueId/`,
+        issueRead,
+      ),
     ),
   );
-  return reads;
+  return { issueHosts, orgReads, reads };
 }
 
 async function connectSentry(viewer: User, name: string) {
@@ -110,7 +134,7 @@ describe("Sentry issue link cards", () => {
   });
 
   it("shows an issue card to a viewer whose Sentry account can open it", async () => {
-    const reads = fakeSentry(["alice"]);
+    const { reads } = fakeSentry(["alice"]);
     const alice = testViewer("alice@example.com");
     await connectSentry(alice, "alice");
     const url = "https://sentry.sentry.io/issues/4567/";
@@ -153,7 +177,7 @@ describe("Sentry issue link cards", () => {
   });
 
   it("resolves every issue URL form to the same issue", async () => {
-    const reads = fakeSentry(["alice"]);
+    const { reads } = fakeSentry(["alice"]);
     const alice = testViewer("alice@example.com");
     await connectSentry(alice, "alice");
     const urls = [
@@ -183,7 +207,7 @@ describe("Sentry issue link cards", () => {
   });
 
   it("shows nothing of an issue to a viewer whose Sentry account cannot open it", async () => {
-    const reads = fakeSentry([]);
+    const { reads } = fakeSentry([]);
     const bob = testViewer("bob@example.com");
     await connectSentry(bob, "bob");
 
@@ -201,7 +225,7 @@ describe("Sentry issue link cards", () => {
   });
 
   it("shows no card to a viewer who has not connected Sentry", async () => {
-    const reads = fakeSentry(["alice"]);
+    const { reads } = fakeSentry(["alice"]);
     // Alice is connected. Her token must not stand in for Carol.
     await connectSentry(testViewer("alice@example.com"), "alice");
 
@@ -213,8 +237,47 @@ describe("Sentry issue link cards", () => {
     expect(reads).toEqual([]);
   });
 
+  it("sends each org's issue calls to its region host", async () => {
+    const { issueHosts } = fakeSentry(["alice"]);
+    const alice = testViewer("alice@example.com");
+    await connectSentry(alice, "alice");
+
+    const { objects } = await readCards(alice, [
+      "https://sentry.sentry.io/issues/4567/",
+      "https://acme-eu.sentry.io/issues/4567/",
+    ]);
+
+    expect(objects.map((card) => card.object.key)).toEqual([
+      "sentry/4567",
+      "acme-eu/4567",
+    ]);
+    // The viewer check and the card read both go to the region host.
+    expect([...issueHosts].sort()).toEqual([
+      "de.sentry.io acme-eu",
+      "de.sentry.io acme-eu",
+      "us.sentry.io sentry",
+      "us.sentry.io sentry",
+    ]);
+  });
+
+  it("refuses a region host that is not a Sentry API host", async () => {
+    const { issueHosts, orgReads, reads } = fakeSentry(["alice"]);
+    const alice = testViewer("alice@example.com");
+    await connectSentry(alice, "alice");
+
+    const { objects } = await readCards(alice, [
+      "https://rogue.sentry.io/issues/4567/",
+    ]);
+
+    // Junior reads the org's region, then calls nothing there.
+    expect(orgReads).toEqual(["rogue"]);
+    expect(objects).toEqual([]);
+    expect(issueHosts).toEqual([]);
+    expect(reads).toEqual([]);
+  });
+
   it("reads each issue once for every viewer and checks each viewer", async () => {
-    const reads = fakeSentry(["alice", "dave"]);
+    const { orgReads, reads } = fakeSentry(["alice", "dave"]);
     const alice = testViewer("alice@example.com");
     const dave = testViewer("dave@example.com");
     await connectSentry(alice, "alice");
@@ -231,5 +294,7 @@ describe("Sentry issue link cards", () => {
       `Bearer ${ORG_READ_TOKEN} sentry/4567`,
       "Bearer dave-token sentry/4567",
     ]);
+    // The org's region is looked up once.
+    expect(orgReads).toEqual(["sentry"]);
   });
 });

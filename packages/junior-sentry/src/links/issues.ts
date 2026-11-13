@@ -14,13 +14,13 @@ import {
   type PluginObjectLinkDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { sentryRegionOrigin } from "./region.js";
 import {
   parseSentryIssueLink,
   SENTRY_ISSUE_LINK_FILTERS,
   type SentryIssueLink,
 } from "./urls.js";
 
-const SENTRY_API_ORIGIN = "https://sentry.io";
 // The same time as the card cache, so a changed issue shows within a minute.
 const ISSUE_CACHE_TTL_MS = 60_000;
 
@@ -62,8 +62,8 @@ const SUBSTATUS_LABELS: Record<string, string> = {
   regressed: "regressed",
 };
 
-function issueApiUrl(link: SentryIssueLink): string {
-  return `${SENTRY_API_ORIGIN}/api/0/organizations/${encodeURIComponent(link.org)}/issues/${encodeURIComponent(link.issueId)}/`;
+function issueApiUrl(origin: string, link: SentryIssueLink): string {
+  return `${origin}/api/0/organizations/${encodeURIComponent(link.org)}/issues/${encodeURIComponent(link.issueId)}/`;
 }
 
 function text(value: string | null | undefined): string | undefined {
@@ -155,12 +155,13 @@ function sentryIssueCard(
  */
 async function viewerCanSeeIssue(
   ctx: ObjectLinkContext,
+  origin: string,
   link: SentryIssueLink,
 ): Promise<boolean> {
   const response = await ctx.viewerEgress.fetch({
     operation: "sentry.issue.access",
     provider: "sentry",
-    request: new Request(issueApiUrl(link)),
+    request: new Request(issueApiUrl(origin, link)),
   });
   // Drain the body so the connection is free. Only the status counts.
   await response.arrayBuffer();
@@ -174,12 +175,13 @@ async function viewerCanSeeIssue(
 /** Read an issue with Junior's own token. Nothing for a missing issue. */
 async function readIssue(
   ctx: ObjectLinkContext,
+  origin: string,
   link: SentryIssueLink,
 ): Promise<SentryIssue | null> {
   const response = await ctx.egress.fetch({
     operation: "sentry.issue.get",
     provider: "sentry",
-    request: new Request(issueApiUrl(link)),
+    request: new Request(issueApiUrl(origin, link)),
   });
   // A token for another org gets 403. A merged-away or deleted issue is 404.
   if ([401, 403, 404].includes(response.status)) return null;
@@ -195,11 +197,15 @@ async function resolveSentryIssueLink(
   url: URL,
 ): Promise<ObjectAnnotation | undefined> {
   const link = parseSentryIssueLink(url);
-  if (!link || !(await viewerCanSeeIssue(ctx, link))) return undefined;
+  if (!link) return undefined;
+  const origin = await sentryRegionOrigin(ctx, link.org);
+  if (!origin || !(await viewerCanSeeIssue(ctx, origin, link))) {
+    return undefined;
+  }
   const issue = await ctx.cache.getOrLoad(
     `issue:${link.org}/${link.issueId.toUpperCase()}`,
     async () => ({
-      value: await readIssue(ctx, link),
+      value: await readIssue(ctx, origin, link),
       ttlMs: ISSUE_CACHE_TTL_MS,
     }),
   );
