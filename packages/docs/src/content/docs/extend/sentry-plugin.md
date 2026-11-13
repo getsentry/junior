@@ -139,7 +139,7 @@ Anyone who can talk to Junior can read every project the token can read. Sentry 
 
 ## Issue link cards
 
-The dashboard shows a card for a link to a Sentry issue or to one of its events, on `sentry.io/organizations/<org>/` or on `<org>.sentry.io`. The card shows the title, the culprit, the state, the assignee, the priority, and the project.
+The dashboard shows a card for a link to a Sentry issue or to one of its events, on `sentry.io/organizations/<org>/` or on `<org>.sentry.io`. The card shows the title, the culprit, the state, the assignee, the priority, the project, and a line of events per hour for the last day.
 
 - Each viewer must connect Sentry on the dashboard **Connections** page. Junior asks Sentry, with that viewer's own token, whether the viewer can open the issue. Without a connection, or without access, the viewer gets no card. Junior never asks the viewer to connect for a card.
 - Junior reads the card with the org read token, so set `SENTRY_READ_TOKEN`.

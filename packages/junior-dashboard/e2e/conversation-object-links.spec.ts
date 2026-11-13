@@ -193,6 +193,9 @@ test("a Sentry issue link resolves to a chip and a hover card", async ({
   ]) {
     await expect(card).toContainText(text);
   }
+  await expect(
+    card.getByRole("figure", { name: "Events, last 24 hours" }),
+  ).toBeVisible();
   await screenshot(page, "conversation-sentry-issue-link", {
     lightTheme: true,
     view: "desktop",

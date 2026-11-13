@@ -28,6 +28,13 @@ const ISSUE = {
   priority: "high",
   project: { id: "11", slug: "junior" },
   shortId: "JUNIOR-3ZK",
+  stats: {
+    "24h": [
+      [1782896400, 0],
+      [1782900000, 3],
+      [1782903600, 12],
+    ],
+  },
   status: "unresolved",
   substatus: "regressed",
   title: "TypeError: cart.total is undefined",
@@ -132,6 +139,7 @@ describe("Sentry issue link cards", () => {
             priority: "High",
             project: "junior",
             labels: ["error", "regressed"],
+            trend: { label: "Events, last 24 hours", points: [0, 3, 12] },
           },
         },
       },

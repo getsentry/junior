@@ -4,8 +4,8 @@
  * The viewer's own Sentry account must open the issue first, so Sentry
  * decides access. Then Junior's org read token reads the card, which is
  * cached per issue for every viewer. The card shows the title, the
- * culprit, the state, and who owns it. It never shows event data, tags, or
- * stack frames.
+ * culprit, the state, who owns it, and events per hour for the last day.
+ * It never shows event data, tags, or stack frames.
  */
 import {
   objectSummary,
@@ -35,6 +35,11 @@ const issueSchema = z.object({
   priority: z.string().nullish(),
   project: z.object({ slug: z.string() }),
   shortId: z.string(),
+  // `24h` holds hourly `[timestamp, count]` pairs, oldest first.
+  stats: z
+    .object({ "24h": z.array(z.tuple([z.number(), z.number()])) })
+    .partial()
+    .nullish(),
   status: z.string(),
   substatus: z.string().nullish(),
   title: z.string(),
@@ -64,6 +69,15 @@ function issueApiUrl(link: SentryIssueLink): string {
 function text(value: string | null | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed.slice(0, 160) : undefined;
+}
+
+// The facts schema takes 2 to 60 nonnegative points.
+function hourlyTrend(issue: SentryIssue) {
+  const points = (issue.stats?.["24h"] ?? []).map(([, count]) => count);
+  if (points.length < 2 || points.some((n) => n < 0)) {
+    return undefined;
+  }
+  return { label: "Events, last 24 hours", points: points.slice(-60) };
 }
 
 function capitalize(value: string): string {
@@ -129,6 +143,7 @@ function sentryIssueCard(
       priority: issue.priority ? capitalize(issue.priority) : undefined,
       project: text(issue.project.slug),
       labels: labels.length ? labels : undefined,
+      trend: hourlyTrend(issue),
     },
   };
 }
