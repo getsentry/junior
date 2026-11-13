@@ -783,6 +783,13 @@ test("an expanded question shows the message of the Turn that asked it", async (
   ).toHaveAttribute("aria-expanded", "true");
   await expect(message.getByText("Roll out when ready.")).toBeInViewport();
   expect(reads).toBe(1);
+  // A pin updates every cached feed. The Turn's message is not one of them,
+  // so the page keeps working.
+  await page.getByRole("button", { name: "Pin", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Unpin", exact: true }),
+  ).toBeVisible();
+  await expect(message).toBeVisible();
 });
 
 test("comfortable rows show cards for message links that name an object", async ({

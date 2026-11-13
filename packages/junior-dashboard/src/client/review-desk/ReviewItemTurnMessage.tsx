@@ -39,7 +39,9 @@ export function ReviewItemTurnMessage(props: { item: ReviewItemPayload }) {
     props.item;
   const { data: text } = useQuery({
     enabled: Boolean(turnId),
-    queryKey: ["dashboard", "conversations", conversationId, "turn", turnId],
+    // Not under ["dashboard", "conversations"]: every key there is a feed,
+    // and the feed updates read each one as a feed.
+    queryKey: ["dashboard", "conversation-turn", conversationId, turnId],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         conversationEventPageSchema,
