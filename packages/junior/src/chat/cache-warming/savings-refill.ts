@@ -55,6 +55,7 @@ const DAY_MS = 24 * 60 * MINUTE_MS;
 // The heartbeat also runs the gap backfill, so a slice takes half its budget.
 const SLICE_BUDGET_MS = BACKFILL_BUDGET_MS / 2;
 const STOPPED_ERROR = "The re-fill stopped before it finished.";
+const CANCELED_ERROR = "The history queries timed out.";
 
 const refillJobSchema = z
   .object({
@@ -207,20 +208,9 @@ export async function runSavingsRefillSlice(args: {
   const job = await readJob();
   if (!job || !isActive(job)) return;
   const state = await connectedState();
-  if (isStopped(job, nowMs)) {
-    await state.set(
-      JOB_KEY,
-      {
-        ...job,
-        status: "failed",
-        finishedAtMs: nowMs,
-        error: job.error ?? STOPPED_ERROR,
-        sums: {},
-      } satisfies RefillJob,
-      JOB_TTL_MS,
-    );
-    return;
-  }
+  // A stopped job reads as failed, and stays as it is until an admin starts
+  // a new one. A write here could replace a job that started since the read.
+  if (isStopped(job, nowMs)) return;
   if (
     !(await state.setIfNotExists(SLICE_LOCK_KEY, job.id, SLICE_LOCK_TTL_MS))
   ) {
@@ -246,6 +236,23 @@ export async function runSavingsRefillSlice(args: {
                 afterConversationId: job.afterConversationId,
               })
             : undefined;
+        // Every query of the slice timed out, so it read no history. Keep the
+        // position and try again. The lease ends a job that never gets past.
+        if (scan && scan.scanned === 0 && scan.canceledBatches > 0) {
+          if ((await readJob())?.id === job.id) {
+            await state.set(
+              JOB_KEY,
+              { ...job, error: CANCELED_ERROR } satisfies RefillJob,
+              JOB_TTL_MS,
+            );
+          }
+          setSpanAttributes({
+            "app.cache_warming.backfill.canceled_batch_count":
+              scan.canceledBatches,
+            "app.cache_warming.backfill.outcome": "not_completed",
+          });
+          return;
+        }
         for (const period of scan?.periods ?? []) {
           if (period.next) addPeriod(job, { ...period, next: period.next });
         }
