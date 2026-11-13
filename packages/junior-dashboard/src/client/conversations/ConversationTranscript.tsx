@@ -59,9 +59,12 @@ import {
 } from "./TranscriptMessageView";
 import { TranscriptEventView } from "./TranscriptEventView";
 import {
-  backToBackAnswerItemIds,
-  TranscriptBackToBackAnswers,
-} from "./transcriptBackToBackAnswers";
+  createAskViewStore,
+  TranscriptAnswerLinks,
+  TranscriptAnswerLinkSegments,
+  transcriptAnswerLinks,
+  transcriptAnswerLinksValue,
+} from "./TranscriptAnswerLinks";
 import {
   isAutomationTriggerMessage,
   TranscriptAutomationTriggerView,
@@ -606,9 +609,10 @@ function TranscriptEntryList(
     return () => observer.disconnect();
   }, [askIndex, askReveal]);
   useEffect(() => () => window.clearTimeout(askHighlight.current?.timer), []);
-  const backToBackAnswers = useMemo(
-    () => backToBackAnswerItemIds(rows),
-    [rows],
+  const [askViews] = useState(createAskViewStore);
+  const answerLinks = useMemo(
+    () => transcriptAnswerLinksValue(transcriptAnswerLinks(rows), askViews),
+    [askViews, rows],
   );
   const anchorKey = props.scrollAnchorKey?.();
   const markerIndex = indexByKey.get(UNREAD_MARKER_KEY);
@@ -698,7 +702,7 @@ function TranscriptEntryList(
   }
 
   return (
-    <TranscriptBackToBackAnswers value={backToBackAnswers}>
+    <TranscriptAnswerLinks value={answerLinks}>
       <TranscriptOpenRows value={openRows}>
         <TranscriptReplyRatings value={replyRatings}>
           <div
@@ -723,7 +727,7 @@ function TranscriptEntryList(
         </TranscriptReplyRatings>
       </TranscriptOpenRows>
       {thinking}
-    </TranscriptBackToBackAnswers>
+    </TranscriptAnswerLinks>
   );
 }
 
@@ -765,6 +769,7 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
       ref={props.measure}
       style={{ transform: `translateY(${props.offset}px)` }}
     >
+      <TranscriptAnswerLinkSegments index={props.index} />
       {row.kind === "unread_marker" ? (
         <TranscriptUnreadMarker />
       ) : row.kind === "activity" ? (

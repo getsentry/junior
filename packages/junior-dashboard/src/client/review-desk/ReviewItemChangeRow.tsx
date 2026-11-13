@@ -1,5 +1,5 @@
 import { Inbox } from "lucide-react";
-import { use, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link } from "react-router";
 import type {
   ReviewItemChangeRecord,
@@ -7,7 +7,11 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { MessageCard, MessageCardHeader } from "../components/MessageCard";
-import { TranscriptBackToBackAnswers } from "../conversations/transcriptBackToBackAnswers";
+import {
+  useAnswerLinked,
+  useAskInView,
+  useAskViewRef,
+} from "../conversations/TranscriptAnswerLinks";
 import { useConversationReviewItemData } from "./queries";
 import {
   answerLine,
@@ -22,10 +26,10 @@ const CHANGE_VERBS = {
   taken: "Took",
 } as const satisfies Record<ReviewItemChangeRecord["kind"], string>;
 
-// The change reads as the person's reply to a question: a quote line names
-// the item, and an answer is the message text. Only the "Asked" record is a
-// card, so the question and its answer do not repeat the same card. Right
-// under its question, an answer needs no quote line.
+// The change reads as the person's reply to a question, and an answer stands
+// out in a bubble. A line in the avatar column links an answer to its "Asked"
+// record. The quote line names the item only while that record is out of
+// view, or when the transcript has no record to link.
 function ChangeRow(props: {
   item: ReviewItemPayload;
   record: ReviewItemChangeRecord;
@@ -37,16 +41,14 @@ function ChangeRow(props: {
     record.kind === "submitted" && item.request && item.answer
       ? answerRows(item.request, item.answer)
       : [];
-  const backToBack =
-    use(TranscriptBackToBackAnswers).has(item.id) &&
-    record.kind === "submitted" &&
-    rows.length > 0;
+  const linked = useAnswerLinked(item.id) && rows.length > 0;
+  const askInView = useAskInView(item.id);
   return (
     <section
       aria-label={`${verb} ${item.title}`}
       className="grid min-w-0 gap-1.5"
     >
-      {backToBack ? null : (
+      {linked && askInView ? null : (
         <p className="m-0 flex min-w-0 items-center gap-1.5 border-l-2 border-dashboard-border-emphasis pl-2 text-sm text-dashboard-text-muted">
           <span className="shrink-0">{verb}</span>
           <Link
@@ -59,7 +61,7 @@ function ChangeRow(props: {
         </p>
       )}
       {rows.length ? (
-        <dl className="m-0 grid gap-1.5 font-sans text-base leading-relaxed">
+        <dl className="m-0 grid w-fit max-w-full gap-1.5 rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel px-3.5 py-2 font-sans text-base leading-relaxed">
           {rows.map((row) => (
             <div key={row.label}>
               {/* One answer needs no label: a quote or the question names it. */}
@@ -137,23 +139,40 @@ export function ReviewItemChangeLabel(props: {
   );
 }
 
-/** Say what an asked item waits for, or what closed it. */
-function askOutcome(item: ReviewItemPayload): string | undefined {
+/** Name what Junior did with an item, and how the item closed. */
+function askMeta(item: ReviewItemPayload): string {
+  const verb = item.kind === "action" ? "Asked" : "Added";
+  if (item.status === "open") return verb;
+  const by = item.closedBy
+    ? ` by ${item.closedBy.displayName ?? item.closedBy.email}`
+    : "";
+  if (item.status === "dismissed") return `${verb} · Dismissed${by}`;
+  return `${verb} · ${item.answer ? "Answered" : "Done"}${by}`;
+}
+
+/**
+ * Say what an open item waits for, or give the answer. An answer row that the
+ * transcript links to this record already shows the answer.
+ */
+function askOutcome(
+  item: ReviewItemPayload,
+  linked: boolean,
+): string | undefined {
   if (item.status === "open") {
     if (item.kind === "notice") return undefined;
     return item.canAct ? "Waiting on you" : `Waiting on ${assigneeLabel(item)}`;
   }
-  if (item.status === "dismissed") return "Dismissed";
+  if (item.status === "dismissed" || linked) return undefined;
   return item.request && item.answer
     ? answerLine(item.request, item.answer)
-    : "Done";
+    : undefined;
 }
 
 /**
  * Show the Review item that a tool call added as one line in the transcript:
- * what Junior asked, and the answer or what it waits for. A question docks
- * above the message box, so this row is only the record. Shows `fallback`
- * when the viewer cannot read the item.
+ * what Junior asked, how it closed, and the answer or what it waits for. A
+ * question docks above the message box, so this row is only the record.
+ * Shows `fallback` when the viewer cannot read the item.
  */
 export function ReviewItemAskRow(props: {
   conversationId: string;
@@ -164,24 +183,24 @@ export function ReviewItemAskRow(props: {
     props.conversationId,
     props.itemId,
   );
-  const backToBack = use(TranscriptBackToBackAnswers).has(props.itemId);
+  const linked = useAnswerLinked(props.itemId);
+  const ref = useAskViewRef(props.itemId);
   if (isError) return props.fallback;
   if (!item) return null;
   const verb = item.kind === "action" ? "Asked" : "Added";
-  // The answer row right below shows the answer.
-  const outcome =
-    backToBack && item.status === "done" ? undefined : askOutcome(item);
+  const outcome = askOutcome(item, linked);
   return (
     // The transcript marks the row for a moment when its question docks.
     <MessageCard
       aria-label={`${verb} ${item.title}`}
       className="transition-shadow duration-300 motion-reduce:transition-none data-highlighted:ring-2 data-highlighted:ring-violet-300/50"
       data-review-item-ask={item.id}
+      ref={ref}
     >
       <MessageCardHeader
         className={outcome ? undefined : "pb-4"}
         icon={<Inbox aria-hidden="true" size={18} />}
-        meta={verb}
+        meta={askMeta(item)}
         title={<ReviewItemTitle item={item} />}
       />
       {outcome ? (

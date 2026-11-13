@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backToBackAnswerItemIds } from "../src/client/conversations/transcriptBackToBackAnswers";
+import { transcriptAnswerLinks } from "../src/client/conversations/TranscriptAnswerLinks";
 import {
   UNREAD_MARKER_KEY,
   type TranscriptListRow,
@@ -41,36 +41,39 @@ function answer(
   });
 }
 
-describe("backToBackAnswerItemIds", () => {
-  it("finds an answer that comes directly after its question", () => {
-    expect(backToBackAnswerItemIds([ask("a"), answer("a")])).toEqual(
-      new Set(["a"]),
-    );
+const marker = { key: UNREAD_MARKER_KEY, kind: "unread_marker" } as const;
+
+describe("transcriptAnswerLinks", () => {
+  it("links each answer to its question across the rows between them", () => {
+    expect(transcriptAnswerLinks([ask("a"), marker, answer("a")])).toEqual([
+      { answerIndex: 2, askIndex: 0, itemId: "a", lane: 0 },
+    ]);
   });
 
-  it("skips answers that another row separates from their question", () => {
-    // Two questions, then their answers in order: only the second question
-    // sits directly above an answer, and that answer is for the first one.
-    const rows = [ask("a"), ask("b"), answer("a"), answer("b")];
-    expect(backToBackAnswerItemIds(rows)).toEqual(new Set());
-    expect(
-      backToBackAnswerItemIds([
-        ask("a"),
-        { key: UNREAD_MARKER_KEY, kind: "unread_marker" },
-        answer("a"),
-      ]),
-    ).toEqual(new Set());
+  it("puts overlapping links on different lanes and reuses a free lane", () => {
+    const rows = [
+      ask("a"),
+      ask("b"),
+      answer("a"),
+      answer("b"),
+      ask("c"),
+      answer("c"),
+    ];
+    expect(transcriptAnswerLinks(rows)).toEqual([
+      { answerIndex: 2, askIndex: 0, itemId: "a", lane: 0 },
+      { answerIndex: 3, askIndex: 1, itemId: "b", lane: 1 },
+      { answerIndex: 5, askIndex: 4, itemId: "c", lane: 0 },
+    ]);
   });
 
-  it("skips a take and a relayed Event change", () => {
+  it("skips a take, an Event relay, and an answer with no question row", () => {
     expect(
-      backToBackAnswerItemIds([ask("a"), answer("a", { kind: "taken" })]),
-    ).toEqual(new Set());
-    expect(
-      backToBackAnswerItemIds([
+      transcriptAnswerLinks([
         ask("a"),
+        answer("a", { kind: "taken" }),
         answer("a", { eventType: "pull_request.checks.failed" }),
+        answer("b"),
       ]),
-    ).toEqual(new Set());
+    ).toEqual([]);
   });
 });
