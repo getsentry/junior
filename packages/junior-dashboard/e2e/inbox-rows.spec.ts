@@ -42,7 +42,7 @@ test("a comfortable row keeps its pills under its title and people", async ({
   await expect.poll(() => slots(row)).toEqual(SLOTS);
 });
 
-test("a row's summary shows its links as chips", async ({
+test("a row's summary shows its links as titled links", async ({
   dashboard,
   page,
 }) => {
@@ -53,12 +53,17 @@ test("a row's summary shows its links as chips", async ({
     .getByRole("listitem")
     .filter({ hasText: "Package release and self-update" })
     .locator('[data-inbox-slot="summary"]');
-  // A person, a Conversation and a pull request each show their chip.
+  // A person shows a chip. A Conversation and a pull request show their
+  // titles as plain links.
   await expect(summary.getByRole("link", { name: /Morgan Lee/ })).toBeVisible();
   await expect(
-    summary.getByRole("link", { name: /Investigate checkout latency/ }),
+    summary.getByRole("link", { name: "Investigate checkout latency" }),
   ).toBeVisible();
-  await expect(summary.getByRole("link", { name: /payments/ })).toBeVisible();
+  await expect(
+    summary
+      .getByRole("link", { name: /^Pin the release train to payments 4\.2/ })
+      .first(),
+  ).toBeVisible();
   await expect(summary).not.toContainText("https://");
 });
 

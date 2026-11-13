@@ -5,7 +5,7 @@ import { HighlightedCode } from "../code";
 import { ClampedPreview } from "../components/ClampedPreview";
 import { CopyButton } from "../components/CopyButton";
 import { parseMarkdownBlocks } from "./codeBlocks";
-import { splitStandaloneUrls } from "./knownObjects";
+import { splitStandaloneUrls, standaloneUrlKeys } from "./knownObjects";
 import { MarkdownText } from "./markdown";
 import { MentionPeopleProvider } from "./mentions";
 import { MessageObjectsProvider } from "./resolvedObjects";
@@ -28,8 +28,8 @@ export const DisplayText = memo(function DisplayText(props: {
   /** Use the larger chat type of user and assistant messages. */
   chat?: boolean;
   /**
-   * Inline mode: show links, and bare URLs as object chips, as messages do.
-   * Only outside a link or a button.
+   * Inline mode: show links as messages do. A bare URL shows its object
+   * title, and a person shows as a chip. Only outside a link or a button.
    */
   chips?: boolean;
   /** Keep body line height compact in narrow panels. */
@@ -74,15 +74,20 @@ function DisplayTextBlocks(props: {
   compact?: boolean;
   text: string;
 }) {
+  // A URL repeated in one message shows one card, in its first block.
+  const shownCardUrls: string[] = [];
   return (
     <div className="grid min-w-0 gap-2">
       {parseMarkdownBlocks(props.text).map((block, index) => {
         if (block.language === "markdown" && !block.fenced) {
+          const shown = [...shownCardUrls];
+          shownCardUrls.push(...standaloneUrlKeys(block.code));
           return (
             <MarkdownText
               chat={props.chat}
               compact={props.compact}
               key={index}
+              shownCardUrls={shown}
               text={block.code}
             />
           );

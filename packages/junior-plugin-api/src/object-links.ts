@@ -147,13 +147,23 @@ export interface ObjectLinkContext extends PluginContext {
 }
 
 /**
- * One link type of a plugin. Return nothing when the viewer cannot read the
- * object, so the card does not show that it exists. Junior does not save the
- * result.
+ * One link type of a plugin. Junior calls `canView` first, and calls
+ * `resolve` only when it returns true. Junior does not save the result.
  */
 export interface PluginObjectLinkDefinition {
+  /**
+   * Return whether `ctx.viewer` may see the object. Junior calls it before
+   * each card read and again on each Attach. Return true for a public
+   * object. Return false when you cannot tell, so the card does not show
+   * that the object exists.
+   */
+  canView(ctx: ObjectLinkContext, url: URL): Promise<boolean>;
   filters: ObjectLinkFilter[];
   objectType: ObjectType;
+  /**
+   * Read the card. Junior calls it only after `canView` returns true.
+   * Return nothing for a missing object.
+   */
   resolve(
     ctx: ObjectLinkContext,
     url: URL,

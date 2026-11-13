@@ -95,6 +95,22 @@ function toolEntry(seq: number, name = "bash"): RenderedTranscriptEntry {
   } as RenderedTranscriptEntry;
 }
 
+function captureEntry(seq: number): RenderedTranscriptEntry {
+  return {
+    key: `${seq}:event:0`,
+    kind: "structured_event",
+    part: {
+      name: "memories_captured",
+      namespace: "memory",
+      presentation: { title: "1 memory captured" },
+      turnId: `turn-${seq}`,
+      type: "structured_event",
+      version: 1,
+    },
+    seq,
+  } as RenderedTranscriptEntry;
+}
+
 function rowSummary(rows: TranscriptListRow[]) {
   return rows.map((row) => ({
     keys:
@@ -137,7 +153,7 @@ describe("transcriptListRows", () => {
     ]);
     const reply = rows[3]!;
     expect(
-      reply.kind === "entry" && reply.tasks?.map((task) => task.key),
+      reply.kind === "entry" && reply.footer?.tasks.map((task) => task.key),
     ).toEqual(["subagent:child-2", "subagent:child-5"]);
     expect(liveActivityIndex(rows)).toBeUndefined();
     // A running Turn keeps its activity live above its Tasks row.
@@ -207,5 +223,34 @@ describe("transcriptListRows", () => {
       { keys: undefined, kind: "unread_marker", seq: undefined },
       { keys: ["2:message:0"], kind: "entry", seq: 3 },
     ]);
+  });
+
+  it("moves captured memories and the prompt under the reply of their Turn", () => {
+    const rows = transcriptListRows({
+      entries: [
+        messageEntry(1, "user"),
+        toolEntry(2),
+        messageEntry(3),
+        captureEntry(4),
+        messageEntry(5, "user"),
+        captureEntry(6),
+      ],
+      keyPrefix: "c",
+      knownActivityKeys: new Map(),
+    });
+
+    expect(rowSummary(rows)).toEqual([
+      { keys: ["1:message:0"], kind: "entry", seq: 1 },
+      { keys: ["2:tool:0"], kind: "activity", seq: 2 },
+      { keys: ["3:message:0"], kind: "entry", seq: 4 },
+      { keys: ["5:message:0"], kind: "entry", seq: 5 },
+      // With no reply, the capture keeps its own row.
+      { keys: ["6:event:0"], kind: "entry", seq: 6 },
+    ]);
+    const reply = rows[2]!;
+    expect(reply.kind === "entry" && reply.footer).toMatchObject({
+      captures: [{ key: "4:event:0" }],
+      prompt: { key: "1:message:0" },
+    });
   });
 });

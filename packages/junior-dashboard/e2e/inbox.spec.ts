@@ -129,10 +129,12 @@ test("each entry lists its own rows under its name", async ({
   await expect(
     page.getByRole("heading", { level: 1, name: "Conversations" }),
   ).toBeVisible();
+  // The row's own link; its summary can link the same Conversation.
   await expect(
     page
       .getByRole("region", { name: "Today" })
-      .getByRole("link", { exact: true, name: checkout }),
+      .locator('a[aria-controls^="inbox-row-"]')
+      .getByText(checkout, { exact: true }),
   ).toBeVisible();
   await screenshot(page, "inbox-conversations", { lightTheme: true });
 

@@ -144,13 +144,34 @@ async function viewerCanOpen(
   return checks.some(Boolean);
 }
 
-async function resolveGoogleFileLink(
+type ParsedFileLink = NonNullable<ReturnType<typeof parseFileLink>>;
+
+// Long enough that the access check and the card share one Drive read. The
+// access queries check `trashed` again, so a trashed file never shows.
+const FILE_READ_TTL_MS = 10_000;
+
+/**
+ * Read the linked file with Junior's account. Nothing when the account
+ * cannot open it, it is trashed, or it is not of the link's type.
+ */
+async function readLinkedFile(
   ctx: ObjectLinkContext,
-  url: URL,
-): Promise<ObjectAnnotation | undefined> {
-  const config = readGoogleConfig();
-  const link = parseFileLink(url);
-  if (!config || !link) return undefined;
+  link: ParsedFileLink,
+): Promise<LinkedFile | null> {
+  const { fileId, resourceKey } = link.file;
+  return await ctx.cache.getOrLoad(
+    `drive-file:${link.type}:${fileId}:${resourceKey ?? ""}`,
+    async () => ({
+      value: await fetchLinkedFile(ctx, link),
+      ttlMs: FILE_READ_TTL_MS,
+    }),
+  );
+}
+
+async function fetchLinkedFile(
+  ctx: ObjectLinkContext,
+  link: ParsedFileLink,
+): Promise<LinkedFile | null> {
   const response = await googleApiRequest(ctx, {
     headers: resourceKeyHeaders(link.file),
     operation: "google.drive.file.get",
@@ -162,17 +183,33 @@ async function resolveGoogleFileLink(
     },
   });
   // Google answers 404 for a file that Junior's account cannot open.
-  if (response.status === 403 || response.status === 404) return undefined;
+  if (response.status === 403 || response.status === 404) return null;
   if (response.status !== 200) {
     throw googleApiError("google.drive.file.get", response);
   }
   const file = linkedFileSchema.parse(response.body);
-  if (file.trashed || googleFileType(file.mimeType) !== link.type) {
-    return undefined;
-  }
-  if (!(await viewerCanOpen(ctx, file, config.allowedDomains))) {
-    return undefined;
-  }
+  return file.trashed || googleFileType(file.mimeType) !== link.type
+    ? null
+    : file;
+}
+
+async function canViewGoogleFileLink(
+  ctx: ObjectLinkContext,
+  url: URL,
+): Promise<boolean> {
+  const config = readGoogleConfig();
+  const link = parseFileLink(url);
+  const file = config && link && (await readLinkedFile(ctx, link));
+  return !!file && (await viewerCanOpen(ctx, file, config.allowedDomains));
+}
+
+async function resolveGoogleFileLink(
+  ctx: ObjectLinkContext,
+  url: URL,
+): Promise<ObjectAnnotation | undefined> {
+  const link = parseFileLink(url);
+  const file = link && (await readLinkedFile(ctx, link));
+  if (!file) return undefined;
   const summary =
     link.type === "document" ? await docSummary(ctx, link.file) : undefined;
   const owner = file.owners?.[0];
@@ -204,6 +241,7 @@ export const googleFileLinks: PluginObjectLinkDefinition = {
       pathPrefix,
     })),
   ),
+  canView: canViewGoogleFileLink,
   objectType: "document",
   // One tool reads every file type; it takes the type from the link.
   readTool: "readGoogleFile",

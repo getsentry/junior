@@ -208,12 +208,13 @@ function validateObjectLinks(
   for (const link of links) {
     if (
       !objectTypeSchema.safeParse(link?.objectType).success ||
+      typeof link.canView !== "function" ||
       typeof link.resolve !== "function" ||
       !Array.isArray(link.filters) ||
       link.filters.length === 0
     ) {
       throw new Error(
-        `Junior plugin "${name}" object links need an objectType, filters, and a resolve function.`,
+        `Junior plugin "${name}" object links need an objectType, filters, a canView function, and a resolve function.`,
       );
     }
     for (const filter of link.filters) {
