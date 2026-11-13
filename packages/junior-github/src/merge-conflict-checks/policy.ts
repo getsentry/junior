@@ -278,8 +278,20 @@ export async function closeGitHubConflictNotice(args: {
     );
     return;
   }
-  await args.db
+  await allowGitHubConflictNotice(args.db, args.ref);
+}
+
+/**
+ * Allow a notice for the next conflict of a pull request whose conflict is
+ * gone. Call it after the notice closes, so a failed close is tried again.
+ */
+export async function allowGitHubConflictNotice(
+  db: GitHubDb,
+  ref: GitHubPullRequestRef,
+): Promise<void> {
+  const t = juniorGitHubPullRequests;
+  await db
     .update(t)
     .set({ conflictNoticedAt: null })
-    .where(eq(t.pullRequestId, row.pullRequestId));
+    .where(and(pullRequestRow(ref), isNotNull(t.conflictNoticedAt)));
 }

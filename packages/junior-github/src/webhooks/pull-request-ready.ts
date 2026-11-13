@@ -24,6 +24,7 @@ import {
   setGitHubPullRequestReadyToMerge,
 } from "../pull-request-outcomes/store.js";
 import {
+  allowGitHubConflictNotice,
   GITHUB_CONFLICT_GONE_REASON,
   gitHubConflictNoticeKey,
 } from "../merge-conflict-checks/policy.js";
@@ -154,6 +155,9 @@ async function syncOne(
               }
             : closeReason(state)),
         });
+        if (state.state === "open") {
+          await allowGitHubConflictNotice(args.db, target);
+        }
       }
       const open = state.state === "open" && !state.draft;
       const ready =
