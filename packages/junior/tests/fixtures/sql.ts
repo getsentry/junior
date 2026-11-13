@@ -3,7 +3,6 @@ import type { JuniorDatabase, JuniorSqlExecutor } from "@/db/db";
 import { juniorSqlSchema } from "@/db/schema";
 import {
   createLocalPgliteFixture,
-  pgliteVectorExtension,
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
@@ -31,9 +30,10 @@ export function hasJuniorPostgresTestDatabase(): boolean {
 }
 
 async function createPgliteJuniorSqlFixture(): Promise<LocalJuniorSqlFixture> {
-  const fixture = await createLocalPgliteFixture<
-    PgliteDatabase<typeof juniorSqlSchema>
-  >(juniorSqlSchema, { extensions: { vector: pgliteVectorExtension } });
+  const fixture =
+    await createLocalPgliteFixture<PgliteDatabase<typeof juniorSqlSchema>>(
+      juniorSqlSchema,
+    );
   const sql: JuniorSqlExecutor = {
     close: () => fixture.close(),
     db: () => fixture.db() as JuniorDatabase,
