@@ -25,7 +25,7 @@ const SUBJECT_PREFIX_CHARS = 48;
 const GUIDANCE = {
   "tool-description-length": `Cut the description to what the tool does and returns, and move field meaning into describe() on the param. Do not split it into promptGuidelines or a computed string to pass.`,
   "param-description-length": `Cut it to what the value is and its format or constraint. Move behavior that spans fields into fixed validation or a shorter cross-field note.`,
-  "tool-description-names-param": `Move what the tool description says about this field into describe() on the param, and remove the field name from the tool description.`,
+  "tool-description-names-param": `Move what the tool description says about this field into describe() on the param, and remove the field name from the tool description. Put a rule that ties two fields together on the field that depends on the other.`,
 };
 
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

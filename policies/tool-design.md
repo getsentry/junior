@@ -66,6 +66,8 @@ contradictory or unsafe requests.
   prefer unless that contrast is the contract.
 - Put field meaning in `describe()` on the param. Do not repeat it in the tool
   description. Reuse shared param schemas for the same value kind.
+- Put a rule that ties fields together ("only with `status`", "required when
+  `kind` is `action`") in `describe()` on the field that depends on the other.
 - Tool descriptions are at most 512 characters and do not name input fields.
   Param descriptions are at most 256 characters. `tool-descriptions:check`
   enforces this against a shrink-only baseline.
