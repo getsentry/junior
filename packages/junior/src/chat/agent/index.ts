@@ -1030,10 +1030,6 @@ async function executeAgentRunInPrivacyContext(
     // The `turn_end` listener changed `agent.state.messages`, which Pi does
     // not read. `prepareNextTurn` gives them to the next model call.
     let messagesChanged = false;
-    // The `turn_end` listener compacted after a batch that ended the run, and
-    // took the pending steering out of Pi's queue. Pi stops without a model
-    // call for that steering, so the run loop continues it.
-    let steeringAwaitsModelCall = false;
     /**
      * Do Junior's work after a model call and its tool batch, before Pi polls
      * steering. Pi awaits this listener after every model call. Pi turns its
@@ -1081,18 +1077,20 @@ async function executeAgentRunInPrivacyContext(
             },
           );
           const pendingMessages = await drainSteeringMessages();
-          // Pi stops after a batch only when every call in it is one of
-          // `terminatingToolCallIds`, and no steering is pending.
-          const batchEndsRun = event.toolResults.every((result) =>
-            terminatingToolCallIds.has(result.toolCallId),
-          );
-          const runEnded = pendingMessages.length === 0 && batchEndsRun;
+          // Another model call follows only after steering or a tool result
+          // that did not end the run. Pi stops after a batch only when every
+          // call in it is one of `terminatingToolCallIds`.
+          const runEnded =
+            pendingMessages.length === 0 &&
+            event.toolResults.every((result) =>
+              terminatingToolCallIds.has(result.toolCallId),
+            );
           // A background request does not change history, so it runs also
           // after the last model call.
           if (runEnded) {
             await requestBackgroundCompactionAfterModelCall();
           }
-          return { batchEndsRun, contextUpdate, pendingMessages, runEnded };
+          return { contextUpdate, pendingMessages, runEnded };
         },
       );
       messagesChanged = Boolean(boundary.contextUpdate);
@@ -1110,6 +1108,9 @@ async function executeAgentRunInPrivacyContext(
       }
       // Pi polls steering after this listener. The replacement ends with the
       // pending steering, so compacting here takes it out of Pi's queue.
+      // After a batch that ends the run, Pi then stops, and the empty-output
+      // retry answers that steering. A separate path for a slice that already
+      // used the retry is left out until that case is shown to happen.
       const compacted = await applyActiveContextCompaction(
         currentAgentMessages(),
         runSignal,
@@ -1118,7 +1119,6 @@ async function executeAgentRunInPrivacyContext(
       );
       if (compacted) {
         messagesChanged = true;
-        steeringAwaitsModelCall = boundary.batchEndsRun;
         return;
       }
       // After a replacement, the usage of the last model call counts the old
@@ -1564,13 +1564,6 @@ async function executeAgentRunInPrivacyContext(
                   runResume.getResumeSnapshot(currentAgentMessages()),
                 );
                 throw pendingAuthPause;
-              }
-
-              if (steeringAwaitsModelCall) {
-                steeringAwaitsModelCall = false;
-                messagesChanged = false;
-                run = agent!.continue();
-                continue;
               }
 
               const confirmationRetry = actionConfirmationRetryUsed

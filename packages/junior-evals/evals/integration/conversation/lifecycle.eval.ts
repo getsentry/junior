@@ -184,7 +184,7 @@ describe("Lifecycle and Resilience", () => {
   // so Junior compacts in that step. The replacement ends with the steered
   // mention, so Pi must not add it again. Without tool calls, or with only a
   // `noReply` call, the step ends the run, and Pi stops without a model call
-  // for the steering. Junior continues the run for it.
+  // for the steering. The empty-output retry answers it.
   test.for([
     {
       step: "answers",
