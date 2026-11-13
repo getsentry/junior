@@ -48,11 +48,7 @@ const inputSchema = z
   .strict();
 
 const recordOutputSchema = z.object({
-  content: z
-    .string()
-    .describe(
-      "Doc text as Markdown, in an external-text block. When path is set, this is only the start of the Doc.",
-    ),
+  content: z.string(),
   kind: z
     .enum(["document", "notes", "transcript"])
     .describe(
