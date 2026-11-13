@@ -121,7 +121,7 @@ test("links to saved objects show as a titled link, a hover card, and a card", a
   });
 });
 
-test("links without an Annotation resolve to plain links, a person chip, and a hover card", async ({
+test("links without an Annotation resolve to plain links, a GitHub-style person, and a hover card", async ({
   page,
   dashboard,
 }) => {
@@ -142,12 +142,18 @@ test("links without an Annotation resolve to plain links, a person chip, and a h
   );
   await waitForResolvedLinks(page);
 
-  // Only the person keeps a chip: its icon is the one icon in the
-  // paragraph. The other links show no icon, status, or outbound mark.
+  // The person is a GitHub-style mention: its photo is the one image in
+  // the paragraph, outside the `@Name` link. The mock viewer is Morgan, so
+  // it is also the self mention. No link shows an icon, status, or mark.
   const paragraph = linksParagraph(page);
-  const person = paragraph.getByRole("link", { name: "Morgan Lee" });
-  await expect(person.locator("svg, img")).toHaveCount(1);
-  await expect(paragraph.locator("svg, img")).toHaveCount(1);
+  const mention = paragraph.locator("[data-self-mention]");
+  await expect(mention).toHaveCount(1);
+  await expect(
+    mention.getByRole("link", { name: "@Morgan Lee" }),
+  ).toBeVisible();
+  await expect(mention.locator("img")).toHaveCount(1);
+  await expect(paragraph.locator("svg")).toHaveCount(0);
+  await expect(paragraph.locator("img")).toHaveCount(1);
   await expect(paragraph).not.toContainText("·");
   await expect(paragraph).not.toContainText("Running");
 
@@ -205,7 +211,7 @@ test("Google Doc and Calendar links resolve to links and hover cards", async ({
   });
 });
 
-test("a Sentry issue link resolves to a chip and a hover card", async ({
+test("a Sentry issue link resolves to a titled link and a hover card", async ({
   page,
   dashboard,
 }) => {
@@ -213,8 +219,12 @@ test("a Sentry issue link resolves to a chip and a hover card", async ({
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
   );
-  // A bare issue URL in a sentence is a chip with the short id and state.
-  const chip = page.getByRole("link", { name: /JUNIOR-3ZK · Unresolved/ });
+  // A bare issue URL in a sentence is a plain link with the title and short
+  // id. The state shows only in the hover card.
+  const chip = page.getByRole("link", {
+    name: "TypeError: cart.total is undefined (JUNIOR-3ZK)",
+    exact: true,
+  });
   await expect(chip).toHaveAttribute(
     "href",
     "https://acme.sentry.io/issues/JUNIOR-3ZK/",
