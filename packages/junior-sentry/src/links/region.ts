@@ -12,6 +12,8 @@ import { SENTRY_API_DOMAINS } from "../org-read.js";
 const SENTRY_ORIGIN = "https://sentry.io";
 // An org stays in its region, so one lookup a day is enough.
 const REGION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+// A refused lookup can change soon, such as after a new org read token.
+const REFUSED_CACHE_TTL_MS = 60_000;
 
 const orgSchema = z.object({
   links: z.object({ regionUrl: z.string() }).partial().nullish(),
@@ -54,16 +56,19 @@ async function readRegionOrigin(
 }
 
 /**
- * Return the API origin of the org's region, cached per org. Nothing when
- * Junior cannot read the org. Throws when the org names a region host that
- * is not a Sentry API host.
+ * Return the API origin of the org's region, cached per org for a day.
+ * Nothing when Junior cannot read the org, cached for one minute. Throws
+ * when the org names a region host that is not a Sentry API host.
  */
 export async function sentryRegionOrigin(
   ctx: ObjectLinkContext,
   org: string,
 ): Promise<string | null> {
-  return ctx.cache.getOrLoad(`region:${org}`, async () => ({
-    value: await readRegionOrigin(ctx, org),
-    ttlMs: REGION_CACHE_TTL_MS,
-  }));
+  return ctx.cache.getOrLoad(`region:${org}`, async () => {
+    const origin = await readRegionOrigin(ctx, org);
+    return {
+      value: origin,
+      ttlMs: origin ? REGION_CACHE_TTL_MS : REFUSED_CACHE_TTL_MS,
+    };
+  });
 }

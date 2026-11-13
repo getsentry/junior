@@ -129,6 +129,7 @@ describe("Sentry issue link cards", () => {
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     await closeDb();
   });
@@ -274,6 +275,28 @@ describe("Sentry issue link cards", () => {
     expect(objects).toEqual([]);
     expect(issueHosts).toEqual([]);
     expect(reads).toEqual([]);
+  });
+
+  it("retries a refused region lookup after a minute", async () => {
+    const { orgReads } = fakeSentry(["alice"]);
+    // The org read token is refused until Sentry grants it.
+    let refused = true;
+    mswServer.use(
+      http.get("https://sentry.io/api/0/organizations/:org/", () =>
+        refused ? new HttpResponse(null, { status: 403 }) : undefined,
+      ),
+    );
+    const alice = testViewer("alice@example.com");
+    await connectSentry(alice, "alice");
+    const url = "https://sentry.sentry.io/issues/4567/";
+
+    expect((await readCards(alice, [url])).objects).toEqual([]);
+    refused = false;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 61_000);
+
+    expect((await readCards(alice, [url])).objects).toHaveLength(1);
+    expect(orgReads).toEqual(["sentry"]);
   });
 
   it("reads each issue once for every viewer and checks each viewer", async () => {
