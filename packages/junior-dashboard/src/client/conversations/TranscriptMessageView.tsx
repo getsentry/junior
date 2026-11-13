@@ -1,7 +1,7 @@
 import { ForkConversationButton } from "./ForkConversationButton";
 import {
   TranscriptAttachments,
-  TranscriptLocalImages,
+  TranscriptLocalFiles,
 } from "./TranscriptAttachment";
 import { ObjectCard } from "./ObjectCard";
 import { AutomationCard } from "../components/AutomationCard";
@@ -104,8 +104,8 @@ export const TranscriptMessageView = memo(
             conversationId={props.conversation.conversationId}
           />
         ) : null}
-        {props.message.images?.length ? (
-          <TranscriptLocalImages images={props.message.images} />
+        {props.message.files?.length ? (
+          <TranscriptLocalFiles files={props.message.files} />
         ) : null}
         {props.message.cards?.map((card) => {
           switch (card.kind) {

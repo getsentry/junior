@@ -253,6 +253,7 @@ export function createConversationWork(
   };
   return {
     conversationStore: options.conversationStore,
+    getSlackAdapter: options.getSlackAdapter,
     queue: options.queue,
     run,
     runtime,
