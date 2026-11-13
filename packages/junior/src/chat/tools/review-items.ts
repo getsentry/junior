@@ -408,7 +408,7 @@ export function createUpdateReviewItemTool(
 ) {
   return zodTool({
     description:
-      "Change an open review desk item, or close it. Set `status` to `done` or `dismissed` with a `reason`, for example when its pull request merged. An item also closes when a person answers or dismisses it, when a person's reply in its thread answers it, when its Conversation is purged, when its Automation is deleted, or when the plugin that added it closes it. You cannot submit the answer to an action item: only an assignee can.",
+      "Change an open review desk item, or close it. An item also closes when a person answers or dismisses it, when a person's reply in its thread answers it, when its Conversation is purged, when its Automation is deleted, or when the plugin that added it closes it. You cannot submit the answer to an action item: only an assignee can.",
     exposure: "deferred",
     source: REVIEW_DESK_TOOL_SOURCE,
     annotations: {
@@ -432,7 +432,13 @@ export function createUpdateReviewItemTool(
           .describe(
             "Replaces every other linked Conversation. The Conversation that added the item stays linked.",
           ),
-        status: z.enum(["done", "dismissed"]).nullable().optional(),
+        status: z
+          .enum(["done", "dismissed"])
+          .nullable()
+          .optional()
+          .describe(
+            "Close the item, for example when its pull request merged.",
+          ),
         reason: z
           .string()
           .trim()
