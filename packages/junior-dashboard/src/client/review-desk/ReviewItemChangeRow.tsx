@@ -1,5 +1,5 @@
 import { Inbox } from "lucide-react";
-import type { ReactNode } from "react";
+import { use, type ReactNode } from "react";
 import { Link } from "react-router";
 import type {
   ReviewItemChangeRecord,
@@ -8,6 +8,8 @@ import type {
 
 import { MessageCard, MessageCardHeader } from "../components/MessageCard";
 import {
+  TranscriptShowQuestion,
+  useAnswerInView,
   useAnswerLinked,
   useAskInView,
 } from "../conversations/TranscriptAnswerLinks";
@@ -18,6 +20,10 @@ import {
   assigneeLabel,
   reviewItemPath,
 } from "./reviewItemFormat";
+
+// The verb stays muted. The title is the link, so it reads apart from it.
+const QUOTE_TITLE_CLASS =
+  "min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-medium text-dashboard-text underline decoration-dashboard-border-heavy underline-offset-2 hover:decoration-current focus-visible:outline-dashboard-focus";
 
 const CHANGE_VERBS = {
   dismissed: "Dismissed",
@@ -30,10 +36,12 @@ const CHANGE_VERBS = {
 // record. The quote line names the item only while that record is out of
 // view, or when the transcript has no record to link.
 function ChangeRow(props: {
+  conversationId: string;
   item: ReviewItemPayload;
   record: ReviewItemChangeRecord;
 }) {
   const { item, record } = props;
+  const showQuestion = use(TranscriptShowQuestion);
   const verb = CHANGE_VERBS[record.kind];
   // An answer is final, so the item's answer is this message's answer.
   const rows =
@@ -50,13 +58,27 @@ function ChangeRow(props: {
       {linked && askInView ? null : (
         <p className="m-0 flex min-w-0 items-center gap-1.5 border-l-2 border-dashboard-border-emphasis pl-2 text-sm text-dashboard-text-muted">
           <span className="shrink-0">{verb}</span>
-          <Link
-            className="min-w-0 truncate text-dashboard-text-muted no-underline hover:text-dashboard-text hover:underline focus-visible:outline-dashboard-focus"
-            title={item.title}
-            to={reviewItemPath(item.id)}
-          >
-            {item.title}
-          </Link>
+          {/* A question that this Conversation asked has a row to scroll to.
+              One from another Conversation opens on the review desk. */}
+          {showQuestion &&
+          item.addedByConversationId === props.conversationId ? (
+            <button
+              className={QUOTE_TITLE_CLASS}
+              onClick={() => showQuestion(item)}
+              title={item.title}
+              type="button"
+            >
+              {item.title}
+            </button>
+          ) : (
+            <Link
+              className={QUOTE_TITLE_CLASS}
+              title={item.title}
+              to={reviewItemPath(item.id)}
+            >
+              {item.title}
+            </Link>
+          )}
         </p>
       )}
       {rows.length ? (
@@ -113,7 +135,13 @@ export function ReviewItemChangeRow(props: {
   if (isError) return props.fallback;
   // The row replaces the text, so wait for the item before showing it.
   if (!data) return null;
-  return <ChangeRow item={data} record={props.record} />;
+  return (
+    <ChangeRow
+      conversationId={props.conversationId}
+      item={data}
+      record={props.record}
+    />
+  );
 }
 
 /**
@@ -150,18 +178,18 @@ function askMeta(item: ReviewItemPayload): string {
 }
 
 /**
- * Say what an open item waits for, or give the answer. An answer row that the
- * transcript links to this record already shows the answer.
+ * Say what an open item waits for, or give the answer. A linked answer row
+ * in view already shows the answer.
  */
 function askOutcome(
   item: ReviewItemPayload,
-  linked: boolean,
+  answerShown: boolean,
 ): string | undefined {
   if (item.status === "open") {
     if (item.kind === "notice") return undefined;
     return item.canAct ? "Waiting on you" : `Waiting on ${assigneeLabel(item)}`;
   }
-  if (item.status === "dismissed" || linked) return undefined;
+  if (item.status === "dismissed" || answerShown) return undefined;
   return item.request && item.answer
     ? answerLine(item.request, item.answer)
     : undefined;
@@ -182,11 +210,12 @@ export function ReviewItemAskRow(props: {
     props.conversationId,
     props.itemId,
   );
-  const linked = useAnswerLinked(props.itemId);
+  // The record repeats the answer only while its answer row is out of view.
+  const answerShown = useAnswerInView(props.itemId);
   if (isError) return props.fallback;
   if (!item) return null;
   const verb = item.kind === "action" ? "Asked" : "Added";
-  const outcome = askOutcome(item, linked);
+  const outcome = askOutcome(item, answerShown);
   return (
     // The transcript marks the row for a moment when its question docks.
     <MessageCard

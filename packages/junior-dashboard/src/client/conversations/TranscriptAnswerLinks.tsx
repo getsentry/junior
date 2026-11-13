@@ -1,5 +1,7 @@
 import { createContext, use, useSyncExternalStore } from "react";
 
+import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+
 import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import { cn } from "../styles";
 import type { TranscriptListRow } from "./transcriptListRows";
@@ -85,6 +87,8 @@ export function createVisibleRowsStore() {
 }
 
 type TranscriptAnswerLinksValue = {
+  /** The answer row of each item whose question has a row. */
+  answerIndexes: ReadonlyMap<string, number>;
   /** The row of each question that has an answer row. */
   askIndexes: ReadonlyMap<string, number>;
   segments: ReadonlyMap<number, readonly LinkSegment[]>;
@@ -107,6 +111,9 @@ export function transcriptAnswerLinksValue(
     add(link.answerIndex, { lane: link.lane, part: "end" });
   }
   return {
+    answerIndexes: new Map(
+      links.map((link) => [link.itemId, link.answerIndex]),
+    ),
     askIndexes: new Map(links.map((link) => [link.itemId, link.askIndex])),
     segments,
     visibleRows,
@@ -125,20 +132,39 @@ export function useAnswerLinked(itemId: string): boolean {
 
 const noRows = { shows: () => false, subscribe: () => () => {} };
 
+function useRowInView(
+  index: (value: TranscriptAnswerLinksValue) => number | undefined,
+): boolean {
+  const value = use(TranscriptAnswerLinks);
+  const rowIndex = value ? index(value) : undefined;
+  const rows = value?.visibleRows ?? noRows;
+  return useSyncExternalStore(
+    rows.subscribe,
+    () => rowIndex !== undefined && rows.shows(rowIndex),
+  );
+}
+
 /**
  * True while the scroll pane shows the row that asked an item. The list
  * knows its visible rows from layout, so this does not wait for the row to
  * mount or load its item.
  */
 export function useAskInView(itemId: string): boolean {
-  const value = use(TranscriptAnswerLinks);
-  const askIndex = value?.askIndexes.get(itemId);
-  const rows = value?.visibleRows ?? noRows;
-  return useSyncExternalStore(
-    rows.subscribe,
-    () => askIndex !== undefined && rows.shows(askIndex),
-  );
+  return useRowInView((value) => value.askIndexes.get(itemId));
 }
+
+/** True while the scroll pane shows the answer row of an item. */
+export function useAnswerInView(itemId: string): boolean {
+  return useRowInView((value) => value.answerIndexes.get(itemId));
+}
+
+/**
+ * Scroll the transcript to the row that asked an item, and mark it. The
+ * page loads the history around the row when it is not loaded.
+ */
+export const TranscriptShowQuestion = createContext<
+  ((item: ReviewItemPayload) => void) | undefined
+>(undefined);
 
 // Lanes sit inside the avatar column (1.5rem, 2rem from md), so each line
 // ends behind the avatar of its answer.
