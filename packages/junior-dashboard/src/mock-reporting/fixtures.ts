@@ -1503,7 +1503,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         },
         objectType: "code_change",
         plugin: "github",
-        status: "open",
+        status: "draft",
         url: "https://github.com/getsentry/junior/pull/2201",
         createdAt: startedAt,
         updatedAt: iso(Date.parse(startedAt), 80_000),
