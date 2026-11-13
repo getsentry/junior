@@ -120,7 +120,14 @@ export function attachMockObjectLink(
   const detail = readMockConversationDetail(conversationId);
   const object = mockObject(url)[0]?.object;
   if (!detail || !object || object.objectType === "person") return undefined;
-  if (detail.annotations?.some((annotation) => annotation.url === url)) {
+  // Match the API: another link to the same object is a duplicate too.
+  if (
+    detail.annotations?.some(
+      (annotation) =>
+        annotation.url === url ||
+        (annotation.plugin === object.plugin && annotation.key === object.key),
+    )
+  ) {
     return { status: "unchanged" };
   }
   const now = new Date().toISOString();

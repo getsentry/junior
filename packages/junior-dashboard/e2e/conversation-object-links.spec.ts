@@ -11,15 +11,23 @@ const DOC_URL =
 
 // The mock viewer is not a participant of the release Conversation. Make
 // them one, so the cards can attach.
-async function viewAsParticipant(page: Page): Promise<void> {
+async function viewAsParticipant(
+  page: Page,
+  extraAnnotations: unknown[] = [],
+): Promise<void> {
   await page.route(
     (url) =>
       url.pathname ===
       `/api/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
     async (route) => {
       const response = await route.fetch();
+      const detail = await response.json();
       await route.fulfill({
-        json: { ...(await response.json()), isParticipant: true },
+        json: {
+          ...detail,
+          annotations: [...(detail.annotations ?? []), ...extraAnnotations],
+          isParticipant: true,
+        },
         response,
       });
     },
@@ -204,6 +212,39 @@ test("a participant attaches a Google Doc from its hover card", async ({
     .hover();
   await expect(docCard).toContainText("Morgan Lee");
   await expect(docCard).toContainText("Attached");
+});
+
+test("a Doc attached by another link shows as attached", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  const now = new Date().toISOString();
+  await viewAsParticipant(page, [
+    {
+      kind: "resource_link",
+      key: "1MockReleaseChecklist_0123456789",
+      label: "Release 4.2 checklist",
+      objectType: "document",
+      plugin: "google",
+      url: `${DOC_URL}?usp=sharing`,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ]);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  await waitForResolvedLinks(page);
+  await page
+    .getByTestId("conversation-transcript")
+    .getByRole("link", { name: /Release 4\.2 checklist/ })
+    .hover();
+  const docCard = page.getByRole("region", {
+    name: "Google Doc: Release 4.2 checklist",
+  });
+  await expect(docCard).toContainText("Attached");
+  await expect(docCard.getByRole("button", { name: "Attach" })).toHaveCount(0);
 });
 
 test("one request asks for the cards of every link in a message", async ({

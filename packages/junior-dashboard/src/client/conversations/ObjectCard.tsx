@@ -148,8 +148,8 @@ export function ObjectCard({
         {!live && (
           <span className="text-dashboard-text-muted">Latest saved state</span>
         )}
-        {live && card.url && card.objectType !== "person" && (
-          <ObjectAttachAction url={card.url} />
+        {live && card.objectType !== "person" && (
+          <ObjectAttachAction card={card} />
         )}
       </div>
     </MessageCard>

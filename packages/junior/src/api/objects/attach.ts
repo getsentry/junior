@@ -61,24 +61,14 @@ export async function attachObjectLink(
     return { status: "unchanged" };
   }
 
-  await createPluginAnnotations({
-    conversationId,
-    db,
-    plugin: linkType.owner,
-  }).upsert({
-    kind: "resource_link",
-    key: object.key,
-    label: object.title.slice(0, 256),
-    objectType: object.objectType,
-    url: link,
-  });
-
   const type = object.displayType ?? objectPresentation(object).label;
   const title =
     object.title.length > NOTE_TITLE_CHARS
       ? `${object.title.slice(0, NOTE_TITLE_CHARS - 1)}…`
       : object.title;
   const readTool = linkType.readTool?.(parsed);
+  // The note goes first. Its key makes it safe to add again, so a retry
+  // after a failed Annotation write still tells the next Turn once.
   await addConversationNote({
     conversationId,
     createdAtMs: Date.now(),
@@ -91,6 +81,17 @@ export async function attachObjectLink(
     ]
       .filter(Boolean)
       .join(" "),
+  });
+  await createPluginAnnotations({
+    conversationId,
+    db,
+    plugin: linkType.owner,
+  }).upsert({
+    kind: "resource_link",
+    key: object.key,
+    label: object.title.slice(0, 256),
+    objectType: object.objectType,
+    url: link,
   });
   return { status: "attached" };
 }
