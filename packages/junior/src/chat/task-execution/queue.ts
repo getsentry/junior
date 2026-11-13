@@ -63,3 +63,12 @@ export interface ConversationWorkQueue {
     options?: ConversationQueueSendOptions,
   ): Promise<ConversationQueueSendResult | void>;
 }
+
+/** Build the idempotency key of a wake that one worker event sends. */
+export function nudgeIdempotencyKey(
+  reason: string,
+  conversationId: string,
+  nowMs: number,
+): string {
+  return `${reason}:${conversationId}:${nowMs}`;
+}
