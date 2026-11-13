@@ -153,6 +153,13 @@ describe("GitHub reply markdown", () => {
     expect(linkifyGitHubReferences("@bob_acme opened getsentry/junior#1")).toBe(
       "[@bob_acme](https://github.com/bob_acme) opened [getsentry/junior#1](https://github.com/getsentry/junior/issues/1)",
     );
+    expect(
+      linkifyGitHubReferences(
+        "ada_acme/junior#12 and https://github.com/ada_acme/junior/issues/13 fix #14",
+      ),
+    ).toBe(
+      "[ada_acme/junior#12](https://github.com/ada_acme/junior/issues/12) and [ada_acme/junior#13](https://github.com/ada_acme/junior/issues/13) fix [#14](https://github.com/ada_acme/junior/issues/14)",
+    );
   });
 
   it("does not pair a stray < with the > of a later Slack token", () => {

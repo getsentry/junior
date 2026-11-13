@@ -10,7 +10,8 @@ import {
 // GitHub autolinked references, rendered as Markdown links for chat replies.
 // https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/autolinked-references-and-urls
 const OWNER = "[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?";
-// Enterprise Managed User logins end in `_shortcode`, such as `ada_acme`.
+// Enterprise Managed User logins, which can own repositories, end in
+// `_shortcode`, such as `ada_acme`.
 const LOGIN = `${OWNER}(?:_[A-Za-z0-9]+)?`;
 const REPO = "[A-Za-z0-9._-]+";
 const SHA = "[0-9a-f]{7,40}";
@@ -22,8 +23,8 @@ const END = "(?![\\w-])";
 // Alternatives are ordered so that a qualified reference wins at one position.
 const TEXT_REFERENCE_PATTERN = new RegExp(
   [
-    `${START}(?<issueOwner>${OWNER})\\/(?<issueRepo>${REPO})#(?<issue>\\d+)${END}`,
-    `${START}(?<commitOwner>${OWNER})\\/(?<commitRepo>${REPO})@(?<commit>${SHA})${END}`,
+    `${START}(?<issueOwner>${LOGIN})\\/(?<issueRepo>${REPO})#(?<issue>\\d+)${END}`,
+    `${START}(?<commitOwner>${LOGIN})\\/(?<commitRepo>${REPO})@(?<commit>${SHA})${END}`,
     `${START}(?<user>${LOGIN})@(?<userCommit>[0-9a-f]{40})${END}`,
     `${START}(?:#|GH-)(?<bareIssue>\\d+)${END}`,
     // Not `@scope/name`, which is an npm package more often than a team.
@@ -35,7 +36,7 @@ const TEXT_REFERENCE_PATTERN = new RegExp(
 );
 
 // `orgs/` and `enterprises/` paths hold discussions that belong to no repository.
-const GITHUB_URL_BODY = `https?:\\/\\/(?:www\\.)?github\\.com\\/(?!(?:orgs|enterprises)\\/)(?<owner>${OWNER})\\/(?<repo>${REPO})\\/(?:(?:issues|pull|discussions)\\/(?<issue>\\d+)|commit\\/(?<commit>${SHA}))`;
+const GITHUB_URL_BODY = `https?:\\/\\/(?:www\\.)?github\\.com\\/(?!(?:orgs|enterprises)\\/)(?<owner>${LOGIN})\\/(?<repo>${REPO})\\/(?:(?:issues|pull|discussions)\\/(?<issue>\\d+)|commit\\/(?<commit>${SHA}))`;
 const GITHUB_URL_PATTERN = new RegExp(`^${GITHUB_URL_BODY}$`, "i");
 // A URL anywhere in a link destination.
 const GITHUB_LINKED_URL_PATTERN = new RegExp(GITHUB_URL_BODY, "gi");
