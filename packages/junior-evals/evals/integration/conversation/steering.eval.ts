@@ -7,6 +7,7 @@ import {
 } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
+import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 // A plain reply keeps each turn to one model call. Routing is the behavior
@@ -50,6 +51,39 @@ describe("Slack Turn Steering", () => {
         content: "include the rollback owner: Dana",
       }),
     ]);
+  });
+
+  test("when a repository with AGENTS.md appears in the same step as a steered mention, the running turn takes the mention", async ({
+    run,
+  }) => {
+    // The bash step adds a Git worktree with AGENTS.md. Junior adds the
+    // AGENTS.md context and the steered mention at the same step boundary,
+    // and every later checkpoint of the Turn must accept that order.
+    const request =
+      "Run this exact bash command once: `mkdir -p /vercel/sandbox/repos/notes && cd /vercel/sandbox/repos/notes && git init -q && printf 'Keep notes short.\\n' > AGENTS.md`. Then reply in one sentence that the repo exists.";
+    const conversation = await run(slackMention(request), {
+      onProgress: sendDuringFirstModelRequest([
+        slackMention("also say that Dana owns the rollback"),
+      ]),
+    });
+
+    expect(completedToolCalls("bash", conversation)).not.toHaveLength(0);
+    expect(conversation.turns.map((turn) => turn.status)).toEqual([
+      "succeeded",
+    ]);
+    expect(
+      conversation.session.events.filter(
+        (event) => event.type === "message" && event.role === "user",
+      ),
+    ).toEqual([
+      expect.objectContaining({ content: request }),
+      expect.objectContaining({
+        content: "also say that Dana owns the rollback",
+      }),
+    ]);
+    expect(conversation.replies.map((reply) => reply.text).join("\n")).toMatch(
+      /Dana/,
+    );
   });
 
   test("when other people mention Junior during a turn, each person gets a follow-up turn, even with !!", async ({

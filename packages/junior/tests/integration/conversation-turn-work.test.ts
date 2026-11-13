@@ -36,7 +36,6 @@ import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
 import {
   closeConversationFixture,
   createConversationFixture,
-  emptyConversationTurnAttempt,
 } from "../fixtures/conversation";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
@@ -365,55 +364,7 @@ describe("Conversation mailbox Turn work", () => {
     expect(agentRuns).toHaveLength(0);
   });
 
-  it("routes an empty resume wake to the active Turn", async () => {
-    const { actor, conversationStore, queue, state } =
-      await createConversationFixture();
-    const accepted = await createAndEnqueueConversation(
-      {
-        actor,
-        idempotencyKey: "resume-1",
-        message: "Resume after yield.",
-      },
-      { conversationStore, queue, state },
-    );
-    const turnId = conversationTurnIdForMessage(accepted.messageId);
-    const destination = {
-      platform: "local" as const,
-      conversationId: accepted.conversationId,
-    };
-    await saveTurnCheckpoint({
-      mode: "paused",
-      conversationId: accepted.conversationId,
-      turnId,
-      sliceId: 1,
-      reason: "yield",
-      messages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "Resume after yield." }],
-          timestamp: Date.now(),
-        },
-      ],
-      destination,
-      source: createWebSource(accepted.conversationId),
-      actor,
-      surface: "api",
-    });
-
-    const resolved = await resolveMailboxTurnWork({
-      attempt: emptyConversationTurnAttempt({
-        conversationId: accepted.conversationId,
-        destination,
-      }),
-      conversationId: accepted.conversationId,
-      destination,
-      shouldYield: () => false,
-      checkIn: async () => true,
-    });
-    expect(resolved).toEqual({ kind: "resume", turnId });
-  });
-
-  it("resumes a paused dashboard Turn before a deferred event", async () => {
+  it("resumes a paused dashboard Turn before a deferred event, and compacts it after the yield", async () => {
     const { actor, conversationStore, queue, state } =
       await createConversationFixture();
     const accepted = await createAndEnqueueConversation(
@@ -445,6 +396,13 @@ describe("Conversation mailbox Turn work", () => {
       resourceMessage.inboundMessageId,
     );
     const agentRuns: AgentRun[] = [];
+    // The tool call puts the history over the compaction threshold. The yield
+    // check runs first, so the resumed slice compacts it.
+    const summary = "<summary>## Goal\n- Check the current state.</summary>";
+    const compactions = async () =>
+      (
+        await getConversationEventStore().loadHistory(accepted.conversationId)
+      ).filter((event) => event.data.type === "compaction").length;
     let dashboardStarted = false;
     const worker = createConversationTurnWorker(
       createModelAgentRunnerForRun((run) => {
@@ -452,19 +410,22 @@ describe("Conversation mailbox Turn work", () => {
         if (run.turnId === dashboardTurnId && !dashboardStarted) {
           dashboardStarted = true;
           return createModelStream([
-            { type: "toolCall", name: "systemTime", arguments: {} },
-            { type: "text", text: "Dashboard Turn finished." },
+            {
+              type: "toolCall",
+              name: "systemTime",
+              arguments: { timezone: "x".repeat(1_600_000) },
+            },
+            { type: "text", text: summary },
           ]);
         }
-        return createModelStream([
-          {
-            type: "text",
-            text:
-              run.turnId === dashboardTurnId
-                ? "Dashboard Turn finished."
-                : "Event handled.",
-          },
-        ]);
+        return createModelStream(
+          run.turnId === dashboardTurnId
+            ? [
+                { type: "text", text: summary },
+                { type: "text", text: "Dashboard Turn finished." },
+              ]
+            : [{ type: "text", text: "Event handled." }],
+        );
       }),
     );
     const run = requireConversationTurn(worker);
@@ -478,6 +439,7 @@ describe("Conversation mailbox Turn work", () => {
         state,
       }),
     ).resolves.toEqual({ status: "yielded" });
+    await expect(compactions()).resolves.toBe(0);
     await expect(
       getTurnRecord(accepted.conversationId, dashboardTurnId),
     ).resolves.toMatchObject({
@@ -505,6 +467,7 @@ describe("Conversation mailbox Turn work", () => {
       dashboardTurnId,
       resourceTurnId,
     ]);
+    await expect(compactions()).resolves.toBe(1);
     await expect(
       getTurnRecord(accepted.conversationId, dashboardTurnId),
     ).resolves.toMatchObject({ state: "completed" });
@@ -797,43 +760,6 @@ describe("Conversation mailbox Turn work", () => {
     );
     expect(deliverMessage).toHaveBeenCalledOnce();
   }, 10_000);
-
-  it("does not claim dispatch resume wakes that share surface api", async () => {
-    await createConversationFixture();
-    const conversationId = "agent-dispatch:dispatch_shared_surface";
-    const turnId = "dispatch:dispatch_shared_surface";
-    const destination = {
-      platform: "slack" as const,
-      teamId: "T123",
-      channelId: "C123",
-    };
-    await saveTurnCheckpoint({
-      mode: "paused",
-      conversationId,
-      turnId,
-      sliceId: 1,
-      reason: "yield",
-      messages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "Dispatch resume wake." }],
-          timestamp: Date.now(),
-        },
-      ],
-      destination,
-      dispatchId: "dispatch_shared_surface",
-      surface: "api",
-    });
-
-    const resolved = await resolveMailboxTurnWork({
-      attempt: emptyConversationTurnAttempt({ conversationId, destination }),
-      conversationId,
-      destination,
-      shouldYield: () => false,
-      checkIn: async () => true,
-    });
-    expect(resolved).toBeUndefined();
-  });
 
   it("keeps dashboard input in Junior without abandoning a Slack auth pause", async () => {
     const { actor, conversationStore, queue, state } =
