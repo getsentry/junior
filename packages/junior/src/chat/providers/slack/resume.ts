@@ -515,6 +515,10 @@ async function resumeSlackTurnInContext(
         ...savedRun.environment?.configuration,
         ...(await savedRun.environment?.locationConfiguration?.resolveValues()),
       };
+      const replyTeamId =
+        savedRun.destination.platform === "slack"
+          ? savedRun.destination.teamId
+          : undefined;
       let slackMessageTs: string[] = [];
       try {
         const outcomes = runArgs.run?.dispatch?.outcomes;
@@ -524,7 +528,10 @@ async function resumeSlackTurnInContext(
               ...(await sendSlackReply({
                 cards,
                 channelId: outcome.destination.channelId,
-                configuration,
+                formatting: {
+                  configuration,
+                  teamId: outcome.destination.teamId,
+                },
                 conversationId: runArgs.conversationId,
                 replyAttribution: runArgs.run?.dispatch?.replyAttribution,
                 text,
@@ -536,7 +543,9 @@ async function resumeSlackTurnInContext(
           slackMessageTs = await sendSlackReply({
             cards,
             channelId: runArgs.channelId,
-            configuration,
+            ...(replyTeamId
+              ? { formatting: { configuration, teamId: replyTeamId } }
+              : undefined),
             conversationId: runArgs.conversationId,
             replyAttribution: runArgs.run?.dispatch?.replyAttribution,
             text,

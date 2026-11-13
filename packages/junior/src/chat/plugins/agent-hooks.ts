@@ -498,16 +498,27 @@ export function getPlugins(): PluginRegistration[] {
   return [...registeredPlugins];
 }
 
-/**
- * Apply plugin Markdown rewrites before destination delivery formatting.
- * `configuration` holds the Conversation's config values by full key. Install
- * defaults fill keys that it does not set.
- */
+/** Conversation facts that plugin Markdown rewrites may use. */
+export interface PluginMarkdownFormat {
+  /** Config values by full key. Install defaults fill keys it does not set. */
+  configuration?: Record<string, unknown>;
+  /** Destination mentions of known people, by lowercase `provider:handle`. */
+  mentions?: ReadonlyMap<string, string>;
+}
+
+/** Apply plugin Markdown rewrites before destination delivery formatting. */
 export function applyPluginFormatMarkdown(
   text: string,
-  configuration: Record<string, unknown> = {},
+  format: PluginMarkdownFormat = {},
 ): string {
-  const resolved = { ...getConfigDefaults(), ...configuration };
+  const resolved = { ...getConfigDefaults(), ...format.configuration };
+  const mention = ({
+    provider,
+    handle,
+  }: {
+    provider: string;
+    handle: string;
+  }) => format.mentions?.get(`${provider}:${handle}`.toLowerCase());
   let transformed = text;
   for (const plugin of getPlugins()) {
     const hook = plugin.hooks?.formatMarkdown;
@@ -517,6 +528,7 @@ export function applyPluginFormatMarkdown(
     try {
       const next = hook({
         config: pluginConfigValues(plugin.manifest.name, resolved),
+        mention,
         text: transformed,
       });
       if (typeof next === "string") {

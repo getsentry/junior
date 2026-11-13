@@ -319,8 +319,11 @@ export function githubPlugin(
           ),
         };
       },
-      formatMarkdown({ config, text }) {
-        return linkifyGitHubReferences(text, config);
+      formatMarkdown({ config, mention, text }) {
+        return linkifyGitHubReferences(text, {
+          config,
+          mention: (login) => mention({ provider: "github", handle: login }),
+        });
       },
       systemPrompt() {
         // formatMarkdown links bare `#123` only when a reply names one repository.

@@ -53,6 +53,12 @@ export interface FormatMarkdownHookContext {
    * short key, over install defaults. Runtime notices get install defaults.
    */
   config: Record<string, string>;
+  /**
+   * Return the destination's mention of the one known person who has this
+   * provider account, or undefined. Core resolves the `@handle` words in
+   * `text` before the hook runs. Insert the result as is.
+   */
+  mention(account: { provider: string; handle: string }): string | undefined;
   text: string;
 }
 

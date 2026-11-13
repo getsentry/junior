@@ -229,7 +229,11 @@ function linkifyUrl(url: string): string {
 
 function linkifyTextReferences(
   text: string,
-  context: { linkMentions: boolean; repository: Repository | undefined },
+  context: {
+    linkProfiles: boolean;
+    mention: (login: string) => string | undefined;
+    repository: Repository | undefined;
+  },
 ): string {
   const { repository } = context;
   return text.replace(TEXT_REFERENCE_PATTERN, (reference, ...args) => {
@@ -242,9 +246,12 @@ function linkifyTextReferences(
       return `[${label}](${commitUrl(groups.commitOwner!, groups.commitRepo!, groups.commit)})`;
     }
     if (groups.mention) {
-      return context.linkMentions &&
-        !NON_ACCOUNT_MENTIONS.has(groups.mention.toLowerCase())
-        ? `[${reference}](https://github.com/${groups.mention})`
+      const login = groups.mention;
+      if (NON_ACCOUNT_MENTIONS.has(login.toLowerCase())) return reference;
+      const known = context.mention(login);
+      if (known) return known;
+      return context.linkProfiles
+        ? `[${reference}](https://github.com/${login})`
         : reference;
     }
     if (!repository) {
@@ -269,21 +276,26 @@ function linkifyTextReferences(
  * `owner/repo#123`, `owner/repo@sha`, and GitHub issue, pull request,
  * discussion, and commit URLs always become links. `#123`, `GH-123`,
  * `user@sha`, and full SHAs need a repository: the one that the text names,
- * else the `repo` config value when the text names none. `@login` becomes a
- * link only when the text names a repository, because chat text also has
- * `@name` words for people who are not GitHub accounts.
+ * else the `repo` config value when the text names none. `@login` becomes the
+ * `mention` of the known person with that GitHub login. Other logins become
+ * GitHub profile links only when the text names a repository, because chat
+ * `@name` words are often people who are not GitHub accounts.
  */
 export function linkifyGitHubReferences(
   text: string,
-  config: Record<string, string> = {},
+  options: {
+    config?: Record<string, string>;
+    mention?: (login: string) => string | undefined;
+  } = {},
 ): string {
   const lines = segmentText(text);
   const named = namedRepositories(lines);
   const context = {
-    linkMentions: named.length > 0,
+    linkProfiles: named.length > 0,
+    mention: options.mention ?? (() => undefined),
     repository:
       named.length === 0
-        ? configuredRepository(config)
+        ? configuredRepository(options.config ?? {})
         : named.length === 1
           ? named[0]
           : undefined,

@@ -117,29 +117,30 @@ describe("GitHub reply markdown", () => {
 
   it("falls back to the configured repository when the text names none", () => {
     expect(
-      linkifyGitHubReferences("see #12", { repo: "getsentry/junior" }),
+      linkifyGitHubReferences("see #12", {
+        config: { repo: "getsentry/junior" },
+      }),
     ).toBe("see [#12](https://github.com/getsentry/junior/issues/12)");
     expect(
       linkifyGitHubReferences("see GH-12", {
-        org: "getsentry",
-        repo: "junior",
+        config: { org: "getsentry", repo: "junior" },
       }),
     ).toBe("see [GH-12](https://github.com/getsentry/junior/issues/12)");
     expect(
       linkifyGitHubReferences("getsentry/sentry#1 and #2", {
-        repo: "getsentry/junior",
+        config: { repo: "getsentry/junior" },
       }),
     ).toBe(
       "[getsentry/sentry#1](https://github.com/getsentry/sentry/issues/1) and [#2](https://github.com/getsentry/sentry/issues/2)",
     );
     expect(
       linkifyGitHubReferences("getsentry/sentry#1, getsentry/relay#2, #3", {
-        repo: "getsentry/junior",
+        config: { repo: "getsentry/junior" },
       }),
     ).toContain(", #3");
   });
 
-  it("links @login mentions only when the text names a repository", () => {
+  it("links unknown @login mentions only when the text names a repository", () => {
     expect(
       linkifyGitHubReferences(
         "@byk opened getsentry/junior#1 (cc @here, @sentry/core, a@b.io, <@U123>)",
@@ -148,8 +149,25 @@ describe("GitHub reply markdown", () => {
       "[@byk](https://github.com/byk) opened [getsentry/junior#1](https://github.com/getsentry/junior/issues/1) (cc @here, @sentry/core, a@b.io, <@U123>)",
     );
     expect(
-      linkifyGitHubReferences("ask @byk", { repo: "getsentry/junior" }),
+      linkifyGitHubReferences("ask @byk", {
+        config: { repo: "getsentry/junior" },
+      }),
     ).toBe("ask @byk");
+  });
+
+  it("mentions known people and links other GitHub logins", () => {
+    expect(
+      linkifyGitHubReferences("@BYK and @octocat reviewed getsentry/junior#1", {
+        mention: (login) => (login === "BYK" ? "<@U123>" : undefined),
+      }),
+    ).toBe(
+      "<@U123> and [@octocat](https://github.com/octocat) reviewed [getsentry/junior#1](https://github.com/getsentry/junior/issues/1)",
+    );
+    expect(
+      linkifyGitHubReferences("ask @BYK or @octocat", {
+        mention: (login) => (login === "BYK" ? "<@U123>" : undefined),
+      }),
+    ).toBe("ask <@U123> or @octocat");
   });
 
   it("does not read org or enterprise discussion URLs as repositories", () => {
@@ -186,7 +204,11 @@ describe("GitHub reply markdown", () => {
 
     expect(hook).toBeDefined();
     expect(
-      hook?.({ config: { repo: "getsentry/junior" }, text: "#1509" }),
+      hook?.({
+        config: { repo: "getsentry/junior" },
+        mention: () => undefined,
+        text: "#1509",
+      }),
     ).toBe("[#1509](https://github.com/getsentry/junior/issues/1509)");
   });
 });
