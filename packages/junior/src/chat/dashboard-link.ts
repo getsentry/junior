@@ -15,7 +15,9 @@ let dashboardConversationLinkOptions:
   | undefined;
 
 function withHttps(host: string): string {
-  return /^https?:\/\//.test(host) ? host : `https://${host}`;
+  return host.startsWith("https://") || host.startsWith("http://")
+    ? host
+    : `https://${host}`;
 }
 
 function stripTrailingSlashes(value: string): string {

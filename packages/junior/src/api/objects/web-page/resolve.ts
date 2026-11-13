@@ -93,7 +93,7 @@ async function readMetaTags(
 function thumbnailPath(image: string | undefined, base: string) {
   if (!image || !URL.canParse(image, base)) return undefined;
   const url = new URL(image, base);
-  if (url.protocol !== "https:" && url.protocol !== "http:") return undefined;
+  if (url.protocol !== "https:") return undefined;
   if (url.href.length > MAX_THUMBNAIL_URL_CHARS) return undefined;
   return imagePath({ ref: url.href, source: "public" }, THUMBNAIL_WIDTH);
 }
@@ -148,7 +148,8 @@ export function webPageLinkType(): ObjectLinkType {
   return {
     // The resolver keeps one card per URL for every viewer.
     cacheCards: false,
-    filters: [{ scheme: "https" }, { scheme: "http" }],
+    // Junior fetches only `https`, so a plain `http` link stays a link.
+    filters: [{ scheme: "https" }],
     objectType: "web_page",
     owner: "junior",
     resolve: (_viewer, url) => resolveWebPageLink(url),

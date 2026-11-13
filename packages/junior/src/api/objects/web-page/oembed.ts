@@ -1,40 +1,35 @@
 /**
  * oEmbed providers from a vendored copy of oembed.com's `providers.json`.
- * `scripts/refresh-oembed-providers.mjs` refreshes the copy. Junior uses
- * only the plain oEmbed fields, never `html`.
+ * `scripts/refresh-oembed-providers.mjs` refreshes the copy. Junior matches
+ * page URLs with `URLPattern` and uses only the plain oEmbed fields, never
+ * `html`.
  */
 import * as z from "zod";
 import providers from "./oembed-providers.json" with { type: "json" };
 
-type Provider = { endpoint: string; patterns: RegExp[] };
+type Provider = { endpoint: string; patterns: URLPattern[] };
 
 let compiled: Provider[] | undefined;
-
-// A scheme is a URL with `*` wildcards. An `http` scheme also matches the
-// same URL on `https`, because most providers moved to `https`.
-function schemePattern(scheme: string): RegExp {
-  const pattern = scheme
-    .split("*")
-    .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
-    .join(".*")
-    .replace(/^http:/, "https?:");
-  return new RegExp(`^${pattern}$`, "i");
-}
 
 function readProviders(): Provider[] {
   compiled ??= providers.map((provider) => ({
     endpoint: provider.url.replace("{format}", "json"),
-    patterns: provider.schemes.map(schemePattern),
+    patterns: provider.schemes.map((scheme) => new URLPattern(scheme)),
   }));
   return compiled;
 }
 
 /** Return the oEmbed request URL for a page, or nothing for other hosts. */
 export function oembedRequestUrl(url: URL): string | undefined {
+  // Many schemes still say `http` for sites that moved to `https`.
+  const http = new URL(url);
+  http.protocol = "http:";
   const provider = readProviders().find((candidate) =>
-    candidate.patterns.some((pattern) => pattern.test(url.href)),
+    candidate.patterns.some(
+      (pattern) => pattern.test(url.href) || pattern.test(http.href),
+    ),
   );
-  if (!provider || !URL.canParse(provider.endpoint)) return undefined;
+  if (!provider) return undefined;
   const request = new URL(provider.endpoint);
   request.searchParams.set("url", url.href);
   request.searchParams.set("format", "json");

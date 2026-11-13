@@ -1,13 +1,14 @@
 /**
- * Fetch an external URL for the server. Each hop must reach a public
- * address, the body has a size limit, and the fetch has a time limit.
+ * Fetch an external URL for the server. Each hop must use `https` and reach
+ * a public address, the body has a size limit, and the fetch has a time
+ * limit.
  */
-import http from "node:http";
 import https from "node:https";
 import net from "node:net";
 import { isPublicAddress, publicAddressLookup } from "./public-address";
 
-const MAX_REDIRECTS = 3;
+// External links are untrusted, so allow only a short redirect chain.
+const MAX_REDIRECTS = 2;
 
 /** One guarded fetch. */
 export interface GuardedRequest {
@@ -37,7 +38,8 @@ type Hop =
   | { failure: string };
 
 function blockedUrl(url: URL, hosts: readonly string[] | undefined): boolean {
-  if (url.protocol !== "https:" && url.protocol !== "http:") return true;
+  // Plain `http` can be read or changed on the way, so it is never fetched.
+  if (url.protocol !== "https:") return true;
   if (url.username || url.password) return true;
   const host = url.hostname.toLowerCase();
   if (
@@ -57,9 +59,8 @@ function requestHop(
   headers: Record<string, string>,
   signal: AbortSignal,
 ): Promise<Hop> {
-  const client = url.protocol === "https:" ? https : http;
   return new Promise((resolve) => {
-    const outgoing = client.request(
+    const outgoing = https.request(
       url,
       {
         headers: {
@@ -121,8 +122,8 @@ function requestHop(
 }
 
 /**
- * Fetch one URL with `GET`. Follow up to 3 redirects, check the address of
- * each hop, and send the headers only to the first origin.
+ * Fetch one `https` URL with `GET`. Follow up to 2 redirects, check the
+ * address of each hop, and send the headers only to the first origin.
  */
 export async function guardedFetch(
   request: GuardedRequest,

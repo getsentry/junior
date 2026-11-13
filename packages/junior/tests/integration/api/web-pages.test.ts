@@ -183,20 +183,31 @@ describe("web page cards", () => {
     expect(pageFetches).toBe(0);
   });
 
-  test("fetches no private address, not after a redirect either", async () => {
+  test("fetches no private address, no plain http, and not after a redirect either", async () => {
+    // Count connections, not requests: a TLS hello to this server is no
+    // request, but it still reaches the private address.
     let privateHits = 0;
-    const server = createServer((_request, response) => {
+    const server = createServer();
+    server.on("connection", () => {
       privateHits += 1;
-      response.writeHead(200, { "content-type": "text/html" });
-      response.end(page('<meta property="og:title" content="Private">'));
     });
+    let plainHits = 0;
     await new Promise<void>((resolve) =>
       server.listen(0, "127.0.0.1", resolve),
     );
     const { port } = server.address() as AddressInfo;
     mswServer.use(
       http.get("https://redirect.example.com/page", () =>
-        HttpResponse.redirect(`http://127.0.0.1:${port}/page`, 302),
+        HttpResponse.redirect(`https://127.0.0.1:${port}/page`, 302),
+      ),
+      http.get("http://plain.example.com/page", () => {
+        plainHits += 1;
+        return HttpResponse.html(
+          page('<meta property="og:title" content="Plain">'),
+        );
+      }),
+      http.get("https://downgrade.example.com/page", () =>
+        HttpResponse.redirect("http://plain.example.com/page", 302),
       ),
       http.get("https://public.example.com/page", () =>
         HttpResponse.html(page('<meta property="og:title" content="Public">')),
@@ -204,18 +215,39 @@ describe("web page cards", () => {
     );
     try {
       const urls = [
-        `http://127.0.0.1:${port}/page`,
-        `http://localhost:${port}/page`,
+        `https://127.0.0.1:${port}/page`,
+        `https://localhost:${port}/page`,
         "https://redirect.example.com/page",
+        "http://plain.example.com/page",
+        "https://downgrade.example.com/page",
         "https://public.example.com/page",
       ];
       const { objects } = await resolveLinks(urls);
       // Only the public page has a card. The others look like unknown links.
       expect([...objects.keys()]).toEqual(["https://public.example.com/page"]);
       expect(privateHits).toBe(0);
+      expect(plainHits).toBe(0);
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }
+  });
+
+  test("follows at most 2 redirects", async () => {
+    mswServer.use(
+      http.get("https://hops.example.com/:hops", ({ params }) => {
+        const hops = Number(params.hops);
+        return hops === 0
+          ? HttpResponse.html(
+              page('<meta property="og:title" content="Arrived">'),
+            )
+          : HttpResponse.redirect(`https://hops.example.com/${hops - 1}`, 302);
+      }),
+    );
+    const { objects } = await resolveLinks([
+      "https://hops.example.com/2",
+      "https://hops.example.com/3",
+    ]);
+    expect([...objects.keys()]).toEqual(["https://hops.example.com/2"]);
   });
 
   test("reads tags only before the size limit and only from HTML", async () => {

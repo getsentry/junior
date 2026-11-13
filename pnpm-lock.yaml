@@ -303,6 +303,9 @@ importers:
       p-limit:
         specifier: ^7.3.1
         version: 7.3.1
+      parse5:
+        specifier: ^7.3.0
+        version: 7.3.0
       pg:
         specifier: ^8.16.3
         version: 8.21.0

@@ -511,7 +511,8 @@ function PlainAnchor(props: {
   observe?: RefCallback<HTMLAnchorElement>;
   onPointerEnter?: () => void;
 }) {
-  if (!/^https?:/i.test(props.href)) {
+  const scheme = props.href.slice(0, 6).toLowerCase();
+  if (!scheme.startsWith("https:") && !scheme.startsWith("http:")) {
     return (
       <a
         className={ANCHOR_CLASS}

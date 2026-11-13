@@ -511,7 +511,7 @@ defineJuniorPlugin({
   segment matches one segment), or `pathPrefix`. Junior picks an exact host
   before a wildcard host, and an exact path before a pattern before a
   prefix. Two link types with equal filters for the same URLs stop app
-  startup. A URL that no link type claims gets a `web_page` card from core,
+  startup. An `https` URL that no link type claims gets a `web_page` card from core,
   from its oEmbed provider or its Open Graph tags. Your filter always wins
   over it.
 - **Resolver.** Return `undefined` when `ctx.viewer` cannot read the
