@@ -285,6 +285,20 @@ describe("Google link cards", () => {
         ),
       ).resolves.toBeUndefined();
     });
+
+    it("names the tool that reads an attached file live", () => {
+      const readTool = (url: string) =>
+        linkType("document").readTool?.(new URL(url));
+      expect(readTool(DOC_URL)).toBe("readGoogleDoc");
+      expect(
+        readTool(`https://docs.google.com/spreadsheets/u/1/d/${DOC_ID}/edit`),
+      ).toBe("readGoogleSheet");
+      expect(
+        readTool(`https://docs.google.com/presentation/d/${DOC_ID}/edit`),
+      ).toBe("readGoogleSlides");
+      // No tool reads a Calendar event.
+      expect(linkType("calendar_event").readTool).toBeUndefined();
+    });
   });
 
   describe("Calendar events", () => {

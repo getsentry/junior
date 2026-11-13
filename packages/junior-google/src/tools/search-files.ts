@@ -206,7 +206,7 @@ export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "Find Google Docs, Sheets, and Slides by title or text. Finds only company-owned files that anyone in the company can find in Drive, or that are shared with the requester by name. Shared-drive files are found only when shared with the requester by name. Files shared by link, shared only with other people or groups, or owned outside the company are never found; ask the requester for their link instead. Returns file ids for readGoogleDoc, readGoogleSheet, readGoogleSlides, and listGoogleFileComments.",
+      "Find Google Docs, Sheets, and Slides by title or text. Finds only company-owned files that anyone in the company can find in Drive, or that are shared with the requester by name. Shared-drive files are found only when shared with the requester by name. Files shared by link, shared only with other people or groups, or owned outside the company are never found; ask the requester for their link instead. Returns file ids for readGoogleFile and listGoogleFileComments.",
     inputSchema,
     outputSchema,
     async execute(input) {
