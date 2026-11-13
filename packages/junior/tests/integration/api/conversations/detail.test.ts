@@ -232,14 +232,12 @@ describe("conversation detail API", () => {
       conversationId,
       db: getSqlExecutor(),
       file: {
-        bytes: 5,
         data: Buffer.from("notes"),
         filename: "notes.txt",
         mimeType: "text/plain",
-        path: "/tmp/notes.txt",
+        source: { provider: "slack", id: "FNOTES" },
       },
       storage: createMemoryAttachmentStorage(),
-      source: { provider: "slack", id: "FNOTES" },
     });
     const changed = await read(`?${after(poll.appendCursor)}`);
     expect(changed.appended).toBeUndefined();

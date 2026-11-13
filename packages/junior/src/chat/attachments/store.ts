@@ -7,7 +7,7 @@ import {
   conversationDetailTouch,
   touchConversationDetail,
 } from "@/chat/conversations/sql/detail-version";
-import type { AttachmentStorage } from "./storage";
+import { bufferBody, type AttachmentStorage } from "./storage";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ATTACHMENT_GC_BATCH_LIMIT = 200;
@@ -34,29 +34,72 @@ export interface AttachmentGarbageCollectionResult {
   deleted: number;
 }
 
-function attachmentDigest(file: SandboxFileUpload): string {
-  return createHash("sha256").update(file.data).digest("hex");
+/** Where a stored file came from, such as one Slack file. */
+export interface AttachmentSource {
+  id: string;
+  provider: string;
 }
 
-/** Stable conversation-owned id for one file body and presentation metadata. */
+/**
+ * One file to store.
+ *
+ * A file with a source can stream. Its id comes from the source, so a retry
+ * finds the stored copy before `open` downloads anything. A file without a
+ * source must be in memory, because its id comes from its digest.
+ */
+export type AttachmentFile = {
+  filename: string;
+  mimeType: string;
+} & (
+  | { data: Buffer; source?: AttachmentSource }
+  | {
+      /** Size that the source declares. The stored body must match it. */
+      bytes: number;
+      open: () => Promise<ReadableStream<Uint8Array>>;
+      source: AttachmentSource;
+    }
+);
+
+type AttachmentIdentity = AttachmentSource | { sha256: string };
+
+function attachmentIdentity(file: AttachmentFile): AttachmentIdentity {
+  if ("data" in file) {
+    return (
+      file.source ?? {
+        sha256: createHash("sha256").update(file.data).digest("hex"),
+      }
+    );
+  }
+  return file.source;
+}
+
+/** Stable conversation-owned id for one file and its presentation metadata. */
 function attachmentId(args: {
   conversationId: string;
   contentType: string;
   filename: string;
-  source?: { id: string; provider: string };
+  identity: AttachmentIdentity;
   storageProvider: string;
-  sha256: string;
 }): string {
-  const identity = [
-    args.conversationId,
-    args.storageProvider,
-    args.sha256,
-    args.filename,
-    args.contentType,
-  ];
-  if (args.source) {
-    identity.push(args.source.provider, args.source.id);
-  }
+  // A digest identity keeps the field order of ids stored before sources
+  // existed, so those rows still match.
+  const identity =
+    "sha256" in args.identity
+      ? [
+          args.conversationId,
+          args.storageProvider,
+          args.identity.sha256,
+          args.filename,
+          args.contentType,
+        ]
+      : [
+          args.conversationId,
+          args.storageProvider,
+          args.filename,
+          args.contentType,
+          args.identity.provider,
+          args.identity.id,
+        ];
   return createHash("sha256").update(identity.join("\0")).digest("hex");
 }
 
@@ -76,6 +119,20 @@ function attachmentKey(args: {
   return `conversations/${args.conversationId}/attachments/${args.attachmentId}/${args.writeId}/${args.filename}`;
 }
 
+/** A source whose bytes do not match its declared size. A retry cannot fix it. */
+class AttachmentSizeError extends Error {
+  constructor(bytes: number, expected: number, options?: ErrorOptions) {
+    super(
+      `Attachment body does not match its declared ${expected} bytes (read ${bytes})`,
+      options,
+    );
+    this.name = "AttachmentSizeError";
+  }
+}
+
+/** Tries for one object write, each with a freshly opened body. */
+const WRITE_ATTEMPTS = 3;
+
 async function bestEffortDelete(
   storage: AttachmentStorage,
   key: string,
@@ -85,6 +142,75 @@ async function bestEffortDelete(
   } catch {
     // Leave the blob. Unique keys make a later store write a different object.
   }
+}
+
+/**
+ * Stream one file to a fresh key, and return its size and digest.
+ *
+ * The digest is taken while the bytes stream, so the body is never held
+ * whole. A body that does not match its declared size is not kept.
+ */
+async function writeAttachmentObject(args: {
+  file: AttachmentFile;
+  key: string;
+  storage: AttachmentStorage;
+}): Promise<{ bytes: number; sha256: string }> {
+  // A stream is read once, so the storage client cannot replay it. Retry
+  // here with a fresh body instead. Write failures are mostly transient
+  // (5xx, throttling, a dropped connection); a lasting one fails every try.
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await writeAttachmentObjectOnce(args);
+    } catch (error) {
+      if (error instanceof AttachmentSizeError || attempt >= WRITE_ATTEMPTS) {
+        // A write that committed before it failed leaves an object no row
+        // points to.
+        await bestEffortDelete(args.storage, args.key);
+        throw error;
+      }
+    }
+  }
+}
+
+async function writeAttachmentObjectOnce(args: {
+  file: AttachmentFile;
+  key: string;
+  storage: AttachmentStorage;
+}): Promise<{ bytes: number; sha256: string }> {
+  const { file } = args;
+  const expected = "data" in file ? file.data.byteLength : file.bytes;
+  const source = "data" in file ? bufferBody(file.data) : await file.open();
+  const hash = createHash("sha256");
+  let bytes = 0;
+  const body = source.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        bytes += chunk.byteLength;
+        if (bytes > expected) {
+          throw new AttachmentSizeError(bytes, expected);
+        }
+        hash.update(chunk);
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+  try {
+    await args.storage.put({
+      body,
+      bytes: expected,
+      contentType: file.mimeType,
+      key: args.key,
+    });
+  } catch (error) {
+    if (bytes > expected) {
+      throw new AttachmentSizeError(bytes, expected, { cause: error });
+    }
+    throw error;
+  }
+  if (bytes !== expected) {
+    throw new AttachmentSizeError(bytes, expected);
+  }
+  return { bytes, sha256: hash.digest("hex") };
 }
 
 async function isConversationPurged(
@@ -157,7 +283,8 @@ async function reuseLiveAttachment(args: {
 /**
  * Persist one conversation-owned file.
  *
- * Identity is content-stable under the conversation. Object storage is written
+ * Identity is stable under the conversation: it comes from the file's source
+ * when it has one, and from its digest otherwise. Object storage is written
  * first under a unique key; the SQL row is created only after that write
  * succeeds. A row means the attachment is durable. Retries reuse an existing
  * live row. A purge-marked row is revived by writing a new object and pointing
@@ -169,20 +296,19 @@ async function reuseLiveAttachment(args: {
 export async function storeAttachment(args: {
   conversationId: string;
   db: JuniorSqlDatabase;
-  file: SandboxFileUpload;
+  file: AttachmentFile;
   nowMs?: number;
-  source?: { id: string; provider: string };
   storage: AttachmentStorage;
 }): Promise<StoredAttachment> {
   const now = new Date(args.nowMs ?? Date.now());
-  const sha256 = attachmentDigest(args.file);
+  const identity = attachmentIdentity(args.file);
+  const source = args.file.source;
   const id = attachmentId({
     conversationId: args.conversationId,
     contentType: args.file.mimeType,
     filename: args.file.filename,
-    source: args.source,
+    identity,
     storageProvider: args.storage.provider,
-    sha256,
   });
   const [existing] = await args.db
     .db()
@@ -205,10 +331,10 @@ export async function storeAttachment(args: {
       existing.contentType !== args.file.mimeType ||
       existing.conversationId !== args.conversationId ||
       existing.filename !== args.file.filename ||
-      existing.provider !== (args.source?.provider ?? null) ||
-      existing.providerId !== (args.source?.id ?? null) ||
+      existing.provider !== (source?.provider ?? null) ||
+      existing.providerId !== (source?.id ?? null) ||
       existing.storageProvider !== args.storage.provider ||
-      existing.sha256 !== sha256
+      ("sha256" in identity && existing.sha256 !== identity.sha256)
     ) {
       throw new Error(`Attachment write conflicts with ${existing.id}`);
     }
@@ -226,10 +352,10 @@ export async function storeAttachment(args: {
     filename: args.file.filename,
     writeId: randomUUID(),
   });
-  await args.storage.put({
-    body: args.file.data,
-    contentType: args.file.mimeType,
+  const written = await writeAttachmentObject({
+    file: args.file,
     key: storageKey,
+    storage: args.storage,
   });
 
   if (existing?.deleteRequestedAt != null) {
@@ -243,6 +369,7 @@ export async function storeAttachment(args: {
       .with(conversationDetailTouch(args.db.db(), [args.conversationId]))
       .update(juniorAttachments)
       .set({
+        ...written,
         deleteRequestedAt: null,
         storageKey,
       })
@@ -300,12 +427,11 @@ export async function storeAttachment(args: {
         conversationId: args.conversationId,
         storageProvider: args.storage.provider,
         storageKey,
-        provider: args.source?.provider,
-        providerId: args.source?.id,
+        provider: source?.provider,
+        providerId: source?.id,
         filename: args.file.filename,
         contentType: args.file.mimeType,
-        bytes: args.file.bytes,
-        sha256,
+        ...written,
         createdAt: now,
       })
       .onConflictDoNothing({ target: juniorAttachments.id })
@@ -364,6 +490,7 @@ export async function storeAttachment(args: {
     .with(conversationDetailTouch(args.db.db(), [args.conversationId]))
     .update(juniorAttachments)
     .set({
+      ...written,
       deleteRequestedAt: null,
       storageKey,
     })
@@ -509,7 +636,11 @@ export async function storeAttachments(args: {
       await storeAttachment({
         conversationId: args.conversationId,
         db: args.db,
-        file,
+        file: {
+          data: file.data,
+          filename: file.filename,
+          mimeType: file.mimeType,
+        },
         ...(args.nowMs !== undefined ? { nowMs: args.nowMs } : undefined),
         storage: args.storage,
       }),

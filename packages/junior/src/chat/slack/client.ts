@@ -678,7 +678,7 @@ export async function getFilePermalink(
   return response.file?.permalink;
 }
 
-export async function downloadPrivateSlackFile(url: string): Promise<Buffer> {
+async function fetchPrivateSlackFile(url: string): Promise<Response> {
   // Private file URLs are workspace-scoped, so downloads use the same
   // destination-installation token resolution as Web API calls.
   const token = resolveSlackToken();
@@ -691,5 +691,22 @@ export async function downloadPrivateSlackFile(url: string): Promise<Buffer> {
   if (!response.ok) {
     throw new Error(`Slack file download failed: ${response.status}`);
   }
+  return response;
+}
+
+/** Download a small private Slack file into memory. */
+export async function downloadPrivateSlackFile(url: string): Promise<Buffer> {
+  const response = await fetchPrivateSlackFile(url);
   return Buffer.from(await response.arrayBuffer());
+}
+
+/** Open a private Slack file as a stream, so a large file is never held whole. */
+export async function streamPrivateSlackFile(
+  url: string,
+): Promise<ReadableStream<Uint8Array>> {
+  const response = await fetchPrivateSlackFile(url);
+  if (!response.body) {
+    throw new Error("Slack file download returned no body");
+  }
+  return response.body;
 }

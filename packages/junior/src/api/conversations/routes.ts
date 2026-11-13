@@ -19,7 +19,7 @@ import {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
-import { MAX_INPUT_ATTACHMENT_BYTES } from "@/chat/attachments/input";
+import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
 import {
   attachmentUploadParamsSchema,
   attachmentUploadSchema,
@@ -198,9 +198,12 @@ export function createConversationRoutes(
     "/attachment-uploads/:uploadId",
     requireViewer,
     bodyLimit({
-      maxSize: MAX_INPUT_ATTACHMENT_BYTES,
+      maxSize: MAX_ATTACHMENT_BYTES,
       onError: () => {
-        throwApiError(413, "Files must be 25 MB or less.");
+        throwApiError(
+          413,
+          `Files must be ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB or less.`,
+        );
       },
     }),
     validateRequest(

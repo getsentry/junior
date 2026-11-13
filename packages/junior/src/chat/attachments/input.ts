@@ -1,13 +1,13 @@
 import * as z from "zod";
 
 /**
- * Largest file that a web Message can carry.
+ * Largest file that Junior stores from Slack or the web, or loads into the
+ * sandbox.
  *
- * `loadAttachment` reads the whole file into memory before it writes the file
- * to the sandbox, and the message request reads each upload once to check it.
- * Keep this well below function memory.
+ * Every path streams the bytes, so this cap does not depend on function
+ * memory. It bounds transfer time and sandbox disk use.
  */
-export const MAX_INPUT_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+export const MAX_ATTACHMENT_BYTES = 250 * 1024 * 1024;
 /** Most files on one web Message, as in one Slack message. */
 export const MAX_INPUT_ATTACHMENTS = 10;
 
@@ -21,7 +21,7 @@ export const inputFileSchema = z
       .toLowerCase()
       .max(127)
       .regex(/^[a-z0-9][\w.+-]*\/[a-z0-9][\w.+-]*$/),
-    bytes: z.number().int().min(1).max(MAX_INPUT_ATTACHMENT_BYTES),
+    bytes: z.number().int().min(1).max(MAX_ATTACHMENT_BYTES),
   })
   .strict();
 

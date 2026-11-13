@@ -1,4 +1,4 @@
-import { MAX_INPUT_ATTACHMENT_BYTES } from "@/chat/attachments/input";
+import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
@@ -62,11 +62,9 @@ describe("conversation attachment API", () => {
       conversationId,
       db: getSqlExecutor(),
       file: {
-        bytes: 11,
         data: Buffer.from("hello image"),
         filename: "chart.png",
         mimeType: "image/png",
-        path: "/tmp/chart.png",
       },
       storage,
     });
@@ -102,11 +100,9 @@ describe("conversation attachment API", () => {
       conversationId,
       db: getSqlExecutor(),
       file: {
-        bytes: 10,
         data: Buffer.from("0123456789"),
         filename: "demo.mp4",
         mimeType: "video/mp4",
-        path: "/tmp/demo.mp4",
       },
       storage,
     });
@@ -146,11 +142,9 @@ describe("conversation attachment API", () => {
       conversationId,
       db: getSqlExecutor(),
       file: {
-        bytes: 0,
         data: Buffer.alloc(0),
         filename: "empty.mp4",
         mimeType: "video/mp4",
-        path: "/tmp/empty.mp4",
       },
       storage,
     });
@@ -194,14 +188,12 @@ describe("conversation attachment API", () => {
       conversationId,
       db: getSqlExecutor(),
       file: {
-        bytes: 6,
         data: Buffer.from("secret"),
         filename: "notes.txt",
         mimeType: "text/plain",
-        path: "/tmp/notes.txt",
+        source: { provider: "slack", id: "FPRIVATE" },
       },
       storage,
-      source: { provider: "slack", id: "FPRIVATE" },
     });
     await getConversationEventStore().append(conversationId, [
       {
@@ -301,20 +293,20 @@ describe("conversation attachment API", () => {
       (
         await app.request(
           uploadPath,
-          request({ ...upload, bytes: MAX_INPUT_ATTACHMENT_BYTES + 1 }),
+          request({ ...upload, bytes: MAX_ATTACHMENT_BYTES + 1 }),
         )
       ).status,
     ).toBe(400);
     const oversized = await app.request(
       `${uploadPath}/${crypto.randomUUID()}`,
       {
-        body: new Uint8Array(MAX_INPUT_ATTACHMENT_BYTES + 1),
+        body: new Uint8Array(MAX_ATTACHMENT_BYTES + 1),
         method: "PUT",
       },
     );
     expect(oversized.status).toBe(413);
     expect(await oversized.json()).toEqual({
-      error: "Files must be 25 MB or less.",
+      error: "Files must be 250 MB or less.",
     });
     expect(
       (
@@ -346,11 +338,9 @@ describe("conversation attachment API", () => {
       conversationId,
       db: getSqlExecutor(),
       file: {
-        bytes: 4,
         data: Buffer.from("gone"),
         filename: "old.txt",
         mimeType: "text/plain",
-        path: "/tmp/old.txt",
       },
       storage,
     });

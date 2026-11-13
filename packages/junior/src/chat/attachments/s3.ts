@@ -79,13 +79,27 @@ export function createS3AttachmentStorage(
     secretAccessKey: config.secretAccessKey,
     service: "s3",
   });
+  // aws4fetch retries with the same body, but a stream can be read only
+  // once. The attachment store retries a write with a fresh body instead.
+  const writeClient = new AwsClient({
+    accessKeyId: config.accessKeyId,
+    region: config.region,
+    retries: 0,
+    secretAccessKey: config.secretAccessKey,
+    service: "s3",
+  });
   return {
     provider: "s3",
     async put(input) {
-      const response = await client.fetch(objectUrl(config, input.key), {
-        // fetch types reject Buffer. Copy into a plain Uint8Array.
-        body: new Uint8Array(input.body),
-        headers: { "content-type": input.contentType },
+      const response = await writeClient.fetch(objectUrl(config, input.key), {
+        body: input.body,
+        headers: {
+          // A single S3 PUT needs the length before the body. A stream
+          // cannot be hashed before it is sent, so the payload is unsigned.
+          "content-length": String(input.bytes),
+          "content-type": input.contentType,
+          "x-amz-content-sha256": "UNSIGNED-PAYLOAD",
+        },
         method: "PUT",
       });
       await expectOk(response, "put");

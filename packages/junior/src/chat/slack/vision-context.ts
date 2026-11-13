@@ -14,7 +14,9 @@ import {
   MAX_MODEL_ATTACHMENT_BYTES,
   MAX_MODEL_ATTACHMENTS,
 } from "@/chat/attachments/model-input";
-import { storeAttachment } from "@/chat/attachments/store";
+import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
+import { storeAttachment, type AttachmentFile } from "@/chat/attachments/store";
+import { streamPrivateSlackFile } from "@/chat/slack/client";
 import {
   readAttachmentVisionSummary,
   recordSlackAttachment,
@@ -306,6 +308,34 @@ function createImageAttachmentProcessingError(attachment: {
   );
 }
 
+/**
+ * Store one Slack file, or return no id when it cannot be stored. The model
+ * then gets a note that it cannot open the file.
+ */
+async function storeSlackFile(args: {
+  conversationId: string;
+  file: AttachmentFile;
+  storage: AttachmentStorage;
+}): Promise<string | undefined> {
+  try {
+    const stored = await storeAttachment({
+      conversationId: args.conversationId,
+      db: getSqlExecutor(),
+      file: args.file,
+      storage: args.storage,
+    });
+    return stored.id;
+  } catch (error) {
+    logWarn("attachment.storage.failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+      "app.file.mime_type": args.file.mimeType,
+      "file.name": args.file.filename,
+    });
+    return undefined;
+  }
+}
+
 async function resolveUserAttachmentsWithDeps(
   attachments: Attachment[] | undefined,
   context: ResolveUserAttachmentsContext,
@@ -328,6 +358,71 @@ async function resolveUserAttachmentsWithDeps(
   for (const attachment of attachments) {
     const mediaType = attachment.mimeType ?? "application/octet-stream";
     const isImageAttachment = isVisionImageMediaType(mediaType);
+    const declaredBytes =
+      typeof attachment.size === "number" && Number.isFinite(attachment.size)
+        ? attachment.size
+        : undefined;
+    if (declaredBytes !== undefined && declaredBytes > MAX_ATTACHMENT_BYTES) {
+      logWarn("attachment.size_limit.refused", {
+        "file.size": declaredBytes,
+        "app.file.mime_type": mediaType,
+      });
+      results.push({
+        mediaType,
+        filename: attachment.name,
+        promptText: buildAttachmentResolutionFailurePromptText({
+          filename: attachment.name,
+          mediaType,
+          problem: `it is larger than the ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB file limit, so it was not downloaded and you cannot open it`,
+        }),
+      });
+      continue;
+    }
+
+    const slackFileId = getSlackFileId(attachment);
+    const url = attachment.url;
+    // Only an image that may go to the model inline needs its bytes in
+    // memory. Stream every other Slack file into storage.
+    if (
+      context.conversationId &&
+      deps.attachmentStorage &&
+      slackFileId &&
+      url &&
+      declaredBytes !== undefined &&
+      !(attachment.data instanceof Buffer) &&
+      !(isImageAttachment && declaredBytes <= MAX_MODEL_ATTACHMENT_BYTES)
+    ) {
+      const attachmentId = await storeSlackFile({
+        conversationId: context.conversationId,
+        file: {
+          bytes: declaredBytes,
+          filename: attachment.name ?? "attachment",
+          mimeType: mediaType,
+          open: () => streamPrivateSlackFile(url),
+          source: { id: slackFileId, provider: "slack" },
+        },
+        storage: deps.attachmentStorage,
+      });
+      results.push({
+        attachmentId,
+        mediaType,
+        filename: attachment.name,
+        promptText: attachmentId
+          ? buildStoredAttachmentPromptText({
+              attachmentId,
+              filename: attachment.name,
+              mediaType,
+            })
+          : buildAttachmentResolutionFailurePromptText({
+              filename: attachment.name,
+              mediaType,
+              problem:
+                "it could not be downloaded from Slack and stored, so you cannot open it",
+            }),
+      });
+      continue;
+    }
+
     let data: Buffer;
     try {
       if (attachment.fetchData) {
@@ -358,35 +453,21 @@ async function resolveUserAttachmentsWithDeps(
       continue;
     }
 
-    let attachmentId: string | undefined;
-    const slackFileId = getSlackFileId(attachment);
-    if (context.conversationId && deps.attachmentStorage) {
-      try {
-        const stored = await storeAttachment({
-          conversationId: context.conversationId,
-          db: getSqlExecutor(),
-          file: {
-            bytes: data.byteLength,
-            data,
-            filename: attachment.name ?? "attachment",
-            mimeType: mediaType,
-            path: attachment.name ?? "attachment",
-          },
-          ...(slackFileId
-            ? { source: { id: slackFileId, provider: "slack" } }
-            : undefined),
-          storage: deps.attachmentStorage,
-        });
-        attachmentId = stored.id;
-      } catch (error) {
-        logWarn("attachment.storage.failed", {
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-          "app.file.mime_type": mediaType,
-          ...(attachment.name ? { "file.name": attachment.name } : undefined),
-        });
-      }
-    }
+    const attachmentId =
+      context.conversationId && deps.attachmentStorage
+        ? await storeSlackFile({
+            conversationId: context.conversationId,
+            file: {
+              data,
+              filename: attachment.name ?? "attachment",
+              mimeType: mediaType,
+              ...(slackFileId
+                ? { source: { id: slackFileId, provider: "slack" } }
+                : undefined),
+            },
+            storage: deps.attachmentStorage,
+          })
+        : undefined;
 
     // Only images go to the model inline. Any other file, such as a video, a
     // recording, or a PDF, gets the same loadAttachment pointer as a web file.
