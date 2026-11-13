@@ -64,6 +64,7 @@ type DriveQuery = typeof NAMED | typeof ANYONE | typeof DOMAIN;
  */
 function fakeGoogle(input: {
   doc?: unknown;
+  docFails?: boolean;
   event?: unknown;
   file?: unknown;
   finds?: DriveQuery[];
@@ -76,6 +77,9 @@ function fakeGoogle(input: {
       queries.push(q);
       const found = (input.finds ?? []).some((terms) => q.includes(terms));
       return Response.json({ files: found ? [{ id: DOC_ID }] : [] });
+    }
+    if (input.docFails && url.pathname.startsWith("/v1/documents/")) {
+      throw new TypeError("fetch failed");
     }
     const body = url.pathname.startsWith("/drive/")
       ? input.file
@@ -104,6 +108,7 @@ function resolveAs(
   return linkType(objectType).resolve(
     {
       egress: { fetch: google.fetch },
+      log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
       viewer: { email, id: `test:${email}`, identities: [] },
     } as never,
     new URL(url),
@@ -148,6 +153,25 @@ describe("Google link cards", () => {
       ).resolves.toMatchObject({
         facts: { type: "document", summary: EXCERPT },
       });
+    });
+
+    it("still shows a Doc when its summary cannot be read", async () => {
+      const google = fakeGoogle({
+        doc: DOC_BODY,
+        docFails: true,
+        file: DOC,
+        finds: [NAMED],
+      });
+
+      const card = await resolveAs(
+        "alice@example.com",
+        google,
+        "document",
+        DOC_URL,
+      );
+
+      expect(card).toMatchObject({ key: DOC_ID, title: TITLE });
+      expect(card?.facts?.summary).toBeUndefined();
     });
 
     it("cuts a long first paragraph at a word", async () => {

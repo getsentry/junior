@@ -63,7 +63,8 @@ const BODY_STYLES = new Set([undefined, "NORMAL_TEXT"]);
 
 /**
  * Read the first body paragraph of a Doc as a card summary. Call it only
- * after the viewer may open the Doc. A Docs API failure gives no summary.
+ * after the viewer may open the Doc. A Docs API failure gives no summary,
+ * so the card still shows.
  */
 export async function docSummary(
   ctx: ObjectLinkContext,
@@ -77,8 +78,11 @@ export async function docSummary(
       fields:
         "body.content(paragraph(elements(textRun(content)),paragraphStyle(namedStyleType)))",
     },
+  }).catch((error: unknown) => {
+    ctx.log.warn("Google Doc summary read failed", { error: String(error) });
+    return undefined;
   });
-  if (response.status !== 200) return undefined;
+  if (response?.status !== 200) return undefined;
   const parsed = paragraphsSchema.safeParse(response.body);
   for (const { paragraph } of parsed.data?.body?.content ?? []) {
     if (!paragraph) continue;
