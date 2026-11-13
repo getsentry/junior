@@ -63,7 +63,8 @@ export function gitHubEventAuthor(
   if (!handle) return { data, isSelf: false };
   const lower = handle.toLowerCase();
   const text = ownCommentText(input.text);
-  const isSender = sender?.login === handle;
+  // GitHub logins are case-insensitive, so the sender and the author match without case.
+  const isSender = sender?.login?.toLowerCase() === lower;
   return {
     author: {
       handle,
