@@ -453,11 +453,16 @@ export async function insertCredential(args: {
 }): Promise<void> {
   const { userId } = resolveAuthor(args.author);
   const store = createUserTokenStore();
-  await store.set(userId, args.provider, {
-    accessToken: args.accessToken,
-    expiresAt: args.expired ? Date.now() - 1 : Date.now() + 60 * 60 * 1000,
-    refreshToken: args.refreshToken,
-    scope: args.scope,
+  await store.transition(userId, args.provider, {
+    type: "connect",
+    tokens: {
+      accessToken: args.accessToken,
+      expiresAt: args.expired ? Date.now() - 1 : Date.now() + 60 * 60 * 1000,
+      refreshToken: args.refreshToken,
+      scope: args.scope,
+    },
   });
-  onTestFinished(() => store.delete(userId, args.provider));
+  onTestFinished(async () => {
+    await store.transition(userId, args.provider, { type: "disconnect" });
+  });
 }

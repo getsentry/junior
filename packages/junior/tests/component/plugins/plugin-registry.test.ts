@@ -46,8 +46,8 @@ describe("plugin registry", () => {
       registry.createBroker("sentry", {
         userTokenStore: {
           get: async () => undefined,
-          set: async () => {},
-          delete: async () => {},
+          read: async () => undefined,
+          transition: async () => true,
           withRefresh: async (_userId, _provider, callback) => callback(),
         },
       }),
