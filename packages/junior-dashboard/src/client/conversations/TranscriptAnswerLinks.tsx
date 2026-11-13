@@ -1,4 +1,4 @@
-import { createContext, use, useCallback, useSyncExternalStore } from "react";
+import { createContext, use, useSyncExternalStore } from "react";
 
 import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import { cn } from "../styles";
@@ -58,18 +58,23 @@ export function transcriptAnswerLinks(
 type LinkSegment = { lane: number; part: "start" | "middle" | "end" };
 
 /**
- * Hold which questions are in view, so an answer can quote one that is not.
- * Make one for each transcript list.
+ * Hold the rows that the list shows in its scroll pane, so an answer can
+ * quote a question that is out of view. Make one for each transcript list.
  */
-export function createAskViewStore() {
-  const shown = new Set<string>();
+export function createVisibleRowsStore() {
+  let range: { endIndex: number; startIndex: number } | null = null;
   const listeners = new Set<() => void>();
   return {
-    has: (itemId: string) => shown.has(itemId),
-    set(itemId: string, inView: boolean) {
-      if (shown.has(itemId) === inView) return;
-      if (inView) shown.add(itemId);
-      else shown.delete(itemId);
+    shows: (index: number) =>
+      range !== null && index >= range.startIndex && index <= range.endIndex,
+    set(next: { endIndex: number; startIndex: number } | null) {
+      if (
+        range?.startIndex === next?.startIndex &&
+        range?.endIndex === next?.endIndex
+      ) {
+        return;
+      }
+      range = next && { endIndex: next.endIndex, startIndex: next.startIndex };
       for (const listener of listeners) listener();
     },
     subscribe(listener: () => void) {
@@ -80,16 +85,16 @@ export function createAskViewStore() {
 }
 
 type TranscriptAnswerLinksValue = {
-  asks: ReturnType<typeof createAskViewStore>;
-  /** Items whose question and answer both have rows. */
-  linked: ReadonlySet<string>;
+  /** The row of each question that has an answer row. */
+  askIndexes: ReadonlyMap<string, number>;
   segments: ReadonlyMap<number, readonly LinkSegment[]>;
+  visibleRows: ReturnType<typeof createVisibleRowsStore>;
 };
 
 /** Build the context value of one transcript list from its links. */
 export function transcriptAnswerLinksValue(
   links: readonly TranscriptAnswerLink[],
-  asks: TranscriptAnswerLinksValue["asks"],
+  visibleRows: TranscriptAnswerLinksValue["visibleRows"],
 ): TranscriptAnswerLinksValue {
   const segments = new Map<number, LinkSegment[]>();
   const add = (index: number, segment: LinkSegment) =>
@@ -102,9 +107,9 @@ export function transcriptAnswerLinksValue(
     add(link.answerIndex, { lane: link.lane, part: "end" });
   }
   return {
-    asks,
-    linked: new Set(links.map((link) => link.itemId)),
+    askIndexes: new Map(links.map((link) => [link.itemId, link.askIndex])),
     segments,
+    visibleRows,
   };
 }
 
@@ -115,40 +120,24 @@ export const TranscriptAnswerLinks = createContext<
 
 /** True when the question of an item has a row and an answer row. */
 export function useAnswerLinked(itemId: string): boolean {
-  return use(TranscriptAnswerLinks)?.linked.has(itemId) ?? false;
+  return use(TranscriptAnswerLinks)?.askIndexes.has(itemId) ?? false;
 }
+
+const noRows = { shows: () => false, subscribe: () => () => {} };
 
 /**
- * Return a ref for the row that asked an item. While the row is mounted, it
- * reports whether the row is in the viewport.
+ * True while the scroll pane shows the row that asked an item. The list
+ * knows its visible rows from layout, so this does not wait for the row to
+ * mount or load its item.
  */
-export function useAskViewRef(itemId: string) {
-  const asks = use(TranscriptAnswerLinks)?.asks;
-  return useCallback(
-    (element: Element | null) => {
-      if (!asks || !element) return;
-      const observer = new IntersectionObserver(([entry]) =>
-        asks.set(itemId, entry?.isIntersecting ?? false),
-      );
-      observer.observe(element);
-      return () => {
-        observer.disconnect();
-        asks.set(itemId, false);
-      };
-    },
-    [asks, itemId],
-  );
-}
-
-const noAsks = {
-  has: () => false,
-  subscribe: () => () => {},
-};
-
-/** True while the row that asked an item is in the viewport. */
 export function useAskInView(itemId: string): boolean {
-  const asks = use(TranscriptAnswerLinks)?.asks ?? noAsks;
-  return useSyncExternalStore(asks.subscribe, () => asks.has(itemId));
+  const value = use(TranscriptAnswerLinks);
+  const askIndex = value?.askIndexes.get(itemId);
+  const rows = value?.visibleRows ?? noRows;
+  return useSyncExternalStore(
+    rows.subscribe,
+    () => askIndex !== undefined && rows.shows(askIndex),
+  );
 }
 
 // Lanes sit inside the avatar column (1.5rem, 2rem from md), so each line

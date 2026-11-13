@@ -10,7 +10,6 @@ import { MessageCard, MessageCardHeader } from "../components/MessageCard";
 import {
   useAnswerLinked,
   useAskInView,
-  useAskViewRef,
 } from "../conversations/TranscriptAnswerLinks";
 import { useConversationReviewItemData } from "./queries";
 import {
@@ -184,7 +183,6 @@ export function ReviewItemAskRow(props: {
     props.itemId,
   );
   const linked = useAnswerLinked(props.itemId);
-  const ref = useAskViewRef(props.itemId);
   if (isError) return props.fallback;
   if (!item) return null;
   const verb = item.kind === "action" ? "Asked" : "Added";
@@ -195,7 +193,6 @@ export function ReviewItemAskRow(props: {
       aria-label={`${verb} ${item.title}`}
       className="transition-shadow duration-300 motion-reduce:transition-none data-highlighted:ring-2 data-highlighted:ring-violet-300/50"
       data-review-item-ask={item.id}
-      ref={ref}
     >
       <MessageCardHeader
         className={outcome ? undefined : "pb-4"}
