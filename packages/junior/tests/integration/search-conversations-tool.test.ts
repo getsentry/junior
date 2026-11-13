@@ -3,8 +3,8 @@ import { appendConversationBrief } from "@/chat/briefs/store";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { parseSlackTeamId } from "@/chat/slack/ids";
-import { createSlackConversationBriefSearchPort } from "@/chat/slack/tools/conversation-brief-search";
-import { createSearchConversationBriefsTool } from "@/chat/tools/search-conversation-briefs";
+import { createSlackConversationSearchChannelPort } from "@/chat/slack/tools/conversation-search";
+import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
 import { conversationBriefFixture } from "../fixtures/conversation-brief";
 import {
   chatGetPermalinkOk,
@@ -16,7 +16,7 @@ const teamId = parseSlackTeamId("T123");
 if (!teamId) {
   throw new Error("test Slack team id did not parse");
 }
-const slackProvider = createSlackConversationBriefSearchPort(teamId);
+const channels = createSlackConversationSearchChannelPort(teamId);
 
 async function executeTool<TInput>(tool: any, input: TInput) {
   if (typeof tool?.execute !== "function") {
@@ -25,7 +25,7 @@ async function executeTool<TInput>(tool: any, input: TInput) {
   return await tool.execute(input, {} as any);
 }
 
-describe("searchConversationBriefs", () => {
+describe("searchConversations", () => {
   afterEach(async () => {
     setDashboardConversationLinkOptions(undefined);
     await closeDb();
@@ -75,10 +75,10 @@ describe("searchConversationBriefs", () => {
       }),
     });
 
-    const tool = createSearchConversationBriefsTool(
-      "slack:CREQUEST:1700000000.900000",
-      slackProvider,
-    );
+    const tool = createSearchConversationsTool({
+      channels,
+      conversationId: "slack:CREQUEST:1700000000.900000",
+    });
     expect(tool.inputSchema.properties).toHaveProperty("channel_id");
     const result = await executeTool(tool, {
       after: null,
@@ -86,19 +86,19 @@ describe("searchConversationBriefs", () => {
       before: null,
       channel_id: null,
       limit: null,
+      outcome: "done",
       query: "launch decision",
-      status: "done",
     });
 
     expect(result).toEqual({
-      count: 1,
-      matches: [
+      conversations: [
         {
           channel_id: "CARCHIVE",
           channel_name: "archive",
           conversation_id: conversationId,
           dashboard_url: `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`,
           excerpt: expect.stringContaining("**launch**"),
+          kind: "root",
           links: [
             {
               kind: "code_change",
@@ -107,17 +107,15 @@ describe("searchConversationBriefs", () => {
               url: "https://github.com/getsentry/junior/pull/1805",
             },
           ],
+          outcome: "done",
           permalink:
             "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
-          status: "done",
+          status: "idle",
           summary: "The launch decision uses a blue rollout.",
           title: "Launch decision",
           updated_at: expect.any(String),
-          version: 1,
         },
       ],
-      query: "launch decision",
-      status: "done",
     });
 
     queueSlackApiResponse("chat.getPermalink", {
@@ -126,9 +124,45 @@ describe("searchConversationBriefs", () => {
     const resultWithoutPermalink = await executeTool(tool, {
       query: "launch decision",
     });
-    expect(resultWithoutPermalink.matches[0]).not.toHaveProperty("permalink");
+    expect(resultWithoutPermalink.conversations[0]).not.toHaveProperty(
+      "permalink",
+    );
 
-    const publicTool = createSearchConversationBriefsTool("local:test:current");
+    // A child agent gives the Slack channel and thread of its root.
+    const childId = "agent:launch-child";
+    await getConversationStore().createChild({
+      childConversationId: childId,
+      kind: "thread",
+      parentConversationId: conversationId,
+      nowMs: Date.parse("2026-07-01T12:01:00.000Z"),
+      source: "slack",
+      title: "Launch decision follow-up",
+    });
+    queueSlackApiResponse("chat.getPermalink", {
+      body: chatGetPermalinkOk({
+        permalink:
+          "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
+      }),
+    });
+    const childResult = await executeTool(tool, {
+      query: "follow-up",
+      roots_only: false,
+    });
+    expect(childResult.conversations).toEqual([
+      expect.objectContaining({
+        channel_id: "CARCHIVE",
+        channel_name: "archive",
+        conversation_id: childId,
+        kind: "thread",
+        permalink:
+          "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
+        root_conversation_id: conversationId,
+      }),
+    ]);
+
+    const publicTool = createSearchConversationsTool({
+      conversationId: "local:test:current",
+    });
     expect(publicTool.inputSchema.properties).not.toHaveProperty("channel_id");
     expect(() =>
       publicTool.prepareArguments({ channel_id: "CARCHIVE" }),
@@ -136,12 +170,12 @@ describe("searchConversationBriefs", () => {
     const publicResult = await executeTool(publicTool, {
       query: "launch decision",
     });
-    expect(publicResult.matches[0]).toMatchObject({
+    expect(publicResult.conversations[0]).toMatchObject({
       conversation_id: conversationId,
       dashboard_url: `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`,
     });
-    expect(publicResult.matches[0]).not.toHaveProperty("channel_id");
-    expect(publicResult.matches[0]).not.toHaveProperty("channel_name");
-    expect(publicResult.matches[0]).not.toHaveProperty("permalink");
+    expect(publicResult.conversations[0]).not.toHaveProperty("channel_id");
+    expect(publicResult.conversations[0]).not.toHaveProperty("channel_name");
+    expect(publicResult.conversations[0]).not.toHaveProperty("permalink");
   });
 });

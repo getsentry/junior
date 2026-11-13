@@ -6,6 +6,7 @@ import {
 } from "@/chat/agent-invocations/store";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { assertRunConsistency, type AgentRun } from "@/chat/agent/types";
+import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
 import { appendAndEnqueueWebMessage } from "@/chat/conversations/web-input";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
@@ -40,7 +41,7 @@ export async function createHarness() {
   // starts lands here.
   const otherOpenTurns: string[] = [];
   let onInvocationRun: (() => Promise<never>) | undefined;
-  let onPersonRun: ((run: AgentRun) => Promise<never>) | undefined;
+  let onPersonRun: ((run: AgentRun) => Promise<AgentRunOutcome>) | undefined;
   const work = await createConversationWorkHarness({
     run: async (run) => {
       assertRunConsistency(
@@ -62,7 +63,7 @@ export async function createHarness() {
         await onInvocationRun();
       }
       if (!run.agentInvocationId && onPersonRun) {
-        await onPersonRun(run);
+        return await onPersonRun(run);
       }
       throw new Error("stop after reading the run");
     },
@@ -103,8 +104,11 @@ export async function createHarness() {
     onInvocationRun: (fn: () => Promise<never>) => {
       onInvocationRun = fn;
     },
-    /** Run `fn` in each later run on the Conversation loop. */
-    onPersonRun: (fn: (run: AgentRun) => Promise<never>) => {
+    /**
+     * Run `fn` in each later run on the Conversation loop. The run ends as
+     * `fn` returns or throws.
+     */
+    onPersonRun: (fn: (run: AgentRun) => Promise<AgentRunOutcome>) => {
       onPersonRun = fn;
     },
     otherOpenTurns,

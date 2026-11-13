@@ -21,11 +21,18 @@ interface SlackUserLookupResult {
   avatarUrl?: string;
   /** Slack profile timezone. Do not copy it onto the Actor. */
   timezone?: string;
+  /**
+   * Whether the person is a Slack guest, who sees only the channels they
+   * are in. Unset when Slack did not say.
+   */
+  isGuest?: boolean;
 }
 
 const slackUserInfoSchema = z.object({
   ok: z.literal(true),
   user: z.object({
+    is_restricted: z.boolean().nullish(),
+    is_ultra_restricted: z.boolean().nullish(),
     name: z.string().nullish(),
     tz: z.string().nullish(),
     profile: z
@@ -129,6 +136,13 @@ export async function lookupSlackUser(
       ...(avatarUrl ? { avatarUrl } : undefined),
       timezone: payload.user.tz?.trim() || undefined,
     };
+    const { is_restricted, is_ultra_restricted } = payload.user;
+    if (
+      typeof is_restricted === "boolean" &&
+      typeof is_ultra_restricted === "boolean"
+    ) {
+      result.isGuest = is_restricted || is_ultra_restricted;
+    }
     writeToCache(teamId, userId, result);
     return result;
   } catch (error) {
