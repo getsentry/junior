@@ -62,26 +62,29 @@ async function writeParts(args: {
     pendingBytes = 0;
   };
   const reader = args.body.getReader();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > args.expectedBytes) {
-      await reader.cancel();
-      break;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > args.expectedBytes) break;
+      let chunk = value;
+      while (pendingBytes + chunk.byteLength >= PART_BYTES) {
+        const take = PART_BYTES - pendingBytes;
+        pending.push(chunk.subarray(0, take));
+        pendingBytes += take;
+        await flush();
+        chunk = chunk.subarray(take);
+      }
+      if (chunk.byteLength > 0) {
+        pending.push(chunk);
+        pendingBytes += chunk.byteLength;
+      }
     }
-    let chunk = value;
-    while (pendingBytes + chunk.byteLength >= PART_BYTES) {
-      const take = PART_BYTES - pendingBytes;
-      pending.push(chunk.subarray(0, take));
-      pendingBytes += take;
-      await flush();
-      chunk = chunk.subarray(take);
-    }
-    if (chunk.byteLength > 0) {
-      pending.push(chunk);
-      pendingBytes += chunk.byteLength;
-    }
+  } finally {
+    // Close the storage read when this stops early, so a failed load does
+    // not hold a large download open. After a full read this does nothing.
+    await reader.cancel().catch(() => undefined);
   }
   if (total !== args.expectedBytes) {
     // A storage read that returns fewer (or more) bytes than the durable

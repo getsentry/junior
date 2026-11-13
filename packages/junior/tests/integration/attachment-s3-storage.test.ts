@@ -8,6 +8,7 @@ import { readAttachmentStorageConfig } from "@/chat/attachments/config";
 import {
   bufferBody,
   createAttachmentStorage,
+  type AttachmentStorage,
 } from "@/chat/attachments/storage";
 import {
   collectAttachmentGarbage,
@@ -201,11 +202,15 @@ describe("S3 attachment storage", () => {
     const storage = s3Storage();
     const db = getSqlExecutor();
     const chunks = () => [Buffer.from("deploy "), Buffer.from("failed")];
+    const opens = new Map<number, number>();
     const file = (bytes: number) => ({
       bytes,
       filename: "deploy.log",
       mimeType: "text/plain",
-      open: async () => chunkedBody(chunks()),
+      open: async () => {
+        opens.set(bytes, (opens.get(bytes) ?? 0) + 1);
+        return chunkedBody(chunks());
+      },
       source: { id: `F${bytes}`, provider: "slack" },
     });
 
@@ -225,12 +230,16 @@ describe("S3 attachment storage", () => {
     expect(await new Response(body).text()).toBe("deploy failed");
 
     // A body shorter or longer than its declared size fails the write, and
-    // no row is kept.
-    for (const bytes of [20, 5]) {
-      await expect(
-        storeAttachment({ conversationId, db, file: file(bytes), storage }),
-      ).rejects.toThrow("fetch failed");
-    }
+    // no row is kept. S3 refuses the short body like a dropped upload, so
+    // the store tries it again with a fresh body. A long body fails once.
+    await expect(
+      storeAttachment({ conversationId, db, file: file(20), storage }),
+    ).rejects.toThrow("fetch failed");
+    expect(opens.get(20)).toBe(3);
+    await expect(
+      storeAttachment({ conversationId, db, file: file(5), storage }),
+    ).rejects.toThrow("does not match its declared 5 bytes");
+    expect(opens.get(5)).toBe(1);
     const rows = await db
       .db()
       .select({ id: juniorAttachments.id })
@@ -238,6 +247,52 @@ describe("S3 attachment storage", () => {
       .where(eq(juniorAttachments.conversationId, conversationId));
     expect(rows).toEqual([{ id: stored.id }]);
     await storage.delete([record!.storageKey]);
+  });
+
+  it("writes a streamed file again with a fresh body after a failed put", async () => {
+    const conversationId = "slack:CS3:retry";
+    await recordPublicConversation(conversationId);
+    const s3 = s3Storage();
+    let puts = 0;
+    const storage: AttachmentStorage = {
+      ...s3,
+      async put(input) {
+        puts += 1;
+        if (puts === 1) {
+          // Read part of the body, then fail like a dropped connection.
+          await input.body.getReader().read();
+          throw new Error("S3 put failed with status 503");
+        }
+        await s3.put(input);
+      },
+    };
+    let opens = 0;
+    const stored = await storeAttachment({
+      conversationId,
+      db: getSqlExecutor(),
+      file: {
+        bytes: 13,
+        filename: "deploy.log",
+        mimeType: "text/plain",
+        open: async () => {
+          opens += 1;
+          return chunkedBody([Buffer.from("deploy "), Buffer.from("failed")]);
+        },
+        source: { id: "FRETRY", provider: "slack" },
+      },
+      storage,
+    });
+
+    expect({ opens, puts }).toEqual({ opens: 2, puts: 2 });
+    const record = await readLiveAttachment({
+      attachmentId: stored.id,
+      conversationId,
+      db: getSqlExecutor(),
+    });
+    expect(record?.bytes).toBe(13);
+    const body = await s3.get(record!.storageKey);
+    expect(await new Response(body).text()).toBe("deploy failed");
+    await s3.delete([record!.storageKey]);
   });
 
   it("rejects filenames that would leave the attachment key prefix", async () => {

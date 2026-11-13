@@ -119,6 +119,20 @@ function attachmentKey(args: {
   return `conversations/${args.conversationId}/attachments/${args.attachmentId}/${args.writeId}/${args.filename}`;
 }
 
+/** A source whose bytes do not match its declared size. A retry cannot fix it. */
+class AttachmentSizeError extends Error {
+  constructor(bytes: number, expected: number, options?: ErrorOptions) {
+    super(
+      `Attachment body does not match its declared ${expected} bytes (read ${bytes})`,
+      options,
+    );
+    this.name = "AttachmentSizeError";
+  }
+}
+
+/** Tries for one object write, each with a freshly opened body. */
+const WRITE_ATTEMPTS = 3;
+
 async function bestEffortDelete(
   storage: AttachmentStorage,
   key: string,
@@ -141,6 +155,28 @@ async function writeAttachmentObject(args: {
   key: string;
   storage: AttachmentStorage;
 }): Promise<{ bytes: number; sha256: string }> {
+  // A stream is read once, so the storage client cannot replay it. Retry
+  // here with a fresh body instead. Write failures are mostly transient
+  // (5xx, throttling, a dropped connection); a lasting one fails every try.
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await writeAttachmentObjectOnce(args);
+    } catch (error) {
+      if (error instanceof AttachmentSizeError || attempt >= WRITE_ATTEMPTS) {
+        // A write that committed before it failed leaves an object no row
+        // points to.
+        await bestEffortDelete(args.storage, args.key);
+        throw error;
+      }
+    }
+  }
+}
+
+async function writeAttachmentObjectOnce(args: {
+  file: AttachmentFile;
+  key: string;
+  storage: AttachmentStorage;
+}): Promise<{ bytes: number; sha256: string }> {
   const { file } = args;
   const expected = "data" in file ? file.data.byteLength : file.bytes;
   const source = "data" in file ? bufferBody(file.data) : await file.open();
@@ -151,26 +187,28 @@ async function writeAttachmentObject(args: {
       transform(chunk, controller) {
         bytes += chunk.byteLength;
         if (bytes > expected) {
-          throw new Error(
-            `Attachment body is longer than its declared ${expected} bytes`,
-          );
+          throw new AttachmentSizeError(bytes, expected);
         }
         hash.update(chunk);
         controller.enqueue(chunk);
       },
     }),
   );
-  await args.storage.put({
-    body,
-    bytes: expected,
-    contentType: file.mimeType,
-    key: args.key,
-  });
+  try {
+    await args.storage.put({
+      body,
+      bytes: expected,
+      contentType: file.mimeType,
+      key: args.key,
+    });
+  } catch (error) {
+    if (bytes > expected) {
+      throw new AttachmentSizeError(bytes, expected, { cause: error });
+    }
+    throw error;
+  }
   if (bytes !== expected) {
-    await bestEffortDelete(args.storage, args.key);
-    throw new Error(
-      `Attachment body has ${bytes} bytes, but ${expected} were declared`,
-    );
+    throw new AttachmentSizeError(bytes, expected);
   }
   return { bytes, sha256: hash.digest("hex") };
 }
