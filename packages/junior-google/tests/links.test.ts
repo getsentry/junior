@@ -1,4 +1,5 @@
 import {
+  OBJECT_SUMMARY_MAX_LENGTH,
   objectLinkFilterMatches,
   type PluginObjectLinkDefinition,
 } from "@sentry/junior-plugin-api";
@@ -18,6 +19,38 @@ const DOC = {
   owners: [{ displayName: "Bob Example", emailAddress: "bob@example.com" }],
 };
 
+const EXCERPT = "Ship the launch on Monday after the security review.";
+
+// What the Docs API returns for the Doc: a title, a heading, then the body.
+const DOC_BODY = {
+  body: {
+    content: [
+      { sectionBreak: {} },
+      {
+        paragraph: {
+          elements: [{ textRun: { content: `${TITLE}\n` } }],
+          paragraphStyle: { namedStyleType: "TITLE" },
+        },
+      },
+      {
+        paragraph: {
+          elements: [{ textRun: { content: "Goals\n" } }],
+          paragraphStyle: { namedStyleType: "HEADING_1" },
+        },
+      },
+      {
+        paragraph: {
+          elements: [
+            { textRun: { content: "Ship the launch on Monday " } },
+            { textRun: { content: "after the security review.\n" } },
+          ],
+          paragraphStyle: { namedStyleType: "NORMAL_TEXT" },
+        },
+      },
+    ],
+  },
+};
+
 const NAMED =
   "('alice@example.com' in readers or 'alice@example.com' in writers or 'alice@example.com' in owners)";
 const ANYONE = "visibility = 'anyoneWithLink'";
@@ -30,6 +63,8 @@ type DriveQuery = typeof NAMED | typeof ANYONE | typeof DOMAIN;
  * and `finds` lists the Drive queries that find the file.
  */
 function fakeGoogle(input: {
+  doc?: unknown;
+  docFails?: boolean;
   event?: unknown;
   file?: unknown;
   finds?: DriveQuery[];
@@ -43,7 +78,14 @@ function fakeGoogle(input: {
       const found = (input.finds ?? []).some((terms) => q.includes(terms));
       return Response.json({ files: found ? [{ id: DOC_ID }] : [] });
     }
-    const body = url.pathname.startsWith("/drive/") ? input.file : input.event;
+    if (input.docFails && url.pathname.startsWith("/v1/documents/")) {
+      throw new TypeError("fetch failed");
+    }
+    const body = url.pathname.startsWith("/drive/")
+      ? input.file
+      : url.pathname.startsWith("/v1/documents/")
+        ? input.doc
+        : input.event;
     return body
       ? Response.json(body)
       : Response.json({ error: { message: "Not found" } }, { status: 404 });
@@ -66,6 +108,7 @@ function resolveAs(
   return linkType(objectType).resolve(
     {
       egress: { fetch: google.fetch },
+      log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
       viewer: { email, id: `test:${email}`, identities: [] },
     } as never,
     new URL(url),
@@ -102,6 +145,61 @@ describe("Google link cards", () => {
       );
     });
 
+    it("shows the first body paragraph of a Doc that the viewer can open", async () => {
+      const google = fakeGoogle({ doc: DOC_BODY, file: DOC, finds: [NAMED] });
+
+      await expect(
+        resolveAs("alice@example.com", google, "document", DOC_URL),
+      ).resolves.toMatchObject({
+        facts: { type: "document", summary: EXCERPT },
+      });
+    });
+
+    it("still shows a Doc when its summary cannot be read", async () => {
+      const google = fakeGoogle({
+        doc: DOC_BODY,
+        docFails: true,
+        file: DOC,
+        finds: [NAMED],
+      });
+
+      const card = await resolveAs(
+        "alice@example.com",
+        google,
+        "document",
+        DOC_URL,
+      );
+
+      expect(card).toMatchObject({ key: DOC_ID, title: TITLE });
+      expect(card?.facts?.summary).toBeUndefined();
+    });
+
+    it("cuts a long first paragraph at a word", async () => {
+      const long = `${"Launch detail ".repeat(40)}end`;
+      const google = fakeGoogle({
+        doc: {
+          body: {
+            content: [
+              { paragraph: { elements: [{ textRun: { content: long } }] } },
+            ],
+          },
+        },
+        file: DOC,
+        finds: [NAMED],
+      });
+
+      const card = await resolveAs(
+        "alice@example.com",
+        google,
+        "document",
+        DOC_URL,
+      );
+      const summary = card?.facts?.summary ?? "";
+
+      expect(summary.length).toBeLessThanOrEqual(OBJECT_SUMMARY_MAX_LENGTH);
+      expect(summary).toMatch(/^Launch detail .* detail…$/);
+    });
+
     it("reads a signed-in link that names the account", async () => {
       const url = `https://docs.google.com/document/u/1/d/${DOC_ID}/edit`;
       const link = linkType("document");
@@ -130,7 +228,7 @@ describe("Google link cards", () => {
     });
 
     it("hides a file that the viewer cannot open", async () => {
-      const google = fakeGoogle({ file: DOC });
+      const google = fakeGoogle({ doc: DOC_BODY, file: DOC });
 
       const card = await resolveAs(
         "alice@example.com",
@@ -141,6 +239,12 @@ describe("Google link cards", () => {
 
       expect(card).toBeUndefined();
       expect(JSON.stringify(card ?? null)).not.toContain(TITLE);
+      // The Doc text is not read before the viewer is allowed.
+      expect(
+        google.fetch.mock.calls.some(([{ request }]) =>
+          request.url.includes("/v1/documents/"),
+        ),
+      ).toBe(false);
     });
 
     it("hides a domain file from a viewer outside its domain", async () => {
@@ -208,6 +312,8 @@ describe("Google link cards", () => {
         { email: "room@resource.calendar.google.com", resource: true },
       ],
       creator: { email: ACCOUNT_EMAIL },
+      description:
+        "<p>Decide <b>go/no-go</b> for 4.2.</p><p>Bring the risk list &amp; notes.</p>",
       end: {
         dateTime: "2026-10-05T17:30:00Z",
         timeZone: "America/Los_Angeles",
@@ -241,6 +347,7 @@ describe("Google link cards", () => {
         sourceUpdatedAt: EVENT.updated,
         facts: {
           type: "calendar_event",
+          summary: "Decide go/no-go for 4.2. Bring the risk list & notes.",
           when: "Mon, Oct 5, 10:00 – 10:30 PDT",
         },
       });
@@ -330,6 +437,26 @@ describe("Google link cards", () => {
       );
 
       expect(card).toBeUndefined();
+      expect(JSON.stringify(card ?? null)).not.toContain("risk list");
+    });
+
+    it("cuts a long description at a word", async () => {
+      const card = await resolveAs(
+        "alice@example.com",
+        fakeGoogle({
+          event: {
+            ...EVENT,
+            description: `<ul>${"<li>Check rollout</li>".repeat(40)}</ul>`,
+          },
+        }),
+        "calendar_event",
+        EVENT_URL,
+      );
+      const summary = card?.facts?.summary ?? "";
+
+      expect(summary.length).toBeLessThanOrEqual(OBJECT_SUMMARY_MAX_LENGTH);
+      expect(summary).toMatch(/^Check rollout Check .*…$/);
+      expect(summary).not.toContain("<");
     });
 
     it("does not read events on another calendar", async () => {

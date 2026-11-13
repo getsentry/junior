@@ -137,6 +137,7 @@ test("Google Doc and Calendar links resolve to chips and hover cards", async ({
     name: "Calendar event: Release 4.2 go/no-go",
   });
   await expect(eventCard).toContainText("Mon, Feb 2, 15:00 – 15:30 PST");
+  await expect(eventCard).toContainText("Decide go or no-go for 4.2.");
   await screenshot(page, "conversation-google-calendar-link", {
     lightTheme: true,
     view: "desktop",
@@ -150,6 +151,7 @@ test("Google Doc and Calendar links resolve to chips and hover cards", async ({
     name: "Google Doc: Release 4.2 checklist",
   });
   await expect(docCard).toContainText("Morgan Lee");
+  await expect(docCard).toContainText("Run these steps in order");
   // Only a participant can attach the object.
   await expect(docCard.getByRole("button", { name: "Attach" })).toHaveCount(0);
   await screenshot(page, "conversation-google-document-link", {

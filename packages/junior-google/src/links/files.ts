@@ -3,7 +3,8 @@
  *
  * Junior's own Google account reads the file, so the card shows only when
  * Drive says that the viewer can open it too. This is the rule of
- * `searchGoogleFiles`. Any unclear case gets no card.
+ * `searchGoogleFiles`. Any unclear case gets no card. A Doc card also shows
+ * its first paragraph.
  */
 import type {
   ObjectAnnotation,
@@ -21,6 +22,7 @@ import {
 } from "../tools/files";
 import { driveQueryString, namedQuery } from "../tools/search-files";
 import { googleApiError, googleApiRequest } from "../tools/shared";
+import { docSummary } from "./summary";
 
 const LINK_ROOTS = {
   document: "document",
@@ -182,6 +184,8 @@ async function resolveGoogleFileLink(
   if (!(await viewerCanOpen(ctx, file, config.allowedDomains))) {
     return undefined;
   }
+  const summary =
+    link.type === "document" ? await docSummary(ctx, link.file) : undefined;
   const owner = file.owners?.[0];
   const ownerName = (owner?.displayName || owner?.emailAddress)?.trim();
   const title = file.name.trim() || "Untitled";
@@ -196,6 +200,7 @@ async function resolveGoogleFileLink(
     sourceUpdatedAt: file.modifiedTime,
     facts: {
       type: "document",
+      summary,
       owner: ownerName?.slice(0, 160) || undefined,
       modifiedAt: file.modifiedTime,
     },
