@@ -2,7 +2,10 @@ import {
   createUserTokenStore,
   issueProviderCredentialLease,
 } from "@/chat/capabilities/factory";
-import { CredentialUnavailableError } from "@/chat/credentials/broker";
+import {
+  CredentialMintError,
+  CredentialUnavailableError,
+} from "@/chat/credentials/broker";
 import type {
   PluginAuthorization,
   PluginGitPush,
@@ -14,6 +17,8 @@ import {
   selectPluginGrant,
   issuePluginCredential,
 } from "@/chat/plugins/credential-hooks";
+import { mergeHeaderTransforms } from "@/chat/credentials/header-transforms";
+import { resolveApiHeaderTransforms } from "@/chat/plugins/auth/api-headers-broker";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   matchesSandboxEgressDomain,
@@ -35,6 +40,11 @@ import {
 // raw provider credentials inside the sandbox.
 
 const HTTP_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+// A workload identity token is one deployment-wide bot credential, not a
+// per-actor one. The `installation-` prefix makes egress share its lease
+// across sandboxes until shortly before it expires, so each request does not
+// mint a new token.
+const WORKLOAD_IDENTITY_GRANT_NAME = "installation-workload-identity";
 
 /** Describes whether grant selection came from plugin hooks or the broker default. */
 export type SandboxEgressGrantSelection =
@@ -77,6 +87,36 @@ export class SandboxEgressCredentialError extends Error {
   }
 }
 
+/** True when the provider's credential is a host-minted workload identity token. */
+export function isWorkloadIdentityProvider(provider: string): boolean {
+  return (
+    pluginCatalogRuntime.getDefinition(provider)?.manifest.credentials?.type ===
+    "workload-identity"
+  );
+}
+
+/**
+ * Add a workload identity plugin's static `api-headers` to its lease.
+ *
+ * The shared lease in host state holds only the minted token. Static values,
+ * such as an app API key, resolve from env on each request instead.
+ */
+function withStaticApiHeaders(
+  lease: SandboxEgressCredentialLease,
+): SandboxEgressCredentialLease {
+  const manifest = pluginCatalogRuntime.getDefinition(lease.provider)?.manifest;
+  if (manifest?.credentials?.type !== "workload-identity") {
+    return lease;
+  }
+  return {
+    ...lease,
+    headerTransforms: mergeHeaderTransforms([
+      ...resolveApiHeaderTransforms(manifest),
+      ...lease.headerTransforms,
+    ]),
+  };
+}
+
 function defaultGrantForProvider(input: {
   method: string;
   provider: string;
@@ -89,7 +129,9 @@ function defaultGrantForProvider(input: {
   return {
     source: "broker",
     grant: {
-      name: "default",
+      name: isWorkloadIdentityProvider(input.provider)
+        ? WORKLOAD_IDENTITY_GRANT_NAME
+        : "default",
       access,
       reason: `sandbox-egress:${input.provider}:${access}`,
     },
@@ -235,10 +277,10 @@ export async function sandboxEgressCredentialLease(
         `Cached credential lease for ${provider}/${grant.name} has ${cached.grant.access} access, but ${grant.access} was selected`,
       );
     }
-    return {
+    return withStaticApiHeaders({
       ...cached,
       grant,
-    };
+    });
   }
 
   let lease: {
@@ -286,6 +328,14 @@ export async function sandboxEgressCredentialLease(
         reason: grant.reason ?? `sandbox-egress:${provider}:default`,
       });
     } catch (error) {
+      if (error instanceof CredentialMintError) {
+        throw new SandboxEgressCredentialError({
+          provider,
+          grant,
+          kind: "unavailable",
+          message: error.message,
+        });
+      }
       if (error instanceof CredentialUnavailableError) {
         throw new SandboxEgressCredentialError({
           provider,
@@ -327,7 +377,7 @@ export async function sandboxEgressCredentialLease(
   };
   assertLeaseTransformsOwnedByProvider(provider, issuedLease);
   await setSandboxEgressCredentialLease(context, issuedLease);
-  return issuedLease;
+  return withStaticApiHeaders(issuedLease);
 }
 
 /** Return whether a credential lease can modify requests to the target host. */

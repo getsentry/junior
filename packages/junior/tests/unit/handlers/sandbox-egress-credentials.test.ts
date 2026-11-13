@@ -30,6 +30,8 @@ const {
 
 vi.mock("@/chat/plugins/catalog-runtime", () => ({
   pluginCatalogRuntime: {
+    // No plugin in these cases uses workload identity credentials.
+    getDefinition: () => undefined,
     getOAuthConfig: getOAuthConfigMock,
     getProviders: getProvidersMock,
   },

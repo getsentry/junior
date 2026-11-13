@@ -91,7 +91,7 @@
     "@slack/web-api": "^7.16.0",
     "@vercel/blob": "^2.6.1",
     "@vercel/functions": "^3.6.0",
-    "@vercel/oidc": "^3.4.1",
+    "@vercel/oidc": "^3.8.5",
     "@vercel/queue": "^0.2.0",
     "@vercel/sandbox": "4.0.0",
     "ai": "^7.0.153",

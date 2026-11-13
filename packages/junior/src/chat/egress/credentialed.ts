@@ -9,6 +9,7 @@ import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
 import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress/policy";
 import {
   hasSandboxEgressLeaseTransformForHost,
+  isWorkloadIdentityProvider,
   sandboxEgressCredentialLease,
   SandboxEgressCredentialError,
   selectSandboxEgressGrant,
@@ -830,6 +831,36 @@ export async function executeCredentialedEgressRequest(input: {
       logWarn("sandbox.egress.upstream_response.failed", {
         ...attributes(lease, upstream.status),
         "error.type": `http_${upstream.status}`,
+      });
+    }
+    if (
+      (upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS ||
+        upstream.status === UPSTREAM_PERMISSION_REJECTION_STATUS) &&
+      isWorkloadIdentityProvider(provider)
+    ) {
+      // A federated bot credential has no account that a person can connect,
+      // so report it as unavailable instead of starting an auth flow.
+      const message = `Upstream rejected the ${provider} workload identity credential with HTTP ${upstream.status}.`;
+      logWarn("sandbox.egress.upstream_auth.rejected", {
+        ...attributes(lease, upstream.status),
+      });
+      await clearSandboxEgressCredentialLease(
+        provider,
+        lease.grant,
+        credentialContext,
+      );
+      await recordAuthRequired({
+        credentialContext,
+        provider,
+        grant: lease.grant,
+        kind: "unavailable",
+        message,
+      });
+      await upstream.body?.cancel().catch(() => undefined);
+      return authRequiredResponse({
+        provider,
+        grant: lease.grant,
+        message: `${message}\n`,
       });
     }
     if (upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS) {

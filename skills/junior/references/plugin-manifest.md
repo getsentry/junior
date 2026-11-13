@@ -22,7 +22,7 @@ description: Internal provider workflows
 | `env-vars`             | allowed deployment env refs | keys match `[A-Z_][A-Z0-9_]*`                                                                     |
 | `domains`              | header injection domains    | required with `api-headers`                                                                       |
 | `api-headers`          | literal/env-backed headers  | values may use declared `${NAME}`                                                                 |
-| `credentials`          | token delivery              | `oauth-bearer` in `plugin.yaml`; code plugins can own egress credentials with hooks               |
+| `credentials`          | token delivery              | `oauth-bearer` or `workload-identity` in `plugin.yaml`; code plugins can own egress with hooks    |
 | `oauth`                | user OAuth                  | requires `credentials.type: oauth-bearer` in `plugin.yaml`                                        |
 | `target`               | target/config metadata      | `config-key` must be in `config-keys`                                                             |
 | `runtime-dependencies` | sandbox packages            | `npm` or `system`                                                                                 |
@@ -45,6 +45,26 @@ oauth:
   authorize-endpoint: https://example.com/oauth/authorize
   token-endpoint: https://example.com/oauth/token
   scope: "read write"
+```
+
+## Workload identity
+
+Bot credential for services behind Google Cloud or Azure identity, such as
+IAP. Junior mints it on the host from its Vercel OIDC token. Set exactly one of
+`gcp` or `azure`. Public docs: `packages/docs/src/content/docs/extend/workload-identity.md`.
+
+```yaml
+credentials:
+  type: workload-identity
+  domains:
+    - app.example.com
+  header: Proxy-Authorization # default Authorization; or X-Serverless-Authorization
+  gcp:
+    workload-identity-provider: projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider>
+    service-account: <name>@<project>.iam.gserviceaccount.com
+    token: service-account-jwt # needs audience; id-token needs audience; access-token needs scopes
+    audience: https://app.example.com/*
+  # azure: { tenant-id, client-id, scope: api://<app>/.default }
 ```
 
 ## Plugin-Managed Credentials
@@ -197,6 +217,8 @@ accounts:
 - `api-headers` requires `domains`.
 - `domains` requires `api-headers` in `plugin.yaml`.
 - `oauth` requires `credentials.type: oauth-bearer` in `plugin.yaml`.
+- `workload-identity` rejects unknown keys, so `aws` fails. Top-level
+  `api-headers` must not set the `credentials.header` name.
 - `mcp.url` env refs must be declared in `env-vars`.
 - `mcp.headers` env refs must be declared in `env-vars` and must not declare
   defaults. Junior resolves them when it connects, so build output keeps only

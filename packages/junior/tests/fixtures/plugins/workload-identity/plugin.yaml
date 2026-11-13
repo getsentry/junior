@@ -1,0 +1,26 @@
+name: iap-app
+display-name: IAP App
+description: Integration fixture for an app behind Identity-Aware Proxy
+
+env-vars:
+  IAP_APP_API_KEY:
+  IAP_APP_SERVICE_ACCOUNT:
+    default: iap-app@example-project.iam.gserviceaccount.com
+
+# The app reads its own key from Authorization, so the IAP token goes in
+# Proxy-Authorization.
+domains:
+  - iap-app.example.test
+api-headers:
+  Authorization: Key ${IAP_APP_API_KEY}
+
+credentials:
+  type: workload-identity
+  domains:
+    - iap-app.example.test
+  header: Proxy-Authorization
+  gcp:
+    workload-identity-provider: projects/123456/locations/global/workloadIdentityPools/vercel/providers/junior
+    service-account: ${IAP_APP_SERVICE_ACCOUNT}
+    token: service-account-jwt
+    audience: https://iap-app.example.test/*
