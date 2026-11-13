@@ -19,7 +19,10 @@ import {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
-import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
+import {
+  MAX_ATTACHMENT_BYTES,
+  messageAttachmentSchema,
+} from "@/chat/attachments/input";
 import {
   attachmentUploadParamsSchema,
   attachmentUploadSchema,
@@ -89,7 +92,10 @@ import {
 } from "./auto-archive";
 import { requireConversationChildAgents } from "./child-agents";
 import { continueConversationInSlackForViewer } from "./continue-in-slack";
-import { conversationAttachmentResponse } from "./attachments";
+import {
+  conversationAttachmentResponse,
+  prepareConversationAttachmentDownload,
+} from "./attachments";
 import {
   createAttachmentUploadForViewer,
   writeAttachmentUploadForViewer,
@@ -695,6 +701,30 @@ export function createConversationRoutes(
           conversationId,
           body,
         ),
+      );
+    },
+  );
+
+  // POST, not GET: preparing a download can fetch a 250 MB Slack file, so
+  // a link prefetch must not trigger it.
+  app.post(
+    "/:conversationId/attachments/:attachmentId/download",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationAttachmentParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const { attachmentId, conversationId } = context.req.valid("param");
+      return jsonResponse(
+        messageAttachmentSchema,
+        await prepareConversationAttachmentDownload({
+          attachmentId,
+          conversationId,
+          storage: options.attachmentStorage,
+          viewer: context.get("viewer"),
+        }),
       );
     },
   );

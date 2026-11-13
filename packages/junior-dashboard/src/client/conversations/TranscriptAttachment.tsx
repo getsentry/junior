@@ -1,8 +1,10 @@
 import {
   INLINE_VIDEO_TYPES,
   INPUT_IMAGE_TYPES,
+  messageAttachmentSchema,
   type MessageAttachment,
 } from "@sentry/junior/api/schema";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Download, FileText } from "lucide-react";
 import {
   type ReactNode,
@@ -17,7 +19,10 @@ import {
   ImageAttachment,
   type PreviewImage,
 } from "../components/ImageAttachment";
+import { Spinner } from "../components/ui/spinner";
+import { DashboardApiError, post } from "../http";
 import type { TranscriptViewMessage } from "../types";
+import { conversationDetailQueryKey } from "./queries";
 import { TextAttachmentPreview } from "./TextAttachmentPreview";
 import { textPreviewLanguage } from "./textPreview";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
@@ -247,6 +252,9 @@ function TranscriptLocalImage(props: { file: File }) {
   );
 }
 
+const DOWNLOAD_BUTTON_CLASS =
+  "grid size-6 flex-none place-items-center rounded text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus disabled:pointer-events-none";
+
 function MediaCaption(props: {
   bytes?: number;
   download?: { filename: string; href: string };
@@ -265,7 +273,7 @@ function MediaCaption(props: {
       {props.download ? (
         <a
           aria-label={`Download ${props.download.filename}`}
-          className="grid size-6 flex-none place-items-center rounded text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+          className={DOWNLOAD_BUTTON_CLASS}
           download={props.download.filename}
           href={props.download.href}
           rel="noreferrer"
@@ -332,10 +340,84 @@ function TranscriptMediaTile(props: {
 }
 
 // Every file row shares this look. A stored file is a preview button or a
-// download link; a file that is still sending is neither.
-const FILE_ROW_BASE_CLASS =
-  "grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-3 py-2 text-left font-sans no-underline";
+// download link; a file that is still sending is neither. A file Junior has
+// not downloaded yet has its own Download button.
+const FILE_ROW_SHELL_CLASS =
+  "grid w-full min-w-0 items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-3 py-2 text-left font-sans no-underline";
+const FILE_ROW_BASE_CLASS = `${FILE_ROW_SHELL_CLASS} grid-cols-[auto_minmax(0,1fr)]`;
 const FILE_ROW_CLASS = `${FILE_ROW_BASE_CLASS} cursor-pointer transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus`;
+const PENDING_FILE_ROW_CLASS = `${FILE_ROW_SHELL_CLASS} grid-cols-[auto_minmax(0,1fr)_auto]`;
+
+/** Start a browser download of one stored file. */
+function startBrowserDownload(href: string, filename: string) {
+  const link = document.createElement("a");
+  link.download = filename;
+  link.href = href;
+  link.rel = "noreferrer";
+  // See the stored file row: an iOS home screen app has no back button.
+  link.target = "_blank";
+  link.click();
+}
+
+/**
+ * Render a large Slack file that Junior has not downloaded yet. Download asks
+ * the server to fetch it from Slack first, then saves it.
+ */
+function PendingFileRow(props: {
+  attachment: MessageAttachment;
+  conversationId: string;
+}) {
+  const queryClient = useQueryClient();
+  const href = conversationAttachmentUrl(
+    props.conversationId,
+    props.attachment.id,
+  );
+  const prepare = useMutation({
+    mutationFn: () => post(messageAttachmentSchema, `${href}/download`, {}),
+    onSuccess: async (stored) => {
+      startBrowserDownload(href, stored.filename);
+      // The stored file now previews like any other.
+      await queryClient.invalidateQueries({
+        queryKey: conversationDetailQueryKey(props.conversationId),
+      });
+    },
+  });
+  const { filename } = props.attachment;
+  const error = prepare.error
+    ? (prepare.error instanceof DashboardApiError && prepare.error.apiError) ||
+      "Could not prepare the download. Try again."
+    : undefined;
+  const status = prepare.isPending
+    ? "Preparing download…"
+    : "Too large to preview";
+  return (
+    <div className={PENDING_FILE_ROW_CLASS}>
+      <FileRowLabel
+        filename={filename}
+        meta={attachmentMeta(props.attachment)}
+        status={error ? { error: true, label: error } : { label: status }}
+      />
+      <button
+        aria-busy={prepare.isPending}
+        aria-label={`Download ${filename}`}
+        className={DOWNLOAD_BUTTON_CLASS}
+        disabled={prepare.isPending}
+        onClick={() => prepare.mutate()}
+        type="button"
+      >
+        {prepare.isPending ? (
+          <Spinner
+            aria-hidden="true"
+            className="size-3.5"
+            role="presentation"
+          />
+        ) : (
+          <Download size={13} />
+        )}
+      </button>
+    </div>
+  );
+}
 
 /** Render one stored file as a row that previews text or downloads the file. */
 function TranscriptFileRow(props: {
@@ -354,14 +436,11 @@ function TranscriptFileRow(props: {
   );
 
   if (props.attachment.pending) {
-    // Junior downloads a large Slack file only when it first loads it.
     return (
-      <div className={FILE_ROW_BASE_CLASS}>
-        <FileRowLabel
-          filename={props.attachment.filename}
-          meta={`${meta} · Not downloaded yet`}
-        />
-      </div>
+      <PendingFileRow
+        attachment={props.attachment}
+        conversationId={props.conversationId}
+      />
     );
   }
 
@@ -404,7 +483,12 @@ function TranscriptFileRow(props: {
   );
 }
 
-function FileRowLabel(props: { filename: string; meta: string }) {
+function FileRowLabel(props: {
+  filename: string;
+  meta: string;
+  /** A line under the meta, such as download progress or its failure. */
+  status?: { error?: boolean; label: string };
+}) {
   return (
     <>
       <span
@@ -420,6 +504,15 @@ function FileRowLabel(props: { filename: string; meta: string }) {
         <div className="truncate font-mono text-xs text-dashboard-text-muted">
           <HighlightText text={props.meta} />
         </div>
+        {props.status?.error ? (
+          <div className="font-mono text-xs text-destructive" role="alert">
+            {props.status.label}
+          </div>
+        ) : props.status ? (
+          <div className="truncate font-mono text-xs text-dashboard-text-muted">
+            {props.status.label}
+          </div>
+        ) : null}
       </div>
     </>
   );

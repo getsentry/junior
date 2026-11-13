@@ -3,11 +3,23 @@ import {
   INPUT_IMAGE_TYPES,
 } from "@/chat/attachments/media";
 import type { User } from "@sentry/junior-plugin-api";
+import { getProductionSlackAdapter } from "@/chat/app/production";
+import {
+  AttachmentDownloadError,
+  ensureAttachmentStored,
+} from "@/chat/attachments/download";
+import type { MessageAttachment } from "@/chat/attachments/input";
 import { readLiveAttachment } from "@/chat/attachments/store";
 import type { AttachmentStorage, ByteRange } from "@/chat/attachments/storage";
 import { getDb, getSqlExecutor } from "@/chat/db";
+import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
+import { readSlackAttachmentSource } from "@/chat/slack/attachments";
+import { parseSlackTeamId } from "@/chat/slack/ids";
 import { throwApiError } from "../http";
-import { readConversationAccessFromSql } from "./access";
+import {
+  readConversationAccessFromSql,
+  type ConversationAccess,
+} from "./access";
 
 const INLINE_TYPES: readonly string[] = [
   ...INPUT_IMAGE_TYPES,
@@ -63,14 +75,7 @@ export async function conversationAttachmentResponse(args: {
   storage: AttachmentStorage;
   viewer?: User;
 }): Promise<Response> {
-  const access = (
-    await readConversationAccessFromSql(
-      getDb(),
-      [args.conversationId],
-      args.viewer,
-    )
-  ).get(args.conversationId);
-  if (!access?.canViewPrivateContent) notFound();
+  await requireAttachmentAccess(args.conversationId, args.viewer);
 
   const attachment = await readLiveAttachment({
     attachmentId: args.attachmentId,
@@ -116,6 +121,79 @@ export async function conversationAttachmentResponse(args: {
   );
   headers.set("content-length", String(range.end - range.start + 1));
   return new Response(body, { headers, status: 206 });
+}
+
+/**
+ * Store one attachment so the byte route can serve it, and return it.
+ *
+ * A large Slack file that Junior recorded without its bytes downloads from
+ * Slack now, with the conversation's Slack installation, through the same
+ * first load as `loadAttachment`. A stored file returns at once.
+ */
+export async function prepareConversationAttachmentDownload(args: {
+  attachmentId: string;
+  conversationId: string;
+  storage: AttachmentStorage;
+  viewer: User;
+}): Promise<MessageAttachment> {
+  const access = await requireAttachmentAccess(
+    args.conversationId,
+    args.viewer,
+  );
+  const db = getSqlExecutor();
+  const live = await readLiveAttachment({
+    attachmentId: args.attachmentId,
+    conversationId: args.conversationId,
+    db,
+  });
+  if (!live || live.storageProvider !== args.storage.provider) notFound();
+
+  const teamId =
+    access.tenant?.provider === "slack"
+      ? parseSlackTeamId(access.tenant.providerTenantId)
+      : undefined;
+  const store = () =>
+    ensureAttachmentStored({
+      attachment: live,
+      db,
+      ...(teamId
+        ? { readAttachmentSource: readSlackAttachmentSource }
+        : undefined),
+      storage: args.storage,
+    });
+  let stored;
+  try {
+    stored =
+      live.storageKey === null && teamId
+        ? await runWithSlackInstallation({
+            adapter: getProductionSlackAdapter(),
+            installation: { teamId },
+            task: store,
+          })
+        : await store();
+  } catch (error) {
+    if (error instanceof AttachmentDownloadError) {
+      throwApiError(409, error.message, error);
+    }
+    throw error;
+  }
+  return {
+    bytes: stored.bytes,
+    contentType: stored.contentType,
+    filename: stored.filename,
+    id: stored.id,
+  };
+}
+
+async function requireAttachmentAccess(
+  conversationId: string,
+  viewer: User | undefined,
+): Promise<ConversationAccess> {
+  const access = (
+    await readConversationAccessFromSql(getDb(), [conversationId], viewer)
+  ).get(conversationId);
+  if (!access?.canViewPrivateContent) notFound();
+  return access;
 }
 
 function notFound(): never {

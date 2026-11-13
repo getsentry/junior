@@ -822,6 +822,21 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
             contentType: "image/png",
             bytes: 6400,
           },
+          // Large Slack files that Junior has not downloaded yet.
+          {
+            id: "qa-recording-pending",
+            filename: "standup-recording.mp4",
+            contentType: "video/mp4",
+            bytes: 214_000_000,
+            pending: true,
+          },
+          {
+            id: "qa-deleted-pending",
+            filename: "deleted-recording.mov",
+            contentType: "video/quicktime",
+            bytes: 98_000_000,
+            pending: true,
+          },
         ],
         role: "user",
         text: "Review the dashboard plan before editing.",

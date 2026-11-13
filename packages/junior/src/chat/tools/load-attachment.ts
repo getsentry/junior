@@ -3,14 +3,12 @@ import * as z from "zod";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
 import {
-  AttachmentSourceUnavailableError,
-  type ReadAttachmentSource,
-} from "@/chat/attachments/source";
-import {
-  readLiveAttachment,
-  storeDeferredAttachment,
-  type AttachmentRecord,
-} from "@/chat/attachments/store";
+  ATTACHMENT_TOO_LARGE_MESSAGE,
+  AttachmentDownloadError,
+  ensureAttachmentStored,
+} from "@/chat/attachments/download";
+import type { ReadAttachmentSource } from "@/chat/attachments/source";
+import { readLiveAttachment } from "@/chat/attachments/store";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type {
   SandboxCommandInput,
@@ -108,49 +106,6 @@ async function writeParts(args: {
   return parts;
 }
 
-const TOO_LARGE_MESSAGE = `Attachment is larger than the ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB file limit.`;
-
-/**
- * Download a file that Junior recorded without its bytes into storage.
- *
- * The size check runs before the download. A file that the source deleted
- * becomes a tool error that the model can relay.
- */
-async function storeFromSource(args: {
-  attachment: AttachmentRecord;
-  db: JuniorSqlDatabase;
-  readAttachmentSource?: ReadAttachmentSource;
-  storage: AttachmentStorage;
-}): Promise<AttachmentRecord & { storageKey: string }> {
-  const { attachment } = args;
-  const { source } = attachment;
-  if (!source || !args.readAttachmentSource) {
-    throw new ToolInputError(
-      "Attachment has not been downloaded, and it cannot be downloaded from this conversation.",
-    );
-  }
-  try {
-    const file = await args.readAttachmentSource(source);
-    if (file.bytes > MAX_ATTACHMENT_BYTES) {
-      throw new ToolInputError(TOO_LARGE_MESSAGE);
-    }
-    return await storeDeferredAttachment({
-      attachment: { ...attachment, source },
-      db: args.db,
-      file,
-      storage: args.storage,
-    });
-  } catch (error) {
-    if (error instanceof AttachmentSourceUnavailableError) {
-      throw new ToolInputError(
-        `${attachment.filename} is no longer available: ${error.message}`,
-        { cause: error },
-      );
-    }
-    throw error;
-  }
-}
-
 /** Create a tool that restores one stored conversation attachment to the sandbox. */
 export function createLoadAttachmentTool(args: {
   conversationId: string;
@@ -184,17 +139,22 @@ export function createLoadAttachmentTool(args: {
         throw new ToolInputError("Attachment not found in this conversation.");
       }
       if (live.bytes > MAX_ATTACHMENT_BYTES) {
-        throw new ToolInputError(TOO_LARGE_MESSAGE);
+        throw new ToolInputError(ATTACHMENT_TOO_LARGE_MESSAGE);
       }
-      const attachment =
-        live.storageKey === null
-          ? await storeFromSource({
-              attachment: live,
-              db: args.db,
-              readAttachmentSource: args.readAttachmentSource,
-              storage: args.storage,
-            })
-          : { ...live, storageKey: live.storageKey };
+      let attachment;
+      try {
+        attachment = await ensureAttachmentStored({
+          attachment: live,
+          db: args.db,
+          readAttachmentSource: args.readAttachmentSource,
+          storage: args.storage,
+        });
+      } catch (error) {
+        if (error instanceof AttachmentDownloadError) {
+          throw new ToolInputError(error.message, { cause: error });
+        }
+        throw error;
+      }
       const body = await args.storage.get(attachment.storageKey);
       if (!body) {
         throw new ToolInputError("Stored attachment contents are unavailable.");

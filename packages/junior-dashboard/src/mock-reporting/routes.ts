@@ -72,6 +72,7 @@ import {
   conversationCatchUpSchema,
   DEFAULT_NOTIFICATION_SCHEDULE,
   type ConversationFeed,
+  messageAttachmentSchema,
   notificationScheduleSchema,
   notificationSettingsSchema,
   type NotificationSchedule,
@@ -685,6 +686,34 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(conversationAutoArchiveSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
+  // The mock pending recording prepares after a short wait; the other
+  // pending file was deleted in Slack.
+  app.post(
+    "/conversations/:conversationId/attachments/:attachmentId/download",
+    async (c) => {
+      const conversationId = c.req.param("conversationId");
+      const attachmentId = c.req.param("attachmentId");
+      if (!conversationId || !readMockConversationDetail(conversationId)) {
+        return errorResponse("Conversation not found.", 404);
+      }
+      if (attachmentId === "qa-recording-pending") {
+        await new Promise((resolve) => setTimeout(resolve, 1_500));
+        return jsonResponse(messageAttachmentSchema, {
+          id: attachmentId,
+          filename: "standup-recording.mp4",
+          contentType: "video/mp4",
+          bytes: mockDemoMp4.byteLength,
+        });
+      }
+      if (attachmentId === "qa-deleted-pending") {
+        return errorResponse(
+          "deleted-recording.mov is no longer available: The Slack file was deleted, or Junior can no longer access it.",
+          409,
+        );
+      }
+      return errorResponse("Attachment not found.", 404);
+    },
+  );
   // Fixed bodies so dashboard mock can exercise image, video, file, and text
   // preview attachment cards.
   app.get("/conversations/:conversationId/attachments/:attachmentId", (c) => {
@@ -706,11 +735,16 @@ export function createMockReportingApi(): Hono<{
         },
       });
     }
-    if (attachmentId === "qa-demo-mp4") {
+    if (
+      attachmentId === "qa-demo-mp4" ||
+      attachmentId === "qa-recording-pending"
+    ) {
+      const filename =
+        attachmentId === "qa-demo-mp4" ? "demo.mp4" : "standup-recording.mp4";
       return new Response(mockDemoMp4, {
         headers: {
           "cache-control": "private, no-store",
-          "content-disposition": 'inline; filename="demo.mp4"',
+          "content-disposition": `inline; filename="${filename}"`,
           "content-type": "video/mp4",
           "content-length": String(mockDemoMp4.byteLength),
         },
