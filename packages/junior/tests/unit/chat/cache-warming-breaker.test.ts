@@ -47,6 +47,9 @@ describe("cache warming breaker", () => {
     expect(await breakerOpen(state, modelId)).toBe(true);
     // A provider that stays broken must miss again to reopen the breaker.
     expect(await state.getList(OUTCOMES_KEY)).toEqual([]);
+    // A warmup that started before the breaker opened does not count.
+    await warm(0);
+    expect(await state.getList(OUTCOMES_KEY)).toEqual([]);
 
     vi.advanceTimersByTime(31 * MINUTE);
     expect(await breakerOpen(state, modelId)).toBe(false);

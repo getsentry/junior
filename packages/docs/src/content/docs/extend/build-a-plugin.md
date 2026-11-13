@@ -392,8 +392,10 @@ onto the agent runtime's separate result channels.
 
 `approvalMode` sets whether Guardian reviews a call before the tool runs:
 
-- `auto` is the default. Junior sets it when you omit the field. Guardian
-  reviews each call of a plugin tool in this mode.
+- `auto` is the default. Junior sets it when you omit the field. A tool with
+  `readOnlyHint: true` and no `destructiveHint: true` runs without review.
+  Guardian reviews each call of every other tool in this mode. Set
+  `readOnlyHint: true` only when the tool never writes.
 - `review` makes Guardian review each call.
 - `approve` skips review. The tool runs without a Guardian decision, also in a
   child agent.
@@ -482,7 +484,8 @@ the dispatch Conversation. When you omit it, Junior generates one from
 A link type turns a URL in a reply into an object card in the dashboard. It
 works like an Android `<intent-filter>`. You declare static filters, and
 Junior matches each URL against them without your code. Then Junior calls
-`resolve` of the most specific match.
+`canView` of the most specific match, and calls its `resolve` only when
+`canView` returns true.
 
 ```ts title="index.ts"
 defineJuniorPlugin({
@@ -491,8 +494,11 @@ defineJuniorPlugin({
     {
       objectType: "task",
       filters: [{ host: "tracker.example.com", pathPattern: "/issues/*" }],
+      async canView(ctx, url) {
+        return await viewerCanOpenIssue(ctx.viewer, url);
+      },
       async resolve(ctx, url) {
-        const issue = await readIssueAsViewer(ctx.viewer, url);
+        const issue = await readIssue(ctx, url);
         if (!issue) return undefined;
         return {
           kind: "object",
@@ -518,14 +524,19 @@ defineJuniorPlugin({
   startup. An `https` URL that no link type claims gets a `web_page` card from core,
   from its oEmbed provider or its Open Graph tags. Your filter always wins
   over it.
-- **Resolver.** Return `undefined` when `ctx.viewer` cannot read the
-  object. Do not show that it exists. `ctx.egress` calls your provider as a
-  system Actor. It gets only credentials that your plugin owns, never the
-  viewer's, so check the viewer's access before you return a card.
+- **Access.** `canView` is required. Return true only when `ctx.viewer` can
+  open the object, and false when you cannot tell. For a public object,
+  return true. `ctx.egress` calls your provider as a system Actor. It gets
+  only credentials that your plugin owns, never the viewer's, so `canView`
+  must check the viewer, not only that the call works.
   `ctx.viewerEgress` uses only the viewer's own stored OAuth token for your
   provider. It never asks the viewer to connect. A viewer without a token
-  gets HTTP 401. Use it to ask the provider whether the viewer can read the
-  object. Junior caches the card for one minute for each viewer and URL,
+  gets HTTP 401. Use it in `canView` to ask the provider whether the viewer
+  can open the object. Junior calls `canView` before each card read and
+  again on each Attach.
+- **Resolver.** Return the card, or `undefined` for a missing object. To
+  share one provider read with `canView`, read through `ctx.cache` with a
+  short TTL. Junior caches the card for one minute for each viewer and URL,
   and does not save it on a Conversation.
 - **People.** For a profile link of a provider account, return
   `await ctx.findPerson({ provider, handle })` when it finds a card. That is
@@ -534,8 +545,8 @@ defineJuniorPlugin({
   its label, icon, and tones in `@sentry/junior-plugin-api`. To add an object
   type, add it to `objectTypeSchema`, its facts to `object-facts.ts`, and an
   icon to `scripts/generate-object-icons.mjs`.
-- **Test.** Test the resolver for a viewer that can read the object, and for
-  a viewer that cannot.
+- **Test.** Test `canView` and the resolver for a viewer that can read the
+  object, and for a viewer that cannot.
 
 ## Validate
 

@@ -2,8 +2,9 @@
  * Generic Postgres test harness surface.
  *
  * This package owns database lifecycle, reset, and transaction isolation.
- * Product schema, migrations, and Drizzle adapters belong in package-local
- * fixtures.
+ * A package with plain SQL files in `migrations/` uses the `global-setup`,
+ * `setup`, and `fixture` entries instead. Product schema stays in the
+ * package.
  */
 export {
   assertLocalPostgresUrl,

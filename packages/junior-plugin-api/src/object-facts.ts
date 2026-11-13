@@ -37,8 +37,9 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     additions: count.optional(),
     deletions: count.optional(),
     /**
-     * Public images from the description that the dashboard can show. The
-     * 4 KiB facts limit sets how many fit.
+     * Images from the description. The dashboard loads them through the
+     * Junior image route, and the plugin's `images` source checks each
+     * viewer. The 4 KiB facts limit sets how many fit.
      */
     previewImageUrls: z
       .array(z.url({ protocol: /^https?$/ }).max(512))

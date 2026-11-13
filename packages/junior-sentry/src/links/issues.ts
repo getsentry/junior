@@ -150,8 +150,7 @@ function sentryIssueCard(
 
 /**
  * Return whether the viewer's own Sentry account can open the issue. A
- * viewer who has not connected Sentry gets 401. This stays apart from the
- * card read, so it can move to the link type's access check.
+ * viewer who has not connected Sentry gets 401.
  */
 async function viewerCanSeeIssue(
   ctx: ObjectLinkContext,
@@ -192,6 +191,15 @@ async function readIssue(
   return parsed.success ? parsed.data : null;
 }
 
+async function canViewSentryIssueLink(
+  ctx: ObjectLinkContext,
+  url: URL,
+): Promise<boolean> {
+  const link = parseSentryIssueLink(url);
+  const origin = link && (await sentryRegionOrigin(ctx, link.org));
+  return origin ? viewerCanSeeIssue(ctx, origin, link) : false;
+}
+
 async function resolveSentryIssueLink(
   ctx: ObjectLinkContext,
   url: URL,
@@ -199,9 +207,7 @@ async function resolveSentryIssueLink(
   const link = parseSentryIssueLink(url);
   if (!link) return undefined;
   const origin = await sentryRegionOrigin(ctx, link.org);
-  if (!origin || !(await viewerCanSeeIssue(ctx, origin, link))) {
-    return undefined;
-  }
+  if (!origin) return undefined;
   const issue = await ctx.cache.getOrLoad(
     `issue:${link.org}/${link.issueId.toUpperCase()}`,
     async () => ({
@@ -214,6 +220,7 @@ async function resolveSentryIssueLink(
 
 /** Sentry issue links, on sentry.io and on customer domains. */
 export const sentryIssueLinks: PluginObjectLinkDefinition = {
+  canView: canViewSentryIssueLink,
   filters: SENTRY_ISSUE_LINK_FILTERS,
   objectType: "task",
   resolve: resolveSentryIssueLink,

@@ -303,6 +303,10 @@ export type {
   NotificationSettings,
 } from "./schema/notification";
 export {
+  cacheWarmingBreakerListSchema,
+  closeCacheWarmingBreakerResponseSchema,
+} from "./schema/cache-warming";
+export {
   disconnectServiceAccountResponseSchema,
   serviceAccountListSchema,
   serviceAccountParamsSchema,

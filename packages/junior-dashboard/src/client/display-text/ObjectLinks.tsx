@@ -10,6 +10,10 @@ import { OutboundLink } from "../components/OutboundLink";
 import { linkStatusLabel } from "../conversations/ConversationLinkedWork";
 import { ObjectCard } from "../conversations/ObjectCard";
 import {
+  ObjectPreviewImagesContext,
+  objectPreviewImagesFromAnnotations,
+} from "../conversations/objectPreviewImages";
+import {
   knownObjectsFromAnnotations,
   objectUrlKey,
   textHasStandaloneUrl,
@@ -51,9 +55,15 @@ export function KnownObjectsProvider(props: {
       objects: knownObjectsFromAnnotations(props.annotations),
     };
   }, [props.annotations]);
+  const images = useMemo(
+    () => objectPreviewImagesFromAnnotations(props.annotations),
+    [props.annotations],
+  );
   return (
     <KnownObjectsContext.Provider value={value}>
-      {props.children}
+      <ObjectPreviewImagesContext.Provider value={images}>
+        {props.children}
+      </ObjectPreviewImagesContext.Provider>
     </KnownObjectsContext.Provider>
   );
 }
