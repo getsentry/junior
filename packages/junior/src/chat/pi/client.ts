@@ -551,6 +551,18 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
             : undefined),
+        }).catch((error: unknown) => {
+          // An unparseable object still reports why output stopped, such as
+          // `length` when the output budget ran out.
+          if (NoObjectGeneratedError.isInstance(error)) {
+            setSpanAttributes({
+              ...(error.finishReason
+                ? { "gen_ai.response.finish_reasons": [error.finishReason] }
+                : undefined),
+              ...extractGenAiUsageAttributes(error.usage),
+            });
+          }
+          throw error;
         });
         setSpanAttributes({
           "gen_ai.response.finish_reasons": [result.finishReason],

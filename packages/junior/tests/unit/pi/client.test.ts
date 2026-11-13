@@ -395,10 +395,15 @@ describe("completeText", () => {
       new Error("No object generated: could not parse the response.", {
         cause: new Error("JSON parsing failed: Text: model output"),
       }),
-      { name: "AI_NoObjectGeneratedError", text: "model output" },
+      {
+        name: "AI_NoObjectGeneratedError",
+        text: "model output",
+        finishReason: "length",
+        usage: { inputTokens: 16_000, outputTokens: 2_500 },
+      },
     );
     mocks.generateObject.mockRejectedValue(sdkError);
-    mocks.noObjectGeneratedErrorIsInstance.mockReturnValueOnce(true);
+    mocks.noObjectGeneratedErrorIsInstance.mockReturnValue(true);
 
     const { completeObject } = await import("@/chat/pi/client");
 
@@ -423,6 +428,12 @@ describe("completeText", () => {
       ).not.toContain("model output");
       return true;
     });
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "gen_ai.response.finish_reasons": ["length"],
+        "gen_ai.usage.output_tokens": 2_500,
+      }),
+    );
     expect(mocks.logWarn).not.toHaveBeenCalled();
     expect(mocks.logException).not.toHaveBeenCalled();
   });
