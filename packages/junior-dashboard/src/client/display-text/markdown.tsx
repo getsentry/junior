@@ -20,7 +20,7 @@ import { cn } from "../styles";
 import { ANCHOR_CLASS, safeHref, slackLinksToMarkdown } from "./links";
 import { renderTextTokens } from "./mentions";
 import { OutboundLink } from "../components/OutboundLink";
-import { ObjectCard } from "../conversations/ObjectCard";
+import { ObjectRow } from "../conversations/ObjectRow";
 import {
   ObjectLinkChip,
   ObjectLinkPreview,
@@ -401,7 +401,7 @@ function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
   const objectUrl =
     typeof props.objectUrl === "string" ? props.objectUrl : undefined;
   const known = useKnownObject(objectUrl);
-  if (known.card && !known.linkOnly) return <ObjectCard card={known.card} />;
+  if (known.card && !known.linkOnly) return <ObjectRow card={known.card} />;
   if (objectUrl && resolvableUrl(objectUrl)) {
     return (
       <ResolvedParagraph objectUrl={objectUrl} saved={known.card}>
@@ -421,8 +421,8 @@ function ResolvedParagraph(props: {
 }) {
   const { card, request } = useResolvedObject(props.objectUrl);
   useRequestWhenSaved(props.saved, request);
-  if (card) return <ObjectCard card={card} live />;
-  if (props.saved) return <ObjectCard card={props.saved} />;
+  if (card) return <ObjectRow card={card} live />;
+  if (props.saved) return <ObjectRow card={props.saved} />;
   return <PlainParagraph>{props.children}</PlainParagraph>;
 }
 

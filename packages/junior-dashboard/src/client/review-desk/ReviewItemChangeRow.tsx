@@ -1,12 +1,21 @@
-import { Inbox } from "lucide-react";
+import {
+  ArrowDown,
+  CircleCheck,
+  CircleSlash,
+  Clock3,
+  Inbox,
+  Info,
+  type LucideIcon,
+} from "lucide-react";
 import { use, type ReactNode } from "react";
-import { Link } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import type {
   ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
-import { MessageCard, MessageCardHeader } from "../components/MessageCard";
+import { FOCUS_REPLY_STATE } from "../conversations/conversationRoutes";
+import { cn } from "../styles";
 import {
   TranscriptShowQuestion,
   useAnswerInView,
@@ -111,17 +120,6 @@ function ChangeRow(props: {
   );
 }
 
-function ReviewItemTitle(props: { item: ReviewItemPayload }) {
-  return (
-    <Link
-      className="break-words text-base font-semibold text-dashboard-text no-underline hover:underline focus-visible:outline-dashboard-focus"
-      to={reviewItemPath(props.item.id)}
-    >
-      {props.item.title}
-    </Link>
-  );
-}
-
 /**
  * Show the Review item change that a message records as one row: what the
  * message did and the item it did it to. The row shows the change from the
@@ -171,40 +169,86 @@ export function ReviewItemChangeLabel(props: {
   );
 }
 
-/** Name what Junior did with an item, and how the item closed. */
-function askMeta(item: ReviewItemPayload): string {
-  const verb = item.kind === "action" ? "Asked" : "Added";
-  if (item.status === "open") return verb;
+type AskStatus = {
+  icon: LucideIcon;
+  iconClassName: string;
+  label: string;
+  /** The answer, while the reader cannot see its answer row. */
+  answer?: string;
+  waitingOnYou?: boolean;
+};
+
+/** Say where an item stands: who it waits on, or how it closed and by whom. */
+function askStatus(item: ReviewItemPayload, answerShown: boolean): AskStatus {
+  if (item.status === "open") {
+    if (item.kind === "notice") {
+      return {
+        icon: Info,
+        iconClassName: "text-dashboard-text-muted",
+        label: `Added for ${assigneeLabel(item)}`,
+      };
+    }
+    return item.canAct
+      ? {
+          icon: Inbox,
+          iconClassName: "text-dashboard-accent-text",
+          label: "Waiting on you",
+          waitingOnYou: true,
+        }
+      : {
+          icon: Clock3,
+          iconClassName: "text-amber-400",
+          label: `Waiting on ${assigneeLabel(item)}`,
+        };
+  }
   const by = item.closedBy
     ? ` by ${item.closedBy.displayName ?? item.closedBy.email}`
     : "";
-  if (item.status === "dismissed") return `${verb} · Dismissed${by}`;
-  return `${verb} · ${item.answer ? "Answered" : "Done"}${by}`;
-}
-
-/**
- * Say what an open item waits for, or give the answer. A linked answer row
- * in view already shows the answer.
- */
-function askOutcome(
-  item: ReviewItemPayload,
-  answerShown: boolean,
-): string | undefined {
-  if (item.status === "open") {
-    if (item.kind === "notice") return undefined;
-    return item.canAct ? "Waiting on you" : `Waiting on ${assigneeLabel(item)}`;
+  if (item.status === "dismissed") {
+    return {
+      icon: CircleSlash,
+      iconClassName: "text-dashboard-text-faint",
+      label: `Dismissed${by}`,
+    };
   }
-  if (item.status === "dismissed" || answerShown) return undefined;
-  return item.request && item.answer
-    ? answerLine(item.request, item.answer)
-    : undefined;
+  return {
+    answer:
+      !answerShown && item.request && item.answer
+        ? answerLine(item.request, item.answer)
+        : undefined,
+    icon: CircleCheck,
+    iconClassName: "text-emerald-500",
+    label: `${item.answer ? "Answered" : "Done"}${by}`,
+  };
+}
+
+// The question docks above the message box, so the reader answers there. A
+// reply focus request moves focus to it, as it does when the page opens.
+function AnswerButton() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <button
+      className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md bg-violet-500/15 px-2.5 py-1 text-xs font-medium text-dashboard-accent-text transition-colors hover:bg-violet-500/25 focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+      onClick={() =>
+        navigate(
+          { pathname: location.pathname, search: location.search },
+          { replace: true, state: FOCUS_REPLY_STATE },
+        )
+      }
+      type="button"
+    >
+      Answer
+      <ArrowDown aria-hidden="true" className="size-3.5" />
+    </button>
+  );
 }
 
 /**
- * Show the Review item that a tool call added as one line in the transcript:
- * what Junior asked, how it closed, and the answer or what it waits for. A
- * question docks above the message box, so this row is only the record.
- * Shows `fallback` when the viewer cannot read the item.
+ * Show the Review item that a tool call added as a compact card in the
+ * transcript: the title, where it stands, and the answer. An item that waits
+ * on the reader stands out and offers to answer its docked question. Shows
+ * `fallback` when the viewer cannot read the item.
  */
 export function ReviewItemAskRow(props: {
   conversationId: string;
@@ -220,31 +264,73 @@ export function ReviewItemAskRow(props: {
   if (isError) return props.fallback;
   if (!item) return null;
   const verb = item.kind === "action" ? "Asked" : "Added";
-  const outcome = askOutcome(item, answerShown);
+  const status = askStatus(item, answerShown);
+  const Icon = status.icon;
+  // Only a question from this Conversation docks above its message box.
+  const docked =
+    status.waitingOnYou && item.addedByConversationId === props.conversationId;
   return (
     // The transcript marks the row for a moment when its question docks.
-    <MessageCard
+    <section
       aria-label={`${verb} ${item.title}`}
-      className="transition-shadow duration-300 motion-reduce:transition-none data-highlighted:ring-2 data-highlighted:ring-violet-300/50"
+      className={cn(
+        "flex w-full min-w-0 max-w-[37.5rem] items-center gap-3 rounded-lg border px-3 py-2.5 font-sans text-sm transition-shadow duration-300 motion-reduce:transition-none data-highlighted:ring-2 data-highlighted:ring-violet-300/50",
+        status.waitingOnYou
+          ? "border-violet-400/40 bg-violet-500/[0.07]"
+          : "border-dashboard-border-subtle bg-dashboard-surface-panel",
+      )}
       data-review-item-ask={item.id}
     >
-      <MessageCardHeader
-        className={outcome ? undefined : "pb-4"}
-        icon={<Inbox aria-hidden="true" size={18} />}
-        meta={askMeta(item)}
-        title={<ReviewItemTitle item={item} />}
-      />
-      {outcome ? (
-        <p
-          className={
-            item.status === "open"
-              ? "m-0 break-words px-4 pb-4 text-dashboard-accent-text md:px-5"
-              : "m-0 break-words px-4 pb-4 text-dashboard-text-muted md:px-5"
-          }
+      <span
+        className={cn(
+          "flex size-7 shrink-0 items-center justify-center rounded-md",
+          status.waitingOnYou ? "bg-violet-500/15" : "bg-dashboard-fill-faint",
+        )}
+      >
+        <Icon
+          aria-hidden="true"
+          className={cn("size-4", status.iconClassName)}
+        />
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <Link
+          className={cn(
+            "min-w-0 truncate font-medium no-underline hover:underline focus-visible:outline-dashboard-focus",
+            item.status === "dismissed"
+              ? "text-dashboard-text-muted"
+              : "text-dashboard-text",
+          )}
+          title={item.title}
+          to={reviewItemPath(item.id)}
         >
-          {outcome}
+          {item.title}
+        </Link>
+        <p className="m-0 flex min-w-0 gap-1 text-xs">
+          <span
+            className={
+              status.waitingOnYou
+                ? "shrink-0 font-medium text-dashboard-accent-text"
+                : "shrink-0 text-dashboard-text-muted"
+            }
+          >
+            {status.label}
+          </span>
+          {status.answer ? (
+            <>
+              <span aria-hidden="true" className="text-dashboard-text-faint">
+                ·
+              </span>
+              <span
+                className="min-w-0 truncate text-dashboard-text-subtle"
+                title={status.answer}
+              >
+                {status.answer}
+              </span>
+            </>
+          ) : null}
         </p>
-      ) : null}
-    </MessageCard>
+      </div>
+      {docked ? <AnswerButton /> : null}
+    </section>
   );
 }

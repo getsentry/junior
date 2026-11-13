@@ -48,7 +48,7 @@ async function waitForResolvedLinks(page: Page): Promise<void> {
   }
 }
 
-test("links to saved objects show as a chip, a hover card, and a card", async ({
+test("links to saved objects show as a chip, a hover card, and a row", async ({
   page,
   dashboard,
 }) => {
@@ -70,7 +70,7 @@ test("links to saved objects show as a chip, a hover card, and a card", async ({
     page.getByText("https://github.com/getsentry/junior/pull/2201"),
   ).toHaveCount(0);
 
-  // A bare URL on its own line is the full card. Its description images
+  // A bare URL on its own line is an object row. Its description images
   // load through the Junior image route, never from their own host.
   const card = page.getByRole("region", {
     name: "Pull request: Pin the release train to payments 4.2",
@@ -390,7 +390,7 @@ test("a Slack message link resolves to a chip and a hover card", async ({
   });
 });
 
-test("a public web page link resolves to a chip, a card, and a hover card", async ({
+test("a public web page link resolves to a chip, a row, and a hover card", async ({
   page,
   dashboard,
 }) => {
@@ -398,7 +398,8 @@ test("a public web page link resolves to a chip, a card, and a hover card", asyn
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
   );
-  // A bare URL on its own line is the full card, with its thumbnail.
+  // A bare URL on its own line is an object row, with its site and
+  // thumbnail.
   const post = page.getByRole("region", {
     name: "Web page: What's new in Release 4.2",
   });

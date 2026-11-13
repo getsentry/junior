@@ -4,7 +4,6 @@ import {
   objectPresentation,
 } from "@sentry/junior-plugin-api";
 import { ChevronRight } from "lucide-react";
-import { useState } from "react";
 import { ActorAvatar } from "../components/ActorAvatar";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { AutomationCard } from "../components/AutomationCard";
@@ -19,51 +18,14 @@ import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
 import { displayPlainText } from "../display-text/plainText";
 import { ObjectAttachAction } from "./ObjectAttach";
+import { ObjectImage } from "./ObjectImage";
 import { useObjectPreviewImages } from "./objectPreviewImages";
 
-// A thumbnail that fails to load does not render.
-function Thumbnail({ src }: { src: string }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) return null;
-  return (
-    <img
-      alt=""
-      className="aspect-video max-h-44 w-full rounded-md border border-dashboard-border object-cover"
-      loading="lazy"
-      onError={() => setFailed(true)}
-      src={src}
-    />
-  );
-}
-
-// The image route answers 404 to a viewer who cannot see the source, so a
-// preview image that fails to load does not render.
-function PreviewImage({
-  alt,
-  image,
-}: {
-  alt: string;
-  image: { src: string; srcSet: string };
-}) {
-  const [failed, setFailed] = useState(false);
-  if (failed) return null;
-  return (
-    <img
-      alt={alt}
-      className="aspect-video w-full rounded-md border border-dashboard-border bg-dashboard-fill-faint object-cover object-top"
-      decoding="async"
-      loading="lazy"
-      onError={() => setFailed(true)}
-      src={image.src}
-      srcSet={image.srcSet}
-    />
-  );
-}
-
 /**
- * Show the latest saved annotation, or a `live` card that the API resolved
- * for a link. Opening a source is always explicit. A live card can attach
- * its object to the Conversation.
+ * Show the full card of the latest saved annotation, or a `live` card that
+ * the API resolved for a link: images, facts, and details. A link preview
+ * shows it; a reply shows `ObjectRow`. A live card can attach its object to
+ * the Conversation.
  */
 export function ObjectCard({
   card,
@@ -124,16 +86,21 @@ export function ObjectCard({
       />
       <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
         {card.facts?.type === "web_page" && card.facts.thumbnailUrl && (
-          <Thumbnail src={card.facts.thumbnailUrl} />
+          <ObjectImage
+            className="aspect-video max-h-44 w-full"
+            src={card.facts.thumbnailUrl}
+          />
         )}
         {images.length > 0 && (
           // Screenshots often come as a before and after pair, side by side.
           <div className="grid grid-cols-2 gap-2">
             {images.map((image, index) => (
-              <PreviewImage
+              <ObjectImage
                 key={image.src}
                 alt={`Description image ${index + 1}`}
-                image={image}
+                className="aspect-video w-full"
+                src={image.src}
+                srcSet={image.srcSet}
               />
             ))}
           </div>

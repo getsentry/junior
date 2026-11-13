@@ -197,13 +197,13 @@ describe("display text object links", () => {
     }
   });
 
-  it("shows a bare URL alone in a paragraph as the full card", () => {
+  it("shows a bare URL alone in a paragraph as the object row", () => {
     for (const text of [`Done.\n\n${PR}/\n\nThanks.`, `<${PR}>`]) {
       const html = render(text);
       expect(html).toContain(
         'aria-label="Pull request: Retry checkout writes"',
       );
-      expect(html).toContain("Latest saved state");
+      expect(html).toContain("acme/app#7");
     }
   });
 
@@ -213,7 +213,7 @@ describe("display text object links", () => {
       /<a [^>]*href="https:\/\/github.com\/acme\/app\/pull\/7"[^>]*>the fix/,
     );
     expect(html).not.toContain("acme/app#7");
-    expect(html).not.toContain("Latest saved state");
+    expect(html).not.toContain('aria-label="Pull request: ');
   });
 
   it("leaves links to unknown objects and other pages plain", () => {

@@ -86,6 +86,10 @@ for (const view of [desktop, mobile]) {
       name: "Asked Approve the payments-v42 rollout",
     });
     await expect(record).toContainText("Waiting on you");
+    // The record's Answer moves focus to the docked question.
+    await composer.focus();
+    await record.getByRole("button", { name: "Answer" }).click();
+    await expect(question).toBeFocused();
     // An earlier answer shows on its record.
     await expect(
       page.getByRole("region", { name: "Asked Pick the canary region" }),
@@ -432,11 +436,13 @@ for (const failingPage of ["first", "second"] as const) {
     await page.getByRole("button", { name: "Try again" }).click();
     await expect(question).toBeFocused();
     await expect(loadError).toHaveCount(0);
+    // A question that docks after the transcript loads does not scroll it,
+    // so the record can sit under the dock. It only must not be marked.
     await expect(
       page.getByRole("region", {
         name: "Asked Approve the payments-v42 rollout",
       }),
-    ).toBeInViewport();
+    ).toBeVisible();
     const marks = await page.evaluate(
       () =>
         (window as unknown as { askMarks: { count: number } }).askMarks.count,

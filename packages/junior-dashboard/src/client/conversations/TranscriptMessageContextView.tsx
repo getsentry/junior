@@ -78,7 +78,7 @@ export function TranscriptMessageContextView(props: {
         </CollapsibleContent>
       </Collapsible>
       <article
-        className="hidden min-w-0 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 md:block"
+        className="hidden min-w-0 border-l-2 border-dashboard-border-emphasis py-0.5 pl-3 md:block"
         data-transcript-message-context
       >
         <TranscriptHeadingRow

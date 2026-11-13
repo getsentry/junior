@@ -1,7 +1,6 @@
 import { ChevronRight } from "lucide-react";
 
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
-import { Badge } from "../components/ui/badge";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { DisplayText } from "../display-text/DisplayText";
 import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
@@ -13,17 +12,6 @@ import { useTranscriptRowOpen } from "./TranscriptRows";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
 import { SourceMark } from "./SourceMark";
 import { eventMessageSource } from "./transcriptSource";
-
-function EventTypeChip(props: { eventType: string }) {
-  return (
-    <Badge
-      className="break-all py-0.5 font-mono leading-none"
-      variant="outline"
-    >
-      <HighlightText text={props.eventType} />
-    </Badge>
-  );
-}
 
 /** Heading for several Events that arrived in one message. */
 function batchSummary(events: readonly { label?: string }[]): string {
@@ -59,7 +47,12 @@ export function TranscriptEventView(props: {
   const heading = (
     <span className="flex min-w-0 flex-col gap-1">
       <span className="flex min-h-6 min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="min-w-0 break-words font-display text-sm font-semibold leading-6 text-dashboard-text">
+        {/* The summary names the Event. Its raw type stays on hover for
+            whoever needs to match it to a webhook. */}
+        <span
+          className="min-w-0 break-words font-display text-sm font-semibold leading-6 text-dashboard-text"
+          title={isBatch ? undefined : props.message.eventType}
+        >
           <DisplayText
             inline
             links={links}
@@ -68,9 +61,6 @@ export function TranscriptEventView(props: {
           />
         </span>
         {source ? <SourceMark provider={source} /> : null}
-        {!isBatch && props.message.eventType ? (
-          <EventTypeChip eventType={props.message.eventType} />
-        ) : null}
       </span>
       {isBatch ? (
         <span className="flex min-w-0 flex-col gap-1" role="list">
@@ -80,7 +70,7 @@ export function TranscriptEventView(props: {
               role="listitem"
               className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-dashboard-text-muted"
             >
-              <span className="min-w-0 break-words">
+              <span className="min-w-0 break-words" title={event.eventType}>
                 <DisplayText
                   inline
                   links={links}
@@ -88,7 +78,6 @@ export function TranscriptEventView(props: {
                   text={event.trustedSummary ?? event.eventType}
                 />
               </span>
-              <EventTypeChip eventType={event.eventType} />
             </span>
           ))}
         </span>

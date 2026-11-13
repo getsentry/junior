@@ -1,3 +1,4 @@
+import { formatDuration } from "../components/Duration";
 import { useEffect, useState } from "react";
 import { Bot, Globe, Sparkles, SquareTerminal, Wrench } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -87,11 +88,13 @@ export function LiveActivityStep(props: {
   );
 }
 
-/** Format whole seconds, so a ticking time does not jump in width. */
+// Whole seconds, so a ticking time does not jump in width. Past an hour the
+// two largest units read better than a minute count.
 function formatWorkingTime(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
   if (seconds < 60) return `${seconds}s`;
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  return formatDuration(seconds * 1000);
 }
 
 /** Tick the time a running Turn has worked since `startMs`, every second. */

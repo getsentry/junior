@@ -3,7 +3,7 @@ import {
   TranscriptAttachments,
   TranscriptLocalFiles,
 } from "./TranscriptAttachment";
-import { ObjectCard } from "./ObjectCard";
+import { ObjectRow } from "./ObjectRow";
 import { AutomationCard } from "../components/AutomationCard";
 import { CopyButton } from "../components/CopyButton";
 import { MessageActions } from "../components/ui/message";
@@ -111,7 +111,7 @@ export const TranscriptMessageView = memo(
           switch (card.kind) {
             case "object":
               return (
-                <ObjectCard key={`${card.plugin}:${card.key}`} card={card} />
+                <ObjectRow key={`${card.plugin}:${card.key}`} card={card} />
               );
             case "automation":
               return (
