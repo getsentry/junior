@@ -190,6 +190,7 @@ export function pluginRuntimeRegistrationsFromPluginSet(
     pluginSet?.registrations.filter(
       (plugin) =>
         plugin.hooks ||
+        plugin.images ||
         plugin.tasks ||
         plugin.userPages?.length ||
         plugin.objectLinks?.length,
