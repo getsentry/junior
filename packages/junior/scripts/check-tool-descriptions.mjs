@@ -28,6 +28,22 @@ const GUIDANCE = {
   "tool-description-names-param": `Move what the tool description says about this field into describe() on the param, and remove the field name from the tool description. Put a rule that ties two fields together on the field that depends on the other.`,
 };
 
+// Strip parentheses and type-only wrappers such as `as const` and `satisfies`.
+function unwrap(node) {
+  let current = node;
+  while (
+    current &&
+    (ts.isParenthesizedExpression(current) ||
+      ts.isAsExpression(current) ||
+      ts.isSatisfiesExpression(current) ||
+      ts.isTypeAssertionExpression(current) ||
+      ts.isNonNullExpression(current))
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
@@ -58,14 +74,12 @@ export function collectToolDescriptionIssues(files, packageSrcRoots = {}) {
 
   // Fold a string expression to its static text. `complete` is false when a
   // part could not be resolved, so the text is a lower bound.
-  function staticText(filePath, node, depth = 0) {
+  function staticText(filePath, input, depth = 0) {
     const unknown = { text: "", complete: false };
+    const node = unwrap(input);
     if (!node || depth > 8) return unknown;
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
       return { text: node.text, complete: true };
-    }
-    if (ts.isParenthesizedExpression(node)) {
-      return staticText(filePath, node.expression, depth);
     }
     if (ts.isTemplateExpression(node)) {
       let text = node.head.text;
@@ -94,10 +108,10 @@ export function collectToolDescriptionIssues(files, packageSrcRoots = {}) {
       node.expression.name.text === "join"
     ) {
       let arrayFile = filePath;
-      let array = node.expression.expression;
+      let array = unwrap(node.expression.expression);
       if (ts.isIdentifier(array)) {
         const found = index.lookup(filePath, array.text)?.[0];
-        if (found) [arrayFile, array] = [found.filePath, found.node];
+        if (found) [arrayFile, array] = [found.filePath, unwrap(found.node)];
       }
       if (!ts.isArrayLiteralExpression(array)) return unknown;
       const separator = node.arguments[0]

@@ -79,6 +79,27 @@ describe("check-tool-descriptions", () => {
     );
   });
 
+  it("sees through type assertions on descriptions and joined arrays", () => {
+    const issues = collectToolDescriptionIssues({
+      "src/tool.ts": `
+        const PARTS = ["Read a file.", "Pass \`path\`."] as const;
+        zodTool({
+          description: ("Write a file. Pass \`path\`." as const),
+          inputSchema: z.object({ path: z.string() }),
+        });
+        zodTool({
+          description: PARTS.join(" ") satisfies string,
+          inputSchema: z.object({ path: z.string() }),
+        });
+      `,
+    });
+
+    assert.deepEqual(issues, [
+      "src/tool.ts\ttool-description-names-param\tpath: Read a file. Pass `path`.",
+      "src/tool.ts\ttool-description-names-param\tpath: Write a file. Pass `path`.",
+    ]);
+  });
+
   it("treats only code spans and snake_case words as field names", () => {
     assert.equal(namesParam("Search by query.", "query"), false);
     assert.equal(namesParam("Pass `query` to search.", "query"), true);
