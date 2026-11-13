@@ -23,6 +23,12 @@ pnpm dev
 - Root `pnpm dev` calls `/api/internal/heartbeat` every minute, as the
   production cron does.
 
+## Live Slack QA
+
+See [Live Slack QA](./SLACK-QA.md) for isolated preview setup and the manual
+`Slack QA alias` workflow. It selects or checks a preview without a lock. It
+does not provision infrastructure or run Slack tests.
+
 ## Wiring
 
 - `plugins.ts` is the one list of plugin registrations.
