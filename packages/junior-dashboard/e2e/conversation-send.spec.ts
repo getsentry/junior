@@ -848,12 +848,12 @@ test("keeps details closed on a home send after the reader closed them", async (
     .click();
   await expect(details).toBeHidden();
 
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations/new`);
   await page.getByLabel("Start a conversation").fill("Check the deploy");
   await page.getByRole("button", { name: "Send" }).click();
   const transcript = page.getByLabel("Conversation transcript");
   await expect(transcript.getByText("Check the deploy")).toBeVisible();
-  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
   // The pending view follows the saved choice, as the page does.
   await expect(details).toBeHidden();
   releaseCreate?.();
