@@ -22,7 +22,7 @@ export const automationInstructionToolSchema =
 
 /** Context input for agent tools. It follows the same rules as an instruction. */
 export const automationContextToolSchema = automationTaskTextSchema.describe(
-  'What a skill run needs beyond the skill, such as a repo, a threshold, or who to tag. Leave out what the skill already says. Follow the same rules as an instruction: do not say where to post, write exact targets, call the creator "the Automation creator", and name other people with their Slack mention.',
+  'What a skill run needs beyond the skill, such as a repo, a threshold, or who to tag. Leave out what the skill says. Follow the instruction rules: do not say where to post, write exact targets, call the creator "the Automation creator", and mention others.',
 );
 
 export const automationEditFieldsSchema = z.object({
