@@ -7,9 +7,13 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { MessageCard, MessageCardHeader } from "../components/MessageCard";
-import { AnswerSummary } from "./ReviewItemActions";
 import { useConversationReviewItemData } from "./queries";
-import { answerLine, assigneeLabel, reviewItemPath } from "./reviewItemFormat";
+import {
+  answerLine,
+  answerRows,
+  assigneeLabel,
+  reviewItemPath,
+} from "./reviewItemFormat";
 
 const CHANGE_VERBS = {
   dismissed: "Dismissed",
@@ -17,6 +21,9 @@ const CHANGE_VERBS = {
   taken: "Took",
 } as const satisfies Record<ReviewItemChangeRecord["kind"], string>;
 
+// The change reads as the person's reply to a question: a quote line names
+// the item, and an answer is the message text. Only the "Asked" record is a
+// card, so the question and its answer do not repeat the same card.
 function ChangeRow(props: {
   item: ReviewItemPayload;
   record: ReviewItemChangeRecord;
@@ -24,21 +31,47 @@ function ChangeRow(props: {
   const { item, record } = props;
   const verb = CHANGE_VERBS[record.kind];
   // An answer is final, so the item's answer is this message's answer.
-  const answer = record.kind === "submitted" ? item.answer : undefined;
+  const rows =
+    record.kind === "submitted" && item.request && item.answer
+      ? answerRows(item.request, item.answer)
+      : [];
   return (
-    <MessageCard aria-label={`${verb} ${item.title}`}>
-      <MessageCardHeader
-        className={answer && item.request ? undefined : "pb-4"}
-        icon={<Inbox aria-hidden="true" size={18} />}
-        meta={verb}
-        title={<ReviewItemTitle item={item} />}
-      />
-      {answer && item.request ? (
-        <div className="px-4 pb-4 md:px-5">
-          <AnswerSummary answer={answer} request={item.request} />
-        </div>
+    <section
+      aria-label={`${verb} ${item.title}`}
+      className="grid min-w-0 gap-1.5"
+    >
+      <p className="m-0 flex min-w-0 items-center gap-1.5 border-l-2 border-dashboard-border-emphasis pl-2 text-sm text-dashboard-text-muted">
+        <span className="shrink-0">{verb}</span>
+        <Link
+          className="min-w-0 truncate text-dashboard-text-muted no-underline hover:text-dashboard-text hover:underline focus-visible:outline-dashboard-focus"
+          title={item.title}
+          to={reviewItemPath(item.id)}
+        >
+          {item.title}
+        </Link>
+      </p>
+      {rows.length ? (
+        <dl className="m-0 grid gap-1.5 font-sans text-base leading-relaxed">
+          {rows.map((row) => (
+            <div key={row.label}>
+              {/* One answer needs no label: the quote names the question. */}
+              <dt
+                className={
+                  rows.length > 1
+                    ? "text-xs font-medium text-dashboard-text-muted"
+                    : "sr-only"
+                }
+              >
+                {row.label}
+              </dt>
+              <dd className="m-0 whitespace-pre-wrap break-words">
+                {row.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
       ) : null}
-    </MessageCard>
+    </section>
   );
 }
 

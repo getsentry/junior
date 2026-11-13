@@ -18,7 +18,7 @@ import { ConversationHeader } from "./ConversationHeader";
 import { useTranscriptSearchMatch } from "./transcriptSearch";
 import { ConversationPrivacyChip } from "./ConversationMeta";
 import { ConversationSidePanelLayout } from "./ConversationSidePanelLayout";
-import { useDetailsDefaultOpen } from "./conversationSidebarLayout";
+import { useDetailsStartOpen } from "./conversationSidebarLayout";
 import { DetailsPanel } from "../components/DetailsPanel";
 import { useRegisterMobileHeaderBack } from "../components/layout/DashboardChrome";
 import {
@@ -124,12 +124,12 @@ export function NewConversationPending(props: {
   // The reader keeps typing in the reply box, as on the page.
   const composerRef = useRef<ConversationComposerHandle>(null);
   useEffect(() => composerRef.current?.focus(), []);
-  // The page opens its details panel at this width. Open it here too, so
-  // the transcript does not move when the page replaces this view. Its
-  // content fills in on the page. The header actions and panel are inert
-  // until then: they need a Conversation, and a details choice made here
-  // would not carry over to the page.
-  const showDetails = useDetailsDefaultOpen();
+  // Open details when the page will, so the transcript does not move when
+  // the page replaces this view. Its content fills in on the page. The
+  // header actions and panel are inert until then: they need a
+  // Conversation, and a details choice made here would not carry over to
+  // the page.
+  const showDetails = useDetailsStartOpen();
   const searchMatch = useTranscriptSearchMatch("");
   // The composer page has no Conversation chrome. Show the page's, so
   // mobile does not flash the composer header before the route changes.

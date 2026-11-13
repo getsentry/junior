@@ -93,6 +93,25 @@ export function reviewItemWaitsForAnswer(item: ReviewItemPayload): boolean {
 }
 
 /**
+ * Return a submitted answer as one labeled row for each answered field, then
+ * the note.
+ */
+export function answerRows(
+  request: NonNullable<ReviewItemPayload["request"]>,
+  answer: NonNullable<ReviewItemPayload["answer"]>,
+): Array<{ label: string; value: string }> {
+  const normalized = normalizeUserInputAnswer(request, answer);
+  const rows = request.fields.flatMap((field) => {
+    const values = normalized.values[field.id];
+    return values?.length
+      ? [{ label: field.label, value: values.join(", ") }]
+      : [];
+  });
+  if (normalized.other) rows.push({ label: "Other", value: normalized.other });
+  return rows;
+}
+
+/**
  * Return a submitted answer as one line: the values of each field, then the
  * note, so a transcript row can show it after the question.
  */
@@ -100,13 +119,9 @@ export function answerLine(
   request: NonNullable<ReviewItemPayload["request"]>,
   answer: NonNullable<ReviewItemPayload["answer"]>,
 ): string {
-  const normalized = normalizeUserInputAnswer(request, answer);
-  const parts = request.fields.flatMap((field) => {
-    const values = normalized.values[field.id];
-    return values?.length ? [values.join(", ")] : [];
-  });
-  if (normalized.other) parts.push(normalized.other);
-  return parts.join(" · ");
+  return answerRows(request, answer)
+    .map((row) => row.value)
+    .join(" · ");
 }
 
 /**

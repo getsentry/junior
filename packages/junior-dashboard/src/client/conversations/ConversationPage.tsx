@@ -18,7 +18,6 @@ import type {
 
 import type { ConversationData } from "./queries";
 import { ConversationSidePanelLayout } from "./ConversationSidePanelLayout";
-import { useDetailsDefaultOpen } from "./conversationSidebarLayout";
 import {
   applyPendingArchiveUpdate,
   useArchiveConversation,
@@ -51,10 +50,12 @@ import { ConversationHeader } from "./ConversationHeader";
 import { ContinueInSlackDialog } from "./ContinueInSlackDialog";
 import { ConversationPageDock } from "./ConversationPageDock";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
-import { readDetailsOpen, saveDetailsOpen } from "./conversationSidebarLayout";
+import {
+  saveDetailsOpen,
+  useDetailsStartOpen,
+} from "./conversationSidebarLayout";
 import { useZenMode } from "../components/layout/PaneNav";
 import { useReportEventLogShown } from "../components/paletteEventLog";
-import { useDetailsPanel } from "../components/DetailsPanel";
 import {
   ConversationMemoryContext,
   memoryAnchorKey,
@@ -161,7 +162,6 @@ export function ConversationPage(props: {
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
   sidebarToggle?: ReactNode;
 }) {
-  const detailsDefaultOpen = useDetailsDefaultOpen();
   const pageRef = useRef<HTMLDivElement>(null);
   const replyRef = useRef<Pick<ConversationComposerHandle, "appendText">>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -191,14 +191,7 @@ export function ConversationPage(props: {
   useEffect(() => {
     if (reviewOpen) setDetailsChoice(true);
   }, [reviewOpen]);
-  const panelFits = useDetailsPanel();
-  const [savedDetailsOpen] = useState(readDetailsOpen);
-  // A saved open choice applies only beside the transcript, so a narrow
-  // screen does not load into a bottom sheet.
-  const detailsDefault =
-    savedDetailsOpen === undefined
-      ? detailsDefaultOpen
-      : savedDetailsOpen && panelFits;
+  const detailsDefault = useDetailsStartOpen();
   const detailsOpen = detailsChoice ?? (reviewOpen || detailsDefault);
   const closeDetails = useCallback(() => {
     setDetailsChoice(false);

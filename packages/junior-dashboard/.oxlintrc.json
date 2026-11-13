@@ -22,6 +22,10 @@
     {
       "name": "px-geometry",
       "specifier": "./oxlint/px-geometry.ts"
+    },
+    {
+      "name": "image-src",
+      "specifier": "./oxlint/image-src.ts"
     }
   ],
   "ignorePatterns": [
@@ -71,6 +75,7 @@
     "display-text/no-raw-display-text": "error",
     "text-control/no-raw-text-control": "error",
     "px-geometry/px-constant-sizes-element": "error",
+    "image-src/no-raw-external-image-src": "error",
     "no-restricted-imports": [
       "error",
       {

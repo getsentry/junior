@@ -359,6 +359,14 @@ export async function completeText(params: {
               setSpanAttributes(requestPrefixAttributes(payload));
               return undefined;
             },
+            // The edge request id lets Vercel trace how the gateway routed
+            // the call, for example when a cache warmup misses.
+            onResponse: (response) => {
+              const vercelId = response.headers["x-vercel-id"];
+              if (vercelId) {
+                setSpanAttributes({ "app.ai.gateway.vercel_id": vercelId });
+              }
+            },
           },
         );
       } catch (error) {
@@ -392,6 +400,9 @@ export async function completeText(params: {
           : undefined),
         ...(message.model
           ? { "gen_ai.response.model": message.model }
+          : undefined),
+        ...(message.responseId
+          ? { "gen_ai.response.id": message.responseId }
           : undefined),
       };
       setSpanAttributes(endAttributes);
