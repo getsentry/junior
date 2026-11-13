@@ -1030,6 +1030,10 @@ async function executeAgentRunInPrivacyContext(
     // The `turn_end` listener changed `agent.state.messages`, which Pi does
     // not read. `prepareNextTurn` gives them to the next model call.
     let messagesChanged = false;
+    // The `turn_end` listener compacted after a batch that ended the run, and
+    // took the pending steering out of Pi's queue. Pi stops without a model
+    // call for that steering, so the run loop continues it.
+    let steeringAwaitsModelCall = false;
     /**
      * Do Junior's work after a model call and its tool batch, before Pi polls
      * steering. Pi awaits this listener after every model call. Pi turns its
@@ -1077,20 +1081,18 @@ async function executeAgentRunInPrivacyContext(
             },
           );
           const pendingMessages = await drainSteeringMessages();
-          // Another model call follows only after steering or a tool result
-          // that did not end the run. Pi stops after a batch only when every
-          // call in it is one of `terminatingToolCallIds`.
-          const runEnded =
-            pendingMessages.length === 0 &&
-            event.toolResults.every((result) =>
-              terminatingToolCallIds.has(result.toolCallId),
-            );
+          // Pi stops after a batch only when every call in it is one of
+          // `terminatingToolCallIds`, and no steering is pending.
+          const batchEndsRun = event.toolResults.every((result) =>
+            terminatingToolCallIds.has(result.toolCallId),
+          );
+          const runEnded = pendingMessages.length === 0 && batchEndsRun;
           // A background request does not change history, so it runs also
           // after the last model call.
           if (runEnded) {
             await requestBackgroundCompactionAfterModelCall();
           }
-          return { contextUpdate, pendingMessages, runEnded };
+          return { batchEndsRun, contextUpdate, pendingMessages, runEnded };
         },
       );
       messagesChanged = Boolean(boundary.contextUpdate);
@@ -1116,6 +1118,7 @@ async function executeAgentRunInPrivacyContext(
       );
       if (compacted) {
         messagesChanged = true;
+        steeringAwaitsModelCall = boundary.batchEndsRun;
         return;
       }
       // After a replacement, the usage of the last model call counts the old
@@ -1561,6 +1564,13 @@ async function executeAgentRunInPrivacyContext(
                   runResume.getResumeSnapshot(currentAgentMessages()),
                 );
                 throw pendingAuthPause;
+              }
+
+              if (steeringAwaitsModelCall) {
+                steeringAwaitsModelCall = false;
+                messagesChanged = false;
+                run = agent!.continue();
+                continue;
               }
 
               const confirmationRetry = actionConfirmationRetryUsed
