@@ -83,9 +83,14 @@ export function createS3AttachmentStorage(
     provider: "s3",
     async put(input) {
       const response = await client.fetch(objectUrl(config, input.key), {
-        // fetch types reject Buffer. Copy into a plain Uint8Array.
-        body: new Uint8Array(input.body),
-        headers: { "content-type": input.contentType },
+        body: input.body,
+        headers: {
+          // A single S3 PUT needs the length before the body. A stream
+          // cannot be hashed before it is sent, so the payload is unsigned.
+          "content-length": String(input.bytes),
+          "content-type": input.contentType,
+          "x-amz-content-sha256": "UNSIGNED-PAYLOAD",
+        },
         method: "PUT",
       });
       await expectOk(response, "put");

@@ -1,10 +1,14 @@
 import { AwsClient } from "aws4fetch";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import { readAttachmentStorageConfig } from "@/chat/attachments/config";
-import { createAttachmentStorage } from "@/chat/attachments/storage";
+import {
+  bufferBody,
+  createAttachmentStorage,
+} from "@/chat/attachments/storage";
 import {
   collectAttachmentGarbage,
   readLiveAttachment,
@@ -12,6 +16,7 @@ import {
   storeAttachment,
 } from "@/chat/attachments/store";
 import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
+import { juniorAttachments } from "@/db/schema";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 
 // The `s3` service in compose.yaml and in CI runs versitygw on this port.
@@ -35,6 +40,16 @@ async function sendBucketRequest(method: "DELETE" | "PUT"): Promise<void> {
   if (!response.ok) {
     throw new Error(`S3 bucket ${method} failed: ${response.status} ${body}`);
   }
+}
+
+function chunkedBody(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const chunk = chunks.shift();
+      if (chunk) controller.enqueue(chunk);
+      else controller.close();
+    },
+  });
 }
 
 function s3Storage(secretAccessKey = S3_SECRET_ACCESS_KEY) {
@@ -85,7 +100,13 @@ describe("S3 attachment storage", () => {
       const key = `contract/${Date.now()}/file.bin`;
       const body = Buffer.from([0, 1, 2, 255]);
 
-      await storage.put({ body, contentType: "application/octet-stream", key });
+      // Two chunks: the body streams to storage, it is not one buffer.
+      await storage.put({
+        body: chunkedBody([body.subarray(0, 2), body.subarray(2)]),
+        bytes: body.byteLength,
+        contentType: "application/octet-stream",
+        key,
+      });
       const stored = await storage.get(key);
       expect(Buffer.from(await new Response(stored).arrayBuffer())).toEqual(
         body,
@@ -139,12 +160,10 @@ describe("S3 attachment storage", () => {
       conversationId,
       db,
       file: {
-        bytes: 11,
         data: Buffer.from("hello image"),
         // Storage keys hold the filename. Symbols must round-trip through S3.
         filename: "chart (final) #1+ü.png",
         mimeType: "image/png",
-        path: "/tmp/chart.png",
       },
       storage,
     });
@@ -176,13 +195,59 @@ describe("S3 attachment storage", () => {
     await expect(storage.get(record!.storageKey)).resolves.toBeNull();
   });
 
+  it("streams a sourced file and keeps nothing when its size is wrong", async () => {
+    const conversationId = "slack:CS3:stream";
+    await recordPublicConversation(conversationId);
+    const storage = s3Storage();
+    const db = getSqlExecutor();
+    const chunks = () => [Buffer.from("deploy "), Buffer.from("failed")];
+    const file = (bytes: number) => ({
+      bytes,
+      filename: "deploy.log",
+      mimeType: "text/plain",
+      open: async () => chunkedBody(chunks()),
+      source: { id: `F${bytes}`, provider: "slack" },
+    });
+
+    const stored = await storeAttachment({
+      conversationId,
+      db,
+      file: file(13),
+      storage,
+    });
+    const record = await readLiveAttachment({
+      attachmentId: stored.id,
+      conversationId,
+      db,
+    });
+    expect(record?.bytes).toBe(13);
+    const body = await storage.get(record!.storageKey);
+    expect(await new Response(body).text()).toBe("deploy failed");
+
+    // A body shorter or longer than its declared size fails the write, and
+    // no row is kept.
+    for (const bytes of [20, 5]) {
+      await expect(
+        storeAttachment({ conversationId, db, file: file(bytes), storage }),
+      ).rejects.toThrow("fetch failed");
+    }
+    const rows = await db
+      .db()
+      .select({ id: juniorAttachments.id })
+      .from(juniorAttachments)
+      .where(eq(juniorAttachments.conversationId, conversationId));
+    expect(rows).toEqual([{ id: stored.id }]);
+    await storage.delete([record!.storageKey]);
+  });
+
   it("rejects filenames that would leave the attachment key prefix", async () => {
     const conversationId = "slack:CS3:traversal";
     await recordPublicConversation(conversationId);
     const storage = s3Storage();
     const artifactKey = "artifacts/existing.png";
     await storage.put({
-      body: Buffer.from("artifact"),
+      body: bufferBody(Buffer.from("artifact")),
+      bytes: 8,
       contentType: "image/png",
       key: artifactKey,
     });
@@ -192,11 +257,9 @@ describe("S3 attachment storage", () => {
         conversationId,
         db: getSqlExecutor(),
         file: {
-          bytes: 4,
           data: Buffer.from("evil"),
           filename: "../../../../../artifacts/existing.png",
           mimeType: "image/png",
-          path: "/tmp/evil.png",
         },
         storage,
       }),
@@ -215,11 +278,9 @@ describe("S3 attachment storage", () => {
       conversationId,
       db: getSqlExecutor(),
       file: {
-        bytes: 6,
         data: Buffer.from("secret"),
         filename: "private-name.txt",
         mimeType: "text/plain",
-        path: "/tmp/private-name.txt",
       },
       storage: s3Storage("wrong-secret"),
     });
