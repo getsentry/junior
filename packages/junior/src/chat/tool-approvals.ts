@@ -221,10 +221,10 @@ export function createToolApprovalRequest(
     if (!access?.rootConversationId) return undefined;
     const rootConversationId = access.rootConversationId;
     const dedupeKey = reviewItemDedupeKey(run.conversationId, action);
-    // The item comes first, so the request can name it. An identical call
-    // finds the open item by its key and reuses its request, so one item
-    // runs at most one call. After a crash between the two writes, the
-    // retry adds the missing request.
+    // The item comes first, so the request can name it. The request's key
+    // is the item, so one item holds one request and runs at most one call,
+    // also when identical calls race. After a crash between the two writes,
+    // the retry adds the missing request.
     const item =
       (await insertReviewItem(db, {
         addedByConversationId: rootConversationId,
@@ -244,16 +244,12 @@ export function createToolApprovalRequest(
         ...(access.tenant ? { tenant: access.tenant } : undefined),
       })) ?? (await getOpenReviewItemByDedupeKey(db, dedupeKey, access.tenant));
     if (!item) throw new Error(`Review item ${dedupeKey} is missing`);
-    const owner = (await listToolApprovals(run.conversationId)).find(
-      (approval) => approval.reviewItemId === item.id,
-    );
-    if (owner) return item.id;
-    await getConversationEventStore().append(
+    const written = await getConversationEventStore().append(
       run.conversationId,
       [
         {
           createdAtMs: Date.now(),
-          idempotencyKey: `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:${actionReviewRequestedEvent.eventName}:${action.toolCallId}`,
+          idempotencyKey: `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:${actionReviewRequestedEvent.eventName}:${item.id}`,
           data: {
             type: "structured_event",
             namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
@@ -277,11 +273,8 @@ export function createToolApprovalRequest(
       ],
       { activity: "preserve" },
     );
-    const stored = await getToolApproval(run.conversationId, action.toolCallId);
-    if (!stored)
-      throw new Error(`Tool approval ${action.toolCallId} is missing`);
-    await show(stored.reviewItemId);
-    return stored.reviewItemId;
+    if (written.length > 0) await show(item.id);
+    return item.id;
   };
 }
 
