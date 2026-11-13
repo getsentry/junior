@@ -11,6 +11,7 @@
  */
 import {
   Agent,
+  type AgentEvent,
   type AgentLoopTurnUpdate,
   type StreamFn,
 } from "@earendil-works/pi-agent-core";
@@ -1015,9 +1016,10 @@ async function executeAgentRunInPrivacyContext(
       return acceptedMessages;
     };
 
-    // Pi converts prepareNextTurn exceptions into error turns instead of
-    // rejecting. Preserve Junior's yield so runAgentStep can restore it after
-    // the Pi run settles without leaking Pi mechanics into the resume API.
+    // Pi converts listener and prepareNextTurn exceptions into error turns
+    // instead of rejecting. Preserve Junior's yield so runAgentStep can
+    // restore it after the Pi run settles without leaking Pi mechanics into
+    // the resume API.
     // A Task inherits the person's actor, but only its parent agent sends it
     // Turns. Keep its gaps out of the histograms of people.
     const cacheWarming = createCacheWarmingRecorder(
@@ -1029,6 +1031,93 @@ async function executeAgentRunInPrivacyContext(
     // drops info logs.
     const toolBatchStats = createToolBatchStats();
     let setAgentSpanAttributes: SetSpanAttributes | undefined;
+    // What the `turn_end` listener found for `prepareNextTurn` to use.
+    let stepBoundary:
+      | {
+          // AGENTS.md changed `agent.state.messages`, which Pi does not read.
+          messagesChanged: boolean;
+          pendingMessages: Awaited<ReturnType<typeof drainSteeringMessages>>;
+          // No model call follows: the response or the tool batch ended the
+          // run, and no steering is pending.
+          runEnded: boolean;
+        }
+      | undefined;
+    /**
+     * Do Junior's work after a model call and its tool batch, before Pi polls
+     * steering. Pi awaits this listener after every model call. Pi turns its
+     * errors into error turns, so the caller keeps them for the step.
+     */
+    const finishModelStep = async (
+      event: Extract<AgentEvent, { type: "turn_end" }>,
+      runSignal: AbortSignal | undefined,
+    ): Promise<void> => {
+      if (event.toolResults.length > 0) {
+        cacheWarming.toolsReturned();
+        await requireConversationLease("save");
+        await runResume.persistSafeBoundary([...agent!.state.messages]);
+      }
+      // Pi ends the run after a failed or aborted model call, and the turn
+      // that reports a run failure is the last event. After an abort, such
+      // as an auth pause, no model call follows. Sandbox work here fails on
+      // the aborted signal and hides why the run stopped. Steering stays
+      // queued.
+      if (
+        runSignal?.aborted ||
+        (isAssistantMessage(event.message) &&
+          (event.message.stopReason === "error" ||
+            event.message.stopReason === "aborted"))
+      ) {
+        return;
+      }
+      // A stop of this Conversation ends the Turn at the next step, also
+      // when no stop request reached this worker.
+      await durability.checkStop?.();
+      signal?.throwIfAborted();
+      // The span shows the wait between `gen_ai.chat` spans.
+      const boundary = await withSpan(
+        "agent.step.prepare",
+        "agent.step.prepare",
+        {},
+        async () => {
+          // Pi appends steering after its context, so add AGENTS.md context
+          // first to commit the same message order.
+          const contextUpdate = await repositoryInstructionsContext.applyUpdate(
+            {
+              messages: currentAgentMessages(),
+              systemPrompt: agent!.state.systemPrompt,
+              tools: agent!.state.tools,
+            },
+          );
+          const pendingMessages = await drainSteeringMessages();
+          // Another model call follows only after steering or a tool result
+          // that did not end the run. Pi stops after a batch only when every
+          // call in it is one of `terminatingToolCallIds`.
+          const runEnded =
+            pendingMessages.length === 0 &&
+            event.toolResults.every((result) =>
+              terminatingToolCallIds.has(result.toolCallId),
+            );
+          // A background request does not change history, so it runs also
+          // after the last model call.
+          if (runEnded) {
+            await requestBackgroundCompactionAfterModelCall();
+          }
+          return {
+            messagesChanged: Boolean(contextUpdate),
+            pendingMessages,
+            runEnded,
+          };
+        },
+      );
+      // A yield is normal control flow, so it stays out of the span. It
+      // comes before active compaction, so a resumed slice compacts at its
+      // start.
+      const yieldError = runResume.prepareYieldIfDue(currentAgentMessages());
+      if (yieldError) {
+        throw yieldError;
+      }
+      stepBoundary = boundary;
+    };
     agent = new Agent({
       // Resolve on every provider call so runtime OIDC tokens stay fresh.
       getApiKey: getGatewayApiKey,
@@ -1145,73 +1234,46 @@ async function executeAgentRunInPrivacyContext(
         }
         return override;
       },
+      // Pi 0.84.1 runs this hook after each `turn_end`, also when no model
+      // call follows. Only its return value changes the context of the next
+      // model call.
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
+        const boundary = stepBoundary;
+        stepBoundary = undefined;
+        // The listener sets no boundary after an abort.
+        if (!boundary || hookSignal?.aborted) {
+          return undefined;
+        }
         try {
-          // Pi runs this hook after an abort, such as an auth pause, but no
-          // model call follows. Sandbox work here fails on the aborted signal
-          // and hides why the run stopped. Steering stays queued.
-          if (hookSignal?.aborted) {
-            return undefined;
+          const contextUpdate: AgentLoopTurnUpdate | undefined =
+            boundary.messagesChanged
+              ? {
+                  context: {
+                    ...nextTurn.context,
+                    messages: currentAgentMessages(),
+                  },
+                }
+              : undefined;
+          // After the final response or a batch that ended the run, such as
+          // a `noReply` call, compaction would drop the answer and start a
+          // retry.
+          if (boundary.runEnded) {
+            return contextUpdate;
           }
-          // A stop of this Conversation ends the Turn at the next step, also
-          // when no stop request reached this worker.
-          await durability.checkStop?.();
-          signal?.throwIfAborted();
-          // Pi waits for this hook before each later model call. The span
-          // shows that wait between `gen_ai.chat` spans.
-          const stepUpdate = await withSpan(
-            "agent.step.prepare",
-            "agent.step.prepare",
-            {},
-            async () => {
-              // Pi appends steering after this hook returns, so add AGENTS.md
-              // context first to commit the same message order.
-              const contextUpdate =
-                await repositoryInstructionsContext.applyUpdate(
-                  nextTurn.context,
-                );
-              const pendingMessages = await drainSteeringMessages();
-              // Pi also runs this hook after the final response and after a
-              // batch that ended the run, such as a `noReply` call. Another
-              // model call follows only after steering or a tool result that
-              // did not end the run. Compaction here would drop the answer and
-              // start a retry. A background request does not change history,
-              // so it still runs.
-              if (
-                nextTurn.toolResults.every((result) =>
-                  terminatingToolCallIds.has(result.toolCallId),
-                ) &&
-                pendingMessages.length === 0
-              ) {
-                await requestBackgroundCompactionAfterModelCall();
-                return contextUpdate;
-              }
-              const capacityUpdate = await applyActiveContextCompaction(
-                contextUpdate
-                  ? currentAgentMessages()
-                  : (nextTurn.context.messages as PiMessage[]),
-                hookSignal,
-                pendingMessages,
-                true,
-              );
-              // After a replacement, the usage of the last model call counts
-              // the old history. The next model call reports the new size.
-              if (!capacityUpdate) {
-                await requestBackgroundCompactionAfterModelCall();
-              }
-              return capacityUpdate
-                ? { ...contextUpdate, ...capacityUpdate }
-                : contextUpdate;
-            },
+          const capacityUpdate = await applyActiveContextCompaction(
+            contextUpdate
+              ? currentAgentMessages()
+              : (nextTurn.context.messages as PiMessage[]),
+            hookSignal,
+            boundary.pendingMessages,
+            true,
           );
-          // A yield is normal control flow, so it stays out of the span.
-          const yieldError = runResume.prepareYieldIfDue(
-            currentAgentMessages(),
-          );
-          if (yieldError) {
-            throw yieldError;
+          // After a replacement, the usage of the last model call counts the
+          // old history. The next model call reports the new size.
+          if (!capacityUpdate) {
+            await requestBackgroundCompactionAfterModelCall();
           }
-          return stepUpdate;
+          return capacityUpdate ?? contextUpdate;
         } catch (error) {
           pendingPiHookError ??=
             error instanceof Error ? error : new Error(String(error));
@@ -1226,24 +1288,18 @@ async function executeAgentRunInPrivacyContext(
       },
     });
 
-    const unsubscribe = agent.subscribe((event) => {
+    const unsubscribe = agent.subscribe((event, runSignal) => {
       if (event.type === "tool_execution_start") {
         return recordParentToolExecutionStart(event);
       }
-      if (event.type === "turn_end" && event.toolResults.length > 0) {
-        cacheWarming.toolsReturned();
-        return requireConversationLease("save")
-          .then(() => runResume.persistSafeBoundary([...agent!.state.messages]))
-          .then(
-            () => undefined,
-            (error: unknown) => {
-              // Pi turns a listener error into a failed model message, so
-              // keep the error for the step to rethrow.
-              pendingPiHookError ??=
-                error instanceof Error ? error : new Error(String(error));
-              throw error;
-            },
-          );
+      if (event.type === "turn_end") {
+        return finishModelStep(event, runSignal).catch((error: unknown) => {
+          // Pi turns a listener error into a failed model message, so keep
+          // the error for the step to rethrow.
+          pendingPiHookError ??=
+            error instanceof Error ? error : new Error(String(error));
+          throw error;
+        });
       }
       if (event.type === "message_end" && isAssistantMessage(event.message)) {
         const message = event.message;
