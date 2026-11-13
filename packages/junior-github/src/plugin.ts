@@ -322,6 +322,14 @@ export function githubPlugin(
       formatMarkdown({ text }) {
         return linkifyGitHubReferences(text);
       },
+      systemPrompt() {
+        // formatMarkdown links bare `#123` only when a reply names one repository.
+        return [
+          {
+            text: "Write each GitHub issue, pull request, or commit reference with its repository, such as owner/repo#123 or owner/repo@abc1234, and not in code formatting. A bare #123, GH-123, or SHA is ambiguous when a conversation spans several repositories.",
+          },
+        ];
+      },
       async heartbeat(ctx) {
         const db = ctx.db as GitHubDb;
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };

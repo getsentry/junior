@@ -65,6 +65,77 @@ describe("GitHub reply markdown", () => {
     ).toBe("PR #1509 and foo.getsentry/junior#1509");
   });
 
+  it("turns repository commit references into short commit links", () => {
+    expect(
+      linkifyGitHubReferences(
+        "landed in getsentry/junior@2c1fefa8d1b2c3d4e5f60718293a4b5c6d7e8f90.",
+      ),
+    ).toBe(
+      "landed in [getsentry/junior@2c1fefa](https://github.com/getsentry/junior/commit/2c1fefa8d1b2c3d4e5f60718293a4b5c6d7e8f90).",
+    );
+  });
+
+  it("shortens bare GitHub issue, pull request, discussion, and commit URLs", () => {
+    expect(
+      linkifyGitHubReferences(
+        [
+          "https://github.com/getsentry/junior/pull/3313",
+          "(https://github.com/getsentry/sentry/issues/42).",
+          "https://github.com/getsentry/junior/discussions/7",
+          "https://github.com/getsentry/junior/commit/2c1fefa8d",
+          "https://github.com/getsentry/junior/pull/3313/files",
+        ].join("\n"),
+      ),
+    ).toBe(
+      [
+        "[getsentry/junior#3313](https://github.com/getsentry/junior/pull/3313)",
+        "([getsentry/sentry#42](https://github.com/getsentry/sentry/issues/42)).",
+        "[getsentry/junior#7](https://github.com/getsentry/junior/discussions/7)",
+        "[getsentry/junior@2c1fefa](https://github.com/getsentry/junior/commit/2c1fefa8d)",
+        "https://github.com/getsentry/junior/pull/3313/files",
+      ].join("\n"),
+    );
+  });
+
+  it("resolves bare references against the one repository the text names", () => {
+    const sha = "2c1fefa8d1b2c3d4e5f60718293a4b5c6d7e8f90";
+    expect(
+      linkifyGitHubReferences(
+        `[PR](https://github.com/getsentry/junior/pull/3313) replaces #3300 and GH-3301 (#3302), see ${sha} and byk@${sha}`,
+      ),
+    ).toBe(
+      [
+        "[PR](https://github.com/getsentry/junior/pull/3313) replaces",
+        "[#3300](https://github.com/getsentry/junior/issues/3300) and",
+        "[GH-3301](https://github.com/getsentry/junior/issues/3301)",
+        "([#3302](https://github.com/getsentry/junior/issues/3302)), see",
+        `[2c1fefa](https://github.com/getsentry/junior/commit/${sha}) and`,
+        `[byk@2c1fefa](https://github.com/byk/junior/commit/${sha})`,
+      ].join(" "),
+    );
+  });
+
+  it("leaves bare references unchanged when several repositories are named", () => {
+    expect(
+      linkifyGitHubReferences(
+        "getsentry/junior#1 and getsentry/sentry#2 both mention #3",
+      ),
+    ).toBe(
+      "[getsentry/junior#1](https://github.com/getsentry/junior/issues/1) and [getsentry/sentry#2](https://github.com/getsentry/sentry/issues/2) both mention #3",
+    );
+  });
+
+  it("does not treat short hex IDs, entities, or emails as commits", () => {
+    const text =
+      "getsentry/junior#1: event 0123456789abcdef0123456789abcdef, &#39;, a@deadbeef.io, x#2";
+    expect(linkifyGitHubReferences(text)).toBe(
+      text.replace(
+        "getsentry/junior#1",
+        "[getsentry/junior#1](https://github.com/getsentry/junior/issues/1)",
+      ),
+    );
+  });
+
   it("registers linkification on the GitHub plugin", () => {
     const hook = githubPlugin().hooks?.formatMarkdown;
 
