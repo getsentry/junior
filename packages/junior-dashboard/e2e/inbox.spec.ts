@@ -1,8 +1,5 @@
 import { mockAutomationCollection } from "../src/mock-reporting/automation-collection";
-import {
-  CHECKOUT_PREVIEW_IMAGE_URL,
-  NOW_MS,
-} from "../src/mock-reporting/fixtures";
+import { NOW_MS } from "../src/mock-reporting/fixtures";
 import { mockAutomationEditor } from "./automation-editor-fixture";
 import { automationReport } from "./automation-fixture";
 import {
@@ -21,11 +18,6 @@ import {
 } from "./inbox-fixture";
 import { screenshot } from "./screenshot";
 import { expect, test } from "./test";
-
-const ONE_PIXEL_PNG = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
-  "base64",
-);
 
 const checkout = "Investigate checkout latency";
 
@@ -796,9 +788,6 @@ test("comfortable rows show cards for message links that name an object", async 
   dashboard,
   page,
 }) => {
-  await page.route(CHECKOUT_PREVIEW_IMAGE_URL, (route) =>
-    route.fulfill({ body: ONE_PIXEL_PNG, contentType: "image/png" }),
-  );
   const person = `${dashboard.baseURL}/people/dev%40example.com`;
   const unknown = "https://example.com/no-card";
   // The feed lists the links from this row's messages.
@@ -838,10 +827,6 @@ test("comfortable rows show files and linked work as cards, and compact rows kee
   dashboard,
   page,
 }) => {
-  // The PR preview is a public artifact on another host.
-  await page.route(CHECKOUT_PREVIEW_IMAGE_URL, (route) =>
-    route.fulfill({ body: ONE_PIXEL_PNG, contentType: "image/png" }),
-  );
   const density = async (value: "comfortable" | "compact") => {
     await page.evaluate((next) => {
       localStorage.setItem("junior:density", next);
@@ -904,7 +889,8 @@ test("comfortable rows show files and linked work as cards, and compact rows kee
     .getByRole("img", {
       name: "Preview of Retry checkout writes after lock timeouts",
     });
-  await expect(preview).toHaveAttribute("src", CHECKOUT_PREVIEW_IMAGE_URL);
+  // The mock serves the preview itself.
+  await expect(preview).toHaveAttribute("src", /\/api\/images\/checkout-p95$/);
   await preview.scrollIntoViewIfNeeded();
   await expect
     .poll(() =>
@@ -914,10 +900,37 @@ test("comfortable rows show files and linked work as cards, and compact rows kee
 
   await density("compact");
   await expect(qa.getByRole("group", { name: "Files" })).toHaveCount(0);
-  await expect(release.getByRole("group", { name: "Linked work" })).toHaveCount(
-    0,
+  // Compact rows name each piece of work by its title and number, in its
+  // status color, on one line.
+  await expect(release.locator("[data-linked-work-card]")).toHaveCount(0);
+  const chips = release.locator("[data-linked-work-chip]");
+  await expect(chips.first()).toHaveText("Update Junior to 0.288.0#2201");
+  await expect(chips.first().locator("[data-status-tone]")).toHaveAttribute(
+    "data-status-tone",
+    "neutral",
   );
-  await expect(release.getByLabel(/^Linked work, newest first/)).toBeVisible();
+});
+
+test("a linked-work preview that fails to load leaves no empty box", async ({
+  dashboard,
+  page,
+}) => {
+  await page.route("**/api/images/checkout-p95", (route) =>
+    route.fulfill({ status: 404 }),
+  );
+  await page.addInitScript(() =>
+    localStorage.setItem("junior:density", "comfortable"),
+  );
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
+  const card = page
+    .locator("[data-inbox-row]")
+    .filter({ hasText: checkout })
+    .first()
+    .locator("[data-linked-work-card]")
+    .filter({ hasText: "Retry checkout writes after lock timeouts" });
+  await card.scrollIntoViewIfNeeded();
+  await expect(card).toBeVisible();
+  await expect(card.getByRole("img")).toHaveCount(0);
 });
 
 test("comfortable cards grow near the pointer, except for reduced motion", async ({

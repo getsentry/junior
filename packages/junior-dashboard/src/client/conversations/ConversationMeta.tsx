@@ -243,7 +243,7 @@ function SidebarAnnotationIconFacepile(props: {
  * do not fit wrap onto lines that the row clips, so the count follows the
  * real width.
  */
-function FittingIcons(props: {
+export function FittingIcons(props: {
   className: string;
   icons: ReactNode[];
   overflow(count: number): ReactNode;

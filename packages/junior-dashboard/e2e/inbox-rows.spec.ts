@@ -38,7 +38,10 @@ test("a comfortable row keeps its pills under its title and people", async ({
   ).toBeVisible();
   await expect(
     title.getByRole("button", { name: "Ready to merge #2201" }),
-  ).toBeVisible();
+  ).toBeAttached();
+  // The pills keep to one line in the narrow title column: those that do
+  // not fit show as +N.
+  await expect(title.locator("[data-pill-overflow]")).toHaveText(/^\+\d+$/);
   await expect.poll(() => slots(row)).toEqual(SLOTS);
 });
 

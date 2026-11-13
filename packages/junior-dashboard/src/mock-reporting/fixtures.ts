@@ -146,8 +146,35 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 // Mock text links to dashboard pages on this origin.
 const MOCK_DASHBOARD_ORIGIN = "https://junior.example.com";
-/** A public artifact URL. Tests and screenshots serve its bytes. */
-export const CHECKOUT_PREVIEW_IMAGE_URL = `${MOCK_DASHBOARD_ORIGIN}/public/artifacts/checkout-p95.png`;
+/**
+ * A PR preview image. The mock serves it under /api/images; the feed takes
+ * only absolute URLs, so the fixtures name it on the placeholder origin.
+ */
+export const CHECKOUT_PREVIEW_IMAGE_URL = `${MOCK_DASHBOARD_ORIGIN}/api/images/checkout-p95`;
+
+/**
+ * Point the feed's preview images at the server that answers, which serves
+ * them. Fixtures name them on a placeholder origin that does not exist.
+ */
+export function withMockImageOrigin(
+  feed: ConversationFeed,
+  origin: string,
+): ConversationFeed {
+  return {
+    ...feed,
+    conversations: feed.conversations.map((conversation) => ({
+      ...conversation,
+      sidebarAnnotations: conversation.sidebarAnnotations?.map((annotation) =>
+        annotation.imageUrl?.startsWith(`${MOCK_DASHBOARD_ORIGIN}/`)
+          ? {
+              ...annotation,
+              imageUrl: `${origin}${annotation.imageUrl.slice(MOCK_DASHBOARD_ORIGIN.length)}`,
+            }
+          : annotation,
+      ),
+    })),
+  };
+}
 const INCIDENT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 const PRIVATE_CONVERSATION_ID = "slack:DQA123:1770007200.000300";
 const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";

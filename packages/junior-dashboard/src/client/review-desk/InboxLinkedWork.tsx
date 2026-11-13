@@ -1,8 +1,11 @@
 import type { OwnedObjectAnnotation } from "@sentry/junior/api/schema";
 import { objectPresentation } from "@sentry/junior-plugin-api";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { objectToneClass } from "../components/ObjectIcon";
-import { ConversationSidebarAnnotations } from "../conversations/ConversationMeta";
+import {
+  ConversationSidebarAnnotations,
+  FittingIcons,
+} from "../conversations/ConversationMeta";
 import { linkStatusLabel } from "../conversations/ConversationLinkedWork";
 import {
   MessageObjectsProvider,
@@ -70,6 +73,8 @@ function WorkCard(props: {
 }) {
   const status = linkStatusLabel(props.status);
   const { tone } = objectPresentation(props);
+  // A preview that fails to load leaves no empty box or alt text.
+  const [imageFailed, setImageFailed] = useState(false);
   return (
     <a
       className="group/card flex w-56 shrink-0 flex-col rounded-md font-sans text-xs no-underline focus-visible:outline-2 focus-visible:outline-dashboard-focus sm:w-auto sm:min-w-48 sm:max-w-72 sm:flex-1"
@@ -78,13 +83,14 @@ function WorkCard(props: {
       rel="noreferrer"
       target="_blank"
     >
-      {props.imageUrl ? (
+      {props.imageUrl && !imageFailed ? (
         <span className="mb-1.5 block aspect-video overflow-hidden rounded-md bg-dashboard-fill-soft">
           <img
             alt={`Preview of ${props.title}`}
             className="size-full object-cover"
             decoding="async"
             loading="lazy"
+            onError={() => setImageFailed(true)}
             src={props.imageUrl}
           />
         </span>
@@ -145,6 +151,76 @@ export function InboxLinkedWork(props: {
         <ConversationSidebarAnnotations annotations={chips} />
       ) : null}
     </div>
+  );
+}
+
+// The short name of a piece of work, such as #2201 for a pull request.
+function shortRef(object: { key: string; label: string }): string {
+  const hash = object.key.lastIndexOf("#");
+  return hash >= 0 ? object.key.slice(hash) : object.label;
+}
+
+// A compact row's version of a quiet card: the title, then the short name
+// in the status color.
+function WorkChip(props: { card: CardAnnotation }) {
+  const { tone } = objectPresentation(props.card);
+  return (
+    <a
+      className="inline-flex min-w-0 max-w-48 shrink-0 items-baseline gap-1 rounded-sm font-sans text-xs no-underline hover:underline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+      data-linked-work-chip=""
+      href={props.card.url}
+      rel="noreferrer"
+      target="_blank"
+    >
+      <span className="truncate text-dashboard-text-muted">
+        {props.card.title}
+      </span>
+      <span
+        className={cn("shrink-0 tabular-nums", objectToneClass[tone])}
+        data-status-tone={tone}
+      >
+        {shortRef(props.card)}
+      </span>
+    </a>
+  );
+}
+
+/**
+ * Linked work on a compact Inbox row: one line of small links, newest first,
+ * each with its title and its short name in its status color. Links that do
+ * not fit become +N. Work that the plugin saved no title or URL for keeps
+ * its chip.
+ */
+export function InboxLinkedWorkChips(props: { annotations: Annotation[] }) {
+  const cards = props.annotations.filter(isCard);
+  const chips = props.annotations.filter((annotation) => !isCard(annotation));
+  return (
+    <>
+      {cards.length > 0 ? (
+        <span
+          aria-label="Linked work"
+          // It takes what the pills leave of their line.
+          className="flex min-w-32 flex-1 basis-0 items-center gap-1"
+          role="group"
+        >
+          <FittingIcons
+            // The padding keeps focus rings inside the clipped line.
+            className="-m-0.5 h-6 min-w-0 gap-x-2.5 p-0.5"
+            icons={cards.map((card) => (
+              <WorkChip card={card} key={card.key} />
+            ))}
+            overflow={(count) => (
+              <span className="shrink-0 text-2xs text-dashboard-text-faint">
+                +{count}
+              </span>
+            )}
+          />
+        </span>
+      ) : null}
+      {chips.length > 0 ? (
+        <ConversationSidebarAnnotations annotations={chips} />
+      ) : null}
+    </>
   );
 }
 

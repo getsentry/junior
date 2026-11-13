@@ -38,7 +38,7 @@ import {
 } from "../conversations/conversationDensity";
 import {
   ATTENTION_TONE_CLASS,
-  ConversationSidebarAnnotations,
+  FittingIcons,
   OPEN_TONE_CLASS,
 } from "../conversations/ConversationMeta";
 import { usePrefetchConversation } from "../conversations/conversationPrefetch";
@@ -70,6 +70,7 @@ import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
 import {
   InboxLinkCards,
   InboxLinkedWork,
+  InboxLinkedWorkChips,
   linkedWorkCardCount,
   linkedWorkObjects,
   MAX_ROW_PREVIEWS,
@@ -675,26 +676,40 @@ function InboxRowBody(
             ) : null}
             {/* What the row asks sits right under its title and people. */}
             {hasChips ? (
-              <span className="flex min-w-0 flex-wrap items-center gap-1">
-                {pills.slice(0, 3).map((pill) => (
-                  <button
-                    aria-controls={controls}
-                    aria-expanded={props.expanded}
-                    className="cursor-pointer rounded-full border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
-                    key={pill.key}
-                    onClick={props.onToggle}
-                    type="button"
-                  >
-                    <Pill pill={pill} />
-                  </button>
-                ))}
-                {pills.length > 3 ? (
-                  <span className="text-2xs text-dashboard-text-faint">
-                    +{pills.length - 3}
+              // No wrap: the pills and the linked work fit to one shared
+              // line, and wrapping would let each one's fit move the other.
+              <span className="flex min-w-0 items-center gap-1">
+                {pills.length > 0 ? (
+                  // One line of pills: those that do not fit become +N.
+                  <span className="flex min-w-0 max-w-full items-center gap-1">
+                    <FittingIcons
+                      // The padding keeps focus rings inside the clipped line.
+                      className="-m-0.5 h-6 min-w-0 gap-x-1 p-0.5"
+                      icons={pills.map((pill) => (
+                        <button
+                          aria-controls={controls}
+                          aria-expanded={props.expanded}
+                          className="shrink-0 cursor-pointer rounded-full border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+                          key={pill.key}
+                          onClick={props.onToggle}
+                          type="button"
+                        >
+                          <Pill pill={pill} />
+                        </button>
+                      ))}
+                      overflow={(count) => (
+                        <span
+                          className="shrink-0 text-2xs text-dashboard-text-faint"
+                          data-pill-overflow=""
+                        >
+                          +{count}
+                        </span>
+                      )}
+                    />
                   </span>
                 ) : null}
                 {cards ? null : (
-                  <ConversationSidebarAnnotations annotations={annotations} />
+                  <InboxLinkedWorkChips annotations={annotations} />
                 )}
               </span>
             ) : null}

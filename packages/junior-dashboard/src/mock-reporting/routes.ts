@@ -129,6 +129,7 @@ import {
   setMockConversationTitle,
   setMockConversationAutoArchive,
   archiveMockDoneConversations,
+  withMockImageOrigin,
 } from "./fixtures";
 import {
   createMockConversation,
@@ -319,7 +320,10 @@ export function createMockReportingApi(): Hono<{
           !query.data.q && !repositoryId && query.data.status === "active",
       });
       return page
-        ? jsonResponse(conversationFeedSchema, page)
+        ? jsonResponse(
+            conversationFeedSchema,
+            withMockImageOrigin(page, new URL(c.req.url).origin),
+          )
         : errorResponse("Invalid conversation feed cursor.", 400);
     };
     if (!query.data.q) return respond(report);
