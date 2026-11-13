@@ -11,7 +11,6 @@ import {
   type ReactNode,
 } from "react";
 
-import { ObjectIcon } from "../components/ObjectIcon";
 import { ObjectCard } from "../conversations/ObjectCard";
 import {
   ObjectPreviewImagesContext,
@@ -24,6 +23,7 @@ import {
   type KnownObjects,
 } from "./knownObjects";
 import { ANCHOR_CLASS } from "./links";
+import { PersonMention } from "./people";
 
 // A pointer that only passes over a link does not open its card.
 const PREVIEW_DELAY_MS = 350;
@@ -249,30 +249,26 @@ export function ObjectThumbnailLink(props: {
 }
 
 /**
- * Show a bare URL to a person in running text as a compact chip: the avatar
- * and the name. People are the one object type that keeps a chip inline.
+ * Show a bare URL to a person in running text as a GitHub-style mention:
+ * the photo, then `@Name` as a plain link that previews the card.
  */
-export function PersonLinkChip(props: {
+export function PersonLink(props: {
   card: OwnedObjectAnnotation;
   href: string;
   live?: boolean;
 }) {
   const { card } = props;
+  const facts = card.facts?.type === "person" ? card.facts : undefined;
   return (
-    <ObjectLinkPreview
-      card={card}
-      className="inline-flex max-w-full items-center gap-1 rounded-md border border-dashboard-border bg-dashboard-fill-faint px-1.5 align-bottom text-[0.9em] font-medium leading-6 text-dashboard-text no-underline transition-colors hover:border-dashboard-border-strong hover:bg-dashboard-fill-soft focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-      href={props.href}
-      live={props.live}
-    >
-      <ObjectIcon
-        decorative
-        facts={card.facts}
-        objectType={card.objectType}
-        size={14}
-        status={card.status}
-      />
-      <span className="min-w-0 truncate">{card.label}</span>
-    </ObjectLinkPreview>
+    <PersonMention avatarUrl={facts?.avatarUrl} email={facts?.email}>
+      <ObjectLinkPreview
+        card={card}
+        className={ANCHOR_CLASS}
+        href={props.href}
+        live={props.live}
+      >
+        @{card.label}
+      </ObjectLinkPreview>
+    </PersonMention>
   );
 }

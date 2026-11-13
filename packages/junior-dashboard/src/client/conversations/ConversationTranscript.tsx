@@ -669,8 +669,8 @@ function TranscriptEntryList(
     listRef,
     sizeClass: (index) => transcriptRowSizeClass(rows[index]!),
   });
-  // An answer quotes its question only while the question row is out of
-  // the scroll pane. Before paint, so the quote does not flash.
+  // A question repeats its answer only while the answer row is out of the
+  // scroll pane. Before paint, so the answer line does not flash.
   useLayoutEffect(() => visibleRows.set(virtualizer.range));
   // Rows render again only when the renderers change, not on each scroll.
   const {

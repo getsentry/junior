@@ -27,7 +27,7 @@ import {
   ObjectLinkPreview,
   ObjectThumbnailLink,
   ObjectTitleLink,
-  PersonLinkChip,
+  PersonLink,
   useKnownObject,
 } from "./ObjectLinks";
 import {
@@ -557,9 +557,7 @@ function ObjectAnchor(props: {
   live?: boolean;
 }) {
   if (props.bare && props.card.objectType === "person") {
-    return (
-      <PersonLinkChip card={props.card} href={props.href} live={props.live} />
-    );
+    return <PersonLink card={props.card} href={props.href} live={props.live} />;
   }
   if (props.bare) {
     return (
