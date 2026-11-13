@@ -173,7 +173,8 @@ describe("object links API", () => {
       personUrl,
       "mailto:Alice@Example.com",
       "mailto:nobody@example.com",
-      "https://example.com/unknown",
+      // Other dashboard pages get no card and no fetch.
+      `${DASHBOARD}/automations`,
       unlinkedUrl,
       daveUrl,
     );
