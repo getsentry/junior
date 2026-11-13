@@ -88,6 +88,19 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     author: text.optional(),
     sentAt: z.iso.datetime({ offset: true }).optional(),
   }),
+  // Public web pages: what the page or its oEmbed provider says about it.
+  z.strictObject({
+    type: z.literal("web_page"),
+    summary: summary.optional(),
+    siteName: text.optional(),
+    author: text.optional(),
+    // A Junior image path. Browsers never load a third-party image URL.
+    thumbnailUrl: z
+      .string()
+      .max(4000)
+      .regex(/^\/api\/images\/[\w-]+\.[\w-]+\?w=\d+$/)
+      .optional(),
+  }),
   // People: only what the dashboard People pages already show.
   z.strictObject({
     type: z.literal("person"),
@@ -216,6 +229,10 @@ export function objectFactFields(
             timeStyle: "short",
           }),
       );
+      break;
+    case "web_page":
+      add("siteName", "Site", facts.siteName);
+      add("author", "Author", facts.author);
       break;
     case "person":
       add("email", "Email", facts.email);

@@ -36,6 +36,7 @@ export {
   conversationObjectCard,
   messageObjectCard,
   personObjectCard,
+  webPageObjectCard,
 } from "./objects/cards";
 export {
   attachObjectLinkBodySchema,

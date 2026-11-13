@@ -120,6 +120,12 @@
   },
   "overrides": [
     {
+      "files": ["src/**/*.ts", "src/**/*.tsx"],
+      "rules": {
+        "junior/no-regex-url-parsing": "error"
+      }
+    },
+    {
       "files": ["src/client/components/ui/**"],
       "rules": {
         "text-control/no-raw-text-control": "off"

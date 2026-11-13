@@ -42,6 +42,7 @@ async function waitForResolvedLinks(page: Page): Promise<void> {
     /Release 4\.2 checklist/,
     /Release 4\.2 go\/no-go/,
     /#proj-release/,
+    /Junior 4\.2 launch demo/,
   ]) {
     await expect(page.getByRole("link", { name })).toBeVisible();
   }
@@ -362,6 +363,44 @@ test("a Slack message link resolves to a chip and a hover card", async ({
   await expect(card).toBeVisible();
   await expect(card).toContainText("Morgan Lee");
   await screenshot(page, "conversation-slack-message-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
+test("a public web page link resolves to a chip, a card, and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  // A bare URL on its own line is the full card, with its thumbnail.
+  const post = page.getByRole("region", {
+    name: "Web page: What's new in Release 4.2",
+  });
+  await expect(post).toContainText("Example Blog");
+  await expect(post.locator("img")).toHaveJSProperty("complete", true);
+  await screenshot(page, "conversation-web-page-card", {
+    lightTheme: true,
+    target: post,
+    view: "desktop",
+  });
+
+  const chip = page.getByRole("link", { name: /Junior 4\.2 launch demo/ });
+  await expect(chip).toHaveAttribute(
+    "href",
+    "https://www.youtube.com/watch?v=MockLaunchDemo",
+  );
+  await waitForResolvedLinks(page);
+  await chip.hover();
+  const card = page.getByRole("region", {
+    name: "Web page: Junior 4.2 launch demo",
+  });
+  await expect(card).toContainText("YouTube");
+  await expect(card.locator("img")).toHaveAttribute("src", /^\/api\/images\//);
+  await screenshot(page, "conversation-web-page-link", {
     lightTheme: true,
     view: "desktop",
   });
