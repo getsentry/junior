@@ -119,6 +119,7 @@ describe("service accounts API", () => {
 
     expect(await listServiceAccounts(admin)).toEqual([
       {
+        status: "disconnected",
         connected: false,
         displayName: "Docs",
         userOAuth: true,
@@ -139,6 +140,7 @@ describe("service accounts API", () => {
     expect(await connected.text()).toContain("service account connected");
     expect(await listServiceAccounts(admin)).toEqual([
       expect.objectContaining({
+        status: "connected",
         connected: true,
         connectedBy: ADMIN,
         provider: "docs-mcp",
@@ -153,7 +155,11 @@ describe("service accounts API", () => {
     );
     expect(disconnected.status).toBe(200);
     expect(await listServiceAccounts(admin)).toEqual([
-      expect.objectContaining({ connected: false, provider: "docs-mcp" }),
+      expect.objectContaining({
+        status: "disconnected",
+        connected: false,
+        provider: "docs-mcp",
+      }),
     ]);
   });
 });

@@ -6,9 +6,12 @@ export const serviceAccountSchema = z
     displayName: z.string(),
     userOAuth: z.boolean(),
     tools: z.array(z.string()),
+    status: z.enum(["connected", "revoked", "disconnected"]),
+    /** Same as `status === "connected"`. Kept for older clients. */
     connected: z.boolean(),
     connectedAt: z.string().optional(),
     connectedBy: z.string().optional(),
+    revokedAt: z.string().optional(),
   })
   .strict();
 

@@ -24,10 +24,10 @@
  * stores a service account.
  */
 import {
-  deleteMcpServiceAccountCredentials,
   finishMcpServiceAccountSignIn,
-  getMcpServiceAccountCredentials,
+  getMcpServiceAccount,
   startMcpServiceAccountSignIn,
+  transitionMcpServiceAccount,
 } from "@/chat/mcp/service-account";
 import type { PluginDefinition, PluginManifest } from "@/chat/plugins/types";
 
@@ -67,10 +67,18 @@ export interface ServiceAccountStatus {
   userOAuth: boolean;
   /** MCP tools that the account may call. */
   tools: string[];
+  /**
+   * `revoked` means the provider rejected the grant, and an Admin must
+   * connect the account again. `disconnected` means no Admin connected it,
+   * or an Admin disconnected it.
+   */
+  status: "connected" | "revoked" | "disconnected";
+  /** Same as `status === "connected"`. Kept for older clients. */
   connected: boolean;
   connectedAt?: string;
   /** Email of the Admin who connected it. Missing for CLI connections. */
   connectedBy?: string;
+  revokedAt?: string;
 }
 
 /** Return the plugins whose `accounts` block allows a service account. */
@@ -89,18 +97,24 @@ export async function getServiceAccountStatus(
   if (!serviceAccount) {
     throw new Error(`Plugin ${manifest.name} does not allow a service account`);
   }
-  const credentials = await getMcpServiceAccountCredentials(manifest.name);
+  const account = await getMcpServiceAccount(manifest.name);
   return {
     provider: manifest.name,
     displayName: manifest.displayName,
     userOAuth: !serviceAccountOnly(manifest),
     tools: serviceAccount.tools,
-    connected: Boolean(credentials),
-    ...(credentials
-      ? { connectedAt: new Date(credentials.connectedAtMs).toISOString() }
+    status: account?.status ?? "disconnected",
+    connected: account?.status === "connected",
+    ...(account?.status === "connected"
+      ? {
+          connectedAt: new Date(account.connectedAtMs).toISOString(),
+          ...(account.connectedBy
+            ? { connectedBy: account.connectedBy }
+            : undefined),
+        }
       : undefined),
-    ...(credentials?.connectedBy
-      ? { connectedBy: credentials.connectedBy }
+    ...(account?.status === "revoked"
+      ? { revokedAt: new Date(account.revokedAtMs).toISOString() }
       : undefined),
   };
 }
@@ -137,10 +151,13 @@ export async function finishServiceAccountSignIn(input: {
 /**
  * Remove a plugin's service account from Junior.
  *
- * The provider grant stays until someone revokes it in the provider.
+ * A turn that is still using the account cannot restore it. The provider
+ * grant stays until someone revokes it in the provider.
  */
 export async function disconnectServiceAccount(
   plugin: PluginDefinition,
 ): Promise<void> {
-  await deleteMcpServiceAccountCredentials(plugin.manifest.name);
+  await transitionMcpServiceAccount(plugin.manifest.name, {
+    type: "disconnect",
+  });
 }

@@ -15,7 +15,7 @@ import {
 import { getDashboardAgentName } from "../../agentName";
 import { Button } from "../../components/ui/button";
 import { InlineError } from "../../components/InlineError";
-import { StatusChip } from "../../components/StatusChip";
+import { StatusChip, type StatusChipTone } from "../../components/StatusChip";
 import { Card } from "../../components/layout/Card";
 import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { formatRelativeTime } from "../../format";
@@ -49,7 +49,13 @@ function statusText(account: ServiceAccount): string {
   const usage = !account.userOAuth
     ? `Everyone uses this account. People cannot connect their own ${account.displayName} account.`
     : `People who have not connected their own ${account.displayName} account use this account.`;
-  if (!account.connected) {
+  if (account.status === "revoked") {
+    const impact = !account.userOAuth
+      ? `${account.displayName} is not available until you reconnect it.`
+      : `People must connect their own ${account.displayName} account until you reconnect it.`;
+    return `${account.displayName} revoked the grant ${formatRelativeTime(account.revokedAt)}. ${impact}`;
+  }
+  if (account.status === "disconnected") {
     const blocked = !account.userOAuth
       ? ` ${account.displayName} is not available until you connect it.`
       : "";
@@ -57,6 +63,18 @@ function statusText(account: ServiceAccount): string {
   }
   const by = account.connectedBy ?? "the CLI";
   return `Connected by ${by} ${formatRelativeTime(account.connectedAt)}. ${usage}`;
+}
+
+const statusLabel: Record<ServiceAccount["status"], string> = {
+  connected: "connected",
+  revoked: "revoked",
+  disconnected: "not connected",
+};
+
+function statusTone(account: ServiceAccount): StatusChipTone {
+  if (account.status === "connected") return "success";
+  if (account.status === "revoked") return "danger";
+  return account.userOAuth ? "neutral" : "warning";
 }
 
 /**
@@ -158,17 +176,8 @@ export function ServiceAccountsSection(props: {
                   <p className="m-0 truncate text-sm font-semibold">
                     {account.displayName}
                   </p>
-                  <StatusChip
-                    size="compact"
-                    tone={
-                      account.connected
-                        ? "success"
-                        : !account.userOAuth
-                          ? "warning"
-                          : "neutral"
-                    }
-                  >
-                    {account.connected ? "connected" : "not connected"}
+                  <StatusChip size="compact" tone={statusTone(account)}>
+                    {statusLabel[account.status]}
                   </StatusChip>
                   {!account.userOAuth ? (
                     <StatusChip size="compact" tone="neutral">
@@ -183,7 +192,7 @@ export function ServiceAccountsSection(props: {
                   {account.tools.join(", ")}
                 </p>
               </div>
-              {account.connected ? (
+              {account.status !== "disconnected" ? (
                 <Button
                   aria-busy={
                     disconnectMutation.isPending &&
@@ -206,7 +215,7 @@ export function ServiceAccountsSection(props: {
                   connectMutation.isPending &&
                   pendingProvider === account.provider
                 }
-                aria-label={`${account.connected ? "Reconnect" : "Connect"} the ${account.displayName} service account`}
+                aria-label={`${account.status === "disconnected" ? "Connect" : "Reconnect"} the ${account.displayName} service account`}
                 disabled={busy}
                 onClick={() => {
                   disconnectMutation.reset();
@@ -222,9 +231,9 @@ export function ServiceAccountsSection(props: {
                 {connectMutation.isPending &&
                 pendingProvider === account.provider
                   ? "Connecting…"
-                  : account.connected
-                    ? "Reconnect"
-                    : "Connect"}
+                  : account.status === "disconnected"
+                    ? "Connect"
+                    : "Reconnect"}
               </Button>
             </div>
           ))}

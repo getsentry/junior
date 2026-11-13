@@ -137,9 +137,11 @@ async function runConnect(plugin: PluginDefinition): Promise<number> {
 async function runStatus(plugin: PluginDefinition): Promise<number> {
   const status = await getServiceAccountStatus(plugin);
   console.log(
-    status.connectedAt
+    status.status === "connected"
       ? `The ${status.provider} service account is connected since ${status.connectedAt}.`
-      : `The ${status.provider} service account is not connected.`,
+      : status.status === "revoked"
+        ? `${status.provider} revoked the service account at ${status.revokedAt}. Run \`junior service-account connect ${status.provider}\` to connect it again.`
+        : `The ${status.provider} service account is not connected.`,
   );
   return 0;
 }
