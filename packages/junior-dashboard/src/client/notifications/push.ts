@@ -20,7 +20,8 @@ function dashboardScope(): string {
   return window.__JUNIOR_DASHBOARD_BASE_PATH__ ?? "/";
 }
 
-function isStandalone(): boolean {
+/** Return true when the dashboard runs as an installed home screen app. */
+export function isStandalone(): boolean {
   return (
     window.matchMedia?.("(display-mode: standalone)").matches === true ||
     (navigator as Navigator & { standalone?: boolean }).standalone === true

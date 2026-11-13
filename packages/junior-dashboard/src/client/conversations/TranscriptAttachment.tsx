@@ -21,6 +21,7 @@ import {
 } from "../components/ImageAttachment";
 import { Spinner } from "../components/ui/spinner";
 import { DashboardApiError, post } from "../http";
+import { isStandalone } from "../notifications/push";
 import type { TranscriptViewMessage } from "../types";
 import { conversationDetailQueryKey } from "./queries";
 import { TextAttachmentPreview } from "./TextAttachmentPreview";
@@ -348,14 +349,21 @@ const FILE_ROW_BASE_CLASS = `${FILE_ROW_SHELL_CLASS} grid-cols-[auto_minmax(0,1f
 const FILE_ROW_CLASS = `${FILE_ROW_BASE_CLASS} cursor-pointer transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus`;
 const PENDING_FILE_ROW_CLASS = `${FILE_ROW_SHELL_CLASS} grid-cols-[auto_minmax(0,1fr)_auto]`;
 
-/** Start a browser download of one stored file. */
+/**
+ * Save one stored file after its download was prepared.
+ *
+ * The click runs after a long request, so it has no user activation, and
+ * browsers block a new window then. A same-window `download` link saves the
+ * file and stays on the page. An installed home screen app would open the
+ * file in a preview with no way back (see the stored file row), so it skips
+ * this step: the refreshed row has a Download link that the user can tap.
+ */
 function startBrowserDownload(href: string, filename: string) {
+  if (isStandalone()) return;
   const link = document.createElement("a");
   link.download = filename;
   link.href = href;
   link.rel = "noreferrer";
-  // See the stored file row: an iOS home screen app has no back button.
-  link.target = "_blank";
   link.click();
 }
 
