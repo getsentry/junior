@@ -123,7 +123,7 @@ test("links to saved objects show as a titled link, a hover card, and a card", a
   });
 });
 
-test("links without an Annotation resolve to plain links, a person chip, and a hover card", async ({
+test("links without an Annotation resolve to plain links, a GitHub-style person, and a hover card", async ({
   page,
   dashboard,
 }) => {
@@ -144,12 +144,18 @@ test("links without an Annotation resolve to plain links, a person chip, and a h
   );
   await waitForResolvedLinks(page);
 
-  // Only the person keeps a chip: its icon is the one icon in the
-  // paragraph. The other links show no icon, status, or outbound mark.
+  // The person is a GitHub-style mention: its photo is the one image in
+  // the paragraph, outside the `@Name` link. The mock viewer is Morgan, so
+  // it is also the self mention. No link shows an icon, status, or mark.
   const paragraph = linksParagraph(page);
-  const person = paragraph.getByRole("link", { name: "Morgan Lee" });
-  await expect(person.locator("svg, img")).toHaveCount(1);
-  await expect(paragraph.locator("svg, img")).toHaveCount(1);
+  const mention = paragraph.locator("[data-self-mention]");
+  await expect(mention).toHaveCount(1);
+  await expect(
+    mention.getByRole("link", { name: "@Morgan Lee" }),
+  ).toBeVisible();
+  await expect(mention.locator("img")).toHaveCount(1);
+  await expect(paragraph.locator("svg")).toHaveCount(0);
+  await expect(paragraph.locator("img")).toHaveCount(1);
   await expect(paragraph).not.toContainText("·");
   await expect(paragraph).not.toContainText("Running");
 
