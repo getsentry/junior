@@ -1688,6 +1688,31 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
+  it("gives a draft that a person marks ready no passing checks", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const subscribe = vi.fn(async ({ events }) => ({
+      events,
+      id: "subscription-1",
+    }));
+    const ctx = githubToolsContext({ subscribe });
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "feature",
+        base: "main",
+        draft: true,
+        keep_draft: true,
+      },
+      { toolCallId: "call-create-kept-draft-pull-request-watch" },
+    );
+    const [watch] = subscribe.mock.calls[0]!;
+    expect(watch.events).not.toContain("pull_request.checks.recovered");
+    expect(watch.guidance).not.toHaveProperty("pull_request.checks.recovered");
+  });
+
   it("subscribes the default maintenance Watch when the app configures none", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const subscribe = vi.fn(async ({ events }) => ({

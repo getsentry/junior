@@ -42,7 +42,7 @@ Open this when making repository edits, not for read-only inspection.
      - Not in a stack: GitHub checks mergeability against the PR base (`baseRefName`), which is usually the default branch. Fetch the base and merge `origin/BASE` into the PR branch. Do not rebase. Resolve each conflict so that both the PR change and the base branch change stay intact. Run the checks again and push.
      - Then check mergeability again.
 4. Resolve the actual default branch.
-5. Update an existing PR for the branch with `github_updatePullRequest`, or create with `github_createPullRequest` (`draft: true` only when work, checks, or decisions remain; otherwise ready for review).
+5. Update an existing PR for the branch with `github_updatePullRequest`, or create with `github_createPullRequest` (`draft: true` only when work, checks, or decisions remain, or when the repo's instructions or the requester ask for a draft; otherwise ready for review). Add `keep_draft: true` to a draft that the repo's instructions or the requester asked for.
 6. PR title matches the current dominant change, same conventional form as commits.
 7. PR body: short, plain English, what changed and why. Only context the diff cannot show. No empty sections, file lists, commit logs, or Checks/Verification/Test plan blocks.
 8. After material follow-up commits, refresh title and body against the current diff.

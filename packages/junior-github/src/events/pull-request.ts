@@ -145,13 +145,14 @@ const DRAFT_CHECKS_RECOVERED_GUIDANCE =
   "If the pull request is still a draft, call github_getPullRequest and read its `checks`. When `checks.required` is `passing` and no decision is open, in the pull request body or in an open review item that waits on the person who asked for it, mark it ready with github_updatePullRequest and draft false, and report that in the originating thread. When it is `failing`, fix the failing checks like a failed check. When it is `not_reported`, the required checks may not have started on the latest commit yet. It does not mean that none are required. Otherwise stay silent.";
 
 /**
- * Build the Watch created after Junior creates a pull request. Only a draft
- * Watch gets passing checks, so a ready pull request is not woken by each
- * passing check suite.
+ * Build the Watch created after Junior creates a pull request. Only the Watch
+ * of a draft that Junior finishes gets passing checks, so a ready pull request,
+ * or a draft that a person marks ready, is not woken by each passing check
+ * suite.
  */
 export function gitHubPullRequestCreateWatch(
   config: GitHubPullRequestSubscriptionConfig,
-  pullRequest: { draft: boolean },
+  pullRequest: { finishDraft: boolean },
 ): {
   events: GitHubPullRequestEvent[];
   guidance: Partial<Record<GitHubPullRequestEvent, string>>;
@@ -168,12 +169,12 @@ export function gitHubPullRequestCreateWatch(
         // request ready to merge even when the app config omits this event.
         "pull_request.merge_conflict" as const,
         ...outcomeEvents,
-        ...(pullRequest.draft
+        ...(pullRequest.finishDraft
           ? ["pull_request.checks.recovered" as const]
           : []),
       ]),
     ],
-    guidance: pullRequest.draft
+    guidance: pullRequest.finishDraft
       ? {
           ...GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE,
           "pull_request.checks.recovered": DRAFT_CHECKS_RECOVERED_GUIDANCE,

@@ -64,6 +64,9 @@ class GitHubPullRequestCreateRejectedError extends Error {
 const REVIEWERS_DESCRIPTION =
   "GitHub logins to ask for a review. Set this only when the person names who should review. Without it, Junior asks the requester's linked GitHub account. A draft gets the request when it becomes ready for review.";
 
+const KEEP_DRAFT_DESCRIPTION =
+  "With draft true: set this when the repository's instructions or the person who asked ask for a draft, or say that a person marks the pull request ready. Junior then does not mark it ready when its required checks pass.";
+
 const createPullRequestInputSchema = Type.Object(
   {
     repo: Type.String({
@@ -88,6 +91,9 @@ const createPullRequestInputSchema = Type.Object(
       Type.Boolean({
         description: "Whether to open the pull request as a draft.",
       }),
+    ),
+    keep_draft: Type.Optional(
+      Type.Boolean({ description: KEEP_DRAFT_DESCRIPTION }),
     ),
     reviewers: Type.Optional(
       Type.Array(Type.String(), {
@@ -116,6 +122,7 @@ const createPullRequestToolInputSchema = z
       .boolean()
       .describe("Whether to open the pull request as a draft.")
       .optional(),
+    keep_draft: z.boolean().describe(KEEP_DRAFT_DESCRIPTION).optional(),
     reviewers: z
       .array(z.string())
       .min(1)
@@ -501,7 +508,7 @@ async function gitHubPullRequestStructuredResult(
     };
   }
   const watch = gitHubPullRequestCreateWatch(subscriptionConfig, {
-    draft: input.draft === true,
+    finishDraft: input.draft === true && input.keep_draft !== true,
   });
   try {
     const subscription = await ctx.events.subscribe({

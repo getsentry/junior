@@ -375,7 +375,7 @@ export async function insertGitHubDraftWatch(args: {
 }): Promise<{ id: string }> {
   const watch = gitHubPullRequestCreateWatch(
     gitHubPullRequestSubscription(undefined)!,
-    { draft: true },
+    { finishDraft: true },
   );
   return await insertWatch({
     conversation: args.conversation,
