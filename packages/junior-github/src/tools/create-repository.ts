@@ -12,7 +12,11 @@ import {
   linkedGitHubLogin,
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
-import { githubApi, githubErrorMessage } from "../tool-support/github-api.js";
+import {
+  githubApi,
+  githubErrorMessage,
+  repoPath,
+} from "../tool-support/github-api.js";
 
 const IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOCK_TTL_MS = 60_000;
@@ -22,6 +26,10 @@ const ORG_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 const TEAM_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/;
 const NAME_PATTERN = /^(?!\.{1,2}$)[A-Za-z0-9._-]{1,100}$/;
 const PROFILE_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+// Names that GitHub gives a special meaning, such as an organization profile
+// (`.github`), a Pages site (`*.github.io`), or a Git or wiki remote path.
+// GitHub compares repository names without case.
+const RESERVED_NAME_PATTERN = /^\.github|\.github\.io$|\.git$|\.wiki$/i;
 
 /**
  * Fields of `POST /orgs/{org}/repos` that a profile fixes. Junior sets
@@ -188,6 +196,38 @@ function profileFor(
 }
 
 /**
+ * Refuse a name that an organization repository has used. GitHub answers
+ * 301 for the old name of a renamed or transferred repository. A new
+ * repository with that name breaks the redirect, so links and Git remotes
+ * would point at the new repository.
+ */
+async function requireUnusedName(
+  ctx: ToolRegistrationHookContext,
+  org: string,
+  name: string,
+): Promise<void> {
+  // Egress does not follow redirects, so a renamed repository stays a 301.
+  const response = await githubApi(ctx.egress, {
+    operation: "github.repository.get",
+    path: repoPath({ owner: org, name }),
+  });
+  if (response.status === 404) return;
+  if (response.status === 200) {
+    throw new PluginToolInputError(
+      `GitHub repository ${org}/${name} already exists. Choose another name.`,
+    );
+  }
+  if (response.status === 301) {
+    throw new PluginToolInputError(
+      `${org}/${name} is the old name of a renamed or transferred repository, and GitHub redirects it. Choose another name.`,
+    );
+  }
+  throw new Error(
+    `GitHub repository lookup failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`,
+  );
+}
+
+/**
  * Return the id of the owning team after code checks that the profile allows
  * it and that the requester's linked GitHub account is an active member.
  */
@@ -303,6 +343,11 @@ export function createGitHubCreateRepositoryTool(
         );
       }
       const profile = profileFor(profiles, input);
+      if (RESERVED_NAME_PATTERN.test(input.name)) {
+        throw new PluginToolInputError(
+          `"${input.name}" is reserved. A repository name cannot start with ".github" or end with ".github.io", ".git", or ".wiki".`,
+        );
+      }
       const key = `createRepository:${conversationId}:${toolCallId}`;
       return await ctx.state.withLock(`${key}:lock`, LOCK_TTL_MS, async () => {
         const stored = await ctx.state.get(key);
@@ -317,6 +362,7 @@ export function createGitHubCreateRepositoryTool(
           );
         }
         const teamId = await owningTeamId(ctx, profile, input);
+        await requireUnusedName(ctx, profile.org, input.name);
         await ctx.state.set(key, { status: "pending" }, IDEMPOTENCY_TTL_MS);
         const response = await sendCreate(
           ctx,

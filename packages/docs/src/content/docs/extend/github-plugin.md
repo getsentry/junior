@@ -166,6 +166,12 @@ that the requester's linked GitHub account is an active member of that team.
 The team gets access through `team_id`. Junior adds no person. Set `teams`
 to limit which teams may own repositories of a profile.
 
+Junior refuses a name that starts with `.github` or ends with `.github.io`,
+`.git`, or `.wiki`. It also refuses a name that a repository in the
+organization uses or used: when `GET /repos/{org}/{name}` returns `200`, or
+`301` for a renamed or transferred repository. A new repository with an old
+name breaks the redirect to the moved repository.
+
 ```ts title="plugins.ts"
 export const plugins = defineJuniorPlugins([
   githubPlugin({
