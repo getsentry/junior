@@ -63,6 +63,11 @@ import {
   getGatewayApiKey,
   resolveGatewayModel,
 } from "@/chat/pi/client";
+import {
+  readAgentHistory,
+  withAgentRequest,
+  writeAgentHistory,
+} from "@/chat/pi/agent-history";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createRepositoryInstructionsContext } from "@/chat/agent/repository-context";
 import {
@@ -688,7 +693,13 @@ async function executeAgentRunInPrivacyContext(
     let discardedRetryUsage: AgentTurnUsage | undefined;
     const turnLimitGate = createTurnLimitGate(runResume.turnLimitWrappedUp);
     const currentAgentMessages = (): PiMessage[] =>
-      agent ? [...agent.state.messages] : [];
+      agent ? readAgentHistory(agent.state.messages) : [];
+    const setAgentHistory = (messages: readonly PiMessage[]): void => {
+      agent!.state.messages = writeAgentHistory(
+        agent!.state.messages,
+        messages,
+      );
+    };
     const usageSinceCurrentBoundary = (
       messages: PiMessage[],
     ): AgentTurnUsage | undefined => {
@@ -819,7 +830,7 @@ async function executeAgentRunInPrivacyContext(
       restoredMessages: existingSessionRecord?.piMessages,
       restoredProvenance: existingSessionRecord?.piMessageProvenance,
       setMessages(messages) {
-        agent!.state.messages = messages;
+        setAgentHistory(messages);
       },
       shouldPromptAgent,
     });
@@ -902,7 +913,7 @@ async function executeAgentRunInPrivacyContext(
         runResume.setTurnStartMessageIndex(previousTurnStartMessageIndex);
         throw error;
       }
-      agent!.state.messages = replacement;
+      setAgentHistory(replacement);
       nextInputAfterReplacement.replaced(
         mode,
         getAgentContextCompactionTriggerTokens(activeModelId),
@@ -972,7 +983,7 @@ async function executeAgentRunInPrivacyContext(
             return;
           }
           await runResume.requireDurableInputCheckpoint(
-            [...agent!.state.messages, ...piMessages],
+            [...currentAgentMessages(), ...piMessages],
             messages.map((message) => message.provenance),
           );
           committedInstructionProvenance.push(
@@ -1042,7 +1053,7 @@ async function executeAgentRunInPrivacyContext(
       if (event.toolResults.length > 0) {
         cacheWarming.toolsReturned();
         await requireConversationLease("save");
-        await runResume.persistSafeBoundary([...agent!.state.messages]);
+        await runResume.persistSafeBoundary(currentAgentMessages());
       }
       // Pi ends the run after a failed or aborted model call, and the turn
       // that reports a run failure is the last event. After an abort, such
@@ -1069,13 +1080,10 @@ async function executeAgentRunInPrivacyContext(
         async () => {
           // Pi appends steering after its context, so add AGENTS.md context
           // first to commit the same message order.
-          const contextUpdate = await repositoryInstructionsContext.applyUpdate(
-            {
-              messages: currentAgentMessages(),
-              systemPrompt: agent!.state.systemPrompt,
-              tools: agent!.state.tools,
-            },
-          );
+          const contextUpdated =
+            await repositoryInstructionsContext.applyUpdate(
+              currentAgentMessages(),
+            );
           const pendingMessages = await drainSteeringMessages();
           // Another model call follows only after steering or a tool result
           // that did not end the run. Pi stops after a batch only when every
@@ -1090,10 +1098,10 @@ async function executeAgentRunInPrivacyContext(
           if (runEnded) {
             await requestBackgroundCompactionAfterModelCall();
           }
-          return { contextUpdate, pendingMessages, runEnded };
+          return { contextUpdated, pendingMessages, runEnded };
         },
       );
-      messagesChanged = Boolean(boundary.contextUpdate);
+      messagesChanged = boundary.contextUpdated;
       // A yield is normal control flow, so it stays out of the span. It
       // comes before active compaction, so a resumed slice compacts at its
       // start.
@@ -1130,12 +1138,17 @@ async function executeAgentRunInPrivacyContext(
       getApiKey: getGatewayApiKey,
       // One AI Gateway session per Conversation, not a prompt fingerprint.
       sessionId: conversationId,
-      streamFn: createTracedStreamFn({
-        conversationPrivacy,
-        base: cacheWarming.wrap(streamFn),
-        endAttributes: (message) =>
-          nextInputAfterReplacement.attributes(lastRequestInputSize([message])),
-      }),
+      streamFn: withAgentRequest(
+        createTracedStreamFn({
+          conversationPrivacy,
+          base: cacheWarming.wrap(streamFn),
+          endAttributes: (message) =>
+            nextInputAfterReplacement.attributes(
+              lastRequestInputSize([message]),
+            ),
+        }),
+        { systemPrompt: baseInstructions, tools: wiring.agentTools },
+      ),
       steeringMode: "all",
       beforeToolCall: async ({ assistantMessage, context, toolCall }) => {
         const toolCalls = assistantMessage.content.filter(
@@ -1249,7 +1262,13 @@ async function executeAgentRunInPrivacyContext(
         }
         messagesChanged = false;
         return {
-          context: { ...nextTurn.context, messages: currentAgentMessages() },
+          context: {
+            ...nextTurn.context,
+            messages: writeAgentHistory(
+              nextTurn.context.messages,
+              currentAgentMessages(),
+            ),
+          },
         };
       },
       initialState: {
@@ -1301,25 +1320,27 @@ async function executeAgentRunInPrivacyContext(
       existingSessionRecord?.turnStartMessageIndex ??
       runResume.turnStartMessageIndex ??
       runResume.beforeMessageCount;
-    const turnMessages = () => agent!.state.messages.slice(turnStartIndex());
+    const turnMessages = () => currentAgentMessages().slice(turnStartIndex());
     try {
       if (resumedFromSessionRecord) {
-        agent.state.messages = shouldPromptAgent
-          ? promptHistoryMessages
-          : existingSessionRecord!.piMessages;
+        setAgentHistory(
+          shouldPromptAgent
+            ? promptHistoryMessages
+            : existingSessionRecord!.piMessages,
+        );
         runResume.setTurnStartMessageIndex(
           existingSessionRecord!.turnStartMessageIndex,
         );
         // Timeout/retry parking needs a durable baseline even when the first
         // mid-run checkpoint fails. Without this, an empty safe boundary can
         // re-park the same stuck slice forever.
-        runResume.adoptCommittedBoundary([...agent.state.messages]);
+        runResume.adoptCommittedBoundary(currentAgentMessages());
       } else if (promptHistoryMessages.length > 0) {
-        agent.state.messages = [...promptHistoryMessages];
+        setAgentHistory(promptHistoryMessages);
       }
-      runResume.setBeforeMessageCount(agent.state.messages.length);
+      runResume.setBeforeMessageCount(currentAgentMessages().length);
       if (shouldPromptAgent) {
-        runResume.setTurnStartMessageIndex(agent.state.messages.length);
+        runResume.setTurnStartMessageIndex(currentAgentMessages().length);
       }
 
       const authPauseOutcome = await withSpan(
@@ -1351,7 +1372,7 @@ async function executeAgentRunInPrivacyContext(
             const promptPersisted =
               await runResume.requireDurableInputCheckpoint(
                 [
-                  ...agent!.state.messages,
+                  ...currentAgentMessages(),
                   ...(contextMessage ? [contextMessage] : []),
                   freshPromptMessage,
                 ],
@@ -1362,14 +1383,12 @@ async function executeAgentRunInPrivacyContext(
             }
           }
           if (contextMessage) {
-            agent!.state.messages = [...agent!.state.messages, contextMessage];
+            setAgentHistory([...currentAgentMessages(), contextMessage]);
           }
           if (!shouldPromptAgent) {
-            await repositoryInstructionsContext.applyUpdate({
-              messages: agent!.state.messages,
-              systemPrompt: agent!.state.systemPrompt,
-              tools: agent!.state.tools,
-            });
+            await repositoryInstructionsContext.applyUpdate(
+              currentAgentMessages(),
+            );
           }
 
           /** Race one provider operation against the turn deadline and abort its owner. */
@@ -1478,7 +1497,7 @@ async function executeAgentRunInPrivacyContext(
           const compactionAbortController = new AbortController();
           const compacted = await runAgentStep(
             applyActiveContextCompaction(
-              [...agent!.state.messages],
+              currentAgentMessages(),
               compactionAbortController.signal,
               shouldPromptAgent
                 ? [
@@ -1508,9 +1527,9 @@ async function executeAgentRunInPrivacyContext(
           const prepareRetry = async (messages: PiMessage[]): Promise<void> => {
             discardedRetryUsage = addAgentTurnUsage(
               discardedRetryUsage,
-              getDiscardedRetryUsage(agent!.state.messages, messages),
+              getDiscardedRetryUsage(currentAgentMessages(), messages),
             );
-            agent!.state.messages = messages;
+            setAgentHistory(messages);
             await runResume.persistSafeBoundary(messages);
             signal?.throwIfAborted();
           };
@@ -1522,7 +1541,7 @@ async function executeAgentRunInPrivacyContext(
               }
               signal?.throwIfAborted();
 
-              newMessages = agent!.state.messages.slice(
+              newMessages = currentAgentMessages().slice(
                 runResume.beforeMessageCount,
               );
               const outputMessages = newMessages.filter(isAssistantMessage);
@@ -1568,7 +1587,7 @@ async function executeAgentRunInPrivacyContext(
 
               const confirmationRetry = actionConfirmationRetryUsed
                 ? undefined
-                : actionConfirmationRetryMessages(agent!.state.messages);
+                : actionConfirmationRetryMessages(currentAgentMessages());
               if (confirmationRetry) {
                 actionConfirmationRetryUsed = true;
                 await prepareRetry(confirmationRetry);
@@ -1581,12 +1600,12 @@ async function executeAgentRunInPrivacyContext(
                 failedAnswerCallsPastLimit >= MAX_FAILED_ANSWER_CALLS_PAST_LIMIT
                   ? undefined
                   : remindMissingAnswer(
-                      agent!.state.messages,
+                      currentAgentMessages(),
                       turnStartIndex(),
                     );
               if (answerReminder) {
                 answerReminderUsed = true;
-                agent!.state.messages = answerReminder;
+                setAgentHistory(answerReminder);
                 await runResume.persistSafeBoundary(answerReminder);
                 logWarn("agent.turn.answer.reminded", {});
                 run = agent!.continue();
@@ -1596,7 +1615,7 @@ async function executeAgentRunInPrivacyContext(
               const emptyOutputContinuation = nextEmptyOutputContinuation({
                 attempt: emptyOutputAttempt,
                 lastAssistant,
-                messages: agent!.state.messages,
+                messages: currentAgentMessages(),
               });
               if (emptyOutputContinuation.kind === "retry") {
                 emptyOutputAttempt += 1;
@@ -1616,7 +1635,7 @@ async function executeAgentRunInPrivacyContext(
               const providerRetry = nextProviderRetry({
                 attempt: providerRetryAttempt,
                 failure: lastAssistant,
-                messages: agent!.state.messages,
+                messages: currentAgentMessages(),
               });
               if (!providerRetry) {
                 const refusalFallback = refusalFallbackUsed
@@ -1624,7 +1643,7 @@ async function executeAgentRunInPrivacyContext(
                   : nextRefusalFallback({
                       failure: lastAssistant,
                       fallbackModelId: botConfig.refusalFallbackModelId,
-                      messages: agent!.state.messages,
+                      messages: currentAgentMessages(),
                     });
                 if (!refusalFallback) {
                   break;
@@ -1706,7 +1725,7 @@ async function executeAgentRunInPrivacyContext(
       userInput,
       toolCalls,
       sandboxRef: wiring.getSandboxRef(),
-      piMessages: [...agent.state.messages],
+      piMessages: currentAgentMessages(),
       durationMs: Date.now() - replyStartedAtMs,
       generatedFileCount: generatedFiles.length,
       shouldTrace,
@@ -1765,7 +1784,7 @@ async function executeAgentRunInPrivacyContext(
       // The caller saves the completed Turn after this returns.
       await requireConversationLease("save");
       await recordActiveMcpProviders();
-      const piMessages = [...agent.state.messages];
+      const piMessages = readAgentHistory(agent.state.messages);
       return {
         status: "completed",
         result: buildTurnResult({
