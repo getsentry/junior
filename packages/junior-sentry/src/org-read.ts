@@ -22,7 +22,16 @@ function orgReadToken(): string | undefined {
   return process.env.SENTRY_READ_TOKEN?.trim() || undefined;
 }
 
-// `/api/0/users/` requests stay on user OAuth because the token has no user.
+// The token acts as the integration's proxy user, not the requester. Reads
+// that return the caller's own data stay on user OAuth: `/api/0/users/` and
+// the personal inbox at `/api/0/organizations/{org}/inbox/`.
+function isUserScopedPath(segments: string[]): boolean {
+  return (
+    segments[0] === "users" ||
+    (segments[0] === "organizations" && segments[2] === "inbox")
+  );
+}
+
 function isOrgReadRequest(request: EgressHookContext["request"]): boolean {
   if (!READ_METHODS.has(request.method.toUpperCase())) {
     return false;
@@ -31,8 +40,13 @@ function isOrgReadRequest(request: EgressHookContext["request"]): boolean {
   if (!SENTRY_API_DOMAINS.includes(url.hostname)) {
     return false;
   }
-  const [api, version, resource] = url.pathname.split("/").filter(Boolean);
-  return api === "api" && version === "0" && !!resource && resource !== "users";
+  const [api, version, ...segments] = url.pathname.split("/").filter(Boolean);
+  return (
+    api === "api" &&
+    version === "0" &&
+    segments.length > 0 &&
+    !isUserScopedPath(segments)
+  );
 }
 
 /**
