@@ -157,23 +157,26 @@ export const PULL_REQUEST_CHECKS = githubGraphql(`
 `);
 
 /**
- * Read the CODEOWNERS files of a base branch and one page of the files that
- * a pull request changes. Each `*Expression` is `<base>:<path>`.
+ * Read the CODEOWNERS files and the root AGENTS.md of a base branch, and one
+ * page of the files that a pull request changes. Each `*Expression` is
+ * `<base>:<path>`.
  */
-export const PULL_REQUEST_CODE_OWNERS = githubGraphql(`
-  query PullRequestCodeOwners(
+export const PULL_REQUEST_DRAFT_READINESS = githubGraphql(`
+  query PullRequestDraftReadiness(
     $owner: String!
     $name: String!
     $number: Int!
     $githubExpression: String!
     $rootExpression: String!
     $docsExpression: String!
+    $agentsExpression: String!
     $after: String
   ) {
     repository(owner: $owner, name: $name) {
       github: object(expression: $githubExpression) { ... on Blob { text } }
       root: object(expression: $rootExpression) { ... on Blob { text } }
       docs: object(expression: $docsExpression) { ... on Blob { text } }
+      agents: object(expression: $agentsExpression) { ... on Blob { text } }
       pullRequest(number: $number) {
         files(first: 100, after: $after) {
           pageInfo { hasNextPage endCursor }

@@ -1,5 +1,7 @@
 /**
- * The code owners that GitHub asks to review a pull request.
+ * What a draft needs before Junior marks it ready: the code owners that
+ * GitHub asks to review, and the repository's AGENTS.md, which can ask that
+ * pull requests stay drafts for a person to mark ready.
  *
  * GitHub reads the first CODEOWNERS file of the base branch, in `.github/`,
  * the repository root, or `docs/`. For each changed file the last matching
@@ -15,7 +17,7 @@
 import type { PluginEgress } from "@sentry/junior-plugin-api";
 import ignore from "ignore";
 import * as z from "zod";
-import { PULL_REQUEST_CODE_OWNERS } from "./graphql-documents.js";
+import { PULL_REQUEST_DRAFT_READINESS } from "./graphql-documents.js";
 import { githubApi } from "./tool-support/github-api.js";
 
 interface CodeOwnersRule {
@@ -64,6 +66,7 @@ const responseSchema = z.object({
       github: blobSchema,
       root: blobSchema,
       docs: blobSchema,
+      agents: blobSchema,
       pullRequest: z.object({
         files: z
           .object({
@@ -80,30 +83,30 @@ const responseSchema = z.object({
 });
 
 /**
- * Read the code owners of the files that one pull request changes, from the
- * CODEOWNERS file of its base branch.
+ * Read the code owners of the files that one draft changes and the root
+ * AGENTS.md, both from its base branch.
  */
-export async function readPullRequestCodeOwners(
+export async function readDraftReadiness(
   egress: PluginEgress,
   repo: { name: string; owner: string },
   pullRequest: { base: string; number: number },
-): Promise<string[]> {
+): Promise<{ agentsMd?: string; codeOwners: string[] }> {
   const expressions = Object.fromEntries(
-    Object.entries(CODE_OWNERS_PATHS).map(([key, path]) => [
-      key,
-      `${pullRequest.base}:${path}`,
-    ]),
+    Object.entries({ ...CODE_OWNERS_PATHS, agentsExpression: "AGENTS.md" }).map(
+      ([key, path]) => [key, `${pullRequest.base}:${path}`],
+    ),
   );
   const paths: string[] = [];
   let codeOwners: string | undefined;
+  let agentsMd: string | undefined;
   let after: string | null = null;
   do {
     const response = await githubApi(egress, {
-      operation: "github.pull.code_owners.get",
+      operation: "github.pull.draft_readiness.get",
       method: "POST",
       path: "/graphql",
       body: {
-        ...PULL_REQUEST_CODE_OWNERS,
+        ...PULL_REQUEST_DRAFT_READINESS,
         variables: {
           ...expressions,
           after,
@@ -124,6 +127,7 @@ export async function readPullRequestCodeOwners(
       repository.root?.text ??
       repository.docs?.text ??
       undefined;
+    agentsMd ??= repository.agents?.text ?? undefined;
     const files = repository.pullRequest.files;
     if (!files) {
       // Without the changed files, no owners would read as "safe to mark
@@ -138,5 +142,10 @@ export async function readPullRequestCodeOwners(
     paths.push(...files.nodes.map((file) => file.path));
     after = files.pageInfo.hasNextPage ? files.pageInfo.endCursor : null;
   } while (after);
-  return codeOwners ? codeOwnersOf(parseCodeOwners(codeOwners), paths) : [];
+  return {
+    ...(agentsMd ? { agentsMd } : undefined),
+    codeOwners: codeOwners
+      ? codeOwnersOf(parseCodeOwners(codeOwners), paths)
+      : [],
+  };
 }

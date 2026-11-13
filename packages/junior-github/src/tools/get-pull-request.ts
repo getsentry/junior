@@ -1,5 +1,5 @@
 import { githubObjectAnnotation } from "../annotations.js";
-import { readPullRequestCodeOwners } from "../code-owners.js";
+import { readDraftReadiness } from "../draft-readiness.js";
 import { githubObjectFacts } from "../object-facts.js";
 import {
   type PluginEgress,
@@ -57,6 +57,12 @@ const checksSchema = z.object({
 type Checks = z.output<typeof checksSchema>;
 const pullRequestSchema = z.object({
   base: z.string(),
+  agents_md: z
+    .string()
+    .optional()
+    .describe(
+      "Draft only: the root AGENTS.md of the base branch, when it has one.",
+    ),
   checks: checksSchema,
   code_owners: z
     .array(z.string())
@@ -212,7 +218,7 @@ export function createGitHubGetPullRequestTool(ctx: {
       readOnlyHint: true,
     },
     description:
-      "Get a GitHub pull request with its required checks and merge state, and for a draft, the code owners that GitHub asks to review when it is marked ready. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
+      "Get a GitHub pull request with its required checks and merge state, and for a draft, what to check before marking it ready. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -247,9 +253,9 @@ export function createGitHubGetPullRequestTool(ctx: {
         providerResult.number,
       );
       // Only a draft can still ask its code owners by being marked ready.
-      const codeOwners =
+      const readiness =
         providerResult.draft && providerResult.state === "open"
-          ? await readPullRequestCodeOwners(ctx.egress, repo, {
+          ? await readDraftReadiness(ctx.egress, repo, {
               base: providerResult.base.ref,
               number: providerResult.number,
             })
@@ -261,8 +267,11 @@ export function createGitHubGetPullRequestTool(ctx: {
       });
       const data: PullRequest = {
         base: providerResult.base.ref,
+        ...(readiness?.agentsMd
+          ? { agents_md: readiness.agentsMd }
+          : undefined),
         checks,
-        ...(codeOwners ? { code_owners: codeOwners } : undefined),
+        ...(readiness ? { code_owners: readiness.codeOwners } : undefined),
         draft: providerResult.draft,
         head: providerResult.head.ref,
         head_sha: providerResult.head.sha.toLowerCase(),

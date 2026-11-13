@@ -1,12 +1,14 @@
 // Draft pull requests whose check suite just passed. Each draft has the same
 // passing suite; they differ in other required checks and in the body.
 // #695's checks are not required, like a suite that reports before the
-// required checks start. #696 changes a file that has code owners.
+// required checks start. #696 changes a file that has code owners. #697's
+// base branch has an AGENTS.md that asks for draft pull requests.
 const repo = "getsentry/junior";
 const web = `https://github.com/${repo}`;
 const api = `/repos/${repo}`;
 
 interface DraftFixture {
+  agentsMd?: string;
   body: string;
   codeOwners?: string;
   failingCheck?: string;
@@ -46,6 +48,12 @@ const drafts: DraftFixture[] = [
     codeOwners: "/src/cache/ @getsentry/cache-owners\n",
     number: 696,
     sha: "6960000000000000000000000000000000000696",
+  },
+  {
+    agentsMd: "# Agent Instructions\n\n- Always open PRs as draft.\n",
+    body: draftBody,
+    number: 697,
+    sha: "6970000000000000000000000000000000000697",
   },
 ];
 
@@ -173,12 +181,14 @@ export async function interceptTestGitHubDraftsHttp(
     }
     if (/\bmutation\b/.test(body.query ?? "")) return undefined;
     const pullRequest = graphqlPullRequest(draft);
-    // The CODEOWNERS file of the base branch, in `.github/`.
+    // The CODEOWNERS file of the base branch, in `.github/`, and its
+    // AGENTS.md.
     const github = draft.codeOwners ? { text: draft.codeOwners } : null;
+    const agents = draft.agentsMd ? { text: draft.agentsMd } : null;
     return Response.json({
       data: {
         node: pullRequest,
-        repository: { docs: null, github, pullRequest, root: null },
+        repository: { agents, docs: null, github, pullRequest, root: null },
       },
     });
   }

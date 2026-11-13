@@ -301,6 +301,8 @@ describe("getPullRequest", () => {
             github: null,
             root: root === null ? null : { text: root },
             docs: null,
+            agents:
+              root === null ? null : { text: "Always open PRs as draft." },
             pullRequest: {
               files: {
                 nodes: files.map((path) => ({ path })),
@@ -338,6 +340,7 @@ describe("getPullRequest", () => {
 
     // The last matching rule wins, and a rule with no owners clears them.
     expect(result).toMatchObject({
+      agents_md: "Always open PRs as draft.",
       code_owners: ["@alice", "@getsentry/docs"],
       draft: true,
     });
@@ -349,9 +352,10 @@ describe("getPullRequest", () => {
     );
     expect(pages).toMatchObject([
       {
-        operationName: "PullRequestCodeOwners",
+        operationName: "PullRequestDraftReadiness",
         variables: {
           after: null,
+          agentsExpression: "main:AGENTS.md",
           githubExpression: "main:.github/CODEOWNERS",
           number: 691,
         },
@@ -372,6 +376,7 @@ describe("getPullRequest", () => {
               github: { text: "* @getsentry/owners" },
               root: null,
               docs: null,
+              agents: null,
               pullRequest: { files: null },
             },
           },
