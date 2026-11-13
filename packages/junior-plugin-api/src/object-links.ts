@@ -134,6 +134,13 @@ export interface ObjectLinkContext extends PluginContext {
    */
   egress: PluginEgress;
   /**
+   * Return the Junior path of one image that this plugin serves through
+   * `images`, such as a file thumbnail. Put the path in facts, never the
+   * address of the image. The image route asks `images.resolve` again for
+   * each viewer. `version` changes the path when the image changes.
+   */
+  imagePath(ref: string, version?: string): string;
+  /**
    * Return the Junior person card of the one known person with this
    * provider account, or undefined. Return it for a profile link of that
    * account, so the card shows the person and not only the account.
@@ -144,24 +151,44 @@ export interface ObjectLinkContext extends PluginContext {
   }): Promise<ObjectAnnotation | undefined>;
   /** The signed-in person who sees the card. */
   viewer: User;
+  /**
+   * Provider egress with only the viewer's own stored OAuth token for this
+   * plugin's provider, such as a token from the dashboard Connections page.
+   * It never asks the viewer to authorize, and it never uses a plugin
+   * grant, an app token, or another person's token. A viewer without a
+   * usable token gets HTTP 401. Use it to check that the viewer may see an
+   * object, and read the card data with `egress`.
+   */
+  viewerEgress: PluginEgress;
 }
 
 /**
- * One link type of a plugin. Return nothing when the viewer cannot read the
- * object, so the card does not show that it exists. Junior does not save the
- * result.
+ * One link type of a plugin. Junior calls `canView` first, and calls
+ * `resolve` only when it returns true. Junior does not save the result.
  */
 export interface PluginObjectLinkDefinition {
+  /**
+   * Return whether `ctx.viewer` may see the object. Junior calls it before
+   * each card read and again on each Attach. Return true for a public
+   * object. Return false when you cannot tell, so the card does not show
+   * that the object exists.
+   */
+  canView(ctx: ObjectLinkContext, url: URL): Promise<boolean>;
   filters: ObjectLinkFilter[];
   objectType: ObjectType;
+  /**
+   * Read the card. Junior calls it only after `canView` returns true.
+   * Return nothing for a missing object.
+   */
   resolve(
     ctx: ObjectLinkContext,
     url: URL,
   ): Promise<ObjectAnnotation | undefined>;
   /**
-   * The plugin tool that reads the object live, such as `readGoogleFile`.
-   * When a person attaches the link to a Conversation, its next Turn is told
-   * to read the object with this tool. Omit it when no tool reads the object.
+   * Name the plugin tool that reads the resolved object live, such as
+   * `readGoogleFile`. When a person attaches the link to a Conversation, its
+   * next Turn is told to read the object with this tool. Return nothing when
+   * no tool reads this object.
    */
-  readTool?: string;
+  readTool?(object: ObjectAnnotation): string | undefined;
 }

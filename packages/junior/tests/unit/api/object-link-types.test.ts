@@ -11,7 +11,12 @@ function plugin(name: string, filters: ObjectLinkFilter[]) {
   return defineJuniorPlugin({
     manifest: { name, displayName: name, description: `${name} links` },
     objectLinks: [
-      { filters, objectType: "item", resolve: async () => undefined },
+      {
+        canView: async () => true,
+        filters,
+        objectType: "item",
+        resolve: async () => undefined,
+      },
     ],
   });
 }

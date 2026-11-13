@@ -761,8 +761,15 @@
     {
       "idx": 108,
       "version": "7",
-      "when": 1794592946623,
-      "tag": "0108_sandbox_session_cost",
+      "when": 1794610551055,
+      "tag": "0108_conversation_embeddings",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1794613694215,
+      "tag": "0109_sandbox_session_cost",
       "breakpoints": true
     }
   ]

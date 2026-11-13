@@ -44,6 +44,7 @@ import {
   TokenMetric,
 } from "./TelemetryMetrics";
 import type { Conversation } from "../types";
+import { objectSource } from "./objectSource";
 import {
   projectSidebarAnnotationBadges,
   type SidebarAnnotation,
@@ -522,7 +523,7 @@ export function ConversationAnnotations(props: {
           key={link.key}
           title={[
             link.label,
-            link.plugin,
+            objectSource(link.plugin),
             linkStatusLabel(link.status),
             link.description,
           ]

@@ -8,6 +8,7 @@ import { useState } from "react";
 import { ActorAvatar } from "../components/ActorAvatar";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { AutomationCard } from "../components/AutomationCard";
+import { Sparkline } from "../components/charts/Sparkline";
 import { StatusChip } from "../components/StatusChip";
 import {
   Collapsible,
@@ -20,6 +21,7 @@ import { OutboundLink } from "../components/OutboundLink";
 import { displayPlainText } from "../display-text/plainText";
 import { ObjectAttachAction } from "./ObjectAttach";
 import { useObjectPreviewImages } from "./objectPreviewImages";
+import { objectSource } from "./objectSource";
 
 // A thumbnail that fails to load does not render.
 function Thumbnail({ src }: { src: string }) {
@@ -60,6 +62,32 @@ function PreviewImage({
   );
 }
 
+// A web page names its site, then its author, such as "YouTube · Sentry".
+// Its type and its core plugin tell the viewer nothing, and its label is
+// its title.
+function cardMeta(card: OwnedObjectAnnotation, type: string): string {
+  const parts =
+    card.objectType === "web_page"
+      ? [
+          webPageSite(card),
+          card.facts?.type === "web_page" ? card.facts.author : undefined,
+        ]
+      : [
+          type,
+          objectSource(card.plugin),
+          card.label === card.title ? "" : card.label,
+        ];
+  return parts.filter(Boolean).join(" · ") || type;
+}
+
+function webPageSite(card: OwnedObjectAnnotation): string | undefined {
+  if (card.facts?.type === "web_page" && card.facts.siteName) {
+    return card.facts.siteName;
+  }
+  if (!card.url || !URL.canParse(card.url)) return undefined;
+  return new URL(card.url).hostname.replace(/^www\./, "");
+}
+
 /**
  * Show the latest saved annotation, or a `live` card that the API resolved
  * for a link. Opening a source is always explicit. A live card can attach
@@ -87,7 +115,12 @@ export function ObjectCard({
       />
     );
   }
-  const fields = objectFactFields(card.facts);
+  // The header already names the site and author of a web page.
+  const fields = objectFactFields(card.facts).filter(
+    (field) =>
+      card.facts?.type !== "web_page" ||
+      (field.key !== "siteName" && field.key !== "author"),
+  );
   const presentation = objectPresentation(card);
   const type = card.displayType ?? presentation.label;
   return (
@@ -104,9 +137,7 @@ export function ObjectCard({
             <ObjectIcon {...card} size={18} />
           )
         }
-        meta={[type, card.plugin, card.label === card.title ? "" : card.label]
-          .filter(Boolean)
-          .join(" · ")}
+        meta={cardMeta(card, type)}
         title={
           card.url ? (
             <OutboundLink
@@ -123,9 +154,10 @@ export function ObjectCard({
         }
       />
       <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
-        {card.facts?.type === "web_page" && card.facts.thumbnailUrl && (
-          <Thumbnail src={card.facts.thumbnailUrl} />
-        )}
+        {(card.facts?.type === "document" || card.facts?.type === "web_page") &&
+          card.facts.thumbnailUrl && (
+            <Thumbnail src={card.facts.thumbnailUrl} />
+          )}
         {images.length > 0 && (
           // Screenshots often come as a before and after pair, side by side.
           <div className="grid grid-cols-2 gap-2">
@@ -142,6 +174,9 @@ export function ObjectCard({
           <p className="m-0 max-w-[80ch] break-words text-sm text-dashboard-text-muted">
             {displayPlainText(card.facts.summary)}
           </p>
+        )}
+        {card.facts?.type === "task" && card.facts.trend && (
+          <Sparkline {...card.facts.trend} />
         )}
         {(card.status || fields.length > 0) && (
           // Facts sit side by side and wrap to a stack in a narrow column.

@@ -156,13 +156,75 @@ export const PULL_REQUEST_CHECKS = githubGraphql(`
   }
 `);
 
+/**
+ * Read the CODEOWNERS files and the root AGENTS.md of a base branch, and one
+ * page of the files that a pull request changes. Each `*Expression` is
+ * `<base>:<path>`.
+ */
+export const PULL_REQUEST_DRAFT_READINESS = githubGraphql(`
+  query PullRequestDraftReadiness(
+    $owner: String!
+    $name: String!
+    $number: Int!
+    $githubExpression: String!
+    $rootExpression: String!
+    $docsExpression: String!
+    $agentsExpression: String!
+    $after: String
+  ) {
+    repository(owner: $owner, name: $name) {
+      github: object(expression: $githubExpression) { ... on Blob { text } }
+      root: object(expression: $rootExpression) { ... on Blob { text } }
+      docs: object(expression: $docsExpression) { ... on Blob { text } }
+      agents: object(expression: $agentsExpression) { ... on Blob { text } }
+      pullRequest(number: $number) {
+        files(first: 100, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes { path }
+        }
+      }
+    }
+  }
+`);
+
 /** Read one page of a pull request search, with mergeability. */
 export const OPEN_PULL_REQUEST_MERGEABILITY = githubGraphql(`
   query OpenPullRequestMergeability($query: String!, $after: String) {
     search(query: $query, type: ISSUE, first: 100, after: $after) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        ... on PullRequest { number state mergeable headRefOid baseRefName url }
+        ... on PullRequest { number state isDraft mergeable headRefOid baseRefName title url }
+      }
+    }
+  }
+`);
+
+/**
+ * Read what decides a merge conflict fix on one pull request: the review
+ * decision, when it opened, and its latest pushes, reviews, and comments.
+ * Pushes have their own window, so comments, which anyone can add, cannot
+ * push Junior's earlier fixes out of it.
+ */
+export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
+  query PullRequestConflictHistory($owner: String!, $name: String!, $number: Int!) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) {
+        createdAt
+        reviewDecision
+        pushes: timelineItems(last: 100, itemTypes: [PULL_REQUEST_COMMIT, HEAD_REF_FORCE_PUSHED_EVENT]) {
+          nodes {
+            __typename
+            ... on PullRequestCommit { commit { committedDate parents { totalCount } author { user { login } } } }
+            ... on HeadRefForcePushedEvent { createdAt actor { __typename } }
+          }
+        }
+        discussion: timelineItems(last: 50, itemTypes: [PULL_REQUEST_REVIEW, ISSUE_COMMENT]) {
+          nodes {
+            __typename
+            ... on PullRequestReview { submittedAt author { __typename } }
+            ... on IssueComment { createdAt author { __typename } }
+          }
+        }
       }
     }
   }

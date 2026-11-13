@@ -1346,6 +1346,7 @@ describe("GitHub webhook events", () => {
     ).toEqual({
       checkSuiteId: 89021857045,
       headSha: "8105236768dd1da43379152ee11900be8983ae03",
+      loadCheckSuites: false,
       loadFailingChecks: true,
       loadPullRequestFacts: false,
       owner: "getsentry",
@@ -1377,6 +1378,7 @@ describe("GitHub webhook events", () => {
     ).toEqual({
       checkSuiteId: 7,
       headSha: "abcdef1234567890",
+      loadCheckSuites: false,
       loadFailingChecks: false,
       loadPullRequestFacts: true,
       owner: "getsentry",
@@ -1397,7 +1399,10 @@ describe("GitHub webhook events", () => {
     ).toEqual({
       // Core uses the repo to skip broad triggers for other repositories.
       data: { repo: "getsentry/junior" },
-      eventTypes: ["pull_request.checks.recovered"],
+      eventTypes: [
+        "pull_request.checks.recovered",
+        "pull_request.checks.passed",
+      ],
       identifiers: ["getsentry/junior", "getsentry/junior#10"],
     });
   });

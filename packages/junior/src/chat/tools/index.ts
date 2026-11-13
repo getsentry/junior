@@ -1,4 +1,5 @@
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
+import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { botConfig } from "@/chat/config";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
@@ -172,6 +173,13 @@ export function createTools(
         }
       : undefined),
     conversationId: context.conversationId,
+    embedder: createConversationEmbedder({
+      cost: {
+        conversationId: context.conversationId,
+        ...(context.turnId ? { turnId: context.turnId } : undefined),
+      },
+      operation: "conversation_search_embedding",
+    }),
   });
   const createPreview = context.workspace.createPreview?.bind(
     context.workspace,
