@@ -186,3 +186,27 @@ test("rows never expand on hover under reduced motion", async ({
   await page.clock.runFor(PAST_HOVER_DELAY_MS);
   await expect(card).toHaveCount(0);
 });
+
+test("the hover card shows linked work as quiet cards", async ({
+  dashboard,
+  page,
+}) => {
+  await page.clock.install();
+  await page.goto(`${dashboard.baseURL}/`);
+  const row = page
+    .getByRole("region", { name: "To do" })
+    .locator("li[data-inbox-row]")
+    .filter({ hasText: "Package release and self-update" })
+    .first();
+  await row.hover();
+  await page.clock.runFor(PAST_HOVER_DELAY_MS);
+  // The same cards as comfortable rows: no icon, and a line in each one's
+  // status color.
+  const cards = row
+    // The card is aria-hidden, so find its parts by attribute.
+    .locator(':scope > [data-hover-card] [aria-label="Linked work"]')
+    .locator("[data-linked-work-card]");
+  await expect(cards).toHaveCount(3);
+  await expect(cards.locator("svg")).toHaveCount(0);
+  await expect(cards.locator("[data-status-tone]")).toHaveCount(3);
+});

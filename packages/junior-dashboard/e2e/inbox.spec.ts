@@ -854,6 +854,18 @@ test("comfortable rows show files and linked work as cards, and compact rows kee
     /Pin the release train to payments 4\.2.*getsentry\/payments#91 · Open/,
     /Return 429 before parsing oversized envelopes.*getsentry\/relay#44 · Merged/,
   ]);
+  // Quiet cards: no icon, and a line in each one's status color.
+  const cards = work.locator("[data-linked-work-card]");
+  await expect(cards.locator("svg")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      cards
+        .locator("[data-status-tone]")
+        .evaluateAll((lines) =>
+          lines.map((line) => line.getAttribute("data-status-tone")),
+        ),
+    )
+    .toEqual(["neutral", "success", "accent"]);
   await expect(
     work.getByRole("link", { name: /Pin the release train/ }),
   ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/91");

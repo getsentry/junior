@@ -1,13 +1,14 @@
 import type { OwnedObjectAnnotation } from "@sentry/junior/api/schema";
+import { objectPresentation } from "@sentry/junior-plugin-api";
 import { useEffect } from "react";
-import { ObjectIcon } from "../components/ObjectIcon";
-import { OutboundLink } from "../components/OutboundLink";
+import { objectToneClass } from "../components/ObjectIcon";
 import { ConversationSidebarAnnotations } from "../conversations/ConversationMeta";
 import { linkStatusLabel } from "../conversations/ConversationLinkedWork";
 import {
   MessageObjectsProvider,
   useResolvedObject,
 } from "../display-text/DisplayText";
+import { cn } from "../styles";
 import type { Conversation } from "../types";
 
 type Annotation = NonNullable<Conversation["sidebarAnnotations"]>[number];
@@ -57,6 +58,8 @@ function identity(object: { key: string; label: string }): string {
     : object.label;
 }
 
+// A quiet card: the title, then the object's name and status in its status
+// color. No frame or icon, so the row's text leads.
 function WorkCard(props: {
   href: string;
   identity: string;
@@ -66,13 +69,17 @@ function WorkCard(props: {
   title: string;
 }) {
   const status = linkStatusLabel(props.status);
+  const { tone } = objectPresentation(props);
   return (
-    <OutboundLink
-      className="flex w-56 shrink-0 flex-wrap items-center gap-x-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-2.5 py-1.5 font-sans text-xs text-dashboard-text-muted no-underline transition-colors hover:border-dashboard-border-strong hover:bg-dashboard-fill-soft focus-visible:outline-2 focus-visible:outline-dashboard-focus sm:w-auto sm:min-w-48 sm:max-w-72 sm:flex-1"
+    <a
+      className="group/card flex w-56 shrink-0 flex-col rounded-md font-sans text-xs no-underline focus-visible:outline-2 focus-visible:outline-dashboard-focus sm:w-auto sm:min-w-48 sm:max-w-72 sm:flex-1"
+      data-linked-work-card=""
       href={props.href}
+      rel="noreferrer"
+      target="_blank"
     >
       {props.imageUrl ? (
-        <span className="mb-1.5 block aspect-video basis-full overflow-hidden rounded-md bg-dashboard-fill-soft">
+        <span className="mb-1.5 block aspect-video overflow-hidden rounded-md bg-dashboard-fill-soft">
           <img
             alt={`Preview of ${props.title}`}
             className="size-full object-cover"
@@ -82,23 +89,19 @@ function WorkCard(props: {
           />
         </span>
       ) : null}
-      <ObjectIcon
-        className="size-4 shrink-0"
-        objectType={props.objectType}
-        status={props.status}
-      />
-      <span className="grid min-w-0 flex-1">
-        <span className="truncate text-sm font-medium text-dashboard-text">
-          {props.title}
-        </span>
-        <span className="truncate">
-          {/* A person card's label is the name the title already shows. */}
-          {[props.identity === props.title ? undefined : props.identity, status]
-            .filter(Boolean)
-            .join(" · ")}
-        </span>
+      <span className="truncate text-sm font-medium text-dashboard-text group-hover/card:underline">
+        {props.title}
       </span>
-    </OutboundLink>
+      <span
+        className={cn("truncate", objectToneClass[tone])}
+        data-status-tone={tone}
+      >
+        {/* A person card's label is the name the title already shows. */}
+        {[props.identity === props.title ? undefined : props.identity, status]
+          .filter(Boolean)
+          .join(" · ")}
+      </span>
+    </a>
   );
 }
 
