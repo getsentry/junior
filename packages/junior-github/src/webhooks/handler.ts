@@ -164,6 +164,10 @@ export function createGitHubWebhookRoute(args: {
   loadGitHubIncidents?(): Promise<GitHubStatusIncident[]>;
   /** Read one pull request for its mergeability. */
   loadPullRequest?(pullRequest: GitHubPullRequestRef): Promise<unknown>;
+  /** Read one pull request's history for the merge conflict policy. */
+  loadPullRequestConflictHistory?(
+    pullRequest: GitHubPullRequestRef,
+  ): Promise<unknown>;
   /** Load a repository role for `openerRole`. */
   loadRepositoryRole?(target: GitHubRoleTarget): Promise<string>;
   /** Linked GitHub login of the user of one Junior identity, if any. */
@@ -419,12 +423,15 @@ export function createGitHubWebhookRoute(args: {
       // reaction, so a Watch that wants only conflicts does not mark a comment.
       events.push(
         ...(await loadGitHubMergeConflictEvents({
+          db: args.db,
           deliveryId,
           events,
           hasMatch,
+          loadConflictHistory: args.loadPullRequestConflictHistory,
           loadPullRequest: args.loadPullRequest,
           log: args.log,
           pullRequestPayload: eventName === "pull_request" ? body : undefined,
+          reviewItems: args.reviewItems,
         })),
       );
       for (const event of events) {

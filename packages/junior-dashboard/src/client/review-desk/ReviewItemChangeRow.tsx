@@ -12,7 +12,6 @@ import {
   TranscriptShowQuestion,
   useAnswerInView,
   useAnswerLinked,
-  useAskInView,
 } from "../conversations/TranscriptAnswerLinks";
 import { DisplayText } from "../display-text/DisplayText";
 import { useConversationReviewItemData } from "./queries";
@@ -72,8 +71,8 @@ function ReviewItemPreview(props: {
 
 // The change reads as the person's reply to a question, and an answer stands
 // out in a bubble. A line in the avatar column links an answer to its "Asked"
-// record. The quote line names the item only while that record is out of
-// view, or when the transcript has no record to link.
+// record. The quote line always shows: hiding it while the record is in view
+// changed the row height, and the rows below it moved.
 function ChangeRow(props: {
   conversationId: string;
   item: ReviewItemPayload;
@@ -88,8 +87,6 @@ function ChangeRow(props: {
       ? answerRows(item.request, item.answer)
       : [];
   const askLinked = useAnswerLinked(item.id);
-  const linked = askLinked && rows.length > 0;
-  const askInView = useAskInView(item.id);
   // The page can show a question that has a row here, or load the history
   // around the Turn that asked it. A plugin item has neither, so it opens on
   // the review desk, as does an item from another Conversation.
@@ -102,30 +99,28 @@ function ChangeRow(props: {
       aria-label={`${verb} ${item.title}`}
       className="grid min-w-0 gap-1.5"
     >
-      {linked && askInView ? null : (
-        <p className="m-0 flex min-w-0 items-center gap-1.5 border-l-2 border-dashboard-border-emphasis pl-2 text-sm text-dashboard-text-muted">
-          <span className="shrink-0">{verb}</span>
-          <ReviewItemPreview
-            item={item}
-            trigger={
-              showQuestion && scrollsToQuestion ? (
-                <button
-                  className={QUOTE_TITLE_CLASS}
-                  onClick={() => showQuestion(item)}
-                  type="button"
-                />
-              ) : (
-                <Link
-                  className={QUOTE_TITLE_CLASS}
-                  to={reviewItemPath(item.id)}
-                />
-              )
-            }
-          >
-            {item.title}
-          </ReviewItemPreview>
-        </p>
-      )}
+      <p className="m-0 flex min-w-0 items-center gap-1.5 border-l-2 border-dashboard-border-emphasis pl-2 text-sm text-dashboard-text-muted">
+        <span className="shrink-0">{verb}</span>
+        <ReviewItemPreview
+          item={item}
+          trigger={
+            showQuestion && scrollsToQuestion ? (
+              <button
+                className={QUOTE_TITLE_CLASS}
+                onClick={() => showQuestion(item)}
+                type="button"
+              />
+            ) : (
+              <Link
+                className={QUOTE_TITLE_CLASS}
+                to={reviewItemPath(item.id)}
+              />
+            )
+          }
+        >
+          {item.title}
+        </ReviewItemPreview>
+      </p>
       {rows.length ? (
         <dl className="m-0 grid w-fit max-w-full gap-1.5 rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel px-3.5 py-2 font-sans text-base leading-relaxed">
           {rows.map((row) => (
