@@ -10,6 +10,7 @@ import {
 import { getDashboardLinkFilter } from "@/chat/dashboard-link";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
+import { webActorFromUser } from "@/chat/conversations/web-input";
 import { createPluginEgress } from "@/chat/egress/plugin";
 import { imagePath } from "@/chat/images/ids";
 import { logException } from "@/chat/logging";
@@ -100,6 +101,13 @@ function objectLinkContext(name: string, viewer: User): ObjectLinkContext {
     log: createPluginLogger(name),
     plugin: { name },
     viewer,
+    // The viewer's User id is the subject of their dashboard connections.
+    // Only that subject's own OAuth token is used.
+    viewerEgress: createPluginEgress({
+      credentialContext: credentialContextForActor(webActorFromUser(viewer)),
+      pluginAuth: { async handleAuthRequired() {} },
+      userOAuthOnly: true,
+    }),
   };
 }
 

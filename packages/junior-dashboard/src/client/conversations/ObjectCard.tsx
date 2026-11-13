@@ -8,6 +8,7 @@ import { useState } from "react";
 import { ActorAvatar } from "../components/ActorAvatar";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { AutomationCard } from "../components/AutomationCard";
+import { Sparkline } from "../components/charts/Sparkline";
 import { StatusChip } from "../components/StatusChip";
 import {
   Collapsible,
@@ -143,6 +144,9 @@ export function ObjectCard({
           <p className="m-0 max-w-[80ch] break-words text-sm text-dashboard-text-muted">
             {displayPlainText(card.facts.summary)}
           </p>
+        )}
+        {card.facts?.type === "task" && card.facts.trend && (
+          <Sparkline {...card.facts.trend} />
         )}
         {(card.status || fields.length > 0) && (
           // Facts sit side by side and wrap to a stack in a narrow column.

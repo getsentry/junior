@@ -151,6 +151,15 @@ export interface ObjectLinkContext extends PluginContext {
   }): Promise<ObjectAnnotation | undefined>;
   /** The signed-in person who sees the card. */
   viewer: User;
+  /**
+   * Provider egress with only the viewer's own stored OAuth token for this
+   * plugin's provider, such as a token from the dashboard Connections page.
+   * It never asks the viewer to authorize, and it never uses a plugin
+   * grant, an app token, or another person's token. A viewer without a
+   * usable token gets HTTP 401. Use it to check that the viewer may see an
+   * object, and read the card data with `egress`.
+   */
+  viewerEgress: PluginEgress;
 }
 
 /**

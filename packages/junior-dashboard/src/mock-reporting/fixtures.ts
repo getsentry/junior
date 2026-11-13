@@ -1404,7 +1404,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
       type: "message",
       messageId: "release-assistant",
       role: "assistant",
-      // Links to the Annotations below show as a chip, a hover card, and a
+      // Links to the Annotations below show as a link, a hover card, and a
       // full card.
       text: [
         "Released the package.",
@@ -1417,9 +1417,19 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "Track it in https://docs.google.com/document/d/1MockReleaseChecklist_0123456789/edit before https://www.google.com/calendar/event?eid=cmVsNDJnb25vZ28ganVuaW9yQGV4YW1wbGUuY29t",
         "Metrics are in https://drive.google.com/file/d/1MockReleaseMetricsPdf_0123456789/view, and the assets are in https://drive.google.com/drive/folders/1MockReleaseAssets_0123456789",
         "Morgan asked to hold the deploy: https://acme.slack.com/archives/CQA456/p1770021700000100",
+        "The checkout error is back after the deploy: https://acme.sentry.io/issues/JUNIOR-3ZK/",
         "The demo is at https://www.youtube.com/watch?v=MockLaunchDemo",
         "",
         "https://blog.example.com/posts/release-4-2",
+        "",
+        // Alone on their lines: the video shows only its thumbnail, the
+        // Slack message shows a card, and the repeated pull request shows
+        // no second card.
+        "https://www.youtube.com/watch?v=MockLaunchDemo",
+        "",
+        "https://acme.slack.com/archives/CQA456/p1770021700000100",
+        "",
+        "https://github.com/getsentry/payments/pull/91",
       ].join("\n"),
     }),
   );
