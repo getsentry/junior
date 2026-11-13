@@ -16,6 +16,7 @@ import {
   deleteProviderIdentityForUser,
   upsertLinkedIdentity,
 } from "@/chat/identities/sql";
+import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { juniorIdentities } from "@/db/schema";
 import { conversationBriefFixture } from "../../fixtures/conversation-brief";
 import {
@@ -152,6 +153,15 @@ describe("object links API", () => {
       providerSubjectId: "g-alice",
     });
     await linkSlackUser("carol@example.com", "UCAROL");
+    // No Slack Identity and no User name: another Identity names the person.
+    const dave = await resolveViewerUserFromSql(getDb(), "dave@example.com");
+    await upsertLinkedIdentity(getSqlExecutor(), dave!.id, {
+      displayName: "Dave Example",
+      kind: "user",
+      provider: "google",
+      providerSubjectId: "g-dave",
+    });
+    const daveUrl = `${DASHBOARD}/people/${encodeURIComponent("dave@example.com")}`;
     const personUrl = `${DASHBOARD}/people/${encodeURIComponent("alice@example.com")}`;
     const unlinkedUrl = `${DASHBOARD}/people/${encodeURIComponent("carol@example.com")}`;
 
@@ -163,6 +173,7 @@ describe("object links API", () => {
       "mailto:nobody@example.com",
       "https://example.com/unknown",
       unlinkedUrl,
+      daveUrl,
     );
     const person = {
       facts: {
@@ -182,10 +193,12 @@ describe("object links API", () => {
       email: "carol@example.com",
       type: "person",
     });
+    expect(objects.get(daveUrl)).toMatchObject({ label: "Dave Example" });
     expect([...objects.keys()]).toEqual([
       personUrl,
       "mailto:Alice@Example.com",
       unlinkedUrl,
+      daveUrl,
     ]);
   });
 
