@@ -974,71 +974,215 @@ describe("github plugin", () => {
     ).rejects.toThrow("This GitHub write request is not supported.");
   });
 
-  it("creates organization repositories under Guardian review", async () => {
-    let status = 422;
-    const ctx = githubToolsContext({
-      egressFetch: async () =>
-        status === 201
-          ? new Response(
-              JSON.stringify({
-                default_branch: "main",
-                full_name: "getsentry/new-service",
-                html_url: "https://github.com/getsentry/new-service",
-                private: true,
-              }),
-              { status: 201 },
-            )
-          : new Response(
-              JSON.stringify({
-                message: "Repository creation failed.",
-                errors: [{ message: "name already exists on this account" }],
-              }),
-              { status: 422 },
-            ),
-    });
-    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createRepository;
-    const input = { owner: "getsentry", name: "new-service" };
-
-    expect(tool?.approvalMode).toBe("auto");
-    expect(tool?.annotations?.readOnlyHint).toBe(false);
-    expect(tool?.describeProposal?.(input)).toBe(
-      "Create private GitHub repository getsentry/new-service",
-    );
-    await expect(
-      tool?.execute?.(input, { toolCallId: "call-create-repo" }),
-    ).rejects.toThrow(
-      "GitHub repository creation failed with HTTP 422: Repository creation failed.: message=name already exists on this account",
-    );
-
-    // The refused create leaves no pending state, so the call can retry.
-    status = 201;
-    const created = {
-      target: "createRepository",
-      default_branch: "main",
-      full_name: "getsentry/new-service",
-      private: true,
-      url: "https://github.com/getsentry/new-service",
+  describe("createRepository", () => {
+    const profiles = {
+      service: {
+        org: "getsentry",
+        teams: ["engineering", "ops"],
+        settings: {
+          visibility: "private" as const,
+          has_wiki: false,
+          auto_init: true,
+          gitignore_template: "Node",
+          allow_merge_commit: false,
+          allow_squash_merge: true,
+          squash_merge_commit_title: "PR_TITLE" as const,
+          squash_merge_commit_message: "PR_BODY" as const,
+        },
+      },
     };
-    await expect(
-      tool?.execute?.(input, { toolCallId: "call-create-repo" }),
-    ).resolves.toEqual(created);
-    // A replay of the same call returns the saved result.
-    await expect(
-      tool?.execute?.(input, { toolCallId: "call-create-repo" }),
-    ).resolves.toEqual(created);
-
-    expect(ctx.egressRequests()).toHaveLength(2);
-    const request = ctx.egressRequests()[1];
-    expect(request?.operation).toBe(
-      "github.repository.create:getsentry/new-service",
-    );
-    expect(request?.request.url).toBe(
-      "https://api.github.com/orgs/getsentry/repos",
-    );
-    await expect(request?.request.json()).resolves.toEqual({
+    const linkedActor = {
+      actor: {
+        platform: "slack" as const,
+        teamId: "T1",
+        userId: "U039RR91S",
+      },
+      resolveActor: async () => ({
+        user: {
+          displayName: "David Cramer",
+          id: "user-1",
+          identities: [
+            {
+              id: "github-identity",
+              provider: "github",
+              providerSubjectId: "1473041",
+              handle: "dcramer",
+            },
+          ],
+        },
+      }),
+    };
+    const input = {
+      profile: "service",
       name: "new-service",
-      visibility: "private",
-      auto_init: true,
+      team: "engineering",
+      description: "A new service.",
+    };
+
+    function repositoryContext(options?: {
+      createStatus?: number;
+      membershipStatus?: number;
+      unlinked?: boolean;
+    }) {
+      return githubToolsContext({
+        ...(options?.unlinked
+          ? { actor: linkedActor.actor, resolveActor: async () => undefined }
+          : linkedActor),
+        egressFetch: async ({ operation }) => {
+          if (operation === "github.team.get") {
+            return Response.json({ id: 137438, slug: "engineering" });
+          }
+          if (operation === "github.team.membership.get") {
+            return options?.membershipStatus === 404
+              ? Response.json({ message: "Not Found" }, { status: 404 })
+              : Response.json({ state: "active", role: "member" });
+          }
+          return (options?.createStatus ?? 201) === 201
+            ? Response.json(
+                {
+                  default_branch: "main",
+                  full_name: "getsentry/new-service",
+                  html_url: "https://github.com/getsentry/new-service",
+                  private: true,
+                },
+                { status: 201 },
+              )
+            : Response.json(
+                {
+                  message: "Repository creation failed.",
+                  errors: [{ message: "name already exists on this account" }],
+                },
+                { status: options?.createStatus },
+              );
+        },
+      });
+    }
+
+    function repositoryTool(ctx: ReturnType<typeof githubToolsContext>) {
+      return githubPlugin({ repositoryProfiles: profiles }).hooks?.tools?.(
+        ctx as any,
+      )?.createRepository;
+    }
+
+    it("is not offered without repository profiles", () => {
+      const tools = githubPlugin().hooks?.tools?.(repositoryContext() as any);
+      expect(tools).not.toHaveProperty("createRepository");
+    });
+
+    it("rejects invalid profile config when the plugin is configured", () => {
+      expect(() =>
+        githubPlugin({
+          repositoryProfiles: {
+            service: {
+              org: "getsentry",
+              settings: {
+                visibility: "private",
+                delete_branch_on_merge: true,
+              } as any,
+            },
+          },
+        }),
+      ).toThrow("delete_branch_on_merge");
+    });
+
+    it("creates the repository with the profile settings and the owning team", async () => {
+      const ctx = repositoryContext();
+      const tool = repositoryTool(ctx);
+
+      expect(tool?.approvalMode).toBe("auto");
+      expect(tool?.annotations?.readOnlyHint).toBe(false);
+      expect(tool?.describeProposal?.(input)).toBe(
+        "Create private GitHub repository getsentry/new-service from profile service, owned by team engineering",
+      );
+      const created = {
+        target: "createRepository",
+        default_branch: "main",
+        full_name: "getsentry/new-service",
+        private: true,
+        url: "https://github.com/getsentry/new-service",
+      };
+      await expect(
+        tool?.execute?.(input, { toolCallId: "call-create-repo" }),
+      ).resolves.toEqual(created);
+      // A replay of the same call returns the saved result.
+      await expect(
+        tool?.execute?.(input, { toolCallId: "call-create-repo" }),
+      ).resolves.toEqual(created);
+
+      const requests = ctx.egressRequests();
+      expect(requests.map((request) => request.request.url)).toEqual([
+        "https://api.github.com/orgs/getsentry/teams/engineering",
+        "https://api.github.com/orgs/getsentry/teams/engineering/memberships/dcramer",
+        "https://api.github.com/orgs/getsentry/repos",
+      ]);
+      expect(requests[2]?.operation).toBe(
+        "github.repository.create:getsentry/new-service",
+      );
+      await expect(requests[2]?.request.json()).resolves.toEqual({
+        ...profiles.service.settings,
+        name: "new-service",
+        description: "A new service.",
+        team_id: 137438,
+      });
+    });
+
+    it("lets a refused create retry", async () => {
+      const ctx = repositoryContext({ createStatus: 422 });
+      await expect(
+        repositoryTool(ctx)?.execute?.(input, { toolCallId: "call-422" }),
+      ).rejects.toThrow(
+        "GitHub repository creation failed with HTTP 422: Repository creation failed.: message=name already exists on this account",
+      );
+      // The refused create leaves no pending state.
+      await expect(
+        ctx.state.get("createRepository:local:test:github-tool:call-422"),
+      ).resolves.toBeUndefined();
+    });
+
+    it("rejects an unknown profile", async () => {
+      const ctx = repositoryContext();
+      await expect(
+        repositoryTool(ctx)?.execute?.(
+          { ...input, profile: "library" },
+          { toolCallId: "call-unknown" },
+        ),
+      ).rejects.toThrow(
+        'Unknown repository profile "library". Use one of: service.',
+      );
+      expect(ctx.egressRequests()).toHaveLength(0);
+    });
+
+    it("rejects a team that the profile does not allow", async () => {
+      const ctx = repositoryContext();
+      await expect(
+        repositoryTool(ctx)?.execute?.(
+          { ...input, team: "design" },
+          { toolCallId: "call-team" },
+        ),
+      ).rejects.toThrow(
+        'Profile "service" does not allow team "design". Use one of: engineering, ops.',
+      );
+      expect(ctx.egressRequests()).toHaveLength(0);
+    });
+
+    it("rejects a requester who is not a member of the team", async () => {
+      const ctx = repositoryContext({ membershipStatus: 404 });
+      await expect(
+        repositoryTool(ctx)?.execute?.(input, { toolCallId: "call-member" }),
+      ).rejects.toThrow(
+        "The requester's GitHub account dcramer is not an active member of getsentry/engineering.",
+      );
+      expect(
+        ctx.egressRequests().map((request) => request.request.url),
+      ).not.toContain("https://api.github.com/orgs/getsentry/repos");
+    });
+
+    it("rejects a requester without a linked GitHub account", async () => {
+      const ctx = repositoryContext({ unlinked: true });
+      await expect(
+        repositoryTool(ctx)?.execute?.(input, { toolCallId: "call-unlinked" }),
+      ).rejects.toThrow("needs the requester's linked GitHub account");
+      expect(ctx.egressRequests()).toHaveLength(0);
     });
   });
 

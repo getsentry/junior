@@ -61,10 +61,10 @@ narrow write tokens.
    - Pull requests: Read and write
    - Workflows: Write
 
-   Optional: grant Repository creation: Write. Junior then creates
-   organization repositories with `github_createRepository`. Guardian reviews
-   each creation. Do not grant Administration: Write for this. It also allows
-   repository deletion and transfer.
+   Optional: to let Junior create repositories, grant the organization
+   permissions Repository creation: Write and Members: Read, and configure
+   [`repositoryProfiles`](#plugin-options). Do not grant Administration:
+   Write for this. It also allows repository deletion and transfer.
 
    Optional: grant the account permission Email addresses: Read. Junior then
    reads the verified emails of a connected GitHub account to link it to a
@@ -141,6 +141,54 @@ GitHub App permissions Junior may downscope to read for installation read tokens
 Extra OAuth scopes requested for operations that must run as the user.
 
 - **Define:** `githubPlugin({ additionalUserScopes: ["scope"] })` in `plugins.ts`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+<details class="plugin-config">
+<summary><code>repositoryProfiles</code></summary>
+
+Kinds of repositories that Junior may create with `github_createRepository`.
+Without profiles, Junior does not offer the tool. Each profile fixes the
+organization and the settings. `settings` uses the field names of GitHub's
+[create an organization repository](https://docs.github.com/rest/repos/repos#create-an-organization-repository)
+request: `visibility` (required), `has_issues`, `has_projects`, `has_wiki`,
+`auto_init`, `gitignore_template`, `license_template`, `allow_squash_merge`,
+`allow_merge_commit`, `allow_rebase_merge`, `allow_auto_merge`,
+`squash_merge_commit_title`, `squash_merge_commit_message`,
+`merge_commit_title`, and `merge_commit_message`. Junior rejects other fields
+at startup.
+
+The agent supplies only the profile, the repository name, the owning team
+slug, and a description. Before it creates the repository, Junior checks
+that the requester's linked GitHub account is an active member of that team.
+The team gets access through `team_id`. Junior adds no person. Set `teams`
+to limit which teams may own repositories of a profile.
+
+```ts title="plugins.ts"
+export const plugins = defineJuniorPlugins([
+  githubPlugin({
+    repositoryProfiles: {
+      service: {
+        org: "getsentry",
+        teams: ["engineering"],
+        settings: {
+          visibility: "private",
+          auto_init: true,
+          has_wiki: false,
+          allow_merge_commit: false,
+          allow_rebase_merge: false,
+          allow_squash_merge: true,
+          squash_merge_commit_title: "PR_TITLE",
+          squash_merge_commit_message: "PR_BODY",
+        },
+      },
+    },
+  }),
+]);
+```
+
 - **Required:** No
 - **Environment override:** None
 
@@ -329,7 +377,7 @@ Once configured, Junior can:
 - Create, update, and comment on issues and pull requests
 - Review pull requests and leave inline review comments as the App bot
 - Push branches and open draft pull requests
-- Create organization repositories
+- Create organization repositories from operator profiles
 - Dispatch workflows, rerun workflow runs or jobs, and cancel workflow runs
 - Look up deployments and releases
 - Check githubstatus.com for open or recent incidents when GitHub requests or
@@ -670,9 +718,11 @@ A local `git commit` does not call GitHub. The write happens on push. Grant
   the needed event. Set the secret, fix the subscription, redeploy, and retry.
 - `github_getDeployment` returns `403`: grant `Deployments: read`, approve the
   permission on the installation, and retry.
-- `github_createRepository` returns `403`: grant `Repository creation: write`,
-  approve the permission on the installation, and retry. The App can create
-  repositories only in the organization of `GITHUB_INSTALLATION_ID`.
+- `github_createRepository` returns `403`: grant `Repository creation: write`
+  and `Members: read`, approve the permissions on the installation, and retry.
+  The App can create repositories only in the organization of
+  `GITHUB_INSTALLATION_ID`.
+- `github_createRepository` is missing: configure `repositoryProfiles`.
 - Webhook delivery returns `401`: the App webhook secret does not match
   `GITHUB_WEBHOOK_SECRET`, or `X-Hub-Signature-256` is missing.
 - Webhook delivery returns `202 Ignored`: wrong installation, or an unsupported
