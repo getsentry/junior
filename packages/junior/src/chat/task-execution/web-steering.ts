@@ -2,6 +2,7 @@ import type { WebActor } from "@/chat/actor";
 import type { AgentSteeringMessage } from "@/chat/agent/types";
 import {
   buildSteeringPiMessage,
+  instructionActorFor,
   withoutSavedSteeringMessages,
 } from "@/chat/agent/prompt";
 import { readMessageAttachments } from "@/chat/attachments/input";
@@ -24,15 +25,12 @@ async function steeringMessageFromWeb(
   actor: WebActor,
 ): Promise<AgentSteeringMessage> {
   const storedAttachments = readMessageAttachments(message.input.attachments);
-  // An answer or a dismiss steers in as its Review item tag.
+  // An answer steers in as its Review item tag.
   const reviewItemInput = await loadReviewItemInput(
     message.input.reviewItemChange,
   );
   return {
-    actor: {
-      authorId: actor.userId,
-      ...(actor.fullName ? { authorName: actor.fullName } : undefined),
-    },
+    actor: instructionActorFor(actor),
     ...(reviewItemInput ? { kind: "runtime" as const } : undefined),
     provenance: instructionProvenanceFor(actor),
     text: reviewItemInput ?? message.input.text.trim(),

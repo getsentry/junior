@@ -79,10 +79,16 @@ function memoryHeartbeatContext(args: {
       dispatch: vi.fn(),
       get: vi.fn(),
     },
+    annotations: { forConversation: vi.fn() },
     cache: {
       async getOrLoad(_key, load) {
         return (await load()).value;
       },
+    },
+    codeChanges: {
+      associateConversations: vi.fn(),
+      record: vi.fn(),
+      recordActivity: vi.fn(),
     },
     db: memoryDb(args.fixture),
     embedder: args.embedder,

@@ -19,22 +19,49 @@ export type AgentTools = "none" | "children" | "children_and_parent";
 export type TurnBehavior = {
   /**
    * `location`: the runtime delivers the final response to the Location.
-   * `conversation`: the final response stays in the Conversation. A child
-   * agent's response goes to its parent, and an Automation run posts only its
-   * declared result.
+   * `conversation`: the final response stays in the Conversation. Only the
+   * text of a `reply` call leaves it.
    */
   delivery: "location" | "conversation";
   promptMode: PromptMode;
-  /** The Turn must end with its answer tool, or it is reminded once. */
+  /**
+   * The Turn must end with `reply`, `noReply`, or `reportBlocked`, or it is
+   * reminded once.
+   */
   gated: boolean;
+  /**
+   * The error that fails a gated Turn that still has no answer after the
+   * reminder. Without it, the Turn ends quietly.
+   */
+  missingAnswerError?: string;
+  /**
+   * `parent`: a failed Turn, also one that ends without an answer, sends its
+   * failure to the parent agent. `none`: the failure stays in the
+   * Conversation and in telemetry.
+   */
+  failureNotice: "none" | "parent";
+  /**
+   * Run the plugin tasks of a completed session, such as memory capture.
+   * Memory is public, so a child agent never captures it.
+   */
+  sessionTasks: boolean;
   tools: {
     agents: AgentTools;
     reviewDesk: boolean;
     subscriptions: boolean;
     userCustomization: boolean;
-    reportBlocked: boolean;
+    /**
+     * Where a `reply` goes. Only a gated Turn has it. `parent`: the parent
+     * agent's inbox. `automation`: the run's Destination, then its Slack
+     * thread.
+     */
+    reply: "none" | "parent" | "automation";
+    /**
+     * Who gets a blocked report. `parent`: the parent agent. `automation`:
+     * the Automation is blocked with the reason.
+     */
+    reportBlocked: "none" | "parent" | "automation";
     noReply: boolean;
-    finishAutomationRun: boolean;
   };
 };
 
@@ -42,14 +69,16 @@ const ROOT: TurnBehavior = {
   delivery: "location",
   promptMode: "conversation",
   gated: false,
+  failureNotice: "none",
+  sessionTasks: true,
   tools: {
     agents: "children",
     reviewDesk: true,
     subscriptions: true,
     userCustomization: true,
-    reportBlocked: false,
+    reply: "none",
+    reportBlocked: "none",
     noReply: true,
-    finishAutomationRun: false,
   },
 };
 
@@ -58,52 +87,66 @@ const ROOT: TurnBehavior = {
 // the wrong Actor.
 const PERSON_IN_THREAD: TurnBehavior = {
   ...ROOT,
+  sessionTasks: false,
   tools: { ...ROOT.tools, agents: "none" },
 };
 
-// Every other Turn on a child is an agent invocation: an agent wrote its
-// input, and its final response goes back to its parent.
-const AGENT_IN_CHILD: TurnBehavior = {
+// Every other Turn on a Thread comes from its parent, its child agents, or its
+// Watches. Its final response stays in the Thread, and only a `reply` reaches
+// the parent.
+const AGENT_IN_THREAD: TurnBehavior = {
   delivery: "conversation",
   promptMode: "child_agent",
-  gated: false,
+  gated: true,
+  failureNotice: "none",
+  sessionTasks: false,
   tools: {
     agents: "children_and_parent",
     reviewDesk: false,
     subscriptions: false,
     userCustomization: false,
-    reportBlocked: true,
+    reply: "parent",
+    reportBlocked: "parent",
     noReply: true,
-    finishAutomationRun: false,
   },
 };
 
+// A Task does work for its parent, so its parent learns when it fails or ends
+// without an answer.
+const AGENT_IN_TASK: TurnBehavior = {
+  ...AGENT_IN_THREAD,
+  missingAnswerError: "No reply was sent.",
+  failureNotice: "parent",
+};
+
+// The dispatch Turn and every Watch Event Turn of an Automation run must
+// answer. A person who replies in the run's thread gets a root Turn.
 const AUTOMATION_RUN: TurnBehavior = {
   delivery: "conversation",
   promptMode: "automation",
   gated: true,
+  failureNotice: "none",
+  sessionTasks: true,
   tools: {
     ...ROOT.tools,
-    noReply: false,
-    finishAutomationRun: true,
+    reply: "automation",
+    reportBlocked: "automation",
   },
 };
 
-/**
- * Return the behavior of one Turn. `automationRun` marks the dispatch Turn of
- * a Scheduled or Event automation run. Kind alone cannot mark it: the
- * dispatch Turn is the only gated Turn on an `automation` Conversation, and a
- * person's reply or a Watch Event Turn there runs like a Turn on a root.
- */
+/** Return the behavior of one Turn. */
 export function turnBehavior(args: {
   kind: ConversationKind;
   personInput: boolean;
-  automationRun: boolean;
 }): TurnBehavior {
-  if (args.automationRun) return AUTOMATION_RUN;
-  if (isTopLevelKind(args.kind)) return ROOT;
-  if (!args.personInput) return AGENT_IN_CHILD;
-  if (args.kind === "thread") return PERSON_IN_THREAD;
+  if (args.kind === "root") return ROOT;
+  if (args.kind === "automation") {
+    return args.personInput ? ROOT : AUTOMATION_RUN;
+  }
+  if (args.kind === "thread") {
+    return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
+  }
+  if (!args.personInput) return AGENT_IN_TASK;
   // Only an agent writes input to a task.
   throw new Error("A task Conversation cannot have a person's input");
 }
@@ -132,8 +175,8 @@ export function deliversFinalText(dispatch: RunDispatch): boolean {
  * Return whether the runtime may post a failure reply or a status notice,
  * such as an auth prompt, for a run outside `finishedRunReply`. The rule is
  * the same as for a final response. A chat Turn may post, also in a thread
- * that an Automation Conversation owns. An Automation run posts only a
- * declared message; its failed execution shows on the Automation.
+ * that an Automation Conversation owns. An Automation run posts only its
+ * `reply` text; its failed execution shows on the Automation.
  */
 export function postsRunNotices(dispatch: RunDispatch): boolean {
   return deliversFinalText(dispatch);

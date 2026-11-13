@@ -24,7 +24,6 @@ import { mswServer } from "../msw/server";
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 const ORIGINAL_ENV = { ...process.env };
@@ -42,6 +41,8 @@ const OAUTH_BROKER_PROVIDER_HOST = "oauth-broker.example.test";
 const GITHUB_API_HOST = "api.github.com";
 const GITHUB_UPLOAD_HOST = "uploads.github.com";
 const GITHUB_GIT_HOST = "github.com";
+const GRAPHQL_MUTATIONS_DISABLED =
+  "GitHub GraphQL mutations are not enabled for runtime credentials.";
 
 const managedEgressReadResultSchema = pluginToolOutputSchema.extend({
   body: z.string(),
@@ -920,7 +921,10 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
-    const agentTools = createPiAgentTools(tools, new SkillSandbox([], []), {});
+    const agentTools = createPiAgentTools(tools, new SkillSandbox([], []), {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+    });
     const executeTool = agentTools.find(
       (candidate) => candidate.name === "executeTool",
     );
@@ -1693,6 +1697,71 @@ describe("sandbox egress proxy integration", () => {
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
   });
+
+  it.each([
+    {
+      name: "a mutation after a query with no operationName",
+      body: JSON.stringify({
+        query:
+          'query ReadIssues { viewer { login } } mutation CreateIssue { createIssue(input: {repositoryId: "repo", title: "test"}) { issue { number } } }',
+      }),
+      error: GRAPHQL_MUTATIONS_DISABLED,
+    },
+    {
+      name: "an aliased mutation",
+      body: JSON.stringify({
+        query:
+          'mutation { issues: createIssue(input: {repositoryId: "repo", title: "test"}) { issue { number } } }',
+      }),
+      error: "GitHub issue creation must use the github_createIssue tool",
+    },
+    {
+      name: "a batch",
+      body: JSON.stringify([{ query: "{ viewer { login } }" }]),
+      error: GRAPHQL_MUTATIONS_DISABLED,
+    },
+    {
+      name: "a body that is not JSON",
+      body: "{",
+      error: GRAPHQL_MUTATIONS_DISABLED,
+    },
+  ])(
+    "denies raw GitHub GraphQL with $name before credential injection",
+    async ({ body, error }) => {
+      await registerGitHubPlugin();
+      const credentialToken =
+        modules.session.createSandboxEgressCredentialToken({
+          credentials: { actor: { type: "user", userId: ACTOR_ID } },
+          egressId: EGRESS_ID,
+          ttlMs: 60_000,
+        });
+      const forwardURL = forwardUrlFor(
+        buildVercelNetworkPolicy({ credentialToken }),
+        GITHUB_API_HOST,
+      );
+      const upstreamFetch = vi.fn();
+
+      const response = await modules.vercel.proxyVercelSandboxEgressRequest(
+        proxiedRequest({
+          body,
+          forwardURL,
+          method: "POST",
+          upstreamHost: GITHUB_API_HOST,
+          upstreamPath: "/graphql",
+        }),
+        {
+          fetch: upstreamFetch as typeof fetch,
+          verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+        },
+      );
+
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toEqual({
+        error: expect.stringContaining(error),
+      });
+      expect(upstreamFetch).not.toHaveBeenCalled();
+    },
+  );
 
   it("denies raw GitHub pull request creation before credential injection", async () => {
     configureGitHubAppEnv();

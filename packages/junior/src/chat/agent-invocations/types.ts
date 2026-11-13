@@ -64,6 +64,8 @@ const agentInvocationBaseSchema = z
     parentConversationId: exactStringSchema,
     parentToolCallId: exactStringSchema.optional(),
     agentType: agentTypeSchema.optional(),
+    /** The child starts with its parent's history. */
+    fork: z.literal(true).optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
     source: sourceSchema,
     title: exactStringSchema.optional(),
@@ -101,12 +103,23 @@ export const createAgentInvocationSchema = z
     parentConversationId: exactStringSchema,
     parentToolCallId: exactStringSchema.optional(),
     agentType: agentTypeSchema.optional(),
+    fork: z.literal(true).optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
     title: exactStringSchema.optional(),
   })
   .strict();
 
 export type AgentBinding = z.output<typeof agentBindingSchema>;
+/**
+ * The child agent that sent one reply or message to its parent. A child that
+ * an Agent invocation names has its `invocationId` and `actor`. A child that
+ * none names has only its child Conversation.
+ */
+export type ChildAgentSender = Pick<
+  AgentInvocation,
+  "agentName" | "childConversationId" | "parentConversationId" | "title"
+> &
+  Partial<Pick<AgentInvocation, "actor" | "invocationId">>;
 export type AgentInvocation = z.output<typeof agentInvocationSchema>;
 export type AgentInvocationStatus = (typeof AGENT_INVOCATION_STATUSES)[number];
 export type TerminalAgentInvocation = Extract<

@@ -1,7 +1,25 @@
 import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { juniorAgentInvocations } from "@/db/schema";
-import { getAgentInvocationIdForResult } from "./ids";
+import { isEventMailboxMetadata } from "@/chat/events/notification";
+import {
+  getConversationWorkState,
+  type InboundMessage,
+} from "@/chat/task-execution/store";
+import {
+  AGENT_INVOCATION_EVENT_NAMESPACE,
+  AGENT_PARENT_MESSAGE_EVENT_TYPE,
+} from "./result-event-type";
+import { getAgentInvocationResultMessageId } from "./ids";
+import {
+  hasAgentInvocationReply,
+  listChildMessages,
+  readChildMessageSender,
+  type ChildMessage,
+} from "./child-message";
+import { readChildConversationSender } from "./child-input";
+import { listOpenChildAgentsWithoutAgentInvocations } from "./list";
+import { readAgentConfig } from "@/chat/conversations/agent-config";
 import {
   agentInvocationSchema,
   type AgentInvocation,
@@ -9,7 +27,8 @@ import {
   type TerminalAgentInvocation,
 } from "./types";
 
-const TERMINAL_AGENT_INVOCATION_STATUSES = [
+/** Statuses of a finished agent invocation. */
+export const TERMINAL_AGENT_INVOCATION_STATUSES = [
   "blocked",
   "completed",
   "failed",
@@ -54,6 +73,7 @@ export function invocationFromRow(
       ? { parentToolCallId: row.parentToolCallId }
       : undefined),
     ...(row.agentType ? { agentType: row.agentType } : undefined),
+    ...(row.fork ? { fork: true as const } : undefined),
     ...(row.reasoningLevel
       ? { reasoningLevel: row.reasoningLevel }
       : undefined),
@@ -130,17 +150,21 @@ export async function getLatestAgentInvocationForConversation(
 }
 
 /**
- * Read the name and the newest task title of one child Conversation, for
- * labels. Agent invocations that give a nested result to the child have no
- * title, so an agent invocation with a title comes first.
+ * Read the name, agent type, fork flag, and newest task title of one child
+ * Conversation, for labels. Agent invocations that give a nested result to
+ * the child have no title, so an agent invocation with a title comes first.
+ * Each agent invocation keeps the child's agent type, but only the one that
+ * started a fork has `fork` set, so the flag reads every agent invocation.
+ * A child that no Agent invocation names reads its binding, title, and
+ * agent config.
  */
-export async function getChildAgentLabel(
-  childConversationId: string,
-): Promise<{ agentName: string | null; title: string | null } | undefined> {
+export async function getChildAgentLabel(childConversationId: string) {
   const [row] = await getSqlExecutor()
     .db()
     .select({
       agentName: juniorAgentInvocations.agentName,
+      agentType: juniorAgentInvocations.agentType,
+      fork: sql<boolean>`bool_or(${juniorAgentInvocations.fork}) over ()`,
       title: juniorAgentInvocations.title,
     })
     .from(juniorAgentInvocations)
@@ -150,7 +174,21 @@ export async function getChildAgentLabel(
       desc(juniorAgentInvocations.createdAt),
     )
     .limit(1);
-  return row;
+  if (row) {
+    return row;
+  }
+  const [sender, options] = await Promise.all([
+    readChildConversationSender(childConversationId),
+    readAgentConfig(childConversationId),
+  ]);
+  return sender && options
+    ? {
+        agentName: sender.agentName ?? null,
+        agentType: options.agentType ?? null,
+        fork: options.fork ?? false,
+        title: sender.title ?? null,
+      }
+    : undefined;
 }
 
 /**
@@ -181,21 +219,69 @@ export async function listOpenAgentInvocations(
 }
 
 /**
+ * Return whether a terminal agent invocation sends its result to the parent.
+ * A child's final response stays in its Conversation, and a `reply` that
+ * reached the parent (one of `parentMessages`) answered for the Agent
+ * invocation. A failure after that, such as a lost worker before the
+ * Turn was saved, is not sent either.
+ */
+export function sendsResultToParent(
+  invocation: { invocationId: string; result?: string | null; status: string },
+  parentMessages: readonly ChildMessage[],
+): boolean {
+  const replied = hasAgentInvocationReply(
+    parentMessages,
+    invocation.invocationId,
+  );
+  switch (invocation.status) {
+    case "completed":
+      // Only a row saved before `reply` existed sends its final text.
+      // TODO(dcramer): Remove one release after getsentry/junior#3160, when
+      // no completed row from before it can still be in flight.
+      return !replied && Boolean(invocation.result?.trim());
+    case "failed":
+      return !replied;
+    default:
+      return true;
+  }
+}
+
+/**
  * Return whether a child Conversation has work that will start another agent
  * invocation on it: another open agent invocation, an open child agent, or a
- * sent child agent result that no agent invocation has received yet.
+ * child agent result that is sent but still waits in its mailbox. A child
+ * agent that no Agent invocation names is open as `listAgents` shows it,
+ * and its unread result or reply also waits.
  */
 async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
   const conversationId = invocation.childConversationId;
   const open = await listOpenAgentInvocations(conversationId);
-  if (open.some((row) => row.invocationId !== invocation.invocationId)) {
+  if (
+    open.some((row) => row.invocationId !== invocation.invocationId) ||
+    (await listOpenChildAgentsWithoutAgentInvocations(conversationId)).length >
+      0
+  ) {
     return true;
   }
-  const db = getSqlExecutor().db();
+  // An unread reply or result from a child that no Agent invocation names
+  // waits. One from a child with a row counts as on `main`.
+  const work = await getConversationWorkState({ conversationId });
+  for (const message of work?.messages ?? []) {
+    const sender = await readChildMessageSender(message);
+    if (sender && !sender.agentInvocationId) {
+      return true;
+    }
+  }
   // A `replaced` child result is never sent. A later agent invocation of
   // that child agent sends its report instead.
-  const sent = await db
-    .select({ invocationId: juniorAgentInvocations.invocationId })
+  const marked = await getSqlExecutor()
+    .db()
+    .select({
+      invocationId: juniorAgentInvocations.invocationId,
+      parentMailboxStatus: juniorAgentInvocations.parentMailboxStatus,
+      result: juniorAgentInvocations.result,
+      status: juniorAgentInvocations.status,
+    })
     .from(juniorAgentInvocations)
     .where(
       and(
@@ -206,19 +292,22 @@ async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
         ]),
       ),
     );
-  if (sent.length === 0) {
+  if (marked.length === 0) {
     return false;
   }
-  const received = await db
-    .select({ invocationId: juniorAgentInvocations.invocationId })
-    .from(juniorAgentInvocations)
-    .where(
-      inArray(
-        juniorAgentInvocations.invocationId,
-        sent.map((row) => getAgentInvocationIdForResult(row.invocationId)),
-      ),
-    );
-  return received.length < sent.length;
+  const unread = new Set(
+    work?.messages.map((message) => message.inboundMessageId),
+  );
+  const parentMessages = await listChildMessages(
+    work?.execution.inboundMessageIds ?? [],
+    work?.execution.messageSenders ?? {},
+  );
+  return marked.some(
+    (row) =>
+      sendsResultToParent(row, parentMessages) &&
+      (row.parentMailboxStatus === "pending" ||
+        unread.has(getAgentInvocationResultMessageId(row.invocationId))),
+  );
 }
 
 /** List bounded invocation records whose mailbox append still needs repair. */
@@ -276,6 +365,46 @@ export async function reportReplacedAgentInvocation(
       ),
     );
   return await getAgentInvocation(invocationId);
+}
+
+/**
+ * Send the `replaced` result of a child Conversation when its open child work
+ * ended and sent it nothing, such as a helper that ended with `noReply`. No
+ * later agent invocation of the child would send the report. Input from its
+ * own child agents that still waits in its mailbox starts one, so that one
+ * reports instead.
+ */
+export async function reportReplacedWithoutOpenWork(
+  conversationId: string,
+  nowMs = Date.now(),
+): Promise<AgentInvocation | undefined> {
+  const latest = await getLatestAgentInvocationForConversation(conversationId);
+  if (
+    !latest ||
+    !isTerminalAgentInvocation(latest) ||
+    latest.parentMailboxStatus !== "replaced" ||
+    (await hasOpenChildWork(latest))
+  ) {
+    return undefined;
+  }
+  // Only input from the child's own child agents starts an agent invocation
+  // of the child. A Watch Event or a person's message in a Thread does not.
+  const waiting = await getConversationWorkState({ conversationId });
+  if (waiting?.messages.some(isChildAgentInputMessage)) {
+    return undefined;
+  }
+  return await reportReplacedAgentInvocation(latest.invocationId, nowMs);
+}
+
+// Results, replies, and messages from a child's own child agents. A message
+// from the child's parent is not one.
+function isChildAgentInputMessage(message: InboundMessage): boolean {
+  const metadata = message.input.metadata;
+  return (
+    isEventMailboxMetadata(metadata) &&
+    metadata.event.namespace === AGENT_INVOCATION_EVENT_NAMESPACE &&
+    metadata.event.eventType !== AGENT_PARENT_MESSAGE_EVENT_TYPE
+  );
 }
 
 /** Record that one terminal result is in its parent mailbox. */
@@ -441,5 +570,18 @@ export function isTerminalAgentInvocation(
 ): invocation is TerminalAgentInvocation {
   return TERMINAL_AGENT_INVOCATION_STATUSES.includes(
     invocation.status as (typeof TERMINAL_AGENT_INVOCATION_STATUSES)[number],
+  );
+}
+
+/**
+ * Return whether the newest agent invocation of a child shows a stop. A tree
+ * stop leaves a `replaced` agent invocation with its finished status and
+ * marks it `skipped`, so that also means stopped.
+ */
+export function isStoppedAgentInvocation(invocation: AgentInvocation): boolean {
+  return (
+    invocation.status === "stopped" ||
+    (isTerminalAgentInvocation(invocation) &&
+      invocation.parentMailboxStatus === "skipped")
   );
 }

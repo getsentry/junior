@@ -28,6 +28,7 @@ import { Button } from "../../components/ui/button";
 import { FormNotice } from "../../components/FormNotice";
 import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
+import { SkillLink } from "../../components/SkillLink";
 import { StatusChip } from "../../components/StatusChip";
 import { Card } from "../../components/layout/Card";
 import { DisplayText } from "../../display-text/DisplayText";
@@ -50,7 +51,9 @@ export function AutomationVersionsTab(props: {
     return (
       <InlineError>
         Version history could not be loaded.{" "}
-        <Button onClick={() => void versions.refetch()}>Try again</Button>
+        <Button variant="outline" onClick={() => void versions.refetch()}>
+          Try again
+        </Button>
       </InlineError>
     );
   }
@@ -184,6 +187,7 @@ function AutomationVersionsView(props: {
             </div>
             {canActivate && !active ? (
               <Button
+                variant="outline"
                 aria-label={`Make version ${selected.version} active`}
                 disabled={activate.isPending}
                 onClick={() => setConfirmOpen(true)}
@@ -233,7 +237,7 @@ function AutomationVersionsView(props: {
                 activate.mutate(selected.version);
                 setConfirmOpen(false);
               }}
-              variant="primary"
+              variant="default"
             >
               Make active
             </AlertDialogAction>
@@ -367,11 +371,7 @@ function fieldValue(
     case "title":
       return definition.title ?? "First line of the instruction";
     case "skill":
-      return task.skill ? (
-        <span className="font-mono">{task.skill}</span>
-      ) : (
-        "No skill"
-      );
+      return task.skill ? <SkillLink name={task.skill} /> : "No skill";
     case "instruction":
       if (!task.instruction) return "No context";
       return (

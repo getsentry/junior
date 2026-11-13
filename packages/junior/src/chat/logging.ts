@@ -2029,7 +2029,10 @@ export function extractGenAiUsageAttributes(
       ? { "gen_ai.usage.cache_creation.input_tokens": cacheCreationTokens }
       : undefined),
     // Per-call ratio, because metric monitors cannot divide two sums. Calls
-    // that report no cache reads, such as embeddings, get no ratio.
+    // that report no cache reads, such as embeddings, get no ratio. `avg()`
+    // weights each call the same, so it is usually below the token-weighted
+    // rate. Cache warmups (`junior.cache_warmup`) read almost all; exclude
+    // them to see agent calls.
     ...(cachedInputTokens !== undefined && semanticInputTokens
       ? {
           "gen_ai.usage.cache_hit_ratio":

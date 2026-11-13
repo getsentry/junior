@@ -15,15 +15,17 @@ import {
   normalizePermissions,
   readGrantPermissions,
 } from "./permissions.js";
-import { createGitHubTools } from "./tools.js";
+import { createGitHubTools, type GitHubPluginExperiments } from "./tools.js";
 import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { botLoginFromEmail } from "./webhooks/ownership.js";
 import { runGitHubConflictChecks } from "./merge-conflict-checks/heartbeat.js";
+import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl } from "./events/resource-url.js";
 import {
   loadPullRequest,
+  loadPullRequestLifecycles,
   loadPullRequestCommitPages,
   searchOpenPullRequestMergeability,
   loadRepositoryRole,
@@ -47,6 +49,7 @@ import {
   GITHUB_PULL_REQUEST_MATCH_FIELDS,
   GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
   gitHubPullRequestEventGuidance,
+  gitHubPullRequestSubscription,
   type GitHubPullRequestEventOptions,
 } from "./events/pull-request.js";
 import {
@@ -125,6 +128,9 @@ export interface GitHubPluginOptions {
 
   /** Environment variable containing the GitHub App id. */
   appIdEnv?: string;
+
+  /** Opt-ins for GitHub plugin behavior that is still being tested. */
+  experimental?: GitHubPluginExperiments;
 
   /** Environment variable containing Junior's Git committer email. */
   botEmailEnv?: string;
@@ -317,8 +323,10 @@ export function githubPlugin(
         return linkifyGitHubReferences(text);
       },
       async heartbeat(ctx) {
+        const db = ctx.db as GitHubDb;
+        const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
         await runGitHubConflictChecks({
-          db: ctx.db as GitHubDb,
+          db,
           events: ctx.events,
           log: ctx.log,
           now: new Date(ctx.nowMs),
@@ -327,11 +335,25 @@ export function githubPlugin(
             if (!login) {
               throw new Error(`${botEmailEnv} is not a GitHub bot address`);
             }
-            return await searchOpenPullRequestMergeability(
-              { appIdEnv, installationIdEnv, privateKeyEnv },
-              { ...input, author: `app/${login.replace(/\[bot\]$/, "")}` },
-            );
+            return await searchOpenPullRequestMergeability(installationEnv, {
+              ...input,
+              author: `app/${login.replace(/\[bot\]$/, "")}`,
+            });
           },
+          state: ctx.state,
+        });
+        await reconcileGitHubPullRequests({
+          annotations: ctx.annotations,
+          botEmail: readEnv(botEmailEnv),
+          codeChanges: ctx.codeChanges,
+          db,
+          events: ctx.events,
+          loadCommitPages: async (target) =>
+            await loadPullRequestCommitPages(installationEnv, target),
+          loadLifecycles: async (input) =>
+            await loadPullRequestLifecycles(installationEnv, input),
+          log: ctx.log,
+          nowMs: ctx.nowMs,
           state: ctx.state,
         });
       },
@@ -405,7 +427,10 @@ export function githubPlugin(
         return createGitHubTools(
           ctx,
           readEnv(botEmailEnv),
-          options.pullRequestEvents?.subscribeAfterCreate,
+          gitHubPullRequestSubscription(
+            options.pullRequestEvents?.subscribeAfterCreate,
+          ),
+          options.experimental,
         );
       },
       workspacePrepare: prepareWorkspace,

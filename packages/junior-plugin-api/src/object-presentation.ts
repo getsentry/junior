@@ -7,6 +7,10 @@ export const objectTypeSchema = z.enum([
   "automation",
   "deployment",
   "calendar_event",
+  "conversation",
+  "person",
+  "document",
+  "message",
   "item",
 ]);
 export type ObjectType = z.output<typeof objectTypeSchema>;
@@ -17,6 +21,10 @@ const objectTypeLabels = {
   automation: "Automation",
   deployment: "Deployment",
   calendar_event: "Calendar event",
+  conversation: "Conversation",
+  person: "Person",
+  document: "Document",
+  message: "Message",
   item: "Item",
 } satisfies Record<ObjectType, string>;
 
@@ -30,6 +38,10 @@ const objectIconNames = [
   "workflow",
   "rocket",
   "calendar",
+  "comment-discussion",
+  "person",
+  "file",
+  "comment",
   "package",
 ] as const;
 export type ObjectIconName = (typeof objectIconNames)[number];
@@ -60,6 +72,10 @@ export function objectPresentation(object: {
       automation: "workflow",
       deployment: "rocket",
       calendar_event: "calendar",
+      conversation: "comment-discussion",
+      person: "person",
+      document: "file",
+      message: "comment",
       item: "package",
     } satisfies Record<ObjectType, ObjectIconName>
   )[type];
@@ -85,6 +101,9 @@ export function objectPresentation(object: {
     if (status === "ready" || status === "succeeded") tone = "success";
     if (status === "error" || status === "failed") tone = "danger";
     if (status === "building" || status === "in_progress") tone = "info";
+  } else if (type === "conversation") {
+    if (status === "running") tone = "info";
+    if (status === "failed") tone = "danger";
   }
   if (status === "warning" || status === "blocked") tone = "warning";
   return { icon, tone, label: objectTypeLabels[type] };

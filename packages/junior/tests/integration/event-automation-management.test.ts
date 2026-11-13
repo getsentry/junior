@@ -73,6 +73,7 @@ describe("event automation management", () => {
       undefined,
       undefined,
       context("U123", "C123", "public", "1700000000.100000"),
+      "creator",
     );
     expect(created).not.toHaveProperty("data");
 
@@ -216,7 +217,13 @@ describe("event automation management", () => {
   });
 
   it("keeps creator credentials bound to creator-authorized execution", async () => {
-    const created = await createTask("Address the requested changes.");
+    const created = await createTask(
+      "Address the requested changes.",
+      undefined,
+      undefined,
+      undefined,
+      "creator",
+    );
 
     await expect(
       execute(

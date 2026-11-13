@@ -28,7 +28,7 @@ import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import {
-  bindProviderConversation,
+  claimProviderConversation,
   type ProviderConversationReference,
 } from "@/chat/conversations/sql/bindings";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
@@ -408,8 +408,11 @@ export async function commitAcceptedReply(args: {
       );
       for (const reference of args.providerConversationBindings ?? []) {
         const binding = { conversationId: args.conversationId, ...reference };
-        await bindProviderConversation(executor, binding);
-        await startLocationThread(executor, binding);
+        // A Conversation claims its thread when it starts. A reply into a
+        // thread that another Conversation started in leaves it with that one.
+        if (await claimProviderConversation(executor, binding)) {
+          await startLocationThread(executor, binding);
+        }
       }
     }),
   );

@@ -38,7 +38,6 @@ import {
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 const NEON = vi.hoisted(() => ({
@@ -656,20 +655,11 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         }),
       });
       const agentToolsFor = (registry: typeof tools) =>
-        createPiAgentTools(
-          registry,
-          new SkillSandbox([], []),
-          {},
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          { countToolCall: () => 1 },
-        );
+        createPiAgentTools(registry, new SkillSandbox([], []), {
+          spanContext: {},
+          searchToolsCost: { owner: "none" },
+          codeMode: { countToolCall: () => 1 },
+        });
       const modelView = (agentTools: ReturnType<typeof agentToolsFor>) =>
         JSON.stringify(
           agentTools.map(({ name, description, parameters }) => ({

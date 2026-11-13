@@ -22,14 +22,18 @@ import {
 import { cn } from "../styles";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
-import { Field, FieldDescription, FieldLabel } from "./ui/field";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+  FieldTitle,
+} from "./ui/field";
+import { Kbd } from "./ui/kbd";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Textarea } from "./ui/textarea";
-
-// Each choice is a whole selectable row, so the hit area and the selected
-// state read at a glance. The control inside keeps its own focus ring.
-const optionClass =
-  "flex cursor-pointer items-start gap-3 rounded-md border border-dashboard-border bg-dashboard-surface-panel px-3 py-2.5 text-sm transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover has-[[data-checked]]:border-dashboard-accent/60 has-[[data-checked]]:bg-dashboard-accent/10 has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-60";
 
 // A described choice is one button row, so its description stays beside its
 // label and one click is still the answer. The picked row keeps the accent
@@ -65,32 +69,34 @@ function SuggestedLabel(props: { className?: string }) {
 function ShortcutHint(props: { value?: string }) {
   if (!props.value) return null;
   return (
-    <kbd
-      aria-hidden="true"
-      className="grid size-5 shrink-0 place-items-center rounded border border-dashboard-border bg-dashboard-fill-soft font-sans text-2xs text-dashboard-text-muted max-md:hidden"
-    >
+    <Kbd aria-hidden="true" className="max-md:hidden">
       {props.value}
-    </kbd>
+    </Kbd>
   );
 }
 
-function OptionText(props: {
-  description?: string;
-  label: string;
-  recommended?: boolean;
+// Each choice is a choice card, so the hit area and the selected state read
+// at a glance. The control inside keeps its own focus ring.
+function ChoiceOption(props: {
+  control: ReactNode;
+  option: { description?: string; label: string; recommended?: boolean };
 }) {
+  const { option } = props;
   return (
-    <span className="grid min-w-0 gap-0.5 break-words">
-      <span className="font-medium text-dashboard-text">
-        {props.label}
-        {props.recommended ? <SuggestedLabel /> : null}
-      </span>
-      {props.description ? (
-        <span className="text-xs text-dashboard-text-muted">
-          {props.description}
-        </span>
-      ) : null}
-    </span>
+    <FieldLabel>
+      <Field orientation="horizontal">
+        {props.control}
+        <FieldContent className="min-w-0 break-words">
+          <FieldTitle>
+            {option.label}
+            {option.recommended ? <SuggestedLabel className="ml-0" /> : null}
+          </FieldTitle>
+          {option.description ? (
+            <FieldDescription>{option.description}</FieldDescription>
+          ) : null}
+        </FieldContent>
+      </Field>
+    </FieldLabel>
   );
 }
 
@@ -104,24 +110,22 @@ function ChoiceField(props: {
   const { field } = props;
   // Radios already say that one choice counts. Say it for checkboxes only.
   const legend = (
-    <legend className="mb-2 p-0 text-sm font-semibold text-dashboard-text">
+    <FieldLegend variant="label">
       {field.label}
       {field.kind === "multi_choice" ? (
         <span className="ml-2 text-xs font-normal text-dashboard-text-muted">
           Pick any
         </span>
       ) : null}
-    </legend>
+    </FieldLegend>
   );
   const description = field.description ? (
-    <FieldDescription className="-mt-1 mb-2" id={`${id}-help`}>
-      {field.description}
-    </FieldDescription>
+    <FieldDescription id={`${id}-help`}>{field.description}</FieldDescription>
   ) : null;
   const describedBy = field.description ? `${id}-help` : undefined;
   if (field.kind === "choice") {
     return (
-      <fieldset className="m-0 min-w-0 border-0 p-0">
+      <FieldSet className="min-w-0">
         {legend}
         {description}
         <RadioGroup
@@ -133,50 +137,42 @@ function ChoiceField(props: {
           value={props.values[0] ?? null}
         >
           {field.options.map((option) => (
-            <label className={optionClass} key={option.label}>
-              <RadioGroupItem className="mt-0.5" value={option.label} />
-              <OptionText
-                description={option.description}
-                label={option.label}
-                recommended={option.recommended}
-              />
-            </label>
+            <ChoiceOption
+              control={<RadioGroupItem value={option.label} />}
+              key={option.label}
+              option={option}
+            />
           ))}
         </RadioGroup>
-      </fieldset>
+      </FieldSet>
     );
   }
   return (
-    <fieldset
-      aria-describedby={describedBy}
-      className="m-0 min-w-0 border-0 p-0"
-    >
+    <FieldSet aria-describedby={describedBy} className="min-w-0">
       {legend}
       {description}
-      <div className="grid gap-2">
+      <div className="grid gap-2" data-slot="checkbox-group">
         {field.options.map((option) => (
-          <label className={optionClass} key={option.label}>
-            <Checkbox
-              checked={props.values.includes(option.label)}
-              className="mt-0.5"
-              disabled={props.disabled}
-              onCheckedChange={(checked) =>
-                props.onChange(
-                  checked
-                    ? [...props.values, option.label]
-                    : props.values.filter((value) => value !== option.label),
-                )
-              }
-            />
-            <OptionText
-              description={option.description}
-              label={option.label}
-              recommended={option.recommended}
-            />
-          </label>
+          <ChoiceOption
+            control={
+              <Checkbox
+                checked={props.values.includes(option.label)}
+                disabled={props.disabled}
+                onCheckedChange={(checked) =>
+                  props.onChange(
+                    checked
+                      ? [...props.values, option.label]
+                      : props.values.filter((value) => value !== option.label),
+                  )
+                }
+              />
+            }
+            key={option.label}
+            option={option}
+          />
         ))}
       </div>
-    </fieldset>
+    </FieldSet>
   );
 }
 
@@ -194,7 +190,7 @@ function TextField(props: {
     <Field>
       <FieldLabel htmlFor={id}>{props.label}</FieldLabel>
       {props.description ? (
-        <FieldDescription className="-mt-1" id={`${id}-help`}>
+        <FieldDescription id={`${id}-help`}>
           {props.description}
         </FieldDescription>
       ) : null}
@@ -312,7 +308,11 @@ export function UserInputForm(props: {
   // Slack cards show the same button, so both surfaces take a free-text
   // answer when no choice fits.
   const otherButton = props.docked ? null : (
-    <Button disabled={sending} onClick={() => setWriteOther(true)}>
+    <Button
+      variant="outline"
+      disabled={sending}
+      onClick={() => setWriteOther(true)}
+    >
       Other…
     </Button>
   );
@@ -378,6 +378,7 @@ export function UserInputForm(props: {
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {buttonField.options.map((option, index) => (
             <Button
+              variant="outline"
               aria-keyshortcuts={shortcut(index)}
               disabled={sending}
               key={option.label}
@@ -434,7 +435,7 @@ export function UserInputForm(props: {
           {props.docked && fieldCount < 2 && !secondary ? null : (
             <div className="flex flex-wrap items-center gap-2">
               {props.docked ? null : (
-                <Button disabled={sending} type="submit" variant="primary">
+                <Button disabled={sending} type="submit" variant="default">
                   Send
                 </Button>
               )}

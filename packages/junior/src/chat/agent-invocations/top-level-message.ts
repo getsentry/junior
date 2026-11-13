@@ -30,8 +30,9 @@ const TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE = "agent.top_level_message";
 
 /**
  * Check that a top-level agent can message another top-level agent under
- * `policies/conversation-access.md`. A private Conversation is isolated, so
- * only public agents can message each other.
+ * `policies/conversation-access.md`. Public agents can message each other.
+ * A private agent can message only agents at its own Destination, such as
+ * another thread in the same private Slack channel.
  * Every target that the sender cannot reach gets the same error, so the
  * error does not show that a private Conversation exists.
  */
@@ -74,9 +75,9 @@ async function requireTopLevelAgentAccess(args: {
   // A message writes the sender's data into the target. Private data never
   // enters a public Conversation. The target is public, so this error shows
   // nothing private.
-  if (sender.visibility !== "public") {
+  if (receiver.visibility === "public" && sender.visibility !== "public") {
     throw new AgentMessageTargetError(
-      `"${args.to}" is a public conversation and this conversation is private. A private conversation cannot message another conversation`,
+      `"${args.to}" is a public conversation and this conversation is private. A private conversation can message only conversations in its own channel or DM`,
     );
   }
 }

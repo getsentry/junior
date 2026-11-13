@@ -1,14 +1,20 @@
 import { eq } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
   resolveViewerUserFromSql,
   updateViewerDisplayNameFromSql,
 } from "@/chat/plugins/viewer";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import { createJuniorSqlFixture } from "../fixtures/sql";
 
 describe("viewer user", () => {
+  // Each test has its own database, so the identity cache must start empty.
+  afterEach(async () => {
+    await disconnectStateAdapter();
+  });
+
   it("resolves a known user with its linked identities and no new row", async () => {
     const fixture = await createJuniorSqlFixture();
     try {

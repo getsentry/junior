@@ -207,6 +207,7 @@ function route(
     },
     codeChanges: {
       async associateConversations() {},
+      async recordActivity() {},
       async record() {},
     },
     db: fixture.db(),
@@ -314,7 +315,7 @@ describe("ready to merge notice", () => {
           dedupeKey: DEDUPE_KEY,
           subject: {
             id: PULL_URL,
-            title: "getsentry/junior#946",
+            title: "Add the review desk notice (#946)",
             url: PULL_URL,
           },
           title: "Ready to merge · #946",

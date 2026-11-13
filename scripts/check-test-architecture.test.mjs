@@ -348,6 +348,7 @@ test("counts each form of a kind branch", () => {
     "switch (run.source.kind) {}",
     'if ("automation" === kind) {}',
     "const result = run.dispatch?.declaresResult === true;",
+    "if (!isTopLevelKind(conversation.kind)) {}",
   ];
   const notBranches = [
     "parentConversationId?: string;",

@@ -1,12 +1,12 @@
 import {
   keepPreviousData,
   queryOptions,
+  useInfiniteQuery,
   useQuery,
 } from "@tanstack/react-query";
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
-  boardReportSchema,
   conversationFeedSchema,
   conversationStatsReportSchema,
   codeOverviewReportSchema,
@@ -27,9 +27,11 @@ import {
   automationRunListSchema,
   automationVersionListSchema,
 } from "@sentry/junior/api/schema";
+import { joinConversationFeedPages } from "./conversations/conversationFeedCache";
 import {
   pluginOperationalReportFeedSchema,
   pluginsSchema,
+  skillDetailReportSchema,
   skillReportsSchema,
 } from "@sentry/junior/api/schema";
 import { pluginUserPageLinksSchema } from "@sentry/junior-plugin-api";
@@ -113,17 +115,25 @@ export function usePluginUserPagesData() {
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
 export function useConversationsData(search = "") {
   const pinOrderSaving = usePinOrderSaving();
-  return useQuery({
+  return useInfiniteQuery({
     // A read that ends during a Pinned order save can hold the old order.
     // The feed keeps its data and refetches when the save ends.
     enabled: !pinOrderSaving,
     queryKey: ["dashboard", "conversations", "viewer", { search }],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
+    queryFn: ({ pageParam, signal }) => {
+      const params = new URLSearchParams();
+      if (search) params.set("q", search);
+      if (pageParam) params.set("cursor", pageParam);
+      const query = params.toString();
+      return fetchDashboardJson(
         conversationFeedSchema,
-        `/api/conversations${search ? `?q=${encodeURIComponent(search)}` : ""}`,
+        `/api/conversations${query ? `?${query}` : ""}`,
         signal,
-      ),
+      );
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.nextCursor,
+    select: joinConversationFeedPages,
     placeholderData: keepPreviousData,
     // The versions poll refreshes the feed when it changes.
     retry: false,
@@ -136,16 +146,6 @@ export function useCodeOverviewData() {
     queryKey: ["dashboard", "code"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(codeOverviewReportSchema, "/api/code", signal),
-    retry: false,
-  });
-}
-
-/** Fetch the viewer's Board of code changes and tickets. */
-export function useBoardData() {
-  return useQuery({
-    queryKey: ["dashboard", "board"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(boardReportSchema, "/api/board", signal),
     retry: false,
   });
 }
@@ -383,6 +383,21 @@ export function useSkillsData() {
     queryKey: ["dashboard", "skills"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(skillReportsSchema, "/api/skills", signal),
+    retry: false,
+    staleTime: dashboardMetadataStaleTimeMs,
+  });
+}
+
+/** Fetch one skill with its SKILL.md body. */
+export function useSkillDetail(name: string) {
+  return useQuery({
+    queryKey: ["dashboard", "skills", name],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        skillDetailReportSchema,
+        `/api/skills/${encodeURIComponent(name)}`,
+        signal,
+      ),
     retry: false,
     staleTime: dashboardMetadataStaleTimeMs,
   });

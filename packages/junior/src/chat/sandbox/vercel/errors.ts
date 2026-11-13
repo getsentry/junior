@@ -111,6 +111,21 @@ function isTransient(error: unknown): boolean {
   });
 }
 
+// undici wraps a dropped connection as `TypeError: terminated` (mid-response)
+// or `TypeError: fetch failed` (before a response), with the socket error as
+// the cause.
+const SOCKET_FAILURE_CODES = new Set(["ECONNRESET", "UND_ERR_SOCKET"]);
+
+function isFetchSocketFailure(error: Error): boolean {
+  return (
+    error.name === "TypeError" &&
+    (error.message === "terminated" || error.message === "fetch failed") &&
+    isRecord(error.cause) &&
+    typeof error.cause.code === "string" &&
+    SOCKET_FAILURE_CODES.has(error.cause.code)
+  );
+}
+
 function isCommandStreamInterrupted(error: unknown): boolean {
   return findInErrorChain(error, (candidate) => {
     if (!(candidate instanceof Error)) {
@@ -118,10 +133,11 @@ function isCommandStreamInterrupted(error: unknown): boolean {
     }
 
     return (
-      candidate.name === "StreamError" &&
-      candidate.message
-        .toLowerCase()
-        .includes("stream ended before command finished")
+      (candidate.name === "StreamError" &&
+        candidate.message
+          .toLowerCase()
+          .includes("stream ended before command finished")) ||
+      isFetchSocketFailure(candidate)
     );
   });
 }

@@ -1,8 +1,7 @@
 import type { GitHubStatusIncident } from "../github-status.js";
-import { updateGitHubAnnotation } from "../annotations.js";
+import { updateGitHubAnnotations } from "../annotations.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
-  CodeChangeInput,
   CodeChangePublisher,
   PluginConversationAnnotations,
   PluginConversationReviewItems,
@@ -19,8 +18,8 @@ import {
   recordGitHubIssueConversations,
   recordGitHubIssueOutcome,
 } from "../issue-outcomes/store.js";
+import { applyGitHubPullRequestOutcome } from "../pull-request-outcomes/apply.js";
 import {
-  type GitHubPullRequestOutcomeInput,
   recordGitHubPullRequestConversations,
   recordGitHubPullRequestLinkedIssues,
   recordGitHubPullRequestOutcome,
@@ -34,6 +33,8 @@ import {
   normalizeGitHubPullRequestLinkedIssues,
   normalizeGitHubPullRequestOutcome,
 } from "./pull-request-outcome.js";
+import { normalizeGitHubPullRequestActivity } from "./pull-request-activity.js";
+import { refreshGitHubPullRequestPreview } from "./pull-request-preview.js";
 import {
   loadCheckSuiteFacts,
   needsCheckSuitePullRequestFacts,
@@ -49,6 +50,7 @@ import {
   pullRequestReadyTargets,
   syncGitHubPullRequestReadyNotices,
 } from "./pull-request-ready.js";
+import { requestGitHubReviewersWhenReady } from "./pull-request-ready-reviewers.js";
 import { syncGitHubPullRequestReviewRequest } from "./pull-request-review-request.js";
 import {
   withGitHubPullRequestMatchData,
@@ -138,29 +140,6 @@ function pullRequestFeedbackTarget(
   return undefined;
 }
 
-function githubCodeChange(
-  outcome: GitHubPullRequestOutcomeInput,
-  conversationIds: string[],
-): CodeChangeInput {
-  return {
-    closedAt: outcome.closedAt,
-    conversationIds,
-    mergedAt: outcome.mergedAt,
-    number: outcome.number,
-    openedAt: outcome.openedAt,
-    providerId: outcome.pullRequestId,
-    repository: {
-      name: outcome.repositoryFullName,
-      providerId: outcome.repositoryId,
-      url: `https://github.com/${outcome.repositoryFullName}`,
-    },
-    state: outcome.state === "closed_unmerged" ? "closed" : outcome.state,
-    title: outcome.title,
-    updatedAt: outcome.updatedAt,
-    url: `https://github.com/${outcome.repositoryFullName}/pull/${outcome.number}`,
-  };
-}
-
 /** Create the public, signed GitHub webhook route owned by the plugin. */
 export function createGitHubWebhookRoute(args: {
   annotations: PluginConversationAnnotations;
@@ -189,7 +168,7 @@ export function createGitHubWebhookRoute(args: {
   loadRepositoryRole?(target: GitHubRoleTarget): Promise<string>;
   /** Linked GitHub login of the user of one Junior identity, if any. */
   loadGitHubLogin?(identityId: string): Promise<string | undefined>;
-  log?: Pick<PluginLogger, "error">;
+  log?: Pick<PluginLogger, "error" | "warn">;
   markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
   events: EventPublisher;
@@ -255,35 +234,13 @@ export function createGitHubWebhookRoute(args: {
           ? normalizeGitHubPullRequestLinkedIssues({ body, botEmail })
           : undefined;
       if (pullRequestOutcome) {
-        const recordedOutcome = await recordGitHubPullRequestOutcome(
-          args.db,
-          pullRequestOutcome,
-        );
-        if (recordedOutcome.applied) {
-          await args.codeChanges.record(
-            githubCodeChange(
-              pullRequestOutcome,
-              recordedOutcome.conversationIds,
-            ),
-          );
-        }
-        if (recordedOutcome.applied && pullRequestOutcome.state !== "open") {
-          const status =
-            pullRequestOutcome.state === "merged" ? "merged" : "closed";
-          await Promise.all(
-            recordedOutcome.conversationIds.map((conversationId) =>
-              updateGitHubAnnotation(
-                args.annotations.forConversation(conversationId),
-                {
-                  repo: pullRequestOutcome.repositoryFullName,
-                  number: pullRequestOutcome.number,
-                  objectType: "code_change",
-                  status,
-                },
-              ),
-            ),
-          );
-        }
+        const recordedOutcome = await applyGitHubPullRequestOutcome({
+          annotations: args.annotations,
+          codeChanges: args.codeChanges,
+          db: args.db,
+          log: args.log,
+          outcome: pullRequestOutcome,
+        });
         if (
           recordedOutcome.applied &&
           !recordedOutcome.commitComposition &&
@@ -318,19 +275,17 @@ export function createGitHubWebhookRoute(args: {
           issueOutcome,
         );
         if (recordedOutcome.applied && issueOutcome.state === "closed") {
-          await Promise.all(
-            recordedOutcome.conversationIds.map((conversationId) =>
-              updateGitHubAnnotation(
-                args.annotations.forConversation(conversationId),
-                {
-                  repo: issueOutcome.repositoryFullName,
-                  number: issueOutcome.number,
-                  objectType: "task",
-                  status: "closed",
-                },
-              ),
-            ),
-          );
+          await updateGitHubAnnotations({
+            annotations: args.annotations,
+            conversationIds: recordedOutcome.conversationIds,
+            log: args.log,
+            update: {
+              repo: issueOutcome.repositoryFullName,
+              number: issueOutcome.number,
+              objectType: "task",
+              status: "closed",
+            },
+          });
         }
       }
       const recordedIssueConversations = issueConversations
@@ -347,6 +302,21 @@ export function createGitHubWebhookRoute(args: {
           conversationIds: pullRequestConversations.conversationIds,
           providerId: pullRequestConversations.pullRequestId,
         });
+      }
+      if (eventName === "pull_request") {
+        await refreshGitHubPullRequestPreview({
+          annotations: args.annotations,
+          body,
+          db: args.db,
+          log: args.log,
+        });
+      }
+      const pullRequestActivity = normalizeGitHubPullRequestActivity({
+        body,
+        eventName,
+      });
+      if (pullRequestActivity) {
+        await args.codeChanges.recordActivity(pullRequestActivity);
       }
       const recordedPullRequestLinkedIssues = pullRequestLinkedIssues
         ? await recordGitHubPullRequestLinkedIssues(
@@ -474,6 +444,20 @@ export function createGitHubWebhookRoute(args: {
         log: args.log,
         reviewItems: args.reviewItems,
         targets: pullRequestReadyTargets(eventName, body),
+      });
+      await requestGitHubReviewersWhenReady({
+        body,
+        db: args.db,
+        deliveryId,
+        env: {
+          appIdEnv: args.appIdEnv,
+          installationIdEnv: args.installationIdEnv,
+          privateKeyEnv: args.privateKeyEnv,
+        },
+        eventName,
+        loadGitHubLogin: args.loadGitHubLogin,
+        log: args.log,
+        state: args.state,
       });
       await syncGitHubPullRequestReviewRequest({
         body,

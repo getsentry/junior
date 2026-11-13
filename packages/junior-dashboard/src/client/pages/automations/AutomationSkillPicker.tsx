@@ -15,6 +15,8 @@ import {
   PopoverTrigger,
 } from "../../components/ui/popover";
 import { MatchedLabel } from "../../components/MatchedLabel";
+import { skillLabel } from "../../components/SkillLink";
+import { Badge } from "../../components/ui/badge";
 import { cn } from "../../styles";
 import { searchSkills, type SkillSearchRow } from "./skillSearch";
 
@@ -44,19 +46,19 @@ export function AutomationSkillPicker(props: {
       skills: props.skills.filter((skill) => skill.pluginProvider),
     },
   ].filter((group) => group.skills.length > 0);
-  const search = query.trim();
+  // Names show as `$skill-name`, so a pasted label still searches by name.
+  const search = query.trim().replace(/^\$/, "");
+  // Each open starts from the grouped list, however the picker closed.
+  const changeOpen = (next: boolean) => {
+    setOpen(next);
+    if (!next) setQuery("");
+  };
   const choose = (skill: string) => {
     props.onChange(skill);
-    setOpen(false);
+    changeOpen(false);
   };
   return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) setQuery("");
-      }}
-    >
+    <Popover open={open} onOpenChange={changeOpen}>
       <PopoverTrigger
         id={props.id}
         aria-invalid={props.invalid || missing || undefined}
@@ -75,7 +77,7 @@ export function AutomationSkillPicker(props: {
                       "text-dashboard-text-muted line-through decoration-dashboard-text-muted/60",
                   )}
                 >
-                  {props.value}
+                  {skillLabel(props.value)}
                 </span>
                 {missing ? (
                   <SkillBadge tone="danger">Not found</SkillBadge>
@@ -153,6 +155,7 @@ function SkillOption(props: {
       <span className="grid min-w-0 flex-1 gap-0.5">
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate font-mono">
+            $
             <MatchedLabel label={skill.name} matches={props.row.nameMatches} />
           </span>
           {skill.disableModelInvocation ? (
@@ -184,15 +187,11 @@ function SkillTile(props: { plugin: boolean }) {
 
 function SkillBadge(props: { children: string; tone?: "danger" }) {
   return (
-    <span
-      className={cn(
-        "shrink-0 rounded-sm border px-1.5 py-0.5 font-sans text-xs leading-none font-medium",
-        props.tone === "danger"
-          ? "border-rose-300/40 text-rose-300"
-          : "border-dashboard-accent/25 bg-dashboard-accent/[0.075] text-dashboard-accent-text",
-      )}
+    <Badge
+      className="shrink-0 py-0.5 leading-none font-medium"
+      variant={props.tone === "danger" ? "destructive" : "accent"}
     >
       {props.children}
-    </span>
+    </Badge>
   );
 }

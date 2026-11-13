@@ -10,7 +10,6 @@ import {
 import type {
   ConversationDetailReport,
   ConversationPendingMessagesReport,
-  InputImage,
   ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
@@ -22,7 +21,7 @@ import {
   type ComposerQuestionAnswers,
 } from "../review-desk/ComposerQuestion";
 import { useConfirmUnsentAnswers } from "../review-desk/UnsentAnswers";
-import { readStoredComposerImages } from "./ComposerImages";
+import { readStoredComposerFiles } from "./ComposerFiles";
 import { ComposerDock } from "./ComposerDock";
 import {
   ConversationComposer,
@@ -190,23 +189,23 @@ function ReplyFooter(props: {
       (message) => !committedIds.has(message.messageId),
     );
   const onSubmit = useCallback(
-    async (message: string, idempotencyKey: string, images?: InputImage[]) => {
+    async (message: string, idempotencyKey: string, files?: File[]) => {
       await appendMessageRef.current.mutateAsync({
         idempotencyKey,
         inline: sendInlineRef.current,
         message,
-        images,
+        files,
       });
     },
     [],
   );
   const onRetry = useCallback((message: ConversationMailboxMessage) => {
-    if (!message.idempotencyKey || (!message.text && !message.images?.length))
+    if (!message.idempotencyKey || (!message.text && !message.files?.length))
       return;
     void appendMessageRef.current.mutateAsync({
       idempotencyKey: message.idempotencyKey,
       message: message.text ?? "",
-      images: message.images,
+      files: message.files,
     });
   }, []);
   const onSubmitStart = useCallback(() => {
@@ -282,7 +281,7 @@ function ReplyFooter(props: {
   const onEditMessage = useCallback(
     async (message: ConversationMailboxMessage) => {
       const receivedBefore = props.pendingGeneratedAtRef.current;
-      // The image read runs before the cancel starts, so isPending alone does
+      // The file read runs before the cancel starts, so isPending alone does
       // not stop a second click.
       if (!receivedBefore || editingRef.current) return;
       editingRef.current = true;
@@ -290,16 +289,16 @@ function ReplyFooter(props: {
       setEditTargetInboundMessageId(inboundMessageId);
       setQueueActionError(undefined);
       try {
-        // Read images first. A failed read must leave the message queued.
-        const images = await readStoredComposerImages(
+        // Read files first. A failed read must leave the message queued.
+        const files = await readStoredComposerFiles(
           props.conversationId,
           message.attachments,
         );
         // The reader left during the read. Keep the message in the queue.
         if (!composerRef.current) return;
-        // Check before the cancel. After it, images that do not fit are lost.
-        if (!composerRef.current.canRestoreImages(images)) {
-          setQueueActionError("Remove some draft images to edit that message.");
+        // Check before the cancel. After it, files that do not fit are lost.
+        if (!composerRef.current.canRestoreFiles(files)) {
+          setQueueActionError("Remove some draft files to edit that message.");
           return;
         }
         const result = await editCancelRef.current.mutateAsync({
@@ -312,7 +311,7 @@ function ReplyFooter(props: {
           setQueueActionError("That message was already read or removed.");
           return;
         }
-        const restored = { images, text: message.text ?? "" };
+        const restored = { files, text: message.text ?? "" };
         if (composerRef.current) {
           composerRef.current.restoreMessage(restored);
         } else {

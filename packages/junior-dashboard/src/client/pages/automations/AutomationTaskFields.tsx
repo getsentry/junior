@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Link } from "react-router";
 import { Plus } from "lucide-react";
 import type { AutomationEdit, SkillReport } from "@sentry/junior/api/schema";
 import { useSkillsData } from "../../api";
+import { SkillLink, skillLabel } from "../../components/SkillLink";
 import { Button } from "../../components/ui/button";
 import { Textarea } from "../../components/ui/textarea";
 import {
@@ -12,7 +12,6 @@ import {
   FieldLabel,
 } from "../../components/ui/field";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
-import { systemPluginPath } from "../system/SystemPlugins";
 import { AutomationSkillPicker } from "./AutomationSkillPicker";
 import { taskDraft, type AutomationTaskDraft } from "./automationDraft";
 
@@ -41,7 +40,8 @@ export function AutomationTaskFields(props: {
   const skills = useSkillsData().data;
   return (
     <>
-      <Field>
+      {/* Field stretches its children. The toggle keeps its own width. */}
+      <Field className="*:w-fit">
         <span id="run-label" className="text-sm font-semibold">
           Run
         </span>
@@ -118,7 +118,7 @@ function SkillFields(props: {
   const skillError =
     props.fieldError("task.skill") ??
     (missing
-      ? `The skill ${task.skill} is no longer installed. This automation is blocked until you choose another skill or switch to an instruction.`
+      ? `${skillLabel(task.skill)} is no longer installed. This automation is blocked until you choose another skill or switch to an instruction.`
       : undefined);
   return (
     <>
@@ -139,16 +139,7 @@ function SkillFields(props: {
         >
           Junior loads this skill at the start of each run.
           {selected ? (
-            <Link
-              to={
-                selected.pluginProvider
-                  ? systemPluginPath(selected.pluginProvider)
-                  : "/system#skills"
-              }
-              className="text-dashboard-accent-text"
-            >
-              View skill
-            </Link>
+            <SkillLink name={selected.name}>View skill</SkillLink>
           ) : null}
         </FieldDescription>
       </Field>
@@ -157,7 +148,7 @@ function SkillFields(props: {
           <div className="flex items-center justify-between gap-3">
             <FieldLabel htmlFor="task.context">Additional context</FieldLabel>
             <Button
-              variant="quiet"
+              variant="ghost"
               onClick={() => {
                 props.onChange({ ...task, context: "" });
                 props.onContextOpen(false);
@@ -193,7 +184,7 @@ function SkillFields(props: {
         </Field>
       ) : (
         <Button
-          variant="quiet"
+          variant="ghost"
           className="w-fit"
           onClick={() => props.onContextOpen(true)}
         >

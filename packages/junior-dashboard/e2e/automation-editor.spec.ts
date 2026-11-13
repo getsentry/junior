@@ -135,6 +135,16 @@ test("runs a skill with optional context instead of an instruction", async ({
       ],
     }),
   );
+  await page.route("**/api/skills/release-check", (route) =>
+    route.fulfill({
+      json: {
+        name: "release-check",
+        description: "Check release readiness and post a short summary.",
+        disableModelInvocation: true,
+        body: "# Release check\n\nCompare the release branch with `main`.",
+      },
+    }),
+  );
   await page.goto(`${dashboard.baseURL}/automations/scheduled-1/edit`);
   await page.getByRole("button", { name: "Skill", exact: true }).click();
   await expect(
@@ -145,17 +155,35 @@ test("runs a skill with optional context instead of an instruction", async ({
   await page.getByLabel("Skill", { exact: true }).click();
   await screenshot(page, "automation-skill-picker", { view: "desktop" });
   const search = page.getByPlaceholder("Search by name or description");
-  // A name match outranks a description match, even from a plugin.
-  await search.fill("self");
+  // A name match outranks a description match, even from a plugin. The
+  // `$` from the shown skill label still matches by name.
+  await search.fill("$self");
   await expect(
     page.getByRole("listbox", { name: "Suggestions" }).getByRole("option"),
-  ).toHaveText([/^self-update/, /^diff-quality/]);
+  ).toHaveText([/^\$self-update/, /^\$diff-quality/]);
   await screenshot(page, "automation-skill-search", { view: "desktop" });
   await search.fill("release");
   await page.keyboard.press("Enter");
   await expect(page.getByLabel("Skill", { exact: true })).toContainText(
     "Manual only",
   );
+  await page.getByRole("button", { name: "View skill", exact: true }).click();
+  const skillDrawer = page.getByRole("dialog", { name: "$release-check" });
+  await expect(
+    skillDrawer.getByRole("heading", { name: "Release check" }),
+  ).toBeVisible();
+  await expect(skillDrawer).toContainText("Compare the release branch");
+  await screenshot(page, "automation-skill-drawer");
+  await skillDrawer.getByRole("button", { name: "Raw", exact: true }).click();
+  await expect(skillDrawer).toContainText("# Release check");
+  await expect(skillDrawer).toContainText("`main`");
+  await skillDrawer
+    .getByRole("button", { name: "Close $release-check", exact: true })
+    .click();
+  // Reopening after a pick starts from an empty search.
+  await page.getByLabel("Skill", { exact: true }).click();
+  await expect(search).toHaveValue("");
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Add context", exact: true }).click();
   await page
     .getByLabel("Additional context", { exact: true })
@@ -165,7 +193,7 @@ test("runs a skill with optional context instead of an instruction", async ({
   });
   await expect(yourChanges).toContainText("What to run");
   await expect(yourChanges).toContainText(
-    "New: release-check · Only check getsentry/junior.",
+    "New: $release-check · Only check getsentry/junior.",
   );
   await screenshot(page, "automation-skill-editor");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
@@ -192,7 +220,7 @@ test("runs a skill with optional context instead of an instruction", async ({
   await page.goto(`${dashboard.baseURL}/automations/scheduled-1/edit`);
   await expect(
     page.getByText(
-      "The skill removed-check is no longer installed. This automation is blocked until you choose another skill or switch to an instruction.",
+      "$removed-check is no longer installed. This automation is blocked until you choose another skill or switch to an instruction.",
     ),
   ).toBeVisible();
   await expect(page.getByLabel("Skill", { exact: true })).toContainText(

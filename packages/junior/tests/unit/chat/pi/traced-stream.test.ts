@@ -372,9 +372,13 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
+    const callerAttributes = vi.fn((message: AssistantMessage) => ({
+      "app.caller.input": message.usage.input,
+    }));
     const traced = createTracedStreamFn({
       base: base as StreamFn,
       conversationPrivacy: "public",
+      endAttributes: callerAttributes,
     });
     const returned = await traced(
       fakeModel("openai/gpt-5.4"),
@@ -407,6 +411,7 @@ describe("createTracedStreamFn", () => {
     expect(endAttributes["gen_ai.usage.output_tokens"]).toBe(5);
     expect(endAttributes["gen_ai.usage.cache_creation.input_tokens"]).toBe(3);
     expect(endAttributes["app.ai.usage.cache_write_1h"]).toBe(2);
+    expect(endAttributes["app.caller.input"]).toBe(97);
     expect(endAttributes["gen_ai.response.finish_reasons"]).toEqual(["stop"]);
     expect(endAttributes["gen_ai.response.model"]).toBe("openai/gpt-5.4");
     expect(span.end).toHaveBeenCalledTimes(1);

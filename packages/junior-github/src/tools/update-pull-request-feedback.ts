@@ -6,6 +6,12 @@ import {
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import {
+  ADD_REVIEW_REACTION,
+  type GitHubGraphqlOperation,
+  REMOVE_REVIEW_REACTION,
+  REVIEW_REACTIONS,
+} from "../graphql-documents.js";
 import { botUserIdFromEmail } from "../webhooks/ownership.js";
 import {
   type GitHubApiResponse,
@@ -52,20 +58,22 @@ const inputSchema = z
     comment_kind: z
       .enum(["conversation", "review", "review_body"])
       .describe(
-        'Comment kind: "conversation" for a pull request conversation comment, "review" for an inline review comment, "review_body" for the body of a submitted review.',
+        'Comment kind: "conversation" for a pull request conversation comment, "review" for an inline review comment, "review_body" for the body of a submitted review. Use the exact value from the event.',
       ),
     comment_id: z
       .number()
       .int()
       .positive()
       .describe(
-        "GitHub comment id (conversation comment id, inline review comment id, or review id).",
+        "GitHub comment id (conversation comment id, inline review comment id, or review id). Use the exact value from the event.",
       ),
     pull_request: z
       .number()
       .int()
       .positive()
-      .describe("Pull request number that the comment is on."),
+      .describe(
+        "Pull request number that the comment is on. Use the exact value from the event.",
+      ),
     status: z
       .enum(["addressed", "declined"])
       .describe(
@@ -212,30 +220,6 @@ export function graphqlReactionContent(content: string): string {
   return GRAPHQL_REACTION_CONTENT[content] ?? content;
 }
 
-/** The GraphQL mutation that adds one reaction to a review body. */
-export const ADD_REVIEW_REACTION_MUTATION = `mutation AddReviewReaction($subjectId: ID!, $content: ReactionContent!) {
-  addReaction(input: {subjectId: $subjectId, content: $content}) {
-    reaction { content }
-  }
-}`;
-
-const REMOVE_REVIEW_REACTION_MUTATION = `mutation RemoveReviewReaction($subjectId: ID!, $content: ReactionContent!) {
-  removeReaction(input: {subjectId: $subjectId, content: $content}) {
-    reaction { content }
-  }
-}`;
-
-const REVIEW_REACTIONS_QUERY = `query ReviewReactions($subjectId: ID!) {
-  node(id: $subjectId) {
-    ... on PullRequestReview {
-      reactionGroups {
-        content
-        reactors(first: 100) { nodes { ... on Bot { databaseId } } }
-      }
-    }
-  }
-}`;
-
 const reviewReactionsSchema = z.object({
   data: z.object({
     node: z.object({
@@ -334,26 +318,22 @@ async function reviewBodyReactions(
     .parse(reviewResponse.body).node_id;
   const graphql = (
     operation: string,
-    operationName: string,
-    query: string,
+    document: GitHubGraphqlOperation,
     variables: Record<string, string>,
   ) =>
     githubApi(egress, {
       operation,
       method: "POST",
       path: "/graphql",
-      body: { operationName, query, variables },
+      body: { ...document, variables },
     });
   const update =
     `github.pull.review-reaction.update:${input.owner}/${input.name}`.toLowerCase();
   return {
     list: () =>
-      graphql(
-        "github.pull.review-reaction.list",
-        "ReviewReactions",
-        REVIEW_REACTIONS_QUERY,
-        { subjectId },
-      ),
+      graphql("github.pull.review-reaction.list", REVIEW_REACTIONS, {
+        subjectId,
+      }),
     botReactions: (body) =>
       reviewReactionsSchema
         .parse(body)
@@ -366,12 +346,12 @@ async function reviewBodyReactions(
           content: REST_REACTION_CONTENT.get(group.content) ?? group.content,
         })),
     remove: (reaction) =>
-      graphql(update, "RemoveReviewReaction", REMOVE_REVIEW_REACTION_MUTATION, {
+      graphql(update, REMOVE_REVIEW_REACTION, {
         subjectId,
         content: graphqlReactionContent(reaction.content),
       }),
     add: (content) =>
-      graphql(update, "AddReviewReaction", ADD_REVIEW_REACTION_MUTATION, {
+      graphql(update, ADD_REVIEW_REACTION, {
         subjectId,
         content: graphqlReactionContent(content),
       }),
@@ -404,7 +384,7 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       readOnlyHint: false,
     },
     description:
-      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Use the pull_request, comment_id, and comment_kind from the event after acting on the feedback. Replaces only your prior status reaction on that comment. Only works on pull requests the bot authored.",
+      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Call it after acting on the feedback. Replaces only your prior status reaction on that comment. Only works on pull requests the bot authored.",
     exposure: "direct",
     inputSchema,
     outputSchema,

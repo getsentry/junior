@@ -3,17 +3,14 @@ import type {
   AutomationSummary,
 } from "@sentry/junior/api/schema";
 
+import {
+  ActivityChartTooltip,
+  ActivityTooltipRows,
+} from "../../components/charts/ActivityChart";
 import { Fact, FactList, FactSection } from "../../components/FactSection";
 import { formatCostSummary } from "../../format";
 
 const COST_DAYS = 30;
-
-// Buckets are UTC days, so label them in UTC, not the dashboard timezone.
-const utcDay = new Intl.DateTimeFormat(undefined, {
-  day: "numeric",
-  month: "short",
-  timeZone: "UTC",
-});
 
 /**
  * What the Automation costs: a 30-day daily spend strip, the total since it
@@ -59,24 +56,42 @@ function DailyCost(props: { days: readonly AutomationExecutionStatusDay[] }) {
       className="flex h-10 items-end gap-0.5"
       role="img"
     >
-      {props.days.map((day) => (
-        <span
-          className={
-            day.costUsd > 0
-              ? "block flex-1 rounded-[1px] bg-chart-1 opacity-80 hover:opacity-100"
-              : "block h-0.5 flex-1 rounded-full bg-dashboard-fill-strong"
-          }
-          key={day.date}
-          style={
-            day.costUsd > 0 && highest > 0
-              ? {
-                  height: `${Math.max(8, Math.round((day.costUsd / highest) * 100))}%`,
+      {props.days.map((day) => {
+        const runs = day.completed + day.failed + day.blocked;
+        const cost = formatCostSummary({ total: day.costUsd });
+        return (
+          <ActivityChartTooltip
+            content={
+              <ActivityTooltipRows
+                rows={[
+                  ["Cost", cost],
+                  ["Runs", runs],
+                ]}
+              />
+            }
+            date={day.date}
+            key={day.date}
+          >
+            {/* The whole column opens the tooltip, so empty days are easy to hit. */}
+            <span className="group flex h-full flex-1 items-end">
+              <span
+                className={
+                  day.costUsd > 0
+                    ? "block w-full rounded-[1px] bg-chart-1 opacity-80 group-hover:opacity-100"
+                    : "block h-0.5 w-full rounded-full bg-dashboard-fill-strong"
                 }
-              : undefined
-          }
-          title={`${utcDay.format(new Date(`${day.date}T00:00:00.000Z`))} · ${formatCostSummary({ total: day.costUsd })}`}
-        />
-      ))}
+                style={
+                  day.costUsd > 0 && highest > 0
+                    ? {
+                        height: `${Math.max(8, Math.round((day.costUsd / highest) * 100))}%`,
+                      }
+                    : undefined
+                }
+              />
+            </span>
+          </ActivityChartTooltip>
+        );
+      })}
     </div>
   );
 }

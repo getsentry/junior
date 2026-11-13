@@ -3,6 +3,7 @@ import { TEST_USER_ID } from "../../fixtures/slack/factories/ids";
 import {
   slackOk,
   authTestOk,
+  botsInfoOk,
   teamInfoOk,
   canvasesAccessSetOk,
   canvasesCreateOk,
@@ -15,6 +16,7 @@ import {
   conversationsInfoOk,
   conversationsJoinOk,
   conversationsListPage,
+  conversationsMembersPage,
   conversationsOpenOk,
   conversationsRepliesPage,
   dndInfoOk,
@@ -39,6 +41,7 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "assistant.search.context",
   "assistant.threads.setStatus",
   "auth.test",
+  "bots.info",
   "team.info",
   "assistant.threads.setSuggestedPrompts",
   "assistant.threads.setTitle",
@@ -57,6 +60,7 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "conversations.info",
   "conversations.join",
   "conversations.list",
+  "conversations.members",
   "conversations.open",
   "conversations.replies",
   "dnd.info",
@@ -248,6 +252,8 @@ function defaultSlackApiResponse(
       return { body: conversationsJoinOk() };
     case "conversations.list":
       return { body: conversationsListPage() };
+    case "conversations.members":
+      return { body: conversationsMembersPage() };
     case "conversations.open":
       return { body: conversationsOpenOk() };
     case "conversations.replies":
@@ -276,6 +282,12 @@ function defaultSlackApiResponse(
       return { body: filesGetUploadUrlOk() };
     case "files.completeUploadExternal":
       return { body: filesCompleteUploadOk() };
+    case "bots.info":
+      return {
+        body: botsInfoOk({
+          botId: typeof params.bot === "string" ? params.bot : undefined,
+        }),
+      };
     case "users.info":
       return {
         body: usersInfoOk({

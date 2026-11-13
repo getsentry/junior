@@ -9,7 +9,9 @@ import {
   bindScheduledAutomationCredentialSubject,
   bindSlackDirectCredentialSubject,
 } from "@/chat/credentials/subject";
+import { createCodeChangePublisher } from "@/chat/code/publisher";
 import { getDb } from "@/chat/db";
+import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginEmbedder } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
@@ -101,7 +103,16 @@ export function createHeartbeatContext(args: {
   let dispatchCount = 0;
   return {
     plugin: { name: pluginName },
+    annotations: {
+      forConversation: (conversationId) =>
+        createPluginAnnotations({
+          conversationId,
+          db: getDb(),
+          plugin: pluginName,
+        }),
+    },
     cache: createPluginCache(pluginName),
+    codeChanges: createCodeChangePublisher(pluginName),
     nowMs: args.nowMs,
     db: getDb(),
     embedder: createPluginEmbedder(pluginName),

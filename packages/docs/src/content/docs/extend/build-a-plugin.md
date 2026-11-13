@@ -437,7 +437,7 @@ const role = await ctx.cache.getOrLoad(`role:${repo}:${login}`, async () => ({
 Use `ctx.state` for plugin-namespaced durable state. Use
 `ctx.agent.dispatch(...)` when the heartbeat needs Junior to run an autonomous
 agent task, and `ctx.agent.get(...)` to reconcile that dispatch later. Use
-`ctx.events` to publish events, as from a plugin route.
+`ctx.events`, `ctx.annotations`, and `ctx.codeChanges` as from a plugin route.
 
 ```ts title="index.ts"
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
@@ -472,6 +472,58 @@ that created them. Plugins can dispatch only to validated Slack destinations
 and receive projection records, not raw runtime state. Pass `title` to name
 the dispatch Conversation. When you omit it, Junior generates one from
 `input`.
+
+## Add a link type
+
+A link type turns a URL in a reply into an object card in the dashboard. It
+works like an Android `<intent-filter>`. You declare static filters, and
+Junior matches each URL against them without your code. Then Junior calls
+`resolve` of the most specific match.
+
+```ts title="index.ts"
+defineJuniorPlugin({
+  manifest: { name: "my-provider", description: "My provider integration" },
+  objectLinks: [
+    {
+      objectType: "task",
+      filters: [{ host: "tracker.example.com", pathPattern: "/issues/*" }],
+      async resolve(ctx, url) {
+        const issue = await readIssueAsViewer(ctx.viewer, url);
+        if (!issue) return undefined;
+        return {
+          kind: "object",
+          key: `issue:${issue.id}`,
+          objectType: "task",
+          label: issue.key,
+          title: issue.title,
+          url: issue.url,
+          status: issue.status,
+          facts: { type: "task", assignees: issue.assignees },
+        };
+      },
+    },
+  ],
+});
+```
+
+- **Filter.** `scheme` is `https` when you omit it. `host` is an exact host
+  or `*.example.com`. Give one of `path` (exact), `pathPattern` (a `*`
+  segment matches one segment), or `pathPrefix`. Junior picks an exact host
+  before a wildcard host, and an exact path before a pattern before a
+  prefix. Two link types with equal filters for the same URLs stop app
+  startup.
+- **Resolver.** Return `undefined` when `ctx.viewer` cannot read the
+  object. Do not show that it exists. `ctx.egress` calls your provider as a
+  system Actor. It gets only credentials that your plugin owns, never the
+  viewer's, so check the viewer's access before you return a card. Junior
+  caches the card for one minute for each viewer and URL, and does not save
+  it on a Conversation.
+- **Facts and icon.** Return the facts of `objectType`. Each object type has
+  its label, icon, and tones in `@sentry/junior-plugin-api`. To add an object
+  type, add it to `objectTypeSchema`, its facts to `object-facts.ts`, and an
+  icon to `scripts/generate-object-icons.mjs`.
+- **Test.** Test the resolver for a viewer that can read the object, and for
+  a viewer that cannot.
 
 ## Validate
 

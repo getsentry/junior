@@ -3,7 +3,6 @@ import type {
   ActorIdentity,
   ConversationPendingMessage,
   ConversationReportEvent,
-  InputImage,
 } from "@sentry/junior/api/schema";
 import type { DashboardCoreData } from "../types";
 
@@ -20,14 +19,14 @@ export type ConversationOutboxMessage = {
   /** Client time when the accept response arrived. */
   acceptedAtMs?: number;
   message: string;
-  images?: InputImage[];
+  files?: File[];
   messageId: string;
   status: "accepted" | "failed" | "sending";
 };
 
 /** Pending mailbox row with optional client send lifecycle. */
 export type ConversationMailboxMessage = ConversationPendingMessage & {
-  images?: InputImage[];
+  files?: File[];
   clientStatus?: ConversationOutboxMessage["status"];
   idempotencyKey?: string;
 };
@@ -59,7 +58,7 @@ export function conversationOutboxMessageForSubmit(input: {
   idempotencyKey: string;
   inline?: boolean;
   message: string;
-  images?: InputImage[];
+  files?: File[];
   messageId: string;
   now?: string;
 }): ConversationOutboxMessage {
@@ -70,7 +69,7 @@ export function conversationOutboxMessageForSubmit(input: {
     idempotencyKey: input.idempotencyKey,
     ...(input.inline ? { inline: true } : undefined),
     message: input.message,
-    ...(input.images?.length ? { images: input.images } : undefined),
+    ...(input.files?.length ? { files: input.files } : undefined),
     messageId: input.messageId,
     status: "sending",
   };
@@ -92,7 +91,7 @@ export function mailboxMessageFromOutbox(
     role: "user",
     source: "web",
     text: message.message,
-    ...(message.images?.length ? { images: message.images } : undefined),
+    ...(message.files?.length ? { files: message.files } : undefined),
   };
 }
 
@@ -153,7 +152,7 @@ function sameMailboxMessage(
     left.clientStatus === right.clientStatus &&
     left.delivery === right.delivery &&
     left.text === right.text &&
-    left.images === right.images &&
+    left.files === right.files &&
     JSON.stringify(left.attachments) === JSON.stringify(right.attachments) &&
     left.redacted === right.redacted &&
     left.source === right.source &&

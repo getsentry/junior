@@ -48,17 +48,11 @@ describe("createPiAgentTools telemetry", () => {
         }),
       },
     };
-    const [tool] = createPiAgentTools(
-      tools,
-      {} as never,
-      {},
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      "private",
-    );
+    const [tool] = createPiAgentTools(tools, {} as never, {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+      conversationPrivacy: "private",
+    });
 
     await tool!.execute!("call-1", {});
 

@@ -750,6 +750,16 @@ export function setBotModelConfig(config: BotModelConfig): void {
   }
 }
 
+/** Apply the bot name from createApp(). It overrides `JUNIOR_BOT_NAME`. */
+export function setBotName(name: string | undefined): void {
+  if (name === undefined) return;
+  const trimmed = toOptionalTrimmed(name);
+  if (!trimmed) {
+    throw new Error("botName must not be empty");
+  }
+  botConfig.userName = trimmed;
+}
+
 /** Return the current Slack reaction emoji config. */
 export function getSlackReactionConfig(): SlackReactionConfig {
   return {
