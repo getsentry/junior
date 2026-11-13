@@ -1678,6 +1678,10 @@ describe("GitHub webhook events", () => {
     expect(
       authorOf({ login: "octocat", senderLogin: "cursor[bot]" }),
     ).not.toHaveProperty("subjectId");
+    // GitHub logins are case-insensitive, so a case-only difference is still the sender.
+    expect(
+      authorOf({ login: "Cursor[bot]", senderLogin: "cursor[bot]" }),
+    ).toHaveProperty("subjectId", "206951365");
 
     expect(
       normalizeGitHubEvents({
