@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-xdotcom",
-  "version": "0.298.0",
+  "version": "0.299.0",
   "private": false,
   "publishConfig": {
     "access": "public"

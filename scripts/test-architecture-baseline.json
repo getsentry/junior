@@ -182,13 +182,14 @@
     "packages/junior/src/api/conversations/stop.ts": 1,
     "packages/junior/src/api/conversations/threads.ts": 1,
     "packages/junior/src/chat/agent-invocations/child-input.ts": 1,
+    "packages/junior/src/chat/agent-invocations/child-message.ts": 4,
     "packages/junior/src/chat/agent-invocations/create.ts": 7,
     "packages/junior/src/chat/agent-invocations/fork-history.ts": 2,
     "packages/junior/src/chat/agent-invocations/list.ts": 2,
     "packages/junior/src/chat/agent-invocations/root-conversation.ts": 1,
     "packages/junior/src/chat/agent-invocations/spawn.ts": 1,
     "packages/junior/src/chat/agent-invocations/stop.ts": 1,
-    "packages/junior/src/chat/agent-invocations/store.ts": 1,
+    "packages/junior/src/chat/agent-invocations/store.ts": 2,
     "packages/junior/src/chat/agent-invocations/top-level-message.ts": 2,
     "packages/junior/src/chat/agent-invocations/work.ts": 5,
     "packages/junior/src/chat/agent/index.ts": 8,
@@ -221,7 +222,6 @@
     "packages/junior/src/chat/task-execution/turn-wake.ts": 1,
     "packages/junior/src/chat/task-execution/web-steering.ts": 1,
     "packages/junior/src/chat/task-execution/worker.ts": 1,
-    "packages/junior/src/chat/tools/runtime/archive-agent.ts": 2,
-    "packages/junior/src/chat/tools/runtime/search-agents.ts": 1
+    "packages/junior/src/chat/tools/runtime/archive-agent.ts": 2
   }
 }

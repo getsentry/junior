@@ -29,7 +29,11 @@ import {
   listPendingDispatchMailboxAppends,
   transitionDispatch,
 } from "./store";
-import { AGENT_DISPATCH_MAX_AGE_MS, enqueueAgentDispatch } from "./work";
+import {
+  AGENT_DISPATCH_MAX_AGE_MS,
+  enqueueAgentDispatch,
+  failStoppedDispatch,
+} from "./work";
 
 const DEFAULT_PLUGIN_LIMIT = 25;
 const PLUGIN_HEARTBEAT_TIMEOUT_MS = 25_000;
@@ -205,8 +209,12 @@ export async function runHeartbeat(args: {
     createEventAppPublisher({ conversationWork: () => ({ queue }) });
   // Runs before result recovery, so an invocation that this ends is sent to
   // its parent in the same heartbeat.
+  const endStoppedChildWork = createEndStoppedChildWork({ queue });
   await recoverConversationWork({
-    beforeWorkStops: createEndStoppedChildWork({ queue }),
+    beforeWorkStops: async (conversationId, inboundMessageIds) => {
+      await endStoppedChildWork(conversationId, inboundMessageIds);
+      await failStoppedDispatch(conversationId);
+    },
     nowMs: args.nowMs,
     queue,
   });

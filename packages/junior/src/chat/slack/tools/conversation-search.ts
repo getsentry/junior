@@ -1,4 +1,4 @@
-import type { ConversationBriefSearchPort } from "@/chat/tools/search-conversation-briefs";
+import type { ConversationSearchChannelPort } from "@/chat/tools/search-conversations";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import type { SlackTeamId } from "@/chat/slack/ids";
 import { getSlackMessagePermalink } from "@/chat/slack/outbound";
@@ -7,10 +7,10 @@ import {
   slackChannelRefParam,
 } from "@/chat/slack/tool-support/channel-target";
 
-/** Create Slack-owned filtering and match details for Brief search. */
-export function createSlackConversationBriefSearchPort(
+/** Create Slack-owned channel filtering and match details for Conversation search. */
+export function createSlackConversationSearchChannelPort(
   teamId: SlackTeamId,
-): ConversationBriefSearchPort {
+): ConversationSearchChannelPort {
   return {
     channelFilterSchema: slackChannelRefParam,
     async resolveChannel(input) {
@@ -22,7 +22,8 @@ export function createSlackConversationBriefSearchPort(
       return target.channelId;
     },
     async describeMatch(match) {
-      const reference = parseSlackThreadId(match.conversationId);
+      // A child agent has no Slack thread of its own. It belongs to its root.
+      const reference = parseSlackThreadId(match.rootConversationId);
       if (!reference || reference.channelId !== match.providerDestinationId) {
         return {};
       }

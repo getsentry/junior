@@ -1,6 +1,13 @@
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAgentBindings, juniorAgentInvocations } from "@/db/schema";
 import { getAgentBinding } from "./bindings";
+import { readChildConversationSender } from "./child-input";
+import {
+  countOpenParentMessages,
+  listOpenChildAgentsWithoutAgentInvocations,
+} from "./list";
+import { readAgentConfig } from "@/chat/conversations/agent-config";
 import {
   AgentInvocationLimitError,
   AgentMessageQueueFullError,
@@ -107,7 +114,7 @@ function sameCreateInput(
  * A stopped child agent cannot start or give work to child agents until its
  * parent gives it new work. A Turn on the child's Conversation loop
  * has no open agent invocation, but it can. A root Conversation has no agent
- * invocation, so it always passes. `open` is the parent's open work from
+ * invocation or agent config, so it always passes. `open` is the parent's open work from
  * `listOpenAgentInvocations`.
  */
 async function assertCanGiveChildWork(
@@ -119,7 +126,13 @@ async function assertCanGiveChildWork(
   }
   const latest =
     await getLatestAgentInvocationForConversation(parentConversationId);
-  if (latest && isStoppedAgentInvocation(latest)) {
+  // A child that no Agent invocation names stays stopped until new work
+  // from its parent ends the stop.
+  const stopped = latest
+    ? isStoppedAgentInvocation(latest)
+    : (await readAgentConfig(parentConversationId)) !== undefined &&
+      (await getConversationStoppedAtMs(parentConversationId)) !== undefined;
+  if (stopped) {
     throw new Error(
       `Agent conversation ${parentConversationId} is stopped and cannot give work to child agents`,
     );
@@ -132,17 +145,21 @@ async function assertCanGiveChildWork(
  * has open work, so a busy child already counts and messages queued for it
  * do not count again. A new or idle child becomes active. This is the only
  * place the rule for which child agents count lives. `open` is the parent's
- * open work from `listOpenAgentInvocations`.
+ * open work from `listOpenAgentInvocations`. A child that no agent
+ * invocation names is active while its listing shows open work.
  */
-function assertChildAgentCapacity(
+async function assertChildAgentCapacity(
   open: readonly AgentInvocation[],
   args: { childConversationId: string; parentConversationId: string },
-): void {
-  const active = new Set(
-    open
+): Promise<void> {
+  const active = new Set([
+    ...open
       .filter((row) => row.parentConversationId === args.parentConversationId)
       .map((row) => row.childConversationId),
-  );
+    ...(await listOpenChildAgentsWithoutAgentInvocations(
+      args.parentConversationId,
+    )),
+  ]);
   if (
     !active.has(args.childConversationId) &&
     active.size >= MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT
@@ -198,7 +215,7 @@ export async function createAgentInvocation(
     ) {
       throw new AgentNameInUseError(input.agentName);
     }
-    assertChildAgentCapacity(open, {
+    await assertChildAgentCapacity(open, {
       childConversationId,
       parentConversationId: input.parentConversationId,
     });
@@ -261,9 +278,12 @@ export async function createAgentInvocationFromLatest(
     input: string;
     invocationId: string;
     latest: AgentInvocation;
-    /** Actor, credentials, and Source for watch events and results. */
+    /**
+     * Actor, credentials, and Source for watch events and results. A parent
+     * message also sets its tool call, which makes it the instruction.
+     */
     runAs?: Pick<AgentInvocation, "actor" | "credentialContext"> &
-      Partial<Pick<AgentInvocation, "source">>;
+      Partial<Pick<AgentInvocation, "fork" | "parentToolCallId" | "source">>;
   },
   nowMs = Date.now(),
 ): Promise<AgentInvocation> {
@@ -277,9 +297,11 @@ export async function createAgentInvocationFromLatest(
       childConversationId: latest.childConversationId,
       credentialContext,
       destination: latest.destination,
+      fork: args.runAs?.fork,
       input: args.input,
       invocationId: args.invocationId,
       parentConversationId: latest.parentConversationId,
+      parentToolCallId: args.runAs?.parentToolCallId,
       reasoningLevel: latest.reasoningLevel,
       source: args.runAs?.source,
     },
@@ -341,36 +363,44 @@ export async function createAgentInvocationForMessage(
           );
         return { invocation: existing, queued };
       }
+      // A child that no agent invocation names reads its name from its
+      // binding and its model settings from its agent config.
       const latest = await getLatestAgentInvocationForConversation(
         input.childConversationId,
       );
-      if (
-        !latest ||
-        latest.parentConversationId !== input.parentConversationId
-      ) {
+      const child =
+        latest ??
+        (await readChildConversationSender(input.childConversationId));
+      if (!child || child.parentConversationId !== input.parentConversationId) {
         throw new Error(
           `${input.childConversationId} is not a child agent of ${input.parentConversationId}`,
         );
       }
+      const agentConfig =
+        latest ?? (await readAgentConfig(input.childConversationId)) ?? {};
       const open = await listOpenAgentInvocations(input.parentConversationId);
       await assertCanGiveChildWork(input.parentConversationId, open);
-      const openCount = open.filter(
-        (row) => row.childConversationId === input.childConversationId,
-      ).length;
+      // A child that no Agent invocation names counts its open parent
+      // messages instead.
+      const openCount =
+        open.filter(
+          (row) => row.childConversationId === input.childConversationId,
+        ).length +
+        (latest ? 0 : await countOpenParentMessages(input.childConversationId));
       if (openCount >= MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD) {
         throw new AgentMessageQueueFullError(
           MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD,
         );
       }
-      assertChildAgentCapacity(open, {
+      await assertChildAgentCapacity(open, {
         childConversationId: input.childConversationId,
         parentConversationId: input.parentConversationId,
       });
       const invocation = await insertAgentInvocation(
         {
           actor: input.actor,
-          agentName: latest.agentName,
-          agentType: latest.agentType,
+          agentName: child.agentName,
+          agentType: agentConfig.agentType,
           childConversationId: input.childConversationId,
           credentialContext: input.credentialContext,
           destination: input.destination,
@@ -378,7 +408,7 @@ export async function createAgentInvocationForMessage(
           invocationId,
           parentConversationId: input.parentConversationId,
           parentToolCallId: input.parentToolCallId,
-          reasoningLevel: latest.reasoningLevel,
+          reasoningLevel: agentConfig.reasoningLevel,
         },
         nowMs,
       );
