@@ -869,13 +869,23 @@ describe("github plugin", () => {
         "GitHub repository creation must use the github_createRepository tool",
       );
     }
-    await expect(
-      grantForEgress({
+    for (const request of [
+      {
         method: "POST",
         operation: "github.repository.create:octocat/new-service",
         url: "https://api.github.com/user/repos",
-      }),
-    ).rejects.toThrow("This GitHub write request is not supported.");
+      },
+      // The create token can set property values; no other request may.
+      {
+        method: "PATCH",
+        operation: "github.repository.create:getsentry/new-service",
+        url: "https://api.github.com/orgs/getsentry/properties/values",
+      },
+    ]) {
+      await expect(grantForEgress(request)).rejects.toThrow(
+        "This GitHub write request is not supported.",
+      );
+    }
   });
 
   it("uses requesting-user credentials for GitHub user-attachment uploads", async () => {
@@ -1089,19 +1099,22 @@ describe("github plugin", () => {
     });
 
     it("rejects invalid profile config when the plugin is configured", () => {
-      expect(() =>
-        githubPlugin({
-          repositoryProfiles: {
-            service: {
-              org: "getsentry",
-              settings: {
-                visibility: "private",
-                delete_branch_on_merge: true,
-              } as any,
+      // Junior always sets custom_properties, so a profile cannot drop it.
+      for (const [field, value] of [
+        ["delete_branch_on_merge", true],
+        ["custom_properties", { "provisioned-by": "someone-else" }],
+      ] as const) {
+        expect(() =>
+          githubPlugin({
+            repositoryProfiles: {
+              service: {
+                org: "getsentry",
+                settings: { visibility: "private", [field]: value } as any,
+              },
             },
-          },
-        }),
-      ).toThrow("delete_branch_on_merge");
+          }),
+        ).toThrow(field);
+      }
     });
 
     it("creates the repository with the profile settings and the owning team", async () => {
@@ -1143,6 +1156,7 @@ describe("github plugin", () => {
         name: "new-service",
         description: "A new service.",
         team_id: 137438,
+        custom_properties: { "provisioned-by": "jr" },
       });
     });
 
@@ -3302,7 +3316,7 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("issues repository-create credentials with only repository creation", async () => {
+  it("issues repository-create credentials with only repository creation and custom property values", async () => {
     const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
@@ -3330,7 +3344,12 @@ Conversation: \`local:test:old-conversation\`
       {
         url: "https://api.github.com/app/installations/456/access_tokens",
         method: "POST",
-        body: { permissions: { repository_creation: "write" } },
+        body: {
+          permissions: {
+            organization_custom_properties: "write",
+            repository_creation: "write",
+          },
+        },
         headers: expect.any(Object),
       },
     ]);

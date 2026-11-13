@@ -30,10 +30,14 @@ const PROFILE_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 // (`.github`), a Pages site (`*.github.io`), or a Git or wiki remote path.
 // GitHub compares repository names without case.
 const RESERVED_NAME_PATTERN = /^\.github|\.github\.io$|\.git$|\.wiki$/i;
+// Every repository that Junior creates carries this organization custom
+// property, so owners can find and govern them. Profiles and tool input
+// cannot set `custom_properties`, and the create body sets it last.
+const PROVISIONED_BY_PROPERTIES = { "provisioned-by": "jr" } as const;
 
 /**
  * Fields of `POST /orgs/{org}/repos` that a profile fixes. Junior sets
- * `name`, `description`, and `team_id` itself. `delete_branch_on_merge` is
+ * `name`, `description`, `team_id`, and `custom_properties` itself. `delete_branch_on_merge` is
  * absent: GitHub lets only an organization owner set it to true.
  */
 const repositorySettingsSchema = z
@@ -376,6 +380,7 @@ export function createGitHubCreateRepositoryTool(
                 ? { description: input.description }
                 : undefined),
               team_id: teamId,
+              custom_properties: PROVISIONED_BY_PROPERTIES,
             },
           },
           key,

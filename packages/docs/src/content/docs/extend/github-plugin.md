@@ -62,8 +62,8 @@ narrow write tokens.
    - Workflows: Write
 
    Optional: to let Junior create repositories, grant the organization
-   permissions Repository creation: Write and Members: Read, and configure
-   [`repositoryProfiles`](#plugin-options). Do not grant Administration:
+   permissions Repository creation: Write, Custom properties: Write, and
+   Members: Read, and configure [`repositoryProfiles`](#plugin-options). Do not grant Administration:
    Write for this. It also allows repository deletion and transfer.
 
    Optional: grant the account permission Email addresses: Read. Junior then
@@ -165,6 +165,13 @@ slug, and a description. Before it creates the repository, Junior checks
 that the requester's linked GitHub account is an active member of that team.
 The team gets access through `team_id`. Junior adds no person. Set `teams`
 to limit which teams may own repositories of a profile.
+
+Junior sets the custom property `provisioned-by` to `jr` on each repository
+that it creates. A profile cannot set `custom_properties`. Before you enable
+the tool, define `provisioned-by` in the organization as a string or a
+single select property that allows `jr`. The create token has the
+organization permission Custom properties: Write, so the property can be
+editable by organization actors only.
 
 Junior refuses a name that starts with `.github` or ends with `.github.io`,
 `.git`, or `.wiki`. It also refuses a name that a repository in the
@@ -724,8 +731,11 @@ A local `git commit` does not call GitHub. The write happens on push. Grant
   the needed event. Set the secret, fix the subscription, redeploy, and retry.
 - `github_getDeployment` returns `403`: grant `Deployments: read`, approve the
   permission on the installation, and retry.
-- `github_createRepository` returns `403`: grant `Repository creation: write`
-  and `Members: read`, approve the permissions on the installation, and retry.
+- `github_createRepository` returns `403`: grant `Repository creation: write`,
+  `Custom properties: write`, and `Members: read`, approve the permissions on
+  the installation, and retry.
+- `github_createRepository` fails with a `custom_properties` error: define
+  the organization custom property `provisioned-by` and allow the value `jr`.
   The App can create repositories only in the organization of
   `GITHUB_INSTALLATION_ID`.
 - `github_createRepository` is missing: configure `repositoryProfiles`.

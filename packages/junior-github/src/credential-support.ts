@@ -914,9 +914,14 @@ export async function issueGitHubCredential(
     }
     if (ctx.grant.name === "installation-repository-create") {
       // Only repository creation, not the wider administration permission.
+      // Organization custom properties write lets the create set the
+      // `provisioned-by` value, which only organization actors may edit.
       return await issueInstallationCredential({
         ...installation,
-        permissions: { repository_creation: "write" },
+        permissions: {
+          organization_custom_properties: "write",
+          repository_creation: "write",
+        },
       });
     }
     if (ctx.grant.name === "installation-write") {
