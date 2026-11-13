@@ -414,6 +414,19 @@ export function conversationsJoinOk(
   });
 }
 
+export function conversationsMembersPage(
+  input: { members?: string[]; nextCursor?: string } = {},
+): {
+  ok: true;
+  members: string[];
+  response_metadata: { next_cursor: string };
+} {
+  return slackOk({
+    members: input.members ?? [],
+    response_metadata: { next_cursor: input.nextCursor ?? "" },
+  });
+}
+
 export function conversationsListPage(
   input: {
     channels?: Array<{
@@ -488,6 +501,8 @@ export function usersInfoOk(
     statusEmoji?: string;
     isBot?: boolean;
     deleted?: boolean;
+    /** A multi-channel guest. */
+    isRestricted?: boolean;
     tz?: string;
     /** Whether the person set their own photo instead of Slack's default. */
     isCustomImage?: boolean;
@@ -505,6 +520,8 @@ export function usersInfoOk(
       real_name: input.realName ?? "Test User",
       deleted: input.deleted ?? false,
       is_bot: input.isBot ?? false,
+      is_restricted: input.isRestricted ?? false,
+      is_ultra_restricted: false,
       tz: input.tz ?? "America/Los_Angeles",
       profile: {
         display_name: input.displayName ?? "Test User",

@@ -19,6 +19,12 @@ import {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
+import { MAX_INPUT_ATTACHMENT_BYTES } from "@/chat/attachments/input";
+import {
+  attachmentUploadParamsSchema,
+  attachmentUploadSchema,
+  createAttachmentUploadBodySchema,
+} from "../schema/conversation-attachment-upload";
 import { conversationFeedSchema } from "../schema/conversation-feed";
 import {
   conversationCatchUpBodySchema,
@@ -85,6 +91,10 @@ import { requireConversationChildAgents } from "./child-agents";
 import { continueConversationInSlackForViewer } from "./continue-in-slack";
 import { conversationAttachmentResponse } from "./attachments";
 import {
+  createAttachmentUploadForViewer,
+  writeAttachmentUploadForViewer,
+} from "./attachment-uploads";
+import {
   appendConversationMessageForViewer,
   createConversationForViewer,
   type WebInputServices,
@@ -107,12 +117,9 @@ export function createConversationRoutes(
   options: WebInputServices,
 ): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
-  const messageBodyLimit = bodyLimit({
-    maxSize: 4_450_000,
-    onError: () => {
-      throwApiError(413, "Images must total 3 MB or less.");
-    },
-  });
+  // Files go to attachment storage first, so a Message body holds only text
+  // and upload ids.
+  const messageBodyLimit = bodyLimit({ maxSize: 262_144 });
 
   app.get(
     "/",
@@ -159,6 +166,51 @@ export function createConversationRoutes(
         acceptedConversationMessageSchema,
         await createConversationForViewer(viewer, body, options),
       );
+    },
+  );
+
+  app.post(
+    "/attachment-uploads",
+    requireViewer,
+    bodyLimit({ maxSize: 8_192 }),
+    validateRequest(
+      "json",
+      createAttachmentUploadBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        attachmentUploadSchema,
+        await createAttachmentUploadForViewer(
+          context.get("viewer"),
+          context.req.valid("json"),
+          options.attachmentStorage,
+        ),
+      ),
+  );
+
+  app.put(
+    "/attachment-uploads/:uploadId",
+    requireViewer,
+    bodyLimit({
+      maxSize: MAX_INPUT_ATTACHMENT_BYTES,
+      onError: () => {
+        throwApiError(413, "Files must be 25 MB or less.");
+      },
+    }),
+    validateRequest(
+      "param",
+      attachmentUploadParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      await writeAttachmentUploadForViewer({
+        readBody: () => context.req.arrayBuffer(),
+        storage: options.attachmentStorage,
+        uploadId: context.req.valid("param").uploadId,
+        viewer: context.get("viewer"),
+      });
+      return context.body(null, 204);
     },
   );
 

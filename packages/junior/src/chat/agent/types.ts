@@ -70,7 +70,7 @@ export type AgentSteeringMessage = {
   text: string;
   timestampMs?: number;
   attachments?: AgentAttachment[];
-  /** Stored images that the agent runner loads into `attachments`. */
+  /** Stored files that the agent runner loads into `attachments`. */
   storedAttachments?: readonly MessageAttachment[];
 };
 
@@ -157,7 +157,7 @@ export type AgentInstruction = {
    */
   provenance?: ConversationMessageProvenance;
   attachments?: readonly AgentAttachment[];
-  /** Durable web image references, resolved by the host before execution. */
+  /** Durable web file references, resolved by the host before execution. */
   storedAttachments?: readonly MessageAttachment[];
   inboundAttachmentCount?: number;
   omittedImageAttachmentCount?: number;

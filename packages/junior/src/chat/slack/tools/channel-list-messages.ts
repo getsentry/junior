@@ -70,8 +70,7 @@ function normalizeRangeTimestamp(
 /** Create the channel history tool with optional cross-channel targets. */
 export function createSlackChannelListMessagesTool(context: SlackToolContext) {
   return zodTool({
-    description:
-      "List messages from Slack channel history. Defaults to the active channel. Pass `channel_id` to read another public channel.",
+    description: "List messages from Slack channel history.",
     describeProgress: () => "Reading channel history",
     annotations: {
       destructiveHint: false,
@@ -80,7 +79,12 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
       readOnlyHint: true,
     },
     inputSchema: z.object({
-      channel_id: slackChannelRefParam.nullable().optional(),
+      channel_id: slackChannelRefParam
+        .nullable()
+        .describe(
+          "Omit to read the active channel. Another channel must be public.",
+        )
+        .optional(),
       limit: z.coerce
         .number()
         .int()

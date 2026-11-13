@@ -76,7 +76,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
       readOnlyHint: false,
     },
     description:
-      "Call an active MCP tool by exact tool_name. Use searchMcpTools to discover tool names and schemas; copy required provider fields into arguments. Do not call with only tool_name unless the discovered tool has no arguments. Authorization is handled by the runtime when required.",
+      "Call an active MCP tool by its exact name. Use searchMcpTools to discover tool names and schemas; copy required provider fields into arguments. Authorization is handled by the runtime when required.",
     inputSchema: z
       .object({
         tool_name: z
@@ -86,7 +86,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
         arguments: z
           .record(z.string(), z.unknown())
           .describe(
-            'Arguments matching the disclosed MCP tool schema, for example { "query": "..." } when searchMcpTools shows query is required.',
+            'Arguments matching the disclosed MCP tool schema, for example { "query": "..." } when searchMcpTools shows query is required. Omit only when the discovered tool has no arguments.',
           )
           .optional(),
         intent: z

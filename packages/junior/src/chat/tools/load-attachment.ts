@@ -30,7 +30,7 @@ export function createLoadAttachmentTool(args: {
 }) {
   return zodTool({
     description:
-      "Load a stored attachment for this conversation into the sandbox. Use the attachment_id shown in attachment context or Slack read results.",
+      "Load a stored attachment for this conversation into the sandbox.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -38,7 +38,12 @@ export function createLoadAttachmentTool(args: {
       readOnlyHint: false,
     },
     inputSchema: z.object({
-      attachment_id: z.string().min(1).describe("Stored attachment ID."),
+      attachment_id: z
+        .string()
+        .min(1)
+        .describe(
+          "Stored attachment ID, as shown in attachment context or Slack read results.",
+        ),
     }),
     outputSchema: juniorToolOutputSchema,
     execute: async ({ attachment_id }) => {

@@ -173,7 +173,6 @@ export function renderScriptTools(
 const DESCRIPTION = [
   "Run a JavaScript script that calls other tools, and get back only what the script returns or prints. When a task needs several tool calls, such as the same lookup for many items or a search and then a read of each result, use one script instead of separate calls. For one call, or when you must read a result before you decide the next step, call the tools directly.",
   "",
-  "The code is the body of an async function: top-level `await` and `return` work. It runs in a QuickJS VM with no Node, file system, network, or timers.",
   "- `await tools.<name>(args)` runs one tool through the normal tool path, including action review. It resolves to the tool result, and rejects with an Error when the call fails or action review rejects it.",
   "- Arguments and results must be JSON-serializable.",
   "- Run calls at the same time (`Promise.all`) only when they do not depend on each other. Await a call before a call that needs its result. Run calls that change the same thing one after another.",
@@ -250,7 +249,7 @@ export function createCodeModeTool(options: CodeModeToolOptions) {
           .string()
           .min(1)
           .describe(
-            "JavaScript source: the body of an async function. Raw code, not JSON and not in a code fence.",
+            "JavaScript source: the body of an async function, so top-level `await` and `return` work. Raw code, not JSON and not in a code fence. It runs in a QuickJS VM with no Node, file system, network, or timers.",
           ),
       })
       .strict(),
