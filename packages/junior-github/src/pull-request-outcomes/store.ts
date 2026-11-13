@@ -2,6 +2,7 @@ import { and, eq, lt, lte, ne, sql } from "drizzle-orm";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import {
+  type GitHubPullRequestAction,
   type GitHubPullRequestCommitComposition,
   githubPullRequestCommitCompositionSchema,
   githubPullRequestStateSchema,
@@ -363,17 +364,24 @@ export function pullRequestRow(target: {
 }
 
 /**
- * Ask to check whether a Junior pull request is ready to merge, and claim the
- * check when no other webhook runs one. A claim older than `staleMs` is free.
- * Return the claim, or undefined when another webhook runs the check or
- * Junior does not own the pull request. The webhook that runs the check sees
- * the new request in `releaseGitHubPullRequestReadySync`.
+ * Ask to check the next action of a Junior pull request, and claim the check
+ * when no other webhook runs one. A claim older than `staleMs` is free.
+ * Return the claim and the saved action, or undefined when another webhook
+ * runs the check or Junior does not own the pull request. The webhook that
+ * runs the check sees the new request in `releaseGitHubPullRequestReadySync`.
  */
 export async function claimGitHubPullRequestReadySync(
   db: GitHubDb,
   target: { number: number; repositoryFullName: string },
   options: { now: Date; staleMs: number },
-): Promise<{ id: number; ready: boolean; requests: number } | undefined> {
+): Promise<
+  | {
+      action: GitHubPullRequestAction | undefined;
+      id: number;
+      requests: number;
+    }
+  | undefined
+> {
   const t = juniorGitHubPullRequests;
   const staleBefore = new Date(options.now.getTime() - options.staleMs);
   const free = sql`(${t.readySyncId} is null or ${t.readySyncAt} < ${staleBefore.toISOString()}::timestamptz)`;
@@ -387,26 +395,30 @@ export async function claimGitHubPullRequestReadySync(
     })
     .where(pullRequestRow(target))
     .returning({
+      action: t.nextAction,
       id: t.readySyncId,
-      readyToMergeAt: t.readyToMergeAt,
       requests: t.readySyncRequests,
     });
   if (!row || row.id !== row.requests) return undefined;
   return {
+    action: row.action ?? undefined,
     id: row.id,
-    ready: row.readyToMergeAt !== null,
     requests: row.requests,
   };
 }
 
-/** Save whether a Junior pull request is ready to merge. */
-export async function setGitHubPullRequestReadyToMerge(
+/** Save the next action of a Junior pull request. */
+export async function setGitHubPullRequestNextAction(
   db: GitHubDb,
-  target: { number: number; ready: boolean; repositoryFullName: string },
+  target: {
+    action: GitHubPullRequestAction | undefined;
+    number: number;
+    repositoryFullName: string;
+  },
 ): Promise<void> {
   await db
     .update(juniorGitHubPullRequests)
-    .set({ readyToMergeAt: target.ready ? new Date() : null })
+    .set({ nextAction: target.action ?? null })
     .where(pullRequestRow(target));
 }
 

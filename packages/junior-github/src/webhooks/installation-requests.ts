@@ -348,6 +348,10 @@ const pullRequestSchema = z.object({
   html_url: z.string().url(),
   mergeable_state: z.string().nullable().optional(),
   merged: z.boolean(),
+  // The people whose review is still requested. Teams are listed apart.
+  requested_reviewers: z
+    .array(z.object({ login: z.string().min(1) }))
+    .optional(),
   state: z.enum(["open", "closed"]),
   title: z.string(),
 });
@@ -359,7 +363,7 @@ const reviewsSchema = z.array(
   }),
 );
 
-/** The pull request facts that decide whether it is ready to merge. */
+/** The pull request facts that decide its next action. */
 export interface GitHubPullRequestMergeState {
   /**
    * At least one approval, and no reviewer still requests changes. Read
@@ -375,6 +379,8 @@ export interface GitHubPullRequestMergeState {
    * are no conflicts. Undefined when GitHub has not computed it yet.
    */
   mergeableState?: string;
+  /** Logins of the people whose review GitHub still requests. */
+  requestedReviewers: string[];
   state: "closed" | "merged" | "open";
   title: string;
   url: string;
@@ -417,6 +423,9 @@ export async function loadPullRequestMergeState(
       autoMerge: Boolean(pull.auto_merge),
       draft: pull.draft === true,
       ...(mergeableState ? { mergeableState } : undefined),
+      requestedReviewers: (pull.requested_reviewers ?? []).map(
+        (reviewer) => reviewer.login,
+      ),
       state: pull.merged ? ("merged" as const) : pull.state,
       title: pull.title,
       url: pull.html_url,

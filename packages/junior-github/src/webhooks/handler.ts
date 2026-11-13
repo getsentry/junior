@@ -48,11 +48,10 @@ import {
 } from "./merge-conflict.js";
 import { scheduleGitHubPushConflictCheck } from "../merge-conflict-checks/webhooks.js";
 import {
-  pullRequestReadyTargets,
-  syncGitHubPullRequestReadyNotices,
-} from "./pull-request-ready.js";
+  pullRequestActionTargets,
+  syncGitHubPullRequestActions,
+} from "./pull-request-action.js";
 import { requestGitHubReviewersWhenReady } from "./pull-request-ready-reviewers.js";
-import { syncGitHubPullRequestReviewRequest } from "./pull-request-review-request.js";
 import {
   withGitHubPullRequestMatchData,
   type GitHubRoleTarget,
@@ -447,7 +446,7 @@ export function createGitHubWebhookRoute(args: {
                 : "item",
         });
       }
-      await syncGitHubPullRequestReadyNotices({
+      await syncGitHubPullRequestActions({
         db: args.db,
         deliveryId,
         env: {
@@ -455,9 +454,10 @@ export function createGitHubWebhookRoute(args: {
           installationIdEnv: args.installationIdEnv,
           privateKeyEnv: args.privateKeyEnv,
         },
+        loadGitHubLogin: args.loadGitHubLogin,
         log: args.log,
         reviewItems: args.reviewItems,
-        targets: pullRequestReadyTargets(eventName, body),
+        targets: pullRequestActionTargets(eventName, body),
       });
       await requestGitHubReviewersWhenReady({
         body,
@@ -472,15 +472,6 @@ export function createGitHubWebhookRoute(args: {
         loadGitHubLogin: args.loadGitHubLogin,
         log: args.log,
         state: args.state,
-      });
-      await syncGitHubPullRequestReviewRequest({
-        body,
-        db: args.db,
-        deliveryId,
-        eventName,
-        loadGitHubLogin: args.loadGitHubLogin,
-        log: args.log,
-        reviewItems: args.reviewItems,
       });
       if (
         !pullRequestOutcome &&
