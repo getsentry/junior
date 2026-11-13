@@ -534,6 +534,13 @@ async function executeAgentRunInPrivacyContext(
       turnStartMessageIndex !== undefined
         ? (existingSessionRecord?.piMessages.slice(turnStartMessageIndex) ?? [])
         : [];
+    // A record without a turn start cannot split its Turns, so it gives no
+    // earlier Turn. That only makes a `confirm` action ask again.
+    const earlierTurnMessages = existingSessionRecord
+      ? turnStartMessageIndex !== undefined
+        ? existingSessionRecord.piMessages.slice(0, turnStartMessageIndex)
+        : []
+      : (input.piMessages ?? []);
     const currentTurnProvenance =
       turnStartMessageIndex !== undefined
         ? (existingSessionRecord?.piMessageProvenance?.slice(
@@ -727,6 +734,7 @@ async function executeAgentRunInPrivacyContext(
       currentAgentMessages,
       currentTurnMessages,
       currentUserIntent,
+      earlierTurnMessages,
       availableSkills,
       configurationValues,
       connectedMcpProviders,

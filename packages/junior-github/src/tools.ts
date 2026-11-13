@@ -7,6 +7,7 @@ import { gitHubIssueTool } from "./tools/create-issue.js";
 import { gitHubGetDeploymentTool } from "./tools/get-deployment.js";
 import { gitHubGetIssueTool } from "./tools/get-issue.js";
 import { createGitHubPullRequestTool } from "./tools/create-pull-request.js";
+import { createGitHubCreateRepositoryTool } from "./tools/create-repository.js";
 import type { GitHubPullRequestSubscriptionConfig } from "./events/pull-request.js";
 import { gitHubGetPullRequestTool } from "./tools/get-pull-request.js";
 import { gitHubGetReleaseTool } from "./tools/get-release.js";
@@ -47,6 +48,7 @@ export function createGitHubTools(
       pullRequestSubscription,
       descriptionChecks,
     ),
+    createRepository: createGitHubCreateRepositoryTool(ctx),
     getDeployment: gitHubGetDeploymentTool,
     getIssue: gitHubGetIssueTool,
     getPullRequest: gitHubGetPullRequestTool,

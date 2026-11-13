@@ -5,7 +5,8 @@
  * each request needs. Junior-owned issue, pull request, review, and push
  * writes never fall back to user OAuth. Merge, fork, branch deletion, REST ref
  * writes, and administration stay unsupported; unknown REST writes and
- * GraphQL mutations are denied. Git pushes never touch the default branch.
+ * GraphQL mutations are denied. Only the repository create tool may create a
+ * repository. Git pushes never touch the default branch.
  */
 import {
   EgressPolicyDenied,
@@ -621,6 +622,44 @@ function applyGitHubEgressPolicy(input: {
   });
 }
 
+/** Egress operation prefix of the repository create tool; `owner/name` follows. */
+export const GITHUB_REPOSITORY_CREATE_OPERATION_PREFIX =
+  "github.repository.create:";
+
+const ORG_REPOSITORY_CREATE_PATH = /^\/orgs\/([^/]+)\/repos$/;
+
+/**
+ * Return the `owner/name` of an organization repository create that the
+ * repository create tool sent, or undefined when the request is not one.
+ * Deny a create from any other caller, such as the sandbox, and one whose
+ * URL names another organization than its operation.
+ */
+function repositoryCreateTarget(input: {
+  method: string;
+  operation?: string;
+  upstreamUrl: URL;
+}): string | undefined {
+  if (input.method !== "POST" || !isGitHubApiUrl(input.upstreamUrl)) {
+    return undefined;
+  }
+  const org = ORG_REPOSITORY_CREATE_PATH.exec(input.upstreamUrl.pathname)?.[1];
+  if (!org) return undefined;
+  const target = input.operation?.startsWith(
+    GITHUB_REPOSITORY_CREATE_OPERATION_PREFIX,
+  )
+    ? input.operation.slice(GITHUB_REPOSITORY_CREATE_OPERATION_PREFIX.length)
+    : undefined;
+  const [owner, name, ...extra] = target?.split("/") ?? [];
+  enforceEgressPolicy({
+    allowed:
+      owner?.toLowerCase() === org.toLowerCase() &&
+      Boolean(name) &&
+      extra.length === 0,
+    denialMessage: `GitHub repository creation must use the github_createRepository tool, which asks the user to confirm each repository. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+  });
+  return target;
+}
+
 function grantForAccess(
   access: PluginGrantAccess,
   reason: GitHubGrantReason,
@@ -719,6 +758,25 @@ async function selectGitHubGrant(
       "github.git-read",
       "installation-read",
     );
+  }
+
+  const createdRepository = repositoryCreateTarget({
+    method,
+    ...(ctx.request.operation
+      ? { operation: ctx.request.operation }
+      : undefined),
+    upstreamUrl,
+  });
+  if (createdRepository) {
+    return {
+      ...grantForAccess(
+        "write",
+        "github.repository-create",
+        "installation-repository-create",
+      ),
+      // The URL names only the organization; the operation names the repo.
+      auditAttributes: { "app.github.repository": createdRepository },
+    };
   }
 
   const userReadReason = githubUserReadReason(method, upstreamUrl);

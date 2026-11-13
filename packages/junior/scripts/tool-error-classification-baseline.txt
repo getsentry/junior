@@ -12,6 +12,9 @@ packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub pull request creation returned an invalid response.", );
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub pull request was created, but the runtime could not persist the completed pull request state.", { cause: error }, );
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error("Invalid GitHub createPullRequest idempotency state.", { cause: error, });
+packages/junior-github/src/tools/create-repository.ts	throw new Error( "GitHub repository creation for this tool call has an uncertain result; refusing to create it again. Check whether the repository exists.", );
+packages/junior-github/src/tools/create-repository.ts	throw new Error( "GitHub repository creation needs a conversation and a tool call id.", );
+packages/junior-github/src/tools/create-repository.ts	throw new Error(message);
 packages/junior-github/src/tools/get-deployment.ts	throw new Error(message);
 packages/junior-github/src/tools/get-issue.ts	throw new Error(message);
 packages/junior-github/src/tools/get-pull-request.ts	throw new Error( `GitHub pull request checks lookup failed with HTTP ${response.status}`, );

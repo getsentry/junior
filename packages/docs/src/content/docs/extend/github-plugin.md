@@ -61,6 +61,12 @@ narrow write tokens.
    - Pull requests: Read and write
    - Workflows: Write
 
+   Optional: grant Repository creation: Write. Junior then creates
+   organization repositories with `github_createRepository`. Junior asks the
+   user to confirm each repository, and never creates one in an Automation
+   run. Do not grant Administration: Write for this. It also allows repository
+   deletion and transfer.
+
    Optional: grant the account permission Email addresses: Read. Junior then
    reads the verified emails of a connected GitHub account to link it to a
    person. Without it, Junior links the account only through the person who
@@ -324,6 +330,7 @@ Once configured, Junior can:
 - Create, update, and comment on issues and pull requests
 - Review pull requests and leave inline review comments as the App bot
 - Push branches and open draft pull requests
+- Create organization repositories after the user confirms each one
 - Dispatch workflows, rerun workflow runs or jobs, and cancel workflow runs
 - Look up deployments and releases
 - Check githubstatus.com for open or recent incidents when GitHub requests or
@@ -664,6 +671,9 @@ A local `git commit` does not call GitHub. The write happens on push. Grant
   the needed event. Set the secret, fix the subscription, redeploy, and retry.
 - `github_getDeployment` returns `403`: grant `Deployments: read`, approve the
   permission on the installation, and retry.
+- `github_createRepository` returns `403`: grant `Repository creation: write`,
+  approve the permission on the installation, and retry. The App can create
+  repositories only in the organization of `GITHUB_INSTALLATION_ID`.
 - Webhook delivery returns `401`: the App webhook secret does not match
   `GITHUB_WEBHOOK_SECRET`, or `X-Hub-Signature-256` is missing.
 - Webhook delivery returns `202 Ignored`: wrong installation, or an unsupported

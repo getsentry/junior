@@ -22,6 +22,7 @@ import {
 import type {
   RootConversation,
   ScriptCallStatus,
+  ToolActionConfirmation,
   ToolActionDecision,
   ToolActionEvidence,
   ToolActionProposal,
@@ -430,11 +431,41 @@ function mayNeedReview(tool: AnyToolDefinition): boolean {
   return tool.approvalMode !== undefined && tool.approvalMode !== "approve";
 }
 
+/** True when two action inputs are the same JSON, ignoring key order. */
+function sameInput(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+): boolean {
+  return (
+    JSON.stringify(canonicalJson(left)) === JSON.stringify(canonicalJson(right))
+  );
+}
+
+/**
+ * Core facts for a `confirm` action. Only an `ask` from an earlier Turn
+ * counts: the user can answer a question only in a later message, and a
+ * later message starts a later Turn.
+ */
+function actionConfirmation(
+  proposal: ToolActionProposal,
+  earlierTurnRejections: readonly ToolActionPriorRejection[],
+): ToolActionConfirmation {
+  return {
+    askedInEarlierTurn: earlierTurnRejections.some(
+      (rejection) =>
+        rejection.decision === "ask" &&
+        rejection.tool.name === proposal.tool.name &&
+        sameInput(rejection.input, proposal.input),
+    ),
+  };
+}
+
 /** Prepare the exact action that Guardian must review, when review is required. */
 async function prepareToolActionReview(
   action: ToolAction,
   context: ToolActionReviewContext,
   priorRejections: ToolActionPriorRejection[],
+  earlierTurnRejections: readonly ToolActionPriorRejection[],
 ): Promise<ToolActionProposal | undefined> {
   const { tool, input } = action;
   if (!mayNeedReview(tool)) {
@@ -446,7 +477,7 @@ async function prepareToolActionReview(
     return;
   }
   assertAuthoritativeContext(context);
-  return buildProposal(
+  const proposal = buildProposal(
     action.toolName,
     tool,
     input,
@@ -457,6 +488,12 @@ async function prepareToolActionReview(
     await context.rootConversation?.(),
     action.script,
   );
+  return tool.approvalMode === "confirm"
+    ? {
+        ...proposal,
+        confirmation: actionConfirmation(proposal, earlierTurnRejections),
+      }
+    : proposal;
 }
 
 /**
@@ -512,10 +549,16 @@ export function createToolActionReview(options: {
   }): Promise<void>;
   /** Escalate unavailable review to the owning agent-run boundary. */
   onFatal(error: ToolActionReviewUnavailableError): void;
+  /**
+   * Rejections from earlier Turns of the Conversation. Only a `confirm`
+   * action uses them, to find the question that the user answered.
+   */
+  earlierTurnRejections?: readonly ToolActionPriorRejection[];
   priorRejections?: ToolActionPriorRejection[];
   reviewer: ToolActionReviewer;
 }): ToolActionReview {
   const priorRejections = [...(options.priorRejections ?? [])];
+  const earlierTurnRejections = options.earlierTurnRejections ?? [];
   const pendingRejections = new Map<string, ToolActionRejectionMarker>();
   let consecutiveRejections = 0;
   /**
@@ -542,6 +585,7 @@ export function createToolActionReview(options: {
         action,
         options.context,
         rejections,
+        earlierTurnRejections,
       );
       if (!proposal) {
         return { kind: "skipped" };

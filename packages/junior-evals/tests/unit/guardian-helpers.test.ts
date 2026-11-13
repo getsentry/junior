@@ -135,4 +135,35 @@ describe("guardian eval helpers", () => {
       }),
     ).rejects.toThrow("The agent has no tool named notAnAgentTool.");
   });
+
+  it("adds the gate's confirmation facts only for a confirm tool", async () => {
+    const input = { owner: "getsentry", name: "rate-limit-probe" };
+    const asked = await proposal({
+      askedInEarlierTurn: true,
+      context: slackContext("yes"),
+      input,
+      tool: "github_createRepository",
+    });
+
+    expect(asked.confirmation).toEqual({ askedInEarlierTurn: true });
+    expect(asked.tool).toMatchObject({
+      name: "github_createRepository",
+      proposalDescription:
+        "Create private GitHub repository getsentry/rate-limit-probe",
+    });
+    await expect(
+      proposal({
+        context: slackContext("Create getsentry/rate-limit-probe."),
+        input,
+        tool: "github_createRepository",
+      }),
+    ).resolves.toMatchObject({ confirmation: { askedInEarlierTurn: false } });
+    await expect(
+      proposal({
+        context: slackContext("Open an issue."),
+        input: { repo: "getsentry/junior", title: "Bug" },
+        tool: "github_createIssue",
+      }),
+    ).resolves.not.toHaveProperty("confirmation");
+  });
 });

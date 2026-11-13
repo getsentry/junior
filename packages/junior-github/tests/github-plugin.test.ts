@@ -843,6 +843,41 @@ describe("github plugin", () => {
     ).rejects.toThrow("This GitHub write request is not supported.");
   });
 
+  it("allows repository creation only from the repository create tool", async () => {
+    await expect(
+      grantForEgress({
+        method: "POST",
+        operation: "github.repository.create:getsentry/new-service",
+        url: "https://api.github.com/orgs/getsentry/repos",
+      }),
+    ).resolves.toEqual({
+      name: "installation-repository-create",
+      access: "write",
+      reason: "github.repository-create",
+      auditAttributes: { "app.github.repository": "getsentry/new-service" },
+    });
+    for (const request of [
+      // Sandbox requests carry no operation.
+      { method: "POST", url: "https://api.github.com/orgs/getsentry/repos" },
+      {
+        method: "POST",
+        operation: "github.repository.create:other-org/new-service",
+        url: "https://api.github.com/orgs/getsentry/repos",
+      },
+    ]) {
+      await expect(grantForEgress(request)).rejects.toThrow(
+        "GitHub repository creation must use the github_createRepository tool",
+      );
+    }
+    await expect(
+      grantForEgress({
+        method: "POST",
+        operation: "github.repository.create:octocat/new-service",
+        url: "https://api.github.com/user/repos",
+      }),
+    ).rejects.toThrow("This GitHub write request is not supported.");
+  });
+
   it("uses requesting-user credentials for GitHub user-attachment uploads", async () => {
     await expect(
       grantForEgress({
@@ -937,6 +972,73 @@ describe("github plugin", () => {
         url: "https://api.github.com/repos/getsentry/junior/stacks/12",
       }),
     ).rejects.toThrow("This GitHub write request is not supported.");
+  });
+
+  it("creates organization repositories with confirm approval", async () => {
+    let status = 422;
+    const ctx = githubToolsContext({
+      egressFetch: async () =>
+        status === 201
+          ? new Response(
+              JSON.stringify({
+                default_branch: "main",
+                full_name: "getsentry/new-service",
+                html_url: "https://github.com/getsentry/new-service",
+                private: true,
+              }),
+              { status: 201 },
+            )
+          : new Response(
+              JSON.stringify({
+                message: "Repository creation failed.",
+                errors: [{ message: "name already exists on this account" }],
+              }),
+              { status: 422 },
+            ),
+    });
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createRepository;
+    const input = { owner: "getsentry", name: "new-service" };
+
+    expect(tool?.approvalMode).toBe("confirm");
+    expect(tool?.describeProposal?.(input)).toBe(
+      "Create private GitHub repository getsentry/new-service",
+    );
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-create-repo" }),
+    ).rejects.toThrow(
+      "GitHub repository creation failed with HTTP 422: Repository creation failed.: message=name already exists on this account",
+    );
+
+    // The refused create leaves no pending state, so the call can retry.
+    status = 201;
+    const created = {
+      target: "createRepository",
+      default_branch: "main",
+      full_name: "getsentry/new-service",
+      private: true,
+      url: "https://github.com/getsentry/new-service",
+    };
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-create-repo" }),
+    ).resolves.toEqual(created);
+    // A replay of the same call returns the saved result.
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-create-repo" }),
+    ).resolves.toEqual(created);
+
+    expect(ctx.egressRequests()).toHaveLength(2);
+    const request = ctx.egressRequests()[1];
+    expect(request?.operation).toBe(
+      "github.repository.create:getsentry/new-service",
+    );
+    expect(request?.request.url).toBe(
+      "https://api.github.com/orgs/getsentry/repos",
+    );
+    await expect(request?.request.json()).resolves.toEqual({
+      name: "new-service",
+      visibility: "private",
+      auto_init: true,
+    });
   });
 
   it("creates issues with deterministic requester attribution", async () => {
@@ -2985,6 +3087,40 @@ Conversation: \`local:test:old-conversation\`
       body: {},
       headers: expect.any(Object),
     });
+  });
+
+  it("issues repository-create credentials with only repository creation", async () => {
+    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+      .privateKey.export({ type: "pkcs8", format: "pem" })
+      .toString();
+    process.env.GITHUB_APP_ID = "123";
+    process.env.GITHUB_INSTALLATION_ID = "456";
+    process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
+    const requests = mockGitHubInstallationApi();
+    const plugin = githubPlugin();
+
+    const result = await plugin.hooks?.issueCredential?.({
+      actor: { platform: "system", name: "event" },
+      grant: {
+        name: "installation-repository-create",
+        access: "write",
+        reason: "github.repository-create",
+      },
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      tokens: {},
+    });
+
+    expect(result?.type).toBe("lease");
+    expect(requests).toEqual([
+      {
+        url: "https://api.github.com/app/installations/456/access_tokens",
+        method: "POST",
+        body: { permissions: { repository_creation: "write" } },
+        headers: expect.any(Object),
+      },
+    ]);
   });
 
   it("issues read-only GitHub App installation credentials from plugin hooks", async () => {

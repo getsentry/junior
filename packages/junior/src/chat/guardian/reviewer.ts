@@ -90,7 +90,8 @@ function rootConversationSection(root: RootConversation, key: string): string {
  * new key for each call.
  */
 export function guardianPrompt(proposal: ToolActionProposal): string {
-  const { rootConversation, ...action } = proposal;
+  // Code applies `confirmation` after the assessment.
+  const { confirmation: _confirmation, rootConversation, ...action } = proposal;
   const proposalJson = JSON.stringify(z.json().parse(action), null, 2);
   if (proposalJson.length > MAX_PROPOSAL_CHARS) {
     throw new Error(
@@ -131,10 +132,34 @@ const NO_CONFIRMATION_REASON =
   "No person can confirm this action in this run, so do not ask for confirmation.";
 
 /**
+ * True when a `confirm` action has the user's confirmation: an earlier Turn
+ * asked about the exact action, a person is the Actor of this Turn, and
+ * Guardian rates their authorization high. A system Actor, such as an
+ * Automation or an Event Turn, cannot confirm.
+ */
+function isConfirmed(
+  assessment: GuardianAssessment,
+  proposal: ToolActionProposal,
+): boolean {
+  return (
+    proposal.confirmation?.askedInEarlierTurn === true &&
+    proposal.context.actor.platform !== "system" &&
+    assessment.userAuthorization === "high" &&
+    !noPersonCanConfirm(proposal)
+  );
+}
+
+function confirmationRequiredReason(proposal: ToolActionProposal): string {
+  const action = proposal.tool.proposalDescription ?? proposal.tool.name;
+  return `${action}: this action always needs the user's explicit confirmation of the exact action and its inputs first.`;
+}
+
+/**
  * Derive allow, ask, or deny from the model's assessment. The named rule
  * sets the decision. Code also asks for high or critical risk with weak
- * authorization, and turns an ask into deny when no person can answer. That
- * deny gets a reason that says so, so the agent does not try to ask.
+ * authorization, and asks for a `confirm` action that the user did not
+ * confirm. It turns an ask into deny when no person can answer. That deny
+ * gets a reason that says so, so the agent does not try to ask.
  */
 export function guardianDecision(
   assessment: GuardianAssessment,
@@ -152,13 +177,22 @@ export function guardianDecision(
   ) {
     decision = "ask";
   }
+  let reason = assessment.reason;
+  if (
+    decision === "allow" &&
+    proposal.confirmation &&
+    !isConfirmed(assessment, proposal)
+  ) {
+    decision = "ask";
+    reason = confirmationRequiredReason(proposal);
+  }
   if (decision === "ask" && noPersonCanConfirm(proposal)) {
     return {
       decision: "deny",
-      reason: `${assessment.reason} ${NO_CONFIRMATION_REASON}`,
+      reason: `${reason} ${NO_CONFIRMATION_REASON}`,
     };
   }
-  return { decision, reason: assessment.reason };
+  return { decision, reason };
 }
 
 /** Create the structured Guardian reviewer used for permissioned tool actions. */

@@ -402,6 +402,12 @@ onto the agent runtime's separate result channels.
 - `review` makes Guardian review each call.
 - `approve` skips review. The tool runs without a Guardian decision, also in a
   child agent.
+- `confirm` makes Guardian review each call, and then requires the user's
+  explicit confirmation of the exact input. Junior rejects the first call so
+  that the agent asks. A later call with the same input runs only when the
+  user confirmed it in between. An Automation run cannot confirm, so the call
+  never runs there. Use `confirm` for effects that are hard to undo, such as
+  creating a repository.
 
 Use `approve` only when the tool code proves that each effect is safe, and no
 model judgment is necessary. For example, the GitHub tools that mark feedback

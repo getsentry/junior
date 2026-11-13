@@ -185,6 +185,8 @@ interface ToolWiringArgs {
   currentAgentMessages: () => PiMessage[];
   /** Durable transcript for this turn only, used to restore rejection state. */
   currentTurnMessages: readonly PiMessage[];
+  /** Durable transcript before this turn, used to find answered questions. */
+  earlierTurnMessages: readonly PiMessage[];
   /** Live same-actor instructions that authorize the pending action. */
   currentUserIntent: () => string;
   availableSkills: SkillMetadata[];
@@ -532,6 +534,9 @@ export async function wireAgentTools(
         userAuthorization: decision.userAuthorization,
       }),
     onFatal: args.onFatalToolError,
+    earlierTurnRejections: restoreToolActionRejections(
+      args.earlierTurnMessages,
+    ),
     priorRejections: restoreToolActionRejections(args.currentTurnMessages),
     reviewer: createGuardianActionReviewer({
       completeObject,
