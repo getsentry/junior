@@ -93,7 +93,7 @@
     "@vercel/functions": "^3.6.0",
     "@vercel/oidc": "^3.4.1",
     "@vercel/queue": "^0.2.0",
-    "@vercel/sandbox": "2.8.0",
+    "@vercel/sandbox": "4.0.0",
     "ai": "^7.0.153",
     "aws4fetch": "^1.0.20",
     "better-auth": "^1.7.14",
