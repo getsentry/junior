@@ -7,7 +7,7 @@ import { useConversationDensity } from "../conversations/conversationDensity";
  * The card under the pointer grows this much; its neighbors about half as
  * much. The list's side inset (`DOCK_GUTTER`) follows it.
  */
-const DOCK_GROW = 0.02;
+const DOCK_GROW = 0.05;
 
 /**
  * The list's side inset: at least half of a grown card's extra width, so a
@@ -16,7 +16,8 @@ const DOCK_GROW = 0.02;
  */
 export const DOCK_GUTTER = `max(1.5rem, calc(${(DOCK_GROW / 2) * 100}% + 0.25rem))`;
 const RADIUS_CARDS = 2;
-const DOCK_MEDIA =
+/** Where a row may react to the pointer: a mouse, with motion allowed. */
+export const DOCK_MEDIA =
   "(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)";
 
 /**

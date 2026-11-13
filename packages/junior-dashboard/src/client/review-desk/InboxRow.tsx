@@ -57,10 +57,12 @@ import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { inboxItemKind } from "./inboxModel";
 import {
+  INBOX_HOVER_CARD_CLASS,
   INBOX_ROW_META_CLASS,
   inboxCardClass,
   inboxHeadGridClass,
 } from "./inboxRowStyles";
+import { useHoverExpand } from "./hoverExpand";
 import { snoozeChoices, type SnoozeChoice } from "./inboxSnooze";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
@@ -306,16 +308,41 @@ type InboxRowProps = {
  * Threads.
  */
 export function InboxRow(props: InboxRowProps) {
+  const hover = useHoverExpand(props.expanded);
   return props.conversation ? (
-    <ConversationInboxRow {...props} conversation={props.conversation} />
+    <ConversationInboxRow
+      {...props}
+      conversation={props.conversation}
+      hover={hover}
+    />
   ) : (
     <li
-      className={inboxCardClass(props.expanded)}
+      {...hover.handlers}
+      className={cn(inboxCardClass(props.expanded), hover.shown && "z-20")}
       data-expanded={props.expanded || undefined}
       data-inbox-row={props.rowKey}
     >
       <InboxRowBody {...props} />
+      {hover.shown ? <HoverCard {...props} /> : null}
     </li>
+  );
+}
+
+/**
+ * More of a row while the pointer rests on it: the comfortable layout, the
+ * whole summary and every preview. It floats over the rows below, so none
+ * of them moves, and the pointer and keyboard pass through it to the row.
+ */
+function HoverCard(props: InboxRowProps) {
+  return (
+    <div
+      aria-hidden="true"
+      className={INBOX_HOVER_CARD_CLASS}
+      data-hover-card=""
+      inert
+    >
+      <InboxRowBody {...props} preview />
+    </div>
   );
 }
 
@@ -325,7 +352,10 @@ function rowRegionId(rowKey: string): string {
 }
 
 function ConversationInboxRow(
-  props: InboxRowProps & { conversation: Conversation },
+  props: InboxRowProps & {
+    conversation: Conversation;
+    hover: ReturnType<typeof useHoverExpand>;
+  },
 ) {
   const { conversation, drag } = props;
   const actions = useConversationRowActions(conversation, {
@@ -347,9 +377,11 @@ function ConversationInboxRow(
     threads?.collapsible && (threadsExpanded || threads.hiddenCount > 0);
   return (
     <li
+      {...props.hover.handlers}
       className={cn(
         inboxCardClass(props.expanded),
         drag?.dragging && "opacity-40",
+        props.hover.shown && "z-20",
       )}
       data-expanded={props.expanded || undefined}
       data-inbox-row={props.rowKey}
@@ -411,6 +443,7 @@ function ConversationInboxRow(
         </ContextMenuTrigger>
         {actions.menu}
       </ContextMenu>
+      {props.hover.shown ? <HoverCard {...props} /> : null}
       {threads && threads.threads.length > 0 ? (
         <div className="grid gap-0.5 px-1 pb-1.5">
           {threads.threads.map((thread) => (
@@ -493,11 +526,14 @@ function RowSummary(props: {
 function InboxRowBody(
   props: InboxRowProps & {
     linkProps?: { "aria-keyshortcuts"?: string; draggable?: boolean };
+    /** Draw the hover card: comfortable, unclamped, every preview. */
+    preview?: boolean;
   },
 ) {
-  const { bundle, conversation } = props;
+  const { bundle, conversation, preview } = props;
   const [density] = useConversationDensity();
-  const comfortable = density === "comfortable";
+  const comfortable = Boolean(preview) || density === "comfortable";
+  const budget = preview ? Infinity : MAX_ROW_PREVIEWS;
   const openItems =
     bundle?.items.filter((item) => item.status === "open") ?? [];
   // An item row's title already names its ask, so it shows no pill.
@@ -508,14 +544,11 @@ function InboxRowBody(
   const objects = useMemo(() => linkedWorkObjects(annotations), [annotations]);
   // One budget for the strip, in order: linked work (with any PR image),
   // then files, then cards for message links.
-  const workCards = linkedWorkCardCount(annotations);
-  const media = (conversation?.media ?? []).slice(
-    0,
-    MAX_ROW_PREVIEWS - workCards,
-  );
+  const workCards = preview ? 0 : linkedWorkCardCount(annotations);
+  const media = (conversation?.media ?? []).slice(0, budget - workCards);
   const links = (conversation?.links ?? []).slice(
     0,
-    MAX_ROW_PREVIEWS - workCards - media.length,
+    budget - workCards - media.length,
   );
   const canDone = rowCanDone(props);
   const regionId = rowRegionId(props.rowKey);
@@ -635,7 +668,7 @@ function InboxRowBody(
               <RowSummary
                 comfortable={comfortable}
                 conversationId={props.conversationId}
-                expanded={props.expanded}
+                expanded={props.expanded || Boolean(preview)}
                 objects={objects}
                 summary={summary}
               />
@@ -674,7 +707,7 @@ function InboxRowBody(
               <RowSummary
                 comfortable
                 conversationId={props.conversationId}
-                expanded={props.expanded}
+                expanded={props.expanded || Boolean(preview)}
                 objects={objects}
                 summary={summary}
               />
@@ -684,9 +717,12 @@ function InboxRowBody(
             className={cn(
               INBOX_ROW_META_CLASS,
               columns && "sm:col-start-4",
-              // The row actions take the meta's place on hover or focus.
+              // The row actions take the meta's place on hover or focus,
+              // over the hover card too.
               conversation &&
-                "sm:group-hover:invisible sm:group-focus-within:invisible",
+                (preview
+                  ? "invisible"
+                  : "sm:group-hover:invisible sm:group-focus-within:invisible"),
             )}
             data-inbox-slot="meta"
           >
@@ -718,7 +754,7 @@ function InboxRowBody(
             )}
           >
             {annotations.length > 0 ? (
-              <InboxLinkedWork annotations={annotations} />
+              <InboxLinkedWork all={preview} annotations={annotations} />
             ) : null}
             {media.length > 0 ? (
               <InboxMedia conversationId={props.conversationId} media={media} />

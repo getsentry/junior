@@ -918,7 +918,8 @@ test("comfortable cards grow near the pointer, except for reduced motion", async
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.mouse.move(0, 0);
   await card.hover();
-  await expect(card).toHaveAttribute("style", /scale\(1\.0[12]/);
+  // Up to 5% under the pointer, less for a neighbor.
+  await expect(card).toHaveAttribute("style", /scale\(1\.0[1-5]/);
   await page.mouse.move(0, 0);
   await expect(card).not.toHaveAttribute("style", /scale/);
 

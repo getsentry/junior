@@ -107,17 +107,22 @@ function WorkCard(props: {
  * first, each with its status color, title and preview image. Work that the
  * plugin saved no title or URL for keeps its chip.
  */
-export function InboxLinkedWork(props: { annotations: Annotation[] }) {
+export function InboxLinkedWork(props: {
+  /** Show every card, with no "+N more". */
+  all?: boolean;
+  annotations: Annotation[];
+}) {
   const cards = props.annotations.filter(isCard);
   const chips = props.annotations.filter((annotation) => !isCard(annotation));
-  const more = cards.length - MAX_ROW_PREVIEWS;
+  const shown = props.all ? cards : cards.slice(0, MAX_ROW_PREVIEWS);
+  const more = cards.length - shown.length;
   return (
     <div
       aria-label="Linked work"
       className="flex min-w-0 items-center gap-2 overflow-x-auto sm:flex-wrap sm:overflow-visible"
       role="group"
     >
-      {cards.slice(0, MAX_ROW_PREVIEWS).map((card) => (
+      {shown.map((card) => (
         <WorkCard
           href={card.url}
           identity={identity(card)}

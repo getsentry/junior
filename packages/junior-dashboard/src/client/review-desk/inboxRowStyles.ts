@@ -1,5 +1,9 @@
 import { cn } from "../styles";
 
+// An open card's surface and lift.
+const LIFTED_CARD_CLASS =
+  "border-dashboard-border-emphasis bg-dashboard-surface-raised shadow-[0_18px_44px_-14px_rgb(0_0_0/0.75),0_4px_14px_-6px_rgb(0_0_0/0.5)] light:shadow-[0_18px_44px_-14px_rgb(15_15_30/0.28),0_4px_14px_-6px_rgb(15_15_30/0.16)]";
+
 /**
  * Each Inbox row is a card. An open one lifts out of the stream, as in
  * Google Inbox: more room above and below, and a deeper shadow. A hover
@@ -10,7 +14,7 @@ export function inboxCardClass(expanded: boolean): string {
   return cn(
     "min-w-0 list-none rounded-xl border transition-[margin,box-shadow,background-color,transform] duration-200 [--inbox-lead:16rem]",
     expanded
-      ? "my-4 border-dashboard-border-emphasis bg-dashboard-surface-raised shadow-[0_18px_44px_-14px_rgb(0_0_0/0.75),0_4px_14px_-6px_rgb(0_0_0/0.5)] light:shadow-[0_18px_44px_-14px_rgb(15_15_30/0.28),0_4px_14px_-6px_rgb(15_15_30/0.16)] md:-mx-2"
+      ? cn("my-4 md:-mx-2", LIFTED_CARD_CLASS)
       : "border-dashboard-border bg-dashboard-surface-panel shadow-[0_1px_2px_rgb(0_0_0/0.4)] light:shadow-[0_1px_3px_rgb(15_15_30/0.08)]",
     // The hover layer sits under the content and over the card's surface.
     !expanded &&
@@ -31,6 +35,15 @@ export function inboxHeadGridClass(columns: boolean): string {
       "gap-y-1 sm:grid-cols-[0.5rem_var(--inbox-lead)_minmax(0,1fr)_auto]",
   );
 }
+
+/**
+ * The card that shows more of a row on hover. It floats over the rows below
+ * with an open card's lift, so no row moves.
+ */
+export const INBOX_HOVER_CARD_CLASS = cn(
+  "pointer-events-none absolute -top-px -right-px -left-px z-5 rounded-xl border",
+  LIFTED_CARD_CLASS,
+);
 
 /** The meta at the end of an Inbox row head, such as its age. */
 export const INBOX_ROW_META_CLASS =
