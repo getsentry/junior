@@ -88,15 +88,15 @@ describe("Slack Turn Steering", () => {
     expect(conversation.replies.map((reply) => reply.text).join("\n")).toMatch(
       /Dana/,
     );
-    // Saved history around the AGENTS.md block: the bash result, AGENTS.md,
-    // then the steered mention at the same boundary, then the final reply.
+    // Saved history: the bash result, AGENTS.md, then the steered mention at
+    // the same boundary. Later steps may run before the final reply.
     const history = await savedAgentHistory(conversation.conversationId);
     const agentsAt = history.findIndex(
       (item) =>
         item.type === "user_message" && item.text.startsWith(AGENTS_MD_BLOCK),
     );
     expect(agentsAt).toBeGreaterThan(0);
-    expect(history.slice(agentsAt - 1)).toEqual([
+    expect(history.slice(agentsAt - 1, agentsAt + 2)).toEqual([
       expect.objectContaining({ type: "tool_result", toolName: "bash" }),
       expect.objectContaining({
         type: "user_message",
@@ -106,11 +106,13 @@ describe("Slack Turn Steering", () => {
         type: "user_message",
         text: expect.stringContaining("also say that Dana owns the rollback"),
       }),
+    ]);
+    expect(history.at(-1)).toEqual(
       expect.objectContaining({
         type: "assistant_message",
         text: expect.stringContaining("Dana"),
       }),
-    ]);
+    );
   });
 
   test("when other people mention Junior during a turn, each person gets a follow-up turn, even with !!", async ({
