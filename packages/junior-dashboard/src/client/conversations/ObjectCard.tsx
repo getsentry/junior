@@ -4,6 +4,7 @@ import {
   objectPresentation,
 } from "@sentry/junior-plugin-api";
 import { ChevronRight } from "lucide-react";
+import { ActorAvatar } from "../components/ActorAvatar";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { AutomationCard } from "../components/AutomationCard";
 import { StatusChip } from "../components/StatusChip";
@@ -16,8 +17,17 @@ import { MessageCard, MessageCardHeader } from "../components/MessageCard";
 import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
 
-/** Show the latest saved annotation. Opening a source is always explicit. */
-export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
+/**
+ * Show the latest saved annotation, or a `live` card that the API resolved
+ * for a link. Opening a source is always explicit.
+ */
+export function ObjectCard({
+  card,
+  live,
+}: {
+  card: OwnedObjectAnnotation;
+  live?: boolean;
+}) {
   if (card.plugin === "junior" && card.objectType === "automation") {
     return (
       <AutomationCard
@@ -38,12 +48,20 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
   return (
     <MessageCard aria-label={`${type}: ${card.title}`} className="my-1">
       <MessageCardHeader
-        icon={<ObjectIcon {...card} size={18} />}
-        meta={
-          <>
-            {type} · {card.plugin} · {card.label}
-          </>
+        icon={
+          card.facts?.type === "person" && card.facts.avatarUrl ? (
+            <ActorAvatar
+              imageUrl={card.facts.avatarUrl}
+              name={card.title}
+              size="list"
+            />
+          ) : (
+            <ObjectIcon {...card} size={18} />
+          )
         }
+        meta={[type, card.plugin, card.label === card.title ? "" : card.label]
+          .filter(Boolean)
+          .join(" · ")}
         title={
           card.url ? (
             <OutboundLink
@@ -79,7 +97,16 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
                   {field.label}
                 </dt>
                 <dd className="m-0 mt-1 break-words text-sm text-dashboard-text">
-                  {field.value}
+                  {field.href ? (
+                    <OutboundLink
+                      href={field.href}
+                      className="hover:underline focus-visible:outline-dashboard-focus"
+                    >
+                      {field.value}
+                    </OutboundLink>
+                  ) : (
+                    field.value
+                  )}
                 </dd>
               </div>
             ))}
@@ -116,7 +143,9 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
             Open {type.toLowerCase()}
           </OutboundLink>
         )}
-        <span className="text-dashboard-text-muted">Latest saved state</span>
+        {!live && (
+          <span className="text-dashboard-text-muted">Latest saved state</span>
+        )}
       </div>
     </MessageCard>
   );

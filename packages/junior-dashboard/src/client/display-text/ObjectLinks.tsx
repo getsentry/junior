@@ -64,6 +64,7 @@ export function ObjectLinkPreview(props: {
   children: ReactNode;
   className: string;
   href: string;
+  live?: boolean;
 }) {
   return (
     <PreviewCard.Root>
@@ -79,7 +80,7 @@ export function ObjectLinkPreview(props: {
           sideOffset={6}
         >
           <PreviewCard.Popup className="w-[30rem] max-w-[calc(100vw-1rem)] rounded-xl shadow-2xl shadow-black/40 outline-none">
-            <ObjectCard card={props.card} />
+            <ObjectCard card={props.card} live={props.live} />
           </PreviewCard.Popup>
         </PreviewCard.Positioner>
       </PreviewCard.Portal>
@@ -94,6 +95,7 @@ export function ObjectLinkPreview(props: {
 export function ObjectLinkChip(props: {
   card: OwnedObjectAnnotation;
   href: string;
+  live?: boolean;
 }) {
   const { card } = props;
   const status = linkStatusLabel(card.status);
@@ -102,6 +104,7 @@ export function ObjectLinkChip(props: {
       card={card}
       className="inline-flex max-w-full items-center gap-1 rounded-md border border-dashboard-border bg-dashboard-fill-faint px-1.5 align-bottom text-[0.9em] font-medium leading-6 text-dashboard-text no-underline transition-colors hover:border-dashboard-border-strong hover:bg-dashboard-fill-soft focus-visible:outline-2 focus-visible:outline-dashboard-focus"
       href={props.href}
+      live={props.live}
     >
       <ObjectIcon
         decorative

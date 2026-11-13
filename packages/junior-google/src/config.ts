@@ -20,6 +20,13 @@ export const GOOGLE_ALLOWED_DOMAINS_ENV = "GOOGLE_WORKSPACE_ALLOWED_DOMAINS";
  *   still decide how much detail each calendar shows.
  * - `calendar.events.owned`: create and change events on Junior's own
  *   calendar.
+ * - `documents`: create Docs and edit Docs that Junior's account can already
+ *   edit, through the Docs API. It gives no access to other Drive files and
+ *   cannot change sharing.
+ * - `drive.file`: make the requester the owner of a Doc that Junior created,
+ *   then remove Junior's own access. It only covers files this OAuth client
+ *   created, so it cannot change sharing on other files. Full `drive` is not
+ *   needed.
  * - `drive.readonly`: search Drive, export Docs, read Sheets and Slides, and
  *   read comments. The Drive comments API accepts no narrower read scope. The
  *   Sheets and Slides APIs also accept this scope.
@@ -28,6 +35,8 @@ export const GOOGLE_API_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events.freebusy",
   "https://www.googleapis.com/auth/calendar.events.owned",
   "https://www.googleapis.com/auth/calendar.events.readonly",
+  "https://www.googleapis.com/auth/documents",
+  "https://www.googleapis.com/auth/drive.file",
   "https://www.googleapis.com/auth/drive.readonly",
 ] as const;
 

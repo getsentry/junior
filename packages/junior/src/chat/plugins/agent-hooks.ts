@@ -58,6 +58,7 @@ import {
   withPluginHookSpan,
 } from "@/chat/plugins/hook-context";
 import {
+  createPluginDecider,
   createPluginEmbedder,
   createPluginModel,
   createPluginReranker,
@@ -788,6 +789,7 @@ export function getPluginTools(
       locationId: context.locationId,
       ...(slackContext ? { slack: slackContext } : undefined),
       userText: context.userText,
+      decider: createPluginDecider(pluginName, { onCost }),
       embedder: createPluginEmbedder(pluginName, { onCost }),
       egress: context.egress,
       ...(mcp ? { mcp } : undefined),

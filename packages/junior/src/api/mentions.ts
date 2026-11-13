@@ -1,11 +1,9 @@
 import { and, eq, inArray } from "drizzle-orm";
+import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
 import { lookupSlackUserNames } from "@/chat/slack/user";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import type { ActorIdentity } from "./schema/conversation";
-
-// Display text keeps Slack user mentions as `<@U123>` or `<@U123|label>`.
-const SLACK_USER_MENTION_RE = /<@([UW][A-Z0-9]+)(?:\|[^<>]*)?>/g;
 
 /**
  * Display text from one API object, such as one event or one Automation.
@@ -18,8 +16,9 @@ export type MentionSource = {
 };
 
 function mentionedSlackUserIds(texts: MentionSource["texts"]): string[] {
+  // Display text keeps Slack user mentions as `<@U123>` or `<@U123|label>`.
   const ids = texts.flatMap((text) =>
-    text ? [...text.matchAll(SLACK_USER_MENTION_RE)].map((m) => m[1]!) : [],
+    text ? slackMentionedUserIds(text) : [],
   );
   return [...new Set(ids)];
 }

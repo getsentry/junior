@@ -14,6 +14,9 @@ const names = [
   "workflow",
   "rocket",
   "calendar",
+  "comment-discussion",
+  "person",
+  "comment",
   "package",
 ];
 const paths = Object.fromEntries(

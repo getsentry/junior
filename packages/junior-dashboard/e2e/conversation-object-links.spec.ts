@@ -1,4 +1,4 @@
-import { screenshot } from "./screenshot";
+import { desktop, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
 // The mock release Conversation saves Annotations for these pull requests,
@@ -37,6 +37,109 @@ test("links to saved objects show as a chip, a hover card, and a card", async ({
     page.getByRole("region", { name: /getsentry\/relay#44/ }),
   ).toBeVisible();
   await screenshot(page, "conversation-object-links", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
+test("links without an Annotation resolve to a chip and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  // The screenshot uses this size. A resize would move the chip from under
+  // the pointer and close the hover card.
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  // The reply links to another Conversation that has no saved Annotation.
+  const chip = page.getByRole("link", {
+    name: /Investigate checkout latency · Running/,
+  });
+  await expect(chip).toHaveAttribute(
+    "href",
+    `https://junior.example.com/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
+  );
+  await expect(page.getByRole("link", { name: /Morgan Lee/ })).toBeVisible();
+
+  await chip.hover();
+  await expect(
+    page.getByRole("region", {
+      name: "Conversation: Investigate checkout latency",
+    }),
+  ).toBeVisible();
+  await screenshot(page, "conversation-resolved-object-links", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
+test("one request asks for the cards of every link in a message", async ({
+  page,
+  dashboard,
+}) => {
+  const personUrl = "https://junior.example.com/people/dev%40example.com";
+  const conversationUrl = `https://junior.example.com/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`;
+  // Move the two links of the reply apart, so that only one is in view.
+  await page.route(
+    (url) => url.pathname.startsWith("/api/conversations/"),
+    async (route) => {
+      const response = await route.fetch();
+      const text = await response.text();
+      const body = text.replace(
+        " picks up ",
+        ` picks up\\n\\n${"More release notes.\\n\\n".repeat(80)}`,
+      );
+      await route.fulfill({ body, response });
+    },
+  );
+  const requests: URL[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/objects") requests.push(url);
+  });
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  await expect(page.getByText("More release notes.").first()).toBeAttached();
+  await expect(
+    page
+      .getByRole("link", { name: /Investigate checkout latency · Running/ })
+      .or(page.getByRole("link", { name: /Morgan Lee/ }))
+      .first(),
+  ).toBeVisible();
+
+  const asked = requests.filter((url) =>
+    url.searchParams
+      .getAll("url")
+      .some((link) => link === personUrl || link === conversationUrl),
+  );
+  expect(asked).toHaveLength(1);
+  expect(asked[0]!.searchParams.getAll("url")).toEqual(
+    expect.arrayContaining([personUrl, conversationUrl]),
+  );
+});
+
+test("a Slack message link resolves to a chip and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  const chip = page.getByRole("link", { name: /#proj-release/ });
+  await expect(chip).toHaveAttribute(
+    "href",
+    "https://acme.slack.com/archives/CQA456/p1770021700000100",
+  );
+  await chip.hover();
+  const card = page.getByRole("region", {
+    name: /^Message: Release notes are ready for review/,
+  });
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("Morgan Lee");
+  await screenshot(page, "conversation-slack-message-link", {
     lightTheme: true,
     view: "desktop",
   });

@@ -124,6 +124,8 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
 }
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+// Mock text links to dashboard pages on this origin.
+const MOCK_DASHBOARD_ORIGIN = "https://junior.example.com";
 const INCIDENT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 const PRIVATE_CONVERSATION_ID = "slack:DQA123:1770007200.000300";
 const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
@@ -682,6 +684,16 @@ function activeConversation(nowMs: number): ConversationDetailReport {
             },
           },
         ],
+        // The running step shows its reasoning while the activity is closed.
+        assistant: {
+          parts: [
+            {
+              type: "reasoning",
+              text: "Read the payments-v42 pull request first, so the span comparison focuses on the serializer path it changed.",
+            },
+            { type: "tool_call", toolCallId: "active-span-compare" },
+          ],
+        },
       }),
       reportEvent(10, iso(Date.parse(startedAt), 46_000), {
         type: "turn_context",
@@ -1378,7 +1390,9 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "",
         "https://github.com/getsentry/payments/pull/91",
         "",
-        "Deployment is ready.",
+        // No Annotations: the API resolves these dashboard links.
+        `Deployment is ready. Next, ${MOCK_DASHBOARD_ORIGIN}/people/dev%40example.com picks up ${MOCK_DASHBOARD_ORIGIN}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}.`,
+        "Morgan asked to hold the deploy: https://acme.slack.com/archives/CQA456/p1770021700000100",
       ].join("\n"),
     }),
   );
@@ -1397,7 +1411,8 @@ function longConversation(nowMs: number): ConversationDetailReport {
     isPriority: true,
     sidebarAnnotations: [
       {
-        icon: "circle-dashed",
+        objectType: "code_change",
+        status: "draft",
         key: "getsentry/junior#2201",
         label: "junior",
       },

@@ -5,12 +5,14 @@ import type { Nitro } from "nitro/types";
  * bundling.
  *
  * pi-ai registers API providers via a top-level side-effect in
- * register-builtins.js. Nitro's default moduleSideEffects whitelist only
- * includes unenv polyfills, so rolldown tree-shakes the registration call
- * and the apiProviderRegistry Map stays empty at runtime.
+ * register-builtins.js. Older Nitro builds set a moduleSideEffects allowlist
+ * with only unenv polyfills, so rolldown tree-shook the registration call and
+ * the apiProviderRegistry Map stayed empty at runtime
+ * (https://github.com/nitrojs/nitro/issues/4085).
  *
- * TODO(upstream): Track https://github.com/nitrojs/nitro/issues/XXXX for
- * native moduleSideEffects configuration support.
+ * TODO(dcramer): Remove this override when a production build shows that
+ * pi-ai providers register without it. nitrojs/nitro#4164 removed the
+ * allowlist, and every Nitro version that Junior supports includes that fix.
  */
 export function applyRolldownTreeshakeWorkaround(nitro: Nitro): void {
   nitro.options.rolldownConfig = {
