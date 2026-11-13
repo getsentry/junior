@@ -139,11 +139,14 @@ const GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE = {
 /**
  * Junior finishes its own drafts. Passing checks start no other step, so the
  * Watch of a draft also gets them. Marking the pull request ready sends the
- * review request. Each passing suite wakes the Watch, so a suite that leaves
- * the required checks unfinished must stay silent, or every suite posts.
+ * review request. GitHub also asks the code owners then, so a draft with code
+ * owners waits for the person who asked for it, unless they said otherwise.
+ * A repository's AGENTS.md can also ask that drafts wait for a person.
+ * Each passing suite wakes the Watch, so a suite that leaves the required
+ * checks unfinished must stay silent, or every suite posts.
  */
 const DRAFT_CHECKS_RECOVERED_GUIDANCE =
-  "If the pull request is still a draft, call github_getPullRequest and read its `checks`. When `checks.required` is `passing` and no decision is open, in the pull request body or in an open review item that waits on the person who asked for it, mark it ready with github_updatePullRequest and draft false, and report that in the originating thread. When it is `failing`, fix the failing checks like a failed check. When it is `pending` or `not_reported`, stay silent: a later passing suite wakes you again. `not_reported` means the required checks may not have started on the latest commit yet, not that none are required.";
+  "If the pull request is still a draft, call github_getPullRequest and read its `checks`, `code_owners`, and `agents_md`. When `checks.required` is `passing` and no decision is open, in the pull request body or in an open review item that waits on the person who asked for it: mark it ready with github_updatePullRequest and draft false, and report that in the originating thread, when the person who asked for it said to mark it ready, or when `code_owners` is empty and `agents_md` does not ask for draft pull requests or say that a person marks them ready. Otherwise keep it a draft: marking it ready would ask the code owners to review, or break the AGENTS.md rule. Tell the person who asked for it in the originating thread that the checks pass and the draft waits for their review, and name why: the code owners that marking it ready asks, or the AGENTS.md rule. If you already told them for this head commit, stay silent. When it is `failing`, fix the failing checks like a failed check. When it is `pending` or `not_reported`, stay silent: a later passing suite wakes you again. `not_reported` means the required checks may not have started on the latest commit yet, not that none are required.";
 
 /**
  * Build the Watch created after Junior creates a pull request. Only a draft
