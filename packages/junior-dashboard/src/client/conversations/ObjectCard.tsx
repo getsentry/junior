@@ -21,6 +21,7 @@ import { OutboundLink } from "../components/OutboundLink";
 import { displayPlainText } from "../display-text/plainText";
 import { ObjectAttachAction } from "./ObjectAttach";
 import { useObjectPreviewImages } from "./objectPreviewImages";
+import { objectSource } from "./objectSource";
 
 // A thumbnail that fails to load does not render.
 function Thumbnail({ src }: { src: string }) {
@@ -61,6 +62,33 @@ function PreviewImage({
   );
 }
 
+// A web page names its site, then its author, such as "YouTube · Sentry".
+// Its type and its core plugin tell the viewer nothing, and its label is
+// its title.
+function cardMeta(card: OwnedObjectAnnotation, type: string): string {
+  const parts =
+    card.objectType === "web_page"
+      ? [
+          webPageSite(card),
+          card.facts?.type === "web_page" ? card.facts.author : undefined,
+        ]
+      : [
+          type,
+          objectSource(card.plugin),
+          // A label that repeats the title or the type says nothing new.
+          [card.title, type].includes(card.label) ? "" : card.label,
+        ];
+  return parts.filter(Boolean).join(" · ") || type;
+}
+
+function webPageSite(card: OwnedObjectAnnotation): string | undefined {
+  if (card.facts?.type === "web_page" && card.facts.siteName) {
+    return card.facts.siteName;
+  }
+  if (!card.url || !URL.canParse(card.url)) return undefined;
+  return new URL(card.url).hostname.replace(/^www\./, "");
+}
+
 /**
  * Show the latest saved annotation, or a `live` card that the API resolved
  * for a link. Opening a source is always explicit. A live card can attach
@@ -88,9 +116,12 @@ export function ObjectCard({
       />
     );
   }
-  // The chart caption shows its range.
-  const fields = objectFactFields(card.facts).filter(
-    (field) => card.facts?.type !== "chart" || field.key !== "range",
+  // The header already names the site and author of a web page, and the
+  // chart caption shows its range.
+  const fields = objectFactFields(card.facts).filter((field) =>
+    card.facts?.type === "web_page"
+      ? field.key !== "siteName" && field.key !== "author"
+      : card.facts?.type !== "chart" || field.key !== "range",
   );
   const presentation = objectPresentation(card);
   const type = card.displayType ?? presentation.label;
@@ -108,14 +139,7 @@ export function ObjectCard({
             <ObjectIcon {...card} size={18} />
           )
         }
-        // A label that repeats the title or the type says nothing new.
-        meta={[
-          type,
-          card.plugin,
-          [card.title, type].includes(card.label) ? "" : card.label,
-        ]
-          .filter(Boolean)
-          .join(" · ")}
+        meta={cardMeta(card, type)}
         title={
           card.url ? (
             <OutboundLink
