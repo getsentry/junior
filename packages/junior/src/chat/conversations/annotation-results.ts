@@ -24,11 +24,15 @@ export async function saveObjectAnnotations(
   return annotations.map((annotation) => ({ ...annotation, plugin }));
 }
 
-/** Save annotations from a successful plugin tool result and attach their cards. */
+/**
+ * Save annotations from a successful plugin tool result and attach their
+ * cards. `readOnly` marks cards from a read, which need nobody's attention.
+ */
 export async function annotateToolResult(
   conversationId: string,
   plugin: string,
   result: unknown,
+  readOnly: boolean,
 ): Promise<unknown> {
   if (!isRecord(result) || result.isError === true) return result;
   const details = isRecord(result.details) ? result.details : result;
@@ -43,8 +47,16 @@ export async function annotateToolResult(
     plugin,
     details.objectAnnotations,
   );
-  const { objectAnnotations: _annotations, ...rest } = details;
-  const annotated = { ...rest, objectCards: cards };
+  const {
+    objectAnnotations: _annotations,
+    objectCardsReadOnly: _readOnly,
+    ...rest
+  } = details;
+  const annotated = {
+    ...rest,
+    objectCards: cards,
+    ...(readOnly ? { objectCardsReadOnly: true } : undefined),
+  };
   if (isRecord(result.details)) return { ...result, details: annotated };
   return annotated;
 }

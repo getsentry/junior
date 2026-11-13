@@ -18,6 +18,8 @@ import {
 interface CardSelection {
   cards: Map<string, MessageCardRef>;
   deleted: Set<string>;
+  /** A tool that is not read-only selected a card. */
+  fromChange: boolean;
 }
 
 /**
@@ -59,9 +61,11 @@ async function selectTurnCards(
       }
       for (const card of readMessageCardRefs(data.details)) {
         const key = JSON.stringify([card.plugin, card.key]);
-        if (!selection.deleted.has(key) && !selection.cards.has(key)) {
-          selection.cards.set(key, card);
+        if (selection.deleted.has(key)) continue;
+        if (data.details.objectCardsReadOnly !== true) {
+          selection.fromChange = true;
         }
+        if (!selection.cards.has(key)) selection.cards.set(key, card);
       }
     }
     if (!page.hasOlder || page.events.length === 0) return [];
@@ -100,16 +104,37 @@ async function selectChildResultCards(
   }
 }
 
+async function selectPendingCards(
+  conversationId: string,
+): Promise<CardSelection> {
+  const selection: CardSelection = {
+    cards: new Map(),
+    deleted: new Set(),
+    fromChange: false,
+  };
+  const inputMessageIds = await selectTurnCards(conversationId, selection);
+  await selectChildResultCards(conversationId, inputMessageIds, selection);
+  return selection;
+}
+
 /** Select undelivered cards and load their latest saved facts. */
 export async function loadPendingMessageCards(
   conversationId: string,
 ): Promise<MessageCard[]> {
-  const selection: CardSelection = { cards: new Map(), deleted: new Set() };
-  const inputMessageIds = await selectTurnCards(conversationId, selection);
-  await selectChildResultCards(conversationId, inputMessageIds, selection);
+  const selection = await selectPendingCards(conversationId);
   if (selection.cards.size === 0) return [];
   return resolveMessageCards(
     [...selection.cards.values()].reverse(),
     await listConversationAnnotations(getDb(), conversationId),
   );
+}
+
+/**
+ * Whether a tool that is not read-only selected an undelivered card. That
+ * card can be the only notice of a change, such as a new pull request.
+ */
+export async function hasPendingChangeCards(
+  conversationId: string,
+): Promise<boolean> {
+  return (await selectPendingCards(conversationId)).fromChange;
 }

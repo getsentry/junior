@@ -89,6 +89,22 @@ it("saves plugin object results once per reply, leaves background updates silent
               };
             },
           }),
+          update: definePluginTool({
+            approvalMode: "approve",
+            exposure: "direct",
+            annotations: {
+              destructiveHint: false,
+              idempotentHint: true,
+              openWorldHint: false,
+              readOnlyHint: false,
+            },
+            description: "Change a verified object for this test.",
+            inputSchema: z.object({}),
+            outputSchema: pluginToolOutputSchema,
+            execute: () => ({
+              objectAnnotations: [{ ...annotation, status: "merged" }],
+            }),
+          }),
         }),
       },
     }),
@@ -460,6 +476,12 @@ it("saves plugin object results once per reply, leaves background updates silent
           name: "noReply",
           arguments: { note: "Checks passed." },
         },
+        { type: "toolCall", name: "objects_update", arguments: {} },
+        {
+          type: "toolCall",
+          name: "noReply",
+          arguments: { note: "Merged the change." },
+        },
       ]),
     );
     await harness.continue({
@@ -469,38 +491,47 @@ it("saves plugin object results once per reply, leaves background updates silent
     });
     await harness.drain();
 
-    // A no-reply note of an Event Turn stays quiet, also with a card.
-    await appendAndEnqueueInboundMessage({
-      message: createEventInboundMessage({
-        event: {
-          eventKey: "objects-checks-passed",
-          eventType: "pull_request.checks.recovered",
-          identifier: annotation.key,
-          namespace: "github",
-          occurredAtMs: Date.now(),
-          trustedSummary: "Checks passed",
-        },
-        // Past the Event batch wait, so the Turn runs on this delivery.
-        receivedAtMs: Date.now() - 60_000,
-        subscription: { conversationId, id: "objects-watch" },
-        text: "Checks passed",
-      }),
-      queue: harness.queue,
-      state: harness.state,
-    });
-    await harness.drain();
-    const note = (await getConversationEventStore().loadHistory(conversationId))
-      .filter(
-        (event) =>
-          event.data.type === "message" && event.data.role === "assistant",
-      )
-      .at(-1);
-    expect(note?.data).toMatchObject({
+    // A no-reply note of an Event Turn stays quiet with a card from a read,
+    // and delivers with a card from a change.
+    const eventTurnNote = async (eventKey: string) => {
+      await appendAndEnqueueInboundMessage({
+        message: createEventInboundMessage({
+          event: {
+            eventKey,
+            eventType: "pull_request.checks.recovered",
+            identifier: annotation.key,
+            namespace: "github",
+            occurredAtMs: Date.now(),
+            trustedSummary: "Checks passed",
+          },
+          // Past the Event batch wait, so the Turn runs on this delivery.
+          receivedAtMs: Date.now() - 60_000,
+          subscription: { conversationId, id: "objects-watch" },
+          text: "Checks passed",
+        }),
+        queue: harness.queue,
+        state: harness.state,
+      });
+      await harness.drain();
+      return (await getConversationEventStore().loadHistory(conversationId))
+        .filter(
+          (event) =>
+            event.data.type === "message" && event.data.role === "assistant",
+        )
+        .at(-1)?.data;
+    };
+    await expect(eventTurnNote("objects-read")).resolves.toMatchObject({
       meta: { objectCards: refs, quiet: true },
       text: "Checks passed.",
     });
+    const changed = await eventTurnNote("objects-changed");
+    expect(changed).toMatchObject({
+      meta: { objectCards: refs },
+      text: "Merged the change.",
+    });
+    expect(changed).not.toHaveProperty("meta.quiet");
 
-    // Cards of the quiet Turns do not move to the next Reply.
+    // Cards of earlier Turns do not move to the next Reply.
     harness.setModelStream(
       createModelStream([{ type: "text", text: "Nothing new." }]),
     );

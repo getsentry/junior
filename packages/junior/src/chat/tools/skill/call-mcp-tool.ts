@@ -113,6 +113,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
           "The MCP tool's structured content, or its text content when it has none.",
         ),
       objectCards: z.array(ownedObjectAnnotationSchema),
+      objectCardsReadOnly: z.literal(true).optional(),
     }),
     execute: async (input, options) => {
       const { tool_name, intent } = input;
@@ -166,6 +167,9 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
               .flatMap((part) => (part.type === "text" ? [part.text] : []))
               .join("\n"),
           objectCards: result.cards ?? [],
+          ...(mcpTool.annotations?.readOnlyHint === true
+            ? { objectCardsReadOnly: true as const }
+            : undefined),
         },
       };
     },

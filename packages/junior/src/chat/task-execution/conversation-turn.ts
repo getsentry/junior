@@ -10,7 +10,10 @@ import {
   type MessageAttachment,
 } from "@/chat/attachments/input";
 import { isConversationDeliveryPaused } from "@/chat/conversations/delivery-pause";
-import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
+import {
+  hasPendingChangeCards,
+  loadPendingMessageCards,
+} from "@/chat/conversations/pending-cards";
 import { createHash } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { createWebAuthorization } from "@/chat/conversations/web-authorization";
@@ -549,9 +552,12 @@ export function createConversationTurnWorker(
           failureCode = "delivery_failed";
           const cards = await loadPendingMessageCards(context.conversationId);
           // Only Event Turns may be quiet: a person who asked always gets the
-          // reply. A card alone needs nobody's attention, so a Quiet message
-          // stores its cards and is not delivered.
-          const quiet = options?.quiet === true && isEventTurn;
+          // reply. A card from a change always delivers, because it can be the
+          // only notice. Cards from reads stay on the Quiet message.
+          const quiet =
+            options?.quiet === true &&
+            isEventTurn &&
+            !(await hasPendingChangeCards(context.conversationId));
           let deliveryResult: DeliveryResult | undefined;
           // Read the pause at reply time: a person can pause Delivery while
           // this Turn runs.

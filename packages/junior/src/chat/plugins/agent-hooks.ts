@@ -921,6 +921,7 @@ export function getPluginTools(
               result: await execute.call(definition, input, options),
               toolCallId: options.toolCallId,
             }),
+            definition.annotations?.readOnlyHint === true,
           );
         tools[name] = wrapped;
       } else tools[name] = definition;
