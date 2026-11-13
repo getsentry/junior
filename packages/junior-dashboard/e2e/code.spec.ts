@@ -46,12 +46,12 @@ test("opens Linked work toward the larger free space", async ({
     { height: 600, side: "top" },
   ]) {
     await page.setViewportSize({ height, width: 1600 });
-    await page.goto(`${dashboard.baseURL}/code`);
-    await page
-      .getByRole("link", { name: "getsentry/junior", exact: true })
-      .click();
-    // Some browsers default to a root font smaller than 16px.
-    await page.addStyleTag({ content: "html { font-size: 14px }" });
+    // Open the page directly so it starts at the top. A click from the
+    // scrolled Code list can keep that scroll, and a root font change after
+    // render moves the row while the hover runs. Both move the trigger up.
+    await page.goto(
+      `${dashboard.baseURL}/code/00000000-0000-4000-8000-000000000003`,
+    );
     await page
       .getByLabel(/^Linked work, newest first/)
       .first()
