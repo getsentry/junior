@@ -25,7 +25,35 @@ const OBJECT_KEY = /^([\w.-]+)\/([\w.-]+)#\d+$/;
 const ACCESS_TTL_MS = 10 * 60 * 1000;
 const permissionSchema = z.object({ permission: z.string().min(1) });
 
+// A GitHub failure that is not an answer about access, such as a rate limit.
+class AccessReadFailed extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`GitHub repository permission read failed with HTTP ${status}`);
+    this.status = status;
+  }
+}
+
 async function canSeeRepository(
+  ctx: ImageSourceContext,
+  repository: { name: string; owner: string },
+  login: string,
+): Promise<boolean> {
+  try {
+    return await readRepositoryAccess(ctx, repository, login);
+  } catch (error) {
+    if (!(error instanceof AccessReadFailed)) throw error;
+    // An image is optional. Deny this read only, and ask GitHub again on the
+    // next one.
+    ctx.log.warn("github.image_access.read_failed", {
+      "http.response.status_code": error.status,
+    });
+    return false;
+  }
+}
+
+async function readRepositoryAccess(
   ctx: ImageSourceContext,
   repository: { name: string; owner: string },
   login: string,
@@ -41,9 +69,7 @@ async function canSeeRepository(
       // not know the login. Other failures, such as a rate limit, are not
       // an answer, so they are not cached.
       if (!response.ok && response.status !== 404) {
-        throw new Error(
-          `GitHub repository permission read failed with HTTP ${response.status}`,
-        );
+        throw new AccessReadFailed(response.status);
       }
       const parsed = response.ok
         ? permissionSchema.safeParse(response.body)

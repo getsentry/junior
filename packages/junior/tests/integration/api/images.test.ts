@@ -499,11 +499,12 @@ describe("image API", () => {
       expect(attachmentReads).toEqual([]);
       expect(signedReads).toEqual([]);
 
-      // A failed access read is not an answer, so it is not kept as a denial.
+      // A failed access read denies only that read. It is not kept as a
+      // denial.
       expect(
         (await requestImage(imagePath(image, 640), gitHubViewer("member")))
           .status,
-      ).not.toBe(200);
+      ).toBe(404);
       expect(attachmentReads).toEqual([]);
       await expectWebp(
         await requestImage(imagePath(image, 640), gitHubViewer("member")),
