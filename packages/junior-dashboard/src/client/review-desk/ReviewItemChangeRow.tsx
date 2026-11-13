@@ -101,7 +101,7 @@ function ChangeRow(props: {
     >
       <p
         aria-hidden={quoteHidden || undefined}
-        className={`m-0 flex min-w-0 items-center gap-1.5 text-xs leading-4 text-dashboard-text-muted transition-[opacity,visibility] duration-150 ${quoteHidden ? "invisible opacity-0" : ""}`}
+        className={`m-0 flex min-w-0 items-center gap-1.5 text-xs leading-4 text-dashboard-text-muted ${quoteHidden ? "invisible" : ""}`}
       >
         <span className="shrink-0">{verb}</span>
         {title}
