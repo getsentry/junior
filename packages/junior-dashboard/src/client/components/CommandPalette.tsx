@@ -43,6 +43,8 @@ export const COMMAND_PALETTE_SHORTCUT = platformShortcut("k");
 export const COMMAND_PALETTE_LABEL = "Go to conversation";
 
 type PaletteItem = {
+  /** Set on conversation rows. */
+  conversationId?: string;
   group: string;
   icon: LucideIcon;
   id: string;
@@ -69,6 +71,7 @@ export function CommandPalette(props: {
   onOpenChange(open: boolean): void;
 }) {
   const { onOpenChange, open } = props;
+  const navigate = useNavigate();
   useEffect(() => {
     const toggle = (event: globalThis.KeyboardEvent) => {
       if (!isPlatformShortcut(event, "k") || event.repeat) return;
@@ -88,17 +91,43 @@ export function CommandPalette(props: {
       <CommandPaletteBody
         currentConversationId={props.currentConversationId}
         navItems={props.navItems}
-        onClose={() => onOpenChange(false)}
+        onSelect={(item) => {
+          navigate(item.to, { state: item.state });
+          onOpenChange(false);
+        }}
       />
     </CommandDialog>
   );
 }
 
+/**
+ * Pick a conversation in a window that cannot navigate, such as the pop-out
+ * window. Same rows as the palette, without pages.
+ */
+export function ConversationSwitcher(props: {
+  currentConversationId?: string;
+  onSelect(conversationId: string): void;
+}) {
+  return (
+    <CommandPaletteBody
+      autoFocus
+      conversationsOnly
+      currentConversationId={props.currentConversationId}
+      navItems={[]}
+      onSelect={(item) => {
+        if (item.conversationId) props.onSelect(item.conversationId);
+      }}
+    />
+  );
+}
+
 /** Mounted only while open, so the server search runs only then. */
 function CommandPaletteBody(props: {
+  autoFocus?: boolean;
+  conversationsOnly?: boolean;
   currentConversationId?: string;
   navItems: DashboardHeaderNavItem[];
-  onClose(): void;
+  onSelect(item: PaletteItem): void;
 }) {
   const [query, setQuery] = useState("");
   const search = useDebouncedValue(query.trim());
@@ -106,7 +135,6 @@ function CommandPaletteBody(props: {
   // no request. The server search only reaches conversations outside it.
   const feed = useConversationsData();
   const searched = useConversationsData(search);
-  const navigate = useNavigate();
   const list = useRef<HTMLDivElement>(null);
   // Hide server rows until they match the typed text, so stale or
   // placeholder rows never show for the wrong query.
@@ -115,6 +143,7 @@ function CommandPaletteBody(props: {
   const items = useMemo(
     () =>
       paletteItems({
+        conversationsOnly: props.conversationsOnly,
         currentConversationId: props.currentConversationId,
         feed: buildConversations(feed.data?.conversations ?? []),
         navItems: props.navItems,
@@ -125,6 +154,7 @@ function CommandPaletteBody(props: {
       }),
     [
       feed.data?.conversations,
+      props.conversationsOnly,
       props.currentConversationId,
       props.navItems,
       query,
@@ -149,9 +179,16 @@ function CommandPaletteBody(props: {
     // Rows are already filtered and ranked in `paletteItems`.
     <Command loop shouldFilter={false} vimBindings={false}>
       <CommandInput
-        aria-label="Conversation or page"
+        aria-label={
+          props.conversationsOnly ? "Conversation" : "Conversation or page"
+        }
+        autoFocus={props.autoFocus}
         onValueChange={setQuery}
-        placeholder="Go to a conversation or page…"
+        placeholder={
+          props.conversationsOnly
+            ? "Go to a conversation…"
+            : "Go to a conversation or page…"
+        }
         spellCheck={false}
         value={query}
       >
@@ -166,10 +203,7 @@ function CommandPaletteBody(props: {
               return (
                 <CommandItem
                   key={item.id}
-                  onSelect={() => {
-                    navigate(item.to, { state: item.state });
-                    props.onClose();
-                  }}
+                  onSelect={() => props.onSelect(item)}
                   value={item.id}
                 >
                   <Icon aria-hidden="true" />
@@ -198,6 +232,7 @@ function CommandPaletteBody(props: {
  * outside the feed. The open conversation is never a row.
  */
 function paletteItems(input: {
+  conversationsOnly?: boolean;
   currentConversationId?: string;
   feed: Conversation[];
   navItems: DashboardHeaderNavItem[];
@@ -208,20 +243,22 @@ function paletteItems(input: {
     conversations.filter(
       (conversation) => conversation.id !== input.currentConversationId,
     );
-  const pages = [
-    {
-      icon: SquarePen,
-      key: "new-conversation",
-      label: "New conversation",
-      to: NEW_CONVERSATION_PATH,
-    },
-    ...input.navItems.map((item) => ({
-      icon: navItemIcon(item.key),
-      key: item.key,
-      label: item.label,
-      to: item.to,
-    })),
-  ];
+  const pages = input.conversationsOnly
+    ? []
+    : [
+        {
+          icon: SquarePen,
+          key: "new-conversation",
+          label: "New conversation",
+          to: NEW_CONVERSATION_PATH,
+        },
+        ...input.navItems.map((item) => ({
+          icon: navItemIcon(item.key),
+          key: item.key,
+          label: item.label,
+          to: item.to,
+        })),
+      ];
   const pageItem = (page: (typeof pages)[number]): PaletteItem => ({
     group: "Go to",
     icon: page.icon,
@@ -281,6 +318,7 @@ function conversationItem(
   const label = conversationDisplayTitle(conversation);
   const match = query ? quickOpenMatch(label, query) : undefined;
   return {
+    conversationId: conversation.id,
     group,
     icon: conversation.visibility === "private" ? LockKeyhole : MessageSquare,
     id: `conversation-${conversation.id}`,
