@@ -1,6 +1,7 @@
 import { objectPresentation, type User } from "@sentry/junior-plugin-api";
 import { addConversationNote } from "@/chat/conversations/notes";
-import { getDb } from "@/chat/db";
+import { acceptsWebMessages } from "@/chat/conversations/web-input";
+import { getConversationStore, getDb } from "@/chat/db";
 import {
   createPluginAnnotations,
   listConversationAnnotations,
@@ -24,7 +25,8 @@ const NOTE_TITLE_CHARS = 120;
  * Annotation saves only the link: its URL, object type, and title. The next
  * Turn gets a Conversation note that names the read tool of the object, so
  * the agent reads it live. Nothing is attached when the viewer cannot write
- * to the Conversation or cannot see the object now.
+ * to the Conversation, the Conversation takes no web input from people (a
+ * Task), or the viewer cannot see the object now.
  */
 export async function attachObjectLink(
   viewer: User,
@@ -39,6 +41,12 @@ export async function attachObjectLink(
   );
   if (!access.get(conversationId)?.isParticipant) {
     throwApiError(404, "Conversation not found.");
+  }
+  // An attach is a person's input, so it follows the rule for web Messages.
+  // A root participant can read a Task, but must not add notes to its Turns.
+  const conversation = await getConversationStore().get({ conversationId });
+  if (!conversation || !acceptsWebMessages(conversation)) {
+    throwApiError(409, "Conversation does not accept attached objects.");
   }
   const parsed = URL.canParse(url) ? new URL(url) : undefined;
   // The card cache can be up to a minute old, so access is read again.

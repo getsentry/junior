@@ -53,7 +53,11 @@ async function recordConversation(participants: string[]) {
   }
 }
 
-async function attachAs(email: string, url: string) {
+async function attachAs(
+  email: string,
+  url: string,
+  conversationId = CONVERSATION_ID,
+) {
   const viewer = await signedInViewer(email);
   const app = new Hono<JuniorApiEnv>();
   app.use("*", async (context, next) => {
@@ -62,7 +66,7 @@ async function attachAs(email: string, url: string) {
   });
   app.route("/", createJuniorApi());
   const response = await app.request(
-    `http://localhost/api/conversations/${encodeURIComponent(CONVERSATION_ID)}/annotations`,
+    `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/annotations`,
     {
       body: JSON.stringify({ url }),
       headers: { "content-type": "application/json" },
@@ -72,16 +76,16 @@ async function attachAs(email: string, url: string) {
   return { body: await response.text(), status: response.status };
 }
 
-async function nextTurnNotes(turnId: string) {
+async function nextTurnNotes(turnId: string, conversationId = CONVERSATION_ID) {
   await getTurnLifecycle().start({
-    conversationId: CONVERSATION_ID,
+    conversationId,
     createdAtMs: Date.now(),
     inputMessageIds: [`${turnId}-message`],
     surface: "internal",
     turnId,
   });
   return await loadTurnConversationNotes({
-    conversationId: CONVERSATION_ID,
+    conversationId,
     turnId,
   });
 }
@@ -196,5 +200,22 @@ describe("attach a linked object", () => {
       [],
     );
     expect(await nextTurnNotes("next-turn")).toEqual([]);
+  });
+
+  it("attaches nothing to a Task, which takes no input from people", async () => {
+    const taskId = "agent:object-attach-task";
+    await getConversationStore().createChild({
+      childConversationId: taskId,
+      kind: "task",
+      nowMs: Date.parse("2026-01-02T03:05:00.000Z"),
+      parentConversationId: CONVERSATION_ID,
+    });
+
+    // Alice takes part in the root, so she takes part in the Task too.
+    expect((await attachAs("alice@example.com", DOC_URL, taskId)).status).toBe(
+      409,
+    );
+    expect(await listConversationAnnotations(getDb(), taskId)).toEqual([]);
+    expect(await nextTurnNotes("task-turn", taskId)).toEqual([]);
   });
 });
