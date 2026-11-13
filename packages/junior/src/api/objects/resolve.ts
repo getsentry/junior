@@ -22,7 +22,7 @@ import {
   findObjectLinkType,
   type ObjectLinkType,
 } from "./link-types";
-import { resolvePersonLink } from "./person";
+import { resolvePersonByAccount, resolvePersonLink } from "./person";
 import {
   resolveSlackMessageLink,
   SLACK_MESSAGE_LINK_FILTER,
@@ -88,6 +88,7 @@ function pluginLinkTypes(plugin: PluginRegistration): ObjectLinkType[] {
             // A card is optional. It must never ask anyone to authorize.
             pluginAuth: { async handleAuthRequired() {} },
           }),
+          findPerson: resolvePersonByAccount,
           log: createPluginLogger(name),
           plugin: { name },
           viewer,
