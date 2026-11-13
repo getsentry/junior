@@ -21,9 +21,9 @@ function sameLink(left: string, right: string): boolean {
  * Attach a linked object to a Conversation for one participant. The
  * Annotation and the Conversation note save no title. The note tells the
  * next Turn the type and the read tool of the object, so the agent reads it
- * live. Nothing is attached when the viewer cannot write
- * to the Conversation, the Conversation takes no web input from people (a
- * Task), or the viewer cannot see the object now.
+ * live. Nothing is attached when the viewer cannot write to the
+ * Conversation, the Conversation takes no web input from people (a Task),
+ * or the viewer cannot see the object now.
  */
 export async function attachObjectLink(
   viewer: User,
