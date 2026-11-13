@@ -30,6 +30,10 @@ export default defineConfig({
         __dirname,
         "../junior-memory/src/index.ts",
       ),
+      "@sentry/junior-sentry": path.resolve(
+        __dirname,
+        "../junior-sentry/src/index.ts",
+      ),
     },
   },
   test: {
