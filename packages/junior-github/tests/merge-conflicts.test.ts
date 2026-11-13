@@ -416,6 +416,23 @@ describe("merge conflict check on webhook events", () => {
         });
     }
 
+    it("closes the notice when the conflict is gone, and adds one for the next conflict", async () => {
+      await askedInSlack();
+      await checkAt(pushedAt + 2 * day, "1");
+      expect(h.notices).toHaveLength(1);
+
+      mergeability[946] = "MERGEABLE";
+      await checkAt(pushedAt + 2 * day + hour, "2");
+      // Nothing is left to close.
+      await checkAt(pushedAt + 2 * day + 2 * hour, "2");
+      expect(h.closedNotices).toEqual(["merge-conflict:getsentry/junior#946"]);
+
+      mergeability[946] = "CONFLICTING";
+      await checkAt(pushedAt + 2 * day + 3 * hour, "3");
+      expect(h.notices).toHaveLength(2);
+      expect(fixedShas()).toEqual([]);
+    });
+
     it("publishes no conflict for a draft", async () => {
       drafts.add(946);
       await deliver("push-1", pushRequest("refs/heads/main"));
@@ -484,8 +501,12 @@ describe("merge conflict check on webhook events", () => {
 
     it("adds one notice when nobody worked on it for 2 days, then stops until it is approved", async () => {
       await askedInSlack();
-      // The pull request opened an hour before `pushedAt`.
+      // The pull request opened an hour before `pushedAt`. The first notice
+      // fails, so the next check adds it.
+      h.failures.upsert = 1;
       await checkAt(pushedAt + 2 * day, "1");
+      expect(h.notices).toEqual([]);
+      await checkAt(pushedAt + 2 * day + 3 * hour, "1");
       await checkAt(pushedAt + 2 * day + 6 * hour, "2");
       expect(fixedShas()).toEqual([]);
       expect(h.notices.map(({ notice }) => notice.body)).toEqual([

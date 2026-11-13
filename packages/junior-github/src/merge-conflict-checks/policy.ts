@@ -23,7 +23,7 @@ import type {
   PluginConversationReviewItems,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import type { GitHubDb } from "../db/database.js";
 import { juniorGitHubPullRequests } from "../db/schema.js";
 import { pullRequestRow } from "../pull-request-outcomes/store.js";
@@ -154,7 +154,7 @@ async function addNotice(
  * Return the merge conflict events to publish for one conflicted pull
  * request that a Watch or event automation wants. A fix returns `events`.
  * A notice goes to the review desk and returns no events. The notice is
- * optional, so a failure is logged, and the next idle stretch tries again.
+ * optional, so a failure is logged, and the next check tries again.
  */
 export async function applyGitHubConflictPolicy(args: {
   /** GitHub's review decision is `APPROVED`. */
@@ -179,14 +179,22 @@ export async function applyGitHubConflictPolicy(args: {
   if (!row) return args.events;
   const action = gitHubConflictAction(row, args.now.getTime(), args.approved);
   if (action === "fix") {
-    await args.db
+    // A webhook and the heartbeat can check the same pull request at once.
+    // Only the check that counts the fix from the count it read publishes.
+    const claimed = await args.db
       .update(t)
       .set({
         conflictFixedAt: args.now,
         conflictFixes: sql`${t.conflictFixes} + 1`,
       })
-      .where(eq(t.pullRequestId, row.pullRequestId));
-    return args.events;
+      .where(
+        and(
+          eq(t.pullRequestId, row.pullRequestId),
+          eq(t.conflictFixes, row.conflictFixes),
+        ),
+      )
+      .returning({ pullRequestId: t.pullRequestId });
+    return claimed.length > 0 ? args.events : [];
   }
   if (action === "notice") {
     try {
@@ -201,6 +209,7 @@ export async function applyGitHubConflictPolicy(args: {
           repository: args.ref.repositoryFullName,
         },
       );
+      return [];
     }
     await args.db
       .update(t)
@@ -208,4 +217,58 @@ export async function applyGitHubConflictPolicy(args: {
       .where(eq(t.pullRequestId, row.pullRequestId));
   }
   return [];
+}
+
+/** Why a merge conflict notice closes when GitHub reports no conflict. */
+export const GITHUB_CONFLICT_GONE_REASON =
+  "The pull request no longer has merge conflicts.";
+
+/**
+ * Close the merge conflict notice of a Junior pull request that GitHub
+ * reports as mergeable, and allow a notice for its next conflict. Only a
+ * pull request with a notice reads the requester. A failed close stays for
+ * the next check.
+ */
+export async function closeGitHubConflictNotice(args: {
+  db: GitHubDb;
+  log?: Pick<PluginLogger, "error" | "warn">;
+  ref: GitHubPullRequestRef;
+  reviewItems: PluginConversationReviewItems;
+}): Promise<void> {
+  const t = juniorGitHubPullRequests;
+  const [row] = await args.db
+    .select({ pullRequestId: t.pullRequestId })
+    .from(t)
+    .where(and(pullRequestRow(args.ref), isNotNull(t.conflictNoticedAt)))
+    .limit(1);
+  if (!row) return;
+  const opener = (
+    await listGitHubPullRequestOpeners(args.db, {
+      numbers: [args.ref.number],
+      repositoryFullName: args.ref.repositoryFullName,
+    })
+  ).get(args.ref.number);
+  try {
+    if (opener?.conversationId) {
+      await args.reviewItems.forConversation(opener.conversationId).close({
+        dedupeKey: gitHubConflictNoticeKey(args.ref),
+        reason: GITHUB_CONFLICT_GONE_REASON,
+        status: "done",
+      });
+    }
+  } catch (error) {
+    // The notice is optional, so the check goes on, and the next check
+    // closes it again.
+    logFailOpenFailure(
+      args.log,
+      "GitHub merge conflict notice close failed",
+      error,
+      { number: args.ref.number, repository: args.ref.repositoryFullName },
+    );
+    return;
+  }
+  await args.db
+    .update(t)
+    .set({ conflictNoticedAt: null })
+    .where(eq(t.pullRequestId, row.pullRequestId));
 }

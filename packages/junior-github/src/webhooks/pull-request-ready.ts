@@ -23,7 +23,10 @@ import {
   releaseGitHubPullRequestReadySync,
   setGitHubPullRequestReadyToMerge,
 } from "../pull-request-outcomes/store.js";
-import { gitHubConflictNoticeKey } from "../merge-conflict-checks/policy.js";
+import {
+  GITHUB_CONFLICT_GONE_REASON,
+  gitHubConflictNoticeKey,
+} from "../merge-conflict-checks/policy.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import { checkSuitePullRequests } from "./check-suite.js";
 import { logFailOpenFailure } from "./fail-open-log.js";
@@ -146,7 +149,7 @@ async function syncOne(
           dedupeKey: gitHubConflictNoticeKey(target),
           ...(state.state === "open"
             ? {
-                reason: "The pull request no longer has merge conflicts.",
+                reason: GITHUB_CONFLICT_GONE_REASON,
                 status: "done" as const,
               }
             : closeReason(state)),

@@ -78,6 +78,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       annotation: ConversationAnnotationInput;
       conversationId: string;
     }>,
+    closedNotices: [] as string[],
     codeChanges: [] as CodeChangeInput[],
     heartbeatLogs: [] as Array<[level: string, message: string]>,
     notices: [] as Array<{
@@ -87,6 +88,8 @@ export function createPluginHarness(fixture: GitHubFixture) {
     published: [] as EventInput[],
   };
   const watches = { comments: true, conflicts: true };
+  /** Review desk calls that fail before one succeeds. */
+  const failures = { upsert: 0 };
   const state = memoryState();
   const events: EventPublisher = {
     async hasMatch(candidates) {
@@ -106,9 +109,15 @@ export function createPluginHarness(fixture: GitHubFixture) {
     forConversation(conversationId) {
       return {
         async upsert(notice) {
+          if (failures.upsert > 0) {
+            failures.upsert -= 1;
+            throw new Error("The review desk is down");
+          }
           recorded.notices.push({ conversationId, notice });
         },
-        async close() {},
+        async close(input) {
+          recorded.closedNotices.push(input.dedupeKey);
+        },
       };
     },
   };
@@ -195,7 +204,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
     });
   }
 
-  return { ...recorded, deliver, events, heartbeat, watches };
+  return { ...recorded, deliver, events, failures, heartbeat, watches };
 }
 
 export type PluginHarness = ReturnType<typeof createPluginHarness>;

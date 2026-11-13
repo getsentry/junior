@@ -598,7 +598,7 @@ people work on it:
 - After that, or after the third event, Junior publishes no event. It adds
   one review desk notice to the conversation that asked for the pull
   request. New activity by a person allows one more notice. The notice closes
-  when the conflict is gone.
+  when the conflict is gone, and the next conflict can add a new one.
 - After 3 days without activity by a person, Junior does nothing.
 - An approved pull request would be ready to merge but for the conflict. It
   gets the event after those 2 days too, and without the daily wait, until

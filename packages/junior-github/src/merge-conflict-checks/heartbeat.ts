@@ -18,7 +18,10 @@ import {
   gitHubMergeConflictEvents,
   type GitHubMergeConflict,
 } from "../webhooks/merge-conflict.js";
-import { applyGitHubConflictPolicy } from "./policy.js";
+import {
+  applyGitHubConflictPolicy,
+  closeGitHubConflictNotice,
+} from "./policy.js";
 import {
   claimGitHubConflictCheck,
   listGitHubRepositoriesWithOpenPullRequests,
@@ -91,8 +94,16 @@ async function checkRepository(
     for (const node of search.nodes) {
       if (!node || !("number" in node) || node.state !== "OPEN") continue;
       if (node.mergeable === "UNKNOWN") unknown = true;
-      if (node.mergeable !== "CONFLICTING") continue;
       const ref = { number: node.number, repositoryFullName };
+      if (node.mergeable === "MERGEABLE") {
+        await closeGitHubConflictNotice({
+          db: args.db,
+          log: args.log,
+          ref,
+          reviewItems: args.reviewItems,
+        });
+      }
+      if (node.mergeable !== "CONFLICTING") continue;
       const conflict: GitHubMergeConflict = {
         baseBranch: node.baseRefName,
         headSha: node.headRefOid,
