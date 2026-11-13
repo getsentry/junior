@@ -1,0 +1,249 @@
+/**
+ * Link cards for Google Docs, Sheets, and Slides.
+ *
+ * Junior's own Google account reads the file, so the card shows only when
+ * Drive says that the viewer can open it too. This is the rule of
+ * `searchGoogleFiles`. Any unclear case gets no card. A Doc card also shows
+ * its first paragraph.
+ */
+import type {
+  ObjectAnnotation,
+  ObjectLinkContext,
+  PluginObjectLinkDefinition,
+} from "@sentry/junior-plugin-api";
+import * as z from "zod";
+import { emailDomain, readGoogleConfig } from "../config";
+import {
+  FILE_ID_PATTERN,
+  GOOGLE_FILE_TYPES,
+  googleFileLinkRoot,
+  googleFileType,
+  googleLinkFileType,
+  resourceKeyHeaders,
+  type FileReference,
+  type GoogleFileType,
+} from "../tools/files";
+import { driveQueryString, namedQuery } from "../tools/search-files";
+import { googleApiError, googleApiRequest } from "../tools/shared";
+import { docSummary } from "./summary";
+
+const DISPLAY_TYPES = {
+  document: "Google Doc",
+  presentation: "Google Slides",
+  spreadsheet: "Google Sheet",
+} as const satisfies Record<GoogleFileType, string>;
+
+const linkedFileSchema = z.object({
+  driveId: z.string().optional(),
+  id: z.string(),
+  mimeType: z.string(),
+  modifiedTime: z.string().optional(),
+  name: z.string(),
+  owners: z
+    .array(
+      z.object({
+        displayName: z.string().optional(),
+        emailAddress: z.string().optional(),
+      }),
+    )
+    .optional(),
+  trashed: z.boolean().optional(),
+});
+
+type LinkedFile = z.infer<typeof linkedFileSchema>;
+
+const fileIdsSchema = z.object({
+  files: z.array(z.object({ id: z.string() })).default([]),
+});
+
+function parseFileLink(
+  url: URL,
+): { file: FileReference; type: GoogleFileType } | undefined {
+  const type = googleLinkFileType(url);
+  if (!type) return undefined;
+  const rest = url.pathname.split("/").slice(2);
+  // A signed-in link can name the account: `/document/u/0/d/<id>`.
+  const path =
+    rest[0] === "u" && /^\d+$/.test(rest[1] ?? "") ? rest.slice(2) : rest;
+  const fileId = path[0] === "d" ? (path[1] ?? "") : "";
+  if (!FILE_ID_PATTERN.test(fileId)) return undefined;
+  const resourceKey = url.searchParams.get("resourcekey") ?? undefined;
+  return {
+    file: { fileId, ...(resourceKey ? { resourceKey } : undefined) },
+    type,
+  };
+}
+
+/**
+ * Return whether one Drive query, limited to files with this name, finds
+ * the file. A rejected query or a file past the first page counts as no.
+ */
+async function queryFindsFile(
+  ctx: ObjectLinkContext,
+  file: LinkedFile,
+  terms: string,
+): Promise<boolean> {
+  const response = await googleApiRequest(ctx, {
+    operation: "google.drive.files.list",
+    path: "/drive/v3/files",
+    query: {
+      corpora: "allDrives",
+      fields: "files(id)",
+      includeItemsFromAllDrives: "true",
+      pageSize: "100",
+      q: `name = ${driveQueryString(file.name)} and trashed = false and ${terms}`,
+      supportsAllDrives: "true",
+    },
+  });
+  if (response.status === 400) return false;
+  if (response.status !== 200) {
+    throw googleApiError("google.drive.files.list", response);
+  }
+  return fileIdsSchema
+    .parse(response.body)
+    .files.some((item) => item.id === file.id);
+}
+
+/**
+ * Return whether the viewer can open the file in Drive. The file names the
+ * viewer, anyone can open it, or anyone in the viewer's allowed domain can
+ * open it and that domain owns it. Group shares do not name the viewer.
+ */
+async function viewerCanOpen(
+  ctx: ObjectLinkContext,
+  file: LinkedFile,
+  allowedDomains: string[],
+): Promise<boolean> {
+  const viewer = ctx.viewer.email.toLowerCase();
+  const domain = emailDomain(viewer);
+  // A shared-drive file has no owner, so only a share that names the viewer
+  // counts.
+  const domainOwned =
+    !!domain &&
+    allowedDomains.includes(domain) &&
+    !file.driveId &&
+    (file.owners ?? []).some(
+      (owner) =>
+        !!owner.emailAddress && emailDomain(owner.emailAddress) === domain,
+    );
+  const checks = await Promise.all([
+    queryFindsFile(ctx, file, namedQuery(viewer)),
+    queryFindsFile(
+      ctx,
+      file,
+      "(visibility = 'anyoneWithLink' or visibility = 'anyoneCanFind')",
+    ),
+    domainOwned
+      ? queryFindsFile(
+          ctx,
+          file,
+          "(visibility = 'domainWithLink' or visibility = 'domainCanFind')",
+        )
+      : false,
+  ]);
+  return checks.some(Boolean);
+}
+
+type ParsedFileLink = NonNullable<ReturnType<typeof parseFileLink>>;
+
+// Long enough that the access check and the card share one Drive read. The
+// access queries check `trashed` again, so a trashed file never shows.
+const FILE_READ_TTL_MS = 10_000;
+
+/**
+ * Read the linked file with Junior's account. Nothing when the account
+ * cannot open it, it is trashed, or it is not of the link's type.
+ */
+async function readLinkedFile(
+  ctx: ObjectLinkContext,
+  link: ParsedFileLink,
+): Promise<LinkedFile | null> {
+  const { fileId, resourceKey } = link.file;
+  return await ctx.cache.getOrLoad(
+    `drive-file:${link.type}:${fileId}:${resourceKey ?? ""}`,
+    async () => ({
+      value: await fetchLinkedFile(ctx, link),
+      ttlMs: FILE_READ_TTL_MS,
+    }),
+  );
+}
+
+async function fetchLinkedFile(
+  ctx: ObjectLinkContext,
+  link: ParsedFileLink,
+): Promise<LinkedFile | null> {
+  const response = await googleApiRequest(ctx, {
+    headers: resourceKeyHeaders(link.file),
+    operation: "google.drive.file.get",
+    path: `/drive/v3/files/${link.file.fileId}`,
+    query: {
+      fields:
+        "driveId,id,mimeType,modifiedTime,name,owners(displayName,emailAddress),trashed",
+      supportsAllDrives: "true",
+    },
+  });
+  // Google answers 404 for a file that Junior's account cannot open.
+  if (response.status === 403 || response.status === 404) return null;
+  if (response.status !== 200) {
+    throw googleApiError("google.drive.file.get", response);
+  }
+  const file = linkedFileSchema.parse(response.body);
+  return file.trashed || googleFileType(file.mimeType) !== link.type
+    ? null
+    : file;
+}
+
+async function canViewGoogleFileLink(
+  ctx: ObjectLinkContext,
+  url: URL,
+): Promise<boolean> {
+  const config = readGoogleConfig();
+  const link = parseFileLink(url);
+  const file = config && link && (await readLinkedFile(ctx, link));
+  return !!file && (await viewerCanOpen(ctx, file, config.allowedDomains));
+}
+
+async function resolveGoogleFileLink(
+  ctx: ObjectLinkContext,
+  url: URL,
+): Promise<ObjectAnnotation | undefined> {
+  const link = parseFileLink(url);
+  const file = link && (await readLinkedFile(ctx, link));
+  if (!file) return undefined;
+  const summary =
+    link.type === "document" ? await docSummary(ctx, link.file) : undefined;
+  const owner = file.owners?.[0];
+  const ownerName = (owner?.displayName || owner?.emailAddress)?.trim();
+  const title = file.name.trim() || "Untitled";
+  return {
+    kind: "object",
+    objectType: "document",
+    key: file.id,
+    label: title.slice(0, 80),
+    title: title.slice(0, 512),
+    url: url.href,
+    displayType: DISPLAY_TYPES[link.type],
+    sourceUpdatedAt: file.modifiedTime,
+    facts: {
+      type: "document",
+      summary,
+      owner: ownerName?.slice(0, 160) || undefined,
+      modifiedAt: file.modifiedTime,
+    },
+  };
+}
+
+/** Docs, Sheets, and Slides links that resolve to document cards. */
+export const googleFileLinks: PluginObjectLinkDefinition = {
+  filters: GOOGLE_FILE_TYPES.map(googleFileLinkRoot).flatMap((root) =>
+    [`/${root}/d/`, `/${root}/u/`].map((pathPrefix) => ({
+      host: "docs.google.com",
+      pathPrefix,
+    })),
+  ),
+  canView: canViewGoogleFileLink,
+  objectType: "document",
+  // One tool reads every file type; it takes the type from the link.
+  readTool: "readGoogleFile",
+  resolve: resolveGoogleFileLink,
+};

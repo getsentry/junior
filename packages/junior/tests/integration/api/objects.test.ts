@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { githubPlugin } from "@sentry/junior-github";
 import { createJuniorApi } from "@/api";
+import { createApp, defineJuniorPlugins } from "@/app";
 import type { JuniorApiEnv } from "@/api/route";
 import { objectLinksReportSchema } from "@/api/schema";
 import { appendConversationBrief } from "@/chat/briefs/store";
@@ -16,6 +18,7 @@ import {
   deleteProviderIdentityForUser,
   upsertLinkedIdentity,
 } from "@/chat/identities/sql";
+import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { juniorIdentities } from "@/db/schema";
 import { conversationBriefFixture } from "../../fixtures/conversation-brief";
 import {
@@ -152,6 +155,15 @@ describe("object links API", () => {
       providerSubjectId: "g-alice",
     });
     await linkSlackUser("carol@example.com", "UCAROL");
+    // No Slack Identity and no User name: another Identity names the person.
+    const dave = await resolveViewerUserFromSql(getDb(), "dave@example.com");
+    await upsertLinkedIdentity(getSqlExecutor(), dave!.id, {
+      displayName: "Dave Example",
+      kind: "user",
+      provider: "google",
+      providerSubjectId: "g-dave",
+    });
+    const daveUrl = `${DASHBOARD}/people/${encodeURIComponent("dave@example.com")}`;
     const personUrl = `${DASHBOARD}/people/${encodeURIComponent("alice@example.com")}`;
     const unlinkedUrl = `${DASHBOARD}/people/${encodeURIComponent("carol@example.com")}`;
 
@@ -161,8 +173,10 @@ describe("object links API", () => {
       personUrl,
       "mailto:Alice@Example.com",
       "mailto:nobody@example.com",
-      "https://example.com/unknown",
+      // Other dashboard pages get no card and no fetch.
+      `${DASHBOARD}/automations`,
       unlinkedUrl,
+      daveUrl,
     );
     const person = {
       facts: {
@@ -182,11 +196,48 @@ describe("object links API", () => {
       email: "carol@example.com",
       type: "person",
     });
+    expect(objects.get(daveUrl)).toMatchObject({ label: "Dave Example" });
     expect([...objects.keys()]).toEqual([
       personUrl,
       "mailto:Alice@Example.com",
       unlinkedUrl,
+      daveUrl,
     ]);
+  });
+
+  it("resolves GitHub profile links to known people and GitHub accounts", async () => {
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    // App setup reads the dashboard URL from the environment.
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    const alice = await linkSlackUser("alice@example.com", "UALICE");
+    await upsertLinkedIdentity(getSqlExecutor(), alice.id, {
+      handle: "alice_acme",
+      kind: "user",
+      provider: "github",
+      providerSubjectId: "1001",
+    });
+
+    const { objects } = await (
+      await viewerApi("bob@example.com")
+    )(
+      "https://github.com/Alice_Acme",
+      "https://github.com/octocat",
+      "https://github.com/features",
+    );
+    expect(objects.get("https://github.com/Alice_Acme")).toMatchObject({
+      facts: { email: "alice@example.com", githubHandle: "alice_acme" },
+      objectType: "person",
+      plugin: "github",
+      url: `${DASHBOARD}/people/${encodeURIComponent("alice@example.com")}`,
+    });
+    expect(objects.get("https://github.com/octocat")).toMatchObject({
+      displayType: "GitHub account",
+      facts: { githubHandle: "octocat", type: "person" },
+      label: "@octocat",
+      objectType: "person",
+      url: "https://github.com/octocat",
+    });
+    expect(objects.has("https://github.com/features")).toBe(false);
   });
 
   // Reads in the first seconds after an Identity write skip the cache.

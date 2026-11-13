@@ -3,8 +3,8 @@
  *
  * Junior acts as its own Google Workspace account. A Junior admin connects
  * that account out of band, through the dashboard Admin page or the CLI.
- * Calendar, Docs, Sheets, and Slides tools use host-owned egress, and the
- * sandbox gets no Google credential.
+ * Calendar, Docs, Sheets, and Slides tools and link cards use host-owned
+ * egress, and the sandbox gets no Google credential.
  */
 import {
   defineJuniorPlugin,
@@ -24,6 +24,8 @@ import {
   googleGrantForEgress,
   issueGoogleCredential,
 } from "./credentials";
+import { googleCalendarLinks } from "./links/calendar";
+import { googleFileLinks } from "./links/files";
 import { createGoogleSetupPage, createGoogleSetupRoutes } from "./setup-routes";
 import type { GoogleDb } from "./store";
 import { createCancelCalendarEventTool } from "./tools/cancel-event";
@@ -33,10 +35,8 @@ import { createFindMeetingTimesTool } from "./tools/find-meeting-times";
 import { createInsertGoogleDocContentTool } from "./tools/insert-doc-content";
 import { createListGoogleFileCommentsTool } from "./tools/list-file-comments";
 import { createListCalendarEventsTool } from "./tools/list-events";
-import { createReadGoogleDocTool } from "./tools/read-doc";
+import { createReadGoogleFileTool } from "./tools/read-file";
 import { createReadMeetingTranscriptTool } from "./tools/read-meeting-transcript";
-import { createReadGoogleSheetTool } from "./tools/read-sheet";
-import { createReadGoogleSlidesTool } from "./tools/read-slides";
 import { createReplaceGoogleDocContentTool } from "./tools/replace-doc-content";
 import { createReplaceGoogleDocTextTool } from "./tools/replace-doc-text";
 import { createSearchGoogleFilesTool } from "./tools/search-files";
@@ -63,6 +63,7 @@ export function googlePlugin(): PluginRegistration {
       commands: [createGoogleCliCommand()],
     },
     userPages: [createGoogleSetupPage()],
+    objectLinks: [googleFileLinks, googleCalendarLinks],
     hooks: {
       apiRoutes(ctx) {
         const config = readGoogleConfig();
@@ -92,9 +93,7 @@ export function googlePlugin(): PluginRegistration {
           insertGoogleDocContent: createInsertGoogleDocContentTool(toolContext),
           listCalendarEvents: createListCalendarEventsTool(toolContext),
           listGoogleFileComments: createListGoogleFileCommentsTool(toolContext),
-          readGoogleDoc: createReadGoogleDocTool(toolContext),
-          readGoogleSheet: createReadGoogleSheetTool(toolContext),
-          readGoogleSlides: createReadGoogleSlidesTool(toolContext),
+          readGoogleFile: createReadGoogleFileTool(toolContext),
           readMeetingTranscript: createReadMeetingTranscriptTool(toolContext),
           replaceGoogleDocContent:
             createReplaceGoogleDocContentTool(toolContext),

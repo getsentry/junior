@@ -227,26 +227,6 @@ async function runMemoryCli(fixture: MemoryFixture, argv: string[]) {
   };
 }
 
-async function installViewerCoreTables(fixture: MemoryFixture): Promise<void> {
-  await fixture.execute(`
-CREATE TABLE junior_destinations (
-  id TEXT PRIMARY KEY,
-  provider TEXT NOT NULL,
-  provider_tenant_id TEXT NOT NULL,
-  provider_destination_id TEXT NOT NULL
-);
-CREATE TABLE junior_conversations (
-  conversation_id TEXT PRIMARY KEY,
-  root_conversation_id TEXT,
-  destination_id TEXT
-);
-CREATE TABLE junior_conversation_participants (
-  user_id TEXT NOT NULL,
-  root_conversation_id TEXT NOT NULL
-)
-`);
-}
-
 function unitEmbedding(
   index: number,
   dimensions: number = TEST_EMBEDDING_DIMENSIONS,
@@ -2356,7 +2336,6 @@ describe("memory plugin storage", () => {
     const now = vi.spyOn(Date, "now").mockReturnValue(TEST_NOW_MS);
 
     try {
-      await installViewerCoreTables(fixture);
       const firstContext = slackContext({ teamId: "T123", userId: "U123" });
       const secondContext = slackContext({ teamId: "T456", userId: "U456" });
       const firstStore = createMemoryStore(memoryDb(fixture), firstContext, {

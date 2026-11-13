@@ -69,39 +69,53 @@ function htmlImageSources(html: string): string[] {
   return sources;
 }
 
+// Images that GitHub stores for a description. The id names fixed bytes.
+const GITHUB_ATTACHMENT_PATH = /^\/user-attachments\/assets\/[0-9a-f-]{36}$/i;
+
 /**
- * Keep only images that the dashboard can load without GitHub auth. GitHub
- * attachment URLs (`github.com/user-attachments/...` and
- * `private-user-images.githubusercontent.com`) need auth on private
- * repositories, so only Junior's own public artifacts, under the configured
- * `JUNIOR_BASE_URL`, qualify.
+ * Return where a description image is stored, or nothing when Junior does
+ * not serve it. The dashboard loads each one through the Junior image route:
+ * - `artifact`: Junior's own public artifacts, under `JUNIOR_BASE_URL`.
+ * - `attachment`: `github.com/user-attachments/assets/<id>` images. They
+ *   need the GitHub App credential on private repositories, and GitHub
+ *   redirects them to a short-lived signed URL. Junior never saves the
+ *   signed `private-user-images.githubusercontent.com` URL, because it
+ *   expires in minutes.
  */
-function publicArtifactUrl(value: string): string | undefined {
+export function githubImageKind(
+  url: URL,
+): "artifact" | "attachment" | undefined {
+  if (url.username || url.password || url.href.length > 512) return undefined;
+  if (
+    url.origin === "https://github.com" &&
+    !url.search &&
+    GITHUB_ATTACHMENT_PATH.test(url.pathname)
+  ) {
+    return "attachment";
+  }
   const baseUrl = process.env.JUNIOR_BASE_URL?.trim().replace(/\/+$/, "");
-  if (!baseUrl) return undefined;
-  let url: URL;
-  let prefix: URL;
-  try {
-    url = new URL(value);
-    prefix = new URL(`${baseUrl}/public/artifacts/`);
-  } catch {
+  if (!baseUrl || !URL.canParse(`${baseUrl}/public/artifacts/`)) {
     return undefined;
   }
+  const prefix = new URL(`${baseUrl}/public/artifacts/`);
   return (url.protocol === "https:" || url.protocol === "http:") &&
     url.origin === prefix.origin &&
     url.pathname.length > prefix.pathname.length &&
-    url.pathname.startsWith(prefix.pathname) &&
-    !url.username &&
-    !url.password &&
-    url.href.length <= 512
-    ? url.href
+    url.pathname.startsWith(prefix.pathname)
+    ? "artifact"
     : undefined;
 }
 
+function previewImageUrl(value: string): string | undefined {
+  if (!URL.canParse(value)) return undefined;
+  const url = new URL(value);
+  return githubImageKind(url) ? url.href : undefined;
+}
+
 /**
- * Return the public images in a pull request body, in body order, for card
- * previews. Screenshots often come as a before and after pair, so the
- * dashboard chooses which one to show.
+ * Return the images in a pull request body that Junior serves, in body
+ * order, for card previews. Screenshots often come as a before and after
+ * pair, so the dashboard chooses which one to show.
  */
 export function githubPreviewImageUrls(
   body: string | null | undefined,
@@ -114,7 +128,7 @@ export function githubPreviewImageUrls(
   return [
     ...new Set(
       sources
-        .map(publicArtifactUrl)
+        .map(previewImageUrl)
         .filter((url): url is string => url !== undefined),
     ),
   ];

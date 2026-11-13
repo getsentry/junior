@@ -26,6 +26,7 @@ import {
   type ConversationWorkerResult,
   type ConversationWorkerContext,
 } from "./worker";
+import type { BeforeWorkStops } from "./store";
 import { verifyConversationQueueMessage } from "./queue-signing";
 import { settleConversationTitleWork } from "@/chat/services/conversation-title";
 
@@ -34,6 +35,7 @@ export const CONVERSATION_WORK_DEV_CONSUMER_GROUP =
   "junior_conversation_work_dev";
 
 export interface ProcessConversationQueueMessageOptions {
+  beforeWorkStops?: BeforeWorkStops;
   checkInIntervalMs?: number;
   conversationStore?: ConversationStore;
   /** Slack installation lookup for work that runs after the Run ends. */
@@ -116,6 +118,7 @@ export async function processConversationQueueMessage(
       async (setSpanAttributes) => {
         try {
           const result = await processConversationWork(parsed, {
+            beforeWorkStops: options.beforeWorkStops,
             checkInIntervalMs: options.checkInIntervalMs,
             conversationStore: options.conversationStore,
             getSlackAdapter: options.getSlackAdapter,

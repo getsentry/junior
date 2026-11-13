@@ -2,6 +2,7 @@ import type { SlackAdapter } from "@chat-adapter/slack";
 import type { StateAdapter } from "chat";
 import type { DeliverMessage } from "@/chat/task-execution/assistant-message";
 import { RetryableDeliveryError } from "@/chat/agent/types";
+import { getLocationConfigurationService } from "@/chat/runtime/thread-state";
 import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
 import { isRetryableSlackPostError } from "@/chat/slack/errors";
 import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
@@ -33,6 +34,15 @@ export function createSlackSystemTurnDelivery(args: {
             ...resolveSlackReplyTarget({ destination: location, location }),
             cards,
             conversationId,
+            // Plugin formatting reads the Location defaults, as Slack Turns do.
+            formatting: {
+              configuration: await getLocationConfigurationService({
+                platform: "slack",
+                teamId: location.teamId,
+                channelId: location.channelId,
+              }).resolveValues(),
+              teamId: location.teamId,
+            },
             text,
           }),
       });

@@ -371,6 +371,7 @@ describe("review requested ask", () => {
       plugin: { name: "github" },
       state,
       users: {
+        replaceSlackMentions: async (value: unknown) => value,
         resolveActor: async () => ({
           identity: { id: "identity-requester", provider: "slack" },
           user: { identities: [{ handle: "Requester", provider: "github" }] },

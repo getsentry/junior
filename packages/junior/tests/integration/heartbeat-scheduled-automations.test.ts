@@ -412,6 +412,30 @@ describe("scheduled automation heartbeat", () => {
     });
   }, 30_000);
 
+  it("fails a run whose dispatch does not finish within a day", async () => {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const db = scheduledAutomationDb();
+    const task = createDailyTask({ nextRunAtMs: TEST_RUN_AT_MS });
+    await saveScheduledAutomation(db, task);
+    await runAuthorizedHeartbeat();
+    const stuck = await readScheduledRun(db, `${task.id}:${TEST_RUN_AT_MS}`);
+    expect(stuck).toMatchObject({ status: "running" });
+
+    // The dispatch never finishes.
+    vi.setSystemTime(TEST_NOW_MS + dayMs + 60_000);
+    await runAuthorizedHeartbeat();
+
+    await expect(readScheduledRun(db, stuck!.id)).resolves.toMatchObject({
+      status: "failed",
+      errorMessage: "Scheduled automation run did not finish within 24 hours.",
+    });
+    // The run no longer blocks the Scheduled automation.
+    await expect(readScheduledAutomation(db, task.id)).resolves.toMatchObject({
+      status: "active",
+      nextRunAtMs: TEST_RUN_AT_MS + 2 * dayMs,
+    });
+  }, 30_000);
+
   it("dispatches a skill run with the skill named in the dispatch", async () => {
     const removeSkills = await installTestSkills([
       {

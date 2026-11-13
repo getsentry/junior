@@ -3,7 +3,9 @@ import {
   getDashboardPersonLink,
   parseDashboardPersonLink,
 } from "@/chat/dashboard-link";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
+import { juniorIdentities, juniorUsers } from "@/db/schema";
 import { userAvatarUrlsFromIdentities } from "@/chat/identities/avatar";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { readCachedUserByEmail } from "@/chat/identities/user-cache";
@@ -52,8 +54,11 @@ export async function resolvePersonLink(
       userId: user.id,
     })),
   ).get(user.id);
-  const fullName =
-    user.displayName?.trim() || (slack ?? user).displayName?.trim();
+  // Without a User name, the Slack name wins over the name of any other
+  // Identity.
+  const fullName = [user, slack, ...identities]
+    .map((source) => source?.displayName?.trim())
+    .find(Boolean);
   return personObjectCard({
     ...(githubHandle ? { githubHandle } : undefined),
     person: {
@@ -64,4 +69,30 @@ export async function resolvePersonLink(
     },
     url: canonicalUrl,
   });
+}
+
+/**
+ * Resolve the card of the one known person who linked this provider account.
+ * Only account-linking flows put a provider Identity on a User, so the match
+ * is verified. Two people with the same handle get no card.
+ */
+export async function resolvePersonByAccount(account: {
+  handle: string;
+  provider: string;
+}): Promise<ObjectAnnotation | undefined> {
+  const rows = await getDb()
+    .selectDistinct({ email: juniorUsers.primaryEmail })
+    .from(juniorIdentities)
+    .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .where(
+      and(
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, account.provider),
+        isNotNull(juniorIdentities.userId),
+        sql`lower(${juniorIdentities.handle}) = lower(${account.handle})`,
+      ),
+    )
+    .limit(2);
+  const link = rows.length === 1 && getDashboardPersonLink(rows[0]!.email);
+  return link ? await resolvePersonLink(new URL(link)) : undefined;
 }

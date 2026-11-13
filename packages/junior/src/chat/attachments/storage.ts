@@ -4,11 +4,25 @@ import { createMemoryAttachmentStorage } from "./memory";
 import { createS3AttachmentStorage } from "./s3";
 import { createVercelAttachmentStorage } from "./vercel";
 
-/** Bytes and metadata written to attachment object storage. */
+/**
+ * One object write. `body` streams, so a large file never sits in memory.
+ * `bytes` is the exact body length: S3 needs it before the body starts.
+ */
 export interface AttachmentWrite {
-  body: Buffer;
+  body: ReadableStream<Uint8Array>;
+  bytes: number;
   contentType: string;
   key: string;
+}
+
+/** Stream bytes that are already in memory to `AttachmentStorage.put`. */
+export function bufferBody(data: Uint8Array): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(data);
+      controller.close();
+    },
+  });
 }
 
 /** Inclusive byte offsets inside one stored object. */

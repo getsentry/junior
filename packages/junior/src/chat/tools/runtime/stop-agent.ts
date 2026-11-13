@@ -34,7 +34,7 @@ export function createStopAgentTool(conversationId: string) {
           .trim()
           .min(1)
           .describe(
-            "Child conversation ID from spawnAgent or searchAgents to stop",
+            "Child conversation ID from spawnAgent or listAgents to stop",
           ),
       })
       .strict(),
@@ -46,7 +46,7 @@ export function createStopAgentTool(conversationId: string) {
       });
       if (!stopped) {
         throw new ToolInputError(
-          `${input.conversation_id} is not a child agent of this conversation. Use searchAgents to find its conversation_id.`,
+          `${input.conversation_id} is not a child agent of this conversation. Use listAgents to find its conversation_id.`,
         );
       }
       return {
