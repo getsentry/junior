@@ -452,7 +452,7 @@ describe("display text object links", () => {
       <KnownObjectsProvider
         annotations={[
           {
-            ...annotations[5]!,
+            ...annotations.find((annotation) => annotation.key === PAGE)!,
             facts: {
               type: "web_page" as const,
               author: "Morgan Lee",
