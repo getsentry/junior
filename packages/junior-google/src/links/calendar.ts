@@ -48,8 +48,9 @@ type LinkedEvent = z.infer<typeof linkedEventSchema>;
  * `calendarEmail`. The `eid` value is base64 for `<eventId> <calendar>`.
  */
 function parseEventLink(url: URL, calendarEmail: string): string | undefined {
+  // The query parser reads a base64 `+` as a space. Put it back.
   const eid =
-    url.searchParams.get("eid") ??
+    url.searchParams.get("eid")?.replaceAll(" ", "+") ??
     (url.pathname.includes("/eventedit/")
       ? url.pathname.split("/").at(-1)
       : undefined);
@@ -70,8 +71,12 @@ function parseEventLink(url: URL, calendarEmail: string): string | undefined {
  */
 function eventWhen({ start, end }: LinkedEvent): string | undefined {
   if (start.dateTime && end.dateTime) {
+    // `timeZone` is optional. Then the offset in `dateTime` gives the
+    // event's clock time.
+    const offset = /[+-]\d{2}:\d{2}$/.exec(start.dateTime)?.[0];
     const timeZone =
-      start.timeZone && isTimeZone(start.timeZone) ? start.timeZone : "UTC";
+      [start.timeZone, offset].find((zone) => zone && isTimeZone(zone)) ??
+      "UTC";
     return formatInterval(
       Date.parse(start.dateTime),
       Date.parse(end.dateTime),

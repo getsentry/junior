@@ -253,6 +253,41 @@ describe("Google link cards", () => {
       ).resolves.toMatchObject({ key: "evt123abc" });
     });
 
+    it("shows the event's offset time when it has no time zone", async () => {
+      await expect(
+        resolveAs(
+          "alice@example.com",
+          fakeGoogle({
+            event: {
+              ...EVENT,
+              start: { dateTime: "2026-10-05T10:00:00-07:00" },
+              end: { dateTime: "2026-10-05T10:30:00-07:00" },
+            },
+          }),
+          "calendar_event",
+          EVENT_URL,
+        ),
+      ).resolves.toMatchObject({
+        facts: { when: "Mon, Oct 5, 10:00 – 10:30 GMT-7" },
+      });
+    });
+
+    it("reads an eid that has a base64 plus sign", async () => {
+      // This address makes the eid `ZXZ0MTIzYWJjIGp+bmlvckBleGFtcGxlLmNvbQ==`.
+      vi.stubEnv("GOOGLE_WORKSPACE_ACCOUNT_EMAIL", "j~nior@example.com");
+      const url = `https://www.google.com/calendar/event?eid=${eid("j~nior@example.com")}`;
+      expect(url).toContain("+");
+
+      await expect(
+        resolveAs(
+          "alice@example.com",
+          fakeGoogle({ event: EVENT }),
+          "calendar_event",
+          url,
+        ),
+      ).resolves.toMatchObject({ key: "evt123abc" });
+    });
+
     it("shows the date of an all-day event", async () => {
       await expect(
         resolveAs(
