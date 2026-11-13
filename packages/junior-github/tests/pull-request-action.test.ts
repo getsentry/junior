@@ -175,8 +175,9 @@ function route(
   calls: ReviewItemCall[],
   errors: string[] = [],
   failures = { close: 0 },
+  /** Keys of the closed items from before one item per pull request. */
+  legacyCloses: string[] = [],
 ): PluginRoute {
-  // Closes of the items from before one item per pull request are left out.
   const isReady = (dedupeKey: string) => dedupeKey === DEDUPE_KEY;
   const reviewItems: PluginConversationReviewItems = {
     forConversation(conversationId) {
@@ -186,7 +187,10 @@ function route(
           calls.push({ conversationId, kind: "upsert", notice });
         },
         async close(input) {
-          if (!isReady(input.dedupeKey)) return;
+          if (!isReady(input.dedupeKey)) {
+            legacyCloses.push(input.dedupeKey);
+            return;
+          }
           if (failures.close > 0) {
             failures.close -= 1;
             throw new Error("review desk is down");
@@ -461,12 +465,21 @@ describe("next action item", () => {
     mockGitHub(github, []);
     try {
       await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
-      const webhook = route(fixture, calls);
+      const legacyCloses: string[] = [];
+      const webhook = route(fixture, calls, [], { close: 0 }, legacyCloses);
       await webhook.handler(pullRequestAction("review_requested"));
       expect(calls).toEqual([]);
+      // Each check closes the items from before one item per pull request.
+      expect(legacyCloses).toEqual([
+        "pull-request-ready:getsentry/junior#946",
+        "pull-request-review-requested:getsentry/junior#946",
+      ]);
 
       // The GitHub login matches the requester's linked account in any case.
+      // A new pull request often has no merge state yet, and the review ask
+      // does not wait for it.
       github.requestedReviewers = ["requester"];
+      github.mergeableStates = [null];
       await webhook.handler(pullRequestAction("review_requested"));
       const review = {
         conversationId: "slack:C123:1712345.0001",
@@ -487,6 +500,7 @@ describe("next action item", () => {
       expect(calls).toEqual([review]);
 
       github.requestedReviewers = [];
+      github.mergeableStates = ["blocked"];
       await webhook.handler(pullRequestAction("review_request_removed"));
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",

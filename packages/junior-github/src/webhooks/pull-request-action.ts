@@ -62,8 +62,8 @@ const ACTION_EVENTS: Record<string, ReadonlySet<string>> = {
 
 /**
  * Keys of the two items that came before the one item per pull request.
- * Junior closes them when the action changes or the pull request closes, so
- * no old item stays open. Remove them when no item from before is open.
+ * Each check closes them, so no old item stays open next to the new one.
+ * Remove them when no item from before is open.
  */
 const LEGACY_DEDUPE_PREFIXES = [
   "pull-request-ready:",
@@ -109,20 +109,23 @@ export function pullRequestActionTargets(
 }
 
 /**
- * Derive the requester's next action. Return undefined when GitHub has not
- * computed the merge state yet, so the action cannot be known.
+ * Derive the requester's next action. Return undefined when it cannot be
+ * known yet, so a later event decides.
  */
 function nextAction(
   state: GitHubPullRequestMergeState,
   requesterLogin: string | undefined,
+  saved: GitHubPullRequestAction | undefined,
 ): { action?: GitHubPullRequestAction } | undefined {
   if (state.state !== "open") return {};
   // With auto-merge on, GitHub merges it, so no person needs to.
   const canMerge = !state.draft && !state.autoMerge;
-  if (canMerge && !state.mergeableState) return undefined;
   if (canMerge && state.mergeableState === "clean" && state.approved) {
     return { action: "merge" };
   }
+  // GitHub has not computed the merge state yet, such as after a push. The
+  // merge can still be the action, so it stays until a later event decides.
+  if (canMerge && !state.mergeableState && saved === "merge") return undefined;
   const login = requesterLogin?.toLowerCase();
   if (
     login &&
@@ -132,6 +135,7 @@ function nextAction(
   ) {
     return { action: "review" };
   }
+  if (canMerge && !state.mergeableState) return undefined;
   return {};
 }
 
@@ -239,7 +243,7 @@ async function syncOne(
   while (requests !== undefined) {
     try {
       const state = await loadPullRequestMergeState(args.env, target);
-      const next = nextAction(state, requesterLogin);
+      const next = nextAction(state, requesterLogin, saved);
       // Act only on a change. So repeat events add no second item, and an
       // item that a person closed does not come back until the action
       // changes. When the action cannot be known yet, a later event decides.
@@ -254,9 +258,7 @@ async function syncOne(
           state,
         });
       }
-      if (changed || state.state !== "open") {
-        await closeLegacyItems(items, name);
-      }
+      await closeLegacyItems(items, name);
       if (changed) {
         // Save after the items change, so a failure leaves the old action
         // and the next event tries again.
