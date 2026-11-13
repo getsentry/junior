@@ -1,5 +1,5 @@
 import { Inbox } from "lucide-react";
-import type { ReactNode } from "react";
+import { use, type ReactNode } from "react";
 import { Link } from "react-router";
 import type {
   ReviewItemChangeRecord,
@@ -7,6 +7,7 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { MessageCard, MessageCardHeader } from "../components/MessageCard";
+import { TranscriptBackToBackAnswers } from "../conversations/transcriptBackToBackAnswers";
 import { useConversationReviewItemData } from "./queries";
 import {
   answerLine,
@@ -23,7 +24,8 @@ const CHANGE_VERBS = {
 
 // The change reads as the person's reply to a question: a quote line names
 // the item, and an answer is the message text. Only the "Asked" record is a
-// card, so the question and its answer do not repeat the same card.
+// card, so the question and its answer do not repeat the same card. Right
+// under its question, an answer needs no quote line.
 function ChangeRow(props: {
   item: ReviewItemPayload;
   record: ReviewItemChangeRecord;
@@ -35,26 +37,32 @@ function ChangeRow(props: {
     record.kind === "submitted" && item.request && item.answer
       ? answerRows(item.request, item.answer)
       : [];
+  const backToBack =
+    use(TranscriptBackToBackAnswers).has(item.id) &&
+    record.kind === "submitted" &&
+    rows.length > 0;
   return (
     <section
       aria-label={`${verb} ${item.title}`}
       className="grid min-w-0 gap-1.5"
     >
-      <p className="m-0 flex min-w-0 items-center gap-1.5 border-l-2 border-dashboard-border-emphasis pl-2 text-sm text-dashboard-text-muted">
-        <span className="shrink-0">{verb}</span>
-        <Link
-          className="min-w-0 truncate text-dashboard-text-muted no-underline hover:text-dashboard-text hover:underline focus-visible:outline-dashboard-focus"
-          title={item.title}
-          to={reviewItemPath(item.id)}
-        >
-          {item.title}
-        </Link>
-      </p>
+      {backToBack ? null : (
+        <p className="m-0 flex min-w-0 items-center gap-1.5 border-l-2 border-dashboard-border-emphasis pl-2 text-sm text-dashboard-text-muted">
+          <span className="shrink-0">{verb}</span>
+          <Link
+            className="min-w-0 truncate text-dashboard-text-muted no-underline hover:text-dashboard-text hover:underline focus-visible:outline-dashboard-focus"
+            title={item.title}
+            to={reviewItemPath(item.id)}
+          >
+            {item.title}
+          </Link>
+        </p>
+      )}
       {rows.length ? (
         <dl className="m-0 grid gap-1.5 font-sans text-base leading-relaxed">
           {rows.map((row) => (
             <div key={row.label}>
-              {/* One answer needs no label: the quote names the question. */}
+              {/* One answer needs no label: a quote or the question names it. */}
               <dt
                 className={
                   rows.length > 1
@@ -156,10 +164,13 @@ export function ReviewItemAskRow(props: {
     props.conversationId,
     props.itemId,
   );
+  const backToBack = use(TranscriptBackToBackAnswers).has(props.itemId);
   if (isError) return props.fallback;
   if (!item) return null;
   const verb = item.kind === "action" ? "Asked" : "Added";
-  const outcome = askOutcome(item);
+  // The answer row right below shows the answer.
+  const outcome =
+    backToBack && item.status === "done" ? undefined : askOutcome(item);
   return (
     // The transcript marks the row for a moment when its question docks.
     <MessageCard

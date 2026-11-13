@@ -59,6 +59,10 @@ import {
 } from "./TranscriptMessageView";
 import { TranscriptEventView } from "./TranscriptEventView";
 import {
+  backToBackAnswerItemIds,
+  TranscriptBackToBackAnswers,
+} from "./transcriptBackToBackAnswers";
+import {
   isAutomationTriggerMessage,
   TranscriptAutomationTriggerView,
 } from "./TranscriptAutomationTriggerView";
@@ -602,6 +606,10 @@ function TranscriptEntryList(
     return () => observer.disconnect();
   }, [askIndex, askReveal]);
   useEffect(() => () => window.clearTimeout(askHighlight.current?.timer), []);
+  const backToBackAnswers = useMemo(
+    () => backToBackAnswerItemIds(rows),
+    [rows],
+  );
   const anchorKey = props.scrollAnchorKey?.();
   const markerIndex = indexByKey.get(UNREAD_MARKER_KEY);
   // A memory row can sit at its event or on the message before it.
@@ -690,7 +698,7 @@ function TranscriptEntryList(
   }
 
   return (
-    <>
+    <TranscriptBackToBackAnswers value={backToBackAnswers}>
       <TranscriptOpenRows value={openRows}>
         <TranscriptReplyRatings value={replyRatings}>
           <div
@@ -715,7 +723,7 @@ function TranscriptEntryList(
         </TranscriptReplyRatings>
       </TranscriptOpenRows>
       {thinking}
-    </>
+    </TranscriptBackToBackAnswers>
   );
 }
 
