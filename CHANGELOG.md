@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.301.0
+
+Users gain memory-aware replies, safer previews, faster recovery, accessible transcripts, broader embeds, and more capable plugin testing.
+
+### New Features ✨
+
+Replies show memory chips; admins reopen warming; GitHub adds access-controlled previews and links; readOnlyHint-only MCP tools skip Guardian; plugins must add canView.
+
+#### Dashboard
+
+- Show a Turn's memories under its reply by @betegon with @sentry-junior in [#3309](https://github.com/getsentry/junior/pull/3309)
+- Let admins turn cache warming back on after the breaker opens by @BYK with @sentry-junior in [#3375](https://github.com/getsentry/junior/pull/3375)
+
+#### Github
+
+- Load PR description images through the image proxy by @BYK with @sentry-junior in [#3370](https://github.com/getsentry/junior/pull/3370)
+- Link GitHub references and accounts in Slack and the dashboard by @BYK with @sentry-junior in [#3343](https://github.com/getsentry/junior/pull/3343)
+
+#### Other
+
+- (guardian) Skip review of read-only auto tools by @dcramer with @sentry-junior in [#3332](https://github.com/getsentry/junior/pull/3332)
+- (links) Require a canView access check on every link type by @BYK with @sentry-junior in [#3376](https://github.com/getsentry/junior/pull/3376)
+
+### Bug Fixes 🐛
+
+- (cache-warming) Pause warming for 30 minutes when the breaker opens by @BYK with @sentry-junior in [#3371](https://github.com/getsentry/junior/pull/3371)
+- (dashboard) Hide transcript focus ring after a click by @betegon with @sentry-junior in [#3378](https://github.com/getsentry/junior/pull/3378)
+- (deps) Upgrade @vercel/sandbox to 4.0.0 by @sentry-junior in [#3366](https://github.com/getsentry/junior/pull/3366)
+
+### Internal Changes 🔧
+
+- (objects) Replace the generated oEmbed list with a short hand-kept one by @BYK with @sentry-junior in [#3369](https://github.com/getsentry/junior/pull/3369)
+- (testing) Share one Postgres harness for plugin packages by @sentry-junior in [#3144](https://github.com/getsentry/junior/pull/3144)
+
 ## 0.300.0
 
 The release broadens file, attachment, image, review, tracing, linting, and meeting workflows while making execution, scheduling, and publishing more dependable.
