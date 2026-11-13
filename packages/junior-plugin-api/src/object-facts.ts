@@ -95,6 +95,9 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     summary: summary.optional(),
     siteName: text.optional(),
     author: text.optional(),
+    // A video or image page. A link alone on its line shows only the
+    // thumbnail of such a page.
+    media: z.enum(["video", "image"]).optional(),
     // A Junior image path. Browsers never load a third-party image URL.
     thumbnailUrl: z
       .string()

@@ -14,6 +14,7 @@ export interface PageMeta {
   description?: string;
   /** Image candidates, best first. A page can list one Junior cannot use. */
   images: string[];
+  media?: "video";
   siteName?: string;
   title?: string;
 }
@@ -69,6 +70,12 @@ export function parsePageMeta(html: string): PageMeta {
       "twitter:image",
       "twitter:image:src",
     ].flatMap((name) => tags.get(name) ?? []),
+    // Open Graph marks a video page with `og:type` `video.*` or `og:video`.
+    media:
+      tags.get("og:type")?.startsWith("video") ||
+      first("og:video", "og:video:url")
+        ? "video"
+        : undefined,
     siteName: first("og:site_name", "application-name"),
     title: first("og:title", "twitter:title") ?? title,
   };

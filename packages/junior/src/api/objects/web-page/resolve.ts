@@ -35,6 +35,7 @@ type Page = {
   cacheAgeSeconds?: number;
   description?: string;
   images: string[];
+  media?: "video" | "image";
   siteName?: string;
   title?: string;
 };
@@ -61,6 +62,13 @@ async function readOembed(url: URL): Promise<Page | undefined> {
     author: oembed.author_name,
     cacheAgeSeconds: oembed.cache_age,
     images: oembed.thumbnail_url ? [oembed.thumbnail_url] : [],
+    // oEmbed calls an image a `photo`.
+    media:
+      oembed.type === "video"
+        ? "video"
+        : oembed.type === "photo"
+          ? "image"
+          : undefined,
     siteName: oembed.provider_name,
     title: oembed.title,
   };
@@ -116,6 +124,7 @@ async function loadWebPage(
     value: webPageObjectCard({
       author: page.author,
       description: page.description,
+      media: page.media,
       siteName: page.siteName ?? url.hostname,
       thumbnailUrl: thumbnailPath(page.images, page.pageUrl),
       title: page.title,

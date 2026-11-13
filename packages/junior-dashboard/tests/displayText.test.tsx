@@ -162,19 +162,94 @@ describe("display text tokens", () => {
 
 describe("display text object links", () => {
   const PR = "https://github.com/acme/app/pull/7";
+  const PERSON = "https://junior.example.com/people/dev%40example.com";
+  const CONVERSATION = "https://junior.example.com/conversations/slack%3AC1";
+  const DOC = "https://docs.google.com/document/d/doc1/edit";
+  const MESSAGE = "https://acme.slack.com/archives/C1/p1770021700000100";
+  const PAGE = "https://blog.example.com/posts/release";
+  const VIDEO = "https://www.youtube.com/watch?v=demo";
+  const saved = {
+    createdAt: "2026-08-07T08:00:00.000Z",
+    kind: "object" as const,
+    updatedAt: "2026-08-07T08:00:00.000Z",
+  };
   const annotations = [
     {
-      createdAt: "2026-08-07T08:00:00.000Z",
+      ...saved,
       displayType: "Pull request",
       key: "acme/app#7",
-      kind: "object" as const,
       label: "acme/app#7",
       objectType: "code_change" as const,
       plugin: "github",
       status: "open",
       title: "Retry checkout writes",
-      updatedAt: "2026-08-07T08:00:00.000Z",
       url: PR,
+    },
+    {
+      ...saved,
+      displayType: "Person",
+      key: "dev@example.com",
+      label: "Morgan Lee",
+      objectType: "person" as const,
+      plugin: "junior",
+      title: "Morgan Lee",
+      url: PERSON,
+    },
+    {
+      ...saved,
+      displayType: "Conversation",
+      key: "slack:C1",
+      label: "Investigate checkout latency",
+      objectType: "conversation" as const,
+      plugin: "junior",
+      status: "running",
+      title: "Investigate checkout latency",
+      url: CONVERSATION,
+    },
+    {
+      ...saved,
+      displayType: "Google Doc",
+      key: "doc1",
+      label: "Release checklist",
+      objectType: "document" as const,
+      plugin: "google",
+      title: "Release checklist",
+      url: DOC,
+    },
+    {
+      ...saved,
+      displayType: "Message",
+      key: "slack:C1:1770021700.000100",
+      label: "#proj-release",
+      objectType: "message" as const,
+      plugin: "junior",
+      title: "Hold the deploy until the pin lands.",
+      url: MESSAGE,
+    },
+    {
+      ...saved,
+      displayType: "Web page",
+      key: PAGE,
+      label: "Release notes",
+      objectType: "web_page" as const,
+      plugin: "junior",
+      title: "Release notes",
+      url: PAGE,
+    },
+    {
+      ...saved,
+      displayType: "Web page",
+      facts: {
+        type: "web_page" as const,
+        media: "video" as const,
+        thumbnailUrl: "/api/images/demo.signature?w=640",
+      },
+      key: VIDEO,
+      label: "Launch demo",
+      objectType: "web_page" as const,
+      plugin: "junior",
+      title: "Launch demo",
+      url: VIDEO,
     },
   ];
 
@@ -186,24 +261,90 @@ describe("display text object links", () => {
     );
   }
 
-  it("shows a bare URL in a sentence or a list as a chip", () => {
+  function anchors(html: string) {
+    return [...html.matchAll(/<a [^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/g)].map(
+      ([anchor, href, label]) => ({ anchor, href, label }),
+    );
+  }
+
+  function cardCount(html: string, name: string) {
+    return html.split(`aria-label="${name}"`).length - 1;
+  }
+
+  it("shows a bare URL in a sentence or a list as a plain link with its title", () => {
     for (const text of [`Opened ${PR} for review.`, `- ${PR}`, `> ${PR}`]) {
       const html = render(text);
-      expect(html).toContain(`href="${PR}"`);
-      expect(html).toContain("acme/app#7");
-      expect(html).toContain("· Open");
-      expect(html).not.toContain(">Retry checkout writes<");
-      expect(html).not.toContain(`>${PR}<`);
+      expect(anchors(html)).toEqual([
+        expect.objectContaining({
+          href: PR,
+          label: "Retry checkout writes (#7)",
+        }),
+      ]);
+      expect(html).not.toContain("· Open");
+      expect(html).not.toContain("Latest saved state");
     }
+  });
+
+  it("shows only plain links in a paragraph of links, and a person as a chip", () => {
+    const html = render(
+      `Next, ${PERSON} picks up ${CONVERSATION}. Track it in ${DOC}, hold: ${MESSAGE}, and read ${PAGE}`,
+    );
+    const links = anchors(html);
+    expect(links.map((link) => link.label?.replace(/<[^>]+>/g, ""))).toEqual([
+      "Morgan Lee",
+      "Investigate checkout latency",
+      "Release checklist",
+      "#proj-release",
+      "Release notes",
+    ]);
+    const [person, ...rest] = links;
+    expect(person!.anchor).toContain("border");
+    expect(person!.label).toMatch(/<(svg|img|span)[^>]*aria-hidden/);
+    for (const link of rest) {
+      expect(link.label).not.toMatch(/<(svg|img)/);
+      expect(link.anchor).not.toMatch(/border|bg-/);
+    }
+    // No status, and no outbound icon: the person icon is the only one.
+    expect(html).not.toContain(" · ");
+    expect(html.split("<svg").length - 1).toBe(1);
   });
 
   it("shows a bare URL alone in a paragraph as the full card", () => {
     for (const text of [`Done.\n\n${PR}/\n\nThanks.`, `<${PR}>`]) {
       const html = render(text);
-      expect(html).toContain(
-        'aria-label="Pull request: Retry checkout writes"',
-      );
+      expect(cardCount(html, "Pull request: Retry checkout writes")).toBe(1);
       expect(html).toContain("Latest saved state");
+    }
+  });
+
+  it("shows a card for a URL of any type alone on its line", () => {
+    for (const [url, name] of [
+      [PERSON, "Person: Morgan Lee"],
+      [CONVERSATION, "Conversation: Investigate checkout latency"],
+      [DOC, "Google Doc: Release checklist"],
+      [MESSAGE, "Message: Hold the deploy until the pin lands."],
+      [PAGE, "Web page: Release notes"],
+    ] as const) {
+      expect(cardCount(render(`Done.\n\n${url}`), name)).toBe(1);
+    }
+  });
+
+  it("shows only the thumbnail of a video alone on its line", () => {
+    const html = render(`Demo:\n\n${VIDEO}`);
+    expect(html).toMatch(
+      /<a [^>]*href="https:\/\/www.youtube.com\/watch\?v=demo"[^>]*><img alt="Launch demo"[^>]*src="\/api\/images\/demo.signature\?w=640"/,
+    );
+    expect(cardCount(html, "Web page: Launch demo")).toBe(0);
+  });
+
+  it("shows one card for a URL repeated in a message", () => {
+    for (const text of [
+      `${PR}\n\nAgain:\n\n${PR}`,
+      `${PR}\n\n\`\`\`\ncode\n\`\`\`\n\n${PR}`,
+    ]) {
+      const html = render(text);
+      expect(cardCount(html, "Pull request: Retry checkout writes")).toBe(1);
+      expect(html).toContain(">Retry checkout writes (#7)</a>");
     }
   });
 
