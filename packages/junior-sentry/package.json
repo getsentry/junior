@@ -23,10 +23,12 @@
   },
   "files": [
     "dist",
+    "migrations",
     "skills"
   ],
   "scripts": {
     "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "db:generate": "pnpm exec drizzle-kit generate --config drizzle.config.ts",
     "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tests tsup.config.ts vitest.config.ts",
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
@@ -35,6 +37,7 @@
   },
   "dependencies": {
     "@sentry/junior-plugin-api": "workspace:*",
+    "drizzle-orm": "catalog:",
     "mdast-util-from-markdown": "^2.0.3",
     "mdast-util-gfm": "^3.1.0",
     "micromark-extension-gfm": "^3.0.0",
@@ -45,6 +48,7 @@
     "@sentry/junior-testing": "workspace:*",
     "@types/mdast": "^4.0.4",
     "@types/node": "^25.9.1",
+    "drizzle-kit": "catalog:",
     "oxlint": "^1.79.0",
     "tsup": "^8.5.1",
     "typescript": "^7.0.2",

@@ -31,42 +31,42 @@ describe("sentry org read access", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("uses the org read token for reads and user OAuth for writes", () => {
+  it("uses the org read token for reads and user OAuth for writes", async () => {
     const orgRead = {
       name: "org-read",
       access: "read",
       reason: "sentry.org-read",
     };
-    expect(
+    await expect(
       grantFor(
         "GET",
         "https://us.sentry.io/api/0/organizations/sentry/issues/",
       ),
-    ).toEqual(orgRead);
-    expect(
+    ).resolves.toEqual(orgRead);
+    await expect(
       grantFor("GET", "https://sentry.io/api/0/projects/sentry/junior/events/"),
-    ).toEqual(orgRead);
-    expect(grantFor("GET", "https://sentry.io/api/0/issues/123/")).toEqual(
-      orgRead,
-    );
+    ).resolves.toEqual(orgRead);
+    await expect(
+      grantFor("GET", "https://sentry.io/api/0/issues/123/"),
+    ).resolves.toEqual(orgRead);
     // Explore queries are GET requests.
-    expect(
+    await expect(
       grantFor(
         "GET",
         "https://us.sentry.io/api/0/organizations/sentry/events/?dataset=spans&field=span.op",
       ),
-    ).toEqual(orgRead);
+    ).resolves.toEqual(orgRead);
 
     // Writes and user endpoints keep user OAuth.
-    expect(
+    await expect(
       grantFor(
         "PUT",
         "https://sentry.io/api/0/organizations/sentry/issues/123/",
       ),
-    ).toBeUndefined();
-    expect(
+    ).resolves.toBeUndefined();
+    await expect(
       grantFor("GET", "https://sentry.io/api/0/users/me/regions/"),
-    ).toBeUndefined();
+    ).resolves.toBeUndefined();
   });
 
   it("issues the configured token for the org read grant", async () => {
@@ -95,11 +95,11 @@ describe("sentry org read access", () => {
     });
   });
 
-  it("keeps every request on user OAuth without a configured token", () => {
+  it("keeps every request on user OAuth without a configured token", async () => {
     delete process.env.SENTRY_READ_TOKEN;
 
-    expect(
+    await expect(
       grantFor("GET", "https://sentry.io/api/0/organizations/sentry/issues/"),
-    ).toBeUndefined();
+    ).resolves.toBeUndefined();
   });
 });

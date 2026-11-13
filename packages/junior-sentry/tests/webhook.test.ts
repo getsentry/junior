@@ -91,11 +91,23 @@ function signedRequest(
   return signedRawRequest(JSON.stringify(body), options);
 }
 
+/** The internal integration alone reads no installation records. */
+const noAppContext = {
+  cache: {
+    async getOrLoad() {
+      throw new Error("The internal integration reads no installations.");
+    },
+  },
+  db: undefined,
+};
+
 function routeFixture() {
   const events: EventInput[] = [];
   return {
     events,
     route: createSentryWebhookRoute({
+      appConfig: () => undefined,
+      ctx: noAppContext,
       events: {
         async publish(event) {
           events.push(event);
@@ -166,16 +178,19 @@ describe("Sentry webhook events", () => {
       normalizeSentryEvents(delivery),
     );
 
-    // The org part is dropped: the install already fixes the org.
     const toMatch = (event: { identifier: string }): EventMatch | undefined => {
       // Saved identifiers went through the plugin's `normalizeIdentifier`.
       const identifier = event.identifier.toLowerCase();
-      const alert = /^metric-alert:[^/]+\/(\d+)$/.exec(identifier);
-      if (alert) return { alertRuleId: alert[1]! };
-      const scope = /^[^/]+\/([^/#]+)(?:#(\d+))?$/.exec(identifier);
+      const alert = /^metric-alert:([^/]+)\/(\d+)$/.exec(identifier);
+      if (alert) return { org: alert[1]!, alertRuleId: alert[2]! };
+      const scope = /^([^/]+)\/([^/#]+)(?:#(\d+))?$/.exec(identifier);
       if (!scope) return undefined;
-      const [, project, issueId] = scope;
-      return { projects: [project!], ...(issueId ? { issueId } : undefined) };
+      const [, org, project, issueId] = scope;
+      return {
+        org: org!,
+        projects: [project!],
+        ...(issueId ? { issueId } : undefined),
+      };
     };
 
     expect(
@@ -213,6 +228,7 @@ describe("Sentry webhook events", () => {
     ).toEqual([
       {
         data: {
+          org: "sentry",
           projects: ["junior"],
           issueCategory: "error",
           issueId: "7513266773",
@@ -255,6 +271,7 @@ describe("Sentry webhook events", () => {
     ).toEqual([
       {
         data: {
+          org: "sentry",
           projects: ["junior"],
           alertRuleId: "7",
           incidentId: "4",
@@ -437,6 +454,8 @@ describe("Sentry webhook events", () => {
 
   it("propagates publisher failures so Sentry can retry", async () => {
     const route = createSentryWebhookRoute({
+      appConfig: () => undefined,
+      ctx: noAppContext,
       events: {
         async publish() {
           throw new Error("queue unavailable");
