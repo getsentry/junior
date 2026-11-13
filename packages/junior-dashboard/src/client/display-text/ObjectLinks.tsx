@@ -126,7 +126,16 @@ function objectLinkText(card: OwnedObjectAnnotation): string {
     card.title.length > MAX_LINK_TITLE_CHARS
       ? `${card.title.slice(0, MAX_LINK_TITLE_CHARS - 1).trimEnd()}…`
       : card.title;
-  return label && !card.title.includes(label) ? `${title} (${label})` : title;
+  return labelRepeatsTitle(card) ? title : `${title} (${label})`;
+}
+
+// A link without a title of its own uses its label as the title, and a long
+// title can be cut short as the label. Neither label adds anything.
+function labelRepeatsTitle(card: OwnedObjectAnnotation): boolean {
+  if (!card.label || card.label === card.title) return true;
+  return (
+    card.label.endsWith("…") && card.title.startsWith(card.label.slice(0, -1))
+  );
 }
 
 /** Return the thumbnail of a video or image page, the only part it shows alone. */

@@ -285,6 +285,28 @@ describe("display text object links", () => {
     }
   });
 
+  it("keeps the label of a link unless the title already is the label", () => {
+    const PAGE_TITLE = `${"Long title ".repeat(30)}end`;
+    const html = markup(
+      <KnownObjectsProvider
+        annotations={[
+          { ...annotations[0]!, title: "Fix the #72 regression" },
+          {
+            ...annotations[5]!,
+            label: `${PAGE_TITLE.slice(0, 255)}…`,
+            title: PAGE_TITLE,
+          },
+        ]}
+      >
+        <DisplayText text={`See ${PR} and ${PAGE}.`} />
+      </KnownObjectsProvider>,
+    );
+    expect(anchors(html).map(({ label }) => label)).toEqual([
+      "Fix the #72 regression (#7)",
+      `${PAGE_TITLE.slice(0, 79).trimEnd()}…`,
+    ]);
+  });
+
   it("shows only plain links in a paragraph of links, and a person as a chip", () => {
     const html = render(
       `Next, ${PERSON} picks up ${CONVERSATION}. Track it in ${DOC}, hold: ${MESSAGE}, and read ${PAGE}`,
