@@ -119,7 +119,7 @@ export function transcriptListRows(input: {
   let captures: CaptureEntry[] = [];
   let prompt: MessageEntry | undefined;
   const pushTurnEnd = () => {
-    const visible = tasks.filter(matches);
+    const visibleTasks = tasks.filter(matches);
     const visibleCaptures = captures.filter(matches);
     const rowSeq = lastRowSeq(rows);
     const movedSeq = lastEntrySeq([...tasks, ...captures]);
@@ -136,8 +136,8 @@ export function transcriptListRows(input: {
       rows.pop();
       pushRow({
         ...last,
-        seq: visible.length + visibleCaptures.length > 0 ? seq : last.seq,
-        footer: { captures: visibleCaptures, prompt, tasks: visible },
+        seq: visibleTasks.length + visibleCaptures.length > 0 ? seq : last.seq,
+        footer: { captures: visibleCaptures, prompt, tasks: visibleTasks },
       });
     } else {
       // Without a reply, captured memories keep their own rows.
@@ -149,10 +149,10 @@ export function transcriptListRows(input: {
           seq: Math.max(lastRowSeq(rows) ?? 0, capture.seq ?? 0),
         });
       }
-      if (visible.length > 0) {
+      if (visibleTasks.length > 0) {
         pushRow({
           kind: "tasks",
-          entries: visible,
+          entries: visibleTasks,
           // New Tasks join at the end, so the first one keeps the key.
           key: `${input.keyPrefix}:tasks:${tasks[0]!.key}`,
           seq,
@@ -164,21 +164,18 @@ export function transcriptListRows(input: {
     prompt = undefined;
     pushAsks();
   };
+  // Asks, Tasks, and captured memories move out of their place in the Turn.
+  const moveOut = (entry: RenderedTranscriptEntry): boolean => {
+    if (isAskEntry(entry)) asks.push(entry);
+    else if (isTaskEntry(entry)) tasks.push(entry);
+    else if (isCaptureEntry(entry)) captures.push(entry);
+    else return false;
+    return true;
+  };
 
   for (let index = 0; index < entries.length; ) {
     const entry = entries[index]!;
-    if (isAskEntry(entry)) {
-      asks.push(entry);
-      index += 1;
-      continue;
-    }
-    if (isTaskEntry(entry)) {
-      tasks.push(entry);
-      index += 1;
-      continue;
-    }
-    if (isCaptureEntry(entry)) {
-      captures.push(entry);
+    if (moveOut(entry)) {
       index += 1;
       continue;
     }
@@ -193,15 +190,14 @@ export function transcriptListRows(input: {
     }
     if (collapsible(entry)) {
       const group: RenderedTranscriptEntry[] = [];
-      // An ask or a Task in the activity moves out, so the activity on both
-      // sides of it stays one row.
+      // An entry that moves out leaves the activity on both sides of it as
+      // one row.
       while (index < entries.length) {
         const next = entries[index]!;
-        if (isAskEntry(next)) asks.push(next);
-        else if (isTaskEntry(next)) tasks.push(next);
-        else if (isCaptureEntry(next)) captures.push(next);
-        else if (collapsible(next)) group.push(next);
-        else break;
+        if (!moveOut(next)) {
+          if (!collapsible(next)) break;
+          group.push(next);
+        }
         index += 1;
       }
       const visible = group.filter(matches);

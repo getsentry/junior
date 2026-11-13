@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 
+import { useConversationMemoryState } from "./conversationMemory";
 import {
-  TranscriptTurnMemories,
-  useTurnMemoryChips,
+  TranscriptMemoryChips,
+  turnMemoryChips,
 } from "./TranscriptMemoryPopover";
 import type { TranscriptTurnFooter } from "./transcriptListRows";
 
@@ -16,12 +17,17 @@ export function TranscriptTurnFooterView(props: {
   redacted?: boolean;
   tasks: ReactNode;
 }) {
-  const chips = useTurnMemoryChips(props.footer, props.redacted);
+  const memoryState = useConversationMemoryState();
+  // A redacted history keeps memory text out, so its chips open nothing.
+  const state = props.redacted ? undefined : memoryState;
+  const chips = turnMemoryChips(props.footer, state?.list);
   const hasTasks = props.footer.tasks.length > 0;
   if (chips.length === 0 && !hasTasks) return null;
   return (
     <div className="grid min-w-0 gap-1.5">
-      {chips.length > 0 ? <TranscriptTurnMemories chips={chips} /> : null}
+      {chips.length > 0 ? (
+        <TranscriptMemoryChips chips={chips} state={state} />
+      ) : null}
       {hasTasks ? props.tasks : null}
     </div>
   );
