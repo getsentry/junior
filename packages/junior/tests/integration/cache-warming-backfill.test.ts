@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
   type AssistantMessage,
@@ -20,6 +19,7 @@ import { createAgent } from "../fixtures/agent";
 import { closeConversationFixture } from "../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { mockTitleModel } from "../fixtures/title-model";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 const MINUTE = 60_000;
 const BACKFILL_KEY = "junior:cache_warming:backfill:work_state:v2";
@@ -64,7 +64,7 @@ function reply(
 async function runTurns(turns: Array<{ atMs: number; prefixTokens: number }>) {
   let request = 0;
   // The faux provider estimates its own usage, so this stream sets it.
-  const modelStream: StreamFn = () => {
+  const modelStream: AgentRequestStreamFn = () => {
     const stream = createAssistantMessageEventStream();
     const message = reply(turns[request++]!.prefixTokens);
     queueMicrotask(() => {

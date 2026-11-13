@@ -9,11 +9,7 @@
  * assistant message through the delivery port; the result carries diagnostics,
  * artifacts, and transcript state for destination-owned completion.
  */
-import {
-  Agent,
-  type AgentEvent,
-  type StreamFn,
-} from "@earendil-works/pi-agent-core";
+import { Agent, type AgentEvent } from "@earendil-works/pi-agent-core";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
@@ -65,6 +61,7 @@ import {
 } from "@/chat/pi/client";
 import {
   readAgentHistory,
+  type AgentRequestStreamFn,
   withAgentRequest,
   writeAgentHistory,
 } from "@/chat/pi/agent-history";
@@ -238,7 +235,7 @@ function waitForAbortSettlement(
  */
 export async function executeAgentRun(
   run: AgentRun,
-  streamFn?: StreamFn,
+  streamFn?: AgentRequestStreamFn,
 ): Promise<AgentRunOutcome> {
   if (!run.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
@@ -306,7 +303,7 @@ async function executeAgentRunInPrivacyContext(
   conversationKind: ConversationKind,
   conversationPrivacy: ConversationPrivacy | undefined,
   runLogContext: LogContext,
-  streamFn: StreamFn | undefined,
+  streamFn: AgentRequestStreamFn | undefined,
 ): Promise<AgentRunOutcome> {
   // Local views keep the existing loop body readable while the public edge is flat.
   const conversationId = run.conversationId;

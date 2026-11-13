@@ -1,5 +1,4 @@
 import type { StateAdapter } from "chat";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
@@ -39,6 +38,7 @@ import {
 } from "./conversation-work";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { testViewer } from "./user";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 /** Default verified web Actor for Conversation tests. */
 const WEB_TEST_EMAIL = "alice@example.com";
@@ -107,7 +107,7 @@ export type ConversationWebHarness = {
   conversationStore: ConversationStore;
   queue: ConversationWorkQueueTestAdapter;
   state: StateAdapter;
-  setModelStream: (next: StreamFn) => void;
+  setModelStream: (next: AgentRequestStreamFn) => void;
   /** Create a new web root conversation and enqueue the first message. */
   start: (args: {
     idempotencyKey: string;
@@ -136,7 +136,9 @@ export type ConversationWebHarness = {
  * Fake only model generation at the agent Run boundary.
  */
 export async function createConversationWebHarness(
-  streamFn: StreamFn = streamReplies("Conversation request complete."),
+  streamFn: AgentRequestStreamFn = streamReplies(
+    "Conversation request complete.",
+  ),
 ): Promise<ConversationWebHarness> {
   const conversationStore = getConversationStore();
   const queue = createConversationWorkQueueTestAdapter();
@@ -183,7 +185,7 @@ export async function createConversationWebHarness(
     conversationStore,
     queue,
     state,
-    setModelStream(next: StreamFn) {
+    setModelStream(next: AgentRequestStreamFn) {
       modelStream = next;
     },
     start: async ({ idempotencyKey, message }) => {
