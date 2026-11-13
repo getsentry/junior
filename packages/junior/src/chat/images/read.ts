@@ -105,8 +105,10 @@ export async function readImage(
   const request = source && (await source(viewer, image.ref));
   if (!request || !URL.canParse(request.url)) return undefined;
   const host = new URL(request.url).hostname;
-  // The source checked the viewer, so one cached image serves every viewer.
-  const key = `image:${width}:${createHash("sha256").update(request.url).digest("hex")}`;
+  // The source checked the viewer, so one cached image serves every viewer
+  // of that source. Sources fetch with different credentials, so a source
+  // never reads the image of another source.
+  const key = `image:${image.source}:${width}:${createHash("sha256").update(request.url).digest("hex")}`;
   const served = await createCache(getStateAdapter(), "core").getOrLoad(
     key,
     async () => {

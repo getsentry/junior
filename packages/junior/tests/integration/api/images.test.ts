@@ -288,12 +288,20 @@ describe("image API", () => {
     }
   });
 
-  test("serves no file that is not an image or is too large", async () => {
+  test("serves no file that is not an image, is too large, or redirects to a bad URL", async () => {
     const tooLarge = Buffer.alloc(MAX_IMAGE_BYTES + 1);
     tooLarge.set(PHOTO.subarray(0, 8));
     mswServer.use(
       http.get("https://images.example.com/page.png", () =>
         HttpResponse.html("<html><body>not an image</body></html>"),
+      ),
+      http.get(
+        "https://images.example.com/bad-redirect.png",
+        () =>
+          new HttpResponse(null, {
+            status: 302,
+            headers: { location: "http://[not-a-host" },
+          }),
       ),
       http.get(
         "https://images.example.com/huge.png",
@@ -306,6 +314,7 @@ describe("image API", () => {
     for (const url of [
       "https://images.example.com/page.png",
       "https://images.example.com/huge.png",
+      "https://images.example.com/bad-redirect.png",
     ]) {
       expect((await requestImage(publicImage(url))).status).toBe(404);
     }
@@ -317,8 +326,11 @@ describe("image API", () => {
       http.get(
         "https://code.example.com/avatars/octocat.png",
         ({ request }) => {
-          authorization.push(request.headers.get("authorization"));
-          return new HttpResponse(new Uint8Array(PHOTO));
+          const header = request.headers.get("authorization");
+          authorization.push(header);
+          return header
+            ? new HttpResponse(new Uint8Array(PHOTO))
+            : new HttpResponse(null, { status: 403 });
         },
       ),
     );
@@ -351,6 +363,16 @@ describe("image API", () => {
     expect(authorization).toEqual(["Bearer plugin-token"]);
     // The cached image does not reach a viewer that the source turns away.
     expect((await requestImage(path, "outsider@example.com")).status).toBe(404);
+    // A public id for the same URL fetches without the credential, so it
+    // does not get the cached private image.
+    const publicPath = imagePath(
+      { ref: "https://code.example.com/avatars/octocat.png", source: "public" },
+      64,
+    );
+    expect(
+      (await requestImage(publicPath, "outsider@example.com")).status,
+    ).toBe(404);
+    expect(authorization).toEqual(["Bearer plugin-token", null]);
     expect(
       (
         await requestImage(

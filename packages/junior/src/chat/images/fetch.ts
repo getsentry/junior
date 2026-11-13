@@ -117,6 +117,7 @@ export async function fetchImage(image: ImageRequest): Promise<FetchedImage> {
     if ("failure" in hop) return hop;
     if ("location" in hop) {
       if (redirects >= MAX_REDIRECTS) return { failure: "too_many_redirects" };
+      if (!URL.canParse(hop.location, url)) return { failure: "invalid_url" };
       current = new URL(hop.location, url).href;
       continue;
     }
