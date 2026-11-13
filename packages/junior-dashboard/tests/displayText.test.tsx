@@ -289,19 +289,19 @@ describe("display text object links", () => {
     const html = render(
       `Next, ${PERSON} picks up ${CONVERSATION}. Track it in ${DOC}, hold: ${MESSAGE}, and read ${PAGE}`,
     );
-    const links = anchors(html);
-    expect(links.map((link) => link.label?.replace(/<[^>]+>/g, ""))).toEqual([
-      "Morgan Lee",
-      "Investigate checkout latency",
-      "Release checklist",
-      "#proj-release",
-      "Release notes",
-    ]);
-    const [person, ...rest] = links;
+    const [person, ...rest] = anchors(html);
+    expect(person!.href).toBe(PERSON);
     expect(person!.anchor).toContain("border");
-    expect(person!.label).toMatch(/<(svg|img|span)[^>]*aria-hidden/);
+    expect(person!.label).toContain('<svg aria-hidden="true"');
+    expect(person!.label).toContain(">Morgan Lee</span>");
+    // Each label is only the title text: no icon and no status.
+    expect(rest.map(({ href, label }) => ({ href, label }))).toEqual([
+      { href: CONVERSATION, label: "Investigate checkout latency" },
+      { href: DOC, label: "Release checklist" },
+      { href: MESSAGE, label: "#proj-release" },
+      { href: PAGE, label: "Release notes" },
+    ]);
     for (const link of rest) {
-      expect(link.label).not.toMatch(/<(svg|img)/);
       expect(link.anchor).not.toMatch(/border|bg-/);
     }
     // No status, and no outbound icon: the person icon is the only one.
