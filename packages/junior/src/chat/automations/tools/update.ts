@@ -335,7 +335,7 @@ export function createUpdateAutomationTool(
         .enum(["system", "creator"])
         .nullable()
         .describe(
-          "Set creator to make the automation creator's credentials available, or system to disable them. Creator always means the automation's createdBy actor, never the current requester. Only that creator may set creator. Omit or use null to leave unchanged.",
+          "Set creator to make the automation creator's credentials available, or system to disable them. Creator always means the automation's createdBy actor, never the current requester. Only that creator may enable creator mode. Omit or null leaves it unchanged.",
         )
         .optional(),
       status: z
