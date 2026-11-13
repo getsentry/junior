@@ -20,7 +20,8 @@ function pageSegment(url: URL, page: string): string | undefined {
   return match ? decodeURIComponent(match[1]!) : undefined;
 }
 
-// The mock release thread links to one Google Doc and one Calendar event.
+// The mock release thread links to one Google Doc, one Calendar event, and
+// one Drive file and folder.
 const GOOGLE_OBJECTS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
   "/document/d/1MockReleaseChecklist_0123456789/edit": {
     kind: "object",
@@ -35,6 +36,36 @@ const GOOGLE_OBJECTS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
         "Run these steps in order before the 4.2 release. Each owner checks their step, and the release lead signs off in the go/no-go meeting.",
       owner: "Morgan Lee",
       modifiedAt: "2026-02-02T08:15:00.000Z",
+    },
+    plugin: "google",
+  },
+  "/file/d/1MockReleaseMetricsPdf_0123456789/view": {
+    kind: "object",
+    objectType: "document",
+    key: "1MockReleaseMetricsPdf_0123456789",
+    label: "Release 4.2 metrics.pdf",
+    title: "Release 4.2 metrics.pdf",
+    displayType: "PDF",
+    facts: {
+      type: "document",
+      owner: "Morgan Lee",
+      modifiedAt: "2026-02-02T07:40:00.000Z",
+      thumbnailUrl:
+        "/api/images/mock-release-metrics.thumbnail?w=640&v=1770018000000",
+    },
+    plugin: "google",
+  },
+  "/drive/folders/1MockReleaseAssets_0123456789": {
+    kind: "object",
+    objectType: "document",
+    key: "1MockReleaseAssets_0123456789",
+    label: "Release 4.2 assets",
+    title: "Release 4.2 assets",
+    displayType: "Google Drive folder",
+    facts: {
+      type: "document",
+      owner: "Morgan Lee",
+      modifiedAt: "2026-02-01T18:05:00.000Z",
     },
     plugin: "google",
   },

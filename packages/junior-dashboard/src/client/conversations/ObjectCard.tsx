@@ -124,9 +124,10 @@ export function ObjectCard({
         }
       />
       <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
-        {card.facts?.type === "web_page" && card.facts.thumbnailUrl && (
-          <Thumbnail src={card.facts.thumbnailUrl} />
-        )}
+        {(card.facts?.type === "document" || card.facts?.type === "web_page") &&
+          card.facts.thumbnailUrl && (
+            <Thumbnail src={card.facts.thumbnailUrl} />
+          )}
         {images.length > 0 && (
           // Screenshots often come as a before and after pair, side by side.
           <div className="grid grid-cols-2 gap-2">
