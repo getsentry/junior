@@ -3,7 +3,6 @@ import type { StateAdapter } from "chat";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
-import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import {
   appendAndEnqueueInboundMessage,
   appendInboundMessage,
@@ -56,6 +55,7 @@ import {
   delayMutationLockUntil,
   inboundMessage,
   observeConversationMutationLock,
+  runTestHeartbeat,
 } from "../../fixtures/conversation-work";
 import { readProxyProperty } from "../../fixtures/proxy-property";
 const OTHER_SLACK_DESTINATION = {
@@ -2538,10 +2538,7 @@ describe("conversation work execution", () => {
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     try {
-      await runHeartbeat({
-        nowMs: 62_000,
-        conversationWorkQueue: queue,
-      });
+      await runTestHeartbeat(queue, 62_000);
     } finally {
       unregister();
     }

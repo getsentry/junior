@@ -548,6 +548,29 @@ defineJuniorPlugin({
 - **Test.** Test `canView` and the resolver for a viewer that can read the
   object, and for a viewer that cannot.
 
+To start work for one person, such as the author of a webhook event or the
+sender of an email, use `ctx.agent.dispatchForIdentity(...)` from a heartbeat
+or a webhook route. Name the person with one of these:
+
+- `subjectId`: the provider account id that the OAuth account-linking flow
+  stored.
+- `verifiedEmail`: an address that your plugin proved the person sent from.
+  Never use an address that only appears in content.
+
+Junior starts work only when the person is a current member of the Slack
+workspace on the allowed domains. `input` becomes their first message in a new
+public conversation in the dashboard, as if they sent it there. The conversation
+is not in Slack. For any other person, Junior returns
+`{ status: "not_linked" }` and calls no model.
+
+```ts
+const result = await ctx.agent.dispatchForIdentity({
+  idempotencyKey: `event:${event.id}`,
+  input: "Look at the issue that this person opened.",
+  subjectId: event.sender.id,
+});
+```
+
 ## Validate
 
 Run validation before deploy:
