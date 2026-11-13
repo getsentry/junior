@@ -33,7 +33,7 @@ const CHANGE_VERBS = {
 
 // The change reads as the person's reply to a question, and an answer stands
 // out in a bubble. A line in the avatar column links an answer to its "Asked"
-// record. The quote line names the item only while that record is out of
+// record. The quote names the item only while that record is out of
 // view, or when the transcript has no record to link.
 function ChangeRow(props: {
   conversationId: string;
@@ -58,55 +58,71 @@ function ChangeRow(props: {
     showQuestion !== undefined &&
     item.addedByConversationId === props.conversationId &&
     (askLinked || item.addedByTurnId !== undefined);
+  const title =
+    showQuestion && scrollsToQuestion ? (
+      <button
+        className={QUOTE_TITLE_CLASS}
+        onClick={() => showQuestion(item)}
+        title={item.title}
+        type="button"
+      >
+        {item.title}
+      </button>
+    ) : (
+      <Link
+        className={QUOTE_TITLE_CLASS}
+        title={item.title}
+        to={reviewItemPath(item.id)}
+      >
+        {item.title}
+      </Link>
+    );
+  if (!rows.length) {
+    return (
+      <section
+        aria-label={`${verb} ${item.title}`}
+        className="grid min-w-0 gap-1.5"
+      >
+        <p className="m-0 flex min-w-0 items-center gap-1.5 border-l-2 border-dashboard-border-emphasis pl-2 text-sm text-dashboard-text-muted">
+          <span className="shrink-0">{verb}</span>
+          {title}
+        </p>
+      </section>
+    );
+  }
+  // The quote is a tag on the top edge of the bubble, so it takes no line
+  // of its own. The row keeps one height while the tag shows and hides, and
+  // rows below it do not move.
+  const quoteHidden = linked && askInView;
   return (
     <section
       aria-label={`${verb} ${item.title}`}
-      className="grid min-w-0 gap-1.5"
+      className="relative grid min-w-0 pt-3"
     >
-      {linked && askInView ? null : (
-        <p className="m-0 flex min-w-0 items-center gap-1.5 border-l-2 border-dashboard-border-emphasis pl-2 text-sm text-dashboard-text-muted">
-          <span className="shrink-0">{verb}</span>
-          {showQuestion && scrollsToQuestion ? (
-            <button
-              className={QUOTE_TITLE_CLASS}
-              onClick={() => showQuestion(item)}
-              title={item.title}
-              type="button"
+      <p
+        aria-hidden={quoteHidden || undefined}
+        className={`absolute left-2.5 top-0 m-0 flex max-w-[calc(100%-1.25rem)] items-center gap-1.5 rounded-full border border-dashboard-border-emphasis bg-dashboard-surface-raised px-2.5 py-0.5 text-xs leading-4 text-dashboard-text-muted transition-[opacity,visibility] duration-150 ${quoteHidden ? "invisible opacity-0" : ""}`}
+      >
+        <span className="shrink-0">{verb}</span>
+        {title}
+      </p>
+      <dl className="m-0 grid w-fit max-w-full gap-1.5 rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel px-3.5 pb-2 pt-3.5 font-sans text-base leading-relaxed">
+        {rows.map((row) => (
+          <div key={row.label}>
+            {/* One answer needs no label: a quote or the question names it. */}
+            <dt
+              className={
+                rows.length > 1
+                  ? "text-xs font-medium text-dashboard-text-muted"
+                  : "sr-only"
+              }
             >
-              {item.title}
-            </button>
-          ) : (
-            <Link
-              className={QUOTE_TITLE_CLASS}
-              title={item.title}
-              to={reviewItemPath(item.id)}
-            >
-              {item.title}
-            </Link>
-          )}
-        </p>
-      )}
-      {rows.length ? (
-        <dl className="m-0 grid w-fit max-w-full gap-1.5 rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel px-3.5 py-2 font-sans text-base leading-relaxed">
-          {rows.map((row) => (
-            <div key={row.label}>
-              {/* One answer needs no label: a quote or the question names it. */}
-              <dt
-                className={
-                  rows.length > 1
-                    ? "text-xs font-medium text-dashboard-text-muted"
-                    : "sr-only"
-                }
-              >
-                {row.label}
-              </dt>
-              <dd className="m-0 whitespace-pre-wrap break-words">
-                {row.value}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      ) : null}
+              {row.label}
+            </dt>
+            <dd className="m-0 whitespace-pre-wrap break-words">{row.value}</dd>
+          </div>
+        ))}
+      </dl>
     </section>
   );
 }
