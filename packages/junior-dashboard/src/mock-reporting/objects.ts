@@ -70,6 +70,13 @@ const SENTRY_ISSUE: Omit<OwnedObjectAnnotation, "url"> = {
     priority: "High",
     project: "junior",
     labels: ["error", "regressed"],
+    trend: {
+      label: "Events, last 24 hours",
+      points: [
+        2, 1, 0, 0, 1, 3, 2, 4, 3, 2, 5, 4, 3, 6, 8, 5, 4, 12, 30, 52, 47, 61,
+        44, 38,
+      ],
+    },
   },
   plugin: "sentry",
 };
