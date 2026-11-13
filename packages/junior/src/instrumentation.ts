@@ -144,5 +144,12 @@ export function initSentry(): void {
 
   // Keep deployment identity centralized so every emitted span, log, and metric carries it.
   Sentry.getGlobalScope().setAttributes(deploymentSpanAttributes);
+  // `beforeSend` sees only error events. User feedback from `submitFeedback`
+  // carries the same request and breadcrumb data, so scrub it the same way.
+  Sentry.getGlobalScope().addEventProcessor((event) =>
+    event.type === "feedback"
+      ? scrubPrivateSentryEvent(event as Sentry.ErrorEvent)
+      : event,
+  );
   subscribeGatewayRequestTiming();
 }
