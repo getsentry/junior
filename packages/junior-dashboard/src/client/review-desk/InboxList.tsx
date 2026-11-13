@@ -241,6 +241,7 @@ export function InboxList(props: {
   const todoIds = new Set(data.todoRows.map((row) => row.conversationId));
   const pullRequests = usePullRequestSections(
     viewRows(data.awake, "prs"),
+    data.itemPages,
     view === "prs",
   );
   const streamRows =

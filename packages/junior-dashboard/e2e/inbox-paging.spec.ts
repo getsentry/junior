@@ -75,6 +75,37 @@ test("Pull requests lists every open change, past the first page", async ({
   await expect(others.first()).toHaveText(/Fresh change/);
 });
 
+test("Pull requests reads every page of asks, so each finds its change", async ({
+  dashboard,
+  page,
+}) => {
+  // The ask for #91 is on the second page of asks.
+  await mockReviewItems(page, {
+    open: [prMerge, { ...prReview, createdAt: "2026-08-01T00:00:00.000Z" }],
+    pageSize: 1,
+  });
+  // Enough changes that the end of the list stays out of view.
+  await mockViewerCodeChanges(page, [
+    ...Array.from({ length: 40 }, (_, index) => ({
+      idleDays: 0.5,
+      number: 3000 + index,
+      title: `Other change ${index + 1}`,
+    })),
+    { idleDays: 1, number: 91, title: "Pin the release train" },
+  ]);
+  await page.goto(`${dashboard.baseURL}/?view=prs`);
+  await expect(
+    page
+      .getByRole("region", { name: "Waiting on you" })
+      .getByRole("listitem", { name: "Pin the release train" }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "Waiting on others" })
+      .getByRole("listitem", { name: "Pin the release train" }),
+  ).toHaveCount(0);
+});
+
 test("To do lists its rows while the count is pending or failed", async ({
   dashboard,
   page,

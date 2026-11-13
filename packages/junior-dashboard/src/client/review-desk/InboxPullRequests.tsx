@@ -7,6 +7,7 @@ import { SidebarAnnotationIcon } from "../conversations/ConversationMeta";
 import { IdleText, lastActivity } from "../conversations/codeChangeIdle";
 import { cn } from "../styles";
 import { inboxCardClass } from "./inboxRowStyles";
+import type { InboxFeedPages } from "./inboxData";
 import type { InboxBundle } from "./reviewItemFormat";
 
 /** One open code change, with the pull request asks that name it. */
@@ -98,11 +99,13 @@ export function pullRequestSections(
 
 /**
  * Read the Pull requests view: every open code change of the viewer, from
- * their person Code overview, grouped with the pull request asks. Pages load
- * one after another only while the view is open.
+ * their person Code overview, grouped with the pull request asks. The pages
+ * of both load one after another only while the view is open, so each ask
+ * finds its change wherever the list is scrolled.
  */
 export function usePullRequestSections(
   itemRows: readonly InboxBundle[],
+  asks: InboxFeedPages,
   enabled: boolean,
 ) {
   const email = useDashboardCoreData().data?.me.user.email;
@@ -114,6 +117,12 @@ export function usePullRequestSections(
       void fetchNextPage();
     }
   }, [enabled, fetchNextPage, hasNextPage, isFetchNextPageError, isFetching]);
+  // Every page of asks loads too, so no change waits apart from its ask. A
+  // failed page waits for the list's Try again.
+  const asksLeft = enabled && asks.hasMore && !asks.loadingMore && !asks.failed;
+  useEffect(() => {
+    if (asksLeft) asks.loadMore();
+  }, [asks, asksLeft]);
   // Signed out, or before the overview loads, the asks show on their own.
   const pages = code.data?.pages ?? [];
   const changes = pages.flatMap((page) => page.changes);
