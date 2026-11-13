@@ -3,6 +3,7 @@
  *
  * This module composes GitHub hooks, events, and credentials.
  */
+import { githubAccountLinks } from "./account-links.js";
 import { linkedGitHubLogin } from "./tool-support/attribution.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
 import {
@@ -66,6 +67,7 @@ import {
 import type { GitHubDb } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
 import { githubSidebarAnnotations } from "./annotations.js";
+import { githubImageSource } from "./images.js";
 import {
   listGitHubAssignedWork,
   listGitHubFinishedWork,
@@ -81,6 +83,7 @@ import { linkifyGitHubReferences } from "./reply-markdown.js";
 import { loadGitHubConversationTitleContext } from "./conversation-title-context.js";
 import { prepareWorkspace } from "./workspace-prepare.js";
 import { githubCloneCommandRedirect } from "./clone-command.js";
+import { gitHooksPathOverrideRedirect } from "./hooks-path-command.js";
 import {
   githubGrantForEgress,
   githubPermissionDeniedMessage,
@@ -174,6 +177,8 @@ export function githubPlugin(
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
+    images: githubImageSource,
+    objectLinks: [githubAccountLinks],
     events: {
       resourceTypes: [
         {
@@ -319,8 +324,22 @@ export function githubPlugin(
           ),
         };
       },
-      formatMarkdown({ text }) {
-        return linkifyGitHubReferences(text);
+      formatMarkdown({ config, mention, platform, provider, text }) {
+        return linkifyGitHubReferences(text, {
+          // The dashboard shows a bare GitHub link as a card.
+          bareUrls: platform === "web",
+          config,
+          githubText: provider === "github",
+          mention: (login) => mention({ provider: "github", handle: login }),
+        });
+      },
+      systemPrompt() {
+        // formatMarkdown links bare `#123` only when a reply names one repository.
+        return [
+          {
+            text: "Write each GitHub issue, pull request, or commit reference with its repository, such as owner/repo#123 or owner/repo@abc1234, and not in code formatting. A bare #123, GH-123, or SHA is ambiguous when a conversation spans several repositories.",
+          },
+        ];
       },
       async heartbeat(ctx) {
         const db = ctx.db as GitHubDb;
@@ -439,12 +458,14 @@ export function githubPlugin(
         if (ctx.tool.name !== "bash") {
           return;
         }
-        const cloneRedirect =
-          typeof ctx.tool.input.command === "string"
-            ? githubCloneCommandRedirect(ctx.tool.input.command)
+        const command = ctx.tool.input.command;
+        const commandRedirect =
+          typeof command === "string"
+            ? githubCloneCommandRedirect(command) ||
+              gitHooksPathOverrideRedirect(command)
             : undefined;
-        if (cloneRedirect) {
-          ctx.decision.redirect(cloneRedirect);
+        if (commandRedirect) {
+          ctx.decision.redirect(commandRedirect);
           return;
         }
         const botName = requireEnv(botNameEnv);

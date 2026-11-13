@@ -3,12 +3,26 @@ import * as z from "zod";
 const text = z.string().trim().min(1).max(160);
 const count = z.number().int().nonnegative();
 
+// A Junior image path. Browsers never load a third-party image URL.
+const imagePath = z
+  .string()
+  .max(4000)
+  .regex(/^\/api\/images\/[\w-]+\.[\w-]+\?w=\d+(&v=[\w-]+)?$/);
+
 /** The longest object summary, in UTF-16 code units. */
 export const OBJECT_SUMMARY_MAX_LENGTH = 280;
 
 // A short plain-text excerpt that any object type can carry. Only the full
 // card shows it. Return it only to a viewer who may read the object.
 const summary = z.string().trim().min(1).max(OBJECT_SUMMARY_MAX_LENGTH);
+
+// A short series, oldest first, that the full card draws as a sparkline,
+// such as events per hour. The label says what the points count and over
+// which time. The card shows the shape, not exact values.
+const trend = z.strictObject({
+  label: text,
+  points: z.array(z.number().finite().nonnegative()).min(2).max(60),
+});
 
 /** Small, provider-neutral facts. Missing values mean unknown, not success. */
 export const objectFactsSchema = z.discriminatedUnion("type", [
@@ -29,8 +43,9 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     additions: count.optional(),
     deletions: count.optional(),
     /**
-     * Public images from the description that the dashboard can show. The
-     * 4 KiB facts limit sets how many fit.
+     * Images from the description. The dashboard loads them through the
+     * Junior image route, and the plugin's `images` source checks each
+     * viewer. The 4 KiB facts limit sets how many fit.
      */
     previewImageUrls: z
       .array(z.url({ protocol: /^https?$/ }).max(512))
@@ -47,6 +62,7 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     cycle: text.optional(),
     dueDate: z.iso.date().optional(),
     labels: z.array(text).max(5).optional(),
+    trend: trend.optional(),
   }),
   // Deployments: never copy environment values or logs.
   z.strictObject({
@@ -78,6 +94,8 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     summary: summary.optional(),
     owner: text.optional(),
     modifiedAt: z.iso.datetime({ offset: true }).optional(),
+    // A file thumbnail from `ObjectLinkContext.imagePath`.
+    thumbnailUrl: imagePath.optional(),
   }),
   // Messages: where and when, never the text. The card description holds a
   // short snippet only for a viewer who may read the message.
@@ -94,12 +112,10 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     summary: summary.optional(),
     siteName: text.optional(),
     author: text.optional(),
-    // A Junior image path. Browsers never load a third-party image URL.
-    thumbnailUrl: z
-      .string()
-      .max(4000)
-      .regex(/^\/api\/images\/[\w-]+\.[\w-]+\?w=\d+$/)
-      .optional(),
+    // A video or image page. A link alone on its line shows only the
+    // thumbnail of such a page.
+    media: z.enum(["video", "image"]).optional(),
+    thumbnailUrl: imagePath.optional(),
   }),
   // People: only what the dashboard People pages already show.
   z.strictObject({

@@ -257,6 +257,7 @@ async function publish(
         ...delivery,
         botEmail,
         checkSuiteFacts: {
+          allCheckSuitesPassed: true,
           pullRequestFactsByNumber: {
             [BASE_SCOPE.pullRequest]: {
               isDraft: false,

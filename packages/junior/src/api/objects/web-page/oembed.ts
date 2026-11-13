@@ -1,33 +1,103 @@
 /**
- * oEmbed providers from a vendored copy of oembed.com's `providers.json`.
- * `scripts/refresh-oembed-providers.mjs` refreshes the copy. Junior matches
- * page URLs with `URLPattern` and uses only the plain oEmbed fields, never
- * `html`.
+ * A short, hand-kept list of well-known oEmbed providers. Every other page
+ * falls back to its Open Graph tags. Junior uses only the plain oEmbed
+ * fields, never `html`. A provider that needs an access token, such as
+ * Instagram, is not listed.
  */
 import * as z from "zod";
-import providers from "./oembed-providers.json" with { type: "json" };
 
-type Provider = { endpoint: string; patterns: URLPattern[] };
+type Provider = { endpoint: string; schemes: string[] };
 
-let compiled: Provider[] | undefined;
+const PROVIDERS: Provider[] = [
+  {
+    endpoint: "https://www.youtube.com/oembed",
+    schemes: [
+      "https://{*.}?youtube.com/watch*",
+      "https://{*.}?youtube.com/shorts/*",
+      "https://{*.}?youtube.com/live/*",
+      "https://{*.}?youtube.com/playlist*",
+      "https://youtu.be/*",
+    ],
+  },
+  {
+    endpoint: "https://vimeo.com/api/oembed.json",
+    schemes: ["https://vimeo.com/*", "https://player.vimeo.com/video/*"],
+  },
+  {
+    endpoint: "https://publish.x.com/oembed",
+    schemes: ["https://{*.}?x.com/*/status/*"],
+  },
+  {
+    endpoint: "https://publish.twitter.com/oembed",
+    schemes: ["https://{*.}?twitter.com/*/status/*"],
+  },
+  {
+    endpoint: "https://www.figma.com/api/oembed",
+    schemes: ["https://www.figma.com/(file|design|board|slides|proto)/*"],
+  },
+  {
+    endpoint: "https://www.loom.com/v1/oembed",
+    schemes: ["https://{www.}?loom.com/(share|i)/*"],
+  },
+  {
+    endpoint: "https://open.spotify.com/oembed",
+    schemes: ["https://open.spotify.com/*", "https://spotify.link/*"],
+  },
+  {
+    endpoint: "https://soundcloud.com/oembed",
+    schemes: ["https://soundcloud.com/*", "https://on.soundcloud.com/*"],
+  },
+  {
+    endpoint: "https://codepen.io/api/oembed",
+    schemes: ["https://codepen.io/*/pen/*"],
+  },
+  {
+    endpoint: "https://giphy.com/services/oembed",
+    schemes: ["https://giphy.com/(gifs|clips)/*"],
+  },
+  {
+    endpoint: "https://www.flickr.com/services/oembed/",
+    schemes: ["https://{*.}?flickr.com/photos/*", "https://flic.kr/*"],
+  },
+  {
+    endpoint: "https://www.tiktok.com/oembed",
+    schemes: ["https://www.tiktok.com/*/video/*"],
+  },
+  {
+    endpoint: "https://www.reddit.com/oembed",
+    schemes: ["https://{www.}?reddit.com/r/*/comments/*"],
+  },
+  {
+    endpoint: "https://www.slideshare.net/api/oembed/2",
+    schemes: ["https://{*.}?slideshare.net/*/*"],
+  },
+  {
+    endpoint: "https://speakerdeck.com/oembed.json",
+    schemes: ["https://speakerdeck.com/*/*"],
+  },
+  {
+    endpoint: "https://www.dailymotion.com/services/oembed",
+    schemes: ["https://www.dailymotion.com/video/*", "https://dai.ly/*"],
+  },
+  {
+    endpoint: "https://www.ted.com/services/v1/oembed.json",
+    schemes: ["https://{www.}?ted.com/talks/*"],
+  },
+  {
+    endpoint: "https://embed.bsky.app/oembed",
+    schemes: ["https://bsky.app/profile/*/post/*"],
+  },
+];
 
-function readProviders(): Provider[] {
-  compiled ??= providers.map((provider) => ({
-    endpoint: provider.url.replace("{format}", "json"),
-    patterns: provider.schemes.map((scheme) => new URLPattern(scheme)),
-  }));
-  return compiled;
-}
+const PATTERNS = PROVIDERS.map((provider) => ({
+  endpoint: provider.endpoint,
+  patterns: provider.schemes.map((scheme) => new URLPattern(scheme)),
+}));
 
 /** Return the oEmbed request URL for a page, or nothing for other hosts. */
 export function oembedRequestUrl(url: URL): string | undefined {
-  // Many schemes still say `http` for sites that moved to `https`.
-  const http = new URL(url);
-  http.protocol = "http:";
-  const provider = readProviders().find((candidate) =>
-    candidate.patterns.some(
-      (pattern) => pattern.test(url.href) || pattern.test(http.href),
-    ),
+  const provider = PATTERNS.find((candidate) =>
+    candidate.patterns.some((pattern) => pattern.test(url.href)),
   );
   if (!provider) return undefined;
   const request = new URL(provider.endpoint);
@@ -45,6 +115,7 @@ const oembedResponseSchema = z.object({
   author_name: optionalText,
   provider_name: optionalText,
   thumbnail_url: optionalText,
+  type: optionalText,
   cache_age: z.coerce.number().positive().optional().catch(undefined),
 });
 

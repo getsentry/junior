@@ -35,6 +35,7 @@ type Page = {
   cacheAgeSeconds?: number;
   description?: string;
   images: string[];
+  media?: "video" | "image";
   siteName?: string;
   title?: string;
 };
@@ -61,6 +62,13 @@ async function readOembed(url: URL): Promise<Page | undefined> {
     author: oembed.author_name,
     cacheAgeSeconds: oembed.cache_age,
     images: oembed.thumbnail_url ? [oembed.thumbnail_url] : [],
+    // oEmbed calls an image a `photo`.
+    media:
+      oembed.type === "video"
+        ? "video"
+        : oembed.type === "photo"
+          ? "image"
+          : undefined,
     siteName: oembed.provider_name,
     title: oembed.title,
   };
@@ -116,6 +124,7 @@ async function loadWebPage(
     value: webPageObjectCard({
       author: page.author,
       description: page.description,
+      media: page.media,
       siteName: page.siteName ?? url.hostname,
       thumbnailUrl: thumbnailPath(page.images, page.pageUrl),
       title: page.title,
@@ -151,6 +160,8 @@ export function webPageLinkType(): ObjectLinkType {
   return {
     // The resolver keeps one card per URL for every viewer.
     cacheCards: false,
+    // Junior fetches the page without credentials, so it is public.
+    canView: async () => true,
     // Junior fetches only `https`, so a plain `http` link stays a link.
     filters: [{ scheme: "https" }],
     objectType: "web_page",
