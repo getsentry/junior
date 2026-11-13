@@ -22,7 +22,6 @@ describe("cache warming savings", () => {
     const savings = idlePeriodSavings({ ...period, ...usage, gapMs });
     expect(savings).toEqual({
       hit: savedUsd > 0,
-      idealWarmupCostUsd: expect.closeTo(0.575 - oracleUsd),
       oracleUsd: expect.closeTo(oracleUsd),
       savedUsd: expect.closeTo(savedUsd),
     });

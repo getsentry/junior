@@ -100,7 +100,10 @@ function OverviewSystemPage(props: {
         loading={props.data.conversationStatsLoading}
         stats={props.data.conversationStats}
       />
-      <CacheWarmingSavings range={props.range} />
+      <CacheWarmingSavings
+        admin={props.data.me.user.isAdmin === true}
+        range={props.range}
+      />
     </>
   );
 }

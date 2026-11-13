@@ -7,8 +7,11 @@ import {
 } from "@/api/schema";
 import { connectedState } from "@/chat/cache-warming/request";
 import {
+  addHistoryPeriod,
   recordIdlePeriodSavings,
   recordWarmupCost,
+  replaceHistorySavings,
+  type HistorySavings,
 } from "@/chat/cache-warming/savings";
 import { closeDb, getDb } from "@/chat/db";
 import { resolveViewerUser, setUserAdminFromSql } from "@/chat/plugins/viewer";
@@ -108,17 +111,30 @@ describe("cache warming API", () => {
     vi.setSystemTime(new Date("2031-05-09T08:00:00.000Z"));
     await recordIdlePeriodSavings(
       "anthropic/claude-opus-5.5",
-      { hit: true, idealWarmupCostUsd: 0.2, oracleUsd: 0.8, savedUsd: 1 },
+      { hit: true, oracleUsd: 0.8, savedUsd: 1 },
       true,
     );
     await recordWarmupCost("anthropic/claude-opus-5.5", 0.3);
     vi.setSystemTime(new Date("2031-05-10T20:00:00.000Z"));
     await recordIdlePeriodSavings(
       "anthropic/claude-opus-5.5",
-      { hit: false, idealWarmupCostUsd: 0.1, oracleUsd: 0.2, savedUsd: 0 },
+      { hit: false, oracleUsd: 0.2, savedUsd: 0 },
       false,
     );
     await recordWarmupCost("anthropic/claude-opus-5.5", 0.1);
+    // A day from history has no warmup cost, so net savings and
+    // effectiveness leave it out.
+    const history: HistorySavings = {};
+    addHistoryPeriod(
+      history,
+      Date.parse("2031-05-08T12:00:00.000Z"),
+      "anthropic/claude-opus-5.5",
+      { hit: true, oracleUsd: 2, savedUsd: 3 },
+    );
+    await replaceHistorySavings(history, {
+      start: "2031-05-08",
+      end: "2031-05-09",
+    });
 
     const response = await person.request(
       `${BASE_URL}/api/cache-warming/savings?days=7`,
@@ -134,6 +150,11 @@ describe("cache warming API", () => {
       "2031-05-09",
       "2031-05-10",
     ]);
+    expect(report.days.at(-3)).toMatchObject({
+      date: "2031-05-08",
+      savedUsd: expect.closeTo(3),
+      netSavingsUsd: null,
+    });
     expect(report.days.at(-1)).toMatchObject({
       idlePeriods: 1,
       hits: 0,
@@ -142,13 +163,15 @@ describe("cache warming API", () => {
       unwarmedOracleSavingsUsd: expect.closeTo(0.2),
     });
     expect(report.totals).toMatchObject({
-      idlePeriods: 2,
-      hits: 1,
-      savedUsd: expect.closeTo(1),
+      idlePeriods: 3,
+      hits: 2,
+      savedUsd: expect.closeTo(4),
       warmupCostUsd: expect.closeTo(0.4),
       netSavingsUsd: expect.closeTo(0.6),
-      oracleSavingsUsd: expect.closeTo(1),
+      oracleSavingsUsd: expect.closeTo(3),
+      knownCostOracleSavingsUsd: expect.closeTo(1),
       effectiveness: expect.closeTo(0.6),
+      unknownCostDays: 1,
     });
 
     // A range with no idle periods has no effectiveness.

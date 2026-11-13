@@ -304,10 +304,14 @@ export type {
 } from "./schema/notification";
 export {
   cacheWarmingBreakerListSchema,
+  cacheWarmingSavingsRefillResponseSchema,
   cacheWarmingSavingsReportSchema,
   closeCacheWarmingBreakerResponseSchema,
 } from "./schema/cache-warming";
-export type { CacheWarmingSavingsReport } from "./schema/cache-warming";
+export type {
+  CacheWarmingSavingsRefill,
+  CacheWarmingSavingsReport,
+} from "./schema/cache-warming";
 export {
   disconnectServiceAccountResponseSchema,
   serviceAccountListSchema,

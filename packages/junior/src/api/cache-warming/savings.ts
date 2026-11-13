@@ -8,16 +8,14 @@ import {
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
 function savings(stats: readonly Stat[]) {
-  const totals = savingsTotals(stats);
-  return {
-    ...totals,
-    netSavingsUsd: totals.savedUsd - totals.warmupCostUsd,
-  };
+  const { historyDays: _, ...totals } = savingsTotals(stats);
+  return totals;
 }
 
 /**
  * Read what cache warming saved on each of the last `days` UTC days, today
- * included, and in total.
+ * included, and in total. Net savings and effectiveness leave out days filled
+ * from history: history has no warmup calls, so their warmup cost is unknown.
  */
 export async function readCacheWarmingSavings(
   days: number,
@@ -29,18 +27,37 @@ export async function readCacheWarmingSavings(
   const stats = (await readStats(dates[0]!, dates.at(-1)!)).filter(
     (stat) => stat.namespace === SAVINGS_NAMESPACE,
   );
-  const totals = savings(stats);
+  const unknownCostDates = new Set(
+    dates.filter(
+      (date) =>
+        savingsTotals(stats.filter((stat) => stat.date === date)).historyDays >
+        0,
+    ),
+  );
+  const known = savings(
+    stats.filter((stat) => !unknownCostDates.has(stat.date)),
+  );
+  const netSavingsUsd = known.savedUsd - known.warmupCostUsd;
   return cacheWarmingSavingsReportSchema.parse({
-    days: dates.map((date) => ({
-      date,
-      ...savings(stats.filter((stat) => stat.date === date)),
-    })),
+    days: dates.map((date) => {
+      const day = savings(stats.filter((stat) => stat.date === date));
+      return {
+        date,
+        ...day,
+        netSavingsUsd: unknownCostDates.has(date)
+          ? null
+          : day.savedUsd - day.warmupCostUsd,
+      };
+    }),
     totals: {
-      ...totals,
+      ...savings(stats),
+      netSavingsUsd,
+      knownCostOracleSavingsUsd: known.oracleSavingsUsd,
       effectiveness:
-        totals.oracleSavingsUsd > 0
-          ? totals.netSavingsUsd / totals.oracleSavingsUsd
+        known.oracleSavingsUsd > 0
+          ? netSavingsUsd / known.oracleSavingsUsd
           : null,
+      unknownCostDays: unknownCostDates.size,
     },
   });
 }

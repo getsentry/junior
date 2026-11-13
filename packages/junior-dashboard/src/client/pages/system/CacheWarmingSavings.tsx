@@ -10,6 +10,7 @@ import {
   ActivityChartYAxis,
 } from "../../components/charts/ActivityChart";
 import { Card } from "../../components/layout/Card";
+import { CacheWarmingRefill } from "./CacheWarmingRefill";
 import { SectionTitle } from "../../components/layout/SectionTitle";
 import { StatTile } from "../../components/metrics/StatTile";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
@@ -24,8 +25,10 @@ type Day = CacheWarmingSavingsReport["days"][number];
 
 const GAIN_COLOR = "var(--color-emerald-400)";
 const LOSS_COLOR = "var(--color-rose-400)";
+const HISTORY_COLOR = "var(--color-dashboard-text-faint)";
 const chartConfig = {
   netSavingsUsd: { color: GAIN_COLOR, label: "Net savings" },
+  historySavedUsd: { color: HISTORY_COLOR, label: "Saved writes" },
 };
 
 const usd = (value: number) => formatCostBreakdown({ total: value });
@@ -33,9 +36,13 @@ const percent = (value: number) => `${Math.round(value * 100)}%`;
 
 /**
  * Show what cache warming saved in the range: net savings, effectiveness
- * against an ideal warmer, and net savings per UTC day.
+ * against an ideal warmer, and net savings per UTC day. An admin can re-fill
+ * the days before live recording from history.
  */
-export function CacheWarmingSavings(props: { range: TimeRangeDays }) {
+export function CacheWarmingSavings(props: {
+  admin: boolean;
+  range: TimeRangeDays;
+}) {
   const query = useCacheWarmingSavings(props.range);
   return (
     <section aria-label="Cache warming">
@@ -49,6 +56,7 @@ export function CacheWarmingSavings(props: { range: TimeRangeDays }) {
             warmer would save.
           </p>
           {query.data ? <Totals totals={query.data.totals} /> : null}
+          {props.admin ? <CacheWarmingRefill /> : null}
         </div>
         {query.data ? (
           <SavingsChart days={query.data.days} />
@@ -87,9 +95,19 @@ function Totals(props: { totals: CacheWarmingSavingsReport["totals"] }) {
         />
         <StatTile label="Warmup cost" value={usd(totals.warmupCostUsd)} />
       </div>
+      {totals.unknownCostDays > 0 ? (
+        <p className="mt-3 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
+          Excludes {totals.unknownCostDays}{" "}
+          {totals.unknownCostDays === 1 ? "day" : "days"} without warmup cost.
+          They come from history, which has no warmup calls. Gray bars show
+          their saved writes.
+        </p>
+      ) : null}
       {totals.unwarmedOracleSavingsUsd > 0 ? (
         <p className="mt-3 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
-          {percent(totals.unwarmedOracleSavingsUsd / totals.oracleSavingsUsd)}{" "}
+          {percent(
+            totals.unwarmedOracleSavingsUsd / totals.knownCostOracleSavingsUsd,
+          )}{" "}
           of possible savings had no warm state.
         </p>
       ) : null}
@@ -98,8 +116,12 @@ function Totals(props: { totals: CacheWarmingSavingsReport["totals"] }) {
 }
 
 function SavingsChart(props: { days: Day[] }) {
-  const data = props.days;
-  const values = props.days.map((day) => day.netSavingsUsd);
+  // A day from history has no net savings, so it shows its saved writes.
+  const data = props.days.map((day) => ({
+    ...day,
+    historySavedUsd: day.netSavingsUsd === null ? day.savedUsd : null,
+  }));
+  const values = data.map((day) => day.netSavingsUsd ?? day.savedUsd);
   const maximum = Math.max(0.01, ...values);
   const minimum = Math.min(0, ...values);
   // Warmup cost lands when a warmup runs, before a call ends its idle period.
@@ -126,15 +148,23 @@ function SavingsChart(props: { days: Day[] }) {
             content={
               <ActivityChartTooltipContent
                 rows={(day: Day) => [
-                  ["net savings", usd(day.netSavingsUsd)],
+                  [
+                    "net savings",
+                    day.netSavingsUsd === null ? "—" : usd(day.netSavingsUsd),
+                  ],
                   [
                     "effectiveness",
-                    day.oracleSavingsUsd > 0
+                    day.netSavingsUsd !== null && day.oracleSavingsUsd > 0
                       ? percent(day.netSavingsUsd / day.oracleSavingsUsd)
                       : "—",
                   ],
                   ["saved writes", usd(day.savedUsd)],
-                  ["warmup cost", usd(day.warmupCostUsd)],
+                  [
+                    "warmup cost",
+                    day.netSavingsUsd === null
+                      ? "unknown"
+                      : usd(day.warmupCostUsd),
+                  ],
                   [
                     "cache hits",
                     `${formatCompactNumber(day.hits)} of ${formatCompactNumber(day.idlePeriods)}`,
@@ -155,14 +185,24 @@ function SavingsChart(props: { days: Day[] }) {
             maxBarSize={13}
             minPointSize={(value) => (value ? 2 : 0)}
             radius={2}
+            stackId="day"
           >
             {data.map((day) => (
               <Cell
-                fill={day.netSavingsUsd < 0 ? LOSS_COLOR : GAIN_COLOR}
+                fill={(day.netSavingsUsd ?? 0) < 0 ? LOSS_COLOR : GAIN_COLOR}
                 key={day.date}
               />
             ))}
           </Bar>
+          <Bar
+            dataKey="historySavedUsd"
+            fill={HISTORY_COLOR}
+            fillOpacity={0.5}
+            isAnimationActive={false}
+            maxBarSize={13}
+            radius={2}
+            stackId="day"
+          />
         </BarChart>
       </ChartContainer>
       {empty ? (

@@ -13,7 +13,7 @@
  * period (`tool-wait.ts`).
  */
 import { logWarn } from "@/chat/logging";
-import { addStats, firstStatDate, type Stat } from "@/stats";
+import { addStats, firstStatDate, replaceStats, type Stat } from "@/stats";
 import { MIN_WARMUP_PREFIX_TOKENS, WARMUP_MARGIN_MS } from "./model";
 
 /** `junior_stats` namespace of the cache warming counters. */
@@ -31,6 +31,7 @@ const METRICS = {
   unwarmedIdlePeriods: "unwarmed_idle_periods",
   unwarmedOracleSavings: "unwarmed_oracle_savings",
   warmupCost: "warmup_cost",
+  historyDays: "history_days",
 } as const;
 // The provider starts its TTL clock a few seconds after the request starts.
 // Reads still hit until about 310s after a request with a 300s TTL.
@@ -43,8 +44,6 @@ const PREFIX_SHARE = 0.5;
 /** Dollar savings of one idle period that counts. */
 export interface IdlePeriodSavings {
   hit: boolean;
-  /** Cache reads of the warmups that an ideal warmer sends for the gap. */
-  idealWarmupCostUsd: number;
   oracleUsd: number;
   savedUsd: number;
 }
@@ -83,21 +82,20 @@ export function idlePeriodSavings(input: {
   const write = input.cacheWritePrice / 1_000_000;
   if (warmups * read >= write - read) return undefined;
   const writeSavedUsd = input.prefixTokens * (write - read);
-  const idealWarmupCostUsd = warmups * input.prefixTokens * read;
   const hit = input.cacheRead >= minTokens;
   return {
     hit,
-    idealWarmupCostUsd,
-    oracleUsd: writeSavedUsd - idealWarmupCostUsd,
+    oracleUsd: writeSavedUsd - warmups * input.prefixTokens * read,
     savedUsd: hit ? writeSavedUsd : 0,
   };
 }
 
 const units = (usd: number) => Math.round(usd * UNITS_PER_USD);
 
-type Counts = Partial<Record<keyof typeof METRICS, number>>;
+/** Counter amounts, by metric. */
+export type SavingsCounts = Partial<Record<keyof typeof METRICS, number>>;
 
-const savingsStats = (modelId: string, counts: Counts) =>
+const savingsStats = (modelId: string, counts: SavingsCounts) =>
   Object.entries(counts).map(([metric, count]) => ({
     namespace: SAVINGS_NAMESPACE,
     metric: METRICS[metric as keyof typeof METRICS],
@@ -107,7 +105,10 @@ const savingsStats = (modelId: string, counts: Counts) =>
 
 // Counter amounts of one idle period. `warmed` is unset for a period whose
 // warm state is not known.
-function periodCounts(savings: IdlePeriodSavings, warmed?: boolean): Counts {
+function periodCounts(
+  savings: IdlePeriodSavings,
+  warmed?: boolean,
+): SavingsCounts {
   const oracle = units(savings.oracleUsd);
   return {
     idlePeriods: 1,
@@ -122,7 +123,10 @@ function periodCounts(savings: IdlePeriodSavings, warmed?: boolean): Counts {
 
 // The counters only report savings. A failure to write them is logged and
 // does not change warming.
-async function addSavingsStats(modelId: string, counts: Counts): Promise<void> {
+async function addSavingsStats(
+  modelId: string,
+  counts: SavingsCounts,
+): Promise<void> {
   if (!process.env.DATABASE_URL) return;
   try {
     await addStats(savingsStats(modelId, counts));
@@ -155,65 +159,78 @@ export async function recordWarmupCost(
   await addSavingsStats(modelId, { warmupCost: units(costUsd) });
 }
 
-/** One idle period of stored history that `idlePeriodSavings` counted. */
-export interface BackfilledSavings {
-  /** Start of the call that ended the idle period. */
-  endedAtMs: number;
-  modelId: string;
-  savings: IdlePeriodSavings;
-}
+/**
+ * Counter sums of idle periods from stored history, per UTC day and model.
+ * Plain JSON, so a job can keep them in state between slices.
+ */
+export type HistorySavings = Record<string, Record<string, SavingsCounts>>;
 
 const utcDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
 /**
- * Add the counters of idle periods from stored history, only on days before
- * the first day that has counters, and before today when none has. Live
- * recording writes only today, so this never adds to a day that it wrote.
+ * Add one idle period from stored history that `idlePeriodSavings` counted,
+ * on the day of `endedAtMs`, the start of the call that ended it.
  *
- * History does not say whether a period had warm state, so these periods do
- * not count as unwarmed. History has no warmup calls either. On a hit, the
- * warmup cost is the ideal warmer's, the least that the warmer must have
- * sent to keep the cache. A miss adds no warmup cost. Return the days
- * written.
+ * History does not say whether a period had warm state, so it does not count
+ * as unwarmed. History has no warmup calls, so it adds no warmup cost.
  */
-export async function addBackfilledSavings(
-  periods: readonly BackfilledSavings[],
-  nowMs: number,
-): Promise<string[]> {
-  const firstDate = (await firstStatDate(SAVINGS_NAMESPACE)) ?? utcDate(nowMs);
-  // Sums per day and model, so the statement writes each counter once.
-  const byDate = new Map<string, Map<string, Counts>>();
-  for (const { endedAtMs, modelId, savings } of periods) {
-    const date = utcDate(endedAtMs);
-    if (date >= firstDate) continue;
-    const byModel = byDate.get(date) ?? new Map<string, Counts>();
-    const sums = byModel.get(modelId) ?? {};
-    const counts: Counts = {
-      ...periodCounts(savings),
-      warmupCost: savings.hit ? units(savings.idealWarmupCostUsd) : 0,
-    };
-    for (const [metric, count] of Object.entries(counts)) {
-      const key = metric as keyof Counts;
-      sums[key] = (sums[key] ?? 0) + count;
-    }
-    byModel.set(modelId, sums);
-    byDate.set(date, byModel);
+export function addHistoryPeriod(
+  sums: HistorySavings,
+  endedAtMs: number,
+  modelId: string,
+  savings: IdlePeriodSavings,
+): void {
+  const byModel = (sums[utcDate(endedAtMs)] ??= {});
+  const counts = (byModel[modelId] ??= {});
+  for (const [metric, count] of Object.entries(periodCounts(savings))) {
+    const key = metric as keyof SavingsCounts;
+    counts[key] = (counts[key] ?? 0) + count;
   }
-  // One statement for every day. A run that stops after some days land would
-  // make the oldest of them the first day with counters, and a retry would
-  // then skip the days that did not land.
-  await addStats(
-    [...byDate].flatMap(([date, byModel]) =>
-      [...byModel].flatMap(([modelId, counts]) =>
+}
+
+/**
+ * Return the first day with counters that live recording wrote, if any. Days
+ * that `replaceHistorySavings` wrote do not count.
+ */
+export async function firstLiveSavingsDate(): Promise<string | undefined> {
+  return await firstStatDate(SAVINGS_NAMESPACE, METRICS.historyDays);
+}
+
+/**
+ * Replace the counters of the UTC days from `start` up to `end`, not
+ * included, with these sums from history. Each day that has sums gets a
+ * `history_days` marker, so the System page knows that its warmup cost is
+ * unknown and `firstLiveSavingsDate` skips it.
+ */
+export async function replaceHistorySavings(
+  sums: HistorySavings,
+  range: { start: string; end: string },
+): Promise<void> {
+  const days = Object.entries(sums).filter(
+    ([date]) => date >= range.start && date < range.end,
+  );
+  await replaceStats(
+    SAVINGS_NAMESPACE,
+    range,
+    days.flatMap(([date, byModel]) => [
+      {
+        namespace: SAVINGS_NAMESPACE,
+        metric: METRICS.historyDays,
+        name: "history",
+        count: 1,
+        date,
+      },
+      ...Object.entries(byModel).flatMap(([modelId, counts]) =>
         savingsStats(modelId, counts).map((stat) => ({ ...stat, date })),
       ),
-    ),
+    ]),
   );
-  return [...byDate.keys()].sort();
 }
 
 /** Savings totals of a set of counters, in dollars. */
 export interface SavingsTotals {
+  /** Days filled from history, whose warmup cost is unknown. */
+  historyDays: number;
   hits: number;
   idlePeriods: number;
   oracleSavingsUsd: number;
@@ -233,6 +250,7 @@ export function savingsTotals(stats: readonly Stat[]): SavingsTotals {
       )
       .reduce((total, stat) => total + stat.count, 0);
   return {
+    historyDays: sum(METRICS.historyDays),
     hits: sum(METRICS.hits),
     idlePeriods: sum(METRICS.idlePeriods),
     oracleSavingsUsd: sum(METRICS.oracleSavings) / UNITS_PER_USD,

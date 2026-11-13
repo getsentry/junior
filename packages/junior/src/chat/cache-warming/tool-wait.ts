@@ -12,11 +12,13 @@
  * time from a request that ended with tool calls to the next request.
  *
  * Each tool wait that the next request ends counts in the savings counters,
- * as an idle period does. An idle period starts only after a request that
- * ends the Turn, and the first request of a run has no tool wait, so the two
- * never count the same pair of requests.
+ * as an idle period does. A run that ends during a wait, such as at a slice
+ * yield, stores the wait, and the first request of the next run of the
+ * Conversation ends it. An idle period starts only after a request that ends
+ * the Turn, so the two never count the same pair of requests.
  */
 import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
+import * as z from "zod";
 import { logInfo, logWarn, setSpanStatus, withSpan } from "@/chat/logging";
 import {
   decideWarmup,
@@ -52,6 +54,23 @@ const TOOL_WAIT_GAPS_TTL_MS = 30 * 24 * 60 * MINUTE_MS;
 // decision, and are not recorded. This keeps the many short tool calls free
 // of state writes.
 const MIN_RECORDED_TOOL_WAIT_MS = 2 * MINUTE_MS;
+// Warming never pays for a wait much longer than this, so a stored wait that
+// no run ended by then does not count.
+const STORED_WAIT_TTL_MS = 60 * MINUTE_MS;
+
+const storedWaitSchema = z
+  .object({
+    modelId: z.string(),
+    startedAtMs: z.number(),
+    prefixTokens: z.number(),
+    warmed: z.boolean(),
+  })
+  .strict();
+
+type StoredWait = z.output<typeof storedWaitSchema>;
+
+const storedWaitKey = (conversationId: string) =>
+  `${KEY_PREFIX}:tool_wait:open:${conversationId}`;
 
 /** Warm the prompt cache of one agent run while its tools run. */
 export interface ToolWaitWarmer {
@@ -69,7 +88,8 @@ export interface ToolWaitWarmer {
    * without a next request in this run, such as before a slice yield. A tool
    * that is still running never returns to this run, so record its wait as
    * `NO_REPLY_GAP_MS`. Without these waits, the return chance counts only
-   * the tools that returned.
+   * the tools that returned. Store an open wait, so that the first request
+   * of the next run counts its savings.
    */
   end(): Promise<void>;
 }
@@ -93,6 +113,8 @@ interface Waiting {
 export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let waiting: Waiting | undefined;
+  // The first request of the run ends a wait that the last run stored.
+  let firstRequest = true;
   // When the tools of `waiting` returned, before the next request starts.
   let returnedAtMs: number | undefined;
   // A warmup that is in flight when warmups stop must not schedule another.
@@ -242,17 +264,27 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
     });
   };
 
+  // Take the wait that the last run of the Conversation ended in.
+  const takeStoredWait = async (): Promise<StoredWait | undefined> => {
+    const state = await connectedState();
+    const key = storedWaitKey(conversationId);
+    const stored = await state.get(key);
+    if (stored === null) return undefined;
+    await state.delete(key);
+    return storedWaitSchema.parse(stored);
+  };
+
   // Count the savings of the tool wait that this request ends.
   const recordSavings = async (
-    previous: Waiting,
+    previous: StoredWait,
     request: ModelRequest,
     message: AssistantMessage,
   ) => {
-    const ttlMs = providerCacheTtlMs(previous.request.model.id);
+    const ttlMs = providerCacheTtlMs(previous.modelId);
     if (ttlMs === undefined) return;
     const savings = idlePeriodSavings({
       cacheTtlMs: ttlMs,
-      gapMs: request.startedAtMs - previous.request.startedAtMs,
+      gapMs: request.startedAtMs - previous.startedAtMs,
       prefixTokens: previous.prefixTokens,
       cacheRead: message.usage.cacheRead,
       cacheWrite: message.usage.cacheWrite,
@@ -260,17 +292,23 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
       cacheWritePrice: request.model.cost.cacheWrite,
     });
     if (!savings) return;
-    await recordIdlePeriodSavings(
-      previous.request.model.id,
-      savings,
-      previous.warmed,
-    );
+    await recordIdlePeriodSavings(previous.modelId, savings, previous.warmed);
   };
+
+  const storedWait = (open: Waiting): StoredWait => ({
+    modelId: open.request.model.id,
+    startedAtMs: open.request.startedAtMs,
+    prefixTokens: open.prefixTokens,
+    warmed: open.warmed,
+  });
 
   return {
     async record(request, message) {
       stop();
       const previous = waiting;
+      const stored =
+        !previous && firstRequest ? await takeStoredWait() : undefined;
+      firstRequest = false;
       returnedAtMs = undefined;
       const prefixTokens = cachedPrefixTokens(message);
       const ttlMs = cacheTtlMs(request);
@@ -285,7 +323,10 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
       }
       if (previous) {
         await recordWait(request.startedAtMs - previous.request.startedAtMs);
-        await recordSavings(previous, request, message);
+        await recordSavings(storedWait(previous), request, message);
+      } else if (stored) {
+        // The last run recorded this wait's gap when it ended.
+        await recordSavings(stored, request, message);
       }
     },
     stop,
@@ -300,6 +341,12 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
       waiting = undefined;
       returnedAtMs = undefined;
       if (!open) return;
+      const state = await connectedState();
+      await state.set(
+        storedWaitKey(conversationId),
+        storedWait(open),
+        STORED_WAIT_TTL_MS,
+      );
       if (returned !== undefined) {
         await recordWait(returned - open.request.startedAtMs);
         return;

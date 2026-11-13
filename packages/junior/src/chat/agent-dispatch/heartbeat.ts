@@ -1,5 +1,5 @@
 import { backfillCacheWarmingGaps } from "@/chat/cache-warming/backfill";
-import { backfillCacheWarmingSavings } from "@/chat/cache-warming/savings-backfill";
+import { runSavingsRefillSlice } from "@/chat/cache-warming/savings-refill";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import {
   createPluginEventPublisher,
@@ -261,8 +261,8 @@ export async function runHeartbeat(args: {
     logException(error, "cache_warming.backfill.failed");
   }
   try {
-    await backfillCacheWarmingSavings({ nowMs: args.nowMs });
+    await runSavingsRefillSlice({ nowMs: args.nowMs });
   } catch (error) {
-    logException(error, "cache_warming.savings_backfill.failed");
+    logException(error, "cache_warming.savings_refill.failed");
   }
 }

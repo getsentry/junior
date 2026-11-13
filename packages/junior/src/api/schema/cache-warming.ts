@@ -42,7 +42,6 @@ const cacheWarmingSavingsSchema = z
     savedUsd: z.number().nonnegative(),
     /** Cost of every idle warmup call. */
     warmupCostUsd: z.number().nonnegative(),
-    netSavingsUsd: z.number(),
     /** Savings of an ideal warmer that knew each gap. */
     oracleSavingsUsd: z.number().nonnegative(),
     /** Idle periods with no warm state, such as a too large snapshot. */
@@ -54,14 +53,51 @@ const cacheWarmingSavingsSchema = z
 
 export const cacheWarmingSavingsReportSchema = z
   .object({
-    days: z.array(cacheWarmingSavingsSchema.extend({ date: z.string() })),
+    days: z.array(
+      cacheWarmingSavingsSchema.extend({
+        date: z.string(),
+        /**
+         * Saved less warmup cost. Null on a day filled from history, which
+         * has no warmup calls, so its warmup cost is unknown.
+         */
+        netSavingsUsd: z.number().nullable(),
+      }),
+    ),
     totals: cacheWarmingSavingsSchema.extend({
-      /** Net savings over oracle savings. Null with no oracle savings. */
+      /** Net savings of the days with known warmup cost. */
+      netSavingsUsd: z.number(),
+      /** Oracle savings of the days with known warmup cost. */
+      knownCostOracleSavingsUsd: z.number().nonnegative(),
+      /**
+       * Net savings over oracle savings of the days with known warmup cost.
+       * Null with no oracle savings on those days.
+       */
       effectiveness: z.number().nullable(),
+      /** Days filled from history, with unknown warmup cost. */
+      unknownCostDays: z.number().int().nonnegative(),
     }),
   })
   .strict();
 
 export type CacheWarmingSavingsReport = z.output<
   typeof cacheWarmingSavingsReportSchema
+>;
+
+export const cacheWarmingSavingsRefillSchema = z
+  .object({
+    status: z.enum(["idle", "pending", "running", "done", "failed"]),
+    startedAt: z.string().optional(),
+    finishedAt: z.string().optional(),
+    error: z.string().optional(),
+    scannedConversations: z.number().int().nonnegative().optional(),
+    totalConversations: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+export const cacheWarmingSavingsRefillResponseSchema = z
+  .object({ refill: cacheWarmingSavingsRefillSchema })
+  .strict();
+
+export type CacheWarmingSavingsRefill = z.output<
+  typeof cacheWarmingSavingsRefillSchema
 >;
