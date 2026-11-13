@@ -256,6 +256,7 @@ export async function runSavingsRefillSlice(args: {
         // so one slow batch cannot stall the job. When every batch timed out,
         // the job read no history and must not replace the days with nothing.
         if (
+          scan &&
           complete &&
           next.scannedConversations === 0 &&
           job.totalConversations > 0

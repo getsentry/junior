@@ -500,4 +500,27 @@ describe("cache warming savings re-fill", () => {
     });
     expect(await savings(nowMs + 18 * MINUTE)).toEqual(report);
   });
+
+  it("finishes a re-fill with no day before live recording", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    await resolveViewerUser(ADMIN);
+    await setUserAdminFromSql(getDb(), ADMIN, true);
+    const admin = authenticatedApi(ADMIN);
+    await storeCalls("local:test:savings-refill-all-live", [
+      { atMs: DAY_2, cacheRead: 60_000 },
+      { atMs: DAY_2 + 7 * MINUTE, cacheRead: 60_000 },
+    ]);
+    const nowMs = DAY_2 + 26 * 60 * MINUTE;
+    // Live recording covers every day of the 90-day window.
+    vi.setSystemTime(nowMs - 90 * 24 * 60 * MINUTE);
+    await recordWarmupCost(MODEL_ID, 0.05);
+    const before = await savings(nowMs);
+
+    expect((await refill(admin, nowMs, "POST")).status).toBe(202);
+    await heartbeat(nowMs + MINUTE);
+    expect((await refill(admin, nowMs + MINUTE)).refill).toMatchObject({
+      status: "done",
+    });
+    expect(await savings(nowMs + MINUTE)).toEqual(before);
+  });
 });
