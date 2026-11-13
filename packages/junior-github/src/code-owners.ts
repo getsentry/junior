@@ -125,8 +125,18 @@ export async function readPullRequestCodeOwners(
       repository.docs?.text ??
       undefined;
     const files = repository.pullRequest.files;
-    paths.push(...(files?.nodes.map((file) => file.path) ?? []));
-    after = files?.pageInfo.hasNextPage ? files.pageInfo.endCursor : null;
+    if (!files) {
+      // Without the changed files, no owners would read as "safe to mark
+      // ready". Fail instead, so the draft stays a draft.
+      if (codeOwners) {
+        throw new Error(
+          "GitHub did not list the changed files of the pull request",
+        );
+      }
+      break;
+    }
+    paths.push(...files.nodes.map((file) => file.path));
+    after = files.pageInfo.hasNextPage ? files.pageInfo.endCursor : null;
   } while (after);
   return codeOwners ? codeOwnersOf(parseCodeOwners(codeOwners), paths) : [];
 }

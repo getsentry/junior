@@ -360,6 +360,37 @@ describe("getPullRequest", () => {
     ]);
   });
 
+  it("fails when GitHub does not list the changed files of a draft with code owners", async () => {
+    const draft = pullRequestResponse();
+    const { tool } = toolContext(true, [
+      { body: { ...draft.body, draft: true } },
+      checksResponse({ contexts: [] }),
+      {
+        body: {
+          data: {
+            repository: {
+              github: { text: "* @getsentry/owners" },
+              root: null,
+              docs: null,
+              pullRequest: { files: null },
+            },
+          },
+        },
+      },
+    ]);
+
+    // No files must not read as no code owners, or the draft would be
+    // marked ready and ask them.
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", number: 691 },
+        { toolCallId: "get-draft-without-files" },
+      ),
+    ).rejects.toThrow(
+      "GitHub did not list the changed files of the pull request",
+    );
+  });
+
   it.each([
     { name: "no checks", rollup: null },
     {
