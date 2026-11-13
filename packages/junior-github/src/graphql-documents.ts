@@ -162,7 +162,31 @@ export const OPEN_PULL_REQUEST_MERGEABILITY = githubGraphql(`
     search(query: $query, type: ISSUE, first: 100, after: $after) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        ... on PullRequest { number state isDraft mergeable reviewDecision headRefOid baseRefName title url }
+        ... on PullRequest { number state isDraft mergeable headRefOid baseRefName title url }
+      }
+    }
+  }
+`);
+
+/**
+ * Read what decides a merge conflict fix on one pull request: the review
+ * decision, when it opened, and its latest pushes, reviews, and comments.
+ */
+export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
+  query PullRequestConflictHistory($owner: String!, $name: String!, $number: Int!) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) {
+        createdAt
+        reviewDecision
+        timelineItems(last: 100, itemTypes: [PULL_REQUEST_COMMIT, PULL_REQUEST_REVIEW, ISSUE_COMMENT, HEAD_REF_FORCE_PUSHED_EVENT]) {
+          nodes {
+            __typename
+            ... on PullRequestCommit { commit { committedDate parents { totalCount } author { user { login } } } }
+            ... on PullRequestReview { submittedAt author { __typename } }
+            ... on IssueComment { createdAt author { __typename } }
+            ... on HeadRefForcePushedEvent { createdAt actor { __typename } }
+          }
+        }
       }
     }
   }

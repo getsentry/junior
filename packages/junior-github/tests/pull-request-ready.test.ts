@@ -445,10 +445,6 @@ describe("ready to merge notice", () => {
     mockGitHub(github, []);
     try {
       await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
-      await fixture
-        .db()
-        .update(juniorGitHubPullRequests)
-        .set({ conflictNoticedAt: new Date() });
       const webhook = route(fixture, calls, [], undefined, "merge-conflict:");
       await webhook.handler(checkSuiteCompleted());
       expect(calls).toEqual([]);
@@ -466,12 +462,6 @@ describe("ready to merge notice", () => {
           kind: "close",
         },
       ]);
-      // The next conflict can add a new notice.
-      const rows = await fixture
-        .db()
-        .select({ noticedAt: juniorGitHubPullRequests.conflictNoticedAt })
-        .from(juniorGitHubPullRequests);
-      expect(rows).toEqual([{ noticedAt: null }]);
     } finally {
       await fixture.close();
     }

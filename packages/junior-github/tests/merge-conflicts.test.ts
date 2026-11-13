@@ -229,6 +229,9 @@ describe("merge conflict check on webhook events", () => {
     let headSha: string;
     let drafts: Set<number>;
     let approvals: Set<number>;
+    /** The timeline of 946 on GitHub. */
+    let timeline: unknown[];
+    let historyReads: number;
     let duringRead: (() => Promise<void>) | undefined;
 
     function pushRequest(ref: string, repo = "getsentry/junior"): Request {
@@ -250,6 +253,8 @@ describe("merge conflict check on webhook events", () => {
       headSha = "1111111111111111111111111111111111111111";
       drafts = new Set();
       approvals = new Set();
+      timeline = [];
+      historyReads = 0;
       duringRead = undefined;
       vi.stubEnv(
         "GITHUB_APP_BOT_EMAIL",
@@ -258,9 +263,26 @@ describe("merge conflict check on webhook events", () => {
       mswServer.use(
         http.post("https://api.github.com/graphql", async ({ request }) => {
           const { variables } = (await request.json()) as {
-            variables: { query: string };
+            variables: { number?: number; query?: string };
           };
-          searches.push(variables.query);
+          if (variables.number !== undefined) {
+            historyReads += 1;
+            return HttpResponse.json({
+              data: {
+                repository: {
+                  pullRequest: {
+                    // An hour before `pushedAt`.
+                    createdAt: new Date(pushedAt - 60 * minute).toISOString(),
+                    reviewDecision: approvals.has(variables.number)
+                      ? "APPROVED"
+                      : null,
+                    timelineItems: { nodes: timeline },
+                  },
+                },
+              },
+            });
+          }
+          searches.push(variables.query!);
           await duringRead?.();
           return HttpResponse.json({
             data: {
@@ -271,7 +293,6 @@ describe("merge conflict check on webhook events", () => {
                   isDraft: drafts.has(number),
                   mergeable: mergeability[number],
                   number,
-                  reviewDecision: approvals.has(number) ? "APPROVED" : null,
                   state: "OPEN",
                   title: `Pull request ${number}`,
                   url: `https://github.com/getsentry/junior/pull/${number}`,
@@ -330,6 +351,8 @@ describe("merge conflict check on webhook events", () => {
         expect.objectContaining({ identifier: "getsentry/junior" }),
       ]);
       expect(pullRequestReads).toBe(0);
+      // Only the conflicted pull request reads its history.
+      expect(historyReads).toBe(1);
 
       await heartbeat(pushedAt + 10 * minute);
       expect(searches).toHaveLength(1);
@@ -388,19 +411,46 @@ describe("merge conflict check on webhook events", () => {
     const hour = 60 * minute;
     const day = 24 * hour;
 
-    /** Push to main with a new head commit on 946, and run the check. */
+    /** Fix events for 946. Core delivers each event key once. */
+    const fixedShas = () => [
+      ...new Set(
+        conflicts()
+          .filter((event) => event.identifier === "getsentry/junior#946")
+          .map((event) => String(event.data?.headSha).slice(0, 1)),
+      ),
+    ];
+
+    /**
+     * Push to main with a head commit on 946, and run the check. A published
+     * fix adds Junior's merge commit on GitHub.
+     */
     async function checkAt(nowMs: number, sha: string): Promise<void> {
       vi.setSystemTime(nowMs);
       headSha = sha.repeat(40);
       await deliver(`push-${nowMs}`, pushRequest("refs/heads/main"));
       vi.setSystemTime(nowMs + 2 * minute);
+      const fixes = fixedShas().length;
       await heartbeat(nowMs + 2 * minute);
+      if (fixedShas().length > fixes) {
+        timeline.push({
+          __typename: "PullRequestCommit",
+          commit: {
+            author: { user: { login: "sentry-junior[bot]" } },
+            committedDate: new Date(nowMs + 10 * minute).toISOString(),
+            parents: { totalCount: 2 },
+          },
+        });
+      }
     }
 
-    const fixedShas = () =>
-      conflicts()
-        .filter((event) => event.identifier === "getsentry/junior#946")
-        .map((event) => String(event.data?.headSha).slice(0, 1));
+    /** A review or comment on 946 on GitHub. */
+    function reviewAt(nowMs: number, author: "Bot" | "User"): void {
+      timeline.push({
+        __typename: "PullRequestReview",
+        author: { __typename: author },
+        submittedAt: new Date(nowMs).toISOString(),
+      });
+    }
 
     async function askedInSlack(): Promise<void> {
       await fixture
@@ -440,6 +490,7 @@ describe("merge conflict check on webhook events", () => {
       expect(searches).toHaveLength(1);
       expect(conflicts()).toEqual([]);
       expect(h.notices).toEqual([]);
+      expect(historyReads).toBe(0);
     });
 
     it("fixes once a day while people work on the pull request", async () => {
@@ -450,28 +501,7 @@ describe("merge conflict check on webhook events", () => {
       expect(fixedShas()).toEqual(["1"]);
 
       // A review by a person keeps the pull request active.
-      vi.setSystemTime(pushedAt + 30 * hour);
-      await deliver(
-        "review-1",
-        signedRequest({
-          deliveryId: "review-1",
-          eventName: "pull_request_review",
-          body: {
-            action: "submitted",
-            installation: { id: 456 },
-            pull_request: { number: 946 },
-            repository: { full_name: "getsentry/junior", id: 1 },
-            review: {
-              body: null,
-              id: 7001,
-              state: "commented",
-              submitted_at: new Date(pushedAt + 30 * hour).toISOString(),
-              user: { login: "jane" },
-            },
-            sender: { login: "jane", type: "User" },
-          },
-        }),
-      );
+      reviewAt(pushedAt + 30 * hour, "User");
       await checkAt(pushedAt + 31 * hour, "3");
       await checkAt(pushedAt + 56 * hour, "4");
       expect(fixedShas()).toEqual(["1", "3", "4"]);
@@ -501,8 +531,10 @@ describe("merge conflict check on webhook events", () => {
 
     it("adds one notice when nobody worked on it for 2 days, then stops until it is approved", async () => {
       await askedInSlack();
-      // The pull request opened an hour before `pushedAt`. The first notice
-      // fails, so the next check adds it.
+      // The pull request opened an hour before `pushedAt`. A review by a bot
+      // is not activity by a person. The first notice fails, so the next
+      // check adds it.
+      reviewAt(pushedAt + day, "Bot");
       h.failures.upsert = 1;
       await checkAt(pushedAt + 2 * day, "1");
       expect(h.notices).toEqual([]);
@@ -516,14 +548,9 @@ describe("merge conflict check on webhook events", () => {
       ]);
 
       // After 3 days without activity, a conflict does nothing.
-      h.notices.length = 0;
-      await fixture
-        .db()
-        .update(juniorGitHubPullRequests)
-        .set({ conflictNoticedAt: null });
       await checkAt(pushedAt + 3 * day, "3");
       expect(fixedShas()).toEqual([]);
-      expect(h.notices).toEqual([]);
+      expect(h.notices).toHaveLength(1);
 
       // An approved pull request waits only for the fix to merge, so it
       // gets one at once, until the total limit. A check of the same head

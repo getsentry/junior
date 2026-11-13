@@ -137,13 +137,14 @@ export async function loadGitHubMergeConflictEvents(args: {
   events: EventInput[];
   hasMatch: EventPublisher["hasMatch"];
   loadPullRequest?(ref: GitHubPullRequestRef): Promise<unknown>;
+  loadConflictHistory?(ref: GitHubPullRequestRef): Promise<unknown>;
   log?: Pick<PluginLogger, "error" | "warn">;
   /** The body of a `pull_request` webhook. */
   pullRequestPayload?: unknown;
   reviewItems: PluginConversationReviewItems;
 }): Promise<EventInput[]> {
-  const { hasMatch, loadPullRequest } = args;
-  if (!hasMatch || !loadPullRequest) return [];
+  const { hasMatch, loadConflictHistory, loadPullRequest } = args;
+  if (!hasMatch || !loadPullRequest || !loadConflictHistory) return [];
   const conflicts: EventInput[] = [];
   for (const ref of pullRequestRefs(args.events)) {
     // Merge conflict events match only `repo` and `pullRequest`, so this
@@ -167,13 +168,11 @@ export async function loadGitHubMergeConflictEvents(args: {
       };
       conflicts.push(
         ...(await applyGitHubConflictPolicy({
-          // The REST pull request has no review decision. A review webhook
-          // is activity by a person, so it allows a fix anyway.
-          approved: false,
           conflict,
           db: args.db,
           draft: loaded.draft === true,
           events: gitHubMergeConflictEvents({ ...ref, conflict }),
+          loadHistory: loadConflictHistory,
           log: args.log,
           now: new Date(),
           ref,

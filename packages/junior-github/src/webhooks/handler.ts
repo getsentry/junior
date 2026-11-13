@@ -45,7 +45,6 @@ import {
   loadGitHubMergeConflictEvents,
   type GitHubPullRequestRef,
 } from "./merge-conflict.js";
-import { recordGitHubPullRequestActivity } from "../merge-conflict-checks/policy.js";
 import { scheduleGitHubPushConflictCheck } from "../merge-conflict-checks/webhooks.js";
 import {
   pullRequestReadyTargets,
@@ -165,6 +164,10 @@ export function createGitHubWebhookRoute(args: {
   loadGitHubIncidents?(): Promise<GitHubStatusIncident[]>;
   /** Read one pull request for its mergeability. */
   loadPullRequest?(pullRequest: GitHubPullRequestRef): Promise<unknown>;
+  /** Read one pull request's history for the merge conflict policy. */
+  loadPullRequestConflictHistory?(
+    pullRequest: GitHubPullRequestRef,
+  ): Promise<unknown>;
   /** Load a repository role for `openerRole`. */
   loadRepositoryRole?(target: GitHubRoleTarget): Promise<string>;
   /** Linked GitHub login of the user of one Junior identity, if any. */
@@ -318,7 +321,6 @@ export function createGitHubWebhookRoute(args: {
       });
       if (pullRequestActivity) {
         await args.codeChanges.recordActivity(pullRequestActivity);
-        await recordGitHubPullRequestActivity(args.db, pullRequestActivity);
       }
       const recordedPullRequestLinkedIssues = pullRequestLinkedIssues
         ? await recordGitHubPullRequestLinkedIssues(
@@ -419,6 +421,7 @@ export function createGitHubWebhookRoute(args: {
           deliveryId,
           events,
           hasMatch,
+          loadConflictHistory: args.loadPullRequestConflictHistory,
           loadPullRequest: args.loadPullRequest,
           log: args.log,
           pullRequestPayload: eventName === "pull_request" ? body : undefined,
