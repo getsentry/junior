@@ -14,19 +14,16 @@ import * as z from "zod";
 import { emailDomain, readGoogleConfig } from "../config";
 import {
   FILE_ID_PATTERN,
+  GOOGLE_FILE_TYPES,
+  googleFileLinkRoot,
   googleFileType,
+  googleLinkFileType,
   resourceKeyHeaders,
   type FileReference,
   type GoogleFileType,
 } from "../tools/files";
 import { driveQueryString, namedQuery } from "../tools/search-files";
 import { googleApiError, googleApiRequest } from "../tools/shared";
-
-const LINK_ROOTS = {
-  document: "document",
-  presentation: "presentation",
-  spreadsheet: "spreadsheets",
-} as const satisfies Record<GoogleFileType, string>;
 
 const DISPLAY_TYPES = {
   document: "Google Doc",
@@ -60,11 +57,9 @@ const fileIdsSchema = z.object({
 function parseFileLink(
   url: URL,
 ): { file: FileReference; type: GoogleFileType } | undefined {
-  const [, root, ...rest] = url.pathname.split("/");
-  const type = (Object.keys(LINK_ROOTS) as GoogleFileType[]).find(
-    (key) => LINK_ROOTS[key] === root,
-  );
+  const type = googleLinkFileType(url);
   if (!type) return undefined;
+  const rest = url.pathname.split("/").slice(2);
   // A signed-in link can name the account: `/document/u/0/d/<id>`.
   const path =
     rest[0] === "u" && /^\d+$/.test(rest[1] ?? "") ? rest.slice(2) : rest;
@@ -198,7 +193,7 @@ async function resolveGoogleFileLink(
 
 /** Docs, Sheets, and Slides links that resolve to document cards. */
 export const googleFileLinks: PluginObjectLinkDefinition = {
-  filters: Object.values(LINK_ROOTS).flatMap((root) =>
+  filters: GOOGLE_FILE_TYPES.map(googleFileLinkRoot).flatMap((root) =>
     [`/${root}/d/`, `/${root}/u/`].map((pathPrefix) => ({
       host: "docs.google.com",
       pathPrefix,

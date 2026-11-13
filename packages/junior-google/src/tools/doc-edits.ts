@@ -13,7 +13,7 @@ import {
   fileReferenceSchema,
   googleFileRequest,
   parseFileReference,
-  readGoogleFile,
+  readGoogleFileMetadata,
   type FileReference,
 } from "./files";
 import { requesterEmail, type GoogleToolContext } from "./shared";
@@ -51,7 +51,7 @@ export const revisionIdSchema = z
   .min(1)
   .max(200)
   .describe(
-    "revision_id from readGoogleDoc, or from your last edit of this Doc. The edit is refused if someone changed the Doc after that.",
+    "revision_id from readGoogleFile, or from your last edit of this Doc. The edit is refused if someone changed the Doc after that.",
   );
 
 /**
@@ -67,7 +67,7 @@ export function requireRevision(
 ): void {
   if (current !== expected) {
     throw new PluginToolInputError(
-      `"${doc.title}" changed after you read it. Read it again with readGoogleDoc, check that the edit still fits, and retry with the new revision_id.`,
+      `"${doc.title}" changed after you read it. Read it again with readGoogleFile, check that the edit still fits, and retry with the new revision_id.`,
     );
   }
 }
@@ -181,7 +181,7 @@ export async function requireEditableDoc(
   document: string,
 ): Promise<EditableDoc> {
   const ref = parseFileReference(document);
-  const file = await readGoogleFile(ctx, ref, ["document"]);
+  const file = await readGoogleFileMetadata(ctx, ref, ["document"]);
   if (file.capabilities?.canEdit !== true) {
     throw new PluginToolInputError(
       `Your Google account (${ctx.accountEmail}) cannot edit "${file.name}". Ask the owner to share it with that account as an editor.`,
