@@ -146,31 +146,41 @@ export function createLoadAttachmentTool(args: {
         cmd: "mkdir",
         args: ["-p", "--", attachmentDir, partsDir],
       });
-      const parts = await writeParts({
-        attachmentId: attachment.id,
-        body,
-        expectedBytes: attachment.bytes,
-        partsDir,
-        workspace: args.workspace,
-      });
-      await runChecked(args.workspace, "join attachment parts", {
-        cmd: "sh",
-        args: ["-c", JOIN_PARTS_SCRIPT, "sh", sandboxPath, ...parts],
-      });
+      try {
+        const parts = await writeParts({
+          attachmentId: attachment.id,
+          body,
+          expectedBytes: attachment.bytes,
+          partsDir,
+          workspace: args.workspace,
+        });
+        await runChecked(args.workspace, "join attachment parts", {
+          cmd: "sh",
+          args: ["-c", JOIN_PARTS_SCRIPT, "sh", sandboxPath, ...parts],
+        });
+        const size = await runChecked(args.workspace, "read attachment size", {
+          cmd: "stat",
+          args: ["-c", "%s", "--", sandboxPath],
+        });
+        const written = Number(size.trim());
+        if (written !== attachment.bytes) {
+          throw new Error(
+            `Attachment ${attachment.id} wrote ${written} bytes to the sandbox, expected ${attachment.bytes}.`,
+          );
+        }
+      } catch (error) {
+        // Do not leave a partial file or parts for the agent to read. The
+        // original failure is the one to report, so the cleanup result is
+        // ignored.
+        await args.workspace
+          .runCommand({ cmd: "rm", args: ["-rf", "--", sandboxPath, partsDir] })
+          .catch(() => undefined);
+        throw error;
+      }
       await runChecked(args.workspace, "remove attachment parts", {
         cmd: "rm",
         args: ["-rf", "--", partsDir],
       });
-      const size = await runChecked(args.workspace, "read attachment size", {
-        cmd: "stat",
-        args: ["-c", "%s", "--", sandboxPath],
-      });
-      const written = Number(size.trim());
-      if (written !== attachment.bytes) {
-        throw new Error(
-          `Attachment ${attachment.id} wrote ${written} bytes to the sandbox, expected ${attachment.bytes}.`,
-        );
-      }
       return {
         path: sandboxPath,
         filename: attachment.filename,

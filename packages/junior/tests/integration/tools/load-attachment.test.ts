@@ -160,6 +160,48 @@ describe("loadAttachment tool", () => {
     ]);
   });
 
+  it("removes written parts when the stored body ends early", async () => {
+    const storage = createMemoryAttachmentStorage();
+    const db = getSqlExecutor();
+    await recordConversation();
+    const data = Buffer.alloc(20 * MIB, 1);
+    const stored = await storeAttachment({
+      conversationId: CONVERSATION_ID,
+      db,
+      file: { data, filename: "trace.bin", mimeType: "application/zip" },
+      storage,
+    });
+    // One full part reaches the sandbox before the body ends.
+    const shortReadStorage = {
+      ...storage,
+      get: async () =>
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(data.subarray(0, 9 * MIB));
+            controller.close();
+          },
+        }),
+    };
+    const workspace = localWorkspace(root);
+    const tool = createLoadAttachmentTool({
+      conversationId: CONVERSATION_ID,
+      db,
+      storage: shortReadStorage,
+      workspace,
+    });
+
+    await expect(
+      tool.execute?.({ attachment_id: stored.id }, {}),
+    ).rejects.toThrow(`read ${9 * MIB} bytes, expected ${20 * MIB}`);
+    expect(workspace.writes).toHaveLength(1);
+    expect(await fs.readdir(path.join(root, ".junior/attachments"))).toEqual([
+      stored.id,
+    ]);
+    expect(
+      await fs.readdir(path.join(root, `.junior/attachments/${stored.id}`)),
+    ).toEqual([]);
+  });
+
   it("refuses an attachment over the file limit before it reads storage", async () => {
     const storage = createMemoryAttachmentStorage();
     const db = getSqlExecutor();

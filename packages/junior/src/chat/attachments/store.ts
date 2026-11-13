@@ -81,15 +81,25 @@ function attachmentId(args: {
   identity: AttachmentIdentity;
   storageProvider: string;
 }): string {
-  const identity = [
-    args.conversationId,
-    args.storageProvider,
-    args.filename,
-    args.contentType,
-    ...("sha256" in args.identity
-      ? [args.identity.sha256]
-      : [args.identity.provider, args.identity.id]),
-  ];
+  // A digest identity keeps the field order of ids stored before sources
+  // existed, so those rows still match.
+  const identity =
+    "sha256" in args.identity
+      ? [
+          args.conversationId,
+          args.storageProvider,
+          args.identity.sha256,
+          args.filename,
+          args.contentType,
+        ]
+      : [
+          args.conversationId,
+          args.storageProvider,
+          args.filename,
+          args.contentType,
+          args.identity.provider,
+          args.identity.id,
+        ];
   return createHash("sha256").update(identity.join("\0")).digest("hex");
 }
 
