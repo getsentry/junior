@@ -77,7 +77,13 @@ export async function conversationAttachmentResponse(args: {
     conversationId: args.conversationId,
     db: getSqlExecutor(),
   });
-  if (!attachment || attachment.storageProvider !== args.storage.provider) {
+  // A file recorded without its bytes has nothing to read until the first
+  // loadAttachment downloads it.
+  if (
+    !attachment ||
+    attachment.storageProvider !== args.storage.provider ||
+    attachment.storageKey === null
+  ) {
     notFound();
   }
 

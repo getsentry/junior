@@ -34,6 +34,11 @@ export const messageAttachmentSchema = z
     filename: z.string().min(1),
     contentType: z.string().min(1),
     bytes: z.number().int().nonnegative(),
+    /**
+     * True while a large Slack file waits for its first loadAttachment.
+     * Its bytes cannot be read yet.
+     */
+    pending: z.literal(true).optional(),
   })
   .strict();
 

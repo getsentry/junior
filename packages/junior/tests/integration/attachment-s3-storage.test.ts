@@ -15,6 +15,7 @@ import {
   readLiveAttachment,
   requestAttachmentDeletion,
   storeAttachment,
+  storeDeferredAttachment,
 } from "@/chat/attachments/store";
 import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAttachments } from "@/db/schema";
@@ -193,7 +194,7 @@ describe("S3 attachment storage", () => {
     await expect(
       collectAttachmentGarbage({ db, nowMs: Date.now(), storage }),
     ).resolves.toEqual({ deleted: 1 });
-    await expect(storage.get(record!.storageKey)).resolves.toBeNull();
+    await expect(storage.get(record!.storageKey!)).resolves.toBeNull();
   });
 
   it("streams a sourced file and keeps nothing when its size is wrong", async () => {
@@ -226,7 +227,7 @@ describe("S3 attachment storage", () => {
       db,
     });
     expect(record?.bytes).toBe(13);
-    const body = await storage.get(record!.storageKey);
+    const body = await storage.get(record!.storageKey!);
     expect(await new Response(body).text()).toBe("deploy failed");
 
     // A body shorter or longer than its declared size fails the write, and
@@ -246,7 +247,7 @@ describe("S3 attachment storage", () => {
       .from(juniorAttachments)
       .where(eq(juniorAttachments.conversationId, conversationId));
     expect(rows).toEqual([{ id: stored.id }]);
-    await storage.delete([record!.storageKey]);
+    await storage.delete([record!.storageKey!]);
   });
 
   it("writes a streamed file again with a fresh body after a failed put", async () => {
@@ -290,9 +291,60 @@ describe("S3 attachment storage", () => {
       db: getSqlExecutor(),
     });
     expect(record?.bytes).toBe(13);
-    const body = await s3.get(record!.storageKey);
+    const body = await s3.get(record!.storageKey!);
     expect(await new Response(body).text()).toBe("deploy failed");
-    await s3.delete([record!.storageKey]);
+    await s3.delete([record!.storageKey!]);
+  });
+
+  it("stores a deferred file on first load, and collects one never loaded", async () => {
+    const conversationId = "slack:CS3:deferred";
+    await recordPublicConversation(conversationId);
+    const storage = s3Storage();
+    const db = getSqlExecutor();
+    const deferred = (id: string) =>
+      storeAttachment({
+        conversationId,
+        db,
+        file: {
+          bytes: 13,
+          deferred: true,
+          filename: `${id}.log`,
+          mimeType: "text/plain",
+          source: { id, provider: "slack" },
+        },
+        storage,
+      });
+    const loaded = await deferred("FLOADED");
+    const unloaded = await deferred("FUNLOADED");
+    const pending = await readLiveAttachment({
+      attachmentId: loaded.id,
+      conversationId,
+      db,
+    });
+    expect(pending?.storageKey).toBeNull();
+
+    const record = await storeDeferredAttachment({
+      attachment: { ...pending!, source: pending!.source! },
+      db,
+      file: {
+        bytes: 13,
+        open: async () =>
+          chunkedBody([Buffer.from("deploy "), Buffer.from("failed")]),
+      },
+      storage,
+    });
+    const body = await storage.get(record.storageKey);
+    expect(await new Response(body).text()).toBe("deploy failed");
+
+    // Purge marks both rows. GC deletes the one object and both rows.
+    await requestAttachmentDeletion(db, [conversationId], Date.now());
+    await expect(
+      collectAttachmentGarbage({ db, nowMs: Date.now(), storage }),
+    ).resolves.toEqual({ deleted: 2 });
+    await expect(storage.get(record.storageKey)).resolves.toBeNull();
+    await expect(
+      readLiveAttachment({ attachmentId: unloaded.id, conversationId, db }),
+    ).resolves.toBeNull();
   });
 
   it("rejects filenames that would leave the attachment key prefix", async () => {

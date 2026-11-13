@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "chat";
 import type { AgentAttachment } from "@/chat/agent/types";
@@ -5,7 +6,9 @@ import { createJuniorRuntimeServices } from "@/chat/app/services";
 import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
-import { getConversationStore } from "@/chat/db";
+import { getConversationStore, getSqlExecutor } from "@/chat/db";
+import { MAX_EAGER_SLACK_FILE_BYTES } from "@/chat/slack/vision-context";
+import { juniorAttachments } from "@/db/schema";
 import {
   createTestMessage,
   createTestThread,
@@ -311,6 +314,55 @@ describe("Slack behavior: mixed attachment media", () => {
 
     expect(getCapturedSlackFileDownloadCalls()).toHaveLength(1);
     expect(again?.attachmentId).toBe(first?.attachmentId);
+  });
+
+  it("records a Slack file over the eager limit without downloading it", async () => {
+    const storage = createMemoryAttachmentStorage();
+    const { resolveUserAttachments } = createJuniorRuntimeServices({
+      visionContext: { attachmentStorage: storage },
+    }).visionContext;
+    const conversationId = await recordSlackConversation("1700004015.000");
+    const fetchData = vi.fn(async () => Buffer.alloc(0));
+    const recording = {
+      type: "video",
+      mimeType: "video/mp4",
+      name: "standup.mp4",
+      size: MAX_EAGER_SLACK_FILE_BYTES + 1,
+      url: "https://files.slack.com/files-pri/T0TEST-F0RECORDING/standup.mp4",
+      fetchData,
+    } as Message["attachments"][number];
+
+    const [first] = await resolveUserAttachments([recording], {
+      conversationId,
+    });
+    // The same file in a later message maps to the same row.
+    const [again] = await resolveUserAttachments([recording], {
+      conversationId,
+    });
+
+    expect(fetchData).not.toHaveBeenCalled();
+    expect(getCapturedSlackFileDownloadCalls()).toEqual([]);
+    expect(storage.objects.size).toBe(0);
+    expect(first?.promptText).toContain(
+      `attachment_id: ${first?.attachmentId}`,
+    );
+    expect(again?.attachmentId).toBe(first?.attachmentId);
+    const rows = await getSqlExecutor()
+      .db()
+      .select({
+        bytes: juniorAttachments.bytes,
+        providerId: juniorAttachments.providerId,
+        storageKey: juniorAttachments.storageKey,
+      })
+      .from(juniorAttachments)
+      .where(eq(juniorAttachments.conversationId, conversationId));
+    expect(rows).toEqual([
+      {
+        bytes: MAX_EAGER_SLACK_FILE_BYTES + 1,
+        providerId: "F0RECORDING",
+        storageKey: null,
+      },
+    ]);
   });
 
   it("refuses a Slack file over the file limit before it downloads", async () => {

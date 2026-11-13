@@ -14,7 +14,11 @@ export const juniorAttachments = pgTable(
       }),
     /** Service that stores the file bytes. */
     storageProvider: text("storage_provider").notNull(),
-    storageKey: text("storage_key").notNull(),
+    /**
+     * Object key of the stored bytes. Null until a file that Junior records
+     * without downloading, such as a large Slack file, is first loaded.
+     */
+    storageKey: text("storage_key"),
     /** Provider that supplied the file. */
     provider: text("provider"),
     /** File id assigned by the source provider. */
@@ -22,7 +26,8 @@ export const juniorAttachments = pgTable(
     filename: text("filename").notNull(),
     contentType: text("content_type").notNull(),
     bytes: integer("bytes").notNull(),
-    sha256: text("sha256").notNull(),
+    /** Digest of the stored bytes. Null while `storage_key` is null. */
+    sha256: text("sha256"),
     visionSummary: text("vision_summary"),
     createdAt: timestamptz("created_at").notNull(),
     /** Set when conversation purge marks the attachment unavailable. */

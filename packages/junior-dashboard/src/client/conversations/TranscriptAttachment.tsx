@@ -153,8 +153,11 @@ export function TranscriptAttachments(props: {
   const search = useTranscriptSearch();
   if (props.attachments.length === 0) return null;
   // Search highlights filenames, so every attachment shows as a file row.
+  // A pending file has no bytes to show yet, so it stays a file row.
   const isMedia = (attachment: MessageAttachment) =>
-    !search.active && (isInlineImage(attachment) || isInlineVideo(attachment));
+    !search.active &&
+    !attachment.pending &&
+    (isInlineImage(attachment) || isInlineVideo(attachment));
   const entries = props.attachments.map((attachment, index) => ({
     attachment,
     key: `${attachment.id}:${index}`,
@@ -349,6 +352,18 @@ function TranscriptFileRow(props: {
   const label = (
     <FileRowLabel filename={props.attachment.filename} meta={meta} />
   );
+
+  if (props.attachment.pending) {
+    // Junior downloads a large Slack file only when it first loads it.
+    return (
+      <div className={FILE_ROW_BASE_CLASS}>
+        <FileRowLabel
+          filename={props.attachment.filename}
+          meta={`${meta} · Not downloaded yet`}
+        />
+      </div>
+    );
+  }
 
   if (!language) {
     // `target="_blank"`: an installed iOS home screen app has no back button.

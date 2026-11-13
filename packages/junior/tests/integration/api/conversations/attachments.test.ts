@@ -319,6 +319,67 @@ describe("conversation attachment API", () => {
     expect(storage.objects.size).toBe(0);
   });
 
+  it("shows a deferred Slack file as pending and serves no bytes for it", async () => {
+    const conversationId = "slack:C-public:deferred-attachment";
+    await getConversationStore().recordActivity({
+      conversationId,
+      destination: {
+        channelId: "CPUBLIC",
+        platform: "slack",
+        teamId: "TPUBLIC",
+      },
+      nowMs: 1,
+      source: "slack",
+      title: "Deferred attachment conversation",
+      visibility: "public",
+    });
+    const storage = createMemoryAttachmentStorage();
+    const stored = await storeAttachment({
+      conversationId,
+      db: getSqlExecutor(),
+      file: {
+        bytes: 30_000_000,
+        deferred: true,
+        filename: "standup.mp4",
+        mimeType: "video/mp4",
+        source: { provider: "slack", id: "FDEFERRED" },
+      },
+      storage,
+    });
+    await getConversationEventStore().append(conversationId, [
+      {
+        createdAtMs: 2,
+        data: {
+          type: "message",
+          messageId: "slack-recording",
+          role: "user",
+          text: "Attached recording",
+          meta: { source: "slack", slackFileIds: ["FDEFERRED"] },
+        },
+      },
+    ]);
+    const api = apiWithViewer(undefined, storage);
+
+    const detail = await (
+      await api.request(
+        `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+      )
+    ).json();
+    expect(detail.events[0].data.attachments).toEqual([
+      {
+        id: stored.id,
+        filename: "standup.mp4",
+        contentType: "video/mp4",
+        bytes: 30_000_000,
+        pending: true,
+      },
+    ]);
+    const response = await api.request(
+      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/attachments/${stored.id}`,
+    );
+    expect(response.status).toBe(404);
+  });
+
   it("hides purge-marked attachments", async () => {
     const conversationId = "slack:C-public:purged-attachment";
     await getConversationStore().recordActivity({

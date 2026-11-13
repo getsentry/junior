@@ -58,6 +58,12 @@ interface VisionThreadReply {
   files?: VisionThreadFile[];
 }
 
+/**
+ * Largest non-image Slack file that Junior downloads when the message
+ * arrives. A larger one gets a row and a loadAttachment pointer, and its first
+ * load downloads it, so an unused recording costs no download or storage.
+ */
+export const MAX_EAGER_SLACK_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_MESSAGE_IMAGE_ATTACHMENTS = 3;
 const MAX_VISION_SUMMARY_CHARS = 500;
 
@@ -382,7 +388,8 @@ async function resolveUserAttachmentsWithDeps(
     const slackFileId = getSlackFileId(attachment);
     const url = attachment.url;
     // Only an image that may go to the model inline needs its bytes in
-    // memory. Stream every other Slack file into storage.
+    // memory. Stream every other Slack file into storage, or record a large
+    // one for its first load to download.
     if (
       context.conversationId &&
       deps.attachmentStorage &&
@@ -392,15 +399,18 @@ async function resolveUserAttachmentsWithDeps(
       !(attachment.data instanceof Buffer) &&
       !(isImageAttachment && declaredBytes <= MAX_MODEL_ATTACHMENT_BYTES)
     ) {
+      const file = {
+        bytes: declaredBytes,
+        filename: attachment.name ?? "attachment",
+        mimeType: mediaType,
+        source: { id: slackFileId, provider: "slack" },
+      };
       const attachmentId = await storeSlackFile({
         conversationId: context.conversationId,
-        file: {
-          bytes: declaredBytes,
-          filename: attachment.name ?? "attachment",
-          mimeType: mediaType,
-          open: () => streamPrivateSlackFile(url),
-          source: { id: slackFileId, provider: "slack" },
-        },
+        file:
+          !isImageAttachment && declaredBytes > MAX_EAGER_SLACK_FILE_BYTES
+            ? { ...file, deferred: true }
+            : { ...file, open: () => streamPrivateSlackFile(url) },
         storage: deps.attachmentStorage,
       });
       results.push({

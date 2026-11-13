@@ -39,7 +39,11 @@ async function readStoredBytes(args: {
     conversationId: args.conversationId,
     db: getSqlExecutor(),
   });
-  if (!record || record.storageProvider !== args.storage.provider) {
+  if (
+    !record ||
+    record.storageProvider !== args.storage.provider ||
+    record.storageKey === null
+  ) {
     throw new Error("Input attachment is no longer available.");
   }
   const body = await args.storage.get(record.storageKey);

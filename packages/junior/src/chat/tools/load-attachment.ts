@@ -2,7 +2,15 @@ import path from "node:path";
 import * as z from "zod";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
-import { readLiveAttachment } from "@/chat/attachments/store";
+import {
+  AttachmentSourceUnavailableError,
+  type ReadAttachmentSource,
+} from "@/chat/attachments/source";
+import {
+  readLiveAttachment,
+  storeDeferredAttachment,
+  type AttachmentRecord,
+} from "@/chat/attachments/store";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type {
   SandboxCommandInput,
@@ -100,10 +108,55 @@ async function writeParts(args: {
   return parts;
 }
 
+const TOO_LARGE_MESSAGE = `Attachment is larger than the ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB file limit.`;
+
+/**
+ * Download a file that Junior recorded without its bytes into storage.
+ *
+ * The size check runs before the download. A file that the source deleted
+ * becomes a tool error that the model can relay.
+ */
+async function storeFromSource(args: {
+  attachment: AttachmentRecord;
+  db: JuniorSqlDatabase;
+  readAttachmentSource?: ReadAttachmentSource;
+  storage: AttachmentStorage;
+}): Promise<AttachmentRecord & { storageKey: string }> {
+  const { attachment } = args;
+  const { source } = attachment;
+  if (!source || !args.readAttachmentSource) {
+    throw new ToolInputError(
+      "Attachment has not been downloaded, and it cannot be downloaded from this conversation.",
+    );
+  }
+  try {
+    const file = await args.readAttachmentSource(source);
+    if (file.bytes > MAX_ATTACHMENT_BYTES) {
+      throw new ToolInputError(TOO_LARGE_MESSAGE);
+    }
+    return await storeDeferredAttachment({
+      attachment: { ...attachment, source },
+      db: args.db,
+      file,
+      storage: args.storage,
+    });
+  } catch (error) {
+    if (error instanceof AttachmentSourceUnavailableError) {
+      throw new ToolInputError(
+        `${attachment.filename} is no longer available: ${error.message}`,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+}
+
 /** Create a tool that restores one stored conversation attachment to the sandbox. */
 export function createLoadAttachmentTool(args: {
   conversationId: string;
   db: JuniorSqlDatabase;
+  /** Downloads a file that was recorded without its bytes. */
+  readAttachmentSource?: ReadAttachmentSource;
   storage: AttachmentStorage;
   workspace: SandboxWorkspace;
 }) {
@@ -113,7 +166,8 @@ export function createLoadAttachmentTool(args: {
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
-      openWorldHint: false,
+      // The first load of a large Slack file downloads it from Slack.
+      openWorldHint: true,
       readOnlyHint: false,
     },
     inputSchema: z.object({
@@ -121,19 +175,26 @@ export function createLoadAttachmentTool(args: {
     }),
     outputSchema: juniorToolOutputSchema,
     execute: async ({ attachment_id }) => {
-      const attachment = await readLiveAttachment({
+      const live = await readLiveAttachment({
         attachmentId: attachment_id,
         conversationId: args.conversationId,
         db: args.db,
       });
-      if (!attachment || attachment.storageProvider !== args.storage.provider) {
+      if (!live || live.storageProvider !== args.storage.provider) {
         throw new ToolInputError("Attachment not found in this conversation.");
       }
-      if (attachment.bytes > MAX_ATTACHMENT_BYTES) {
-        throw new ToolInputError(
-          `Attachment is larger than the ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB file limit.`,
-        );
+      if (live.bytes > MAX_ATTACHMENT_BYTES) {
+        throw new ToolInputError(TOO_LARGE_MESSAGE);
       }
+      const attachment =
+        live.storageKey === null
+          ? await storeFromSource({
+              attachment: live,
+              db: args.db,
+              readAttachmentSource: args.readAttachmentSource,
+              storage: args.storage,
+            })
+          : { ...live, storageKey: live.storageKey };
       const body = await args.storage.get(attachment.storageKey);
       if (!body) {
         throw new ToolInputError("Stored attachment contents are unavailable.");
