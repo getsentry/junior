@@ -61,8 +61,12 @@ Canonical words for Junior code and docs. One concept, one word.
   by `accounts.service-account` and connected by an Admin (dashboard or
   `junior service-account connect`). It serves Actors with no own connection;
   `accounts.user-oauth: false` makes it the only path.
-- **Automation**: a saved instruction run later, with a creator, trigger,
-  instruction, and ordered outcomes.
+- **Automation**: triggers plus an action, with a creator. The `run` action
+  runs an instruction or skill with ordered outcomes. The `wake` action brings
+  an Inbox row back and runs no Turn.
+- **Snooze**: a one-shot Automation with the `wake` action on one Inbox row
+  (its subject). It wakes on the first of its triggers: a timer Event, another
+  Event, or a new Review item in the row's Conversation.
 - **Schedule**: a time trigger. **Scheduled** / **Event automation**: an
   Automation with a Schedule / Event trigger.
 - **Automation version**: one saved definition (title, instruction, trigger,

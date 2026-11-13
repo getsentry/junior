@@ -36,6 +36,10 @@ import {
   insertReviewItem,
 } from "@/chat/review-items/store";
 import {
+  createWakeAutomation,
+  unsnoozeWakeAutomation,
+} from "@/chat/wake-automations/store";
+import {
   createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../../fixtures/sql";
@@ -223,6 +227,72 @@ describe("retention purge job", () => {
     expect(
       await getReviewItem(fixture.sql.db(), privateAutomationItem),
     ).toBeUndefined();
+  });
+
+  it("deletes completed snoozes 30 days after they were made", async () => {
+    const dest = await seedDestination(fixture.sql, "public");
+    await seedConversation(fixture.sql, {
+      conversationId: "snoozed",
+      destinationId: dest,
+      lastActivityAtMs: BASE_MS + 40 * DAY_MS,
+    });
+    await fixture.sql
+      .db()
+      .insert(juniorIdentities)
+      .values({
+        createdAt: new Date(BASE_MS),
+        id: "identity:snoozer",
+        kind: "user",
+        provider: "slack",
+        providerSubjectId: "U1",
+        providerTenantId: "T1",
+        updatedAt: new Date(BASE_MS),
+      });
+    const snooze = async (nowMs: number, reviewItemId?: string) =>
+      await createWakeAutomation(fixture.sql.db(), {
+        creatorIdentityId: "identity:snoozer",
+        identityIds: ["identity:snoozer"],
+        nowMs,
+        subject: {
+          conversationId: "snoozed",
+          ...(reviewItemId ? { reviewItemId } : undefined),
+        },
+        triggers: [{ kind: "new_item" }],
+      });
+    const item = await insertReviewItem(fixture.sql.db(), {
+      addedByConversationId: "snoozed",
+      assignedToEveryone: false,
+      assigneeUserIds: [],
+      body: "The rollout waits on an answer.",
+      conversationIds: ["snoozed"],
+      dedupeKey: "rollout:snoozed",
+      kind: "notice",
+      nowMs: BASE_MS,
+      title: "Rollout paused",
+      visibility: "public",
+    });
+    const old = await snooze(BASE_MS);
+    await unsnoozeWakeAutomation(fixture.sql.db(), {
+      id: old.id,
+      identityIds: ["identity:snoozer"],
+    });
+    const oldActive = await snooze(BASE_MS, item!.id);
+    const recent = await snooze(BASE_MS + 20 * DAY_MS);
+    await unsnoozeWakeAutomation(fixture.sql.db(), {
+      id: recent.id,
+      identityIds: ["identity:snoozer"],
+    });
+
+    await runRetentionPurge(fixture.sql, { nowMs: BASE_MS + 31 * DAY_MS });
+    const left = await fixture.sql
+      .db()
+      .select({ id: juniorAutomations.id })
+      .from(juniorAutomations)
+      .where(eq(juniorAutomations.action, "wake"));
+    // An active snooze stays until it wakes.
+    expect(left.map((row) => row.id).sort()).toEqual(
+      [oldActive.id, recent.id].sort(),
+    );
   });
 
   it("shortens the window when visibility flips public to private", async () => {

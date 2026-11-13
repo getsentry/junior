@@ -190,6 +190,11 @@ export function createReviewItemRoutes(services: {
       // Read one more item than a page to learn whether more follow.
       const open = await searchReviewItems(db, reader, {
         ...filters,
+        // The viewer's Inbox hides the rows they snoozed until they wake. A
+        // Conversation's own list and a search still show them.
+        ...(query.for === "viewer" && !filters.conversationId && !filters.query
+          ? { awakeForUserId: viewer.id }
+          : undefined),
         limit: query.limit + 1,
         order: "oldest",
         statuses: ["open"],

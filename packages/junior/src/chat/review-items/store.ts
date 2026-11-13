@@ -9,12 +9,18 @@ import {
   ilike,
   inArray,
   isNull,
+  not,
   notLike,
   or,
   sql,
   type SQL,
 } from "drizzle-orm";
 import type { ProviderTenant } from "@/api/conversations/access";
+import {
+  reviewItemSnoozedBy,
+  wakeAutomationsForNewItem,
+  wakeAutomationsVersion,
+} from "@/chat/wake-automations/store";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversations,
@@ -351,6 +357,10 @@ export async function insertReviewItem(
       .returning({ id: juniorReviewItems.id });
     if (!inserted[0]) return undefined;
     await replaceLinks(tx, inserted[0].id, input);
+    await wakeAutomationsForNewItem(tx, {
+      itemId: inserted[0].id,
+      nowMs: input.nowMs,
+    });
     return inserted[0].id;
   });
   if (!id) return undefined;
@@ -527,6 +537,8 @@ export interface ReviewItemFilters {
    * (`reviewItemForUser`).
    */
   forUserId?: string;
+  /** Drop the items in Inbox rows that this User snoozed. */
+  awakeForUserId?: string;
   limit: number;
   /** Words to find in the title or body. */
   query?: string;
@@ -577,6 +589,11 @@ function searchConditions(
   if (filters.forUserId) {
     conditions.push(reviewItemForUser(filters.forUserId));
   }
+  if (filters.awakeForUserId) {
+    conditions.push(
+      not(reviewItemSnoozedBy(filters.awakeForUserId, Date.now())),
+    );
+  }
   if (filters.query) {
     const pattern = `%${filters.query.replace(/[\\%_]/g, "\\$&")}%`;
     conditions.push(
@@ -589,22 +606,38 @@ function searchConditions(
   return conditions;
 }
 
-/** Count the open Review items that need a User (`reviewItemNeedsUser`). */
+/**
+ * SQL: the Review item needs the User now: `reviewItemNeedsUser`, and the
+ * User has not snoozed its Inbox row.
+ */
+function reviewItemNeedsUserNow(userId: string, nowMs: number): SQL {
+  return and(
+    reviewItemNeedsUser(userId),
+    not(reviewItemSnoozedBy(userId, nowMs)),
+  )!;
+}
+
+/**
+ * Count the open Review items that need a User now
+ * (`reviewItemNeedsUser`). A snoozed row does not count until it wakes.
+ */
 export async function countReviewItemsNeedingUser(
   db: JuniorDatabase,
   userId: string,
+  nowMs = Date.now(),
 ): Promise<number> {
   const rows = await db
     .select({ count: count() })
     .from(juniorReviewItems)
-    .where(reviewItemNeedsUser(userId));
+    .where(reviewItemNeedsUserNow(userId, nowMs));
   return rows[0]?.count ?? 0;
 }
 
 /**
  * Return a query for a token that changes when the open Review items that
  * need a User change. An item that is added or changed moves the newest
- * `updated_at`, and an item that closes or leaves the User changes the count.
+ * `updated_at`, and an item that closes, leaves the User, or is snoozed
+ * changes the count. A new or undone snooze also changes the token.
  */
 export function reviewItemsNeedingUserVersionQuery(
   db: JuniorDatabase,
@@ -612,10 +645,10 @@ export function reviewItemsNeedingUserVersionQuery(
 ) {
   return db
     .select({
-      version: sql<string>`concat_ws(':', count(*), max(${juniorReviewItems.updatedAt}))`,
+      version: sql<string>`concat_ws(':', count(*), max(${juniorReviewItems.updatedAt}), ${wakeAutomationsVersion(userId)})`,
     })
     .from(juniorReviewItems)
-    .where(reviewItemNeedsUser(userId));
+    .where(reviewItemNeedsUserNow(userId, Date.now()));
 }
 
 /**
@@ -690,7 +723,7 @@ export async function listWaitingConversations(
         juniorReviewItemConversations.conversationId,
       ),
     )
-    .where(reviewItemNeedsUser(userId))
+    .where(reviewItemNeedsUserNow(userId, Date.now()))
     .orderBy(desc(juniorReviewItems.createdAt), desc(juniorReviewItems.id));
   const waiting = new Map<string, WaitingConversation>();
   for (const row of rows) {

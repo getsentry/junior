@@ -61,14 +61,13 @@ export function createEventAppPublisher(args: {
             ),
           ),
         ),
-        eventAutomationTeamId
-          ? findMatchingEventAutomations(
-              getDb(),
-              events,
-              eventAutomationTeamId,
-              getEventCatalog(),
-            )
-          : Promise.resolve([]),
+        // With no team, Snoozes still match.
+        findMatchingEventAutomations(
+          getDb(),
+          events,
+          eventAutomationTeamId,
+          getEventCatalog(),
+        ),
       ]);
       return [...subscriptions, ...tasks].some((matched) => matched.length > 0);
     },
@@ -82,16 +81,16 @@ export function createEventAppPublisher(args: {
           namespace: input.namespace,
           state: work.state,
         }),
-        eventAutomationTeamId
-          ? collectEventAutomationMatchKeys(getDb(), {
-              catalog: getEventCatalog(),
-              ...(input.data ? { data: input.data } : undefined),
-              eventTypes: input.eventTypes,
-              identifiers: input.identifiers,
-              namespace: input.namespace,
-              teamId: eventAutomationTeamId,
-            })
-          : Promise.resolve([] as string[]),
+        collectEventAutomationMatchKeys(getDb(), {
+          catalog: getEventCatalog(),
+          ...(input.data ? { data: input.data } : undefined),
+          eventTypes: input.eventTypes,
+          identifiers: input.identifiers,
+          namespace: input.namespace,
+          ...(eventAutomationTeamId
+            ? { teamId: eventAutomationTeamId }
+            : undefined),
+        }),
       ]);
       return [...new Set([...watchKeys, ...taskKeys])].sort();
     },
@@ -106,12 +105,12 @@ export function createEventAppPublisher(args: {
           slackTeamId: eventAutomationTeamId,
           state: work.state,
         }),
-        eventAutomationTeamId
-          ? ingestEventAutomations(event, {
-              queue,
-              teamId: eventAutomationTeamId,
-            })
-          : Promise.resolve(),
+        ingestEventAutomations(event, {
+          queue,
+          ...(eventAutomationTeamId
+            ? { teamId: eventAutomationTeamId }
+            : undefined),
+        }),
       ]);
     },
   };

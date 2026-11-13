@@ -2,14 +2,19 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   check,
+  foreignKey,
   index,
   jsonb,
   pgTable,
   text,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { juniorConversations } from "./conversations";
 import { juniorIdentities } from "./identities";
+import { juniorReviewItems } from "./review-items";
 import type { EventAutomationRecord } from "@/chat/event-automations/types";
 import type { ScheduledAutomationRecord } from "@/chat/scheduled-automations/types";
+import type { WakeAutomationRecord } from "@/chat/wake-automations/types";
 
 /**
  * One row per Automation of either kind. `record` holds the fields that have
@@ -20,15 +25,35 @@ import type { ScheduledAutomationRecord } from "@/chat/scheduled-automations/typ
  * kind. A skill's context is only in `record`. An event trigger with no
  * identifier runs for every resource of its namespace, so its `identifier` is
  * null. The match index finds those rows with `identifier is null`.
+ *
+ * `action` is `run` for an Automation that starts a Turn, and `wake` for a
+ * Snooze: a one-shot Automation that brings an Inbox row back and runs no
+ * Turn. A run row has a Slack Destination in its three Slack columns. A wake
+ * row has none; it has a subject instead, and its owner reads it on the
+ * dashboard. A wake row keeps its Event trigger in `namespace` and
+ * `identifier`, like an event row, and its timer fire time in
+ * `next_run_at_ms`. Its `kind` is `event` when it has an Event trigger, else
+ * `scheduled`.
  */
 export const juniorAutomations = pgTable(
   "junior_automations",
   {
     id: text("id").primaryKey(),
     kind: text("kind").$type<"scheduled" | "event">().notNull(),
-    teamId: text("team_id").notNull(),
-    channelId: text("channel_id").notNull(),
-    creatorSlackUserId: text("creator_slack_user_id").notNull(),
+    action: text("action").$type<"run" | "wake">().notNull().default("run"),
+    /** Null only for a wake row, which has no Slack Destination. */
+    teamId: text("team_id"),
+    /** Null only for a wake row. */
+    channelId: text("channel_id"),
+    /** Null only for a wake row. */
+    creatorSlackUserId: text("creator_slack_user_id"),
+    /** The Conversation whose Inbox row a wake row hides. */
+    subjectConversationId: text("subject_conversation_id"),
+    /**
+     * The one Review item whose Inbox row a wake row hides. Null when the
+     * wake hides every item of its subject Conversation.
+     */
+    subjectReviewItemId: text("subject_review_item_id"),
     /** Junior identity that created the Automation. It decides ownership. */
     creatorIdentityId: text("creator_identity_id")
       .notNull()
@@ -49,10 +74,22 @@ export const juniorAutomations = pgTable(
     namespace: text("namespace"),
     identifier: text("identifier"),
     record: jsonb("record")
-      .$type<ScheduledAutomationRecord | EventAutomationRecord>()
+      .$type<
+        ScheduledAutomationRecord | EventAutomationRecord | WakeAutomationRecord
+      >()
       .notNull(),
   },
   (table) => [
+    foreignKey({
+      name: "junior_automations_subject_conversation_fk",
+      columns: [table.subjectConversationId],
+      foreignColumns: [juniorConversations.conversationId],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "junior_automations_subject_review_item_fk",
+      columns: [table.subjectReviewItemId],
+      foreignColumns: [juniorReviewItems.id],
+    }).onDelete("cascade"),
     check(
       "junior_automations_kind_check",
       sql`${table.kind} in ('scheduled', 'event')`,
@@ -62,8 +99,16 @@ export const juniorAutomations = pgTable(
       sql`${table.status} in ('active', 'blocked', 'paused', 'completed', 'deleted')`,
     ),
     check(
+      "junior_automations_action_check",
+      sql`${table.action} in ('run', 'wake')`,
+    ),
+    check(
       "junior_automations_task_check",
-      sql`(${table.instruction} is null) <> (${table.skill} is null)`,
+      sql`(${table.action} = 'wake' and ${table.instruction} is null and ${table.skill} is null) or (${table.action} = 'run' and (${table.instruction} is null) <> (${table.skill} is null))`,
+    ),
+    check(
+      "junior_automations_destination_check",
+      sql`(${table.action} = 'run' and ${table.teamId} is not null and ${table.channelId} is not null and ${table.creatorSlackUserId} is not null and ${table.subjectConversationId} is null and ${table.subjectReviewItemId} is null) or (${table.action} = 'wake' and ${table.teamId} is null and ${table.channelId} is null and ${table.creatorSlackUserId} is null and ${table.subjectConversationId} is not null)`,
     ),
     check(
       "junior_automations_record_check",
@@ -71,7 +116,7 @@ export const juniorAutomations = pgTable(
     ),
     check(
       "junior_automations_trigger_check",
-      sql`(${table.kind} = 'scheduled' and ${table.namespace} is null and ${table.identifier} is null) or (${table.kind} = 'event' and ${table.namespace} is not null and ${table.nextRunAtMs} is null and ${table.runNowAtMs} is null and ${table.status} <> 'completed')`,
+      sql`(${table.kind} = 'scheduled' and ${table.namespace} is null and ${table.identifier} is null) or (${table.kind} = 'event' and ${table.namespace} is not null and ${table.runNowAtMs} is null and (${table.action} = 'wake' or (${table.nextRunAtMs} is null and ${table.status} <> 'completed')))`,
     ),
     index("junior_automations_team_idx")
       .on(table.teamId, table.createdAtMs, table.id)
@@ -94,6 +139,17 @@ export const juniorAutomations = pgTable(
     index("junior_automations_skill_idx")
       .on(table.skill, table.createdAtMs, table.id)
       .where(sql`${table.status} <> 'deleted' AND ${table.skill} IS NOT NULL`),
+    index("junior_automations_wake_subject_idx")
+      .on(table.subjectConversationId, table.subjectReviewItemId)
+      .where(sql`${table.status} = 'active' AND ${table.action} = 'wake'`),
+    // One active Snooze per creator and Inbox row. A new Snooze replaces it.
+    uniqueIndex("junior_automations_one_wake_idx")
+      .on(
+        table.creatorIdentityId,
+        table.subjectConversationId,
+        sql`coalesce(${table.subjectReviewItemId}, '')`,
+      )
+      .where(sql`${table.status} = 'active' AND ${table.action} = 'wake'`),
     index("junior_automations_match_idx")
       .on(table.namespace, table.identifier, table.createdAtMs, table.id)
       .where(sql`${table.status} <> 'deleted'`),

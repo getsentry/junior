@@ -17,6 +17,8 @@ import {
   type EventCatalog,
 } from "@/chat/events/catalog";
 import { logWarn } from "@/chat/logging";
+import { parseWakeAutomationRow } from "@/chat/wake-automations/store";
+import { wakeEventTrigger } from "@/chat/wake-automations/types";
 import { clearEventAutomationRuns } from "./run-limit";
 import {
   eventAutomationSchema,
@@ -114,12 +116,17 @@ function withRowFields(
 }
 
 function eventAutomationWhere(id: string) {
-  return and(eq(juniorAutomations.id, id), eq(juniorAutomations.kind, "event"));
+  return and(
+    eq(juniorAutomations.id, id),
+    eq(juniorAutomations.kind, "event"),
+    eq(juniorAutomations.action, "run"),
+  );
 }
 
 function activeEventAutomationWhere() {
   return and(
     eq(juniorAutomations.kind, "event"),
+    eq(juniorAutomations.action, "run"),
     ne(juniorAutomations.status, "deleted"),
   );
 }
@@ -262,6 +269,7 @@ export async function listDeletedEventAutomationsCreatedBy(
       and(
         inArray(juniorAutomations.creatorIdentityId, identityIds),
         eq(juniorAutomations.kind, "event"),
+        eq(juniorAutomations.action, "run"),
         eq(juniorAutomations.status, "deleted"),
       ),
     )
@@ -294,6 +302,30 @@ function eventTypesWhere(eventTypes: readonly string[]) {
   );
 }
 
+/** The Event selector of a run row or a wake row. */
+type MatchTrigger = Pick<
+  StoredEventAutomation["trigger"],
+  "events" | "identifier" | "match" | "namespace" | "resourceType"
+>;
+
+/**
+ * A live row that can match an Event: an event Automation that runs a
+ * Turn, or a Snooze that wakes. Both select Events the same way.
+ */
+export type MatchableEventAutomation =
+  | (StoredEventAutomation & { action: "run" })
+  | { action: "wake"; id: string; trigger: MatchTrigger };
+
+/** SQL for wake rows whose Event trigger selects any of these event types. */
+function wakeEventTypesWhere(eventTypes: readonly string[]) {
+  return or(
+    ...eventTypes.map(
+      (eventType) =>
+        sql`${juniorAutomations.record}->'triggers' @> ${JSON.stringify([{ kind: "event", events: [eventType] }])}::jsonb`,
+    ),
+  );
+}
+
 /**
  * Return why a row must not run for an Event with one of these identifiers,
  * or nothing when it may.
@@ -305,11 +337,11 @@ function eventTypesWhere(eventTypes: readonly string[]) {
  */
 function eventAutomationGateProblem(
   row: AutomationRow,
-  task: StoredEventAutomation,
+  trigger: MatchTrigger,
   identifiers: readonly string[],
   catalog: EventCatalog,
 ): string | undefined {
-  const identifier = task.trigger.identifier;
+  const identifier = trigger.identifier;
   if (identifier !== undefined) {
     return identifier === row.identifier && identifiers.includes(identifier)
       ? undefined
@@ -318,17 +350,31 @@ function eventAutomationGateProblem(
   if (row.identifier !== null) {
     return "The saved trigger has no identifier, but its row has one.";
   }
-  const problems = registeredEventTriggerProblems(catalog, task.trigger);
+  const problems = registeredEventTriggerProblems(catalog, trigger);
   return problems.length > 0
     ? problems.map((problem) => problem.message).join(" ")
     : undefined;
 }
 
+/** Decode a row for Event matching, or skip it. */
+function readMatchableRow(
+  row: AutomationRow,
+): MatchableEventAutomation | undefined {
+  if (row.action === "wake") {
+    const wake = parseWakeAutomationRow(row);
+    const trigger = wake && wakeEventTrigger(wake.triggers);
+    return trigger ? { action: "wake", id: row.id, trigger } : undefined;
+  }
+  const task = readMatchableEventAutomationRow(row);
+  return task ? { ...task, action: "run" } : undefined;
+}
+
 /**
- * Read the rows that can match an Event: live rows of one team and
- * namespace whose identifier is one of these, or that have no identifier,
- * and that select one of these event types. Skip and log a row that does
- * not parse or that the gate rejects.
+ * Read the rows that can match an Event: live rows of one namespace whose
+ * identifier is one of these, or that have no identifier, and that select
+ * one of these event types. Run rows must belong to `teamId`; with no team,
+ * none match. Snoozes have no team and match for every team. Skip and log a
+ * row that does not parse or that the gate rejects.
  */
 async function readGatedEventAutomations(
   db: JuniorDatabase,
@@ -337,37 +383,56 @@ async function readGatedEventAutomations(
     eventTypes: readonly string[];
     identifiers: readonly string[];
     namespace: string;
-    teamId: string;
+    nowMs?: number;
+    teamId?: string;
   },
-): Promise<StoredEventAutomation[]> {
+): Promise<MatchableEventAutomation[]> {
+  const nowMs = input.nowMs ?? Date.now();
   const rows = await db
     .select()
     .from(juniorAutomations)
     .where(
       and(
         eq(juniorAutomations.kind, "event"),
-        eq(juniorAutomations.teamId, input.teamId),
+        or(
+          input.teamId === undefined
+            ? undefined
+            : and(
+                eq(juniorAutomations.action, "run"),
+                eq(juniorAutomations.teamId, input.teamId),
+                eventTypesWhere(input.eventTypes),
+              ),
+          and(
+            eq(juniorAutomations.action, "wake"),
+            isNull(juniorAutomations.teamId),
+            wakeEventTypesWhere(input.eventTypes),
+            // A snooze whose timer fired is awake; a later Event changes nothing.
+            or(
+              isNull(juniorAutomations.nextRunAtMs),
+              sql`${juniorAutomations.nextRunAtMs} > ${nowMs}`,
+            ),
+          ),
+        ),
         eq(juniorAutomations.namespace, input.namespace),
         eventIdentifierWhere(input.identifiers),
-        eventTypesWhere(input.eventTypes),
         eq(juniorAutomations.status, "active"),
       ),
     )
     .orderBy(asc(juniorAutomations.createdAtMs), asc(juniorAutomations.id));
   const plugins = automationEventCatalog(input.catalog);
   return rows.flatMap((row) => {
-    const task = readMatchableEventAutomationRow(row);
+    const task = readMatchableRow(row);
     if (!task) return [];
     const problem = eventAutomationGateProblem(
       row,
-      task,
+      task.trigger,
       input.identifiers,
       plugins,
     );
     if (problem === undefined) return [task];
     logWarn("event_automation.gate.rejected", {
       "app.task.id": task.id,
-      "app.task.type": "event",
+      "app.task.type": task.action === "wake" ? "wake" : "event",
       "app.event_automation.skip_reason": problem,
     });
     return [];
@@ -400,7 +465,7 @@ export async function collectEventAutomationMatchKeys(
     eventTypes: string[];
     identifiers: string[];
     namespace: string;
-    teamId: string;
+    teamId?: string;
   },
 ): Promise<string[]> {
   const eventTypes = [
@@ -446,9 +511,9 @@ export async function collectEventAutomationMatchKeys(
 export async function findMatchingEventAutomations(
   db: JuniorDatabase,
   events: readonly Event[],
-  teamId: string,
+  teamId: string | undefined,
   catalog: EventCatalog,
-): Promise<StoredEventAutomation[][]> {
+): Promise<MatchableEventAutomation[][]> {
   const namespace = events[0]?.namespace;
   if (namespace === undefined) return [];
   if (events.some((event) => event.namespace !== namespace)) {

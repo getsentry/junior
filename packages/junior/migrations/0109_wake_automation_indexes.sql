@@ -1,0 +1,2 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_automations_wake_subject_idx" ON "junior_automations" USING btree ("subject_conversation_id","subject_review_item_id") WHERE "junior_automations"."status" = 'active' AND "junior_automations"."action" = 'wake';--> statement-breakpoint
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "junior_automations_one_wake_idx" ON "junior_automations" USING btree ("creator_identity_id","subject_conversation_id",coalesce("subject_review_item_id", '')) WHERE "junior_automations"."status" = 'active' AND "junior_automations"."action" = 'wake';

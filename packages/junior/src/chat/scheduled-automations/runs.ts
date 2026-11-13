@@ -307,6 +307,9 @@ export async function claimDueScheduledRun(
       .where(
         and(
           eq(juniorAutomations.kind, "scheduled"),
+          // A wake's timer is due at `next_run_at_ms` too, but it runs no
+          // Turn. `settleDueWakeAutomations` settles it in bulk.
+          eq(juniorAutomations.action, "run"),
           eq(juniorAutomations.status, "active"),
           or(
             and(
