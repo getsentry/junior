@@ -153,6 +153,9 @@ function reviewRequestChange(
   };
 }
 
+/** Why the "ready to merge" notice closes the "review requested" ask. */
+export const READY_REASON = "The pull request is ready to merge.";
+
 /** Return the review desk key of the "review requested" ask. */
 export function reviewRequestDedupeKey(target: {
   number: number;
@@ -231,6 +234,15 @@ export async function syncGitHubPullRequestReviewRequest(args: {
       title: `Review requested · #${number}`,
       waitsOnAssignees: true,
     });
+    // A ready check can save the ready state between the read above and the
+    // upsert, after it closed the ask. Read again so the ask does not stay.
+    if (await readGitHubPullRequestReadyToMerge(args.db, target)) {
+      await items.close({
+        dedupeKey,
+        reason: READY_REASON,
+        status: "dismissed",
+      });
+    }
   } catch (error) {
     args.log?.error("GitHub pull request review request failed", {
       deliveryId: args.deliveryId,

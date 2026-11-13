@@ -11,6 +11,7 @@ import {
   juniorGitHubPullRequests,
 } from "../src/db/schema";
 import { githubPlugin } from "../src/index";
+import { setGitHubPullRequestReadyToMerge } from "../src/pull-request-outcomes/store";
 import { recordGitHubPullRequestRequester } from "../src/pull-request-requesters/store";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
@@ -110,7 +111,12 @@ function memoryState(): PluginState {
 function route(
   fixture: GitHubFixture,
   calls: ReviewItemCall[],
-  options: { state?: PluginState; warnings?: string[] } = {},
+  options: {
+    /** Runs after each upsert of the ask, such as a ready check that races it. */
+    onUpsert?: () => Promise<void>;
+    state?: PluginState;
+    warnings?: string[];
+  } = {},
 ): PluginRoute {
   const reviewItems: PluginConversationReviewItems = {
     forConversation(conversationId) {
@@ -119,6 +125,7 @@ function route(
         async upsert(notice) {
           if (notice.dedupeKey === DEDUPE_KEY) {
             calls.push({ kind: "upsert", notice });
+            await options.onUpsert?.();
           }
         },
         async close(input) {
@@ -411,6 +418,39 @@ describe("review requested ask", () => {
         }),
       );
       expect(calls).toHaveLength(2);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("closes an ask that a ready check raced", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: ReviewItemCall[] = [];
+    try {
+      await seedJuniorPullRequest(fixture);
+      // A ready check saves the ready state after the request read it.
+      const webhook = route(fixture, calls, {
+        onUpsert: () =>
+          setGitHubPullRequestReadyToMerge(fixture.db(), {
+            number: 946,
+            ready: true,
+            repositoryFullName: "getsentry/junior",
+          }),
+      });
+      await webhook.handler(
+        reviewRequest("review_requested", {
+          requested_reviewer: { login: "Requester" },
+        }),
+      );
+      expect(calls.map((call) => call.kind)).toEqual(["upsert", "close"]);
+      expect(calls.at(-1)).toEqual({
+        input: {
+          dedupeKey: DEDUPE_KEY,
+          reason: "The pull request is ready to merge.",
+          status: "dismissed",
+        },
+        kind: "close",
+      });
     } finally {
       await fixture.close();
     }

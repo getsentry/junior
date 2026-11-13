@@ -31,7 +31,10 @@ import {
   type GitHubPullRequestMergeState,
 } from "./installation-requests.js";
 import type { GitHubPullRequestTarget } from "./pull-request-people.js";
-import { reviewRequestDedupeKey } from "./pull-request-review-request.js";
+import {
+  READY_REASON,
+  reviewRequestDedupeKey,
+} from "./pull-request-review-request.js";
 
 /**
  * A check normally takes a few seconds. After this time, a check that
@@ -165,11 +168,6 @@ async function syncOne(
             title: `Ready to merge · #${target.number}`,
             waitsOnAssignees: true,
           });
-          await items.close({
-            dedupeKey: reviewRequestDedupeKey(target),
-            reason: "The pull request is ready to merge.",
-            status: "dismissed",
-          });
         } else {
           await items.close({ dedupeKey, ...closeReason(state) });
         }
@@ -177,6 +175,15 @@ async function syncOne(
         // and the next event tries again.
         await setGitHubPullRequestReadyToMerge(args.db, { ...target, ready });
         saved = ready;
+        // Close the review ask after the save. A review request that adds
+        // the ask during this check then reads the ready state and closes it.
+        if (ready) {
+          await items.close({
+            dedupeKey: reviewRequestDedupeKey(target),
+            reason: READY_REASON,
+            status: "dismissed",
+          });
+        }
       }
     } catch (error) {
       failure ??= error;
