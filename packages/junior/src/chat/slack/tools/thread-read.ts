@@ -111,7 +111,7 @@ async function findThreadConversationIds(args: {
 export function createSlackThreadReadTool(context: SlackToolContext) {
   return zodTool({
     description:
-      "Read a Slack thread, including message reaction users, from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels. Returns `conversation_ids` when you took part in the thread; pass one to `searchConversationEvents`. To open a file of the current thread, pass its `id` to `loadAttachment`.",
+      "Read a Slack thread, including message reaction users, from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels. Returns `conversation_ids` when you took part in the thread; pass one to `searchConversationEvents`.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

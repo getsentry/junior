@@ -44,8 +44,7 @@ export function createLoadAttachmentTool(args: {
       db: args.db,
     });
   return zodTool({
-    description:
-      "Load a file of this conversation into the sandbox. Returns its sandbox path.",
+    description: "Load a file of this conversation into the sandbox.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
