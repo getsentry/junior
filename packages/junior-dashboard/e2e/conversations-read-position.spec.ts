@@ -141,6 +141,9 @@ test("catches the reader up on several unread Turns", async ({
   await expect(
     transcript.getByText("Review the Safari fix on PR #12."),
   ).toBeVisible();
+  await expect(
+    transcript.getByRole("group", { name: "Catch-up" }),
+  ).not.toContainText("Needs you");
   // The range is the one from when the Conversation opened.
   expect(requested).toEqual([{ afterSeq: 20, throughSeq: 59 }]);
   await screenshot(page, "conversation-catch-up", { view: "mobile" });

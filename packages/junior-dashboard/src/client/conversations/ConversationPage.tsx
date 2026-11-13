@@ -185,7 +185,7 @@ export function ConversationPage(props: {
     eventOpen ? false : undefined,
   );
   // A sidebar review chip links here with the review param. It opens
-  // details at Needs you, even below the width where details open alone.
+  // details at To do, even below the width where details open alone.
   const reviewOpen =
     searchParams.get(CONVERSATION_REVIEW_PARAM) === CONVERSATION_REVIEW_OPEN;
   useEffect(() => {

@@ -96,6 +96,9 @@ test("counts every open code change past the listed ones", async ({
   await expect(week.getByText("105", { exact: true })).toBeVisible();
   await expect(week.getByText("1 idle 7d+")).toBeVisible();
   await expect(week.getByText("all moving")).toHaveCount(0);
+  // The Inbox's own word names what waits on the viewer.
+  await expect(week.getByText("To do", { exact: true })).toBeVisible();
+  await expect(week.getByText("Needs you")).toHaveCount(0);
 
   await page.goto(`${dashboard.baseURL}/code`);
   await page

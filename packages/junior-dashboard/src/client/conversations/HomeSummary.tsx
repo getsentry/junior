@@ -119,7 +119,7 @@ export function HomeSummary() {
               <StatusText tone="bg-emerald-300">all clear</StatusText>
             )
           }
-          label="Needs you"
+          label="To do"
           value={needsViewer}
         />
       </div>

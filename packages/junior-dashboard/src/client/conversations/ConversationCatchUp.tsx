@@ -75,15 +75,6 @@ export function ConversationCatchUpCard() {
         <DisplayText text={state.data.summary} />
         {state.data.needsYou ? (
           <p className="m-0 border-t border-dashboard-accent/15 pt-2.5">
-            <span className="font-semibold text-dashboard-accent-text">
-              Needs you
-            </span>
-            <span
-              aria-hidden="true"
-              className="px-1.5 text-dashboard-text-muted"
-            >
-              ·
-            </span>
             {state.data.needsYou}
           </p>
         ) : null}

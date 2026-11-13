@@ -184,7 +184,7 @@ test("Send sends docked picks and asks before a message drops others", async ({
   await page
     .getByRole("button", { name: "Conversation details", exact: true })
     .click();
-  const details = page.getByRole("region", { name: "Needs you" });
+  const details = page.getByRole("region", { name: "To do" });
   await details.getByRole("button", { name: migration.title }).click();
   await details.getByRole("radio", { name: "Reject" }).click();
 
