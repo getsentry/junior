@@ -107,6 +107,11 @@ describe("provider retry helpers", () => {
       "Type validation failed: Value:",
     ],
     ["unparseable JSON", '400 {"error":{"message":"cut', "400"],
+    [
+      "escaped whitespace in the envelope message",
+      '400 {"error":{"message":"first line\\n\\tsecond line"}}',
+      "first line second line",
+    ],
   ])("summarizes %s", (_name, message, summary) => {
     expect(createProviderError(message).summary).toBe(summary);
   });

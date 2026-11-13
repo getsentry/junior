@@ -155,7 +155,10 @@ function extractEnvelopeMessage(
     error && typeof error === "object"
       ? (error as { message?: unknown }).message
       : undefined;
-  return typeof message === "string" ? message.trim() || undefined : undefined;
+  // JSON escapes such as `\n` decode to real whitespace. Collapse it again.
+  return typeof message === "string"
+    ? message.replace(/\s+/g, " ").trim() || undefined
+    : undefined;
 }
 
 /**
