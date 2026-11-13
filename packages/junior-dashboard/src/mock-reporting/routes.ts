@@ -721,6 +721,17 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(conversationAutoArchiveSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
+  // Every mock description image is the same chart.
+  app.get(
+    "/images/:id",
+    () =>
+      new Response(mockChartPng, {
+        headers: {
+          "cache-control": "private, no-store",
+          "content-type": "image/png",
+        },
+      }),
+  );
   // Fixed bodies so dashboard mock can exercise image, video, file, and text
   // preview attachment cards.
   app.get("/conversations/:conversationId/attachments/:attachmentId", (c) => {

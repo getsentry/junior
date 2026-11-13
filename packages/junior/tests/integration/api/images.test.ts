@@ -1,10 +1,16 @@
+import { generateKeyPairSync } from "node:crypto";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import { githubPlugin } from "@sentry/junior-github";
+import {
+  defineJuniorPlugin,
+  encodeObjectImageRef,
+  type User,
+} from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import sharp from "sharp";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -32,10 +38,10 @@ const BROKEN_PNG = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01,
 ]);
 
-function signedInApi(email = "viewer@example.com") {
+function signedInApi(viewer: User) {
   const app = new Hono<{ Variables: JuniorApiVariables }>();
   app.use("*", async (context, next) => {
-    context.set("viewer", testViewer(email));
+    context.set("viewer", viewer);
     await next();
   });
   app.route("/", createJuniorApi());
@@ -44,9 +50,26 @@ function signedInApi(email = "viewer@example.com") {
 
 function requestImage(
   path: string,
-  email?: string,
+  viewer: string | User = "viewer@example.com",
 ): Promise<Response> | Response {
-  return signedInApi(email).request(`http://localhost${path}`);
+  return signedInApi(
+    typeof viewer === "string" ? testViewer(viewer) : viewer,
+  ).request(`http://localhost${path}`);
+}
+
+// A viewer whose linked GitHub account is `login`.
+function gitHubViewer(login: string): User {
+  return {
+    ...testViewer(`${login}@example.com`),
+    identities: [
+      {
+        handle: login,
+        id: `github:${login}`,
+        provider: "github",
+        providerSubjectId: login,
+      },
+    ],
+  };
 }
 
 function publicImage(url: string, width: 128 | 320 | 1280 = 320) {
@@ -393,5 +416,110 @@ describe("image API", () => {
         )
       ).status,
     ).toBe(404);
+  });
+
+  test("serves a GitHub description image only to viewers who can see the repository", async () => {
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
+    vi.stubEnv(
+      "GITHUB_APP_PRIVATE_KEY",
+      generateKeyPairSync("rsa", { modulusLength: 2048 })
+        .privateKey.export({ format: "pem", type: "pkcs1" })
+        .toString(),
+    );
+    const attachment =
+      "https://github.com/user-attachments/assets/0f8c2d6e-5a4b-4c3d-9e8f-7a6b5c4d3e2f";
+    const signed =
+      "https://private-user-images.githubusercontent.com/1/2.png?jwt=signed";
+    const attachmentReads: (string | null)[] = [];
+    const signedReads: (string | null)[] = [];
+    let memberChecks = 0;
+    mswServer.use(
+      http.get("https://api.github.com/app/installations/456", () =>
+        HttpResponse.json({
+          permissions: { contents: "read", metadata: "read" },
+        }),
+      ),
+      http.post(
+        "https://api.github.com/app/installations/456/access_tokens",
+        () =>
+          HttpResponse.json({
+            expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+            token: "app-token",
+          }),
+      ),
+      http.get(
+        "https://api.github.com/repos/getsentry/secret/collaborators/:login/permission",
+        ({ params }) => {
+          if (params.login !== "member") {
+            return HttpResponse.json({ permission: "none" });
+          }
+          // The first read of the member's access fails for a short time.
+          memberChecks += 1;
+          return memberChecks === 1
+            ? HttpResponse.json({ message: "rate limited" }, { status: 502 })
+            : HttpResponse.json({ permission: "read" });
+        },
+      ),
+      // GitHub redirects a private attachment to a short-lived signed URL.
+      http.get(attachment, ({ request }) => {
+        attachmentReads.push(request.headers.get("authorization"));
+        return request.headers.get("authorization")
+          ? new HttpResponse(null, {
+              headers: { location: signed },
+              status: 302,
+            })
+          : new HttpResponse(null, { status: 404 });
+      }),
+      http.get(
+        "https://private-user-images.githubusercontent.com/1/2.png",
+        ({ request }) => {
+          signedReads.push(request.headers.get("authorization"));
+          return new HttpResponse(new Uint8Array(LARGE));
+        },
+      ),
+    );
+    try {
+      await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+      const image = {
+        ref: encodeObjectImageRef({
+          key: "getsentry/secret#7",
+          url: attachment,
+        }),
+        source: "github",
+      };
+
+      // Nothing is fetched with the App credential for a viewer who cannot
+      // see the repository, or who has no linked GitHub account.
+      for (const viewer of [gitHubViewer("outsider"), "nobody@example.com"]) {
+        expect((await requestImage(imagePath(image, 320), viewer)).status).toBe(
+          404,
+        );
+      }
+      expect(attachmentReads).toEqual([]);
+      expect(signedReads).toEqual([]);
+
+      // A failed access read denies only that read. It is not kept as a
+      // denial.
+      expect(
+        (await requestImage(imagePath(image, 640), gitHubViewer("member")))
+          .status,
+      ).toBe(404);
+      expect(attachmentReads).toEqual([]);
+      await expectWebp(
+        await requestImage(imagePath(image, 640), gitHubViewer("member")),
+        { height: 400, width: 640 },
+      );
+      expect(attachmentReads).toHaveLength(1);
+      // Egress sends the App token to github.com as Basic auth.
+      const [, credential = ""] = attachmentReads[0]?.split(" ") ?? [];
+      expect(Buffer.from(credential, "base64").toString()).toContain(
+        "app-token",
+      );
+      // The credential stays on github.com.
+      expect(signedReads).toEqual([null]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

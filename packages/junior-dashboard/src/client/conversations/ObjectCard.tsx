@@ -19,6 +19,7 @@ import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
 import { displayPlainText } from "../display-text/plainText";
 import { ObjectAttachAction } from "./ObjectAttach";
+import { useObjectPreviewImages } from "./objectPreviewImages";
 
 // A thumbnail that fails to load does not render.
 function Thumbnail({ src }: { src: string }) {
@@ -35,6 +36,30 @@ function Thumbnail({ src }: { src: string }) {
   );
 }
 
+// The image route answers 404 to a viewer who cannot see the source, so a
+// preview image that fails to load does not render.
+function PreviewImage({
+  alt,
+  image,
+}: {
+  alt: string;
+  image: { src: string; srcSet: string };
+}) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <img
+      alt={alt}
+      className="aspect-video w-full rounded-md border border-dashboard-border bg-dashboard-fill-faint object-cover object-top"
+      decoding="async"
+      loading="lazy"
+      onError={() => setFailed(true)}
+      src={image.src}
+      srcSet={image.srcSet}
+    />
+  );
+}
+
 /**
  * Show the latest saved annotation, or a `live` card that the API resolved
  * for a link. Opening a source is always explicit. A live card can attach
@@ -47,6 +72,7 @@ export function ObjectCard({
   card: OwnedObjectAnnotation;
   live?: boolean;
 }) {
+  const images = useObjectPreviewImages(card);
   if (card.plugin === "junior" && card.objectType === "automation") {
     return (
       <AutomationCard
@@ -99,6 +125,18 @@ export function ObjectCard({
       <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
         {card.facts?.type === "web_page" && card.facts.thumbnailUrl && (
           <Thumbnail src={card.facts.thumbnailUrl} />
+        )}
+        {images.length > 0 && (
+          // Screenshots often come as a before and after pair, side by side.
+          <div className="grid grid-cols-2 gap-2">
+            {images.map((image, index) => (
+              <PreviewImage
+                key={image.src}
+                alt={`Description image ${index + 1}`}
+                image={image}
+              />
+            ))}
+          </div>
         )}
         {card.facts?.summary && (
           <p className="m-0 max-w-[80ch] break-words text-sm text-dashboard-text-muted">

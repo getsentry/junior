@@ -13,6 +13,8 @@ import {
   formatReplyAttribution,
 } from "@/chat/slack/footer";
 import { escapeSlackMrkdwnText } from "@/chat/slack/mrkdwn";
+import { resolveHandleMentions } from "@/chat/events/people";
+import { logWarn } from "@/chat/logging";
 import { postSlackMessage } from "@/chat/slack/outbound";
 import { splitSlackReplyText } from "@/chat/slack/output";
 
@@ -50,22 +52,52 @@ export function resolveSlackReplyTarget(args: {
   return { channelId, ...(threadTs ? { threadTs } : undefined) };
 }
 
+/** Resolve known people for plugin formatting. Fails open, like the hooks. */
+async function resolveReplyMentions(
+  text: string,
+  teamId: string,
+): Promise<Map<string, string> | undefined> {
+  try {
+    return await resolveHandleMentions(text, teamId);
+  } catch (error) {
+    logWarn("slack.reply.mentions.failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
+}
+
 /**
  * Send one destination-visible Slack reply.
  *
  * Chunks oversized text, builds compact attribution and conversation footer
- * context, and posts through the shared Slack outbound boundary.
+ * context, and posts through the shared Slack outbound boundary. Pass
+ * `formatting` for agent replies so plugin formatting can use Location
+ * defaults, such as a default repository, and mention known people.
  */
 export async function sendSlackReply(args: {
   cards?: MessageCard[];
   channelId: string;
+  formatting?: {
+    configuration?: Record<string, unknown>;
+    /** Slack workspace whose people `@handle` words can mention. */
+    teamId: string;
+  };
   conversationId: string;
   replyAttribution?: ReplyAttribution;
   text: string;
   threadTs?: string;
 }): Promise<string[]> {
+  const format = args.formatting && {
+    configuration: args.formatting.configuration,
+    mentions: await resolveReplyMentions(args.text, args.formatting.teamId),
+  };
   const posts: Array<{ text: string; cards: SlackCard[] }> =
-    splitSlackReplyText(args.text).map((text) => ({ text, cards: [] }));
+    splitSlackReplyText(args.text, format).map((text) => ({
+      text,
+      cards: [],
+    }));
   const cards = (args.cards ?? []).map((card) =>
     renderSlackCard(card, args.conversationId),
   );

@@ -1551,6 +1551,13 @@ function longConversation(nowMs: number): ConversationDetailReport {
         plugin: "github",
         status: "open",
         url: "https://github.com/getsentry/payments/pull/91",
+        // The API names description images by Junior image paths.
+        previewImages: ["payments-91-before", "payments-91-after"].map(
+          (id) => ({
+            src: `/api/images/${id}?w=320`,
+            srcSet: `/api/images/${id}?w=320 1x, /api/images/${id}?w=640 2x`,
+          }),
+        ),
         createdAt: startedAt,
         updatedAt: iso(Date.parse(startedAt), 75_000),
       },
