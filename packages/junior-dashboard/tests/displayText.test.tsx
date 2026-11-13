@@ -296,13 +296,20 @@ describe("display text object links", () => {
             label: `${PAGE_TITLE.slice(0, 255)}…`,
             title: PAGE_TITLE,
           },
+          // Some sources cut the label short with no "…".
+          {
+            ...annotations[3]!,
+            label: PAGE_TITLE.slice(0, 256),
+            title: PAGE_TITLE,
+          },
         ]}
       >
-        <DisplayText text={`See ${PR} and ${PAGE}.`} />
+        <DisplayText text={`See ${PR}, ${PAGE} and ${DOC}.`} />
       </KnownObjectsProvider>,
     );
     expect(anchors(html).map(({ label }) => label)).toEqual([
       "Fix the #72 regression (#7)",
+      `${PAGE_TITLE.slice(0, 79).trimEnd()}…`,
       `${PAGE_TITLE.slice(0, 79).trimEnd()}…`,
     ]);
   });

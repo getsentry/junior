@@ -130,12 +130,11 @@ function objectLinkText(card: OwnedObjectAnnotation): string {
 }
 
 // A link without a title of its own uses its label as the title, and a long
-// title can be cut short as the label. Neither label adds anything.
+// title can be cut short as the label, with or without "…". Neither label
+// adds anything.
 function labelRepeatsTitle(card: OwnedObjectAnnotation): boolean {
-  if (!card.label || card.label === card.title) return true;
-  return (
-    card.label.endsWith("…") && card.title.startsWith(card.label.slice(0, -1))
-  );
+  const label = card.label.endsWith("…") ? card.label.slice(0, -1) : card.label;
+  return card.title.startsWith(label);
 }
 
 /** Return the thumbnail of a video or image page, the only part it shows alone. */
