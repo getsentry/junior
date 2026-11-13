@@ -160,7 +160,7 @@ describe("loadAttachment tool", () => {
     ]);
   });
 
-  it("removes written parts when the stored body ends early", async () => {
+  it("keeps the loaded copy and removes parts when a reload ends early", async () => {
     const storage = createMemoryAttachmentStorage();
     const db = getSqlExecutor();
     await recordConversation();
@@ -183,6 +183,12 @@ describe("loadAttachment tool", () => {
         }),
     };
     const workspace = localWorkspace(root);
+    const loaded = await createLoadAttachmentTool({
+      conversationId: CONVERSATION_ID,
+      db,
+      storage,
+      workspace,
+    }).execute?.({ attachment_id: stored.id }, {});
     const tool = createLoadAttachmentTool({
       conversationId: CONVERSATION_ID,
       db,
@@ -193,13 +199,16 @@ describe("loadAttachment tool", () => {
     await expect(
       tool.execute?.({ attachment_id: stored.id }, {}),
     ).rejects.toThrow(`read ${9 * MIB} bytes, expected ${20 * MIB}`);
-    expect(workspace.writes).toHaveLength(1);
     expect(await fs.readdir(path.join(root, ".junior/attachments"))).toEqual([
       stored.id,
     ]);
     expect(
-      await fs.readdir(path.join(root, `.junior/attachments/${stored.id}`)),
-    ).toEqual([]);
+      (
+        await fs.readFile(
+          path.join(root, String((loaded as { path: string }).path)),
+        )
+      ).equals(data),
+    ).toBe(true);
   });
 
   it("refuses an attachment over the file limit before it reads storage", async () => {

@@ -146,6 +146,10 @@ export function createLoadAttachmentTool(args: {
         cmd: "mkdir",
         args: ["-p", "--", attachmentDir, partsDir],
       });
+      // Join into the parts directory and move the file into place only
+      // once it is complete, so a failed load never touches a copy that an
+      // earlier load wrote.
+      const joinedPath = path.posix.join(partsDir, "joined");
       try {
         const parts = await writeParts({
           attachmentId: attachment.id,
@@ -156,11 +160,11 @@ export function createLoadAttachmentTool(args: {
         });
         await runChecked(args.workspace, "join attachment parts", {
           cmd: "sh",
-          args: ["-c", JOIN_PARTS_SCRIPT, "sh", sandboxPath, ...parts],
+          args: ["-c", JOIN_PARTS_SCRIPT, "sh", joinedPath, ...parts],
         });
         const size = await runChecked(args.workspace, "read attachment size", {
           cmd: "stat",
-          args: ["-c", "%s", "--", sandboxPath],
+          args: ["-c", "%s", "--", joinedPath],
         });
         const written = Number(size.trim());
         if (written !== attachment.bytes) {
@@ -168,12 +172,15 @@ export function createLoadAttachmentTool(args: {
             `Attachment ${attachment.id} wrote ${written} bytes to the sandbox, expected ${attachment.bytes}.`,
           );
         }
+        await runChecked(args.workspace, "move attachment into place", {
+          cmd: "mv",
+          args: ["-f", "--", joinedPath, sandboxPath],
+        });
       } catch (error) {
-        // Do not leave a partial file or parts for the agent to read. The
-        // original failure is the one to report, so the cleanup result is
-        // ignored.
+        // The original failure is the one to report, so the cleanup result
+        // is ignored.
         await args.workspace
-          .runCommand({ cmd: "rm", args: ["-rf", "--", sandboxPath, partsDir] })
+          .runCommand({ cmd: "rm", args: ["-rf", "--", partsDir] })
           .catch(() => undefined);
         throw error;
       }
