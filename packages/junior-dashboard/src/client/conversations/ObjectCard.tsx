@@ -81,6 +81,18 @@ export function ObjectCard({
         }
       />
       <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
+        {card.facts?.type === "document" && card.facts.thumbnailUrl && (
+          <img
+            alt={`Preview of ${card.title}`}
+            className="max-h-48 max-w-full justify-self-start rounded-md border border-dashboard-border bg-dashboard-fill-faint object-contain"
+            loading="lazy"
+            // The image route answers 404 once the viewer loses access.
+            onError={(event) => {
+              event.currentTarget.hidden = true;
+            }}
+            src={card.facts.thumbnailUrl}
+          />
+        )}
         {card.facts?.summary && (
           <p className="m-0 max-w-[80ch] break-words text-sm text-dashboard-text-muted">
             {displayPlainText(card.facts.summary)}

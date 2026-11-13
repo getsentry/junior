@@ -4,7 +4,10 @@ import type {
   PluginEgress,
 } from "@sentry/junior-plugin-api";
 import type { CredentialAuditSource } from "@/chat/credentials/audit";
-import type { CredentialContext } from "@/chat/credentials/context";
+import {
+  credentialContextForActor,
+  type CredentialContext,
+} from "@/chat/credentials/context";
 import { executeCredentialedEgressRequest } from "@/chat/egress/credentialed";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
 import type { SandboxEgressCredentialContext } from "@/chat/sandbox/egress/session";
@@ -105,4 +108,24 @@ export function createPluginEgress(deps: PluginEgressDeps): PluginEgress {
       });
     },
   };
+}
+
+// Link cards and plugin images load outside a Turn, so no person is the
+// credential subject. This system Actor gets only credentials that a plugin
+// owns, never the viewer's. Each plugin checks the viewer before it returns
+// an object or an image.
+const VIEWER_READ_SYSTEM_ACTOR = {
+  platform: "system",
+  name: "object-link",
+} as const;
+
+/**
+ * Create plugin egress for a read that a viewer starts outside a Turn, such
+ * as a link card or a plugin image. It never asks anyone to authorize.
+ */
+export function createViewerReadEgress(): PluginEgress {
+  return createPluginEgress({
+    credentialContext: credentialContextForActor(VIEWER_READ_SYSTEM_ACTOR),
+    pluginAuth: { async handleAuthRequired() {} },
+  });
 }

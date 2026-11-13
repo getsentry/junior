@@ -41,6 +41,8 @@ async function waitForResolvedLinks(page: Page): Promise<void> {
   for (const name of [
     /Release 4\.2 checklist/,
     /Release 4\.2 go\/no-go/,
+    /Release 4\.2 metrics\.pdf/,
+    /Release 4\.2 assets/,
     /#proj-release/,
   ]) {
     await expect(page.getByRole("link", { name })).toBeVisible();
@@ -155,6 +157,62 @@ test("Google Doc and Calendar links resolve to chips and hover cards", async ({
   // Only a participant can attach the object.
   await expect(docCard.getByRole("button", { name: "Attach" })).toHaveCount(0);
   await screenshot(page, "conversation-google-document-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
+test("Drive file and folder links resolve to chips and hover cards", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  const pdf = page.getByRole("link", { name: /Release 4\.2 metrics\.pdf/ });
+  await expect(pdf).toHaveAttribute(
+    "href",
+    "https://drive.google.com/file/d/1MockReleaseMetricsPdf_0123456789/view",
+  );
+  const folder = page.getByRole("link", { name: /Release 4\.2 assets/ });
+  await expect(folder).toHaveAttribute(
+    "href",
+    "https://drive.google.com/drive/folders/1MockReleaseAssets_0123456789",
+  );
+  await waitForResolvedLinks(page);
+  await expect(pdf).toBeVisible();
+  await expect(folder).toBeVisible();
+
+  await pdf.hover();
+  const pdfCard = page.getByRole("region", {
+    name: "PDF: Release 4.2 metrics.pdf",
+  });
+  await expect(pdfCard).toContainText("Morgan Lee");
+  // The thumbnail comes from the Junior image route, never from Google.
+  const thumbnail = pdfCard.getByRole("img", {
+    name: "Preview of Release 4.2 metrics.pdf",
+  });
+  await expect(thumbnail).toHaveAttribute("src", /^\/api\/images\//);
+  await expect
+    .poll(() =>
+      thumbnail.evaluate((image: HTMLImageElement) => image.naturalWidth),
+    )
+    .toBeGreaterThan(0);
+  await screenshot(page, "conversation-google-drive-file-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+
+  await page.mouse.move(0, 0);
+  await expect(pdfCard).toBeHidden();
+  await folder.hover();
+  const folderCard = page.getByRole("region", {
+    name: "Google Drive folder: Release 4.2 assets",
+  });
+  await expect(folderCard).toContainText("Morgan Lee");
+  await expect(folderCard.getByRole("img")).toHaveCount(0);
+  await screenshot(page, "conversation-google-drive-folder-link", {
     lightTheme: true,
     view: "desktop",
   });

@@ -109,7 +109,7 @@ describe("attach a linked object", () => {
             {
               filters: [{ host: "docs.test", pathPrefix: "/d/" }],
               objectType: "document",
-              readTool: "readDocsFile",
+              readTool: () => "readDocsFile",
               async resolve(ctx, url) {
                 return READERS.has(ctx.viewer.email)
                   ? object("document", url)

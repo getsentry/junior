@@ -1,4 +1,5 @@
 import type { PluginContext, User } from "./context";
+import type { PluginEgress } from "./tools";
 
 /** How Junior fetches one image. */
 export interface ImageFetch {
@@ -12,6 +13,12 @@ export interface ImageFetch {
 
 /** Trusted host context for one image read. */
 export interface ImageSourceContext extends PluginContext {
+  /**
+   * Provider egress as a system Actor, as for link cards. It gets only
+   * credentials that the plugin owns. Check that the viewer may see the
+   * image before you return it.
+   */
+  egress: PluginEgress;
   /** The signed-in person who sees the image. */
   viewer: User;
 }

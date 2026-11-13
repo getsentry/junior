@@ -81,7 +81,11 @@ import {
 import { mockChartPng } from "./chart-png";
 import { mockDemoMp4 } from "./demo-mp4";
 import { mockConversationFeedPage } from "./feed-page";
-import { attachMockObjectLink, readMockObjectLinks } from "./objects";
+import {
+  attachMockObjectLink,
+  MOCK_DRIVE_THUMBNAIL_ID,
+  readMockObjectLinks,
+} from "./objects";
 import { readMockConversationOutline } from "./outline";
 import {
   actOnMockReviewItem,
@@ -221,6 +225,16 @@ export function createMockReportingApi(): Hono<{
       readMockObjectLinks(query.data.url),
     );
   });
+  app.get("/images/:id", (c) =>
+    c.req.param("id") === MOCK_DRIVE_THUMBNAIL_ID
+      ? new Response(mockChartPng, {
+          headers: {
+            "cache-control": "private, no-store",
+            "content-type": "image/png",
+          },
+        })
+      : errorResponse("Image not found.", 404),
+  );
   app.get("/people", () =>
     jsonResponse(actorDirectoryReportSchema, readMockPeopleDirectory()),
   );

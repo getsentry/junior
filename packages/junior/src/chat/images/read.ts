@@ -6,6 +6,7 @@
 import { createHash } from "node:crypto";
 import type { PluginRegistration, User } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
+import { createViewerReadEgress } from "@/chat/egress/plugin";
 import { readAvatarFetch } from "@/chat/identities/avatar";
 import { logWarn } from "@/chat/logging";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
@@ -49,6 +50,7 @@ function pluginSource(plugin: PluginRegistration): ImageSource | undefined {
       {
         cache: createPluginCache(name),
         db: getDb(),
+        egress: createViewerReadEgress(),
         log: createPluginLogger(name),
         plugin: { name },
         viewer,

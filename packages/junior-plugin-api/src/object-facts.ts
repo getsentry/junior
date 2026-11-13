@@ -78,6 +78,13 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     summary: summary.optional(),
     owner: text.optional(),
     modifiedAt: z.iso.datetime({ offset: true }).optional(),
+    // A Junior image path from `ObjectLinkContext.imagePath`. Browsers never
+    // load a provider thumbnail URL.
+    thumbnailUrl: z
+      .string()
+      .max(1000)
+      .regex(/^\/api\/images\/[\w-]+\.[\w-]+\?w=\d+(&v=[\w-]+)?$/)
+      .optional(),
   }),
   // Messages: where and when, never the text. The card description holds a
   // short snippet only for a viewer who may read the message.
