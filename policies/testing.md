@@ -50,6 +50,9 @@ Prefer high-fidelity behavior coverage when it is stable.
 - Database tests use `tests/fixtures/sql` and `createJuniorSqlFixture`. Only
   migration contract tests use an empty fixture. Do not import Postgres
   fixture internals.
+- Plugin packages with SQL files in `migrations/` use the
+  `@sentry/junior-testing/postgres` `global-setup`, `setup`, and `fixture`
+  entries. Do not write a package-local database harness.
 
 ### Injected faults
 

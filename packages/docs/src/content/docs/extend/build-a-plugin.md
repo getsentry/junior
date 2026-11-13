@@ -392,8 +392,10 @@ onto the agent runtime's separate result channels.
 
 `approvalMode` sets whether Guardian reviews a call before the tool runs:
 
-- `auto` is the default. Junior sets it when you omit the field. Guardian
-  reviews each call of a plugin tool in this mode.
+- `auto` is the default. Junior sets it when you omit the field. A tool with
+  `readOnlyHint: true` and no `destructiveHint: true` runs without review.
+  Guardian reviews each call of every other tool in this mode. Set
+  `readOnlyHint: true` only when the tool never writes.
 - `review` makes Guardian review each call.
 - `approve` skips review. The tool runs without a Guardian decision, also in a
   child agent.
