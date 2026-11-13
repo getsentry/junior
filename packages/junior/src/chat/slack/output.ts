@@ -96,9 +96,12 @@ function takeChunk(text: string): { chunk: string; rest: string } {
 }
 
 /** Split a normalized Slack reply into thread posts that fit Slack limits. */
-export function splitSlackReplyText(text: string): string[] {
+export function splitSlackReplyText(
+  text: string,
+  configuration?: Record<string, unknown>,
+): string[] {
   const chunks: string[] = [];
-  let remaining = normalizeSlackReplyMarkdown(text);
+  let remaining = normalizeSlackReplyMarkdown(text, configuration);
   while (remaining.length > MAX_INLINE_CHARS) {
     const { chunk, rest } = takeChunk(remaining);
     chunks.push(chunk);

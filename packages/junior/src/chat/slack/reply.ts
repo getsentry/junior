@@ -54,18 +54,24 @@ export function resolveSlackReplyTarget(args: {
  * Send one destination-visible Slack reply.
  *
  * Chunks oversized text, builds compact attribution and conversation footer
- * context, and posts through the shared Slack outbound boundary.
+ * context, and posts through the shared Slack outbound boundary. Pass the
+ * Turn's `configuration` for agent replies so plugin formatting can use
+ * Location defaults, such as a default repository.
  */
 export async function sendSlackReply(args: {
   cards?: MessageCard[];
   channelId: string;
+  configuration?: Record<string, unknown>;
   conversationId: string;
   replyAttribution?: ReplyAttribution;
   text: string;
   threadTs?: string;
 }): Promise<string[]> {
   const posts: Array<{ text: string; cards: SlackCard[] }> =
-    splitSlackReplyText(args.text).map((text) => ({ text, cards: [] }));
+    splitSlackReplyText(args.text, args.configuration).map((text) => ({
+      text,
+      cards: [],
+    }));
   const cards = (args.cards ?? []).map((card) =>
     renderSlackCard(card, args.conversationId),
   );

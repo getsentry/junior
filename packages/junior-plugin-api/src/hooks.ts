@@ -48,6 +48,11 @@ import type {
 
 /** Input for a pure Markdown rewrite before destination delivery formatting. */
 export interface FormatMarkdownHookContext {
+  /**
+   * String config values of this plugin for the Conversation's Location, by
+   * short key, over install defaults. Runtime notices get install defaults.
+   */
+  config: Record<string, string>;
   text: string;
 }
 

@@ -1,3 +1,8 @@
+import {
+  configuredRepository,
+  type Repository,
+} from "./configured-repository.js";
+
 // GitHub autolinked references, rendered as Markdown links for chat replies.
 // https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/autolinked-references-and-urls
 const OWNER = "[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?";
@@ -14,6 +19,8 @@ const TEXT_REFERENCE_PATTERN = new RegExp(
     `${START}(?<commitOwner>${OWNER})\\/(?<commitRepo>${REPO})@(?<commit>${SHA})${END}`,
     `${START}(?<user>${OWNER})@(?<userCommit>[0-9a-f]{40})${END}`,
     `${START}(?:#|GH-)(?<bareIssue>\\d+)${END}`,
+    // Not `@scope/name`, which is an npm package more often than a team.
+    `${START}@(?<mention>${OWNER})(?![\\w/-]|\\.\\w)`,
     // Only full SHAs: shorter hex runs are often other IDs, such as event IDs.
     `${START}(?<bareCommit>[0-9a-f]{40})${END}`,
   ].join("|"),
@@ -30,10 +37,8 @@ const GITHUB_URL_PATTERN = new RegExp(
 // A URL inside an existing link, such as a Markdown link destination.
 const GITHUB_LINKED_URL_PATTERN = new RegExp(GITHUB_URL_BODY, "gi");
 
-interface Repository {
-  owner: string;
-  name: string;
-}
+// Chat words that look like mentions but are no GitHub account.
+const NON_ACCOUNT_MENTIONS = new Set(["channel", "everyone", "here"]);
 
 /** A line part. `text` and `url` parts are rewritten; a `link` can name a repository. */
 interface Segment {
@@ -177,11 +182,10 @@ function segmentText(text: string): Segment[][] {
 }
 
 /**
- * Return the one repository that the text names in qualified references or
- * GitHub issue, pull request, and commit URLs. Return undefined for zero or
- * several, because a bare reference is then ambiguous.
+ * Return the distinct repositories that the text names in qualified
+ * references or GitHub issue, pull request, and commit URLs.
  */
-function soleRepository(lines: Segment[][]): Repository | undefined {
+function namedRepositories(lines: Segment[][]): Repository[] {
   const repositories = new Map<string, Repository>();
   const add = (owner: string | undefined, name: string | undefined) => {
     if (owner && name) {
@@ -202,7 +206,7 @@ function soleRepository(lines: Segment[][]): Repository | undefined {
       }
     }
   }
-  return repositories.size === 1 ? [...repositories.values()][0] : undefined;
+  return [...repositories.values()];
 }
 
 const issueUrl = (owner: string, name: string, issue: string) =>
@@ -225,8 +229,9 @@ function linkifyUrl(url: string): string {
 
 function linkifyTextReferences(
   text: string,
-  repository: Repository | undefined,
+  context: { linkMentions: boolean; repository: Repository | undefined },
 ): string {
+  const { repository } = context;
   return text.replace(TEXT_REFERENCE_PATTERN, (reference, ...args) => {
     const groups = args.at(-1) as Record<string, string | undefined>;
     if (groups.issue) {
@@ -235,6 +240,12 @@ function linkifyTextReferences(
     if (groups.commit) {
       const label = `${groups.commitOwner}/${groups.commitRepo}@${groups.commit.slice(0, 7)}`;
       return `[${label}](${commitUrl(groups.commitOwner!, groups.commitRepo!, groups.commit)})`;
+    }
+    if (groups.mention) {
+      return context.linkMentions &&
+        !NON_ACCOUNT_MENTIONS.has(groups.mention.toLowerCase())
+        ? `[${reference}](https://github.com/${groups.mention})`
+        : reference;
     }
     if (!repository) {
       return reference;
@@ -257,19 +268,33 @@ function linkifyTextReferences(
  *
  * `owner/repo#123`, `owner/repo@sha`, and GitHub issue, pull request,
  * discussion, and commit URLs always become links. `#123`, `GH-123`,
- * `user@sha`, and full SHAs need a repository, so they become links only
- * when the text names exactly one.
+ * `user@sha`, and full SHAs need a repository: the one that the text names,
+ * else the `repo` config value when the text names none. `@login` becomes a
+ * link only when the text names a repository, because chat text also has
+ * `@name` words for people who are not GitHub accounts.
  */
-export function linkifyGitHubReferences(text: string): string {
+export function linkifyGitHubReferences(
+  text: string,
+  config: Record<string, string> = {},
+): string {
   const lines = segmentText(text);
-  const repository = soleRepository(lines);
+  const named = namedRepositories(lines);
+  const context = {
+    linkMentions: named.length > 0,
+    repository:
+      named.length === 0
+        ? configuredRepository(config)
+        : named.length === 1
+          ? named[0]
+          : undefined,
+  };
   return lines
     .map((segments) =>
       segments
         .map((segment) => {
           if (segment.kind === "url") return linkifyUrl(segment.value);
           if (segment.kind === "text") {
-            return linkifyTextReferences(segment.value, repository);
+            return linkifyTextReferences(segment.value, context);
           }
           return segment.value;
         })

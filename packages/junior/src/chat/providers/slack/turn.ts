@@ -836,6 +836,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 const messageIds = await sendSlackReply({
                   cards,
                   channelId: outcome.destination.channelId,
+                  configuration: preparedState.configuration,
                   conversationId,
                   replyAttribution:
                     options.execution?.dispatch?.replyAttribution,
@@ -856,6 +857,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               slackMessageTs = await sendSlackReply({
                 ...replyTarget,
                 cards,
+                configuration: preparedState.configuration,
                 conversationId,
                 replyAttribution: options.execution?.dispatch?.replyAttribution,
                 text,

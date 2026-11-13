@@ -329,8 +329,9 @@ Once configured, Junior can:
 - Check githubstatus.com for open or recent incidents when GitHub requests or
   checks fail
 - Watch or automate matching events when webhooks are enabled
-- Link issue, pull request, and commit references and URLs in Slack replies,
-  as GitHub does. Bare `#123` links only when the reply names one repository
+- Link issue, pull request, and commit references, URLs, and `@login`
+  mentions in Slack replies, as GitHub does. Bare `#123` uses the one
+  repository that the reply names, or else the channel's `github.repo`
 
 Bot-owned writes use installation credentials. Personal operations still use
 private user authorization when required. Merge remains outside the write

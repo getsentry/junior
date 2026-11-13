@@ -31,6 +31,7 @@ import type {
   User,
   UserPromptContext,
 } from "@sentry/junior-plugin-api";
+import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { getDb } from "@/chat/db";
 import { resolveUserTimezone } from "@/chat/identities/timezone";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
@@ -55,6 +56,7 @@ import {
 import {
   basePluginContext,
   createSandboxCapability,
+  pluginConfigValues,
   withPluginHookSpan,
 } from "@/chat/plugins/hook-context";
 import {
@@ -496,8 +498,16 @@ export function getPlugins(): PluginRegistration[] {
   return [...registeredPlugins];
 }
 
-/** Apply plugin Markdown rewrites before destination delivery formatting. */
-export function applyPluginFormatMarkdown(text: string): string {
+/**
+ * Apply plugin Markdown rewrites before destination delivery formatting.
+ * `configuration` holds the Conversation's config values by full key. Install
+ * defaults fill keys that it does not set.
+ */
+export function applyPluginFormatMarkdown(
+  text: string,
+  configuration: Record<string, unknown> = {},
+): string {
+  const resolved = { ...getConfigDefaults(), ...configuration };
   let transformed = text;
   for (const plugin of getPlugins()) {
     const hook = plugin.hooks?.formatMarkdown;
@@ -505,7 +515,10 @@ export function applyPluginFormatMarkdown(text: string): string {
       continue;
     }
     try {
-      const next = hook({ text: transformed });
+      const next = hook({
+        config: pluginConfigValues(plugin.manifest.name, resolved),
+        text: transformed,
+      });
       if (typeof next === "string") {
         transformed = next;
       }

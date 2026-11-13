@@ -319,8 +319,8 @@ export function githubPlugin(
           ),
         };
       },
-      formatMarkdown({ text }) {
-        return linkifyGitHubReferences(text);
+      formatMarkdown({ config, text }) {
+        return linkifyGitHubReferences(text, config);
       },
       systemPrompt() {
         // formatMarkdown links bare `#123` only when a reply names one repository.

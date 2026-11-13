@@ -115,6 +115,43 @@ describe("GitHub reply markdown", () => {
     );
   });
 
+  it("falls back to the configured repository when the text names none", () => {
+    expect(
+      linkifyGitHubReferences("see #12", { repo: "getsentry/junior" }),
+    ).toBe("see [#12](https://github.com/getsentry/junior/issues/12)");
+    expect(
+      linkifyGitHubReferences("see GH-12", {
+        org: "getsentry",
+        repo: "junior",
+      }),
+    ).toBe("see [GH-12](https://github.com/getsentry/junior/issues/12)");
+    expect(
+      linkifyGitHubReferences("getsentry/sentry#1 and #2", {
+        repo: "getsentry/junior",
+      }),
+    ).toBe(
+      "[getsentry/sentry#1](https://github.com/getsentry/sentry/issues/1) and [#2](https://github.com/getsentry/sentry/issues/2)",
+    );
+    expect(
+      linkifyGitHubReferences("getsentry/sentry#1, getsentry/relay#2, #3", {
+        repo: "getsentry/junior",
+      }),
+    ).toContain(", #3");
+  });
+
+  it("links @login mentions only when the text names a repository", () => {
+    expect(
+      linkifyGitHubReferences(
+        "@byk opened getsentry/junior#1 (cc @here, @sentry/core, a@b.io, <@U123>)",
+      ),
+    ).toBe(
+      "[@byk](https://github.com/byk) opened [getsentry/junior#1](https://github.com/getsentry/junior/issues/1) (cc @here, @sentry/core, a@b.io, <@U123>)",
+    );
+    expect(
+      linkifyGitHubReferences("ask @byk", { repo: "getsentry/junior" }),
+    ).toBe("ask @byk");
+  });
+
   it("does not read org or enterprise discussion URLs as repositories", () => {
     const text = [
       "https://github.com/orgs/community/discussions/123 and #4",
@@ -148,8 +185,8 @@ describe("GitHub reply markdown", () => {
     const hook = githubPlugin().hooks?.formatMarkdown;
 
     expect(hook).toBeDefined();
-    expect(hook?.({ text: "getsentry/junior#1509" })).toBe(
-      "[getsentry/junior#1509](https://github.com/getsentry/junior/issues/1509)",
-    );
+    expect(
+      hook?.({ config: { repo: "getsentry/junior" }, text: "#1509" }),
+    ).toBe("[#1509](https://github.com/getsentry/junior/issues/1509)");
   });
 });

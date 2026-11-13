@@ -1,4 +1,6 @@
+import { githubPlugin } from "@sentry/junior-github";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createApp, defineJuniorPlugins } from "@/app";
 import { sendSlackReply } from "@/chat/slack/reply";
 import {
   getCapturedSlackApiCalls,
@@ -198,5 +200,24 @@ describe("sendSlackReply", () => {
       }),
     ).resolves.toEqual([]);
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
+  });
+
+  it("formats plugin references with the reply's Location config", async () => {
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    await sendSlackReply({
+      channelId: "C123",
+      configuration: { "github.repo": "getsentry/junior" },
+      conversationId: "slack:C123:1700000000.000100",
+      text: "Fixed in #12.",
+      threadTs: "1700000000.000100",
+    });
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          text: "Fixed in [#12](https://github.com/getsentry/junior/issues/12).",
+        }),
+      }),
+    ]);
   });
 });

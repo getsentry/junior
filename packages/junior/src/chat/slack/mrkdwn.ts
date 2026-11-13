@@ -353,13 +353,17 @@ export function ensureBlockSpacing(text: string): string {
  * Normalize model-authored Slack markdown for delivery via `markdown_text`
  * or `{ type: "markdown" }` blocks.
  *
- * Plugins may first rewrite ordinary Markdown. Core then applies Slack-only
+ * Plugins may first rewrite ordinary Markdown, using the Conversation's
+ * `configuration` values by full key. Core then applies Slack-only
  * delivery shaping: bare URL wrapping, block spacing, and list follow-up
  * paragraph bullets. Slack reply delivery owns chunking and continuation
  * markers separately.
  */
-export function normalizeSlackReplyMarkdown(text: string): string {
-  let normalized = applyPluginFormatMarkdown(text)
+export function normalizeSlackReplyMarkdown(
+  text: string,
+  configuration?: Record<string, unknown>,
+): string {
+  let normalized = applyPluginFormatMarkdown(text, configuration)
     .replace(/\r\n?/g, "\n")
     .replace(/[ \t]+$/gm, "");
   normalized = wrapBareReferences(normalized);
