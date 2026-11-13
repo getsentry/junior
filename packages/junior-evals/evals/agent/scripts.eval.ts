@@ -17,20 +17,32 @@ function directCalls(name: string, result: { toolCalls: ToolCall[] }): number {
 // script when one call per item would be many calls, and skips it for one
 // call.
 describe("Code Mode Scripts", () => {
-  test("when a request needs the same lookup for many items, run the lookups in one script", async ({
+  test("when a request needs one call for each of many items, make the calls in one script", async ({
     run,
   }) => {
+    const urls = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot"].map(
+      (name) => `https://example.com/services/${name}`,
+    );
+    // Each owner is only on its own page, so each page must be read.
+    mockWebPages(
+      Object.fromEntries(
+        urls.map((url, index) => [
+          url,
+          `<html><body><h1>Service ${index + 1}</h1><p>Owner: team-${index * 7 + 3}</p></body></html>`,
+        ]),
+      ),
+    );
     const conversation = await run(
       slackMention(
-        "I'm planning a call across our offices. What's the current UTC offset right now in each of these timezones: America/Los_Angeles, America/New_York, America/Toronto, Europe/London, Europe/Vienna, Asia/Kolkata, Asia/Tokyo, Australia/Sydney? One line each.",
+        `Who owns each of these services? Check each page:\n${urls.join("\n")}\nOne line each.`,
       ),
     );
 
     expect(completedToolCalls("codemode", conversation).length).toBeGreaterThan(
       0,
     );
-    // The script makes the lookups, so few of them are direct calls.
-    expect(directCalls("systemTime", conversation)).toBeLessThan(8);
+    // The script reads the pages, so few of them are direct calls.
+    expect(directCalls("webFetch", conversation)).toBeLessThan(urls.length);
     expect(conversation.replies).toHaveLength(1);
   });
 
