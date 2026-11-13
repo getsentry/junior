@@ -16,6 +16,7 @@ import {
   conversationsInfoOk,
   conversationsJoinOk,
   conversationsListPage,
+  conversationsMembersPage,
   conversationsOpenOk,
   conversationsRepliesPage,
   dndInfoOk,
@@ -59,6 +60,7 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "conversations.info",
   "conversations.join",
   "conversations.list",
+  "conversations.members",
   "conversations.open",
   "conversations.replies",
   "dnd.info",
@@ -251,6 +253,8 @@ function defaultSlackApiResponse(
       return { body: conversationsJoinOk() };
     case "conversations.list":
       return { body: conversationsListPage() };
+    case "conversations.members":
+      return { body: conversationsMembersPage() };
     case "conversations.open":
       return { body: conversationsOpenOk() };
     case "conversations.replies":

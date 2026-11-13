@@ -435,7 +435,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("includes GitHub's error message when the update fails", async () => {
+  it("returns a rejected update to the model with GitHub's error message", async () => {
     const { tool } = toolContext(
       new Response(JSON.stringify({ message: "Validation Failed" }), {
         status: 422,
@@ -447,8 +447,28 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
         { repo: "getsentry/junior", number: 691, base: "missing" },
         { toolCallId: "update-pr" },
       ),
-    ).rejects.toThrow(
-      "GitHub pull request update failed with HTTP 422: Validation Failed",
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message:
+        "GitHub pull request update failed with HTTP 422: Validation Failed",
+    });
+  });
+
+  it("keeps GitHub server failures as system errors", async () => {
+    const { tool } = toolContext(
+      new Response(JSON.stringify({ message: "Server Error" }), {
+        status: 500,
+      }),
     );
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", number: 691, base: "main" },
+        { toolCallId: "update-pr" },
+      ),
+    ).rejects.toMatchObject({
+      name: "Error",
+      message: "GitHub pull request update failed with HTTP 500: Server Error",
+    });
   });
 });

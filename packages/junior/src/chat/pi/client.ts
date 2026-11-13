@@ -495,6 +495,17 @@ function bestEffortObjectCompletionCost(
   }
 }
 
+/**
+ * Keep only the fixed message and stack of a failed structured output. The SDK
+ * error's `text` and its parse or validation cause hold the raw model output.
+ */
+function structuredOutputErrorCause(error: NoObjectGeneratedError): Error {
+  const cause = new Error(error.message);
+  cause.name = error.name;
+  cause.stack = error.stack;
+  return cause;
+}
+
 /** Execute a schema-constrained completion using the AI SDK structured output path. */
 export async function completeObject<TSchema extends ZodTypeAny>(params: {
   modelId: string;
@@ -556,13 +567,13 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
       },
     );
   } catch (error) {
-    const providerError = createProviderError(error, {
-      ...(NoObjectGeneratedError.isInstance(error)
-        ? { kind: "invalid_response" }
-        : undefined),
-      modelId: params.modelId,
-    });
-    throw providerError;
+    if (NoObjectGeneratedError.isInstance(error)) {
+      throw createProviderError(structuredOutputErrorCause(error), {
+        kind: "invalid_response",
+        modelId: params.modelId,
+      });
+    }
+    throw createProviderError(error, { modelId: params.modelId });
   }
   const costUsd = bestEffortObjectCompletionCost(params.modelId, result.usage);
   return {

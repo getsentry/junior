@@ -21,16 +21,28 @@ import {
   type ObjectLinkType,
 } from "./link-types";
 import { resolvePersonLink } from "./person";
+import {
+  resolveSlackMessageLink,
+  SLACK_MESSAGE_LINK_FILTER,
+} from "./slack-message";
 
-// A card is a short-lived read. A changed object shows within this time.
-const OBJECT_LINK_TTL_MS = 60_000;
+/** A card is a short-lived read. A changed object shows within this time. */
+export const OBJECT_LINK_TTL_MS = 60_000;
 
 function coreLinkTypes(): ObjectLinkType[] {
+  // Slack runtime is in core until Slack is a plugin.
+  const slack: ObjectLinkType = {
+    filters: [SLACK_MESSAGE_LINK_FILTER],
+    objectType: "message",
+    owner: "junior",
+    resolve: resolveSlackMessageLink,
+  };
   const conversations = getDashboardLinkFilter("/conversations/*");
   const people = getDashboardLinkFilter("/people/*");
-  // Core links need the dashboard: each card links to a dashboard page.
-  if (!conversations || !people) return [];
+  // These links need the dashboard: each card links to a dashboard page.
+  if (!conversations || !people) return [slack];
   return [
+    slack,
     {
       filters: [conversations],
       objectType: "conversation",
@@ -38,6 +50,8 @@ function coreLinkTypes(): ObjectLinkType[] {
       resolve: resolveConversationLink,
     },
     {
+      // Person cards read the identity cache. A link or unlink clears it.
+      cacheCards: false,
       filters: [people, { scheme: "mailto" }],
       objectType: "person",
       owner: "junior",
@@ -115,11 +129,15 @@ export async function resolveObjectLinks(
       if (!parsed || !linkType) return [];
       // Each viewer has their own entry: a card holds only what they see.
       const key = `${viewer.id}:${createHash("sha256").update(url).digest("hex")}`;
+      const resolve = () => resolveWithLinkType(linkType, viewer, parsed);
       try {
-        const object = await cache.getOrLoad(key, async () => ({
-          value: await resolveWithLinkType(linkType, viewer, parsed),
-          ttlMs: OBJECT_LINK_TTL_MS,
-        }));
+        const object =
+          linkType.cacheCards === false
+            ? await resolve()
+            : await cache.getOrLoad(key, async () => ({
+                value: await resolve(),
+                ttlMs: OBJECT_LINK_TTL_MS,
+              }));
         return object ? [{ object, url }] : [];
       } catch (error) {
         // One failed provider read must not hide the other cards.

@@ -338,6 +338,7 @@ export function auxiliaryOperationLabel(
     "junior/review_item_reply_match": "Review reply matching",
     "junior/run_title": "Run title",
     "junior/task_title": "Task title",
+    "junior/tool_search_rerank": "Tool search",
     "junior/turn_routed": "Thinking routing",
     "junior/vision_summary": "Image summary",
     "memory/memories_captured": "Memory extraction",

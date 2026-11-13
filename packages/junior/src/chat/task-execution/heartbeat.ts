@@ -11,6 +11,7 @@ import {
   isInvalidConversationRecordError,
   listActiveConversationIds,
   pruneActiveConversation,
+  type BeforeWorkStops,
   type ConversationWorkState,
 } from "./store";
 
@@ -32,10 +33,7 @@ function heartbeatIdempotencyKey(
 /** Requeue expired leases and stranded mailbox work without running the agent. */
 export async function recoverConversationWork(args: {
   /** Ends what a conversation owns when its last attempt loses its worker. */
-  beforeWorkStops?: (
-    conversationId: string,
-    inboundMessageIds: readonly string[],
-  ) => Promise<void>;
+  beforeWorkStops?: BeforeWorkStops;
   limit?: number;
   nowMs: number;
   queue: ConversationWorkQueue;

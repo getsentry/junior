@@ -8,6 +8,11 @@ import {
   detectImageMediaType,
   isVisionImageMediaType,
 } from "@/chat/attachments/media";
+import {
+  buildStoredAttachmentPromptText,
+  MAX_MODEL_ATTACHMENT_BYTES,
+  MAX_MODEL_ATTACHMENTS,
+} from "@/chat/attachments/model-input";
 import { storeAttachment } from "@/chat/attachments/store";
 import {
   readAttachmentVisionSummary,
@@ -51,8 +56,6 @@ interface VisionThreadReply {
   files?: VisionThreadFile[];
 }
 
-const MAX_USER_ATTACHMENTS = 3;
-const MAX_USER_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const MAX_MESSAGE_IMAGE_ATTACHMENTS = 3;
 const MAX_VISION_SUMMARY_CHARS = 500;
 
@@ -255,21 +258,6 @@ function truncateVisionSummary(summary: string): string {
   return summary.slice(0, MAX_VISION_SUMMARY_CHARS);
 }
 
-function buildStoredAttachmentPromptText(args: {
-  attachmentId: string;
-  filename?: string;
-  mediaType: string;
-}): string {
-  return [
-    "<attachment>",
-    `filename: ${args.filename ?? "unnamed"}`,
-    `media_type: ${args.mediaType}`,
-    `attachment_id: ${args.attachmentId}`,
-    "Use loadAttachment with this id to access the original file.",
-    "</attachment>",
-  ].join("\n");
-}
-
 function getCachedImageSummaries(args: {
   conversation?: ThreadConversationState;
   messageTs?: string;
@@ -336,7 +324,7 @@ async function resolveUserAttachmentsWithDeps(
       // The user really did attach a file; only its bytes are unreachable.
       // Tell the model that instead of dropping the attachment silently, so
       // Junior does not falsely claim no attachment was sent.
-      if (results.length < MAX_USER_ATTACHMENTS) {
+      if (results.length < MAX_MODEL_ATTACHMENTS) {
         results.push({
           mediaType,
           filename: attachment.name,
@@ -380,7 +368,7 @@ async function resolveUserAttachmentsWithDeps(
     }
 
     if (
-      results.length >= MAX_USER_ATTACHMENTS ||
+      results.length >= MAX_MODEL_ATTACHMENTS ||
       (attachment.type !== "image" && attachment.type !== "file")
     ) {
       continue;
@@ -391,7 +379,7 @@ async function resolveUserAttachmentsWithDeps(
       mediaType,
       filename: attachment.name,
     };
-    if (data.byteLength > MAX_USER_ATTACHMENT_BYTES) {
+    if (data.byteLength > MAX_MODEL_ATTACHMENT_BYTES) {
       logWarn("attachment.size_limit.skipped", {
         "file.size": data.byteLength,
         "app.file.mime_type": mediaType,
@@ -707,7 +695,7 @@ async function hydrateConversationVisionContextWithDeps(
         typeof file.size === "number" && Number.isFinite(file.size)
           ? file.size
           : undefined;
-      if (fileSize && fileSize > MAX_USER_ATTACHMENT_BYTES) {
+      if (fileSize && fileSize > MAX_MODEL_ATTACHMENT_BYTES) {
         logWarn("conversation.image.size_limit.skipped", {
           "app.file.id": fileId,
           "file.size": fileSize,
@@ -736,7 +724,7 @@ async function hydrateConversationVisionContextWithDeps(
         continue;
       }
 
-      if (imageData.byteLength > MAX_USER_ATTACHMENT_BYTES) {
+      if (imageData.byteLength > MAX_MODEL_ATTACHMENT_BYTES) {
         logWarn("conversation.image.size_limit.skipped", {
           "app.file.id": fileId,
           "file.size": imageData.byteLength,

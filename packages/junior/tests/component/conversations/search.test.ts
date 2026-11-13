@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { searchConversationBriefs } from "@/chat/briefs/search";
 import { appendConversationBrief } from "@/chat/briefs/store";
+import { searchConversations } from "@/chat/conversations/search";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
-import { juniorConversationBriefs, juniorConversations } from "@/db/schema";
+import { juniorConversations } from "@/db/schema";
 import { conversationBriefFixture } from "../../fixtures/conversation-brief";
 import { createJuniorSqlFixture } from "../../fixtures/sql";
 
-describe("Conversation Brief search", () => {
-  it("searches only the latest public root Briefs of every surface", async () => {
+describe("Conversation search", () => {
+  it("searches the latest Brief of public roots of every surface", async () => {
     const fixture = await createJuniorSqlFixture();
     try {
       await migrateSchema(fixture.sql);
@@ -143,7 +143,7 @@ describe("Conversation Brief search", () => {
       await append({
         conversationId: childId,
         searchText: "child deployment decision",
-        summary: "The child deployment decision stays excluded.",
+        summary: "The child deployment decision is a child agent.",
         turnId: "child-turn",
       });
       await append({
@@ -153,15 +153,13 @@ describe("Conversation Brief search", () => {
         turnId: "local-turn",
       });
       const updatedAt = new Date("2026-07-02T12:00:00.000Z");
-      await db
-        .update(juniorConversationBriefs)
-        .set({ createdAt: updatedAt })
-        .where(
-          eq(juniorConversationBriefs.conversationId, targetConversationId),
-        );
+      // A purged transcript keeps its Brief searchable.
       await db
         .update(juniorConversations)
-        .set({ transcriptPurgedAt: new Date("2026-07-03T12:00:00.000Z") })
+        .set({
+          lastActivityAt: updatedAt,
+          transcriptPurgedAt: new Date("2026-07-03T12:00:00.000Z"),
+        })
         .where(eq(juniorConversations.conversationId, targetConversationId));
       await createPluginAnnotations({
         conversationId: targetConversationId,
@@ -174,10 +172,14 @@ describe("Conversation Brief search", () => {
         url: "https://example.com/acme/widget/12",
       });
 
-      const deploymentMatches = await searchConversationBriefs(db, {
-        currentConversationId,
-        filters: { query: "deployment decision" },
-        limit: 10,
+      const deploymentMatches = await searchConversations(db, {
+        requesterConversationId: currentConversationId,
+        search: {
+          includeArchived: false,
+          rootsOnly: true,
+          limit: 10,
+          query: "deployment decision",
+        },
       });
       // Public is public: another workspace matches; private, child, and
       // current Conversations do not.
@@ -185,10 +187,63 @@ describe("Conversation Brief search", () => {
         deploymentMatches.map((match) => match.conversationId).sort(),
       ).toEqual([otherTenantId, targetConversationId].sort());
 
-      const matches = await searchConversationBriefs(db, {
-        currentConversationId,
-        filters: { query: "blue rollout" },
+      // Child agents match only when the search asks for them.
+      const withChildren = await searchConversations(db, {
+        requesterConversationId: currentConversationId,
+        search: {
+          includeArchived: false,
+          limit: 10,
+          query: "child deployment decision",
+          rootsOnly: false,
+        },
+      });
+      expect(withChildren).toContainEqual(
+        expect.objectContaining({
+          kind: "task",
+          conversationId: childId,
+          rootConversationId: targetConversationId,
+        }),
+      );
+
+      // Auto-archive marks only the root. Its child agents are archived too.
+      await db
+        .update(juniorConversations)
+        .set({ archivedAt: new Date("2026-07-04T12:00:00.000Z") })
+        .where(eq(juniorConversations.conversationId, targetConversationId));
+      const childSearch = {
         limit: 10,
+        query: "child deployment decision",
+        rootsOnly: false,
+      };
+      await expect(
+        searchConversations(db, {
+          requesterConversationId: currentConversationId,
+          search: { ...childSearch, includeArchived: false },
+        }),
+      ).resolves.not.toContainEqual(
+        expect.objectContaining({ conversationId: childId }),
+      );
+      await expect(
+        searchConversations(db, {
+          requesterConversationId: currentConversationId,
+          search: { ...childSearch, includeArchived: true },
+        }),
+      ).resolves.toContainEqual(
+        expect.objectContaining({ archived: true, conversationId: childId }),
+      );
+      await db
+        .update(juniorConversations)
+        .set({ archivedAt: null })
+        .where(eq(juniorConversations.conversationId, targetConversationId));
+
+      const matches = await searchConversations(db, {
+        requesterConversationId: currentConversationId,
+        search: {
+          includeArchived: false,
+          rootsOnly: true,
+          limit: 10,
+          query: "blue rollout",
+        },
       });
       expect(matches).toEqual([
         expect.objectContaining({
@@ -201,42 +256,52 @@ describe("Conversation Brief search", () => {
           providerDestinationId: "CARCHIVE",
           summary: "The deployment decision uses the blue rollout.",
           title: "Title for CARCHIVE",
+          transcriptPurged: true,
           updatedAtMs: updatedAt.getTime(),
-          version: 2,
         }),
       ]);
       expect(matches[0]?.links).toHaveLength(5);
       expect(matches[0]?.excerpt).toContain("**blue**");
 
       await expect(
-        searchConversationBriefs(db, {
-          currentConversationId,
-          filters: { query: "obsolete migration" },
-          limit: 10,
+        searchConversations(db, {
+          requesterConversationId: currentConversationId,
+          search: {
+            includeArchived: false,
+            rootsOnly: true,
+            limit: 10,
+            query: "obsolete migration",
+          },
         }),
       ).resolves.toEqual([]);
 
       await expect(
-        searchConversationBriefs(db, {
-          currentConversationId,
-          filters: {
+        searchConversations(db, {
+          requesterConversationId: currentConversationId,
+          search: {
+            includeArchived: false,
+            rootsOnly: true,
+            limit: 10,
             afterMs: Date.parse("2026-07-02T00:00:00.000Z"),
             annotation: "ACME/WIDGET",
             beforeMs: Date.parse("2026-07-03T00:00:00.000Z"),
             channelId: "CARCHIVE",
-            status: "done",
+            outcomeStatus: "done",
           },
-          limit: 10,
         }),
       ).resolves.toEqual([
         expect.objectContaining({ conversationId: targetConversationId }),
       ]);
 
       await expect(
-        searchConversationBriefs(db, {
-          currentConversationId,
-          filters: { query: "browser launch" },
-          limit: 10,
+        searchConversations(db, {
+          requesterConversationId: currentConversationId,
+          search: {
+            includeArchived: false,
+            rootsOnly: true,
+            limit: 10,
+            query: "browser launch",
+          },
         }),
       ).resolves.toEqual([
         expect.objectContaining({ conversationId: publicLocalId }),

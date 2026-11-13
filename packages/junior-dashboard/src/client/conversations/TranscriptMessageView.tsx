@@ -1,7 +1,7 @@
 import { ForkConversationButton } from "./ForkConversationButton";
 import {
   TranscriptAttachments,
-  TranscriptLocalImages,
+  TranscriptLocalFiles,
 } from "./TranscriptAttachment";
 import { ObjectCard } from "./ObjectCard";
 import { AutomationCard } from "../components/AutomationCard";
@@ -34,6 +34,7 @@ import { transcriptMessageSource } from "./transcriptSource";
 /** Render one chat message with its saved cards and attached turn context. */
 export const TranscriptMessageView = memo(
   function TranscriptMessageView(props: {
+    footer?: ReactNode;
     message: TranscriptViewMessage;
     conversation: ConversationTranscript;
   }) {
@@ -103,8 +104,8 @@ export const TranscriptMessageView = memo(
             conversationId={props.conversation.conversationId}
           />
         ) : null}
-        {props.message.images?.length ? (
-          <TranscriptLocalImages images={props.message.images} />
+        {props.message.files?.length ? (
+          <TranscriptLocalFiles files={props.message.files} />
         ) : null}
         {props.message.cards?.map((card) => {
           switch (card.kind) {
@@ -118,6 +119,7 @@ export const TranscriptMessageView = memo(
               );
           }
         })}
+        {props.footer}
         {roleKind === "assistant" &&
         !props.message.pending &&
         (rawText || forkMessageId) ? (
@@ -145,6 +147,7 @@ export const TranscriptMessageView = memo(
     );
   },
   (previous, next) =>
+    previous.footer === next.footer &&
     previous.message === next.message &&
     previous.conversation.conversationId === next.conversation.conversationId &&
     previous.conversation.surface === next.conversation.surface &&
@@ -155,6 +158,7 @@ export const TranscriptMessageView = memo(
 
 /** Render a redacted primary chat message without exposing body content. */
 export function RedactedMessageView(props: {
+  footer?: ReactNode;
   message: TranscriptViewMessage;
   conversation: ConversationTranscript;
 }) {
@@ -178,6 +182,7 @@ export function RedactedMessageView(props: {
           </div>
         ))}
       </div>
+      {props.footer}
     </TranscriptMessageShell>
   );
 }

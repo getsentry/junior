@@ -34,6 +34,7 @@ import {
   normalizeGitHubPullRequestOutcome,
 } from "./pull-request-outcome.js";
 import { normalizeGitHubPullRequestActivity } from "./pull-request-activity.js";
+import { refreshGitHubPullRequestPreview } from "./pull-request-preview.js";
 import {
   loadCheckSuiteFacts,
   needsCheckSuitePullRequestFacts,
@@ -300,6 +301,14 @@ export function createGitHubWebhookRoute(args: {
         await args.codeChanges.associateConversations({
           conversationIds: pullRequestConversations.conversationIds,
           providerId: pullRequestConversations.pullRequestId,
+        });
+      }
+      if (eventName === "pull_request") {
+        await refreshGitHubPullRequestPreview({
+          annotations: args.annotations,
+          body,
+          db: args.db,
+          log: args.log,
         });
       }
       const pullRequestActivity = normalizeGitHubPullRequestActivity({

@@ -12,6 +12,7 @@ import {
   resetRuntimeConfig,
   restoreRuntimeConfig as restoreChatRuntimeConfig,
   setBotModelConfig,
+  setBotName,
   setRuntimeLimits,
   snapshotRuntimeConfig,
   type BotModelConfig,
@@ -179,6 +180,11 @@ export type {
 } from "./plugins";
 export type { JuniorDashboardOptions } from "./dashboard-routes";
 export interface JuniorAppOptions extends BotModelConfig {
+  /**
+   * Name Junior uses for itself, such as its Slack bot username. Defaults to
+   * `JUNIOR_BOT_NAME`, then `junior`.
+   */
+  botName?: string;
   /**
    * Generate a durable Brief after each completed Turn. This costs one
    * default-model call per completed Turn. Disabled by default.
@@ -553,6 +559,7 @@ export async function createApp(
     // models, limits, or Slack settings.
     resetRuntimeConfig(virtualConfig?.functionMaxDurationSeconds);
     setBotModelConfig(options ?? {});
+    setBotName(options?.botName);
     setRuntimeLimits(options?.limits);
     setSlackReactionConfig(options?.slack ?? {});
     // One domain list for Slack authors and dashboard sign-ins.

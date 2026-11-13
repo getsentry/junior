@@ -497,6 +497,7 @@ export async function createConversationWorkHarness(
     processOptions: { softYieldAfterMs?: number } = {},
   ) =>
     await processConversationQueueMessage(message, {
+      beforeWorkStops: work.beforeWorkStops,
       conversationStore,
       queue,
       run: work.run,

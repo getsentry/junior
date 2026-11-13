@@ -921,7 +921,10 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
-    const agentTools = createPiAgentTools(tools, new SkillSandbox([], []), {});
+    const agentTools = createPiAgentTools(tools, new SkillSandbox([], []), {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+    });
     const executeTool = agentTools.find(
       (candidate) => candidate.name === "executeTool",
     );

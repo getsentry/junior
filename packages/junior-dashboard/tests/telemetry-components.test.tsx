@@ -456,6 +456,79 @@ describe("dashboard canonical-event components", () => {
     expect(liveHtml).not.toContain(">active</span>");
     expect(quietHtml).not.toContain("Junior is thinking…");
     expect(completedHtml).not.toContain("Junior is thinking…");
+
+    // Once the Turn has activity, its latest step replaces the thinking row.
+    const working = conversation(
+      [
+        event(0, {
+          messageId: "ask",
+          role: "user",
+          text: "Find the slow span.",
+          type: "message",
+        }),
+        event(1, {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "spans",
+              name: "bash",
+              status: "running",
+              input: { command: "sentry-cli spans query" },
+            },
+          ],
+          assistant: {
+            parts: [
+              { type: "reasoning", text: "Compare the serializer spans." },
+              { type: "tool_call", toolCallId: "spans" },
+            ],
+          },
+        }),
+      ],
+      { status: "active" },
+    );
+    const workingHtml = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <Transcript live transcript={working} />
+      </QueryClientProvider>,
+    );
+    // The reasoning shows above the announced step line.
+    const step = workingHtml.match(
+      /Compare the serializer spans\.[^]*?aria-live="polite"[^]*?sentry-cli spans query/,
+    )?.[0];
+    expect(step).toContain("Running");
+    expect(workingHtml).toContain("Working for");
+    expect(workingHtml).not.toContain("Junior is thinking…");
+
+    // A running Task line shows that Junior waits on it.
+    const waiting = conversation(
+      [
+        ...working.events,
+        event(2, {
+          type: "subagent",
+          startedSeq: 2,
+          startedAt: "2026-01-01T00:00:00.000Z",
+          childConversationId: "internal:span-review",
+          childKind: "task",
+          subagentKind: "advisor",
+          title: "Review the spans",
+          status: "running",
+        }),
+      ],
+      { status: "active" },
+    );
+    const waitingHtml = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <Transcript live transcript={waiting} />
+      </QueryClientProvider>,
+    );
+    expect(waitingHtml).toContain("Review the spans");
+    expect(waitingHtml).not.toContain("Junior is thinking…");
+    const pausedHtml = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <Transcript live responding={false} transcript={working} />
+      </QueryClientProvider>,
+    );
+    expect(pausedHtml).not.toContain('aria-live="polite"');
   });
 
   it("does not present partial event counts as conversation totals", () => {
@@ -1156,9 +1229,7 @@ describe("dashboard canonical-event components", () => {
         </TranscriptSearchProvider>
       </QueryClientProvider>,
     );
-    expect(html).toContain("advisor");
-    expect(html).toContain(label);
-    expect(html).toContain('aria-label="Open advisor transcript"');
+    expect(html).toContain(`aria-label="Open advisor transcript (${label})"`);
   });
 
   it("loads child drawers from the ordinary conversation query", () => {
@@ -1240,7 +1311,9 @@ describe("dashboard canonical-event components", () => {
       </QueryClientProvider>,
     );
 
-    expect(parentHtml).toContain('aria-label="Open advisor transcript"');
+    expect(parentHtml).toContain(
+      'aria-label="Open advisor transcript (running)"',
+    );
 
     const child = conversation([], {
       conversationId: "child-1",

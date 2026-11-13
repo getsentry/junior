@@ -1,16 +1,12 @@
 import type { ObjectAnnotation } from "@sentry/junior-plugin-api";
-import { and, eq, or } from "drizzle-orm";
 import {
   getDashboardPersonLink,
   parseDashboardPersonLink,
 } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
-import {
-  identityAvatarUrl,
-  readUserAvatarUrls,
-} from "@/chat/identities/avatar";
+import { userAvatarUrlsFromIdentities } from "@/chat/identities/avatar";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
-import { juniorIdentities, juniorUsers } from "@/db/schema";
+import { readCachedUserByEmail } from "@/chat/identities/user-cache";
 import { personObjectCard } from "./cards";
 
 function linkEmail(url: URL): string | undefined {
@@ -24,58 +20,50 @@ function linkEmail(url: URL): string | undefined {
 
 /**
  * Resolve a dashboard person link or a `mailto:` link to a known person.
- * The card shows only what the People pages show every signed-in viewer:
- * the name, email, Slack handle, and photo.
+ * The card shows what the People pages show every signed-in viewer (the
+ * name, email, Slack handle, and photo) and a verified linked GitHub login.
  */
 export async function resolvePersonLink(
   url: URL,
 ): Promise<ObjectAnnotation | undefined> {
   const email = normalizeIdentityEmail(linkEmail(url));
   if (!email) return undefined;
-  const db = getDb();
-  const rows = await db
-    .select({
-      avatarUrl: juniorIdentities.avatarUrl,
-      displayName: juniorIdentities.displayName,
-      email: juniorIdentities.email,
-      handle: juniorIdentities.handle,
-      identityId: juniorIdentities.id,
-      provider: juniorIdentities.provider,
-      userDisplayName: juniorUsers.displayName,
-      userEmail: juniorUsers.primaryEmail,
-      userId: juniorIdentities.userId,
-    })
-    .from(juniorIdentities)
-    .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-    .where(
-      and(
-        eq(juniorIdentities.kind, "user"),
-        or(
-          eq(juniorUsers.primaryEmailNormalized, email),
-          eq(juniorIdentities.emailNormalized, email),
-        ),
-      ),
-    );
-  // The Slack Identity has the handle and the preferred photo.
-  const row = rows.find((item) => item.provider === "slack") ?? rows[0];
-  const personEmail = row?.userEmail ?? row?.email;
-  const canonicalUrl = personEmail
-    ? getDashboardPersonLink(personEmail)
-    : undefined;
-  if (!row || !personEmail || !canonicalUrl) return undefined;
-  const avatarUrl = identityAvatarUrl(
-    row,
-    await readUserAvatarUrls(db, row.userId ? [row.userId] : []),
-  );
-  const fullName = row.userDisplayName?.trim() || row.displayName?.trim();
+  // The People pages find a person by the primary email of their User.
+  const cached = await readCachedUserByEmail(getDb(), email);
+  const canonicalUrl =
+    cached && getDashboardPersonLink(cached.user.primaryEmail);
+  if (!cached || !canonicalUrl) return undefined;
+  const { identities, user } = cached;
+  // The Slack Identity has the handle and the name. Only account-linking
+  // flows write a GitHub Identity on a User, so its handle is verified. This
+  // is the same source as `userLookup`.
+  const slack = identities.find((identity) => identity.provider === "slack");
+  const githubHandle = identities
+    .flatMap((identity) =>
+      identity.provider === "github" && identity.handle
+        ? [identity.handle]
+        : [],
+    )
+    .sort()[0];
+  const avatarUrl = userAvatarUrlsFromIdentities(
+    identities.map((identity) => ({
+      ...identity,
+      identityId: identity.id,
+      userId: user.id,
+    })),
+  ).get(user.id);
+  // Without a User name, the Slack name wins over the name of any other
+  // Identity.
+  const fullName = [user, slack, ...identities]
+    .map((source) => source?.displayName?.trim())
+    .find(Boolean);
   return personObjectCard({
+    ...(githubHandle ? { githubHandle } : undefined),
     person: {
-      email: personEmail,
+      email: user.primaryEmail,
       ...(avatarUrl ? { avatarUrl } : undefined),
       ...(fullName ? { fullName } : undefined),
-      ...(row.provider === "slack" && row.handle
-        ? { slackUserName: row.handle }
-        : undefined),
+      ...(slack?.handle ? { slackUserName: slack.handle } : undefined),
     },
     url: canonicalUrl,
   });

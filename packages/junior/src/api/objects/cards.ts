@@ -61,6 +61,8 @@ export function conversationObjectCard(args: {
 
 /** Build the card of one known person from what the People pages show. */
 export function personObjectCard(args: {
+  /** A verified linked GitHub login, from account linking only. */
+  githubHandle?: string;
   person: ActorIdentity & { email: string };
   url: string;
 }): ObjectAnnotation {
@@ -79,7 +81,54 @@ export function personObjectCard(args: {
       ...(person.slackUserName
         ? { slackHandle: person.slackUserName.slice(0, MAX_FACT_CHARS) }
         : undefined),
+      ...(args.githubHandle ? { githubHandle: args.githubHandle } : undefined),
       ...(person.avatarUrl ? { avatarUrl: person.avatarUrl } : undefined),
+    },
+  };
+}
+
+// Long enough to know the message, short enough to never copy a whole one.
+const MAX_SNIPPET_CHARS = 280;
+const MAX_TITLE_CHARS = 100;
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+}
+
+/**
+ * Build the card of one chat message. Give `text` only when the viewer may
+ * read the message: the card shows a short snippet of it, never all of it.
+ */
+export function messageObjectCard(args: {
+  author?: string;
+  /** Where the message is, such as `#general` or `Direct message`. */
+  channel: string;
+  key: string;
+  sentAt?: string;
+  text?: string;
+  url: string;
+}): ObjectAnnotation {
+  const snippet = args.text?.replace(/\s+/g, " ").trim();
+  const title = snippet
+    ? truncate(snippet, MAX_TITLE_CHARS)
+    : `Message in ${args.channel}`;
+  return {
+    kind: "object",
+    objectType: "message",
+    key: args.key.slice(0, 256),
+    label: args.channel.slice(0, MAX_LABEL_CHARS),
+    title,
+    url: args.url,
+    ...(snippet && snippet.length > title.length
+      ? { description: truncate(snippet, MAX_SNIPPET_CHARS) }
+      : undefined),
+    facts: {
+      type: "message",
+      channel: args.channel.slice(0, MAX_FACT_CHARS),
+      ...(args.author
+        ? { author: args.author.slice(0, MAX_FACT_CHARS) }
+        : undefined),
+      ...(args.sentAt ? { sentAt: args.sentAt } : undefined),
     },
   };
 }

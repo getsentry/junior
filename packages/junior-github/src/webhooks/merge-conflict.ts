@@ -18,6 +18,7 @@ import * as z from "zod";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
 import { gitHubRepoDataSchema } from "../events/scope.js";
 import { pullRequestTargets } from "./event-targets.js";
+import { logFailOpenFailure } from "./fail-open-log.js";
 
 const EVENT_TYPE = "pull_request.merge_conflict";
 
@@ -129,7 +130,7 @@ export async function loadGitHubMergeConflictEvents(args: {
   events: EventInput[];
   hasMatch: EventPublisher["hasMatch"];
   loadPullRequest?(ref: GitHubPullRequestRef): Promise<unknown>;
-  log?: Pick<PluginLogger, "error">;
+  log?: Pick<PluginLogger, "error" | "warn">;
   /** The body of a `pull_request` webhook. */
   pullRequestPayload?: unknown;
 }): Promise<EventInput[]> {
@@ -163,12 +164,16 @@ export async function loadGitHubMergeConflictEvents(args: {
       );
     } catch (error) {
       // The delivered events still publish without the conflict check.
-      args.log?.error("GitHub pull request merge conflict check failed", {
-        deliveryId: args.deliveryId,
-        errorType: error instanceof Error ? error.name : "UnknownError",
-        pullRequest: ref.number,
-        repository: ref.repositoryFullName,
-      });
+      logFailOpenFailure(
+        args.log,
+        "GitHub pull request merge conflict check failed",
+        error,
+        {
+          deliveryId: args.deliveryId,
+          pullRequest: ref.number,
+          repository: ref.repositoryFullName,
+        },
+      );
     }
   }
   return conflicts;

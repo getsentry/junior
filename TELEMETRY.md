@@ -64,8 +64,10 @@ attributes. Nested logs and spans inherit them.
 | Tool, MCP, or sandbox failure        | `agent.tool_call.failed`, `mcp.*`, `sandbox.*`, spans `gen_ai.execute_tool`, `sandbox.*`, `bash`     | `chat/tool-support/`, `chat/sandbox/`                           |
 | Model called an unknown tool name    | `app.tool_name_miss.suggestion_count` on `gen_ai.execute_tool` (`executeTool`, `codemode`)           | `chat/tool-support/tool-name-suggestions.ts`                    |
 | Code Mode script slow or failed      | `app.codemode.*` on `gen_ai.execute_tool` (`codemode`), nested `gen_ai.execute_tool` spans           | `chat/codemode/telemetry.ts`                                    |
+| Tool search found the wrong tools    | `app.tool_search.*` on `gen_ai.execute_tool` (`searchTools`), `tool_search.rerank.failed`            | `chat/tools/search-tools-rerank.ts`                             |
 | Tool calls ran one at a time         | `app.tool_batch.*` on `gen_ai.invoke_agent`, `app.sandbox.bash.wait_ms` on `bash`                    | `chat/agent/tool-batch.ts`                                      |
 | Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`    | `chat/scheduled-automations/`                                   |
+| Paused Turn did not resume           | `agent.dispatch.lost_lease`, span `turn.state.finish`, `app.turn.checkpoint.rejected`                | `chat/task-execution/`                                          |
 | Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                          | `chat/review-items/`                                            |
 | Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.*`, `agent.continue.*`, `mcp.oauth_callback.failed`            | `chat/oauth-flow.ts`, `handlers/`                               |
 | Egress denied, challenged, or missed | `sandbox.egress.policy.denied`, `sandbox.egress.challenged`, `sandbox.egress.auth_signal.missing`    | `chat/sandbox/sandbox.ts`                                       |
