@@ -157,7 +157,9 @@ export interface ObjectLinkContext extends PluginContext {
    * It never asks the viewer to authorize, and it never uses a plugin
    * grant, an app token, or another person's token. A viewer without a
    * usable token gets HTTP 401. Use it to check that the viewer may see an
-   * object, and read the card data with `egress`.
+   * object, and read the card data with `egress`. Read the data with it only
+   * when the data depends on who reads it, such as a query over the
+   * viewer's own projects, and cache it per viewer.
    */
   viewerEgress: PluginEgress;
 }

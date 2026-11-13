@@ -88,7 +88,10 @@ export function ObjectCard({
       />
     );
   }
-  const fields = objectFactFields(card.facts);
+  // The chart caption shows its range.
+  const fields = objectFactFields(card.facts).filter(
+    (field) => card.facts?.type !== "chart" || field.key !== "range",
+  );
   const presentation = objectPresentation(card);
   const type = card.displayType ?? presentation.label;
   return (
@@ -105,7 +108,12 @@ export function ObjectCard({
             <ObjectIcon {...card} size={18} />
           )
         }
-        meta={[type, card.plugin, card.label === card.title ? "" : card.label]
+        // A label that repeats the title or the type says nothing new.
+        meta={[
+          type,
+          card.plugin,
+          [card.title, type].includes(card.label) ? "" : card.label,
+        ]
           .filter(Boolean)
           .join(" · ")}
         title={
@@ -146,7 +154,18 @@ export function ObjectCard({
           </p>
         )}
         {card.facts?.type === "task" && card.facts.trend && (
-          <Sparkline {...card.facts.trend} />
+          <Sparkline
+            label={card.facts.trend.label}
+            series={[card.facts.trend]}
+          />
+        )}
+        {card.facts?.type === "chart" && (
+          <Sparkline
+            display={card.facts.display}
+            label={card.facts.range}
+            series={card.facts.series}
+            tall
+          />
         )}
         {(card.status || fields.length > 0) && (
           // Facts sit side by side and wrap to a stack in a narrow column.
