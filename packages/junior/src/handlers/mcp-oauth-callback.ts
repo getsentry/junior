@@ -13,8 +13,7 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   deleteMcpAuthSession,
   getMcpAuthSession,
-  getMcpStoredOAuthCredentials,
-  putMcpStoredOAuthCredentials,
+  updateMcpStoredOAuthCredentials,
   type McpAuthSessionState,
 } from "@/chat/mcp/auth-store";
 import { finalizeMcpAuthorization } from "@/chat/mcp/oauth";
@@ -264,26 +263,22 @@ export async function GET(
           await runCurrentMcpCredentialMutation(
             pendingSession,
             provider,
-            async () => {
-              const credentials = await getMcpStoredOAuthCredentials(
+            async () =>
+              await updateMcpStoredOAuthCredentials(
                 pendingSession.userId,
                 provider,
-              );
-              if (
-                !credentials?.clientInformation &&
-                !credentials?.discoveryState
-              ) {
-                return;
-              }
-              const nextCredentials = credentials.tokens
-                ? { tokens: credentials.tokens }
-                : {};
-              await putMcpStoredOAuthCredentials(
-                pendingSession.userId,
-                provider,
-                nextCredentials,
-              );
-            },
+                (credentials) => {
+                  if (
+                    !credentials?.clientInformation &&
+                    !credentials?.discoveryState
+                  ) {
+                    return undefined;
+                  }
+                  return credentials.tokens
+                    ? { tokens: credentials.tokens }
+                    : {};
+                },
+              ),
           );
         } catch (cleanupError) {
           if (!(cleanupError instanceof McpOAuthAttemptExpiredError)) {

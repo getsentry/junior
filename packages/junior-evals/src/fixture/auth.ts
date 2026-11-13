@@ -3,11 +3,7 @@
  * of the person who got an authorization link.
  */
 import { createUserTokenStore } from "@/chat/capabilities/factory";
-import {
-  deleteMcpAuthSessionsForUserProvider,
-  deleteMcpServerSessionId,
-  deleteMcpStoredOAuthCredentials,
-} from "@/chat/mcp/auth-store";
+import { deleteMcpConnection } from "@/chat/mcp/auth-store";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { RequestApp } from "./slack";
 
@@ -59,9 +55,7 @@ export async function forgetAuthorizations(userIds: string[]): Promise<void> {
   for (const { manifest } of pluginCatalogRuntime.getProviders()) {
     for (const userId of userIds) {
       await tokens.delete(userId, manifest.name);
-      await deleteMcpAuthSessionsForUserProvider(userId, manifest.name);
-      await deleteMcpStoredOAuthCredentials(userId, manifest.name);
-      await deleteMcpServerSessionId(userId, manifest.name);
+      await deleteMcpConnection(userId, manifest.name);
     }
   }
 }

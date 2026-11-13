@@ -16,8 +16,9 @@ import {
   patchMcpAuthSession,
   putMcpServerSessionId,
   putMcpAuthSession,
-  putMcpStoredOAuthCredentials,
+  updateMcpStoredOAuthCredentials,
   type McpAuthSessionState,
+  type McpStoredOAuthCredentials,
 } from "./auth-store";
 
 function createClientMetadata(callbackUrl: string): OAuthClientMetadata {
@@ -40,6 +41,12 @@ function clientAllowsRedirectUri(
     return true;
   }
   return redirectUris.includes(callbackUrl);
+}
+
+function sameTokens(a: OAuthTokens | undefined, b: OAuthTokens): boolean {
+  return (
+    a?.access_token === b.access_token && a?.refresh_token === b.refresh_token
+  );
 }
 
 function requireEnv(name: string): string {
@@ -70,6 +77,8 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
     | (<T>(mutation: () => Promise<T>) => Promise<T>)
     | undefined;
   private readonly oauthClient: PluginMcpOAuthClientConfig | undefined;
+  /** Tokens this provider last read or saved, so a write can see a newer one. */
+  private knownTokens: OAuthTokens | undefined;
 
   constructor(
     authSessionId: string,
@@ -127,18 +136,10 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   async saveClientInformation(
     clientInformation: OAuthClientInformationMixed,
   ): Promise<void> {
-    await this.mutateCredentials(async () => {
-      const session = await this.getCredentialContext();
-      const credentials =
-        (await getMcpStoredOAuthCredentials(
-          session.userId,
-          session.provider,
-        )) ?? {};
-      await putMcpStoredOAuthCredentials(session.userId, session.provider, {
-        ...credentials,
-        clientInformation,
-      });
-    });
+    await this.updateCredentials((credentials) => ({
+      ...credentials,
+      clientInformation,
+    }));
   }
 
   async tokens(): Promise<OAuthTokens | undefined> {
@@ -147,21 +148,14 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
       session.userId,
       session.provider,
     );
+    this.knownTokens = credentials?.tokens;
     return credentials?.tokens;
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
-    await this.mutateCredentials(async () => {
-      const session = await this.getCredentialContext();
-      const credentials =
-        (await getMcpStoredOAuthCredentials(
-          session.userId,
-          session.provider,
-        )) ?? {};
-      await putMcpStoredOAuthCredentials(session.userId, session.provider, {
-        ...credentials,
-        tokens,
-      });
+    await this.updateCredentials((credentials) => {
+      this.knownTokens = tokens;
+      return { ...credentials, tokens };
     });
   }
 
@@ -205,18 +199,10 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async saveDiscoveryState(state: OAuthDiscoveryState): Promise<void> {
-    await this.mutateCredentials(async () => {
-      const session = await this.getCredentialContext();
-      const credentials =
-        (await getMcpStoredOAuthCredentials(
-          session.userId,
-          session.provider,
-        )) ?? {};
-      await putMcpStoredOAuthCredentials(session.userId, session.provider, {
-        ...credentials,
-        discoveryState: state,
-      });
-    });
+    await this.updateCredentials((credentials) => ({
+      ...credentials,
+      discoveryState: state,
+    }));
   }
 
   async discoveryState(): Promise<OAuthDiscoveryState | undefined> {
@@ -231,31 +217,27 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   async invalidateCredentials(
     scope: "all" | "client" | "tokens" | "verifier" | "discovery",
   ): Promise<void> {
-    await this.mutateCredentials(async () => {
-      const session = await this.getCredentialContext();
-      const credentials =
-        (await getMcpStoredOAuthCredentials(
-          session.userId,
-          session.provider,
-        )) ?? {};
-
-      await putMcpStoredOAuthCredentials(session.userId, session.provider, {
+    await this.updateCredentials((credentials) => {
+      if (scope === "tokens" || scope === "all") {
+        this.knownTokens = undefined;
+      }
+      return {
         ...(scope === "tokens" || scope === "all"
           ? undefined
-          : credentials.tokens
+          : credentials?.tokens
             ? { tokens: credentials.tokens }
             : {}),
         ...(scope === "client" || scope === "all"
           ? undefined
-          : credentials.clientInformation
+          : credentials?.clientInformation
             ? { clientInformation: credentials.clientInformation }
             : {}),
         ...(scope === "discovery" || scope === "all"
           ? undefined
-          : credentials.discoveryState
+          : credentials?.discoveryState
             ? { discoveryState: credentials.discoveryState }
             : {}),
-      });
+      };
     });
   }
 
@@ -274,6 +256,40 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
 
       await putMcpServerSessionId(session.userId, session.provider, sessionId);
     });
+  }
+
+  /**
+   * Write the person's credentials under the connection lock. A write is
+   * dropped when another writer replaced or removed the tokens that this
+   * provider knows: another Turn refreshed them, or the person unlinked. So a
+   * stale refresh cannot wipe newer tokens, and an unlink stays unlinked.
+   */
+  private async updateCredentials(
+    update: (
+      current: McpStoredOAuthCredentials | undefined,
+    ) => McpStoredOAuthCredentials,
+  ): Promise<void> {
+    const { userId, provider } = await this.getCredentialContext();
+    await this.mutateCredentials(
+      async () =>
+        await updateMcpStoredOAuthCredentials(
+          userId,
+          provider,
+          async (current) => {
+            if (
+              this.knownTokens &&
+              !sameTokens(current?.tokens, this.knownTokens)
+            ) {
+              return undefined;
+            }
+            // A callback writes only while its attempt exists. Unlink deletes it.
+            if (!this.sessionContext) {
+              await this.requireSession();
+            }
+            return update(current);
+          },
+        ),
+    );
   }
 
   /** Route shared credential writes through callback-owned freshness control. */
