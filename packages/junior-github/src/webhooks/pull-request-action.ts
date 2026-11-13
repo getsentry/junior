@@ -28,6 +28,10 @@ import {
   releaseGitHubPullRequestReadySync,
   setGitHubPullRequestNextAction,
 } from "../pull-request-outcomes/store.js";
+import {
+  GITHUB_CONFLICT_GONE_REASON,
+  gitHubConflictNoticeKey,
+} from "../merge-conflict-checks/policy.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import { checkSuitePullRequests } from "./check-suite.js";
 import { logFailOpenFailure } from "./fail-open-log.js";
@@ -139,10 +143,12 @@ function nextAction(
   return {};
 }
 
-function closeReason(
+type CloseReason = { reason: string; status: "done" | "dismissed" };
+
+/** Why an item closes when its pull request is no longer open. */
+function endedReason(
   state: GitHubPullRequestMergeState,
-  previous: GitHubPullRequestAction,
-): { reason: string; status: "done" | "dismissed" } {
+): CloseReason | undefined {
   if (state.state === "merged") {
     return { reason: "The pull request merged.", status: "done" };
   }
@@ -152,6 +158,15 @@ function closeReason(
       status: "dismissed",
     };
   }
+  return undefined;
+}
+
+function closeReason(
+  state: GitHubPullRequestMergeState,
+  previous: GitHubPullRequestAction,
+): CloseReason {
+  const ended = endedReason(state);
+  if (ended) return ended;
   if (previous === "review") {
     return { reason: "The review request ended.", status: "done" };
   }
@@ -259,6 +274,20 @@ async function syncOne(
         });
       }
       await closeLegacyItems(items, name);
+      // The same read closes the merge conflict notice from
+      // `merge-conflict-checks/policy.ts` when the conflict is gone.
+      if (
+        state.state !== "open" ||
+        (state.mergeableState && state.mergeableState !== "dirty")
+      ) {
+        await items.close({
+          dedupeKey: gitHubConflictNoticeKey(target),
+          ...(endedReason(state) ?? {
+            reason: GITHUB_CONFLICT_GONE_REASON,
+            status: "done",
+          }),
+        });
+      }
       if (changed) {
         // Save after the items change, so a failure leaves the old action
         // and the next event tries again.
