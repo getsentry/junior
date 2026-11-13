@@ -277,6 +277,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     onSandboxPrepare: options.prepare,
     onWorkspacePrepare: options.prepareWorkspace,
     onSandboxRefChanged: options.onSandboxRefChanged,
+    conversationId: options.conversationId,
   });
   const createToolCallContext = (
     signal?: AbortSignal,

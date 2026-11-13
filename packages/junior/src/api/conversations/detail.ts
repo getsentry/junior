@@ -71,6 +71,7 @@ function projectConversationDetail(args: {
   authors: NonNullable<ConversationDetailReport["authors"]>;
   previousSeq?: number;
   readPosition?: ConversationDetailReport["readPosition"];
+  sandboxCostUsd?: number;
   sourceTask?: ConversationDetailReport["sourceTask"];
   teamDomainByTeamId?: ReadonlyMap<string, string>;
   unreadAfterSeq?: number;
@@ -97,6 +98,7 @@ function projectConversationDetail(args: {
       durationMs: args.durationMs,
       firstHumanMessageText: args.firstHumanMessageText,
       ...(args.locationId ? { locationId: args.locationId } : undefined),
+      sandboxCostUsd: args.sandboxCostUsd,
       ...(args.teamDomainByTeamId
         ? { teamDomainByTeamId: args.teamDomainByTeamId }
         : undefined),
@@ -337,6 +339,7 @@ async function readConversationDetailFromSql(
         }
       : undefined),
     durationMs: metrics?.durationMs ?? record.durationMs,
+    sandboxCostUsd: metrics?.sandboxCostUsd,
     events,
     firstHumanMessageText:
       firstHumanMessageTextByConversation.get(conversationId),

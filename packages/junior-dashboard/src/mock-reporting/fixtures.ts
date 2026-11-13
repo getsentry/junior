@@ -500,6 +500,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     },
     cumulativeDurationMs: 31_000,
     cumulativeUsage: usage(0.041),
+    sandboxCostUsd: 0.0092,
     modelUsage: [
       {
         modelId: "openai/gpt-5.6-sol",
@@ -2312,6 +2313,9 @@ function conversationMetricDays(
     const costUsd = summary.cumulativeUsage?.cost?.total;
     if (costUsd !== undefined) {
       day.costUsd = (day.costUsd ?? 0) + costUsd;
+    }
+    if (summary.sandboxCostUsd !== undefined) {
+      day.sandboxCostUsd = (day.sandboxCostUsd ?? 0) + summary.sandboxCostUsd;
     }
   }
   addMockMergedCodeChanges(days, nowMs, 10);

@@ -236,8 +236,17 @@ export function hasConversationUsageBreakdown(props: {
   const auxiliaryCosts =
     props.detail?.auxiliaryCosts ?? props.conversation.auxiliaryCosts;
   return Boolean(
-    props.detail?.modelUsage?.length || auxiliaryCosts?.operations?.length,
+    props.detail?.modelUsage?.length ||
+    auxiliaryCosts?.operations?.length ||
+    sandboxCost(props) !== undefined,
   );
+}
+
+function sandboxCost(props: {
+  conversation: Conversation | undefined;
+  detail?: ConversationDetailReport;
+}): number | undefined {
+  return props.detail?.sandboxCostUsd ?? props.conversation?.sandboxCostUsd;
 }
 
 /**
@@ -268,6 +277,7 @@ export function ConversationUsageBreakdown(props: {
     auxiliaryCosts,
   );
   const cost = totalCost?.total;
+  const sandboxCostUsd = sandboxCost(props);
   const operations = [...(auxiliaryCosts?.operations ?? [])].sort(
     (a, b) => b.costUsd - a.costUsd,
   );
@@ -420,8 +430,25 @@ export function ConversationUsageBreakdown(props: {
           }
         />
       ) : null}
+      {sandboxCostUsd !== undefined ? (
+        <BreakdownTable
+          countLabel=""
+          label="Sandbox"
+          rows={[
+            {
+              cost: formatCost(sandboxCostUsd),
+              count: "",
+              key: "sandbox",
+              label: "Compute and memory",
+            },
+          ]}
+        />
+      ) : null}
       <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted">
         Estimated costs.
+        {sandboxCostUsd !== undefined
+          ? " Sandbox cost is a list-price estimate that lands after each session stops. It is not in the total."
+          : null}
         {childAgentTotals
           ? " Totals include child conversations at any depth."
           : null}
@@ -439,6 +466,9 @@ export function ConversationUsageBreakdown(props: {
       : live
         ? "$…"
         : undefined,
+    sandboxCostUsd === undefined
+      ? undefined
+      : `${formatCostSummary({ total: sandboxCostUsd })} sandbox`,
   ]
     .filter(Boolean)
     .join(" · ");

@@ -40,6 +40,8 @@ export const conversationMetricDaySchema = z
      * whose latest Brief is `done` or `answered`.
      */
     outcomes: z.number().optional(),
+    /** Estimated Sandbox cost. Not part of `costUsd`. */
+    sandboxCostUsd: z.number().optional(),
     tokens: z.number().optional(),
   })
   .strict();

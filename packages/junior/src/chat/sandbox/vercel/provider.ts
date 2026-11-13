@@ -2,6 +2,7 @@ import { FileSystem, Sandbox } from "@vercel/sandbox";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/vercel/credentials";
 import { toVercelNetworkPolicy } from "@/chat/sandbox/egress/vercel";
 import { vercelSandboxErrors } from "@/chat/sandbox/vercel/errors";
+import { sessionCost } from "@/chat/sandbox/vercel/pricing";
 import type { SandboxProvider } from "@/chat/sandbox/provider";
 import type {
   CreateWorkspaceSnapshotBuilderInput,
@@ -11,6 +12,7 @@ import type {
   CreateSandboxSessionInput,
   SandboxFileSystem,
   SandboxSession,
+  SandboxSessionCost,
   SandboxSessionOptions,
 } from "@/chat/sandbox/workspace";
 
@@ -37,6 +39,7 @@ function clientOptions(signal?: AbortSignal) {
 function adaptSession(
   sandbox: Sandbox,
   options?: SandboxSessionOptions,
+  createdSandbox = false,
 ): SandboxSession {
   // Pin operations to the acquired VM session. The Sandbox convenience methods
   // may resume and replay an operation after a lifecycle failure.
@@ -107,7 +110,11 @@ function adaptSession(
       });
     },
     stop() {
-      return run(async () => await session.stop());
+      return run(async () => {
+        // Stop waits for shutdown, so the final record carries the usage.
+        const stopped = await session.stop();
+        return sessionCost(stopped.session, createdSandbox);
+      });
     },
     update(params) {
       return run(
@@ -153,7 +160,7 @@ async function createSandboxSession(
           ...(input.runtime ? { runtime: input.runtime } : undefined),
         },
   );
-  return adaptSession(sandbox, input);
+  return adaptSession(sandbox, input, true);
 }
 
 /** Resume a named Sandbox and return a session pinned to its VM session. */
@@ -237,6 +244,38 @@ async function deleteWorkspaceSnapshotBuilders(
   if (hasError) throw firstError;
 }
 
+/** Read the cost of one session from the Sandbox's session records. */
+async function readSessionCost(input: {
+  sandboxId: string;
+  sessionId: string;
+  createdSandbox: boolean;
+  signal?: AbortSignal;
+}): Promise<SandboxSessionCost> {
+  let sandbox: Sandbox;
+  try {
+    sandbox = await Sandbox.get({
+      name: input.sandboxId,
+      resume: false,
+      signal: input.signal,
+      ...clientOptions(input.signal),
+    });
+  } catch (error) {
+    // Vercel removes a non-persistent Sandbox after 14 days without use.
+    if (vercelSandboxErrors.isMissing(error)) return { status: "missing" };
+    throw error;
+  }
+  const sessions = await sandbox.listSessions({
+    sortOrder: "desc",
+    signal: input.signal,
+  });
+  for await (const session of sessions) {
+    if (session.id === input.sessionId) {
+      return sessionCost(session, input.createdSandbox);
+    }
+  }
+  return { status: "missing" };
+}
+
 /** Vercel Sandbox implementation of the sandbox provider contract. */
 export const vercelSandboxProvider: SandboxProvider = {
   errors: vercelSandboxErrors,
@@ -245,4 +284,5 @@ export const vercelSandboxProvider: SandboxProvider = {
   createWorkspaceSnapshotBuilder,
   getWorkspaceSnapshotBuilder,
   deleteWorkspaceSnapshotBuilders,
+  readSessionCost,
 };

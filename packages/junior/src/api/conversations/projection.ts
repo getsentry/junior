@@ -240,6 +240,7 @@ export function conversationSummaryFromStoredConversation(args: {
   locationId?: string;
   pinnedAtMs?: number;
   pinPosition?: number;
+  sandboxCostUsd?: number;
   teamDomainByTeamId?: ReadonlyMap<string, string>;
   usage?: ConversationUsage;
 }): ConversationSummaryReport {
@@ -301,6 +302,9 @@ export function conversationSummaryFromStoredConversation(args: {
       ? { auxiliaryCosts: args.auxiliaryCosts }
       : undefined),
     ...(usage ? { cumulativeUsage: usage } : undefined),
+    ...(args.sandboxCostUsd !== undefined
+      ? { sandboxCostUsd: args.sandboxCostUsd }
+      : undefined),
     ...(args.childAgentTotals
       ? { childAgentTotals: args.childAgentTotals }
       : undefined),

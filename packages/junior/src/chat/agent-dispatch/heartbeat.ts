@@ -8,6 +8,7 @@ import {
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { logException, logInfo } from "@/chat/logging";
+import { runSandboxCostSweep } from "@/chat/sandbox/cost";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -259,6 +260,12 @@ export async function runHeartbeat(args: {
     nowMs: args.nowMs,
     showReviewItem: args.showReviewItem,
   });
+  try {
+    await runSandboxCostSweep({ nowMs: args.nowMs });
+  } catch (error) {
+    // Unsettled records stay due, so the next heartbeat retries them.
+    logException(error, "sandbox.cost.sweep_failed");
+  }
   try {
     // Last, so a long first run does not delay the work above.
     await backfillCacheWarmingGaps({ nowMs: args.nowMs });

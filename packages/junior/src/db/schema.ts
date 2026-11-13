@@ -32,6 +32,7 @@ import {
   juniorReviewItems,
 } from "./schema/review-items";
 import { juniorPushSubscriptions } from "./schema/push-subscriptions";
+import { juniorSandboxSessions } from "./schema/sandbox-sessions";
 import { juniorSnapshots } from "./schema/snapshots";
 import { juniorUsers } from "./schema/users";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "./schema/workspaces";
@@ -62,6 +63,7 @@ export {
   juniorReviewItemSlackCards,
   juniorReviewItems,
   juniorPushSubscriptions,
+  juniorSandboxSessions,
   juniorSnapshots,
   juniorStats,
   juniorAutomationRuns,
@@ -98,6 +100,7 @@ export const juniorSqlSchema = {
   juniorReviewItemSlackCards,
   juniorReviewItems,
   juniorPushSubscriptions,
+  juniorSandboxSessions,
   juniorSnapshots,
   juniorStats,
   juniorAutomationRuns,

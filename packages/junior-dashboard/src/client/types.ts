@@ -193,6 +193,7 @@ export type Conversation = {
   locationUrl?: string;
   actorIdentity?: ConversationSummaryReport["actorIdentity"];
   participants?: ConversationSummaryReport["participants"];
+  sandboxCostUsd?: ConversationSummaryReport["sandboxCostUsd"];
   sentryTraceUrl?: string;
   startedAt: string;
   status: ConversationSummaryReport["status"];

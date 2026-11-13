@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   check,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -126,6 +127,9 @@ export const juniorConversations = pgTable(
     usage: jsonb("usage_json").$type<AgentTurnUsage>(),
     executionDurationMs: integer("execution_duration_ms").notNull().default(0),
     executionUsage: jsonb("execution_usage_json").$type<AgentTurnUsage>(),
+    // Sum of this Conversation's settled `junior_sandbox_sessions` costs.
+    // Kept apart from `usage`.
+    sandboxCostUsd: doublePrecision("sandbox_cost_usd"),
     metricRunId: text("metric_run_id"),
     // Bumped by every write that changes this Conversation's detail report.
     // Detail reads compare it before they build the report. The
