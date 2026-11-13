@@ -10,7 +10,10 @@ import { getGatewayApiKey } from "@/chat/pi/client";
 import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import { logInfo, logWarn } from "@/chat/logging";
 import { generatedArtifactFileRefSchema } from "@/chat/tools/sandbox/file-uploads";
-import { readSandboxImage } from "@/chat/tools/sandbox/image-files";
+import {
+  readSandboxImage,
+  shrinkImage,
+} from "@/chat/tools/sandbox/image-files";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { IMAGES_TOOL_SOURCE } from "@/chat/artifacts/tool-source";
@@ -87,35 +90,21 @@ async function enrichImagePrompt(
 }
 
 /** Resize and re-encode one image until it fits in `maxBytes`. */
-async function shrinkImage(
+async function shrinkInputImage(
   image: InputImage,
   maxBytes: number,
 ): Promise<{ image: InputImage; width: number; height: number }> {
-  // sharp loads a native library, so load it only when an image is too big.
-  const { default: sharp } = await import("sharp");
-  const { hasAlpha } = await sharp(image.data).metadata();
-  // JPEG is smallest for photos. WebP keeps transparency.
-  for (const edge of RESIZE_LONGEST_EDGES) {
-    const resized = sharp(image.data).rotate().resize({
-      width: edge,
-      height: edge,
-      fit: "inside",
-      withoutEnlargement: true,
-    });
-    const { data, info } = await (
-      hasAlpha ? resized.webp({ quality: 90 }) : resized.jpeg({ quality: 90 })
-    ).toBuffer({ resolveWithObject: true });
-    if (data.byteLength <= maxBytes) {
-      return {
-        image: { path: image.path, data },
-        width: info.width,
-        height: info.height,
-      };
-    }
+  const smaller = await shrinkImage(image.data, RESIZE_LONGEST_EDGES, maxBytes);
+  if (!smaller) {
+    throw new ToolInputError(
+      `could not resize ${image.path} below ${maxBytes} bytes. Use a smaller image.`,
+    );
   }
-  throw new ToolInputError(
-    `could not resize ${image.path} below ${maxBytes} bytes. Use a smaller image.`,
-  );
+  return {
+    image: { path: image.path, data: smaller.data },
+    width: smaller.width,
+    height: smaller.height,
+  };
 }
 
 /** Resize input images that would push the request over the gateway limit. */
@@ -144,7 +133,7 @@ async function fitImagesToRequest(images: InputImage[]): Promise<{
       remainingBytes -= image.data.byteLength;
       continue;
     }
-    const smaller = await shrinkImage(image, share);
+    const smaller = await shrinkInputImage(image, share);
     fitted[index] = smaller.image;
     remainingBytes -= smaller.image.data.byteLength;
     resized.push({

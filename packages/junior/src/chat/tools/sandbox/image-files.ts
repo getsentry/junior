@@ -38,3 +38,46 @@ export async function readSandboxImage(
   }
   return { data, mimeType };
 }
+
+/**
+ * Resize and re-encode an image until it fits in `maxBytes`. Try each longest
+ * edge in order, largest first. Return undefined when no edge fits.
+ */
+export async function shrinkImage(
+  data: Buffer,
+  longestEdges: readonly number[],
+  maxBytes: number,
+): Promise<
+  | {
+      data: Buffer;
+      mimeType: "image/jpeg" | "image/webp";
+      width: number;
+      height: number;
+    }
+  | undefined
+> {
+  // sharp loads a native library, so load it only when an image is too big.
+  const { default: sharp } = await import("sharp");
+  const { hasAlpha } = await sharp(data).metadata();
+  // JPEG is smallest for photos. WebP keeps transparency.
+  for (const edge of longestEdges) {
+    const resized = sharp(data).rotate().resize({
+      width: edge,
+      height: edge,
+      fit: "inside",
+      withoutEnlargement: true,
+    });
+    const { data: encoded, info } = await (
+      hasAlpha ? resized.webp({ quality: 90 }) : resized.jpeg({ quality: 90 })
+    ).toBuffer({ resolveWithObject: true });
+    if (encoded.byteLength <= maxBytes) {
+      return {
+        data: encoded,
+        mimeType: hasAlpha ? "image/webp" : "image/jpeg",
+        width: info.width,
+        height: info.height,
+      };
+    }
+  }
+  return undefined;
+}
