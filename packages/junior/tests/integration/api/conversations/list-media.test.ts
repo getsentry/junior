@@ -42,11 +42,9 @@ describe("conversation list API media", () => {
             conversationId: publicId,
             db: fixture.sql,
             file: {
-              bytes: filename.length,
               data: Buffer.from(filename),
               filename,
               mimeType: filename.endsWith(".png") ? "image/png" : "text/plain",
-              path: `/tmp/${filename}`,
             },
             nowMs: 1_000 + index,
             storage,
@@ -62,11 +60,9 @@ describe("conversation list API media", () => {
         conversationId: privateId,
         db: fixture.sql,
         file: {
-          bytes: 6,
           data: Buffer.from("secret"),
           filename: "secret.png",
           mimeType: "image/png",
-          path: "/tmp/secret.png",
         },
         storage,
       });
