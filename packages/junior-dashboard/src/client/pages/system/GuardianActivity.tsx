@@ -11,6 +11,7 @@ import {
 } from "../../components/charts/ActivityChart";
 import { Card } from "../../components/layout/Card";
 import { formatCompactNumber, formatCostSummary } from "../../format";
+import { SectionTitle } from "../../components/layout/SectionTitle";
 
 function totals(days: GuardianMetricDay[]) {
   return days.reduce(
@@ -64,9 +65,7 @@ export function GuardianActivity(props: {
       <div className="border-b border-dashboard-border-subtle px-4 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
-              Guardian reviews
-            </h3>
+            <SectionTitle>Guardian reviews</SectionTitle>
             <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
               {timeRangeBucketAdjective(bucketUnit)} decisions before reviewed
               actions execute.

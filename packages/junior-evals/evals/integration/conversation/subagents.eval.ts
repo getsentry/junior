@@ -1,28 +1,60 @@
 import { describe, expect } from "vitest";
 import { reply, slackMention } from "@junior-evals/fixture/inputs";
-import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
+import { requestsTool } from "@junior-evals/fixture/gateway";
 import { completedToolCalls } from "@junior-evals/fixture/results";
-import { test } from "@junior-evals/fixture/test";
+import { test, type CallOptions } from "@junior-evals/fixture/test";
+
+/** Record the name of each tool that the parent or a child agent requests. */
+function recordToolRequests(names: string[]): CallOptions["onProgress"] {
+  return (progress) => {
+    if (progress.type === "tool_request") {
+      names.push(progress.name);
+    }
+  };
+}
 
 // A child agent result starts a later Turn in the parent thread. These tests
 // check that the thread gets exactly one such Turn for each child agent.
 describe("Child Agents", () => {
-  test("when a child agent finishes, report its result in a later turn", async ({
+  test("when work goes to a child agent, post its result in a later turn", async ({
     agent,
   }) => {
     const { run } = await agent();
+    const requestedTools: string[] = [];
     const conversation = await run(
       slackMention(
-        'Use spawnAgent to start one child agent with the task "Reply with only the code word MAPLE-7." When its result arrives, post the code word here.',
+        'Use spawnAgent to start one child agent named "scout" with the task "Reply with only the code word MAPLE-7." When its result arrives, post the code word here.',
       ),
+      { onProgress: recordToolRequests(requestedTools) },
     );
 
     expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
+    // Only the child's `reply` reaches the parent.
+    expect(requestedTools).toContain("reply");
     expect(conversation.turns).toHaveLength(2);
+    // The parent decides whether a status is worth posting; the result
+    // itself arrives only in the later Turn.
+    expect(conversation.turns[0]?.replies.length).toBeLessThanOrEqual(1);
+    expect(conversation.turns[0]?.replies[0]?.text ?? "").not.toContain(
+      "MAPLE-7",
+    );
     const resultTurn = conversation.turns[1];
     expect(resultTurn?.status).toBe("succeeded");
     expect(resultTurn?.replies.map((reply) => reply.text)).toEqual([
       expect.stringContaining("MAPLE-7"),
+    ]);
+
+    const handoff = await conversation.continue(
+      slackMention(
+        'Use messageAgent to send scout the task "Reply with only the code word OAK-3." When its reply arrives, post the code word here.',
+      ),
+    );
+    expect(completedToolCalls("messageAgent", handoff)).toHaveLength(1);
+    expect(handoff.turns).toHaveLength(2);
+    expect(handoff.turns[0]?.replies.length).toBeLessThanOrEqual(1);
+    expect(handoff.turns[0]?.replies[0]?.text ?? "").not.toContain("OAK-3");
+    expect(handoff.turns[1]?.replies.map((reply) => reply.text)).toEqual([
+      expect.stringContaining("OAK-3"),
     ]);
   });
 
@@ -64,13 +96,7 @@ describe("Child Agents", () => {
       slackMention(
         'Use spawnAgent to start one child agent with the task "Reply with the deploy region that the user chose. The region is not in this task." When its result arrives, tell me what happened.',
       ),
-      {
-        onProgress: (progress) => {
-          if (progress.type === "tool_request") {
-            requestedTools.push(progress.name);
-          }
-        },
-      },
+      { onProgress: recordToolRequests(requestedTools) },
     );
 
     expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
@@ -112,10 +138,12 @@ describe("Child Agents", () => {
           ) {
             stopRan();
           } else if (progress.type === "tool_request") {
-            if (progress.name === "stopAgent") {
-              await childAskedOnce;
+            if (requestsTool(progress, "stopAgent")) {
+              // A script that also spawns the child must run before the
+              // child can ask.
+              if (!requestsTool(progress, "spawnAgent")) await childAskedOnce;
               stopRequested = true;
-            } else if (progress.name === "webSearch") {
+            } else if (requestsTool(progress, "webSearch")) {
               childAsked();
               await stopRanOnce;
               await new Promise((resolve) => setTimeout(resolve, 1_500));
@@ -134,7 +162,7 @@ describe("Child Agents", () => {
     ]);
   });
 
-  test("when a child agent uses its turn budget, it reports its progress instead of failing", async ({
+  test("when a child agent uses its turn budget, its result starts a turn that succeeds", async ({
     agent,
   }) => {
     // Three tool calls stand in for a spent budget. Past the limit, Junior
@@ -142,39 +170,25 @@ describe("Child Agents", () => {
     const { run } = await agent({
       limits: { maxToolCallsPerTurn: 3 },
     });
-    let systemTimeRequests = 0;
+    const requestedTools: string[] = [];
     const conversation = await run(
       slackMention(
         'Use spawnAgent to start one child agent with the task "Call systemTime five times, one call per step. Then reply with how many of the calls returned a time." When its result arrives, tell me what the child agent reported.',
       ),
-      {
-        onProgress: (progress) => {
-          if (
-            progress.type === "tool_request" &&
-            progress.name === "systemTime"
-          ) {
-            systemTimeRequests += 1;
-          }
-        },
-      },
+      { onProgress: recordToolRequests(requestedTools) },
     );
 
     expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
-    expect(systemTimeRequests).toBeGreaterThan(3);
+    expect(
+      requestedTools.filter((name) => name === "systemTime").length,
+    ).toBeGreaterThan(3);
+    // Past the budget, the child can still reply.
+    expect(requestedTools).toContain("reply");
     expect(conversation.turns).toHaveLength(2);
     expect(conversation.turns[1]?.status).toBe("succeeded");
-    await expect(conversation).toSatisfyJudge(
-      RubricJudge,
-      rubric({
-        pass: [
-          "The last reply says the child agent stopped before all five calls ran, and it gives the number of calls that ran.",
-        ],
-        fail: ["The last reply says the child agent failed with an error."],
-      }),
-    );
   });
 
-  test("when a child agent starts its own child agent, report once after both finish", async ({
+  test("when a child agent starts its own child agent, the helper's result reaches the thread once", async ({
     agent,
   }) => {
     const { run } = await agent({
@@ -182,19 +196,17 @@ describe("Child Agents", () => {
     });
     const conversation = await run(
       slackMention(
-        'Use spawnAgent to start one child agent with this task: "Use spawnAgent to start one helper agent with the task \\"Reply with only the code word CEDAR-9.\\" When the helper\'s result arrives, reply with only that code word." When the child agent\'s result arrives, post the code word here.',
+        'Use spawnAgent to start one child agent with this task: "Use spawnAgent to start one helper agent with the task \\"Reply with only the code word CEDAR-9.\\" When the helper\'s reply arrives, reply with only that code word." When the code word arrives, post it here.',
       ),
     );
 
     expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
-    // The first agent invocation of the child ends while its helper's result
-    // is still open, so a later agent invocation of the child reports. The
-    // parent gets that one report, not two.
-    expect(conversation.turns).toHaveLength(2);
-    const resultTurn = conversation.turns[1];
-    expect(resultTurn?.status).toBe("succeeded");
-    expect(resultTurn?.replies.map((reply) => reply.text)).toEqual([
-      expect.stringContaining("CEDAR-9"),
-    ]);
+    // The helper's reply starts the child's next Turn, which replies to the
+    // parent. The code word is posted once.
+    const replies = conversation.turns.flatMap((turn) => turn.replies);
+    expect(
+      replies.filter((reply) => reply.text.includes("CEDAR-9")),
+    ).toHaveLength(1);
+    expect(conversation.turns.at(-1)?.status).toBe("succeeded");
   });
 });

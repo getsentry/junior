@@ -1,6 +1,6 @@
 import { AwsClient } from "aws4fetch";
 import { toOptionalTrimmed } from "@/chat/optional-string";
-import type { AttachmentStorage } from "./storage";
+import { rangeHeader, type AttachmentStorage } from "./storage";
 
 /** Settings for an S3-compatible object store. */
 export interface S3StorageConfig {
@@ -79,25 +79,73 @@ export function createS3AttachmentStorage(
     secretAccessKey: config.secretAccessKey,
     service: "s3",
   });
+  // aws4fetch retries with the same body, but a stream can be read only
+  // once. The attachment store retries a write with a fresh body instead.
+  const writeClient = new AwsClient({
+    accessKeyId: config.accessKeyId,
+    region: config.region,
+    retries: 0,
+    secretAccessKey: config.secretAccessKey,
+    service: "s3",
+  });
   return {
     provider: "s3",
     async put(input) {
-      const response = await client.fetch(objectUrl(config, input.key), {
-        // fetch types reject Buffer. Copy into a plain Uint8Array.
-        body: new Uint8Array(input.body),
-        headers: { "content-type": input.contentType },
+      const response = await writeClient.fetch(objectUrl(config, input.key), {
+        body: input.body,
+        headers: {
+          // A single S3 PUT needs the length before the body. A stream
+          // cannot be hashed before it is sent, so the payload is unsigned.
+          "content-length": String(input.bytes),
+          "content-type": input.contentType,
+          "x-amz-content-sha256": "UNSIGNED-PAYLOAD",
+        },
         method: "PUT",
       });
       await expectOk(response, "put");
     },
-    async get(key) {
-      const response = await client.fetch(objectUrl(config, key));
+    async createUploadTarget(input) {
+      const url = new URL(objectUrl(config, input.key));
+      url.searchParams.set(
+        "X-Amz-Expires",
+        String(Math.max(1, Math.ceil((input.expiresAtMs - Date.now()) / 1000))),
+      );
+      const browserHeaders = {
+        "content-type": input.contentType,
+        // Write the key once. A sent file cannot change after the check.
+        "if-none-match": "*",
+      };
+      // Sign the size and type headers too. S3 then rejects a PUT of any
+      // other size or type. The browser sends `content-length` itself.
+      const signed = await client.sign(url.toString(), {
+        aws: { allHeaders: true, signQuery: true },
+        headers: { ...browserHeaders, "content-length": String(input.bytes) },
+        method: "PUT",
+      });
+      return {
+        headers: browserHeaders,
+        method: "PUT",
+        url: signed.url,
+      };
+    },
+    async get(key, range) {
+      const response = await client.fetch(
+        objectUrl(config, key),
+        range ? { headers: { range: rangeHeader(range) } } : undefined,
+      );
       if (response.status === 404) {
         await drain(response);
         return null;
       }
       if (!response.ok) {
         await expectOk(response, "get");
+      }
+      // A server that ignores the range sends the whole object with 200.
+      if (range && response.status !== 206) {
+        await drain(response);
+        throw new Error(
+          `S3 get ignored the byte range with status ${response.status}`,
+        );
       }
       return response.body;
     },

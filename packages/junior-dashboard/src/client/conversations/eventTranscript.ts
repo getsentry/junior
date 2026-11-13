@@ -2,7 +2,6 @@ import { resolveMessageCards } from "@sentry/junior/api/schema";
 import type {
   ConversationPendingMessage,
   ConversationReportEvent,
-  InputImage,
 } from "@sentry/junior/api/schema";
 
 import type {
@@ -11,9 +10,9 @@ import type {
   TranscriptViewPart,
 } from "../types";
 
-/** A mailbox row, or a local send that can still carry its own images. */
+/** A mailbox row, or a local send that can still carry its own files. */
 type PendingTranscriptInput = ConversationPendingMessage & {
-  images?: InputImage[];
+  files?: File[];
 };
 
 type ToolCall =
@@ -51,9 +50,6 @@ function specialToolIds(events: ConversationReportEvent[]): Set<string> {
   const ids = new Set<string>();
   for (const event of events) {
     const data = event.data;
-    if (data.type === "handoff" && data.triggeringToolCallId) {
-      ids.add(data.triggeringToolCallId);
-    }
     if (data.type === "subagent" && data.parentToolCallId) {
       ids.add(data.parentToolCallId);
     }
@@ -83,7 +79,7 @@ export function pendingTranscriptMessage(
       ? [{ type: "text", redacted: true }]
       : [{ type: "text", text: message.text ?? "" }],
     ...(message.attachments ? { attachments: message.attachments } : undefined),
-    ...(message.images?.length ? { images: message.images } : undefined),
+    ...(message.files?.length ? { files: message.files } : undefined),
     pending: true,
     role: "user",
     source: message.source,
@@ -93,7 +89,13 @@ export function pendingTranscriptMessage(
     ...(message.actorIdentity
       ? { actorIdentity: message.actorIdentity }
       : undefined),
+    ...(message.actorIdentityId
+      ? { actorIdentityId: message.actorIdentityId }
+      : undefined),
     ...(message.mentions ? { mentions: message.mentions } : undefined),
+    ...(message.reviewItemChange
+      ? { reviewItemChanges: [message.reviewItemChange] }
+      : undefined),
   };
 }
 
@@ -222,10 +224,16 @@ export function transcriptMessagesFromEvents(
         ...(data.actorIdentity
           ? { actorIdentity: data.actorIdentity }
           : undefined),
+        ...(data.actorIdentityId
+          ? { actorIdentityId: data.actorIdentityId }
+          : undefined),
         ...(data.agentInvocationId
           ? { agentInvocationId: data.agentInvocationId }
           : undefined),
         ...(data.eventType ? { eventType: data.eventType } : undefined),
+        ...(data.eventNamespace
+          ? { eventNamespace: data.eventNamespace }
+          : undefined),
         eventObjectType: data.eventObjectType,
         ...(data.trustedSummary
           ? { trustedSummary: data.trustedSummary }
@@ -233,6 +241,10 @@ export function transcriptMessagesFromEvents(
         ...(data.events ? { events: data.events } : undefined),
         ...(data.explicitMention !== undefined
           ? { explicitMention: data.explicitMention }
+          : undefined),
+        ...(data.quiet ? { quiet: data.quiet } : undefined),
+        ...(data.reviewItemChanges
+          ? { reviewItemChanges: data.reviewItemChanges }
           : undefined),
         ...(data.source ? { source: data.source } : undefined),
       };
@@ -296,22 +308,6 @@ export function transcriptMessagesFromEvents(
       continue;
     }
 
-    if (data.type === "turn_routed") {
-      const message = latestUserMessageByTurn.get(data.turnId);
-      if (message) {
-        message.route = {
-          modelProfile: data.modelProfile,
-          modelId: data.modelId,
-          reasoningLevel: data.reasoningLevel,
-          ...(data.confidence !== undefined
-            ? { confidence: data.confidence }
-            : undefined),
-          source: data.source,
-        };
-      }
-      continue;
-    }
-
     if (data.type === "turn_context") {
       const message = latestUserMessageByTurn.get(data.turnId);
       if (message) {
@@ -321,6 +317,7 @@ export function transcriptMessagesFromEvents(
           kind: data.kind,
           loadedAt: event.createdAt,
           pluginName: data.pluginName,
+          turnId: data.turnId,
           version: data.version,
         });
       }
@@ -377,6 +374,7 @@ export function transcriptMessagesFromEvents(
         type: "subagent" as const,
         id: subagentId,
         childConversationId: data.childConversationId,
+        childKind: data.childKind,
         subagentKind: data.subagentKind,
         status: data.status,
         ...(finishedTimestamp === undefined
@@ -405,9 +403,20 @@ export function transcriptMessagesFromEvents(
             name: data.name,
             version: data.version,
             presentation: data.presentation,
+            ...(data.turnId ? { turnId: data.turnId } : undefined),
           },
         ]),
       );
+      continue;
+    }
+
+    if (data.type === "reply_posted") {
+      messages.push({
+        ...eventMessage(event, "assistant", [
+          { type: "text", text: data.text },
+        ]),
+        postedTo: data.plugin,
+      });
       continue;
     }
 
@@ -423,37 +432,28 @@ export function transcriptMessagesFromEvents(
       continue;
     }
 
-    if (data.type === "compaction" || data.type === "handoff") {
+    if (data.type === "compaction") {
       messages.push(
         eventMessage(event, "system", [
           {
             type: "context_event",
             ...(event.mentions ? { mentions: event.mentions } : undefined),
-            event:
-              data.type === "handoff"
-                ? {
-                    type: data.type,
-                    createdAt: event.createdAt,
-                    modelId: data.modelId,
-                    modelProfile: data.modelProfile,
-                    ...(data.summary ? { summary: data.summary } : undefined),
-                    ...(data.reasoningLevel
-                      ? { reasoningLevel: data.reasoningLevel }
-                      : undefined),
-                  }
-                : {
-                    type: data.type,
-                    createdAt: event.createdAt,
-                    ...(data.modelId ? { modelId: data.modelId } : undefined),
-                    ...(data.modelProfile
-                      ? { modelProfile: data.modelProfile }
-                      : undefined),
-                    ...(data.summary ? { summary: data.summary } : undefined),
-                    ...(data.details ? { details: data.details } : undefined),
-                  },
+            event: {
+              type: data.type,
+              createdAt: event.createdAt,
+              ...(data.modelId ? { modelId: data.modelId } : undefined),
+              ...(data.summary ? { summary: data.summary } : undefined),
+              ...(data.details ? { details: data.details } : undefined),
+            },
           },
         ]),
       );
+      continue;
+    }
+
+    if (data.type === "turn_lifecycle" && data.state === "no_reply") {
+      const message = latestUserMessageByTurn.get(data.turnId);
+      if (message?.eventType) message.noReply = true;
       continue;
     }
 

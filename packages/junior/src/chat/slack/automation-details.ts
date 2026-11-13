@@ -1,5 +1,6 @@
+import { automationTaskText } from "@/chat/automations/task";
 import type { SlackEvent } from "@slack/types";
-import { z } from "zod";
+import * as z from "zod";
 import type { AutomationSummary } from "@/api/schema/automation";
 import { readViewerAutomationSummary } from "@/chat/automations/read";
 import {
@@ -52,14 +53,23 @@ function renderAutomationDetails(
         ? "ready"
         : "unavailable";
   // Item entities use custom_fields only. Do not add task-specific fields.
-  const fields: DetailField[] = [
-    textField("status", "Status", status),
-    {
-      ...textField("description", "Instruction", automation.instruction),
+  const fields: DetailField[] = [textField("status", "Status", status)];
+  const { task } = automation;
+  if (task.kind === "skill")
+    fields.push(textField("skill", "Skill", task.skill));
+  // A skill can run without context, and Slack rejects an empty field.
+  const text = automationTaskText(task);
+  if (text) {
+    fields.push({
+      ...textField(
+        "description",
+        task.kind === "skill" ? "Context" : "Instruction",
+        text,
+      ),
       format: "markdown",
       long: true,
-    },
-  ];
+    });
+  }
   if (automation.kind === "scheduled") {
     fields.push(
       { ...textField("trigger", "Schedule", automation.schedule), long: true },

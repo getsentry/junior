@@ -1,5 +1,5 @@
 import type { PluginContext } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import type { SentryDb } from "../db/database.js";
 import {
   activeSentryInstallations,

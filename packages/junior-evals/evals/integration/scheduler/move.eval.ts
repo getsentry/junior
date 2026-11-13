@@ -96,7 +96,7 @@ describe("Schedule Destination Updates", () => {
     const updates = completedToolCalls("updateAutomation", conversation);
     expect(updates).toHaveLength(1);
     expect(updates[0]!.input).toMatchObject({
-      automationId: id,
+      automation_id: id,
       destination: "current_conversation",
     });
     expect(completedToolCalls("createAutomation", conversation)).toEqual([]);

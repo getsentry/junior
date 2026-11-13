@@ -104,8 +104,11 @@ native tool descriptions or `searchTools` results.
 #### Scenario: Search indexing uses richer text
 
 - **WHEN** Junior searches the catalog
-- **THEN** it may use full tool descriptions, prompt snippets, prompt
-  guidelines, schemas, and annotations for matching
+- **THEN** it may use tool names, full tool descriptions, prompt snippets,
+  prompt guidelines, and parameter names and descriptions for matching
+- **AND** it does not match on source descriptions or raw schema JSON
+- **AND** it drops matches that score far below the best match
+- **AND** it does not return direct tools, which the model already has
 - **AND** the rendered result still uses summarized model-visible descriptions.
 
 ### Requirement: Execute Tool Remains The Deferred Execution Bridge

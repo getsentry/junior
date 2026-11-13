@@ -1,12 +1,12 @@
 import { eventMatchSchema } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 
 /**
  * One active Watch that a Conversation owns: its own, or one that a child agent
  * below it created.
  *
  * Viewers who cannot see private content get the resource type, event types,
- * and times, but not the label, intent, or match filter.
+ * and times, but not the label, intent, match filter, or url.
  */
 export const conversationWatchSchema = z
   .object({
@@ -30,6 +30,8 @@ export const conversationWatchSchema = z
     namespace: z.string().min(1),
     redacted: z.literal(true).optional(),
     resourceType: z.string().min(1),
+    /** The web page of the watched resource, when its plugin names one. */
+    url: z.string().url().optional(),
   })
   .strict()
   .superRefine((data, context) => {
@@ -39,10 +41,10 @@ export const conversationWatchSchema = z
         message: "watch label must be text or explicitly redacted",
       });
     }
-    if (data.redacted && (data.intent || data.match)) {
+    if (data.redacted && (data.intent || data.match || data.url)) {
       context.addIssue({
         code: "custom",
-        message: "redacted watches must not expose an intent or match",
+        message: "redacted watches must not expose an intent, match, or url",
       });
     }
   });

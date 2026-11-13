@@ -1,6 +1,6 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type { StateAdapter } from "chat";
-import { z } from "zod";
+import * as z from "zod";
 import { joinPublicChannel } from "@/chat/slack/channel";
 import {
   runWithSlackInstallation,

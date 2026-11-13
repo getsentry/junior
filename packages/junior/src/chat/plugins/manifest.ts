@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { parse as parseYaml } from "yaml";
 import type {
   PluginEnvVarDeclaration,
@@ -870,7 +870,7 @@ function normalizeRuntimeDependencies(
       continue;
     }
 
-    if (!/^https:\/\//i.test(packageUrl)) {
+    if (URL.parse(packageUrl)?.protocol !== "https:") {
       throw new Error(
         `Plugin ${name} system runtime dependency url must be an https URL`,
       );
@@ -1033,7 +1033,6 @@ function normalizeMcp(
   if (!result.success) {
     throw new Error(issueMessage(result.error, `Plugin ${name} mcp`));
   }
-
   const headers = result.data.headers
     ? normalizeStringMap(result.data.headers, `Plugin ${name} mcp.headers`, {
         forbiddenKeys: FORBIDDEN_API_HEADER_NAMES,
@@ -1112,6 +1111,24 @@ function normalizeMcp(
 }
 
 /**
+ * Return the tools that a set MCP allow-list does not load. An empty
+ * allow-list loads every tool, so only a set list can be checked.
+ */
+function unloadedMcpTools(
+  mcp: Pick<PluginMcpConfig, "allowedTools" | "wrappedTools">,
+  tools: string[],
+): string[] {
+  if (!mcp.allowedTools) {
+    return [];
+  }
+  const loadedTools = new Set([
+    ...mcp.allowedTools,
+    ...(mcp.wrappedTools ?? []),
+  ]);
+  return tools.filter((tool) => !loadedTools.has(tool));
+}
+
+/**
  * Validate which accounts the plugin may use against the surfaces that
  * support them. Today only MCP OAuth stores a service account.
  */
@@ -1141,20 +1158,11 @@ function normalizeAccounts(
       `Plugin ${name} accounts.service-account requires mcp without auth or oauth-client`,
     );
   }
-  // An empty allow-list loads every tool, so only a set list can be checked.
-  if (mcp.allowedTools) {
-    const loadedTools = new Set([
-      ...mcp.allowedTools,
-      ...(mcp.wrappedTools ?? []),
-    ]);
-    const unknownTools = serviceAccount.tools.filter(
-      (tool) => !loadedTools.has(tool),
+  const unknownTools = unloadedMcpTools(mcp, serviceAccount.tools);
+  if (unknownTools.length > 0) {
+    throw new Error(
+      `Plugin ${name} accounts.service-account.tools must be listed in mcp.allowed-tools or mcp.wrapped-tools: ${unknownTools.join(", ")}`,
     );
-    if (unknownTools.length > 0) {
-      throw new Error(
-        `Plugin ${name} accounts.service-account.tools must be listed in mcp.allowed-tools or mcp.wrapped-tools: ${unknownTools.join(", ")}`,
-      );
-    }
   }
   return {
     ...(userOAuth === false ? { userOAuth } : undefined),

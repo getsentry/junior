@@ -11,11 +11,26 @@ import { getDb } from "@/chat/db";
 import { findActorIdentityId } from "@/chat/identities/actor";
 import { readUserAvatarUrls } from "@/chat/identities/avatar";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
+import {
+  clearCachedUser,
+  readCachedUserByEmail,
+} from "@/chat/identities/user-cache";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import type { JuniorDatabase } from "@/db/db";
 
-type IdentityRow = typeof juniorIdentities.$inferSelect;
-type UserRow = typeof juniorUsers.$inferSelect;
+type IdentityRow = Pick<
+  typeof juniorIdentities.$inferSelect,
+  | "displayName"
+  | "handle"
+  | "id"
+  | "provider"
+  | "providerSubjectId"
+  | "providerTenantId"
+>;
+type UserRow = Pick<
+  typeof juniorUsers.$inferSelect,
+  "displayName" | "id" | "isAdmin" | "primaryEmail"
+>;
 
 function identityFromRow(row: IdentityRow): Identity {
   return identitySchema.parse({
@@ -48,6 +63,10 @@ async function readUserById(
       asc(juniorIdentities.providerTenantId),
       asc(juniorIdentities.providerSubjectId),
     );
+  return userFromRows(userRow, identityRows);
+}
+
+function userFromRows(userRow: UserRow, identityRows: IdentityRow[]): User {
   return userSchema.parse({
     email: userRow.primaryEmail,
     id: userRow.id,
@@ -57,6 +76,15 @@ async function readUserById(
   });
 }
 
+// Every signed-in request reads its viewer, so this read uses the cache.
+async function readUserByNormalizedEmail(
+  db: JuniorDatabase,
+  normalizedEmail: string,
+): Promise<User | undefined> {
+  const cached = await readCachedUserByEmail(db, normalizedEmail);
+  return cached ? userFromRows(cached.user, cached.identities) : undefined;
+}
+
 /** Resolve or create the canonical user for one verified viewer email. */
 export async function resolveViewerUserFromSql(
   db: JuniorDatabase,
@@ -64,6 +92,10 @@ export async function resolveViewerUserFromSql(
 ): Promise<User | undefined> {
   const normalizedEmail = normalizeIdentityEmail(email);
   if (!normalizedEmail) return undefined;
+  // Every authenticated request resolves its viewer. Read first, so a known
+  // user costs a cache read instead of an insert attempt and two reads.
+  const existing = await readUserByNormalizedEmail(db, normalizedEmail);
+  if (existing) return existing;
   const now = new Date();
   const rows = await db
     .insert(juniorUsers)
@@ -103,14 +135,7 @@ export async function findUserByEmailFromSql(
 ): Promise<User | undefined> {
   const normalizedEmail = normalizeIdentityEmail(email);
   if (!normalizedEmail) return undefined;
-  const userRow = (
-    await db
-      .select()
-      .from(juniorUsers)
-      .where(eq(juniorUsers.primaryEmailNormalized, normalizedEmail))
-      .limit(1)
-  )[0];
-  return userRow ? await readUserById(db, userRow) : undefined;
+  return await readUserByNormalizedEmail(db, normalizedEmail);
 }
 
 /** Read one existing canonical user by verified email without creating a row. */
@@ -131,6 +156,7 @@ export async function updateViewerDisplayNameFromSql(
     .set({ displayName, updatedAt: new Date() })
     .where(eq(juniorUsers.id, userId))
     .returning();
+  await clearCachedUser(userId);
   const userRow = rows[0];
   return userRow ? await readUserById(db, userRow) : undefined;
 }
@@ -170,6 +196,7 @@ export async function setUserAdminFromSql(
     .set({ isAdmin, updatedAt: new Date() })
     .where(eq(juniorUsers.id, user.id))
     .returning();
+  await clearCachedUser(user.id);
   const userRow = rows[0];
   return userRow ? await readUserById(db, userRow) : undefined;
 }

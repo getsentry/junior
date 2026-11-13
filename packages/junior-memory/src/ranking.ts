@@ -74,28 +74,21 @@ export function rankMemoryMatches(
       byId.set(match.memory.id, match);
       continue;
     }
-    // Keep the first rank from each search. The shared searches run first, so
-    // the smaller private searches cannot replace their ranks.
+    // Merge the lexical and vector ranks of one memory.
     byId.set(match.memory.id, {
       ...existing,
       ...(!existing.lexical && match.lexical
         ? { lexical: match.lexical }
         : undefined),
-      ...(!existing.vector && match.vector ? { vector: match.vector } : undefined),
+      ...(!existing.vector && match.vector
+        ? { vector: match.vector }
+        : undefined),
     });
   }
   return [...byId.values()].sort((left, right) => {
     const scoreDelta = matchScore(right, weights) - matchScore(left, weights);
     if (scoreDelta !== 0) {
       return scoreDelta;
-    }
-    // Prefer private memory when RRF ties. Public and private searches can give
-    // the same rank to common words.
-    const privateDelta =
-      Number(right.memory.scope === "private") -
-      Number(left.memory.scope === "private");
-    if (privateDelta !== 0) {
-      return privateDelta;
     }
     return (
       observedAgeRank(right.memory, options.nowMs) -

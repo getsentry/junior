@@ -1,0 +1,252 @@
+-- Before #3066, a dashboard post into a Slack thread copied the poster's
+-- email onto the thread starter's Slack Identity when Slack had returned no
+-- email for the starter. The copied email linked that Identity to the
+-- poster's User. The link made the poster a Participant of every root that
+-- the Identity started or sent a Turn in.
+--
+-- Evidence: a Slack instruction stores the Actor from the Slack profile in
+-- `provenance.actor`. Slack is the only source that may give a Slack Identity
+-- its email, so an instruction with the Identity's Slack user and email
+-- proves that email. Nothing else proves it. In the same way, an instruction
+-- with the Identity's Slack user and name proves that the name came from
+-- Slack.
+--
+-- A candidate is a Slack user Identity when all of these are true:
+-- - It has a User and a verified email, and no evidence proves that email.
+-- - The User's web Identity, with that same email, wrote an event in a
+--   Conversation of a root that the Slack Identity started.
+--
+-- Slack emails are unique in a workspace, so one User has at most one
+-- correct Slack Identity in each team. Repair a candidate only when evidence
+-- proves exactly one other Slack Identity of its User in its team. Leave
+-- every other candidate as it is. Without that proof, the data cannot tell a
+-- victim from a person whose own link came through this path, or whose
+-- events retention removed.
+--
+-- One statement repairs every table, so each part reads the same rows. The
+-- migration reports its counts with `RAISE INFO`, and `junior upgrade`
+-- prints them. The report has no identifiers.
+DO $$
+DECLARE
+  "report" record;
+BEGIN
+-- junior:bounded-backfill: changes only rows of damaged Identities, their Users, and the roots they started or sent Turns in. #3065 found few of these.
+WITH "slack_actors" AS (
+  SELECT DISTINCT
+    "e"."payload"->'provenance'->'actor'->>'userId' AS "subject",
+    lower(btrim("e"."payload"->'provenance'->'actor'->>'email')) AS "email",
+    btrim("e"."payload"->'provenance'->'actor'->>'fullName') AS "full_name"
+  FROM "junior_conversation_events" AS "e"
+  WHERE "e"."type" = 'user_message'
+    AND "e"."payload"->'provenance'->>'authority' = 'instruction'
+    AND "e"."payload"->'provenance'->'actor'->>'platform' = 'slack'
+),
+"slack_evidence" AS (
+  SELECT DISTINCT "subject", "email"
+  FROM "slack_actors"
+  WHERE "email" IS NOT NULL
+),
+"proven" AS (
+  SELECT "slack"."id", "slack"."user_id", "slack"."provider_tenant_id",
+    "slack"."display_name"
+  FROM "junior_identities" AS "slack"
+  INNER JOIN "slack_evidence" AS "ev"
+    ON "ev"."subject" = "slack"."provider_subject_id"
+    AND "ev"."email" = "slack"."email_normalized"
+  WHERE "slack"."kind" = 'user'
+    AND "slack"."provider" = 'slack'
+    AND "slack"."user_id" IS NOT NULL
+),
+"web_posts" AS (
+  SELECT DISTINCT "web"."user_id", "web"."email_normalized",
+    coalesce("c"."root_conversation_id", "c"."conversation_id") AS "root_id"
+  FROM "junior_identities" AS "web"
+  INNER JOIN "junior_conversation_events" AS "posted"
+    ON "posted"."actor_identity_id" = "web"."id"
+  INNER JOIN "junior_conversations" AS "c"
+    ON "c"."conversation_id" = "posted"."conversation_id"
+  WHERE "web"."kind" = 'user'
+    AND "web"."provider" = 'junior'
+    AND "web"."user_id" IS NOT NULL
+),
+"candidates" AS (
+  SELECT DISTINCT "slack"."id" AS "identity_id", "slack"."user_id",
+    "slack"."provider_tenant_id"
+  FROM "junior_identities" AS "slack"
+  INNER JOIN "junior_conversations" AS "root"
+    ON "root"."actor_identity_id" = "slack"."id"
+    AND "root"."parent_conversation_id" IS NULL
+  INNER JOIN "web_posts" AS "w"
+    ON "w"."root_id" = "root"."conversation_id"
+    AND "w"."user_id" = "slack"."user_id"
+    AND "w"."email_normalized" = "slack"."email_normalized"
+  WHERE "slack"."kind" = 'user'
+    AND "slack"."provider" = 'slack'
+    AND "slack"."user_id" IS NOT NULL
+    AND "slack"."email_verified"
+    AND "slack"."id" NOT IN (SELECT "id" FROM "proven")
+),
+"damaged" AS (
+  SELECT "candidate"."identity_id", "candidate"."user_id"
+  FROM "candidates" AS "candidate"
+  WHERE (
+    SELECT count(*)
+    FROM "proven" AS "kept"
+    WHERE "kept"."user_id" = "candidate"."user_id"
+      AND "kept"."provider_tenant_id" = "candidate"."provider_tenant_id"
+  ) = 1
+),
+-- Roots where the link made the poster a Participant: roots that the damaged
+-- Identity started, and roots where it sent a Turn.
+"affected_roots" AS (
+  SELECT "d"."user_id", "root"."conversation_id" AS "root_id"
+  FROM "damaged" AS "d"
+  INNER JOIN "junior_conversations" AS "root"
+    ON "root"."actor_identity_id" = "d"."identity_id"
+    AND "root"."parent_conversation_id" IS NULL
+  UNION
+  SELECT "d"."user_id",
+    coalesce("c"."root_conversation_id", "c"."conversation_id") AS "root_id"
+  FROM "damaged" AS "d"
+  INNER JOIN "junior_conversation_events" AS "e"
+    ON "e"."actor_identity_id" = "d"."identity_id"
+  INNER JOIN "junior_conversations" AS "c"
+    ON "c"."conversation_id" = "e"."conversation_id"
+),
+-- Keep a row when the User started the root or wrote in it through an
+-- Identity that is not damaged.
+"removed_participants" AS (
+  DELETE FROM "junior_conversation_participants" AS "p"
+  USING "affected_roots" AS "a"
+  WHERE "p"."user_id" = "a"."user_id"
+    AND "p"."root_conversation_id" = "a"."root_id"
+    AND NOT EXISTS (
+      SELECT 1
+      FROM "junior_conversations" AS "root"
+      INNER JOIN "junior_identities" AS "starter"
+        ON "starter"."id" = "root"."actor_identity_id"
+      WHERE "root"."conversation_id" = "a"."root_id"
+        AND "starter"."user_id" = "a"."user_id"
+        AND "starter"."id" NOT IN (SELECT "identity_id" FROM "damaged")
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM "junior_conversations" AS "c"
+      INNER JOIN "junior_conversation_events" AS "e"
+        ON "e"."conversation_id" = "c"."conversation_id"
+      INNER JOIN "junior_identities" AS "author"
+        ON "author"."id" = "e"."actor_identity_id"
+      WHERE coalesce("c"."root_conversation_id", "c"."conversation_id") = "a"."root_id"
+        AND "author"."user_id" = "a"."user_id"
+        AND "author"."id" NOT IN (SELECT "identity_id" FROM "damaged")
+    )
+  RETURNING 1
+),
+-- The link gave the poster's User the starter's name when the User had none.
+-- Later dashboard posts copy the User name to the poster's web Identity, and
+-- the next save of that Identity copies it back to the User. So the web
+-- Identity name is not evidence. A name is the starter's when Slack evidence
+-- proves it for the damaged Identity and no proven Slack Identity of the User
+-- has it. Clear it on the User and on the User's web Identities. The next
+-- save of a kept Identity gives the User a name again.
+"stolen_names" AS (
+  SELECT DISTINCT "u"."id" AS "user_id", "u"."display_name"
+  FROM "damaged" AS "d"
+  INNER JOIN "junior_identities" AS "slack" ON "slack"."id" = "d"."identity_id"
+  INNER JOIN "junior_users" AS "u" ON "u"."id" = "d"."user_id"
+  WHERE "u"."display_name" = "slack"."display_name"
+    AND EXISTS (
+      SELECT 1
+      FROM "slack_actors" AS "a"
+      WHERE "a"."subject" = "slack"."provider_subject_id"
+        AND "a"."full_name" = "slack"."display_name"
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM "proven" AS "kept"
+      WHERE "kept"."user_id" = "d"."user_id"
+        AND "kept"."display_name" = "u"."display_name"
+    )
+),
+"renamed_users" AS (
+  UPDATE "junior_users" AS "u"
+  SET "display_name" = NULL,
+    "updated_at" = now()
+  FROM "stolen_names" AS "n"
+  WHERE "u"."id" = "n"."user_id"
+  RETURNING 1
+),
+"renamed_web_identities" AS (
+  UPDATE "junior_identities" AS "web"
+  SET "display_name" = NULL,
+    "updated_at" = now()
+  FROM "stolen_names" AS "n"
+  WHERE "web"."user_id" = "n"."user_id"
+    AND "web"."kind" = 'user'
+    AND "web"."provider" = 'junior'
+    AND "web"."display_name" = "n"."display_name"
+  RETURNING 1
+),
+-- The detail report of these roots shows the root Actor and Participants.
+"touched_roots" AS (
+  UPDATE "junior_conversations" AS "root"
+  SET "detail_version" = "root"."detail_version" + 1
+  WHERE "root"."conversation_id" IN (SELECT "root_id" FROM "affected_roots")
+  RETURNING 1
+),
+-- Put the Identity back to its state before the link. Slack gave it no
+-- email, so a later Slack Turn cannot link it again. The same write copied
+-- the poster's name when Slack gave none, so clear a name that matches the
+-- poster's web Identity unless Slack evidence proves it. The next Slack Turn
+-- of the Identity saves its own name again.
+"unlinked" AS (
+  UPDATE "junior_identities" AS "i"
+  SET "user_id" = NULL,
+    "email" = NULL,
+    "email_normalized" = NULL,
+    "email_verified" = false,
+    "display_name" = CASE
+      WHEN EXISTS (
+        SELECT 1
+        FROM "junior_identities" AS "web"
+        WHERE "web"."user_id" = "d"."user_id"
+          AND "web"."provider" = 'junior'
+          AND "web"."display_name" = "i"."display_name"
+      ) AND NOT EXISTS (
+        SELECT 1
+        FROM "slack_actors" AS "a"
+        WHERE "a"."subject" = "i"."provider_subject_id"
+          AND "a"."full_name" = "i"."display_name"
+      ) THEN NULL
+      ELSE "i"."display_name"
+    END,
+    "updated_at" = now()
+  FROM "damaged" AS "d"
+  WHERE "i"."id" = "d"."identity_id"
+  RETURNING 1
+)
+SELECT
+  (SELECT count(*) FROM "candidates") AS "candidates",
+  (SELECT count(*) FROM "unlinked") AS "repaired",
+  (SELECT count(*) FROM "candidates" AS "c"
+    WHERE NOT EXISTS (
+      SELECT 1 FROM "proven" AS "p"
+      WHERE "p"."user_id" = "c"."user_id"
+        AND "p"."provider_tenant_id" = "c"."provider_tenant_id"
+    )) AS "skipped_unproven",
+  (SELECT count(*) FROM "candidates" AS "c"
+    WHERE (
+      SELECT count(*) FROM "proven" AS "p"
+      WHERE "p"."user_id" = "c"."user_id"
+        AND "p"."provider_tenant_id" = "c"."provider_tenant_id"
+    ) > 1) AS "skipped_many_proven",
+  (SELECT count(*) FROM "removed_participants") AS "participants",
+  (SELECT count(*) FROM "touched_roots") AS "roots",
+  (SELECT count(*) FROM "renamed_users") AS "users_renamed",
+  (SELECT count(*) FROM "renamed_web_identities") AS "web_identities_renamed"
+INTO "report";
+RAISE INFO '0095 Slack Identity repair: % candidates, % repaired, % skipped with no proven Slack Identity, % skipped with more than one, % Participant rows removed, % roots updated, % User names and % web Identity names cleared',
+  "report"."candidates", "report"."repaired", "report"."skipped_unproven",
+  "report"."skipped_many_proven", "report"."participants", "report"."roots",
+  "report"."users_renamed", "report"."web_identities_renamed";
+END $$;

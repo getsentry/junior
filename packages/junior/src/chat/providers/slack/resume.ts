@@ -8,7 +8,6 @@
  */
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { botConfig } from "@/chat/config";
-import { defaultModelId } from "@/chat/model-profile";
 import { configValueSchema } from "@/chat/configuration/types";
 import type {
   ConfigValue,
@@ -20,12 +19,11 @@ import {
   type AgentRun,
 } from "@/chat/agent/types";
 import type { AgentRunResult } from "@/chat/services/turn-result";
+import { finishedRunReply, runDispatchOutcome } from "@/chat/automation-result";
 import {
-  finishedRunReply,
-  runDispatchOutcome,
   deliversFinalText,
   postsRunNotices,
-} from "@/chat/automation-result";
+} from "@/chat/conversations/kind-behavior";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AgentRunError, type ExecuteTurn } from "@/chat/runtime/turn-execution";
@@ -36,7 +34,7 @@ import {
   setTags,
   type LogContext,
 } from "@/chat/logging";
-import { withTurnSpan } from "@/chat/providers/slack/turn-input-telemetry";
+import { withTurnSpan } from "@/chat/task-execution/turn-telemetry";
 import type { TraceContext } from "@/chat/task-execution/state";
 import {
   finalizeFailedTurnReplyWithEvent,
@@ -67,6 +65,7 @@ import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
   CooperativeTurnYieldError,
   isCooperativeTurnYieldError,
+  isTurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import { buildTurnErrorResponse } from "@/chat/services/turn-limit";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
@@ -211,7 +210,7 @@ function getResumeLogContext(args: ResumeSlackTurnArgs): LogContext {
     ...actorLogContext(args.run?.actor, args.run?.credentialContext),
     destinationName: args.channelId,
     assistantUserName: botConfig.userName,
-    modelId: defaultModelId(botConfig),
+    modelId: botConfig.modelId,
   };
 }
 
@@ -405,7 +404,7 @@ async function resumeSlackTurnInContext(
   let deferredFailureHandler: (() => Promise<void>) | undefined;
   let stopped = false;
   let runResultHandled = false;
-  let assistantMessageDelivered = false;
+  let acceptedReply: { slackTs?: string } | undefined;
   let shouldScheduleCompletedPluginTasks = false;
   let postDeliveryCommitError: unknown;
   const turnLifecycle = getTurnLifecycle();
@@ -469,7 +468,6 @@ async function resumeSlackTurnInContext(
     let deliveryConversation:
       | ReturnType<typeof coerceThreadConversationState>
       | undefined;
-    let acceptedDeliveryId: string | undefined;
     /** Load the resumed conversation once for ordered delivery recording. */
     const getDeliveryConversation = async () => {
       if (deliveryConversation) {
@@ -512,6 +510,15 @@ async function resumeSlackTurnInContext(
       failureCode = "delivery_failed";
       const cards = await loadPendingMessageCards(conversationId);
       const deliveryState = await getDeliveryConversation();
+      // Plugin reply formatting reads Location defaults, as the Run did.
+      const configuration = {
+        ...savedRun.environment?.configuration,
+        ...(await savedRun.environment?.locationConfiguration?.resolveValues()),
+      };
+      const replyTeamId =
+        savedRun.destination.platform === "slack"
+          ? savedRun.destination.teamId
+          : undefined;
       let slackMessageTs: string[] = [];
       try {
         const outcomes = runArgs.run?.dispatch?.outcomes;
@@ -521,6 +528,10 @@ async function resumeSlackTurnInContext(
               ...(await sendSlackReply({
                 cards,
                 channelId: outcome.destination.channelId,
+                formatting: {
+                  configuration,
+                  teamId: outcome.destination.teamId,
+                },
                 conversationId: runArgs.conversationId,
                 replyAttribution: runArgs.run?.dispatch?.replyAttribution,
                 text,
@@ -532,6 +543,9 @@ async function resumeSlackTurnInContext(
           slackMessageTs = await sendSlackReply({
             cards,
             channelId: runArgs.channelId,
+            ...(replyTeamId
+              ? { formatting: { configuration, teamId: replyTeamId } }
+              : undefined),
             conversationId: runArgs.conversationId,
             replyAttribution: runArgs.run?.dispatch?.replyAttribution,
             text,
@@ -545,8 +559,7 @@ async function resumeSlackTurnInContext(
         throw error;
       }
       const messageTs = slackMessageTs.at(-1);
-      assistantMessageDelivered = true;
-      acceptedDeliveryId = messageTs;
+      acceptedReply = { slackTs: messageTs };
       const recordedMessageId = recordDeliveredAssistantMessage({
         cards,
         conversation: deliveryState.conversation,
@@ -616,10 +629,10 @@ async function resumeSlackTurnInContext(
       failureCode = "agent_run_failed";
     };
     const deliveryState = await getDeliveryConversation();
-    assistantMessageDelivered = turnHasReply(
-      deliveryState.conversation,
-      sessionId,
-    );
+    // An earlier Run of this Turn may have delivered the reply already.
+    acceptedReply = turnHasReply(deliveryState.conversation, sessionId)
+      ? {}
+      : undefined;
     const run = buildResumedRun(runArgs, status, deliverAssistantMessage);
     if (runArgs.inputMessageIds?.length) {
       await turnLifecycle.start({
@@ -649,7 +662,6 @@ async function resumeSlackTurnInContext(
       runResultHandled = true;
 
       await status.clear();
-      failureCode = "persistence_failed";
       // Save the completed Turn only after delivery. A remaining write
       // failure must reach this provider instead of completing durable work.
       if (reply.piMessages?.length) {
@@ -666,8 +678,8 @@ async function resumeSlackTurnInContext(
           ...(dispatchErrorMessage
             ? { errorMessage: dispatchErrorMessage }
             : undefined),
-          ...(acceptedDeliveryId
-            ? { resultMessageId: acceptedDeliveryId }
+          ...(acceptedReply?.slackTs
+            ? { resultMessageId: acceptedReply.slackTs }
             : undefined),
           source: run.source,
           actor: resumeActor,
@@ -680,8 +692,8 @@ async function resumeSlackTurnInContext(
           destination: run.destination,
           dispatchId: run.dispatch?.id,
           dispatchOutcome: dispatchResult.outcome,
-          ...(acceptedDeliveryId
-            ? { resultMessageId: acceptedDeliveryId }
+          ...(acceptedReply?.slackTs
+            ? { resultMessageId: acceptedReply.slackTs }
             : undefined),
           turnId: runArgs.turnId,
           sliceId: runArgs.sliceId ?? 1,
@@ -695,7 +707,7 @@ async function resumeSlackTurnInContext(
       if (reply.diagnostics.outcome === "success") {
         shouldScheduleCompletedPluginTasks = true;
         return {
-          outcome: assistantMessageDelivered ? "success" : "no_reply",
+          outcome: acceptedReply ? "success" : "no_reply",
         };
       }
 
@@ -789,6 +801,10 @@ async function resumeSlackTurnInContext(
     // Lease owner must requeue after a hard timeout park. Do not convert this
     // into a user-visible resume failure.
     if (isCooperativeTurnYieldError(runError)) {
+      throw runError;
+    }
+    // Another worker holds the Lease and owns this Turn's outcome.
+    if (isTurnInputCommitLostError(runError)) {
       throw runError;
     }
 

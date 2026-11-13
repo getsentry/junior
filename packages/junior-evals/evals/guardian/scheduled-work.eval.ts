@@ -89,7 +89,7 @@ describeEval("Guardian Scheduled Work Snapshots", guardianEvals, (it) => {
         ),
         input: {
           destination: "current_conversation",
-          automationId: "sched_planning_reminder",
+          automation_id: "sched_planning_reminder",
         },
         tool: "updateAutomation",
       }),
@@ -204,8 +204,6 @@ describeEval("Guardian Scheduled Work Snapshots", guardianEvals, (it) => {
           trigger: {
             type: "event",
             namespace: "github",
-            identifier: "getsentry/junior#208",
-            resourceType: "issue",
             label: "GitHub issue getsentry/junior#208",
             events: ["issue.reopened"],
           },
@@ -232,15 +230,14 @@ describeEval("Guardian Scheduled Work Snapshots", guardianEvals, (it) => {
           trigger: {
             type: "event",
             namespace: "github",
-            resourceType: "pull_request",
-            identifier: "getsentry/junior#691",
             label: "getsentry/junior#691",
             events: ["pull_request.review.changes_requested"],
+            match: { repo: "getsentry/junior", pull_request: 691 },
           },
           outcomes: [
             { action: "send_message", destination: "current_conversation" },
           ],
-          credentialMode: "system",
+          credential_mode: "system",
           title: "Fix plan for changes requested on junior#691",
         },
         tool: "createAutomation",

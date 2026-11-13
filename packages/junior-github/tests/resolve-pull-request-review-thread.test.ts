@@ -67,7 +67,7 @@ describe("resolvePullRequestReviewThread", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          threadId: "PRRT_kwDOthread",
+          thread_id: "PRRT_kwDOthread",
         },
         { toolCallId: "resolve-thread" },
       ),
@@ -75,7 +75,7 @@ describe("resolvePullRequestReviewThread", () => {
       target: "resolvePullRequestReviewThread",
       repo: "getsentry/junior",
       number: 1572,
-      threadId: "PRRT_kwDOthread",
+      thread_id: "PRRT_kwDOthread",
       resolved: true,
     });
 
@@ -102,7 +102,7 @@ describe("resolvePullRequestReviewThread", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          threadId: "PRRT_kwDOthread",
+          thread_id: "PRRT_kwDOthread",
         },
         { toolCallId: "resolve-thread" },
       ),
@@ -127,7 +127,7 @@ describe("resolvePullRequestReviewThread", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          threadId: "PRRT_missing",
+          thread_id: "PRRT_missing",
         },
         { toolCallId: "missing-thread" },
       ),
@@ -149,7 +149,7 @@ describe("resolvePullRequestReviewThread", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          threadId: "PRRT_wrong_type",
+          thread_id: "PRRT_wrong_type",
         },
         { toolCallId: "wrong-type-thread" },
       ),
@@ -199,7 +199,7 @@ describe("resolvePullRequestReviewThread", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          threadId: "PRRT_kwDOthread",
+          thread_id: "PRRT_kwDOthread",
         },
         { toolCallId: "resolve-thread-extra-fields" },
       ),
@@ -207,7 +207,7 @@ describe("resolvePullRequestReviewThread", () => {
       target: "resolvePullRequestReviewThread",
       repo: "getsentry/junior",
       number: 1572,
-      threadId: "PRRT_kwDOthread",
+      thread_id: "PRRT_kwDOthread",
       resolved: true,
     });
     expect(fetch).toHaveBeenCalledTimes(2);

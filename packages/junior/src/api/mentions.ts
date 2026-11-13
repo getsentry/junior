@@ -1,11 +1,9 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { lookupSlackUser } from "@/chat/slack/user";
+import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
+import { lookupSlackUserNames } from "@/chat/slack/user";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import type { ActorIdentity } from "./schema/conversation";
-
-// Display text keeps Slack user mentions as `<@U123>` or `<@U123|label>`.
-const SLACK_USER_MENTION_RE = /<@([UW][A-Z0-9]+)(?:\|[^<>]*)?>/g;
 
 /**
  * Display text from one API object, such as one event or one Automation.
@@ -18,8 +16,9 @@ export type MentionSource = {
 };
 
 function mentionedSlackUserIds(texts: MentionSource["texts"]): string[] {
+  // Display text keeps Slack user mentions as `<@U123>` or `<@U123|label>`.
   const ids = texts.flatMap((text) =>
-    text ? [...text.matchAll(SLACK_USER_MENTION_RE)].map((m) => m[1]!) : [],
+    text ? slackMentionedUserIds(text) : [],
   );
   return [...new Set(ids)];
 }
@@ -113,19 +112,17 @@ async function readMentionedPeople(
     return !person?.fullName && !person?.slackUserName;
   });
   if (tenantId && unnamed.length > 0) {
-    const profiles = await Promise.all(
-      unnamed.map((id) => lookupSlackUser(tenantId, id)),
-    );
-    unnamed.forEach((id, index) => {
-      const profile = profiles[index];
-      if (!profile?.fullName && !profile?.userName) return;
+    const profiles = await lookupSlackUserNames(tenantId, unnamed);
+    for (const id of unnamed) {
+      const profile = profiles.get(id);
+      if (!profile?.fullName && !profile?.userName) continue;
       people.set(id, {
         ...people.get(id),
         slackUserId: id,
         ...(profile.fullName ? { fullName: profile.fullName } : undefined),
         ...(profile.userName ? { slackUserName: profile.userName } : undefined),
       });
-    });
+    }
   }
   return people;
 }

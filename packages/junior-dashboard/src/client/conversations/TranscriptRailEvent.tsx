@@ -3,7 +3,6 @@ import type { ObjectType } from "@sentry/junior-plugin-api";
 import { ObjectIcon } from "../components/ObjectIcon";
 import {
   Activity,
-  Bot,
   Brain,
   Calendar,
   Check,
@@ -12,9 +11,9 @@ import {
   KeyRound,
   Link,
   MessageSquareText,
+  MessagesSquare,
   Minimize2,
   Paperclip,
-  Send,
   Sparkles,
   TriangleAlert,
   Webhook,
@@ -23,15 +22,15 @@ import {
 
 import { cn } from "../styles";
 import type { TranscriptViewStructuredEventPart } from "../types";
+import { transcriptColumnsClass } from "./TranscriptRows";
 
 type TranscriptRailEventKind =
   | "attachments_delivered"
   | "compaction"
-  | "handoff"
   | "message_context"
   | "event"
   | "structured_event"
-  | "subagent";
+  | "thread";
 
 /**
  * True inside an activity group. Grouped rows use the narrow activity icon
@@ -57,19 +56,17 @@ export function TranscriptRailEvent(props: {
         "grid min-w-0 items-start",
         nested
           ? "grid-cols-[1rem_minmax(0,1fr)] gap-2"
-          : "grid-cols-[2rem_minmax(0,1fr)] gap-3",
+          : transcriptColumnsClass,
       )}
       data-transcript-rail-event={props.kind}
     >
       <span
         aria-hidden="true"
         className={cn(
-          nested
-            ? "grid h-6 w-4 place-items-center"
-            : "grid h-6 w-8 place-items-center",
+          "grid h-6 place-items-center",
           // Card rows: center the icon on the card's first line.
           !nested &&
-            (props.kind === "subagent" || props.kind === "message_context") &&
+            (props.kind === "thread" || props.kind === "message_context") &&
             "mt-1.5",
           marker.className,
         )}
@@ -113,16 +110,10 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
       icon: Activity,
     };
   }
-  if (kind === "subagent") {
+  if (kind === "thread") {
     return {
       className: "text-cyan-200",
-      icon: Bot,
-    };
-  }
-  if (kind === "handoff") {
-    return {
-      className: "text-sky-200",
-      icon: Send,
+      icon: MessagesSquare,
     };
   }
   return {

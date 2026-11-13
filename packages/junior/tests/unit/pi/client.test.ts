@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
+import * as z from "zod";
 
 const mocks = vi.hoisted(() => ({
   calculateCost: vi.fn(() => ({
@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   createGatewayProvider: vi.fn(() => ({
     chat: vi.fn((modelId: string) => ({ modelId })),
     embeddingModel: vi.fn((modelId: string) => ({ modelId })),
+    rerankingModel: vi.fn((modelId: string) => ({ modelId })),
   })),
   embedMany: vi.fn(),
   generateObject: vi.fn(),
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   logWarn: vi.fn(),
   noObjectGeneratedErrorIsInstance: vi.fn(),
   registerApiProvider: vi.fn(),
+  rerank: vi.fn(),
   resolveGatewayCredential: vi.fn(),
   setSpanAttributes: vi.fn(),
   streamAnthropic: vi.fn(),
@@ -65,6 +67,7 @@ vi.mock("ai", () => ({
   NoObjectGeneratedError: {
     isInstance: mocks.noObjectGeneratedErrorIsInstance,
   },
+  rerank: mocks.rerank,
 }));
 
 vi.mock("@/chat/logging", async (importOriginal) => ({
@@ -113,15 +116,24 @@ describe("completeText", () => {
       mode: "oidc",
       token: "oidc-token",
     });
-    mocks.completeSimple.mockResolvedValue({
-      content: [{ type: "text", text: "hello world" }],
-      stopReason: "stop",
-      usage: {
-        input: 12,
-        output: 4,
-        totalTokens: 16,
+    mocks.completeSimple.mockImplementation(
+      async (_model, _context, options) => {
+        await options.onResponse?.({
+          status: 200,
+          headers: { "x-vercel-id": "iad1::iad1::abc-123" },
+        });
+        return {
+          content: [{ type: "text", text: "hello world" }],
+          stopReason: "stop",
+          responseId: "gen_123",
+          usage: {
+            input: 12,
+            output: 4,
+            totalTokens: 16,
+          },
+        };
       },
-    });
+    );
 
     const { completeText, GEN_AI_PROVIDER_NAME } =
       await import("@/chat/pi/client");
@@ -133,6 +145,7 @@ describe("completeText", () => {
       thinkingLevel: "low",
       cacheRetention: "none",
       messageAttributeMode: "content",
+      sessionId: "slack:C123:1700000000.000",
     });
 
     expect(result.text).toBe("hello world");
@@ -140,7 +153,11 @@ describe("completeText", () => {
     expect(mocks.completeSimple).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
-      expect.objectContaining({ apiKey: "oidc-token", cacheRetention: "none" }),
+      expect.objectContaining({
+        apiKey: "oidc-token",
+        cacheRetention: "none",
+        sessionId: "slack:C123:1700000000.000",
+      }),
     );
 
     const [name, op, context, _callback, attributes] = mocks.withSpan.mock
@@ -174,8 +191,12 @@ describe("completeText", () => {
       expect.objectContaining({
         "gen_ai.output.messages": expect.any(String),
         "gen_ai.response.finish_reasons": ["stop"],
+        "gen_ai.response.id": "gen_123",
       }),
     );
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
+      "app.ai.gateway.vercel_id": "iad1::iad1::abc-123",
+    });
   });
 
   it("omits opt-in semantic content for non-public conversation traces", async () => {
@@ -369,8 +390,13 @@ describe("completeText", () => {
     expect(mocks.logException).not.toHaveBeenCalled();
   });
 
-  it("classifies invalid structured output without capturing it", async () => {
-    const sdkError = new Error("No object generated.");
+  it("classifies invalid structured output without capturing it or its text", async () => {
+    const sdkError = Object.assign(
+      new Error("No object generated: could not parse the response.", {
+        cause: new Error("JSON parsing failed: Text: model output"),
+      }),
+      { name: "AI_NoObjectGeneratedError", text: "model output" },
+    );
     mocks.generateObject.mockRejectedValue(sdkError);
     mocks.noObjectGeneratedErrorIsInstance.mockReturnValueOnce(true);
 
@@ -382,11 +408,20 @@ describe("completeText", () => {
         schema: z.object({ ok: z.boolean() }),
         prompt: "return json",
       }),
-    ).rejects.toMatchObject({
-      cause: sdkError,
-      kind: "invalid_response",
-      message: "AI provider error: invalid_response",
-      retryable: false,
+    ).rejects.toSatisfy((error: Error) => {
+      expect(error).toMatchObject({
+        kind: "invalid_response",
+        message: "AI provider error: invalid_response",
+        retryable: false,
+      });
+      expect(error.cause).toMatchObject({
+        name: "AI_NoObjectGeneratedError",
+        message: "No object generated: could not parse the response.",
+      });
+      expect(
+        JSON.stringify(error.cause, Object.getOwnPropertyNames(error.cause)),
+      ).not.toContain("model output");
+      return true;
     });
     expect(mocks.logWarn).not.toHaveBeenCalled();
     expect(mocks.logException).not.toHaveBeenCalled();
@@ -483,5 +518,28 @@ describe("completeText", () => {
       }),
     ).rejects.toThrow("AI provider error: invalid_response");
     expect(mocks.setSpanAttributes).not.toHaveBeenCalled();
+  });
+
+  it("returns rerank scores in input order with the gateway cost", async () => {
+    // The SDK sorts by score and AI Gateway reports cost as a decimal string.
+    mocks.rerank.mockResolvedValue({
+      providerMetadata: { gateway: { cost: "0.0000074" } },
+      ranking: [
+        { originalIndex: 1, score: 0.9 },
+        { originalIndex: 0, score: 0.2 },
+      ],
+    });
+
+    const { rerankTexts } = await import("@/chat/pi/client");
+    const result = await rerankTexts({
+      documents: ["one", "two"],
+      modelId: "voyage/rerank-2.5-lite",
+      query: "which one",
+    });
+
+    expect(result).toEqual({ costUsd: 0.0000074, scores: [0.2, 0.9] });
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
+      "app.cost.total_usd": 0.0000074,
+    });
   });
 });

@@ -11,6 +11,7 @@ import type {
   ToolResultMessage,
 } from "@earendil-works/pi-ai";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
+import { isRuntimeInputText, readParentAgentTask } from "@/chat/input-tags";
 import type { PiMessage } from "@/chat/pi/messages";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 
@@ -35,16 +36,28 @@ function isRuntimeTurnContextPart(part: unknown): boolean {
   );
 }
 
-function hasCurrentInstruction(message: PiMessage): boolean {
+function textPartValue(part: unknown): string | undefined {
+  return part !== null &&
+    typeof part === "object" &&
+    (part as { type?: unknown }).type === "text" &&
+    typeof (part as { text?: unknown }).text === "string"
+    ? (part as { text: string }).text
+    : undefined;
+}
+
+/**
+ * Whether a user message carries a Turn input, not only context: a
+ * `<current-instruction>` or a runtime input tag such as `<task>`.
+ */
+export function hasTurnInput(message: PiMessage): boolean {
   return (
-    userMessageContent(message)?.some(
-      (part) =>
-        part !== null &&
-        typeof part === "object" &&
-        (part as { type?: unknown }).type === "text" &&
-        typeof (part as { text?: unknown }).text === "string" &&
-        (part as { text: string }).text.includes("<current-instruction"),
-    ) ?? false
+    userMessageContent(message)?.some((part) => {
+      const text = textPartValue(part);
+      return (
+        text !== undefined &&
+        (text.includes("<current-instruction") || isRuntimeInputText(text))
+      );
+    }) ?? false
   );
 }
 
@@ -52,7 +65,8 @@ function messageTimestamp(message: PiMessage): unknown {
   return (message as { timestamp?: unknown }).timestamp;
 }
 
-function isStandaloneRuntimeContextMessage(
+/** Return whether the message is a Turn's context, paired with the instruction after it. */
+export function isStandaloneRuntimeContextMessage(
   messages: PiMessage[],
   index: number,
 ): boolean {
@@ -64,8 +78,8 @@ function isStandaloneRuntimeContextMessage(
     userMessageContent(message) &&
     userMessageContent(next) &&
     messageTimestamp(message) === messageTimestamp(next) &&
-    !hasCurrentInstruction(message) &&
-    hasCurrentInstruction(next),
+    !hasTurnInput(message) &&
+    hasTurnInput(next),
   );
 }
 
@@ -101,7 +115,7 @@ export function isAssistantMessage(value: unknown): value is AssistantMessage {
 /** Type guard for Pi SDK tool result messages. */
 export function isToolResultMessage(
   value: unknown,
-): value is ToolResultMessage<any> {
+): value is ToolResultMessage {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -211,6 +225,32 @@ export function retainRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
 }
 
 /**
+ * Find the latest copy of one `<runtime-turn-context>` section in history,
+ * such as `<script-tools>`, with its tags.
+ */
+export function latestTurnContextSection(
+  messages: PiMessage[],
+  tag: string,
+): string | undefined {
+  const section = new RegExp(`\\n<${tag}>\\n[\\s\\S]*?\\n</${tag}>`, "g");
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const texts = (userMessageContent(messages[index]!) ?? []).flatMap(
+      (part) => {
+        const text = textPartValue(part);
+        return text?.startsWith(RUNTIME_TURN_CONTEXT_START) ? [text] : [];
+      },
+    );
+    for (const text of texts.reverse()) {
+      const match = [...text.matchAll(section)].at(-1);
+      if (match) {
+        return match[0].slice(1);
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
  * Reduce a runtime user-turn prompt to only the current turn's instruction.
  *
  * Live user prompts embed prior-thread context as `<thread-context
@@ -234,28 +274,38 @@ export function instructionTextForProjection(text: string): string {
   return unwrapCurrentInstruction(withoutContext) ?? withoutContext;
 }
 
-/** Return the projected instruction text carried by one user message. */
+/**
+ * Return the projected input text carried by one user message. Each Turn
+ * input is its own content part: a `<current-instruction>` gives its body,
+ * and a runtime input tag stays as it is. Other parts, such as attachments,
+ * are dropped. A message with no input part keeps the projection of all its
+ * text.
+ */
 export function getUserMessageInstructionText(message: PiMessage): string {
   if (getPiMessageRole(message) !== "user") {
     return "";
   }
   const content = (message as { content?: unknown }).content;
-  const text =
+  const texts =
     typeof content === "string"
-      ? content
+      ? [content]
       : Array.isArray(content)
-        ? content
-            .flatMap((part) =>
-              part &&
-              typeof part === "object" &&
-              (part as { type?: unknown }).type === "text" &&
-              typeof (part as { text?: unknown }).text === "string"
-                ? [(part as { text: string }).text]
-                : [],
-            )
-            .join("\n")
-        : "";
-  return instructionTextForProjection(text).trim();
+        ? content.flatMap((part) => textPartValue(part) ?? [])
+        : [];
+  const inputs = texts.flatMap((text) => {
+    const withoutContext = text
+      .replace(EMBEDDED_THREAD_CONTEXT_PATTERN, "")
+      .trim();
+    if (isRuntimeInputText(withoutContext)) {
+      return [readParentAgentTask(withoutContext) ?? withoutContext];
+    }
+    const instruction = unwrapCurrentInstruction(withoutContext);
+    return instruction === undefined ? [] : [instruction.trim()];
+  });
+  if (inputs.length > 0) {
+    return inputs.filter(Boolean).join("\n\n");
+  }
+  return instructionTextForProjection(texts.join("\n")).trim();
 }
 
 /** Remove runtime context from a non-model projection or explicit replacement. */

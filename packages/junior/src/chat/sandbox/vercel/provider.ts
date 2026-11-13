@@ -14,27 +14,23 @@ import type {
   SandboxSessionOptions,
 } from "@/chat/sandbox/workspace";
 
-function credentialOptions() {
-  return getVercelSandboxCredentials() ?? {};
-}
-
-/** Bind one abort signal to every API request made by a Sandbox client. */
-function scopedFetchOptions(
-  signal?: AbortSignal,
-): { fetch: typeof globalThis.fetch } | Record<string, never> {
-  if (!signal) return {};
-  return {
-    fetch: (input, init) => {
-      const requestSignal =
-        init?.signal ?? (input instanceof Request ? input.signal : undefined);
-      return globalThis.fetch(input, {
-        ...init,
-        signal: requestSignal
-          ? AbortSignal.any([requestSignal, signal])
-          : signal,
-      });
-    },
+/**
+ * Sandbox client options. Since 4.0, a client without `fetch` uses the SDK's
+ * own undici `fetch` and skips process-level `fetch` replacements, such as the
+ * eval proxy. So every request reads `globalThis.fetch` when it starts, and
+ * the scope signal, when there is one, can abort it.
+ */
+function clientOptions(signal?: AbortSignal) {
+  const fetch: typeof globalThis.fetch = (input, init) => {
+    if (!signal) return globalThis.fetch(input, init);
+    const requestSignal =
+      init?.signal ?? (input instanceof Request ? input.signal : undefined);
+    return globalThis.fetch(input, {
+      ...init,
+      signal: requestSignal ? AbortSignal.any([requestSignal, signal]) : signal,
+    });
   };
+  return { ...getVercelSandboxCredentials(), fetch };
 }
 
 /** Pin Junior's sandbox contract to one Vercel session without SDK replay. */
@@ -73,6 +69,16 @@ function adaptSession(
     sandboxId: sandbox.name,
     sessionId: session.sessionId,
     fs,
+    createPreview(port) {
+      return run(async () => {
+        // `ports` replaces the whole list, so keep the routes that exist.
+        const ports = new Set(session.routes.map((route) => route.port));
+        if (!ports.has(port)) {
+          await sandbox.update({ ports: [...ports, port] });
+        }
+        return session.domain(port);
+      });
+    },
     extendTimeout(duration) {
       return run(async () => await session.extendTimeout(duration));
     },
@@ -134,8 +140,7 @@ async function createSandboxSession(
       : undefined),
     ...(input.resources ? { resources: input.resources } : undefined),
     ...(input.signal ? { signal: input.signal } : undefined),
-    ...credentialOptions(),
-    ...scopedFetchOptions(input.scopeSignal),
+    ...clientOptions(input.scopeSignal),
   };
   const sandbox = await Sandbox.create(
     input.snapshotId
@@ -158,8 +163,7 @@ async function getSandboxSession(
   const sandbox = await Sandbox.get({
     name: input.name,
     resume: true,
-    ...credentialOptions(),
-    ...scopedFetchOptions(input.scopeSignal),
+    ...clientOptions(input.scopeSignal),
   });
   return adaptSession(sandbox, input);
 }
@@ -174,7 +178,7 @@ async function createWorkspaceSnapshotBuilder(
     timeout: input.timeoutMs,
     runtime: input.runtime,
     signal: input.signal,
-    ...credentialOptions(),
+    ...clientOptions(),
     ...(input.resources ? { resources: input.resources } : undefined),
   });
 }
@@ -188,7 +192,7 @@ async function getWorkspaceSnapshotBuilder(
     name,
     resume: true,
     signal,
-    ...credentialOptions(),
+    ...clientOptions(),
   });
   return {
     session: () => adaptSession(sandbox),
@@ -220,7 +224,7 @@ async function deleteWorkspaceSnapshotBuilders(
       const sandbox = await Sandbox.get({
         name,
         resume: false,
-        ...credentialOptions(),
+        ...clientOptions(),
       });
       await sandbox.delete();
     } catch (error) {

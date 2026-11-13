@@ -5,6 +5,8 @@ import {
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import type {
   PluginAuthorization,
+  PluginGitPush,
+  PluginGraphqlRequest,
   PluginGrant,
 } from "@sentry/junior-plugin-api";
 import {
@@ -143,11 +145,30 @@ function assertLeaseTransformsOwnedByProvider(
  */
 export async function selectSandboxEgressGrant(input: {
   bodyText?: string;
+  gitPush?: PluginGitPush;
+  graphql?: PluginGraphqlRequest;
   method: string;
   operation?: string;
   provider: string;
   upstreamUrl: URL;
+  /**
+   * Use only the credential subject's own stored OAuth token. Plugin grants
+   * are skipped, because they can issue an install or app credential.
+   */
+  userOAuthOnly?: boolean;
 }): Promise<SandboxEgressGrantSelection> {
+  if (input.userOAuthOnly) {
+    const manifest = pluginCatalogRuntime.getDefinition(
+      input.provider,
+    )?.manifest;
+    // Without OAuth the broker falls back to an environment token.
+    if (!manifest?.credentials || !manifest.oauth) {
+      throw new Error(
+        `Plugin "${input.provider}" has no user OAuth for user-only egress`,
+      );
+    }
+    return defaultGrantForProvider(input);
+  }
   if (!hasEgressCredentialHooks(input.provider)) {
     return defaultGrantForProvider(input);
   }
@@ -156,6 +177,8 @@ export async function selectSandboxEgressGrant(input: {
     ...(input.bodyText !== undefined
       ? { bodyText: input.bodyText }
       : undefined),
+    ...(input.gitPush ? { gitPush: input.gitPush } : undefined),
+    ...(input.graphql ? { graphql: input.graphql } : undefined),
     ...(input.operation ? { operation: input.operation } : undefined),
     provider: input.provider,
     method: input.method,

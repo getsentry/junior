@@ -156,6 +156,10 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         input.prepareNextTurnWithContext ?? input.prepareNextTurn;
     }
 
+    convertToLlm(messages: unknown[]) {
+      return messages;
+    }
+
     subscribe(subscriber: (event: unknown) => unknown) {
       this.subscribers.push(subscriber);
       return () => {
@@ -196,6 +200,35 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       );
     }
 
+    // Like Pi 0.85.1: await `turn_end` listeners. Only when another model
+    // call follows, prepare it and use its context. A failure of either
+    // becomes a failed model message.
+    private async endTurn(
+      message: unknown,
+      toolResults: unknown[],
+    ): Promise<boolean> {
+      try {
+        for (const subscriber of this.subscribers) {
+          await subscriber({ type: "turn_end", message, toolResults });
+        }
+        if (toolResults.length === 0 && this.steeringMessages.length === 0) {
+          return true;
+        }
+        const update = (await this.prepareNextTurn?.({
+          context: { messages: this.state.messages },
+          message,
+          toolResults,
+        })) as { context?: { messages?: unknown[] } } | undefined;
+        if (update?.context?.messages) {
+          this.state.messages = [...update.context.messages];
+        }
+        return true;
+      } catch (error) {
+        this.recordRunFailure(error);
+        return false;
+      }
+    }
+
     private recordRunFailure(error: unknown) {
       this.pushMessages({
         role: "assistant",
@@ -234,19 +267,9 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           usage: { input: 2, output: 2 },
         });
         this.pushMessages(toolResult);
-        await Promise.all(
-          this.subscribers.map((subscriber) =>
-            subscriber({
-              type: "turn_end",
-              message: this.state.messages.at(-2),
-              toolResults: [toolResult],
-            }),
-          ),
-        );
-        await this.prepareNextTurn?.({
-          context: { messages: this.state.messages },
-          toolResults: [toolResult],
-        });
+        if (!(await this.endTurn(this.state.messages.at(-2), [toolResult]))) {
+          return {};
+        }
         // The compaction checkpoint is the resume point if this slice stops.
         compactionState.checkpointTurnStartMessageIndex = (
           await turnSessionState.getTurnRecord(
@@ -323,23 +346,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
             subscriber({ type: "message_end", message: finalMessage }),
           ),
         );
-        await Promise.all(
-          this.subscribers.map((subscriber) =>
-            subscriber({
-              type: "turn_end",
-              message: finalMessage,
-              toolResults: [],
-            }),
-          ),
-        );
-        try {
-          await this.prepareNextTurn?.({
-            context: { messages: this.state.messages },
-            toolResults: [],
-          });
-        } catch (error) {
-          this.recordRunFailure(error);
-        }
+        await this.endTurn(finalMessage, []);
         return {};
       }
       if (
@@ -363,13 +370,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           );
         }
         repositoryState.available ||= repositoryState.availableAtBoundary;
-        try {
-          await this.prepareNextTurn?.({
-            context: { messages: this.state.messages },
-            toolResults: [],
-          });
-        } catch (error) {
-          this.recordRunFailure(error);
+        if (!(await this.endTurn(this.state.messages.at(-1), []))) {
           return {};
         }
         if (agentMode.value === "steeringDelivery") {
@@ -550,17 +551,26 @@ vi.mock("@/chat/pi/client", () => ({
       reason: "test-router",
     },
   }),
-  completeText: async () => {
-    compactionState.summaryCalls += 1;
-    return {
-      text:
-        agentMode.value === "activeCompaction"
-          ? "No outstanding asks."
-          : "The edit completed; verify the changed file.",
-    };
-  },
+  completeText: async () => ({ text: "Conversation title" }),
   getGatewayApiKey: () => "test-gateway-key",
   resolveGatewayModel: (modelId: string) => ({ id: modelId }),
+}));
+
+// MockAgent never streams. Only the capacity compaction summary does.
+vi.mock("@/chat/pi/traced-stream", () => ({
+  createTracedStreamFn: () => async () => {
+    compactionState.summaryCalls += 1;
+    const text =
+      agentMode.value === "activeCompaction"
+        ? "No outstanding asks."
+        : "The edit completed; verify the changed file.";
+    const message = {
+      role: "assistant",
+      content: [{ type: "text", text: `<summary>${text}</summary>` }],
+      stopReason: "stop",
+    };
+    return { result: async () => message };
+  },
 }));
 
 vi.mock("@/chat/prompt", async (importOriginal) => {
@@ -637,7 +647,7 @@ import * as turnSessionState from "@/chat/task-execution/turn-cursor";
 
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {
-    throw new Error(`Expected final reply, got ${outcome.status}`);
+    throw new Error(`Expected final response, got ${outcome.status}`);
   }
   return outcome.result;
 }

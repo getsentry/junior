@@ -1,5 +1,5 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { isNoReplyMarker } from "@/chat/no-reply";
+import { isLegacyNoReplyMarker } from "@/chat/no-reply";
 import { extractAssistantText } from "@/chat/pi/transcript";
 
 const THINKING_XML_BLOCK_PATTERN =
@@ -35,8 +35,9 @@ export function decideReply(message: AssistantMessage): ReplyDecision {
 
   const text = sanitizeAssistantText(extractAssistantText(message));
   if (!text) return { kind: "empty" };
-  // Marker silence and tool-call tails both mean do not deliver this message.
-  if (isNoReplyMarker(text)) {
+  // Old history ends some Turns with a marker, and the model can copy one.
+  // That text must never reach a person.
+  if (isLegacyNoReplyMarker(text)) {
     return { kind: "suppress" };
   }
   return { kind: "deliver", text };

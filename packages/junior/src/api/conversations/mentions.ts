@@ -24,7 +24,6 @@ function eventMentionTexts(
     case "assistant_message":
       return data.parts.map((part) => part.text);
     case "compaction":
-    case "handoff":
       return [data.summary];
     case "structured_event":
       return [
@@ -44,10 +43,6 @@ function briefMentionTexts(brief: ConversationBrief): MentionSource["texts"] {
     brief.intent,
     brief.outcome.text,
     ...brief.decisions.flatMap((decision) => [decision.text, decision.by]),
-    ...brief.openDecisions.flatMap((decision) => [
-      decision.text,
-      decision.owner,
-    ]),
     ...brief.facts,
   ];
 }

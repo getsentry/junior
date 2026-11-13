@@ -9,7 +9,7 @@
  */
 import { createHmac, randomUUID } from "node:crypto";
 import type { PluginCache } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 
 /** Client credentials of the public integration. */
 export interface SentryAppConfig {

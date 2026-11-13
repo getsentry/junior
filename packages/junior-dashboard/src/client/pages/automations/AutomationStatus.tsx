@@ -98,6 +98,58 @@ function automationProblem(automation: AutomationSummary) {
   return undefined;
 }
 
+/** One line that names an Automation's problem and the place that fixes it. */
+export type AutomationProblemSummary = {
+  action: { label: string; to: string };
+  message: string;
+  tone: "danger" | "warning";
+};
+
+/** Summarize the problem the Overview notice explains, for one list row. */
+export function automationProblemSummary(
+  automation: AutomationSummary,
+): AutomationProblemSummary | undefined {
+  const problem = automationProblem(automation);
+  if (!problem) return undefined;
+  const runs = {
+    label: "Open runs",
+    to: automationPath(automation.id, "runs"),
+  };
+  const triggerProblem =
+    automation.kind === "event" ? automation.trigger.problems[0] : undefined;
+  // Like the Overview notice, a broken trigger sends you to the editor even
+  // when another problem leads the row.
+  const action = triggerProblem
+    ? { label: "Change trigger", to: automationPath(automation.id, "edit") }
+    : automation.lastConversationId
+      ? {
+          label: "Open last run",
+          to: conversationPath(automation.lastConversationId),
+        }
+      : runs;
+  if (problem === "trigger") {
+    return {
+      action,
+      message: triggerProblem ?? "Trigger unavailable",
+      tone: "warning",
+    };
+  }
+  if (problem === "fix") {
+    return {
+      action,
+      message: automation.statusReason ?? `${automation.status} until fixed`,
+      tone: "warning",
+    };
+  }
+  return {
+    action,
+    message: `Last run ${automation.lastRunStatus}${
+      automation.lastRunAt ? ` ${formatRelativeTime(automation.lastRunAt)}` : ""
+    }`,
+    tone: automation.lastRunStatus === "failed" ? "danger" : "warning",
+  };
+}
+
 /** True when the Overview shows a notice, so the notice owns the main action. */
 export function automationNeedsAttention(
   automation: AutomationSummary,
@@ -113,9 +165,12 @@ export function automationNeedsAttention(
 export function AutomationAttention({
   automation,
   editPath,
+  lastRunError,
 }: {
   automation: AutomationSummary;
   editPath: string;
+  /** Error of the newest run, when it failed or was blocked. */
+  lastRunError?: string;
 }) {
   const problem = automationProblem(automation);
   if (!problem) return null;
@@ -133,7 +188,7 @@ export function AutomationAttention({
           ? "Fix this before resuming"
           : unavailable
             ? "Trigger unavailable"
-            : "Check the last run"
+            : `Last run ${automation.lastRunStatus ?? "needs a look"}`
       }
     >
       {needsFix ? (
@@ -157,6 +212,11 @@ export function AutomationAttention({
           <p className="m-0">Edit the trigger, or enable its plugin again.</p>
         </>
       ) : null}
+      {failed && !needsFix && !unavailable && lastRunError ? (
+        <p className="m-0 mb-1 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-rose-300">
+          {lastRunError}
+        </p>
+      ) : null}
       {failed && !needsFix && !unavailable ? (
         <p className="m-0">
           {automation.status === "active"
@@ -168,21 +228,21 @@ export function AutomationAttention({
       ) : null}
       {unavailable ? (
         <Link
-          className={cn(buttonVariants({ variant: "primary" }), "mt-3")}
+          className={cn(buttonVariants({ variant: "default" }), "mt-3")}
           to={editPath}
         >
           Change trigger
         </Link>
       ) : automation.lastConversationId ? (
         <Link
-          className={cn(buttonVariants({ variant: "primary" }), "mt-3")}
+          className={cn(buttonVariants({ variant: "default" }), "mt-3")}
           to={conversationPath(automation.lastConversationId)}
         >
           Open last run
         </Link>
       ) : automation.totalRuns > 0 ? (
         <Link
-          className={cn(buttonVariants({ variant: "primary" }), "mt-3")}
+          className={cn(buttonVariants({ variant: "default" }), "mt-3")}
           to={automationPath(automation.id, "runs")}
         >
           View run history

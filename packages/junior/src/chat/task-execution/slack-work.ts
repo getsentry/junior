@@ -1,4 +1,5 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
+import type { AgentDurability } from "@/chat/agent/types";
 import {
   Message,
   ThreadImpl,
@@ -7,7 +8,7 @@ import {
   type SerializedThread,
   type StateAdapter,
 } from "chat";
-import { z } from "zod";
+import * as z from "zod";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import { getActiveTraceContext, logException } from "@/chat/logging";
 import type {
@@ -26,7 +27,6 @@ import {
 } from "@/chat/ingress/message-router";
 import { rehydrateAttachmentFetchers } from "@/chat/slack/attachment-fetchers";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { subscribeSlackThreadForMessage } from "@/chat/slack/thread-stop";
 import { removeReactionFromMessage } from "@/chat/slack/outbound";
 import { getMessageTs } from "@/chat/runtime/thread-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
@@ -44,6 +44,8 @@ import {
   ensureSlackMessageActorIdentity,
   getMessageAuthorIdentityId,
 } from "@/chat/services/message-actor-identity";
+import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
+import { bindMessageReviewItemChange } from "@/chat/review-items/message-change";
 import { lookupSlackUser } from "@/chat/slack/user";
 import {
   createSlackActor,
@@ -57,11 +59,14 @@ import {
   requireSlackDestination,
 } from "@/chat/destination";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
+import { getChatConfig } from "@/chat/config";
+import { turnInputTelemetry } from "@/chat/task-execution/turn-telemetry";
 import {
-  botConfig,
-  getChatConfig,
-  type CrossActorMidRunMode,
-} from "@/chat/config";
+  canJoinTurn,
+  canShareTurn,
+} from "@/chat/task-execution/attempt-selection";
+import type { TurnRecord } from "@/chat/task-execution/checkpoint";
+import { supersedeTurnForInput } from "@/chat/task-execution/supersede-turns";
 
 const slackConversationRouteSchema = z.enum(["mention", "subscribed"]);
 export type SlackConversationRoute = z.output<
@@ -455,7 +460,6 @@ interface SlackInboxTurnRuntime {
 }
 
 export interface CreateSlackConversationWorkerOptions {
-  crossActorMidRunMode?: CrossActorMidRunMode;
   getSlackAdapter: () => SlackAdapter;
   lookupSlackUser?: (
     teamId: string,
@@ -463,7 +467,14 @@ export interface CreateSlackConversationWorkerOptions {
   ) => Promise<SlackActorProfile | null | undefined>;
   runNextPausedTurn: (
     conversationId: string,
-    options: { shouldYield: () => boolean; stopSignal?: AbortSignal },
+    options: {
+      checkIn: () => Promise<boolean>;
+      drainSteeringMessages: (
+        turn: TurnRecord,
+      ) => NonNullable<AgentDurability["drainSteeringMessages"]>;
+      shouldYield: () => boolean;
+      stopSignal?: AbortSignal;
+    },
   ) => Promise<boolean>;
   runtime: SlackInboxTurnRuntime;
   state?: StateAdapter;
@@ -563,6 +574,7 @@ function restoreMessage(args: {
   );
   rehydrateAttachmentFetchers(message);
   bindMessageAuthorIdentityId(message, args.record.input.authorIdentityId);
+  bindMessageReviewItemChange(message, args.record.input.reviewItemChange);
   return message;
 }
 
@@ -655,8 +667,6 @@ function getPendingRecords(
 export function createSlackConversationWorker(
   options: CreateSlackConversationWorkerOptions,
 ): (context: ConversationWorkerContext) => Promise<ConversationWorkerResult> {
-  const crossActorMidRunMode =
-    options.crossActorMidRunMode ?? botConfig.crossActorMidRunMode;
   return async (context) => {
     const adapter = options.getSlackAdapter();
     const actorLookup = options.lookupSlackUser ?? lookupSlackUser;
@@ -666,6 +676,12 @@ export function createSlackConversationWorker(
     const records = getPendingRecords({
       execution: { pendingMessages: [...context.attempt.messages] },
     });
+    // A Slack interruption that cannot join the active Turn makes the Turn
+    // yield at its next safe boundary. The next Run selects the interruption
+    // and supersedes the Turn before it starts its own.
+    let yieldForSlackInterrupt = false;
+    const shouldYield = (): boolean =>
+      yieldForSlackInterrupt || context.shouldYield();
     if (records.length === 0) {
       const destination = requireSlackDestination(
         context.destination,
@@ -678,7 +694,20 @@ export function createSlackConversationWorker(
           state,
           task: async () => {
             await options.runNextPausedTurn(context.conversationId, {
-              shouldYield: context.shouldYield,
+              // A resumed Run takes no steering. Input that can join its Turn
+              // waits for the Run to end.
+              drainSteeringMessages: (turn) => async () => {
+                await context.attempt.drain(async (pendingRecords) => {
+                  yieldForSlackInterrupt ||= pendingRecords.some(
+                    (record) =>
+                      record.source === "slack" && !canJoinTurn(turn, record),
+                  );
+                  return [];
+                });
+                return [];
+              },
+              shouldYield,
+              checkIn: context.checkIn,
               stopSignal: context.stopSignal?.(),
             });
           },
@@ -687,22 +716,19 @@ export function createSlackConversationWorker(
         if (isCooperativeTurnYieldError(error)) {
           return { status: "yielded" } satisfies ConversationWorkerResult;
         }
+        if (isTurnInputCommitLostError(error)) {
+          return { status: "lost_lease" } satisfies ConversationWorkerResult;
+        }
         throw error;
       }
       return { status: "completed" };
     }
 
-    const oldestRecord = records[0];
     const latestRecord = records[records.length - 1];
-    if (!oldestRecord || !latestRecord) {
+    const telemetry = turnInputTelemetry(records);
+    if (!latestRecord || !telemetry) {
       return { status: "completed" };
     }
-    const telemetry = {
-      count: records.length,
-      oldestCreatedAtMs: oldestRecord.createdAtMs,
-      oldestReceivedAtMs: oldestRecord.receivedAtMs,
-      traceContexts: records.flatMap((record) => record.traceContext ?? []),
-    };
     const latestMetadata = parseSlackMetadata(latestRecord.input.metadata);
     if (!latestMetadata) {
       throw new Error(
@@ -713,6 +739,10 @@ export function createSlackConversationWorker(
     if (!(await context.checkIn())) {
       return { status: "lost_lease" };
     }
+    await supersedeTurnForInput({
+      conversationId: context.conversationId,
+      message: latestRecord,
+    });
 
     const turnResult = await runWithSlackInstallation({
       adapter,
@@ -751,7 +781,6 @@ export function createSlackConversationWorker(
           skipped,
           totalSinceLastHandler: messages.length,
         };
-        const activeAuthorId = requireSlackAuthorId(latestMessage);
         let initialMessagesAcked = false;
         const ack = async (): Promise<void> => {
           if (initialMessagesAcked) {
@@ -766,31 +795,30 @@ export function createSlackConversationWorker(
             );
           }
         };
-        // Only explicit Slack interruptions enter the active turn. Deferred
-        // work and steered messages from other sources, such as the
-        // dashboard, stay pending for their own turn.
+        // Only explicit Slack interruptions that can join the active Turn
+        // enter it. Deferred work and steered messages from other sources,
+        // such as the dashboard, stay pending for their own Turn.
         const drainSteeringMessages = async (
           accept: (
             messages: SteeringCandidateMessage[],
           ) => Promise<readonly string[]>,
         ): Promise<void> => {
           await context.attempt.drain(async (pendingRecords) => {
-            const candidates = pendingRecords
-              .filter((record) => record.source === "slack")
-              .map((record) => ({
-                inboundMessageId: record.inboundMessageId,
-                message: restoreMessage({
-                  adapter,
-                  record,
-                }),
-              }))
-              .filter(
-                (candidate) =>
-                  crossActorMidRunMode === "steer" ||
-                  requireSlackAuthorId(candidate.message) === activeAuthorId ||
-                  hasSteeringOverride(candidate.message.text),
-              );
-            return candidates.length > 0 ? await accept(candidates) : [];
+            const slackRecords = pendingRecords.filter(
+              (record) => record.source === "slack",
+            );
+            const steering = slackRecords.filter((record) =>
+              canShareTurn(latestRecord, record),
+            );
+            yieldForSlackInterrupt ||= steering.length < slackRecords.length;
+            return steering.length > 0
+              ? await accept(
+                  steering.map((record) => ({
+                    inboundMessageId: record.inboundMessageId,
+                    message: restoreMessage({ adapter, record }),
+                  })),
+                )
+              : [];
           });
         };
         try {
@@ -802,15 +830,10 @@ export function createSlackConversationWorker(
               drainSteeringMessages,
               ack,
               isFinalAttempt: context.attempt.isFinalAttempt,
-              shouldYield: context.shouldYield,
+              shouldYield,
+              checkIn: context.checkIn,
               stopSignal: context.stopSignal?.(),
               telemetry,
-              subscribeThread: async () =>
-                await subscribeSlackThreadForMessage({
-                  messageCreatedAtMs: latestRecord.createdAtMs,
-                  state,
-                  thread,
-                }),
             });
           } else {
             await options.runtime.handleSubscribedMessage(
@@ -823,7 +846,8 @@ export function createSlackConversationWorker(
                 drainSteeringMessages,
                 ack,
                 isFinalAttempt: context.attempt.isFinalAttempt,
-                shouldYield: context.shouldYield,
+                shouldYield,
+                checkIn: context.checkIn,
                 stopSignal: context.stopSignal?.(),
                 telemetry,
               },
@@ -856,12 +880,27 @@ export function createSlackConversationWorker(
   };
 }
 
+/** Return the mailbox id of one Slack message or event in a Conversation. */
+export function slackInboundMessageId(args: {
+  conversationId: string;
+  installation?: SlackInstallationContext;
+  slackId: string;
+}): string {
+  return [
+    "slack",
+    args.installation?.teamId ?? args.installation?.enterpriseId ?? "unknown",
+    args.conversationId,
+    args.slackId,
+  ].join(":");
+}
+
 /** Serialize a Slack message and the active trace into the durable mailbox. */
 export function buildSlackInboundMessage(args: {
   conversationId: string;
   installation?: SlackInstallationContext;
   message: Message;
   receivedAtMs: number;
+  reviewItemChange?: ReviewItemChangeRecord;
   route: SlackConversationRoute;
   thread: ThreadImpl;
 }): InboundMessage {
@@ -878,12 +917,11 @@ export function buildSlackInboundMessage(args: {
   return {
     conversationId: args.conversationId,
     destination,
-    inboundMessageId: [
-      "slack",
-      args.installation?.teamId ?? args.installation?.enterpriseId ?? "unknown",
-      args.conversationId,
-      args.message.id,
-    ].join(":"),
+    inboundMessageId: slackInboundMessageId({
+      conversationId: args.conversationId,
+      installation: args.installation,
+      slackId: args.message.id,
+    }),
     delivery:
       args.message.isMention || hasInterruptOverride ? "interrupt" : "defer",
     source: "slack",
@@ -894,6 +932,9 @@ export function buildSlackInboundMessage(args: {
       authorId,
       ...(authorIdentityId ? { authorIdentityId } : undefined),
       attachments: args.message.attachments,
+      ...(args.reviewItemChange
+        ? { reviewItemChange: args.reviewItemChange }
+        : undefined),
       metadata: {
         platform: "slack",
         route: args.route,

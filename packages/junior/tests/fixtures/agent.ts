@@ -14,6 +14,7 @@ type ModelInput = Pick<Context, "systemPrompt"> & { messages: Message[] };
 
 type AgentFixture = {
   agentHistory(): Promise<PiMessage[]>;
+  conversationId(): string;
   historyEvents(): Promise<ConversationEvent[]>;
   run(prompt: string): Promise<void>;
   snapshot(): ModelInput;
@@ -60,6 +61,10 @@ export async function createAgent(
     async agentHistory() {
       if (!conversationId) throw new Error("No conversation to inspect");
       return await loadProjection({ conversationId });
+    },
+    conversationId() {
+      if (!conversationId) throw new Error("No conversation to inspect");
+      return conversationId;
     },
     async historyEvents() {
       if (!conversationId) throw new Error("No conversation to inspect");

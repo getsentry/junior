@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState, type ReactNode, type Ref } from "react";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
-import { ArrowDownToLine } from "lucide-react";
+import { ArrowDown } from "lucide-react";
+import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 import type {
   ConversationTranscript,
@@ -8,21 +9,28 @@ import type {
 } from "../types";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Button } from "../components/ui/button";
+import { cn } from "../styles";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
-import { ConversationTranscriptView } from "./ConversationTranscript";
+  ConversationTranscriptView,
+  TranscriptAskRevealContext,
+  type TranscriptAskReveal,
+} from "./ConversationTranscript";
 import { ConversationEventLog } from "./ConversationEventLog";
 import {
+  TranscriptJumpToLatestContext,
   transcriptBottomVersion,
   transcriptJuniorMessageVersion,
-  useAutoLoadPreviousPage,
+  useAutoLoadHistoryPage,
   usePinnedTranscriptBottom,
 } from "./transcriptBottomPinning";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
+import {
+  useTranscriptReadReporter,
+  type TranscriptUnreadRange,
+} from "./transcriptReadPosition";
 import { TranscriptSearchProvider } from "./transcriptSearch";
+import { TranscriptShowQuestion } from "./TranscriptAnswerLinks";
+import type { TranscriptHistory } from "./transcriptAroundHistory";
 import {
   TurnContextPanelProvider,
   type TurnContextPanel,
@@ -34,15 +42,35 @@ export function Transcript(props: {
   historyError?: Error | null;
   historyVersion?: string;
   live?: boolean;
+  /** The stored read position of the viewer. */
+  lastReadSeq?: number;
   loadingPreviousPage?: boolean;
+  /**
+   * Newer pages between the read position and the latest. They load on
+   * scroll. Jump to latest skips them.
+   */
+  newerHistory?: TranscriptHistory["newer"];
   pinRequestVersion?: number;
   onLoadPreviousPage?: () => void;
+  /** Receive the last event sequence the reader saw in the transcript. */
+  onRead?: (seq: number) => void;
+  /** Show the row of a question that an answer row quotes. */
+  onShowQuestion?(item: ReviewItemPayload, arrived: boolean): void;
+  /** The reader acted outside the transcript, such as in the composer. */
+  readEngaged?: boolean;
   onSelectedEventSeqChange?(seq: number | undefined): void;
   /** The reader's own sends to show at the end until history has them. */
   pendingMessages?: readonly ConversationMailboxMessage[];
   responding?: boolean;
+  /** Show the row of the question that docks above the message box. */
+  revealAsk?: TranscriptAskReveal;
+  /** Keep the rows around this event seq mounted, so the page can show it. */
+  revealSeq?: number;
   search?: string;
   onSearchChange?(value: string): void;
+  /** Index of the current search match. */
+  searchMatch?: number;
+  onSearchMatches?(count: number, prepended: number): void;
   selectedEventSeq?: number;
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
@@ -51,6 +79,12 @@ export function Transcript(props: {
   transcript?: ConversationTranscript;
   /** Show turn context in the owner's panel. Without it, a drawer opens. */
   turnContextPanel?: TurnContextPanel;
+  /** Open where a link shows its row instead of the latest message. */
+  startAtLink?: boolean;
+  /** Open at the "New" marker instead of the latest message. */
+  startAtUnread?: boolean;
+  /** Rows that were unread when the Conversation opened get a marker. */
+  unread?: TranscriptUnreadRange;
   view?: TranscriptViewMode;
 }) {
   const view = props.view ?? "rich";
@@ -61,9 +95,12 @@ export function Transcript(props: {
   const bottomPinning = usePinnedTranscriptBottom({
     conversationId: props.transcript?.conversationId,
     enabled: props.live ?? false,
+    endsAtLatest: !props.newerHistory,
     historyVersion: props.historyVersion ?? "empty",
     juniorMessageVersion: transcriptJuniorMessageVersion(props.transcript),
     pinRequestVersion: props.pinRequestVersion,
+    startAtLink: props.startAtLink,
+    startAtUnread: view === "rich" && props.startAtUnread,
     view,
     versions: {
       rich: transcriptBottomVersion(props.transcript, "rich"),
@@ -71,8 +108,32 @@ export function Transcript(props: {
     },
   });
 
+  const { revealAsk } = props;
+  const { showRow } = bottomPinning;
+  const askReveal = useMemo(
+    () => (revealAsk ? { ...revealAsk, showRow } : undefined),
+    [revealAsk, showRow],
+  );
+  const { onShowQuestion } = props;
+  const showQuestion = useMemo(
+    () =>
+      onShowQuestion &&
+      ((item: ReviewItemPayload) => onShowQuestion(item, false)),
+    [onShowQuestion],
+  );
+
+  // Read positions follow the transcript rows, not the event log. Search
+  // results skip rows, so they do not move the read position.
+  useTranscriptReadReporter({
+    content: bottomPinning.contentElement,
+    engaged: props.readEngaged,
+    lastReadSeq: props.lastReadSeq,
+    onRead: props.onRead,
+    paused: view !== "rich" || search.trim().length > 0,
+  });
   const loadPreviousPage = () => props.onLoadPreviousPage?.();
-  const previousPageRef = useAutoLoadPreviousPage({
+  const previousPageRef = useAutoLoadHistoryPage({
+    edge: "top",
     enabled: Boolean(
       props.onLoadPreviousPage &&
       props.hasPreviousPage &&
@@ -82,6 +143,18 @@ export function Transcript(props: {
     historyVersion: props.historyVersion ?? "empty",
     onLoad: loadPreviousPage,
   });
+  const newer = props.newerHistory;
+  const newerPageRef = useAutoLoadHistoryPage({
+    edge: "bottom",
+    enabled: Boolean(newer && !newer.loading && !newer.error),
+    historyVersion: props.historyVersion ?? "empty",
+    onLoad: () => newer?.load(),
+  });
+  const jumpToLatest = () => {
+    // The latest page is in the detail, so the jump needs no request.
+    newer?.showLatest();
+    bottomPinning.jumpToBottom();
+  };
 
   if (!props.transcript) {
     return (
@@ -92,7 +165,11 @@ export function Transcript(props: {
   }
 
   return (
-    <TranscriptSearchProvider query={search}>
+    <TranscriptSearchProvider
+      match={props.searchMatch}
+      onMatches={props.onSearchMatches}
+      query={search}
+    >
       {/* The pinning hook holds the reader's place; browser anchoring would fight it. */}
       <div
         className="grid min-w-0 [overflow-anchor:none]"
@@ -104,22 +181,17 @@ export function Transcript(props: {
           </div>
         ) : null}
         {props.hasPreviousPage || props.loadingPreviousPage ? (
-          <div className="mb-3 flex items-center gap-3" ref={previousPageRef}>
-            <span className="h-px min-w-4 flex-1 bg-dashboard-fill-strong" />
-            <button
-              aria-label="Load earlier events"
-              className="shrink-0 cursor-pointer border-0 bg-transparent px-1 py-0.5 font-sans text-xs font-medium text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-dashboard-focus/55 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={props.loadingPreviousPage}
-              onClick={loadPreviousPage}
-              title="Load earlier events"
-              type="button"
-            >
-              {props.loadingPreviousPage
-                ? `Loading earlier ${historyLabel}…`
-                : `Show earlier ${historyLabel}`}
-            </button>
-            <span className="h-px min-w-4 flex-1 bg-dashboard-fill-strong" />
-          </div>
+          <HistoryPageControl
+            className="mb-3"
+            label="Load earlier events"
+            loading={props.loadingPreviousPage}
+            onClick={loadPreviousPage}
+            ref={previousPageRef}
+          >
+            {props.loadingPreviousPage
+              ? `Loading earlier ${historyLabel}…`
+              : `Show earlier ${historyLabel}`}
+          </HistoryPageControl>
         ) : null}
         {props.historyError ? (
           <div
@@ -135,18 +207,52 @@ export function Transcript(props: {
             conversation={props.transcript}
             onSearchChange={props.onSearchChange ?? setLocalSearch}
             onSelectedSeqChange={props.onSelectedEventSeqChange}
+            scrollAnchorKey={bottomPinning.scrollAnchorKey}
             selectedSeq={props.selectedEventSeq}
           />
         ) : (
           <TurnContextPanelProvider panel={props.turnContextPanel}>
-            <ConversationTranscriptView
-              onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-              conversation={props.transcript}
-              pendingMessages={props.pendingMessages}
-              responding={props.responding ?? props.live ?? false}
-            />
+            <TranscriptJumpToLatestContext value={jumpToLatest}>
+              <TranscriptAskRevealContext value={askReveal}>
+                <TranscriptShowQuestion value={showQuestion}>
+                  <ConversationTranscriptView
+                    onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+                    conversation={props.transcript}
+                    pendingMessages={props.pendingMessages}
+                    responding={props.responding ?? props.live ?? false}
+                    revealSeq={props.revealSeq}
+                    scrollAnchorKey={bottomPinning.scrollAnchorKey}
+                    unread={props.unread}
+                  />
+                </TranscriptShowQuestion>
+              </TranscriptAskRevealContext>
+            </TranscriptJumpToLatestContext>
           </TurnContextPanelProvider>
         )}
+        {newer ? (
+          <>
+            {newer.error ? (
+              <div
+                aria-live="polite"
+                className="mt-2 text-center font-sans text-xs text-amber-100/65"
+              >
+                Newer events could not be loaded.
+              </div>
+            ) : null}
+            {/* The bottom margin keeps the jump control off this row. */}
+            <HistoryPageControl
+              className="mb-12 mt-3"
+              label="Load newer events"
+              loading={newer.loading}
+              onClick={newer.load}
+              ref={newerPageRef}
+            >
+              {newer.loading
+                ? `Loading newer ${historyLabel}…`
+                : `Show newer ${historyLabel}`}
+            </HistoryPageControl>
+          </>
+        ) : null}
         <div
           aria-hidden="true"
           className="h-px"
@@ -154,11 +260,41 @@ export function Transcript(props: {
         />
         <JumpToLatestButton
           hasPendingUpdate={bottomPinning.hasPendingUpdate}
-          onClick={bottomPinning.jumpToBottom}
+          onClick={jumpToLatest}
           visible={bottomPinning.showJumpToLatest}
         />
       </div>
     </TranscriptSearchProvider>
+  );
+}
+
+/** A divider with one control that loads another page of history. */
+function HistoryPageControl(props: {
+  children: ReactNode;
+  className: string;
+  label: string;
+  loading?: boolean;
+  onClick: () => void;
+  ref?: Ref<HTMLDivElement>;
+}) {
+  return (
+    <div
+      className={cn("flex items-center gap-3", props.className)}
+      ref={props.ref}
+    >
+      <span className="h-px min-w-4 flex-1 bg-dashboard-fill-strong" />
+      <button
+        aria-label={props.label}
+        className="shrink-0 cursor-pointer border-0 bg-transparent px-1 py-0.5 font-sans text-xs font-medium text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-dashboard-focus/55 disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={props.loading}
+        onClick={props.onClick}
+        title={props.label}
+        type="button"
+      >
+        {props.children}
+      </button>
+      <span className="h-px min-w-4 flex-1 bg-dashboard-fill-strong" />
+    </div>
   );
 }
 
@@ -169,33 +305,22 @@ function JumpToLatestButton(props: {
 }) {
   if (!props.visible) return null;
 
-  const label = props.hasPendingUpdate
-    ? "Jump to latest update"
-    : "Jump to latest";
-
   return (
-    <div className="pointer-events-none sticky bottom-3 z-20 flex h-0 justify-center px-3 md:fixed md:inset-x-auto md:bottom-6 md:right-8 md:h-auto md:justify-end md:px-0">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              aria-label={label}
-              className="pointer-events-auto relative -translate-y-full rounded-lg !border !border-dashboard-border-emphasis !bg-dashboard-surface-active text-dashboard-text shadow-[0_6px_24px_rgba(0,0,0,0.36)] hover:!border-dashboard-border-interactive hover:!bg-dashboard-surface-hover hover:!text-dashboard-text md:translate-y-0"
-              onClick={props.onClick}
-              size="icon"
-            >
-              <ArrowDownToLine aria-hidden="true" size={16} strokeWidth={2} />
-              {props.hasPendingUpdate ? (
-                <span
-                  aria-hidden="true"
-                  className="absolute right-1.5 top-1.5 size-2 bg-emerald-300"
-                />
-              ) : null}
-            </Button>
-          }
-        />
-        <TooltipContent size="compact">{label}</TooltipContent>
-      </Tooltip>
+    // Sticky offsets count from inside the scroll region's bottom padding
+    // (pb-4 / md:pb-6). The negative offsets cancel most of it, so the pill
+    // sits 12px (16px on md) above the composer, centered on the transcript.
+    <div className="pointer-events-none sticky -bottom-2.5 z-20 flex h-0 justify-center md:-bottom-5">
+      <Button
+        variant="outline"
+        aria-label={
+          props.hasPendingUpdate ? "Jump to latest update" : "Jump to latest"
+        }
+        className="pointer-events-auto h-8 -translate-y-full gap-1.5 rounded-full pl-3 pr-3.5 text-xs shadow-[0_4px_16px_rgba(0,0,0,0.12)]"
+        onClick={props.onClick}
+      >
+        <ArrowDown aria-hidden="true" size={14} strokeWidth={2} />
+        Jump to latest
+      </Button>
     </div>
   );
 }

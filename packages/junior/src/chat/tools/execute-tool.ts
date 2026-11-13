@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -15,7 +15,7 @@ export function createExecuteToolTool() {
       readOnlyHint: false,
     },
     description:
-      "Execute any catalog tool by exact tool_name from searchTools or a tool-result execution hint. Put tool-specific parameters inside arguments.",
+      "Execute a catalog tool by its exact name. Use it for a tool that is not in your tool list: one that searchTools returned, or one that a skill, tool result, or error names. Put tool-specific parameters inside arguments.",
     executionMode: "sequential",
     exposure: "modelOnly",
     inputSchema: z
@@ -24,7 +24,7 @@ export function createExecuteToolTool() {
           .string()
           .min(1)
           .describe(
-            "Exact catalog tool_name returned by searchTools or a tool-result execution hint.",
+            "Exact catalog tool_name, from searchTools or as named by a skill, tool result, or error.",
           ),
         arguments: z
           .record(z.string(), z.unknown())

@@ -1,6 +1,44 @@
-import { z } from "zod";
-import { objectFactsSchema } from "./object-facts";
-import { objectTypeSchema } from "./object-presentation";
+import * as z from "zod";
+import { type ObjectFacts, objectFactsSchema } from "./object-facts";
+import { type ObjectType, objectTypeSchema } from "./object-presentation";
+
+/** Return whether facts fit an object type. Deployment facts also fit an item. */
+export function objectFactsMatchType(
+  facts: ObjectFacts,
+  objectType: ObjectType,
+): boolean {
+  return facts.type === "deployment"
+    ? objectType === "deployment" || objectType === "item"
+    : facts.type === objectType;
+}
+
+/** The largest size of object facts, in UTF-8 bytes of their JSON. */
+export const OBJECT_FACTS_MAX_BYTES = 4096;
+
+/** Return the size that the object facts limit counts. */
+export function objectFactsBytes(facts: ObjectFacts): number {
+  return utf8ByteLength(JSON.stringify(facts));
+}
+
+// Count the UTF-8 bytes of text without encoding it.
+function utf8ByteLength(text: string): number {
+  let bytes = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code < 0x80) bytes += 1;
+    else if (code < 0x800) bytes += 2;
+    else if (
+      code >= 0xd800 &&
+      code <= 0xdbff &&
+      (text.charCodeAt(index + 1) & 0xfc00) === 0xdc00
+    ) {
+      // A surrogate pair is one 4-byte code point.
+      bytes += 4;
+      index += 1;
+    } else bytes += 3;
+  }
+  return bytes;
+}
 
 /**
  * Verified facts shared by Conversation annotations and Message cards.
@@ -11,7 +49,8 @@ import { objectTypeSchema } from "./object-presentation";
  * selects the fields it needs; preview rules must not remove saved facts.
  *
  * Keep raw responses, diffs, logs, credentials, and comments out of this schema.
- * See "Object annotations and Message cards" in packages/junior/src/chat/conversations/AGENTS.md.
+ * Return only facts that the Conversation audience may see. An annotation
+ * never grants provider access.
  */
 export const objectAnnotationSchema = z
   .object({
@@ -33,8 +72,7 @@ export const objectAnnotationSchema = z
     sourceUpdatedAt: z.iso.datetime({ offset: true }).optional(),
     facts: objectFactsSchema
       .refine(
-        (facts) =>
-          new TextEncoder().encode(JSON.stringify(facts)).length <= 4096,
+        (facts) => objectFactsBytes(facts) <= OBJECT_FACTS_MAX_BYTES,
         "Object facts must not exceed 4 KiB",
       )
       .optional(),
@@ -43,10 +81,7 @@ export const objectAnnotationSchema = z
   .refine(
     (annotation) =>
       !annotation.facts ||
-      (annotation.facts.type === "deployment"
-        ? annotation.objectType === "deployment" ||
-          annotation.objectType === "item"
-        : annotation.facts.type === annotation.objectType),
+      objectFactsMatchType(annotation.facts, annotation.objectType),
     "Object facts must match the object type",
   );
 export type ObjectAnnotation = z.output<typeof objectAnnotationSchema>;

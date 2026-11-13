@@ -5,9 +5,8 @@ import {
   SANDBOX_REPOS_ROOT,
   SANDBOX_WORKSPACE_ROOT,
 } from "@/chat/sandbox/paths";
-import type { SandboxFileSystem } from "@/chat/sandbox/workspace";
 import { parseSkillFile } from "@/chat/skills";
-import { isMissingPathError } from "@/chat/tools/sandbox/file-utils";
+import type { SandboxCommandRunner } from "@/chat/tools/sandbox/file-utils";
 
 const AGENTS_FILENAME = "AGENTS.md";
 const MAX_REPOSITORY_INSTRUCTIONS_BYTES = 32 * 1024;
@@ -50,46 +49,120 @@ export type VisibleAgentsInstructions =
   | { active: false }
   | { active: true; directory?: string; text: string };
 
-async function pathExists(
-  fs: SandboxFileSystem,
-  target: string,
-): Promise<boolean> {
-  try {
-    await fs.stat(target);
-    return true;
-  } catch (error) {
-    if (isMissingPathError(error)) {
-      return false;
-    }
-    throw error;
-  }
+/**
+ * Read limit for each AGENTS.md and SKILL.md file. It is 3 bytes past the
+ * budget: a UTF-8 character has at most 4 bytes, so a character cut at this
+ * limit starts after the budget, and the budgeted text is the same as with a
+ * full read.
+ */
+const FILE_READ_LIMIT_BYTES = MAX_REPOSITORY_INSTRUCTIONS_BYTES + 3;
+
+/**
+ * Print every path and file that the instructions read needs, one record per
+ * line. The cwd is the workspace root, and all paths are relative to it.
+ *
+ * Arguments: the file read limit, then `repos` to read every Git worktree in
+ * it or "", then one group for each selected directory. A group holds the
+ * directories from the selected directory up to the workspace root, then "".
+ * A group stops at its first directory with `.git`.
+ *
+ * Records: `R <dir>` for a Git worktree in repos/, `G <dir>/.git`, `D <path>`
+ * for a directory in a skill root, `E <path>` for another entry in a skill
+ * root, and `F <base64> <path>` for an AGENTS.md or SKILL.md file. File
+ * tests follow symlinks like `stat -L`. Globs skip dot entries like `ls -1`,
+ * which the Vercel Sandbox `readdir` runs.
+ */
+const READ_SCRIPT = `
+limit=$1
+repos=$2
+shift 2
+
+nl='
+'
+# A glob result is an entry when it exists. Like the lines of \`ls -1\`, a
+# name with a line break does not name an entry.
+listed() {
+  case $1 in *"$nl"*) return 1 ;; esac
+  [ -e "$1" ] || [ -L "$1" ]
 }
 
-async function directoryExists(
-  fs: SandboxFileSystem,
-  target: string,
-): Promise<boolean> {
-  try {
-    return (await fs.stat(target)).isDirectory();
-  } catch (error) {
-    if (isMissingPathError(error)) {
-      return false;
-    }
-    throw error;
-  }
+emit_file() {
+  [ -f "$1" ] || return 0
+  if [ ! -r "$1" ]; then
+    printf 'cannot read %s\\n' "$1" >&2
+    exit 1
+  fi
+  printf 'F '
+  head -c "$limit" < "$1" | base64 | tr -d '\\n'
+  printf ' %s\\n' "$1"
 }
 
-async function findGitRoot(
-  fs: SandboxFileSystem,
-  cwd: string,
-): Promise<string | undefined> {
+emit_skills() {
+  for entry in "$1/.agents/skills"/* "$1/.claude/skills"/*; do
+    listed "$entry" || continue
+    # The first skill root wins for each name. Skip entries that it shadows.
+    case $entry in
+      "$1/.claude/skills/"*) listed "$1/.agents/skills/\${entry##*/}" && continue ;;
+    esac
+    if [ -d "$entry" ]; then
+      printf 'D %s\\n' "$entry"
+      emit_file "$entry/SKILL.md"
+    else
+      printf 'E %s\\n' "$entry"
+    fi
+  done
+}
+
+if [ -n "$repos" ]; then
+  for repo in "$repos"/*; do
+    if listed "$repo" && [ -d "$repo" ] && [ -e "$repo/.git" ]; then
+      printf 'R %s\\n' "$repo"
+      set -- "$@" "$repo" ""
+    fi
+  done
+fi
+
+found=
+for dir in "$@"; do
+  if [ -z "$dir" ]; then
+    found=
+  elif [ -z "$found" ]; then
+    emit_file "$dir/AGENTS.md"
+    if [ -e "$dir/.git" ]; then
+      printf 'G %s/.git\\n' "$dir"
+      emit_skills "$dir"
+      found=1
+    fi
+  fi
+done
+`;
+
+const BASE64_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/;
+
+/** Sandbox paths and files that one instructions read found. */
+interface RepositoryTree {
+  /** Entries of each skill root, by name, with whether each is a directory. */
+  entries: Map<string, Map<string, boolean>>;
+  /** AGENTS.md and SKILL.md contents, cut at `FILE_READ_LIMIT_BYTES`. */
+  files: Map<string, string>;
+  /** `.git` paths that exist, as a file or a directory. */
+  gitMarkers: Set<string>;
+  /** Git worktrees under repos/. */
+  repositories: string[];
+}
+
+function compareStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/** Directories that the Git root search checks, from cwd up to the workspace root. */
+function gitRootCandidates(cwd: string): string[] {
+  const candidates: string[] = [];
   let current = cwd;
   for (;;) {
-    if (await pathExists(fs, path.posix.join(current, ".git"))) {
-      return current;
-    }
+    candidates.push(current);
     if (current === SANDBOX_WORKSPACE_ROOT) {
-      return undefined;
+      return candidates;
     }
     const parent = path.posix.dirname(current);
     if (
@@ -97,119 +170,162 @@ async function findGitRoot(
       (parent !== SANDBOX_WORKSPACE_ROOT &&
         !parent.startsWith(`${SANDBOX_WORKSPACE_ROOT}/`))
     ) {
-      return undefined;
+      return candidates;
     }
     current = parent;
   }
 }
 
-/** Return Git worktrees under repos/, sorted for stable instruction capture. */
-export async function listRepositoryDirectories(
-  fs: SandboxFileSystem,
-): Promise<string[]> {
-  if (!(await directoryExists(fs, SANDBOX_REPOS_ROOT))) {
-    return [];
-  }
-
-  const entries = await fs.readdir(SANDBOX_REPOS_ROOT);
-  const repositories: string[] = [];
-  for (const entry of entries) {
-    const candidate = path.posix.join(SANDBOX_REPOS_ROOT, entry);
-    if (
-      (await directoryExists(fs, candidate)) &&
-      (await pathExists(fs, path.posix.join(candidate, ".git")))
-    ) {
-      repositories.push(candidate);
-    }
-  }
-  return repositories.sort((left, right) =>
-    left < right ? -1 : left > right ? 1 : 0,
+function findGitRoot(tree: RepositoryTree, cwd: string): string | undefined {
+  return gitRootCandidates(cwd).find((directory) =>
+    tree.gitMarkers.has(path.posix.join(directory, ".git")),
   );
 }
 
-/** Return the only Git worktree under repos/, without guessing when ambiguous. */
-export async function findSingleRepositoryDirectory(
-  fs: SandboxFileSystem,
-): Promise<string | undefined> {
-  const repositories = await listRepositoryDirectories(fs);
-  return repositories.length === 1 ? repositories[0] : undefined;
+function invalidOutput(): Error {
+  return new Error("Repository instructions read printed invalid output");
 }
 
-async function readInstructionFile(
-  fs: SandboxFileSystem,
+function parseRepositoryTree(stdout: string): RepositoryTree {
+  const tree: RepositoryTree = {
+    entries: new Map(),
+    files: new Map(),
+    gitMarkers: new Set(),
+    repositories: [],
+  };
+  const lines = stdout.split("\n");
+  if (lines.pop() !== "") {
+    throw invalidOutput();
+  }
+  for (const line of lines) {
+    const kind = line.slice(0, 2);
+    let target = line.slice(2);
+    let content = "";
+    if (kind === "F ") {
+      const separator = target.indexOf(" ");
+      if (separator < 0) {
+        throw invalidOutput();
+      }
+      content = target.slice(0, separator);
+      target = target.slice(separator + 1);
+      if (!BASE64_PATTERN.test(content)) {
+        throw invalidOutput();
+      }
+    }
+    if (!target) {
+      throw invalidOutput();
+    }
+    const absolute = path.posix.join(SANDBOX_WORKSPACE_ROOT, target);
+    switch (kind) {
+      case "R ":
+        tree.repositories.push(absolute);
+        break;
+      case "G ":
+        tree.gitMarkers.add(absolute);
+        break;
+      case "D ":
+      case "E ": {
+        const root = path.posix.dirname(absolute);
+        const entries = tree.entries.get(root) ?? new Map<string, boolean>();
+        entries.set(path.posix.basename(absolute), kind === "D ");
+        tree.entries.set(root, entries);
+        break;
+      }
+      case "F ":
+        tree.files.set(
+          absolute,
+          Buffer.from(content, "base64").toString("utf8"),
+        );
+        break;
+      default:
+        throw invalidOutput();
+    }
+  }
+  tree.repositories.sort(compareStrings);
+  return tree;
+}
+
+/** Read what the selected directories need with one sandbox command. */
+async function readRepositoryTree(args: {
+  directories: string[];
+  discover: boolean;
+  runCommand: SandboxCommandRunner;
+}): Promise<RepositoryTree> {
+  const relative = (target: string) =>
+    path.posix.relative(SANDBOX_WORKSPACE_ROOT, target) || ".";
+  const result = await args.runCommand({
+    cmd: "sh",
+    args: [
+      "-c",
+      READ_SCRIPT,
+      "sh",
+      String(FILE_READ_LIMIT_BYTES),
+      args.discover ? relative(SANDBOX_REPOS_ROOT) : "",
+      ...args.directories.flatMap((directory) => [
+        ...gitRootCandidates(directory).map(relative),
+        "",
+      ]),
+    ],
+    cwd: SANDBOX_WORKSPACE_ROOT,
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `Repository instructions read failed with exit code ${result.exitCode}: ${result.stderr.trim()}`,
+    );
+  }
+  return parseRepositoryTree(result.stdout);
+}
+
+function readInstructionFile(
+  tree: RepositoryTree,
   filePath: string,
-): Promise<string | undefined> {
-  try {
-    const content = await fs.readFile(filePath, { encoding: "utf8" });
-    return content.trim() ? content : undefined;
-  } catch (error) {
-    if (isMissingPathError(error)) {
-      return undefined;
-    }
-    throw error;
-  }
-}
-
-async function readOptionalDirectory(
-  fs: SandboxFileSystem,
-  directory: string,
-): Promise<string[]> {
-  try {
-    return await fs.readdir(directory);
-  } catch (error) {
-    if (isMissingPathError(error)) {
-      return [];
-    }
-    throw error;
-  }
+): string | undefined {
+  const content = tree.files.get(filePath);
+  return content?.trim() ? content : undefined;
 }
 
 /** Read model-invocable skills from the repository skill directories. */
-async function readRepositorySkills(
-  fs: SandboxFileSystem,
+function readRepositorySkills(
+  tree: RepositoryTree,
   gitRoot: string,
-): Promise<RepositorySkill[]> {
-  const roots = REPOSITORY_SKILL_ROOTS.map((root) =>
-    path.posix.join(gitRoot, root),
-  );
-  const listings = await Promise.all(
-    roots.map(async (root) => await readOptionalDirectory(fs, root)),
-  );
+): RepositorySkill[] {
   // The first root wins for each directory name. Repositories often link
-  // `.claude/skills` to `.agents/skills`, so this also skips duplicate reads.
-  const candidates = new Map<string, string>();
-  listings.forEach((entries, index) => {
-    for (const entry of [...entries].sort()) {
-      if (!candidates.has(entry)) {
-        candidates.set(entry, path.posix.join(roots[index]!, entry));
+  // `.claude/skills` to `.agents/skills`.
+  const candidates = new Map<string, { directory: boolean; path: string }>();
+  for (const root of REPOSITORY_SKILL_ROOTS) {
+    const rootPath = path.posix.join(gitRoot, root);
+    const entries = [...(tree.entries.get(rootPath) ?? [])].sort(
+      ([left], [right]) => compareStrings(left, right),
+    );
+    for (const [name, directory] of entries) {
+      if (!candidates.has(name)) {
+        candidates.set(name, {
+          directory,
+          path: path.posix.join(rootPath, name),
+        });
       }
     }
-  });
+  }
 
-  const skills = await Promise.all(
-    [...candidates].map(async ([name, skillDirectory]) => {
-      // Skill roots can also hold plain files, such as a README.
-      if (!(await directoryExists(fs, skillDirectory))) {
-        return undefined;
-      }
-      const filePath = path.posix.join(skillDirectory, "SKILL.md");
-      const raw = await readInstructionFile(fs, filePath);
-      const parsed = raw ? parseSkillFile(raw, name) : undefined;
-      if (!parsed?.ok || parsed.skill.disableModelInvocation) {
-        return undefined;
-      }
-      return {
-        description: parsed.skill.description.replace(/\s+/g, " ").trim(),
-        name,
-        path: filePath,
-      };
-    }),
-  );
-  return skills
-    .filter((skill): skill is RepositorySkill => Boolean(skill))
-    .sort((left, right) =>
-      left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
-    );
+  const skills: RepositorySkill[] = [];
+  for (const [name, candidate] of candidates) {
+    // Skill roots can also hold plain files, such as a README.
+    if (!candidate.directory) {
+      continue;
+    }
+    const filePath = path.posix.join(candidate.path, "SKILL.md");
+    const raw = readInstructionFile(tree, filePath);
+    const parsed = raw ? parseSkillFile(raw, name) : undefined;
+    if (!parsed?.ok || parsed.skill.disableModelInvocation) {
+      continue;
+    }
+    skills.push({
+      description: parsed.skill.description.replace(/\s+/g, " ").trim(),
+      name,
+      path: filePath,
+    });
+  }
+  return skills.sort((left, right) => compareStrings(left.name, right.name));
 }
 
 type RepositorySources = RepositoryInstructions["sources"];
@@ -229,12 +345,12 @@ function skillListBytes(skills: RepositorySkill[]): number {
 }
 
 /** Read root-to-cwd AGENTS.md files within the byte budget. */
-async function readAgentsSources(args: {
+function readAgentsSources(args: {
   cwd: string;
-  fs: SandboxFileSystem;
   gitRoot: string;
   maxBytes: number;
-}): Promise<RepositorySources> {
+  tree: RepositoryTree;
+}): RepositorySources {
   const directories: string[] = [];
   let current = args.cwd;
   for (;;) {
@@ -253,7 +369,7 @@ async function readAgentsSources(args: {
       break;
     }
     const filePath = path.posix.join(directory, AGENTS_FILENAME);
-    const content = await readInstructionFile(args.fs, filePath);
+    const content = readInstructionFile(args.tree, filePath);
     if (!content) {
       continue;
     }
@@ -269,17 +385,17 @@ async function readAgentsSources(args: {
 }
 
 /** Read repository skills that fit the byte budget, keeping each entry whole. */
-async function readRepositorySkillsWithinBudget(args: {
-  fs: SandboxFileSystem;
+function readRepositorySkillsWithinBudget(args: {
   gitRoot: string;
   maxBytes: number;
-}): Promise<RepositorySkill[]> {
+  tree: RepositoryTree;
+}): RepositorySkill[] {
   const skills: RepositorySkill[] = [];
   let remaining = args.maxBytes;
   if (remaining <= 0) {
     return skills;
   }
-  for (const skill of await readRepositorySkills(args.fs, args.gitRoot)) {
+  for (const skill of readRepositorySkills(args.tree, args.gitRoot)) {
     const bytes = repositorySkillBytes(skill);
     if (bytes > remaining) {
       break;
@@ -314,32 +430,6 @@ function buildRepositoryInstructions(
     sources,
     text: formatRepositoryInstructions(sources, skills),
   };
-}
-
-/** Resolve the root-to-cwd AGENTS.md bundle and repository skills for one selected directory. */
-export async function resolveRepositoryInstructions(args: {
-  cwd: string;
-  fs: SandboxFileSystem;
-  maxBytes?: number;
-}): Promise<RepositoryInstructions | undefined> {
-  const gitRoot = await findGitRoot(args.fs, args.cwd);
-  if (!gitRoot) {
-    return undefined;
-  }
-  const maxBytes = args.maxBytes ?? MAX_REPOSITORY_INSTRUCTIONS_BYTES;
-  const sources = await readAgentsSources({
-    cwd: args.cwd,
-    fs: args.fs,
-    gitRoot,
-    maxBytes,
-  });
-  // AGENTS.md has priority. Skills use only the budget that remains.
-  const skills = await readRepositorySkillsWithinBudget({
-    fs: args.fs,
-    gitRoot,
-    maxBytes: maxBytes - sourceBytes(sources),
-  });
-  return buildRepositoryInstructions(args.cwd, sources, skills);
 }
 
 function formatInstructionSources(
@@ -413,20 +503,39 @@ export function mergeRepositoryInstructions(
   };
 }
 
-/** Resolve AGENTS.md instructions for each selected repository directory. */
-export async function resolveRepositoryInstructionsForDirectories(args: {
+/**
+ * Read AGENTS.md instructions and repository skills for the selected
+ * directories with one sandbox command. Without directories, use every Git
+ * worktree under repos/.
+ */
+export async function readRepositoryInstructions(args: {
+  directories?: string[];
+  runCommand: SandboxCommandRunner;
+}): Promise<{
+  /** The selected directories, or the Git worktrees found under repos/. */
   directories: string[];
-  fs: SandboxFileSystem;
-}): Promise<RepositoryInstructions | undefined> {
-  const uniqueDirectories = [
+  instructions: RepositoryInstructions | undefined;
+}> {
+  const selected = [
     ...new Set(
-      args.directories.filter(
+      (args.directories ?? []).filter(
         (directory) =>
           directory === SANDBOX_WORKSPACE_ROOT ||
           directory.startsWith(`${SANDBOX_WORKSPACE_ROOT}/`),
       ),
     ),
-  ].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  ].sort(compareStrings);
+  if (args.directories && selected.length === 0) {
+    return { directories: args.directories, instructions: undefined };
+  }
+  const tree = await readRepositoryTree({
+    directories: selected,
+    discover: !args.directories,
+    runCommand: args.runCommand,
+  });
+  // Git worktrees under repos/ are already sorted, unique, and in the
+  // workspace root.
+  const cwds = args.directories ? selected : tree.repositories;
 
   // One shared budget across every selected repository. Without this, N repos
   // could each contribute the full single-repo limit. Every AGENTS.md comes
@@ -438,16 +547,16 @@ export async function resolveRepositoryInstructionsForDirectories(args: {
     gitRoot: string;
     sources: RepositorySources;
   }> = [];
-  for (const directory of uniqueDirectories) {
-    const gitRoot = await findGitRoot(args.fs, directory);
+  for (const directory of cwds) {
+    const gitRoot = findGitRoot(tree, directory);
     if (!gitRoot) {
       continue;
     }
-    const sources = await readAgentsSources({
+    const sources = readAgentsSources({
       cwd: directory,
-      fs: args.fs,
       gitRoot,
       maxBytes: remaining,
+      tree,
     });
     remaining -= sourceBytes(sources);
     repositories.push({ directory, gitRoot, sources });
@@ -455,10 +564,10 @@ export async function resolveRepositoryInstructionsForDirectories(args: {
 
   const bundles: RepositoryInstructions[] = [];
   for (const repository of repositories) {
-    const skills = await readRepositorySkillsWithinBudget({
-      fs: args.fs,
+    const skills = readRepositorySkillsWithinBudget({
       gitRoot: repository.gitRoot,
       maxBytes: remaining,
+      tree,
     });
     remaining -= skillListBytes(skills);
     const bundle = buildRepositoryInstructions(
@@ -470,7 +579,10 @@ export async function resolveRepositoryInstructionsForDirectories(args: {
       bundles.push(bundle);
     }
   }
-  return mergeRepositoryInstructions(bundles);
+  return {
+    directories: args.directories ?? cwds,
+    instructions: mergeRepositoryInstructions(bundles),
+  };
 }
 
 /** Render repository instructions with Codex's exact model-visible wrapper. */
@@ -548,6 +660,40 @@ export function findVisibleAgentsInstructions(
     }
   }
   return undefined;
+}
+
+/** Whether the visible AGENTS.md state already shows these instructions. */
+export function showsAgentsInstructions(
+  visible: VisibleAgentsInstructions | undefined,
+  instructions: RepositoryInstructions,
+): boolean {
+  return (
+    visible?.active === true &&
+    visible.directory === instructions.directory &&
+    visible.text === instructions.text
+  );
+}
+
+/**
+ * Render the AGENTS.md block that a new prompt adds. Return nothing when the
+ * latest copy in history already shows these instructions, so a Turn does
+ * not repeat an unchanged block.
+ */
+export function renderAgentsInstructionsForPrompt(
+  history: PiMessage[],
+  instructions: RepositoryInstructions,
+): string | undefined {
+  const visible = findVisibleAgentsInstructions(history);
+  if (showsAgentsInstructions(visible, instructions)) {
+    return undefined;
+  }
+  return renderAgentsInstructions({
+    directory: instructions.directory,
+    text:
+      visible?.active === true
+        ? `${AGENTS_REPLACEMENT_NOTICE}\n\n${instructions.text}`
+        : instructions.text,
+  });
 }
 
 /** Whether one message is a generated AGENTS.md context update. */

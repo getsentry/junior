@@ -33,6 +33,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       tools: unknown[];
     };
     private prepareNextTurn?: (context?: unknown) => Promise<unknown> | unknown;
+    private listeners: Array<(event: unknown) => unknown> = [];
 
     constructor(input: {
       prepareNextTurn?: () => Promise<unknown> | unknown;
@@ -56,7 +57,8 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         input.prepareNextTurnWithContext ?? input.prepareNextTurn;
     }
 
-    subscribe() {
+    subscribe(listener: (event: unknown) => unknown) {
+      this.listeners.push(listener);
       return () => undefined;
     }
 
@@ -75,6 +77,11 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       captured.promptContextMessages.push([...this.state.messages]);
       captured.promptMessages.push(message);
       this.state.messages.push(message);
+      // Like Pi 0.85.1: `turn_end` listeners, then the next-turn hook before
+      // the next model call.
+      for (const listener of this.listeners) {
+        await listener({ type: "turn_end", message, toolResults: [] });
+      }
       await this.prepareNextTurn?.({
         context: { messages: this.state.messages },
       });
@@ -115,7 +122,7 @@ import {
   defineJuniorPlugin,
   definePromptContext,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { executeAgentRun } from "@/chat/agent";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";

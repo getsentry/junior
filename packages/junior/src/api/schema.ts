@@ -1,9 +1,16 @@
-export { INPUT_IMAGE_TYPES } from "../chat/attachments/media";
 export {
-  MAX_INPUT_IMAGES,
-  MAX_INPUT_IMAGE_BYTES,
+  INLINE_VIDEO_TYPES,
+  INPUT_IMAGE_TYPES,
+} from "../chat/attachments/media";
+export {
+  MAX_INPUT_ATTACHMENTS,
+  MAX_ATTACHMENT_BYTES,
 } from "../chat/attachments/input";
-export type { InputImage, MessageAttachment } from "../chat/attachments/input";
+export type { InputFile, MessageAttachment } from "../chat/attachments/input";
+export {
+  AGENT_REPLY_EVENT_TYPE,
+  isAgentInvocationResultEventType,
+} from "../chat/agent-invocations/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
   buttonUserInputField,
@@ -18,11 +25,30 @@ export type {
 } from "../chat/tools/runtime/user-input-request";
 export type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 export type { AutomationCard } from "../chat/automations/card";
+export type { AutomationTask } from "../chat/automations/task";
 export {
+  annotationCard,
   messageCardText,
   resolveMessageCards,
 } from "../chat/conversations/cards";
 export type { MessageCard } from "../chat/conversations/cards";
+export {
+  conversationObjectCard,
+  messageObjectCard,
+  personObjectCard,
+  webPageObjectCard,
+} from "./objects/cards";
+export {
+  attachObjectLinkBodySchema,
+  attachObjectLinkResponseSchema,
+  MAX_OBJECT_LINKS,
+  objectLinksQuerySchema,
+  objectLinksReportSchema,
+} from "./schema/object-link";
+export type {
+  AttachObjectLinkResponse,
+  ObjectLinksReport,
+} from "./schema/object-link";
 export { dailyConversationActivitySchema } from "./activity";
 export { conversationChildAgentTotalsSchema } from "./schema/child-agent-totals";
 export type { ConversationChildAgentTotals } from "./schema/child-agent-totals";
@@ -49,25 +75,16 @@ export {
   acceptedConversationMessageSchema,
   forkConversationBodySchema,
   forkConversationResponseSchema,
-  archiveConversationBodySchema,
-  archiveConversationResponseSchema,
-  cancelConversationPendingMessagesBodySchema,
-  cancelConversationPendingMessagesResponseSchema,
-  steerConversationPendingMessagesBodySchema,
-  steerConversationPendingMessagesResponseSchema,
   conversationAuxiliaryCostsSchema,
   conversationDetailQuerySchema,
+  CONVERSATION_DETAIL_VERSION_HEADER,
+  CONVERSATION_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationEventHistorySchema,
   conversationEventsQuerySchema,
   conversationFeedQuerySchema,
-  conversationFeedSchema,
   conversationParamsSchema,
-  conversationPendingAuthorizationSchema,
-  conversationPendingMessageDeliverySchema,
-  conversationPendingMessageSchema,
-  conversationPendingMessagesReportSchema,
   conversationActivityPreviewSchema,
   conversationReportEventDataSchema,
   conversationReportEventSchema,
@@ -77,6 +94,42 @@ export {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export {
+  attachmentUploadSchema,
+  createAttachmentUploadBodySchema,
+} from "./schema/conversation-attachment-upload";
+export type {
+  AttachmentUpload,
+  CreateAttachmentUploadBody,
+} from "./schema/conversation-attachment-upload";
+export {
+  cancelConversationPendingMessagesBodySchema,
+  cancelConversationPendingMessagesResponseSchema,
+  steerConversationPendingMessagesBodySchema,
+  steerConversationPendingMessagesResponseSchema,
+  conversationPendingAuthorizationSchema,
+  conversationPendingMessageDeliverySchema,
+  conversationPendingMessageSchema,
+  conversationPendingMessagesReportSchema,
+  conversationDetailWithMailboxReportSchema,
+  conversationUnchangedDetailWithMailboxSchema,
+} from "./schema/conversation-pending-messages";
+export { conversationFeedSchema } from "./schema/conversation-feed";
+export type {
+  ConversationFeed,
+  ConversationFeedItem,
+} from "./schema/conversation-feed";
+export {
+  archiveConversationBodySchema,
+  archiveConversationResponseSchema,
+  archiveDoneConversationsResponseSchema,
+  conversationAutoArchiveSchema,
+} from "./schema/conversation-archive";
+export type {
+  ArchiveConversationBody,
+  ArchiveConversationResponse,
+  ConversationAutoArchive,
+} from "./schema/conversation-archive";
 export { conversationStatsReportSchema } from "./schema/conversation-stats";
 export type {
   ConversationMetricDay,
@@ -86,15 +139,69 @@ export type {
   GuardianStats,
 } from "./schema/conversation-stats";
 export { stopConversationTurnResponseSchema } from "./schema/conversation-stop";
+export {
+  continueConversationInSlackBodySchema,
+  continueConversationInSlackResponseSchema,
+} from "./schema/conversation-continue-in-slack";
+export type {
+  ContinueConversationInSlackBody,
+  ContinueConversationInSlackResponse,
+} from "./schema/conversation-continue-in-slack";
 export type { StopConversationTurnResponse } from "./schema/conversation-stop";
+export { conversationReadPositionSchema } from "./schema/conversation-read-position";
+export type { ConversationReadPosition } from "./schema/conversation-read-position";
+export {
+  conversationCatchUpBodySchema,
+  conversationCatchUpSchema,
+} from "./schema/conversation-catch-up";
+export type {
+  ConversationCatchUp,
+  ConversationCatchUpBody,
+} from "./schema/conversation-catch-up";
+export {
+  pinConversationBodySchema,
+  pinConversationResponseSchema,
+  reorderPinnedConversationsBodySchema,
+  reorderPinnedConversationsResponseSchema,
+} from "./schema/conversation-pin";
+export type {
+  PinConversationBody,
+  PinConversationResponse,
+  ReorderPinnedConversationsBody,
+  ReorderPinnedConversationsResponse,
+} from "./schema/conversation-pin";
+export {
+  conversationDeliveryBodySchema,
+  conversationDeliveryResponseSchema,
+} from "./schema/conversation-delivery";
+export type {
+  ConversationDeliveryBody,
+  ConversationDeliveryResponse,
+} from "./schema/conversation-delivery";
+export {
+  conversationSubscriptionBodySchema,
+  conversationSubscriptionResponseSchema,
+} from "./schema/conversation-subscription";
+export type {
+  ConversationSubscriptionBody,
+  ConversationSubscriptionResponse,
+} from "./schema/conversation-subscription";
+export {
+  CONVERSATION_OUTLINE_TEXT_LENGTH,
+  conversationOutlineSchema,
+} from "./schema/conversation-outline";
+export type { ConversationOutline } from "./schema/conversation-outline";
+export {
+  CONVERSATION_TITLE_MAX_LENGTH,
+  renameConversationBodySchema,
+  renameConversationResponseSchema,
+} from "./schema/conversation-title";
+export type {
+  RenameConversationBody,
+  RenameConversationResponse,
+} from "./schema/conversation-title";
 export type {
   AcceptedConversationMessage,
-  ArchiveConversationBody,
-  ArchiveConversationResponse,
-  CancelConversationPendingMessagesBody,
-  CancelConversationPendingMessagesResponse,
-  SteerConversationPendingMessagesBody,
-  SteerConversationPendingMessagesResponse,
   ActorIdentity,
   ConversationActivityPreview,
   ConversationAgentTreeNode,
@@ -103,10 +210,6 @@ export type {
   ConversationDetailReport,
   ConversationEventPage,
   ConversationEventHistory,
-  ConversationFeed,
-  ConversationPendingMessage,
-  ConversationPendingMessageDelivery,
-  ConversationPendingMessagesReport,
   ConversationReportEvent,
   ConversationReportEventData,
   ConversationReportMessageEvent,
@@ -122,6 +225,15 @@ export type {
   CreateConversationBody,
   CreateConversationMessageBody,
 } from "./schema/conversation";
+export type {
+  CancelConversationPendingMessagesBody,
+  CancelConversationPendingMessagesResponse,
+  SteerConversationPendingMessagesBody,
+  SteerConversationPendingMessagesResponse,
+  ConversationPendingMessage,
+  ConversationPendingMessageDelivery,
+  ConversationPendingMessagesReport,
+} from "./schema/conversation-pending-messages";
 export {
   conversationChildAgentSchema,
   conversationChildAgentsReportSchema,
@@ -179,6 +291,21 @@ export {
   disconnectConnectionResponseSchema,
   startConnectionResponseSchema,
 } from "./schema/connection";
+export {
+  DEFAULT_NOTIFICATION_SCHEDULE,
+  isWithinNotificationSchedule,
+  notificationScheduleSchema,
+  notificationSettingsSchema,
+  testNotificationResponseSchema,
+} from "./schema/notification";
+export type {
+  NotificationSchedule,
+  NotificationSettings,
+} from "./schema/notification";
+export {
+  cacheWarmingBreakerListSchema,
+  closeCacheWarmingBreakerResponseSchema,
+} from "./schema/cache-warming";
 export {
   disconnectServiceAccountResponseSchema,
   serviceAccountListSchema,
@@ -243,7 +370,6 @@ export type {
   AutomationEdit,
   AutomationUpdate,
   AutomationExecution,
-  AutomationExecutionDay,
   AutomationExecutionList,
   AutomationExecutionStatusDay,
   AutomationList,
@@ -255,6 +381,11 @@ export type {
   AutomationVersionList,
   ListedAutomationVersion,
 } from "./schema/automation";
+export { replyTimeSegmentsReportSchema } from "./schema/reply-times";
+export type {
+  ReplyTimeHistogram,
+  ReplyTimeSegmentsReport,
+} from "./schema/reply-times";
 export { statSchema, statsReportSchema } from "./schema/stats";
 export type { StatReport, StatsReport } from "./schema/stats";
 export {
@@ -266,6 +397,7 @@ export {
   pluginSchema,
   pluginsSchema,
   runtimeInfoReportSchema,
+  skillDetailReportSchema,
   skillReportSchema,
   skillReportsSchema,
 } from "../reporting-schema";
@@ -278,6 +410,7 @@ export type {
   Plugin,
   Plugins,
   RuntimeInfoReport,
+  SkillDetailReport,
   SkillReport,
   SkillReports,
 } from "../reporting-schema";
@@ -290,5 +423,8 @@ export {
 } from "./schema/review-item";
 export type {
   ReviewItemActionBody,
+  ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "./schema/review-item";
+export { versionsSchema } from "./schema/versions";
+export type { Versions } from "./schema/versions";

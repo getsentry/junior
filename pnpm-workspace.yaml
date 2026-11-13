@@ -5,17 +5,17 @@ injectWorkspacePackages: true
 autoInstallPeers: false
 dedupePeerDependents: false
 catalog:
-  "@earendil-works/pi-agent-core": 0.84.1
+  "@earendil-works/pi-agent-core": 0.85.1
   "@earendil-works/pi-ai": 0.85.1
+  "@sentry/browser": 11.10.0
   "@sentry/nitro": 11.10.0
   "@sentry/node": 11.10.0
   "@sentry/server-utils": 11.10.0
   "@sentry/starlight-theme": ^0.9.1
   drizzle-kit: ^0.31.8
-  drizzle-orm: ^0.45.2
-  zod: ^4.5.4
+  drizzle-orm: ^0.45.4
+  zod: ^4.6.7
 overrides:
-  "@earendil-works/pi-agent-core>@earendil-works/pi-ai": 0.85.1
   "@astrojs/compiler-binding-wasm32-wasi>@napi-rs/wasm-runtime": 1.2.0
   "@bruits/satteri-wasm32-wasi>@napi-rs/wasm-runtime": 1.2.0
   ai: 7.0.153

@@ -2,14 +2,14 @@ import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
 import {
+  CONVERSATION_DETAIL_VERSION_HEADER,
   conversationChildAgentsReportSchema,
   conversationDetailReportSchema,
 } from "@/api/schema";
-import {
-  completeAgentInvocation,
-  createAgentInvocation,
-} from "@/chat/agent-invocations/store";
-import { closeDb, getDb } from "@/chat/db";
+import { createAgentInvocation } from "@/chat/agent-invocations/create";
+import { completeAgentInvocation } from "@/chat/agent-invocations/store";
+import { setConversationTitle } from "@/chat/conversations/sql/title";
+import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
 import {
   invocationInput,
@@ -19,10 +19,13 @@ import {
   slackInvocationInput,
   slackParentConversationId,
 } from "../../../fixtures/agent-invocations";
+import { spawnChildWithoutAgentInvocation } from "../../../fixtures/child-without-agent-invocation";
+import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
 
-async function requestDetail(conversationId: string) {
+async function requestDetail(conversationId: string, etag?: string) {
   return await createJuniorApi().request(
     `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+    { headers: etag ? { [CONVERSATION_DETAIL_VERSION_HEADER]: etag } : {} },
   );
 }
 
@@ -64,6 +67,29 @@ describe("conversation child agents API", () => {
       status: "blocked",
     });
 
+    // Only spawnAgent creates children today, and always as Tasks. Archived
+    // Threads and Tasks stay in the report.
+    const thread = await createAgentInvocation(
+      {
+        ...slackInvocationInput,
+        idempotencyKey: "child-agents-thread",
+        input: "Pair on the rollout with the team.",
+      },
+      500,
+    );
+    await getDb()
+      .update(juniorConversations)
+      .set({ kind: "thread", archivedAt: new Date(4_000) })
+      .where(
+        eq(juniorConversations.conversationId, thread.childConversationId),
+      );
+    await getDb()
+      .update(juniorConversations)
+      .set({ archivedAt: new Date(3_500) })
+      .where(
+        eq(juniorConversations.conversationId, blocked.childConversationId),
+      );
+
     await getDb()
       .update(juniorConversations)
       .set({
@@ -104,9 +130,11 @@ describe("conversation child agents API", () => {
     ).toEqual({
       agents: [
         {
+          archivedAt: new Date(3_500).toISOString(),
           conversationId: blocked.childConversationId,
           cumulativeDurationMs: 0,
           error: "GitHub access is missing.",
+          kind: "task",
           status: "blocked",
           task: "Read the private repo.",
           updatedAt: new Date(3_000).toISOString(),
@@ -121,6 +149,7 @@ describe("conversation child agents API", () => {
               outputTokens: 50,
             },
           },
+          archivedAt: null,
           conversationId: reviewer.childConversationId,
           cumulativeDurationMs: 50_000,
           cumulativeUsage: {
@@ -128,11 +157,21 @@ describe("conversation child agents API", () => {
             inputTokens: 1_200,
             outputTokens: 150,
           },
+          kind: "task",
           name: "reviewer",
           status: "pending",
           task: "Review the plan.",
           title: "Plan review",
           updatedAt: new Date(1_000).toISOString(),
+        },
+        {
+          conversationId: thread.childConversationId,
+          cumulativeDurationMs: 0,
+          kind: "thread",
+          status: "pending",
+          task: "Pair on the rollout with the team.",
+          archivedAt: new Date(4_000).toISOString(),
+          updatedAt: new Date(500).toISOString(),
         },
       ],
       conversationId: slackParentConversationId,
@@ -162,6 +201,8 @@ describe("conversation child agents API", () => {
     const helper = await createAgentInvocation(
       {
         ...slackInvocationInput,
+        agentType: "explore",
+        fork: true,
         idempotencyKey: "agent-tree-helper",
         input: "Check one claim.",
         parentConversationId: reviewer.childConversationId,
@@ -180,10 +221,70 @@ describe("conversation child agents API", () => {
     expect(
       conversationDetailReportSchema.parse(await response.json()).agentTree,
     ).toEqual([
-      { conversationId: slackParentConversationId, label: root.displayTitle },
-      { conversationId: reviewer.childConversationId, label: "Plan review" },
-      { conversationId: helper.childConversationId, label: "Claim check" },
+      {
+        conversationId: slackParentConversationId,
+        kind: "root",
+        label: root.displayTitle,
+      },
+      {
+        conversationId: reviewer.childConversationId,
+        kind: "task",
+        label: "Plan review",
+      },
+      {
+        agentType: "explore",
+        conversationId: helper.childConversationId,
+        fork: true,
+        kind: "task",
+        label: "Claim check",
+      },
     ]);
+
+    // An unchanged child answers 304. Renaming an ancestor changes the label
+    // that the agent tree shows, so it changes the ETag.
+    const etag = response.headers.get(CONVERSATION_DETAIL_VERSION_HEADER)!;
+    expect((await requestDetail(helper.childConversationId, etag)).status).toBe(
+      304,
+    );
+    await setConversationTitle(
+      getSqlExecutor(),
+      slackParentConversationId,
+      "Renamed plan",
+    );
+    const renamed = await requestDetail(helper.childConversationId, etag);
+    expect(renamed.status).toBe(200);
+    expect(
+      conversationDetailReportSchema.parse(await renamed.json()).agentTree?.[0],
+    ).toEqual({
+      conversationId: slackParentConversationId,
+      kind: "root",
+      label: "Renamed plan",
+    });
+  });
+
+  it("labels a child that no Agent invocation names from its agent config", async () => {
+    const { conversationStore } = await prepareSlackParentConversation();
+    const childId = await spawnChildWithoutAgentInvocation({
+      actor: slackInvocationInput.actor,
+      conversationStore,
+      idempotencyKey: "agent-tree-without-agent-invocation",
+      parentConversationId: slackParentConversationId,
+      queue: createConversationWorkQueueTestAdapter(),
+      agentConfig: { agentType: "explore", fork: true },
+      title: "Claim check",
+    });
+
+    const response = await requestDetail(childId);
+    expect(
+      conversationDetailReportSchema.parse(await response.json())
+        .agentTree?.[1],
+    ).toEqual({
+      agentType: "explore",
+      conversationId: childId,
+      fork: true,
+      kind: "task",
+      label: "Claim check",
+    });
   });
 
   it("redacts child agent content from viewers without private access", async () => {
@@ -192,6 +293,8 @@ describe("conversation child agents API", () => {
       {
         ...invocationInput,
         agentName: "private-reviewer",
+        agentType: "reviewer",
+        fork: true,
         idempotencyKey: "child-agents-private",
         title: "Private plan review",
       },
@@ -203,13 +306,19 @@ describe("conversation child agents API", () => {
 
     expect(
       conversationDetailReportSchema.parse(await detail.json()).agentTree?.[1],
-    ).toEqual({ conversationId: child.childConversationId, label: "Subagent" });
+    ).toEqual({
+      conversationId: child.childConversationId,
+      kind: "task",
+      label: "Task",
+    });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       agents: [
         {
+          archivedAt: null,
           conversationId: child.childConversationId,
           cumulativeDurationMs: 0,
+          kind: "task",
           redacted: true,
           status: "pending",
           updatedAt: new Date(1_000).toISOString(),

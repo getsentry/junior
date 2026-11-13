@@ -1,8 +1,8 @@
 import { Hono } from "hono";
-import { readAvatarImage } from "@/chat/identities/avatar";
-import { getDb } from "@/chat/db";
-import { getStateAdapter } from "@/chat/state/adapter";
+import { AVATAR_WIDTH } from "@/chat/identities/avatar";
+import { readImage } from "@/chat/images/read";
 import { jsonResponse, throwApiError } from "../http";
+import { imageResponse } from "../images/response";
 import type { JuniorApiEnv } from "../route";
 import {
   actorDirectoryReportSchema,
@@ -19,35 +19,27 @@ import { readPeopleCode } from "./code";
 import { readPeopleList } from "./list";
 import { readPeoplePluginReports } from "./plugin-reports";
 import { readPeopleProfile } from "./profile";
-import { createPersonalSpendReader } from "./spend";
+import { readPersonalSpendFromSql } from "./spend.query";
 
 /** Create the HTTP routes owned by the People API. */
 export function createPeopleRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
-  const readPersonalSpend = createPersonalSpendReader();
 
-  // Serve profile photos from Junior, so browsers never load them from
-  // Slack or Google. The browser keeps each photo for a day.
+  // Profile photos keep this stable path. The shared image code fetches and
+  // scales them, so browsers never load them from Slack or Google.
   app.get(
     "/avatars/:identityId",
     requireViewer,
     validateRequest("param", avatarParamsSchema, "Invalid route parameters."),
     async (context) => {
       const { identityId } = context.req.valid("param");
-      const image = await readAvatarImage(
-        getDb(),
-        getStateAdapter(),
-        identityId,
+      const served = await readImage(
+        context.get("viewer"),
+        { ref: identityId, source: "avatar" },
+        AVATAR_WIDTH,
       );
-      if (!image) throwApiError(404, "Avatar not found.");
-      return new Response(Buffer.from(image.data, "base64"), {
-        headers: {
-          "cache-control": "private, max-age=86400",
-          "content-security-policy": "default-src 'none'; sandbox",
-          "content-type": image.contentType,
-          "x-content-type-options": "nosniff",
-        },
-      });
+      if (!served) throwApiError(404, "Avatar not found.");
+      return imageResponse(served, context.req.query("v") !== undefined);
     },
   );
 
@@ -55,7 +47,7 @@ export function createPeopleRoutes(): Hono<JuniorApiEnv> {
     const viewer = context.get("viewer");
     return jsonResponse(
       personalSpendReportSchema,
-      await readPersonalSpend(viewer.email),
+      await readPersonalSpendFromSql(viewer.email),
     );
   });
 

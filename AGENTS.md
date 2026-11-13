@@ -1,8 +1,6 @@
 # Agent Instructions
 
-Before you change code in a directory, read each `AGENTS.md` on the path from
-the repo root. Read the reference files at the end when your work touches
-their area.
+Read the reference files at the end when your work touches their area.
 
 ## Rules
 
@@ -20,10 +18,14 @@ their area.
 - Core owns the runtime and provider-neutral plugin contracts. Plugins own
   provider routes, API fields, permissions, errors, and formatting.
 - No mutable runtime globals. No test-only singleton mutation APIs.
+- Query tables with the Drizzle query builder. Use `sql` only for
+  expressions inside a builder query, or for statements without a table.
 - Group files by feature. No feature-directory barrels.
 - Exported functions get a brief JSDoc that states intent.
 - Docs use ASD-STE100 English: common words, active voice, short sentences.
-- Change an `AGENTS.md` or `README.md` only when intent, an invariant, or a
+- This is the only `AGENTS.md`. Do not add one in a directory. Put intent in
+  a code comment next to the code that it governs.
+- Change this file or a `README.md` only when intent, an invariant, or a
   boundary changes. Delete completed plans. Plans in `openspec/changes/`
   cannot override policy.
 
@@ -47,7 +49,7 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`,
 | One test file          | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`              |
 | Eval harness test file | `pnpm --filter @sentry/junior-evals test path/to/file.test.ts`                   |
 | One eval file or case  | `pnpm --filter @sentry/junior-evals evals:<suite> path/to/x.eval.ts [-t "case"]` |
-| Eval suites            | `behavioral`, `integration`, `guardian`, `router`, `classifiers`                 |
+| Eval suites            | `behavioral`, `integration`, `guardian`, `classifiers`                           |
 | Package schema         | `pnpm --filter <package> db:generate`                                            |
 | Dashboard e2e          | `pnpm test:e2e:dashboard`                                                        |
 | Release alignment      | `pnpm release:check`                                                             |
@@ -61,18 +63,22 @@ Split long files at a feature boundary. Do not compress formatting to pass.
 - `TERMINOLOGY.md`: canonical words for code and docs.
 - `TELEMETRY.md`: span, metric, and attribute names.
 - `policies/correctness-complexity.md`: how much design a fix needs.
-- `policies/interface-design.md`: function and module shape.
+- `policies/interface-design.md`: function and module shape, lifecycle state.
 - `policies/error-handling.md`: where failures are caught or retried.
 - `policies/runtime-boundary-schemas.md`: validating data at runtime edges.
 - `policies/provider-boundaries.md`: what belongs in core vs. a plugin.
 - `policies/context-bound-systems.md`: passing authority, destination, and
   scope.
 - `policies/security.md`: credentials, sandbox, and model access.
+- `policies/conversation-access.md`: when one Conversation may read, find,
+  or act on another.
 - `policies/data-redaction.md`: conversation privacy and redaction.
 - `policies/serverless-background-work.md`: work that must survive request
   edges.
 - `policies/observability.md`: telemetry for diagnosis.
 - `policies/system-prompt.md`: system prompt blocks.
+- `policies/prompt-markers.md`: tags, untrusted text, IDs, and escaping in
+  model-read text.
 - `policies/agent-steering.md`: steering agent behavior.
 - `policies/agentic-semantics.md`: choices that depend on meaning or intent.
 - `policies/tool-design.md`: model-facing tool contracts.
@@ -82,9 +88,3 @@ Split long files at a feature boundary. Do not compress formatting to pass.
 - `policies/frontend-components.md`: dashboard UI ownership and styling.
 - `policies/code-comments.md`: when and how to comment.
 - `policies/documentation.md`: internal docs.
-- `packages/junior/src/chat/AGENTS.md`: chat runtime.
-- `packages/junior/tests/AGENTS.md`: test layout and fixtures.
-- `packages/junior/migrations/AGENTS.md`: database migrations.
-- `packages/junior-evals/AGENTS.md`: evals and recordings.
-- `packages/junior-dashboard/AGENTS.md`: dashboard.
-- `packages/junior-plugin-api/AGENTS.md`: plugin contracts.

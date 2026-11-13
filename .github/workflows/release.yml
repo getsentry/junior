@@ -4,11 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Version bump type (ignored when version is set)
+        description: Version bump type (ignored when version is set). auto picks it from the commits; pre cuts a prerelease of that version.
         required: true
         type: choice
-        default: minor
+        default: auto
         options:
+          - auto
+          - pre
           - patch
           - minor
           - major
@@ -27,6 +29,8 @@ permissions:
   pull-requests: write
   checks: read
   statuses: read
+  # Craft writes AI changelog summaries with the workflow token.
+  copilot-requests: write
 
 jobs:
   release:
@@ -35,55 +39,36 @@ jobs:
     steps:
       - name: Get auth token
         id: token
-        uses: actions/create-github-app-token@5d869da34e18e7287c1daad50e0b8ea0f506ce69 # v1.11.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ vars.SENTRY_RELEASE_BOT_CLIENT_ID }}
+          client-id: ${{ vars.SENTRY_RELEASE_BOT_CLIENT_ID }}
           private-key: ${{ secrets.SENTRY_RELEASE_BOT_PRIVATE_KEY }}
           permission-checks: read
+          # Craft reads release-blocker issues and opens the publish request in getsentry/publish.
+          permission-issues: write
           permission-statuses: read
           permission-contents: write
           permission-pull-requests: write
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           token: ${{ steps.token.outputs.token }}
+          # Craft pushes the release branch with git.
+          persist-credentials: true
           fetch-depth: 0
           fetch-tags: true
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24.22.1"
 
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda
-        name: Install pnpm
-        with:
-          run_install: false
-
-      - name: Calculate version
-        id: version
-        env:
-          BUMP: ${{ inputs.bump }}
-          VERSION: ${{ inputs.version }}
-        run: |
-          CURRENT=$(node -p "require('./packages/junior/package.json').version")
-          if [ -n "$VERSION" ]; then
-            NEW=$(npx semver "$VERSION")
-            if [ "$NEW" != "$VERSION" ]; then
-              echo "Version override must be an exact semantic version" >&2
-              exit 1
-            fi
-          else
-            NEW=$(npx semver -i "$BUMP" "$CURRENT")
-          fi
-          echo "current=$CURRENT" >> $GITHUB_OUTPUT
-          echo "new=$NEW" >> $GITHUB_OUTPUT
-
       - name: Prepare release
-        uses: getsentry/action-prepare-release@c8e1c2009ab08259029170132c384f03c1064c0e # v1
+        uses: getsentry/craft@9567926a606072678ef367b02445c4f99f374795 # 3.11.2
         env:
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         with:
-          version: ${{ steps.version.outputs.new }}
+          version: ${{ inputs.version || inputs.bump }}
           force: ${{ inputs.force }}
+          llm_api_key: ${{ github.token }}

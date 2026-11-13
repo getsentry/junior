@@ -10,7 +10,8 @@ import {
   hasRunnableConversationWork,
   isInvalidConversationRecordError,
   listActiveConversationIds,
-  removeActiveConversation,
+  pruneActiveConversation,
+  type BeforeWorkStops,
   type ConversationWorkState,
 } from "./store";
 
@@ -31,6 +32,8 @@ function heartbeatIdempotencyKey(
 
 /** Requeue expired leases and stranded mailbox work without running the agent. */
 export async function recoverConversationWork(args: {
+  /** Ends what a conversation owns when its last attempt loses its worker. */
+  beforeWorkStops?: BeforeWorkStops;
   limit?: number;
   nowMs: number;
   queue: ConversationWorkQueue;
@@ -65,7 +68,7 @@ export async function recoverConversationWork(args: {
         // bounded oldest-first scan so it cannot starve recovery for every
         // other conversation.
         if (isInvalidConversationRecordError(error)) {
-          await removeActiveConversation({
+          await pruneActiveConversation({
             conversationId,
             state: args.state,
           });
@@ -73,16 +76,8 @@ export async function recoverConversationWork(args: {
         return;
       }
       try {
-        if (!work) {
-          await removeActiveConversation({
-            conversationId,
-            state: args.state,
-          });
-          return;
-        }
-
-        if (work.execution.status === "idle") {
-          await removeActiveConversation({
+        if (!work || !hasRunnableConversationWork(work)) {
+          await pruneActiveConversation({
             conversationId,
             state: args.state,
           });
@@ -94,6 +89,7 @@ export async function recoverConversationWork(args: {
           work.execution.lease.expiresAtMs <= args.nowMs
         ) {
           const recovery = await clearExpiredConversationLease({
+            beforeWorkStops: args.beforeWorkStops,
             conversationId,
             nowMs: args.nowMs,
             state: args.state,
@@ -135,7 +131,7 @@ export async function recoverConversationWork(args: {
           return;
         }
 
-        if (work.execution.lease || !hasRunnableConversationWork(work)) {
+        if (work.execution.lease) {
           return;
         }
 

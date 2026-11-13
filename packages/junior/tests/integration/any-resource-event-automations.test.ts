@@ -83,7 +83,7 @@ describe("event automations with no identifier", () => {
         ) as Promise<{
           automation: {
             id: string;
-            trigger: { identifier: unknown; resourceType: unknown };
+            trigger: { identifier: unknown; resource_type: unknown };
           };
         }>;
       const trigger = {
@@ -97,12 +97,17 @@ describe("event automations with no identifier", () => {
       await expect(create(trigger, "no-repo")).rejects.toThrow(
         'This GitHub trigger cannot be saved. This trigger needs a "repo" filter (match.repo), because "pull_request.opened" cannot run for every resource.',
       );
+      // Filters select one resource. The tools take no identifier.
       await expect(
         create(
-          { ...trigger, identifier: "getsentry/junior#1", match: {} },
-          "half-resource",
+          {
+            ...trigger,
+            identifier: "getsentry/junior#1",
+            resource_type: "pull_request",
+          },
+          "identifier-input",
         ),
-      ).rejects.toThrow("Set both resourceType and identifier");
+      ).rejects.toThrow('Unrecognized keys: "identifier", "resource_type"');
       // Event data has a lowercase repo, so the saved filter does too.
       const created = await create(
         { ...trigger, match: { repo: "getsentry/Junior" } },
@@ -110,7 +115,7 @@ describe("event automations with no identifier", () => {
       );
       expect(created.automation.trigger).toMatchObject({
         identifier: null,
-        resourceType: null,
+        resource_type: null,
         match: { repo: "getsentry/junior" },
       });
       const [row] = await fixture.sql
@@ -202,53 +207,94 @@ describe("event automations with no identifier", () => {
       // gets it too.
       expect(dispatch?.input).toContain("Check the description.");
       expect(dispatch?.input).toContain(
-        "About: New pull requests in getsentry/junior",
+        '<task about="New pull requests in getsentry/junior"',
       );
 
-      // An update that leaves out identifier and resourceType keeps them,
-      // so it cannot make a trigger broad by omission.
+      // An update changes only the filters that it names, so it cannot
+      // make a trigger broad by leaving one out.
       const one = await create(
         {
           ...trigger,
-          identifier: "getsentry/junior#7",
-          resourceType: "pull_request",
           label: "getsentry/junior#7",
+          match: { repo: "getsentry/junior", pull_request: 7 },
         },
         "one-pull-request",
       );
-      const update = (next: Record<string, unknown>, toolCallId: string) =>
+      const update = (
+        automationId: string,
+        next: Record<string, unknown>,
+        toolCallId: string,
+      ) =>
         execute(
           createUpdateAutomationTool(automationToolContext(context()), catalog),
-          {
-            automationId: one.automation.id,
-            trigger: { type: "event", ...next },
-          },
+          { automation_id: automationId, trigger: { type: "event", ...next } },
           toolCallId,
         ) as Promise<{
           automation: { trigger: Record<string, unknown> };
         }>;
       const edited = { ...trigger, label: "Opened getsentry/junior#7" };
-      await expect(update(edited, "keep-identifier")).resolves.toMatchObject({
+      await expect(
+        update(one.automation.id, edited, "keep-filters"),
+      ).resolves.toMatchObject({
+        automation: {
+          trigger: { match: { repo: "getsentry/junior", pull_request: 7 } },
+        },
+      });
+      // Null removes a filter. The pull request events still need a repo.
+      await expect(
+        update(
+          one.automation.id,
+          { ...edited, match: { repo: null } },
+          "drop-repo",
+        ),
+      ).rejects.toThrow('This trigger needs a "repo" filter (match.repo)');
+      const repoWide = await update(
+        one.automation.id,
+        { ...edited, match: { pull_request: null } },
+        "drop-pull-request",
+      );
+      expect(repoWide.automation.trigger.match).toEqual({
+        repo: "getsentry/junior",
+      });
+
+      // A saved trigger with an identifier keeps running and keeps its
+      // identifier when the tools edit it.
+      await fixture.sql
+        .db()
+        .insert(juniorAutomations)
+        .values({
+          ...row!,
+          id: "evt_saved_identifier",
+          identifier: "getsentry/junior#9",
+          record: {
+            ...record,
+            trigger: {
+              ...record.trigger,
+              identifier: "getsentry/junior#9",
+              resourceType: "pull_request",
+              match: undefined,
+            },
+          },
+        });
+      await expect(
+        update("evt_saved_identifier", edited, "edit-saved-identifier"),
+      ).resolves.toMatchObject({
         automation: {
           trigger: {
-            identifier: "getsentry/junior#7",
-            resourceType: "pull_request",
+            identifier: "getsentry/junior#9",
+            resource_type: "pull_request",
           },
         },
       });
-      // Only explicit nulls drop them, and then the trigger needs a repo.
-      const broad = { ...edited, identifier: null, resourceType: null };
-      await expect(update(broad, "drop-identifier")).rejects.toThrow(
-        'This trigger needs a "repo" filter (match.repo)',
-      );
-      await expect(
-        update(
-          { ...broad, match: { repo: "getsentry/junior" } },
-          "drop-identifier-with-repo",
+      expect(
+        await ingestAll(
+          opened("github:opened-9", "getsentry/junior").map((event) => ({
+            ...event,
+            identifier: event.identifier.replace("#7", "#9"),
+            data: { ...event.data, pullRequest: 9 },
+          })),
         ),
-      ).resolves.toMatchObject({
-        automation: { trigger: { identifier: null, resourceType: null } },
-      });
+      ).toBe(3);
     } finally {
       vi.unstubAllEnvs();
     }

@@ -45,12 +45,12 @@ async function reportFile(root, name = "results.json") {
       startTime: 1700000000000,
       testResults: [
         {
-          name: "/home/runner/work/junior/junior/packages/junior-evals/evals/router/routing.eval.ts",
+          name: "/home/runner/work/junior/junior/packages/junior-evals/evals/guardian/review.eval.ts",
           status: "passed",
           message: "",
           assertionResults: [
             {
-              fullName: "Routing chooses standard",
+              fullName: "Review allows the action",
               status: "passed",
               failureMessages: [],
             },
@@ -97,16 +97,16 @@ test("uploads shards with scores, usage, failures, and PR metadata", async (t) =
     },
   };
   artifact.testResults[0].assertionResults.push({
-    fullName: "Routing fails an assertion",
+    fullName: "Review fails an assertion",
     status: "failed",
-    failureMessages: ["expected standard, got handoff"],
+    failureMessages: ["expected allow, got deny"],
   });
   await writeFile(report, JSON.stringify(artifact));
   const second = await reportFile(root, "second.json");
   const shard = JSON.parse(await readFile(second, "utf8"));
   // The integration suite also runs the evals of the agent test fixture.
   shard.testResults[0].name = shard.testResults[0].name.replace(
-    "evals/router/routing.eval.ts",
+    "evals/guardian/review.eval.ts",
     "src/fixture/history.eval.ts",
   );
   await writeFile(second, JSON.stringify(shard));
@@ -163,9 +163,9 @@ test("uploads shards with scores, usage, failures, and PR metadata", async (t) =
   assert.deepEqual(
     created.scenarios.map(({ name }) => name),
     [
-      "evals/router/routing.eval.ts > Routing chooses standard",
-      "evals/router/routing.eval.ts > Routing fails an assertion",
-      "src/fixture/history.eval.ts > Routing chooses standard",
+      "evals/guardian/review.eval.ts > Review allows the action",
+      "evals/guardian/review.eval.ts > Review fails an assertion",
+      "src/fixture/history.eval.ts > Review allows the action",
     ],
   );
   const uploaded = requests.slice(1).flatMap(({ url, body }) => {
@@ -200,7 +200,7 @@ test("uploads shards with scores, usage, failures, and PR metadata", async (t) =
     cache_write_tokens: 1,
   });
   assert.equal(uploaded[0].duration_seconds, 1.5);
-  assert.equal(uploaded[1].error, "expected standard, got handoff");
+  assert.equal(uploaded[1].error, "expected allow, got deny");
 });
 
 test("reports file setup failures without turning skipped tests into passes", async (t) => {
@@ -211,7 +211,7 @@ test("reports file setup failures without turning skipped tests into passes", as
   report.testResults[0].message = "beforeAll failed";
   report.testResults[0].assertionResults[0].status = "skipped";
   report.testResults.push({
-    name: "/home/runner/work/junior/junior/packages/junior-evals/evals/router/interrupted.eval.ts",
+    name: "/home/runner/work/junior/junior/packages/junior-evals/evals/guardian/interrupted.eval.ts",
     status: "passed",
     message: "",
     assertionResults: [
@@ -220,16 +220,16 @@ test("reports file setup failures without turning skipped tests into passes", as
   });
   await writeFile(file, JSON.stringify(report));
   const requests = captureApi(t);
-  await reportEvals("router", [file], { SENTRY_EVALS_API_KEY: "evk_test" });
+  await reportEvals("guardian", [file], { SENTRY_EVALS_API_KEY: "evk_test" });
   assert.equal(requests[2].body.scenarios[0].status, "error");
   assert.match(requests[2].body.scenarios[0].error, /did not finish/);
   assert.deepEqual(requests[1].body.scenarios, [
     {
-      name: "evals/router/routing.eval.ts > [file error]",
+      name: "evals/guardian/review.eval.ts > [file error]",
       status: "error",
       input: null,
       error: "beforeAll failed",
-      attributes: { file: "evals/router/routing.eval.ts" },
+      attributes: { file: "evals/guardian/review.eval.ts" },
     },
   ]);
 });
@@ -238,9 +238,9 @@ test("does not contact the API without a key or with duplicate scenarios", async
   const root = await workspace(t);
   const file = await reportFile(root);
   const requests = captureApi(t);
-  await reportEvals("router", ["missing.json"], {});
+  await reportEvals("guardian", ["missing.json"], {});
   await assert.rejects(
-    reportEvals("router", [file, file], { SENTRY_EVALS_API_KEY: "evk_test" }),
+    reportEvals("guardian", [file, file], { SENTRY_EVALS_API_KEY: "evk_test" }),
     /Duplicate scenario names/,
   );
   assert.equal(requests.length, 0);
@@ -255,7 +255,7 @@ test("surfaces an upload failure without retrying or printing server content", a
       : undefined,
   );
   await assert.rejects(
-    reportEvals("router", [file], { SENTRY_EVALS_API_KEY: "evk_test" }),
+    reportEvals("guardian", [file], { SENTRY_EVALS_API_KEY: "evk_test" }),
     {
       message: "Sentry Evals POST /api/runs/run-1/scenarios failed (HTTP 503)",
     },
@@ -272,7 +272,7 @@ test("rejects a silently ignored scenario", async (t) => {
       : undefined,
   );
   await assert.rejects(
-    reportEvals("router", [file], { SENTRY_EVALS_API_KEY: "evk_test" }),
+    reportEvals("guardian", [file], { SENTRY_EVALS_API_KEY: "evk_test" }),
     /did not accept scenario/,
   );
 });

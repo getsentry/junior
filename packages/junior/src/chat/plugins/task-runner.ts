@@ -18,9 +18,11 @@ import type {
 import { pluginRunContextSchema } from "@sentry/junior-plugin-api";
 import { getConversationStore, getDb } from "@/chat/db";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import { withSpan } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
+import { createPluginModelCostRecorder } from "@/chat/plugins/model-cost";
 import { createPluginState } from "@/chat/plugins/state";
 import type { PiMessage } from "@/chat/pi/messages";
 
@@ -97,8 +99,7 @@ function messageText(message: PiMessage): string {
 }
 
 function toolResultText(message: PiMessage): string {
-  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-  const record = message as Record<string, unknown>;
+  const record = message as PiMessage & Record<string, unknown>;
   const parts = [
     messageText(message),
     record.output,
@@ -415,9 +416,16 @@ function taskPluginContext(
 ): PluginTaskContext {
   const pluginName = plugin.manifest.name;
   const sessionParams = pluginTaskParamsSchema.parse(message.params);
+  const onCost = createPluginModelCostRecorder({
+    conversationId: sessionParams.conversationId,
+    pluginName,
+    source: "task",
+    turnId: sessionParams.sessionId,
+  });
   return {
     db: getDb(),
     embedder: createPluginEmbedder(pluginName, {
+      onCost,
       signal: options.signal,
     }),
     events: createPluginConversationEvents({
@@ -429,6 +437,7 @@ function taskPluginContext(
     id: pluginTaskId(message),
     log: createPluginLogger(pluginName),
     model: createPluginModel(pluginName, plugin.model, {
+      onCost,
       signal: options.signal,
     }),
     name: message.name,
@@ -489,20 +498,35 @@ export async function scheduleSessionCompletedPluginTasks(
   );
 }
 
-/** Execute one parsed plugin task request. */
+/**
+ * Execute one parsed plugin task request in a `plugin.task` span. The span
+ * includes the lock wait, because both delay the work that runs the task.
+ */
 export async function processPluginTask(
   message: PluginTaskQueueMessage,
   options: ProcessPluginTaskOptions = {},
 ): Promise<void> {
-  await withPluginTaskLock(pluginTaskId(message), async () => {
-    const resolved = findPluginTask(message);
-    if (!resolved?.task) {
-      throw new Error(
-        `Plugin task "${message.plugin}.${message.name}" is not registered`,
-      );
-    }
-    await resolved.task.run(
-      taskPluginContext(resolved.plugin, message, options),
-    );
-  });
+  const params = pluginTaskParamsSchema.parse(message.params);
+  await withSpan(
+    `plugin.task ${message.plugin}.${message.name}`,
+    "plugin.task",
+    { conversationId: params.conversationId },
+    () =>
+      withPluginTaskLock(pluginTaskId(message), async () => {
+        const resolved = findPluginTask(message);
+        if (!resolved?.task) {
+          throw new Error(
+            `Plugin task "${message.plugin}.${message.name}" is not registered`,
+          );
+        }
+        await resolved.task.run(
+          taskPluginContext(resolved.plugin, message, options),
+        );
+      }),
+    {
+      "app.ai.turn.session_id": params.sessionId,
+      "app.plugin.name": message.plugin,
+      "app.plugin.task": message.name,
+    },
+  );
 }

@@ -1,10 +1,20 @@
 import { describe, expect } from "vitest";
-import { githubWebhook, slackMention } from "@junior-evals/fixture/inputs";
-import { insertWatch } from "@junior-evals/fixture/insert";
+import {
+  githubWebhook,
+  heartbeat,
+  slackMention,
+} from "@junior-evals/fixture/inputs";
+import {
+  insertGitHubDraftWatch,
+  insertLinkedGitHubIdentity,
+  insertScheduledAutomation,
+  insertWatch,
+  slackChannel,
+} from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
-import { test, type ToolCall } from "@junior-evals/fixture/test";
+import { test, type RunAgent, type ToolCall } from "@junior-evals/fixture/test";
 
 // The shared GitHub HTTP fixture serves this PR with one failed check.
 const pullRequest = "getsentry/junior#691";
@@ -20,6 +30,35 @@ const repositoryRef = {
   name: repository.name,
   url: "https://api.github.com/repos/getsentry/junior",
 };
+
+/**
+ * Start a child Thread that maintains the PR, and add the Watch that Junior
+ * adds after it opens a pull request. The Thread then gets the PR events.
+ */
+async function startPullRequestThread(run: RunAgent, events: string[]) {
+  const conversation = await run(
+    slackMention(
+      `Use spawnAgent to start one Thread (kind "thread") named "pr-thread" with the task "Maintain ${pullRequest}. Reply READY now. A watch on the PR sends you its events later."`,
+    ),
+  );
+  const [spawned] = completedToolCalls("spawnAgent", conversation).map(
+    (call) => toolOutput(call) as { conversation_id?: string },
+  );
+  expect(
+    spawned?.conversation_id,
+    "No child Thread: this run does not test its PR events",
+  ).toEqual(expect.any(String));
+  await insertWatch({
+    conversation: { conversationId: spawned!.conversation_id! },
+    events,
+    identifier: pullRequest,
+    intent:
+      "Maintain pull requests Junior creates. For actionable review feedback or failed checks, inspect the evidence, make scoped fixes, verify them, and push. When a reviewer submits a review, notify the person who asked for the pull request by @-mentioning their Slack user ID, with the reviewer, the review outcome, and the pull request link. Otherwise stay silent.",
+    label: `GitHub PR ${pullRequest}`,
+    resourceType: "pull_request",
+  });
+  return await conversation.child(spawned!.conversation_id!);
+}
 
 function checkSuiteWebhook(conclusion: "failure" | "success") {
   return githubWebhook("check_suite", {
@@ -40,6 +79,63 @@ function checkSuiteWebhook(conclusion: "failure" | "success") {
     },
     repository,
   });
+}
+
+// The shared GitHub HTTP fixture serves these drafts: #692 with every
+// required check passing, #693 with an open decision in its body, #694
+// with another required check failing, and #695 with no required check
+// reported yet.
+const draftHeadShas = {
+  692: "6920000000000000000000000000000000000692",
+  693: "6930000000000000000000000000000000000693",
+  694: "6940000000000000000000000000000000000694",
+  695: "6950000000000000000000000000000000000695",
+};
+type DraftNumber = keyof typeof draftHeadShas;
+
+/** A passing check suite on one of the drafts. */
+function draftChecksPassedWebhook(number: DraftNumber) {
+  const sha = draftHeadShas[number];
+  const ref = `feat/cache-warmup-${number}`;
+  return githubWebhook("check_suite", {
+    action: "completed",
+    check_suite: {
+      app: { name: "GitHub Actions" },
+      conclusion: "success",
+      head_branch: ref,
+      head_sha: sha,
+      id: number,
+      pull_requests: [
+        {
+          base: { ref: "main", repo: repositoryRef },
+          head: { ref, repo: repositoryRef, sha },
+          number,
+        },
+      ],
+    },
+    repository,
+  });
+}
+
+/** Add the Watch that Junior adds after it opens a draft to a thread. */
+async function startDraftThread(run: RunAgent, number: DraftNumber) {
+  const draft = `getsentry/junior#${number}`;
+  const conversation = await run(slackMention(`What does ${draft} change?`));
+  await insertGitHubDraftWatch({ conversation, pullRequest: draft });
+  return conversation;
+}
+
+/** Completed calls that mark a pull request ready, direct or deferred. */
+function markReadyCalls(result: { toolCalls: ToolCall[] }) {
+  return [
+    ...completedToolCalls("github_updatePullRequest", result).map(
+      (call) => call.input,
+    ),
+    ...completedToolCalls("executeTool", result)
+      .map((call) => call.input as { arguments?: unknown; tool_name?: string })
+      .filter((input) => input.tool_name === "github_updatePullRequest")
+      .map((input) => input.arguments),
+  ].filter((input) => (input as { draft?: unknown })?.draft === false);
 }
 
 function mergedWebhook() {
@@ -103,7 +199,7 @@ describe("Watches", () => {
         ]),
         identifier: `deployment-source:getsentry/junior-prod:production:${commitSha}`,
         namespace: "github",
-        resourceType: "deployment_source",
+        resource_type: "deployment_source",
       }),
     );
     expect(conversation.toolCalls.map((call) => call.name)).not.toContain(
@@ -145,7 +241,7 @@ describe("Watches", () => {
         ]),
         identifier: pullRequest,
         namespace: "github",
-        resourceType: "pull_request",
+        resource_type: "pull_request",
       }),
     );
     expect(watches.map(toolOutput)).toContainEqual(
@@ -222,7 +318,7 @@ describe("Watches", () => {
     expect(delivery.replies).toHaveLength(1);
   });
 
-  test("when a watch asks for a fix and the PR checks fail, commit and push the fix without a person", async ({
+  test("when a watch asks for a fix and the PR checks fail, push the fix and reply quietly", async ({
     run,
   }) => {
     // The fixture skill has a local checkout of the pull request branch.
@@ -237,19 +333,11 @@ describe("Watches", () => {
     ).toContain("pull_request.checks.failed");
 
     const delivery = await conversation.continue(checkSuiteWebhook("failure"));
-    await expect(delivery).toSatisfyJudge(
-      RubricJudge,
-      rubric({
-        pass: [
-          "The assistant handles the failed checks without asking a human to authorize GitHub.",
-          "The assistant reports that the fix is committed and pushed to the existing pull request branch.",
-        ],
-        fail: [
-          "Do not ask for OAuth, a personal access token, approval, or another human action before fixing the pull request.",
-          "Do not stop after describing a plan or editing the file without committing and pushing it.",
-        ],
-      }),
-    );
+    // A routine fix that worked needs nobody, so it posts nothing to Slack.
+    // The quiet reply stays in the Conversation.
+    expect(delivery.replies).toEqual([]);
+    expect(delivery.quietReplies).toHaveLength(1);
+    expect(delivery.quietReplies[0]?.text).toMatch(/push/i);
 
     // `verify.sh` of the fixture skill prints this line when the remote
     // branch has the fix.
@@ -260,6 +348,62 @@ describe("Watches", () => {
         ),
       ),
     ).not.toHaveLength(0);
+  });
+
+  test("when the checks of a Junior draft pass, mark it ready and say so", async ({
+    run,
+  }) => {
+    const conversation = await startDraftThread(run, 692);
+
+    const delivery = await conversation.continue(draftChecksPassedWebhook(692));
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: ["The reply says getsentry/junior#692 is now ready for review."],
+        fail: [
+          "Do not say that a required check failed.",
+          "Do not ask the person whether to mark it ready.",
+        ],
+      }),
+    );
+
+    expect(markReadyCalls(delivery)).toHaveLength(1);
+    expect(delivery.replies).toHaveLength(1);
+  });
+
+  test("when a Junior draft names an open decision, keep it a draft", async ({
+    run,
+  }) => {
+    const conversation = await startDraftThread(run, 693);
+
+    const delivery = await conversation.continue(draftChecksPassedWebhook(693));
+
+    expect(delivery.turns).not.toHaveLength(0);
+    expect(markReadyCalls(delivery)).toEqual([]);
+    expect(delivery.replies).toEqual([]);
+  });
+
+  test("when the required checks of a Junior draft have not reported, stay silent", async ({
+    run,
+  }) => {
+    const conversation = await startDraftThread(run, 695);
+
+    const delivery = await conversation.continue(draftChecksPassedWebhook(695));
+
+    expect(delivery.turns).not.toHaveLength(0);
+    expect(markReadyCalls(delivery)).toEqual([]);
+    expect(delivery.replies).toEqual([]);
+  });
+
+  test("when another required check of a Junior draft fails, keep it a draft", async ({
+    run,
+  }) => {
+    const conversation = await startDraftThread(run, 694);
+
+    const delivery = await conversation.continue(draftChecksPassedWebhook(694));
+
+    expect(delivery.turns).not.toHaveLength(0);
+    expect(markReadyCalls(delivery)).toEqual([]);
   });
 
   test("when a watched PR is merged, report completion without extra work", async ({
@@ -293,6 +437,230 @@ describe("Watches", () => {
     expect(delivery.replies).toHaveLength(1);
   });
 
+  test("when a watched PR merges after an Automation run, post with reply", async ({
+    run,
+  }) => {
+    await insertScheduledAutomation({
+      credentialMode: "system",
+      destination: slackChannel(),
+      due: true,
+      once: true,
+      task: `Post this reminder: ${pullRequest} is waiting for review.`,
+    });
+    const delivery = await run(heartbeat());
+    expect(delivery.replies).toHaveLength(1);
+    await insertWatch({
+      conversation: delivery,
+      events: ["pull_request.merged"],
+      identifier: pullRequest,
+      intent: "Tell this thread when the pull request merges.",
+      label: `GitHub PR ${pullRequest}`,
+      resourceType: "pull_request",
+    });
+
+    const merged = await delivery.continue(mergedWebhook());
+
+    // Final text on an Automation run is not delivered, so only reply posts.
+    expect(completedToolCalls("reply", merged)).toHaveLength(1);
+    expect(merged.replies).toHaveLength(1);
+  });
+
+  test("when the merge guidance says to tell the person who asked, post it", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(`What does ${pullRequest} change?`),
+    );
+    // The Watch that Junior adds after it opens a pull request. The GitHub
+    // plugin guidance for the merge says to mention the person who asked.
+    await insertWatch({
+      conversation,
+      events: ["pull_request.merged"],
+      identifier: pullRequest,
+      intent:
+        "Maintain pull requests Junior creates. For actionable review feedback or failed checks, inspect the evidence, make scoped fixes, verify them, and push. Report completed work or blockers in the originating Slack thread. Report when the pull request closes unmerged. When a reviewer submits a review, notify the person who asked for the pull request by @-mentioning their Slack user ID from the originating thread, with the reviewer, the review outcome, and the pull request link. Otherwise stay silent.",
+      label: `GitHub PR ${pullRequest}`,
+      resourceType: "pull_request",
+    });
+
+    const delivery = await conversation.continue(mergedWebhook());
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          `The reply says GitHub PR ${pullRequest} was merged.`,
+          "The reply mentions the person who asked in the thread.",
+        ],
+      }),
+    );
+
+    // The person must hear about the merge, so the reply is not quiet.
+    expect(delivery.quietReplies).toEqual([]);
+    expect(delivery.replies).toHaveLength(1);
+  });
+
+  test("when the person who asked reviews the PR, address them once as you", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(`Let me know here when ${pullRequest} lands.`),
+    );
+    // The Slack person who asked also reviews on GitHub as this login.
+    await insertLinkedGitHubIdentity({ login: "octo-requester" });
+    await insertWatch({
+      conversation,
+      events: ["pull_request.review.changes_requested"],
+      identifier: pullRequest,
+      intent:
+        "When a reviewer submits a review, notify the person who asked for the pull request by @-mentioning their Slack user ID from the originating thread, with the reviewer, the review outcome, and the pull request link. Do not change the pull request.",
+      label: `GitHub PR ${pullRequest}`,
+      resourceType: "pull_request",
+    });
+
+    const delivery = await conversation.continue(
+      githubWebhook("pull_request_review", {
+        action: "submitted",
+        pull_request: { number: 691 },
+        repository,
+        review: {
+          body: "Please add a regression test.",
+          state: "changes_requested",
+          user: { login: "octo-requester" },
+        },
+      }),
+    );
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          `The reply says changes were requested on GitHub PR ${pullRequest}.`,
+          "The reply treats the person it notifies as the reviewer, for example by saying that you requested changes.",
+        ],
+        fail: [
+          "Do not present the reviewer as a different person from the person the reply notifies.",
+          'Do not name "octo-requester" as the reviewer.',
+        ],
+      }),
+    );
+
+    expect(delivery.replies).toHaveLength(1);
+    expect(delivery.replies[0]?.text).not.toMatch(/octo-requester/i);
+  });
+
+  test("when a child agent reports a review by the person who asked, address them once as you", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        `Use spawnAgent to start one child agent named "pr-watcher" with the task "Reply with only the word READY. A watch on ${pullRequest} sends you its reviews later." When it reports a review, @-mention me here with the reviewer, the review outcome, and the pull request link.`,
+      ),
+    );
+    const [spawned] = completedToolCalls("spawnAgent", conversation).map(
+      (call) => toolOutput(call) as { conversation_id?: string },
+    );
+    expect(
+      spawned?.conversation_id,
+      "No child agent: this run does not test the relay",
+    ).toEqual(expect.any(String));
+    // The Slack person who asked also reviews on GitHub as this login. The
+    // child agent watches the PR, so the review reaches the thread only
+    // through its result.
+    await insertLinkedGitHubIdentity({ login: "octo-requester" });
+    await insertWatch({
+      conversation: { conversationId: spawned!.conversation_id! },
+      events: ["pull_request.review.changes_requested"],
+      identifier: pullRequest,
+      intent:
+        "Report each review to the parent agent with the reviewer, the review outcome, and the pull request link. Do not change the pull request.",
+      label: `GitHub PR ${pullRequest}`,
+      resourceType: "pull_request",
+    });
+
+    const delivery = await conversation.continue(
+      githubWebhook("pull_request_review", {
+        action: "submitted",
+        pull_request: { number: 691 },
+        repository,
+        review: {
+          body: "Please add a regression test.",
+          state: "changes_requested",
+          user: { login: "octo-requester" },
+        },
+      }),
+    );
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          `The reply says changes were requested on GitHub PR ${pullRequest}.`,
+          "The reply treats the person it mentions as the reviewer, for example by saying that you requested changes.",
+        ],
+        fail: [
+          "Do not present the reviewer as a different person from the person the reply mentions.",
+          'Do not name "octo-requester" as the reviewer.',
+        ],
+      }),
+    );
+
+    expect(delivery.replies).toHaveLength(1);
+    expect(delivery.replies[0]?.text).not.toMatch(/octo-requester/i);
+  });
+
+  test("when a bot comments on the PR of a child Thread, the Thread ends with noReply", async ({
+    run,
+  }) => {
+    const thread = await startPullRequestThread(run, [
+      "pull_request.comment.created",
+    ]);
+
+    // A preview deploy bot comments. Nothing needs a change or a person.
+    const delivery = await thread.continue(
+      githubWebhook("issue_comment", {
+        action: "created",
+        comment: {
+          body: "[vc]: #preview\n**The latest updates on your projects.**\n| Name | Status | Preview |\n| junior-docs | Ready | [Visit Preview](https://junior-docs-git-fix.vercel.app) |",
+          id: 9_001,
+          user: { login: "vercel[bot]", type: "Bot" },
+        },
+        issue: {
+          number: 691,
+          pull_request: {
+            url: "https://api.github.com/repos/getsentry/junior/pulls/691",
+          },
+        },
+        repository,
+        sender: { id: 35_613_825, login: "vercel[bot]", type: "Bot" },
+      }),
+    );
+
+    expect(completedToolCalls("noReply", delivery)).toHaveLength(1);
+    expect(completedToolCalls("reply", delivery)).toEqual([]);
+  });
+
+  test("when the PR of a child Thread is approved, the Thread replies to its parent", async ({
+    run,
+  }) => {
+    const thread = await startPullRequestThread(run, [
+      "pull_request.review.approved",
+    ]);
+
+    const delivery = await thread.continue(
+      githubWebhook("pull_request_review", {
+        action: "submitted",
+        pull_request: { number: 691 },
+        repository,
+        review: {
+          body: "Looks good.",
+          state: "approved",
+          user: { login: "octo-reviewer" },
+        },
+      }),
+    );
+
+    // A child's final response is not sent to the parent. Only `reply` is.
+    expect(completedToolCalls("reply", delivery)).toHaveLength(1);
+  });
+
   test("when directly mentioned during a watch delivery, answer the mention in its own turn", async ({
     run,
   }) => {
@@ -318,7 +686,7 @@ describe("Watches", () => {
       rubric({
         pass: [
           "A reply says Alice owns the deployment.",
-          "The user's direct instruction is the focus of the final reply.",
+          "The user's direct instruction is the focus of the final response.",
         ],
         fail: [
           "Do not ignore or contradict the user's instruction in order to continue handling the GitHub notification.",

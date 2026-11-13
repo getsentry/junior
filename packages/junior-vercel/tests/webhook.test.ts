@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import {
+  declaredEventKeys,
   eventMatches,
   type EventInput,
   type EventMatch,
@@ -10,6 +11,10 @@ import {
 } from "@sentry/junior-testing/event-filters";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { vercelPlugin } from "../src";
+import {
+  vercelDeploymentSubscribable,
+  type VercelDeploymentTarget,
+} from "../src/events/deployment";
 import { createVercelWebhookRoute } from "../src/webhooks/handler";
 import { normalizeVercelEvents } from "../src/webhooks/events";
 
@@ -89,7 +94,7 @@ describe("Vercel webhook events", () => {
     ).toEqual([]);
   });
 
-  it("turns each identifier into filters that select only its events", () => {
+  it("turns each identifier and each subscribable match into filters that select only its events", () => {
     // Another target, another commit, and another project.
     const deployments = [
       ["prj_junior", "production", COMMIT_SHA],
@@ -130,6 +135,37 @@ describe("Vercel webhook events", () => {
         events,
         matches: eventMatches,
         toMatch,
+      }),
+    ).toEqual([]);
+
+    // An event automation copies `match` from the tool result, and a Watch
+    // copies `identifier`. Both must select the same events. Core reads the
+    // snake_case match keys as declared keys.
+    const subscribables = new Map(
+      deployments
+        .flatMap(([projectId, target, commitSha]) => [
+          { projectId: projectId! },
+          { projectId: projectId!, target: target as VercelDeploymentTarget },
+          {
+            projectId: projectId!,
+            target: target as VercelDeploymentTarget,
+            commitSha: commitSha!.toUpperCase(),
+          },
+        ])
+        .map((input) =>
+          vercelDeploymentSubscribable({ ...input, canSubscribe: true }),
+        )
+        .map((resource) => [
+          resource!.identifier,
+          resource!.match && declaredEventKeys(resource!.match),
+        ]),
+    );
+    expect(
+      identifierMatchMismatches({
+        resourceTypes: vercelPlugin().events?.resourceTypes ?? [],
+        events,
+        matches: eventMatches,
+        toMatch: ({ identifier }) => subscribables.get(identifier),
       }),
     ).toEqual([]);
   });

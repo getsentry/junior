@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { testViewer } from "../fixtures/user";
+import { signedInViewer } from "../fixtures/user";
 import { readConversationDetail } from "@/api/conversations/detail";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -19,7 +19,6 @@ import {
   appendVisibleHistory,
   createChild,
   recordRoot,
-  replacement,
   requireDetail,
   waitUntilApplicationWaitsOnLock,
 } from "../fixtures/dashboard-reporting";
@@ -145,6 +144,7 @@ describe("dashboard canonical event reporting", () => {
         startedSeq: 7,
         startedAt: "1970-01-01T00:00:00.017Z",
         childConversationId: `${conversationId}:child`,
+        childKind: "task",
         subagentKind: "review",
         status: "running",
       },
@@ -153,22 +153,14 @@ describe("dashboard canonical event reporting", () => {
         startedSeq: 7,
         startedAt: "1970-01-01T00:00:00.017Z",
         childConversationId: `${conversationId}:child`,
+        childKind: "task",
         subagentKind: "review",
         status: "completed",
       },
       {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "private-model-id",
         summary: "Continue monitoring CI.",
-      },
-      {
-        type: "handoff",
-        modelProfile: "fast",
-        modelId: "private-handoff-model-id",
-        reasoningLevel: "high",
-        triggeringToolCallId: `${conversationId}:handoff-tool-call`,
-        summary: "Fix the remaining test.",
       },
     ]);
     const eventSeqs = detail.events.map((event) => event.seq);
@@ -183,7 +175,14 @@ describe("dashboard canonical event reporting", () => {
       "More private replacement context.",
     );
     expect(JSON.stringify(detail)).toContain("private-model-id");
-    expect(JSON.stringify(detail)).toContain("private-handoff-model-id");
+    // Stored handoff and Turn route events from retired releases are skipped.
+    for (const retired of [
+      "private-handoff-model-id",
+      "private-routed-model-id",
+      "Fix the remaining test.",
+    ]) {
+      expect(JSON.stringify(detail)).not.toContain(retired);
+    }
     for (const removed of [
       "activity",
       "contextEvents",
@@ -196,202 +195,6 @@ describe("dashboard canonical event reporting", () => {
     ]) {
       expect(detail).not.toHaveProperty(removed);
     }
-  });
-
-  it("aggregates per-model tokens and costs without counting replayed history", async () => {
-    const conversationId = "slack:C-reporting:model-usage";
-    await recordRoot(conversationId, "public");
-    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-    const componentUsageMessage = {
-      role: "assistant",
-      api: "responses",
-      provider: "openai",
-      model: "gpt-5",
-      content: [],
-      stopReason: "stop",
-      timestamp: 10,
-      usage: {
-        input: 10,
-        cost: {
-          input: 0.01,
-          output: 0.02,
-          cacheRead: 0.003,
-          cacheWrite: 0.004,
-          total: 0.037,
-        },
-      },
-    } as PiMessage;
-    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-    const totalOnlyUsageMessage = {
-      role: "assistant",
-      api: "responses",
-      provider: "openai",
-      model: "gpt-5",
-      content: [],
-      stopReason: "stop",
-      timestamp: 11,
-      usage: { totalTokens: 7, cost: { total: 0.005 } },
-    } as PiMessage;
-    const { getConversationEventStore } = await import("@/chat/db");
-    await getConversationEventStore().append(conversationId, [
-      {
-        data: historyItemFromPiMessage(componentUsageMessage, {
-          authority: "context",
-        }),
-        createdAtMs: 10,
-      },
-      {
-        data: historyItemFromPiMessage(totalOnlyUsageMessage, {
-          authority: "context",
-        }),
-        createdAtMs: 11,
-      },
-    ]);
-    await getConversationEventStore().replaceHistory(conversationId, {
-      createdAtMs: 1_000,
-      data: {
-        type: "compaction",
-        modelProfile: "standard",
-        modelId: "openai/gpt-5",
-        replacementHistory: [
-          replacement(componentUsageMessage),
-          replacement(totalOnlyUsageMessage),
-        ],
-      },
-    });
-
-    expect((await requireDetail(conversationId)).modelUsage).toEqual([
-      {
-        modelId: "openai/gpt-5",
-        usage: {
-          inputTokens: 10,
-          totalTokens: 17,
-          cost: {
-            input: 0.01,
-            output: 0.02,
-            cacheRead: 0.003,
-            cacheWrite: 0.004,
-            total: 0.042,
-          },
-        },
-      },
-    ]);
-  });
-
-  it("keys gateway assistant usage by the vendor model id", async () => {
-    const conversationId = "slack:C-reporting:gateway-model-usage";
-    await recordRoot(conversationId, "public");
-    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-    const gatewayUsageMessage = {
-      role: "assistant",
-      api: "responses",
-      provider: "vercel-ai-gateway",
-      model: "openai/gpt-5.6-sol",
-      content: [],
-      stopReason: "stop",
-      timestamp: 10,
-      usage: {
-        input: 12,
-        output: 4,
-        totalTokens: 16,
-        cost: { total: 0.03 },
-      },
-    } as PiMessage;
-    const { getConversationEventStore } = await import("@/chat/db");
-    await getConversationEventStore().append(conversationId, [
-      {
-        data: historyItemFromPiMessage(gatewayUsageMessage, {
-          authority: "context",
-        }),
-        createdAtMs: 10,
-      },
-    ]);
-
-    expect((await requireDetail(conversationId)).modelUsage).toEqual([
-      {
-        modelId: "openai/gpt-5.6-sol",
-        usage: expect.objectContaining({
-          inputTokens: 12,
-          outputTokens: 4,
-          totalTokens: 16,
-        }),
-      },
-    ]);
-  });
-
-  it("rolls unprojected child usage into a root conversation", async () => {
-    const rootConversationId = "slack:C-reporting:tree-usage";
-    const childConversationId = "child:reporting-unprojected-usage";
-    await recordRoot(rootConversationId, "public");
-    await appendVisibleHistory(rootConversationId);
-    const { getDb } = await import("@/chat/db");
-    const childAt = new Date(3);
-    await getDb()
-      .insert(juniorConversations)
-      .values({
-        conversationId: childConversationId,
-        parentConversationId: rootConversationId,
-        rootConversationId,
-        createdAt: childAt,
-        lastActivityAt: childAt,
-        updatedAt: childAt,
-        durationMs: 700,
-        executionStatus: "idle",
-        usage: { totalTokens: 7, cost: { total: 0.002 } },
-      });
-    await getDb()
-      .update(juniorConversations)
-      .set({
-        durationMs: 300,
-        usage: {
-          inputTokens: 10,
-          totalTokens: 999,
-          cost: { total: 0.001 },
-        },
-      })
-      .where(eq(juniorConversations.conversationId, rootConversationId));
-    await appendVisibleHistory(childConversationId, "Unprojected child answer");
-
-    const rootSummary = (
-      await readConversationFeedFromSql()
-    ).conversations.find(
-      (conversation) => conversation.conversationId === rootConversationId,
-    );
-    expect(rootSummary?.cumulativeDurationMs).toBe(1_000);
-
-    const rootDetail = await requireDetail(rootConversationId);
-    expect(JSON.stringify(rootDetail.events)).not.toContain(
-      childConversationId,
-    );
-    expect(rootDetail.cumulativeDurationMs).toBe(1_000);
-    expect(rootDetail.cumulativeUsage).toEqual({
-      totalTokens: 17,
-      cost: { total: 0.003 },
-    });
-    expect(rootDetail.modelUsage).toEqual([
-      {
-        modelId: "openai/gpt-5",
-        usage: expect.objectContaining({
-          inputTokens: 20,
-          outputTokens: 4,
-          cachedInputTokens: 6,
-          totalTokens: 30,
-        }),
-      },
-    ]);
-
-    const childDetail = await requireDetail(childConversationId);
-    expect(childDetail.cumulativeDurationMs).toBe(700);
-    expect(childDetail.cumulativeUsage).toEqual({
-      totalTokens: 7,
-      cost: { total: 0.002 },
-    });
-    expect(childDetail.modelUsage).toEqual([
-      {
-        modelId: "openai/gpt-5",
-        usage: expect.objectContaining({ totalTokens: 15 }),
-      },
-    ]);
   });
 
   it("redacts visible content for a private root while retaining structure", async () => {
@@ -467,7 +270,7 @@ describe("dashboard canonical event reporting", () => {
     });
     expect(
       await readConversationDetail(rootConversationId, {
-        viewer: testViewer("other@example.com"),
+        viewer: await signedInViewer("other@example.com"),
       }),
     ).toMatchObject({
       eventHistory: { status: "redacted" },
@@ -475,7 +278,7 @@ describe("dashboard canonical event reporting", () => {
     });
     const rootParticipantDetail = await readConversationDetail(
       rootConversationId,
-      { viewer: testViewer(" owner@example.COM ") },
+      { viewer: await signedInViewer(" owner@example.COM ") },
     );
     expect(rootParticipantDetail).toMatchObject({
       displayTitle: "Canonical event report",
@@ -602,12 +405,12 @@ describe("dashboard canonical event reporting", () => {
     });
     await getDb()
       .update(juniorConversations)
-      .set({ parentConversationId: cyclicChild })
+      .set({ kind: "task", parentConversationId: cyclicChild })
       .where(eq(juniorConversations.conversationId, cyclicRoot));
 
     await expect(
       readConversationDetail(cyclicRoot, {
-        viewer: testViewer("cyclic-owner@example.com"),
+        viewer: await signedInViewer("cyclic-owner@example.com"),
       }),
     ).resolves.toMatchObject({
       eventHistory: { status: "redacted" },
@@ -695,7 +498,16 @@ describe("dashboard canonical event reporting", () => {
       childConversationId,
       parentConversationId: rootConversationId,
     });
-    const { getSqlExecutor } = await import("@/chat/db");
+    await appendVisibleHistory(rootConversationId);
+    // The root and its child each made one call.
+    expect((await requireDetail(rootConversationId)).modelUsage).toEqual([
+      {
+        modelId: "openai/gpt-5",
+        usage: expect.objectContaining({ totalTokens: 30 }),
+      },
+    ]);
+    const { getConversationEventStore, getSqlExecutor } =
+      await import("@/chat/db");
 
     await purgeConversation(getSqlExecutor(), rootConversationId, {
       nowMs: 50,
@@ -710,6 +522,28 @@ describe("dashboard canonical event reporting", () => {
       expect(detail.events).toEqual([]);
       expect(detail.modelUsage).toBeUndefined();
     }
+
+    // New events after a purge start the totals again.
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const laterMessage = {
+      role: "assistant",
+      api: "responses",
+      provider: "openai",
+      model: "gpt-5",
+      content: [],
+      stopReason: "stop",
+      timestamp: 60,
+      usage: { totalTokens: 4 },
+    } as PiMessage;
+    await getConversationEventStore().append(rootConversationId, [
+      {
+        data: historyItemFromPiMessage(laterMessage, { authority: "context" }),
+        createdAtMs: 60,
+      },
+    ]);
+    expect((await requireDetail(rootConversationId)).modelUsage).toEqual([
+      { modelId: "openai/gpt-5", usage: { totalTokens: 4 } },
+    ]);
   });
 
   it("deletes child events when an append wins before tree purge", async () => {

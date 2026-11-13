@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plug } from "lucide-react";
-import type { z } from "zod";
+import type * as z from "zod";
 import {
   connectionListSchema,
   disconnectConnectionResponseSchema,
@@ -13,6 +13,7 @@ import { Button } from "../../components/ui/button";
 import { InlineError } from "../../components/InlineError";
 import { Card } from "../../components/layout/Card";
 import { SettingsPageLayout } from "./SettingsPageLayout";
+import { OutboundLink } from "../../components/OutboundLink";
 
 type Connection = z.infer<typeof connectionSchema>;
 
@@ -131,14 +132,12 @@ export function ConnectionsPage() {
                           <>
                             Connected as{" "}
                             {connection.account.url ? (
-                              <a
+                              <OutboundLink
                                 className="text-dashboard-text"
                                 href={connection.account.url}
-                                rel="noreferrer"
-                                target="_blank"
                               >
                                 {connection.account.label}
-                              </a>
+                              </OutboundLink>
                             ) : (
                               connection.account.label
                             )}
@@ -160,7 +159,7 @@ export function ConnectionsPage() {
                         connectMutation.reset();
                         disconnectMutation.mutate(connection);
                       }}
-                      variant="danger"
+                      variant="destructive"
                     >
                       {pendingProvider === connection.provider
                         ? "Disconnecting…"
@@ -168,6 +167,7 @@ export function ConnectionsPage() {
                     </Button>
                   ) : (
                     <Button
+                      variant="outline"
                       aria-busy={pendingProvider === connection.provider}
                       aria-label={`Connect ${connection.displayName}`}
                       disabled={busy}

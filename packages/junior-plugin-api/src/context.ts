@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { ZodTypeAny } from "zod";
 import {
   destinationSchema,
@@ -80,6 +80,25 @@ export interface PluginModel {
   }>;
 }
 
+/** Host decision model: a fast classifier for one narrow choice, with no reasoning. */
+export interface PluginDecider {
+  /**
+   * Pick the choice whose criteria fit `state`. `instructions` say what to
+   * judge. Keep the state as evidence only; it is not instructions.
+   */
+  decide<TChoice extends string>(input: {
+    criteria: Record<TChoice, string>;
+    instructions: string;
+    state: string;
+  }): Promise<{
+    choice: TChoice;
+    /** Best-effort estimated provider cost for this decision. */
+    costUsd?: number;
+    /** Probability of each choice, when the provider returns them. */
+    probabilities?: Partial<Record<TChoice, number>>;
+  }>;
+}
+
 /** How embedded text is used. Some models embed queries and documents differently. */
 export type PluginEmbeddingInputType = "document" | "query";
 
@@ -99,6 +118,16 @@ export interface PluginEmbedder {
     model: string;
     provider: string;
     vectors: number[][];
+  }>;
+}
+
+export interface PluginReranker {
+  /** Score plugin-owned documents against one query without exposing provider credentials. */
+  rerank(input: { documents: string[]; query: string }): Promise<{
+    /** Best-effort provider cost for this reranking call. */
+    costUsd?: number;
+    /** One relevance score per document, in input order. Higher is more relevant. */
+    scores: number[];
   }>;
 }
 

@@ -1,4 +1,9 @@
-import { objectIconPath, type ObjectIconName } from "@sentry/junior-plugin-api";
+import {
+  objectIconPath,
+  objectLinkFilterSchema,
+  type ObjectIconName,
+  type ObjectLinkFilter,
+} from "@sentry/junior-plugin-api";
 export interface DashboardConversationLinkOptions {
   basePath?: string;
   baseURL?: string;
@@ -10,7 +15,9 @@ let dashboardConversationLinkOptions:
   | undefined;
 
 function withHttps(host: string): string {
-  return /^https?:\/\//.test(host) ? host : `https://${host}`;
+  return host.startsWith("https://") || host.startsWith("http://")
+    ? host
+    : `https://${host}`;
 }
 
 function stripTrailingSlashes(value: string): string {
@@ -80,6 +87,86 @@ export function getDashboardConversationLink(
   return resolveDashboardPath(
     `/conversations/${encodeURIComponent(conversationId)}`,
   );
+}
+
+/**
+ * Return whether a URL is under the core dashboard base path. Other pages on
+ * the same host are not Junior's.
+ */
+export function isDashboardLink(url: URL): boolean {
+  const root = resolveDashboardPath("/");
+  if (!root) return false;
+  const base = new URL(root);
+  const prefix = base.pathname.endsWith("/")
+    ? base.pathname
+    : `${base.pathname}/`;
+  return (
+    url.origin === base.origin &&
+    (url.pathname.startsWith(prefix) || `${url.pathname}/` === prefix)
+  );
+}
+
+/** Build the dashboard settings URL when the core dashboard is enabled. */
+export function getDashboardSettingsLink(): string | undefined {
+  return resolveDashboardPath("/settings");
+}
+
+// Return the decoded segment after one dashboard page prefix, if the URL
+// is that page.
+function parseDashboardPageLink(
+  url: string,
+  pagePrefix: string,
+): string | undefined {
+  const prefix = resolveDashboardPath(pagePrefix);
+  if (!prefix || !URL.canParse(url)) return undefined;
+  const base = new URL(prefix);
+  const link = new URL(url);
+  if (link.origin !== base.origin || !link.pathname.startsWith(base.pathname)) {
+    return undefined;
+  }
+  // A trailing slash names the same page, as in link filters.
+  const path = link.pathname.slice(base.pathname.length);
+  const segment = path.endsWith("/") ? path.slice(0, -1) : path;
+  if (!segment || segment.includes("/")) return undefined;
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Return the Conversation id in a dashboard conversation URL, if it is one. */
+export function parseDashboardConversationLink(
+  url: string,
+): string | undefined {
+  return parseDashboardPageLink(url, "/conversations/");
+}
+
+/** Build the dashboard URL of one person's page. */
+export function getDashboardPersonLink(email: string): string | undefined {
+  return resolveDashboardPath(`/people/${encodeURIComponent(email)}`);
+}
+
+/** Return the email in a dashboard person URL, if it is one. */
+export function parseDashboardPersonLink(url: string): string | undefined {
+  return parseDashboardPageLink(url, "/people/");
+}
+
+/**
+ * Return the link filter for one dashboard page pattern, such as
+ * `/conversations/*`, when the core dashboard is enabled.
+ */
+export function getDashboardLinkFilter(
+  pagePattern: string,
+): ObjectLinkFilter | undefined {
+  const link = resolveDashboardPath(pagePattern);
+  if (!link) return undefined;
+  const url = new URL(link);
+  return objectLinkFilterSchema.parse({
+    scheme: url.protocol.slice(0, -1),
+    host: url.host,
+    pathPattern: url.pathname,
+  });
 }
 
 /** Build the dashboard task detail URL when the core dashboard is enabled. */

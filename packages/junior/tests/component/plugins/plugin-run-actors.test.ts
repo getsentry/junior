@@ -2,8 +2,8 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { createLocalSource, type Destination } from "@sentry/junior-plugin-api";
 
 /**
- * Proves the `run.actors` runtime threading contract from
- * `packages/junior/src/chat/AGENTS.md`: the live actors getter passed into the plugin
+ * Proves the `run.actors` runtime threading contract: the live actors getter
+ * passed into the plugin
  * hook runner is seeded from the run actor and grows as steering messages
  * with a resolvable actor drain into the run, without ever including an
  * unattributable steering message.
@@ -30,6 +30,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       tools: unknown[];
     };
     private prepareNextTurn?: (context?: unknown) => Promise<unknown> | unknown;
+    private listeners: Array<(event: unknown) => unknown> = [];
 
     constructor(input: {
       prepareNextTurn?: () => Promise<unknown> | unknown;
@@ -52,7 +53,8 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         input.prepareNextTurnWithContext ?? input.prepareNextTurn;
     }
 
-    subscribe() {
+    subscribe(listener: (event: unknown) => unknown) {
+      this.listeners.push(listener);
       return () => undefined;
     }
 
@@ -69,6 +71,11 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
 
     async prompt(message: unknown) {
       this.state.messages.push(message);
+      // Like Pi 0.85.1: `turn_end` listeners, then the next-turn hook before
+      // the next model call.
+      for (const listener of this.listeners) {
+        await listener({ type: "turn_end", message, toolResults: [] });
+      }
       await this.prepareNextTurn?.({
         context: { messages: this.state.messages },
       });

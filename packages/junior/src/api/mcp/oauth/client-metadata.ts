@@ -5,7 +5,7 @@
  */
 import https from "node:https";
 import net from "node:net";
-import { z } from "zod";
+import * as z from "zod";
 import { LOOPBACK_HOSTNAMES } from "@/api/public-origin";
 import { isPublicAddress, publicAddressLookup } from "@/net/public-address";
 import { mcpStateKey, readRecord, sha256Hex, type McpState } from "./state";

@@ -5,7 +5,7 @@
  * and emits canonical events for project, target, and commit watches.
  */
 import type { EventInput } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { vercelProjectIdSchema } from "../project.js";
 import {
   VERCEL_DEPLOYMENT_EVENTS,

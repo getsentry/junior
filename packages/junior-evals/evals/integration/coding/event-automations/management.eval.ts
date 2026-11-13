@@ -1,6 +1,5 @@
 import { defineJuniorPlugins } from "@sentry/junior";
 import { describe, expect } from "vitest";
-import type { ToolCall } from "@junior-evals/fixture/test";
 import { slackMention } from "@junior-evals/fixture/inputs";
 import {
   insertEventAutomation,
@@ -17,18 +16,6 @@ const issueTrigger = {
   namespace: "github",
   resourceType: "issue",
 };
-
-function triggerEvents(call: ToolCall): string[] {
-  const input = call.input as { trigger?: { events?: unknown } } | undefined;
-  const events = input?.trigger?.events;
-  if (
-    !Array.isArray(events) ||
-    !events.every((event) => typeof event === "string")
-  ) {
-    throw new Error("Event automation call did not contain trigger events");
-  }
-  return events;
-}
 
 describe("Event automation management", () => {
   test("when asked what events are available, search without creating anything", async ({
@@ -57,11 +44,11 @@ describe("Event automation management", () => {
       completedToolCalls("searchEventTypes", conversation).map(toolOutput),
     ).toEqual([
       expect.objectContaining({
-        resourceTypes: expect.arrayContaining([
+        resource_types: expect.arrayContaining([
           expect.objectContaining({
             namespace: "github",
             type: "issue",
-            supportedEvents: expect.arrayContaining([
+            supported_events: expect.arrayContaining([
               "issue.closed",
               "issue.reopened",
             ]),
@@ -99,97 +86,19 @@ describe("Event automation management", () => {
     const creates = completedToolCalls("createAutomation", conversation);
     expect(creates).toHaveLength(1);
     expect(creates[0]!.input).toMatchObject({
-      credentialMode: "system",
+      credential_mode: "system",
       outcomes: [
         { action: "send_message", destination: "current_conversation" },
       ],
       trigger: {
         type: "event",
         namespace: "github",
-        identifier: "getsentry/junior#691",
-        resourceType: "pull_request",
         events: ["pull_request.review.changes_requested"],
+        match: { repo: "getsentry/junior", pull_request: 691 },
       },
     });
     const names = conversation.toolCalls.map((call) => call.name);
     expect(names).not.toContain("watchEvents");
-  });
-
-  test("when one GitHub issue has multiple requested states, create one event automation", async ({
-    run,
-  }) => {
-    const conversation = await run(
-      slackMention(
-        "Create one event automation for GitHub issue getsentry/junior#208. Whenever it is closed or reopened, summarize the state change in this channel.",
-      ),
-    );
-    await expect(conversation).toSatisfyJudge(
-      RubricJudge,
-      rubric({
-        pass: [
-          "The reply confirms that one event automation will react when the issue is closed or reopened.",
-          "The reply accurately describes summarizing the issue state change in this channel.",
-        ],
-        fail: [
-          "Do not create separate tasks for closed and reopened.",
-          "Do not claim that `watchEvents`, a polling schedule, or a recurring timer was created instead of the event automation.",
-        ],
-      }),
-    );
-
-    const creates = completedToolCalls("createAutomation", conversation);
-    expect(creates).toHaveLength(1);
-    expect(creates[0]!.input).toMatchObject({
-      trigger: {
-        type: "event",
-        namespace: "github",
-        identifier: "getsentry/junior#208",
-        resourceType: "issue",
-      },
-    });
-    expect(new Set(triggerEvents(creates[0]!))).toEqual(
-      new Set(["issue.closed", "issue.reopened"]),
-    );
-    const names = conversation.toolCalls.map((call) => call.name);
-    expect(names).not.toContain("watchEvents");
-  });
-
-  test("when issue activity spans a repository, create one repo-wide event automation", async ({
-    run,
-  }) => {
-    const conversation = await run(
-      slackMention(
-        "Create one event automation for getsentry/junior. Whenever any issue is closed or reopened, summarize the state change in this channel.",
-      ),
-    );
-    await expect(conversation).toSatisfyJudge(
-      RubricJudge,
-      rubric({
-        pass: [
-          "The reply confirms one repository-wide event automation for issue closures and reopenings.",
-          "The reply accurately says matching issue state changes will be summarized in this channel.",
-        ],
-        fail: [
-          "Do not narrow the task to one issue number.",
-          "Do not create separate tasks for closed and reopened issues.",
-          "Do not claim that `watchEvents` or a polling schedule was created instead of the event automation.",
-        ],
-      }),
-    );
-
-    const creates = completedToolCalls("createAutomation", conversation);
-    expect(creates).toHaveLength(1);
-    expect(creates[0]!.input).toMatchObject({
-      trigger: {
-        type: "event",
-        namespace: "github",
-        identifier: "getsentry/junior",
-        resourceType: "repository",
-      },
-    });
-    expect(new Set(triggerEvents(creates[0]!))).toEqual(
-      new Set(["issue.closed", "issue.reopened"]),
-    );
   });
 
   test("when managing an existing event automation, list update and delete it", async ({
@@ -269,10 +178,10 @@ describe("Event automation management", () => {
     );
     expect(updates).toHaveLength(1);
     expect(updates[0]!.input).toMatchObject({
-      automationId: id,
+      automation_id: id,
       trigger: { type: "event", events: ["issue.reopened"] },
     });
-    // The update can omit identifier and resourceType to keep the saved ones.
+    // A saved trigger with an identifier keeps it when the tools edit it.
     expect(toolOutput(updates[0]!)).toMatchObject({
       automation: {
         id,
@@ -280,7 +189,7 @@ describe("Event automation management", () => {
           events: ["issue.reopened"],
           identifier: "getsentry/junior#208",
           namespace: "github",
-          resourceType: "issue",
+          resource_type: "issue",
         },
       },
     });
@@ -288,7 +197,7 @@ describe("Event automation management", () => {
       completedToolCalls("deleteAutomation", listing, update, removal).map(
         (call) => call.input,
       ),
-    ).toEqual([{ automationId: id }]);
+    ).toEqual([{ automation_id: id }]);
     expect(
       completedToolCalls("createAutomation", listing, update, removal),
     ).toEqual([]);

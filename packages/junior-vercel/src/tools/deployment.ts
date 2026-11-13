@@ -6,7 +6,7 @@ import {
   type PluginToolOutput,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { vercelProjectIdSchema } from "../project.js";
 import { vercelDeploymentSubscribable } from "../events/deployment.js";
 
@@ -16,7 +16,7 @@ const nonEmptyStringSchema = z.string().trim().min(1);
 
 const inputSchema = z
   .object({
-    commitSha: commitShaSchema
+    commit_sha: commitShaSchema
       .describe(
         "Optional full 40-character Git commit SHA. Provide it to watch one deployment; omit it to watch every matching deployment for the project.",
       )
@@ -24,7 +24,7 @@ const inputSchema = z
     project: nonEmptyStringSchema.describe("Vercel project name or prj_ ID."),
     target: targetSchema
       .describe(
-        'Optional deployment target such as "production". Omit to watch every target for the project. Defaults to "production" when commitSha is set.',
+        'Optional deployment target such as "production". Omit to watch every target for the project. Defaults to "production" when commit_sha is set.',
       )
       .optional(),
     team: nonEmptyStringSchema
@@ -34,9 +34,9 @@ const inputSchema = z
   .strict();
 
 const deploymentSchema = z.object({
-  commitSha: commitShaSchema.nullable(),
-  deploymentTarget: targetSchema.nullable(),
-  projectId: vercelProjectIdSchema,
+  commit_sha: commitShaSchema.nullable(),
+  deployment_target: targetSchema.nullable(),
+  project_id: vercelProjectIdSchema,
   subscribable: subscribableResourceSchema.optional(),
 });
 
@@ -82,7 +82,7 @@ export function createVercelDeploymentTool(ctx: ToolRegistrationHookContext) {
       readOnlyHint: true,
     },
     description:
-      "Resolve a Vercel project name or ID and describe a subscribable deployment resource. Omit commitSha to watch every deployment for the project, optionally limited to one target (production, preview, or staging). Provide commitSha to watch one deployment; target defaults to production when omitted with commitSha. Use the user's explicit project and team, otherwise the vercel.project and vercel.team conversation defaults.",
+      "Resolve a Vercel project name or ID and describe a subscribable deployment resource for one deployment or every deployment of the project. Use the user's explicit project and team, otherwise the vercel.project and vercel.team conversation defaults.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -103,7 +103,7 @@ export function createVercelDeploymentTool(ctx: ToolRegistrationHookContext) {
       const projectId = z
         .object({ id: vercelProjectIdSchema })
         .parse(parsed).id;
-      const commitSha = input.commitSha?.toLowerCase();
+      const commitSha = input.commit_sha?.toLowerCase();
       // Preserve the previous commit-watch default so one-shot SHA watches stay
       // production-scoped unless the caller names another target.
       const deploymentTarget =
@@ -115,9 +115,9 @@ export function createVercelDeploymentTool(ctx: ToolRegistrationHookContext) {
         target: deploymentTarget,
       });
       const data: Deployment = {
-        commitSha: commitSha ?? null,
-        deploymentTarget: deploymentTarget ?? null,
-        projectId,
+        commit_sha: commitSha ?? null,
+        deployment_target: deploymentTarget ?? null,
+        project_id: projectId,
         ...(subscribable ? { subscribable } : undefined),
       };
       return {

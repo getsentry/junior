@@ -2,9 +2,15 @@ import { memo } from "react";
 import type { ActorIdentity } from "@sentry/junior/api/schema";
 
 import { HighlightedCode } from "../code";
-import { parseMarkdownBlocks } from "../format";
+import { CopyButton } from "../components/CopyButton";
+import { parseMarkdownBlocks } from "./codeBlocks";
+import { standaloneUrlKeys } from "./knownObjects";
 import { MarkdownText } from "./markdown";
 import { MentionPeopleProvider } from "./mentions";
+import { MessageObjectsProvider } from "./resolvedObjects";
+
+export { KnownObjectsProvider, useTextShowsObjectCard } from "./ObjectLinks";
+export { MessageObjectsProvider, useResolvedObject } from "./resolvedObjects";
 
 const NO_MENTIONS: readonly ActorIdentity[] = [];
 
@@ -20,6 +26,10 @@ const NO_MENTIONS: readonly ActorIdentity[] = [];
 export const DisplayText = memo(function DisplayText(props: {
   /** Use the larger chat type of user and assistant messages. */
   chat?: boolean;
+  /** Keep body line height compact in narrow panels. */
+  compact?: boolean;
+  /** Read a Markdown file, not a chat message. */
+  document?: boolean;
   inline?: boolean;
   /**
    * Link people to their page. Set false inside a button, which cannot hold
@@ -31,35 +41,66 @@ export const DisplayText = memo(function DisplayText(props: {
   text: string;
 }) {
   return (
-    <MentionPeopleProvider
-      links={props.links ?? true}
-      mentions={props.mentions ?? NO_MENTIONS}
-    >
-      {props.inline ? (
-        <MarkdownText inline text={props.text} />
-      ) : (
-        <DisplayTextBlocks chat={props.chat} text={props.text} />
-      )}
-    </MentionPeopleProvider>
+    <MessageObjectsProvider>
+      <MentionPeopleProvider
+        links={props.links ?? true}
+        mentions={props.mentions ?? NO_MENTIONS}
+      >
+        {props.inline ? (
+          <MarkdownText inline text={props.text} />
+        ) : props.document ? (
+          // One tree, so reference links and footnotes resolve across fences.
+          <MarkdownText document text={props.text} />
+        ) : (
+          <DisplayTextBlocks
+            chat={props.chat}
+            compact={props.compact}
+            text={props.text}
+          />
+        )}
+      </MentionPeopleProvider>
+    </MessageObjectsProvider>
   );
 });
 
-function DisplayTextBlocks(props: { chat?: boolean; text: string }) {
+function DisplayTextBlocks(props: {
+  chat?: boolean;
+  compact?: boolean;
+  text: string;
+}) {
+  // A URL repeated in one message shows one card, in its first block.
+  const shownCardUrls: string[] = [];
   return (
     <div className="grid min-w-0 gap-2">
       {parseMarkdownBlocks(props.text).map((block, index) => {
         if (block.language === "markdown" && !block.fenced) {
+          const shown = [...shownCardUrls];
+          shownCardUrls.push(...standaloneUrlKeys(block.code));
           return (
-            <MarkdownText chat={props.chat} key={index} text={block.code} />
+            <MarkdownText
+              chat={props.chat}
+              compact={props.compact}
+              key={index}
+              shownCardUrls={shown}
+              text={block.code}
+            />
           );
         }
 
         return (
           <div
-            className="min-w-0 overflow-hidden rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5"
+            className="group/code relative min-w-0 overflow-hidden rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel py-2.5 pl-3 pr-10"
+            // A quote of selected text reads it for the code fence.
+            data-code-language={
+              block.language === "markdown" ? undefined : block.language
+            }
             key={index}
           >
             <HighlightedCode code={block.code} language={block.language} />
+            {/* Touch screens cannot hover, so keep the button visible there. */}
+            <div className="absolute right-0.5 top-0.5 transition-opacity [@media(hover:hover)_and_(pointer:fine)]:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover/code:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:group-focus-within/code:opacity-100">
+              <CopyButton getText={() => block.code} label="Copy code" />
+            </div>
           </div>
         );
       })}

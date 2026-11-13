@@ -50,6 +50,26 @@ Prefer high-fidelity behavior coverage when it is stable.
 - Database tests use `tests/fixtures/sql` and `createJuniorSqlFixture`. Only
   migration contract tests use an empty fixture. Do not import Postgres
   fixture internals.
+- Plugin packages with SQL files in `migrations/` use the
+  `@sentry/junior-testing/postgres` `global-setup`, `setup`, and `fixture`
+  entries. Do not write a package-local database harness.
+
+### Injected faults
+
+- An injected fault is an artificial failure that a test causes on purpose.
+  Inject it at the edge where it happens in production. Run the rest of the
+  path for real, then assert the recovery.
+- Use a named fault from the shared harness. Mark each use with an
+  `Injected fault:` comment.
+- Killed worker (function timeout, OOM, deploy): fake `setInterval`, call
+  `killWorker()` from `createConversationWorkHarness`, then
+  `runHeartbeatAfterLeasesExpire()`. Do not take the lease through store
+  calls.
+- An error thrown by the agent runner is a failure that the worker catches.
+  It is not a killed worker.
+- Write the stored state of a failure by hand only when no harness fault can
+  cause it. Say why in a comment. When a second test needs the same fault,
+  add it to the shared harness.
 
 ### Assertions
 

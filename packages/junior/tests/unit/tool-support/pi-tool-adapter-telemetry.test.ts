@@ -1,6 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import type { SandboxTools } from "@/chat/sandbox/sandbox";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 
 const { endAttributes, startAttributes } = vi.hoisted(() => ({
@@ -50,17 +48,11 @@ describe("createPiAgentTools telemetry", () => {
         }),
       },
     };
-    const [tool] = createPiAgentTools(
-      tools,
-      {} as never,
-      {},
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      "private",
-    );
+    const [tool] = createPiAgentTools(tools, {} as never, {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+      conversationPrivacy: "private",
+    });
 
     await tool!.execute!("call-1", {});
 
@@ -78,38 +70,5 @@ describe("createPiAgentTools telemetry", () => {
         secret: "private result",
       }).length,
     );
-  });
-
-  it("lets sandbox tools add safe attributes to the tool call span", async () => {
-    const tools: Record<string, AnyToolDefinition> = {
-      grep: {
-        description: "Search files.",
-        inputSchema: { type: "object", properties: {} },
-        execute: async () => ({ matches: 3 }),
-      },
-    };
-    const sandboxTools: SandboxTools = {
-      supports: () => true,
-      execute: async (params) => {
-        params.setToolCallSpanAttributes?.({
-          "app.sandbox.search.result_count": 3,
-        });
-        return {
-          content: [{ type: "text", text: "matches" }],
-          details: { matches: 3 },
-        };
-      },
-    };
-    const [tool] = createPiAgentTools(
-      tools,
-      new SkillSandbox([], []),
-      {},
-      undefined,
-      sandboxTools,
-    );
-
-    await tool!.execute!("call-1", { pattern: "needle" });
-
-    expect(endAttributes.value["app.sandbox.search.result_count"]).toBe(3);
   });
 });

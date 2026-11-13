@@ -1,0 +1,289 @@
+import type { AgentToolResult } from "@earendil-works/pi-agent-core";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import { Type } from "@sinclair/typebox";
+import { describe, expect, it, vi } from "vitest";
+import { getDb } from "@/chat/db";
+import { createApp, defineJuniorPlugins } from "@/app";
+import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
+import { createPluginHookRunner } from "@/chat/plugins/agent-hooks";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
+import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
+import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
+import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
+
+const WORKSPACE_ID = "22222222-2222-4222-8222-222222222222";
+const CONVERSATION_ID = "slack:C1:1700000000.000100";
+const TURN_ID = "turn-1";
+
+async function insertWorkspace() {
+  const now = new Date("2026-11-04T00:00:00.000Z");
+  const db = getDb();
+  await db.insert(juniorWorkspaces).values({
+    id: WORKSPACE_ID,
+    name: "junior",
+    setupScript: "",
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.insert(juniorWorkspaceRepos).values({
+    workspaceId: WORKSPACE_ID,
+    provider: "github",
+    repo: "getsentry/junior",
+  });
+}
+
+function fakeSandbox(diff: string): SandboxWorkspace {
+  return {
+    async readFileToBuffer() {
+      return null;
+    },
+    async runCommand() {
+      return { exitCode: 0, stdout: diff, stderr: "" };
+    },
+    async writeFiles() {},
+  };
+}
+
+function editTool(
+  sandboxWorkspace: SandboxWorkspace,
+  workspaceId: () => string | undefined = () => undefined,
+) {
+  const execute = vi.fn(async () => ({ ok: true }));
+  const [tool] = createPiAgentTools(
+    {
+      editFile: {
+        description: "Edit a file.",
+        inputSchema: {} as any,
+        execute,
+      },
+    },
+    new SkillSandbox([], []),
+    {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+      agentHooks: createPluginHookRunner({
+        toolRun: {
+          conversationId: CONVERSATION_ID,
+          turnId: TURN_ID,
+          sandbox: () => ({
+            workspace: sandboxWorkspace,
+            workspaceId,
+          }),
+        },
+      }),
+    },
+  );
+  return { execute, tool: tool! };
+}
+
+describe("afterToolExecute plugin hooks", () => {
+  it("checks the finished call against the active Workspace and nudges the agent", async () => {
+    await insertWorkspace();
+    const seen: unknown[] = [];
+    await createApp({
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "edit-check",
+            displayName: "Eval guard",
+            description: "Checks eval edits.",
+          },
+          hooks: {
+            async afterToolExecute(ctx) {
+              seen.push({ tool: ctx.tool, workspace: ctx.workspace });
+              const repo = ctx.workspace?.repos[0];
+              if (!repo) return;
+              const diff = await ctx.sandbox.run({
+                cmd: "git",
+                args: ["diff", "--", "evals/"],
+                cwd: `${ctx.sandbox.root}/${repo.path}`,
+              });
+              if (diff.stdout.includes("toContain")) {
+                ctx.decision.nudge("The change looks <risky>.");
+              }
+            },
+          },
+        }),
+      ]),
+    });
+    const { execute, tool } = editTool(
+      fakeSandbox('+ expect(reply).toContain("done")'),
+      () => WORKSPACE_ID,
+    );
+
+    const result = await tool.execute("call-1", { path: "evals/a.eval.ts" });
+
+    expect(execute).toHaveBeenCalledOnce();
+    expect(seen).toEqual([
+      {
+        tool: { input: { path: "evals/a.eval.ts" }, name: "editFile" },
+        workspace: {
+          name: "junior",
+          repos: [
+            {
+              path: "repos/junior",
+              provider: "github",
+              repo: "getsentry/junior",
+            },
+          ],
+        },
+      },
+    ]);
+    expect(result.content.at(-1)).toEqual({
+      type: "text",
+      text: '<plugin-note plugin="edit-check">The change looks &lt;risky&gt;.</plugin-note>',
+    });
+  });
+
+  it("rejects the result on denial and ignores a check that fails", async () => {
+    await createApp({
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "broken-check",
+            displayName: "Broken check",
+            description: "Throws.",
+          },
+          hooks: {
+            afterToolExecute() {
+              throw new Error("judge unavailable");
+            },
+          },
+        }),
+        defineJuniorPlugin({
+          manifest: {
+            name: "strict-check",
+            displayName: "Strict check",
+            description: "Denies.",
+          },
+          hooks: {
+            afterToolExecute(ctx) {
+              expect(ctx.workspace).toBeUndefined();
+              if (ctx.tool.input.path === "evals/a.eval.ts") {
+                ctx.decision.deny("Eval edits need a person.");
+              }
+            },
+          },
+        }),
+      ]),
+    });
+    const { tool } = editTool(fakeSandbox(""));
+
+    await expect(tool.execute("call-2", { path: "src/a.ts" })).resolves.toEqual(
+      {
+        content: [{ type: "text", text: '{"ok":true}' }],
+        details: { ok: true },
+      },
+    );
+    await expect(
+      tool.execute("call-3", { path: "evals/a.eval.ts" }),
+    ).rejects.toThrow(
+      /This action ran, but policy rejected its result\.[\s\S]*Reason: Eval edits need a person\./,
+    );
+
+    // A failed Workspace lookup skips the checks and keeps the result.
+    const { tool: unknownWorkspaceTool } = editTool(fakeSandbox(""), () => {
+      throw new Error("sandbox state unavailable");
+    });
+    await expect(
+      unknownWorkspaceTool.execute("call-3b", { path: "evals/a.eval.ts" }),
+    ).resolves.toEqual({
+      content: [{ type: "text", text: '{"ok":true}' }],
+      details: { ok: true },
+    });
+  });
+
+  it("keeps the finished result when the run aborts during a check", async () => {
+    const controller = new AbortController();
+    await createApp({
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "slow-check",
+            displayName: "Slow check",
+            description: "Aborted mid-check.",
+          },
+          hooks: {
+            afterToolExecute(ctx) {
+              controller.abort();
+              ctx.signal?.throwIfAborted();
+            },
+          },
+        }),
+      ]),
+    });
+    const { tool } = editTool(fakeSandbox(""));
+
+    await expect(
+      tool.execute("call-4", { path: "src/a.ts" }, controller.signal),
+    ).resolves.toEqual({
+      content: [{ type: "text", text: '{"ok":true}' }],
+      details: { ok: true },
+    });
+  });
+
+  it("keeps a JSON result intact for a Code Mode script and puts the nudge in the codemode result", async () => {
+    await createApp({
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "edit-check",
+            displayName: "Edit check",
+            description: "Nudges every edit.",
+          },
+          hooks: {
+            afterToolExecute(ctx) {
+              ctx.decision.nudge("Check this edit.");
+            },
+          },
+        }),
+      ]),
+    });
+    const tools = createPiAgentTools(
+      {
+        editFile: {
+          description: "Edit a file.",
+          inputSchema: Type.Object({ path: Type.String() }),
+          execute: async () => ({ ok: true, path: "evals/a.eval.ts" }),
+        },
+      } as never,
+      new SkillSandbox([], []),
+      {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        agentHooks: createPluginHookRunner({
+          toolRun: {
+            conversationId: CONVERSATION_ID,
+            turnId: TURN_ID,
+            sandbox: () => ({
+              workspace: fakeSandbox(""),
+              workspaceId: () => undefined,
+            }),
+          },
+        }),
+        codeMode: { countToolCall: () => 1 },
+      },
+    );
+    const codemode = tools.find((tool) => tool.name === CODEMODE_TOOL_NAME)!;
+
+    const result = (await codemode.execute("call-5", {
+      code: `return await tools.editFile({ path: "evals/a.eval.ts" });`,
+    })) as AgentToolResult<unknown>;
+
+    expect(result.details).toMatchObject({
+      ok: true,
+      value: { ok: true, path: "evals/a.eval.ts" },
+      calls: [
+        {
+          toolName: "editFile",
+          status: "ok",
+          nudges: [{ message: "Check this edit.", pluginName: "edit-check" }],
+        },
+      ],
+    });
+    const [content] = result.content as Array<{ text: string }>;
+    expect(content!.text).toContain(
+      '1. editFile: ok\n   <plugin-note plugin="edit-check">Check this edit.</plugin-note>',
+    );
+  });
+});

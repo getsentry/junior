@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeEach, inject, vi } from "vitest";
+import { afterEach, beforeEach, inject, vi } from "vitest";
 import "./eval-context";
 
 // The product waits 30 seconds after a watched event for more events. An
@@ -19,13 +19,6 @@ process.env.JUNIOR_STATE_ADAPTER = "redis";
 process.env.JUNIOR_STATE_KEY_PREFIX = evalContext.stateKeyPrefix;
 process.env.REDIS_URL = evalContext.redisUrl;
 
-// Load model code only after the worker's runtime environment is set.
-// Global setup has a separate dispatcher, so install the limit here too.
-const { installEvalAiGatewayDispatcher } =
-  await import("./eval-ai-gateway-dispatcher");
-const restoreAiGatewayDispatcher = installEvalAiGatewayDispatcher();
-afterAll(restoreAiGatewayDispatcher);
-
 beforeEach(async () => {
   // `stable-setup.ts` set the eval clock of this test. The main process uses
   // the same time when it checks sandbox egress tokens and leases.
@@ -41,6 +34,28 @@ beforeEach(async () => {
     throw new Error(
       `Eval egress fixture reset failed with HTTP ${response.status}`,
     );
+  }
+});
+
+beforeEach(async () => {
+  // Redis outlives the Postgres reset of each test. A cached email would
+  // point the viewer at a User of an earlier test, which no longer exists,
+  // so delete every key of the user cache. Do not flush Redis: tests share
+  // the cached Sandbox snapshots in it.
+  const [{ getConnectedStateContext, redisStateKey }, cache, users] =
+    await Promise.all([
+      import("@/chat/state/adapter"),
+      import("@/chat/state/cache"),
+      import("@/chat/identities/user-cache"),
+    ]);
+  const { redisStateAdapter } = await getConnectedStateContext();
+  if (!redisStateAdapter) throw new Error("Evals need the Redis state adapter");
+  const redis = redisStateAdapter.getClient();
+  const prefix = redisStateKey(
+    cache.cacheKeyPrefix(users.USER_CACHE_NAMESPACE),
+  );
+  for await (const keys of redis.scanIterator({ MATCH: `${prefix}*` })) {
+    if (keys.length > 0) await redis.del(keys);
   }
 });
 

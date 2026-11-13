@@ -5,8 +5,8 @@
  * the same model and size as the query vector.
  */
 import { createHash } from "node:crypto";
-import { and, eq, sql, type SQL } from "drizzle-orm";
-import { z } from "zod";
+import { and, eq, sql, type Column, type SQL } from "drizzle-orm";
+import * as z from "zod";
 import { juniorMemoryEmbeddings } from "./db/schema";
 import {
   MEMORY_EMBEDDING_DIMENSIONS,
@@ -119,12 +119,39 @@ export function embeddingWithinDistance(
   return sql`CASE WHEN ${juniorMemoryEmbeddings.dimensions} = ${vectorSize(embedding)} THEN ${embeddingDistance(embedding)} END <= ${maxDistance}`;
 }
 
-/** Match stored vectors from the same model and size as a query vector. */
-export function sameEmbeddingModel(embedding: MemoryEmbedding): SQL {
+type EmbeddingModelColumns = Record<
+  "dimensions" | "metric" | "model" | "provider",
+  Column
+>;
+
+/**
+ * Match stored vectors from the same model and size as a query vector. Pass
+ * columns to match rows of a subquery over the embeddings table.
+ */
+export function sameEmbeddingModel(
+  embedding: MemoryEmbedding,
+  columns: EmbeddingModelColumns = juniorMemoryEmbeddings,
+): SQL {
   return and(
-    eq(juniorMemoryEmbeddings.provider, embedding.provider),
-    eq(juniorMemoryEmbeddings.model, embedding.model),
-    sql`${juniorMemoryEmbeddings.dimensions} = ${vectorSize(embedding)}`,
-    eq(juniorMemoryEmbeddings.metric, EMBEDDING_METRIC),
+    eq(columns.provider, embedding.provider),
+    eq(columns.model, embedding.model),
+    sql`${columns.dimensions} = ${vectorSize(embedding)}`,
+    eq(columns.metric, EMBEDDING_METRIC),
   ) as SQL;
+}
+
+/** The only vector size with an HNSW index (migration 0013). */
+const HNSW_INDEX_DIMENSIONS = 1024;
+
+/** Whether stored vectors of the query vector size have an HNSW index. */
+export function hasHnswIndex(embedding: MemoryEmbedding): boolean {
+  return embedding.vector.length === HNSW_INDEX_DIMENSIONS;
+}
+
+/**
+ * Match stored vectors of the query vector size only. This is the predicate of
+ * the partial HNSW index, so a query with only this filter can use the index.
+ */
+export function sameEmbeddingSize(embedding: MemoryEmbedding): SQL {
+  return sql`${juniorMemoryEmbeddings.dimensions} = ${vectorSize(embedding)}`;
 }

@@ -130,7 +130,7 @@ describe("tool action review", () => {
         destructiveHint: false,
         idempotentHint: true,
         openWorldHint: true,
-        readOnlyHint: true,
+        readOnlyHint: false,
       },
       describeProposal: ({ reportId }) => `Generate report ${reportId}.`,
       identity: {
@@ -196,15 +196,15 @@ describe("tool action review", () => {
       "callMcpTool",
       definition({
         approvalMode: "auto",
-        // Partial annotations are still unknown risk.
+        // Without `readOnlyHint: true`, partial annotations are unknown risk.
         annotations: {
           destructiveHint: false,
-          readOnlyHint: true,
+          openWorldHint: false,
         },
         resolveApprovalMetadata: async () => ({
           annotations: {
             destructiveHint: false,
-            readOnlyHint: true,
+            openWorldHint: false,
           },
           description: "Call a remote MCP tool.",
           name: "mcp__demo__search",
@@ -242,26 +242,83 @@ describe("tool action review", () => {
     expect(review).toHaveBeenCalledTimes(1);
   });
 
-  it("auto-approves only fully annotated safe non-plugin actions", async () => {
+  it("skips review of read-only plugin and MCP actions", async () => {
     const review = vi.fn<ToolActionReviewer["review"]>();
+    const pluginTool = definition({
+      approvalMode: "auto",
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+        readOnlyHint: true,
+      },
+      identity: {
+        id: "github.getIssue",
+        name: "getIssue",
+        plugin: "github",
+      },
+      source: { id: "github", description: "GitHub" },
+    });
+    // MCP servers often send only `readOnlyHint`.
+    const mcpTool = definition({
+      approvalMode: "auto",
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true,
+        readOnlyHint: false,
+      },
+      resolveApprovalMetadata: async () => ({
+        annotations: { readOnlyHint: true },
+        description: "Search Linear issues.",
+        name: "mcp__linear__search_issues",
+        source: { id: "linear", description: "MCP provider linear" },
+      }),
+    });
 
     await reviewToolAction(
-      "tool-call",
-      "localSafeTool",
-      definition({
-        approvalMode: "auto",
-        annotations: {
-          destructiveHint: false,
-          idempotentHint: true,
-          openWorldHint: false,
-          readOnlyHint: true,
-        },
-      }),
-      {},
+      "plugin-call",
+      "github_getIssue",
+      pluginTool,
+      { number: 1, repo: "getsentry/junior" },
+      reviewContext({ review }),
+    );
+    await reviewToolAction(
+      "mcp-call",
+      "callMcpTool",
+      mcpTool,
+      { tool_name: "mcp__linear__search_issues" },
       reviewContext({ review }),
     );
 
     expect(review).not.toHaveBeenCalled();
+  });
+
+  it("reviews read-only actions that are also marked destructive", async () => {
+    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
+      decision: "allow",
+      reason: "Conflicting annotations need review.",
+      riskLevel: "medium",
+      userAuthorization: "medium",
+    }));
+
+    await reviewToolAction(
+      "tool-call",
+      "callMcpTool",
+      definition({
+        approvalMode: "auto",
+        resolveApprovalMetadata: async () => ({
+          annotations: { destructiveHint: true, readOnlyHint: true },
+          description: "Purge the demo cache.",
+          name: "mcp__demo__purge",
+          source: { id: "demo", description: "MCP provider demo" },
+        }),
+      }),
+      { tool_name: "mcp__demo__purge" },
+      reviewContext({ review }),
+    );
+
+    expect(review).toHaveBeenCalledTimes(1);
   });
 
   it("returns ask and deny decisions as expected tool rejections", async () => {
@@ -287,7 +344,7 @@ describe("tool action review", () => {
       });
       await expect(action).rejects.toThrow(
         decision === "ask"
-          ? "respond to the user now with a direct, concise confirmation question"
+          ? "Ask for that confirmation now, the way your instructions say to ask."
           : "If the reason is missing or withheld authorization",
       );
     }
@@ -493,7 +550,7 @@ describe("tool action review", () => {
     expect(reviewer.review).not.toHaveBeenCalled();
   });
 
-  it("reviews a batch against one rejection snapshot and counts rejections in batch order", async () => {
+  it("reviews a batch against one rejection snapshot", async () => {
     const onDecision = vi.fn(async () => undefined);
     // The first action finishes last, so completion order differs from
     // batch order.
@@ -559,19 +616,59 @@ describe("tool action review", () => {
         error: { decision: "deny", reason: `Rejected ${id}.` },
       });
     }
-    // The third rejection in batch order reaches the limit, also though the
-    // first action finished last.
-    const exhausted = "rejected three consecutive tool execution attempts";
-    expect(results.get("a")).toMatchObject({
-      error: { message: expect.not.stringContaining(exhausted) },
-    });
-    expect(results.get("c")).toMatchObject({
-      error: { message: expect.stringContaining(exhausted) },
-    });
     for (const [proposal] of review.mock.calls) {
       expect(proposal.priorRejectedActions).toBeUndefined();
     }
     expect(onDecision).toHaveBeenCalledTimes(3);
+  });
+
+  it("counts each attempt once toward the rejection limit", async () => {
+    const actionReview = reviewContext({
+      review: vi.fn<ToolActionReviewer["review"]>(async (proposal) => ({
+        decision: proposal.input.deny ? "deny" : "allow",
+        reason: "Decided by the test.",
+        riskLevel: "high",
+        userAuthorization: "low",
+      })),
+    });
+    const reviewed = definition({ approvalMode: "review" });
+    const exhausted = "rejected three consecutive tool execution attempts";
+    const attempt = async (
+      attemptId: string,
+      calls: Array<[toolCallId: string, deny: boolean]>,
+    ) =>
+      await reviewToolActions(
+        calls.map(([toolCallId, deny]) => ({
+          attemptId,
+          toolCallId,
+          toolName: "deleteWorkspace",
+          tool: reviewed,
+          input: { deny },
+        })),
+        actionReview,
+      );
+    const limited = (
+      results: Awaited<ReturnType<typeof attempt>>,
+      toolCallId: string,
+    ) =>
+      (results.get(toolCallId) as { error: Error }).error.message.includes(
+        exhausted,
+      );
+
+    // An allowed action does not cancel a rejection in the same attempt.
+    const first = await attempt("m", [
+      ["m1", false],
+      ["m2", true],
+    ]);
+    expect(limited(first, "m2")).toBe(false);
+    expect(limited(await attempt("n", [["n1", true]]), "n1")).toBe(false);
+    // An attempt over several batches adds one to the count from before it.
+    await attempt("o", [["o1", false]]);
+    expect(limited(await attempt("o", [["o2", true]]), "o2")).toBe(true);
+    expect(limited(await attempt("o", [["o3", true]]), "o3")).toBe(true);
+    // An attempt with only allowed actions resets the count.
+    await attempt("p", [["p1", false]]);
+    expect(limited(await attempt("q", [["q1", true]]), "q1")).toBe(false);
   });
 
   it("bounds script provenance in the proposal", async () => {

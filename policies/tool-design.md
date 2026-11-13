@@ -25,6 +25,10 @@ contradictory or unsafe requests.
   or a discovery tool. Do not paginate provider inventory to resolve names.
 - Keep runtime authority, destination, actor, credentials, and durable context
   out of model arguments. See `runtime-boundary-schemas.md`.
+- Input and output schema keys are snake_case, so each value has one name in
+  arguments and results. Card fields that the dashboard reads
+  (`objectCards`, `objectAnnotations`, `removedCards`) are the exception.
+  `tool-key-casing:check` enforces this.
 
 ### Authoring
 
@@ -50,6 +54,10 @@ contradictory or unsafe requests.
   Files under `tools` are concrete tools only, one tool per file.
 - Prefer direct imports over injected ports. Inject only when production needs
   more than one implementation.
+- Make a tool direct only when many Conversations use it or the system prompt
+  names it. Each direct tool adds its schema to every Turn. Give other tools
+  `exposure: "deferred"` and a `source`, so `searchTools` lists the source.
+  Core tools are direct when `exposure` is not set.
 
 ### Descriptions and params
 
@@ -58,6 +66,11 @@ contradictory or unsafe requests.
   prefer unless that contrast is the contract.
 - Put field meaning in `describe()` on the param. Do not repeat it in the tool
   description. Reuse shared param schemas for the same value kind.
+- Put a rule that ties fields together ("only with `status`", "required when
+  `kind` is `action`") in `describe()` on the field that depends on the other.
+- Tool descriptions are at most 512 characters and do not name input fields.
+  Param descriptions are at most 256 characters. `tool-descriptions:check`
+  enforces this against a shrink-only baseline.
 - Shared params define the required shape. Add `.optional()` or
   `.nullable().optional()` at the use site. No `optional*` exports.
 

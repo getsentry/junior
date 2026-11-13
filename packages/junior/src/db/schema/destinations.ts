@@ -1,17 +1,6 @@
 import { index, jsonb, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
-import { z } from "zod";
+import type { JuniorDestinationKind } from "./destination-kind";
 import { timestamptz } from "./timestamps";
-
-export const juniorDestinationKindSchema = z.enum([
-  "channel",
-  "dm",
-  "group",
-  "local_conversation",
-  "thread",
-  "web_session",
-]);
-
-export type JuniorDestinationKind = z.infer<typeof juniorDestinationKindSchema>;
 
 export type JuniorDestinationVisibility =
   | "direct"
@@ -21,6 +10,8 @@ export type JuniorDestinationVisibility =
 
 // TODO(dcramer): Rename this legacy destination table and its provider fields
 // to Location terms after the SQL migration and deployed reader cutover.
+// Conversations share a row only when they have the same audience. Access
+// between Conversations depends on this (policies/conversation-access.md).
 export const juniorDestinations = pgTable(
   "junior_destinations",
   {

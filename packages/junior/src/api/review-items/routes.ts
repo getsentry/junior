@@ -1,6 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
-import { z } from "zod";
+import * as z from "zod";
 import { jsonResponse } from "@/api/http";
 import type { JuniorApiEnv } from "@/api/route";
 import { apiErrorSchema } from "@/api/schema/common";
@@ -21,6 +21,7 @@ import {
   canActOnReviewItem,
   isOnlyAssignee,
   reviewItemReaderForUser,
+  reviewItemReaderForUserInConversation,
 } from "@/chat/review-items/access";
 import {
   actOnReviewItem,
@@ -29,7 +30,7 @@ import {
 } from "@/chat/review-items/actions";
 import {
   countReviewItemsNeedingUser,
-  listWaitingConversationIds,
+  listWaitingConversations,
   searchReviewItems,
   type ReviewItem,
   type ReviewItemFilters,
@@ -44,12 +45,16 @@ import type { ReviewItemDelivery } from "@/chat/review-items/changes";
 const ARCHIVED_LIMIT = 50;
 
 /** The list that a cursor belongs to. */
-type ListFilters = Pick<ReviewItemFilters, "conversationId" | "query">;
+type ListFilters = Pick<
+  ReviewItemFilters,
+  "conversationId" | "forUserId" | "query"
+>;
 
 const cursorSchema = z
   .object({
     conversationId: z.string().min(1).optional(),
     createdAtMs: z.number().int(),
+    forUserId: z.string().min(1).optional(),
     id: z.string().min(1),
     query: z.string().min(1).optional(),
     version: z.literal(2),
@@ -83,6 +88,7 @@ function decodeCursor(
     );
     if (
       parsed.conversationId !== filters.conversationId ||
+      parsed.forUserId !== filters.forUserId ||
       parsed.query !== filters.query
     ) {
       return undefined;
@@ -160,6 +166,7 @@ export function createReviewItemRoutes(services: {
         ...(query.conversationId
           ? { conversationId: query.conversationId }
           : undefined),
+        ...(query.for === "viewer" ? { forUserId: viewer.id } : undefined),
         ...(query.q ? { query: query.q } : undefined),
       };
       const after = query.cursor
@@ -173,7 +180,13 @@ export function createReviewItemRoutes(services: {
         );
       }
       const db = getDb();
-      const reader = reviewItemReaderForUser(viewer);
+      // A person in the Conversation sees every item linked to it.
+      const reader = filters.conversationId
+        ? await reviewItemReaderForUserInConversation(
+            viewer,
+            filters.conversationId,
+          )
+        : reviewItemReaderForUser(viewer);
       // Read one more item than a page to learn whether more follow.
       const open = await searchReviewItems(db, reader, {
         ...filters,
@@ -215,7 +228,7 @@ export function createReviewItemRoutes(services: {
   app.get("/waiting-conversations", requireViewer, async (context) => {
     const viewer = context.get("viewer");
     return jsonResponse(reviewItemWaitingConversationsSchema, {
-      conversationIds: await listWaitingConversationIds(getDb(), viewer.id),
+      conversations: await listWaitingConversations(getDb(), viewer.id),
     });
   });
   app.get(

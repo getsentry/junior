@@ -30,6 +30,7 @@ import type {
 } from "./operations";
 import type {
   AfterMcpToolHookContext,
+  AfterToolExecuteHookContext,
   BeforeToolExecuteHookContext,
   PluginEgress,
   PluginToolDefinition,
@@ -47,6 +48,29 @@ import type {
 
 /** Input for a pure Markdown rewrite before destination delivery formatting. */
 export interface FormatMarkdownHookContext {
+  /**
+   * String config values of this plugin for the Conversation's Location, by
+   * short key, over install defaults. Runtime notices get install defaults.
+   */
+  config: Record<string, string>;
+  /**
+   * Return the destination's mention of the one known person who has this
+   * provider account, or undefined. Core resolves the `@handle` words in
+   * `text` before the hook runs. Insert the result as is. Only Slack text
+   * gets mentions: Slack syntax never goes to another place.
+   */
+  mention(account: { provider: string; handle: string }): string | undefined;
+  /**
+   * Where the text shows: a Slack message, or the dashboard (`web`). The
+   * dashboard shows a bare object link as a card, so keep bare links there.
+   */
+  platform: "slack" | "web";
+  /**
+   * The provider that wrote the text or that it went to, such as `github`
+   * for a GitHub Event or a comment posted to GitHub. In that text, every
+   * `@name` is an account of that provider. Undefined for chat replies.
+   */
+  provider?: string;
   text: string;
 }
 
@@ -100,6 +124,11 @@ export interface PluginHooks {
     | UserPromptContribution[]
     | undefined;
   beforeToolExecute?(ctx: BeforeToolExecuteHookContext): Promise<void> | void;
+  /**
+   * Check a tool call after it runs, such as a judge for the files that it
+   * changed. Use `ctx.decision` to add guidance or reject the result.
+   */
+  afterToolExecute?(ctx: AfterToolExecuteHookContext): Promise<void> | void;
   /**
    * Run after a successful hosted MCP tool call.
    *

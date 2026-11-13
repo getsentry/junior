@@ -1,17 +1,15 @@
-import { z } from "zod";
-import {
-  canExposeConversationPayload,
-  type ConversationPrivacy,
-} from "@/chat/conversation-privacy";
+import * as z from "zod";
 import {
   KNOWN_CONVERSATION_EVENT_TYPES,
   type ConversationEvent,
-  type ConversationEventPage,
   type KnownConversationEventType,
 } from "@/chat/conversations/history";
-import type { ConversationStore } from "@/chat/conversations/store";
+import {
+  assertCanReadConversationEvents,
+  stripReplacementHistory,
+} from "@/chat/conversations/event-access";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { getConversationEventStore } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -20,7 +18,6 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
 const MAX_EVENT_DATA_BYTES = 4_000;
-const MAX_EVENTS_JSON_BYTES = 20_000;
 const MAX_IDENTITY_CHARS = 256;
 const textEncoder = new TextEncoder();
 
@@ -44,7 +41,11 @@ const projectedEventSchema = z
       .min(1)
       .optional()
       .describe("Retry-stable event identity, when assigned."),
-    data: z.record(z.string(), z.unknown()).describe("Bounded event data."),
+    data: z
+      .record(z.string(), z.unknown())
+      .describe(
+        "Bounded event data. Read an omitted payload with readConversationEvent.",
+      ),
   })
   .strict();
 
@@ -53,20 +54,7 @@ const searchConversationEventsOutputSchema = juniorToolOutputSchema.extend({
   events: z.array(projectedEventSchema),
   has_older: z.boolean().describe("Whether matching older events exist."),
   has_newer: z.boolean().describe("Whether matching newer events exist."),
-  omitted_event_count: z
-    .number()
-    .int()
-    .nonnegative()
-    .optional()
-    .describe("Events omitted by the response byte limit."),
 });
-
-interface ConversationEventAccessScope {
-  currentConversationId: string;
-  currentRootConversationId?: string;
-  provider?: string;
-  providerTenantId?: string;
-}
 
 /** Create a deferred tool that searches one conversation's durable event log. */
 export function createSearchConversationEventsTool(
@@ -74,7 +62,7 @@ export function createSearchConversationEventsTool(
 ) {
   return zodTool({
     description:
-      "Search the durable event log for one conversation, including messages, agent history, tool results, handoffs, and compactions. Defaults to the current conversation. Outside the current conversation tree, only retained public conversations in the current Slack workspace are accessible.",
+      "Search the durable event log for one conversation, including messages, agent history, tool results, and compactions. Defaults to the current conversation. Outside the current conversation tree, only retained public conversations are accessible.",
     exposure: "deferred",
     source: CONVERSATIONS_TOOL_SOURCE,
     annotations: {
@@ -145,41 +133,7 @@ export function createSearchConversationEventsTool(
         );
       }
 
-      const conversationStore = getConversationStore();
-      const target = await conversationStore.get({ conversationId });
-      if (!target) {
-        throw new ToolInputError(`Conversation not found: ${conversationId}`);
-      }
-      if (target.transcriptPurgedAtMs !== undefined) {
-        throw new ToolInputError(
-          `Conversation transcript was purged: ${conversationId}`,
-        );
-      }
-
-      const accessScope = await resolveAccessScope(
-        conversationStore,
-        context,
-        currentConversationId,
-      );
-      // A Conversation with a parent uses the root privacy boundary.
-      const targetRootConversationId = await resolveRootConversationId(
-        conversationStore,
-        conversationId,
-        target.parentConversationId,
-      );
-      const targetRoot =
-        targetRootConversationId === conversationId
-          ? target
-          : await conversationStore.get({
-              conversationId: targetRootConversationId,
-            });
-      assertCanSearchConversationEvents({
-        accessScope,
-        targetConversationId: conversationId,
-        targetRootConversationId,
-        targetVisibility: targetRoot?.visibility ?? target.visibility,
-        targetDestination: targetRoot?.destination ?? target.destination,
-      });
+      await assertCanReadConversationEvents(context, conversationId);
 
       const page = await getConversationEventStore().query(conversationId, {
         limit,
@@ -187,186 +141,14 @@ export function createSearchConversationEventsTool(
         ...(beforeSeq === undefined ? undefined : { beforeSeq }),
         ...(types === undefined ? undefined : { types }),
       });
-      const newestFirst = afterSeq === undefined;
-      const projected = projectEventsForTool(page, { newestFirst });
-
       return {
         conversation_id: conversationId,
-        events: projected.events,
-        has_older:
-          page.hasOlder || (newestFirst && projected.omittedEventCount > 0),
-        has_newer:
-          page.hasNewer || (!newestFirst && projected.omittedEventCount > 0),
-        truncated: projected.omittedEventCount > 0,
-        ...(projected.omittedEventCount > 0
-          ? { omitted_event_count: projected.omittedEventCount }
-          : undefined),
+        events: page.events.map(projectEvent),
+        has_older: page.hasOlder,
+        has_newer: page.hasNewer,
       };
     },
   });
-}
-
-async function resolveAccessScope(
-  conversationStore: ConversationStore,
-  context: ToolRuntimeContext,
-  currentConversationId: string,
-): Promise<ConversationEventAccessScope> {
-  const current = await conversationStore.get({
-    conversationId: currentConversationId,
-  });
-  const currentRootConversationId = current
-    ? await resolveRootConversationId(
-        conversationStore,
-        currentConversationId,
-        current.parentConversationId,
-      )
-    : currentConversationId;
-
-  if (context.location?.provider === "slack") {
-    return {
-      currentConversationId,
-      currentRootConversationId,
-      provider: "slack",
-      providerTenantId: context.location.teamId,
-    };
-  }
-
-  // TODO(dcramer): Remove the Source and Destination fallbacks after every
-  // deployed Slack Conversation has a stored Location and AgentRun no longer
-  // has Destination.
-  if (context.source.kind === "slack") {
-    return {
-      currentConversationId,
-      currentRootConversationId,
-      provider: "slack",
-      providerTenantId: context.source.teamId,
-    };
-  }
-
-  if (
-    context.destination.platform === "slack" &&
-    "teamId" in context.destination
-  ) {
-    return {
-      currentConversationId,
-      currentRootConversationId,
-      provider: "slack",
-      providerTenantId: context.destination.teamId,
-    };
-  }
-
-  return {
-    currentConversationId,
-    currentRootConversationId,
-  };
-}
-
-async function resolveRootConversationId(
-  conversationStore: ConversationStore,
-  conversationId: string,
-  parentConversationId: string | undefined,
-): Promise<string> {
-  if (!parentConversationId) {
-    return conversationId;
-  }
-
-  let cursor: string | undefined = parentConversationId;
-  const seen = new Set<string>([conversationId]);
-  while (cursor) {
-    if (seen.has(cursor)) {
-      // Fail closed on cycles; callers treat missing root as unauthorized.
-      return conversationId;
-    }
-    seen.add(cursor);
-    const parent = await conversationStore.get({ conversationId: cursor });
-    if (!parent) {
-      return conversationId;
-    }
-    if (!parent.parentConversationId) {
-      return parent.conversationId;
-    }
-    cursor = parent.parentConversationId;
-  }
-  return conversationId;
-}
-
-function assertCanSearchConversationEvents(args: {
-  accessScope: ConversationEventAccessScope;
-  targetConversationId: string;
-  targetRootConversationId?: string;
-  targetVisibility?: ConversationPrivacy;
-  targetDestination?: {
-    platform: string;
-    teamId?: string;
-    channelId?: string;
-    conversationId?: string;
-  };
-}): void {
-  const {
-    accessScope,
-    targetConversationId,
-    targetRootConversationId,
-    targetVisibility,
-    targetDestination,
-  } = args;
-
-  if (
-    targetConversationId === accessScope.currentConversationId ||
-    (targetRootConversationId !== undefined &&
-      targetRootConversationId === accessScope.currentRootConversationId)
-  ) {
-    return;
-  }
-
-  const publicPayloadAllowed = canExposeConversationPayload(
-    targetVisibility ? { visibility: targetVisibility } : {},
-  );
-  if (!publicPayloadAllowed) {
-    throw new ToolInputError(
-      `Conversation events are not accessible: ${targetConversationId}`,
-    );
-  }
-
-  if (
-    accessScope.provider === "slack" &&
-    targetDestination?.platform === "slack" &&
-    accessScope.providerTenantId &&
-    targetDestination.teamId === accessScope.providerTenantId
-  ) {
-    return;
-  }
-
-  throw new ToolInputError(
-    `Conversation events are not accessible: ${targetConversationId}`,
-  );
-}
-
-function projectEventsForTool(
-  page: ConversationEventPage,
-  options: { newestFirst: boolean },
-) {
-  const projected = page.events.map(projectEvent);
-  const events = [];
-  let jsonBytes = 2;
-  const candidates = options.newestFirst ? [...projected].reverse() : projected;
-
-  for (const event of candidates) {
-    const eventBytes = jsonByteLength(event);
-    const separatorBytes = events.length === 0 ? 0 : 1;
-    if (jsonBytes + separatorBytes + eventBytes > MAX_EVENTS_JSON_BYTES) {
-      break;
-    }
-    events.push(event);
-    jsonBytes += separatorBytes + eventBytes;
-  }
-
-  if (options.newestFirst) {
-    events.reverse();
-  }
-  return {
-    events,
-    omittedEventCount: projected.length - events.length,
-  };
 }
 
 function projectEvent(event: ConversationEvent) {
@@ -417,7 +199,6 @@ function eventIdentity(data: Record<string, unknown>) {
     "failureCode",
     "provider",
     "kind",
-    "modelProfile",
     "modelId",
   ] as const;
 
@@ -429,37 +210,6 @@ function eventIdentity(data: Record<string, unknown>) {
         : [];
     }),
   );
-}
-
-function stripReplacementHistory(
-  data: ConversationEvent["data"],
-): ConversationEvent["data"] | Record<string, unknown> {
-  if (data.type === "unknown") {
-    return {
-      ...data,
-      payload: stripReplacementHistoryField(data.payload),
-    };
-  }
-  if (data.type === "compaction" || data.type === "handoff") {
-    return stripReplacementHistoryField(data) as Record<string, unknown>;
-  }
-  return data;
-}
-
-function stripReplacementHistoryField(value: unknown): unknown {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return value;
-  }
-  const { replacementHistory, ...rest } = value as Record<string, unknown>;
-  if (replacementHistory === undefined) {
-    return value;
-  }
-  return {
-    ...rest,
-    replacement_history_count: Array.isArray(replacementHistory)
-      ? replacementHistory.length
-      : 0,
-  };
 }
 
 export type { KnownConversationEventType };

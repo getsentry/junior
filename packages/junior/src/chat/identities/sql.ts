@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
+import { recordStartedConversationParticipants } from "@/chat/conversations/sql/participants";
+import { clearCachedUser } from "./user-cache";
 import {
   GOOGLE_IDENTITY_PROVIDER,
   normalizeIdentityEmail,
@@ -184,6 +186,18 @@ async function upsertIdentityRecord(
     }
     throw new Error("Identity upsert returned no row");
   }
+  for (const changedUserId of new Set([existing?.userId, row.userId])) {
+    if (changedUserId) await clearCachedUser(changedUserId);
+  }
+  // Check every write that may have set the User, not only a known existing
+  // row: a concurrent first write can create the Identity and its roots
+  // between the read above and this upsert.
+  if (!existing?.userId && row.userId && identity.kind === "user") {
+    await recordStartedConversationParticipants(executor, {
+      identityId: row.id,
+      userId: row.userId,
+    });
+  }
   return {
     id: row.id,
     ...(row.userId ? { userId: row.userId } : undefined),
@@ -318,11 +332,13 @@ export async function deleteProviderIdentityForUser(
         eq(juniorIdentities.providerSubjectId, providerSubjectId),
       ),
     );
+  await clearCachedUser(userId);
 }
 
 /**
  * Save one Google sign-in. Link the Google identity to the user of its
- * verified email, and set its sign-in time.
+ * verified email, and set its sign-in time. Return the previous sign-in
+ * time, if any.
  */
 export async function recordGoogleSignIn(
   executor: JuniorSqlDatabase,
@@ -333,7 +349,7 @@ export async function recordGoogleSignIn(
     subject: string;
   },
   nowMs: number = Date.now(),
-): Promise<StoredIdentity> {
+): Promise<number | undefined> {
   const stored = await upsertIdentity(
     executor,
     {
@@ -348,10 +364,16 @@ export async function recordGoogleSignIn(
     },
     nowMs,
   );
+  const [previous] = await executor
+    .db()
+    .select({ signedInAt: juniorIdentities.signedInAt })
+    .from(juniorIdentities)
+    .where(eq(juniorIdentities.id, stored.id))
+    .limit(1);
   await executor
     .db()
     .update(juniorIdentities)
     .set({ signedInAt: dateFromMs(nowMs) })
     .where(eq(juniorIdentities.id, stored.id));
-  return stored;
+  return previous?.signedInAt?.getTime();
 }

@@ -2,9 +2,13 @@ import { Type } from "@sinclair/typebox";
 import { describe, expect, it } from "vitest";
 import {
   createSearchToolsTool,
+  searchCatalogTools,
   summarizeModelVisibleDescription,
 } from "@/chat/tools/search-tools";
 import { tool } from "@/chat/tools/definition";
+
+// These cases never reach the rerank model, so no cost is recorded.
+const NO_COST = { owner: "none" } as const;
 
 function catalog() {
   return {
@@ -105,6 +109,28 @@ function mixedCatalog() {
         directory: Type.Optional(
           Type.String({ description: "Destination directory." }),
         ),
+      }),
+    }),
+    github_commentOnIssue: tool({
+      description:
+        "Post a comment on a GitHub issue. Returns the comment id and URL.",
+      source: githubSource,
+      exposure: "deferred",
+      inputSchema: Type.Object({
+        repo: Type.String(),
+        number: Type.Integer({ description: "Issue number." }),
+        body: Type.String({ description: "Comment text." }),
+      }),
+    }),
+    github_commentOnPullRequest: tool({
+      description:
+        "Post a comment on a GitHub pull request, or reply in an inline review thread. Use it to answer a question asked in a pull request review or comment.",
+      source: githubSource,
+      exposure: "direct",
+      inputSchema: Type.Object({
+        repo: Type.String(),
+        number: Type.Integer({ description: "Pull request number." }),
+        body: Type.String({ description: "Comment text." }),
       }),
     }),
     github_createIssue: tool({
@@ -227,8 +253,8 @@ function mixedCatalog() {
 }
 
 describe("searchTools", () => {
-  it("discovers catalog tools from metadata and returns their schemas", async () => {
-    const searchTools = createSearchToolsTool(catalog());
+  it("discovers deferred catalog tools from metadata and returns their schemas", async () => {
+    const searchTools = createSearchToolsTool(catalog(), NO_COST);
 
     expect(searchTools.description).toContain(
       "Deferred tools are grouped by source",
@@ -239,12 +265,12 @@ describe("searchTools", () => {
     expect(searchTools.description).not.toContain("memory_createMemory");
 
     const result = await searchTools.execute!(
-      { query: "renewal risk", max_results: 1 },
+      { query: "lookup customer", max_results: 1 },
       {},
     );
 
     expect(result).toMatchObject({
-      query: "renewal risk",
+      query: "lookup customer",
       source: null,
       sources: [
         {
@@ -253,7 +279,7 @@ describe("searchTools", () => {
             "Agent demo tools for customer health and account planning.",
         },
       ],
-      total_catalog_tools: 3,
+      total_catalog_tools: 2,
       total_matches: 1,
       returned_tools: 1,
       execution_tool: "executeTool",
@@ -261,7 +287,6 @@ describe("searchTools", () => {
         {
           tool_name: "agentDemo_lookupCustomer",
           description: "Lookup customer health for account review.",
-          exposure: "deferred",
           source: "agent-demo",
           input_schema: {
             properties: {
@@ -291,35 +316,16 @@ describe("searchTools", () => {
       ],
     });
 
+    // The model already has direct tools, so search does not return them.
     const directResult = await searchTools.execute!({ query: "shell" }, {});
-    expect(directResult).toMatchObject({
-      returned_tools: 1,
-      sources: [],
-      tools: [
-        {
-          tool_name: "bash",
-          exposure: "direct",
-          input_schema: {
-            required: ["command"],
-            properties: {
-              command: {
-                description: "Command to execute.",
-                minLength: 1,
-                type: "string",
-              },
-            },
-          },
-        },
-      ],
-    });
-    expect(directResult.tools[0]).not.toHaveProperty("source");
+    expect(directResult).toMatchObject({ total_matches: 0, tools: [] });
   });
 
   it("filters by source and omits per-tool source in filtered results", async () => {
-    const searchTools = createSearchToolsTool(catalog());
+    const searchTools = createSearchToolsTool(catalog(), NO_COST);
 
     const result = await searchTools.execute!(
-      { source: "memory", query: "long-term" },
+      { source: "memory", query: "create a memory" },
       {},
     );
 
@@ -363,8 +369,9 @@ describe("searchTools", () => {
     });
   });
 
-  it("ranks production search variations by relevant catalog metadata", async () => {
-    const searchTools = createSearchToolsTool(mixedCatalog());
+  // Unclear word matches go to the model, which these tests do not run. They
+  // check the word match itself.
+  it("ranks production search variations by relevant catalog metadata", () => {
     const cases = [
       ["clone repository", "github_cloneRepository", "github"],
       ["repository clone", "github_cloneRepository", "github"],
@@ -385,6 +392,9 @@ describe("searchTools", () => {
         undefined,
       ],
       ["search code repository", "github_getRepository", "github"],
+      ["repositories", "github_getRepository", "github"],
+      ["comment on issue", "github_commentOnIssue", "github"],
+      ["issue comments", "github_commentOnIssue", undefined],
       ["create issue", "github_createIssue", "github"],
       ["create issue", "mcp__linear__create_issue", "linear"],
       ["update GitHub issue", "github_updateIssue", "github"],
@@ -394,20 +404,17 @@ describe("searchTools", () => {
     ] as const;
 
     for (const [query, expectedTool, source] of cases) {
-      const result = await searchTools.execute!(
-        { query, source, max_results: 1 },
-        {},
+      const { matches } = searchCatalogTools(
+        mixedCatalog(),
+        query,
+        source ?? null,
       );
 
-      expect({
-        query,
-        tools: result.tools.map(({ tool_name }) => tool_name),
-      }).toEqual({ query, tools: [expectedTool] });
+      expect({ query, top: matches[0] }).toEqual({ query, top: expectedTool });
     }
   });
 
-  it("returns related candidates for broad production queries", async () => {
-    const searchTools = createSearchToolsTool(mixedCatalog());
+  it("returns related candidates for broad production queries", () => {
     const cases = [
       [
         "pull request checks details diff comments",
@@ -423,20 +430,35 @@ describe("searchTools", () => {
     ] as const;
 
     for (const [query, expectedTool, source] of cases) {
-      const result = await searchTools.execute!(
-        { query, source, max_results: 20 },
-        {},
-      );
+      const { matches } = searchCatalogTools(mixedCatalog(), query, source);
 
-      expect({
+      expect({ query, matches }).toEqual({
         query,
-        tools: result.tools.map(({ tool_name }) => tool_name),
-      }).toEqual({ query, tools: expect.arrayContaining([expectedTool]) });
+        matches: expect.arrayContaining([expectedTool]),
+      });
+    }
+  });
+
+  it("drops weak matches that share only common words", () => {
+    const { matches: names } = searchCatalogTools(
+      mixedCatalog(),
+      "create pull request",
+      "github",
+    );
+
+    expect(names[0]).toBe("github_createPullRequest");
+    // Every GitHub tool shares the source; only pull request tools fit.
+    for (const unrelated of [
+      "github_cloneRepository",
+      "github_getRepository",
+      "github_updateIssue",
+    ]) {
+      expect(names).not.toContain(unrelated);
     }
   });
 
   it("does not match partial words or unrelated production queries", async () => {
-    const searchTools = createSearchToolsTool(mixedCatalog());
+    const searchTools = createSearchToolsTool(mixedCatalog(), NO_COST);
 
     for (const [query, source] of [
       ["version", undefined],
@@ -459,7 +481,7 @@ describe("searchTools", () => {
   });
 
   it("lists provider tools when a production search omits its query", async () => {
-    const searchTools = createSearchToolsTool(mixedCatalog());
+    const searchTools = createSearchToolsTool(mixedCatalog(), NO_COST);
 
     const result = await searchTools.execute!(
       { source: "notion", max_results: 20 },
@@ -480,7 +502,7 @@ describe("searchTools", () => {
   });
 
   it("returns known sources without throwing for an unknown source", async () => {
-    const searchTools = createSearchToolsTool(catalog());
+    const searchTools = createSearchToolsTool(catalog(), NO_COST);
 
     const result = await searchTools.execute!(
       { source: "missing", query: "memory" },
@@ -498,7 +520,7 @@ describe("searchTools", () => {
   });
 
   it("bounds empty all-source search while listing known sources", async () => {
-    const searchTools = createSearchToolsTool(catalog());
+    const searchTools = createSearchToolsTool(catalog(), NO_COST);
 
     const result = await searchTools.execute!(
       { query: "", max_results: 1 },
@@ -519,15 +541,15 @@ describe("searchTools", () => {
           description: "Long-term Junior memory storage and recall",
         },
       ],
-      total_eligible_tools: 3,
-      total_matches: 3,
+      total_eligible_tools: 2,
+      total_matches: 2,
       returned_tools: 1,
     });
     expect(result.tools).toHaveLength(1);
   });
 
   it("returns compact source ids for mixed-source results", async () => {
-    const searchTools = createSearchToolsTool(catalog());
+    const searchTools = createSearchToolsTool(catalog(), NO_COST);
 
     const result = await searchTools.execute!(
       { query: "", max_results: 3 },
@@ -547,14 +569,11 @@ describe("searchTools", () => {
           description: "Long-term Junior memory storage and recall",
         },
       ],
-      returned_tools: 3,
+      returned_tools: 2,
       tools: [
         {
           tool_name: "agentDemo_lookupCustomer",
           source: "agent-demo",
-        },
-        {
-          tool_name: "bash",
         },
         {
           tool_name: "memory_createMemory",
@@ -562,9 +581,6 @@ describe("searchTools", () => {
         },
       ],
     });
-    expect(result.tools[0]?.source).toBe("agent-demo");
-    expect(result.tools[2]?.source).toBe("memory");
-    expect(result.tools[1]).not.toHaveProperty("source");
   });
 
   it("summarizes model-visible descriptions", () => {

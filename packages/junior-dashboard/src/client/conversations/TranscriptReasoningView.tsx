@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Lightbulb } from "lucide-react";
 
 import {
@@ -13,15 +12,18 @@ import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
+import { useTranscriptRowOpen } from "./TranscriptRows";
 import { useTranscriptSearch } from "./transcriptSearch";
 
 /** Render reasoning collapsed with a short preview until expanded or searched. */
 export function TranscriptReasoningView(props: {
+  /** Keeps the entry open while it unmounts outside the viewport. */
+  openKey?: string;
   part: TranscriptViewReasoningPart;
   timestamp?: number;
 }) {
   const { active: searchActive } = useTranscriptSearch();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useTranscriptRowOpen(props.openKey);
   const expanded = searchActive || open;
   const rendered = props.part.redacted ? "Reasoning redacted" : props.part.text;
   const timestamp = formatMessageTimestamp(props.timestamp);

@@ -1,41 +1,44 @@
-import { useDeferredValue, useEffect, useMemo, useRef } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import * as z from "zod";
 import {
-  queryOptions,
   type QueryClient,
+  queryOptions,
   useInfiniteQuery,
   useMutation,
-  useMutationState,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import type {
-  ActorIdentity,
   ConversationDetailReport,
   ConversationEventPage,
-  ConversationFeed,
   ConversationPendingMessagesReport,
-  ConversationSummaryReport,
-  InputImage,
 } from "@sentry/junior/api/schema";
 import {
   acceptedConversationMessageSchema,
+  CONVERSATION_DETAIL_VERSION_HEADER,
+  CONVERSATION_VERSION_HEADER,
   webMessageId,
-  archiveConversationResponseSchema,
   cancelConversationPendingMessagesResponseSchema,
   conversationDetailReportSchema,
+  conversationDetailWithMailboxReportSchema,
   conversationEventPageSchema,
-  conversationPendingMessagesReportSchema,
+  conversationUnchangedDetailWithMailboxSchema,
   forkConversationResponseSchema,
   steerConversationPendingMessagesResponseSchema,
   stopConversationTurnResponseSchema,
 } from "@sentry/junior/api/schema";
 
-import type { DashboardCoreData } from "../types";
+import { postWebMessage } from "./attachmentUploads";
+import {
+  conversationFeedCacheRows,
+  mapConversationFeedCache,
+  type ConversationFeedCache,
+} from "./conversationFeedCache";
+import { readResponseJson } from "../sentry";
 import {
   DashboardApiError,
   del,
   fetchDashboardJson,
-  patch,
   post,
   readDashboardResponse,
 } from "../http";
@@ -43,15 +46,17 @@ import {
   conversationOutboxMessageForSubmit,
   conversationOutboxQueryKey,
   failConversationOutboxMessage,
-  isInlineOutboxMessage,
   mergeConversationMailboxMessages,
+  outboxActorIdentity,
   acceptConversationOutboxMessage,
   reuseConversationMailboxMessages,
+  settleConversationOutboxMessages,
   splitInlineMailboxMessages,
   upsertConversationOutboxMessage,
   type ConversationMailboxMessage,
   type ConversationOutboxMessage,
 } from "./conversationOutbox";
+import { refreshSideReadsOnChange } from "./conversationSideReads";
 import {
   buildConversationTranscript,
   conversationHistoryBridgeCursor,
@@ -68,70 +73,13 @@ export function conversationDetailQueryKey(conversationId: string | undefined) {
   return ["conversation", conversationId, "detail"] as const;
 }
 
-function archivedConversationQueryKey(conversationId: string) {
-  return ["dashboard", "archived-conversation", conversationId] as const;
-}
-
-/** Read active/archived status from a dashboard conversations query key. */
-function conversationFeedStatus(
-  queryKey: readonly unknown[],
-): "active" | "archived" | undefined {
-  const status = queryKey[queryKey.length - 1];
-  return status === "active" || status === "archived" ? status : undefined;
-}
-
-type ArchivedConversationSnapshot = {
-  conversation: ConversationSummaryReport;
-  feedQueryHashes: string[];
-};
-
-const archiveConversationMutationKey = [
-  "dashboard",
-  "archive-conversation",
-] as const;
-
-type ArchiveConversationVariables = {
-  archived: boolean;
-  lastSeenAt: string;
-};
-
-type ArchiveConversationMutationContext = {
-  archivedQueryKey: ReturnType<typeof archivedConversationQueryKey>;
-  archivedSnapshot?: ArchivedConversationSnapshot;
-  detailQueryKey: ReturnType<typeof conversationDetailQueryKey>;
-  previousArchivedSnapshot?: ArchivedConversationSnapshot;
-  previousDetail?: ConversationDetailReport;
-  previousFeeds: Array<[readonly unknown[], ConversationFeed | undefined]>;
-};
-
-export type PendingArchiveConversationUpdate = {
-  archived: boolean;
-  conversation?: ConversationSummaryReport;
-  conversationId: string;
-};
-
-/** Read pending archive state so refetches cannot visually replace optimistic UI. */
-export function usePendingArchiveConversationUpdates() {
-  return useMutationState({
-    filters: {
-      mutationKey: archiveConversationMutationKey,
-      status: "pending",
-    },
-    select: (mutation) => {
-      const variables = mutation.state
-        .variables as ArchiveConversationVariables;
-      const context = mutation.state.context as
-        | ArchiveConversationMutationContext
-        | undefined;
-      const conversationId = mutation.options.mutationKey?.[2];
-      return {
-        archived: variables.archived,
-        conversation: context?.archivedSnapshot?.conversation,
-        conversationId:
-          typeof conversationId === "string" ? conversationId : "",
-      } satisfies PendingArchiveConversationUpdate;
-    },
-  });
+/**
+ * Read reports for one conversation share this scope, so they reach the
+ * server one at a time, in order. A slow older report then cannot put an
+ * older position in the cache after a newer one.
+ */
+export function conversationReadScope(conversationId: string) {
+  return { id: `conversation:${conversationId}:read` };
 }
 
 // Right after a send, Junior usually reads the message within a few seconds.
@@ -139,20 +87,53 @@ export function usePendingArchiveConversationUpdates() {
 const FAST_POLL_INTERVAL_MS = 500;
 const FAST_POLL_WINDOW_MS = 6_000;
 
-type ConversationSnapshot = ConversationDetailReport & {
+/** The cached detail report with its mailbox and revalidation ETag. */
+export type ConversationSnapshot = ConversationDetailReport & {
   mailbox?: ConversationPendingMessagesReport;
+  /** Client time when this snapshot started its mailbox read. */
+  mailboxReadAtMs?: number;
   detailEtag?: string;
+  /** Tree token that the report was built from, for the versions poll. */
+  conversationVersion?: string;
+  /** Set by a list hover prefetch, so the next visit can use it as its open fetch. */
+  prefetchedAtMs?: number;
 };
 
-/** Read the mailbox before history so acknowledged input is already committed. */
-async function readConversationSnapshot(
-  conversationId: string,
-  signal?: AbortSignal,
-  previous?: ConversationSnapshot,
-): Promise<ConversationSnapshot> {
-  const mailbox = await readConversationPendingMessages(conversationId, signal);
-  const detail = await readConversationData(conversationId, signal, previous);
-  return { ...detail, mailbox };
+// A hover prefetch this recent is the open fetch of the next visit. The
+// reader has not opened the Conversation since, so its read position and
+// unread page are still the ones that the open would get.
+const PREFETCH_OPEN_WINDOW_MS = 30_000;
+
+function dropPrefetchMark(client: QueryClient, conversationId: string) {
+  const key = conversationDetailQueryKey(conversationId);
+  const state = client.getQueryState<ConversationSnapshot>(key);
+  if (!state?.data?.prefetchedAtMs) return;
+  const { prefetchedAtMs: _prefetchedAtMs, ...rest } = state.data;
+  // Keep the fetch time, so the copy goes stale as it would have.
+  client.setQueryData<ConversationSnapshot>(key, rest, {
+    updatedAt: state.dataUpdatedAt,
+  });
+}
+
+function isOpenPrefetch(snapshot: ConversationSnapshot | undefined) {
+  return Boolean(
+    snapshot?.prefetchedAtMs &&
+    Date.now() - snapshot.prefetchedAtMs < PREFETCH_OPEN_WINDOW_MS,
+  );
+}
+
+/**
+ * Whether the detail polls by itself: a Turn runs, input waits in the
+ * mailbox, or the viewer must authorize a connection.
+ */
+export function conversationDetailIsLive(
+  snapshot: ConversationSnapshot | undefined,
+): boolean {
+  return (
+    snapshot?.status === "active" ||
+    Boolean(snapshot?.mailbox?.messages.length) ||
+    Boolean(snapshot?.mailbox?.authorization)
+  );
 }
 
 /** Refresh history and mailbox as one visible snapshot, including idle input. */
@@ -162,51 +143,80 @@ export function conversationDetailQueryOptions(
     awaitingMessage?: boolean;
     /** Poll fast until this time so a new send reaches history quickly. */
     fastPollUntilMs?: number;
+    /** Also read the page around the read position. */
+    unreadPage?: boolean;
+    /**
+     * The versions poll refreshes this Conversation while it is idle, so
+     * the detail does not poll then.
+     */
+    versionsPoll?: boolean;
   },
 ) {
+  // `unreadPage` adds a page to one fetch. The detail in the cache is the
+  // same, so it stays out of the key.
+  // oxlint-disable-next-line @tanstack/query/exhaustive-deps
   return queryOptions({
     enabled: Boolean(conversationId),
     queryKey: conversationDetailQueryKey(conversationId),
-    queryFn: ({ signal, client }) =>
-      readConversationSnapshot(
+    queryFn: async ({ signal, client }) => {
+      const previous = client.getQueryData<ConversationSnapshot>(
+        conversationDetailQueryKey(conversationId),
+      );
+      // The server reads the mailbox before history, so acknowledged input
+      // is in at least one of them.
+      const next = await readConversationData(
         conversationId!,
         signal,
-        client.getQueryData<ConversationSnapshot>(
-          conversationDetailQueryKey(conversationId),
-        ),
-      ),
+        previous,
+        { mailbox: true, unreadPage: options?.unreadPage },
+      );
+      refreshSideReadsOnChange(client, conversationId!, previous, next);
+      return next;
+    },
     structuralSharing: (previous, next) => {
       if (!next || typeof next !== "object") return next;
       if (!previous || typeof previous !== "object") return next;
-      return reuseConversationEventReferences(
+      return keepLatestReadPosition(
         previous as ConversationSnapshot,
-        next as ConversationSnapshot,
+        reuseConversationEventReferences(
+          previous as ConversationSnapshot,
+          next as ConversationSnapshot,
+        ),
       );
     },
     refetchInterval: (query) =>
       options?.fastPollUntilMs && Date.now() < options.fastPollUntilMs
         ? FAST_POLL_INTERVAL_MS
-        : options?.awaitingMessage ||
-            query.state.data?.status === "active" ||
-            Boolean(query.state.data?.mailbox?.messages.length) ||
-            Boolean(query.state.data?.mailbox?.authorization)
+        : options?.awaitingMessage || conversationDetailIsLive(query.state.data)
           ? 2_000
-          : 10_000,
+          : options?.versionsPoll
+            ? false
+            : 10_000,
     retry: false,
   });
 }
 
-function outboxActorIdentity(
-  queryClient: QueryClient,
-): ActorIdentity | undefined {
-  const user = queryClient.getQueryData<DashboardCoreData>([
-    "dashboard",
-    "core",
-  ])?.me.user;
-  if (!user?.email) return undefined;
+/**
+ * Read positions only move forward. A poll that started before a read report
+ * finished must not put an older position back in the cache, nor the unread
+ * cursor of that older position. The cache already holds the cursor for the
+ * newer position: a read does not change the detail version, so no later poll
+ * would bring it back.
+ */
+function keepLatestReadPosition(
+  previous: ConversationSnapshot,
+  next: ConversationSnapshot,
+): ConversationSnapshot {
+  const kept = previous.readPosition;
+  if (!kept) return next;
+  if ((next.readPosition?.lastReadSeq ?? -1) >= kept.lastReadSeq) return next;
+  const { unreadCursor: _olderCursor, unreadPage: _olderPage, ...rest } = next;
   return {
-    email: user.email,
-    fullName: user.name || undefined,
+    ...rest,
+    readPosition: kept,
+    ...(previous.unreadCursor
+      ? { unreadCursor: previous.unreadCursor, unreadPage: previous.unreadPage }
+      : undefined),
   };
 }
 
@@ -217,9 +227,9 @@ export function useCreateConversation() {
     mutationFn: (args: {
       idempotencyKey: string;
       message: string;
-      images?: InputImage[];
+      files?: File[];
       visibility?: "private" | "public";
-    }) => post(acceptedConversationMessageSchema, "/api/conversations", args),
+    }) => postWebMessage("/api/conversations", args),
     onSuccess: (accepted, args) => {
       queryClient.setQueryData<ConversationOutboxMessage[]>(
         conversationOutboxQueryKey(accepted.conversationId),
@@ -232,6 +242,7 @@ export function useCreateConversation() {
               inline: true,
               messageId: accepted.messageId,
             }),
+            acceptedAtMs: Date.now(),
             status: "accepted",
           }),
       );
@@ -282,6 +293,7 @@ export function useForkConversation(sourceConversationId: string) {
               inline: true,
               messageId: accepted.messageId,
             }),
+            acceptedAtMs: Date.now(),
             status: "accepted",
           }),
       );
@@ -305,12 +317,12 @@ export function useAppendConversationMessage(conversationId: string) {
       /** Show the send in the transcript instead of the queue. */
       inline?: boolean;
       message: string;
-      images?: InputImage[];
+      files?: File[];
     }) =>
-      post(
-        acceptedConversationMessageSchema,
+      postWebMessage(
         `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
         body,
+        conversationId,
       ),
     onMutate: async (args) => {
       // Use the durable id from the first render. No server read is needed,
@@ -509,170 +521,41 @@ export function useStopConversationTurn(conversationId: string) {
   });
 }
 
-/** Archive or restore one conversation with an immediate reversible cache update. */
-export function useArchiveConversation(
-  conversationId: string,
+/** The open Conversation's data, from `useConversationData`. */
+export type ConversationData = ReturnType<typeof useConversationData>;
+
+/** Fetch a bounded conversation snapshot and older pages on demand. */
+export function useConversationData(
+  conversationId: string | undefined,
   options?: {
-    onError?(): void;
-    onSuccess?(archivedAt: string | null): void;
+    /**
+     * Ask the first fetch of this visit for the page around the read
+     * position. Polls do not ask, so the server reads that page once.
+     */
+    unreadPageAtOpen?: boolean;
+    /** See `conversationDetailQueryOptions`. */
+    versionsPoll?: boolean;
   },
 ) {
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationKey: [...archiveConversationMutationKey, conversationId],
-    mutationFn: (args: ArchiveConversationVariables) =>
-      patch(
-        archiveConversationResponseSchema,
-        `/api/conversations/${encodeURIComponent(conversationId)}/archive`,
-        args,
-      ),
-    onMutate: async (args) => {
-      const conversationQueries = { queryKey: ["dashboard", "conversations"] };
-      const detailQueryKey = conversationDetailQueryKey(conversationId);
-      const archivedQueryKey = archivedConversationQueryKey(conversationId);
-      await Promise.all([
-        queryClient.cancelQueries(conversationQueries),
-        queryClient.cancelQueries({ queryKey: detailQueryKey }),
-      ]);
-      const previousFeeds =
-        queryClient.getQueriesData<ConversationFeed>(conversationQueries);
-      const previousDetail =
-        queryClient.getQueryData<ConversationDetailReport>(detailQueryKey);
-      const previousArchivedSnapshot =
-        queryClient.getQueryData<ArchivedConversationSnapshot>(
-          archivedQueryKey,
-        );
-      const archivedAt = args.archived ? new Date().toISOString() : null;
-      // Snapshot from any loaded feed, including archived-only fixtures that
-      // were never archived through this client session.
-      const archivedSnapshot =
-        buildArchivedConversationSnapshot(previousFeeds, conversationId) ??
-        previousArchivedSnapshot;
-
-      previousFeeds.forEach(([queryKey, feed]) => {
-        if (!feed) return;
-        const conversationExists = feed.conversations.some(
-          (conversation) => conversation.conversationId === conversationId,
-        );
-        const feedStatus = conversationFeedStatus(queryKey);
-        const shouldRestore =
-          !args.archived &&
-          !conversationExists &&
-          Boolean(archivedSnapshot) &&
-          feedStatus !== "archived";
-        const conversations = shouldRestore
-          ? [
-              ...feed.conversations,
-              { ...archivedSnapshot!.conversation, archivedAt: null },
-            ].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
-          : feed.conversations.map((conversation) =>
-              conversation.conversationId === conversationId
-                ? { ...conversation, archivedAt }
-                : conversation,
-            );
-        queryClient.setQueryData<ConversationFeed>(queryKey, {
-          ...feed,
-          conversations,
-        });
-      });
-      queryClient.setQueryData<ConversationSnapshot>(
-        detailQueryKey,
-        (detail) =>
-          detail ? { ...detail, archivedAt, detailEtag: undefined } : detail,
-      );
-      if (archivedSnapshot) {
-        queryClient.setQueryData(archivedQueryKey, archivedSnapshot);
-      }
-      return {
-        archivedQueryKey,
-        archivedSnapshot,
-        detailQueryKey,
-        previousArchivedSnapshot,
-        previousDetail,
-        previousFeeds,
-      } satisfies ArchiveConversationMutationContext;
-    },
-    onError: (_error, _args, context) => {
-      context?.previousFeeds.forEach(([queryKey, feed]) => {
-        queryClient.setQueryData(queryKey, feed);
-      });
-      if (context) {
-        queryClient.setQueryData(
-          context.detailQueryKey,
-          context.previousDetail,
-        );
-        if (context.previousArchivedSnapshot) {
-          queryClient.setQueryData(
-            context.archivedQueryKey,
-            context.previousArchivedSnapshot,
-          );
-        } else {
-          queryClient.removeQueries({
-            exact: true,
-            queryKey: context.archivedQueryKey,
-          });
-        }
-      }
-      options?.onError?.();
-    },
-    onSuccess: (result, args) => {
-      queryClient.setQueryData<ConversationSnapshot>(
+  // The shell keeps one hook across Conversations, so a new Conversation
+  // starts a new visit. A recent hover prefetch is the open fetch of the visit.
+  const startVisit = () => {
+    const prefetched = isOpenPrefetch(
+      queryClient.getQueryData<ConversationSnapshot>(
         conversationDetailQueryKey(conversationId),
-        (detail) =>
-          detail
-            ? {
-                ...detail,
-                archivedAt: result.archivedAt,
-                detailEtag: undefined,
-              }
-            : detail,
-      );
-      if (!args.archived) {
-        queryClient.removeQueries({
-          exact: true,
-          queryKey: archivedConversationQueryKey(conversationId),
-        });
-      }
-      options?.onSuccess?.(result.archivedAt);
-    },
-    onSettled: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "conversations"],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "locations"],
-        }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard", "people"] }),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationDetailQueryKey(conversationId),
-        }),
-      ]);
-    },
-  });
-}
-
-function buildArchivedConversationSnapshot(
-  feeds: Array<[readonly unknown[], ConversationFeed | undefined]>,
-  conversationId: string,
-): ArchivedConversationSnapshot | undefined {
-  let conversation: ConversationSummaryReport | undefined;
-  const feedQueryHashes: string[] = [];
-  for (const [queryKey, feed] of feeds) {
-    const feedConversation = feed?.conversations.find(
-      (item) => item.conversationId === conversationId,
+      ),
     );
-    if (!feedConversation) continue;
-    conversation ??= feedConversation;
-    feedQueryHashes.push(JSON.stringify(queryKey));
+    return { conversationId, fetched: prefetched, prefetched };
+  };
+  const [visit, setVisit] = useState(startVisit);
+  if (visit.conversationId !== conversationId) {
+    setVisit(startVisit());
   }
-  return conversation ? { conversation, feedQueryHashes } : undefined;
-}
-
-/** Fetch a bounded conversation snapshot and older pages on demand. */
-export function useConversationData(conversationId: string | undefined) {
-  const queryClient = useQueryClient();
+  const fetchedAtOpen =
+    visit.conversationId === conversationId && visit.fetched;
+  const openedFromPrefetch =
+    visit.conversationId === conversationId && visit.prefetched;
   const outbox = useQuery({
     enabled: Boolean(conversationId),
     // Local-only cache. Never replace optimistic rows with an empty fetch result.
@@ -704,14 +587,31 @@ export function useConversationData(conversationId: string | undefined) {
     0,
     ...awaitingRows.map((message) => Date.parse(message.createdAt)),
   );
-  const detail = useQuery(
-    conversationDetailQueryOptions(conversationId, {
+  const detail = useQuery({
+    ...conversationDetailQueryOptions(conversationId, {
       awaitingMessage: awaitingRows.length > 0,
       fastPollUntilMs: latestSendAtMs
         ? latestSendAtMs + FAST_POLL_WINDOW_MS
         : undefined,
+      unreadPage: Boolean(options?.unreadPageAtOpen) && !fetchedAtOpen,
+      versionsPoll: options?.versionsPoll,
     }),
-  );
+  });
+  // A reopened Conversation shows the cached copy at once, but it can miss
+  // messages that arrived while the reader was away. Fetch it once at the
+  // start of each visit, even when the cached copy is still fresh. A fetch
+  // that is already running counts, such as a hover prefetch. After a done
+  // prefetch, this fetch only checks for newer events.
+  const refetchDetail = detail.refetch;
+  useEffect(() => {
+    if (!conversationId) return;
+    void refetchDetail({ cancelRefetch: false });
+    // After a visit, the read position can move past the prefetched one.
+    return () => dropPrefetchMark(queryClient, conversationId);
+  }, [conversationId, queryClient, refetchDetail]);
+  if (!fetchedAtOpen && detail.isFetchedAfterMount && !detail.isFetching) {
+    setVisit({ conversationId, fetched: true, prefetched: openedFromPrefetch });
+  }
   // Defer the whole server snapshot, not history alone. Queue removal and the
   // matching transcript must paint together while composer input stays urgent.
   const deferredDetail = useDeferredValue(detail.data);
@@ -722,30 +622,19 @@ export function useConversationData(conversationId: string | undefined) {
       ? deferredDetail
       : detail.data;
   const mailbox = detailData?.mailbox;
-  // Accept is not visibility. Keep a local row until either server resource
-  // contains its real Message id. History and mailbox arrive in one render.
+  // Accept is not visibility. Keep a local row until the server snapshot
+  // shows it. History and mailbox arrive in one render.
   useEffect(() => {
     if (!mailbox || !detailData) return;
-    const queuedIds = new Set(
-      mailbox.messages.map((message) => message.messageId),
-    );
-    const historyIds = new Set<string>();
-    for (const event of detailData.events) {
-      if (event.data.type === "message") historyIds.add(event.data.messageId);
-    }
     queryClient.setQueryData<ConversationOutboxMessage[]>(
       conversationOutboxQueryKey(conversationId),
-      (current) => {
-        // An inline row stays until history has it. The mailbox copy alone
-        // would put it back in the queue.
-        const next = current?.filter(
-          (message) =>
-            !historyIds.has(message.messageId) &&
-            (isInlineOutboxMessage(message) ||
-              !queuedIds.has(message.messageId)),
-        );
-        return next?.length === current?.length ? current : next;
-      },
+      (current) =>
+        current &&
+        settleConversationOutboxMessages(current, {
+          events: detailData.events,
+          mailboxReadAtMs: detailData.mailboxReadAtMs,
+          queued: mailbox.messages,
+        }),
     );
   }, [conversationId, detailData, mailbox, outbox.data, queryClient]);
   // The title is generated after the first message, and only the open
@@ -759,22 +648,24 @@ export function useConversationData(conversationId: string | undefined) {
       .getQueryCache()
       .findAll({ queryKey: ["dashboard", "conversations"] });
     for (const query of feeds) {
-      const feed = query.state.data as ConversationFeed | undefined;
+      const feed = query.state.data as ConversationFeedCache | undefined;
       if (!feed || query.state.dataUpdatedAt > detailUpdatedAt) continue;
-      const stale = feed.conversations.some(
+      const stale = conversationFeedCacheRows(feed).some(
         (conversation) =>
           conversation.conversationId === conversationId &&
           conversation.displayTitle !== displayTitle,
       );
       if (!stale) continue;
-      queryClient.setQueryData<ConversationFeed>(query.queryKey, {
-        ...feed,
-        conversations: feed.conversations.map((conversation) =>
-          conversation.conversationId === conversationId
-            ? { ...conversation, displayTitle }
-            : conversation,
+      queryClient.setQueryData<ConversationFeedCache>(
+        query.queryKey,
+        mapConversationFeedCache(feed, (conversations) =>
+          conversations.map((conversation) =>
+            conversation.conversationId === conversationId
+              ? { ...conversation, displayTitle }
+              : conversation,
+          ),
         ),
-      });
+      );
     }
   }, [conversationId, detailUpdatedAt, displayTitle, queryClient]);
   const historyStatus = detailData?.eventHistory.status;
@@ -865,7 +756,6 @@ export function useConversationData(conversationId: string | undefined) {
   const isLoadingPreviousPage =
     history.isFetchingNextPage || historyNeedsReconciliation;
 
-  const refetchDetail = detail.refetch;
   useEffect(() => {
     if (shouldRefreshDetail) void refetchDetail();
   }, [refetchDetail, shouldRefreshDetail]);
@@ -881,11 +771,18 @@ export function useConversationData(conversationId: string | undefined) {
 
   const fetchNextHistoryPage = history.fetchNextPage;
   useEffect(() => {
-    if (historyNeedsReconciliation) void fetchNextHistoryPage();
+    if (historyNeedsReconciliation) {
+      void fetchNextHistoryPage({ cancelRefetch: false });
+    }
   }, [fetchNextHistoryPage, historyNeedsReconciliation]);
 
   return {
     data,
+    /**
+     * The latest page alone, without earlier pages. It is not deferred, so it
+     * matches `fetchedDetail` and the read position that came with it.
+     */
+    latest: detail.data,
     error: detail.error,
     historyError,
     historyVersion: conversationHistoryVersion(historyPages ?? []),
@@ -893,6 +790,13 @@ export function useConversationData(conversationId: string | undefined) {
       ? history.hasNextPage
       : Boolean(detailData?.previousCursor),
     isPending: detail.isPending,
+    /** The first fetch of this visit has ended. */
+    fetchedAtOpen,
+    /** The latest detail after a fetch in this visit, before it is deferred. */
+    fetchedDetail:
+      openedFromPrefetch || (detail.isFetchedAfterMount && !detail.isFetching)
+        ? detail.data
+        : undefined,
     isLoadingPreviousPage,
     pendingAuthorization: mailbox?.authorization,
     pendingGeneratedAt: mailbox?.generatedAt,
@@ -913,8 +817,10 @@ export function useConversationData(conversationId: string | undefined) {
       const hasPreviousPage = history.data
         ? history.hasNextPage
         : Boolean(detailData?.previousCursor);
-      if (conversationId && hasPreviousPage && !history.isFetchingNextPage) {
-        void history.fetchNextPage();
+      if (conversationId && hasPreviousPage) {
+        // A second call joins the read in flight. By default it cancels
+        // that read and starts the same read again.
+        void history.fetchNextPage({ cancelRefetch: false });
       }
     },
   };
@@ -925,27 +831,102 @@ export async function readConversationData(
   conversationId: string,
   signal?: AbortSignal,
   previous?: ConversationSnapshot,
+  options?: {
+    /** Also read the mailbox, before history, in the same request. */
+    mailbox?: boolean;
+    unreadPage?: boolean;
+  },
 ): Promise<ConversationSnapshot> {
+  const query = new URLSearchParams();
+  if (options?.unreadPage) query.set("unreadPage", "true");
+  if (options?.mailbox) query.set("mailbox", "true");
+  // A poll asks only for the events after the cached ones. The unread page
+  // needs the latest page, so a read that asks for it reads that page.
+  const after = options?.unreadPage ? undefined : previous?.appendCursor;
+  if (after) query.set("after", after);
+  const search = query.size ? `?${query}` : "";
+  const mailboxReadAtMs = Date.now();
   const response = await readDashboardResponse(
-    `/api/conversations/${encodeURIComponent(conversationId)}`,
+    `/api/conversations/${encodeURIComponent(conversationId)}${search}`,
     signal,
-    previous?.detailEtag,
+    previous?.detailEtag
+      ? { [CONVERSATION_DETAIL_VERSION_HEADER]: previous.detailEtag }
+      : undefined,
   );
   if (response.status === 304 && previous) return previous;
-  const report = conversationDetailReportSchema.parse(await response.json());
-  return { ...report, detailEtag: response.headers.get("etag") ?? undefined };
+  if (!options?.mailbox) {
+    return withDetailEtag(
+      withCachedEvents(
+        await readResponseJson(response, conversationDetailReportSchema),
+        previous,
+      ),
+      response,
+    );
+  }
+  const report = await readResponseJson(
+    response,
+    z.union([
+      conversationUnchangedDetailWithMailboxSchema,
+      conversationDetailWithMailboxReportSchema,
+    ]),
+  );
+  if (!("unchanged" in report)) {
+    return {
+      ...withDetailEtag(withCachedEvents(report, previous), response),
+      mailboxReadAtMs,
+    };
+  }
+  // Only a request that sent a version can get this answer.
+  if (!previous) throw new Error("Unchanged detail without a cached copy");
+  return { ...previous, mailbox: report.mailbox, mailboxReadAtMs };
 }
 
-/** Read accepted mailbox messages that have not reached durable history yet. */
-export function readConversationPendingMessages(
-  conversationId: string,
-  signal?: AbortSignal,
-): Promise<ConversationPendingMessagesReport> {
-  return fetchDashboardJson(
-    conversationPendingMessagesReportSchema,
-    `/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
-    signal,
-  );
+/**
+ * Put the cached events before the newer events of an `appended` report.
+ * The cached detail keeps its cursors: they still point before its events.
+ */
+function withCachedEvents(
+  report: ConversationSnapshot,
+  previous: ConversationSnapshot | undefined,
+): ConversationSnapshot {
+  if (!report.appended) return report;
+  // Only a request that sent an `appendCursor` can get this answer.
+  if (!previous) throw new Error("Appended detail without a cached copy");
+  const { appended: _appended, ...rest } = report;
+  const lastSeq = previous.events.at(-1)?.seq ?? -1;
+  const firstSeq = previous.events[0]?.seq;
+  // Like the server, keep the unread cursor while the reader is behind the
+  // first event.
+  const behind =
+    rest.readPosition !== undefined &&
+    firstSeq !== undefined &&
+    rest.readPosition.lastReadSeq + 1 < firstSeq;
+  return {
+    ...rest,
+    events: [
+      ...previous.events,
+      ...report.events.filter((event) => event.seq > lastSeq),
+    ],
+    ...(previous.previousCursor
+      ? { previousCursor: previous.previousCursor }
+      : undefined),
+    ...(behind && previous.unreadCursor
+      ? { unreadCursor: previous.unreadCursor, unreadPage: previous.unreadPage }
+      : undefined),
+  };
+}
+
+function withDetailEtag<T extends ConversationDetailReport>(
+  report: T,
+  response: Response,
+): T & { conversationVersion?: string; detailEtag?: string } {
+  return {
+    ...report,
+    conversationVersion:
+      response.headers.get(CONVERSATION_VERSION_HEADER) ?? undefined,
+    detailEtag:
+      response.headers.get(CONVERSATION_DETAIL_VERSION_HEADER) ?? undefined,
+  };
 }
 
 /** Read one bounded page of events before the supplied history cursor. */

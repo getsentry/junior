@@ -1,16 +1,6 @@
-import { completeDecision, completeText } from "@/chat/pi/client";
+import { completeDecision, completeText } from "@/chat/core-model";
 import { executeAgentRun as executeAgentRunImpl } from "@/chat/agent";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
-import {
-  createConversationMemoryService,
-  type ConversationMemoryDeps,
-  type ConversationMemoryService,
-} from "@/chat/services/conversation-memory";
-import {
-  createContextCompactor,
-  type ContextCompactor,
-  type ContextCompactorDeps,
-} from "@/chat/services/context-compaction";
 import { downloadPrivateSlackFile } from "@/chat/slack/client";
 import { listThreadReplies } from "@/chat/slack/channel";
 import {
@@ -33,8 +23,6 @@ import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
 export interface JuniorRuntimeServices {
-  conversationMemory: ConversationMemoryService;
-  contextCompactor: ContextCompactor;
   executeTurn: ExecuteTurn;
   subscribedReplyPolicy: SubscribedReplyPolicy;
   visionContext: VisionContextService;
@@ -42,8 +30,6 @@ export interface JuniorRuntimeServices {
 
 export interface JuniorRuntimeServiceOverrides {
   agentRunner?: AgentRunner;
-  conversationMemory?: Partial<ConversationMemoryDeps>;
-  contextCompactor?: Partial<ContextCompactorDeps>;
   subscribedReplyPolicy?: Partial<SubscribedReplyPolicyDeps>;
   sandbox?: {
     tracePropagation?: SandboxEgressTracePropagationConfig;
@@ -54,14 +40,6 @@ export interface JuniorRuntimeServiceOverrides {
 export function createJuniorRuntimeServices(
   overrides: JuniorRuntimeServiceOverrides = {},
 ): JuniorRuntimeServices {
-  const conversationMemory = createConversationMemoryService({
-    completeText: overrides.conversationMemory?.completeText ?? completeText,
-  });
-  const contextCompactor = createContextCompactor({
-    completeText: overrides.contextCompactor?.completeText ?? completeText,
-    autoCompactionTriggerTokens:
-      overrides.contextCompactor?.autoCompactionTriggerTokens,
-  });
   const visionContext = createVisionContextService({
     attachmentStorage: overrides.visionContext?.attachmentStorage,
     completeText: overrides.visionContext?.completeText ?? completeText,
@@ -81,8 +59,6 @@ export function createJuniorRuntimeServices(
     });
 
   return {
-    conversationMemory,
-    contextCompactor,
     executeTurn: async (run, saveResult) =>
       await executeTurn(agentRunner, run, saveResult),
     subscribedReplyPolicy: createSubscribedReplyPolicy({

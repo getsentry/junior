@@ -30,6 +30,7 @@ function event(seq: number): ConversationReportEvent {
 
 function detail(): ConversationDetailReport {
   return {
+    kind: "root",
     actorIdentity: { email: "stale@example.com" },
     conversationId: "conversation-1",
     cumulativeDurationMs: 10,
@@ -262,10 +263,15 @@ describe("conversation transcript", () => {
   });
 
   it("reuses events while keeping fresh poll metadata", () => {
-    const previous = { ...detail(), annotations: [] };
+    const previous = {
+      ...detail(),
+      annotations: [],
+      authors: { "identity-1": { fullName: "Owner Person" } },
+    };
     const next = {
       ...previous,
       annotations: [],
+      authors: { "identity-1": { fullName: "Owner Person" } },
       cumulativeDurationMs: previous.cumulativeDurationMs + 2_000,
       generatedAt: "2026-07-23T00:00:02.000Z",
       lastProgressAt: "2026-07-23T00:00:02.000Z",
@@ -274,6 +280,8 @@ describe("conversation transcript", () => {
 
     const result = reuseConversationEventReferences(previous, next);
     expect(result.annotations).toBe(previous.annotations);
+    // Memoized footer and message views compare authors by reference.
+    expect(result.authors).toBe(previous.authors);
     expect(result.events).toBe(previous.events);
     expect(result.generatedAt).toBe("2026-07-23T00:00:02.000Z");
   });

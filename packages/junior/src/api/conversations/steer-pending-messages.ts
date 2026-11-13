@@ -1,12 +1,12 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { webActorFromEmail } from "@/chat/conversations/web-input";
+import { webActorUserIds } from "@/chat/conversations/legacy-web-actor-id";
 import { getConversationStore, getDb } from "@/chat/db";
 import { steerWebPendingMessages } from "@/chat/task-execution/store";
 import { throwApiError } from "../http";
 import type {
   SteerConversationPendingMessagesBody,
   SteerConversationPendingMessagesResponse,
-} from "../schema/conversation";
+} from "../schema/conversation-pending-messages";
 import { readConversationAccessFromSql } from "./access";
 
 /**
@@ -38,7 +38,7 @@ export async function steerConversationPendingMessagesForViewer(
   }
 
   const result = await steerWebPendingMessages({
-    authorId: webActorFromEmail(viewer.email).userId,
+    authorIds: webActorUserIds(viewer),
     conversationId,
     inboundMessageIds: body.inboundMessageIds,
   });

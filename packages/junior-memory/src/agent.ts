@@ -3,7 +3,7 @@ import {
   sourceSchema,
   type PluginModel,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   memorySupersessionDecisionSchema,
   memorySupersessionInputSchema,
@@ -27,28 +27,6 @@ const memoryRejectReasonSchema = z.enum([
   "assistant_or_system_detail",
   "unsupported_scope",
 ]);
-const memoryRecallCandidateSchema = z
-  .object({
-    content: z.string().min(1),
-    id: z.string().min(1),
-  })
-  .strict();
-const memoryRecallInputSchema = z
-  .object({
-    candidates: z.array(memoryRecallCandidateSchema).min(1).max(20),
-    userRequest: z.string().min(1),
-  })
-  .strict();
-const memoryRecallDecisionSchema = z
-  .object({
-    relevantIds: z
-      .array(z.string().min(1))
-      .max(20)
-      .describe(
-        "Candidate ids whose memories directly help with the current request, ordered by relevance.",
-      ),
-  })
-  .strict();
 const createMemoryRequestSchema = z
   .object({
     content: z.string().min(1),
@@ -213,7 +191,6 @@ type MemorySupersessionResponse = z.output<
 type ExtractMemoriesResponse = z.output<typeof extractMemoriesResponseSchema>;
 
 export type MemoryReview = z.output<typeof memoryReviewDecisionSchema>;
-export type MemoryRecallInput = z.output<typeof memoryRecallInputSchema>;
 
 export type CreateMemoryRequest = z.output<typeof createMemoryRequestSchema>;
 export type ExtractSessionRequest = z.output<
@@ -221,23 +198,12 @@ export type ExtractSessionRequest = z.output<
 >;
 export type ExtractedMemory = z.output<typeof extractedMemoryResultSchema>;
 
-/** Memories proposed by passive extraction and the model cost of that pass. */
+/** Memories proposed by passive extraction. */
 export type MemoryExtractionResult = {
-  costUsd?: number;
   memories: ExtractedMemory[];
 };
 
-/** Memories admitted by automatic recall and the model cost of that decision. */
-export type MemoryRecallResult = {
-  costUsd?: number;
-  relevantIds: string[];
-};
-
 export interface MemoryAgent {
-  /** Select candidate memories that directly help with the current request. */
-  selectRelevantMemories(
-    request: MemoryRecallInput,
-  ): Promise<MemoryRecallResult> | MemoryRecallResult;
   /** Classify a new memory against related active memories of the same kind. */
   adjudicateSupersession(
     request: MemorySupersessionInput,
@@ -263,13 +229,6 @@ const MEMORY_EXTRACTION_SYSTEM = [
   "Assistant text is context for interpreting the run, not independent evidence for new facts.",
   "Reject secrets, credentials, private or sensitive personal details, gossip, speculative claims about other people, assistant/system implementation details, vague references, and low-durability chatter.",
   "If no durable, self-contained memory remains after rewriting, return an empty memories array.",
-].join("\n");
-const MEMORY_RECALL_SYSTEM = [
-  "You are the memory recall relevance agent for an assistant.",
-  "Select only memories that would directly help answer the user's current request.",
-  "Reject memories that merely share a company, product family, repository vocabulary, programming language, or general engineering context.",
-  "Prefer specific matches on the exact repository, workflow, command, test, CI setup, project, or user preference being asked about.",
-  "An empty relevantIds array is correct when no candidate is directly helpful.",
 ].join("\n");
 const MEMORY_ADJUDICATION_SYSTEM = [
   "You are the memory duplicate review agent for an assistant.",
@@ -522,22 +481,6 @@ function sessionExtractionPrompt(request: ExtractSessionRequest): string {
   ].join("\n");
 }
 
-function recallRelevancePrompt(request: MemoryRecallInput): string {
-  return [
-    "<memory-recall-input>",
-    "<user-request>",
-    escapeXml(request.userRequest),
-    "</user-request>",
-    "",
-    "<candidate-memories>",
-    escapeXml(JSON.stringify(request.candidates)),
-    "</candidate-memories>",
-    "",
-    "Return only ids from candidate-memories. Preserve the most relevant candidates first.",
-    "</memory-recall-input>",
-  ].join("\n");
-}
-
 function adjudicationPrompt(request: MemorySupersessionInput): string {
   return [
     "<memory-adjudication-input>",
@@ -571,28 +514,9 @@ function adjudicationPrompt(request: MemorySupersessionInput): string {
   ].join("\n");
 }
 
-/** Create the memory-owned agent that reviews, extracts, and recalls memories. */
+/** Create the memory-owned agent that reviews, extracts, and deduplicates memories. */
 export function createMemoryAgent(model: PluginModel): MemoryAgent {
   return {
-    async selectRelevantMemories(rawRequest) {
-      const request = memoryRecallInputSchema.parse(rawRequest);
-      const result = await model.completeObject({
-        schema: memoryRecallDecisionSchema,
-        system: MEMORY_RECALL_SYSTEM,
-        prompt: recallRelevancePrompt(request),
-        maxTokens: 400,
-      });
-      const decision = memoryRecallDecisionSchema.parse(result.object);
-      const candidateIds = new Set(request.candidates.map(({ id }) => id));
-      return {
-        relevantIds: [...new Set(decision.relevantIds)].filter((id) =>
-          candidateIds.has(id),
-        ),
-        ...(result.costUsd !== undefined
-          ? { costUsd: result.costUsd }
-          : undefined),
-      };
-    },
     async adjudicateSupersession(rawRequest) {
       const request = memorySupersessionInputSchema.parse(rawRequest);
       const result = await model.completeObject({
@@ -617,9 +541,6 @@ export function createMemoryAgent(model: PluginModel): MemoryAgent {
         memories: extractedMemoriesFromResponse(
           extractMemoriesResponseSchema.parse(result.object),
         ),
-        ...(result.costUsd !== undefined
-          ? { costUsd: result.costUsd }
-          : undefined),
       };
     },
     async reviewCreateRequest(rawRequest) {

@@ -6,6 +6,9 @@ import { getChatConfig } from "@/chat/config";
 import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 
 const ACTIVE_LOCK_HEARTBEAT_MS = 30_000;
+// The Redis adapter keeps `get` and `set` values as JSON under
+// `{prefix}:cache:{key}`. The batch reads and writes below use the same keys.
+const REDIS_STATE_KEY_PREFIX = "chat-sdk";
 
 let stateAdapter: StateAdapter | undefined;
 let redisStateAdapter: RedisStateAdapter | undefined;
@@ -274,6 +277,7 @@ function createStateAdapter(): StateAdapter {
   }
 
   const redisState = createRedisState({
+    keyPrefix: REDIS_STATE_KEY_PREFIX,
     url: config.state.redisUrl,
   });
   redisStateAdapter = redisState;
@@ -313,6 +317,55 @@ export async function getDefaultRedisStateAdapterFor(
   return context.stateAdapter === adapter
     ? context.redisStateAdapter
     : undefined;
+}
+
+/** The Redis key that the default Redis adapter uses for one state value key. */
+export function redisStateKey(key: string): string {
+  const prefix = getChatConfig().state.keyPrefix;
+  return `${REDIS_STATE_KEY_PREFIX}:cache:${prefix ? `${prefix}:` : ""}${key}`;
+}
+
+/** Read state values in one Redis round trip. Other adapters read each key. */
+export async function getStateValues(
+  state: StateAdapter,
+  keys: readonly string[],
+): Promise<unknown[]> {
+  if (keys.length === 0) return [];
+  const redis = await getDefaultRedisStateAdapterFor(state);
+  if (!redis) {
+    return await Promise.all(keys.map((key) => state.get(key)));
+  }
+  const values = await redis.getClient().mGet(keys.map(redisStateKey));
+  return values.map((value) => {
+    if (value === null) return null;
+    // Match `RedisStateAdapter.get`, which returns a value that is not JSON as is.
+    try {
+      return JSON.parse(value) as unknown;
+    } catch {
+      return value;
+    }
+  });
+}
+
+/** Write state values with one TTL in one Redis round trip. */
+export async function setStateValues(
+  state: StateAdapter,
+  entries: ReadonlyArray<{ key: string; value: unknown }>,
+  ttlMs: number,
+): Promise<void> {
+  if (entries.length === 0) return;
+  const redis = await getDefaultRedisStateAdapterFor(state);
+  if (!redis) {
+    await Promise.all(
+      entries.map(({ key, value }) => state.set(key, value, ttlMs)),
+    );
+    return;
+  }
+  const pipeline = redis.getClient().multi();
+  for (const { key, value } of entries) {
+    pipeline.set(redisStateKey(key), JSON.stringify(value), { PX: ttlMs });
+  }
+  await pipeline.execAsPipeline();
 }
 
 export function getStateAdapter(): StateAdapter {

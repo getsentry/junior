@@ -73,20 +73,20 @@ describe("Google Meet transcripts", () => {
       }),
     );
     await expect(
-      outsider.run("readMeetingTranscript", { eventId: "event1" }),
+      outsider.run("readMeetingTranscript", { event_id: "event1" }),
     ).rejects.toBeInstanceOf(PluginToolInputError);
     const notInvited = meetTools(
       Response.json({ ...event, attendees: event.attendees.slice(0, 2) }),
     );
     await expect(
-      notInvited.run("readMeetingTranscript", { eventId: "event1" }),
+      notInvited.run("readMeetingTranscript", { event_id: "event1" }),
     ).rejects.toThrow("You are not invited");
     // A cancelled event can be a stub without times or attendees.
     const cancelled = meetTools(
       Response.json({ id: "event1", status: "cancelled" }),
     );
     await expect(
-      cancelled.run("readMeetingTranscript", { eventId: "event1" }),
+      cancelled.run("readMeetingTranscript", { event_id: "event1" }),
     ).rejects.toThrow("was cancelled");
     // None of them reached Drive.
     for (const { fetch } of [outsider, notInvited, cancelled]) {
@@ -125,7 +125,7 @@ describe("Google Meet transcripts", () => {
       }),
     );
 
-    const result = await run("readMeetingTranscript", { eventId: "event1" });
+    const result = await run("readMeetingTranscript", { event_id: "event1" });
 
     expect(fetch).toHaveBeenCalledTimes(5);
     expect(
@@ -138,7 +138,7 @@ describe("Google Meet transcripts", () => {
       `/drive/v3/files/${AGENDA_ID}`,
     ]);
     expect(result).toEqual({
-      eventId: "event1",
+      event_id: "event1",
       records: [
         {
           content: "# Notes\n\n**Bob:** Junior, add this to the ticket.",
@@ -155,7 +155,7 @@ describe("Google Meet transcripts", () => {
 
     const early = meetTools(Response.json({ ...event, attachments: [] }));
     expect(
-      await early.run("readMeetingTranscript", { eventId: "event1" }),
+      await early.run("readMeetingTranscript", { event_id: "event1" }),
     ).toMatchObject({
       message: expect.stringContaining("turn on transcription"),
       records: [],
@@ -188,7 +188,7 @@ describe("Google Meet transcripts", () => {
       }),
     );
     expect(
-      await allDay.run("readMeetingTranscript", { eventId: "event1" }),
+      await allDay.run("readMeetingTranscript", { event_id: "event1" }),
     ).toMatchObject({
       message: expect.stringContaining("cannot be opened"),
       records: [

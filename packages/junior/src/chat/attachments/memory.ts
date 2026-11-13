@@ -18,14 +18,18 @@ export function createMemoryAttachmentStorage(): MemoryAttachmentStorage {
     objects,
     provider: "memory",
     async put(input) {
-      objects.set(input.key, Buffer.from(input.body));
+      objects.set(
+        input.key,
+        Buffer.from(await new Response(input.body).arrayBuffer()),
+      );
     },
-    async get(key) {
+    async get(key, range) {
       const body = objects.get(key);
       if (!body) return null;
+      const bytes = range ? body.subarray(range.start, range.end + 1) : body;
       return new ReadableStream<Uint8Array>({
         start(controller) {
-          controller.enqueue(new Uint8Array(body));
+          controller.enqueue(new Uint8Array(bytes));
           controller.close();
         },
       });

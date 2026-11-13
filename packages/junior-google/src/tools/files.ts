@@ -1,5 +1,5 @@
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import type { GoogleOperation } from "../credentials";
 import {
   googleApiError,
@@ -11,14 +11,17 @@ import {
 const FILE_TYPES = {
   document: {
     label: "Google Doc",
+    linkRoot: "document",
     mimeType: "application/vnd.google-apps.document",
   },
   presentation: {
     label: "Google Slides presentation",
+    linkRoot: "presentation",
     mimeType: "application/vnd.google-apps.presentation",
   },
   spreadsheet: {
     label: "Google Sheet",
+    linkRoot: "spreadsheets",
     mimeType: "application/vnd.google-apps.spreadsheet",
   },
 } as const;
@@ -37,6 +40,20 @@ export function googleFileType(mimeType: string): GoogleFileType | undefined {
   return GOOGLE_FILE_TYPES.find(
     (type) => FILE_TYPES[type].mimeType === mimeType,
   );
+}
+
+/** Return the first path segment of a file type's links, such as `spreadsheets`. */
+export function googleFileLinkRoot(type: GoogleFileType): string {
+  return FILE_TYPES[type].linkRoot;
+}
+
+/**
+ * Return the file type that a Docs, Sheets, or Slides link names in its
+ * path, such as `/spreadsheets/d/<id>`. Other links name no type.
+ */
+export function googleLinkFileType(url: URL): GoogleFileType | undefined {
+  const root = url.pathname.split("/")[1];
+  return GOOGLE_FILE_TYPES.find((type) => FILE_TYPES[type].linkRoot === root);
 }
 
 /** File id or link input for the tools that use one file. */
@@ -72,7 +89,7 @@ export interface FileReference {
 export function parseFileReference(value: string): FileReference {
   let fileId = value;
   let resourceKey: string | undefined;
-  if (/^https?:\/\//.test(value)) {
+  if (value.startsWith("https://") || value.startsWith("http://")) {
     const url = URL.parse(value);
     fileId =
       url?.pathname.match(/\/d\/([^/]+)/)?.[1] ??
@@ -88,11 +105,21 @@ export function parseFileReference(value: string): FileReference {
   return { fileId, ...(resourceKey ? { resourceKey } : undefined) };
 }
 
+/** Return the header that carries a file's resource key, when known. */
+export function resourceKeyHeaders(
+  file: FileReference,
+): Record<string, string> {
+  return file.resourceKey
+    ? { "X-Goog-Drive-Resource-Keys": `${file.fileId}/${file.resourceKey}` }
+    : {};
+}
+
 /** Call one Google operation on a file, with its resource key when known. */
 export async function googleFileRequest(
   ctx: GoogleToolContext,
   file: FileReference,
   input: {
+    body?: unknown;
     headers?: Record<string, string>;
     operation: GoogleOperation;
     path: string;
@@ -101,14 +128,7 @@ export async function googleFileRequest(
 ): Promise<{ body: unknown; status: number }> {
   const response = await googleApiRequest(ctx, {
     ...input,
-    headers: {
-      ...input.headers,
-      ...(file.resourceKey
-        ? {
-            "X-Goog-Drive-Resource-Keys": `${file.fileId}/${file.resourceKey}`,
-          }
-        : undefined),
-    },
+    headers: { ...input.headers, ...resourceKeyHeaders(file) },
   });
   // Google returns 404 for a file that Junior's account cannot open.
   if (response.status === 404) {
@@ -123,6 +143,7 @@ export async function googleFileRequest(
 }
 
 const driveFileSchema = z.object({
+  capabilities: z.object({ canEdit: z.boolean().optional() }).optional(),
   id: z.string(),
   mimeType: z.string(),
   modifiedTime: z.string().optional(),
@@ -136,7 +157,7 @@ const driveFileSchema = z.object({
  * `drive.readonly` can read any Drive file, so each tool checks the type
  * before it reads content or comments.
  */
-export async function readGoogleFile(
+export async function readGoogleFileMetadata(
   ctx: GoogleToolContext,
   file: FileReference,
   types: readonly GoogleFileType[],
@@ -145,7 +166,7 @@ export async function readGoogleFile(
     operation: "google.drive.file.get",
     path: `/drive/v3/files/${file.fileId}`,
     query: {
-      fields: "id,mimeType,modifiedTime,name,webViewLink",
+      fields: "capabilities(canEdit),id,mimeType,modifiedTime,name,webViewLink",
       supportsAllDrives: "true",
     },
   });
@@ -166,7 +187,7 @@ export function fileOutputFields(file: {
   webViewLink?: string;
 }) {
   return {
-    ...(file.modifiedTime ? { modifiedTime: file.modifiedTime } : undefined),
+    ...(file.modifiedTime ? { modified_at: file.modifiedTime } : undefined),
     ...(file.webViewLink ? { url: file.webViewLink } : undefined),
   };
 }

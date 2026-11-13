@@ -177,6 +177,13 @@ When `SENTRY_READ_TOKEN` is also set, Junior uses it for every read that no inst
 
 An event automation without an identifier runs for every installed org. Its `projects` filter matches the same project slug in each org.
 
+## Issue link cards
+
+The dashboard shows a card for a link to a Sentry issue or to one of its events, on `sentry.io/organizations/<org>/` or on `<org>.sentry.io`. The card shows the title, the culprit, the state, the assignee, the priority, the project, and a line of events per hour for the last day.
+
+- Each viewer must connect Sentry on the dashboard **Connections** page. Junior asks Sentry, with that viewer's own token, whether the viewer can open the issue. Without a connection, or without access, the viewer gets no card. Junior never asks the viewer to connect for a card.
+- Junior reads the card with the org read token, so set `SENTRY_READ_TOKEN`. It sends the issue calls to the org's region host, such as `us.sentry.io` or `de.sentry.io`, from the `links.regionUrl` of the org.
+
 ## Set up issue webhooks
 
 Create a **Sentry internal integration** in the organization that should send issue webhooks. A public Sentry app is not required.
@@ -270,8 +277,8 @@ The alert resolved.
 
 Junior publishes each state once for each alert incident.
 
-An event automation can also run for every project in the Sentry org, with no
-identifier. `issue.created`, `metric_alert.critical`, `metric_alert.warning`,
+An event automation selects Sentry events with filters instead of an
+identifier, and can run for every project in the Sentry org. `issue.created`, `metric_alert.critical`, `metric_alert.warning`,
 and `metric_alert.resolved` can run that way with no filter. Use the
 `projects` filter to limit one to some projects. Junior saves project slugs in
 lowercase. Junior does not check that the creator can see the projects, so a

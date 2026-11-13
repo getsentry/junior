@@ -5,6 +5,9 @@ export const INPUT_IMAGE_TYPES = [
   "image/webp",
 ] as const;
 
+/** Video types that browsers play in a `<video>` element. */
+export const INLINE_VIDEO_TYPES = ["video/mp4", "video/webm"] as const;
+
 export type InputImageType = (typeof INPUT_IMAGE_TYPES)[number];
 
 /** Leading bytes of each accepted image type. `null` matches any byte. */

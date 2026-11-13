@@ -39,7 +39,11 @@ export function PluginReports(props: {
 
   return (
     <div className="grid gap-3">
-      <SectionIntro className="px-1" title="Operational reports" />
+      <SectionIntro
+        anchor="reports"
+        className="px-1"
+        title="Operational reports"
+      />
       {props.reports.map((report) => (
         <PluginReportView
           fallbackTitle={props.fallbackTitle}

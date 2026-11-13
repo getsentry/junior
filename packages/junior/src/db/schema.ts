@@ -1,5 +1,8 @@
 import { juniorArtifacts } from "./schema/artifacts";
-import { juniorAttachments } from "./schema/attachments";
+import {
+  juniorAttachmentUploads,
+  juniorAttachments,
+} from "./schema/attachments";
 import { juniorCodeChanges, juniorCodeRepositories } from "./schema/code";
 import { juniorConversationAnnotations } from "./schema/conversation-annotations";
 import { juniorApiTokens } from "./schema/api-tokens";
@@ -8,6 +11,7 @@ import { juniorConversationMetrics } from "./schema/conversation-metrics";
 import { juniorConversationBriefs } from "./schema/conversation-briefs";
 import { juniorConversationBindings } from "./schema/conversation-bindings";
 import { juniorConversationParticipants } from "./schema/conversation-participants";
+import { juniorConversationReadPositions } from "./schema/conversation-read-positions";
 import { juniorConversations } from "./schema/conversations";
 import {
   juniorAgentBindings,
@@ -26,12 +30,14 @@ import {
   juniorReviewItemSlackCards,
   juniorReviewItems,
 } from "./schema/review-items";
+import { juniorPushSubscriptions } from "./schema/push-subscriptions";
 import { juniorSnapshots } from "./schema/snapshots";
 import { juniorUsers } from "./schema/users";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "./schema/workspaces";
 
 export {
   juniorArtifacts,
+  juniorAttachmentUploads,
   juniorAttachments,
   juniorCodeChanges,
   juniorCodeRepositories,
@@ -44,6 +50,7 @@ export {
   juniorConversationBriefs,
   juniorConversationBindings,
   juniorConversationParticipants,
+  juniorConversationReadPositions,
   juniorConversations,
   juniorLocationConfigurations,
   juniorDestinations,
@@ -52,6 +59,7 @@ export {
   juniorReviewItemConversations,
   juniorReviewItemSlackCards,
   juniorReviewItems,
+  juniorPushSubscriptions,
   juniorSnapshots,
   juniorStats,
   juniorAutomationRuns,
@@ -64,6 +72,7 @@ export {
 
 export const juniorSqlSchema = {
   juniorArtifacts,
+  juniorAttachmentUploads,
   juniorAttachments,
   juniorCodeChanges,
   juniorCodeRepositories,
@@ -76,6 +85,7 @@ export const juniorSqlSchema = {
   juniorConversationBriefs,
   juniorConversationBindings,
   juniorConversationParticipants,
+  juniorConversationReadPositions,
   juniorConversations,
   juniorLocationConfigurations,
   juniorDestinations,
@@ -84,6 +94,7 @@ export const juniorSqlSchema = {
   juniorReviewItemConversations,
   juniorReviewItemSlackCards,
   juniorReviewItems,
+  juniorPushSubscriptions,
   juniorSnapshots,
   juniorStats,
   juniorAutomationRuns,

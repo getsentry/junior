@@ -2,7 +2,7 @@ import type {
   ConversationsHistoryResponse,
   ConversationsRepliesResponse,
 } from "@slack/web-api";
-import { z } from "zod";
+import * as z from "zod";
 import { getSlackClient, withSlackRetries } from "@/chat/slack/client";
 import type { SlackChannelId } from "@/chat/slack/ids";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
@@ -131,11 +131,19 @@ export async function listThreadReplies(input: {
 export interface SlackConversationInfo {
   id: SlackChannelId;
   name?: string;
+  topic?: string;
+  /** Slack shows the channel purpose as its description. */
+  description?: string;
   isChannel: boolean;
   isPrivate: boolean;
   isIm: boolean;
   isMpim: boolean;
   isMember?: boolean;
+}
+
+/** Return whether anyone in the workspace can read the conversation. */
+export function isPublicSlackChannel(info: SlackConversationInfo): boolean {
+  return info.isChannel && !info.isPrivate && !info.isIm && !info.isMpim;
 }
 
 /** Load conversation metadata used for cross-channel read access checks. */
@@ -164,6 +172,10 @@ export async function getConversationInfo(
     ...(typeof channel.name === "string" && channel.name
       ? { name: channel.name }
       : undefined),
+    ...(channel.topic?.value ? { topic: channel.topic.value } : undefined),
+    ...(channel.purpose?.value
+      ? { description: channel.purpose.value }
+      : undefined),
     isChannel: channel.is_channel === true,
     isPrivate: channel.is_private === true,
     isIm: channel.is_im === true,
@@ -187,4 +199,56 @@ export async function joinPublicChannel(
     3,
     { action: "conversations.join", idempotent: true },
   );
+}
+
+// A private channel with more members than this does not show the viewer as
+// a member, so a card for it fails closed.
+const MAX_MEMBER_PAGES = 5;
+
+/** Return whether a Slack user is a member of a channel, DM, or group DM. */
+export async function isConversationMember(
+  channelId: SlackChannelId,
+  userId: string,
+): Promise<boolean> {
+  const client = getSlackClient();
+  let cursor: string | undefined;
+  for (let page = 0; page < MAX_MEMBER_PAGES; page += 1) {
+    const response = await withSlackRetries(
+      () =>
+        client.conversations.members({
+          channel: channelId,
+          cursor,
+          limit: 1000,
+        }),
+      3,
+      { action: "conversations.members", idempotent: true },
+    );
+    if (response.members?.includes(userId)) return true;
+    cursor = response.response_metadata?.next_cursor || undefined;
+    if (!cursor) return false;
+  }
+  return false;
+}
+
+/** Read one message by its timestamp. A thread reply needs its thread. */
+export async function getChannelMessage(input: {
+  channelId: SlackChannelId;
+  messageTs: SlackMessageTs;
+  threadTs?: SlackMessageTs;
+}): Promise<SlackThreadReply | undefined> {
+  const client = getSlackClient();
+  const response = await withSlackRetries(
+    () =>
+      client.conversations.replies({
+        channel: input.channelId,
+        ts: input.threadTs ?? input.messageTs,
+        oldest: input.messageTs,
+        latest: input.messageTs,
+        inclusive: true,
+        limit: 2,
+      }),
+    3,
+    { action: "conversations.replies", idempotent: true },
+  );
+  return response.messages?.find((message) => message.ts === input.messageTs);
 }

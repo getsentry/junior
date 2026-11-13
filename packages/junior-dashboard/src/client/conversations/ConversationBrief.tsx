@@ -5,6 +5,7 @@ import type {
   ConversationDetailReport,
 } from "@sentry/junior/api/schema";
 
+import { ClampedPreview } from "../components/ClampedPreview";
 import { Detail, DetailList } from "../components/DetailList";
 import { StatusChip, type StatusChipTone } from "../components/StatusChip";
 import {
@@ -15,10 +16,13 @@ import {
 import { formatTime } from "../format";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { DisplayText } from "../display-text/DisplayText";
+import { OutboundLink } from "../components/OutboundLink";
 
 type ConversationBriefReport = NonNullable<ConversationDetailReport["brief"]>;
 
 type BriefContent = ConversationBriefReport["content"];
+
+const SUMMARY_PREVIEW_LINES = 4;
 
 const outcomeTones: Record<BriefContent["outcome"]["status"], StatusChipTone> =
   {
@@ -39,20 +43,13 @@ export function ConversationBrief(props: {
   const mentions = props.brief.mentions;
   if (props.variant === "summary") {
     return (
-      <div className="grid min-w-0 gap-4">
-        <DisplayText mentions={mentions} text={content.summary} />
-        {content.openDecisions.length > 0 ? (
-          <div className="grid gap-2">
-            <h4 className="m-0 text-sm font-medium text-dashboard-text">
-              Open decisions
-            </h4>
-            <BriefOpenDecisions
-              decisions={content.openDecisions}
-              mentions={mentions}
-            />
-          </div>
-        ) : null}
-      </div>
+      <ClampedPreview
+        className="leading-6"
+        label="Brief summary"
+        lines={SUMMARY_PREVIEW_LINES}
+      >
+        <DisplayText compact mentions={mentions} text={content.summary} />
+      </ClampedPreview>
     );
   }
   return (
@@ -80,26 +77,9 @@ export function ConversationBrief(props: {
           </Detail>
         </DetailList>
       </BriefSection>
-      {content.decisions.length || content.openDecisions.length ? (
+      {content.decisions.length ? (
         <BriefSection title="Decisions">
-          <DetailList>
-            {content.decisions.length ? (
-              <Detail label="Decisions">
-                <BriefDecisions
-                  decisions={content.decisions}
-                  mentions={mentions}
-                />
-              </Detail>
-            ) : null}
-            {content.openDecisions.length ? (
-              <Detail label="Open decisions">
-                <BriefOpenDecisions
-                  decisions={content.openDecisions}
-                  mentions={mentions}
-                />
-              </Detail>
-            ) : null}
-          </DetailList>
+          <BriefDecisions decisions={content.decisions} mentions={mentions} />
         </BriefSection>
       ) : null}
       {content.facts.length ||
@@ -120,14 +100,12 @@ export function ConversationBrief(props: {
                       className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
                       key={`${link.kind}:${link.url}`}
                     >
-                      <a
+                      <OutboundLink
                         className="min-w-0 break-all font-medium text-dashboard-accent-text underline decoration-dashboard-accent/30 underline-offset-2 hover:text-dashboard-accent-text"
                         href={link.url}
-                        rel="noopener noreferrer"
-                        target="_blank"
                       >
                         {link.label}
-                      </a>
+                      </OutboundLink>
                       <span className="text-xs text-dashboard-text-muted">
                         {displayLabel(link.kind)}
                       </span>
@@ -212,37 +190,6 @@ function BriefDecisions(props: {
                 inline
                 mentions={props.mentions}
                 text={decision.by}
-              />
-            </div>
-          ) : null}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function BriefOpenDecisions(props: {
-  decisions: BriefContent["openDecisions"];
-  mentions?: readonly ActorIdentity[];
-}) {
-  return (
-    <ul className="m-0 grid list-none gap-2 p-0">
-      {props.decisions.map((decision, index) => (
-        <li key={`${decision.text}:${index}`}>
-          <div>
-            <DisplayText
-              inline
-              mentions={props.mentions}
-              text={decision.text}
-            />
-          </div>
-          {decision.owner ? (
-            <div className="mt-1 text-xs text-dashboard-text-muted">
-              Owner:{" "}
-              <DisplayText
-                inline
-                mentions={props.mentions}
-                text={decision.owner}
               />
             </div>
           ) : null}

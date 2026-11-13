@@ -1,4 +1,5 @@
 import { createLocalSource } from "@sentry/junior-plugin-api";
+import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { juniorMemoryMemories } from "../src/db/schema";
 import { buildMemoryOperationalReport } from "../src/operational-report";
@@ -49,11 +50,10 @@ describe("memory operational report", () => {
   it("keeps chart days in UTC when the database session uses another timezone", async () => {
     const fixture = await createMemoryFixture();
     try {
-      await fixture.execute("SET TIME ZONE 'America/Los_Angeles'");
-      await fixture
-        .db()
-        .insert(juniorMemoryMemories)
-        .values({
+      // SET LOCAL holds only on the transaction's connection.
+      const report = await fixture.db().transaction(async (db) => {
+        await db.execute(sql`SET LOCAL TIME ZONE 'America/Los_Angeles'`);
+        await db.insert(juniorMemoryMemories).values({
           content: "A memory created shortly after UTC midnight.",
           createdAtMs: Date.parse("2026-07-28T00:30:00.000Z"),
           id: "utc-boundary-memory",
@@ -66,11 +66,11 @@ describe("memory operational report", () => {
           subjectKey: "report-user",
           subjectType: "user",
         });
-
-      const report = await buildMemoryOperationalReport({
-        db: fixture.db(),
-        extractionDays: emptyExtractionDays(),
-        nowMs: TEST_NOW_MS,
+        return await buildMemoryOperationalReport({
+          db,
+          extractionDays: emptyExtractionDays(),
+          nowMs: TEST_NOW_MS,
+        });
       });
 
       expect(report.widgets?.[1]?.categories).toHaveLength(90);
@@ -155,7 +155,7 @@ describe("memory operational report", () => {
       });
       await store.createMemory({
         content: "Use compact pull request summaries.",
-        idempotencyKey: "report-private",
+        idempotencyKey: "report-user",
         kind: "preference",
       });
       await store.createConversationMemory({
@@ -194,16 +194,16 @@ describe("memory operational report", () => {
         { label: "active memories", tone: "good", value: "2" },
         { label: "extraction cost · 30d", value: "$0.0042" },
         { label: "created · 30d", value: "3" },
-        { label: "private", value: "2" },
-        { label: "public", value: "0" },
+        { label: "private", value: "0" },
+        { label: "public", value: "2" },
         { label: "embedding coverage", tone: "good", value: "100%" },
       ]);
       expect(report.widgets?.[1]?.categories.at(-1)).toEqual({
         id: "2026-07-28",
         label: "2026-07-28",
         values: {
-          private: 3,
-          public: 0,
+          private: 1,
+          public: 2,
         },
       });
       expect(report.widgets?.[0]?.categories.at(-1)).toEqual({

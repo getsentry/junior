@@ -1,7 +1,9 @@
 import { slackEventsApiEnvelope } from "./slack/factories/events";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Lock, StateAdapter } from "chat";
+import { vi } from "vitest";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
+import type { JsonValue } from "@earendil-works/pi-ai";
 import {
   createFauxCore,
   fauxAssistantMessage,
@@ -9,9 +11,11 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
+import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { executeAgentRun } from "@/chat/agent";
 import { getConversationStore } from "@/chat/db";
+import type { AgentRun } from "@/chat/agent/types";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -22,8 +26,10 @@ import type {
 } from "@/chat/task-execution/queue";
 import {
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
+  CONVERSATION_WORK_LEASE_TTL_MS,
   type InboundMessage,
 } from "@/chat/task-execution/store";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
@@ -388,7 +394,7 @@ export const THREAD_TS = "1712345.0001";
 
 export type ModelStreamStep =
   | string
-  | { tool: string; args?: Record<string, unknown> }
+  | { tool: string; args?: Record<string, JsonValue> }
   | (() => Promise<ReturnType<typeof fauxAssistantMessage>>);
 
 function buildStreamResponses(steps: ModelStreamStep[]) {
@@ -447,6 +453,12 @@ export type ConversationWorkSlackHarness = {
     ts?: string;
     user?: string;
   }) => Promise<Response>;
+  /** Press Slack's native stop button in a thread. */
+  sendSessionStop: (input: {
+    eventTs: string;
+    threadTs: string;
+    user?: string;
+  }) => Promise<Response>;
 };
 
 /**
@@ -463,32 +475,100 @@ export async function createConversationWorkHarness(
   const queue = createConversationWorkQueueTestAdapter();
   const adapter = createSlackAdapterFixture();
   const conversationStore = getConversationStore();
+  let killNextRun: ((run: AgentRun) => Promise<void>) | undefined;
   const work = createConversationWork({
-    agentRunner,
+    agentRunner: {
+      run: async (run) => {
+        const kill = killNextRun;
+        if (!kill) return await agentRunner.run(run);
+        killNextRun = undefined;
+        await kill(run);
+        // A dead process never returns.
+        return await new Promise<never>(() => {});
+      },
+    },
     conversationStore,
     getSlackAdapter: () => adapter,
     queue,
     ...(options.services ? { services: options.services } : undefined),
     state,
   });
+  const process = async (
+    message: ConversationQueueMessage,
+    processOptions: { softYieldAfterMs?: number } = {},
+  ) =>
+    await processConversationQueueMessage(message, {
+      beforeWorkStops: work.beforeWorkStops,
+      conversationStore,
+      queue,
+      run: work.run,
+      state,
+      ...processOptions,
+    });
   return {
     adapter,
-    process: async (
+    process,
+    /**
+     * Injected fault: kill the worker process while the agent runs, as a
+     * function timeout, OOM, or deploy does. The worker keeps its lease, runs
+     * no failure path, and never checks in again. Fake `setInterval` first,
+     * so no timer of the dead worker fires. With `afterInputSaved`, the run
+     * first saves its input as its last boundary, as the agent does before
+     * its first model call.
+     */
+    killWorker: async (
       message: ConversationQueueMessage,
-      processOptions: { softYieldAfterMs?: number } = {},
-    ) =>
-      await processConversationQueueMessage(message, {
-        conversationStore,
-        queue,
-        run: work.run,
-        state,
-        ...processOptions,
-      }),
+      killOptions: { afterInputSaved?: boolean } = {},
+    ) => {
+      if (!vi.isFakeTimers()) {
+        throw new Error("killWorker needs fake setInterval");
+      }
+      const killed = new Promise<void>((resolve) => {
+        killNextRun = async (run) => {
+          if (killOptions.afterInputSaved) {
+            await saveTurnCheckpoint({
+              conversationId: run.conversationId,
+              messages: [
+                {
+                  role: "user",
+                  content: [{ type: "text", text: run.instruction.text }],
+                  timestamp: Date.now(),
+                },
+              ],
+              mode: "running",
+              sliceId: 1,
+              turnId: run.turnId,
+            });
+          }
+          resolve();
+        };
+      });
+      const processed = process(message);
+      await Promise.race([
+        killed,
+        processed.then((result) => {
+          throw new Error(
+            `Worker ended before the agent ran: ${JSON.stringify(result)}`,
+          );
+        }),
+      ]);
+    },
     queue,
     run: work.run,
     runtime: work.runtime,
     state,
   };
+}
+
+/**
+ * Let every held lease expire, then run the production heartbeat. Use it after
+ * `killWorker` to recover the dead worker's work.
+ */
+export async function runHeartbeatAfterLeasesExpire(
+  queue: ConversationWorkQueue,
+): Promise<void> {
+  vi.setSystemTime(Date.now() + CONVERSATION_WORK_LEASE_TTL_MS + 1);
+  await runHeartbeat({ conversationWorkQueue: queue, nowMs: Date.now() });
 }
 
 /**
@@ -560,6 +640,23 @@ export async function createConversationWorkSlackHarness(
             ...input,
           }),
         ),
+        services,
+      }),
+    sendSessionStop: async (input) =>
+      await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest({
+          type: "event_callback",
+          team_id: "T123",
+          event_id: `Ev_SESSION_STOP_${input.eventTs}`,
+          event: {
+            type: "agent_session_stopped",
+            channel: "C123",
+            event_ts: input.eventTs,
+            streaming_message_ts: [],
+            thread_ts: input.threadTs,
+            user: input.user ?? "U123",
+          },
+        }),
         services,
       }),
   };

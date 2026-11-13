@@ -5,7 +5,7 @@ import { Button } from "./ui/button";
 import { BottomSheet } from "./BottomSheet";
 import { Drawer } from "./Drawer";
 
-const panelMediaQuery = "(min-width: 1280px)";
+const panelMediaQuery = "(min-width: 80rem)";
 
 function subscribeToPanelLayout(onChange: () => void) {
   const media = window.matchMedia(panelMediaQuery);
@@ -13,7 +13,8 @@ function subscribeToPanelLayout(onChange: () => void) {
   return () => media.removeEventListener("change", onChange);
 }
 
-function hasPanelSpace() {
+/** Report whether details fit beside their source right now. */
+export function hasPanelSpace() {
   return window.matchMedia(panelMediaQuery).matches;
 }
 
@@ -115,8 +116,10 @@ export function DetailsPanel(props: {
         <div className="flex shrink-0 items-center gap-0.5">
           {props.actions}
           <Button
+            variant="ghost"
             ref={closeRef}
             aria-label={closeLabel}
+            data-slot="details-panel-close"
             onClick={onClose}
             size="icon"
           >
@@ -124,7 +127,7 @@ export function DetailsPanel(props: {
           </Button>
         </div>
       </header>
-      <div className="min-h-0 overflow-y-auto overscroll-contain">
+      <div className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
         {props.children}
       </div>
     </aside>

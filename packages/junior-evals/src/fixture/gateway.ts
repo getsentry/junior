@@ -3,35 +3,31 @@
  *
  * Every model request goes to the real AI Gateway. This observer only watches
  * agent requests (the ones that offer tools) and holds them while a test
- * reacts. It never changes a model request or its response, and it never
- * writes a model answer. A test can make the provider reject one agent
- * request with `rejectNextModelRequest()`. Two requests are not model requests. Image generation is a third-party image API, so the
- * observer answers it with a 1x1 PNG, or with the image of
+ * reacts. It never changes a model request or its response, and it writes
+ * a model answer only for a forced Guardian decision (`guardian.ts`). A test
+ * can make the provider reject one agent request with
+ * `rejectNextModelRequest()` or `rejectNextModelRequestAsTooLong()`. Two
+ * requests are not model requests. Image generation is a third-party image
+ * API, so the observer answers it with a 1x1 PNG, or with the image of
  * `mockGeneratedImage()`. `webSearch` is a third-party search provider, so
  * `web.ts` answers it with the results of the test.
  */
 import { bypass, http, HttpResponse, passthrough } from "msw";
 import { onTestFinished } from "vitest";
+import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
 import { mswServer } from "@junior-tests/msw/server";
+import { answerGuardianReview, resetGuardianReviews } from "./guardian";
 import { answerWebSearch } from "./web";
 
 const GATEWAY_MESSAGES_URL = "https://ai-gateway.vercel.sh/v1/messages";
-const GATEWAY_CHAT_COMPLETIONS_URL =
-  "https://ai-gateway.vercel.sh/v1/chat/completions";
+// The AI SDK `generateImage()` call of the gateway provider.
+const GATEWAY_IMAGE_MODEL_URL =
+  "https://ai-gateway.vercel.sh/v4/ai/image-model";
 // A valid 1x1 PNG. The agent can view it, so the model must decode it.
-const STUB_PNG_DATA_URL =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
+const STUB_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
 
-/** Whether a request asks the gateway to generate an image. */
-async function isImageGeneration(request: Request): Promise<boolean> {
-  if (!request.url.startsWith(GATEWAY_CHAT_COMPLETIONS_URL)) return false;
-  const payload = (await request.clone().json()) as { modalities?: unknown };
-  return (
-    Array.isArray(payload.modalities) && payload.modalities.includes("image")
-  );
-}
-
-let generatedImageDataUrl = STUB_PNG_DATA_URL;
+let generatedImageBase64 = STUB_PNG_BASE64;
 
 /**
  * Set the PNG that image generation returns in this test. Use it when the
@@ -39,13 +35,21 @@ let generatedImageDataUrl = STUB_PNG_DATA_URL;
  * look like the result, so the agent may try again.
  */
 export function mockGeneratedImage(png: Buffer): void {
-  generatedImageDataUrl = `data:image/png;base64,${png.toString("base64")}`;
+  generatedImageBase64 = png.toString("base64");
   onTestFinished(() => {
-    generatedImageDataUrl = STUB_PNG_DATA_URL;
+    generatedImageBase64 = STUB_PNG_BASE64;
   });
 }
 
-let rejectedModelRequests = 0;
+/** Error messages of the provider for the next agent requests, in order. */
+let modelRejections: string[] = [];
+
+function rejectNextAgentRequest(message: string): void {
+  modelRejections.push(message);
+  onTestFinished(() => {
+    modelRejections = [];
+  });
+}
 
 /**
  * Make the model provider reject the next model request of the agent in this
@@ -53,15 +57,41 @@ let rejectedModelRequests = 0;
  * does not retry such a request, so the turn fails.
  */
 export function rejectNextModelRequest(): void {
-  rejectedModelRequests += 1;
-  onTestFinished(() => {
-    rejectedModelRequests = 0;
-  });
+  rejectNextAgentRequest(
+    "Invalid prompt: your prompt was flagged as potentially violating our usage policy.",
+  );
+}
+
+/**
+ * Make the model provider reject the next model request of the agent in this
+ * test, as it does when the request is larger than the context window of the
+ * model. Junior does not retry such a request, so the turn fails.
+ */
+export function rejectNextModelRequestAsTooLong(): void {
+  rejectNextAgentRequest("prompt is too long: 213462 tokens > 200000 maximum");
 }
 
 export type GatewayProgress =
   | { type: "model_request" }
   | { type: "tool_request"; name: string; args: unknown };
+
+/**
+ * Whether a tool request calls the tool `name`, directly or in a `codemode`
+ * script. The script has not run yet, so its source is the only record of
+ * the calls it will make.
+ */
+export function requestsTool(
+  request: Extract<GatewayProgress, { type: "tool_request" }>,
+  name: string,
+): boolean {
+  if (request.name === name) return true;
+  const code = (request.args as { code?: unknown } | undefined)?.code;
+  return (
+    request.name === CODEMODE_TOOL_NAME &&
+    typeof code === "string" &&
+    code.includes(`tools.${name}(`)
+  );
+}
 
 export interface GatewayObserver {
   /** AI Gateway requests seen since the observer started, by endpoint. */
@@ -128,6 +158,7 @@ function toolRequests(body: string): Array<{ name: string; args: unknown }> {
 export function installGatewayObserver(): GatewayObserver {
   const counts: Record<string, number> = {};
   let progressHook: ((progress: GatewayProgress) => Promise<void>) | undefined;
+  resetGuardianReviews();
 
   mswServer.use(
     http.all("https://ai-gateway.vercel.sh/*", async ({ request }) => {
@@ -135,20 +166,14 @@ export function installGatewayObserver(): GatewayObserver {
       counts[endpoint] = (counts[endpoint] ?? 0) + 1;
       const searchResponse = await answerWebSearch(request);
       if (searchResponse) return searchResponse;
-      if (await isImageGeneration(request)) {
-        return HttpResponse.json({
-          choices: [
-            {
-              message: {
-                images: [{ image_url: { url: generatedImageDataUrl } }],
-              },
-            },
-          ],
-        });
+      const guardianResponse = await answerGuardianReview(request);
+      if (guardianResponse) return guardianResponse;
+      if (request.url === GATEWAY_IMAGE_MODEL_URL) {
+        return HttpResponse.json({ images: [generatedImageBase64] });
       }
       const hook = progressHook;
       if (
-        (!hook && rejectedModelRequests === 0) ||
+        (!hook && modelRejections.length === 0) ||
         !request.url.startsWith(GATEWAY_MESSAGES_URL)
       ) {
         return passthrough();
@@ -158,16 +183,12 @@ export function installGatewayObserver(): GatewayObserver {
         // Titles and other side calls do not offer tools.
         return passthrough();
       }
-      if (rejectedModelRequests > 0) {
-        rejectedModelRequests -= 1;
+      const rejection = modelRejections.shift();
+      if (rejection) {
         return HttpResponse.json(
           {
             type: "error",
-            error: {
-              type: "invalid_request_error",
-              message:
-                "Invalid prompt: your prompt was flagged as potentially violating our usage policy.",
-            },
+            error: { type: "invalid_request_error", message: rejection },
           },
           { status: 400 },
         );

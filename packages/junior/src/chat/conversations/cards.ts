@@ -3,7 +3,7 @@ import {
   type ConversationAnnotation,
   type OwnedObjectAnnotation,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   automationCardSchema,
   automationCardText,

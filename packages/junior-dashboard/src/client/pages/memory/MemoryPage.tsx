@@ -3,8 +3,6 @@ import {
   BrainCircuit,
   CircleAlert,
   Database,
-  Globe2,
-  Lock,
   Sparkles,
   UserRound,
 } from "lucide-react";
@@ -12,7 +10,6 @@ import { useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
-import { FilterTabList } from "../../components/FilterBar";
 import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { LoadMorePagination } from "../../components/Pagination";
@@ -24,6 +21,7 @@ import {
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
+import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
 import {
@@ -36,7 +34,6 @@ import { cn } from "../../styles";
 import {
   type MemoryDashboardData,
   useMemoryDashboardData,
-  useMemorySearchCounts,
 } from "./memoryDashboard";
 import { MemoryDetails } from "./MemoryDetails";
 import { MemoryPageLayout } from "./MemoryPageLayout";
@@ -47,11 +44,9 @@ import { useMemoryRecord } from "./memoryRecord";
 
 /**
  * Leading memory column flexes; type and date columns stay equal fixed
- * widths on `sm` and up. Below `sm` those columns are hidden, so the grid
- * collapses to just the label and trailing visibility icon.
+ * widths on `sm` and up. Below `sm` those columns are hidden.
  */
-const MEMORY_GRID =
-  "grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_7rem_9rem_auto]";
+const MEMORY_GRID = "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_7rem_9rem]";
 
 /** Render the temporary first-class dashboard experience for memory. */
 export function MemoryPage(props: { page: PluginUserPageLink }) {
@@ -111,7 +106,7 @@ function MemoryOverview(props: { range: TimeRangeDays }) {
             days: dashboardQuery.data.days,
             hours: dashboardQuery.data.hours,
             range: props.range,
-            emptySixHour: (date) => ({ date, personal: 0, public: 0 }),
+            emptySixHour: (date) => ({ count: 0, date }),
           })}
           range={props.range}
         />
@@ -148,21 +143,13 @@ function MemoryLibrary(props: {
   const {
     action,
     content,
-    filter,
     query,
     records,
     runAction,
     searchQuery,
     searchText,
-    setFilter,
     setSearchText,
   } = usePluginUserPageData(props.page);
-  const dashboardQuery = useMemoryDashboardData();
-  const searchCountsQuery = useMemorySearchCounts(searchQuery);
-  // Tab totals follow the search. Without a search, the summary owns them.
-  const counts = searchQuery
-    ? searchCountsQuery.data
-    : dashboardQuery.data?.stats;
   const navigate = useNavigate();
   const location = useLocation();
   const { memoryId } = useParams();
@@ -269,29 +256,6 @@ function MemoryLibrary(props: {
               ) : null}
             </div>
 
-            <FilterTabList
-              ariaLabel="Memory collections"
-              items={[
-                {
-                  count: counts?.active,
-                  label: "All",
-                  value: "",
-                },
-                {
-                  count: counts?.personal,
-                  label: "Private",
-                  value: "private",
-                },
-                {
-                  count: counts?.public,
-                  label: "Public",
-                  value: "public",
-                },
-              ]}
-              onChange={setFilter}
-              value={filter}
-            />
-
             {loading ? (
               <PageContentSkeleton label="Loading memories" variant="panel" />
             ) : query.error ? (
@@ -378,7 +342,6 @@ function MemoryListHeader() {
       <div>Memory</div>
       <div>Type</div>
       <div>Learned</div>
-      <div className="sr-only">Visibility</div>
     </div>
   );
 }
@@ -387,20 +350,10 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
   const { stats } = props.data;
   const items = [
     {
-      detail: "personal + public",
+      detail: "shared across the workspace",
       label: "Total active",
-      value: stats.active.toLocaleString("en-US"),
-    },
-    {
-      detail: "private to you",
-      label: "Personal",
-      value: stats.personal.toLocaleString("en-US"),
-    },
-    {
-      detail: "workspace shareable",
-      label: "Public",
       tone: "text-dashboard-accent-text",
-      value: stats.public.toLocaleString("en-US"),
+      value: stats.active.toLocaleString("en-US"),
     },
     {
       detail: "in the last 30 days",
@@ -411,7 +364,7 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
   return (
     <section
       aria-label="Memory summary"
-      className="grid grid-cols-2 gap-px border-y border-dashboard-border-subtle bg-dashboard-fill-hover lg:grid-cols-4"
+      className="grid grid-cols-2 gap-px border-y border-dashboard-border-subtle bg-dashboard-fill-hover"
     >
       {items.map((item) => (
         <div className="bg-dashboard-bg px-4 py-4 sm:px-5" key={item.label}>
@@ -439,15 +392,14 @@ function MemoryKindPanel(props: { data: MemoryDashboardData }) {
   const { stats } = props.data;
   return (
     <Card className="p-5 sm:p-6">
-      <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
-        What Junior remembers
-      </h2>
-      <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
-        Across personal and public scopes.
-      </p>
+      <AnchorHeading
+        anchor="memory-types"
+        className="m-0 font-display text-xl font-medium text-dashboard-text"
+        title="What Junior remembers"
+      />
       <div className="mt-5 grid gap-px overflow-hidden rounded-md border border-dashboard-border-subtle bg-dashboard-fill-hover">
         <OverviewBreakdownRow
-          detail="Almost entirely personal"
+          detail="How people like to work"
           icon={UserRound}
           label="Preferences"
           value={stats.preference}
@@ -474,9 +426,11 @@ function MemoryOriginPanel(props: { data: MemoryDashboardData }) {
   const other = Math.max(0, stats.active - stats.automatic - stats.explicit);
   return (
     <Card className="p-5 sm:p-6">
-      <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
-        How they got here
-      </h2>
+      <AnchorHeading
+        anchor="memory-sources"
+        className="m-0 font-display text-xl font-medium text-dashboard-text"
+        title="How they got here"
+      />
       <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
         Same totals, split by how they were written.
       </p>
@@ -541,8 +495,6 @@ function MemoryRow(props: {
   const kind = metadataValue(props.record, "Type");
   const remembered = metadataValue(props.record, "Remembered");
   const source = metadataValue(props.record, "Source");
-  const visibility = metadataValue(props.record, "Visibility");
-  const isPublic = visibility === "Public";
   return (
     <SelectableRow
       className={cn(
@@ -565,11 +517,6 @@ function MemoryRow(props: {
       >
         <div className="min-w-0 overflow-hidden">
           <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-            <VisibilityIcon
-              className="sm:hidden"
-              isPublic={isPublic}
-              size={14}
-            />
             <h3 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
               <MemorySearchHighlight
                 query={props.searchQuery}
@@ -591,35 +538,8 @@ function MemoryRow(props: {
         <span className="hidden truncate font-mono text-xs text-dashboard-text sm:block">
           {shortDate(remembered)}
         </span>
-        <VisibilityIcon
-          className="hidden justify-self-center sm:inline-flex"
-          isPublic={isPublic}
-          size={15}
-        />
       </button>
     </SelectableRow>
-  );
-}
-
-/** Render the lock (private) or globe (public) mark for one memory's visibility. */
-function VisibilityIcon(props: {
-  className?: string;
-  isPublic: boolean;
-  size: number;
-}) {
-  const Icon = props.isPublic ? Globe2 : Lock;
-  const label = props.isPublic ? "Public" : "Private";
-  return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center text-dashboard-text-muted",
-        props.className,
-      )}
-      title={label}
-    >
-      <Icon aria-hidden="true" size={props.size} />
-      <span className="sr-only">{label}</span>
-    </span>
   );
 }
 

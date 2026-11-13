@@ -7,6 +7,8 @@
  * the optional canonical telemetry view of public input messages.
  */
 import { isDeepStrictEqual } from "node:util";
+import type { Platform } from "@sentry/junior-plugin-api";
+import type { PromptMode } from "@/chat/system-prompt-rules";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
   sandboxSkillDir,
@@ -14,21 +16,24 @@ import {
   sandboxSkillPathResolution,
 } from "@/chat/sandbox/paths";
 import {
-  buildPluginSystemPromptContributions,
-  buildSystemPrompt,
+  buildScriptToolsSection,
   buildTurnContextPrompt,
   type DisabledToolPromptContext,
 } from "@/chat/prompt";
-import {
-  getPluginSystemPromptContributions,
-  getPluginUserPromptContributions,
-} from "@/chat/plugins/agent-hooks";
+import { getPluginUserPromptContributions } from "@/chat/plugins/agent-hooks";
+import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
+import { getDb } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { readUserCustomization } from "@/chat/identities/customization";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
+  renderAgentsInstructionsForPrompt,
+  type RepositoryInstructions,
+} from "@/chat/repository-instructions";
+import {
   hasRuntimeTurnContext,
+  latestTurnContextSection,
   retainRuntimeTurnContext,
   stripRuntimeTurnContext,
 } from "@/chat/pi/transcript";
@@ -39,35 +44,38 @@ import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
+import {
+  CAPABILITY_SECTION_TAG,
+  SCRIPT_TOOLS_SECTION_TAG,
+} from "@/chat/turn-context-tag";
 import { escapeXml } from "@/chat/xml";
+import { listWorkspaces } from "@/chat/workspaces/store";
+import type { Workspace } from "@/chat/workspaces/types";
 import { isVisionImageMediaType } from "@/chat/attachments/media";
 import type {
   AgentAttachment,
   AgentInstruction,
   AgentInstructionActor,
+  AgentInstructionInput,
   AgentRun,
   AgentSteeringMessage,
 } from "@/chat/agent/types";
-
-const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
-const MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS = 2_000;
 
 export type UserContentPart =
   | { type: "text"; text: string }
   | { type: "image"; data: string; mimeType: string };
 
-type UserTurnAttachment = NonNullable<AgentInstruction["attachments"]>[number];
-
-/** User-turn content parts plus the plain-text blocks used for routing decisions. */
+/** User-turn content parts plus the thread context sent beside them. */
 export interface PromptInput {
   contextContentParts: UserContentPart[];
-  routerBlocks: string[];
   userContentParts: UserContentPart[];
 }
 
 /** Fully assembled prompt state for one run slice. */
 export interface PromptAssembly {
   baseInstructions: string;
+  /** Platform that `baseInstructions` was built for. */
+  platform: Platform;
   contextContentParts: UserContentPart[];
   inputMessages: Array<{
     role: string;
@@ -93,6 +101,7 @@ export interface PromptTurnContext {
     ReturnType<typeof getPluginUserPromptContributions>
   >;
   userCustomization?: string;
+  workspaces?: Workspace[];
 }
 
 interface PromptReplayArgs {
@@ -110,7 +119,7 @@ interface PromptReplayArgs {
  */
 function renderThreadContextForPrompt(context: string): string {
   if (
-    /^<(?:thread-context|thread-compactions|thread-transcript|thread-background|recent-thread-messages)(?:\s|>)/.test(
+    /^<(?:thread-context|thread-transcript|thread-background|recent-thread-messages)(?:\s|>)/.test(
       context,
     )
   ) {
@@ -131,6 +140,54 @@ export function buildUserTurnText(
   return renderCurrentInstruction(userInput, actor);
 }
 
+/**
+ * Return the author of a person's instruction, or undefined for a system
+ * actor. Every Turn path that renders `<current-instruction>` sets it, so the
+ * model knows who asks now even when the speaker changed after the first
+ * Turn, whose `<actor>` block is not sent again.
+ */
+export function instructionActorFor(
+  actor: Actor,
+  slackTs?: string,
+): AgentInstructionActor | undefined {
+  if (!isUserActor(actor)) return undefined;
+  const authorName = actor.fullName ?? actor.userName;
+  return {
+    authorId: actor.userId,
+    ...(authorName ? { authorName } : undefined),
+    ...(slackTs ? { slackTs } : undefined),
+  };
+}
+
+/**
+ * Build the instruction for Turn inputs. Each input keeps its own prompt
+ * content part, and `text` joins them for action review.
+ */
+export function instructionForInputs(
+  inputs: readonly AgentInstructionInput[],
+): Pick<AgentInstruction, "inputs" | "text"> {
+  return {
+    inputs,
+    text: inputs
+      .map((input) => input.text.trim())
+      .filter(Boolean)
+      .join("\n\n"),
+  };
+}
+
+// Render one prompt text part per input, in order. Inputs are never joined.
+// A batch has one Actor, so every person part has the same attributes.
+function renderInputParts(instruction: AgentInstruction): string[] {
+  const inputs = instruction.inputs ?? [
+    { kind: "person" as const, text: instruction.text },
+  ];
+  return inputs.map((input) =>
+    input.kind === "person"
+      ? buildUserTurnText(input.text, instruction.actor)
+      : input.text.trim(),
+  );
+}
+
 /** Render an explicitly selected skill as instructions for the current turn. */
 export function renderExplicitSkillInstructions(skill: Skill): string {
   return [
@@ -141,31 +198,6 @@ export function renderExplicitSkillInstructions(skill: Skill): string {
     `<path_resolution>${escapeXml(sandboxSkillPathResolution(skill.name))}</path_resolution>`,
     skill.body,
     "</skill>",
-  ].join("\n");
-}
-
-/** Encode a non-image attachment as base64 XML for the prompt. */
-export function encodeNonImageAttachmentForPrompt(attachment: {
-  data: Buffer;
-  mediaType: string;
-  filename?: string;
-}): string {
-  const base64 = attachment.data.toString("base64");
-  const wasTruncated = base64.length > MAX_INLINE_ATTACHMENT_BASE64_CHARS;
-  const encodedPayload = wasTruncated
-    ? `${base64.slice(0, MAX_INLINE_ATTACHMENT_BASE64_CHARS)}...`
-    : base64;
-
-  return [
-    "<attachment>",
-    `filename: ${attachment.filename ?? "unnamed"}`,
-    `media_type: ${attachment.mediaType}`,
-    "encoding: base64",
-    `truncated: ${wasTruncated ? "true" : "false"}`,
-    "<data_base64>",
-    encodedPayload,
-    "</data_base64>",
-    "</attachment>",
   ].join("\n");
 }
 
@@ -198,79 +230,24 @@ function buildOmittedImageAttachmentNotice(count: number): string {
   ].join("\n");
 }
 
-function trimRouterAttachmentText(text: string): string {
-  const normalized = text.replaceAll("\0", " ").trim();
-  if (!normalized) {
-    return "";
-  }
-  return normalized.length <= MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS
-    ? normalized
-    : `${normalized.slice(0, MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS)}...`;
-}
-
-function supportsRouterTextPreview(mediaType: string): boolean {
-  const baseMediaType = mediaType.split(";", 1)[0]?.trim().toLowerCase();
-  if (!baseMediaType) {
-    return false;
-  }
-  return (
-    baseMediaType.startsWith("text/") ||
-    baseMediaType === "application/json" ||
-    baseMediaType === "application/xml" ||
-    baseMediaType === "application/x-www-form-urlencoded" ||
-    baseMediaType.endsWith("+json") ||
-    baseMediaType.endsWith("+xml")
-  );
-}
-
-function buildRouterAttachmentBlock(attachment: UserTurnAttachment): string {
-  if (attachment.promptText) {
-    return trimRouterAttachmentText(attachment.promptText);
-  }
-
-  const header = [
-    "<attachment>",
-    `filename: ${attachment.filename ?? "unnamed"}`,
-    `media_type: ${attachment.mediaType}`,
-  ];
-
-  if (attachment.data && supportsRouterTextPreview(attachment.mediaType)) {
-    const preview = trimRouterAttachmentText(attachment.data.toString("utf8"));
-    if (preview) {
-      return [
-        ...header,
-        "<text-preview>",
-        preview,
-        "</text-preview>",
-        "</attachment>",
-      ].join("\n");
-    }
-  }
-
-  return [...header, "</attachment>"].join("\n");
-}
-
 function buildUserTurnInput(args: {
+  inputParts: readonly string[];
   omittedImageAttachmentCount: number;
   userAttachments?: AgentAttachment[];
-  userTurnText: string;
 }): PromptInput {
-  const routerBlocks: string[] = [];
-  const userContentParts: UserContentPart[] = [
-    { type: "text", text: args.userTurnText },
-  ];
+  const userContentParts: UserContentPart[] = args.inputParts.map((text) => ({
+    type: "text",
+    text,
+  }));
 
   if (args.omittedImageAttachmentCount > 0) {
     const omittedImagesNotice = buildOmittedImageAttachmentNotice(
       args.omittedImageAttachmentCount,
     );
     userContentParts.push({ type: "text", text: omittedImagesNotice });
-    routerBlocks.push(omittedImagesNotice);
   }
 
   for (const attachment of args.userAttachments ?? []) {
-    routerBlocks.push(buildRouterAttachmentBlock(attachment));
-
     if (attachment.promptText) {
       userContentParts.push({
         type: "text",
@@ -298,43 +275,26 @@ function buildUserTurnInput(args: {
       continue;
     }
 
-    if (!attachment.data) {
-      throw new Error("Attachment is missing attachment data");
-    }
-
-    userContentParts.push({
-      type: "text",
-      text: encodeNonImageAttachmentForPrompt({
-        data: attachment.data,
-        mediaType: attachment.mediaType,
-        filename: attachment.filename,
-      }),
-    });
+    // Producers give every non-image file a loadAttachment pointer.
+    throw new Error("Non-image attachment is missing its prompt text");
   }
 
-  return { contextContentParts: [], routerBlocks, userContentParts };
+  return { contextContentParts: [], userContentParts };
 }
 
-/** Build the prompt-facing user input, keeping router text aligned with Pi content. */
+/** Build the prompt-facing user input. */
 export function buildPromptInput(args: {
   instruction: AgentInstruction;
-  history?: readonly import("@/chat/pi/messages").PiMessage[];
 }): PromptInput {
-  const { instruction, history } = args;
-  const promptConversationContext =
-    history &&
-    history.length > 0 &&
-    !instruction.includeConversationContextWithHistory
-      ? undefined
-      : instruction.context;
+  const { instruction } = args;
   const promptInput = buildUserTurnInput({
     omittedImageAttachmentCount: instruction.omittedImageAttachmentCount ?? 0,
     userAttachments: instruction.attachments
       ? [...instruction.attachments]
       : undefined,
-    userTurnText: buildUserTurnText(instruction.text, instruction.actor),
+    inputParts: renderInputParts(instruction),
   });
-  const trimmedContext = promptConversationContext?.trim();
+  const trimmedContext = instruction.context?.trim();
   return {
     ...promptInput,
     contextContentParts: trimmedContext
@@ -352,7 +312,11 @@ export function buildSteeringPiMessage(
   message: AgentSteeringMessage,
 ): PiMessage {
   const { userContentParts } = buildUserTurnInput({
-    userTurnText: buildUserTurnText(message.text, message.actor),
+    inputParts: [
+      message.kind === "runtime"
+        ? message.text.trim()
+        : buildUserTurnText(message.text, message.actor),
+    ],
     userAttachments: message.attachments ? [...message.attachments] : undefined,
     omittedImageAttachmentCount: message.omittedImageAttachmentCount ?? 0,
   });
@@ -562,8 +526,8 @@ function planPromptReplay(args: PromptReplayArgs) {
  * Load the Turn context for a new prompt: plugin prompt hooks, such as
  * memory recall, Conversation notes, and the user customization.
  *
- * It needs no tool wiring or Turn route, so the caller can run it while the
- * router and sandbox setup run.
+ * It needs no tool wiring, so the caller can run it while sandbox setup
+ * runs.
  */
 export async function loadPromptTurnContext(
   args: PromptReplayArgs & {
@@ -575,24 +539,30 @@ export async function loadPromptTurnContext(
   if (!planPromptReplay(args).loadsTurnContext) {
     return { pluginUserPromptContributions: [] };
   }
-  const [pluginUserPromptContributions, conversationNotes, userCustomization] =
-    await Promise.all([
-      getPluginUserPromptContributions({
-        context: args.context,
-        turnId: args.turnId,
-      }),
-      loadTurnConversationNotes({
-        conversationId: args.context.conversationId,
-        turnId: args.turnId,
-      }),
-      isUserActor(args.currentActor)
-        ? loadUserCustomization(args.context)
-        : undefined,
-    ]);
+  const [
+    pluginUserPromptContributions,
+    conversationNotes,
+    userCustomization,
+    workspaces,
+  ] = await Promise.all([
+    getPluginUserPromptContributions({
+      context: args.context,
+      turnId: args.turnId,
+    }),
+    loadTurnConversationNotes({
+      conversationId: args.context.conversationId,
+      turnId: args.turnId,
+    }),
+    isUserActor(args.currentActor)
+      ? loadUserCustomization(args.context)
+      : undefined,
+    listWorkspaces(getDb()),
+  ]);
   return {
     conversationNotes,
     pluginUserPromptContributions,
     userCustomization,
+    workspaces,
   };
 }
 
@@ -608,6 +578,10 @@ export async function assemblePrompt(args: {
   existingTurnStartMessageIndex?: number;
   explicitSkill: Skill | null;
   priorPiMessages?: PiMessage[];
+  /** From `turnBehavior`. */
+  promptMode: PromptMode;
+  /** AGENTS.md read from the sandbox when this slice started. */
+  repositoryInstructions?: RepositoryInstructions;
   resumedFromSessionRecord: boolean;
   run: Pick<
     AgentRun,
@@ -617,10 +591,11 @@ export async function assemblePrompt(args: {
     | "slackConversation"
     | "location"
     | "delivery"
-    | "parentConversationId"
   >;
   spanContext: LogContext;
   disabledTools: DisabledToolPromptContext[];
+  /** The tools that a Code Mode script can call, from `renderScriptTools`. */
+  scriptTools: string;
   toolGuidance: Array<{
     name: string;
     promptGuidelines: AnyToolDefinition["promptGuidelines"];
@@ -649,70 +624,81 @@ export async function assemblePrompt(args: {
     shouldPromptAgent &&
     !replayedPrompt &&
     !hasRuntimeTurnContext(promptHistoryMessages);
-  const promptMode = args.run.dispatch?.declaresResult
-    ? "automation"
-    : args.run.parentConversationId
-      ? "child_agent"
-      : "conversation";
-  // Automation runs have no Delivery port. Their declared message still goes
-  // to Slack, so they keep Slack formatting rules.
+  // Automation runs have no Delivery port. Their `reply` text still goes to
+  // Slack, so they keep Slack formatting rules.
   const platform =
-    (args.run.delivery || promptMode === "automation") &&
+    (args.run.delivery || args.promptMode === "automation") &&
     args.run.location?.provider === "slack"
       ? "slack"
       : "local";
-  const systemPromptContributions =
-    await getPluginSystemPromptContributions(platform);
-  const pluginSystemPrompt = buildPluginSystemPromptContributions(
-    systemPromptContributions,
+  const baseInstructions = await buildDeploymentSystemPrompt(
+    platform,
+    args.promptMode,
   );
-  const baseInstructions = [
-    buildSystemPrompt(platform, promptMode),
-    pluginSystemPrompt,
-  ]
-    .filter((section): section is string => Boolean(section))
-    .join("\n\n");
   // A replayed or checkpointed prompt already holds the context of this Turn,
   // so `loadPromptTurnContext` returns nothing for it.
   const {
     conversationNotes,
     pluginUserPromptContributions,
     userCustomization,
+    workspaces,
   } = args.turnContext;
   const disabledTools = loadsTurnContext ? args.disabledTools : [];
-  const turnContextPrompt =
-    needsBootstrapContextForPrompt ||
-    pluginUserPromptContributions.length > 0 ||
-    (conversationNotes?.length ?? 0) > 0 ||
-    disabledTools.length > 0 ||
-    userCustomization
-      ? buildTurnContextPrompt({
-          availableSkills: args.availableSkills,
-          activeMcpCatalogs: args.activeMcpCatalogs,
-          conversationNotes,
-          disabledTools,
-          includeSessionContext: needsBootstrapContextForPrompt,
-          pluginPromptContributions: pluginUserPromptContributions,
-          toolGuidance: args.toolGuidance,
-          userCustomization,
-          runtime: {
-            conversationId: args.spanContext.conversationId,
-            slackConversation: args.run.slackConversation,
-          },
-          dispatch: args.run.dispatch
-            ? {
-                ...args.run.dispatch,
-                destination: args.run.destination,
-                source,
-              }
-            : undefined,
-          actor: isUserActor(args.currentActor) ? args.currentActor : undefined,
-          configuration: args.configurationValues,
-        })
-      : null;
+  // Send the script tools again only when they changed. Context compaction
+  // keeps the latest copy, so this also holds after a compaction.
+  const scriptTools =
+    loadsTurnContext &&
+    latestTurnContextSection(
+      promptHistoryMessages,
+      SCRIPT_TOOLS_SECTION_TAG,
+    ) !== buildScriptToolsSection(args.scriptTools)
+      ? args.scriptTools
+      : undefined;
+  // It returns nothing when no section has news for this Turn.
+  const turnContextPrompt = loadsTurnContext
+    ? buildTurnContextPrompt({
+        availableSkills: args.availableSkills,
+        activeMcpCatalogs: args.activeMcpCatalogs,
+        conversationNotes,
+        disabledTools,
+        includeSessionContext: needsBootstrapContextForPrompt,
+        // Send a capability section again only when it changed. Context
+        // compaction keeps the latest copy of each.
+        latestCapabilitySections: Object.fromEntries(
+          Object.values(CAPABILITY_SECTION_TAG).map((tag) => [
+            tag,
+            latestTurnContextSection(promptHistoryMessages, tag),
+          ]),
+        ),
+        pluginPromptContributions: pluginUserPromptContributions,
+        scriptTools,
+        toolGuidance: args.toolGuidance,
+        userCustomization,
+        workspaces,
+        runtime: {
+          conversationId: args.spanContext.conversationId,
+          slackConversation: args.run.slackConversation,
+        },
+        dispatch: args.run.dispatch
+          ? {
+              ...args.run.dispatch,
+              destination: args.run.destination,
+              source,
+            }
+          : undefined,
+        actor: isUserActor(args.currentActor) ? args.currentActor : undefined,
+        configuration: args.configurationValues,
+      })
+    : null;
   const turnContextParts: UserContentPart[] = turnContextPrompt
     ? [{ type: "text", text: turnContextPrompt }]
     : [];
+  const agentsInstructions = args.repositoryInstructions
+    ? renderAgentsInstructionsForPrompt(
+        promptHistoryMessages,
+        args.repositoryInstructions,
+      )
+    : undefined;
   const contextContentParts = replayedPrompt?.contextContentParts ?? [
     ...turnContextParts,
     ...(args.explicitSkill
@@ -722,6 +708,9 @@ export async function assemblePrompt(args: {
             text: renderExplicitSkillInstructions(args.explicitSkill),
           },
         ]
+      : []),
+    ...(agentsInstructions
+      ? [{ type: "text" as const, text: agentsInstructions }]
       : []),
     ...args.contextContentParts,
   ];
@@ -784,6 +773,7 @@ export async function assemblePrompt(args: {
     contextContentParts,
     inputMessages,
     inputMessagesAttribute,
+    platform,
     ...(trimmedPrompt.promptTimestamp !== undefined
       ? { promptTimestamp: trimmedPrompt.promptTimestamp }
       : undefined),

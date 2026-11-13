@@ -24,7 +24,6 @@ import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-message";
 import { markConversationMessage } from "@/chat/services/conversation-memory";
 import { botConfig } from "@/chat/config";
-import { defaultModelId } from "@/chat/model-profile";
 import { cancelSubscriptions as cancelWatches } from "@/chat/events/store";
 import { recordSubscribedReplyRoute } from "@/chat/conversations/projection";
 import { createSlackDispatchTurnRunner } from "@/chat/slack/dispatch-turn";
@@ -63,8 +62,6 @@ function clearSkippedTurnIfActive(
 export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
   const services = createJuniorRuntimeServices(options.services);
   const prepareTurnState = createPrepareTurnState({
-    compactConversationIfNeeded:
-      services.conversationMemory.compactConversationIfNeeded,
     hydrateConversationVisionContext:
       services.visionContext.hydrateConversationVisionContext,
     resolveBackfillMessageActors: async (messages, destination) => {
@@ -93,7 +90,6 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
     },
   });
   const executeSlackTurn = createSlackTurn({
-    contextCompactor: services.contextCompactor,
     executeTurn: services.executeTurn,
     getSlackAdapter: options.getSlackAdapter,
     pausedTurns: options.pausedTurns ?? createPausedTurns(),
@@ -110,7 +106,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
     assistantUserName: botConfig.userName,
     cancelWatches,
     getBotUserId: () => options.getSlackAdapter().botUserId,
-    modelId: defaultModelId(botConfig),
+    modelId: botConfig.modelId,
     now: options.now ?? (() => Date.now()),
     prepareTurnState,
     persistPreparedState: async ({ conversationId, preparedState }) => {

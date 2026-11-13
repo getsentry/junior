@@ -1,5 +1,5 @@
 import type { StateAdapter } from "chat";
-import { z } from "zod";
+import * as z from "zod";
 import { getChatConfig } from "@/chat/config";
 import { getDefaultRedisStateAdapterFor } from "@/chat/state/adapter";
 

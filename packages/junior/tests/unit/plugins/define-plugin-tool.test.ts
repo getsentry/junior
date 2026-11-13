@@ -7,7 +7,7 @@ import {
   toolApprovalModeSchema,
   zodTool,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 
 const countResultSchema = pluginToolOutputSchema.extend({
   count: z.number(),

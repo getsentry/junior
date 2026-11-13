@@ -13,11 +13,21 @@ consistent.
 - Put repeated surfaces (charts, drawers, tables, secondary nav, time-range
   controls, `Field`, `Input`, `StatusChip`, `Section`, `Toolbar`,
   `EmptyState`) in shared components. Dashboard home:
-  `packages/junior-dashboard/src/client/components/`. See its `AGENTS.md`.
+  `packages/junior-dashboard/src/client/components/`.
 - Extract on the second real use, or when a third use is certain. Not on taste.
 - Keep pages thin: compose shared components and wire data.
 - Own page filters and secondary nav in one shared layout control. Sections
   must not each own a copy.
+- Title page, card, and panel sections with `layout/SectionTitle` (or a
+  shared component that uses it, such as `FactSection` and `CardHeader`).
+  Small muted text is for field and subsection labels only.
+- Filtered lists use `filters/FilterToolbar` (search, a Filters button, and
+  chips) and a `filters/FilterPanel` with one `FilterOptions` per filter.
+  `FilteredList` puts the panel beside the toolbar and the list, so both
+  narrow. A long `FilterOptions` list gets a search box, not "show more". Row
+  details open in an overlay `DetailsPanel` that slides over the list and
+  filters. On small screens both are modal sheets. Do not put page filters
+  in popovers or native selects.
 - Check a changed shared component on a real page with
   `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev` and the dashboard E2E
   screenshots.
@@ -32,6 +42,13 @@ consistent.
   compact badges and chart notes; body copy, controls, and metadata use
   `text-xs` or larger. No arbitrary `text-[Nrem]`.
 - No gradients unless they carry product meaning.
+- JS sizes that must match CSS use the same unit. Text, spacing, and
+  breakpoints are in rem, so they grow with the browser font size. Write the
+  JS size in rem, or read the rendered size. Use a px constant only when the
+  CSS that it matches is in px too (`ITEM_PX` and `h-[8px]`), and say so in a
+  comment. `ResizablePanel` sizes must be rem or percent, the style check
+  rejects px breakpoints, and the `px-geometry` lint rule rejects a `*_PX`
+  constant in `*` or `/` math when no element in the file uses its size.
 - Data tables: `table-fixed`, equal fixed widths for metric and status
   columns, only the label column flexes, a minimum width, and horizontal
   scroll on narrow screens.

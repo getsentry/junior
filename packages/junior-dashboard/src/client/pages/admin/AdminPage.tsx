@@ -5,14 +5,16 @@ import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { dashboardContainerClass } from "../../styles";
-import { pluginUserPagePath } from "../user/PluginUserPage";
+import { pluginUserPagePath } from "../user/pluginUserPageRoutes";
+import { CacheWarmingSection } from "./CacheWarmingSection";
 import {
   ServiceAccountsSection,
   useServiceAccounts,
 } from "./ServiceAccountsSection";
 
 /**
- * Show service accounts and admin-only plugin pages to a Junior admin.
+ * Show service accounts, cache warming, and admin-only plugin pages to a
+ * Junior admin.
  *
  * The server hides admin pages and service accounts from other viewers and
  * refuses their requests, so this page only arranges them.
@@ -37,6 +39,7 @@ export function AdminPage(props: { pages: PluginUserPageLink[] }) {
           title="Admin"
         />
         <ServiceAccountsSection accountsQuery={serviceAccounts} />
+        <CacheWarmingSection />
         {nothingToSet ? (
           <Card padding="md">
             <div className="flex items-center gap-4">

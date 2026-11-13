@@ -48,7 +48,7 @@ describe("Watches", () => {
       {
         input: { id: watch!.id },
         output: expect.objectContaining({
-          stoppedIds: [watch!.id],
+          stopped_ids: [watch!.id],
           watching_status: "stopped",
         }),
       },
