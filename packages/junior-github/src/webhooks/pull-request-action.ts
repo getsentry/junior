@@ -179,10 +179,12 @@ async function showAction(
   if (action) {
     await items.upsert({
       assigneeIdentityIds: [args.identityId],
+      // The URL stands alone, so the dashboard shows the pull request as
+      // one card that carries its title. The text names it by number only.
       body:
         action === "merge"
-          ? `**${state.title}** is approved, and GitHub says that it can merge: ${state.url}`
-          : `GitHub asks you to review **${state.title}**: ${state.url}`,
+          ? `#${number} is approved, and GitHub says that it can merge.\n\n${state.url}`
+          : `GitHub asks you to review #${number}.\n\n${state.url}`,
       dedupeKey: args.dedupeKey,
       // The number stays visible where a view shows only the subject.
       subject: {

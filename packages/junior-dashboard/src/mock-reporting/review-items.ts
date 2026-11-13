@@ -176,7 +176,7 @@ function seeds(nowMs: number): MockItemSeed[] {
     },
     {
       // The GitHub plugin asks the opener once the pull request can merge.
-      body: "**Update Junior to 0.288.0** is approved, and GitHub says that it can merge: https://github.com/getsentry/junior/pull/2201",
+      body: "#2201 is approved, and GitHub says that it can merge.\n\nhttps://github.com/getsentry/junior/pull/2201",
       conversationId: RELEASE_CONVERSATION_ID,
       createdAt: at(12),
       id: "qa-ready-2201",
@@ -190,7 +190,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       title: "Ready to merge · #2201",
     },
     {
-      body: "GitHub asks you to review **Pin the release train to payments 4.2**: https://github.com/getsentry/payments/pull/91",
+      body: "GitHub asks you to review #91.\n\nhttps://github.com/getsentry/payments/pull/91",
       conversationId: RELEASE_CONVERSATION_ID,
       createdAt: at(89),
       id: "qa-review-91",
@@ -234,7 +234,7 @@ function seeds(nowMs: number): MockItemSeed[] {
       title: "Release notes drafted",
     },
     {
-      body: "GitHub asks you to review **Tabs in the dashboard sidebar**: https://github.com/getsentry/junior/pull/3052",
+      body: "GitHub asks you to review #3052.\n\nhttps://github.com/getsentry/junior/pull/3052",
       conversationId: SANDBOX_CONVERSATION_ID,
       createdAt: at(2 * DAY),
       id: "qa-review-3052",

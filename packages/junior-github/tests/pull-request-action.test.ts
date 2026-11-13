@@ -329,7 +329,7 @@ describe("next action item", () => {
         kind: "upsert",
         notice: {
           assigneeIdentityIds: ["identity-requester"],
-          body: `**Add the review desk notice** is approved, and GitHub says that it can merge: ${PULL_URL}`,
+          body: `#946 is approved, and GitHub says that it can merge.\n\n${PULL_URL}`,
           dedupeKey: DEDUPE_KEY,
           subject: {
             id: PULL_URL,
@@ -486,7 +486,7 @@ describe("next action item", () => {
         kind: "upsert",
         notice: {
           assigneeIdentityIds: ["identity-requester"],
-          body: `GitHub asks you to review **Add the review desk notice**: ${PULL_URL}`,
+          body: `GitHub asks you to review #946.\n\n${PULL_URL}`,
           dedupeKey: DEDUPE_KEY,
           subject: {
             id: PULL_URL,

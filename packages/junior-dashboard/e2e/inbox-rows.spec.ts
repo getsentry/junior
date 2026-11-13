@@ -210,3 +210,31 @@ test("the hover card shows linked work as quiet cards", async ({
   await expect(cards.locator("svg")).toHaveCount(0);
   await expect(cards.locator("[data-status-tone]")).toHaveCount(3);
 });
+
+test("an expanded review row shows its pull request's title once", async ({
+  dashboard,
+  page,
+}) => {
+  await page.goto(`${dashboard.baseURL}/`);
+  const row = page
+    .getByRole("region", { name: "To do" })
+    .locator("li[data-inbox-row]")
+    .filter({ hasText: "Package release and self-update" })
+    .first();
+  const head = row.locator('a[aria-controls^="inbox-row-"]').first();
+  await head.click();
+  const panel = page.locator(
+    `[id="${await head.getAttribute("aria-controls")}"]`,
+  );
+  const card = panel.getByRole("region", {
+    name: "Pull request: Pin the release train to payments 4.2",
+  });
+  await expect(card).toHaveCount(1);
+  // The card carries the title. The item's text names the pull request by
+  // number only.
+  await expect(panel.getByText("GitHub asks you to review #91.")).toBeVisible();
+  // The card's own description may quote it, so match the title alone.
+  await expect(
+    panel.getByText(/^Pin the release train to payments 4\.2( \(#91\))?$/),
+  ).toHaveCount(1);
+});
