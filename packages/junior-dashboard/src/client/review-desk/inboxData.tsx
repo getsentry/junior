@@ -198,7 +198,7 @@ function useBuildInboxData(input: {
   // The server counts each entry, so items past the loaded pages count
   // too. Done has no count: it would need every closed item.
   const counts: Partial<Record<InboxView, number>> = {
-    automations: automations.length,
+    automations: serverCounts?.automations,
     decisions: serverCounts?.decisions,
     inbox: todoCount,
     prs: serverCounts?.prs,

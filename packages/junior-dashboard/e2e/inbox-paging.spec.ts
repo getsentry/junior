@@ -331,3 +331,19 @@ test("the entry counts cover the asks past the loaded pages", async ({
     /^Snoozed\s*1$/,
   );
 });
+
+test("the Automations entry counts from the server while its list fails", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page, { automations: () => 3, open: [license] });
+  await page.route(/\/api\/automations\?scope=attention/, (route) =>
+    route.fulfill({ json: { error: "Automations failed" }, status: 500 }),
+  );
+  await page.goto(`${dashboard.baseURL}/`);
+  const nav = page.getByRole("navigation", { name: "Inbox" });
+  // The same server count as the badge, not the list that failed to load.
+  await expect(nav.getByRole("link", { name: /^Automations/ })).toHaveText(
+    /^Automations\s*3$/,
+  );
+});

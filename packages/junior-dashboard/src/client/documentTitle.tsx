@@ -24,8 +24,10 @@ export function formatDocumentTitle(
 }
 
 type DocumentTitleOwner = {
+  /** Drop the page's part, only while it is still `title`. */
+  clearPage(title: string): void;
   setCount(count: number | undefined): void;
-  setPage(title: string | undefined): void;
+  setPage(title: string): void;
 };
 
 // Write the tab title only when its text changes: a pinned tab marks every
@@ -36,6 +38,7 @@ function writeDocumentTitle(title: string) {
 
 // Without the provider, pages still set their title, with no count.
 const DocumentTitleContext = createContext<DocumentTitleOwner>({
+  clearPage: () => undefined,
   setCount: () => undefined,
   setPage: (title) => writeDocumentTitle(formatDocumentTitle(title)),
 });
@@ -52,6 +55,14 @@ export function DocumentTitleProvider(props: { children: ReactNode }) {
     const apply = () =>
       writeDocumentTitle(formatDocumentTitle(page.current, count.current));
     return {
+      clearPage(title) {
+        if (page.current !== title) return;
+        page.current = undefined;
+        // A page that replaces this one sets its title in the same commit,
+        // after this cleanup. Write after that, so the tab never shows the
+        // bare agent name in between.
+        queueMicrotask(apply);
+      },
       setCount(next) {
         count.current = next;
         apply();
@@ -73,14 +84,15 @@ export function DocumentTitleProvider(props: { children: ReactNode }) {
  * Show the current page in the browser tab title.
  *
  * An empty title leaves the tab alone, so a parent without a title cannot
- * replace a child's title. Unmount restores the agent name.
+ * replace a child's title. Unmount restores the agent name, unless another
+ * page has set its title since.
  */
 export function useDocumentTitle(title: string | undefined): void {
   const owner = useContext(DocumentTitleContext);
   useEffect(() => {
     if (!title?.trim()) return;
     owner.setPage(title);
-    return () => owner.setPage(undefined);
+    return () => owner.clearPage(title);
   }, [owner, title]);
 }
 

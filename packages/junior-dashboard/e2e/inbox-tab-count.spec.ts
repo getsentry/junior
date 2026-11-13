@@ -77,3 +77,43 @@ test("turning off the tab icon count keeps the title count", async ({
   await expect(page).toHaveTitle("(1) Settings - Junior");
   await expect(icon).toHaveAttribute("href", "/favicon.ico");
 });
+
+test("moving between pages never flashes the bare agent name in the tab", async ({
+  dashboard,
+  page,
+}) => {
+  // Record every title write. A pinned tab marks each one as an update.
+  await page.addInitScript(() => {
+    const titles: string[] = [];
+    Object.assign(window, { __titles: titles });
+    const own = Object.getOwnPropertyDescriptor(Document.prototype, "title")!;
+    Object.defineProperty(document, "title", {
+      configurable: true,
+      get: () => own.get!.call(document),
+      set: (value: string) => {
+        titles.push(value);
+        own.set!.call(document, value);
+      },
+    });
+  });
+  await mockOneAsk(page);
+  await page.goto(`${dashboard.baseURL}/`);
+  await expect(page).toHaveTitle("(1) Inbox - Junior");
+  const nav = page.getByRole("navigation", { name: "Inbox" });
+  await nav.getByRole("link", { name: /^Pull requests/ }).click();
+  await expect(page).toHaveTitle("(1) Pull requests - Junior");
+  await nav.getByRole("link", { name: /^Snoozed/ }).click();
+  await expect(page).toHaveTitle("(1) Snoozed - Junior");
+  await inboxTab(page).click();
+  await expect(page).toHaveTitle("(1) Inbox - Junior");
+
+  const all = await page.evaluate(
+    () => (window as unknown as { __titles: string[] }).__titles,
+  );
+  // From the first counted title on: the count loads after the page title.
+  const titles = all.slice(all.indexOf("(1) Inbox - Junior"));
+  expect(titles).toContain("(1) Pull requests - Junior");
+  expect(titles.filter((title) => /^(\(\d+\) )?Junior$/.test(title))).toEqual(
+    [],
+  );
+});
