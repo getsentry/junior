@@ -1,145 +1,216 @@
-const GITHUB_OWNER_PATTERN = "[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?";
-const GITHUB_REPOSITORY_PATTERN = "[A-Za-z0-9._-]+";
-const GITHUB_ISSUE_REFERENCE_PATTERN = new RegExp(
-  `^(${GITHUB_OWNER_PATTERN})\\/(${GITHUB_REPOSITORY_PATTERN})#(\\d+)\\b`,
+import type { Nodes } from "mdast";
+import { fromMarkdown } from "mdast-util-from-markdown";
+import { gfmFromMarkdown } from "mdast-util-gfm";
+import { gfm } from "micromark-extension-gfm";
+import {
+  configuredRepository,
+  type Repository,
+} from "./configured-repository.js";
+
+// GitHub autolinked references, rendered as Markdown links for chat replies.
+// https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/autolinked-references-and-urls
+const OWNER = "[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?";
+// Enterprise Managed User logins, which can own repositories, end in
+// `_shortcode`, such as `ada_acme`.
+const LOGIN = `${OWNER}(?:_[A-Za-z0-9]+)?`;
+const REPO = "[A-Za-z0-9._-]+";
+const SHA = "[0-9a-f]{7,40}";
+// A reference must not continue a word, path, domain, email, HTML entity,
+// escape, or Slack token such as `<@U123>`.
+const START = "(?<![\\w.\\-/@&<\\\\])";
+const END = "(?![\\w-])";
+
+// Alternatives are ordered so that a qualified reference wins at one position.
+const TEXT_REFERENCE_PATTERN = new RegExp(
+  [
+    `${START}(?<issueOwner>${LOGIN})\\/(?<issueRepo>${REPO})#(?<issue>\\d+)${END}`,
+    `${START}(?<commitOwner>${LOGIN})\\/(?<commitRepo>${REPO})@(?<commit>${SHA})${END}`,
+    `${START}(?<user>${LOGIN})@(?<userCommit>[0-9a-f]{40})${END}`,
+    `${START}(?:#|GH-)(?<bareIssue>\\d+)${END}`,
+    // Not `@scope/name`, which is an npm package more often than a team.
+    `${START}@(?<mention>${LOGIN})(?![\\w/-]|\\.\\w)`,
+    // Only full SHAs: shorter hex runs are often other IDs, such as event IDs.
+    `${START}(?<bareCommit>[0-9a-f]{40})${END}`,
+  ].join("|"),
+  "g",
 );
 
-function isReferenceBoundary(char: string | undefined): boolean {
-  return char === undefined || !/[A-Za-z0-9._-]/.test(char);
+// `orgs/` and `enterprises/` paths hold discussions that belong to no repository.
+const GITHUB_URL_BODY = `https?:\\/\\/(?:www\\.)?github\\.com\\/(?!(?:orgs|enterprises)\\/)(?<owner>${LOGIN})\\/(?<repo>${REPO})\\/(?:(?:issues|pull|discussions)\\/(?<issue>\\d+)|commit\\/(?<commit>${SHA}))`;
+const GITHUB_URL_PATTERN = new RegExp(`^${GITHUB_URL_BODY}$`, "i");
+// A URL anywhere in a link destination.
+const GITHUB_LINKED_URL_PATTERN = new RegExp(GITHUB_URL_BODY, "gi");
+
+// Chat words that look like mentions but are no GitHub account.
+const NON_ACCOUNT_MENTIONS = new Set(["channel", "everyone", "here"]);
+
+/**
+ * A source range that the Markdown parser found: plain text, a bare URL, or
+ * a link. Code, HTML, and images get no range, so they stay as written.
+ */
+interface Span {
+  kind: "text" | "url" | "link";
+  start: number;
+  end: number;
+  url?: string;
 }
 
-function readInlineCode(text: string, start: number): number | undefined {
-  if (text[start] !== "`") {
-    return undefined;
-  }
-  let markerLength = 1;
-  while (text[start + markerLength] === "`") {
-    markerLength++;
-  }
-  const marker = "`".repeat(markerLength);
-  const end = text.indexOf(marker, start + markerLength);
-  return end === -1 ? undefined : end + markerLength;
-}
-
-/** Read a fenced code opener/closer length of three or more backticks. */
-function readFenceLength(line: string): number | undefined {
-  const trimmed = line.trimStart();
-  if (!trimmed.startsWith("```")) {
-    return undefined;
-  }
-  let length = 0;
-  while (trimmed[length] === "`") {
-    length++;
-  }
-  return length >= 3 ? length : undefined;
+function readSpans(text: string): Span[] {
+  const spans: Span[] = [];
+  const visit = (node: Nodes) => {
+    const start = node.position?.start.offset;
+    const end = node.position?.end.offset;
+    if (start === undefined || end === undefined) return;
+    if (node.type === "text") {
+      spans.push({ kind: "text", start, end });
+    } else if (node.type === "link" || node.type === "definition") {
+      // A GFM autolink literal is the URL itself in the source.
+      const bare = node.type === "link" && text.slice(start, end) === node.url;
+      spans.push({ kind: bare ? "url" : "link", start, end, url: node.url });
+    } else if (node.type !== "linkReference" && "children" in node) {
+      for (const child of node.children) visit(child);
+    }
+  };
+  visit(
+    fromMarkdown(text, {
+      extensions: [gfm()],
+      mdastExtensions: [gfmFromMarkdown()],
+    }),
+  );
+  return spans;
 }
 
 /**
- * Skip one existing Markdown link.
- *
- * Labels must not contain brackets or newlines so a bare earlier `[` cannot bind
- * to a later real link. Destinations may be absolute or relative.
+ * Return the distinct repositories that the text names in qualified
+ * references or GitHub issue, pull request, and commit URLs.
  */
-function readMarkdownLink(text: string, start: number): number | undefined {
-  if (text[start] !== "[") {
-    return undefined;
-  }
-
-  const labelEnd = text.indexOf("](", start + 1);
-  if (labelEnd === -1) {
-    return undefined;
-  }
-
-  const label = text.slice(start + 1, labelEnd);
-  if (label.includes("[") || label.includes("]") || label.includes("\n")) {
-    return undefined;
-  }
-
-  const destStart = labelEnd + 2;
-  const closeParens = text.indexOf(")", destStart);
-  return closeParens === -1 ? undefined : closeParens + 1;
-}
-
-function readAngleToken(text: string, start: number): number | undefined {
-  if (text[start] !== "<") {
-    return undefined;
-  }
-  const end = text.indexOf(">", start + 1);
-  return end === -1 ? undefined : end + 1;
-}
-
-function linkifyLine(line: string): string {
-  let output = "";
-  let index = 0;
-
-  while (index < line.length) {
-    const codeEnd = readInlineCode(line, index);
-    if (codeEnd !== undefined) {
-      output += line.slice(index, codeEnd);
-      index = codeEnd;
-      continue;
+function namedRepositories(text: string, spans: Span[]): Repository[] {
+  const repositories = new Map<string, Repository>();
+  const add = (owner: string | undefined, name: string | undefined) => {
+    if (owner && name) {
+      repositories.set(`${owner}/${name}`.toLowerCase(), { owner, name });
     }
-
-    const markdownLinkEnd = readMarkdownLink(line, index);
-    if (markdownLinkEnd !== undefined) {
-      output += line.slice(index, markdownLinkEnd);
-      index = markdownLinkEnd;
-      continue;
-    }
-
-    const angleTokenEnd = readAngleToken(line, index);
-    if (angleTokenEnd !== undefined) {
-      output += line.slice(index, angleTokenEnd);
-      index = angleTokenEnd;
-      continue;
-    }
-
-    if (
-      line.startsWith("https://", index) ||
-      line.startsWith("http://", index)
-    ) {
-      const url = /^\S+/.exec(line.slice(index))![0];
-      const scheme = line.startsWith("https://", index) ? 8 : 7;
-      if (url.length > scheme) {
-        output += url;
-        index += url.length;
-        continue;
+  };
+  for (const span of spans) {
+    if (span.url) {
+      for (const { groups } of span.url.matchAll(GITHUB_LINKED_URL_PATTERN)) {
+        add(groups?.owner, groups?.repo);
+      }
+    } else {
+      const source = text.slice(span.start, span.end);
+      for (const { groups } of source.matchAll(TEXT_REFERENCE_PATTERN)) {
+        add(groups?.issueOwner, groups?.issueRepo);
+        add(groups?.commitOwner, groups?.commitRepo);
       }
     }
-
-    if (isReferenceBoundary(index === 0 ? undefined : line[index - 1])) {
-      const match = GITHUB_ISSUE_REFERENCE_PATTERN.exec(line.slice(index));
-      if (match) {
-        const [reference, owner, repository, number] = match;
-        output += `[${reference}](https://github.com/${owner}/${repository}/issues/${number})`;
-        index += reference.length;
-        continue;
-      }
-    }
-
-    output += line[index];
-    index++;
   }
-
-  return output;
+  return [...repositories.values()];
 }
 
-/** Linkify GitHub issue and pull request shorthand outside Markdown code. */
-export function linkifyGitHubReferences(text: string): string {
-  let openFenceLength = 0;
-  return text
-    .split("\n")
-    .map((line) => {
-      const fenceLength = readFenceLength(line);
-      if (fenceLength !== undefined) {
-        if (openFenceLength === 0) {
-          openFenceLength = fenceLength;
-        } else if (fenceLength >= openFenceLength) {
-          openFenceLength = 0;
-        }
-        return line;
-      }
-      return openFenceLength > 0 ? line : linkifyLine(line);
-    })
-    .join("\n");
+const issueUrl = (owner: string, name: string, issue: string) =>
+  `https://github.com/${owner}/${name}/issues/${issue}`;
+const commitUrl = (owner: string, name: string, sha: string) =>
+  `https://github.com/${owner}/${name}/commit/${sha}`;
+
+function linkifyUrl(url: string): string {
+  const groups = GITHUB_URL_PATTERN.exec(url)?.groups;
+  if (!groups?.owner || !groups.repo) {
+    return url;
+  }
+  const label = groups.issue
+    ? `${groups.owner}/${groups.repo}#${groups.issue}`
+    : `${groups.owner}/${groups.repo}@${groups.commit!.slice(0, 7)}`;
+  return `[${label}](${url})`;
+}
+
+function linkifyTextReferences(
+  text: string,
+  context: {
+    linkProfiles: boolean;
+    mention: (login: string) => string | undefined;
+    repository: Repository | undefined;
+  },
+): string {
+  const { repository } = context;
+  return text.replace(TEXT_REFERENCE_PATTERN, (reference, ...args) => {
+    const groups = args.at(-1) as Record<string, string | undefined>;
+    if (groups.issue) {
+      return `[${reference}](${issueUrl(groups.issueOwner!, groups.issueRepo!, groups.issue)})`;
+    }
+    if (groups.commit) {
+      const label = `${groups.commitOwner}/${groups.commitRepo}@${groups.commit.slice(0, 7)}`;
+      return `[${label}](${commitUrl(groups.commitOwner!, groups.commitRepo!, groups.commit)})`;
+    }
+    if (groups.mention) {
+      const login = groups.mention;
+      if (NON_ACCOUNT_MENTIONS.has(login.toLowerCase())) return reference;
+      const known = context.mention(login);
+      if (known) return known;
+      return context.linkProfiles
+        ? `[${reference}](https://github.com/${login})`
+        : reference;
+    }
+    if (!repository) {
+      return reference;
+    }
+    if (groups.bareIssue) {
+      return `[${reference}](${issueUrl(repository.owner, repository.name, groups.bareIssue)})`;
+    }
+    if (groups.userCommit) {
+      // `user@sha` names a commit in the user's fork of the repository.
+      const label = `${groups.user}@${groups.userCommit.slice(0, 7)}`;
+      return `[${label}](${commitUrl(groups.user!, repository.name, groups.userCommit)})`;
+    }
+    const sha = groups.bareCommit!;
+    return `[${sha.slice(0, 7)}](${commitUrl(repository.owner, repository.name, sha)})`;
+  });
+}
+
+/**
+ * Linkify GitHub autolinked references outside Markdown code and links.
+ *
+ * `owner/repo#123`, `owner/repo@sha`, and GitHub issue, pull request,
+ * discussion, and commit URLs always become links. `#123`, `GH-123`,
+ * `user@sha`, and full SHAs need a repository: the one that the text names,
+ * else the `repo` config value when the text names none. `@login` becomes the
+ * `mention` of the known person with that GitHub login. Other logins become
+ * GitHub profile links when the text is GitHub text, or names a repository.
+ * Chat `@name` words are often people who are not GitHub accounts. Set
+ * `bareUrls` to keep bare URLs, where the place shows them as cards.
+ */
+export function linkifyGitHubReferences(
+  text: string,
+  options: {
+    bareUrls?: boolean;
+    config?: Record<string, string>;
+    githubText?: boolean;
+    mention?: (login: string) => string | undefined;
+  } = {},
+): string {
+  const spans = readSpans(text);
+  const named = namedRepositories(text, spans);
+  const context = {
+    linkProfiles: options.githubText === true || named.length > 0,
+    mention: options.mention ?? (() => undefined),
+    repository:
+      named.length === 0
+        ? configuredRepository(options.config ?? {})
+        : named.length === 1
+          ? named[0]
+          : undefined,
+  };
+  let result = "";
+  let cursor = 0;
+  for (const span of spans) {
+    const source = text.slice(span.start, span.end);
+    result += text.slice(cursor, span.start);
+    result +=
+      span.kind === "text"
+        ? linkifyTextReferences(source, context)
+        : span.kind === "url" && !options.bareUrls
+          ? linkifyUrl(source)
+          : source;
+    cursor = span.end;
+  }
+  return result + text.slice(cursor);
 }
