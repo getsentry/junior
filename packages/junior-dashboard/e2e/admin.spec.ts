@@ -27,11 +27,7 @@ test("lets an admin turn cache warming back on after the breaker opens", async (
   await page.route("**/api/cache-warming/breakers", async (route) => {
     await route.fulfill({
       json: {
-        breakers: [
-          { provider: "anthropic", open: anthropicOpen },
-          { provider: "alibaba", open: false },
-          { provider: "openai", open: false },
-        ],
+        breakers: [{ provider: "anthropic", open: anthropicOpen }],
       },
     });
   });
@@ -54,5 +50,7 @@ test("lets an admin turn cache warming back on after the breaker opens", async (
     .getByRole("button", { name: "Turn anthropic cache warming back on" })
     .click();
   await expect(section.getByText("paused", { exact: true })).toBeHidden();
+  await expect(section.getByText("on", { exact: true })).toBeVisible();
+  await screenshot(page, "admin-cache-warming-on", { view: "desktop" });
   expect(closed).toEqual(["anthropic"]);
 });
