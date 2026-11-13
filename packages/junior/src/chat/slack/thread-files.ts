@@ -25,7 +25,8 @@ import type { JuniorSqlDatabase } from "@/db/db";
  * history, and messages that started no Turn. A stored file matches first
  * and is not downloaded again. Other files must be in this thread, so a
  * Conversation never stores a file from a thread that it does not belong
- * to. Returns `undefined` when the id is not a Slack file id.
+ * to. Returns `undefined` when the id is not a Slack file id, or when the
+ * Conversation has no Slack thread and has not stored the file.
  */
 export async function storeSlackThreadFile(args: {
   channelId: SlackChannelId;
@@ -33,7 +34,7 @@ export async function storeSlackThreadFile(args: {
   db: JuniorSqlDatabase;
   fileId: string;
   storage: AttachmentStorage;
-  threadTs: SlackMessageTs;
+  threadTs?: SlackMessageTs;
 }): Promise<StoredAttachment | undefined> {
   if (!isSlackFileId(args.fileId)) return undefined;
   const [stored] = await matchSlackAttachments({
@@ -42,6 +43,7 @@ export async function storeSlackThreadFile(args: {
     providerIds: [args.fileId],
   });
   if (stored) return { id: stored.id };
+  if (!args.threadTs) return undefined;
 
   const replies = await listThreadReplies({
     channelId: args.channelId,

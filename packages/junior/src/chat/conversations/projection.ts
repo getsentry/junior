@@ -888,7 +888,7 @@ function attachmentsDeliveredIdempotencyKey(args: {
   );
 }
 
-/** Record files delivered for humans without adding them to Pi replay. */
+/** Record files that Junior sent or read, without adding them to Pi replay. */
 export async function recordAttachmentsDelivered(args: {
   attachments: Array<{
     bytes: number;
@@ -923,42 +923,6 @@ export async function recordAttachmentsDelivered(args: {
         ...(args.turnId ? { turnId: args.turnId } : undefined),
       },
       createdAtMs: args.createdAtMs ?? Date.now(),
-    },
-  ]);
-}
-
-/**
- * Record a file that a tool call read, so the transcript shows it at that
- * call. Like delivered files, it stays out of Pi replay. One row per tool
- * call, so a retried call adds none.
- */
-export async function recordAttachmentLoaded(args: {
-  attachment: {
-    bytes: number;
-    contentType: string;
-    filename: string;
-    id: string;
-  };
-  conversationId: string;
-  toolCallId: string;
-}): Promise<void> {
-  const { attachment } = args;
-  await getConversationEventStore().append(args.conversationId, [
-    {
-      idempotencyKey: `attachments_loaded:tool:${args.toolCallId}`,
-      data: {
-        type: "attachments_loaded",
-        attachments: [
-          {
-            id: attachment.id,
-            filename: attachment.filename,
-            contentType: attachment.contentType,
-            bytes: attachment.bytes,
-          },
-        ],
-        toolCallId: args.toolCallId,
-      },
-      createdAtMs: Date.now(),
     },
   ]);
 }

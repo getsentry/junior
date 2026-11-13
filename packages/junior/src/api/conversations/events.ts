@@ -32,7 +32,6 @@ export const conversationReportSourceEventTypes = [
   "turn_context",
   "structured_event",
   "attachments_delivered",
-  "attachments_loaded",
   "reply_posted",
   "turn_completed",
   "turn_failed",
@@ -446,9 +445,6 @@ function reportEventData(args: {
         content: data.content,
       };
     case "attachments_delivered":
-    // A file that a tool read shows as the same transcript media. A new API
-    // type would fail the strict parse of dashboards loaded before a deploy.
-    case "attachments_loaded":
       if (!args.canExposePayload) {
         return undefined;
       }

@@ -225,12 +225,11 @@ export function createTools(
       );
     }
     const attachmentStorage = context.attachmentStorage;
-    const slackThreadTs = slackContext?.threadTs;
     tools.loadAttachment = createLoadAttachmentTool({
       conversationId: context.conversationId,
       db: getSqlExecutor(),
       storage: attachmentStorage,
-      ...(slackContext && slackThreadTs
+      ...(slackContext
         ? {
             storeProviderFile: async (fileId: string) =>
               await storeSlackThreadFile({
@@ -239,7 +238,7 @@ export function createTools(
                 db: getSqlExecutor(),
                 fileId,
                 storage: attachmentStorage,
-                threadTs: slackThreadTs,
+                threadTs: slackContext.threadTs,
               }),
           }
         : undefined),

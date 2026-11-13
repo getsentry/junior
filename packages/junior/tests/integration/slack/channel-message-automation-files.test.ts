@@ -358,7 +358,7 @@ describe("Slack channel-message automation files", () => {
       await getConversationEventStore().loadHistory(runConversationId);
     expect(
       history
-        .filter((event) => event.data.type === "attachments_loaded")
+        .filter((event) => event.data.type === "attachments_delivered")
         .map((event) => event.data),
     ).toEqual([
       expect.objectContaining({ toolCallId: "call-root" }),
@@ -370,6 +370,25 @@ describe("Slack channel-message automation files", () => {
         await loadProjection({ conversationId: runConversationId }),
       ),
     ).not.toContain("reply.png");
+
+    // A Conversation without a Slack thread still opens a file it stored,
+    // by its Slack file id, without reading Slack.
+    const { loadAttachment: loadWithoutThread } = createTools([], {}, {
+      ...context("U123", "C123", "public", undefined, TEAM_ID),
+      attachmentStorage,
+      conversationId: runConversationId,
+      location: { ...stored?.location, threadTs: undefined },
+      workspace,
+    } as ToolRuntimeContext);
+    const repliesBefore = getCapturedSlackApiCalls(
+      "conversations.replies",
+    ).length;
+    await expect(
+      execute(loadWithoutThread!, { attachment_id: rootFile.id }),
+    ).resolves.toMatchObject({ filename: "chart.png", bytes: 10 });
+    expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(
+      repliesBefore,
+    );
   });
 
   it("starts the run with its text when Slack cannot return the triggering post", async () => {

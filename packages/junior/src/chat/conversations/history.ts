@@ -356,27 +356,17 @@ const deliveredAttachmentSchema = z
   })
   .strict();
 
-/** Host-owned transcript item for files delivered to humans this turn. */
+/**
+ * Host-owned transcript item for files that Junior sent, or read with a tool.
+ * The name predates read files. A new type or field would break replay on
+ * instances that do not know it, so read files reuse this one.
+ */
 const attachmentsDeliveredEventDataSchema = z
   .object({
     type: z.literal("attachments_delivered"),
     attachments: z.array(deliveredAttachmentSchema).min(1),
     toolCallId: z.string().min(1).optional(),
     turnId: z.string().min(1).optional(),
-  })
-  .strict();
-
-/**
- * Host-owned transcript item for a file that Junior read with a tool. It is a
- * separate type, not a field on `attachments_delivered`, because readers
- * decode an unknown type as opaque data but reject an unknown field on a
- * known strict type.
- */
-const attachmentsLoadedEventDataSchema = z
-  .object({
-    type: z.literal("attachments_loaded"),
-    attachments: z.array(deliveredAttachmentSchema).min(1),
-    toolCallId: z.string().min(1),
   })
   .strict();
 
@@ -491,7 +481,6 @@ const appendableConversationEventDataSchema = z.union([
   turnContextEventDataSchema,
   structuredConversationEventDataSchema,
   attachmentsDeliveredEventDataSchema,
-  attachmentsLoadedEventDataSchema,
   replyPostedEventDataSchema,
   turnCompletedEventDataSchema,
   turnFailedEventDataSchema,
@@ -536,7 +525,6 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "turn_context",
   "structured_event",
   "attachments_delivered",
-  "attachments_loaded",
   "reply_posted",
   "turn_routed",
   "turn_completed",
