@@ -503,8 +503,12 @@ export function getPlugins(): PluginRegistration[] {
 export interface PluginMarkdownFormat {
   /** Config values by full key. Install defaults fill keys it does not set. */
   configuration?: Record<string, unknown>;
-  /** Destination mentions of known people, by lowercase `provider:handle`. */
+  /** Slack mentions of known people, by lowercase `provider:handle`. */
   mentions?: ReadonlyMap<string, string>;
+  /** Where the text shows. Defaults to Slack. */
+  platform?: "slack" | "web";
+  /** The provider that wrote the text or that it went to. */
+  provider?: string;
 }
 
 /** Apply plugin Markdown rewrites before destination delivery formatting. */
@@ -513,13 +517,17 @@ export function applyPluginFormatMarkdown(
   format: PluginMarkdownFormat = {},
 ): string {
   const resolved = { ...getConfigDefaults(), ...format.configuration };
+  const platform = format.platform ?? "slack";
   const mention = ({
     provider,
     handle,
   }: {
     provider: string;
     handle: string;
-  }) => format.mentions?.get(`${provider}:${handle}`.toLowerCase());
+  }) =>
+    platform === "slack"
+      ? format.mentions?.get(`${provider}:${handle}`.toLowerCase())
+      : undefined;
   let transformed = text;
   for (const plugin of getPlugins()) {
     const hook = plugin.hooks?.formatMarkdown;
@@ -530,6 +538,8 @@ export function applyPluginFormatMarkdown(
       const next = hook({
         config: pluginConfigValues(plugin.manifest.name, resolved),
         mention,
+        platform,
+        ...(format.provider ? { provider: format.provider } : undefined),
         text: transformed,
       });
       if (typeof next === "string") {

@@ -207,8 +207,22 @@ describe("GitHub reply markdown", () => {
       hook?.({
         config: { repo: "getsentry/junior" },
         mention: () => undefined,
+        platform: "slack",
         text: "#1509",
       }),
     ).toBe("[#1509](https://github.com/getsentry/junior/issues/1509)");
+    // GitHub text: every `@name` is a GitHub account. The dashboard keeps
+    // bare links, because it shows them as cards.
+    expect(
+      hook?.({
+        config: {},
+        mention: () => undefined,
+        platform: "web",
+        provider: "github",
+        text: "@octocat see https://github.com/getsentry/junior/pull/1",
+      }),
+    ).toBe(
+      "[@octocat](https://github.com/octocat) see https://github.com/getsentry/junior/pull/1",
+    );
   });
 });

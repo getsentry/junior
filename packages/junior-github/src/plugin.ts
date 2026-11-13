@@ -321,9 +321,12 @@ export function githubPlugin(
           ),
         };
       },
-      formatMarkdown({ config, mention, text }) {
+      formatMarkdown({ config, mention, platform, provider, text }) {
         return linkifyGitHubReferences(text, {
+          // The dashboard shows a bare GitHub link as a card.
+          bareUrls: platform === "web",
           config,
+          githubText: provider === "github",
           mention: (login) => mention({ provider: "github", handle: login }),
         });
       },

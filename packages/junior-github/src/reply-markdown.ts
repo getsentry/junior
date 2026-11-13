@@ -278,20 +278,23 @@ function linkifyTextReferences(
  * `user@sha`, and full SHAs need a repository: the one that the text names,
  * else the `repo` config value when the text names none. `@login` becomes the
  * `mention` of the known person with that GitHub login. Other logins become
- * GitHub profile links only when the text names a repository, because chat
- * `@name` words are often people who are not GitHub accounts.
+ * GitHub profile links when the text is GitHub text, or names a repository.
+ * Chat `@name` words are often people who are not GitHub accounts. Set
+ * `bareUrls` to keep bare URLs, where the place shows them as cards.
  */
 export function linkifyGitHubReferences(
   text: string,
   options: {
+    bareUrls?: boolean;
     config?: Record<string, string>;
+    githubText?: boolean;
     mention?: (login: string) => string | undefined;
   } = {},
 ): string {
   const lines = segmentText(text);
   const named = namedRepositories(lines);
   const context = {
-    linkProfiles: named.length > 0,
+    linkProfiles: options.githubText === true || named.length > 0,
     mention: options.mention ?? (() => undefined),
     repository:
       named.length === 0
@@ -304,7 +307,9 @@ export function linkifyGitHubReferences(
     .map((segments) =>
       segments
         .map((segment) => {
-          if (segment.kind === "url") return linkifyUrl(segment.value);
+          if (segment.kind === "url") {
+            return options.bareUrls ? segment.value : linkifyUrl(segment.value);
+          }
           if (segment.kind === "text") {
             return linkifyTextReferences(segment.value, context);
           }
