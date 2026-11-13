@@ -175,7 +175,7 @@ Junior reads the org from the Sentry API path, such as `/api/0/organizations/<or
 
 When `SENTRY_READ_TOKEN` is also set, Junior uses it for every read that no installation covers. Use this while you move from the internal integration to the public integration.
 
-An event automation without an identifier runs for every installed org. Its `projects` filter matches the same project slug in each org.
+Junior takes the org of an event from the installation that sent it, not from URLs in the payload.
 
 ## Issue link cards
 
@@ -278,10 +278,12 @@ The alert resolved.
 Junior publishes each state once for each alert incident.
 
 An event automation selects Sentry events with filters instead of an
-identifier, and can run for every project in the Sentry org. `issue.created`, `metric_alert.critical`, `metric_alert.warning`,
-and `metric_alert.resolved` can run that way with no filter. Use the
-`projects` filter to limit one to some projects. Junior saves project slugs in
-lowercase. Junior does not check that the creator can see the projects, so a
+identifier. `issue.created`, `metric_alert.critical`, `metric_alert.warning`,
+and `metric_alert.resolved` need an `org` filter, because each installed org
+sends its own events. Then the automation runs for every project in that org.
+Use the `projects` filter to limit it to some projects. An automation without
+an `org` filter does not run: edit it and add the filter. Junior saves org and
+project slugs in lowercase. Junior does not check that the creator can see the projects, so a
 broad automation can post private project names in its channel. See
 [Automations](/concepts/automations/).
 

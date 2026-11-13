@@ -11,18 +11,24 @@ import * as z from "zod";
 export const sentrySlugDataSchema = z.string().min(1).toLowerCase();
 
 /**
- * Filter on the projects of a Sentry event. `projects` is a list on every
- * event, so one filter fits an issue, which has one project, and a metric
- * alert, whose rule can cover several projects.
+ * Filter on the org and the projects of a Sentry event. `projects` is a list
+ * on every event, so one filter fits an issue, which has one project, and a
+ * metric alert, whose rule can cover several projects.
  *
- * There is no `org` filter. One Sentry integration belongs to one org, and
- * its webhook secret scopes every delivery to that org. So `org` is the same
- * on every event of an install, and a filter on it cannot narrow anything.
+ * Project slugs repeat across orgs, and each org that installs the public
+ * integration sends its own events. So a trigger with no identifier must
+ * filter on `org`, or it would run for every org.
  */
-export function sentryProjectsMatchFields(
+export function sentryScopeMatchFields(
   events: readonly string[],
 ): EventMatchFields {
   return eventMatchFieldsSchema.parse({
+    org: {
+      kind: "string",
+      case: "lower",
+      description: "lowercase Sentry org slug, such as sentry",
+      events,
+    },
     projects: {
       kind: "string",
       case: "lower",

@@ -84,6 +84,7 @@ export function createSentryWebhookRoute(args: {
           status: 400,
         });
       }
+      let org: string | undefined;
       if (fromApp && appConfig) {
         if (hookResource === "installation") {
           const handled = await handleSentryInstallationWebhook(
@@ -97,17 +98,17 @@ export function createSentryWebhookRoute(args: {
         }
         const uuid = installationUuid(body);
         const installations = await activeSentryInstallations(args.ctx);
-        if (
-          !installations.some(
-            (installation) => installation.installationUuid === uuid,
-          )
-        ) {
-          return ignored();
-        }
+        const installation = installations.find(
+          (candidate) => candidate.installationUuid === uuid,
+        );
+        if (!installation) return ignored();
+        // The installation, not a URL in the payload, decides the org.
+        org = installation.orgSlug;
       }
       const events = normalizeSentryEvents({
         body,
         hookResource,
+        org,
         hookTimestamp:
           request.headers.get("sentry-hook-timestamp")?.trim() || undefined,
       });

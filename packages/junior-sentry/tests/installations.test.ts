@@ -309,6 +309,18 @@ describe("Sentry public integration installations", () => {
     ]);
   });
 
+  it("takes the org of an event from its installation, not from the payload", async () => {
+    await install(OTHER_INSTALLATION_UUID, "acme");
+
+    // The payload URLs name the org "sentry".
+    await route().handler(signed(issueBody(OTHER_INSTALLATION_UUID), "issue"));
+
+    expect(events.map((event) => [event.identifier, event.data?.org])).toEqual([
+      ["acme/junior#7513266773", "acme"],
+      ["acme/junior", "acme"],
+    ]);
+  });
+
   it("removes an uninstalled org and ignores a late install retry", async () => {
     await install();
     await route().handler(signed(installationBody("deleted"), "installation"));

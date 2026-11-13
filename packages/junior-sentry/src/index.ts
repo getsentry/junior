@@ -68,13 +68,12 @@ export function sentryPlugin(): PluginRegistration {
         },
       ],
       // Issue and metric alert events carry alert facts, and Junior adds
-      // nothing to Sentry, so they can run for every project. Use the
-      // `projects` filter to narrow them. They also run for every installed
-      // org, so install the integration in a second org only after events
-      // get an `org` filter.
+      // nothing to Sentry, so they can run for every project of one org.
+      // Each installed org sends its own events, so a trigger with no
+      // identifier must name its `org`.
       events: Object.fromEntries(
         [...SENTRY_ISSUE_EVENTS, ...SENTRY_METRIC_ALERT_EVENTS].map(
-          (eventType) => [eventType, { reach: "all" }],
+          (eventType) => [eventType, { reach: { anyOf: ["org"] } }],
         ),
       ),
       isEnabled: () => Boolean(sentryWebhookSecret() || sentryAppConfig()),
