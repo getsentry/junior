@@ -15,7 +15,7 @@ export function createExecuteToolTool() {
       readOnlyHint: false,
     },
     description:
-      "Execute a catalog tool by exact tool_name. Use it for a tool that is not in your tool list: one that searchTools returned, or one that a skill, tool result, or error names. Put tool-specific parameters inside arguments.",
+      "Execute a catalog tool by its exact name. Use it for a tool that is not in your tool list: one that searchTools returned, or one that a skill, tool result, or error names. Put tool-specific parameters inside arguments.",
     executionMode: "sequential",
     exposure: "modelOnly",
     inputSchema: z

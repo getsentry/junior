@@ -38,7 +38,7 @@ const optionSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Set true on the choice that you recommend, and say why in its description. A `choice` field can recommend one option.",
+      "Set true on the choice that you recommend, put that choice first, and say why in its description. A `choice` field can recommend one option.",
     ),
 });
 
