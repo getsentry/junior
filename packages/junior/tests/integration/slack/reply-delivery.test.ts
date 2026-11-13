@@ -240,5 +240,23 @@ describe("sendSlackReply", () => {
         }),
       }),
     ]);
+
+    // A bare Slack user ID stays a Slack mention, not a GitHub login.
+    resetSlackApiMockState();
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId: "slack:C123:1700000000.000100",
+      formatting: { teamId: "T123" },
+      text: "@U012ABCDEF reviewed getsentry/junior#13 with @octocat.",
+      threadTs: "1700000000.000100",
+    });
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          text: "<@U012ABCDEF> reviewed [getsentry/junior#13](https://github.com/getsentry/junior/issues/13) with [@octocat](https://github.com/octocat).",
+        }),
+      }),
+    ]);
   });
 });

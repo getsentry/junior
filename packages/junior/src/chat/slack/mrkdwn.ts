@@ -187,7 +187,7 @@ function readBareSlackUserMention(
  * Wrap bare http(s) URLs and bare `@U123` Slack user IDs on a single line as
  * Slack explicit `<url>` links and `<@U123>` mentions.
  */
-function wrapBareReferencesOnLine(line: string): string {
+function wrapBareReferencesOnLine(line: string, urls: boolean): string {
   let result = "";
   let i = 0;
 
@@ -220,7 +220,10 @@ function wrapBareReferencesOnLine(line: string): string {
       continue;
     }
 
-    if (line.startsWith("https://", i) || line.startsWith("http://", i)) {
+    if (
+      urls &&
+      (line.startsWith("https://", i) || line.startsWith("http://", i))
+    ) {
       const parsed = readBareUrl(line, i);
       if (parsed) {
         result += `<${parsed.url}>${parsed.suffix}`;
@@ -240,12 +243,13 @@ function wrapBareReferencesOnLine(line: string): string {
  * Pre-wrap bare http(s) URLs outside fenced code blocks as Slack explicit
  * links, preventing Slack's auto-linker from consuming adjacent formatting
  * markers into the URL. Bare `@U123` user IDs become `<@U123>` mentions,
- * because Slack shows a bare ID as literal text.
+ * because Slack shows a bare ID as literal text. Pass `urls: false` to wrap
+ * only the user IDs.
  *
  * Uses the same fence-toggle rule as `ensureBlockSpacing` so both passes
  * agree on which lines are code.
  */
-function wrapBareReferences(text: string): string {
+function wrapBareReferences(text: string, urls = true): string {
   const lines = text.split("\n");
   const out: string[] = [];
   let inCodeBlock = false;
@@ -256,7 +260,7 @@ function wrapBareReferences(text: string): string {
       out.push(line);
       continue;
     }
-    out.push(inCodeBlock ? line : wrapBareReferencesOnLine(line));
+    out.push(inCodeBlock ? line : wrapBareReferencesOnLine(line, urls));
   }
 
   return out.join("\n");
@@ -366,7 +370,12 @@ export function normalizeSlackReplyMarkdown(
   text: string,
   format?: PluginMarkdownFormat,
 ): string {
-  let normalized = applyPluginFormatMarkdown(text, format)
+  // Wrap bare Slack user IDs before plugins, so a plugin does not read
+  // `@U123` as its own account name. URLs wait, because plugins rewrite them.
+  let normalized = applyPluginFormatMarkdown(
+    wrapBareReferences(text, false),
+    format,
+  )
     .replace(/\r\n?/g, "\n")
     .replace(/[ \t]+$/gm, "");
   normalized = wrapBareReferences(normalized);
