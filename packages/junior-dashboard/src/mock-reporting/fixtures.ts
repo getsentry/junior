@@ -1420,16 +1420,15 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "The checkout error is back after the deploy: https://acme.sentry.io/issues/JUNIOR-3ZK/",
         "The demo is at https://www.youtube.com/watch?v=MockLaunchDemo",
         "",
+        // Alone on their lines, in a paragraph or a list: the blog post and
+        // the Slack message show a card, the video shows only its
+        // thumbnail, and the repeated pull request shows no second card.
+        "Read more:",
         "https://blog.example.com/posts/release-4-2",
-        "",
-        // Alone on their lines: the video shows only its thumbnail, the
-        // Slack message shows a card, and the repeated pull request shows
-        // no second card.
         "https://www.youtube.com/watch?v=MockLaunchDemo",
         "",
-        "https://acme.slack.com/archives/CQA456/p1770021700000100",
-        "",
-        "https://github.com/getsentry/payments/pull/91",
+        "- https://acme.slack.com/archives/CQA456/p1770021700000100",
+        "- https://github.com/getsentry/payments/pull/91",
       ].join("\n"),
     }),
   );

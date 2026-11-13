@@ -43,12 +43,18 @@ export function knownObjectsFromAnnotations(
   return objects;
 }
 
-// Return the bare URL that is the whole paragraph, maybe in `<...>`.
-function standaloneUrl(paragraph: string): string | undefined {
-  const text = paragraph.trimEnd();
-  const unindented = text.replace(/^ +/, "");
+// Quote and list markers that can start a line, such as `> - ` or `1. `.
+const LINE_MARKERS_RE = /^[ \t]*(?:(?:>|[-*+•◦][ \t]|\d{1,9}[.)][ \t])[ \t]*)+/;
+
+// Return the bare URL that is the whole line, maybe in `<...>`.
+function standaloneUrl(line: string): string | undefined {
+  const text = line.trimEnd();
+  const markers = LINE_MARKERS_RE.exec(text)?.[0];
+  const unindented = markers
+    ? text.slice(markers.length)
+    : text.replace(/^ +/, "");
   // Four spaces of indent make a code block, so they do not count.
-  if (text.length - unindented.length > 3) return undefined;
+  if (!markers && text.length - unindented.length > 3) return undefined;
   let url = unindented.startsWith("<") ? unindented.slice(1) : unindented;
   if (url.endsWith(">")) url = url.slice(0, -1);
   const scheme = ["https://", "http://"].find((prefix) =>
@@ -60,8 +66,8 @@ function standaloneUrl(paragraph: string): string | undefined {
 }
 
 /**
- * Return whether a bare URL for `url` is alone in a paragraph of display
- * text. The Markdown renderer shows that URL as the full object card, so a
+ * Return whether a bare URL for `url` is alone on a line of display text.
+ * The Markdown renderer shows that URL as the full object card, so a
  * surface can hide its own card for the same object. Code fences do not
  * count.
  */
@@ -78,12 +84,12 @@ export function textHasStandaloneUrl(text: string, url: string): boolean {
   );
 }
 
-/** Return the `objectUrlKey` of each bare URL alone in a paragraph. */
+/** Return the `objectUrlKey` of each bare URL alone on its line. */
 export function standaloneUrlKeys(markdown: string): string[] {
   return slackLinksToMarkdown(markdown)
-    .split(/\n[ \t]*\n/)
-    .flatMap((paragraph) => {
-      const bare = standaloneUrl(paragraph.replace(/^\n+/, ""));
+    .split("\n")
+    .flatMap((line) => {
+      const bare = standaloneUrl(line);
       return (bare && objectUrlKey(bare)) || [];
     });
 }

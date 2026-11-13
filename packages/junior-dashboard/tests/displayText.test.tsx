@@ -271,8 +271,13 @@ describe("display text object links", () => {
     return html.split(`aria-label="${name}"`).length - 1;
   }
 
-  it("shows a bare URL in a sentence or a list as a plain link with its title", () => {
-    for (const text of [`Opened ${PR} for review.`, `- ${PR}`, `> ${PR}`]) {
+  it("shows a bare URL with text on its line as a plain link with its title", () => {
+    for (const text of [
+      `Opened ${PR} for review.`,
+      `PR: ${PR}`,
+      `- Opened ${PR}`,
+      `> See ${PR}`,
+    ]) {
       const html = render(text);
       expect(anchors(html)).toEqual([
         expect.objectContaining({
@@ -346,6 +351,27 @@ describe("display text object links", () => {
     }
   });
 
+  it("shows the full card for a bare URL alone on a line of a paragraph, a list, or a quote", () => {
+    for (const text of [
+      `PR:\n${PR}`,
+      `PR:\n${PR}\nThanks.`,
+      `- ${PR}`,
+      `- Fix:\n  ${PR}`,
+      `1. ${PR}`,
+      `• ${PR}`,
+      `> ${PR}`,
+    ]) {
+      const html = render(text);
+      expect(cardCount(html, "Pull request: Retry checkout writes")).toBe(1);
+      expect(html).not.toContain(">Retry checkout writes (#7)</a>");
+    }
+    const html = render(`Links:\n${PR}\n${DOC}\n- ${PAGE}`);
+    expect(cardCount(html, "Pull request: Retry checkout writes")).toBe(1);
+    expect(cardCount(html, "Google Doc: Release checklist")).toBe(1);
+    expect(cardCount(html, "Web page: Release notes")).toBe(1);
+    expect(html).toContain("Links:");
+  });
+
   it("shows a card for a URL of any type alone on its line", () => {
     for (const [url, name] of [
       [PERSON, "Person: Morgan Lee"],
@@ -369,7 +395,8 @@ describe("display text object links", () => {
   it("shows one card for a URL repeated in a message", () => {
     for (const text of [
       `${PR}\n\nAgain:\n\n${PR}`,
-      `${PR}\n\n\`\`\`\ncode\n\`\`\`\n\n${PR}`,
+      `${PR}\n${PR}`,
+      `${PR}\n\n\`\`\`\ncode\n\`\`\`\n\n- ${PR}`,
     ]) {
       const html = render(text);
       expect(cardCount(html, "Pull request: Retry checkout writes")).toBe(1);
@@ -400,13 +427,18 @@ describe("display text object links", () => {
     }
   });
 
-  it("finds a bare URL alone in a paragraph outside code fences", () => {
+  it("finds a bare URL alone on its line outside code fences", () => {
     expect(textHasStandaloneUrl(`Ready.\n\n${PR}`, PR)).toBe(true);
     expect(textHasStandaloneUrl(`<${PR}/>`, PR)).toBe(true);
+    expect(textHasStandaloneUrl(`Ready:\n${PR}`, PR)).toBe(true);
+    expect(textHasStandaloneUrl(`- ${PR}`, PR)).toBe(true);
+    expect(textHasStandaloneUrl(`> 1. <${PR}>`, PR)).toBe(true);
     expect(textHasStandaloneUrl(`Ready: ${PR}`, PR)).toBe(false);
     expect(textHasStandaloneUrl(`[PR](${PR})`, PR)).toBe(false);
     expect(textHasStandaloneUrl("```\n" + PR + "\n```", PR)).toBe(false);
     expect(textHasStandaloneUrl(`Ready.\n\n    ${PR}`, PR)).toBe(false);
     expect(textHasStandaloneUrl(`Ready.\n\n\t${PR}`, PR)).toBe(false);
+    expect(textHasStandaloneUrl(`- Ready: ${PR}`, PR)).toBe(false);
+    expect(textHasStandaloneUrl(`Ready:\n\`${PR}\``, PR)).toBe(false);
   });
 });

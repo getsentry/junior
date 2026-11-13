@@ -50,10 +50,10 @@ import {
  * hover. Other links ask the API for a card when they scroll into view or
  * the reader hovers them, and stay plain links until a card arrives.
  * Outside document mode, a bare URL in running text shows as a plain link
- * with the object title, or a chip for a person. The first bare URL alone in
- * a top-level paragraph shows the full card, or only the thumbnail of a
- * video or image page. `shownCardUrls` lists the `objectUrlKey` of cards that
- * earlier text of the same message already shows.
+ * with the object title, or a chip for a person. A bare URL alone on its
+ * line shows the full card, or only the thumbnail of a video or image page.
+ * `shownCardUrls` lists the `objectUrlKey` of cards that earlier text of the
+ * same message already shows.
  */
 export function MarkdownText(props: {
   chat?: boolean;
@@ -120,7 +120,7 @@ function normalizeSlackBullets(text: string): string {
 
 type MarkdownNode = {
   children?: MarkdownNode[];
-  data?: { hProperties?: Record<string, unknown> };
+  data?: { hName?: string; hProperties?: Record<string, unknown> };
   depth?: number;
   position?: { start: { offset?: number } };
   type: string;
@@ -190,26 +190,70 @@ function splitSectionLabel(node: MarkdownNode): MarkdownNode[] {
 }
 
 /**
- * Mark each top-level paragraph that holds only a bare URL, so the paragraph
- * can show the full card of a known object. A bare URL in a list, a quote,
- * or a sentence stays inline, and so does a URL whose card already shows.
+ * Move each bare URL alone on its line into its own block, so the block can
+ * show the full card of the object. This holds for a line in a paragraph,
+ * a list item, or a quote. A URL with other text on its line stays inline,
+ * and so does a URL whose card already shows.
  */
 function remarkObjectLinks(options: { shown?: readonly string[] } = {}) {
   return (tree: MarkdownNode) => {
-    const shown = new Set(options.shown);
-    for (const node of tree.children ?? []) {
-      const [link, ...rest] = node.children ?? [];
-      if (node.type !== "paragraph" || rest.length > 0) continue;
-      if (link?.type !== "link" || !isBareLink(link) || !link.url) continue;
-      const key = objectUrlKey(link.url);
-      if (!key || shown.has(key)) continue;
-      shown.add(key);
-      node.data = {
-        ...node.data,
-        hProperties: { ...node.data?.hProperties, dataObjectUrl: link.url },
-      };
-    }
+    markUrlLines(tree, new Set(options.shown));
   };
+}
+
+const URL_LINE_CONTAINERS = new Set(["blockquote", "list", "listItem"]);
+
+function markUrlLines(parent: MarkdownNode, shown: Set<string>): void {
+  parent.children = parent.children?.flatMap((node) => {
+    if (node.type === "paragraph") return splitUrlLines(node, shown);
+    if (URL_LINE_CONTAINERS.has(node.type)) markUrlLines(node, shown);
+    return [node];
+  });
+}
+
+function splitUrlLines(
+  paragraph: MarkdownNode,
+  shown: Set<string>,
+): MarkdownNode[] {
+  const lines: MarkdownNode[][] = [[]];
+  for (const child of paragraph.children ?? []) {
+    if (child.type === "break") lines.push([]);
+    else lines.at(-1)!.push(child);
+  }
+
+  const blocks: MarkdownNode[] = [];
+  let text: MarkdownNode[][] = [];
+  const endText = () => {
+    if (text.length === 0) return;
+    const children = text.flatMap((line, index) =>
+      index === 0 ? line : [{ type: "break" }, ...line],
+    );
+    blocks.push({ children, type: "paragraph" });
+    text = [];
+  };
+  for (const line of lines) {
+    const [link, ...rest] = line;
+    const key =
+      link?.type === "link" && rest.length === 0 && isBareLink(link)
+        ? objectUrlKey(link.url!)
+        : undefined;
+    if (!key || shown.has(key)) {
+      text.push(line);
+      continue;
+    }
+    shown.add(key);
+    endText();
+    // A tight list item drops the `p` of its first paragraph. A `div`
+    // keeps the URL line a block, with its object URL.
+    blocks.push({
+      children: line,
+      data: { hName: "div", hProperties: { dataObjectUrl: link!.url } },
+      type: "paragraph",
+    });
+  }
+  if (blocks.length === 0) return [paragraph];
+  endText();
+  return blocks;
 }
 
 // A bare URL is a link whose text is its URL, such as an autolink.
@@ -248,6 +292,10 @@ const COMPONENTS: Components = {
   ),
   del: ({ children }) => (
     <del className="text-dashboard-text-muted">{renderText(children)}</del>
+  ),
+  // Only a bare URL alone on its line makes a `div` (`remarkObjectLinks`).
+  div: ({ children, node }) => (
+    <Paragraph objectUrl={node?.properties.dataObjectUrl}>{children}</Paragraph>
   ),
   em: ({ children }) => (
     <em className="italic text-dashboard-text">{renderText(children)}</em>
@@ -299,9 +347,7 @@ const COMPONENTS: Components = {
       {children}
     </ol>
   ),
-  p: ({ children, node }) => (
-    <Paragraph objectUrl={node?.properties.dataObjectUrl}>{children}</Paragraph>
-  ),
+  p: ({ children }) => <PlainParagraph>{children}</PlainParagraph>,
   pre: ({ children }) => (
     <pre className="m-0 min-w-0 overflow-x-auto rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 font-mono text-sm [&>code]:bg-transparent [&>code]:p-0">
       {children}
