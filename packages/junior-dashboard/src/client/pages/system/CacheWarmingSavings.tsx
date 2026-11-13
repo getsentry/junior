@@ -32,8 +32,8 @@ const usd = (value: number) => formatCostBreakdown({ total: value });
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 
 /**
- * Show what cache warming saved in the range: net savings, how close it came
- * to an ideal warmer, and net savings per UTC day.
+ * Show what cache warming saved in the range: net savings, effectiveness
+ * against an ideal warmer, and net savings per UTC day.
  */
 export function CacheWarmingSavings(props: { range: TimeRangeDays }) {
   const query = useCacheWarmingSavings(props.range);
@@ -45,6 +45,8 @@ export function CacheWarmingSavings(props: { range: TimeRangeDays }) {
           <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
             Cache writes that warmups saved when a Conversation came back after
             the cache would have expired, less the cost of the warmups.
+            Effectiveness is net savings as a share of what an ideal warmer
+            would save.
           </p>
           {query.data ? <Totals totals={query.data.totals} /> : null}
         </div>
@@ -74,7 +76,7 @@ function Totals(props: { totals: CacheWarmingSavingsReport["totals"] }) {
           valueClassName={net < 0 ? "text-rose-100" : "text-emerald-100"}
         />
         <StatTile
-          label="Of ideal warming"
+          label="Effectiveness"
           value={
             totals.effectiveness === null ? "—" : percent(totals.effectiveness)
           }
@@ -122,6 +124,12 @@ function SavingsChart(props: { days: Day[] }) {
               <ActivityChartTooltipContent
                 rows={(day: Day) => [
                   ["net savings", usd(day.netSavingsUsd)],
+                  [
+                    "effectiveness",
+                    day.oracleSavingsUsd > 0
+                      ? percent(day.netSavingsUsd / day.oracleSavingsUsd)
+                      : "—",
+                  ],
                   ["saved writes", usd(day.savedUsd)],
                   ["warmup cost", usd(day.warmupCostUsd)],
                   [

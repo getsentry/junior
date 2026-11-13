@@ -312,7 +312,7 @@ test("shows what cache warming saved in the range", async ({
   await page.goto(`${dashboard.baseURL}/system`);
   const panel = page.getByRole("region", { name: "Cache warming" });
   await expect(panel.getByText("Net savings", { exact: true })).toBeVisible();
-  await expect(panel.getByText("Of ideal warming")).toBeVisible();
+  await expect(panel.getByText("Effectiveness", { exact: true })).toBeVisible();
   await expect(
     panel.getByText(/of possible savings had no warm state/),
   ).toBeVisible();
