@@ -219,6 +219,17 @@ export function createMockReportingApi(): Hono<{
       readMockObjectLinks(query.data.url),
     );
   });
+  // Every mock image is the same chart.
+  app.get(
+    "/images/:id",
+    () =>
+      new Response(mockChartPng, {
+        headers: {
+          "cache-control": "private, max-age=86400",
+          "content-type": "image/png",
+        },
+      }),
+  );
   app.get("/people", () =>
     jsonResponse(actorDirectoryReportSchema, readMockPeopleDirectory()),
   );

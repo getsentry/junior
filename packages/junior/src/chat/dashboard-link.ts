@@ -87,6 +87,12 @@ export function getDashboardConversationLink(
   );
 }
 
+/** Return the dashboard origin when the core dashboard is enabled. */
+export function getDashboardOrigin(): string | undefined {
+  const link = resolveDashboardPath("/");
+  return link && new URL(link).origin;
+}
+
 /** Build the dashboard settings URL when the core dashboard is enabled. */
 export function getDashboardSettingsLink(): string | undefined {
   return resolveDashboardPath("/settings");
