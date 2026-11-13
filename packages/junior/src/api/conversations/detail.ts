@@ -38,6 +38,7 @@ import {
   conversationDetailReportSchema,
 } from "../schema/conversation";
 import type { ConversationDetailReport } from "../schema/conversation";
+import { objectPreviewImages } from "@/chat/images/objects";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
@@ -225,7 +226,12 @@ async function readConversationDetailFromSql(
       },
       readAccess,
     ),
-    listConversationAnnotations(getDb(), conversationId),
+    listConversationAnnotations(getDb(), conversationId).then((saved) =>
+      saved.map((annotation) => {
+        const previewImages = objectPreviewImages(annotation);
+        return previewImages ? { ...annotation, previewImages } : annotation;
+      }),
+    ),
     readAutomationTitlesByConversationId([record.conversation]),
     readConversationAuxiliaryCostsFromSql(getDb(), [conversationId]),
     readLatestConversationBrief(getDb(), conversationId),
