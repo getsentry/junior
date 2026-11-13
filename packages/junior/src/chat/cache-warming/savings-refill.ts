@@ -236,23 +236,6 @@ export async function runSavingsRefillSlice(args: {
                 afterConversationId: job.afterConversationId,
               })
             : undefined;
-        // Every query of the slice timed out, so it read no history. Keep the
-        // position and try again. The lease ends a job that never gets past.
-        if (scan && scan.scanned === 0 && scan.canceledBatches > 0) {
-          if ((await readJob())?.id === job.id) {
-            await state.set(
-              JOB_KEY,
-              { ...job, error: CANCELED_ERROR } satisfies RefillJob,
-              JOB_TTL_MS,
-            );
-          }
-          setSpanAttributes({
-            "app.cache_warming.backfill.canceled_batch_count":
-              scan.canceledBatches,
-            "app.cache_warming.backfill.outcome": "not_completed",
-          });
-          return;
-        }
         for (const period of scan?.periods ?? []) {
           if (period.next) addPeriod(job, { ...period, next: period.next });
         }
@@ -269,7 +252,21 @@ export async function runSavingsRefillSlice(args: {
         };
         delete next.error;
         const complete = scan?.complete ?? true;
-        if (complete) {
+        // Like the gap backfill, the scan skips a batch whose query timed out,
+        // so one slow batch cannot stall the job. When every batch timed out,
+        // the job read no history and must not replace the days with nothing.
+        if (
+          complete &&
+          next.scannedConversations === 0 &&
+          job.totalConversations > 0
+        ) {
+          Object.assign(next, {
+            status: "failed",
+            finishedAtMs: nowMs,
+            error: CANCELED_ERROR,
+            sums: {},
+          } satisfies Partial<RefillJob>);
+        } else if (complete) {
           await replaceHistorySavings(job.sums, range);
           Object.assign(next, {
             status: "done",
