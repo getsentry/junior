@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "chat";
+import type { AgentAttachment } from "@/chat/agent/types";
+import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import {
   createTestMessage,
   createTestThread,
@@ -52,25 +54,16 @@ describe("Slack behavior: mixed attachment media", () => {
     vi.resetModules();
   });
 
-  it("sends current-message images natively when every profile model reads images", async () => {
+  it("sends images natively and gives other files a loadAttachment pointer", async () => {
     const imageFetch = vi.fn(async () => PNG_BYTES);
 
-    const capturedAttachmentMediaTypes: string[][] = [];
-    const capturedAttachmentNames: string[][] = [];
-    const capturedImageData: Array<Buffer | undefined> = [];
+    const capturedAttachments: (readonly AgentAttachment[])[] = [];
     const capturedOmittedImageCounts: number[] = [];
 
     const { slackRuntime } = await createRuntime({
       services: {
         agentRunner: createModelAgentRunnerForRun((request) => {
-          const attachments = request.instruction.attachments ?? [];
-          capturedAttachmentMediaTypes.push(
-            attachments.map((attachment) => attachment.mediaType),
-          );
-          capturedAttachmentNames.push(
-            attachments.map((attachment) => attachment.filename ?? ""),
-          );
-          capturedImageData.push(attachments[0]?.data);
+          capturedAttachments.push(request.instruction.attachments ?? []);
           capturedOmittedImageCounts.push(
             request.instruction.omittedImageAttachmentCount ?? 0,
           );
@@ -78,6 +71,7 @@ describe("Slack behavior: mixed attachment media", () => {
             { type: "text", text: "Processed attachments." },
           ]);
         }),
+        visionContext: { attachmentStorage: createMemoryAttachmentStorage() },
       },
     });
 
@@ -105,6 +99,12 @@ describe("Slack behavior: mixed attachment media", () => {
           name: "incident.pdf",
           data: Buffer.from("pdf-bytes"),
         },
+        {
+          type: "video",
+          mimeType: "video/mp4",
+          name: "repro.mp4",
+          data: Buffer.from("mp4-bytes"),
+        },
       ] as Message["attachments"],
     });
 
@@ -113,11 +113,24 @@ describe("Slack behavior: mixed attachment media", () => {
     });
 
     expect(imageFetch).toHaveBeenCalledTimes(1);
-    expect(capturedAttachmentMediaTypes).toEqual([
-      ["image/png", "application/pdf"],
-    ]);
-    expect(capturedAttachmentNames).toEqual([["chart.png", "incident.pdf"]]);
-    expect(capturedImageData).toEqual([PNG_BYTES]);
+    expect(capturedAttachments).toHaveLength(1);
+    const [image, pdf, video] = capturedAttachments[0]!;
+    expect(image).toMatchObject({
+      data: PNG_BYTES,
+      filename: "chart.png",
+      mediaType: "image/png",
+    });
+    for (const file of [pdf, video]) {
+      expect(file?.data).toBeUndefined();
+      expect(file?.attachmentId).toEqual(expect.any(String));
+      expect(file?.promptText).toContain(
+        `attachment_id: ${file?.attachmentId}`,
+      );
+    }
+    expect(video).toMatchObject({
+      filename: "repro.mp4",
+      mediaType: "video/mp4",
+    });
     expect(capturedOmittedImageCounts).toEqual([0]);
   });
 

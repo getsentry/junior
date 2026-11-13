@@ -189,15 +189,15 @@ function buildImageAttachmentFailurePromptText(args: {
 function buildAttachmentResolutionFailurePromptText(args: {
   filename?: string;
   mediaType: string;
+  problem: string;
 }): string {
   return [
     "<attachment>",
     `filename: ${args.filename ?? "unnamed"}`,
     `media_type: ${args.mediaType}`,
     "<resolution-error>",
-    "The user attached this file, but you could not download its content " +
-      "from Slack. Tell the user the attachment could not be read; do not " +
-      "say no attachment was sent.",
+    `The user attached this file, but ${args.problem}. Tell the user the ` +
+      "attachment could not be read; do not say no attachment was sent.",
     "</resolution-error>",
     "</attachment>",
   ].join("\n");
@@ -331,6 +331,7 @@ async function resolveUserAttachmentsWithDeps(
           promptText: buildAttachmentResolutionFailurePromptText({
             filename: attachment.name,
             mediaType,
+            problem: "you could not download its content from Slack",
           }),
         });
       }
@@ -367,10 +368,29 @@ async function resolveUserAttachmentsWithDeps(
       }
     }
 
-    if (
-      results.length >= MAX_MODEL_ATTACHMENTS ||
-      (attachment.type !== "image" && attachment.type !== "file")
-    ) {
+    if (results.length >= MAX_MODEL_ATTACHMENTS) {
+      continue;
+    }
+
+    // Only images go to the model inline. Any other file, such as a video, a
+    // recording, or a PDF, gets the same loadAttachment pointer as a web file.
+    if (!isImageAttachment) {
+      results.push({
+        attachmentId,
+        mediaType,
+        filename: attachment.name,
+        promptText: attachmentId
+          ? buildStoredAttachmentPromptText({
+              attachmentId,
+              filename: attachment.name,
+              mediaType,
+            })
+          : buildAttachmentResolutionFailurePromptText({
+              filename: attachment.name,
+              mediaType,
+              problem: "it could not be stored, so you cannot open it",
+            }),
+      });
       continue;
     }
 
@@ -498,7 +518,7 @@ async function resolveUserAttachmentsWithDeps(
       continue;
     }
 
-    if (isImageAttachment && attachmentId) {
+    if (attachmentId) {
       resolvedAttachment.promptText = buildStoredAttachmentPromptText({
         attachmentId,
         filename: attachment.name,
