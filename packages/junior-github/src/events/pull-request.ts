@@ -11,6 +11,7 @@ import {
 
 export const GITHUB_PULL_REQUEST_EVENTS = [
   "pull_request.checks.failed",
+  "pull_request.checks.passed",
   "pull_request.checks.recovered",
   "pull_request.comment.created",
   "pull_request.opened",
@@ -217,6 +218,7 @@ const GITHUB_PULL_REQUEST_COMMENT_EVENTS = [
 /** Pull request events that a check suite result starts. */
 const GITHUB_PULL_REQUEST_CHECK_EVENTS = [
   "pull_request.checks.failed",
+  "pull_request.checks.passed",
   "pull_request.checks.recovered",
 ] as const satisfies readonly GitHubPullRequestEvent[];
 

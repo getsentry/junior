@@ -494,7 +494,14 @@ A check suite finished with failure or timeout. Trusted data includes the full h
 <details class="event">
 <summary><code>pull_request.checks.recovered</code></summary>
 
-A check suite finished successfully after a failure. Trusted data includes the full head SHA, suite id/url, optional `head_branch`, and the PR number when one is attached. This is for one suite only. It does not mean the whole PR or branch is green. Suites with no pull request publish only to the repository. When a watch or event automation uses `is_draft`, `opener_username`, `opener_email`, or `opener_role`, Junior loads those pull request fields for same-repo pull requests only. `authors` loads from the pull request commits. `head_branch` comes from the webhook and does not need that load.
+A check suite finished successfully. Trusted data includes the full head SHA, suite id/url, optional `head_branch`, and the PR number when one is attached. This is for one suite only. It does not mean the whole PR or branch is green. Use `pull_request.checks.passed` for that. Suites with no pull request publish only to the repository. When a watch or event automation uses `is_draft`, `opener_username`, `opener_email`, or `opener_role`, Junior loads those pull request fields for same-repo pull requests only. `authors` loads from the pull request commits. `head_branch` comes from the webhook and does not need that load.
+
+</details>
+
+<details class="event">
+<summary><code>pull_request.checks.passed</code></summary>
+
+Every check suite on the head commit passed. A suite passes when it finishes with success, neutral, or skipped. Suites with no check runs do not count, because GitHub makes a queued suite for each app that can write checks, even when the app adds no check run. Commit statuses do not count. A Watch or event automation gets this event once for each head commit, even when two suites finish at the same time. Trusted data is the same as `pull_request.checks.recovered`, for the suite that finished last. Junior reads the other suites of the commit only when a Watch or event automation wants this event, with one GitHub API read for each 100 suites.
 
 </details>
 
