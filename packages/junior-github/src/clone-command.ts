@@ -14,7 +14,7 @@ const CLONE_REDIRECT_MESSAGE =
   "Use github_cloneRepository to clone GitHub repositories, not git clone or gh repo clone. It checks for a matching Workspace first.";
 
 /** Git global options that take the next token as their value. */
-const GIT_OPTIONS_WITH_VALUE = new Set(["-C", "-c"]);
+export const GIT_OPTIONS_WITH_VALUE = new Set(["-C", "-c", "--config-env"]);
 
 /**
  * Return a redirect message when a bash command clones a GitHub repository

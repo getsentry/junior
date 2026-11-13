@@ -4082,16 +4082,31 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it.each([
-    ["git clone https://github.com/getsentry/junior.git", true],
-    ["cd /tmp && git -C repos clone git@github.com:getsentry/junior.git", true],
-    ["GIT_TERMINAL_PROMPT=0 gh repo clone getsentry/junior", true],
-    ["gh repo fork getsentry/junior --clone", true],
-    ["git clone /vercel/sandbox/repos/junior /tmp/junior", false],
-    ["git clone https://example.com/github.com/getsentry/junior", false],
-    ["git fetch origin main", false],
+    [
+      "git clone https://github.com/getsentry/junior.git",
+      "github_cloneRepository",
+    ],
+    [
+      "cd /tmp && git -C repos clone git@github.com:getsentry/junior.git",
+      "github_cloneRepository",
+    ],
+    [
+      "GIT_TERMINAL_PROMPT=0 gh repo clone getsentry/junior",
+      "github_cloneRepository",
+    ],
+    ["gh repo fork getsentry/junior --clone", "github_cloneRepository"],
+    ["git clone /vercel/sandbox/repos/junior /tmp/junior", undefined],
+    ["git clone https://example.com/github.com/getsentry/junior", undefined],
+    ["git fetch origin main", undefined],
+    // A hooks path override skips the hook that sets commit attribution.
+    ["git -c core.hooksPath=/dev/null commit -q -m 'feat: x'", "--no-verify"],
+    ["git -C . -c core.hookspath= commit --amend --no-edit", "--no-verify"],
+    ["git --config-env=core.hooksPath=HOOKS commit -m x", "--no-verify"],
+    ["git -c commit.gpgsign=false commit --no-verify -m x", undefined],
+    ["git config --get core.hooksPath", undefined],
   ])(
-    "redirects GitHub clones in bash on a best-effort basis: %s",
-    async (command, redirected) => {
+    "redirects bash Git commands on a best-effort basis: %s",
+    async (command, redirectMessage) => {
       process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
       process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -4104,10 +4119,12 @@ Conversation: \`local:test:old-conversation\`
 
       await githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
 
-      expect(before.blocked?.kind).toBe(redirected ? "redirect" : undefined);
+      expect(before.blocked?.kind).toBe(
+        redirectMessage ? "redirect" : undefined,
+      );
       expect(
-        before.blocked?.message.includes("github_cloneRepository") ?? false,
-      ).toBe(redirected);
+        before.blocked?.message.includes(redirectMessage ?? "") ?? false,
+      ).toBe(Boolean(redirectMessage));
     },
   );
 
