@@ -15,7 +15,6 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { getDashboardAgentName } from "../../agentName";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber, formatCostSummary } from "../../format";
 import {
@@ -27,6 +26,10 @@ import {
   SystemRouteLoading,
 } from "../system/SystemPageLayout";
 import { PeopleActivityChart } from "./PeopleActivityChart";
+import {
+  PEOPLE_DEFAULT_RANGE,
+  peopleHeader,
+} from "../system/systemPageHeaders";
 import {
   filterPeople,
   formatSpendDelta,
@@ -61,15 +64,14 @@ export function PeoplePageContent(props: {
 }) {
   const [peopleSearch, setPeopleSearch, peopleQuery] =
     useDebouncedSearchParam();
-  const [range, setRange] = useState<TimeRangeDays>(7);
+  const [range, setRange] = useState<TimeRangeDays>(PEOPLE_DEFAULT_RANGE);
   const [sort, setSort] = useSearchParamEnum("sort", "spend", PEOPLE_SORTS);
   const deferredSort = useDeferredValue(sort);
   if (!props.data && !props.error) {
     return (
       <SystemRouteLoading
-        description="People, activity, and model spend."
+        {...peopleHeader(PEOPLE_DEFAULT_RANGE)}
         label="Loading people"
-        title="People"
         variant="stats"
       />
     );
@@ -129,7 +131,7 @@ export function PeoplePageContent(props: {
         description={
           props.error
             ? "People failed to load."
-            : `Who used ${getDashboardAgentName()} in the ${timeRangeDetail(range)}, and how spend changed from the prior period.`
+            : peopleHeader(range).description
         }
         onRangeChange={setRange}
         range={range}

@@ -13,19 +13,22 @@ import {
   AlertDialogFooter,
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
-import { LoadingView } from "../../components/LoadingView";
+import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { LoadMorePagination } from "../../components/Pagination";
 import { SearchInput } from "../../components/SearchInput";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { MemoryPage } from "../memory/MemoryPage";
 import { pathWithSearch } from "../../searchParams";
-import { dashboardContainerClass } from "../../styles";
+import { PageLayout } from "../../components/layout/PageLayout";
 import {
   usePluginUserPageData,
   type PluginUserPageRecord,
   type PluginUserPageRecordAction,
 } from "./pluginUserPageData";
+
+// Loading and loaded states share one column, so the header keeps its width.
+const pageColumnClass = "grid w-full max-w-3xl min-w-0 gap-6";
 
 /** Render the memory library for its first-class permalink route. */
 export function MemoryPermalinkRoute(props: { pages: PluginUserPageLink[] }) {
@@ -84,12 +87,25 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   if (!query.data && !query.error) {
-    return <LoadingView label={`Loading ${props.page.label}`} />;
+    return (
+      <PageLayout>
+        <section className={pageColumnClass}>
+          <PageHeader
+            description={props.page.description}
+            title={props.page.label}
+          />
+          <PageContentSkeleton
+            label={`Loading ${props.page.label}`}
+            variant="list"
+          />
+        </section>
+      </PageLayout>
+    );
   }
 
   return (
-    <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
-      <section className="mx-auto grid w-full max-w-3xl gap-6">
+    <PageLayout>
+      <section className={pageColumnClass}>
         <PageHeader
           description={props.page.description}
           title={props.page.label}
@@ -248,6 +264,6 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageLayout>
   );
 }

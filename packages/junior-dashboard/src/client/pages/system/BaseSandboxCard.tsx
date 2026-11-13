@@ -17,7 +17,7 @@ export function BaseSandboxCard(props: {
 }) {
   const snapshot = props.snapshot;
   return (
-    <Card as="section" className="mb-0" padding="md" variant="section">
+    <Card as="section" padding="md" variant="section">
       <div className="grid gap-4">
         <div className="min-w-0 grid gap-1">
           <AnchorHeading

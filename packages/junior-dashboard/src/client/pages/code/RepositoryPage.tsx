@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { CodeRepositoryReport } from "@sentry/junior/api/schema";
 import { ArrowLeft } from "lucide-react";
 import { Link, useParams } from "react-router";
@@ -9,7 +9,7 @@ import {
 } from "../../api";
 import { buttonVariants } from "../../components/ui/button";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
-import { PageRouteLoading } from "../../components/PageRouteLoading";
+import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import {
   timeRangeBucketUnit,
   TimeRangeSelector,
@@ -52,12 +52,13 @@ export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
   const query = useCodeRepositoryData(repositoryId);
   if (!query.data && !query.error) {
     return (
-      <PageRouteLoading
-        description={DESCRIPTION}
-        label="Loading repository"
-        title="Repository"
-        variant="stats"
-      />
+      <RepositoryNavigation repositoryId={repositoryId ?? ""}>
+        <PageLayout>
+          <BackToCode />
+          <PageHeader description={DESCRIPTION} title="Repository" />
+          <PageContentSkeleton label="Loading repository" variant="stats" />
+        </PageLayout>
+      </RepositoryNavigation>
     );
   }
   const data = query.data;
@@ -74,24 +75,7 @@ export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
   }
   const repository = data.repository;
   return (
-    <SecondaryNavigation
-      ariaLabel="Repository navigation"
-      items={[
-        {
-          end: true,
-          label: "Overview",
-          to: codeRepositoryPath(repository.id),
-        },
-        {
-          label: "Conversations",
-          to: codeRepositoryPath(repository.id, "conversations"),
-        },
-        {
-          label: "Changes",
-          to: codeRepositoryPath(repository.id, "changes"),
-        },
-      ]}
-    >
+    <RepositoryNavigation repositoryId={repository.id}>
       <PageLayout>
         <BackToCode />
         <PageHeader
@@ -126,6 +110,35 @@ export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
           <RepositoryChangesTab data={data} range={range} />
         ) : null}
       </PageLayout>
+    </RepositoryNavigation>
+  );
+}
+
+/** Keep the repository tabs in place while the repository loads. */
+function RepositoryNavigation(props: {
+  children: ReactNode;
+  repositoryId: string;
+}) {
+  return (
+    <SecondaryNavigation
+      ariaLabel="Repository navigation"
+      items={[
+        {
+          end: true,
+          label: "Overview",
+          to: codeRepositoryPath(props.repositoryId),
+        },
+        {
+          label: "Conversations",
+          to: codeRepositoryPath(props.repositoryId, "conversations"),
+        },
+        {
+          label: "Changes",
+          to: codeRepositoryPath(props.repositoryId, "changes"),
+        },
+      ]}
+    >
+      {props.children}
     </SecondaryNavigation>
   );
 }
