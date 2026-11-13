@@ -17,7 +17,7 @@ import { readConversationAccessFromSql } from "./access";
  * The viewer saw every Message up to one they wrote, also one sent from
  * Slack, so the position is at least their latest Message.
  */
-export async function readConversationReadPosition(
+async function readConversationReadPosition(
   viewer: User,
   conversationId: string,
 ): Promise<ConversationReadPosition | undefined> {

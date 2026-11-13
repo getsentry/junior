@@ -111,7 +111,7 @@ export interface SlackTurnOptions extends ReplyHooks {
 }
 
 /** Sent when a stop decision unsubscribes a thread. */
-export const THREAD_OPTOUT_ACK =
+const THREAD_OPTOUT_ACK =
   "Understood. I'll stay out of this thread unless someone @mentions me again.";
 
 /** Preserve retry/yield control flow for the durable worker boundary. */
