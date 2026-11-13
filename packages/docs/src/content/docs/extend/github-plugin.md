@@ -501,7 +501,7 @@ A check suite finished successfully. Trusted data includes the full head SHA, su
 <details class="event">
 <summary><code>pull_request.checks.passed</code></summary>
 
-Every check suite on the head commit passed. A suite passes when it finishes with success, neutral, or skipped. Suites with no check runs do not count, because GitHub makes a queued suite for each app that can write checks, even when the app adds no check run. Commit statuses do not count. A Watch or event automation gets this event once for each head commit, even when two suites finish at the same time. Trusted data is the same as `pull_request.checks.recovered`, for the suite that finished last. Junior reads the other suites of the commit only when a Watch or event automation wants this event, with one GitHub API read for each 100 suites.
+Every check suite on the head commit passed. A suite passes when it finishes with success, neutral, or skipped, and the suite that finishes last can have any of these results. A queued suite with no check runs does not count, because GitHub makes one for each app that can write checks, even when the app adds no check run. GitHub Actions suites always count. Commit statuses do not count. A Watch or event automation gets this event once for each head commit, even when two suites finish at the same time. Trusted data is the same as `pull_request.checks.recovered`, for the suite that finished last. Junior reads the other suites of the commit only when a Watch or event automation wants this event, with one GitHub API read for each 100 suites.
 
 </details>
 

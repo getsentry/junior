@@ -109,6 +109,10 @@ const checkSuiteWebhookSchema = z.object({
 const checkSuitesListResponseSchema = z.object({
   check_suites: z.array(
     z.object({
+      app: z
+        .object({ slug: z.string().nullable().optional() })
+        .nullable()
+        .optional(),
       conclusion: z.string().nullable().optional(),
       id: z.number(),
       latest_check_runs_count: z.number().nullable().optional(),
@@ -161,6 +165,22 @@ function checkSuiteEventType(
     return "pull_request.checks.recovered";
   }
   return undefined;
+}
+
+/**
+ * Event types that a completed suite may publish. Any passing suite can be
+ * the last one on its commit, so each one is a `pull_request.checks.passed`
+ * candidate. The webhook keeps that event only when every suite passed.
+ */
+function checkSuiteEventTypes(
+  conclusion: string | null | undefined,
+): CheckSuiteEventType[] {
+  const eventType = checkSuiteEventType(conclusion);
+  const eventTypes: CheckSuiteEventType[] = eventType ? [eventType] : [];
+  if (PASSING_SUITE_CONCLUSIONS.has(conclusion ?? "")) {
+    eventTypes.push(CHECKS_PASSED);
+  }
+  return eventTypes;
 }
 
 /** True when a GitHub API call failed with HTTP 404. */
@@ -464,7 +484,10 @@ export function normalizeCheckSuiteEvents(
   if (!parsed.success || parsed.data.action !== "completed") return [];
   const conclusion = parsed.data.check_suite.conclusion;
   const eventType = checkSuiteEventType(conclusion);
-  if (!eventType || typeof conclusion !== "string") return [];
+  const eventTypes = checkSuiteEventTypes(conclusion).filter(
+    (type) => type !== CHECKS_PASSED || options?.allCheckSuitesPassed,
+  );
+  if (eventTypes.length === 0 || typeof conclusion !== "string") return [];
   const suite = parsed.data.check_suite;
   const appName =
     suite.app?.name?.trim() || suite.app?.slug?.trim() || undefined;
@@ -476,11 +499,6 @@ export function normalizeCheckSuiteEvents(
       : undefined;
   const repository = parsed.data.repository;
   const repo = repository.full_name;
-  const eventTypes: CheckSuiteEventType[] =
-    eventType === "pull_request.checks.recovered" &&
-    options?.allCheckSuitesPassed
-      ? [eventType, CHECKS_PASSED]
-      : [eventType];
   const shared = {
     appName,
     checkSuiteId: suite.id,
@@ -570,8 +588,8 @@ export function parseCheckSuitePublishTargets(body: unknown):
   | undefined {
   const parsed = checkSuiteWebhookSchema.safeParse(body);
   if (!parsed.success || parsed.data.action !== "completed") return undefined;
-  const eventType = checkSuiteEventType(parsed.data.check_suite.conclusion);
-  if (!eventType) return undefined;
+  const eventTypes = checkSuiteEventTypes(parsed.data.check_suite.conclusion);
+  if (eventTypes.length === 0) return undefined;
   const repository = parsed.data.repository;
   const repo = repository.full_name;
   const identifiers = new Set<string>([
@@ -589,10 +607,7 @@ export function parseCheckSuitePublishTargets(body: unknown):
     // Every copy sets this repo, so a broad trigger for another repo adds
     // no lazy keys.
     data: { repo: gitHubRepoDataSchema.parse(repo) },
-    eventTypes:
-      eventType === "pull_request.checks.recovered"
-        ? [eventType, CHECKS_PASSED]
-        : [eventType],
+    eventTypes,
     identifiers: [...identifiers],
   };
 }
@@ -645,13 +660,7 @@ export function parseCheckSuiteFactsTarget(
   const parsed = checkSuiteWebhookSchema.safeParse(body);
   if (!parsed.success || parsed.data.action !== "completed") return undefined;
   const conclusion = parsed.data.check_suite.conclusion;
-  if (
-    conclusion !== "failure" &&
-    conclusion !== "timed_out" &&
-    conclusion !== "success"
-  ) {
-    return undefined;
-  }
+  if (checkSuiteEventTypes(conclusion).length === 0) return undefined;
   const headSha = parsed.data.check_suite.head_sha;
   const checkSuiteId = parsed.data.check_suite.id;
   if (
@@ -677,7 +686,7 @@ export function parseCheckSuiteFactsTarget(
     options?.loadPullRequestFacts && pullRequestNumbers.length > 0,
   );
   const loadCheckSuites = Boolean(
-    options?.loadCheckSuites && conclusion === "success",
+    options?.loadCheckSuites && PASSING_SUITE_CONCLUSIONS.has(conclusion ?? ""),
   );
   if (!loadFailingChecks && !loadPullRequestFacts && !loadCheckSuites) {
     return undefined;
@@ -732,7 +741,9 @@ export function needsCheckSuitePullRequestFacts(
  * Read every check suite on one commit and return whether all of them passed.
  * The suite that sent the webhook already passed. GitHub makes a queued suite
  * for each app that can write checks, even when the app never adds a check
- * run, so suites with no check runs do not count. With more suites than the
+ * run, so a queued suite with no check runs does not count. GitHub Actions
+ * makes a suite only for a workflow that runs, and its suite can be queued
+ * before it adds runs, so its suites always count. With more suites than the
  * pages read, the answer is false.
  */
 async function loadAllCheckSuitesPassed(args: {
@@ -763,7 +774,9 @@ async function loadAllCheckSuitesPassed(args: {
   return suites.every(
     (suite) =>
       suite.id === args.checkSuiteId ||
-      suite.latest_check_runs_count === 0 ||
+      (suite.status === "queued" &&
+        suite.latest_check_runs_count === 0 &&
+        suite.app?.slug !== "github-actions") ||
       (suite.status === "completed" &&
         PASSING_SUITE_CONCLUSIONS.has(suite.conclusion ?? "")),
   );

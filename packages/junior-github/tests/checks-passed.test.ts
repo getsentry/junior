@@ -15,6 +15,7 @@ const HEAD_SHA = "abcdef1234567890abcdef1234567890abcdef12";
 
 /** One check suite in the commit check-suites list. */
 interface Suite {
+  app: { slug: string };
   conclusion: string | null;
   id: number;
   latest_check_runs_count: number;
@@ -22,13 +23,17 @@ interface Suite {
 }
 
 /** A signed `check_suite.completed` delivery for pull request 946. */
-function suiteCompleted(deliveryId: string, suiteId: number): Request {
+function suiteCompleted(
+  deliveryId: string,
+  suiteId: number,
+  conclusion = "success",
+): Request {
   const body = JSON.stringify({
     action: "completed",
     installation: { id: 456 },
     check_suite: {
       app: { name: "GitHub Actions", slug: "github-actions" },
-      conclusion: "success",
+      conclusion,
       head_branch: "feat/green",
       head_sha: HEAD_SHA,
       id: suiteId,
@@ -100,7 +105,11 @@ describe("pull_request.checks.passed on check suite webhooks", () => {
     },
   };
 
-  async function deliver(deliveryId: string, suiteId: number): Promise<void> {
+  async function deliver(
+    deliveryId: string,
+    suiteId: number,
+    conclusion?: string,
+  ): Promise<void> {
     const [route] = githubPlugin().hooks!.routes!({
       annotations: {
         forConversation() {
@@ -133,7 +142,9 @@ describe("pull_request.checks.passed on check suite webhooks", () => {
         },
       },
     });
-    const response = await route!.handler(suiteCompleted(deliveryId, suiteId));
+    const response = await route!.handler(
+      suiteCompleted(deliveryId, suiteId, conclusion),
+    );
     expect(response.status).toBe(202);
   }
 
@@ -154,18 +165,21 @@ describe("pull_request.checks.passed on check suite webhooks", () => {
     };
     suites = [
       {
+        app: { slug: "github-actions" },
         conclusion: "success",
         id: 1,
         latest_check_runs_count: 4,
         status: "completed",
       },
       {
+        app: { slug: "github-actions" },
         conclusion: "neutral",
         id: 2,
         latest_check_runs_count: 1,
         status: "completed",
       },
       {
+        app: { slug: "github-actions" },
         conclusion: "skipped",
         id: 3,
         latest_check_runs_count: 1,
@@ -174,6 +188,7 @@ describe("pull_request.checks.passed on check suite webhooks", () => {
       // GitHub makes a suite for each app that can write checks. One that
       // never adds a check run stays queued.
       {
+        app: { slug: "vercel" },
         conclusion: null,
         id: 4,
         latest_check_runs_count: 0,
@@ -281,6 +296,31 @@ describe("pull_request.checks.passed on check suite webhooks", () => {
       "pull_request.checks.recovered",
       "pull_request.checks.recovered",
     ]);
+  });
+
+  it("publishes checks.passed when the last suite finishes skipped", async () => {
+    await deliver("delivery-skipped", 3, "skipped");
+
+    expect(suiteReads).toBe(1);
+    expect(publishedTypes()).toEqual([
+      "pull_request.checks.passed",
+      "pull_request.checks.passed",
+    ]);
+  });
+
+  it("waits for a GitHub Actions suite that has no check runs yet", async () => {
+    suites.push({
+      app: { slug: "github-actions" },
+      conclusion: null,
+      id: 5,
+      latest_check_runs_count: 0,
+      status: "queued",
+    });
+
+    await deliver("delivery-actions-queued", 1);
+
+    expect(suiteReads).toBe(1);
+    expect(publishedTypes()).not.toContain("pull_request.checks.passed");
   });
 
   it("does not publish checks.passed when another suite failed", async () => {
