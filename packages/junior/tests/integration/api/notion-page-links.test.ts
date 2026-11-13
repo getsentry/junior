@@ -52,7 +52,7 @@ const PAGES: Record<string, Record<string, unknown>> = {
       "<p />",
       "## Goals",
       "",
-      "Ship the **new onboarding** flow to [all teams](https://example.com) by June.",
+      'Ship the **new onboarding** flow <span color="blue">to</span> [all teams](https://example.com) by June.',
       "</content>",
       "</page>",
     ].join("\n"),
