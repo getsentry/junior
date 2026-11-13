@@ -70,7 +70,7 @@ export async function attachObjectLink(
   // The agent learns the title when it reads the object.
   const type = object.displayType ?? objectPresentation(object).label;
   const article = /^[aeiou]/i.test(type) ? "an" : "a";
-  const readTool = linkType.readTool?.(parsed);
+  const { readTool } = linkType;
   // The note goes first. Its key makes it safe to add again, so a retry
   // after a failed Annotation write still tells the next Turn once.
   await addConversationNote({

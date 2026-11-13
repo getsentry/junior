@@ -133,6 +133,15 @@ export interface ObjectLinkContext extends PluginContext {
    * you return it.
    */
   egress: PluginEgress;
+  /**
+   * Return the Junior person card of the one known person with this
+   * provider account, or undefined. Return it for a profile link of that
+   * account, so the card shows the person and not only the account.
+   */
+  findPerson(account: {
+    handle: string;
+    provider: string;
+  }): Promise<ObjectAnnotation | undefined>;
   /** The signed-in person who sees the card. */
   viewer: User;
 }
@@ -150,10 +159,9 @@ export interface PluginObjectLinkDefinition {
     url: URL,
   ): Promise<ObjectAnnotation | undefined>;
   /**
-   * Name the plugin tool that reads the object live, such as
-   * `readGoogleDoc`. When a person attaches the link to a Conversation, its
-   * next Turn is told to read the object with this tool. Return nothing when
-   * no tool reads this object.
+   * The plugin tool that reads the object live, such as `readGoogleFile`.
+   * When a person attaches the link to a Conversation, its next Turn is told
+   * to read the object with this tool. Omit it when no tool reads the object.
    */
-  readTool?(url: URL): string | undefined;
+  readTool?: string;
 }

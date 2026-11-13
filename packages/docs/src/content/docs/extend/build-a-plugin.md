@@ -328,7 +328,11 @@ A hook that throws is logged, and the tool result stays unchanged.
 `ctx.users.resolveActor()` only when a tool needs the active actor's linked
 identity or user. Call `ctx.users.resolveTimezone()` when a tool needs the
 active actor's IANA timezone. It returns the install default when Junior does
-not know the person's timezone. Return tool definitions keyed by the plugin-local tool
+not know the person's timezone. A tool that sends model text to your provider
+must call `ctx.users.replaceSlackMentions(input, provider)` first. The model
+reads Slack threads, so it can copy Slack syntax such as `<@U123>`. The call
+rewrites every string in `input`, outside Markdown code. A Slack user becomes
+`@handle` of their linked account at `provider`, or their name. Return tool definitions keyed by the plugin-local tool
 names your plugin owns.
 Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 `pluginNamespace` is derived from the plugin manifest name. For example,
@@ -511,13 +515,18 @@ defineJuniorPlugin({
   segment matches one segment), or `pathPrefix`. Junior picks an exact host
   before a wildcard host, and an exact path before a pattern before a
   prefix. Two link types with equal filters for the same URLs stop app
-  startup.
+  startup. An `https` URL that no link type claims gets a `web_page` card from core,
+  from its oEmbed provider or its Open Graph tags. Your filter always wins
+  over it.
 - **Resolver.** Return `undefined` when `ctx.viewer` cannot read the
   object. Do not show that it exists. `ctx.egress` calls your provider as a
   system Actor. It gets only credentials that your plugin owns, never the
   viewer's, so check the viewer's access before you return a card. Junior
   caches the card for one minute for each viewer and URL, and does not save
   it on a Conversation.
+- **People.** For a profile link of a provider account, return
+  `await ctx.findPerson({ provider, handle })` when it finds a card. That is
+  the Junior person card of the one known person who linked that account.
 - **Facts and icon.** Return the facts of `objectType`. Each object type has
   its label, icon, and tones in `@sentry/junior-plugin-api`. To add an object
   type, add it to `objectTypeSchema`, its facts to `object-facts.ts`, and an

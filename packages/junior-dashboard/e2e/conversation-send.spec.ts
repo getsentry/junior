@@ -129,10 +129,12 @@ test("starts and continues conversations from the dashboard", async ({
         }),
       );
     },
-    25 * 1024 * 1024 + 1,
+    250 * 1024 * 1024 + 1,
   );
   await expect(
-    page.getByText("Attach up to 10 files, 25 MB each. Files cannot be empty."),
+    page.getByText(
+      "Attach up to 10 files, 250 MB each. Files cannot be empty.",
+    ),
   ).toBeVisible();
   await page.getByLabel("Choose files").setInputFiles({
     name: "notes.txt",
