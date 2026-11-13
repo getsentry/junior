@@ -62,6 +62,8 @@ import {
   reviewItemWaitingConversationsSchema,
   objectLinksQuerySchema,
   objectLinksReportSchema,
+  attachObjectLinkBodySchema,
+  attachObjectLinkResponseSchema,
   versionsSchema,
   automationExecutionListSchema,
   automationListSchema,
@@ -79,7 +81,7 @@ import {
 import { mockChartPng } from "./chart-png";
 import { mockDemoMp4 } from "./demo-mp4";
 import { mockConversationFeedPage } from "./feed-page";
-import { readMockObjectLinks } from "./objects";
+import { attachMockObjectLink, readMockObjectLinks } from "./objects";
 import { readMockConversationOutline } from "./outline";
 import {
   actOnMockReviewItem,
@@ -643,6 +645,20 @@ export function createMockReportingApi(): Hono<{
     if (!result) return errorResponse("Conversation not found.", 404);
     if ("error" in result) return errorResponse(result.error, 409);
     return jsonResponse(conversationDeliveryResponseSchema, result);
+  });
+  app.post("/conversations/:conversationId/annotations", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    const body = attachObjectLinkBodySchema.safeParse(await c.req.json());
+    if (!params.success || !body.success) {
+      return errorResponse("Invalid request.", 400);
+    }
+    const result = attachMockObjectLink(
+      params.data.conversationId,
+      body.data.url,
+    );
+    return result
+      ? jsonResponse(attachObjectLinkResponseSchema, result)
+      : errorResponse("Object not found.", 404);
   });
   app.patch("/conversations/:conversationId/title", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());

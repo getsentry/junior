@@ -80,6 +80,7 @@ function pluginLinkTypes(plugin: PluginRegistration): ObjectLinkType[] {
     filters: link.filters,
     objectType: link.objectType,
     owner: name,
+    readTool: link.readTool,
     resolve: (viewer, url) =>
       link.resolve(
         {
@@ -130,6 +131,23 @@ async function resolveWithLinkType(
     ...object,
     plugin: linkType.owner,
   });
+}
+
+/**
+ * Resolve one link for one viewer without the card cache, so a change of
+ * access counts at once. Returns nothing when no link type claims the URL
+ * or the viewer cannot see the object.
+ */
+export async function resolveObjectLinkNow(
+  viewer: User,
+  url: URL,
+): Promise<
+  { linkType: ObjectLinkType; object: OwnedObjectAnnotation } | undefined
+> {
+  const linkType = findObjectLinkType(readObjectLinkTypes(), url);
+  if (!linkType) return undefined;
+  const object = await resolveWithLinkType(linkType, viewer, url);
+  return object ? { linkType, object } : undefined;
 }
 
 /**

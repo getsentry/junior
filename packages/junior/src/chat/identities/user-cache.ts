@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq } from "drizzle-orm";
 import * as z from "zod";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { createCache } from "@/chat/state/cache";
+import { cacheKeyPrefix, createCache } from "@/chat/state/cache";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 
@@ -23,7 +23,8 @@ const MISSING_TTL_MS = 60 * 1000;
 // window go to the database and do not fill the cache, so a read of the
 // rows from before the write cannot stay in the cache.
 const SETTLE_MS = 10 * 1000;
-const CACHE_NAMESPACE = "identities";
+/** The cache namespace of every key in this cache. */
+export const USER_CACHE_NAMESPACE = "identities";
 
 const cachedUserSchema = z.object({
   identities: z.array(
@@ -56,11 +57,11 @@ const versionSchema = z.object({
 });
 
 function versionKey(userId: string): string {
-  return `junior:cache:${CACHE_NAMESPACE}:version:${userId}`;
+  return `${cacheKeyPrefix(USER_CACHE_NAMESPACE)}version:${userId}`;
 }
 
 function cache() {
-  return createCache(getStateAdapter(), CACHE_NAMESPACE);
+  return createCache(getStateAdapter(), USER_CACHE_NAMESPACE);
 }
 
 // Each write sets a new version, so a read that started before the write

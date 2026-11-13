@@ -39,11 +39,16 @@ export {
   webPageObjectCard,
 } from "./objects/cards";
 export {
+  attachObjectLinkBodySchema,
+  attachObjectLinkResponseSchema,
   MAX_OBJECT_LINKS,
   objectLinksQuerySchema,
   objectLinksReportSchema,
 } from "./schema/object-link";
-export type { ObjectLinksReport } from "./schema/object-link";
+export type {
+  AttachObjectLinkResponse,
+  ObjectLinksReport,
+} from "./schema/object-link";
 export { dailyConversationActivitySchema } from "./activity";
 export { conversationChildAgentTotalsSchema } from "./schema/child-agent-totals";
 export type { ConversationChildAgentTotals } from "./schema/child-agent-totals";

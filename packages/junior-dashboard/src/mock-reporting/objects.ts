@@ -3,10 +3,12 @@ import {
   messageObjectCard,
   personObjectCard,
   webPageObjectCard,
+  type AttachObjectLinkResponse,
   type ObjectLinksReport,
 } from "@sentry/junior/api/schema";
 import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
+  addMockAnnotation,
   readMockConversationDetail,
   readMockPeopleDirectory,
 } from "./fixtures";
@@ -140,4 +142,39 @@ export function readMockObjectLinks(
   urls: readonly string[],
 ): ObjectLinksReport {
   return { objects: [...new Set(urls)].flatMap(mockObject) };
+}
+
+/**
+ * Attach a mock link to a Conversation, like the attach API. Mocks have one
+ * viewer, so only the object must resolve.
+ */
+export function attachMockObjectLink(
+  conversationId: string,
+  url: string,
+): AttachObjectLinkResponse | undefined {
+  const detail = readMockConversationDetail(conversationId);
+  const object = mockObject(url)[0]?.object;
+  if (!detail || !object || object.objectType === "person") return undefined;
+  // Match the API: another link to the same object is a duplicate too.
+  if (
+    detail.annotations?.some(
+      (annotation) =>
+        annotation.url === url ||
+        (annotation.plugin === object.plugin && annotation.key === object.key),
+    )
+  ) {
+    return { status: "unchanged" };
+  }
+  const now = new Date().toISOString();
+  addMockAnnotation(conversationId, {
+    kind: "resource_link",
+    key: object.key,
+    label: url,
+    objectType: object.objectType,
+    plugin: object.plugin,
+    url,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return { status: "attached" };
 }

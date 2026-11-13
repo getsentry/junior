@@ -1,4 +1,4 @@
-import { Children, type ReactNode, type RefCallback } from "react";
+import { Children, useEffect, type ReactNode, type RefCallback } from "react";
 import type { OwnedObjectAnnotation } from "@sentry/junior/api/schema";
 import Markdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
@@ -398,13 +398,13 @@ function alignClass(align: unknown): string | undefined {
 }
 
 function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
-  const known = useKnownObject(
-    typeof props.objectUrl === "string" ? props.objectUrl : undefined,
-  );
-  if (known) return <ObjectCard card={known} />;
-  if (typeof props.objectUrl === "string" && resolvableUrl(props.objectUrl)) {
+  const objectUrl =
+    typeof props.objectUrl === "string" ? props.objectUrl : undefined;
+  const known = useKnownObject(objectUrl);
+  if (known.card && !known.linkOnly) return <ObjectCard card={known.card} />;
+  if (objectUrl && resolvableUrl(objectUrl)) {
     return (
-      <ResolvedParagraph objectUrl={props.objectUrl}>
+      <ResolvedParagraph objectUrl={objectUrl} saved={known.card}>
         {props.children}
       </ResolvedParagraph>
     );
@@ -413,10 +413,27 @@ function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
 }
 
 // The link in the paragraph asks for the card. This reads the same entry.
-function ResolvedParagraph(props: { children: ReactNode; objectUrl: string }) {
-  const { card } = useResolvedObject(props.objectUrl);
+// A saved link has no facts, so it shows only until the live card resolves.
+function ResolvedParagraph(props: {
+  children: ReactNode;
+  objectUrl: string;
+  saved?: OwnedObjectAnnotation;
+}) {
+  const { card, request } = useResolvedObject(props.objectUrl);
+  useRequestWhenSaved(props.saved, request);
   if (card) return <ObjectCard card={card} live />;
+  if (props.saved) return <ObjectCard card={props.saved} />;
   return <PlainParagraph>{props.children}</PlainParagraph>;
+}
+
+// The saved card replaces the link, so no visible link asks for the card.
+function useRequestWhenSaved(
+  saved: OwnedObjectAnnotation | undefined,
+  request: () => void,
+) {
+  useEffect(() => {
+    if (saved) request();
+  }, [request, saved]);
 }
 
 function PlainParagraph(props: { children: ReactNode }) {
@@ -432,7 +449,7 @@ function TranscriptAnchor(props: {
   children: ReactNode;
   href?: string;
 }) {
-  const card = useKnownObject(props.href);
+  const known = useKnownObject(props.href);
   // `safeHref` removes unsafe destinations. Keep their label text.
   if (!props.href) return <>{renderText(props.children)}</>;
   const label =
@@ -441,16 +458,16 @@ function TranscriptAnchor(props: {
     ) : (
       props.children
     );
-  if (card) {
+  if (known.card && !known.linkOnly) {
     return (
-      <ObjectAnchor bare={props.bare} card={card} href={props.href}>
+      <ObjectAnchor bare={props.bare} card={known.card} href={props.href}>
         {label}
       </ObjectAnchor>
     );
   }
   if (resolvableUrl(props.href)) {
     return (
-      <ResolvedAnchor bare={props.bare} href={props.href}>
+      <ResolvedAnchor bare={props.bare} href={props.href} saved={known.card}>
         {label}
       </ResolvedAnchor>
     );
@@ -459,17 +476,26 @@ function TranscriptAnchor(props: {
 }
 
 // A link without a saved object asks the API for a card when it scrolls
-// into view or the reader hovers it.
+// into view or the reader hovers it. A saved link shows until then.
 function ResolvedAnchor(props: {
   bare?: boolean;
   children: ReactNode;
   href: string;
+  saved?: OwnedObjectAnnotation;
 }) {
   const { card, request } = useResolvedObject(props.href);
   const observe = useWhenVisible(request);
+  useRequestWhenSaved(props.saved, request);
   if (card) {
     return (
       <ObjectAnchor bare={props.bare} card={card} href={props.href} live>
+        {props.children}
+      </ObjectAnchor>
+    );
+  }
+  if (props.saved) {
+    return (
+      <ObjectAnchor bare={props.bare} card={props.saved} href={props.href}>
         {props.children}
       </ObjectAnchor>
     );
