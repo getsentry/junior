@@ -37,8 +37,9 @@ const PROVISIONED_BY_PROPERTIES = { "provisioned-by": "jr" } as const;
 
 /**
  * Fields of `POST /orgs/{org}/repos` that a profile fixes. Junior sets
- * `name`, `description`, `team_id`, and `custom_properties` itself. `delete_branch_on_merge` is
- * absent: GitHub lets only an organization owner set it to true.
+ * `name`, `description`, `team_id`, and `custom_properties` itself.
+ * `delete_branch_on_merge` is absent: GitHub lets only an organization owner
+ * set it to true.
  */
 const repositorySettingsSchema = z
   .object({
