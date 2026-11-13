@@ -278,19 +278,23 @@ export function instructionTextForProjection(text: string): string {
  * Return the projected input text carried by one user message. Each Turn
  * input is its own content part: a `<current-instruction>` gives its body,
  * and a runtime input tag stays as it is. Other parts, such as attachments,
- * are dropped. A message with no input part keeps the projection of all its
- * text.
+ * are dropped. A message with no input part keeps the projection of its
+ * text without runtime context, so an invoked `<skill>` part stays.
  */
 export function getUserMessageInstructionText(message: PiMessage): string {
   if (getPiMessageRole(message) !== "user") {
     return "";
   }
   const content = (message as { content?: unknown }).content;
+  // Runtime context is not a request, and its size would crowd out the
+  // request text in bounded projections such as action review evidence.
   const texts =
     typeof content === "string"
       ? [content]
       : Array.isArray(content)
-        ? content.flatMap((part) => textPartValue(part) ?? [])
+        ? content.flatMap((part) =>
+            isRuntimeTurnContextPart(part) ? [] : (textPartValue(part) ?? []),
+          )
         : [];
   const inputs = texts.flatMap((text) => {
     const withoutContext = text

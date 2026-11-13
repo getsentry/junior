@@ -114,4 +114,45 @@ describe("tool action review evidence", () => {
     });
     expect(evidence.omittedEntries).toBeGreaterThan(0);
   });
+
+  it("keeps an invoked skill and drops runtime context from user evidence", () => {
+    const runtimeContext = [
+      "<runtime-turn-context>",
+      "x".repeat(40_000),
+      "</runtime-turn-context>",
+    ].join("\n");
+    const skill = [
+      "<skill>",
+      "<name>triage-issue</name>",
+      "y".repeat(3_300),
+      "React to the issue with eyes.",
+      "z".repeat(6_600),
+      "</skill>",
+    ].join("\n");
+    const transcript = [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: runtimeContext },
+          { type: "text", text: skill },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "<current-instruction>\n$triage-issue\n</current-instruction>",
+          },
+        ],
+      },
+    ].map((value) => piMessage(value));
+
+    const [skillEntry] = buildToolActionEvidence(transcript).entries;
+
+    expect(skillEntry?.role).toBe("user");
+    expect(skillEntry?.text).toContain("<name>triage-issue</name>");
+    expect(skillEntry?.text).toContain("React to the issue with eyes.");
+    expect(skillEntry?.text).not.toContain("runtime-turn-context");
+  });
 });
