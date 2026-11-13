@@ -34,6 +34,11 @@ export const messageAttachmentSchema = z
     filename: z.string().min(1),
     contentType: z.string().min(1),
     bytes: z.number().int().nonnegative(),
+    /**
+     * True for a large Slack file that Junior never stores. Each read
+     * downloads it from Slack, so it has no preview.
+     */
+    pending: z.literal(true).optional(),
   })
   .strict();
 

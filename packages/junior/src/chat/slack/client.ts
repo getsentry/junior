@@ -678,6 +678,44 @@ export async function getFilePermalink(
   return response.file?.permalink;
 }
 
+/**
+ * Read the private download URL and size of one Slack file.
+ *
+ * Return undefined when Slack no longer has the file, or keeps only a
+ * tombstone without a download URL.
+ */
+export async function readPrivateSlackFile(
+  fileId: string,
+): Promise<{ bytes: number; url: string } | undefined> {
+  const client = getClient();
+  let response;
+  try {
+    response = await withSlackRetries(
+      () => client.files.info({ file: fileId }),
+      3,
+      {
+        action: "files.info",
+        idempotent: true,
+        spanAttributes: { "app.slack.file_id": fileId },
+      },
+    );
+  } catch (error) {
+    if (
+      error instanceof SlackActionError &&
+      (error.code === "not_found" ||
+        error.apiError === "file_not_found" ||
+        error.apiError === "file_deleted")
+    ) {
+      return undefined;
+    }
+    throw error;
+  }
+  const url = response.file?.url_private_download ?? response.file?.url_private;
+  const bytes = response.file?.size;
+  if (!url || typeof bytes !== "number") return undefined;
+  return { bytes, url };
+}
+
 async function fetchPrivateSlackFile(url: string): Promise<Response> {
   // Private file URLs are workspace-scoped, so downloads use the same
   // destination-installation token resolution as Web API calls.
@@ -689,7 +727,13 @@ async function fetchPrivateSlackFile(url: string): Promise<Response> {
     },
   });
   if (!response.ok) {
-    throw new Error(`Slack file download failed: ${response.status}`);
+    throw new SlackActionError(
+      `Slack file download failed: ${response.status}`,
+      response.status === 404 || response.status === 410
+        ? "not_found"
+        : "internal_error",
+      { statusCode: response.status },
+    );
   }
   return response;
 }

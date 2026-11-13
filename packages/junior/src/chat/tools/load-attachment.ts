@@ -2,6 +2,12 @@ import path from "node:path";
 import * as z from "zod";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
+import {
+  ATTACHMENT_TOO_LARGE_MESSAGE,
+  AttachmentDownloadError,
+  readAttachmentContent,
+} from "@/chat/attachments/download";
+import type { ReadAttachmentSource } from "@/chat/attachments/source";
 import { readLiveAttachment } from "@/chat/attachments/store";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type {
@@ -19,6 +25,13 @@ const PART_BYTES = 8 * 1024 * 1024;
 // `cat` needs a shell only to redirect its output. Paths stay arguments.
 const JOIN_PARTS_SCRIPT = 'set -eu; out=$1; shift; cat -- "$@" > "$out"';
 
+/** Turn a read failure that the model can relay into a tool error. */
+function toolError(error: unknown): unknown {
+  return error instanceof AttachmentDownloadError
+    ? new ToolInputError(error.message, { cause: error })
+    : error;
+}
+
 /** Run one sandbox command, and return its stdout. Throw when it fails. */
 async function runChecked(
   workspace: SandboxWorkspace,
@@ -33,7 +46,7 @@ async function runChecked(
 }
 
 /**
- * Write a stored body to the sandbox in parts of at most `PART_BYTES`.
+ * Write an attachment body to the sandbox in parts of at most `PART_BYTES`.
  *
  * The sandbox SDK writes only whole buffers, so this keeps one part in
  * memory, not the file. Returns the part paths in order.
@@ -82,14 +95,14 @@ async function writeParts(args: {
       }
     }
   } finally {
-    // Close the storage read when this stops early, so a failed load does
-    // not hold a large download open. After a full read this does nothing.
+    // Close the read when this stops early, so a failed load does not hold
+    // a large download open. After a full read this does nothing.
     await reader.cancel().catch(() => undefined);
   }
   if (total !== args.expectedBytes) {
-    // A storage read that returns fewer (or more) bytes than the durable
-    // row expects is corrupt, not a valid empty/short file. Fail loudly
-    // instead of silently writing truncated content to the sandbox.
+    // A read that returns fewer (or more) bytes than the row or the source
+    // reports is corrupt, not a valid empty/short file. Fail loudly instead
+    // of silently writing truncated content to the sandbox.
     throw new Error(
       `Attachment ${args.attachmentId} read ${total} bytes, expected ${args.expectedBytes}.`,
     );
@@ -100,10 +113,17 @@ async function writeParts(args: {
   return parts;
 }
 
-/** Create a tool that restores one stored conversation attachment to the sandbox. */
+/**
+ * Create a tool that restores one conversation attachment to the sandbox.
+ *
+ * A large Slack file is never stored: each load streams it from Slack
+ * through the host. The sandbox never gets a Slack URL or token.
+ */
 export function createLoadAttachmentTool(args: {
   conversationId: string;
   db: JuniorSqlDatabase;
+  /** Downloads a file that Junior recorded without storing it. */
+  readAttachmentSource?: ReadAttachmentSource;
   storage: AttachmentStorage;
   workspace: SandboxWorkspace;
 }) {
@@ -113,7 +133,8 @@ export function createLoadAttachmentTool(args: {
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
-      openWorldHint: false,
+      // A large Slack file downloads from Slack on each load.
+      openWorldHint: true,
       readOnlyHint: false,
     },
     inputSchema: z.object({
@@ -135,13 +156,17 @@ export function createLoadAttachmentTool(args: {
         throw new ToolInputError("Attachment not found in this conversation.");
       }
       if (attachment.bytes > MAX_ATTACHMENT_BYTES) {
-        throw new ToolInputError(
-          `Attachment is larger than the ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB file limit.`,
-        );
+        throw new ToolInputError(ATTACHMENT_TOO_LARGE_MESSAGE);
       }
-      const body = await args.storage.get(attachment.storageKey);
-      if (!body) {
-        throw new ToolInputError("Stored attachment contents are unavailable.");
+      let content;
+      try {
+        content = await readAttachmentContent({
+          attachment,
+          readAttachmentSource: args.readAttachmentSource,
+          storage: args.storage,
+        });
+      } catch (error) {
+        throw toolError(error);
       }
       const attachmentDir = path.posix.join(ATTACHMENT_DIR, attachment.id);
       // Outside the attachment directory, so no filename can collide.
@@ -161,8 +186,8 @@ export function createLoadAttachmentTool(args: {
       try {
         const parts = await writeParts({
           attachmentId: attachment.id,
-          body,
-          expectedBytes: attachment.bytes,
+          body: await content.open(),
+          expectedBytes: content.bytes,
           partsDir,
           workspace: args.workspace,
         });
@@ -175,9 +200,9 @@ export function createLoadAttachmentTool(args: {
           args: ["-c", "%s", "--", joinedPath],
         });
         const written = Number(size.trim());
-        if (written !== attachment.bytes) {
+        if (written !== content.bytes) {
           throw new Error(
-            `Attachment ${attachment.id} wrote ${written} bytes to the sandbox, expected ${attachment.bytes}.`,
+            `Attachment ${attachment.id} wrote ${written} bytes to the sandbox, expected ${content.bytes}.`,
           );
         }
         await runChecked(args.workspace, "move attachment into place", {
@@ -190,7 +215,7 @@ export function createLoadAttachmentTool(args: {
         await args.workspace
           .runCommand({ cmd: "rm", args: ["-rf", "--", partsDir] })
           .catch(() => undefined);
-        throw error;
+        throw toolError(error);
       }
       await runChecked(args.workspace, "remove attachment parts", {
         cmd: "rm",
@@ -200,7 +225,7 @@ export function createLoadAttachmentTool(args: {
         path: sandboxPath,
         filename: attachment.filename,
         mime_type: attachment.contentType,
-        bytes: attachment.bytes,
+        bytes: content.bytes,
       };
     },
   });

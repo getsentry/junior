@@ -7,6 +7,7 @@ import {
   conversationDetailTouch,
   touchConversationDetail,
 } from "@/chat/conversations/sql/detail-version";
+import type { AttachmentSource } from "./source";
 import { bufferBody, type AttachmentStorage } from "./storage";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -26,7 +27,10 @@ export interface AttachmentRecord {
   conversationId: string;
   filename: string;
   id: string;
-  storageKey: string;
+  /** Where the file came from, when a provider supplied it. */
+  source: AttachmentSource | null;
+  /** Null for a large Slack file, which Junior never stores. */
+  storageKey: string | null;
   storageProvider: string;
 }
 
@@ -34,18 +38,14 @@ export interface AttachmentGarbageCollectionResult {
   deleted: number;
 }
 
-/** Where a stored file came from, such as one Slack file. */
-export interface AttachmentSource {
-  id: string;
-  provider: string;
-}
-
 /**
  * One file to store.
  *
  * A file with a source can stream. Its id comes from the source, so a retry
- * finds the stored copy before `open` downloads anything. A file without a
- * source must be in memory, because its id comes from its digest.
+ * finds the stored copy before `open` downloads anything. A deferred file is
+ * recorded without its bytes, and each read downloads it from its source. A
+ * file without a source must be in memory, because its id comes from its
+ * digest.
  */
 export type AttachmentFile = {
   filename: string;
@@ -58,7 +58,16 @@ export type AttachmentFile = {
       open: () => Promise<ReadableStream<Uint8Array>>;
       source: AttachmentSource;
     }
+  | {
+      /** Size that the source declares. */
+      bytes: number;
+      deferred: true;
+      source: AttachmentSource;
+    }
 );
+
+/** A file whose bytes are written now. */
+type WritableAttachmentFile = Exclude<AttachmentFile, { deferred: true }>;
 
 type AttachmentIdentity = AttachmentSource | { sha256: string };
 
@@ -135,8 +144,9 @@ const WRITE_ATTEMPTS = 3;
 
 async function bestEffortDelete(
   storage: AttachmentStorage,
-  key: string,
+  key: string | null,
 ): Promise<void> {
+  if (key === null) return;
   try {
     await storage.delete([key]);
   } catch {
@@ -151,7 +161,7 @@ async function bestEffortDelete(
  * whole. A body that does not match its declared size is not kept.
  */
 async function writeAttachmentObject(args: {
-  file: AttachmentFile;
+  file: WritableAttachmentFile;
   key: string;
   storage: AttachmentStorage;
 }): Promise<{ bytes: number; sha256: string }> {
@@ -173,7 +183,7 @@ async function writeAttachmentObject(args: {
 }
 
 async function writeAttachmentObjectOnce(args: {
-  file: AttachmentFile;
+  file: WritableAttachmentFile;
   key: string;
   storage: AttachmentStorage;
 }): Promise<{ bytes: number; sha256: string }> {
@@ -249,7 +259,7 @@ async function rejectPurgedAttachmentWrite(args: {
   id: string;
   now: Date;
   storage: AttachmentStorage;
-  storageKey: string;
+  storageKey: string | null;
 }): Promise<never> {
   const db = args.db.db();
   await db
@@ -273,7 +283,7 @@ async function reuseLiveAttachment(args: {
   db: JuniorSqlDatabase;
   id: string;
   storage: AttachmentStorage;
-  storageKey: string;
+  storageKey: string | null;
 }): Promise<StoredAttachment> {
   await bestEffortDelete(args.storage, args.storageKey);
   await assertConversationNotPurged(args.db, args.conversationId);
@@ -346,17 +356,25 @@ export async function storeAttachment(args: {
 
   await assertConversationNotPurged(args.db, args.conversationId);
 
-  const storageKey = attachmentKey({
-    attachmentId: id,
-    conversationId: args.conversationId,
-    filename: args.file.filename,
-    writeId: randomUUID(),
-  });
-  const written = await writeAttachmentObject({
-    file: args.file,
-    key: storageKey,
-    storage: args.storage,
-  });
+  // A deferred file gets a row with no object. Each read downloads it.
+  const { file } = args;
+  let storageKey: string | null = null;
+  let written: { bytes: number; sha256: string | null };
+  if ("deferred" in file) {
+    written = { bytes: file.bytes, sha256: null };
+  } else {
+    storageKey = attachmentKey({
+      attachmentId: id,
+      conversationId: args.conversationId,
+      filename: file.filename,
+      writeId: randomUUID(),
+    });
+    written = await writeAttachmentObject({
+      file,
+      key: storageKey,
+      storage: args.storage,
+    });
+  }
 
   if (existing?.deleteRequestedAt != null) {
     if (await isConversationPurged(args.db, args.conversationId)) {
@@ -547,7 +565,13 @@ export async function storeAttachment(args: {
  * first row. The caller checked the object's size, type, and digest.
  */
 export async function recordUploadedAttachment(args: {
-  attachment: Omit<AttachmentRecord, "storageProvider"> & { sha256: string };
+  attachment: Omit<
+    AttachmentRecord,
+    "source" | "storageKey" | "storageProvider"
+  > & {
+    sha256: string;
+    storageKey: string;
+  };
   db: JuniorSqlDatabase;
   nowMs: number;
   storage: AttachmentStorage;
@@ -596,6 +620,8 @@ export async function readLiveAttachment(args: {
       deleteRequestedAt: juniorAttachments.deleteRequestedAt,
       filename: juniorAttachments.filename,
       id: juniorAttachments.id,
+      provider: juniorAttachments.provider,
+      providerId: juniorAttachments.providerId,
       storageProvider: juniorAttachments.storageProvider,
       storageKey: juniorAttachments.storageKey,
     })
@@ -617,6 +643,10 @@ export async function readLiveAttachment(args: {
     conversationId: row.conversationId,
     filename: row.filename,
     id: row.id,
+    source:
+      row.provider && row.providerId
+        ? { id: row.providerId, provider: row.provider }
+        : null,
     storageKey: row.storageKey,
     storageProvider: row.storageProvider,
   };
@@ -709,7 +739,9 @@ export async function collectAttachmentGarbage(args: {
     .limit(args.limit ?? ATTACHMENT_GC_BATCH_LIMIT);
   if (rows.length === 0) return { deleted: 0 };
 
-  await args.storage.delete(rows.map((row) => row.storageKey));
+  // A row recorded without its bytes has no object to delete.
+  const keys = rows.flatMap((row) => (row.storageKey ? [row.storageKey] : []));
+  if (keys.length > 0) await args.storage.delete(keys);
   const stillEligible = await args.db
     .db()
     .select({ id: juniorAttachments.id })
