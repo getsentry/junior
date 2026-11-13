@@ -12,6 +12,7 @@ import { credentialContextForActor } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
 import { webActorFromUser } from "@/chat/conversations/web-input";
 import { createPluginEgress } from "@/chat/egress/plugin";
+import { imagePath } from "@/chat/images/ids";
 import { logException } from "@/chat/logging";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginCache } from "@/chat/plugins/cache";
@@ -94,6 +95,8 @@ function objectLinkContext(name: string, viewer: User): ObjectLinkContext {
       // A card is optional. It must never ask anyone to authorize.
       pluginAuth: { async handleAuthRequired() {} },
     }),
+    // The width of web page thumbnails, so every card looks the same.
+    imagePath: (ref, version) => imagePath({ ref, source: name }, 640, version),
     findPerson: resolvePersonByAccount,
     log: createPluginLogger(name),
     plugin: { name },

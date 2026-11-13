@@ -418,6 +418,75 @@ describe("image API", () => {
     ).toBe(404);
   });
 
+  test("serves a link card thumbnail only to viewers that the plugin allows", async () => {
+    const authorization: (string | null)[] = [];
+    mswServer.use(
+      http.get("https://files.example.com/thumbs/report.png", ({ request }) => {
+        authorization.push(request.headers.get("authorization"));
+        return new HttpResponse(new Uint8Array(PHOTO));
+      }),
+    );
+    const allowed = (email: string) => email === "member@example.com";
+    await createApp({
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "file-host",
+            displayName: "File host",
+            description: "File host test cards",
+          },
+          objectLinks: [
+            {
+              filters: [{ host: "files.example.com", pathPrefix: "/f/" }],
+              objectType: "document",
+              canView: async (ctx) => allowed(ctx.viewer.email),
+              resolve: async (ctx, url) => ({
+                kind: "object",
+                objectType: "document",
+                key: "report",
+                label: "report.pdf",
+                title: "report.pdf",
+                url: url.href,
+                facts: {
+                  type: "document",
+                  thumbnailUrl: ctx.imagePath("report", "7"),
+                },
+              }),
+            },
+          ],
+          images: {
+            // Each read checks the viewer again through plugin egress.
+            resolve: async (ctx, ref) =>
+              typeof ctx.egress.fetch === "function" &&
+              allowed(ctx.viewer.email)
+                ? {
+                    headers: { authorization: "Bearer plugin-token" },
+                    url: `https://files.example.com/thumbs/${ref}.png`,
+                  }
+                : undefined,
+          },
+        }),
+      ]),
+    });
+    const cards = await signedInApi(testViewer("member@example.com")).request(
+      `http://localhost/api/objects?${new URLSearchParams({ url: "https://files.example.com/f/report" })}`,
+    );
+    const [resolved] = (await cards.json()).objects;
+    const path = resolved.object.facts.thumbnailUrl;
+    expect(path).toBe(
+      imagePath({ ref: "report", source: "file-host" }, 640, "7"),
+    );
+
+    await expectWebp(await requestImage(path, "member@example.com"), {
+      height: 512,
+      width: 512,
+    });
+    expect(authorization).toEqual(["Bearer plugin-token"]);
+    // A viewer that loses access gets no image, and nothing is fetched.
+    expect((await requestImage(path, "outsider@example.com")).status).toBe(404);
+    expect(authorization).toEqual(["Bearer plugin-token"]);
+  });
+
   test("serves a GitHub description image only to viewers who can see the repository", async () => {
     vi.stubEnv("GITHUB_APP_ID", "123");
     vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
