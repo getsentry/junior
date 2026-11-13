@@ -61,10 +61,8 @@ const SCRIPT_RULES = [
   "Use the script to find where data in the input came from. When the script reads data with an earlier call and sends, posts, or writes it with this action, judge the data that reaches the destination, as if the agent sent it directly.",
 ].join("\n");
 
-// The code backstop turns high risk with unknown authorization into ask,
-// as Codex asks the user when its reviewer cannot see the whole input.
 const TRUNCATED_INPUT_RULE =
-  "The `input` in the planned action is shortened: long values are cut at a `[truncated]` marker. The tool gets the full input. When the part that you cannot see could change your assessment, such as the destination, the data sent, or the change made, do not allow the action: rate the risk at least `high` and the user authorization `unknown`.";
+  "The `input` in the planned action is shortened: long values are cut at a `[truncated]` marker. The tool gets the full input. Do not assume that the part you cannot see is safe.";
 
 const TRUNCATED_ROOT_NOTICE =
   "Host notice: some root messages are not shown. Do not treat the shown root messages as complete authorization for an action.";
@@ -136,11 +134,16 @@ function noPersonCanConfirm(proposal: ToolActionProposal): boolean {
 const NO_CONFIRMATION_REASON =
   "No person can confirm this action in this run, so do not ask for confirmation.";
 
+const TRUNCATED_INPUT_REASON =
+  "Guardian saw only a shortened input, so a person must confirm this action.";
+
 /**
  * Derive allow, ask, or deny from the model's assessment. The named rule
  * sets the decision. Code also asks for high or critical risk with weak
- * authorization, and turns an ask into deny when no person can answer. That
- * deny gets a reason that says so, so the agent does not try to ask.
+ * authorization, and for a shortened input, because the tool gets input that
+ * Guardian did not see, as Codex asks when its reviewer is over budget. Code
+ * turns an ask into deny when no person can answer. That deny gets a reason
+ * that says so, so the agent does not try to ask.
  */
 export function guardianDecision(
   assessment: GuardianAssessment,
@@ -158,13 +161,15 @@ export function guardianDecision(
   ) {
     decision = "ask";
   }
-  if (decision === "ask" && noPersonCanConfirm(proposal)) {
-    return {
-      decision: "deny",
-      reason: `${assessment.reason} ${NO_CONFIRMATION_REASON}`,
-    };
+  let reason = assessment.reason;
+  if (decision === "allow" && proposal.inputTruncated) {
+    decision = "ask";
+    reason = `${reason} ${TRUNCATED_INPUT_REASON}`;
   }
-  return { decision, reason: assessment.reason };
+  if (decision === "ask" && noPersonCanConfirm(proposal)) {
+    return { decision: "deny", reason: `${reason} ${NO_CONFIRMATION_REASON}` };
+  }
+  return { decision, reason };
 }
 
 /** Create the structured Guardian reviewer used for permissioned tool actions. */

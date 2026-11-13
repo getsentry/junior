@@ -175,6 +175,25 @@ describe("Guardian action review", () => {
     expect(guardianDecision(assess("none"), automationProposal).decision).toBe(
       "allow",
     );
+    // Guardian did not see all of a shortened input, so a person confirms.
+    const truncatedProposal: ToolActionProposal = {
+      ...proposal,
+      inputTruncated: true,
+    };
+    expect(guardianDecision(assess("none"), truncatedProposal)).toEqual({
+      decision: "ask",
+      reason:
+        "r Guardian saw only a shortened input, so a person must confirm this action.",
+    });
+    expect(
+      guardianDecision(assess("revoked_approval"), truncatedProposal).decision,
+    ).toBe("deny");
+    expect(
+      guardianDecision(assess("none"), {
+        ...automationProposal,
+        inputTruncated: true,
+      }).decision,
+    ).toBe("deny");
     // The deny says that no one can confirm, so the agent does not ask.
     expect(
       guardianDecision(assess("unclear_destination"), automationProposal)
