@@ -101,6 +101,26 @@ function historyItemProvenance(
   return data.type === "user_message" ? data.provenance : contextProvenance;
 }
 
+const REJECTED_IMAGE_NOTE =
+  "[image removed: the model provider rejected a request that contained it]";
+
+function isImage(part: unknown): boolean {
+  return (part as { type?: unknown }).type === "image";
+}
+
+function withoutImages(message: PiMessage): PiMessage {
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content) || !content.some(isImage)) {
+    return message;
+  }
+  return {
+    ...message,
+    content: content.map((part) =>
+      isImage(part) ? { type: "text", text: REJECTED_IMAGE_NOTE } : part,
+    ),
+  } as PiMessage;
+}
+
 /**
  * Project ordered Junior events into Pi context.
  *
@@ -109,6 +129,11 @@ function historyItemProvenance(
  *
  * Host-only events are filtered, completed authorization becomes a synthetic
  * observation, and `maxSeq` reproduces an exact committed boundary.
+ *
+ * A Turn that fails with `invalid_request` loses the images it added. The
+ * provider rejected a request built from that history, and the next Turn
+ * replays the same history, so content such as an oversized image would fail
+ * every later Turn. The event log keeps the original items.
  */
 export function projectConversationEvents(
   events: ConversationEvent[],
@@ -118,6 +143,9 @@ export function projectConversationEvents(
   const provenance: ConversationMessageProvenance[] = [];
   const seqs: number[] = [];
   let replacementSeq: number | undefined;
+  // Turn id to the index of its first message. A Turn that started before
+  // a replacement owns everything from the start of the replacement.
+  const turnStarts = new Map<string, number>();
 
   for (const event of events) {
     if (options.maxSeq !== undefined && event.seq > options.maxSeq) break;
@@ -155,6 +183,23 @@ export function projectConversationEvents(
       messages.push(message);
       provenance.push(historyItemProvenance(event.data));
       seqs.push(event.seq);
+      continue;
+    }
+    if (event.data.type === "turn_started") {
+      turnStarts.set(event.data.turnId, messages.length);
+      continue;
+    }
+    if (
+      event.data.type === "turn_failed" &&
+      event.data.failureReason === "invalid_request"
+    ) {
+      for (
+        let index = turnStarts.get(event.data.turnId) ?? 0;
+        index < messages.length;
+        index += 1
+      ) {
+        messages[index] = withoutImages(messages[index]!);
+      }
       continue;
     }
     if (event.data.type === "authorization_completed") {

@@ -425,6 +425,9 @@ export async function commitAcceptedReply(args: {
  * projection plus the projection of every later event is the current one
  * while all later events belong to its version. A later event in a newer
  * version means a history replacement, so read the current history again.
+ * One exception: an `invalid_request` Turn failure removes that Turn's images
+ * from earlier messages. The base comes from the committing Turn's own
+ * record, so it already includes the failures of earlier Turns.
  */
 async function loadCurrentProjection(
   eventStore: ConversationEventStore,
