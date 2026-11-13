@@ -115,6 +115,14 @@ describe("GitHub reply markdown", () => {
     );
   });
 
+  it("does not read org or enterprise discussion URLs as repositories", () => {
+    const text = [
+      "https://github.com/orgs/community/discussions/123 and #4",
+      "https://github.com/enterprises/acme/discussions/5",
+    ].join("\n");
+    expect(linkifyGitHubReferences(text)).toBe(text);
+  });
+
   it("leaves bare references unchanged when several repositories are named", () => {
     expect(
       linkifyGitHubReferences(

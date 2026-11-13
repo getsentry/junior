@@ -20,7 +20,8 @@ const TEXT_REFERENCE_PATTERN = new RegExp(
   "g",
 );
 
-const GITHUB_URL_BODY = `https?:\\/\\/(?:www\\.)?github\\.com\\/(?<owner>${OWNER})\\/(?<repo>${REPO})\\/(?:(?:issues|pull|discussions)\\/(?<issue>\\d+)|commit\\/(?<commit>${SHA}))`;
+// `orgs/` and `enterprises/` paths hold discussions that belong to no repository.
+const GITHUB_URL_BODY = `https?:\\/\\/(?:www\\.)?github\\.com\\/(?!(?:orgs|enterprises)\\/)(?<owner>${OWNER})\\/(?<repo>${REPO})\\/(?:(?:issues|pull|discussions)\\/(?<issue>\\d+)|commit\\/(?<commit>${SHA}))`;
 // A whole bare URL, with sentence punctuation after it.
 const GITHUB_URL_PATTERN = new RegExp(
   `^${GITHUB_URL_BODY}(?<trailing>[).,;:!?]*)$`,
