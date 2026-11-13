@@ -748,7 +748,7 @@ async function executeAgentRunInPrivacyContext(
     // A new Turn runs the calls that their approver approved since the last
     // one. A resumed Turn gets them with its steering messages instead.
     if (!resumedFromSessionRecord) {
-      for (const text of await wiring.runApprovedToolCalls()) {
+      for (const text of await wiring.runApprovedToolCalls({ replay: true })) {
         contextContentParts.push({ type: "text", text });
       }
     }
@@ -979,7 +979,7 @@ async function executeAgentRunInPrivacyContext(
         await durability.drainSteeringMessages(async (drained) => {
           // An approval answer can arrive while the asking Turn still runs.
           const approvedResults = drained.length
-            ? await wiring.runApprovedToolCalls()
+            ? await wiring.runApprovedToolCalls({ replay: false })
             : [];
           const messages = [
             ...drained,

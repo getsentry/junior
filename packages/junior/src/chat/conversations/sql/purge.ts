@@ -11,7 +11,6 @@ import {
   juniorAgentBindings,
   juniorAgentInvocations,
   juniorReviewItems,
-  juniorToolApprovals,
 } from "@/db/schema";
 import { touchConversationDetail } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
@@ -324,11 +323,6 @@ export async function purgeConversationTree(
             nowMs: args.nowMs,
             reason: "Conversation purged",
           });
-          // A stored call holds content from its Conversation.
-          await executor
-            .db()
-            .delete(juniorToolApprovals)
-            .where(inArray(juniorToolApprovals.conversationId, ids));
           await requestAttachmentDeletion(executor, ids, args.nowMs);
           const scrubMetadata = args.retention
             ? !isPublic

@@ -135,9 +135,10 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Permission**: what core does with a tool call: `allow` (run), `review`
   (Guardian decides), `ask` (the person approves each call), or `deny`.
   `auto` derives one from the tool's annotations. Not "approval mode".
-- **Tool approval**: one stored `ask` call and the Review item that asks its
-  person. Only that person's Approve answer runs it, once, in a Run with the
-  same Actor and credentials. Not "confirmation".
+- **Tool approval**: one `ask` call stored in the Conversation event log, and
+  the Review item that asks its person. Only that person's Approve answer
+  runs it, once, in a Run with the same Actor and credentials. Not
+  "confirmation".
 
 ## Naming
 

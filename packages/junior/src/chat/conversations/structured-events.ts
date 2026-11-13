@@ -5,6 +5,8 @@ import {
   type PluginConversationEventDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { actorSchema, destinationSchema } from "@sentry/junior-plugin-api";
+import { credentialContextSchema } from "@/chat/credentials/context";
 
 /** Reserved namespace for Junior-owned conversation metadata events. */
 export const JUNIOR_NATIVE_EVENT_NAMESPACE = "junior" as const;
@@ -173,11 +175,98 @@ export const conversationNoteEvent = defineConversationEvent({
   },
 });
 
+/** Longest stored result text of an approved tool call. */
+export const MAX_TOOL_APPROVAL_RESULT_CHARS = 8_000;
+
+/**
+ * Core stored one `ask` tool call for the person's approval: the exact call
+ * and the context of the Run that made it. Its key is the tool call id.
+ * `tool-approvals/log.ts` owns these events.
+ */
+export const toolApprovalRequestedSchema = z
+  .object({
+    actor: actorSchema,
+    approverUserId: z.string().min(1),
+    credentialContext: credentialContextSchema.optional(),
+    destination: destinationSchema,
+    input: z.record(z.string(), z.unknown()),
+    reviewItemId: z.string().min(1),
+    toolCallId: z.string().min(1),
+    toolName: z.string().min(1),
+  })
+  .strict();
+
+export const toolApprovalRequestedEvent = defineConversationEvent({
+  name: "tool_approval_requested",
+  version: 1,
+  schema: toolApprovalRequestedSchema,
+  renderEvent(event) {
+    return {
+      icon: "key",
+      title: `Asked for approval to run ${event.toolName}`,
+      details: [
+        {
+          title: event.toolName,
+          content: JSON.stringify(event.input, null, 2),
+        },
+      ],
+    };
+  },
+});
+
+/**
+ * One Turn claimed an approved call to run it. Only the first claim of a
+ * call is stored, so the call runs at most once.
+ */
+export const toolApprovalRunStartedSchema = z
+  .object({ toolCallId: z.string().min(1) })
+  .strict();
+
+export const toolApprovalRunStartedEvent = defineConversationEvent({
+  name: "tool_approval_run_started",
+  version: 1,
+  schema: toolApprovalRunStartedSchema,
+  renderEvent() {
+    return undefined;
+  },
+});
+
+/** The end of one stored call: it ran, it failed, or it never runs. */
+export const toolApprovalFinishedSchema = z
+  .object({
+    result: z.string().min(1).max(MAX_TOOL_APPROVAL_RESULT_CHARS).optional(),
+    status: z.enum(["completed", "failed", "declined"]),
+    toolCallId: z.string().min(1),
+  })
+  .strict();
+
+export const toolApprovalFinishedEvent = defineConversationEvent({
+  name: "tool_approval_finished",
+  version: 1,
+  schema: toolApprovalFinishedSchema,
+  renderEvent(event) {
+    const preview = event.result?.trim().slice(0, 200);
+    return {
+      icon: event.status === "completed" ? "check" : "warning",
+      title:
+        event.status === "declined"
+          ? "Approval declined. The call did not run"
+          : event.status === "completed"
+            ? "Ran the approved call"
+            : "The approved call failed",
+      ...(preview ? { preview } : undefined),
+    };
+  },
+});
+
 const NATIVE_EVENT_DEFINITIONS: readonly PluginConversationEventDefinition[] = [
   authenticationLinkedEvent,
   authenticationUnlinkedEvent,
   agentsInstructionsUpdatedEvent,
   conversationNoteEvent,
+  toolApprovalRequestedEvent,
+  toolApprovalRunStartedEvent,
+  toolApprovalFinishedEvent,
 ];
 
 /** Resolve a registered Junior-native conversation event definition. */

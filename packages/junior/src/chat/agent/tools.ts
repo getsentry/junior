@@ -322,9 +322,10 @@ export interface ToolWiring {
   pluginHooks: PluginHookRunner;
   /**
    * Run each call that its approver approved and that this Run may run.
-   * Return one rendered result input for each call that ran.
+   * Return one rendered result input for each call that ran. `replay` is
+   * true at the start of a Turn that is not resumed.
    */
-  runApprovedToolCalls(): Promise<string[]>;
+  runApprovedToolCalls(options: { replay: boolean }): Promise<string[]>;
   /** Project core-owned review state into one durable Pi tool result. */
   projectActionReviewResult<
     TResult extends { details?: unknown; isError?: boolean },
@@ -722,9 +723,10 @@ export async function wireAgentTools(
   return {
     activeMcpCatalogs,
     agentTools,
-    async runApprovedToolCalls() {
+    async runApprovedToolCalls({ replay }) {
       return await runApprovedToolCalls({
         pipeline: approvedCalls,
+        replay,
         run: approvalRun,
         tools: tools as Record<string, AnyToolDefinition>,
       });

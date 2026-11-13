@@ -5,7 +5,7 @@
 import type { Hono } from "hono";
 import { getDb } from "@/chat/db";
 import { getReviewItem } from "@/chat/review-items/store";
-import { listOpenToolApprovals } from "@/chat/tool-approvals/store";
+import { listToolApprovals } from "@/chat/tool-approvals/log";
 import type { JuniorApiEnv } from "@/api/route";
 import { actOnReviewItem } from "./dashboard-requests";
 import type { ReviewItemActionInput } from "./inputs";
@@ -30,14 +30,17 @@ export async function actOnWebReviewItem(
 
 /**
  * The open Tool approvals of one Conversation: the calls that core stored
- * and asked the person to approve on a Review item, with that item's state.
+ * in its event log and that have not ended, with their item's state.
  */
 export async function openToolApprovals(conversationId: string) {
   const db = getDb();
+  const open = (await listToolApprovals(conversationId)).filter(
+    (approval) => !approval.end,
+  );
   return await Promise.all(
-    (await listOpenToolApprovals(db, conversationId)).map(async (approval) => ({
+    open.map(async (approval) => ({
       itemStatus: (await getReviewItem(db, approval.reviewItemId))?.status,
-      status: approval.status,
+      status: approval.claimTurnId ? "running" : "pending",
       toolName: approval.toolName,
     })),
   );
