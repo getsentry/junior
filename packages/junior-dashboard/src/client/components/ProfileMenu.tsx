@@ -15,6 +15,7 @@ import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
 import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
 import { navItemIcon } from "./layout/navIcons";
+import { LinkModeSwitcher } from "./LinkModeSwitcher";
 import { NavLayoutSwitcher } from "./NavLayoutSwitcher";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
@@ -288,6 +289,7 @@ export function ProfileMenu({
           Log out
         </button>
         <ThemeSwitcher className="px-3 py-2" />
+        <LinkModeSwitcher className="px-3 py-2" />
       </nav>
     );
   }
@@ -413,6 +415,7 @@ export function ProfileMenu({
         <div className="grid gap-1 px-2 py-1.5">
           <ThemeSwitcher menu />
           <NavLayoutSwitcher menu />
+          <LinkModeSwitcher menu />
         </div>
         <DropdownMenuSeparator />
         {menuLinks}

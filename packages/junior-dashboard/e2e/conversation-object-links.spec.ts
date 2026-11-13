@@ -594,3 +594,68 @@ test("a hover card opens only after a short delay", async ({
   await page.clock.runFor(200);
   await expect(card).toBeVisible();
 });
+
+test("plain links show every link as text, and the choice survives a reload", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  await waitForResolvedLinks(page);
+  const card = page.getByRole("region", {
+    name: "Pull request: Pin the release train to payments 4.2",
+  });
+  const mention = linksParagraph(page).locator("[data-self-mention]");
+  // Rich links are the default.
+  await expect(card).toBeVisible();
+  await expect(mention.locator("img")).toHaveCount(1);
+
+  await page.getByRole("button", { name: /^Open profile menu for/ }).click();
+  await page
+    .locator("#profile-popover")
+    .getByRole("group", { name: "Links" })
+    .getByRole("menuitemradio", { name: "Plain links" })
+    .click();
+  await page.keyboard.press("Escape");
+
+  for (const reload of [false, true]) {
+    if (reload) {
+      await page.reload();
+      await waitForResolvedLinks(page);
+    }
+    // The URL alone on its line is now a titled link, not a card, and no
+    // standalone link shows a card or a thumbnail.
+    await expect(card).toHaveCount(0);
+    await expect(
+      page
+        .getByRole("link", {
+          name: "Pin the release train to payments 4.2 (#91)",
+        })
+        .first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: /^(Web page|Message): / }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: "Junior 4.2 launch demo" }).locator("img"),
+    ).toHaveCount(0);
+    // The viewer's own mention keeps its highlight, with no photo.
+    await expect(mention).toHaveCount(1);
+    await expect(
+      mention.getByRole("link", { name: "@Morgan Lee" }),
+    ).toBeVisible();
+    await expect(mention.locator("img")).toHaveCount(0);
+  }
+
+  // Hover cards still open.
+  await page
+    .getByRole("link", { name: "Investigate checkout latency", exact: true })
+    .hover();
+  await expect(
+    page.getByRole("region", {
+      name: "Conversation: Investigate checkout latency",
+    }),
+  ).toBeVisible();
+});

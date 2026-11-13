@@ -17,6 +17,7 @@ import {
   useTranscriptSearch,
 } from "../conversations/transcriptSearch";
 import { cn } from "../styles";
+import { usePlainLinks } from "./linkMode";
 import { ANCHOR_CLASS, safeHref, slackLinksToMarkdown } from "./links";
 import { objectUrlKey } from "./knownObjects";
 import { renderTextTokens } from "./mentions";
@@ -50,10 +51,11 @@ import {
  * hover. Other links ask the API for a card when they scroll into view or
  * the reader hovers them, and stay plain links until a card arrives.
  * Outside document mode, a bare URL in running text shows as a plain link
- * with the object title, or a chip for a person. The first bare URL alone in
- * a top-level paragraph shows the full card, or only the thumbnail of a
- * video or image page. `shownCardUrls` lists the `objectUrlKey` of cards that
- * earlier text of the same message already shows.
+ * with the object title, or a mention for a person. The first bare URL alone
+ * in a top-level paragraph shows the full card, or only the thumbnail of a
+ * video or image page, unless the browser chose plain links. `shownCardUrls`
+ * lists the `objectUrlKey` of cards that earlier text of the same message
+ * already shows.
  */
 export function MarkdownText(props: {
   chat?: boolean;
@@ -413,10 +415,12 @@ function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
   const objectUrl =
     typeof props.objectUrl === "string" ? props.objectUrl : undefined;
   const known = useKnownObject(objectUrl);
-  if (objectUrl && known.card && !known.linkOnly) {
+  // Plain links show a URL alone on its line as titled link text too.
+  const plain = usePlainLinks();
+  if (objectUrl && !plain && known.card && !known.linkOnly) {
     return <StandaloneObject card={known.card} href={objectUrl} />;
   }
-  if (objectUrl && resolvableUrl(objectUrl)) {
+  if (objectUrl && !plain && resolvableUrl(objectUrl)) {
     return (
       <ResolvedParagraph objectUrl={objectUrl} saved={known.card}>
         {props.children}

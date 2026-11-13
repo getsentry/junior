@@ -9,6 +9,7 @@ import { MarkdownText } from "./markdown";
 import { MentionPeopleProvider } from "./mentions";
 import { MessageObjectsProvider } from "./resolvedObjects";
 
+export { useLinkModeChoice, type LinkMode } from "./linkMode";
 export { KnownObjectsProvider, useTextShowsObjectCard } from "./ObjectLinks";
 export { MessageObjectsProvider, useResolvedObject } from "./resolvedObjects";
 

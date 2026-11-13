@@ -2,11 +2,12 @@ import { useState, type ReactNode } from "react";
 
 import { useDashboardCoreData } from "../api";
 import { cn } from "../styles";
+import { usePlainLinks } from "./linkMode";
 
 /**
  * Show one person in running text the way GitHub shows a mention: a small
  * round photo at text height, then the name. A mention of the viewer gets a
- * subtle highlight and `data-self-mention`.
+ * subtle highlight and `data-self-mention`. Plain links show no photo.
  */
 export function PersonMention(props: {
   avatarUrl?: string;
@@ -14,10 +15,11 @@ export function PersonMention(props: {
   email?: string;
 }) {
   const viewer = useDashboardCoreData().data?.me.user.email;
+  const avatarUrl = usePlainLinks() ? undefined : props.avatarUrl;
   const self = Boolean(
     viewer && props.email?.toLowerCase() === viewer.toLowerCase(),
   );
-  if (!self && !props.avatarUrl) return props.children;
+  if (!self && !avatarUrl) return props.children;
   return (
     <span
       className={cn(
@@ -26,7 +28,7 @@ export function PersonMention(props: {
       )}
       data-self-mention={self ? "" : undefined}
     >
-      {props.avatarUrl ? <PersonAvatar src={props.avatarUrl} /> : null}
+      {avatarUrl ? <PersonAvatar src={avatarUrl} /> : null}
       {props.children}
     </span>
   );
