@@ -515,9 +515,12 @@ defineJuniorPlugin({
 - **Resolver.** Return `undefined` when `ctx.viewer` cannot read the
   object. Do not show that it exists. `ctx.egress` calls your provider as a
   system Actor. It gets only credentials that your plugin owns, never the
-  viewer's, so check the viewer's access before you return a card. Junior
-  caches the card for one minute for each viewer and URL, and does not save
-  it on a Conversation.
+  viewer's, so check the viewer's access before you return a card.
+  `ctx.viewerEgress` uses only the viewer's own stored OAuth token for your
+  provider. It never asks the viewer to connect. A viewer without a token
+  gets HTTP 401. Use it to ask the provider whether the viewer can read the
+  object. Junior caches the card for one minute for each viewer and URL,
+  and does not save it on a Conversation.
 - **Facts and icon.** Return the facts of `objectType`. Each object type has
   its label, icon, and tones in `@sentry/junior-plugin-api`. To add an object
   type, add it to `objectTypeSchema`, its facts to `object-facts.ts`, and an
