@@ -1,11 +1,15 @@
+import type { SlackAdapter } from "@chat-adapter/slack";
 import type { StateAdapter } from "chat";
 import { getConversationStore } from "@/chat/db";
+import { logException } from "@/chat/logging";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   CONVERSATION_QUEUE_SCHEMA_VERSION,
   type ConversationWorkQueue,
 } from "./queue";
 import * as workState from "./state";
+
+export type { BeforeWorkStops, RenderInboundText } from "./state";
 export {
   CONVERSATION_ACTIVE_INDEX_KEY,
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
@@ -15,6 +19,7 @@ export {
   CONVERSATION_WORK_MAX_RETRIES,
   CONVERSATION_WORK_STALE_ENQUEUE_MS,
   countPendingConversationMessages,
+  deferConversationMove,
   hasConversationStop,
   hasRunnableConversationWork,
   isFinalAttempt,
@@ -27,7 +32,7 @@ export {
   type AppendAndEnqueueInboundMessageResult,
   type AppendInboundMessageResult,
   type CompleteConversationStopResult,
-  type Conversation,
+  type ConversationExecutionState,
   type ConversationExecution,
   type ConversationStop,
   type ConversationWorkLease,
@@ -48,7 +53,7 @@ import type {
   AppendAndEnqueueExclusiveInboundMessageResult,
   AppendAndEnqueueInboundMessageResult,
   AppendExclusiveInboundMessageResult,
-  Conversation,
+  ConversationExecutionState,
   InboundMessage,
 } from "@/chat/task-execution/state";
 import {
@@ -82,7 +87,7 @@ function duplicateInboundNudgeIdempotencyKey(
 }
 
 function hasRecentEnqueueMarker(
-  conversation: Conversation,
+  conversation: ConversationExecutionState,
   nowMs: number,
 ): boolean {
   const lastEnqueuedAtMs = conversation.execution.lastEnqueuedAtMs;
@@ -145,8 +150,16 @@ export async function getConversationWorkState(args: {
   return await workState.getConversationWorkState(args);
 }
 
+/** Return the persisted work records of several Conversations in one read. */
+export async function getConversationWorkStates(
+  conversationIds: readonly string[],
+) {
+  return await workState.getConversationWorkStates(conversationIds);
+}
+
 /** Count one failed conversation execution and persist its terminal retry state. */
 export async function recordConversationRetry(args: {
+  beforeWorkStops?: workState.BeforeWorkStops;
   conversationId: string;
   conversationStore?: ConversationStore;
   leaseToken: string;
@@ -342,6 +355,8 @@ export async function appendAndEnqueueInboundMessage(args: {
   nowMs?: number;
   queue: ConversationWorkQueue;
   queueDelayMs?: number;
+  /** Render the message text under the mailbox lock. */
+  renderText?: workState.RenderInboundText;
   replaceExistingWake?: true;
   state?: StateAdapter;
 }): Promise<AppendAndEnqueueInboundMessageResult> {
@@ -351,6 +366,7 @@ export async function appendAndEnqueueInboundMessage(args: {
     appendResult: await workState.appendInboundMessage({
       message: args.message,
       nowMs,
+      renderText: args.renderText,
       state: args.state,
     }),
     nowMs,
@@ -545,6 +561,21 @@ export async function cancelHumanFacingPendingMessages(args: {
   return result;
 }
 
+/** Drop pending mailbox rows by id without requiring a worker lease. */
+export async function dropPendingMessages(args: {
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const dropped = await workState.dropPendingMessages(args);
+  if (dropped.length > 0) {
+    await recordExecutionMetadata(args);
+  }
+  return dropped;
+}
+
 /** Mark one author's queued web messages as interrupts. */
 export async function steerWebPendingMessages(args: {
   authorIds: readonly string[];
@@ -605,6 +636,8 @@ export async function completeConversationWork(args: {
   leaseToken: string;
   madeProgress?: boolean;
   conversationStore?: ConversationStore;
+  /** Slack installation lookup for a move that waited for this Run. */
+  getSlackAdapter?: () => SlackAdapter;
   nowMs?: number;
   /** Keep a raced stop runnable after a stop-aware adapter returns. */
   resumeIfStopped?: boolean;
@@ -612,7 +645,31 @@ export async function completeConversationWork(args: {
 }) {
   const result = await workState.completeConversationWork(args);
   await recordExecutionMetadata(args);
+  if (result !== "lost_lease") await runDeferredMove(args);
   return result;
+}
+
+/**
+ * Run the Slack "Continue here" click that waited for this Run to end. Its
+ * failure is logged here, so it never fails the Run that already finished.
+ */
+async function runDeferredMove(args: {
+  conversationId: string;
+  getSlackAdapter?: () => SlackAdapter;
+  state?: StateAdapter;
+}): Promise<void> {
+  const move = await workState.takeDeferredConversationMove(args);
+  if (move === undefined) return;
+  try {
+    // Load on first use: the Slack move imports this module.
+    const { continueDeferredSlackClick } =
+      await import("@/chat/ingress/slack-conversation-unfurl");
+    await continueDeferredSlackClick(move, args.getSlackAdapter);
+  } catch (error) {
+    logException(error, "slack.continue_here.deferred.failed", {
+      "gen_ai.conversation.id": args.conversationId,
+    });
+  }
 }
 
 /** Record one failed delivery attempt and dead-letter messages at their limit. */
@@ -646,10 +703,7 @@ export async function deadLetterAttempt(args: {
 
 /** Recover an expired lease and persist the resulting retry state. */
 export async function clearExpiredConversationLease(args: {
-  beforeWorkStops?: (
-    conversationId: string,
-    inboundMessageIds: readonly string[],
-  ) => Promise<void>;
+  beforeWorkStops?: workState.BeforeWorkStops;
   conversationId: string;
   conversationStore?: ConversationStore;
   nowMs?: number;

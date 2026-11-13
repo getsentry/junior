@@ -75,9 +75,11 @@ export const juniorReviewItems = pgTable(
     updatedAt: timestamptz("updated_at").notNull(),
   },
   (table) => [
+    // An agent's action asks a question. A plugin's action asks for a step
+    // outside Junior, such as a merge, and the plugin closes it.
     check(
       "junior_review_items_kind_check",
-      sql`(${table.kind} = 'notice' and ${table.request} is null and ${table.answer} is null) or (${table.kind} = 'action' and ${table.request} is not null)`,
+      sql`(${table.kind} = 'notice' and ${table.request} is null and ${table.answer} is null) or (${table.kind} = 'action' and (${table.request} is not null or (${table.dedupeKey} like 'plugin:%' and ${table.answer} is null)))`,
     ),
     check(
       "junior_review_items_status_check",

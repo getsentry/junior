@@ -9,7 +9,8 @@ import { getChannelId, getMessageTs } from "@/chat/runtime/thread-context";
 import type { TurnToolInvocation } from "@/chat/runtime/turn-input";
 import { getChatConfig } from "@/chat/config";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
-import { logException } from "@/chat/logging";
+import { logException, logWarn } from "@/chat/logging";
+import { isSlackRequestTimeout, SlackActionError } from "@/chat/slack/client";
 
 /** Controls the automatic Slack processing reaction lifecycle for one message. */
 export interface ProcessingReaction {
@@ -30,6 +31,29 @@ function isProcessingReactionEmoji(value: unknown): boolean {
     normalizeSlackEmojiName(value) ===
       getChatConfig().slack.processingReactionEmoji
   );
+}
+
+// The processing reaction is best-effort UI. A deleted message or the
+// deliberately short ingress deadline is not actionable, so log a warning;
+// capture every other Slack failure.
+function logProcessingReactionFailure(
+  error: unknown,
+  eventName: string,
+  attributes: Record<string, string>,
+): void {
+  const logAttributes = {
+    ...attributes,
+    ...getSlackErrorObservabilityAttributes(error),
+  };
+  if (
+    (error instanceof SlackActionError &&
+      error.apiError === "message_not_found") ||
+    isSlackRequestTimeout(error)
+  ) {
+    logWarn(eventName, logAttributes);
+    return;
+  }
+  logException(error, eventName, logAttributes);
 }
 
 /** Return true when a Slack reaction tool invocation keeps the processing reaction. */
@@ -79,11 +103,14 @@ export async function startProcessingReactionForMessage(args: {
       timeoutMs: args.timeoutMs,
     });
   } catch (error) {
-    logException(error, "slack.processing.reaction_add.failed", {
-      "app.slack.action": "reactions.add",
-      "messaging.message.id": args.timestamp,
-      ...getSlackErrorObservabilityAttributes(error),
-    });
+    logProcessingReactionFailure(
+      error,
+      "slack.processing.reaction_add.failed",
+      {
+        "app.slack.action": "reactions.add",
+        "messaging.message.id": args.timestamp,
+      },
+    );
     return noProcessingReaction;
   }
 
@@ -101,11 +128,14 @@ export async function startProcessingReactionForMessage(args: {
       });
       return true;
     } catch (error) {
-      logException(error, "slack.processing.reaction_remove.failed", {
-        "app.slack.action": "reactions.remove",
-        "messaging.message.id": args.timestamp,
-        ...getSlackErrorObservabilityAttributes(error),
-      });
+      logProcessingReactionFailure(
+        error,
+        "slack.processing.reaction_remove.failed",
+        {
+          "app.slack.action": "reactions.remove",
+          "messaging.message.id": args.timestamp,
+        },
+      );
       return false;
     }
   };
@@ -130,11 +160,14 @@ export async function startProcessingReactionForMessage(args: {
           emoji: getChatConfig().slack.completedReactionEmoji,
         });
       } catch (error) {
-        logException(error, "slack.processing.reaction_complete.failed", {
-          "app.slack.action": "reactions.add",
-          "messaging.message.id": args.timestamp,
-          ...getSlackErrorObservabilityAttributes(error),
-        });
+        logProcessingReactionFailure(
+          error,
+          "slack.processing.reaction_complete.failed",
+          {
+            "app.slack.action": "reactions.add",
+            "messaging.message.id": args.timestamp,
+          },
+        );
       }
     },
     keep: () => {

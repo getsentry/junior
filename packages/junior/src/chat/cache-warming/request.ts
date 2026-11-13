@@ -28,12 +28,16 @@ export const CACHE_RETENTION: CacheRetention = "short";
 const REFRESHED_READ_FRACTION = 0.9;
 // A miss ends only its own warming. When many recent warmups of one provider
 // miss, its warmup request or cache is likely broken, so warming of that
-// provider stops for every Conversation for a day. Only a miss reads the outcomes. Every other warmup
-// reads only the open key.
+// provider stops for every Conversation for a while. Only a miss reads the
+// outcomes. Every other warmup reads only the open key.
 const BREAKER_OUTCOMES_MAX = 20;
 const BREAKER_MAX_MISSES = 10;
 const BREAKER_OUTCOMES_TTL_MS = 6 * 60 * MINUTE_MS;
-const BREAKER_OPEN_TTL_MS = 24 * 60 * MINUTE_MS;
+// Providers sometimes drop cached prefixes for a few minutes, which trips the
+// breaker without a broken request. A short pause keeps such a burst from
+// stopping warming for long. Opening clears the outcomes, so a provider that
+// stays broken must miss again to reopen it.
+const BREAKER_OPEN_TTL_MS = 30 * MINUTE_MS;
 
 // The breaker is per provider, so a provider whose cache behaves differently
 // than its TTL says cannot stop warming for the others.
@@ -185,6 +189,7 @@ async function countOutcome(
       BREAKER_OPEN_TTL_MS,
     ))
   ) {
+    await state.delete(breakerOutcomesKey(provider));
     captureMessage("Cache warming stopped: too many warmups missed the cache", {
       level: "error",
       fingerprint: ["cache_warming.breaker.opened", provider],

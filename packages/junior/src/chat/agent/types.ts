@@ -70,13 +70,15 @@ export type AgentSteeringMessage = {
   text: string;
   timestampMs?: number;
   attachments?: AgentAttachment[];
-  /** Stored images that the agent runner loads into `attachments`. */
+  /** Stored files that the agent runner loads into `attachments`. */
   storedAttachments?: readonly MessageAttachment[];
 };
 
 /** Model-safe input for one asynchronously delegated child-agent task. */
 export type SpawnAgentInput = {
   agentType?: AgentType;
+  /** The child starts with the parent's history. */
+  fork?: boolean;
   /** Omitted means a Task. */
   kind?: ChildAgentKind;
   name?: string;
@@ -155,7 +157,7 @@ export type AgentInstruction = {
    */
   provenance?: ConversationMessageProvenance;
   attachments?: readonly AgentAttachment[];
-  /** Durable web image references, resolved by the host before execution. */
+  /** Durable web file references, resolved by the host before execution. */
   storedAttachments?: readonly MessageAttachment[];
   inboundAttachmentCount?: number;
   omittedImageAttachmentCount?: number;
@@ -179,8 +181,8 @@ export type AgentDispatch = {
    */
   skill?: string;
   /**
-   * The run ends with one declared Automation result. It gets no Delivery,
-   * and only a declared message posts. The dispatch layer sets this once.
+   * The run is an Automation run. It gets no Delivery, and only the text of
+   * its `reply` call posts. The dispatch layer sets this once.
    */
   declaresResult?: boolean;
 };
@@ -228,6 +230,11 @@ export type AgentDurability = {
    * Lease. The run checks it before each saved step and each reply.
    */
   checkIn?: () => Promise<boolean>;
+  /**
+   * Read the stored stop of the Conversation and abort the Run's signal when
+   * it stopped. The run calls it before each later model step.
+   */
+  checkStop?: () => Promise<void>;
   drainSteeringMessages?: (
     accept: (messages: AgentSteeringMessage[]) => Promise<void>,
   ) => Promise<AgentSteeringMessage[]>;

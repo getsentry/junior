@@ -134,7 +134,9 @@ export function AutomationPage(props: {
               summary.error.status === 404
                 ? "This automation was not found or is not visible to you."
                 : "Try again."}{" "}
-              <Button onClick={() => void summary.refetch()}>Try again</Button>
+              <Button variant="outline" onClick={() => void summary.refetch()}>
+                Try again
+              </Button>
             </FormNotice>
           ) : (
             <PageContentSkeleton label="Loading automation" variant="list" />
@@ -189,8 +191,8 @@ function AutomationPageContent(props: {
                 editPath={editPath}
                 editVariant={
                   tab === "overview" && automationNeedsAttention(automation)
-                    ? "default"
-                    : "primary"
+                    ? "outline"
+                    : "default"
                 }
                 onDelete={(source) => {
                   deleteSource.current = source;
@@ -268,7 +270,9 @@ function AutomationEditMode(props: { automation: AutomationSummary }) {
     return (
       <FormNotice tone="error" title="Automation could not be loaded.">
         It may no longer be available, or you may not have access.{" "}
-        <Button onClick={() => void edit.refetch()}>Try again</Button>
+        <Button variant="outline" onClick={() => void edit.refetch()}>
+          Try again
+        </Button>
       </FormNotice>
     );
   }

@@ -3,6 +3,7 @@ import type {
   AutomationSummary,
   AutomationTask,
 } from "@sentry/junior/api/schema";
+import { skillLabel } from "../../components/SkillLink";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/layout/Card";
 import { cn } from "../../styles";
@@ -70,6 +71,7 @@ export function AutomationDraftChanges(props: {
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-medium">{changeLabel(key)}</span>
                   <Button
+                    variant="outline"
                     aria-label={`Undo ${changeLabel(key).toLowerCase()} change`}
                     disabled={props.disabled}
                     onClick={() => props.onUndo(key)}
@@ -118,7 +120,7 @@ function taskChangeLabel(saved: AutomationTask, next: AutomationTask): string {
 
 function taskLabel(task: AutomationTask): string {
   if (task.kind === "instruction") return task.instruction || "Empty";
-  const skill = task.skill || "No skill chosen";
+  const skill = task.skill ? skillLabel(task.skill) : "No skill chosen";
   return task.context ? `${skill} · ${task.context}` : skill;
 }
 

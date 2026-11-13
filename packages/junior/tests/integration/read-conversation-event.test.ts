@@ -22,7 +22,6 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 const CURRENT_CONVERSATION_ID = "slack:C123:1700000000.100000";
@@ -86,6 +85,7 @@ async function runScript(source: string) {
   const { scriptTools } = planToolExposure(createTools([], {}, context()));
   const result = await runCodeModeScript({
     countToolCall: resume.countToolCall,
+    modelOnlyTools: [],
     pipeline: createToolPipeline({
       actionReview,
       catalogTools: {},

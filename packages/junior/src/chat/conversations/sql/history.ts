@@ -29,6 +29,7 @@ import {
   type NewConversationEvent,
 } from "../history";
 import { ensureConversationRow } from "./conversation-row";
+import { refreshLastMessageAt } from "./last-message";
 import {
   resolveEventActorIdentityId,
   stripPayloadAuthorIdentityId,
@@ -263,6 +264,15 @@ class SqlConversationEventStore implements ConversationEventStore {
           .with(conversationDetailTouch(db, [conversationId]))
           .insert(juniorConversationEvents)
           .values(rows);
+        if (
+          pending.some(
+            (event) =>
+              event.data.type === "message" ||
+              event.data.type === "user_message",
+          )
+        ) {
+          await refreshLastMessageAt(this.executor, conversationId);
+        }
         for (const event of pending) {
           if (event.data.type === "turn_started") {
             await this.recordTurnInputParticipants(

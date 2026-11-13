@@ -1,6 +1,7 @@
 import webPush, { WebPushError } from "web-push";
 import type { JuniorDatabase } from "@/db/db";
 import { logInfo, logWarn, setSpanStatus, withSpan } from "@/chat/logging";
+import { readWebPushPrivateKey } from "@/chat/secrets";
 import {
   deletePushSubscriptionsById,
   listPushSubscriptions,
@@ -31,12 +32,14 @@ const PUSH_TIMEOUT_MS = 10_000;
 function subjectFromBaseUrl(): string | undefined {
   const baseUrl = process.env.JUNIOR_BASE_URL?.trim();
   if (!baseUrl) return undefined;
-  return /^https?:\/\//.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
+  return baseUrl.startsWith("https://") || baseUrl.startsWith("http://")
+    ? baseUrl
+    : `https://${baseUrl}`;
 }
 
 /** Web Push accepts only an `https:` or `mailto:` VAPID subject. */
 function isVapidSubject(subject: string): boolean {
-  return /^(https:\/\/|mailto:)/.test(subject);
+  return subject.startsWith("https://") || subject.startsWith("mailto:");
 }
 
 /**
@@ -46,7 +49,7 @@ function isVapidSubject(subject: string): boolean {
  */
 export function readWebPushConfig(): WebPushConfig | undefined {
   const publicKey = process.env.JUNIOR_WEB_PUSH_PUBLIC_KEY?.trim();
-  const privateKey = process.env.JUNIOR_WEB_PUSH_PRIVATE_KEY?.trim();
+  const privateKey = readWebPushPrivateKey();
   if (!publicKey || !privateKey) return undefined;
   const subject =
     process.env.JUNIOR_WEB_PUSH_SUBJECT?.trim() || subjectFromBaseUrl();

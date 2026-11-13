@@ -18,7 +18,6 @@ import { signedInViewer } from "../../fixtures/user";
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 async function webFiles() {

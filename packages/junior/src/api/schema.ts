@@ -3,11 +3,14 @@ export {
   INPUT_IMAGE_TYPES,
 } from "../chat/attachments/media";
 export {
-  MAX_INPUT_IMAGES,
-  MAX_INPUT_IMAGE_BYTES,
+  MAX_INPUT_ATTACHMENTS,
+  MAX_ATTACHMENT_BYTES,
 } from "../chat/attachments/input";
-export type { InputImage, MessageAttachment } from "../chat/attachments/input";
-export { isAgentInvocationResultEventType } from "../chat/agent-invocations/result-event-type";
+export type { InputFile, MessageAttachment } from "../chat/attachments/input";
+export {
+  AGENT_REPLY_EVENT_TYPE,
+  isAgentInvocationResultEventType,
+} from "../chat/agent-invocations/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
   buttonUserInputField,
@@ -24,12 +27,28 @@ export type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 export type { AutomationCard } from "../chat/automations/card";
 export type { AutomationTask } from "../chat/automations/task";
 export {
+  annotationCard,
   messageCardText,
   resolveMessageCards,
 } from "../chat/conversations/cards";
 export type { MessageCard } from "../chat/conversations/cards";
-export { boardReportSchema } from "./schema/board";
-export type { BoardCard, BoardColumn, BoardReport } from "./schema/board";
+export {
+  conversationObjectCard,
+  messageObjectCard,
+  personObjectCard,
+  webPageObjectCard,
+} from "./objects/cards";
+export {
+  attachObjectLinkBodySchema,
+  attachObjectLinkResponseSchema,
+  MAX_OBJECT_LINKS,
+  objectLinksQuerySchema,
+  objectLinksReportSchema,
+} from "./schema/object-link";
+export type {
+  AttachObjectLinkResponse,
+  ObjectLinksReport,
+} from "./schema/object-link";
 export { dailyConversationActivitySchema } from "./activity";
 export { conversationChildAgentTotalsSchema } from "./schema/child-agent-totals";
 export type { ConversationChildAgentTotals } from "./schema/child-agent-totals";
@@ -65,7 +84,6 @@ export {
   conversationEventHistorySchema,
   conversationEventsQuerySchema,
   conversationFeedQuerySchema,
-  conversationFeedSchema,
   conversationParamsSchema,
   conversationActivityPreviewSchema,
   conversationReportEventDataSchema,
@@ -76,6 +94,14 @@ export {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export {
+  attachmentUploadSchema,
+  createAttachmentUploadBodySchema,
+} from "./schema/conversation-attachment-upload";
+export type {
+  AttachmentUpload,
+  CreateAttachmentUploadBody,
+} from "./schema/conversation-attachment-upload";
 export {
   cancelConversationPendingMessagesBodySchema,
   cancelConversationPendingMessagesResponseSchema,
@@ -88,6 +114,11 @@ export {
   conversationDetailWithMailboxReportSchema,
   conversationUnchangedDetailWithMailboxSchema,
 } from "./schema/conversation-pending-messages";
+export { conversationFeedSchema } from "./schema/conversation-feed";
+export type {
+  ConversationFeed,
+  ConversationFeedItem,
+} from "./schema/conversation-feed";
 export {
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
@@ -117,14 +148,8 @@ export type {
   ContinueConversationInSlackResponse,
 } from "./schema/conversation-continue-in-slack";
 export type { StopConversationTurnResponse } from "./schema/conversation-stop";
-export {
-  conversationReadPositionSchema,
-  conversationReadReportSchema,
-} from "./schema/conversation-read-position";
-export type {
-  ConversationReadPosition,
-  ConversationReadReport,
-} from "./schema/conversation-read-position";
+export { conversationReadPositionSchema } from "./schema/conversation-read-position";
+export type { ConversationReadPosition } from "./schema/conversation-read-position";
 export {
   conversationCatchUpBodySchema,
   conversationCatchUpSchema,
@@ -162,14 +187,6 @@ export type {
   ConversationSubscriptionResponse,
 } from "./schema/conversation-subscription";
 export {
-  conversationUnreadSchema,
-  markConversationUnreadBodySchema,
-} from "./schema/conversation-unread";
-export type {
-  ConversationUnread,
-  MarkConversationUnreadBody,
-} from "./schema/conversation-unread";
-export {
   CONVERSATION_OUTLINE_TEXT_LENGTH,
   conversationOutlineSchema,
 } from "./schema/conversation-outline";
@@ -193,8 +210,6 @@ export type {
   ConversationDetailReport,
   ConversationEventPage,
   ConversationEventHistory,
-  ConversationFeed,
-  ConversationFeedItem,
   ConversationReportEvent,
   ConversationReportEventData,
   ConversationReportMessageEvent,
@@ -378,6 +393,7 @@ export {
   pluginSchema,
   pluginsSchema,
   runtimeInfoReportSchema,
+  skillDetailReportSchema,
   skillReportSchema,
   skillReportsSchema,
 } from "../reporting-schema";
@@ -390,6 +406,7 @@ export type {
   Plugin,
   Plugins,
   RuntimeInfoReport,
+  SkillDetailReport,
   SkillReport,
   SkillReports,
 } from "../reporting-schema";

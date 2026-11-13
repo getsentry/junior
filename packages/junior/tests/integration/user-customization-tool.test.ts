@@ -33,7 +33,6 @@ function context(
     turnTools: turnBehavior({
       kind: "root",
       personInput: true,
-      automationRun: false,
     }).tools,
     ...overrides,
   } as ToolRuntimeContext;
@@ -72,7 +71,6 @@ describe("user customization tool", () => {
           turnTools: turnBehavior({
             kind: "task",
             personInput: false,
-            automationRun: false,
           }).tools,
         }),
       ),

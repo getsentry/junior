@@ -6,6 +6,10 @@ import { CopyButton } from "../components/CopyButton";
 import { parseMarkdownBlocks } from "./codeBlocks";
 import { MarkdownText } from "./markdown";
 import { MentionPeopleProvider } from "./mentions";
+import { MessageObjectsProvider } from "./resolvedObjects";
+
+export { KnownObjectsProvider, useTextShowsObjectCard } from "./ObjectLinks";
+export { MessageObjectsProvider, useResolvedObject } from "./resolvedObjects";
 
 const NO_MENTIONS: readonly ActorIdentity[] = [];
 
@@ -36,23 +40,25 @@ export const DisplayText = memo(function DisplayText(props: {
   text: string;
 }) {
   return (
-    <MentionPeopleProvider
-      links={props.links ?? true}
-      mentions={props.mentions ?? NO_MENTIONS}
-    >
-      {props.inline ? (
-        <MarkdownText inline text={props.text} />
-      ) : props.document ? (
-        // One tree, so reference links and footnotes resolve across fences.
-        <MarkdownText document text={props.text} />
-      ) : (
-        <DisplayTextBlocks
-          chat={props.chat}
-          compact={props.compact}
-          text={props.text}
-        />
-      )}
-    </MentionPeopleProvider>
+    <MessageObjectsProvider>
+      <MentionPeopleProvider
+        links={props.links ?? true}
+        mentions={props.mentions ?? NO_MENTIONS}
+      >
+        {props.inline ? (
+          <MarkdownText inline text={props.text} />
+        ) : props.document ? (
+          // One tree, so reference links and footnotes resolve across fences.
+          <MarkdownText document text={props.text} />
+        ) : (
+          <DisplayTextBlocks
+            chat={props.chat}
+            compact={props.compact}
+            text={props.text}
+          />
+        )}
+      </MentionPeopleProvider>
+    </MessageObjectsProvider>
   );
 });
 

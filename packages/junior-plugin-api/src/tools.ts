@@ -11,7 +11,6 @@ import type {
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
 import { objectAnnotationSchema } from "./object-annotations";
-import type { SlackConversationLink } from "./operations";
 import type { WatchResult, SubscribableResource } from "./events";
 import type { PluginState } from "./state";
 import * as z from "zod";
@@ -638,8 +637,6 @@ export interface SlackToolRegistrationHookContext {
     canCreateCanvas: boolean;
     canPostToChannel: boolean;
   };
-  /** Host-owned link to this conversation, preferring the dashboard when enabled. */
-  conversationLink?: SlackConversationLink;
   credentialSubject?: Extract<
     PluginCredentialSubject,
     { allowedWhen: "private-direct-conversation" }
@@ -686,6 +683,10 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   annotations?: PluginAnnotations;
   /** Host-owned dashboard link to the Automation that started this run. */
   automationLink?: { url: string };
+  /** Host-owned dashboard link to this conversation, when the dashboard is enabled. */
+  conversationLink?: { url: string };
+  /** Decision model for narrow choices, such as checks on text a tool writes. */
+  decider: PluginDecider;
   embedder: PluginEmbedder;
   egress: PluginEgress;
   mcp?: PluginMcp;
@@ -702,6 +703,13 @@ interface BaseToolRegistrationHookContext extends PluginContext {
      * Junior knows it, else the install default. Always returns a timezone.
      */
     resolveTimezone(): Promise<string>;
+    /**
+     * Rewrite Slack mention syntax in every string of `value`, such as a tool
+     * input that goes to `provider`. A Slack user becomes `@handle` of their
+     * linked `provider` account, or else their name. Markdown code stays as
+     * written. Call it before you send model text out.
+     */
+    replaceSlackMentions<T>(value: T, provider: string): Promise<T>;
   };
   userText?: string;
   workspaces: PluginWorkspaceToolContext;

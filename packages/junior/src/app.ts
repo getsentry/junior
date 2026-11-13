@@ -12,6 +12,7 @@ import {
   resetRuntimeConfig,
   restoreRuntimeConfig as restoreChatRuntimeConfig,
   setBotModelConfig,
+  setBotName,
   setRuntimeLimits,
   snapshotRuntimeConfig,
   type BotModelConfig,
@@ -43,6 +44,7 @@ import {
   validatePlugins,
 } from "@/chat/plugins/agent-hooks";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { readObjectLinkTypes } from "@/api/objects/resolve";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import {
   validatePluginEgressCredentialHooks,
@@ -179,6 +181,11 @@ export type {
 export type { JuniorDashboardOptions } from "./dashboard-routes";
 export interface JuniorAppOptions extends BotModelConfig {
   /**
+   * Name Junior uses for itself, such as its Slack bot username. Defaults to
+   * `JUNIOR_BOT_NAME`, then `junior`.
+   */
+  botName?: string;
+  /**
    * Generate a durable Brief after each completed Turn. This costs one
    * default-model call per completed Turn. Disabled by default.
    */
@@ -277,7 +284,9 @@ function resolvePublicBaseURL(
     process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
     process.env.VERCEL_URL?.trim();
   if (!vercelURL) return undefined;
-  return /^https?:\/\//.test(vercelURL) ? vercelURL : `https://${vercelURL}`;
+  return vercelURL.startsWith("https://") || vercelURL.startsWith("http://")
+    ? vercelURL
+    : `https://${vercelURL}`;
 }
 
 type JuniorVirtualDashboardOptions = JuniorDashboardOptions;
@@ -552,6 +561,7 @@ export async function createApp(
     // models, limits, or Slack settings.
     resetRuntimeConfig(virtualConfig?.functionMaxDurationSeconds);
     setBotModelConfig(options ?? {});
+    setBotName(options?.botName);
     setRuntimeLimits(options?.limits);
     setSlackReactionConfig(options?.slack ?? {});
     // One domain list for Slack authors and dashboard sign-ins.
@@ -583,6 +593,8 @@ export async function createApp(
     });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
+      // Fail at load when two link types claim the same URLs.
+      readObjectLinkTypes(plugins);
     }
   } catch (error) {
     restoreRuntimeConfig();

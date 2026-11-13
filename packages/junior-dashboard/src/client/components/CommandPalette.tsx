@@ -31,6 +31,7 @@ import {
   CommandItem,
   CommandList,
 } from "./ui/command";
+import { Kbd } from "./ui/kbd";
 
 const RECENT_LIMIT = 8;
 const MORE_LIMIT = 8;
@@ -154,9 +155,7 @@ function CommandPaletteBody(props: {
         spellCheck={false}
         value={query}
       >
-        <kbd className="shrink-0 rounded border border-dashboard-border px-1.5 py-0.5 font-sans text-xs text-dashboard-text-faint max-sm:hidden">
-          esc
-        </kbd>
+        <Kbd className="max-sm:hidden">esc</Kbd>
       </CommandInput>
       <CommandList ref={list}>
         <CommandEmpty>{searching ? "Searching…" : "No matches."}</CommandEmpty>

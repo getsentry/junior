@@ -1,11 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type {
-  ConversationDetailReport,
-  ConversationFeed,
-} from "@sentry/junior/api/schema";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import { pinConversationResponseSchema } from "@sentry/junior/api/schema";
 
 import { patch } from "../http";
+import {
+  mapConversationFeedCache,
+  type ConversationFeedCache,
+} from "./conversationFeedCache";
 import { conversationDetailQueryKey } from "./queries";
 
 type DetailCache = ConversationDetailReport & { detailEtag?: string };
@@ -28,16 +29,15 @@ export function usePinConversation(
     const viewerMarks = pinnedAt
       ? { archivedAt: null, pinnedAt, pinPosition: undefined }
       : { pinnedAt, pinPosition: undefined };
-    queryClient.setQueriesData<ConversationFeed>(feeds, (feed) =>
+    queryClient.setQueriesData<ConversationFeedCache>(feeds, (feed) =>
       feed
-        ? {
-            ...feed,
-            conversations: feed.conversations.map((conversation) =>
+        ? mapConversationFeedCache(feed, (conversations) =>
+            conversations.map((conversation) =>
               conversation.conversationId === conversationId
                 ? { ...conversation, ...viewerMarks }
                 : conversation,
             ),
-          }
+          )
         : feed,
     );
     // Clear the etag so the next read gets a full body, not a 304 that keeps
@@ -60,7 +60,7 @@ export function usePinConversation(
       ]);
       const previous = {
         detail: queryClient.getQueryData<DetailCache>(detailQueryKey),
-        feeds: queryClient.getQueriesData<ConversationFeed>(feeds),
+        feeds: queryClient.getQueriesData<ConversationFeedCache>(feeds),
       };
       setPinnedAt(pinned ? new Date().toISOString() : null);
       return previous;

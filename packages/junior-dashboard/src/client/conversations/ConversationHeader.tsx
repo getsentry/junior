@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Menu, PanelRight } from "lucide-react";
 import type { ConversationAgentTreeNode } from "@sentry/junior/api/schema";
 
-import { Button } from "../components/ui/button";
+import { DropdownMenuItem } from "../components/ui/dropdown-menu";
 import { cn } from "../styles";
 import {
   MobileHeaderActionsPortal,
@@ -15,6 +15,7 @@ import {
   TranscriptSearchToggle,
 } from "./ConversationHeaderActions";
 import type { ConversationMenu } from "./conversationMenuItems";
+import { ChildAgentTags } from "./ChildAgentTags";
 import { ConversationBreadcrumb } from "./ConversationBreadcrumb";
 import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
 import { TranscriptSearchBar } from "./TranscriptSearchBar";
@@ -99,10 +100,11 @@ export function ConversationHeader(props: {
     setSearchOpen(true);
   };
 
-  const menuActions = (placement: "desktop" | "mobile", close: () => void) => (
+  const menuActions = (placement: "desktop" | "mobile") => (
     <ConversationHeaderActions
-      close={close}
-      detailsOpen={detailsOpen}
+      // Desktop makes the whole control inert until the Conversation exists.
+      // Mobile turns off only these rows, so the app menu row stays usable.
+      disabled={placement === "mobile" && props.pending}
       menu={props.menu}
       onDetailsClick={props.onDetailsClick}
       onSearchClick={toggleSearch}
@@ -137,10 +139,15 @@ export function ConversationHeader(props: {
         </span>
       </>
     ) : (
-      <h2 className="m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight">
+      <h2
+        aria-current="page"
+        className="m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight"
+      >
         {props.title}
       </h2>
     );
+
+  const childAgentTags = <ChildAgentTags node={props.agentTree?.at(-1)} />;
 
   const showMobileHeader =
     searchOpenVisible ||
@@ -152,27 +159,13 @@ export function ConversationHeader(props: {
     <>
       <MobileHeaderActionsPortal>
         <ConversationOverflowMenu buttonRef={menuButtonRef}>
-          {(close) => (
-            <>
-              {/* App menu stays usable on mobile, like the sidebar toggle. */}
-              <div className="contents" inert={props.pending}>
-                {menuActions("mobile", close)}
-              </div>
-              {openMobileNavigation ? (
-                <Button
-                  className="mt-0.5"
-                  onClick={() => {
-                    close();
-                    openMobileNavigation();
-                  }}
-                  size="menu"
-                >
-                  <Menu aria-hidden="true" size={16} strokeWidth={2} />
-                  App menu
-                </Button>
-              ) : null}
-            </>
-          )}
+          {menuActions("mobile")}
+          {openMobileNavigation ? (
+            <DropdownMenuItem onClick={openMobileNavigation}>
+              <Menu aria-hidden="true" />
+              App menu
+            </DropdownMenuItem>
+          ) : null}
         </ConversationOverflowMenu>
       </MobileHeaderActionsPortal>
       {props.contextTags || props.linkedWork ? (
@@ -205,6 +198,7 @@ export function ConversationHeader(props: {
               title
             )}
             {props.status}
+            {childAgentTags}
             {props.privacy ? (
               <span className="shrink-0">{props.privacy}</span>
             ) : null}
@@ -232,7 +226,7 @@ export function ConversationHeader(props: {
               />
             )}
             <ConversationOverflowMenu>
-              {(close) => menuActions("desktop", close)}
+              {menuActions("desktop")}
             </ConversationOverflowMenu>
             {detailsOpen ? null : (
               <HeaderIconButton
@@ -252,7 +246,10 @@ export function ConversationHeader(props: {
         {props.agentTree ? (
           <div className="flex min-w-0 items-center justify-between gap-2 px-4 py-2 md:hidden">
             <ConversationBreadcrumb nodes={props.agentTree} />
-            {props.status}
+            <div className="flex shrink-0 items-center gap-1.5">
+              {props.status}
+              {childAgentTags}
+            </div>
           </div>
         ) : null}
         {props.forks ? (

@@ -1,3 +1,4 @@
+import type { SlackAdapter } from "@chat-adapter/slack";
 import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
@@ -8,14 +9,17 @@ import {
   setSpanAttributes,
   withLogContext,
 } from "@/chat/logging";
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
   ConversationQueueMessageRejectedError,
+  nudgeIdempotencyKey,
   type ConversationQueueMessage,
   type ConversationWorkQueue,
 } from "./queue";
+import { requestLostLeaseRecovery } from "./lost-lease";
 import {
   ackMessages,
   beginConversationResume,
@@ -39,6 +43,7 @@ import {
   requestAnotherSlice,
   startConversationWork,
   type AttemptFailure,
+  type BeforeWorkStops,
   type ConversationWorkState,
   type InboundMessage,
 } from "./store";
@@ -56,6 +61,11 @@ export interface ConversationWorkerContext {
   shouldYield(): boolean;
   /** Return an AbortSignal backed by the durable Conversation stop request. */
   stopSignal?(): AbortSignal;
+  /**
+   * Read the stored stop of the Conversation once, and abort `stopSignal`
+   * when it stopped during this attempt. A Run calls it at each step.
+   */
+  checkStop?(): Promise<void>;
 }
 
 export interface InboxAttempt {
@@ -99,8 +109,11 @@ export interface ConversationWorkProcessResult {
 }
 
 export interface ProcessConversationWorkOptions {
+  beforeWorkStops?: BeforeWorkStops;
   checkInIntervalMs?: number;
   conversationStore?: ConversationStore;
+  /** Slack installation lookup for work that runs after the Run ends. */
+  getSlackAdapter?: () => SlackAdapter;
   nowMs?: () => number;
   queue: ConversationWorkQueue;
   run(context: ConversationWorkerContext): Promise<ConversationWorkerResult>;
@@ -110,84 +123,6 @@ export interface ProcessConversationWorkOptions {
 
 function now(options: ProcessConversationWorkOptions): number {
   return options.nowMs?.() ?? Date.now();
-}
-
-function nudgeIdempotencyKey(
-  reason: string,
-  conversationId: string,
-  nowMs: number,
-): string {
-  return `${reason}:${conversationId}:${nowMs}`;
-}
-
-async function requestLostLeaseRecovery(args: {
-  conversationId: string;
-  destination?: Destination;
-  leaseToken: string;
-  nowMs: number;
-  options: ProcessConversationWorkOptions;
-}): Promise<void> {
-  const before = await getConversationWorkState({
-    conversationId: args.conversationId,
-    state: args.options.state,
-  });
-  const retry = await recordConversationRetry({
-    conversationId: args.conversationId,
-    leaseToken: args.leaseToken,
-    conversationStore: args.options.conversationStore,
-    nowMs: args.nowMs,
-    state: args.options.state,
-  });
-  if (retry === "lost_lease") {
-    return;
-  }
-  if (retry === "stopped") {
-    logException(
-      new Error("Conversation work stopped after repeated failed attempts"),
-      "conversation.work.retry.exhausted",
-      {
-        "app.run.id": before?.execution.runId ?? "unknown",
-        "app.worker.last_progress_at_ms":
-          before?.execution.lastProgressAtMs ?? before?.createdAtMs ?? 0,
-        "app.worker.retry_count": (before?.execution.retryCount ?? 0) + 1,
-      },
-    );
-    return;
-  }
-  const sliceRequested = await requestAnotherSlice({
-    conversationId: args.conversationId,
-    destination: args.destination,
-    leaseToken: args.leaseToken,
-    conversationStore: args.options.conversationStore,
-    nowMs: args.nowMs,
-    state: args.options.state,
-  });
-  if (!sliceRequested) {
-    return;
-  }
-  const released = await releaseConversationWork({
-    conversationId: args.conversationId,
-    leaseToken: args.leaseToken,
-    conversationStore: args.options.conversationStore,
-    nowMs: args.nowMs,
-    state: args.options.state,
-  });
-  if (!released) {
-    return;
-  }
-  await ensureConversationWake({
-    conversationId: args.conversationId,
-    conversationStore: args.options.conversationStore,
-    idempotencyKey: nudgeIdempotencyKey(
-      "lost_lease",
-      args.conversationId,
-      args.nowMs,
-    ),
-    nowMs: args.nowMs,
-    queue: args.options.queue,
-    replaceExistingWake: true,
-    state: args.options.state,
-  });
 }
 
 /**
@@ -289,12 +224,17 @@ function startLeaseCheckIn(args: {
   return timer;
 }
 
-/** Poll the run-scoped stop marker only when an adapter observes remote stops. */
+/**
+ * Poll the run-scoped stop marker only when an adapter observes remote stops.
+ * The stored stop time of the Conversation is the source of truth. The stop
+ * marker only makes a running model call end sooner.
+ */
 function createConversationStopSignal(args: {
   conversationId: string;
   initiallyStopped: boolean;
   options: ProcessConversationWorkOptions;
   runId: string;
+  startedAtMs: number;
 }) {
   const controller = new AbortController();
   let checking = false;
@@ -330,6 +270,13 @@ function createConversationStopSignal(args: {
   };
 
   return {
+    async checkStored(): Promise<void> {
+      if (controller.signal.aborted) return;
+      const stoppedAtMs = await getConversationStoppedAtMs(args.conversationId);
+      if (stoppedAtMs !== undefined && stoppedAtMs >= args.startedAtMs) {
+        requestStop();
+      }
+    },
     close(): void {
       if (timer) clearInterval(timer);
     },
@@ -644,6 +591,7 @@ async function processConversationWorkInContext(
         }),
         options,
         runId,
+        startedAtMs: now(options),
       });
       const workerContext: ConversationWorkerContext = {
         attempt: {
@@ -661,6 +609,7 @@ async function processConversationWorkInContext(
         destination,
         shouldYield,
         stopSignal: stop.signal,
+        checkStop: stop.checkStored,
         checkIn,
       };
 
@@ -822,6 +771,7 @@ async function processConversationWorkInContext(
       // A stop that raced an external pause must reach the paused Turn.
       resumeIfStopped,
       conversationStore: options.conversationStore,
+      getSlackAdapter: options.getSlackAdapter,
       nowMs: now(options),
       state: options.state,
     });
@@ -909,6 +859,7 @@ async function processConversationWorkInContext(
         const retry = failure
           ? failure.status
           : await recordConversationRetry({
+              beforeWorkStops: options.beforeWorkStops,
               conversationId,
               leaseToken: lease.leaseToken,
               conversationStore: options.conversationStore,

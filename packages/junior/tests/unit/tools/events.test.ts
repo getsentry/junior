@@ -18,7 +18,6 @@ import { createEventTools } from "@/chat/tools/events";
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 const context: ToolRuntimeContext = {

@@ -31,7 +31,9 @@ import type {
   User,
   UserPromptContext,
 } from "@sentry/junior-plugin-api";
+import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { getDb } from "@/chat/db";
+import { replaceSlackMentions } from "@/chat/identities/slack-mention-text";
 import { resolveUserTimezone } from "@/chat/identities/timezone";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import {
@@ -55,9 +57,11 @@ import {
 import {
   basePluginContext,
   createSandboxCapability,
+  pluginConfigValues,
   withPluginHookSpan,
 } from "@/chat/plugins/hook-context";
 import {
+  createPluginDecider,
   createPluginEmbedder,
   createPluginModel,
   createPluginReranker,
@@ -495,8 +499,35 @@ export function getPlugins(): PluginRegistration[] {
   return [...registeredPlugins];
 }
 
+/** Conversation facts that plugin Markdown rewrites may use. */
+export interface PluginMarkdownFormat {
+  /** Config values by full key. Install defaults fill keys it does not set. */
+  configuration?: Record<string, unknown>;
+  /** Slack mentions of known people, by lowercase `provider:handle`. */
+  mentions?: ReadonlyMap<string, string>;
+  /** Where the text shows. Defaults to Slack. */
+  platform?: "slack" | "web";
+  /** The provider that wrote the text or that it went to. */
+  provider?: string;
+}
+
 /** Apply plugin Markdown rewrites before destination delivery formatting. */
-export function applyPluginFormatMarkdown(text: string): string {
+export function applyPluginFormatMarkdown(
+  text: string,
+  format: PluginMarkdownFormat = {},
+): string {
+  const resolved = { ...getConfigDefaults(), ...format.configuration };
+  const platform = format.platform ?? "slack";
+  const mention = ({
+    provider,
+    handle,
+  }: {
+    provider: string;
+    handle: string;
+  }) =>
+    platform === "slack"
+      ? format.mentions?.get(`${provider}:${handle}`.toLowerCase())
+      : undefined;
   let transformed = text;
   for (const plugin of getPlugins()) {
     const hook = plugin.hooks?.formatMarkdown;
@@ -504,7 +535,13 @@ export function applyPluginFormatMarkdown(text: string): string {
       continue;
     }
     try {
-      const next = hook({ text: transformed });
+      const next = hook({
+        config: pluginConfigValues(plugin.manifest.name, resolved),
+        mention,
+        platform,
+        ...(format.provider ? { provider: format.provider } : undefined),
+        text: transformed,
+      });
       if (typeof next === "string") {
         transformed = next;
       }
@@ -708,9 +745,6 @@ export function getPluginTools(
             channelCapabilities: resolveChannelCapabilities(
               slackToolContext.locationChannelId,
             ),
-            ...(dashboardConversationUrl
-              ? { conversationLink: { url: dashboardConversationUrl } }
-              : undefined),
             ...(credentialSubject ? { credentialSubject } : undefined),
           }
         : undefined;
@@ -784,10 +818,14 @@ export function getPluginTools(
       ...(automationUrl
         ? { automationLink: { url: automationUrl } }
         : undefined),
+      ...(dashboardConversationUrl
+        ? { conversationLink: { url: dashboardConversationUrl } }
+        : undefined),
       conversationId: context.conversationId,
       locationId: context.locationId,
       ...(slackContext ? { slack: slackContext } : undefined),
       userText: context.userText,
+      decider: createPluginDecider(pluginName, { onCost }),
       embedder: createPluginEmbedder(pluginName, { onCost }),
       egress: context.egress,
       ...(mcp ? { mcp } : undefined),
@@ -809,6 +847,7 @@ export function getPluginTools(
             ...(resolved?.user ? { userId: resolved.user.id } : undefined),
           });
         },
+        replaceSlackMentions,
       },
       workspaces: {
         async active() {

@@ -45,7 +45,10 @@ export function recordToolBatch(
   }
 }
 
-/** Span attributes for the batch counts of one Run. */
+/**
+ * Span attributes for the batch counts of one Run, set on its
+ * `gen_ai.invoke_agent` span because production drops info logs.
+ */
 export function toolBatchSpanAttributes(
   stats: ToolBatchStats,
 ): Record<string, unknown> {

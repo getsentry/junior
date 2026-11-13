@@ -11,11 +11,10 @@ import {
 import { requireAutomationSkill } from "@/chat/automations/edit-rules";
 import {
   automationTaskDescription,
-  automationTaskText,
   type AutomationTask,
 } from "@/chat/automations/task";
 import type { SkillMetadata } from "@/chat/skills";
-import { requireInstructionReferences } from "@/chat/automations/instruction-references";
+import { requireAutomationTaskText } from "@/chat/automations/instruction-references";
 import {
   requireToolCaller,
   requireToolCreator,
@@ -211,7 +210,7 @@ export function createAutomationTool(
     },
     executionMode: "sequential",
     description:
-      'Create a durable automation. It belongs to the channel or DM of this conversation, never a thread. Its outcomes set where its messages go. Use trigger type "schedule" for one-time or recurring work. Use trigger type "event" only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X work; it runs for every matching event. Set instruction for written work, or skill to run an installed skill, with context only when the skill needs more. Ordinary watch, notify, or tell-me-when requests use watchEvents instead. Store the requested future work; do not perform it or check its service access now unless the user also asks for that. When the trigger is known, create it without redundant confirmation.',
+      "Create a durable automation. It belongs to the channel or DM of this conversation, never a thread. When an installed skill does the work, have the automation run that skill; do not write an instruction that names the skill. Ordinary watch, notify, or tell-me-when requests use watchEvents instead. Store the requested future work; do not perform it or check its service access now unless the user also asks for that. When the trigger is known, create it without redundant confirmation.",
     inputSchema: z
       .object({
         instruction: automationInstructionToolSchema.nullable().optional(),
@@ -227,19 +226,21 @@ export function createAutomationTool(
             "Optional short display title. Omit or use null to generate one from the instruction or skill.",
           )
           .optional(),
-        trigger,
+        trigger: trigger.describe(
+          'Use type "schedule" for one-time or recurring work. Use type "event" only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X work; it runs for every matching event.',
+        ),
         outcomes: z
           .array(taskOutcomeInputSchema)
           .max(5)
           .describe(
-            "Successful work is silent by default. Omit this field or use an empty list when the Automation should act through tools without a status message. Add send_message only when the user asks for a reminder, notification, post, digest, summary, or other visible result.",
+            "Successful work is silent by default: omit this or use an empty list when the Automation acts through tools without a status message. Add send_message only when the user asks for a reminder, notification, post, digest, summary, or other visible result.",
           )
           .optional(),
         credential_mode: z
           .enum(["creator", "system"])
           .nullable()
           .describe(
-            "Use creator to make the creator's connected credentials available, or system when the creator says not to use them. Omit or use null for the creator default.",
+            "Omit or use null for the system default: runs use your own credentials. Use creator only when the creator asks for their connected credentials to be available to the runs.",
           )
           .optional(),
       })
@@ -267,10 +268,7 @@ export function createAutomationTool(
       if (prepared.context == null) {
         delete prepared.context;
       }
-      if (
-        prepared.credential_mode === "creator" ||
-        prepared.credential_mode === null
-      ) {
+      if (prepared.credential_mode === null) {
         delete prepared.credential_mode;
       }
       return prepared;
@@ -289,13 +287,9 @@ export function createAutomationTool(
         context: input.context ?? undefined,
       });
       await requireAutomationSkill(task, undefined);
-      const text = automationTaskText(task);
-      if (text) {
-        requireInstructionReferences(text, {
-          creator: createdBy,
-          destinationChannelId: destination.channelId,
-        });
-      }
+      requireAutomationTaskText(task, {
+        creator: createdBy,
+      });
       const eventTrigger =
         input.trigger.type === "event"
           ? requireEventAutomationTrigger(
@@ -350,7 +344,7 @@ export function createAutomationTool(
         id,
         nowMs,
         task,
-        credentialMode: input.credential_mode ?? "creator",
+        credentialMode: input.credential_mode ?? "system",
         outcomes: await resolveTaskOutcomes(
           input.outcomes,
           destination,

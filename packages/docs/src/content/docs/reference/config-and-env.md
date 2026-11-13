@@ -24,7 +24,9 @@ related:
 | `JUNIOR_CONVERSATION_WORK_ENABLED`          | No          | Operational kill switch for queue processing and heartbeat recovery. Defaults to `true`; set `false` to acknowledge wakes without running or recovering conversation work.  |
 | `JUNIOR_CACHE_WARMING_ENABLED`              | No          | Operational kill switch for [prompt cache warming](#prompt-cache-warming). Defaults to `true`; set `false` to stop storing requests and drop queued warmups.                |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context.                                                                                                    |
-| `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                  |
+| `JUNIOR_ENCRYPTION_KEYS`                    | Yes         | Keys that encrypt stored provider credentials, as comma-separated `<id>:<key>` entries. See [Encryption keys](#encryption-keys).                                            |
+| `JUNIOR_ENCRYPTION_KEY_ID`                  | Conditional | Id of the key for new values. Required when `JUNIOR_ENCRYPTION_KEYS` has more than one key.                                                                                 |
+| `JUNIOR_BOT_NAME`                           | No          | Name Junior uses for itself. Defaults to `junior`. `createApp({ botName })` overrides it. Set it to the Slack bot username.                                                 |
 | `AI_MODEL`                                  | No          | Model for every agent Turn. Also the fallback for `AI_FAST_MODEL`. Defaults to `anthropic/claude-opus-5.5`.                                                                 |
 | `AI_REASONING_LEVEL`                        | No          | Main-agent reasoning level: `none`, `low`, `medium`, `high`, or `xhigh`. Defaults to `high`.                                                                                |
 | `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and classification passes. Defaults to `openai/gpt-6-luna`.                                                                              |
@@ -97,6 +99,25 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'
 ```
 
 Use one stable value per deployment. Rotating it invalidates pending internal queue callbacks and sandbox actor context signed with the previous value.
+
+## Encryption keys
+
+Junior encrypts stored provider credentials with AES-256-GCM. The keys are separate from `JUNIOR_SECRET`, so you can rotate them on their own schedule. Each stored value records the id of the key that encrypted it.
+
+Generate a key and give it an id, such as the month you made it:
+
+```bash
+node -e "console.log('2026-11:' + require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+Set the result as `JUNIOR_ENCRYPTION_KEYS`. With one key, `JUNIOR_ENCRYPTION_KEY_ID` is optional. Junior does not start when a key is not 32 bytes, an id repeats, or `JUNIOR_ENCRYPTION_KEY_ID` is not in the list.
+
+To rotate a key:
+
+1. Add the new key to `JUNIOR_ENCRYPTION_KEYS`. Keep `JUNIOR_ENCRYPTION_KEY_ID` on the old id, and deploy. All instances can now read values that the new key encrypts.
+2. Set `JUNIOR_ENCRYPTION_KEY_ID` to the new id, and deploy. New values use the new key. Junior saves a credential again with the new key when it reads or refreshes it.
+3. Keep the old key for at least 30 days.
+4. Remove the old key. Credentials that Junior did not use in that period read as missing, and users must connect them again.
 
 ## Dashboard auth
 
@@ -199,7 +220,7 @@ const app = await createApp({
 ```
 
 Child agents are always on: every app gives the model `spawnAgent`,
-`messageAgent`, `searchAgents`, `stopAgent`, and `archiveAgent`.
+`messageAgent`, `listAgents`, `stopAgent`, and `archiveAgent`.
 `experimental.subagents` was removed; remove it from your config, because
 Junior rejects unknown experimental keys.
 

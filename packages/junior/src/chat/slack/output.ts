@@ -1,3 +1,4 @@
+import type { PluginMarkdownFormat } from "@/chat/plugins/agent-hooks";
 import { isTableRow, normalizeSlackReplyMarkdown } from "@/chat/slack/mrkdwn";
 
 // Slack recommends at most 4,000 characters of message text, and all markdown
@@ -135,9 +136,12 @@ function takeChunk(text: string): { chunk: string; rest: string } {
 }
 
 /** Split a normalized Slack reply into thread posts that fit Slack limits. */
-export function splitSlackReplyText(text: string): string[] {
+export function splitSlackReplyText(
+  text: string,
+  format?: PluginMarkdownFormat,
+): string[] {
   const chunks: string[] = [];
-  let remaining = normalizeSlackReplyMarkdown(text);
+  let remaining = normalizeSlackReplyMarkdown(text, format);
   while (remaining.length > MAX_INLINE_CHARS) {
     const { chunk, rest } = takeChunk(remaining);
     chunks.push(chunk);

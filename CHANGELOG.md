@@ -1,5 +1,469 @@
 # Changelog
 
+## 0.300.0
+
+The release broadens file, attachment, image, review, tracing, linting, and meeting workflows while making execution, scheduling, and publishing more dependable.
+
+### New Features ✨
+
+Migrate removed Google tools to readGoogleFile; shared image paths require signed proxy; attachments, reviews, link cards, tracing, bot overrides, and linting improve.
+
+#### Attachments
+
+- Stream large Slack files instead of storing them by @thomasjiangcy with @sentry-junior in [#3339](https://github.com/getsentry/junior/pull/3339)
+- Stream Slack files and loadAttachment, and raise the file cap to 250 MB by @thomasjiangcy with @sentry-junior in [#3336](https://github.com/getsentry/junior/pull/3336)
+
+#### Dashboard
+
+- Link Review item questions and answers with a reply line by @BYK with @sentry-junior in [#3359](https://github.com/getsentry/junior/pull/3359)
+- Show a Review item answer as a reply, not a second card by @BYK with @sentry-junior in [#3341](https://github.com/getsentry/junior/pull/3341)
+
+#### Google
+
+- One read tool for Docs, Sheets and Slides by @BYK with @sentry-junior in [#3364](https://github.com/getsentry/junior/pull/3364)
+- Resolve Docs and Calendar links as cards by @BYK with @sentry-junior in [#3313](https://github.com/getsentry/junior/pull/3313)
+
+#### Objects
+
+- Preview any web link with oEmbed and Open Graph by @sentry-junior in [#3356](https://github.com/getsentry/junior/pull/3356)
+- Attach a linked object to the Conversation by @BYK with @sentry-junior in [#3349](https://github.com/getsentry/junior/pull/3349)
+- Show a short summary on Doc and Calendar cards by @BYK with @sentry-junior in [#3342](https://github.com/getsentry/junior/pull/3342)
+
+#### Telemetry
+
+- Record gateway ids on direct completion spans by @BYK with @sentry-junior in [#3354](https://github.com/getsentry/junior/pull/3354)
+- Record why a dispatch continuation stops by @thomasjiangcy with @sentry-junior in [#3324](https://github.com/getsentry/junior/pull/3324)
+
+#### Other
+
+- (config) Add botName option to createApp by @dcramer with @sentry-junior in [#3323](https://github.com/getsentry/junior/pull/3323)
+- (images) One proxy for every external image by @BYK with @sentry-junior in [#3318](https://github.com/getsentry/junior/pull/3318)
+- (lint) Check tool and param description length and field names by @dcramer with @sentry-junior in [#3327](https://github.com/getsentry/junior/pull/3327)
+
+### Bug Fixes 🐛
+
+Pi-aligned execution, unblocked scheduling, preserved dashboard choices, cleaner evals, quieter GitHub checks, updated Google and Slack attachment handling, and clearer prompt guidance.
+
+- (agent) Adapt the step boundary to Pi 0.85.1 by @thomasjiangcy with @sentry-junior in [#3338](https://github.com/getsentry/junior/pull/3338)
+- (automations) Fail the dispatch when its Conversation work stops by @thomasjiangcy with @sentry-junior in [#3276](https://github.com/getsentry/junior/pull/3276)
+- (dashboard) Keep the saved details choice while a home send is pending by @sentry-junior in [#3346](https://github.com/getsentry/junior/pull/3346)
+- (deps) Regenerate the lockfile for Pi 0.85.1 with zod and drizzle-orm aligned by @thomasjiangcy with @sentry-junior in [#3351](https://github.com/getsentry/junior/pull/3351)
+- (evals) Reset the user cache before each eval by @thomasjiangcy with @sentry-junior in [#3355](https://github.com/getsentry/junior/pull/3355)
+- (github) Stay silent while a draft's required checks are unfinished by @BYK with @sentry-junior in [#3363](https://github.com/getsentry/junior/pull/3363)
+- (objects) Name readGoogleFile for an attached Google file by @sentry-junior in [#3365](https://github.com/getsentry/junior/pull/3365)
+- (prompt) Steer calls that need no judgment into one codemode script by @thomasjiangcy with @sentry-junior in [#3326](https://github.com/getsentry/junior/pull/3326)
+- (slack) Give video, audio, and other non-image files a loadAttachment pointer by @thomasjiangcy with @sentry-junior in [#3333](https://github.com/getsentry/junior/pull/3333)
+
+### Internal Changes 🔧
+
+Meeting rules rely on tool-result roles; release workflows use v3.3.0 and client-id; agent turns, skills, Pi compatibility, and permissions improve.
+
+- (agent) Do step work in an awaited turn_end listener by @thomasjiangcy with @sentry-junior in [#3325](https://github.com/getsentry/junior/pull/3325)
+- (agents) Let the agent decide which child agent updates to post by @dcramer with @sentry-junior in [#3292](https://github.com/getsentry/junior/pull/3292)
+- (dashboard) Set the 14px root before load in the Linked work side test by @BYK with @sentry-junior in [#3321](https://github.com/getsentry/junior/pull/3321)
+- (evals) Load a skill that a deploy adds after the first turn by @thomasjiangcy with @sentry-junior in [#3291](https://github.com/getsentry/junior/pull/3291)
+- (google) Rely on the tool result role for meeting records by @dcramer with @sentry-junior in [#3328](https://github.com/getsentry/junior/pull/3328)
+- (pi) Prepare Junior's Pi types and agent history for Pi 0.99.2 by @thomasjiangcy with @sentry-junior in [#3362](https://github.com/getsentry/junior/pull/3362)
+- (release) Apply release token permissions with create-github-app-token v3 by @BYK with @sentry-junior in [#3340](https://github.com/getsentry/junior/pull/3340)
+
+## 0.299.0
+
+Junior expands what people can do, prevents several unsafe or confusing failures, and makes routine operations more consistent behind the scenes.
+
+### New Features ✨
+
+Use new agent search tools, configure uploads and Docs access, pass cursors, and expect restricted preview tokens and filtered GitHub/Drive behavior.
+
+#### Agents
+
+- Split searchAgents into listAgents and searchConversations by @dcramer with @sentry-junior in [#3300](https://github.com/getsentry/junior/pull/3300)
+- Read child agent state without an Agent invocation row by @dcramer with @sentry-junior in [#3226](https://github.com/getsentry/junior/pull/3226)
+
+#### Dashboard
+
+- Upload web chat files straight to attachment storage by @BYK with @sentry-junior in [#3181](https://github.com/getsentry/junior/pull/3181)
+- Follow a running Turn and show Tasks under the reply by @betegon with @sentry-junior in [#3301](https://github.com/getsentry/junior/pull/3301)
+- Render links to known objects as cards by @BYK with @sentry-junior in [#3259](https://github.com/getsentry/junior/pull/3259)
+- Send a personal token to a Preview that Junior made by @BYK with @sentry-junior in [#3251](https://github.com/getsentry/junior/pull/3251)
+- Copy new API tokens and stop reusing one default name by @BYK with @sentry-junior in [#3249](https://github.com/getsentry/junior/pull/3249)
+- Load more conversations as the list scrolls by @thomasjiangcy with @sentry-junior in [#2790](https://github.com/getsentry/junior/pull/2790)
+
+#### Github
+
+- Save a PR's public images as preview facts by @BYK with @sentry-junior in [#3295](https://github.com/getsentry/junior/pull/3295)
+- Check PR descriptions with the decision model by @dcramer with @sentry-junior in [#3217](https://github.com/getsentry/junior/pull/3217)
+- Request the requester's review and finish drafts by @BYK with @sentry-junior in [#3250](https://github.com/getsentry/junior/pull/3250)
+- Return required checks and merge state from getPullRequest by @BYK with @sentry-junior in [#3254](https://github.com/getsentry/junior/pull/3254)
+
+#### Google
+
+- Create and edit Google Docs by @dcramer with @sentry-junior in [#3193](https://github.com/getsentry/junior/pull/3193)
+- Search only files the requester could find by @dcramer with @sentry-junior in [#3208](https://github.com/getsentry/junior/pull/3208)
+
+#### Objects
+
+- Resolve Slack message links as cards by @BYK with @sentry-junior in [#3308](https://github.com/getsentry/junior/pull/3308)
+- GitHub handles on person cards, cheaper link resolution by @BYK with @sentry-junior in [#3296](https://github.com/getsentry/junior/pull/3296)
+- Resolve links to Conversations and people as cards by @BYK with @sentry-junior in [#3286](https://github.com/getsentry/junior/pull/3286)
+
+#### Tools
+
+- Rerank unclear tool search matches with the fast model by @dcramer with @sentry-junior in [#2904](https://github.com/getsentry/junior/pull/2904)
+- Suggest close tool names when a call names an unknown tool by @thomasjiangcy with @sentry-junior in [#3268](https://github.com/getsentry/junior/pull/3268)
+
+#### Other
+
+- (cache-warming) Warm Automation endings that have pending work by @BYK with @sentry-junior in [#3293](https://github.com/getsentry/junior/pull/3293)
+- (code) Store draft state on code changes by @BYK with @sentry-junior in [#3269](https://github.com/getsentry/junior/pull/3269)
+- (codemode) Move script tools into Turn context by @thomasjiangcy with @sentry-junior in [#3244](https://github.com/getsentry/junior/pull/3244)
+- (evals) Redeploy the test agent with new options between calls by @thomasjiangcy with @sentry-junior in [#3273](https://github.com/getsentry/junior/pull/3273)
+
+### Bug Fixes 🐛
+
+Stopping Turns preserves cancellation results, while dashboard, Slack, GitHub, prompt, evaluation, and telemetry handling become more accurate and safer.
+
+#### Agent
+
+- Do not report a stopped Turn as a failure by @MathurAditya724 with @sentry-junior in [#3278](https://github.com/getsentry/junior/pull/3278)
+- Add AGENTS.md to a Turn only when it changed by @thomasjiangcy with @sentry-junior in [#3246](https://github.com/getsentry/junior/pull/3246)
+
+#### Dashboard
+
+- Fix three flaky dashboard e2e tests by @dcramer with @sentry-junior in [#3316](https://github.com/getsentry/junior/pull/3316)
+- Open Linked work toward free space, fit chip icons at small font sizes by @BYK with @sentry-junior in [#3305](https://github.com/getsentry/junior/pull/3305)
+- Drop focus ring after saving a rename by @betegon with @sentry-junior in [#3303](https://github.com/getsentry/junior/pull/3303)
+- Fit tall images in the image preview and click to zoom by @betegon with @sentry-junior in [#3289](https://github.com/getsentry/junior/pull/3289)
+- Show Quick question thinking after the question by @thomasjiangcy with @sentry-junior in [#3274](https://github.com/getsentry/junior/pull/3274)
+- Full-width object and Review item cards with one look by @BYK with @sentry-junior in [#3267](https://github.com/getsentry/junior/pull/3267)
+- Fix home summary counts, titles, and merge deltas by @betegon with @sentry-junior in [#3234](https://github.com/getsentry/junior/pull/3234)
+- Keep the measured size of a transcript row that measured at its estimate by @BYK with @sentry-junior in [#3253](https://github.com/getsentry/junior/pull/3253)
+- Drop a rejected live token and keep the Preview URL by @sentry-junior in [#3255](https://github.com/getsentry/junior/pull/3255)
+- Size panels, breakpoints, and chart chips in rem by @BYK with @sentry-junior in [#3245](https://github.com/getsentry/junior/pull/3245)
+- Show the Inbox for the mock viewer in a Preview by @BYK with @sentry-junior in [#3243](https://github.com/getsentry/junior/pull/3243)
+- Cap the Linked work tooltip height and scroll it by @BYK with @sentry-junior in [#3237](https://github.com/getsentry/junior/pull/3237)
+- Keep outline items at the pixel height the pointer maps to by @BYK with @sentry-junior in [#3238](https://github.com/getsentry/junior/pull/3238)
+- Use the ghost variant for the Load more retry button by @BYK with @sentry-junior in [#3239](https://github.com/getsentry/junior/pull/3239)
+- Set renotify only when a push has a tag by @MathurAditya724 with @sentry-junior in [#3232](https://github.com/getsentry/junior/pull/3232)
+
+#### Evals
+
+- Count tool calls made in Code Mode scripts by @thomasjiangcy with @sentry-junior in [#3275](https://github.com/getsentry/junior/pull/3275)
+- Add the web author to fixture history instructions by @BYK with @sentry-junior in [#3256](https://github.com/getsentry/junior/pull/3256)
+
+#### Github
+
+- Parse PR image HTML and fill the facts limit by @sentry-junior in [#3302](https://github.com/getsentry/junior/pull/3302)
+- Log GitHub outages in webhook handlers as warnings by @MathurAditya724 with @sentry-junior in [#3280](https://github.com/getsentry/junior/pull/3280)
+- Fill code change titles for open pull requests by @betegon with @sentry-junior in [#3262](https://github.com/getsentry/junior/pull/3262)
+- Return rejected pull request changes to the model by @MathurAditya724 with @sentry-junior in [#3277](https://github.com/getsentry/junior/pull/3277)
+- Use the PR title as the Review item subject by @BYK with @sentry-junior in [#3270](https://github.com/getsentry/junior/pull/3270)
+- Read draft checks from getPullRequest by @sentry-junior in [#3266](https://github.com/getsentry/junior/pull/3266)
+- Find reconciled repositories by id by @BYK with @sentry-junior in [#3240](https://github.com/getsentry/junior/pull/3240)
+
+#### Objects
+
+- Name a person from any Identity when Slack has no name by @sentry-junior in [#3317](https://github.com/getsentry/junior/pull/3317)
+- Require membership for Slack guests on message cards by @sentry-junior in [#3314](https://github.com/getsentry/junior/pull/3314)
+
+#### Prompt
+
+- Refresh capability sections when they change by @thomasjiangcy with @sentry-junior in [#3247](https://github.com/getsentry/junior/pull/3247)
+- Name the author on web Turn instructions by @BYK and @jamieQ with @sentry-junior in [#3235](https://github.com/getsentry/junior/pull/3235)
+
+#### Slack
+
+- Move a busy conversation when its Run ends by @BYK with @sentry-junior in [#3306](https://github.com/getsentry/junior/pull/3306)
+- Let anyone move a public conversation with Continue here by @BYK with @sentry-junior in [#3304](https://github.com/getsentry/junior/pull/3304)
+- Drop public search hint from unknown channel errors by @MathurAditya724 with @sentry-junior in [#3287](https://github.com/getsentry/junior/pull/3287)
+- Log expected processing reaction failures as warnings by @MathurAditya724 with @sentry-junior in [#3288](https://github.com/getsentry/junior/pull/3288)
+
+#### Other
+
+- (agents) Call noReply instead of a status after messaging a child by @BYK with @sentry-junior in [#3272](https://github.com/getsentry/junior/pull/3272)
+- (ai) Keep model output out of captured structured output errors by @MathurAditya724 with @sentry-junior in [#3281](https://github.com/getsentry/junior/pull/3281)
+- (automations) Run Slack channel automations on bot posts that have no user by @markatsentry and @dcramer with @sentry-junior in [#3213](https://github.com/getsentry/junior/pull/3213)
+- (cache-warming) Warm after a child agent's reply and skip Automation final responses by @BYK with @sentry-junior in [#3290](https://github.com/getsentry/junior/pull/3290)
+- (db) Report a failed background Neon connect as a warning by @BYK with @sentry-junior in [#3241](https://github.com/getsentry/junior/pull/3241)
+- (guardian) Raise action review output budget to 8,000 tokens by @dcramer with @sentry-junior in [#3297](https://github.com/getsentry/junior/pull/3297)
+- (images) Name editing in the images tool source description by @thomasjiangcy with @sentry-junior in [#3285](https://github.com/getsentry/junior/pull/3285)
+- (nitro) Register the Junior server handler once by @MathurAditya724 with @sentry-junior in [#3282](https://github.com/getsentry/junior/pull/3282)
+- (plugins) Do not report expected tool input errors from after-tool hooks by @MathurAditya724 with @sentry-junior in [#3283](https://github.com/getsentry/junior/pull/3283)
+- (sandbox) Treat a dropped command stream socket as interrupted by @MathurAditya724 with @sentry-junior in [#3279](https://github.com/getsentry/junior/pull/3279)
+- (test) Pin the clock in the versions API test by @thomasjiangcy with @sentry-junior in [#3265](https://github.com/getsentry/junior/pull/3265)
+
+### Internal Changes 🔧
+
+Internal work reduces child-agent loading, standardizes dashboard controls, validates GitHub queries, improves caching, and removes stale references without behavior changes.
+
+- (agents) Batch the Conversation loop check when listing child agents by @BYK with @sentry-junior in [#3271](https://github.com/getsentry/junior/pull/3271)
+- (dashboard) Finish the shadcn migration follow-ups by @MathurAditya724 with @sentry-junior in [#3215](https://github.com/getsentry/junior/pull/3215)
+- (github) Validate GraphQL documents against GitHub's schema by @BYK with @sentry-junior in [#3233](https://github.com/getsentry/junior/pull/3233)
+- (objects) Cache identities and extract objects once per message by @BYK with @sentry-junior in [#3310](https://github.com/getsentry/junior/pull/3310)
+- Fix stale references in a build TODO and sandbox skill sources by @MathurAditya724 with @sentry-junior in [#3284](https://github.com/getsentry/junior/pull/3284)
+
+## 0.298.0
+
+Users can see dashboard information, update bot comments and reactions through GitHub, get clearer unsupported-tool errors, and avoid needless context compaction after runs.
+
+### New Features ✨
+
+- (dashboard) Show the agent type and fork of a child Conversation by @dcramer with @sentry-junior in [#3195](https://github.com/getsentry/junior/pull/3195)
+- (github) Add tools to edit own issue comments and react to issues by @dingsdax with @sentry-junior in [#3204](https://github.com/getsentry/junior/pull/3204)
+
+### Bug Fixes 🐛
+
+#### Codemode
+
+- Redirect every modelOnly tool from tool exposure by @sentry-junior in [#3230](https://github.com/getsentry/junior/pull/3230)
+- Redirect catalog dispatcher calls from scripts by @thomasjiangcy with @sentry-junior in [#3229](https://github.com/getsentry/junior/pull/3229)
+
+#### Other
+
+- (agent) Skip compaction after a batch that ends the run by @thomasjiangcy with @sentry-junior in [#3227](https://github.com/getsentry/junior/pull/3227)
+
+## 0.297.0
+
+Junior expands messaging, automation, and monitoring while targeted fixes improve synchronization and delivery; an accessible demo and runtime cleanup support clearer use and upgrades.
+
+### New Features ✨
+
+Conversations, cache warming, automation navigation, archiving, private messaging, and pull-request monitoring gain broader capabilities.
+
+#### Agents
+
+- Run child Turns without an invocation on the Conversation loop by @dcramer with @sentry-junior in [#3206](https://github.com/getsentry/junior/pull/3206)
+- Answer child Turns with reply, noReply and reportBlocked by @dcramer with @sentry-junior in [#3160](https://github.com/getsentry/junior/pull/3160)
+
+#### Cache Warming
+
+- Warm for a due timer, and give child agents and Review items their own segments by @BYK with @sentry-junior in [#3214](https://github.com/getsentry/junior/pull/3214)
+- Warm after reportBlocked Turns by @BYK with @sentry-junior in [#3211](https://github.com/getsentry/junior/pull/3211)
+- Raise the snapshot image limit to 32 MiB by @BYK with @sentry-junior in [#3209](https://github.com/getsentry/junior/pull/3209)
+
+#### Dashboard
+
+- Open Automation runs in place in the conversation drawer by @dcramer with @sentry-junior in [#3198](https://github.com/getsentry/junior/pull/3198)
+- Archive Threads from their sidebar row by @dcramer with @sentry-junior in [#3192](https://github.com/getsentry/junior/pull/3192)
+
+#### Other
+
+- (access) Let private Conversations at one Destination reach each other by @dcramer with @sentry-junior in [#3052](https://github.com/getsentry/junior/pull/3052)
+- (code) Sort the home open list by PR activity by @betegon with @sentry-junior in [#3185](https://github.com/getsentry/junior/pull/3185)
+- (github) Watch pull requests that Junior creates by default by @sentry-junior in [#3225](https://github.com/getsentry/junior/pull/3225)
+
+### Bug Fixes 🐛
+
+GitHub synchronization, review handling, dashboard performance, self-update waits, caching, and Slack delivery receive targeted fixes.
+
+#### Github
+
+- Reconcile open pull requests and keep closes without timestamps by @BYK with @sentry-junior in [#3216](https://github.com/getsentry/junior/pull/3216)
+- Credit other people by GitHub login in PRs and issues by @BYK with @sentry-junior in [#3221](https://github.com/getsentry/junior/pull/3221)
+- Link the dashboard session in footers outside Slack by @szokeasaurusrex with @sentry-junior in [#3196](https://github.com/getsentry/junior/pull/3196)
+
+#### Other
+
+- (cache-warming) Warm after a child agent's noReply or reportBlocked by @BYK with @sentry-junior in [#3218](https://github.com/getsentry/junior/pull/3218)
+- (dashboard) Stop Automation search re-rendering every row on each keystroke by @dcramer with @sentry-junior in [#3199](https://github.com/getsentry/junior/pull/3199)
+- (db) Report idle Neon client errors as readable warnings by @BYK with @sentry-junior in [#3220](https://github.com/getsentry/junior/pull/3220)
+- (guardian) Let Junior answer and fix review feedback on its own PRs by @dcramer with @sentry-junior in [#3223](https://github.com/getsentry/junior/pull/3223)
+- (plugins) Cache settled plugin event cost buckets by @BYK with @sentry-junior in [#3203](https://github.com/getsentry/junior/pull/3203)
+- (review-items) Record a dismiss without starting a Turn by @dcramer with @sentry-junior in [#3201](https://github.com/getsentry/junior/pull/3201)
+- (self-update) End a wait Turn with noReply in every run by @sentry-junior in [#3191](https://github.com/getsentry/junior/pull/3191)
+- (slack) Claim a Slack thread when a Conversation starts in it by @BYK with @sentry-junior in [#3212](https://github.com/getsentry/junior/pull/3212)
+
+### Documentation 📚
+
+- (site) Embed the demo video on the homepage by @dcramer with @sentry-junior in [#3224](https://github.com/getsentry/junior/pull/3224)
+
+### Internal Changes 🔧
+
+Conversation read-state presentation, obsolete Board infrastructure, review refresh scope, and forked-agent representation are streamlined.
+
+#### Dashboard
+
+- Remove the unread indicator and Mark as unread by @dcramer with @sentry-junior in [#3197](https://github.com/getsentry/junior/pull/3197)
+- Remove the Board experiment by @dcramer with @sentry-junior in [#3200](https://github.com/getsentry/junior/pull/3200)
+- Refresh only the open Conversation's Review items on a detail change by @BYK with @sentry-junior in [#3184](https://github.com/getsentry/junior/pull/3184)
+
+#### Other
+
+- (agents) Make fork a spawnAgent attribute, not an agent type by @dcramer with @sentry-junior in [#3194](https://github.com/getsentry/junior/pull/3194)
+
+## 0.296.0
+
+Junior now warms eligible caches, clarifies automation and telemetry, strengthens authorization, improves diagnostics and maintenance, and requires one type-name update.
+
+### New Features ✨
+
+Cache warming, dashboard insights, automation outcomes, compaction timing, and precise GraphQL authorization improve operations.
+
+#### Cache Warming
+
+- Cap the image data of a snapshot by @BYK with @sentry-junior in [#3179](https://github.com/getsentry/junior/pull/3179)
+- Warm after a Turn that ends with noReply by @BYK with @sentry-junior in [#3162](https://github.com/getsentry/junior/pull/3162)
+- Store snapshot images by content hash by @BYK with @sentry-junior in [#3161](https://github.com/getsentry/junior/pull/3161)
+
+#### Dashboard
+
+- Show your week under the home composer by @betegon with @sentry-junior in [#3171](https://github.com/getsentry/junior/pull/3171)
+- Show live data in a Preview with a personal token by @BYK with @sentry-junior in [#3180](https://github.com/getsentry/junior/pull/3180)
+- Chart cost per outcome on the System page by @BYK with @sentry-junior in [#3177](https://github.com/getsentry/junior/pull/3177)
+- Polish Automations filters, order, and details by @dcramer with @sentry-junior in [#3134](https://github.com/getsentry/junior/pull/3134)
+
+#### Other
+
+- (automations) Answer Automation runs with reply, noReply and reportBlocked by @dcramer with @sentry-junior in [#3145](https://github.com/getsentry/junior/pull/3145)
+- (compaction) Start background summaries at 85% of the threshold by @thomasjiangcy with @sentry-junior in [#3158](https://github.com/getsentry/junior/pull/3158)
+- (egress) Read GraphQL operations for grant hooks by @sentry-junior in [#3146](https://github.com/getsentry/junior/pull/3146)
+
+### Bug Fixes 🐛
+
+Delegations, skill search, Neon diagnostics, PR stacking, self-updates, skill invocation, and post-compaction telemetry now behave correctly.
+
+- (agents) Call noReply instead of a status after delegating by @BYK with @sentry-junior in [#3187](https://github.com/getsentry/junior/pull/3187)
+- (dashboard) Clear skill search when a pick closes the picker by @sentry-junior in [#3138](https://github.com/getsentry/junior/pull/3138)
+- (db) Report the reason for a failed Neon WebSocket connect by @BYK with @sentry-junior in [#3166](https://github.com/getsentry/junior/pull/3166)
+- (github) Do not stack pull requests from the trunk or on looping base branches by @adinauer and @thomasjiangcy with @sentry-junior in [#3153](https://github.com/getsentry/junior/pull/3153)
+- (self-update) Wait 15 minutes between npm availability checks by @dcramer with @sentry-junior in [#3148](https://github.com/getsentry/junior/pull/3148)
+- (skills) Parse $skill at the start of an Automation instruction by @dcramer with @sentry-junior in [#3188](https://github.com/getsentry/junior/pull/3188)
+- (telemetry) Record the input after a compaction on the next gen_ai.chat span by @thomasjiangcy with @sentry-junior in [#3154](https://github.com/getsentry/junior/pull/3154)
+
+### Documentation 📚
+
+- (telemetry) Trim TELEMETRY.md to an index and core recipes by @dcramer with @sentry-junior in [#3157](https://github.com/getsentry/junior/pull/3157)
+
+### Internal Changes 🔧
+
+Dashboard controls, database cleanup, API polling, telemetry logging, and conversation-state naming receive focused internal updates.
+
+#### Dashboard
+
+- Use shadcn DropdownMenu for conversation and profile menus by @MathurAditya724 with @sentry-junior in [#3175](https://github.com/getsentry/junior/pull/3175)
+- Use the full shadcn Field for fieldsets and choice rows by @MathurAditya724 with @sentry-junior in [#3176](https://github.com/getsentry/junior/pull/3176)
+- Add Alert and Button variants and drop hand-styled buttons by @MathurAditya724 with @sentry-junior in [#3173](https://github.com/getsentry/junior/pull/3173)
+- Skip the activity of running Threads in the feed token by @BYK with @sentry-junior in [#3167](https://github.com/getsentry/junior/pull/3167)
+
+#### Db
+
+- Drop legacy origin columns and awaiting_resume status by @dcramer with @sentry-junior in [#3190](https://github.com/getsentry/junior/pull/3190)
+- Move raw SQL statements to the Drizzle query builder by @sentry-junior in [#3183](https://github.com/getsentry/junior/pull/3183)
+- Keep idle Neon pool clients for 5 minutes by @BYK with @sentry-junior in [#3163](https://github.com/getsentry/junior/pull/3163)
+
+#### Other
+
+- (api) Read the agent tree only for a full detail by @BYK with @sentry-junior in [#3182](https://github.com/getsentry/junior/pull/3182)
+- (compaction) Remove the background summary request log by @thomasjiangcy with @sentry-junior in [#3156](https://github.com/getsentry/junior/pull/3156)
+- (task-execution) Rename Redis Conversation to ConversationExecutionState by @dcramer with @sentry-junior in [#3189](https://github.com/getsentry/junior/pull/3189)
+
+## 0.295.0
+
+Junior now protects credentials, strengthens automation and review workflows, documents safer deployment, and hardens testing and CI while requiring deployment preparation.
+
+### Breaking Changes 🛠
+
+- (credentials) Encrypt stored credentials at rest by @dcramer with @sentry-junior in [#3109](https://github.com/getsentry/junior/pull/3109)
+
+### New Features ✨
+
+Automations, dashboard ordering, audit visibility, GitHub protection, and model metrics improve; stop configuring removed audit-tools and invoke $self-update explicitly.
+
+#### Automations
+
+- Default new Automations to system credentials by @dcramer with @sentry-junior in [#3118](https://github.com/getsentry/junior/pull/3118)
+- Store Automation runs as automation Conversations by @dcramer with @sentry-junior in [#3125](https://github.com/getsentry/junior/pull/3125)
+
+#### Dashboard
+
+- Show skill text from every $skill-name reference by @dcramer with @sentry-junior in [#3131](https://github.com/getsentry/junior/pull/3131)
+- Keep the conversation list order stable by @BYK with @sentry-junior in [#3047](https://github.com/getsentry/junior/pull/3047)
+
+#### Other
+
+- (cache-warming) Stop warming after the system prompt changes by @BYK with @sentry-junior in [#3099](https://github.com/getsentry/junior/pull/3099)
+- (conversations) Show each feed row's latest Brief by @BYK with @sentry-junior in [#3121](https://github.com/getsentry/junior/pull/3121)
+- (egress) Audit every egress decision and MCP tool call by @dcramer with @sentry-junior in [#3108](https://github.com/getsentry/junior/pull/3108)
+- (github) Refuse Git pushes to the default branch by @sentry-junior in [#3111](https://github.com/getsentry/junior/pull/3111)
+- (maintenance) Make self-update skill manual-only by @dcramer with @sentry-junior in [#3123](https://github.com/getsentry/junior/pull/3123)
+- (telemetry) Add per-call prompt cache hit ratio to model spans by @dcramer with @sentry-junior in [#3127](https://github.com/getsentry/junior/pull/3127)
+
+### Bug Fixes 🐛
+
+Legacy Automations recover, creation rules tighten, search and review queues improve, and pull-request feedback now covers more review activity.
+
+#### Automations
+
+- Repair Automation tasks the old runtime wrote after 0096 by @dcramer with @sentry-junior in [#3143](https://github.com/getsentry/junior/pull/3143)
+- Stop writing delivery into automation instructions by @dcramer with @sentry-junior in [#3135](https://github.com/getsentry/junior/pull/3135)
+
+#### Dashboard
+
+- Rank skill name matches first and highlight search hits by @dcramer with @sentry-junior in [#3132](https://github.com/getsentry/junior/pull/3132)
+- Show only Review items that wait on you in Needs you by @BYK and @dcramer with @sentry-junior in [#3046](https://github.com/getsentry/junior/pull/3046)
+
+#### Other
+
+- (github) React to pull request review bodies by @dcramer with @sentry-junior in [#3126](https://github.com/getsentry/junior/pull/3126)
+- (self-update) Open update PRs ready for review by @dcramer with @sentry-junior in [#3130](https://github.com/getsentry/junior/pull/3130)
+
+### Documentation 📚
+
+- (policies) Keep a breach in the system where it happened by @dcramer with @sentry-junior in [#3137](https://github.com/getsentry/junior/pull/3137)
+
+### Internal Changes 🔧
+
+GitHub tests now share a Postgres harness with worker database copies and reset helpers, and comment reactions use one flow with REST for ordinary comments and GraphQL for review bodies; output no longer includes reaction_id. CI pins external actions to commit SHAs, requires zizmor 1.32.0 workflow checks, disables checkout credential persistence except the release workflow, and centralizes secret reads. The secret rules cover the encryption keys and Junior signing secrets.
+
+#### Github
+
+- Run GitHub plugin tests on the shared Postgres harness by @dcramer with @sentry-junior in [#3129](https://github.com/getsentry/junior/pull/3129)
+- Share one feedback reaction flow for every comment kind by @dcramer with @sentry-junior in [#3136](https://github.com/getsentry/junior/pull/3136)
+
+#### Security
+
+- Pin actions to SHAs and lint workflows with zizmor by @dcramer with @sentry-junior in [#3140](https://github.com/getsentry/junior/pull/3140)
+- Cover encryption keys in the secret env rule by @sentry-junior in [#3142](https://github.com/getsentry/junior/pull/3142)
+- Read signing and encryption secrets in one module by @dcramer with @sentry-junior in [#3141](https://github.com/getsentry/junior/pull/3141)
+
+## 0.294.0
+
+Users gain richer review analytics and automation support, fewer refusal and caching issues, while migration execution becomes safer and policy coverage expands.
+
+### New Features ✨
+
+Interactive review questions and reply-time analytics expand dashboards; cache warming better balances conversation data and supports automation-kind inputs.
+
+#### Dashboard
+
+- Ask Review item questions in the composer by @BYK and @dcramer with @sentry-junior in [#3037](https://github.com/getsentry/junior/pull/3037)
+- Show cache warming reply time segments by @BYK with @sentry-junior in [#3076](https://github.com/getsentry/junior/pull/3076)
+
+#### Other
+
+- (cache-warming) Give a Conversation's own gaps less weight by @BYK with @sentry-junior in [#3102](https://github.com/getsentry/junior/pull/3102)
+- (conversations) Accept automation Conversation kind by @dcramer with @sentry-junior in [#3091](https://github.com/getsentry/junior/pull/3091)
+
+### Bug Fixes 🐛
+
+Refusals gain fallback; removed temperature uses defaults for configured non-reasoning models; cache, menus, Slack traces improve; upgrades build indexes per migration.
+
+#### Ai
+
+- Treat provider refusals as content policy blocks by @dcramer with @sentry-junior in [#3117](https://github.com/getsentry/junior/pull/3117)
+- Stop sending temperature to models by @dcramer with @sentry-junior in [#3116](https://github.com/getsentry/junior/pull/3116)
+
+#### Other
+
+- (cache-warming) Expire the completed gap backfill after 30 days by @BYK with @sentry-junior in [#3110](https://github.com/getsentry/junior/pull/3110)
+- (dashboard) Show the same rows in the conversation menu and the row menu by @BYK with @sentry-junior in [#3081](https://github.com/getsentry/junior/pull/3081)
+- (db) Build marked indexes just before their migration runs by @BYK with @sentry-junior in [#3105](https://github.com/getsentry/junior/pull/3105)
+- (slack) Do not log expected reaction errors as Slack action failures by @dcramer with @sentry-junior in [#3114](https://github.com/getsentry/junior/pull/3114)
+
+### Internal Changes 🔧
+
+- (db) Run concurrent index migrations outside a transaction by @BYK with @sentry-junior in [#3113](https://github.com/getsentry/junior/pull/3113)
+- (guardian) Add snapshots from sampled production reviews by @dcramer with @sentry-junior in [#2697](https://github.com/getsentry/junior/pull/2697)
+
 ## 0.293.0
 
 Junior users get clearer automation control, steadier dashboard behavior, richer integrations, accurate activity data, and a required Sentry CLI setup.

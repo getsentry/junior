@@ -8,7 +8,7 @@ import {
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
-import { getDb, getSqlExecutor } from "@/chat/db";
+import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity } from "@/chat/identities/sql";
 import {
   getDispatchConversationId,
@@ -202,6 +202,9 @@ describe("scheduled automation heartbeat", () => {
     expect(running?.conversationId).toBe(
       getDispatchConversationId({ id: running!.dispatchId! }),
     );
+    await expect(
+      getConversationStore().get({ conversationId: running!.conversationId! }),
+    ).resolves.toMatchObject({ kind: "automation" });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(conversationWorkQueue.sentRecords()).toHaveLength(1);
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
@@ -406,6 +409,30 @@ describe("scheduled automation heartbeat", () => {
       readScheduledAutomation(db, "sched_plugin_1"),
     ).resolves.toMatchObject({
       status: "deleted",
+    });
+  }, 30_000);
+
+  it("fails a run whose dispatch does not finish within a day", async () => {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const db = scheduledAutomationDb();
+    const task = createDailyTask({ nextRunAtMs: TEST_RUN_AT_MS });
+    await saveScheduledAutomation(db, task);
+    await runAuthorizedHeartbeat();
+    const stuck = await readScheduledRun(db, `${task.id}:${TEST_RUN_AT_MS}`);
+    expect(stuck).toMatchObject({ status: "running" });
+
+    // The dispatch never finishes.
+    vi.setSystemTime(TEST_NOW_MS + dayMs + 60_000);
+    await runAuthorizedHeartbeat();
+
+    await expect(readScheduledRun(db, stuck!.id)).resolves.toMatchObject({
+      status: "failed",
+      errorMessage: "Scheduled automation run did not finish within 24 hours.",
+    });
+    // The run no longer blocks the Scheduled automation.
+    await expect(readScheduledAutomation(db, task.id)).resolves.toMatchObject({
+      status: "active",
+      nextRunAtMs: TEST_RUN_AT_MS + 2 * dayMs,
     });
   }, 30_000);
 

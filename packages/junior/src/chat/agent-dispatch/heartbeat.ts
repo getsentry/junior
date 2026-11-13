@@ -16,12 +16,12 @@ import {
   listPendingAgentInvocationMailboxAppends,
   listPendingAgentInvocationResults,
 } from "@/chat/agent-invocations/store";
-import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
-import { recordSubagentEnded } from "@/chat/agent-invocations/markers";
 import {
-  endAgentInvocationsOfStoppedWork,
-  enqueueAgentInvocation,
-} from "@/chat/agent-invocations/work";
+  createEndStoppedChildWork,
+  enqueueAgentInvocationResult,
+} from "@/chat/agent-invocations/result";
+import { recordSubagentEnded } from "@/chat/agent-invocations/markers";
+import { enqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import {
   confirmDispatchMailboxAppend,
   getDispatchRecord,
@@ -29,7 +29,11 @@ import {
   listPendingDispatchMailboxAppends,
   markDispatchFailed,
 } from "./store";
-import { AGENT_DISPATCH_MAX_AGE_MS, enqueueAgentDispatch } from "./work";
+import {
+  AGENT_DISPATCH_MAX_AGE_MS,
+  enqueueAgentDispatch,
+  failStoppedDispatch,
+} from "./work";
 
 const DEFAULT_PLUGIN_LIMIT = 25;
 const PLUGIN_HEARTBEAT_TIMEOUT_MS = 25_000;
@@ -204,8 +208,12 @@ export async function runHeartbeat(args: {
     createEventAppPublisher({ conversationWork: () => ({ queue }) });
   // Runs before result recovery, so an invocation that this ends is sent to
   // its parent in the same heartbeat.
+  const endStoppedChildWork = createEndStoppedChildWork({ queue });
   await recoverConversationWork({
-    beforeWorkStops: endAgentInvocationsOfStoppedWork,
+    beforeWorkStops: async (conversationId, inboundMessageIds) => {
+      await endStoppedChildWork(conversationId, inboundMessageIds);
+      await failStoppedDispatch(conversationId);
+    },
     nowMs: args.nowMs,
     queue,
   });

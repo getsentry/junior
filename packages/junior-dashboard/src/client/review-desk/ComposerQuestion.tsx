@@ -16,11 +16,13 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { InlineError } from "../components/InlineError";
+import { MessageCard } from "../components/MessageCard";
 import {
   UserInputForm,
   type UserInputFormHandle,
 } from "../components/UserInputForm";
 import { Button } from "../components/ui/button";
+import { Kbd } from "../components/ui/kbd";
 import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
 import { useReviewItemAction, useReviewItemsData } from "./queries";
@@ -81,7 +83,7 @@ export function ComposerQuestionsLoadError(props: { onRetry(): void }) {
       <Button
         className="h-7 px-2 text-xs"
         onClick={props.onRetry}
-        variant="quiet"
+        variant="ghost"
       >
         Try again
       </Button>
@@ -244,9 +246,9 @@ export function ComposerQuestion(props: {
   }
 
   return (
-    <section
+    <MessageCard
       aria-label={`Question: ${item.title}`}
-      className="mb-2 grid min-w-0 gap-2 rounded-xl border border-dashboard-accent/30 bg-dashboard-surface-panel px-3 py-2.5 font-sans text-sm text-dashboard-text outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus/50 md:max-h-[50vh] md:overflow-y-auto md:px-4 md:py-3"
+      className="mb-2 grid gap-2 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus/50 md:max-h-[50vh] md:overflow-y-auto md:px-5"
       onKeyDown={onKeyDown}
       ref={(node) => {
         sectionRef.current = node;
@@ -283,7 +285,7 @@ export function ComposerQuestion(props: {
                     className="size-7"
                     onClick={() => step(-1)}
                     size="icon"
-                    variant="quiet"
+                    variant="ghost"
                   >
                     <ChevronLeft aria-hidden="true" size={15} />
                   </Button>
@@ -295,7 +297,7 @@ export function ComposerQuestion(props: {
                     className="size-7"
                     onClick={() => step(1)}
                     size="icon"
-                    variant="quiet"
+                    variant="ghost"
                   >
                     <ChevronRight aria-hidden="true" size={15} />
                   </Button>
@@ -305,7 +307,7 @@ export function ComposerQuestion(props: {
           />
         </div>
       ))}
-    </section>
+    </MessageCard>
   );
 }
 
@@ -352,13 +354,13 @@ function DockedQuestion(props: {
         />
         <h2 className="m-0 min-w-0 flex-1 truncate text-sm font-semibold">
           {/* The title shows where Junior asked in the transcript. */}
-          <button
-            className="max-w-full cursor-pointer truncate text-left hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+          <Button
+            className="max-w-full truncate text-left focus-visible:rounded-sm focus-visible:outline-offset-0"
             onClick={props.onShowRecord}
-            type="button"
+            variant="link"
           >
             {item.title}
-          </button>
+          </Button>
         </h2>
         {props.stepper}
         <Button
@@ -366,15 +368,16 @@ function DockedQuestion(props: {
           data-dismiss-question=""
           disabled={action.isPending}
           onClick={() => void run({ action: "dismiss" }).catch(() => {})}
-          variant="quiet"
+          variant="ghost"
         >
           Dismiss
-          <kbd
+          <Kbd
             aria-hidden="true"
-            className="font-sans text-2xs text-dashboard-text-faint max-md:hidden"
+            className="text-2xs text-dashboard-text-faint max-md:hidden"
+            variant="plain"
           >
             Esc
-          </kbd>
+          </Kbd>
         </Button>
       </header>
       {item.request ? (
@@ -402,7 +405,7 @@ function DockedQuestion(props: {
                 <Button
                   disabled={action.isPending}
                   onClick={() => void run({ action: "take" }).catch(() => {})}
-                  variant="quiet"
+                  variant="ghost"
                 >
                   Take
                 </Button>

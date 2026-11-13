@@ -2,6 +2,10 @@ import {
   readAttachmentStorageConfig,
   type AttachmentStorageConfig,
 } from "@/chat/attachments/config";
+import {
+  readEncryptionKeyring,
+  type EncryptionKeyring,
+} from "@/chat/encryption/keyring";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { readQueueConfig, type QueueConfig } from "@/chat/queue/config";
 import { resolveGatewayModel } from "@/chat/pi/client";
@@ -132,6 +136,8 @@ export interface ChatConfig {
   cacheWarmingEnabled: boolean;
   conversationWorkEnabled: boolean;
   conversationWorkSoftYieldAfterMs: number;
+  /** Keys for secrets at rest. Startup fails when they are missing or invalid. */
+  encryption: EncryptionKeyring;
   sql: {
     databaseUrl: string;
     driver: SqlDriver;
@@ -433,6 +439,7 @@ export function readChatConfig(
     conversationWorkSoftYieldAfterMs: resolveConversationWorkSoftYieldAfterMs(
       resolvedFunctionMaxDurationSeconds,
     ),
+    encryption: readEncryptionKeyring(env),
     sql: {
       databaseUrl,
       driver: readSqlDriver(env, databaseUrl),
@@ -741,6 +748,16 @@ export function setBotModelConfig(config: BotModelConfig): void {
       validateGatewayModelId,
     );
   }
+}
+
+/** Apply the bot name from createApp(). It overrides `JUNIOR_BOT_NAME`. */
+export function setBotName(name: string | undefined): void {
+  if (name === undefined) return;
+  const trimmed = toOptionalTrimmed(name);
+  if (!trimmed) {
+    throw new Error("botName must not be empty");
+  }
+  botConfig.userName = trimmed;
 }
 
 /** Return the current Slack reaction emoji config. */
