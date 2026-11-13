@@ -259,7 +259,20 @@ export async function applyGitHubConflictPolicy(args: {
   if (!row) return args.events;
   const history = parseGitHubConflictHistory(await args.loadHistory(args.ref));
   const action = gitHubConflictAction(history, args.now.getTime());
-  if (action === "fix") return args.events;
+  if (action === "fix") {
+    // A notice from an earlier check says Junior does not fix the conflict.
+    // That is no longer true, so it closes.
+    await closeGitHubConflictNotices({
+      db: args.db,
+      log: args.log,
+      numbers: [args.ref.number],
+      reason: "Junior is fixing the merge conflicts.",
+      repositoryFullName: args.ref.repositoryFullName,
+      reviewItems: args.reviewItems,
+      status: "done",
+    });
+    return args.events;
+  }
   if (action === "notice") {
     try {
       await addNotice(args, history.fixes);
@@ -283,16 +296,18 @@ export const GITHUB_CONFLICT_GONE_REASON =
   "The pull request no longer has merge conflicts.";
 
 /**
- * Close the merge conflict notices of Junior pull requests that GitHub
- * reports as mergeable. A notice is optional, so a failed close is logged,
- * and the next check closes it again.
+ * Close the merge conflict notices of some Junior pull requests, such as
+ * ones that GitHub reports as mergeable. A notice is optional, so a failed
+ * close is logged, and the next check closes it again.
  */
 export async function closeGitHubConflictNotices(args: {
   db: GitHubDb;
   log?: Pick<PluginLogger, "error" | "warn">;
   numbers: number[];
+  reason: string;
   repositoryFullName: string;
   reviewItems: PluginConversationReviewItems;
+  status: "done" | "dismissed";
 }): Promise<void> {
   if (args.numbers.length === 0) return;
   const { repositoryFullName } = args;
@@ -305,8 +320,8 @@ export async function closeGitHubConflictNotices(args: {
     try {
       await args.reviewItems.forConversation(opener.conversationId).close({
         dedupeKey: gitHubConflictNoticeKey({ number, repositoryFullName }),
-        reason: GITHUB_CONFLICT_GONE_REASON,
-        status: "done",
+        reason: args.reason,
+        status: args.status,
       });
     } catch (error) {
       logFailOpenFailure(

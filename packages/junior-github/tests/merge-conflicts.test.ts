@@ -580,6 +580,8 @@ describe("merge conflict check on webhook events", () => {
       await checkAt(pushedAt + 4 * day + 2 * hour, "6");
       await checkAt(pushedAt + 4 * day + 3 * hour, "7");
       expect(fixedShas()).toEqual(["4", "5", "6"]);
+      // The first fix closes the notice that said Junior does not fix it.
+      expect(h.closedNotices).toEqual(["merge-conflict:getsentry/junior#946"]);
     });
   });
 });

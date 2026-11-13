@@ -22,6 +22,7 @@ import {
 import {
   applyGitHubConflictPolicy,
   closeGitHubConflictNotices,
+  GITHUB_CONFLICT_GONE_REASON,
 } from "./policy.js";
 import {
   claimGitHubConflictCheck,
@@ -125,8 +126,10 @@ async function checkRepository(
       db: args.db,
       log: args.log,
       numbers: mergeable,
+      reason: GITHUB_CONFLICT_GONE_REASON,
       repositoryFullName,
       reviewItems: args.reviewItems,
+      status: "done",
     });
     if (!search.pageInfo.hasNextPage || !search.pageInfo.endCursor) break;
     after = search.pageInfo.endCursor;

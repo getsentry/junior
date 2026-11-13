@@ -377,6 +377,7 @@ export function githubPlugin(
             await loadPullRequestLifecycles(installationEnv, input),
           log: ctx.log,
           nowMs: ctx.nowMs,
+          reviewItems: ctx.reviewItems,
           state: ctx.state,
         });
       },

@@ -211,7 +211,15 @@ export function createPluginHarness(fixture: GitHubFixture) {
     });
   }
 
-  return { ...recorded, deliver, events, failures, heartbeat, watches };
+  return {
+    ...recorded,
+    deliver,
+    events,
+    failures,
+    heartbeat,
+    reviewItems,
+    watches,
+  };
 }
 
 export type PluginHarness = ReturnType<typeof createPluginHarness>;

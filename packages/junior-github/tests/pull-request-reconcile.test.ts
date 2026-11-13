@@ -2,7 +2,10 @@ import { generateKeyPairSync } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { juniorGitHubPullRequests } from "../src/db/schema";
+import {
+  juniorGitHubPullRequestRequesters,
+  juniorGitHubPullRequests,
+} from "../src/db/schema";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 import {
@@ -155,7 +158,26 @@ describe("daily reconcile of open pull requests", () => {
   });
 
   it("records closes that GitHub did not deliver, once a day", async () => {
+    // Pull request 949 has a merge conflict notice.
+    await fixture
+      .db()
+      .insert(juniorGitHubPullRequestRequesters)
+      .values({
+        conversationId: "slack:C1:1.0",
+        createdAt: new Date(now - 3 * day),
+        identityId: "identity-jane",
+        number: 949,
+        repositoryFullName: "getsentry/junior",
+        updatedAt: new Date(now - 3 * day),
+      });
+    await h.reviewItems.forConversation("slack:C1:1.0").upsert({
+      assigneeIdentityIds: ["identity-jane"],
+      body: "Pull request 949 has merge conflicts.",
+      dedupeKey: "merge-conflict:getsentry/junior#949",
+      title: "Merge conflict · #949",
+    });
     await h.heartbeat(now);
+    expect(h.closedNotices).toEqual(["merge-conflict:getsentry/junior#949"]);
 
     expect(queries.map((numbers) => numbers.sort())).toEqual([
       [946, 947, 949, 951],
