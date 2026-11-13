@@ -32,7 +32,6 @@ import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
-import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   appendInboundMessage,
   CONVERSATION_WORK_MAX_RETRIES,
@@ -50,7 +49,15 @@ import {
 } from "../fixtures/child-without-agent-invocation";
 import { webTestActor } from "../fixtures/conversation";
 import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
-import { createHarness, type Harness } from "../fixtures/thread-input";
+import { enqueueEventNotification } from "@/chat/events/notification";
+import { createWatch } from "@/chat/events/store";
+import {
+  commitRunInput,
+  createHarness,
+  saveRunInput,
+  yieldRun,
+  type Harness,
+} from "../fixtures/thread-input";
 
 async function parentMessageTexts() {
   return (
@@ -285,6 +292,20 @@ describe("child agents that no Agent invocation names", () => {
         ),
       ).resolves.toEqual([
         expect.objectContaining({ childConversationId: childId }),
+      ]);
+
+      // Its Turn takes the task, then pauses at a yield.
+      const statuses: unknown[] = [];
+      harness.onPersonRun(async (run) => {
+        await commitRunInput(run);
+        statuses.push(await searchAgents.execute!({}, {}));
+        return await yieldRun(run);
+      });
+      await harness.processUntilRun(childId);
+      statuses.push(await searchAgents.execute!({}, {}));
+      expect(statuses).toEqual([
+        { agents: [expect.objectContaining({ status: "running" })] },
+        { agents: [expect.objectContaining({ status: "running" })] },
       ]);
 
       await expect(
@@ -571,11 +592,9 @@ describe("child agents that no Agent invocation names", () => {
         status: "completed",
       });
       // The grandchild's Turn takes its input and yields between slices.
-      // This fake runner saves no slice, so only the Turn's end status
-      // holds the child's result back.
       harness.onPersonRun(async (run) => {
-        await run.durability?.onInputCommitted?.();
-        return { reason: "yield", resumeVersion: 1, status: "suspended" };
+        await commitRunInput(run);
+        return await yieldRun(run);
       });
       await harness.processUntilRun(grandchildId);
 
@@ -668,29 +687,12 @@ describe("child agents that no Agent invocation names", () => {
     const harness = await createHarness();
     try {
       const childId = await spawnChild(harness, "parent-turn:call-1");
-      // The first attempt takes its input and saves a slice. The retry
-      // resumes that Turn.
+      // The first run takes its input and yields. The next run resumes
+      // that Turn.
       harness.onPersonRun(async (run) => {
         if (harness.runs.length === 1) {
-          await run.durability?.onInputCommitted?.();
-          await saveTurnCheckpoint({
-            actor: run.actor!,
-            conversationId: childId,
-            destination: undefined,
-            messages: [
-              {
-                role: "user",
-                content: [{ type: "text", text: "Check the deploy." }],
-                timestamp: 1,
-              },
-            ],
-            mode: "paused",
-            reason: "yield",
-            sliceId: 1,
-            source: run.source!,
-            surface: "api",
-            turnId: run.turnId!,
-          });
+          await commitRunInput(run);
+          return await yieldRun(run);
         }
         throw new Error("stop after reading the run");
       });
@@ -779,6 +781,123 @@ describe("child agents that no Agent invocation names", () => {
       expect(harness.runs.at(-1)!.credentialContext).not.toHaveProperty(
         "subject",
       );
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("counts a parent message and the Turn that runs it once", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await spawnChild(harness, "parent-turn:call-0");
+      // The Turn has saved its input, which stays in the mailbox until the
+      // run commits it. Two more parent messages make three open ones.
+      let queued: Promise<unknown> | undefined;
+      harness.onPersonRun(async (run) => {
+        await saveRunInput(run);
+        for (let index = 1; index < 3; index++) {
+          await sendParentMessage({
+            actor: slackInvocationInput.actor,
+            childConversationId: childId,
+            idempotencyKey: `parent-turn:call-${index}`,
+            parentConversationId: slackParentConversationId,
+            queue: harness.queue,
+            state: harness.state,
+          });
+        }
+        queued = createAgentInvocationForMessage({
+          actor: slackInvocationInput.actor,
+          childConversationId: childId,
+          destination: slackInvocationInput.destination,
+          idempotencyKey: "parent-turn:call-3",
+          input: "Check it again.",
+          parentConversationId: slackParentConversationId,
+          parentToolCallId: "call-3",
+        });
+        await queued.catch(() => undefined);
+        return await yieldRun(run);
+      });
+      await harness.processUntilRun(childId);
+
+      // The fourth message is within the limit of four.
+      await expect(queued).resolves.toMatchObject({ queued: true });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("does not count an open Watch Turn as a parent message", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await spawnChild(harness, "parent-turn:call-0");
+      // The child's Turn for its task fails on every retry, so it ends.
+      for (let tries = 0; tries < CONVERSATION_WORK_MAX_RETRIES; tries++) {
+        await harness.drain(childId);
+        await runHeartbeatAfterLeasesExpire(harness.queue);
+      }
+
+      // Its timer fires. The Watch Turn takes the Event, then pauses.
+      const watch = await createWatch(
+        {
+          conversationId: childId,
+          events: ["timer.fired"],
+          expiresAtMs: Date.now() + 3_600_000,
+          identifier: "timer-1",
+          intent: "Check back.",
+          label: "Timer",
+          namespace: "junior",
+          resourceType: "timer",
+        },
+        { state: harness.state },
+      );
+      await enqueueEventNotification({
+        event: {
+          eventKey: "timer-1:fired",
+          eventType: "timer.fired",
+          identifier: "timer-1",
+          namespace: "junior",
+          occurredAtMs: Date.now(),
+          trustedSummary: "Timer elapsed.",
+        },
+        queue: harness.queue,
+        state: harness.state,
+        subscription: watch,
+      });
+      // An Event wake waits 30 seconds for more Events.
+      vi.setSystemTime(Date.now() + 31_000);
+      harness.onPersonRun(async (run) => {
+        await commitRunInput(run);
+        return await yieldRun(run);
+      });
+      await harness.processUntilRun(childId);
+      expect(harness.runs.at(-1)?.source).toMatchObject({
+        eventType: "timer.fired",
+      });
+
+      for (let index = 1; index < 4; index++) {
+        await sendParentMessage({
+          actor: slackInvocationInput.actor,
+          childConversationId: childId,
+          idempotencyKey: `parent-turn:call-${index}`,
+          parentConversationId: slackParentConversationId,
+          queue: harness.queue,
+          state: harness.state,
+        });
+      }
+      // The fourth open parent message is within the limit of four.
+      await expect(
+        createAgentInvocationForMessage({
+          actor: slackInvocationInput.actor,
+          childConversationId: childId,
+          destination: slackInvocationInput.destination,
+          idempotencyKey: "parent-turn:call-4",
+          input: "Check it again.",
+          parentConversationId: slackParentConversationId,
+          parentToolCallId: "call-4",
+        }),
+      ).resolves.toMatchObject({ queued: true });
     } finally {
       await harness.close();
     }

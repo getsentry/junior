@@ -41,6 +41,8 @@ import {
 } from "./store";
 import { routeChildInput } from "./child-input";
 import { readParentMessage } from "./parent-message";
+import { AGENT_PARENT_MESSAGE_EVENT_TYPE } from "./result-event-type";
+import { isEventMailboxMetadata } from "@/chat/events/notification";
 import {
   CHILD_AGENT_KINDS,
   CHILD_AGENT_RESULTS,
@@ -293,22 +295,36 @@ export async function listOpenChildAgentsWithoutAgentInvocations(
 
 /**
  * Count the open parent messages of one child that no Agent invocation
- * names: each one that waits in its mailbox, and each open Turn, which runs
- * one. This is the queue that `MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD` caps.
+ * names: each open Turn that runs parent messages counts once, and each
+ * parent message that waits in its mailbox counts once. A Turn keeps its
+ * input in the mailbox until it commits it, so a message and its Turn count
+ * once. After commit, a batch of parent messages that share one Turn counts
+ * as one, the same as `main`. Other Turns, such as a Watch Turn, do not
+ * count. This is the queue that `MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD` caps.
  */
 export async function countOpenParentMessages(
   childConversationId: string,
 ): Promise<number> {
-  const [turns, work] = await Promise.all([
-    listActiveMailboxTurns(childConversationId),
+  const [turnSources, work] = await Promise.all([
+    listActiveMailboxTurnSources([childConversationId]),
     getConversationWorkState({ conversationId: childConversationId }),
   ]);
-  return (
-    turns.length +
-    (work?.messages ?? []).filter(
-      (message) => readParentMessage(message) !== undefined,
-    ).length
-  );
+  const eventKeys = new Set<string>();
+  for (const source of turnSources.get(childConversationId) ?? []) {
+    if (
+      source?.kind === "event" &&
+      source.eventType === AGENT_PARENT_MESSAGE_EVENT_TYPE
+    ) {
+      eventKeys.add(source.eventKey);
+    }
+  }
+  for (const message of work?.messages ?? []) {
+    const metadata = message.input.metadata;
+    if (readParentMessage(message) && isEventMailboxMetadata(metadata)) {
+      eventKeys.add(metadata.event.eventKey);
+    }
+  }
+  return eventKeys.size;
 }
 
 /**
