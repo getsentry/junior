@@ -60,7 +60,6 @@ import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
 import { createUserLookupTool } from "@/chat/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
 import { createSubmitFeedbackTool } from "@/chat/tools/submit-feedback";
-import { getClient } from "@/chat/sentry";
 import { createOperatorTools } from "@/chat/tools/operator-sql";
 import { createUserCustomizationTools } from "@/chat/tools/user-customization";
 import { createConversationSubscriptionTools } from "@/chat/tools/conversation-subscription";
@@ -141,6 +140,7 @@ export function createTools(
     updatePlan: createUpdatePlanTool(),
     reportProgress: createReportProgressTool(),
     systemTime: createSystemTimeTool(),
+    submitFeedback: createSubmitFeedbackTool(context),
     bash: createBashTool(),
     readFile: createReadFileTool(),
     editFile: createEditFileTool(),
@@ -163,11 +163,6 @@ export function createTools(
     ...createUserCustomizationTools(context),
     ...createConversationSubscriptionTools(context),
   };
-  // Feedback goes to the Sentry project of the dashboard Reply ratings. With
-  // no DSN it has nowhere to go.
-  if (getClient()?.getDsn()) {
-    tools.submitFeedback = createSubmitFeedbackTool(context);
-  }
   tools.searchConversationEvents = createSearchConversationEventsTool(context);
   tools.readConversationEvent = createReadConversationEventTool(context);
   tools.searchConversations = createSearchConversationsTool({
