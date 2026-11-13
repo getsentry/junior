@@ -199,6 +199,7 @@ describe("files in the current Conversation's thread", () => {
           id,
           name: `${id}.png`,
           mimetype: "image/png",
+          size: id.length,
           url_private: `https://files.slack.com/files-pri/T123-${id}/${id}.png`,
         })),
       },
@@ -213,6 +214,7 @@ describe("files in the current Conversation's thread", () => {
             id: "F0IMG0001",
             name: "F0IMG0001.png",
             mimetype: "image/png",
+            size: 9,
             url_private:
               "https://files.slack.com/files-pri/T123-F0IMG0001/F0IMG0001.png",
           },
@@ -290,6 +292,7 @@ describe("files in the current Conversation's thread", () => {
       id,
       name: `${id}.csv`,
       mimetype: "text/csv",
+      size: 4,
       url_private: url,
     });
 
@@ -331,6 +334,12 @@ describe("files in the current Conversation's thread", () => {
         ],
         // Failed downloads use no cap slot, so the file after them is stored.
         files: [
+          // A file with no declared size could be any size.
+          {
+            id: "F0NOSIZE1",
+            name: "unknown.bin",
+            url_private: "https://files.slack.com/files-pri/T123-F0NOSIZE1/x",
+          },
           // A Slack Web API URL would run as the bot.
           file(
             "F0EVIL002",
@@ -348,14 +357,17 @@ describe("files in the current Conversation's thread", () => {
         offSlackRequests.push(request.url);
         return new HttpResponse("stolen");
       }),
+      // Each failing file is refused however often the store retries it.
+      http.get("https://files.slack.com/files-pri/:file/x.csv", ({ params }) =>
+        String(params.file).includes("F0FAIL")
+          ? new HttpResponse(null, { status: 403 })
+          : undefined,
+      ),
       http.get("https://slack.com/api/:method", ({ request }) => {
         offSlackRequests.push(request.url);
         return HttpResponse.json({ ok: true, messages: [] });
       }),
     );
-    for (let i = 0; i < 3; i += 1) {
-      queueSlackPrivateFileDownload({ status: 403, body: "" });
-    }
     queueSlackPrivateFileDownload({ body: "a,b\n" });
     const current = await executeTool(tool, {
       channel_id: "C0CURRENT",
@@ -365,6 +377,7 @@ describe("files in the current Conversation's thread", () => {
       attachment_id: expect.anything(),
     });
     expect(current.messages[0].files).toEqual([
+      noAttachment,
       noAttachment,
       noAttachment,
       noAttachment,

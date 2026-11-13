@@ -28,10 +28,7 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { matchSlackAttachments } from "@/chat/slack/attachments";
 import { getConversationStore } from "@/chat/db";
-import {
-  downloadPrivateSlackFile,
-  streamPrivateSlackFile,
-} from "@/chat/slack/client";
+import { streamPrivateSlackFile } from "@/chat/slack/client";
 import { MAX_EAGER_SLACK_FILE_BYTES } from "@/chat/slack/vision-context";
 import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
 import { isVisionImageMediaType } from "@/chat/attachments/media";
@@ -95,8 +92,9 @@ async function storeThreadFiles(args: {
         : undefined;
     // Same rules as a file at turn start: refuse a file over the cap, keep a
     // large non-image file metadata-only (each load streams it from Slack),
-    // and stream every other file into storage.
-    if (declaredBytes !== undefined && declaredBytes > MAX_ATTACHMENT_BYTES) {
+    // and stream every other file into storage. Real Slack files declare a
+    // size; one without a size could be any size, so it stays metadata-only.
+    if (declaredBytes === undefined || declaredBytes > MAX_ATTACHMENT_BYTES) {
       continue;
     }
     const base = {
@@ -109,16 +107,14 @@ async function storeThreadFiles(args: {
         conversationId: args.conversationId,
         db: args.db,
         file:
-          declaredBytes === undefined
-            ? { ...base, data: await downloadPrivateSlackFile(url) }
-            : !isVisionImageMediaType(mimeType) &&
-                declaredBytes > MAX_EAGER_SLACK_FILE_BYTES
-              ? { ...base, bytes: declaredBytes, deferred: true }
-              : {
-                  ...base,
-                  bytes: declaredBytes,
-                  open: () => streamPrivateSlackFile(url),
-                },
+          !isVisionImageMediaType(mimeType) &&
+          declaredBytes > MAX_EAGER_SLACK_FILE_BYTES
+            ? { ...base, bytes: declaredBytes, deferred: true }
+            : {
+                ...base,
+                bytes: declaredBytes,
+                open: () => streamPrivateSlackFile(url),
+              },
         storage: args.storage,
       });
       stored.push([file.id, attachment.id]);
