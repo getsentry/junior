@@ -451,7 +451,7 @@ function githubToolsContext(input?: {
         })),
     },
     users: {
-      replaceSlackMentions: async (text: string) => text,
+      replaceSlackMentions: async (value) => value,
       resolveActor: input?.resolveActor ?? (async () => undefined),
     },
     state: {

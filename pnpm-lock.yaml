@@ -630,6 +630,15 @@ importers:
       marked:
         specifier: ^18.1.2
         version: 18.1.2
+      mdast-util-from-markdown:
+        specifier: ^2.0.3
+        version: 2.0.3
+      mdast-util-gfm:
+        specifier: ^3.1.0
+        version: 3.1.0
+      micromark-extension-gfm:
+        specifier: ^3.0.0
+        version: 3.0.0
       parse5:
         specifier: ^7.3.0
         version: 7.3.0
@@ -643,6 +652,9 @@ importers:
       '@sentry/junior-testing':
         specifier: workspace:*
         version: file:packages/junior-testing
+      '@types/mdast':
+        specifier: ^4.0.4
+        version: 4.0.4
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1
@@ -13646,6 +13658,10 @@ snapshots:
       '@sinclair/typebox': 0.34.52
       drizzle-orm: 0.45.2
       marked: 18.1.2
+      mdast-util-from-markdown: 2.0.3
+      mdast-util-gfm: 3.1.0
+      micromark-extension-gfm: 3.0.0
+      parse5: 7.3.0
       zod: 4.5.4
     transitivePeerDependencies:
       - '@aws-sdk/client-rds-data'
@@ -13678,6 +13694,7 @@ snapshots:
       - prisma
       - sql.js
       - sqlite3
+      - supports-color
 
   '@sentry/junior-github@file:packages/junior-github(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(graphql@16.14.0)(pg@8.21.0)':
     dependencies:
@@ -13686,6 +13703,10 @@ snapshots:
       '@sinclair/typebox': 0.34.52
       drizzle-orm: 0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
       marked: 18.1.2
+      mdast-util-from-markdown: 2.0.3
+      mdast-util-gfm: 3.1.0
+      micromark-extension-gfm: 3.0.0
+      parse5: 7.3.0
       zod: 4.5.4
     transitivePeerDependencies:
       - '@aws-sdk/client-rds-data'
@@ -13718,6 +13739,7 @@ snapshots:
       - prisma
       - sql.js
       - sqlite3
+      - supports-color
 
   '@sentry/junior-memory@file:packages/junior-memory':
     dependencies:

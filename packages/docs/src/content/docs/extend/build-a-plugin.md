@@ -329,10 +329,10 @@ A hook that throws is logged, and the tool result stays unchanged.
 identity or user. Call `ctx.users.resolveTimezone()` when a tool needs the
 active actor's IANA timezone. It returns the install default when Junior does
 not know the person's timezone. A tool that sends model text to your provider
-must call `ctx.users.replaceSlackMentions(text, provider)` first. The model
+must call `ctx.users.replaceSlackMentions(input, provider)` first. The model
 reads Slack threads, so it can copy Slack syntax such as `<@U123>`. The call
-turns a Slack user into `@handle` of their linked account at `provider`, or
-into their name. Return tool definitions keyed by the plugin-local tool
+rewrites every string in `input`, outside Markdown code. A Slack user becomes
+`@handle` of their linked account at `provider`, or their name. Return tool definitions keyed by the plugin-local tool
 names your plugin owns.
 Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 `pluginNamespace` is derived from the plugin manifest name. For example,

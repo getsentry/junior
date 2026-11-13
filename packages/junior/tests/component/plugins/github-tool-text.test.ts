@@ -67,14 +67,15 @@ describe("GitHub tool text", () => {
       {
         repo: "getsentry/junior",
         number: 1,
-        body: "<@U123> and <@U456|ada>: see <#C123|eng>, <https://docs.sentry.io|the docs>. <!here> <!-- keep -->",
+        body: "<@U123> and <@U456|ada>: see <#C123|eng>, <https://docs.sentry.io|the docs>. <!here> <!-- keep --> `<@U123>`",
       },
       { toolCallId: "comment" },
     );
 
     expect(sent).toEqual([
       {
-        body: "@Requester and Ada Lovelace: see #eng, [the docs](https://docs.sentry.io). here <!-- keep -->",
+        // Markdown code shows Slack syntax as written.
+        body: "@Requester and Ada Lovelace: see #eng, [the docs](https://docs.sentry.io). here <!-- keep --> `<@U123>`",
       },
     ]);
   });

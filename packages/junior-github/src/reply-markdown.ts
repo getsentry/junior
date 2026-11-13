@@ -1,3 +1,7 @@
+import type { Nodes } from "mdast";
+import { fromMarkdown } from "mdast-util-from-markdown";
+import { gfmFromMarkdown } from "mdast-util-gfm";
+import { gfm } from "micromark-extension-gfm";
 import {
   configuredRepository,
   type Repository,
@@ -8,8 +12,9 @@ import {
 const OWNER = "[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?";
 const REPO = "[A-Za-z0-9._-]+";
 const SHA = "[0-9a-f]{7,40}";
-// A reference must not continue a word, path, domain, email, or HTML entity.
-const START = "(?<![\\w.\\-/@&])";
+// A reference must not continue a word, path, domain, email, HTML entity,
+// escape, or Slack token such as `<@U123>`.
+const START = "(?<![\\w.\\-/@&<\\\\])";
 const END = "(?![\\w-])";
 
 // Alternatives are ordered so that a qualified reference wins at one position.
@@ -29,180 +34,68 @@ const TEXT_REFERENCE_PATTERN = new RegExp(
 
 // `orgs/` and `enterprises/` paths hold discussions that belong to no repository.
 const GITHUB_URL_BODY = `https?:\\/\\/(?:www\\.)?github\\.com\\/(?!(?:orgs|enterprises)\\/)(?<owner>${OWNER})\\/(?<repo>${REPO})\\/(?:(?:issues|pull|discussions)\\/(?<issue>\\d+)|commit\\/(?<commit>${SHA}))`;
-// A whole bare URL, with sentence punctuation after it.
-const GITHUB_URL_PATTERN = new RegExp(
-  `^${GITHUB_URL_BODY}(?<trailing>[).,;:!?]*)$`,
-  "i",
-);
-// A URL inside an existing link, such as a Markdown link destination.
+const GITHUB_URL_PATTERN = new RegExp(`^${GITHUB_URL_BODY}$`, "i");
+// A URL anywhere in a link destination.
 const GITHUB_LINKED_URL_PATTERN = new RegExp(GITHUB_URL_BODY, "gi");
 
 // Chat words that look like mentions but are no GitHub account.
 const NON_ACCOUNT_MENTIONS = new Set(["channel", "everyone", "here"]);
 
-/** A line part. `text` and `url` parts are rewritten; a `link` can name a repository. */
-interface Segment {
-  kind: "verbatim" | "link" | "url" | "text";
-  value: string;
-}
-
-function readInlineCode(text: string, start: number): number | undefined {
-  if (text[start] !== "`") {
-    return undefined;
-  }
-  let markerLength = 1;
-  while (text[start + markerLength] === "`") {
-    markerLength++;
-  }
-  const marker = "`".repeat(markerLength);
-  const end = text.indexOf(marker, start + markerLength);
-  return end === -1 ? undefined : end + markerLength;
-}
-
-/** Read a fenced code opener/closer length of three or more backticks. */
-function readFenceLength(line: string): number | undefined {
-  const trimmed = line.trimStart();
-  if (!trimmed.startsWith("```")) {
-    return undefined;
-  }
-  let length = 0;
-  while (trimmed[length] === "`") {
-    length++;
-  }
-  return length >= 3 ? length : undefined;
-}
-
 /**
- * Skip one existing Markdown link.
- *
- * Labels must not contain brackets or newlines so a bare earlier `[` cannot bind
- * to a later real link. Destinations may be absolute or relative.
+ * A source range that the Markdown parser found: plain text, a bare URL, or
+ * a link. Code, HTML, and images get no range, so they stay as written.
  */
-function readMarkdownLink(text: string, start: number): number | undefined {
-  if (text[start] !== "[") {
-    return undefined;
-  }
-
-  const labelEnd = text.indexOf("](", start + 1);
-  if (labelEnd === -1) {
-    return undefined;
-  }
-
-  const label = text.slice(start + 1, labelEnd);
-  if (label.includes("[") || label.includes("]") || label.includes("\n")) {
-    return undefined;
-  }
-
-  const destStart = labelEnd + 2;
-  const closeParens = text.indexOf(")", destStart);
-  return closeParens === -1 ? undefined : closeParens + 1;
+interface Span {
+  kind: "text" | "url" | "link";
+  start: number;
+  end: number;
+  url?: string;
 }
 
-// A Slack token or autolink, such as `<@U123>`, `<#C1|eng>`, `<!here>`, or
-// `<https://x|label>`. Other `<` characters, such as `a < b` or `Vec<T>`,
-// are text: they must not pair with the `>` of a later token.
-const ANGLE_TOKEN = /^<(?:[@#!]|[a-z][a-z0-9+.-]*:)[^<>]*>/i;
-
-function readAngleToken(text: string, start: number): number | undefined {
-  const match = ANGLE_TOKEN.exec(text.slice(start));
-  return match ? start + match[0].length : undefined;
-}
-
-function readUrl(text: string, start: number): number | undefined {
-  if (
-    !text.startsWith("https://", start) &&
-    !text.startsWith("http://", start)
-  ) {
-    return undefined;
-  }
-  const match = /^https?:\/\/\S+/.exec(text.slice(start));
-  return match ? start + match[0].length : undefined;
-}
-
-/** Split one line into parts that must stay as written and parts to scan. */
-function segmentLine(line: string): Segment[] {
-  const segments: Segment[] = [];
-  let text = "";
-  const flushText = () => {
-    if (text) {
-      segments.push({ kind: "text", value: text });
-      text = "";
+function readSpans(text: string): Span[] {
+  const spans: Span[] = [];
+  const visit = (node: Nodes) => {
+    const start = node.position?.start.offset;
+    const end = node.position?.end.offset;
+    if (start === undefined || end === undefined) return;
+    if (node.type === "text") {
+      spans.push({ kind: "text", start, end });
+    } else if (node.type === "link" || node.type === "definition") {
+      // A GFM autolink literal is the URL itself in the source.
+      const bare = node.type === "link" && text.slice(start, end) === node.url;
+      spans.push({ kind: bare ? "url" : "link", start, end, url: node.url });
+    } else if (node.type !== "linkReference" && "children" in node) {
+      for (const child of node.children) visit(child);
     }
   };
-
-  let index = 0;
-  while (index < line.length) {
-    const codeEnd = readInlineCode(line, index);
-    if (codeEnd !== undefined) {
-      flushText();
-      segments.push({ kind: "verbatim", value: line.slice(index, codeEnd) });
-      index = codeEnd;
-      continue;
-    }
-
-    const linkEnd =
-      readMarkdownLink(line, index) ?? readAngleToken(line, index);
-    if (linkEnd !== undefined) {
-      flushText();
-      segments.push({ kind: "link", value: line.slice(index, linkEnd) });
-      index = linkEnd;
-      continue;
-    }
-
-    const urlEnd = readUrl(line, index);
-    if (urlEnd !== undefined) {
-      flushText();
-      segments.push({ kind: "url", value: line.slice(index, urlEnd) });
-      index = urlEnd;
-      continue;
-    }
-
-    text += line[index];
-    index++;
-  }
-  flushText();
-  return segments;
-}
-
-/** Split text into lines of segments. Fenced code lines stay verbatim. */
-function segmentText(text: string): Segment[][] {
-  let openFenceLength = 0;
-  return text.split("\n").map((line) => {
-    const fenceLength = readFenceLength(line);
-    if (fenceLength !== undefined) {
-      if (openFenceLength === 0) {
-        openFenceLength = fenceLength;
-      } else if (fenceLength >= openFenceLength) {
-        openFenceLength = 0;
-      }
-      return [{ kind: "verbatim", value: line }];
-    }
-    return openFenceLength > 0
-      ? [{ kind: "verbatim", value: line }]
-      : segmentLine(line);
-  });
+  visit(
+    fromMarkdown(text, {
+      extensions: [gfm()],
+      mdastExtensions: [gfmFromMarkdown()],
+    }),
+  );
+  return spans;
 }
 
 /**
  * Return the distinct repositories that the text names in qualified
  * references or GitHub issue, pull request, and commit URLs.
  */
-function namedRepositories(lines: Segment[][]): Repository[] {
+function namedRepositories(text: string, spans: Span[]): Repository[] {
   const repositories = new Map<string, Repository>();
   const add = (owner: string | undefined, name: string | undefined) => {
     if (owner && name) {
       repositories.set(`${owner}/${name}`.toLowerCase(), { owner, name });
     }
   };
-  for (const segment of lines.flat()) {
-    if (segment.kind === "url" || segment.kind === "link") {
-      for (const { groups } of segment.value.matchAll(
-        GITHUB_LINKED_URL_PATTERN,
-      )) {
+  for (const span of spans) {
+    if (span.url) {
+      for (const { groups } of span.url.matchAll(GITHUB_LINKED_URL_PATTERN)) {
         add(groups?.owner, groups?.repo);
       }
-    } else if (segment.kind === "text") {
-      for (const { groups } of segment.value.matchAll(TEXT_REFERENCE_PATTERN)) {
+    } else {
+      const source = text.slice(span.start, span.end);
+      for (const { groups } of source.matchAll(TEXT_REFERENCE_PATTERN)) {
         add(groups?.issueOwner, groups?.issueRepo);
         add(groups?.commitOwner, groups?.commitRepo);
       }
@@ -221,12 +114,10 @@ function linkifyUrl(url: string): string {
   if (!groups?.owner || !groups.repo) {
     return url;
   }
-  const trailing = groups.trailing ?? "";
-  const href = url.slice(0, url.length - trailing.length);
   const label = groups.issue
     ? `${groups.owner}/${groups.repo}#${groups.issue}`
     : `${groups.owner}/${groups.repo}@${groups.commit!.slice(0, 7)}`;
-  return `[${label}](${href})${trailing}`;
+  return `[${label}](${url})`;
 }
 
 function linkifyTextReferences(
@@ -293,8 +184,8 @@ export function linkifyGitHubReferences(
     mention?: (login: string) => string | undefined;
   } = {},
 ): string {
-  const lines = segmentText(text);
-  const named = namedRepositories(lines);
+  const spans = readSpans(text);
+  const named = namedRepositories(text, spans);
   const context = {
     linkProfiles: options.githubText === true || named.length > 0,
     mention: options.mention ?? (() => undefined),
@@ -305,19 +196,18 @@ export function linkifyGitHubReferences(
           ? named[0]
           : undefined,
   };
-  return lines
-    .map((segments) =>
-      segments
-        .map((segment) => {
-          if (segment.kind === "url") {
-            return options.bareUrls ? segment.value : linkifyUrl(segment.value);
-          }
-          if (segment.kind === "text") {
-            return linkifyTextReferences(segment.value, context);
-          }
-          return segment.value;
-        })
-        .join(""),
-    )
-    .join("\n");
+  let result = "";
+  let cursor = 0;
+  for (const span of spans) {
+    const source = text.slice(span.start, span.end);
+    result += text.slice(cursor, span.start);
+    result +=
+      span.kind === "text"
+        ? linkifyTextReferences(source, context)
+        : span.kind === "url" && !options.bareUrls
+          ? linkifyUrl(source)
+          : source;
+    cursor = span.end;
+  }
+  return result + text.slice(cursor);
 }
