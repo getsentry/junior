@@ -26,10 +26,13 @@ const INLINE_TYPES: readonly string[] = [
   ...INLINE_VIDEO_TYPES,
 ];
 
-function contentDisposition(filename: string, contentType: string): string {
-  const disposition = INLINE_TYPES.includes(contentType)
-    ? "inline"
-    : "attachment";
+function contentDisposition(
+  filename: string,
+  contentType: string,
+  download: boolean,
+): string {
+  const disposition =
+    !download && INLINE_TYPES.includes(contentType) ? "inline" : "attachment";
   const fallback = filename.replace(/[^\x20-\x7e]|["\\]/g, "_");
   return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
@@ -71,6 +74,7 @@ function parseRangeHeader(
 export async function conversationAttachmentResponse(args: {
   attachmentId: string;
   conversationId: string;
+  download: boolean;
   range: string | undefined;
   storage: AttachmentStorage;
   viewer?: User;
@@ -108,7 +112,11 @@ export async function conversationAttachmentResponse(args: {
 
   headers.set(
     "content-disposition",
-    contentDisposition(attachment.filename, attachment.contentType),
+    contentDisposition(
+      attachment.filename,
+      attachment.contentType,
+      args.download,
+    ),
   );
   headers.set("content-type", attachment.contentType);
   if (!range) {

@@ -65,7 +65,11 @@ test("downloads a large Slack file on request", async ({ page, dashboard }) => {
   await recording.click();
   await expect(page.getByText("Preparing download…")).toBeVisible();
   await expect(recording).toBeDisabled();
-  expect((await download).suggestedFilename()).toBe("standup-recording.mp4");
+  const saved = await download;
+  expect(saved.suggestedFilename()).toBe("standup-recording.mp4");
+  // The byte route must send the video as an attachment, or some browsers
+  // replace the conversation with it.
+  expect(saved.url()).toMatch(/\?download=true$/);
   await expect(recording).toBeEnabled();
 
   await page

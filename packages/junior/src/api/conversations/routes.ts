@@ -8,6 +8,7 @@ import {
   forkConversationBodySchema,
   forkConversationResponseSchema,
   conversationAttachmentParamsSchema,
+  conversationAttachmentQuerySchema,
   conversationDetailQuerySchema,
   CONVERSATION_DETAIL_VERSION_HEADER,
   CONVERSATION_VERSION_HEADER,
@@ -736,12 +737,19 @@ export function createConversationRoutes(
       conversationAttachmentParamsSchema,
       "Invalid route parameters.",
     ),
+    validateRequest(
+      "query",
+      conversationAttachmentQuerySchema,
+      "Invalid query parameters.",
+    ),
     async (context) => {
       const { attachmentId, conversationId } = context.req.valid("param");
+      const { download } = context.req.valid("query");
       const viewer = context.get("viewer");
       return await conversationAttachmentResponse({
         attachmentId,
         conversationId,
+        download: download === true,
         range: context.req.header("range"),
         storage: options.attachmentStorage,
         ...(viewer ? { viewer } : undefined),

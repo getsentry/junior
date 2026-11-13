@@ -353,8 +353,8 @@ const PENDING_FILE_ROW_CLASS = `${FILE_ROW_SHELL_CLASS} grid-cols-[auto_minmax(0
  * Save one stored file after its download was prepared.
  *
  * The click runs after a long request, so it has no user activation, and
- * browsers block a new window then. A same-window `download` link saves the
- * file and stays on the page. An installed home screen app would open the
+ * browsers block a new window then. A same-window link that the byte route
+ * serves as an attachment saves the file and stays on the page. An installed home screen app would open the
  * file in a preview with no way back (see the stored file row), so it skips
  * this step: the refreshed row has a Download link that the user can tap.
  */
@@ -362,7 +362,9 @@ function startBrowserDownload(href: string, filename: string) {
   if (isStandalone()) return;
   const link = document.createElement("a");
   link.download = filename;
-  link.href = href;
+  // Some browsers ignore `download` for a file served inline, such as a
+  // video, and would replace the page with it.
+  link.href = `${href}?download=true`;
   link.rel = "noreferrer";
   link.click();
 }

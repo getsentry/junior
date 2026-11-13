@@ -161,6 +161,14 @@ describe("conversation attachment API", () => {
     expect(whole.headers.get("content-disposition")).toMatch(/^inline;/);
     expect(await whole.text()).toBe("0123456789");
 
+    // A same-window download link needs `attachment`, or some browsers
+    // replace the page with the video.
+    const saved = await app.request(
+      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/attachments/${stored.id}?download=true`,
+    );
+    expect(saved.status).toBe(200);
+    expect(saved.headers.get("content-disposition")).toMatch(/^attachment;/);
+
     // Safari probes with `bytes=0-1` before it plays a video.
     for (const [range, body, contentRange] of [
       ["bytes=0-1", "01", "bytes 0-1/10"],

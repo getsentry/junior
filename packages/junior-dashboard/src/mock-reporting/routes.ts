@@ -744,7 +744,7 @@ export function createMockReportingApi(): Hono<{
       return new Response(mockDemoMp4, {
         headers: {
           "cache-control": "private, no-store",
-          "content-disposition": `inline; filename="${filename}"`,
+          "content-disposition": `${c.req.query("download") === "true" ? "attachment" : "inline"}; filename="${filename}"`,
           "content-type": "video/mp4",
           "content-length": String(mockDemoMp4.byteLength),
         },
