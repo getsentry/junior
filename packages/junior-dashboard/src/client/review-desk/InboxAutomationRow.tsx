@@ -56,7 +56,10 @@ export function InboxAutomationRow(props: {
   const resume = useAutomationLifecycle(automation, "resume");
   const regionId = `inbox-automation-${automation.id}`;
   return (
-    <li className={inboxCardClass(props.expanded)}>
+    <li
+      className={inboxCardClass(props.expanded)}
+      data-expanded={props.expanded || undefined}
+    >
       <button
         aria-controls={regionId}
         aria-expanded={props.expanded}

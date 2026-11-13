@@ -896,3 +896,36 @@ test("comfortable rows show files and linked work as cards, and compact rows kee
   );
   await expect(release.getByLabel(/^Linked work, newest first/)).toBeVisible();
 });
+
+test("comfortable cards grow near the pointer, except for reduced motion", async ({
+  dashboard,
+  page,
+}) => {
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
+  await page.evaluate(() => {
+    localStorage.setItem("junior:density", "comfortable");
+  });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.reload();
+  const card = page.locator("[data-inbox-row]").first();
+  await card.hover();
+  // Let a frame pass, so a scale that was going to apply has applied.
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(done)));
+  await expect(card).not.toHaveAttribute("style", /scale/);
+
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.mouse.move(0, 0);
+  await card.hover();
+  await expect(card).toHaveAttribute("style", /scale\(1\.0[12]/);
+  await page.mouse.move(0, 0);
+  await expect(card).not.toHaveAttribute("style", /scale/);
+
+  // Compact rows hold still.
+  await page.evaluate(() => {
+    localStorage.setItem("junior:density", "compact");
+  });
+  await page.reload();
+  await card.hover();
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(done)));
+  await expect(card).not.toHaveAttribute("style", /scale/);
+});

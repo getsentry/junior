@@ -8,7 +8,7 @@ import { cn } from "../styles";
  */
 export function inboxCardClass(expanded: boolean): string {
   return cn(
-    "min-w-0 list-none rounded-xl border transition-[margin,box-shadow,background-color] duration-200",
+    "min-w-0 list-none rounded-xl border transition-[margin,box-shadow,background-color,transform] duration-200",
     expanded
       ? "my-4 border-dashboard-border-emphasis bg-dashboard-surface-raised shadow-[0_18px_44px_-14px_rgb(0_0_0/0.75),0_4px_14px_-6px_rgb(0_0_0/0.5)] light:shadow-[0_18px_44px_-14px_rgb(15_15_30/0.28),0_4px_14px_-6px_rgb(15_15_30/0.16)] md:-mx-2"
       : "border-dashboard-border bg-dashboard-surface-panel shadow-[0_1px_2px_rgb(0_0_0/0.4)] light:shadow-[0_1px_3px_rgb(15_15_30/0.08)]",

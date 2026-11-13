@@ -32,6 +32,7 @@ import {
 } from "./inboxData";
 import { InboxDoneView } from "./InboxDoneView";
 import { PullRequestChange, usePullRequestSections } from "./InboxPullRequests";
+import { useDockHover } from "./useDockHover";
 import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
 import {
   automationSections,
@@ -204,6 +205,7 @@ export function InboxList(props: {
   const ready = data.itemsLoaded && !props.loading;
   const state = useInboxListState(ready);
   const { view } = state;
+  const dock = useDockHover();
   useDocumentTitle(INBOX_VIEW_LABELS[view]);
   const action = useReviewItemAction();
   const { nowMs, snoozes, sweeper, titleOf } = data;
@@ -719,7 +721,7 @@ export function InboxList(props: {
         <EmptyState label="Nothing snoozed" />
       ) : (
         // Snoozed rows expand in place like the others, and wake there.
-        <ul className="m-0 grid gap-2 p-0 pt-1">
+        <ul className="m-0 grid gap-2 p-0 pt-1" {...dock}>
           {data.snoozedRows.map((row) => bundleRow(row, { snoozed: true }))}
         </ul>
       );

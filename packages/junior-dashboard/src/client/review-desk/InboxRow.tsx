@@ -300,6 +300,7 @@ export function InboxRow(props: InboxRowProps) {
   ) : (
     <li
       className={inboxCardClass(props.expanded)}
+      data-expanded={props.expanded || undefined}
       data-inbox-row={props.rowKey}
     >
       <InboxRowBody {...props} />
@@ -334,6 +335,7 @@ function ConversationInboxRow(
         inboxCardClass(props.expanded),
         drag?.dragging && "opacity-40",
       )}
+      data-expanded={props.expanded || undefined}
       data-inbox-row={props.rowKey}
     >
       <ContextMenu onOpenChange={actions.onMenuOpenChange}>

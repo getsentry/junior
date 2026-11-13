@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { ConversationSectionHeading } from "../conversations/ConversationSectionHeading";
+import { useDockHover } from "./useDockHover";
 
 /**
  * One labelled group in the inbox stream, with a bold heading and a rule.
@@ -19,6 +20,7 @@ export function InboxSection(props: {
   label: string;
   onToggle(): void;
 }) {
+  const dock = useDockHover();
   if (props.count === 0) return null;
   return (
     <section aria-label={props.label} className="grid gap-2 pt-5 first:pt-1">
@@ -37,7 +39,9 @@ export function InboxSection(props: {
       </div>
       {props.collapsed ? null : (
         <>
-          <ul className="m-0 grid gap-2 p-0">{props.children}</ul>
+          <ul className="m-0 grid gap-2 p-0" {...dock}>
+            {props.children}
+          </ul>
           {props.footer}
         </>
       )}

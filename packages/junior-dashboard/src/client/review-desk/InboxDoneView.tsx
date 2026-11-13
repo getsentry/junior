@@ -42,7 +42,10 @@ function DoneRow(props: {
   const regionId = `inbox-done-${item.id}`;
   const Icon = dismissed ? X : Check;
   return (
-    <li className={inboxCardClass(props.expanded)}>
+    <li
+      className={inboxCardClass(props.expanded)}
+      data-expanded={props.expanded || undefined}
+    >
       <button
         aria-controls={regionId}
         aria-expanded={props.expanded}
