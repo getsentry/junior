@@ -4,7 +4,6 @@ import {
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
-  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
@@ -37,7 +36,8 @@ interface Result extends PluginToolOutput {
   url: string;
 }
 
-export const gitHubCommentOnIssueToolDefinition = pluginToolDefinition({
+/** Post a comment on a GitHub issue as the App bot. */
+export const gitHubCommentOnIssueTool = definePluginTool({
   annotations: {
     destructiveHint: false,
     idempotentHint: false,
@@ -48,37 +48,34 @@ export const gitHubCommentOnIssueToolDefinition = pluginToolDefinition({
     "Post a comment on a GitHub issue. Returns the comment id and URL.",
   inputSchema,
   outputSchema,
-});
-
-/** Post a comment on a GitHub issue as the App bot. */
-export function createGitHubCommentOnIssueTool(egress: PluginEgress) {
-  return definePluginTool({
-    ...gitHubCommentOnIssueToolDefinition,
-    async execute(input): Promise<Result> {
-      const repo = parseRepo(input.repo);
-      const response = await githubApi(egress, {
-        operation: "github.issue.comment.create",
-        method: "POST",
-        path: `${repoPath(repo)}/issues/${input.number}/comments`,
-        body: { body: input.body },
-      });
-      if (!response.ok) {
-        const message = `GitHub issue comment failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`;
-        if (response.status === 404 || response.status === 422) {
-          throw new PluginToolInputError(message);
-        }
-        throw new Error(message);
+  async execute(
+    input,
+    _options,
+    { egress }: { egress: PluginEgress },
+  ): Promise<Result> {
+    const repo = parseRepo(input.repo);
+    const response = await githubApi(egress, {
+      operation: "github.issue.comment.create",
+      method: "POST",
+      path: `${repoPath(repo)}/issues/${input.number}/comments`,
+      body: { body: input.body },
+    });
+    if (!response.ok) {
+      const message = `GitHub issue comment failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`;
+      if (response.status === 404 || response.status === 422) {
+        throw new PluginToolInputError(message);
       }
-      const comment = z
-        .object({ id: z.number(), html_url: z.string() })
-        .parse(response.body);
-      return {
-        target: "commentOnIssue",
-        repo: repo.ref,
-        number: input.number,
-        comment_id: comment.id,
-        url: comment.html_url,
-      };
-    },
-  });
-}
+      throw new Error(message);
+    }
+    const comment = z
+      .object({ id: z.number(), html_url: z.string() })
+      .parse(response.body);
+    return {
+      target: "commentOnIssue",
+      repo: repo.ref,
+      number: input.number,
+      comment_id: comment.id,
+      url: comment.html_url,
+    };
+  },
+});

@@ -23,7 +23,6 @@ import {
 } from "../fixtures/conversation";
 import { createModelStream } from "../fixtures/model-stream";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
-import { pluginToolsHook } from "../fixtures/plugin-tools";
 
 const annotation: ObjectAnnotation = {
   kind: "object",
@@ -61,7 +60,7 @@ it("saves plugin object results once per reply, leaves background updates silent
         description: "Object test tools",
       },
       hooks: {
-        tools: pluginToolsHook(() => ({
+        tools: () => ({
           save: definePluginTool({
             approvalMode: "approve",
             exposure: "direct",
@@ -88,7 +87,7 @@ it("saves plugin object results once per reply, leaves background updates silent
               };
             },
           }),
-        })),
+        }),
       },
     }),
   ]);

@@ -194,34 +194,16 @@ export interface PluginHooks {
   ): SlackConversationLink | undefined;
   /** Pure Markdown rewrite. Emit ordinary Markdown only. */
   formatMarkdown?(ctx: FormatMarkdownHookContext): string;
-  tools?: PluginToolsHook;
-}
-
-/** What a plugin tool gets from one Turn. */
-export type PluginToolBinding = Pick<
-  PluginToolDefinition,
-  "disabledReason" | "execute"
->;
-
-/**
- * Plugin tools in two parts. The host reads `definitions()` with no Turn, so
- * one deployment has one set of model-facing tool definitions. `bind()` adds
- * what one Turn needs to run them.
- */
-export interface PluginToolsHook {
   /**
-   * Model-facing tool definitions by plugin-local camelCase name. Read only
-   * deployment configuration here, never Turn context. The host takes the
-   * name, description, schemas and metadata of each tool from here.
+   * Tools by plugin-local camelCase name. Read only deployment configuration
+   * here, never Turn context: the host reads them with no Turn, and passes
+   * the Turn context to each `execute` call.
    */
-  definitions(): Record<
-    string,
-    Omit<PluginToolDefinition, keyof PluginToolBinding>
-  >;
+  tools?(): Record<string, PluginToolDefinition>;
   /**
-   * Bind each tool from `definitions()` to one Turn. Return the same names.
-   * Set `disabledReason` to keep a tool listed but reject its calls in this
-   * Turn.
+   * Tools from `tools()` that this Turn cannot run, with the reason. The host
+   * keeps them in the tool list, so the cached prompt stays the same, and
+   * rejects their calls.
    */
-  bind(ctx: ToolRegistrationHookContext): Record<string, PluginToolBinding>;
+  disabledTools?(ctx: ToolRegistrationHookContext): Record<string, string>;
 }

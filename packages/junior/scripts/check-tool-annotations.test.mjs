@@ -52,12 +52,13 @@ describe("checkToolAnnotationSource", () => {
     const errors = checkToolAnnotationSource(`
       const pingToolDefinition = zodToolDefinition({ description: "demo" });
       zodTool({ ...pingToolDefinition, execute() {} });
-      definePluginTool(vercelToolDefinitions.ping);
+      definePluginTool(pluginToolDefinitions.ping);
       zodTool({ ...options, execute() {} });
     `);
 
     assert.deepEqual(errors, [
       "tool.ts:2: repo tool must declare annotations with destructiveHint, idempotentHint, openWorldHint, readOnlyHint",
+      "tool.ts:4: repo tool definition must use an object literal",
       "tool.ts:5: repo tool must declare annotations with destructiveHint, idempotentHint, openWorldHint, readOnlyHint",
     ]);
   });
@@ -80,22 +81,19 @@ describe("checkToolDefinitionSource", () => {
     ]);
   });
 
-  it("rejects an inline inputSchema in definePluginTool", () => {
+  it("accepts inline fields in definePluginTool", () => {
     const errors = checkToolDefinitionSource(
-      `definePluginTool({ inputSchema: schema, execute() {} });`,
+      `definePluginTool({ description: "demo", inputSchema: schema });`,
       "tool.ts",
       runBuilt,
     );
 
-    assert.deepEqual(errors, [
-      "tool.ts:1: inputSchema must come from the static tool registry; a run-built tool factory needs @runBuilt <tool>",
-    ]);
+    assert.deepEqual(errors, []);
   });
 
   it("accepts a definition spread from the registry", () => {
     const errors = checkToolDefinitionSource(
-      `zodTool({ ...pingToolDefinition, execute() {} });
-      definePluginTool(pluginToolDefinitions.ping);`,
+      `zodTool({ ...pingToolDefinition, execute() {} });`,
       "tool.ts",
       runBuilt,
     );

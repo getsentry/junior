@@ -70,12 +70,12 @@ describe("Watch Event people", () => {
             },
           },
           hooks: {
-            tools: {
-              definitions: () => ({}),
-              bind(ctx) {
-                events = ctx.events;
-                return {};
-              },
+            tools() {
+              return {};
+            },
+            disabledTools(ctx) {
+              events = ctx.events;
+              return {};
             },
           },
         }),

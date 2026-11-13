@@ -1,9 +1,8 @@
 import {
   definePluginTool,
-  pluginToolDefinition,
   PluginToolInputError,
   pluginToolOutputSchema,
-  type ToolRegistrationHookContext,
+  type PluginEgress,
   type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
@@ -90,9 +89,63 @@ function deploymentResult(data: unknown) {
   };
 }
 
-/** Static definitions of the Vercel action tools. */
-export const vercelActionToolDefinitions = {
-  deploymentCreate: pluginToolDefinition({
+async function request(
+  egress: PluginEgress,
+  operation: string,
+  path: string,
+  scope?: string,
+  method = "GET",
+  body?: unknown,
+): Promise<unknown> {
+  const url = new URL(path, "https://api.vercel.com");
+  if (scope)
+    url.searchParams.set(scope.startsWith("team_") ? "teamId" : "slug", scope);
+  const init: RequestInit = {
+    method,
+    redirect: "error",
+    signal: AbortSignal.timeout(30_000),
+  };
+  if (body !== undefined) {
+    init.headers = { "Content-Type": "application/json" };
+    init.body = JSON.stringify(body);
+  }
+  const response = await egress.fetch({
+    provider: "vercel",
+    operation,
+    request: new Request(url, init),
+  });
+  if (!response.ok) {
+    const message = `${operation} failed with HTTP ${response.status}`;
+    if (response.status === 400 || response.status === 404)
+      throw new PluginToolInputError(message);
+    throw new Error(message);
+  }
+  if (response.status === 204) return undefined;
+  return response.json();
+}
+async function inspectAlias(
+  egress: PluginEgress,
+  alias: string,
+  scope?: string,
+) {
+  const result = aliasSchema.parse(
+    await request(
+      egress,
+      "vercel.alias.get",
+      `/v4/aliases/${encodeURIComponent(alias)}`,
+      scope,
+    ),
+  );
+  return {
+    target: "alias" as const,
+    alias: result.alias,
+    deployment_id: result.deploymentId,
+    redirect: result.redirect ?? null,
+  };
+}
+/** Vercel deployment and alias operations. */
+export const vercelActionTools = {
+  deploymentCreate: definePluginTool({
     annotations: {
       destructiveHint: true,
       idempotentHint: false,
@@ -122,8 +175,56 @@ export const vercelActionToolDefinitions = {
       })
       .strict(),
     outputSchema: deploymentOutput,
+    async execute(input, _options, ctx) {
+      const project = z
+        .object({
+          id: text,
+          name: text,
+          link: z
+            .object({
+              type: text,
+              repoId: z.union([text, z.number()]).optional(),
+            })
+            .nullable()
+            .optional(),
+        })
+        .parse(
+          await request(
+            ctx.egress,
+            "vercel.project.get",
+            `/v9/projects/${encodeURIComponent(input.project)}`,
+            input.team,
+          ),
+        );
+      if (project.link?.type !== "github" || !project.link.repoId)
+        throw new PluginToolInputError(
+          "This deployment tool requires a project linked to GitHub. Use the Vercel CLI for other source types.",
+        );
+      const gitSource = {
+        type: "github",
+        repoId: project.link.repoId,
+        ref: input.ref,
+        sha: input.commit_sha?.toLowerCase(),
+      };
+      return deploymentResult(
+        await request(
+          ctx.egress,
+          "vercel.deployment.create",
+          "/v13/deployments",
+          input.team,
+          "POST",
+          {
+            name: project.name,
+            project: project.id,
+            // Vercel uses an omitted target for Preview, not "preview".
+            target: input.target === "production" ? "production" : undefined,
+            gitSource,
+          },
+        ),
+      );
+    },
   }),
-  deploymentInspect: pluginToolDefinition({
+  deploymentInspect: definePluginTool({
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -141,8 +242,18 @@ export const vercelActionToolDefinitions = {
       })
       .strict(),
     outputSchema: deploymentOutput,
+    async execute(input, _options, ctx) {
+      return deploymentResult(
+        await request(
+          ctx.egress,
+          "vercel.deployment.get",
+          `/v13/deployments/${encodeURIComponent(input.deployment)}?withGitRepoInfo=true`,
+          input.team,
+        ),
+      );
+    },
   }),
-  aliasAssign: pluginToolDefinition({
+  aliasAssign: definePluginTool({
     annotations: {
       destructiveHint: true,
       idempotentHint: true,
@@ -155,8 +266,24 @@ export const vercelActionToolDefinitions = {
       .object({ deployment_id: deploymentIdSchema, alias: aliasName, team })
       .strict(),
     outputSchema: aliasOutput.extend({ matches: z.boolean() }),
+    async execute(input, _options, ctx) {
+      await request(
+        ctx.egress,
+        "vercel.alias.assign",
+        `/v2/deployments/${encodeURIComponent(input.deployment_id)}/aliases`,
+        input.team,
+        "POST",
+        { alias: input.alias },
+      );
+      const result = await inspectAlias(ctx.egress, input.alias, input.team);
+      return {
+        ...result,
+        matches:
+          result.deployment_id === input.deployment_id && !result.redirect,
+      };
+    },
   }),
-  aliasInspect: pluginToolDefinition({
+  aliasInspect: definePluginTool({
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -166,8 +293,11 @@ export const vercelActionToolDefinitions = {
     description: "Read a Vercel alias's current deployment ID or redirect.",
     inputSchema: z.object({ alias: aliasName, team }).strict(),
     outputSchema: aliasOutput,
+    async execute(input, _options, ctx) {
+      return inspectAlias(ctx.egress, input.alias, input.team);
+    },
   }),
-  deploymentDelete: pluginToolDefinition({
+  deploymentDelete: definePluginTool({
     annotations: {
       destructiveHint: true,
       idempotentHint: true,
@@ -182,164 +312,19 @@ export const vercelActionToolDefinitions = {
       deployment_id: text,
       deleted: z.literal(true),
     }),
+    async execute(input, _options, ctx) {
+      await request(
+        ctx.egress,
+        "vercel.deployment.delete",
+        `/v13/deployments/${encodeURIComponent(input.deployment_id)}`,
+        input.team,
+        "DELETE",
+      );
+      return {
+        target: "deployment" as const,
+        deployment_id: input.deployment_id,
+        deleted: true as const,
+      };
+    },
   }),
 };
-
-/** Provide Vercel deployment and alias operations. */
-export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
-  const definitions = vercelActionToolDefinitions;
-  async function request(
-    operation: string,
-    path: string,
-    scope?: string,
-    method = "GET",
-    body?: unknown,
-  ): Promise<unknown> {
-    const url = new URL(path, "https://api.vercel.com");
-    if (scope)
-      url.searchParams.set(
-        scope.startsWith("team_") ? "teamId" : "slug",
-        scope,
-      );
-    const init: RequestInit = {
-      method,
-      redirect: "error",
-      signal: AbortSignal.timeout(30_000),
-    };
-    if (body !== undefined) {
-      init.headers = { "Content-Type": "application/json" };
-      init.body = JSON.stringify(body);
-    }
-    const response = await ctx.egress.fetch({
-      provider: "vercel",
-      operation,
-      request: new Request(url, init),
-    });
-    if (!response.ok) {
-      const message = `${operation} failed with HTTP ${response.status}`;
-      if (response.status === 400 || response.status === 404)
-        throw new PluginToolInputError(message);
-      throw new Error(message);
-    }
-    if (response.status === 204) return undefined;
-    return response.json();
-  }
-  async function inspectAlias(alias: string, scope?: string) {
-    const result = aliasSchema.parse(
-      await request(
-        "vercel.alias.get",
-        `/v4/aliases/${encodeURIComponent(alias)}`,
-        scope,
-      ),
-    );
-    return {
-      target: "alias" as const,
-      alias: result.alias,
-      deployment_id: result.deploymentId,
-      redirect: result.redirect ?? null,
-    };
-  }
-  return {
-    deploymentCreate: definePluginTool({
-      ...definitions.deploymentCreate,
-      async execute(input) {
-        const project = z
-          .object({
-            id: text,
-            name: text,
-            link: z
-              .object({
-                type: text,
-                repoId: z.union([text, z.number()]).optional(),
-              })
-              .nullable()
-              .optional(),
-          })
-          .parse(
-            await request(
-              "vercel.project.get",
-              `/v9/projects/${encodeURIComponent(input.project)}`,
-              input.team,
-            ),
-          );
-        if (project.link?.type !== "github" || !project.link.repoId)
-          throw new PluginToolInputError(
-            "This deployment tool requires a project linked to GitHub. Use the Vercel CLI for other source types.",
-          );
-        const gitSource = {
-          type: "github",
-          repoId: project.link.repoId,
-          ref: input.ref,
-          sha: input.commit_sha?.toLowerCase(),
-        };
-        return deploymentResult(
-          await request(
-            "vercel.deployment.create",
-            "/v13/deployments",
-            input.team,
-            "POST",
-            {
-              name: project.name,
-              project: project.id,
-              // Vercel uses an omitted target for Preview, not "preview".
-              target: input.target === "production" ? "production" : undefined,
-              gitSource,
-            },
-          ),
-        );
-      },
-    }),
-    deploymentInspect: definePluginTool({
-      ...definitions.deploymentInspect,
-      async execute(input) {
-        return deploymentResult(
-          await request(
-            "vercel.deployment.get",
-            `/v13/deployments/${encodeURIComponent(input.deployment)}?withGitRepoInfo=true`,
-            input.team,
-          ),
-        );
-      },
-    }),
-    aliasAssign: definePluginTool({
-      ...definitions.aliasAssign,
-      async execute(input) {
-        await request(
-          "vercel.alias.assign",
-          `/v2/deployments/${encodeURIComponent(input.deployment_id)}/aliases`,
-          input.team,
-          "POST",
-          { alias: input.alias },
-        );
-        const result = await inspectAlias(input.alias, input.team);
-        return {
-          ...result,
-          matches:
-            result.deployment_id === input.deployment_id && !result.redirect,
-        };
-      },
-    }),
-    aliasInspect: definePluginTool({
-      ...definitions.aliasInspect,
-      async execute(input) {
-        return inspectAlias(input.alias, input.team);
-      },
-    }),
-    deploymentDelete: definePluginTool({
-      ...definitions.deploymentDelete,
-      async execute(input) {
-        await request(
-          "vercel.deployment.delete",
-          `/v13/deployments/${encodeURIComponent(input.deployment_id)}`,
-          input.team,
-          "DELETE",
-        );
-        return {
-          target: "deployment" as const,
-          deployment_id: input.deployment_id,
-          deleted: true as const,
-        };
-      },
-    }),
-  };
-}

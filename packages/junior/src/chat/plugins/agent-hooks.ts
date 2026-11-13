@@ -26,6 +26,7 @@ import type {
   EventPublisher,
   SlackConversationLink,
   PluginRegistration,
+  PluginToolDefinition,
   SlackToolRegistrationHookContext,
   ToolRegistrationHookContext,
   User,
@@ -721,7 +722,7 @@ export async function getPluginUserPromptContributions(args: {
 
 /**
  * Model-facing definitions of one plugin's tools, by host tool name. They
- * come from the plugin's `definitions()` with no Turn.
+ * come from the plugin's `tools()` with no Turn.
  */
 function pluginToolDefinitions(
   plugin: PluginRegistration,
@@ -731,10 +732,18 @@ function pluginToolDefinitions(
   const pluginName = plugin.manifest.name;
   const namespace = pluginToolNamespace(pluginName);
   const definitions: Record<string, AnyToolDefinition> = {};
-  for (const [localName, definition] of Object.entries(hook.definitions())) {
+  for (const [localName, definition] of Object.entries(hook())) {
+    const execute = definition.execute;
     // Naming conventions belong in lint, not on the turn's critical path.
     definitions[`${namespace}_${localName}`] = {
       ...(definition as AnyToolDefinition),
+      // Keep prototype methods and their receiver on class-instance tools.
+      // `getPluginTools` passes the Turn context as the third argument.
+      ...(execute
+        ? {
+            execute: execute.bind(definition) as AnyToolDefinition["execute"],
+          }
+        : undefined),
       approvalMode: definition.approvalMode ?? "auto",
       identity: {
         id: `${pluginName}.${localName}`,
@@ -953,27 +962,22 @@ export function getPluginTools(
         break;
     }
     const definitions = pluginToolDefinitions(plugin);
-    const bindings = hook.bind(pluginContext);
     const namespace = pluginToolNamespace(pluginName);
-    const boundNames = Object.keys(bindings).map(
-      (localName) => `${namespace}_${localName}`,
-    );
-    if (
-      boundNames.length !== Object.keys(definitions).length ||
-      boundNames.some((name) => !definitions[name])
-    ) {
-      throw new Error(
-        `Plugin "${pluginName}" must bind exactly the tools that it defines`,
-      );
+    const disabled = plugin.hooks?.disabledTools?.(pluginContext) ?? {};
+    for (const localName of Object.keys(disabled)) {
+      if (!definitions[`${namespace}_${localName}`]) {
+        throw new Error(
+          `Plugin "${pluginName}" disabled unknown tool "${localName}"`,
+        );
+      }
     }
-    for (const [localName, binding] of Object.entries(bindings)) {
-      const name = `${namespace}_${localName}`;
+    for (const [name, definition] of Object.entries(definitions)) {
+      const localName = definition.identity!.name;
       if (tools[name]) {
         throw new Error(
           `Duplicate plugin tool "${name}" from plugin "${pluginName}"`,
         );
       }
-      const definition = definitions[name]!;
       const missingAnnotationKeys = missingToolAnnotationKeys(
         definition.annotations,
       );
@@ -984,12 +988,13 @@ export function getPluginTools(
           "app.tool.missing_annotations": missingAnnotationKeys.join(","),
         });
       }
-      const execute = binding.execute;
+      const execute = definition.execute as
+        | PluginToolDefinition["execute"]
+        | undefined;
+      const disabledReason = disabled[localName];
       tools[name] = {
         ...definition,
-        ...(binding.disabledReason
-          ? { disabledReason: binding.disabledReason }
-          : undefined),
+        ...(disabledReason ? { disabledReason } : undefined),
         ...(execute
           ? {
               execute: async (input: unknown, options: ToolExecuteOptions) =>
@@ -999,7 +1004,7 @@ export function getPluginTools(
                   await recordToolReply({
                     conversationId: context.conversationId,
                     plugin: pluginName,
-                    result: await execute.call(binding, input, options),
+                    result: await execute(input, options, pluginContext),
                     toolCallId: options.toolCallId,
                   }),
                 ),

@@ -4,12 +4,9 @@ import { fileURLToPath } from "node:url";
 import ts from "@typescript/typescript6";
 
 const TOOL_CONSTRUCTORS = new Set(["definePluginTool", "tool", "zodTool"]);
-// Static definitions declare the annotations. A tool built from one gets them
-// from there.
-const DEFINITION_DECLARERS = new Set([
-  "pluginToolDefinition",
-  "zodToolDefinition",
-]);
+// Static core definitions declare the annotations. A tool built from one gets
+// them from there.
+const DEFINITION_DECLARERS = new Set(["zodToolDefinition"]);
 const REQUIRED_HINTS = [
   "destructiveHint",
   "idempotentHint",
@@ -43,7 +40,9 @@ function annotationErrors(call, sourceFile, filePath) {
     1;
   const prefix = `${filePath}:${line}`;
   const definition = call.arguments[0];
-  const builtFromDefinition = TOOL_CONSTRUCTORS.has(call.expression.text);
+  // Only core `zodTool` tools are built from static definitions. Plugin tools
+  // declare everything inline in `definePluginTool`.
+  const builtFromDefinition = call.expression.text === "zodTool";
   if (
     builtFromDefinition &&
     definition &&
@@ -165,10 +164,11 @@ async function sourceFiles(directory) {
   return files;
 }
 
-// Model-facing fields that a static tool takes from its registry
-// definition.
+// Model-facing fields that a static core tool takes from its registry
+// definition. Plugin tools are context-free, so `definePluginTool` keeps them
+// inline.
 const DEFINITION_FIELDS = new Set(["description", "inputSchema"]);
-const INLINE_DEFINITION_CONSTRUCTORS = new Set(["definePluginTool", "zodTool"]);
+const INLINE_DEFINITION_CONSTRUCTORS = new Set(["zodTool"]);
 // Built by each run from its planned tool exposure, after `createTools`.
 // Their descriptions list the tools of the run.
 const EXPOSURE_BUILT_TOOL_NAMES = ["codemode", "searchTools"];

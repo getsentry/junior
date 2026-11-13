@@ -2,7 +2,6 @@ import {
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
-  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { emailDomain } from "../config";
@@ -194,7 +193,11 @@ async function searchFindableFiles(
   };
 }
 
-export const searchGoogleFilesToolDefinition = pluginToolDefinition({
+/**
+ * Find Docs, Sheets, and Slides that the requester could find in Drive
+ * themselves. Never search without the requester's terms.
+ */
+export const searchGoogleFilesTool = definePluginTool({
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -205,54 +208,44 @@ export const searchGoogleFilesToolDefinition = pluginToolDefinition({
     "Find Google Docs, Sheets, and Slides by title or text. Finds only company-owned files that anyone in the company can find in Drive, or that are shared with the requester by name. Shared-drive files are found only when shared with the requester by name. Files shared by link, shared only with other people or groups, or owned outside the company are never found; ask the requester for their link instead. Returns file ids for readGoogleFile and listGoogleFileComments.",
   inputSchema,
   outputSchema,
+  async execute(input, _options, ctx: GoogleToolContext) {
+    const requester = await requesterEmail(ctx);
+    // Domain-findable files are findable only inside the allowed domains,
+    // so search only for requesters in them.
+    const domain = requester ? emailDomain(requester) : undefined;
+    if (!requester || !domain || !ctx.allowedDomains.includes(domain)) {
+      throw new PluginToolInputError(
+        `Search works only for requesters with a known email at ${ctx.allowedDomains.join(", ")}. ${PASTE_LINK}`,
+      );
+    }
+    const found = await searchFindableFiles(ctx, {
+      maxResults: input.max_results,
+      query: input.query,
+      requester,
+      types: input.types ?? GOOGLE_FILE_TYPES,
+    });
+    // Never retry a rejected query without the requester's terms.
+    if (!found) {
+      throw new PluginToolInputError(
+        `Google rejected the search. ${PASTE_LINK}`,
+      );
+    }
+    return {
+      target: "searchGoogleFiles" as const,
+      files: found.files.flatMap((file) => {
+        const type = googleFileType(file.mimeType);
+        return type
+          ? [
+              {
+                file_id: file.id,
+                ...fileOutputFields(file),
+                title: file.name,
+                type,
+              },
+            ]
+          : [];
+      }),
+      truncated: found.truncated,
+    };
+  },
 });
-
-/**
- * Find Docs, Sheets, and Slides that the requester could find in Drive
- * themselves. Never search without the requester's terms.
- */
-export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
-  return definePluginTool({
-    ...searchGoogleFilesToolDefinition,
-    async execute(input) {
-      const requester = await requesterEmail(ctx);
-      // Domain-findable files are findable only inside the allowed domains,
-      // so search only for requesters in them.
-      const domain = requester ? emailDomain(requester) : undefined;
-      if (!requester || !domain || !ctx.allowedDomains.includes(domain)) {
-        throw new PluginToolInputError(
-          `Search works only for requesters with a known email at ${ctx.allowedDomains.join(", ")}. ${PASTE_LINK}`,
-        );
-      }
-      const found = await searchFindableFiles(ctx, {
-        maxResults: input.max_results,
-        query: input.query,
-        requester,
-        types: input.types ?? GOOGLE_FILE_TYPES,
-      });
-      // Never retry a rejected query without the requester's terms.
-      if (!found) {
-        throw new PluginToolInputError(
-          `Google rejected the search. ${PASTE_LINK}`,
-        );
-      }
-      return {
-        target: "searchGoogleFiles" as const,
-        files: found.files.flatMap((file) => {
-          const type = googleFileType(file.mimeType);
-          return type
-            ? [
-                {
-                  file_id: file.id,
-                  ...fileOutputFields(file),
-                  title: file.name,
-                  type,
-                },
-              ]
-            : [];
-        }),
-        truncated: found.truncated,
-      };
-    },
-  });
-}

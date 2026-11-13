@@ -12,7 +12,6 @@ import {
   subscribableResourceSchema,
   type PluginToolOutput,
   type SubscribableResource,
-  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { gitHubIssueSubscribable } from "../events/issue.js";
@@ -74,7 +73,11 @@ const providerIssueSchema = z.object({
   user: z.object({ login: z.string() }).nullish(),
 });
 
-export const gitHubGetIssueToolDefinition = pluginToolDefinition({
+/**
+ * Read one GitHub issue. Sandbox issue reads are routed here so the result can
+ * tell the agent to claim an issue that the requester does not own yet.
+ */
+export const gitHubGetIssueTool = definePluginTool({
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -85,82 +88,78 @@ export const gitHubGetIssueToolDefinition = pluginToolDefinition({
     "Get a GitHub issue. Read its comments with gh api repos/OWNER/REPO/issues/NUMBER/comments.",
   inputSchema,
   outputSchema,
-});
-
-/**
- * Read one GitHub issue. Sandbox issue reads are routed here so the result can
- * tell the agent to claim an issue that the requester does not own yet.
- */
-export function createGitHubGetIssueTool(ctx: {
-  actor?: Actor;
-  egress: PluginEgress;
-  events: { canSubscribe: boolean };
-  log: PluginLogger;
-  users: {
-    resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
-  };
-}) {
-  return definePluginTool({
-    ...gitHubGetIssueToolDefinition,
-    async execute(input): Promise<Result> {
-      const repo = parseRepo(input.repo);
-      const [response, requester] = await Promise.all([
-        githubApi(ctx.egress, {
-          followRedirects: true,
-          operation: "github.issue.get",
-          path: `${repoPath(repo)}/issues/${input.number}`,
-        }),
-        resolveGitHubRequester(ctx),
-      ]);
-      if (!response.ok) {
-        const message = `GitHub issue lookup failed with HTTP ${response.status}`;
-        // Missing issue/repo is model-repairable. Auth, rate limit, and 5xx stay system errors.
-        if (response.status === 404) {
-          throw new PluginToolInputError(message);
-        }
-        throw new Error(message);
-      }
-      const issue = providerIssueSchema.parse(response.body);
-      // A transferred issue redirects to its new repository.
-      const repoRef = issueRepoRef(issue.repository_url) ?? repo.ref;
-      const login = linkedGitHubLogin(requester?.user)?.toLowerCase();
-      const needsClaim =
-        login !== undefined &&
-        issue.state === "open" &&
-        !issue.assignees.some((assignee) => assignee.toLowerCase() === login);
-      const subscribable = gitHubIssueSubscribable({
-        canSubscribe: ctx.events.canSubscribe,
-        number: issue.number,
-        repo: repoRef,
-      });
-      return {
-        objectAnnotations: [
-          githubObjectAnnotation({
-            ...githubObjectFacts("task", response.body),
-            repo: repoRef,
-            number: issue.number,
-            title: issue.title,
-            url: issue.html_url,
-            objectType: "task",
-            status: issue.state,
-          }),
-        ],
-        target: "getIssue",
-        assignees: issue.assignees,
-        ...(issue.user ? { author: issue.user.login } : undefined),
-        body: issue.body,
-        comments: issue.comments,
-        labels: issue.labels,
-        ...(needsClaim ? { note: CLAIM_NOTE } : undefined),
-        number: issue.number,
-        state: issue.state,
-        ...(subscribable ? { subscribable } : undefined),
-        title: issue.title,
-        url: issue.html_url,
+  async execute(
+    input,
+    _options,
+    ctx: {
+      actor?: Actor;
+      egress: PluginEgress;
+      events: { canSubscribe: boolean };
+      log: PluginLogger;
+      users: {
+        resolveActor(): Promise<
+          { identity?: Identity; user?: User } | undefined
+        >;
       };
     },
-  });
-}
+  ): Promise<Result> {
+    const repo = parseRepo(input.repo);
+    const [response, requester] = await Promise.all([
+      githubApi(ctx.egress, {
+        followRedirects: true,
+        operation: "github.issue.get",
+        path: `${repoPath(repo)}/issues/${input.number}`,
+      }),
+      resolveGitHubRequester(ctx),
+    ]);
+    if (!response.ok) {
+      const message = `GitHub issue lookup failed with HTTP ${response.status}`;
+      // Missing issue/repo is model-repairable. Auth, rate limit, and 5xx stay system errors.
+      if (response.status === 404) {
+        throw new PluginToolInputError(message);
+      }
+      throw new Error(message);
+    }
+    const issue = providerIssueSchema.parse(response.body);
+    // A transferred issue redirects to its new repository.
+    const repoRef = issueRepoRef(issue.repository_url) ?? repo.ref;
+    const login = linkedGitHubLogin(requester?.user)?.toLowerCase();
+    const needsClaim =
+      login !== undefined &&
+      issue.state === "open" &&
+      !issue.assignees.some((assignee) => assignee.toLowerCase() === login);
+    const subscribable = gitHubIssueSubscribable({
+      canSubscribe: ctx.events.canSubscribe,
+      number: issue.number,
+      repo: repoRef,
+    });
+    return {
+      objectAnnotations: [
+        githubObjectAnnotation({
+          ...githubObjectFacts("task", response.body),
+          repo: repoRef,
+          number: issue.number,
+          title: issue.title,
+          url: issue.html_url,
+          objectType: "task",
+          status: issue.state,
+        }),
+      ],
+      target: "getIssue",
+      assignees: issue.assignees,
+      ...(issue.user ? { author: issue.user.login } : undefined),
+      body: issue.body,
+      comments: issue.comments,
+      labels: issue.labels,
+      ...(needsClaim ? { note: CLAIM_NOTE } : undefined),
+      number: issue.number,
+      state: issue.state,
+      ...(subscribable ? { subscribable } : undefined),
+      title: issue.title,
+      url: issue.html_url,
+    };
+  },
+});
 
 function issueRepoRef(repositoryUrl: string | undefined): string | undefined {
   const url = repositoryUrl ? URL.parse(repositoryUrl) : null;

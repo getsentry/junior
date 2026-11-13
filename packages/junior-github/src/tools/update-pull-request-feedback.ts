@@ -4,7 +4,6 @@ import {
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
-  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
@@ -366,8 +365,14 @@ function failed(response: GitHubApiResponse): boolean {
   return !response.ok || (Array.isArray(errors) && errors.length > 0);
 }
 
-export const gitHubUpdatePullRequestFeedbackToolDefinition =
-  pluginToolDefinition({
+/**
+ * Set Junior's feedback reaction on a pull request comment or review body.
+ * Replace only state reactions Junior previously added to the same comment.
+ */
+export function createGitHubUpdatePullRequestFeedbackTool(
+  botEmail: string | undefined,
+) {
+  return definePluginTool({
     // No action review: the tool checks in code that the bot authored the pull
     // request, and it changes only the bot's own reaction, which is reversible.
     approvalMode: "approve",
@@ -382,19 +387,11 @@ export const gitHubUpdatePullRequestFeedbackToolDefinition =
     exposure: "direct",
     inputSchema,
     outputSchema,
-  });
-
-/**
- * Set Junior's feedback reaction on a pull request comment or review body.
- * Replace only state reactions Junior previously added to the same comment.
- */
-export function createGitHubUpdatePullRequestFeedbackTool(
-  ctx: { egress: PluginEgress },
-  botEmail: string | undefined,
-) {
-  return definePluginTool({
-    ...gitHubUpdatePullRequestFeedbackToolDefinition,
-    async execute(input): Promise<Result> {
+    async execute(
+      input,
+      _options,
+      ctx: { egress: PluginEgress },
+    ): Promise<Result> {
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {
         throw new PluginToolInputError(

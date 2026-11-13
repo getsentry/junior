@@ -322,10 +322,19 @@ export const pluginToolOutputSchema = z
 
 export type PluginToolOutput = z.output<typeof pluginToolOutputSchema>;
 
-export type PluginToolExecute<TInput = unknown, TOutput = unknown> = {
+/**
+ * Run a plugin tool. The host passes the Turn context as `ctx` on each call,
+ * so a tool definition never holds Turn state.
+ */
+export type PluginToolExecute<
+  TInput = unknown,
+  TOutput = unknown,
+  TContext = ToolRegistrationHookContext,
+> = {
   bivarianceHack(
     input: TInput,
     options: PluginToolExecuteOptions,
+    ctx: TContext,
   ): Promise<TOutput> | TOutput;
 }["bivarianceHack"];
 
@@ -419,13 +428,9 @@ export interface PluginToolDefinition<
   TInput = unknown,
   TOutput = unknown,
   TExecuteOutput = TOutput,
+  TContext = ToolRegistrationHookContext,
 > extends ToolApprovalMetadata<TInput> {
   description: string;
-  /**
-   * Why the current Turn cannot run this tool. The host keeps the tool in the
-   * tool list, so the cached prompt stays the same, and rejects its calls.
-   */
-  disabledReason?: string;
   executionMode?: unknown;
   /** Override the host's default tool exposure. */
   exposure?: ToolExposure;
@@ -449,7 +454,7 @@ export interface PluginToolDefinition<
    * future major version.
    */
   promptSnippet?: string;
-  execute?: PluginToolExecute<TInput, TExecuteOutput>;
+  execute?: PluginToolExecute<TInput, TExecuteOutput, TContext>;
 }
 
 type ZodPluginToolDefinition<
@@ -458,6 +463,7 @@ type ZodPluginToolDefinition<
   TExecuteResult extends
     | z.input<TOutputSchema>
     | PluginToolOutputEnvelope<z.input<TOutputSchema>>,
+  TContext,
 > = Omit<
   PluginToolDefinition<z.output<TInputSchema>, z.output<TOutputSchema>>,
   "inputSchema" | "outputSchema" | "prepareArguments" | "execute"
@@ -468,6 +474,7 @@ type ZodPluginToolDefinition<
   execute?: (
     input: z.output<TInputSchema>,
     options: PluginToolExecuteOptions,
+    ctx: TContext,
   ) => Promise<TExecuteResult> | TExecuteResult;
 };
 
@@ -518,17 +525,20 @@ function createZodTool<
   TExecuteResult extends
     | z.input<TOutputSchema>
     | PluginToolOutputEnvelope<z.input<TOutputSchema>>,
+  TContext,
 >(
   definition: ZodPluginToolDefinition<
     TInputSchema,
     TOutputSchema,
-    TExecuteResult
+    TExecuteResult,
+    TContext
   >,
   helperName: "definePluginTool" | "zodTool",
 ): PluginToolDefinition<
   z.output<TInputSchema>,
   z.output<TOutputSchema>,
-  ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>
+  ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>,
+  TContext
 > {
   const { inputSchema, outputSchema, prepareArguments, execute, ...tool } =
     definition;
@@ -563,10 +573,11 @@ function createZodTool<
     },
     ...(execute
       ? {
-          async execute(input, options) {
+          async execute(input, options, ctx) {
             const result = await execute(
               input as z.output<TInputSchema>,
               options,
+              ctx,
             );
             if (isPluginToolOutputEnvelope(result)) {
               return {
@@ -581,31 +592,36 @@ function createZodTool<
   } as PluginToolDefinition<
     z.output<TInputSchema>,
     z.output<TOutputSchema>,
-    ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>
+    ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>,
+    TContext
   >;
 }
 
 /**
- * Static part of a Zod plugin tool: everything except the run-bound
- * `execute`. Pass it to `definePluginTool` in `definitions()`, and spread it
- * with `execute` in `bind()`.
+ * Run tools that take a plugin-built context, such as deployment config plus
+ * the Turn capabilities that they use. `toContext` runs on each call.
  */
-export type StaticPluginToolDefinition<
-  TInputSchema extends ZodTypeAny,
-  TOutputSchema extends ZodTypeAny,
-> = Omit<
-  ZodPluginToolDefinition<TInputSchema, TOutputSchema, z.input<TOutputSchema>>,
-  "execute" | "disabledReason"
->;
-
-/** Declare the static part of a Zod plugin tool once, for `definitions()` and `bind()`. */
-export function pluginToolDefinition<
-  TInputSchema extends ZodTypeAny,
-  TOutputSchema extends ZodTypeAny,
->(
-  definition: StaticPluginToolDefinition<TInputSchema, TOutputSchema>,
-): StaticPluginToolDefinition<TInputSchema, TOutputSchema> {
-  return definition;
+export function withToolContext<TContext>(
+  tools: Record<
+    string,
+    PluginToolDefinition<unknown, unknown, unknown, TContext>
+  >,
+  toContext: (ctx: ToolRegistrationHookContext) => TContext,
+): Record<string, PluginToolDefinition> {
+  return Object.fromEntries(
+    Object.entries(tools).map(([name, { execute, ...tool }]) => [
+      name,
+      {
+        ...tool,
+        ...(execute
+          ? {
+              execute: async (input, options, ctx) =>
+                await execute(input, options, toContext(ctx)),
+            }
+          : undefined),
+      } satisfies PluginToolDefinition,
+    ]),
+  );
 }
 
 /** Define a plugin tool with Zod input parsing and validated structured results. */
@@ -615,16 +631,19 @@ export function zodTool<
   TExecuteResult extends
     | z.input<TOutputSchema>
     | PluginToolOutputEnvelope<z.input<TOutputSchema>>,
+  TContext = ToolRegistrationHookContext,
 >(
   definition: ZodPluginToolDefinition<
     TInputSchema,
     TOutputSchema,
-    TExecuteResult
+    TExecuteResult,
+    TContext
   >,
 ): PluginToolDefinition<
   z.output<TInputSchema>,
   z.output<TOutputSchema>,
-  ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>
+  ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>,
+  TContext
 > {
   return createZodTool(definition, "zodTool");
 }
@@ -636,16 +655,19 @@ export function definePluginTool<
   TExecuteResult extends
     | z.input<TOutputSchema>
     | PluginToolOutputEnvelope<z.input<TOutputSchema>>,
+  TContext = ToolRegistrationHookContext,
 >(
   definition: ZodPluginToolDefinition<
     TInputSchema,
     TOutputSchema,
-    TExecuteResult
+    TExecuteResult,
+    TContext
   >,
 ): PluginToolDefinition<
   z.output<TInputSchema>,
   z.output<TOutputSchema>,
-  ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>
+  ParsedPluginToolExecuteResult<TOutputSchema, TExecuteResult>,
+  TContext
 > {
   return createZodTool(definition, "definePluginTool");
 }

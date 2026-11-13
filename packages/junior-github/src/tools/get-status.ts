@@ -3,7 +3,6 @@ import {
   type PluginCache,
   pluginToolOutputSchema,
   type PluginToolOutput,
-  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { loadGitHubStatusIncidents } from "../github-status.js";
@@ -29,7 +28,8 @@ interface Result extends PluginToolOutput {
   incidents: z.output<typeof incidentSchema>[];
 }
 
-export const gitHubGetStatusToolDefinition = pluginToolDefinition({
+/** Read open and recent GitHub incidents to tell outages from other failures. */
+export const gitHubGetStatusTool = definePluginTool({
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -40,28 +40,25 @@ export const gitHubGetStatusToolDefinition = pluginToolDefinition({
     "List GitHub incidents from githubstatus.com that are open or were resolved in the last 24 hours, with their affected components. Use when a GitHub request fails with a 5xx, a timeout, or a dropped connection, or when checks stay queued or fail with no cause in the logs.",
   inputSchema,
   outputSchema,
+  async execute(
+    _input,
+    _options,
+    ctx: { cache: PluginCache },
+  ): Promise<Result> {
+    const incidents = await loadGitHubStatusIncidents(
+      ctx.cache,
+      RECENT_INCIDENT_MS,
+    );
+    return {
+      target: "getStatus",
+      incidents: incidents.map(({ resolvedAt, startedAt, ...incident }) => {
+        const result: z.output<typeof incidentSchema> = {
+          ...incident,
+          started_at: startedAt,
+        };
+        if (resolvedAt) result.resolved_at = resolvedAt;
+        return result;
+      }),
+    };
+  },
 });
-
-/** Read open and recent GitHub incidents to tell outages from other failures. */
-export function createGitHubGetStatusTool(ctx: { cache: PluginCache }) {
-  return definePluginTool({
-    ...gitHubGetStatusToolDefinition,
-    async execute(): Promise<Result> {
-      const incidents = await loadGitHubStatusIncidents(
-        ctx.cache,
-        RECENT_INCIDENT_MS,
-      );
-      return {
-        target: "getStatus",
-        incidents: incidents.map(({ resolvedAt, startedAt, ...incident }) => {
-          const result: z.output<typeof incidentSchema> = {
-            ...incident,
-            started_at: startedAt,
-          };
-          if (resolvedAt) result.resolved_at = resolvedAt;
-          return result;
-        }),
-      };
-    },
-  });
-}

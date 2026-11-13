@@ -1,7 +1,6 @@
 import {
   definePluginTool,
   pluginToolOutputSchema,
-  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
@@ -35,7 +34,14 @@ const outputSchema = pluginToolOutputSchema
   })
   .partial({ attendees: true, end: true, label: true, start: true });
 
-export const cancelCalendarEventToolDefinition = pluginToolDefinition({
+/**
+ * Cancel an event that Junior organizes and email the attendees.
+ *
+ * Junior can only delete events on its own calendar, and only for a requester
+ * who is invited. Events that other people organize stay out of reach: the
+ * `calendar.events.owned` scope and the organizer check both enforce this.
+ */
+export const cancelCalendarEventTool = definePluginTool({
   annotations: {
     destructiveHint: true,
     idempotentHint: true,
@@ -49,56 +55,39 @@ export const cancelCalendarEventToolDefinition = pluginToolDefinition({
     "Cancel a Google Calendar event organized by your own Google account. Google removes it from every attendee's calendar and emails them a cancellation. Only people invited to the event can ask to cancel it. You cannot cancel events other people organize. For a repeating event, an occurrence id cancels only that occurrence; its series_event_id cancels every occurrence. Confirm which event, and for a repeating event whether one occurrence or the series, unless the requester already made it clear.",
   inputSchema,
   outputSchema,
-});
-
-/**
- * Cancel an event that Junior organizes and email the attendees.
- *
- * Junior can only delete events on its own calendar, and only for a requester
- * who is invited. Events that other people organize stay out of reach: the
- * `calendar.events.owned` scope and the organizer check both enforce this.
- */
-export function createCancelCalendarEventTool(ctx: GoogleToolContext) {
-  return definePluginTool({
-    ...cancelCalendarEventToolDefinition,
-    async execute(input) {
-      const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());
-      const read = await readOwnEventForRequester(
-        ctx,
-        input.event_id,
-        "cancel",
-      );
-      if (read.status === "cancelled") {
-        return {
-          target: "cancelCalendarEvent" as const,
-          cancelled: false,
-          event_id: read.eventId,
-        };
-      }
-      const { event, path } = read;
-      const result = {
-        target: "cancelCalendarEvent" as const,
-        ...ownEventResult(event, timeZone, ctx.accountEmail),
-      };
-
-      const response = await googleApiRequest(ctx, {
-        operation: "google.calendar.event.delete",
-        path,
-        query: { sendUpdates: "all" },
-      });
-      // 410 means a retry of this call already deleted the event.
-      if (response.status !== 204 && response.status !== 410) {
-        throw googleApiError("google.calendar.event.delete", response);
-      }
+  async execute(input, _options, ctx: GoogleToolContext) {
+    const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());
+    const read = await readOwnEventForRequester(ctx, input.event_id, "cancel");
+    if (read.status === "cancelled") {
       return {
-        ...result,
-        // Keep the card in the Conversation, and show that the event is gone.
-        objectAnnotations: result.objectAnnotations.map((annotation) => ({
-          ...annotation,
-          status: "cancelled",
-        })),
-        cancelled: response.status === 204,
+        target: "cancelCalendarEvent" as const,
+        cancelled: false,
+        event_id: read.eventId,
       };
-    },
-  });
-}
+    }
+    const { event, path } = read;
+    const result = {
+      target: "cancelCalendarEvent" as const,
+      ...ownEventResult(event, timeZone, ctx.accountEmail),
+    };
+
+    const response = await googleApiRequest(ctx, {
+      operation: "google.calendar.event.delete",
+      path,
+      query: { sendUpdates: "all" },
+    });
+    // 410 means a retry of this call already deleted the event.
+    if (response.status !== 204 && response.status !== 410) {
+      throw googleApiError("google.calendar.event.delete", response);
+    }
+    return {
+      ...result,
+      // Keep the card in the Conversation, and show that the event is gone.
+      objectAnnotations: result.objectAnnotations.map((annotation) => ({
+        ...annotation,
+        status: "cancelled",
+      })),
+      cancelled: response.status === 204,
+    };
+  },
+});

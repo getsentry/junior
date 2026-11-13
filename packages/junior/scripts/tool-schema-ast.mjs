@@ -6,7 +6,6 @@ import ts from "@typescript/typescript6";
 // follows schema names across files to the object literals that define them.
 const TOOL_CONSTRUCTORS = new Set([
   "definePluginTool",
-  "pluginToolDefinition",
   "tool",
   "zodTool",
   "zodToolDefinition",

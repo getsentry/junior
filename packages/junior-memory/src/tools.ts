@@ -10,7 +10,6 @@ import {
   type Identity,
   type User,
   pluginToolOutputSchema,
-  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
@@ -399,7 +398,8 @@ function memoryToolResult<TData extends Record<string, unknown>>(
   };
 }
 
-export const memoryCreateToolDefinition = pluginToolDefinition({
+/** Submit an explicit memory candidate for storage. */
+export const memoryCreateTool = definePluginTool({
   approvalMode: "approve",
   annotations: {
     destructiveHint: false,
@@ -412,91 +412,82 @@ export const memoryCreateToolDefinition = pluginToolDefinition({
   executionMode: "sequential",
   inputSchema: createMemoryInputSchema,
   outputSchema: memoryCreateOutputSchema,
+  execute: async (input, options, context: MemoryCreateToolContext) => {
+    const parsedInput = parseMemoryToolInput(createMemoryInputSchema, input);
+    const toolCallId = requireToolCallId(options.toolCallId);
+    const requestedExpiresAtMs = parseExpiresAt(parsedInput.expires_at);
+    const runtimeContext = await memoryRuntimeContext(context);
+    const store = memoryStore(context, runtimeContext, {
+      supersessionDecider: context.supersessionDecider,
+    });
+    const review = await (async () => {
+      try {
+        return parseMemoryReview(
+          await context.agent.reviewCreateRequest(
+            parseCreateMemoryRequest({
+              content: requireMemoryContent(parsedInput.content),
+              ...(requestedExpiresAtMs !== undefined
+                ? { expiresAtMs: requestedExpiresAtMs }
+                : undefined),
+              runtimeContext,
+              ...(context.userText?.trim()
+                ? {
+                    sourceContext: {
+                      currentUserText: context.userText.trim(),
+                    },
+                  }
+                : undefined),
+            }),
+          ),
+        );
+      } catch (error) {
+        if (error instanceof PluginToolInputError) {
+          throw error;
+        }
+        const detail =
+          error instanceof Error && error.message.trim()
+            ? `: ${error.message}`
+            : "";
+        throw new PluginToolInputError(`Memory agent review failed${detail}`, {
+          cause: error,
+        });
+      }
+    })();
+    if (review.decision === "reject") {
+      throw new PluginToolInputError(`Memory was not stored: ${review.reason}`);
+    }
+    const memoryInput = createInput(
+      context,
+      {
+        content: review.content,
+        kind: review.kind,
+        ...(review.expiresAtMs !== undefined
+          ? { expiresAtMs: review.expiresAtMs }
+          : requestedExpiresAtMs !== undefined
+            ? { expiresAtMs: requestedExpiresAtMs }
+            : {}),
+      },
+      toolCallId,
+    );
+    const result = await (async () => {
+      try {
+        if (targetForKind(review.kind) === "conversation") {
+          return await store.createConversationMemory(memoryInput);
+        }
+        return await store.createMemory(memoryInput);
+      } catch (error) {
+        asToolInputError(error);
+      }
+    })();
+    return memoryToolResult("createMemory", {
+      created: result.created,
+      memory: compactMemory(result.memory),
+    });
+  },
 });
 
-/** Create a tool that submits an explicit memory candidate for storage. */
-export function createMemoryCreateTool(context: MemoryCreateToolContext) {
-  return definePluginTool({
-    ...memoryCreateToolDefinition,
-    execute: async (input, options) => {
-      const parsedInput = parseMemoryToolInput(createMemoryInputSchema, input);
-      const toolCallId = requireToolCallId(options.toolCallId);
-      const requestedExpiresAtMs = parseExpiresAt(parsedInput.expires_at);
-      const runtimeContext = await memoryRuntimeContext(context);
-      const store = memoryStore(context, runtimeContext, {
-        supersessionDecider: context.supersessionDecider,
-      });
-      const review = await (async () => {
-        try {
-          return parseMemoryReview(
-            await context.agent.reviewCreateRequest(
-              parseCreateMemoryRequest({
-                content: requireMemoryContent(parsedInput.content),
-                ...(requestedExpiresAtMs !== undefined
-                  ? { expiresAtMs: requestedExpiresAtMs }
-                  : undefined),
-                runtimeContext,
-                ...(context.userText?.trim()
-                  ? {
-                      sourceContext: {
-                        currentUserText: context.userText.trim(),
-                      },
-                    }
-                  : undefined),
-              }),
-            ),
-          );
-        } catch (error) {
-          if (error instanceof PluginToolInputError) {
-            throw error;
-          }
-          const detail =
-            error instanceof Error && error.message.trim()
-              ? `: ${error.message}`
-              : "";
-          throw new PluginToolInputError(
-            `Memory agent review failed${detail}`,
-            { cause: error },
-          );
-        }
-      })();
-      if (review.decision === "reject") {
-        throw new PluginToolInputError(
-          `Memory was not stored: ${review.reason}`,
-        );
-      }
-      const memoryInput = createInput(
-        context,
-        {
-          content: review.content,
-          kind: review.kind,
-          ...(review.expiresAtMs !== undefined
-            ? { expiresAtMs: review.expiresAtMs }
-            : requestedExpiresAtMs !== undefined
-              ? { expiresAtMs: requestedExpiresAtMs }
-              : {}),
-        },
-        toolCallId,
-      );
-      const result = await (async () => {
-        try {
-          if (targetForKind(review.kind) === "conversation") {
-            return await store.createConversationMemory(memoryInput);
-          }
-          return await store.createMemory(memoryInput);
-        } catch (error) {
-          asToolInputError(error);
-        }
-      })();
-      return memoryToolResult("createMemory", {
-        created: result.created,
-        memory: compactMemory(result.memory),
-      });
-    },
-  });
-}
-
-export const memoryArchiveToolDefinition = pluginToolDefinition({
+/** Archive a visible memory in the active context. */
+export const memoryArchiveTool = definePluginTool({
   annotations: {
     destructiveHint: true,
     idempotentHint: true,
@@ -508,33 +499,27 @@ export const memoryArchiveToolDefinition = pluginToolDefinition({
   executionMode: "sequential",
   inputSchema: archiveMemoryInputSchema,
   outputSchema: memorySingleOutputSchema,
+  execute: async (input, _options, context: MemoryToolContext) => {
+    const parsedInput = parseMemoryToolInput(archiveMemoryInputSchema, input);
+    const runtimeContext = await memoryRuntimeContext(context);
+    const memory = await (async () => {
+      try {
+        return await memoryStore(context, runtimeContext).archiveMemory({
+          id: parsedInput.id,
+          reason: "tool_removed",
+        });
+      } catch (error) {
+        asToolInputError(error);
+      }
+    })();
+    return memoryToolResult("archiveMemory", {
+      memory: compactMemory(memory),
+    });
+  },
 });
 
-/** Create a tool that archives a visible memory in the active context. */
-export function createMemoryArchiveTool(context: MemoryToolContext) {
-  return definePluginTool({
-    ...memoryArchiveToolDefinition,
-    execute: async (input) => {
-      const parsedInput = parseMemoryToolInput(archiveMemoryInputSchema, input);
-      const runtimeContext = await memoryRuntimeContext(context);
-      const memory = await (async () => {
-        try {
-          return await memoryStore(context, runtimeContext).archiveMemory({
-            id: parsedInput.id,
-            reason: "tool_removed",
-          });
-        } catch (error) {
-          asToolInputError(error);
-        }
-      })();
-      return memoryToolResult("archiveMemory", {
-        memory: compactMemory(memory),
-      });
-    },
-  });
-}
-
-export const memoryListToolDefinition = pluginToolDefinition({
+/** List visible active memories in the active context. */
+export const memoryListTool = definePluginTool({
   description:
     "List active memories visible in the current context. Use when the user asks what you remember or when memory ids are needed before removing a memory.",
   annotations: {
@@ -545,26 +530,20 @@ export const memoryListToolDefinition = pluginToolDefinition({
   },
   inputSchema: listMemoriesInputSchema,
   outputSchema: memoryManyOutputSchema,
+  execute: async (input, _options, context: MemoryToolContext) => {
+    const parsedInput = parseMemoryToolInput(listMemoriesInputSchema, input);
+    const runtimeContext = await memoryRuntimeContext(context);
+    const memories = await memoryStore(context, runtimeContext).listMemories({
+      limit: boundedLimit(parsedInput.limit, DEFAULT_RESULT_LIMIT),
+    });
+    return memoryToolResult("listMemories", {
+      memories: memories.map(compactMemory),
+    });
+  },
 });
 
-/** Create a tool that lists visible active memories in the active context. */
-export function createMemoryListTool(context: MemoryToolContext) {
-  return definePluginTool({
-    ...memoryListToolDefinition,
-    execute: async (input) => {
-      const parsedInput = parseMemoryToolInput(listMemoriesInputSchema, input);
-      const runtimeContext = await memoryRuntimeContext(context);
-      const memories = await memoryStore(context, runtimeContext).listMemories({
-        limit: boundedLimit(parsedInput.limit, DEFAULT_RESULT_LIMIT),
-      });
-      return memoryToolResult("listMemories", {
-        memories: memories.map(compactMemory),
-      });
-    },
-  });
-}
-
-export const memorySearchToolDefinition = pluginToolDefinition({
+/** Search visible active memories in the active context. */
+export const memorySearchTool = definePluginTool({
   description:
     "Search active memories visible in the current context. Use when the model needs targeted memory recall.",
   annotations: {
@@ -575,28 +554,15 @@ export const memorySearchToolDefinition = pluginToolDefinition({
   },
   inputSchema: searchMemoriesInputSchema,
   outputSchema: memoryManyOutputSchema,
+  execute: async (input, _options, context: MemoryToolContext) => {
+    const parsedInput = parseMemoryToolInput(searchMemoriesInputSchema, input);
+    const runtimeContext = await memoryRuntimeContext(context);
+    const memories = await memoryStore(context, runtimeContext).searchMemories({
+      query: parsedInput.query,
+      limit: boundedLimit(parsedInput.limit, DEFAULT_SEARCH_LIMIT),
+    });
+    return memoryToolResult("searchMemories", {
+      memories: memories.map(compactMemory),
+    });
+  },
 });
-
-/** Create a tool that searches visible active memories in the active context. */
-export function createMemorySearchTool(context: MemoryToolContext) {
-  return definePluginTool({
-    ...memorySearchToolDefinition,
-    execute: async (input) => {
-      const parsedInput = parseMemoryToolInput(
-        searchMemoriesInputSchema,
-        input,
-      );
-      const runtimeContext = await memoryRuntimeContext(context);
-      const memories = await memoryStore(
-        context,
-        runtimeContext,
-      ).searchMemories({
-        query: parsedInput.query,
-        limit: boundedLimit(parsedInput.limit, DEFAULT_SEARCH_LIMIT),
-      });
-      return memoryToolResult("searchMemories", {
-        memories: memories.map(compactMemory),
-      });
-    },
-  });
-}

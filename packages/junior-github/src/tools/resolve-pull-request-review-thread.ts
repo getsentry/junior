@@ -4,7 +4,6 @@ import {
   PluginToolInputError,
   pluginToolOutputSchema,
   type PluginToolOutput,
-  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
@@ -63,8 +62,11 @@ interface Result extends PluginToolOutput {
   resolved: boolean;
 }
 
-export const gitHubResolvePullRequestReviewThreadToolDefinition =
-  pluginToolDefinition({
+/** Resolve one review thread after GitHub proves it belongs to a bot-authored PR. */
+export function createGitHubResolvePullRequestReviewThreadTool(
+  botEmail: string | undefined,
+) {
+  return definePluginTool({
     // No action review: the tool checks in code that the bot authored the pull
     // request, and it changes only the thread's resolved state, which is
     // reversible.
@@ -80,16 +82,11 @@ export const gitHubResolvePullRequestReviewThreadToolDefinition =
     exposure: "direct",
     inputSchema,
     outputSchema,
-  });
-
-/** Resolve one review thread after GitHub proves it belongs to a bot-authored PR. */
-export function createGitHubResolvePullRequestReviewThreadTool(
-  ctx: { egress: PluginEgress },
-  botEmail: string | undefined,
-) {
-  return definePluginTool({
-    ...gitHubResolvePullRequestReviewThreadToolDefinition,
-    async execute(input): Promise<Result> {
+    async execute(
+      input,
+      _options,
+      ctx: { egress: PluginEgress },
+    ): Promise<Result> {
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {
         throw new PluginToolInputError(

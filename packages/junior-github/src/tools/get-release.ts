@@ -5,7 +5,6 @@ import {
   subscribableResourceSchema,
   type PluginToolOutput,
   type SubscribableResource,
-  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { gitHubReleaseSourceSubscribable } from "../events/release.js";
@@ -86,7 +85,8 @@ function mapRelease(
   };
 }
 
-export const gitHubGetReleaseToolDefinition = pluginToolDefinition({
+/** Read release metadata and expose its stable subscription identity. */
+export const gitHubGetReleaseTool = definePluginTool({
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -97,68 +97,65 @@ export const gitHubGetReleaseToolDefinition = pluginToolDefinition({
     "Get a GitHub release for an exact repository, optionally limited to one tag. The result remains subscribable when no release exists yet, so use it before waiting for a published release. Omit the tag to watch every published release in the repository.",
   inputSchema,
   outputSchema,
-});
-
-/** Read release metadata and expose its stable subscription identity. */
-export function createGitHubGetReleaseTool(ctx: {
-  egress: PluginEgress;
-  events: { canSubscribe: boolean };
-}) {
-  return definePluginTool({
-    ...gitHubGetReleaseToolDefinition,
-    async execute(input): Promise<Result> {
-      const repo = parseRepo(input.repo);
-      const tag = input.tag?.trim() || undefined;
-      let release: z.output<typeof releaseSchema> | null = null;
-
-      if (tag) {
-        const response = await githubApi(ctx.egress, {
-          operation: "github.release.get",
-          path: `${repoPath(repo)}/releases/tags/${encodeURIComponent(tag)}`,
-        });
-        if (response.ok) {
-          release = mapRelease(providerReleaseSchema.parse(response.body));
-        } else if (response.status !== 404) {
-          throw new Error(
-            `GitHub release lookup failed with HTTP ${response.status}`,
-          );
-        }
-        // 404 keeps release null so the tag remains subscribable before publish.
-      } else {
-        // Prefer GitHub's non-draft latest endpoint so authenticated tokens with
-        // push access cannot surface a draft as the current release.
-        const response = await githubApi(ctx.egress, {
-          operation: "github.release.latest",
-          path: `${repoPath(repo)}/releases/latest`,
-        });
-        if (response.ok) {
-          release = mapRelease(providerReleaseSchema.parse(response.body));
-        } else if (response.status === 404) {
-          // Missing repo and "no published release yet" both 404. Keep the
-          // repository-wide source subscribable either way.
-          release = null;
-        } else {
-          throw new Error(
-            `GitHub release lookup failed with HTTP ${response.status}`,
-          );
-        }
-      }
-
-      const subscribable = gitHubReleaseSourceSubscribable({
-        canSubscribe: ctx.events.canSubscribe,
-        repo: repo.ref,
-        tag,
-      });
-      const data: ReleaseSource = {
-        release,
-        repo: repo.ref,
-        tag: tag ?? null,
-        ...(subscribable ? { subscribable } : undefined),
-      };
-      return {
-        target: "getRelease",
-        ...data,
-      };
+  async execute(
+    input,
+    _options,
+    ctx: {
+      egress: PluginEgress;
+      events: { canSubscribe: boolean };
     },
-  });
-}
+  ): Promise<Result> {
+    const repo = parseRepo(input.repo);
+    const tag = input.tag?.trim() || undefined;
+    let release: z.output<typeof releaseSchema> | null = null;
+
+    if (tag) {
+      const response = await githubApi(ctx.egress, {
+        operation: "github.release.get",
+        path: `${repoPath(repo)}/releases/tags/${encodeURIComponent(tag)}`,
+      });
+      if (response.ok) {
+        release = mapRelease(providerReleaseSchema.parse(response.body));
+      } else if (response.status !== 404) {
+        throw new Error(
+          `GitHub release lookup failed with HTTP ${response.status}`,
+        );
+      }
+      // 404 keeps release null so the tag remains subscribable before publish.
+    } else {
+      // Prefer GitHub's non-draft latest endpoint so authenticated tokens with
+      // push access cannot surface a draft as the current release.
+      const response = await githubApi(ctx.egress, {
+        operation: "github.release.latest",
+        path: `${repoPath(repo)}/releases/latest`,
+      });
+      if (response.ok) {
+        release = mapRelease(providerReleaseSchema.parse(response.body));
+      } else if (response.status === 404) {
+        // Missing repo and "no published release yet" both 404. Keep the
+        // repository-wide source subscribable either way.
+        release = null;
+      } else {
+        throw new Error(
+          `GitHub release lookup failed with HTTP ${response.status}`,
+        );
+      }
+    }
+
+    const subscribable = gitHubReleaseSourceSubscribable({
+      canSubscribe: ctx.events.canSubscribe,
+      repo: repo.ref,
+      tag,
+    });
+    const data: ReleaseSource = {
+      release,
+      repo: repo.ref,
+      tag: tag ?? null,
+      ...(subscribable ? { subscribable } : undefined),
+    };
+    return {
+      target: "getRelease",
+      ...data,
+    };
+  },
+});

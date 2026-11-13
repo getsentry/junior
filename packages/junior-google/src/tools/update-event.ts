@@ -2,7 +2,6 @@ import {
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
-  pluginToolDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
@@ -87,7 +86,12 @@ const outputSchema = pluginToolOutputSchema.extend({
   ...ownEventOutputFields,
 });
 
-export const updateCalendarEventToolDefinition = pluginToolDefinition({
+/**
+ * Change an event that Junior organizes and email the attendees.
+ *
+ * Only people already invited to the event may change it.
+ */
+export const updateCalendarEventTool = definePluginTool({
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -117,106 +121,89 @@ export const updateCalendarEventToolDefinition = pluginToolDefinition({
     "Change a Google Calendar event organized by your own Google account: title, description, time, location, video call, or attendees. Google emails the attendees about the change, and existing attendees keep their responses. Only people invited to the event can ask for changes, and only people in the company's Google Workspace domains can be invited. You cannot change events other people organize. Confirm the change with the requester first unless they already stated it exactly.",
   inputSchema,
   outputSchema,
-});
-
-/**
- * Change an event that Junior organizes and email the attendees.
- *
- * Only people already invited to the event may change it.
- */
-export function createUpdateCalendarEventTool(ctx: GoogleToolContext) {
-  return definePluginTool({
-    ...updateCalendarEventToolDefinition,
-    async execute(input) {
-      const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());
-      if (input.start && input.end) {
-        const durationMs = Date.parse(input.end) - Date.parse(input.start);
-        if (durationMs <= 0) {
-          throw new PluginToolInputError("end must be after start.");
-        }
-        if (durationMs > MAX_EVENT_MS) {
-          throw new PluginToolInputError("Events can be at most 8 hours long.");
-        }
+  async execute(input, _options, ctx: GoogleToolContext) {
+    const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());
+    if (input.start && input.end) {
+      const durationMs = Date.parse(input.end) - Date.parse(input.start);
+      if (durationMs <= 0) {
+        throw new PluginToolInputError("end must be after start.");
       }
-      requireAllowedEmails(
-        [...input.add_attendees, ...input.add_optional_attendees],
-        ctx.allowedDomains,
-      );
-      const read = await readOwnEventForRequester(
-        ctx,
-        input.event_id,
-        "change",
-      );
-      if (read.status === "cancelled") {
-        throw new PluginToolInputError(
-          "This event is cancelled. Create a new event instead.",
-        );
+      if (durationMs > MAX_EVENT_MS) {
+        throw new PluginToolInputError("Events can be at most 8 hours long.");
       }
-      const { event, path } = read;
-      const attendees = event.attendees ?? [];
-      // Google can return directory capitalization; inputs are lowercased.
-      const emailKey = (email: string) => email.toLowerCase();
-      const removed = new Set(input.remove_attendees);
-      const kept = attendees.filter(
-        (attendee) => !removed.has(emailKey(attendee.email)),
+    }
+    requireAllowedEmails(
+      [...input.add_attendees, ...input.add_optional_attendees],
+      ctx.allowedDomains,
+    );
+    const read = await readOwnEventForRequester(ctx, input.event_id, "change");
+    if (read.status === "cancelled") {
+      throw new PluginToolInputError(
+        "This event is cancelled. Create a new event instead.",
       );
-      const existing = new Set(
-        kept.map((attendee) => emailKey(attendee.email)),
-      );
-      const added = [
-        ...input.add_attendees.map((email) => ({ email })),
-        ...input.add_optional_attendees.map((email) => ({
-          email,
-          optional: true,
-        })),
-      ].filter((attendee) => {
-        if (existing.has(attendee.email)) return false;
-        existing.add(attendee.email);
-        return true;
-      });
-      const attendeesChanged = kept.length !== attendees.length || added.length;
-      const addVideoCall = input.add_video_call && !event.hangoutLink;
+    }
+    const { event, path } = read;
+    const attendees = event.attendees ?? [];
+    // Google can return directory capitalization; inputs are lowercased.
+    const emailKey = (email: string) => email.toLowerCase();
+    const removed = new Set(input.remove_attendees);
+    const kept = attendees.filter(
+      (attendee) => !removed.has(emailKey(attendee.email)),
+    );
+    const existing = new Set(kept.map((attendee) => emailKey(attendee.email)));
+    const added = [
+      ...input.add_attendees.map((email) => ({ email })),
+      ...input.add_optional_attendees.map((email) => ({
+        email,
+        optional: true,
+      })),
+    ].filter((attendee) => {
+      if (existing.has(attendee.email)) return false;
+      existing.add(attendee.email);
+      return true;
+    });
+    const attendeesChanged = kept.length !== attendees.length || added.length;
+    const addVideoCall = input.add_video_call && !event.hangoutLink;
 
-      const response = await googleApiRequest(ctx, {
-        body: {
-          ...(input.title !== undefined && { summary: input.title }),
-          ...(input.description !== undefined && {
-            description: input.description,
+    const response = await googleApiRequest(ctx, {
+      body: {
+        ...(input.title !== undefined && { summary: input.title }),
+        ...(input.description !== undefined && {
+          description: input.description,
+        }),
+        ...(input.start &&
+          input.end && {
+            end: { dateTime: input.end, timeZone },
+            start: { dateTime: input.start, timeZone },
           }),
-          ...(input.start &&
-            input.end && {
-              end: { dateTime: input.end, timeZone },
-              start: { dateTime: input.start, timeZone },
-            }),
-          ...(input.location !== undefined && { location: input.location }),
-          ...(attendeesChanged && { attendees: [...kept, ...added] }),
-          ...(addVideoCall && {
-            conferenceData: {
-              createRequest: {
-                conferenceSolutionKey: { type: "hangoutsMeet" },
-                requestId: `${event.id}-meet`,
-              },
+        ...(input.location !== undefined && { location: input.location }),
+        ...(attendeesChanged && { attendees: [...kept, ...added] }),
+        ...(addVideoCall && {
+          conferenceData: {
+            createRequest: {
+              conferenceSolutionKey: { type: "hangoutsMeet" },
+              requestId: `${event.id}-meet`,
             },
-          }),
-        },
-        operation: "google.calendar.event.update",
-        path,
-        query: {
-          ...(addVideoCall && { conferenceDataVersion: "1" }),
-          sendUpdates: "all",
-        },
-      });
-      if (response.status !== 200) {
-        throw googleApiError("google.calendar.event.update", response);
-      }
-      return {
-        target: "updateCalendarEvent" as const,
-        ...ownEventResult(
-          ownEventSchema.parse(response.body),
-          timeZone,
-          ctx.accountEmail,
-        ),
-      };
-    },
-  });
-}
+          },
+        }),
+      },
+      operation: "google.calendar.event.update",
+      path,
+      query: {
+        ...(addVideoCall && { conferenceDataVersion: "1" }),
+        sendUpdates: "all",
+      },
+    });
+    if (response.status !== 200) {
+      throw googleApiError("google.calendar.event.update", response);
+    }
+    return {
+      target: "updateCalendarEvent" as const,
+      ...ownEventResult(
+        ownEventSchema.parse(response.body),
+        timeZone,
+        ctx.accountEmail,
+      ),
+    };
+  },
+});

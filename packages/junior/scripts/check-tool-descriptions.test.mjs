@@ -59,19 +59,12 @@ describe("check-tool-descriptions", () => {
           description: "Read a file at \`path\`.",
           inputSchema: z.object({ path: z.string() }),
         });
-        export const listToolDefinition = pluginToolDefinition({
-          description: "List files and pass \`cursor\` for more.",
-          inputSchema: z.object({ cursor: z.string() }),
-        });
       `,
     });
 
     assert.deepEqual(
       issues.map((issue) => issue.split("\t").slice(0, 2).join(" ")),
-      [
-        "src/tool.ts tool-description-names-param",
-        "src/tool.ts tool-description-names-param",
-      ],
+      ["src/tool.ts tool-description-names-param"],
     );
   });
 

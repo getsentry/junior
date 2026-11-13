@@ -1,3 +1,4 @@
+import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import {
   objectAnnotationSchema,
   PluginToolInputError,
@@ -14,7 +15,7 @@ const REQUESTER = "alice@example.com";
 function calendarTools(...responses: Response[]) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
-  const tools = googlePlugin().hooks!.tools!.bind({
+  const tools = bindPluginTools(googlePlugin().hooks!.tools!(), {
     egress: { fetch },
     users: {
       resolveActor: async () => ({

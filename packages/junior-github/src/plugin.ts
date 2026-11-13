@@ -16,11 +16,7 @@ import {
   normalizePermissions,
   readGrantPermissions,
 } from "./permissions.js";
-import {
-  createGitHubTools,
-  gitHubToolDefinitions,
-  type GitHubPluginExperiments,
-} from "./tools.js";
+import { createGitHubTools, type GitHubPluginExperiments } from "./tools.js";
 import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { botLoginFromEmail } from "./webhooks/ownership.js";
@@ -456,18 +452,14 @@ export function githubPlugin(
           }),
         ];
       },
-      tools: {
-        definitions: gitHubToolDefinitions,
-        bind(ctx) {
-          return createGitHubTools(
-            ctx,
-            readEnv(botEmailEnv),
-            gitHubPullRequestSubscription(
-              options.pullRequestEvents?.subscribeAfterCreate,
-            ),
-            options.experimental,
-          );
-        },
+      tools() {
+        return createGitHubTools(
+          readEnv(botEmailEnv),
+          gitHubPullRequestSubscription(
+            options.pullRequestEvents?.subscribeAfterCreate,
+          ),
+          options.experimental,
+        );
       },
       workspacePrepare: prepareWorkspace,
       sandboxPrepare: prepareSandboxGit,
