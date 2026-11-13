@@ -549,9 +549,9 @@ export function createConversationTurnWorker(
           failureCode = "delivery_failed";
           const cards = await loadPendingMessageCards(context.conversationId);
           // Only Event Turns may be quiet: a person who asked always gets the
-          // reply. A card means someone must look, so it always delivers.
-          const quiet =
-            options?.quiet === true && isEventTurn && cards.length === 0;
+          // reply. A card alone needs nobody's attention, so a Quiet message
+          // stores its cards and is not delivered.
+          const quiet = options?.quiet === true && isEventTurn;
           let deliveryResult: DeliveryResult | undefined;
           // Read the pause at reply time: a person can pause Delivery while
           // this Turn runs.

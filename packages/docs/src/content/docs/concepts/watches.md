@@ -39,7 +39,7 @@ Each event also carries the values of its scope, and each value is a match key. 
 
 ## Quiet Replies
 
-Some watch events need nobody's attention, such as a routine CI fix that worked or bot review feedback that Junior handled. For these events, Junior does not post its reply in Slack. The reply stays in the conversation. The web view puts the event, its tool calls, and the reply in one row that you can open. It does the same for an event that gets no reply. A reply always posts when the watch says to tell a person, or when the reply asks a question, needs a decision, reports a failure, or has a card.
+Some watch events need nobody's attention, such as a routine CI fix that worked or bot review feedback that Junior handled. For these events, Junior does not post its reply in Slack. The reply stays in the conversation. The web view puts the event, its tool calls, and the reply in one row that you can open. It does the same for an event that gets no reply. A reply always posts when the watch says to tell a person, or when the reply asks a question, needs a decision, or reports a failure.
 
 ## Limits
 

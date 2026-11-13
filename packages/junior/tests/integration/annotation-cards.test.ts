@@ -17,6 +17,8 @@ import {
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { sendSlackReply } from "@/chat/slack/reply";
+import { createEventInboundMessage } from "@/chat/events/notification";
+import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import {
   closeConversationFixture,
   createConversationWebHarness,
@@ -448,6 +450,16 @@ it("saves plugin object results once per reply, leaves background updates silent
           arguments: { tool_name: "objects_save", arguments: {} },
         },
         { type: "toolCall", name: "noReply", arguments: {} },
+        {
+          type: "toolCall",
+          name: "executeTool",
+          arguments: { tool_name: "objects_save", arguments: {} },
+        },
+        {
+          type: "toolCall",
+          name: "noReply",
+          arguments: { note: "Checks passed." },
+        },
       ]),
     );
     await harness.continue({
@@ -456,6 +468,39 @@ it("saves plugin object results once per reply, leaves background updates silent
       message: "Keep this turn silent.",
     });
     await harness.drain();
+
+    // A no-reply note of an Event Turn stays quiet, also with a card.
+    await appendAndEnqueueInboundMessage({
+      message: createEventInboundMessage({
+        event: {
+          eventKey: "objects-checks-passed",
+          eventType: "pull_request.checks.recovered",
+          identifier: annotation.key,
+          namespace: "github",
+          occurredAtMs: Date.now(),
+          trustedSummary: "Checks passed",
+        },
+        // Past the Event batch wait, so the Turn runs on this delivery.
+        receivedAtMs: Date.now() - 60_000,
+        subscription: { conversationId, id: "objects-watch" },
+        text: "Checks passed",
+      }),
+      queue: harness.queue,
+      state: harness.state,
+    });
+    await harness.drain();
+    const note = (await getConversationEventStore().loadHistory(conversationId))
+      .filter(
+        (event) =>
+          event.data.type === "message" && event.data.role === "assistant",
+      )
+      .at(-1);
+    expect(note?.data).toMatchObject({
+      meta: { objectCards: refs, quiet: true },
+      text: "Checks passed.",
+    });
+
+    // Cards of the quiet Turns do not move to the next Reply.
     harness.setModelStream(
       createModelStream([{ type: "text", text: "Nothing new." }]),
     );
