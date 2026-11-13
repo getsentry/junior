@@ -139,6 +139,32 @@ describe("web page cards", () => {
     expect(pageFetches).toBe(1);
   });
 
+  test("asks oEmbed only for a listed provider and reads Open Graph for every other page", async () => {
+    const asked: string[] = [];
+    mswServer.use(
+      http.get("https://www.loom.com/v1/oembed", ({ request }) => {
+        asked.push(new URL(request.url).searchParams.get("url") ?? "");
+        return HttpResponse.json({ title: "Standup recording" });
+      }),
+      http.get("https://www.canva.com/_oembed", ({ request }) => {
+        asked.push(new URL(request.url).searchParams.get("url") ?? "");
+        return HttpResponse.json({ title: "From oEmbed" });
+      }),
+      http.get("https://www.canva.com/design/deck/view", () =>
+        HttpResponse.html(
+          page('<meta property="og:title" content="Launch deck">'),
+        ),
+      ),
+    );
+    const listed = "https://www.loom.com/share/standup";
+    const unlisted = "https://www.canva.com/design/deck/view";
+
+    const { objects } = await resolveLinks([listed, unlisted]);
+    expect(objects.get(listed)).toMatchObject({ title: "Standup recording" });
+    expect(objects.get(unlisted)).toMatchObject({ title: "Launch deck" });
+    expect(asked).toEqual([listed]);
+  });
+
   test("keeps a plugin link type ahead of the web page link type", async () => {
     let pageFetches = 0;
     mswServer.use(
