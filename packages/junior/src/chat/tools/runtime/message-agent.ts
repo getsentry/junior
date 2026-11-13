@@ -6,7 +6,6 @@ import {
   AgentMessageTargetError,
 } from "@/chat/agent-invocations/errors";
 import { PARENT_AGENT_TARGET } from "@/chat/agent-invocations/types";
-import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -32,7 +31,7 @@ export function createMessageAgentTool(
   messageAgent: NonNullable<ToolRuntimeContext["messageAgent"]>,
 ) {
   return zodTool({
-    description: `Send a message to your parent agent or to a child agent that this conversation started. Use it to give an existing child agent more work, an answer, or a correction, and to send your parent agent a finding or a question while you keep working. A message to a child continues its history. If the child is still working, it reads the message at its next step or after its current work. A child replies when it has something to report. Its reply arrives later as a new task in this conversation; do not wait or poll for it. After you message a child agent, when your reply posts to people, do not post a status that only says you sent the message or repeats it: call ${NO_REPLY_TOOL_NAME} instead, because the child's reply posts when it arrives. A message to your parent does not end your task. A top-level agent (its conversation is not a child agent, such as a Slack thread) can also message another top-level agent by its conversation_id, such as one from slackThreadRead. Both conversations must be public, or both must be private conversations in the same place, such as one private channel or DM. The target runs the message as its own task and sends no result. Use spawnAgent only to start a new child agent. Your text to a child agent is its instruction. Its action review judges the child's actions against that text, so name only actions that your own conversation backs, with the exact target.`,
+    description: `Send a message to your parent agent or to a child agent that this conversation started. Use it to give an existing child agent more work, an answer, or a correction, and to send your parent agent a finding or a question while you keep working. A message to a child continues its history. If the child is still working, it reads the message at its next step or after its current work. A child replies when it has something to report. Its reply arrives later as a new task in this conversation; do not wait or poll for it. Make sure people know what is going on, but post only updates that matter to them. A message to your parent does not end your task. A top-level agent (its conversation is not a child agent, such as a Slack thread) can also message another top-level agent. Both conversations must be public, or both must be private conversations in the same place, such as one private channel or DM. The target runs the message as its own task and sends no result. Use spawnAgent only to start a new child agent.`,
     exposure: "modelOnly",
     // Action review judges the actions that the message names.
     approvalMode: "auto",
@@ -49,14 +48,16 @@ export function createMessageAgentTool(
           .trim()
           .min(1)
           .describe(
-            `"${PARENT_AGENT_TARGET}" for your parent agent, the name or conversation_id of a child agent from spawnAgent or searchAgents, or the conversation_id of another top-level agent`,
+            `"${PARENT_AGENT_TARGET}" for your parent agent, the name or conversation_id of a child agent from spawnAgent or listAgents, or the conversation_id of another top-level agent, such as one from searchConversations or slackThreadRead`,
           ),
         text: z
           .string()
           .trim()
           .min(1)
           .max(MESSAGE_AGENT_TEXT_MAX_LENGTH)
-          .describe("Message text. Include all context the target needs."),
+          .describe(
+            "Message text. Include all context the target needs. Text to a child agent is its instruction. Its action review judges the child's actions against that text, so name only actions that your own conversation backs, with the exact target.",
+          ),
       })
       .strict(),
     outputSchema: messageAgentOutputSchema,
@@ -78,7 +79,7 @@ export function createMessageAgentTool(
       } catch (error) {
         if (error instanceof AgentMessageTargetError) {
           throw new ToolInputError(
-            `${error.message}. Use searchAgents to find an agent.`,
+            `${error.message}. Use listAgents to find an agent.`,
             { cause: error },
           );
         }

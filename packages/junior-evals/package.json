@@ -17,6 +17,7 @@
     "@chat-adapter/slack": "4.29.0",
     "@earendil-works/pi-ai": "catalog:",
     "@sentry/junior": "workspace:*",
+    "@sentry/junior-eval-pantry": "link:fixtures/plugins/eval-pantry",
     "@sentry/junior-github": "workspace:*",
     "@sentry/junior-google": "workspace:*",
     "@sentry/junior-memory": "workspace:*",

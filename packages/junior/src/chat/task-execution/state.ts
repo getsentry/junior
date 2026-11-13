@@ -1384,6 +1384,15 @@ async function appendInboundMessageWithAdmission(args: {
 }
 
 /**
+ * Ends what a conversation owns before its work stops for good. It runs
+ * under the conversation lock, before the stop is written.
+ */
+export type BeforeWorkStops = (
+  conversationId: string,
+  inboundMessageIds: readonly string[],
+) => Promise<void>;
+
+/**
  * Render the text of one inbound message from the ids that already reached
  * its mailbox and their sender fields. It runs under the mailbox lock, so two
  * appends that depend on each other see each other. Undefined drops the
@@ -2381,6 +2390,7 @@ export async function releaseConversationWork(args: {
 
 /** Count one failed execution attempt and stop the conversation when retries are exhausted. */
 export async function recordConversationRetry(args: {
+  beforeWorkStops?: BeforeWorkStops;
   conversationId: string;
   leaseToken: string;
   nowMs?: number;
@@ -2394,6 +2404,15 @@ export async function recordConversationRetry(args: {
     }
     const count = (current.execution.retryCount ?? 0) + 1;
     const stopped = count >= CONVERSATION_WORK_MAX_RETRIES;
+    if (stopped) {
+      // Runs under the lock, as in `clearExpiredConversationLease`. When it
+      // throws, the work keeps its lease, so a later attempt or the
+      // heartbeat stops it.
+      await args.beforeWorkStops?.(
+        args.conversationId,
+        current.execution.inboundMessageIds,
+      );
+    }
     await writeConversation(
       state,
       lock,
@@ -2600,10 +2619,7 @@ export async function deadLetterAttempt(args: {
 
 /** Recover an expired lease, consuming the retry budget under the mutation lock. */
 export async function clearExpiredConversationLease(args: {
-  beforeWorkStops?: (
-    conversationId: string,
-    inboundMessageIds: readonly string[],
-  ) => Promise<void>;
+  beforeWorkStops?: BeforeWorkStops;
   conversationId: string;
   nowMs?: number;
   state?: StateAdapter;

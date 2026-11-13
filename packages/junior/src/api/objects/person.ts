@@ -52,8 +52,11 @@ export async function resolvePersonLink(
       userId: user.id,
     })),
   ).get(user.id);
-  const fullName =
-    user.displayName?.trim() || (slack ?? user).displayName?.trim();
+  // Without a User name, the Slack name wins over the name of any other
+  // Identity.
+  const fullName = [user, slack, ...identities]
+    .map((source) => source?.displayName?.trim())
+    .find(Boolean);
   return personObjectCard({
     ...(githubHandle ? { githubHandle } : undefined),
     person: {

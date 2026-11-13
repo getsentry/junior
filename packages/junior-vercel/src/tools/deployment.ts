@@ -82,7 +82,7 @@ export function createVercelDeploymentTool(ctx: ToolRegistrationHookContext) {
       readOnlyHint: true,
     },
     description:
-      "Resolve a Vercel project name or ID and describe a subscribable deployment resource. Omit commit_sha to watch every deployment for the project, optionally limited to one target (production, preview, or staging). Provide commit_sha to watch one deployment; target defaults to production when omitted with commit_sha. Use the user's explicit project and team, otherwise the vercel.project and vercel.team conversation defaults.",
+      "Resolve a Vercel project name or ID and describe a subscribable deployment resource for one deployment or every deployment of the project. Use the user's explicit project and team, otherwise the vercel.project and vercel.team conversation defaults.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {

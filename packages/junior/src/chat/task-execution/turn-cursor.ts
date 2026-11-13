@@ -48,6 +48,7 @@ import type {
   ConversationRunMetrics,
   ConversationStore,
 } from "@/chat/conversations/store";
+import { withSpan } from "@/chat/logging";
 import { traceContextSchema, type TraceContext } from "./state";
 import {
   turnCursorIndexKey,
@@ -120,9 +121,12 @@ function isFinishedTurnState(state: TurnStatus): boolean {
 
 /** A running or paused write reached a Turn that already finished. */
 export class TurnAlreadyFinishedError extends Error {
+  readonly state: TurnStatus;
+
   constructor(turnId: string, state: TurnStatus) {
     super(`Turn ${turnId} already finished as ${state}`);
     this.name = "TurnAlreadyFinishedError";
+    this.state = state;
   }
 }
 
@@ -779,6 +783,30 @@ async function updateTurnState(args: {
   resultMessageId?: string;
   state: "abandoned" | "completed" | "failed";
 }): Promise<TurnRecord | undefined> {
+  // A finished Turn cannot resume. The parent span shows which path
+  // finished it, and the error message says why.
+  return await withSpan(
+    "turn.state.finish",
+    "turn.state.finish",
+    {},
+    async (setSpanAttributes) => {
+      const updated = await writeTurnState(args);
+      setSpanAttributes({ "app.turn.state.written": updated !== undefined });
+      return updated;
+    },
+    {
+      "app.turn.state": args.state,
+      "app.turn.previous_state": args.existing.state,
+      "app.turn.resume_reason": args.existing.resumeReason,
+      "app.turn.slice_id": args.existing.sliceId,
+      "app.turn.error_message": args.errorMessage,
+    },
+  );
+}
+
+async function writeTurnState(
+  args: Parameters<typeof updateTurnState>[0],
+): Promise<TurnRecord | undefined> {
   const parsed = await getStoredTurnRecord(
     args.existing.conversationId,
     args.existing.turnId,
