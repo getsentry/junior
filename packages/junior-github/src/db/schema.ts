@@ -114,6 +114,8 @@ export const juniorGitHubPullRequests = pgTable(
     conflictFixes: integer("conflict_fixes").notNull().default(0),
     /** When the latest of those events published. */
     conflictFixedAt: timestamp("conflict_fixed_at", { withTimezone: true }),
+    /** The head commit of the latest of those events. */
+    conflictFixedSha: text("conflict_fixed_sha"),
     /** When Junior last added the merge conflict notice. */
     conflictNoticedAt: timestamp("conflict_noticed_at", {
       withTimezone: true,

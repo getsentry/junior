@@ -526,9 +526,11 @@ describe("merge conflict check on webhook events", () => {
       expect(h.notices).toEqual([]);
 
       // An approved pull request waits only for the fix to merge, so it
-      // gets one at once, until the total limit.
+      // gets one at once, until the total limit. A check of the same head
+      // commit does not count as another fix.
       approvals.add(946);
       await checkAt(pushedAt + 4 * day, "4");
+      await checkAt(pushedAt + 4 * day + 30 * minute, "4");
       await checkAt(pushedAt + 4 * day + hour, "5");
       await checkAt(pushedAt + 4 * day + 2 * hour, "6");
       await checkAt(pushedAt + 4 * day + 3 * hour, "7");

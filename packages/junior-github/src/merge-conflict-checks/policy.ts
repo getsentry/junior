@@ -51,6 +51,7 @@ const MAX_FIXES = 3;
 /** The stored history that decides what a conflict does. */
 interface GitHubConflictHistory {
   conflictFixedAt: Date | null;
+  conflictFixedSha: string | null;
   conflictFixes: number;
   conflictNoticedAt: Date | null;
   lastActivityAt: Date | null;
@@ -64,6 +65,7 @@ function gitHubConflictAction(
   history: GitHubConflictHistory,
   nowMs: number,
   approved: boolean,
+  headSha: string,
 ): GitHubConflictAction {
   const activeAtMs = Math.max(
     history.openedAt.getTime(),
@@ -72,6 +74,9 @@ function gitHubConflictAction(
   const idleMs = nowMs - activeAtMs;
   if (idleMs > IDLE_MS && !approved) return "skip";
   if ((idleMs <= ACTIVE_MS || approved) && history.conflictFixes < MAX_FIXES) {
+    // The event for this head commit already went out, and its turn can
+    // still run. Only a new head commit can need another fix.
+    if (history.conflictFixedSha === headSha) return "skip";
     const fixedAtMs = history.conflictFixedAt?.getTime();
     return !approved &&
       fixedAtMs !== undefined &&
@@ -177,7 +182,12 @@ export async function applyGitHubConflictPolicy(args: {
     .where(and(pullRequestRow(args.ref), eq(t.state, "open")))
     .limit(1);
   if (!row) return args.events;
-  const action = gitHubConflictAction(row, args.now.getTime(), args.approved);
+  const action = gitHubConflictAction(
+    row,
+    args.now.getTime(),
+    args.approved,
+    args.conflict.headSha,
+  );
   if (action === "fix") {
     // A webhook and the heartbeat can check the same pull request at once.
     // Only the check that counts the fix from the count it read publishes.
@@ -185,6 +195,7 @@ export async function applyGitHubConflictPolicy(args: {
       .update(t)
       .set({
         conflictFixedAt: args.now,
+        conflictFixedSha: args.conflict.headSha,
         conflictFixes: sql`${t.conflictFixes} + 1`,
       })
       .where(

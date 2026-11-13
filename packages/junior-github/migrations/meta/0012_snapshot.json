@@ -1,5 +1,5 @@
 {
-  "id": "c34cf3da-c50e-41be-b272-e916ec5b6af3",
+  "id": "f1c88c83-0879-4806-9f16-c8835301505b",
   "prevId": "7b0a99a8-d5c9-4810-a220-3b6c8517c9cf",
   "version": "7",
   "dialect": "postgresql",
@@ -348,6 +348,12 @@
         "conflict_fixed_at": {
           "name": "conflict_fixed_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "conflict_fixed_sha": {
+          "name": "conflict_fixed_sha",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
