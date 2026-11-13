@@ -4,7 +4,7 @@
  * Junior sets `core.hooksPath` in the command env. A `git -c` or
  * `--config-env` override has a higher priority, so it skips the
  * `prepare-commit-msg` hook that sets commit attribution. Models use it to
- * skip a slow repository `pre-commit` hook, and the commit then keeps
+ * skip a repository `pre-commit` hook, and the commit then keeps
  * model-supplied co-authors. Like `githubCloneCommandRedirect`, this reads
  * command text only, so it is steering for the model, not a security
  * boundary.
