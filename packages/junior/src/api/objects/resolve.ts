@@ -7,7 +7,9 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 import { getDashboardLinkFilter } from "@/chat/dashboard-link";
+import { credentialContextForActor } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
+import { createPluginEgress } from "@/chat/egress/plugin";
 import { logException } from "@/chat/logging";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginCache } from "@/chat/plugins/cache";
@@ -21,16 +23,40 @@ import {
   type ObjectLinkType,
 } from "./link-types";
 import { resolvePersonLink } from "./person";
+import {
+  resolveSlackMessageLink,
+  SLACK_MESSAGE_LINK_FILTER,
+} from "./slack-message";
+import { webPageLinkType } from "./web-page/resolve";
 
 /** A card is a short-lived read. A changed object shows within this time. */
 export const OBJECT_LINK_TTL_MS = 60_000;
 
+// Links resolve outside a Turn, so no person is the credential subject. This
+// system Actor gets only credentials that a plugin owns, never the viewer's.
+// Each plugin checks that the viewer may see an object before it returns it.
+const OBJECT_LINK_SYSTEM_ACTOR = {
+  platform: "system",
+  name: "object-link",
+} as const;
+
 function coreLinkTypes(): ObjectLinkType[] {
+  // Slack runtime is in core until Slack is a plugin.
+  const slack: ObjectLinkType = {
+    filters: [SLACK_MESSAGE_LINK_FILTER],
+    objectType: "message",
+    owner: "junior",
+    resolve: resolveSlackMessageLink,
+  };
   const conversations = getDashboardLinkFilter("/conversations/*");
   const people = getDashboardLinkFilter("/people/*");
-  // Core links need the dashboard: each card links to a dashboard page.
-  if (!conversations || !people) return [];
+  // Any other public page. Its filters are the least specific.
+  const webPages = webPageLinkType();
+  // These links need the dashboard: each card links to a dashboard page.
+  if (!conversations || !people) return [slack, webPages];
   return [
+    slack,
+    webPages,
     {
       filters: [conversations],
       objectType: "conversation",
@@ -38,6 +64,8 @@ function coreLinkTypes(): ObjectLinkType[] {
       resolve: resolveConversationLink,
     },
     {
+      // Person cards read the identity cache. A link or unlink clears it.
+      cacheCards: false,
       filters: [people, { scheme: "mailto" }],
       objectType: "person",
       owner: "junior",
@@ -52,11 +80,19 @@ function pluginLinkTypes(plugin: PluginRegistration): ObjectLinkType[] {
     filters: link.filters,
     objectType: link.objectType,
     owner: name,
+    readTool: link.readTool,
     resolve: (viewer, url) =>
       link.resolve(
         {
           cache: createPluginCache(name),
           db: getDb(),
+          egress: createPluginEgress({
+            credentialContext: credentialContextForActor(
+              OBJECT_LINK_SYSTEM_ACTOR,
+            ),
+            // A card is optional. It must never ask anyone to authorize.
+            pluginAuth: { async handleAuthRequired() {} },
+          }),
           log: createPluginLogger(name),
           plugin: { name },
           viewer,
@@ -98,6 +134,23 @@ async function resolveWithLinkType(
 }
 
 /**
+ * Resolve one link for one viewer without the card cache, so a change of
+ * access counts at once. Returns nothing when no link type claims the URL
+ * or the viewer cannot see the object.
+ */
+export async function resolveObjectLinkNow(
+  viewer: User,
+  url: URL,
+): Promise<
+  { linkType: ObjectLinkType; object: OwnedObjectAnnotation } | undefined
+> {
+  const linkType = findObjectLinkType(readObjectLinkTypes(), url);
+  if (!linkType) return undefined;
+  const object = await resolveWithLinkType(linkType, viewer, url);
+  return object ? { linkType, object } : undefined;
+}
+
+/**
  * Resolve links to object cards for one viewer. A link without a link type,
  * without access, or with a failed read gets no card. Nothing is saved on a
  * Conversation.
@@ -115,11 +168,15 @@ export async function resolveObjectLinks(
       if (!parsed || !linkType) return [];
       // Each viewer has their own entry: a card holds only what they see.
       const key = `${viewer.id}:${createHash("sha256").update(url).digest("hex")}`;
+      const resolve = () => resolveWithLinkType(linkType, viewer, parsed);
       try {
-        const object = await cache.getOrLoad(key, async () => ({
-          value: await resolveWithLinkType(linkType, viewer, parsed),
-          ttlMs: OBJECT_LINK_TTL_MS,
-        }));
+        const object =
+          linkType.cacheCards === false
+            ? await resolve()
+            : await cache.getOrLoad(key, async () => ({
+                value: await resolve(),
+                ttlMs: OBJECT_LINK_TTL_MS,
+              }));
         return object ? [{ object, url }] : [];
       } catch (error) {
         // One failed provider read must not hide the other cards.

@@ -3,6 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { Lock, StateAdapter } from "chat";
 import { vi } from "vitest";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
+import type { JsonValue } from "@earendil-works/pi-ai";
 import {
   createFauxCore,
   fauxAssistantMessage,
@@ -393,7 +394,7 @@ export const THREAD_TS = "1712345.0001";
 
 export type ModelStreamStep =
   | string
-  | { tool: string; args?: Record<string, unknown> }
+  | { tool: string; args?: Record<string, JsonValue> }
   | (() => Promise<ReturnType<typeof fauxAssistantMessage>>);
 
 function buildStreamResponses(steps: ModelStreamStep[]) {
@@ -497,6 +498,7 @@ export async function createConversationWorkHarness(
     processOptions: { softYieldAfterMs?: number } = {},
   ) =>
     await processConversationQueueMessage(message, {
+      beforeWorkStops: work.beforeWorkStops,
       conversationStore,
       queue,
       run: work.run,

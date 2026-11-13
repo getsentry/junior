@@ -16,7 +16,7 @@ import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
-import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
@@ -37,10 +37,12 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { createAutomationTools } from "@/chat/tools/automations";
 import { createSlackChannelJoinTool } from "@/chat/slack/tools/channel-join";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
-import { createSlackConversationBriefSearchPort } from "@/chat/slack/tools/conversation-brief-search";
+import { createSlackConversationSearchChannelPort } from "@/chat/slack/tools/conversation-search";
+import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
 import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
+import { readSlackAttachmentSource } from "@/chat/slack/attachments";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { createSlackSendFilesTool } from "@/chat/slack/tools/send-files";
@@ -65,7 +67,6 @@ import { createUnpublishImageTool } from "@/chat/tools/unpublish-image";
 import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
 import { createReadConversationEventTool } from "@/chat/tools/read-conversation-event";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
-import { createSearchConversationBriefsTool } from "@/chat/tools/search-conversation-briefs";
 import { disableTools, type ToolRegistry } from "@/chat/tools/definition";
 import type {
   ToolHooks,
@@ -162,14 +163,16 @@ export function createTools(
   };
   tools.searchConversationEvents = createSearchConversationEventsTool(context);
   tools.readConversationEvent = createReadConversationEventTool(context);
-  if (context.conversationPrivacy === "public") {
-    tools.searchConversationBriefs = createSearchConversationBriefsTool(
-      context.conversationId,
-      slackContext
-        ? createSlackConversationBriefSearchPort(slackContext.teamId)
-        : undefined,
-    );
-  }
+  tools.searchConversations = createSearchConversationsTool({
+    ...(slackContext
+      ? {
+          channels: createSlackConversationSearchChannelPort(
+            slackContext.teamId,
+          ),
+        }
+      : undefined),
+    conversationId: context.conversationId,
+  });
   const createPreview = context.workspace.createPreview?.bind(
     context.workspace,
   );
@@ -224,6 +227,9 @@ export function createTools(
     tools.loadAttachment = createLoadAttachmentTool({
       conversationId: context.conversationId,
       db: getSqlExecutor(),
+      ...(slackContext
+        ? { readAttachmentSource: readSlackAttachmentSource }
+        : undefined),
       storage: context.attachmentStorage,
       workspace: context.workspace,
     });
@@ -248,8 +254,7 @@ export function createTools(
   // A child agent that is too deep to start child agents can still find its
   // parent and siblings.
   if (context.spawnAgent || context.messageAgent) {
-    tools.searchAgents = createSearchAgentsTool({
-      ...(context.actor ? { actor: context.actor } : undefined),
+    tools.listAgents = createListAgentsTool({
       conversationId: context.conversationId,
       parentConversationId: context.parentConversationId,
     });

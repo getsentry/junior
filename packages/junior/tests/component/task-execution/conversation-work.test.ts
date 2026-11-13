@@ -1519,12 +1519,14 @@ describe("conversation work execution", () => {
   it("stops conversation work after repeated lost-lease retries", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;
+    const beforeWorkStops = vi.fn(async () => {});
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     for (let attempt = 1; attempt <= 5; attempt += 1) {
       currentNowMs = attempt * 1_000;
       await expect(
         processConversationWork(conversationQueueMessage(), {
+          beforeWorkStops,
           nowMs: () => currentNowMs,
           queue,
           run: async () => ({ status: "lost_lease" }),
@@ -1541,6 +1543,9 @@ describe("conversation work execution", () => {
     expect(state?.needsRun).toBe(false);
     expect(state ? countPendingConversationMessages(state) : 0).toBe(0);
     expect(queue.sentRecords()).toHaveLength(4);
+    // The owner of the work ends what it owns, such as a dispatch.
+    expect(beforeWorkStops).toHaveBeenCalledOnce();
+    expect(beforeWorkStops).toHaveBeenCalledWith(CONVERSATION_ID, ["m1"]);
   });
 
   it("drains pending messages and completes the leased conversation", async () => {

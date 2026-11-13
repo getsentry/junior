@@ -155,6 +155,12 @@ const mockPinPositions = new Map<string, number>();
 /** Process-local renames so rename can be exercised in visual QA. */
 const mockTitles = new Map<string, string>();
 
+/** Process-local attached links, newest first, like the attach API. */
+const mockAttachedAnnotations = new Map<
+  string,
+  NonNullable<ConversationDetailReport["annotations"]>
+>();
+
 /** Process-local auto-archive choices for mock visual QA. */
 const mockAutoArchiveByConversationId = new Map<string, boolean>();
 
@@ -186,6 +192,7 @@ export function resetMockConversationViewerState(): void {
   mockPinnedConversationIds.clear();
   mockPinPositions.clear();
   mockTitles.clear();
+  mockAttachedAnnotations.clear();
   mockAutoArchiveByConversationId.clear();
   mockUnsubscribedConversationIds.clear();
   mockDeliveryPausedConversationIds.clear();
@@ -822,6 +829,21 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
             contentType: "image/png",
             bytes: 6400,
           },
+          // Large Slack files that Junior never stores.
+          {
+            id: "qa-recording-pending",
+            filename: "standup-recording.mp4",
+            contentType: "video/mp4",
+            bytes: 214_000_000,
+            pending: true,
+          },
+          {
+            id: "qa-deleted-pending",
+            filename: "deleted-recording.mov",
+            contentType: "video/quicktime",
+            bytes: 98_000_000,
+            pending: true,
+          },
         ],
         role: "user",
         text: "Review the dashboard plan before editing.",
@@ -1392,6 +1414,11 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "",
         // No Annotations: the API resolves these dashboard links.
         `Deployment is ready. Next, ${MOCK_DASHBOARD_ORIGIN}/people/dev%40example.com picks up ${MOCK_DASHBOARD_ORIGIN}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}.`,
+        "Track it in https://docs.google.com/document/d/1MockReleaseChecklist_0123456789/edit before https://www.google.com/calendar/event?eid=cmVsNDJnb25vZ28ganVuaW9yQGV4YW1wbGUuY29t",
+        "Morgan asked to hold the deploy: https://acme.slack.com/archives/CQA456/p1770021700000100",
+        "The demo is at https://www.youtube.com/watch?v=MockLaunchDemo",
+        "",
+        "https://blog.example.com/posts/release-4-2",
       ].join("\n"),
     }),
   );
@@ -2527,6 +2554,17 @@ export function setMockConversationTitle(
   return { title };
 }
 
+/** Save one attached link on a mock Conversation, like the attach API. */
+export function addMockAnnotation(
+  conversationId: string,
+  annotation: NonNullable<ConversationDetailReport["annotations"]>[number],
+): void {
+  mockAttachedAnnotations.set(conversationId, [
+    annotation,
+    ...(mockAttachedAnnotations.get(conversationId) ?? []),
+  ]);
+}
+
 /** Save the mock Pinned order, like the pin-order API. */
 export function setMockPinOrder(conversationIds: string[]): {
   conversationIds: string[];
@@ -2890,8 +2928,10 @@ export function readMockConversationDetail(
   if (!conversation) return undefined;
   const agentTree = mockAgentTree(conversation);
   // Match the API: only readable root Conversations can be forked.
+  const attached = mockAttachedAnnotations.get(conversationId) ?? [];
   const detail = {
     ...conversation,
+    annotations: [...attached, ...(conversation.annotations ?? [])],
     ...(agentTree ? { agentTree } : undefined),
     canFork:
       !conversation.parentConversationId &&

@@ -511,11 +511,15 @@ defineJuniorPlugin({
   segment matches one segment), or `pathPrefix`. Junior picks an exact host
   before a wildcard host, and an exact path before a pattern before a
   prefix. Two link types with equal filters for the same URLs stop app
-  startup.
-- **Resolver.** Read the object with the access of `ctx.viewer` only.
-  Return `undefined` when the viewer cannot read the object. Do not show
-  that it exists. Junior caches the card for one minute for each viewer and
-  URL, and does not save it on a Conversation.
+  startup. An `https` URL that no link type claims gets a `web_page` card from core,
+  from its oEmbed provider or its Open Graph tags. Your filter always wins
+  over it.
+- **Resolver.** Return `undefined` when `ctx.viewer` cannot read the
+  object. Do not show that it exists. `ctx.egress` calls your provider as a
+  system Actor. It gets only credentials that your plugin owns, never the
+  viewer's, so check the viewer's access before you return a card. Junior
+  caches the card for one minute for each viewer and URL, and does not save
+  it on a Conversation.
 - **Facts and icon.** Return the facts of `objectType`. Each object type has
   its label, icon, and tones in `@sentry/junior-plugin-api`. To add an object
   type, add it to `objectTypeSchema`, its facts to `object-facts.ts`, and an

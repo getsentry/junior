@@ -9,10 +9,17 @@ import {
 
 /** One link type of core or a plugin, with the viewer-scoped resolver. */
 export interface ObjectLinkType {
+  /**
+   * False when the resolver reads a cache that its writes clear, so a
+   * change shows at once instead of after the card cache expires.
+   */
+  cacheCards?: false;
   filters: readonly ObjectLinkFilter[];
   objectType: ObjectType;
   /** `junior` for core, or the plugin name. */
   owner: string;
+  /** The tool that reads the object live, for a Turn after an attach. */
+  readTool?: string;
   resolve(viewer: User, url: URL): Promise<ObjectAnnotation | undefined>;
 }
 

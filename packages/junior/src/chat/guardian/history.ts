@@ -164,8 +164,7 @@ export function restoreToolActionRejections(
   const priorRejections: ToolActionPriorRejection[] = [];
 
   for (const message of messages) {
-    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-    const record = message as Record<string, unknown>;
+    const record = message as PiMessage & Record<string, unknown>;
     if (record.role !== "toolResult") {
       continue;
     }

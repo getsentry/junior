@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-google",
-  "version": "0.298.0",
+  "version": "0.299.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -34,6 +34,7 @@
     "@sentry/junior-plugin-api": "workspace:*",
     "commander": "^14.0.3",
     "drizzle-orm": "catalog:",
+    "parse5": "^7.3.0",
     "zod": "catalog:"
   },
   "devDependencies": {

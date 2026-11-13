@@ -1,15 +1,20 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { storeAttachment } from "@/chat/attachments/store";
 import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
-import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
+import { MAX_EAGER_SLACK_FILE_BYTES } from "@/chat/slack/vision-context";
 import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
+import { localWorkspace } from "../fixtures/local-workspace";
 import { conversationsRepliesPage } from "../fixtures/slack/factories/api";
 import {
+  getCapturedSlackFileDownloadCalls,
   queueSlackApiResponse,
   queueSlackPrivateFileDownload,
 } from "../msw/handlers/slack-api";
@@ -81,7 +86,7 @@ describe("files in the current Conversation's thread", () => {
             id: "F0CSV0001",
             name: "reasons.csv",
             mimetype: "text/csv",
-            size: 9,
+            size: 8,
             url_private:
               "https://files.slack.com/files-pri/T123-F0CSV0001/reasons.csv",
           },
@@ -109,6 +114,24 @@ describe("files in the current Conversation's thread", () => {
           },
         ],
       },
+      // A large non-image file is recorded without a download, the same as
+      // at turn start. Each load streams it from Slack.
+      {
+        ts: "1700000000.650000",
+        thread_ts: THREAD_TS,
+        user: "U1",
+        text: "the call recording",
+        files: [
+          {
+            id: "F0MOV0001",
+            name: "call.mp4",
+            mimetype: "video/mp4",
+            size: MAX_EAGER_SLACK_FILE_BYTES + 1,
+            url_private:
+              "https://files.slack.com/files-pri/T123-F0MOV0001/call.mp4",
+          },
+        ],
+      },
     ]);
     queueSlackPrivateFileDownload({ status: 200, body: "a,b\n1,2\n" });
     queueSlackPrivateFileDownload({ status: 200, body: "%PDF-1.4" });
@@ -120,31 +143,30 @@ describe("files in the current Conversation's thread", () => {
     const pdfId = result.messages[1].files[0].attachment_id;
     expect(csvId).toEqual(expect.any(String));
     expect(pdfId).toEqual(expect.any(String));
+    expect(result.messages[2].files[0].attachment_id).toEqual(
+      expect.any(String),
+    );
+    expect(getCapturedSlackFileDownloadCalls()).toHaveLength(2);
 
-    const written: Array<{ content: Buffer; path: string }> = [];
-    const workspace: SandboxWorkspace = {
-      readFileToBuffer: vi.fn(async () => null),
-      runCommand: vi.fn(async () => ({
-        exitCode: 0,
-        stderr: "",
-        stdout: "",
-      })),
-      writeFiles: vi.fn(async (files) => {
-        written.push(...files);
-      }),
-    };
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-thread-read-"),
+    );
     const loadAttachment = createLoadAttachmentTool({
       conversationId: CONVERSATION_ID,
       db,
       storage,
-      workspace,
+      workspace: localWorkspace(root),
     });
-    await loadAttachment.execute?.({ attachment_id: csvId }, {});
-    await loadAttachment.execute?.({ attachment_id: pdfId }, {});
-    expect(written.map((file) => file.content.toString())).toEqual([
-      "a,b\n1,2\n",
-      "%PDF-1.4",
-    ]);
+    const loaded = [];
+    for (const attachmentId of [csvId, pdfId]) {
+      const output = (await loadAttachment.execute?.(
+        { attachment_id: attachmentId },
+        {},
+      )) as { path: string };
+      loaded.push(await fs.readFile(path.join(root, output.path), "utf8"));
+    }
+    await fs.rm(root, { force: true, recursive: true });
+    expect(loaded).toEqual(["a,b\n1,2\n", "%PDF-1.4"]);
 
     expect(result).not.toHaveProperty("unstored_file_count");
 
@@ -162,7 +184,7 @@ describe("files in the current Conversation's thread", () => {
             id: "F0CSV0001",
             name: "reasons.csv",
             mimetype: "text/csv",
-            size: 9,
+            size: 8,
             url_private:
               "https://files.slack.com/files-pri/T123-F0CSV0001/reasons.csv",
           },
@@ -227,13 +249,11 @@ describe("files in the current Conversation's thread", () => {
       conversationId: CONVERSATION_ID,
       db,
       file: {
-        bytes: 5,
         data: Buffer.from("hello"),
         filename: "notes.txt",
         mimeType: "text/plain",
-        path: "notes.txt",
+        source: { id: "F0TXT0001", provider: "slack" },
       },
-      source: { id: "F0TXT0001", provider: "slack" },
       storage,
     });
     queueThread([

@@ -4,6 +4,7 @@ import {
   type PluginConversationEventDefinition,
 } from "./conversation-events";
 import type { PluginHooks } from "./hooks";
+import type { PluginImageSource } from "./images";
 import type { PluginManifest } from "./manifest";
 import {
   objectLinkFilterSchema,
@@ -25,6 +26,8 @@ export type PluginRegistrationInput = {
   cli?: PluginCliDefinition;
   conversationEvents?: PluginConversationEventDefinition[];
   hooks?: PluginHooks;
+  /** Images that this plugin serves through the Junior image proxy. */
+  images?: PluginImageSource;
   manifest: PluginManifest;
   model?: PluginModelConfig;
   /** URLs that this plugin shows as object cards. */
@@ -108,6 +111,14 @@ export function defineJuniorPlugin(
     }
   }
   validateObjectLinks(name, plugin.objectLinks);
+  if (
+    plugin.images !== undefined &&
+    typeof plugin.images.resolve !== "function"
+  ) {
+    throw new Error(
+      `Junior plugin "${name}" images must have a resolve function.`,
+    );
+  }
   const conversationEventIds = new Set<string>();
   for (const event of plugin.conversationEvents ?? []) {
     if (
