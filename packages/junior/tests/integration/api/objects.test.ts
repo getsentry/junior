@@ -178,7 +178,7 @@ describe("object links API", () => {
     const person = {
       facts: {
         email: "alice@example.com",
-        avatarUrl: expect.stringMatching(/^\/api\/images\//),
+        avatarUrl: expect.stringMatching(/^\/api\/people\/avatars\//),
         githubHandle: "alice_acme",
         type: "person",
       },

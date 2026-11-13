@@ -1,11 +1,11 @@
 /**
  * Profile photos of people, saved on their native Slack and Google
- * identities. The Junior image route serves each photo, so browsers never
- * load a photo from Slack or Google.
+ * identities. `/api/people/avatars/:identityId` serves each photo through
+ * the shared image route code, so browsers never load a photo from Slack or
+ * Google.
  */
 import { createHash } from "node:crypto";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
-import { imagePath } from "@/chat/images/ids";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorIdentities } from "@/db/schema";
 import { GOOGLE_IDENTITY_PROVIDER } from "./identity";
@@ -20,7 +20,7 @@ const AVATAR_PROVIDERS = Object.keys(AVATAR_HOSTS);
 
 // The dashboard shows photos at 32 CSS pixels or less. 128 pixels stays sharp
 // on 3x screens. Slack sends 512 pixel photos of up to about 600 KB.
-const AVATAR_WIDTH = 128;
+export const AVATAR_WIDTH = 128;
 
 type AvatarIdentityRow = {
   avatarUrl: string | null;
@@ -56,13 +56,9 @@ function avatarVersion(url: string): string {
   return createHash("sha256").update(url).digest("hex").slice(0, 16);
 }
 
-// The Junior image path that serves the photo of one Identity.
+// The Junior path that serves the photo of one Identity.
 function avatarPath(identityId: string, avatarUrl: string): string {
-  return imagePath(
-    { ref: identityId, source: "avatar" },
-    AVATAR_WIDTH,
-    avatarVersion(avatarUrl),
-  );
+  return `/api/people/avatars/${encodeURIComponent(identityId)}?v=${avatarVersion(avatarUrl)}`;
 }
 
 /**

@@ -1,9 +1,13 @@
 import { Hono } from "hono";
-import { jsonResponse } from "../http";
+import { AVATAR_WIDTH } from "@/chat/identities/avatar";
+import { readImage } from "@/chat/images/read";
+import { jsonResponse, throwApiError } from "../http";
+import { imageResponse } from "../images/response";
 import type { JuniorApiEnv } from "../route";
 import {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
+  avatarParamsSchema,
   personParamsSchema,
   personalSpendReportSchema,
 } from "../schema/person";
@@ -20,6 +24,24 @@ import { readPersonalSpendFromSql } from "./spend.query";
 /** Create the HTTP routes owned by the People API. */
 export function createPeopleRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
+
+  // Profile photos keep this stable path. The shared image code fetches and
+  // scales them, so browsers never load them from Slack or Google.
+  app.get(
+    "/avatars/:identityId",
+    requireViewer,
+    validateRequest("param", avatarParamsSchema, "Invalid route parameters."),
+    async (context) => {
+      const { identityId } = context.req.valid("param");
+      const served = await readImage(
+        context.get("viewer"),
+        { ref: identityId, source: "avatar" },
+        AVATAR_WIDTH,
+      );
+      if (!served) throwApiError(404, "Avatar not found.");
+      return imageResponse(served, context.req.query("v") !== undefined);
+    },
+  );
 
   app.get("/me/spend", requireViewer, async (context) => {
     const viewer = context.get("viewer");

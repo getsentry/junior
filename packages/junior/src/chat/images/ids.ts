@@ -9,7 +9,11 @@ import { readJuniorSecret } from "@/chat/secrets";
 
 const IMAGE_ID_CONTEXT = "junior-image-id";
 
-/** Widths that the image route serves. A fixed set keeps the cache small. */
+/**
+ * Widths that the image route serves. A fixed set keeps the cache small.
+ * Callers ask for at least 2x the CSS width, so images stay sharp on
+ * high-density screens.
+ */
 export const IMAGE_WIDTHS = [64, 128, 320, 640, 1280] as const;
 
 /** One width that the image route serves. */

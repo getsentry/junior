@@ -79,7 +79,7 @@ function identity(id: string, avatarUrl: string, provider = "slack") {
 }
 
 describe("image API", () => {
-  test("serves profile photos as WebP and fetches each one once", async () => {
+  test("serves profile photos at their People path as WebP and fetches each one once", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const fetched: string[] = [];
     mswServer.use(
@@ -134,8 +134,9 @@ describe("image API", () => {
             "google",
           ),
         ]);
+      // Photos keep their stable People path, so saved photo URLs work.
       const avatar = (identityId: string) =>
-        imagePath({ ref: identityId, source: "avatar" }, 128);
+        `/api/people/avatars/${encodeURIComponent(identityId)}`;
 
       const signedOut = await createJuniorApi().request(
         `http://localhost${avatar("U-PHOTO")}`,
@@ -151,6 +152,7 @@ describe("image API", () => {
         },
         new Map(),
       );
+      expect(versionedPath).toMatch(/^\/api\/people\/avatars\/U-PHOTO\?v=/);
       const versioned = await requestImage(versionedPath!);
       expect(versioned.headers.get("cache-control")).toBe(
         "private, max-age=31536000, immutable",
