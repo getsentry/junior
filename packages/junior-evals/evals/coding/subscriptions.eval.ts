@@ -82,12 +82,14 @@ function checkSuiteWebhook(conclusion: "failure" | "success") {
 }
 
 // The shared GitHub HTTP fixture serves these drafts: #692 with every
-// required check passing, #693 with an open decision in its body, and #694
-// with another required check failing.
+// required check passing, #693 with an open decision in its body, #694
+// with another required check failing, and #695 with no required check
+// reported yet.
 const draftHeadShas = {
   692: "6920000000000000000000000000000000000692",
   693: "6930000000000000000000000000000000000693",
   694: "6940000000000000000000000000000000000694",
+  695: "6950000000000000000000000000000000000695",
 };
 type DraftNumber = keyof typeof draftHeadShas;
 
@@ -375,6 +377,18 @@ describe("Watches", () => {
     const conversation = await startDraftThread(run, 693);
 
     const delivery = await conversation.continue(draftChecksPassedWebhook(693));
+
+    expect(delivery.turns).not.toHaveLength(0);
+    expect(markReadyCalls(delivery)).toEqual([]);
+    expect(delivery.replies).toEqual([]);
+  });
+
+  test("when the required checks of a Junior draft have not reported, stay silent", async ({
+    run,
+  }) => {
+    const conversation = await startDraftThread(run, 695);
+
+    const delivery = await conversation.continue(draftChecksPassedWebhook(695));
 
     expect(delivery.turns).not.toHaveLength(0);
     expect(markReadyCalls(delivery)).toEqual([]);

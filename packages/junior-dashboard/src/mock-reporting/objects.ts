@@ -2,10 +2,12 @@ import {
   conversationObjectCard,
   messageObjectCard,
   personObjectCard,
+  type AttachObjectLinkResponse,
   type ObjectLinksReport,
 } from "@sentry/junior/api/schema";
 import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
+  addMockAnnotation,
   readMockConversationDetail,
   readMockPeopleDirectory,
 } from "./fixtures";
@@ -28,6 +30,8 @@ const GOOGLE_OBJECTS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
     displayType: "Google Doc",
     facts: {
       type: "document",
+      summary:
+        "Run these steps in order before the 4.2 release. Each owner checks their step, and the release lead signs off in the go/no-go meeting.",
       owner: "Morgan Lee",
       modifiedAt: "2026-02-02T08:15:00.000Z",
     },
@@ -39,7 +43,12 @@ const GOOGLE_OBJECTS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
     key: "rel42gonogo",
     label: "Release 4.2 go/no-go",
     title: "Release 4.2 go/no-go",
-    facts: { type: "calendar_event", when: "Mon, Feb 2, 15:00 – 15:30 PST" },
+    facts: {
+      type: "calendar_event",
+      summary:
+        "Decide go or no-go for 4.2. Bring the open risk list and the checklist status.",
+      when: "Mon, Feb 2, 15:00 – 15:30 PST",
+    },
     plugin: "google",
   },
 };
@@ -105,4 +114,39 @@ export function readMockObjectLinks(
   urls: readonly string[],
 ): ObjectLinksReport {
   return { objects: [...new Set(urls)].flatMap(mockObject) };
+}
+
+/**
+ * Attach a mock link to a Conversation, like the attach API. Mocks have one
+ * viewer, so only the object must resolve.
+ */
+export function attachMockObjectLink(
+  conversationId: string,
+  url: string,
+): AttachObjectLinkResponse | undefined {
+  const detail = readMockConversationDetail(conversationId);
+  const object = mockObject(url)[0]?.object;
+  if (!detail || !object || object.objectType === "person") return undefined;
+  // Match the API: another link to the same object is a duplicate too.
+  if (
+    detail.annotations?.some(
+      (annotation) =>
+        annotation.url === url ||
+        (annotation.plugin === object.plugin && annotation.key === object.key),
+    )
+  ) {
+    return { status: "unchanged" };
+  }
+  const now = new Date().toISOString();
+  addMockAnnotation(conversationId, {
+    kind: "resource_link",
+    key: object.key,
+    label: url,
+    objectType: object.objectType,
+    plugin: object.plugin,
+    url,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return { status: "attached" };
 }

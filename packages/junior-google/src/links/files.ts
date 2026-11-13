@@ -3,7 +3,8 @@
  *
  * Junior's own Google account reads the file, so the card shows only when
  * Drive says that the viewer can open it too. This is the rule of
- * `searchGoogleFiles`. Any unclear case gets no card.
+ * `searchGoogleFiles`. Any unclear case gets no card. A Doc card also shows
+ * its first paragraph.
  */
 import type {
   ObjectAnnotation,
@@ -14,24 +15,28 @@ import * as z from "zod";
 import { emailDomain, readGoogleConfig } from "../config";
 import {
   FILE_ID_PATTERN,
+  GOOGLE_FILE_TYPES,
+  googleFileLinkRoot,
   googleFileType,
+  googleLinkFileType,
   resourceKeyHeaders,
   type FileReference,
   type GoogleFileType,
 } from "../tools/files";
 import { driveQueryString, namedQuery } from "../tools/search-files";
 import { googleApiError, googleApiRequest } from "../tools/shared";
-
-const LINK_ROOTS = {
-  document: "document",
-  presentation: "presentation",
-  spreadsheet: "spreadsheets",
-} as const satisfies Record<GoogleFileType, string>;
+import { docSummary } from "./summary";
 
 const DISPLAY_TYPES = {
   document: "Google Doc",
   presentation: "Google Slides",
   spreadsheet: "Google Sheet",
+} as const satisfies Record<GoogleFileType, string>;
+
+const READ_TOOLS = {
+  document: "readGoogleDoc",
+  presentation: "readGoogleSlides",
+  spreadsheet: "readGoogleSheet",
 } as const satisfies Record<GoogleFileType, string>;
 
 const linkedFileSchema = z.object({
@@ -60,11 +65,9 @@ const fileIdsSchema = z.object({
 function parseFileLink(
   url: URL,
 ): { file: FileReference; type: GoogleFileType } | undefined {
-  const [, root, ...rest] = url.pathname.split("/");
-  const type = (Object.keys(LINK_ROOTS) as GoogleFileType[]).find(
-    (key) => LINK_ROOTS[key] === root,
-  );
+  const type = googleLinkFileType(url);
   if (!type) return undefined;
+  const rest = url.pathname.split("/").slice(2);
   // A signed-in link can name the account: `/document/u/0/d/<id>`.
   const path =
     rest[0] === "u" && /^\d+$/.test(rest[1] ?? "") ? rest.slice(2) : rest;
@@ -176,6 +179,8 @@ async function resolveGoogleFileLink(
   if (!(await viewerCanOpen(ctx, file, config.allowedDomains))) {
     return undefined;
   }
+  const summary =
+    link.type === "document" ? await docSummary(ctx, link.file) : undefined;
   const owner = file.owners?.[0];
   const ownerName = (owner?.displayName || owner?.emailAddress)?.trim();
   const title = file.name.trim() || "Untitled";
@@ -190,6 +195,7 @@ async function resolveGoogleFileLink(
     sourceUpdatedAt: file.modifiedTime,
     facts: {
       type: "document",
+      summary,
       owner: ownerName?.slice(0, 160) || undefined,
       modifiedAt: file.modifiedTime,
     },
@@ -198,12 +204,16 @@ async function resolveGoogleFileLink(
 
 /** Docs, Sheets, and Slides links that resolve to document cards. */
 export const googleFileLinks: PluginObjectLinkDefinition = {
-  filters: Object.values(LINK_ROOTS).flatMap((root) =>
+  filters: GOOGLE_FILE_TYPES.map(googleFileLinkRoot).flatMap((root) =>
     [`/${root}/d/`, `/${root}/u/`].map((pathPrefix) => ({
       host: "docs.google.com",
       pathPrefix,
     })),
   ),
   objectType: "document",
+  readTool: (url) => {
+    const type = parseFileLink(url)?.type;
+    return type && READ_TOOLS[type];
+  },
   resolve: resolveGoogleFileLink,
 };

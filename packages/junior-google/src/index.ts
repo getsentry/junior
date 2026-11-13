@@ -35,10 +35,8 @@ import { createFindMeetingTimesTool } from "./tools/find-meeting-times";
 import { createInsertGoogleDocContentTool } from "./tools/insert-doc-content";
 import { createListGoogleFileCommentsTool } from "./tools/list-file-comments";
 import { createListCalendarEventsTool } from "./tools/list-events";
-import { createReadGoogleDocTool } from "./tools/read-doc";
+import { createReadGoogleFileTool } from "./tools/read-file";
 import { createReadMeetingTranscriptTool } from "./tools/read-meeting-transcript";
-import { createReadGoogleSheetTool } from "./tools/read-sheet";
-import { createReadGoogleSlidesTool } from "./tools/read-slides";
 import { createReplaceGoogleDocContentTool } from "./tools/replace-doc-content";
 import { createReplaceGoogleDocTextTool } from "./tools/replace-doc-text";
 import { createSearchGoogleFilesTool } from "./tools/search-files";
@@ -95,9 +93,7 @@ export function googlePlugin(): PluginRegistration {
           insertGoogleDocContent: createInsertGoogleDocContentTool(toolContext),
           listCalendarEvents: createListCalendarEventsTool(toolContext),
           listGoogleFileComments: createListGoogleFileCommentsTool(toolContext),
-          readGoogleDoc: createReadGoogleDocTool(toolContext),
-          readGoogleSheet: createReadGoogleSheetTool(toolContext),
-          readGoogleSlides: createReadGoogleSlidesTool(toolContext),
+          readGoogleFile: createReadGoogleFileTool(toolContext),
           readMeetingTranscript: createReadMeetingTranscriptTool(toolContext),
           replaceGoogleDocContent:
             createReplaceGoogleDocContentTool(toolContext),

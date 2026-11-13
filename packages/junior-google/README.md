@@ -28,6 +28,8 @@ not use the Google credentials of the people it helps.
 Anyone who can talk to Junior can read what the Junior account can see. Share
 calendars and files with that account only when that is acceptable. Given a
 link, Junior opens any Doc, Sheet, or Slides file shared with its account.
+One tool, `readGoogleFile`, reads all three. It takes the type from the link,
+or from Drive for a bare file id.
 Search finds only files that any employee could already find in Drive, and
 files shared with the requester by name. Files shared by link, or only with
 other people or groups, never show up in search. Search also drops every file
@@ -54,7 +56,7 @@ new ownership. Junior cannot read or edit that Doc again unless the requester
 shares it back. This only works for requesters in the same Workspace
 organization as Junior's account.
 
-Each edit of an existing Doc needs the `revision_id` that `readGoogleDoc` or
+Each edit of an existing Doc needs the `revision_id` that `readGoogleFile` or
 the last edit returned. If someone changed the Doc after that, the edit is
 refused, so Junior never changes text that it did not read.
 
