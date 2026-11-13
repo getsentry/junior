@@ -83,7 +83,10 @@ function fakeNotionMcp(access: Record<string, string[]>) {
   const refreshTokens = new Map<string, string>();
   const retired = new Set<string>();
   let expiredReads = 0;
-  const bothExpired = Promise.withResolvers<void>();
+  let releaseExpiredReads = () => {};
+  const bothExpired = new Promise<void>((resolve) => {
+    releaseExpiredReads = resolve;
+  });
   let issued = 0;
 
   const unauthorized = () =>
@@ -156,9 +159,9 @@ function fakeNotionMcp(access: Record<string, string[]>) {
           // Injected fault: two reads find the expired access token at the
           // same time, so both try to refresh it.
           expiredReads += 1;
-          if (expiredReads === 2) bothExpired.resolve();
+          if (expiredReads === 2) releaseExpiredReads();
           await Promise.race([
-            bothExpired.promise,
+            bothExpired,
             new Promise((resolve) => setTimeout(resolve, 2_000)),
           ]);
         }
