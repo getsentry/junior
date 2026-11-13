@@ -46,6 +46,8 @@ export type ReplyFocusRequest = {
   /** Draft id of the composer the reader typed in before. Its text moves here. */
   draftFrom?: string;
   key: string;
+  /** The docked question to show and focus. */
+  questionId?: string;
 };
 
 /**
@@ -255,6 +257,7 @@ function ReplyFooter(props: {
   const { onFocusRequestDone } = props;
   const focusKey = props.focusRequest?.key;
   const draftFrom = props.focusRequest?.draftFrom;
+  const focusQuestionId = props.focusRequest?.questionId;
   const questionShown = questions.length > 0;
   useEffect(() => {
     // A docked question takes the focus at once, before the reader types.
@@ -267,12 +270,14 @@ function ReplyFooter(props: {
     if (text) composerRef.current?.restoreMessage({ text });
     else if (draftFrom) composerRef.current?.focus();
     else if (!touchKeyboardMatches()) {
+      if (focusQuestionId) questionAnswersRef.current?.show(focusQuestionId);
       if (questionShown) questionRef.current?.focus();
       else composerRef.current?.focus();
     }
   }, [
     draftFrom,
     focusKey,
+    focusQuestionId,
     onFocusRequestDone,
     questionShown,
     questionsPending,

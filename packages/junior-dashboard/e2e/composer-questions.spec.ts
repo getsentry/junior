@@ -109,6 +109,25 @@ for (const view of [desktop, mobile]) {
   });
 }
 
+test("a record's Answer shows its own question in the dock", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  await openConversation(page, dashboard.baseURL, THREE_QUESTIONS_ID);
+  const question = page.getByRole("region", { name: /^Question:/ });
+  await expect(question).toContainText("1 of 3", { useInnerText: true });
+  await page
+    .getByRole("region", { name: "Asked Choose the first migration batch" })
+    .getByRole("button", { name: "Answer" })
+    .click();
+  await expect(
+    question.getByRole("heading", { name: "Choose the first migration batch" }),
+  ).toBeVisible();
+  await expect(question).toContainText("2 of 3", { useInnerText: true });
+  await expect(question).toBeFocused();
+});
+
 test("steps through several questions with the keyboard", async ({
   dashboard,
   page,

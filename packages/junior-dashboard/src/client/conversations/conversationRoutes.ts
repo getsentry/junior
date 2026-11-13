@@ -22,9 +22,14 @@ export function conversationPath(
 /**
  * Navigation state that asks the opened Conversation to focus its reply box.
  * `draftFrom` names the draft of a composer the reader typed in before the
- * page opened. The reply box takes its text.
+ * page opened. The reply box takes its text. `questionId` names the docked
+ * question to show and focus.
  */
-export type ReplyFocusState = { draftFrom?: string; focusReply: true };
+export type ReplyFocusState = {
+  draftFrom?: string;
+  focusReply: true;
+  questionId?: string;
+};
 
 /** Ask the opened Conversation to focus its reply box. */
 export const FOCUS_REPLY_STATE = { focusReply: true } as const;
@@ -45,6 +50,10 @@ export function readReplyFocus(state: unknown): ReplyFocusState | undefined {
         ? state.draftFrom
         : undefined,
     focusReply: true,
+    questionId:
+      "questionId" in state && typeof state.questionId === "string"
+        ? state.questionId
+        : undefined,
   };
 }
 

@@ -223,10 +223,10 @@ function askStatus(item: ReviewItemPayload, answerShown: boolean): AskStatus {
 }
 
 // The question docks above the message box, so the reader answers there. A
-// reply focus request moves focus to it, as it does when the page opens.
+// reply focus request shows this question in the dock and moves focus to it.
 // That request skips a touch screen, where the docked question is already
 // in sight, so the button is not shown there.
-function AnswerButton() {
+function AnswerButton(props: { itemId: string }) {
   const location = useLocation();
   const navigate = useNavigate();
   return (
@@ -235,7 +235,10 @@ function AnswerButton() {
       onClick={() =>
         navigate(
           { pathname: location.pathname, search: location.search },
-          { replace: true, state: FOCUS_REPLY_STATE },
+          {
+            replace: true,
+            state: { ...FOCUS_REPLY_STATE, questionId: props.itemId },
+          },
         )
       }
       type="button"
@@ -332,7 +335,7 @@ export function ReviewItemAskRow(props: {
           ) : null}
         </p>
       </div>
-      {docked ? <AnswerButton /> : null}
+      {docked ? <AnswerButton itemId={item.id} /> : null}
     </section>
   );
 }

@@ -39,7 +39,8 @@ export function ObjectRow(props: {
       ? (objectFactFields(card.facts)[0]?.value ?? type)
       : card.label;
   const images = [
-    ...(card.facts?.type === "web_page" && card.facts.thumbnailUrl
+    ...((card.facts?.type === "document" || card.facts?.type === "web_page") &&
+    card.facts.thumbnailUrl
       ? [{ alt: "", src: card.facts.thumbnailUrl, srcSet: undefined }]
       : []),
     ...previews.map((image, index) => ({
