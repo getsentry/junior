@@ -87,7 +87,9 @@ attributes. Nested logs and spans inherit them.
 ## Trace Shape
 
 - `slack.message.ingress` records sender, team, and `app.slack.membership`
-  before membership checks, never message text, names, or emails.
+  before membership checks, never message text, names, or emails. Ingress
+  drops `message_changed`, so its span records `app.slack.edited_message.ts`
+  and `app.slack.edited_message.file_count`.
 - On `queue.*` spans, `messaging.*` describes the Vercel Queue, not Slack.
   `queue.process` starts a new trace.
 - `chat.turn` continues the trace of its oldest input and links to the
