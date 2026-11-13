@@ -4,6 +4,7 @@ import {
   closeBreaker,
   connectedState,
 } from "@/chat/cache-warming/request";
+import { botConfig } from "@/chat/config";
 import { logInfo } from "@/chat/logging";
 import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
@@ -26,7 +27,13 @@ export function createCacheWarmingRoutes(): Hono<JuniorApiEnv> {
 
   app.get("/breakers", requireAdmin, async () =>
     jsonResponse(cacheWarmingBreakerListSchema, {
-      breakers: await breakerStates(await connectedState()),
+      // Only the agent model and its refusal fallback are warmed.
+      breakers: await breakerStates(await connectedState(), [
+        botConfig.modelId,
+        ...(botConfig.refusalFallbackModelId
+          ? [botConfig.refusalFallbackModelId]
+          : []),
+      ]),
     }),
   );
 
