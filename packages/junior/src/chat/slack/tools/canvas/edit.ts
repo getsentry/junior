@@ -9,7 +9,7 @@ import {
 import { normalizeCanvasMarkdown } from "@/chat/slack/tool-support/canvas/markdown";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
 import {
@@ -53,31 +53,35 @@ const slackCanvasEditOutputSchema = juniorToolOutputSchema
   })
   .strict();
 
+export const slackCanvasEditToolDefinition = zodToolDefinition({
+  exposure: "deferred",
+  source: SLACK_TOOL_SOURCE,
+  annotations: {
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description:
+    "Edit a Slack canvas with exact markdown replacements. Returns a diff.",
+  prepareArguments: prepareCanvasEditArguments,
+  executionMode: "sequential",
+  inputSchema: z.object({
+    canvas: slackCanvasRefParam,
+    edits: z
+      .array(editReplacementSchema)
+      .min(1)
+      .describe(
+        "Exact replacements matched against the current Canvas body, not incrementally.",
+      ),
+  }),
+  outputSchema: slackCanvasEditOutputSchema,
+});
+
 /** Create a tool that edits a Slack canvas like a markdown file. */
 export function createSlackCanvasEditTool(state: ToolState) {
   return zodTool({
-    exposure: "deferred",
-    source: SLACK_TOOL_SOURCE,
-    annotations: {
-      destructiveHint: true,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description:
-      "Edit a Slack canvas with exact markdown replacements. Returns a diff.",
-    prepareArguments: prepareCanvasEditArguments,
-    executionMode: "sequential",
-    inputSchema: z.object({
-      canvas: slackCanvasRefParam,
-      edits: z
-        .array(editReplacementSchema)
-        .min(1)
-        .describe(
-          "Exact replacements matched against the current Canvas body, not incrementally.",
-        ),
-    }),
-    outputSchema: slackCanvasEditOutputSchema,
+    ...slackCanvasEditToolDefinition,
     execute: async ({ canvas, edits }) => {
       const target = resolveCanvasTarget(canvas);
       if (!target.ok) {

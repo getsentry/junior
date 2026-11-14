@@ -5,7 +5,7 @@ import {
 } from "@/chat/slack/tool-support/list/params";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
@@ -33,20 +33,24 @@ const updateListItemInputSchema = z.union([
   }),
 ]);
 
+export const slackListUpdateItemToolDefinition = zodToolDefinition({
+  exposure: "deferred",
+  source: SLACK_TOOL_SOURCE,
+  annotations: {
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description: "Update an item in a Slack list.",
+  inputSchema: updateListItemInputSchema,
+  outputSchema: juniorToolOutputSchema,
+});
+
 /** Create a tool that updates an item in an explicit Slack list. */
 export function createSlackListUpdateItemTool(state: ToolState) {
   return zodTool({
-    exposure: "deferred",
-    source: SLACK_TOOL_SOURCE,
-    annotations: {
-      destructiveHint: true,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description: "Update an item in a Slack list.",
-    inputSchema: updateListItemInputSchema,
-    outputSchema: juniorToolOutputSchema,
+    ...slackListUpdateItemToolDefinition,
     execute: async ({ list_id, item_id, completed, title }) => {
       const operationKey = createOperationKey("slackListUpdateItem", {
         list_id: list_id,

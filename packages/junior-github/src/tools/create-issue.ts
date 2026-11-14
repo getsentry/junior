@@ -277,104 +277,100 @@ async function createGitHubIssue(
 }
 
 /** Own issue creation so provider writes use host egress and the footer stays deterministic. */
-export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
-  return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: false,
-    },
-    description:
-      "Create a GitHub issue with a runtime-owned conversation footer. Use this instead of shelling out to gh issue create when creating issues.",
-    inputSchema: createIssueToolInputSchema,
-    outputSchema: gitHubIssueOutputSchema,
-    async execute(
-      input: CreateGitHubIssueInput,
-      options: PluginToolExecuteOptions,
-    ) {
-      const parsedInput = parseCreateIssueInput(input);
-      const conversationId = nonEmptyString(
-        ctx.conversationId,
-        "conversationId",
-      );
-      const toolCallId = nonEmptyString(options?.toolCallId, "toolCallId");
-      const key = `createIssue:${conversationId}:${toolCallId}`;
-      return await ctx.state.withLock(
-        `${key}:lock`,
-        GITHUB_ISSUE_CREATE_LOCK_TTL_MS,
-        async () => {
-          const state = createIssueState(await ctx.state.get(key));
-          if (state?.status === "completed") {
-            const completedInput = state.input ?? parsedInput;
-            const completedResult = {
-              facts:
-                state.facts === undefined
-                  ? undefined
-                  : objectFactsSchema.parse(state.facts),
-              sourceUpdatedAt: state.sourceUpdatedAt,
-              description: state.description,
-              number: state.number,
-              url: state.url,
-            };
-            return gitHubIssueToolResult(
-              completedInput,
-              completedResult,
-              ctx.events.canSubscribe,
-            );
-          }
-          if (state?.status === "pending") {
-            throw new Error(
-              "GitHub issue creation for this tool call has an uncertain pending result; refusing to create a duplicate issue.",
-            );
-          }
-          const request = await createGitHubIssueRequest(
-            conversationId,
-            parsedInput,
-            ctx,
-            ctx.conversationLink?.url,
-          );
-          const pendingState: CreateIssueState = {
-            status: "pending",
-            createdAtMs: Date.now(),
-            input: parsedInput,
+export const gitHubIssueTool = definePluginTool({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: false,
+  },
+  description:
+    "Create a GitHub issue with a runtime-owned conversation footer. Use this instead of shelling out to gh issue create when creating issues.",
+  inputSchema: createIssueToolInputSchema,
+  outputSchema: gitHubIssueOutputSchema,
+  async execute(
+    input: CreateGitHubIssueInput,
+    options: PluginToolExecuteOptions,
+    ctx: ToolRegistrationHookContext,
+  ) {
+    const parsedInput = parseCreateIssueInput(input);
+    const conversationId = nonEmptyString(ctx.conversationId, "conversationId");
+    const toolCallId = nonEmptyString(options?.toolCallId, "toolCallId");
+    const key = `createIssue:${conversationId}:${toolCallId}`;
+    return await ctx.state.withLock(
+      `${key}:lock`,
+      GITHUB_ISSUE_CREATE_LOCK_TTL_MS,
+      async () => {
+        const state = createIssueState(await ctx.state.get(key));
+        if (state?.status === "completed") {
+          const completedInput = state.input ?? parsedInput;
+          const completedResult = {
+            facts:
+              state.facts === undefined
+                ? undefined
+                : objectFactsSchema.parse(state.facts),
+            sourceUpdatedAt: state.sourceUpdatedAt,
+            description: state.description,
+            number: state.number,
+            url: state.url,
           };
-          await ctx.state.set(
-            key,
-            pendingState,
-            GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS,
+          return gitHubIssueToolResult(
+            completedInput,
+            completedResult,
+            ctx.events.canSubscribe,
           );
+        }
+        if (state?.status === "pending") {
+          throw new Error(
+            "GitHub issue creation for this tool call has an uncertain pending result; refusing to create a duplicate issue.",
+          );
+        }
+        const request = await createGitHubIssueRequest(
+          conversationId,
+          parsedInput,
+          ctx,
+          ctx.conversationLink?.url,
+        );
+        const pendingState: CreateIssueState = {
+          status: "pending",
+          createdAtMs: Date.now(),
+          input: parsedInput,
+        };
+        await ctx.state.set(
+          key,
+          pendingState,
+          GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS,
+        );
+        try {
+          const result = await createGitHubIssue(ctx, request);
+          Object.assign(pendingState, { status: "completed", ...result });
           try {
-            const result = await createGitHubIssue(ctx, request);
-            Object.assign(pendingState, { status: "completed", ...result });
-            try {
-              await ctx.state.set(
-                key,
-                pendingState,
-                GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS,
-              );
-            } catch (error) {
-              throw new Error(
-                "GitHub issue was created, but the runtime could not persist the completed issue state.",
-                { cause: error },
-              );
-            }
-            return gitHubIssueToolResult(
-              parsedInput,
-              result,
-              ctx.events.canSubscribe,
+            await ctx.state.set(
+              key,
+              pendingState,
+              GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS,
             );
           } catch (error) {
-            if (
-              isEgressAuthRequired(error) ||
-              isDefinitiveGitHubIssueCreateRejection(error)
-            ) {
-              await ctx.state.delete(key);
-            }
-            throw error;
+            throw new Error(
+              "GitHub issue was created, but the runtime could not persist the completed issue state.",
+              { cause: error },
+            );
           }
-        },
-      );
-    },
-  });
-}
+          return gitHubIssueToolResult(
+            parsedInput,
+            result,
+            ctx.events.canSubscribe,
+          );
+        } catch (error) {
+          if (
+            isEgressAuthRequired(error) ||
+            isDefinitiveGitHubIssueCreateRejection(error)
+          ) {
+            await ctx.state.delete(key);
+          }
+          throw error;
+        }
+      },
+    );
+  },
+});

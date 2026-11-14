@@ -12,7 +12,7 @@ import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const SUMMARY_MAX_LENGTH = 1_000;
@@ -142,7 +142,7 @@ const searchConversationsOutputSchema = juniorToolOutputSchema.extend({
 });
 
 function searchConversationsInputSchema(
-  channels?: ConversationSearchChannelPort,
+  channels?: Pick<ConversationSearchChannelPort, "channelFilterSchema">,
 ) {
   return z
     .object({
@@ -225,18 +225,11 @@ function searchConversationsInputSchema(
     .strict();
 }
 
-/**
- * Create the read-only tool that searches the Conversations, outside this
- * Conversation's tree, that it may find, with their latest Brief.
- */
-export function createSearchConversationsTool(context: {
-  channels?: ConversationSearchChannelPort;
-  conversationId: string;
-  /** Embeds a query to also match Briefs by meaning. */
-  embedder?: ConversationEmbedder;
-}) {
-  const { channels } = context;
-  return zodTool({
+/** Static definition of `searchConversations`, with the provider channel filter when there is one. */
+export function searchConversationsToolDefinition(
+  channels?: Pick<ConversationSearchChannelPort, "channelFilterSchema">,
+) {
+  return zodToolDefinition({
     exposure: "deferred",
     source: CONVERSATIONS_TOOL_SOURCE,
     description:
@@ -249,6 +242,22 @@ export function createSearchConversationsTool(context: {
     },
     inputSchema: searchConversationsInputSchema(channels),
     outputSchema: searchConversationsOutputSchema,
+  });
+}
+
+/**
+ * Create the read-only tool that searches the Conversations, outside this
+ * Conversation's tree, that it may find, with their latest Brief.
+ */
+export function createSearchConversationsTool(context: {
+  channels?: ConversationSearchChannelPort;
+  conversationId: string;
+  /** Embeds a query to also match Briefs by meaning. */
+  embedder?: ConversationEmbedder;
+}) {
+  const { channels } = context;
+  return zodTool({
+    ...searchConversationsToolDefinition(channels),
     execute: async (input) => {
       const annotation = input.annotation ?? undefined;
       const conversationIds = input.conversation_ids ?? undefined;

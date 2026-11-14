@@ -1,4 +1,3 @@
-import { PreviewCard } from "@base-ui/react/preview-card";
 import type {
   ConversationDetailReport,
   OwnedObjectAnnotation,
@@ -11,8 +10,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { cn } from "@dashboard/lib/utils";
-
+import { HoverPreview } from "../components/ui/hover-preview";
 import { ObjectCard } from "../conversations/ObjectCard";
 import {
   SavedObjectsContext,
@@ -26,9 +24,6 @@ import {
 } from "./knownObjects";
 import { ANCHOR_CLASS } from "./links";
 import { PersonMention } from "./people";
-
-// A pointer that only passes over a link does not open its card.
-const PREVIEW_DELAY_MS = 350;
 
 // Fits most live cards, such as a pull request or a task. A taller card
 // scrolls in its body.
@@ -166,43 +161,30 @@ export function ObjectLinkPreview(props: {
   reserveHeight?: boolean;
 }) {
   return (
-    <PreviewCard.Root>
-      <PreviewCard.Trigger
-        delay={PREVIEW_DELAY_MS}
-        // Running text links carry no outbound icon, so a paragraph of links
-        // reads as text.
-        render={
-          <a
-            className={props.className}
-            href={props.href}
-            rel="noreferrer"
-            target="_blank"
-          />
-        }
-      >
-        {props.children}
-      </PreviewCard.Trigger>
-      <PreviewCard.Portal>
-        <PreviewCard.Positioner
-          className="isolate z-50"
-          collisionPadding={8}
-          sideOffset={6}
-        >
-          <PreviewCard.Popup
-            className={cn(
-              "w-[30rem] max-w-[calc(100vw-1rem)] rounded-xl shadow-2xl shadow-black/40 outline-none",
-              props.reserveHeight && RESERVED_PREVIEW_HEIGHT_CLASS,
-            )}
-          >
-            <ObjectCard
-              card={props.card}
-              fill={props.reserveHeight}
-              live={props.live}
-            />
-          </PreviewCard.Popup>
-        </PreviewCard.Positioner>
-      </PreviewCard.Portal>
-    </PreviewCard.Root>
+    <HoverPreview
+      className={
+        props.reserveHeight ? RESERVED_PREVIEW_HEIGHT_CLASS : undefined
+      }
+      content={
+        <ObjectCard
+          card={props.card}
+          fill={props.reserveHeight}
+          live={props.live}
+        />
+      }
+      // Running text links carry no outbound icon, so a paragraph of links
+      // reads as text.
+      trigger={
+        <a
+          className={props.className}
+          href={props.href}
+          rel="noreferrer"
+          target="_blank"
+        />
+      }
+    >
+      {props.children}
+    </HoverPreview>
   );
 }
 

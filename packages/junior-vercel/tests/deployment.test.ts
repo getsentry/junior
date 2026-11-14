@@ -1,6 +1,7 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
 import { vercelPlugin } from "../src";
-import { createVercelDeploymentTool } from "../src/tools/deployment";
+import { vercelDeploymentTool } from "../src/tools/deployment";
 
 const COMMIT_SHA = "ABCDEF0123456789ABCDEF0123456789ABCDEF01";
 
@@ -11,7 +12,7 @@ function toolFixture(
   const fetch = vi.fn().mockResolvedValue(response);
   return {
     fetch,
-    tool: createVercelDeploymentTool({
+    tool: bindPluginTool(vercelDeploymentTool, {
       egress: { fetch },
       events: { canSubscribe },
     } as never),
@@ -217,11 +218,7 @@ describe("Vercel deployment", () => {
     expect(plugin.events?.resourceTypes).toEqual([
       expect.objectContaining({ type: "deployment" }),
     ]);
-    expect(
-      plugin.hooks?.tools?.({
-        egress: { fetch: vi.fn() },
-      } as never),
-    ).toHaveProperty("deployment");
+    expect(plugin.hooks?.tools?.()).toHaveProperty("deployment");
     expect(
       plugin.hooks?.routes?.({
         events: { async publish() {} },
