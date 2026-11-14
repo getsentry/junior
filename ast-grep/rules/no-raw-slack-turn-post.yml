@@ -1,25 +1,13 @@
 id: no-raw-slack-turn-post
 language: TypeScript
 severity: error
-message: Post visible Turn output with sendSlackReply in packages/junior/src/chat/slack/reply.ts, and get its channel and thread from resolveSlackReplyTarget. Raw Slack posts skip the Conversation footer and choose their own thread. Only the Slack boundary modules and the private or out-of-Turn notices in this rule's ignores may post directly.
+message: "Do not post to Slack with postSlackMessage, chat.postMessage, or thread.post. Post visible Turn output with sendSlackReply from packages/junior/src/chat/slack/reply.ts, and get its channel and thread from resolveSlackReplyTarget. A raw post skips the Conversation footer and chooses its own thread. If the post is not Turn output, such as a private notice or DM, put `// ast-grep-ignore: no-raw-slack-turn-post -- <reason>` on the line before it. Do not add the file to this rule's ignores; they are only for the Slack outbound boundary."
 files:
   - packages/junior/src/**/*.ts
 ignores:
   # Slack outbound boundary and its one reply wrapper.
   - packages/junior/src/chat/slack/outbound.ts
   - packages/junior/src/chat/slack/reply.ts
-  # Private auth links: ephemeral or DM, never Turn output in the thread.
-  - packages/junior/src/chat/oauth-flow.ts
-  # "Account connected" notice when no Turn resumes.
-  - packages/junior/src/handlers/oauth-callback.ts
-  # DM to the Automation creator, not Turn output.
-  - packages/junior/src/chat/automations/blocked-notice.ts
-  # First message of a dashboard conversation that moves to a Slack thread.
-  # It is not Turn output.
-  - packages/junior/src/chat/slack/continue-in-slack.ts
-  # Review item cards. They are Block Kit controls that change in place, not
-  # reply text, and the thread comes from resolveSlackReplyTarget.
-  - packages/junior/src/chat/slack/review-item-card-sync.ts
 rule:
   any:
     - pattern: postSlackMessage($$$)

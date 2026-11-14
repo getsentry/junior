@@ -131,18 +131,21 @@ function publicIn(tenants: readonly ProviderTenant[]): SQL[] {
  * Review item access test checks that they agree.
  */
 export function reviewItemVisibleTo(reader: ReviewItemReader): SQL {
-  // `or` of nothing is undefined, so `false` keeps the query closed.
-  return or(
-    sql`false`,
-    ...publicIn(reader.tenants ?? []),
-    ...(reader.userId ? [reviewItemAssignedTo(reader.userId)] : []),
-    ...(reader.conversationId
-      ? [reviewItemLinkedTo(reader.conversationId)]
-      : []),
-    ...(reader.automationId
-      ? [eq(juniorReviewItems.automationId, reader.automationId)]
-      : []),
-  )!;
+  // `or` of nothing is undefined, so `false` keeps the query closed. Do not
+  // put `false` inside the `or`: Postgres then cannot turn a lone assignee
+  // `exists` into a semi-join, and it scans every closed item.
+  return (
+    or(
+      ...publicIn(reader.tenants ?? []),
+      ...(reader.userId ? [reviewItemAssignedTo(reader.userId)] : []),
+      ...(reader.conversationId
+        ? [reviewItemLinkedTo(reader.conversationId)]
+        : []),
+      ...(reader.automationId
+        ? [eq(juniorReviewItems.automationId, reader.automationId)]
+        : []),
+    ) ?? sql`false`
+  );
 }
 
 /** Return whether a reader can see one Review item. */
@@ -388,6 +391,19 @@ export function canActOnReviewItem(item: ReviewItem, userId: string): boolean {
   if (item.assignedToEveryone) return true;
   if (item.assignees.length === 0) return true;
   return item.assignees.some((assignee) => assignee.userId === userId);
+}
+
+/**
+ * Return whether a Review item needs a User: an open `action` item that is
+ * assigned to them. `reviewItemNeedsUser` is the SQL form; keep the two the
+ * same.
+ */
+export function itemNeedsUser(item: ReviewItem, userId: string): boolean {
+  return (
+    item.status === "open" &&
+    item.kind === "action" &&
+    item.assignees.some((assignee) => assignee.userId === userId)
+  );
 }
 
 /** Return whether a User is already the only assignee, so take does nothing. */

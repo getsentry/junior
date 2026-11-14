@@ -174,6 +174,7 @@ export function createSlackConversationMessageSearchTool(
       });
       const matchesOutput = await Promise.all(
         matches.map(async (match) => {
+          // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
           const reference = parseSlackThreadId(match.conversationId);
           if (
             !reference ||

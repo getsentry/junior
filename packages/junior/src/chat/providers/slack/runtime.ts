@@ -850,6 +850,7 @@ export function createSlackTurnRuntime<
         if (!eventId) {
           throw new Error(
             "Sentry did not return an event ID for mention.handler.failed",
+            { cause: error },
           );
         }
         let lifecycleError: unknown;
@@ -1231,6 +1232,7 @@ export function createSlackTurnRuntime<
         if (!eventId) {
           throw new Error(
             "Sentry did not return an event ID for subscribed_message.handler.failed",
+            { cause: error },
           );
         }
         let lifecycleError: unknown;

@@ -431,6 +431,7 @@ export async function startEvalEgress(
     try {
       await close();
     } catch (cleanupError) {
+      // oxlint-disable-next-line eslint/preserve-caught-error -- `errors` keeps both failures; `cause` keeps the startup failure first.
       throw new AggregateError(
         [error, cleanupError],
         "Eval egress startup and cleanup failed",

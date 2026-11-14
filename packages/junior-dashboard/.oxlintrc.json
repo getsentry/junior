@@ -44,6 +44,7 @@
     "tools/oxlint/anti-slop/**"
   ],
   "rules": {
+    "preserve-caught-error": "error",
     "junior/zod-namespace-import": "error",
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",

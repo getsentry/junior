@@ -1193,7 +1193,7 @@ async function executeAgentRunInPrivacyContext(
         }
         if (decision === "wrap_up") {
           runResume.markTurnLimitWrappedUp();
-          logWarn("agent.turn.limit.wrap_up", {
+          logWarn("agent.turn.limit.wrapped_up", {
             "app.ai.cost.total_usd": turnCostUsd,
             "app.ai.tool_call_count": toolCallCount,
           });
