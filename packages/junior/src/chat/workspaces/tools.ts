@@ -44,6 +44,8 @@ async function tryRecordWorkspaceSwitchStat(workspace: Workspace) {
       name: workspace.id,
     });
   } catch (error) {
+    // best-effort: decision (secondary write). Workspace switch stats feed the
+    // dashboard only. See the PR decisions.
     logWarn("workspace.switch.stat.failed", {
       "app.workspace.id": workspace.id,
       "app.workspace.name": workspace.name,
@@ -63,6 +65,8 @@ async function stopWorkspaceSnapshotWatch(input: {
       id: input.subscriptionId,
     });
   } catch (error) {
+    // best-effort: decision (secondary write). The watch expires on its own; a
+    // throw would fail the workspace switch. See the PR decisions.
     logWarn("workspace.snapshot.watch.stop_failed", {
       "exception.message":
         error instanceof Error ? error.message : String(error),

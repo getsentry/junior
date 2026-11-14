@@ -120,6 +120,8 @@ async function snapshotFromSql(
     try {
       await deleteBuilder(ownerName);
     } catch (error) {
+      // best-effort: decision (cleanup leak). The snapshot result is already
+      // decided; a failed builder delete leaks a sandbox. See the PR decisions.
       logException(error, "sandbox.workspace_snapshot.builder.delete_failed", {
         "app.workspace.id": workspaceId,
       });
@@ -185,6 +187,8 @@ async function markFailed(
     });
     requireBuildWrite(written, workspace);
   } catch (persistError) {
+    // best-effort: error path. The snapshot build already failed and is
+    // reported; this is a second failure while recording it.
     logException(
       persistError,
       "sandbox.workspace_snapshot.failure_persist_failed",
@@ -197,6 +201,8 @@ async function markFailed(
   try {
     await deleteBuilder(build.sandboxName);
   } catch (cleanupError) {
+    // best-effort: error path. The snapshot build already failed and is
+    // reported; this is a second failure while deleting its builder.
     logException(
       cleanupError,
       "sandbox.workspace_snapshot.builder.delete_failed",
@@ -299,6 +305,8 @@ async function finishBuild(
         result.replacedBuilderNames,
       );
     } catch (error) {
+      // best-effort: decision (cleanup leak). The snapshot result is already
+      // decided; a failed builder delete leaks a sandbox. See the PR decisions.
       logException(error, "sandbox.workspace_snapshot.builder.delete_failed", {
         "app.workspace.id": workspace.id,
         "app.sandbox.snapshot.builder_count":
@@ -365,6 +373,9 @@ async function startBuild(params: {
       try {
         await deleteBuilder(name);
       } catch (cleanupError) {
+        // best-effort: decision (cleanup leak). The snapshot result is already
+        // decided; a failed builder delete leaks a sandbox. See the PR
+        // decisions.
         logException(
           cleanupError,
           "sandbox.workspace_snapshot.builder.delete_failed",
@@ -401,6 +412,8 @@ async function startBuild(params: {
       try {
         await deleteBuilder(name);
       } catch (cleanupError) {
+        // best-effort: error path. The snapshot build already failed and is
+        // reported; this is a second failure while deleting its builder.
         logException(
           cleanupError,
           "sandbox.workspace_snapshot.builder.delete_failed",
@@ -609,6 +622,9 @@ async function advanceWorkspaceSnapshot(params: {
           try {
             await deleteBuilder(loaded.sandboxName);
           } catch (cleanupError) {
+            // best-effort: decision (cleanup leak). The snapshot result is
+            // already decided; a failed builder delete leaks a sandbox. See the
+            // PR decisions.
             logException(
               cleanupError,
               "sandbox.workspace_snapshot.builder.delete_failed",

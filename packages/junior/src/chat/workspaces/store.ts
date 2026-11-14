@@ -123,6 +123,8 @@ async function cleanupSnapshotBuilders(
   try {
     await getSandboxProvider().deleteWorkspaceSnapshotBuilders(names);
   } catch (error) {
+    // best-effort: decision (cleanup leak). The workspace change is already
+    // stored; a failed builder delete leaks a sandbox. See the PR decisions.
     logException(error, "sandbox.workspace_snapshot.builder.delete_failed", {
       "app.workspace.id": workspaceId,
       "app.sandbox.snapshot.builder_count": names.length,

@@ -524,6 +524,8 @@ async function startProxy(): Promise<Proxy> {
     const connection = connections.get(req.socket);
     if (!connection) return void res.writeHead(500).end();
     handleRequest(proxy, connection, req, res).catch((error: unknown) => {
+      // best-effort: external edge. The sandbox HTTP client receives a 502 for
+      // the failed request; the proxy keeps serving other requests.
       logWarn("sandbox.egress.docker.request_failed", {
         "error.message": error instanceof Error ? error.message : String(error),
       });
