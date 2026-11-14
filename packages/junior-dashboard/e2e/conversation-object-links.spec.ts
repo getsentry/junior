@@ -463,6 +463,60 @@ test("a Sentry event link resolves to a titled link, an event card, and a hover 
   });
 });
 
+test("a Sentry release link resolves to a titled link, a release card, and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  const url = "https://acme.sentry.io/releases/junior%404.2.0/";
+  const link = linksParagraph(page).getByRole("link", {
+    name: "junior@4.2.0 (4.2.0)",
+  });
+  await expect(link).toHaveAttribute("href", url);
+  // The reply also links to it on its own line, which shows the card.
+  const card = page.getByRole("region", {
+    name: "Sentry release: junior@4.2.0",
+  });
+  await expect(card).toHaveCount(1);
+  for (const text of [
+    "Projects",
+    "junior, junior-dashboard",
+    "New issues",
+    "3",
+    "Crash-free sessions",
+    "99.42%",
+    "Deploys",
+    "2, last to production",
+  ]) {
+    await expect(card).toContainText(text);
+  }
+  // The header shows when the release happened, in the viewer's time.
+  await expect(card).toContainText(
+    new Date(1770020700_000).toLocaleString("en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }),
+  );
+  await card.scrollIntoViewIfNeeded();
+  await screenshot(page, "conversation-sentry-release-card", {
+    lightTheme: true,
+    target: card,
+    view: "desktop",
+  });
+
+  await waitForResolvedLinks(page);
+  await link.hover();
+  await expect(card).toHaveCount(2);
+  await expect(card.nth(1)).toContainText("99.42%");
+  await screenshot(page, "conversation-sentry-release-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
 test("a Sentry dashboard link resolves to a titled link, a dashboard card, and a hover card", async ({
   page,
   dashboard,

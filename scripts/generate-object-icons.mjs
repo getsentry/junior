@@ -22,6 +22,7 @@ const names = [
   "graph",
   "pulse",
   "rows",
+  "tag",
   "package",
   "apps",
 ];

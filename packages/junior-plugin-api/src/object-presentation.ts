@@ -15,6 +15,7 @@ export const objectTypeSchema = z.enum([
   "chart",
   "event",
   "trace",
+  "release",
   "dashboard",
   "item",
 ]);
@@ -34,6 +35,7 @@ const objectTypeLabels = {
   chart: "Chart",
   event: "Event",
   trace: "Trace",
+  release: "Release",
   dashboard: "Dashboard",
   item: "Item",
 } satisfies Record<ObjectType, string>;
@@ -56,6 +58,7 @@ const objectIconNames = [
   "graph",
   "pulse",
   "rows",
+  "tag",
   "package",
   "apps",
 ] as const;
@@ -95,6 +98,7 @@ export function objectPresentation(object: {
       chart: "graph",
       event: "pulse",
       trace: "rows",
+      release: "tag",
       dashboard: "apps",
       item: "package",
     } satisfies Record<ObjectType, ObjectIconName>

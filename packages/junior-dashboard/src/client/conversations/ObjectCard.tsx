@@ -68,8 +68,15 @@ function PreviewImage({
 
 // A web page names its site, then its author, such as "YouTube · Sentry".
 // Its type and its core plugin tell the viewer nothing, and its label is
-// its title. An event ends with when it happened, in the viewer's time.
+// its title. An event or a release ends with when it happened, in the
+// viewer's time.
 function cardMeta(card: OwnedObjectAnnotation, type: string): string {
+  const time =
+    card.facts?.type === "event"
+      ? card.facts.occurredAt
+      : card.facts?.type === "release"
+        ? card.facts.releasedAt
+        : undefined;
   const parts =
     card.objectType === "web_page"
       ? [
@@ -81,8 +88,8 @@ function cardMeta(card: OwnedObjectAnnotation, type: string): string {
           objectSource(card.plugin),
           // A label that repeats the title or the type says nothing new.
           [card.title, type].includes(card.label) ? "" : card.label,
-          card.facts?.type === "event" && card.facts.occurredAt
-            ? new Date(card.facts.occurredAt).toLocaleString(undefined, {
+          time
+            ? new Date(time).toLocaleString(undefined, {
                 dateStyle: "medium",
                 timeStyle: "short",
               })

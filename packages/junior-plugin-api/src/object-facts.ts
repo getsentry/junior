@@ -150,6 +150,25 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     environment: text.optional(),
     occurredAt: z.iso.datetime({ offset: true }).optional(),
   }),
+  // Releases: health and rollout totals. Each surface formats the times
+  // for its reader. Projects are the ones Sentry lists for the viewer.
+  z.strictObject({
+    type: z.literal("release"),
+    summary: summary.optional(),
+    version: text,
+    projects: z.array(text).max(5),
+    newIssues: count.optional(),
+    // A percentage, such as 99.42.
+    crashFreeSessions: z.number().finite().min(0).max(100).optional(),
+    deployCount: count.optional(),
+    lastDeploy: z
+      .strictObject({
+        environment: text,
+        finishedAt: z.iso.datetime({ offset: true }).optional(),
+      })
+      .optional(),
+    releasedAt: z.iso.datetime({ offset: true }).optional(),
+  }),
   // Traces: the root span, totals, and the first top-level spans, which
   // the card draws as a small waterfall. Times are milliseconds from the
   // trace start.
@@ -360,6 +379,26 @@ export function objectFactFields(
       add("project", "Project", facts.project);
       add("release", "Release", facts.release);
       add("environment", "Environment", facts.environment);
+      break;
+    case "release":
+      add("projects", "Projects", list(facts.projects));
+      add("newIssues", "New issues", facts.newIssues?.toLocaleString("en-US"));
+      add(
+        "crashFreeSessions",
+        "Crash-free sessions",
+        facts.crashFreeSessions === undefined
+          ? undefined
+          : `${Number(facts.crashFreeSessions.toFixed(2))}%`,
+      );
+      add(
+        "deploys",
+        "Deploys",
+        facts.deployCount === undefined
+          ? undefined
+          : facts.lastDeploy
+            ? `${facts.deployCount.toLocaleString("en-US")}, last to ${facts.lastDeploy.environment}`
+            : facts.deployCount.toLocaleString("en-US"),
+      );
       break;
     case "trace":
       add("duration", "Duration", formatDuration(facts.durationMs));

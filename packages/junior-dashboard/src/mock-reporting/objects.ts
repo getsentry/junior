@@ -214,6 +214,30 @@ const SENTRY_EVENT: Omit<OwnedObjectAnnotation, "url"> = {
   plugin: "sentry",
 };
 const SENTRY_EVENT_PATH = `/projects/junior/events/${SENTRY_EVENT_ID}/`;
+// The mock release thread links to the Sentry release it shipped.
+const SENTRY_RELEASE: Omit<OwnedObjectAnnotation, "url"> = {
+  kind: "object",
+  objectType: "release",
+  key: "release:acme/:junior@4.2.0",
+  label: "4.2.0",
+  title: "junior@4.2.0",
+  displayType: "Sentry release",
+  facts: {
+    type: "release",
+    version: "junior@4.2.0",
+    projects: ["junior", "junior-dashboard"],
+    newIssues: 3,
+    crashFreeSessions: 99.42,
+    deployCount: 2,
+    lastDeploy: {
+      environment: "production",
+      finishedAt: new Date(1770021300_000).toISOString(),
+    },
+    releasedAt: new Date(1770020700_000).toISOString(),
+  },
+  plugin: "sentry",
+};
+const SENTRY_RELEASE_PATH = "/releases/junior%404.2.0/";
 // The mock release thread links to one Sentry trace: a checkout request
 // whose payment call failed.
 const SENTRY_TRACE_ID = "a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4";
@@ -356,6 +380,12 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   }
   if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_EVENT_PATH) {
     return [{ object: { ...SENTRY_EVENT, url: href }, url: href }];
+  }
+  if (
+    url.hostname === "acme.sentry.io" &&
+    url.pathname === SENTRY_RELEASE_PATH
+  ) {
+    return [{ object: { ...SENTRY_RELEASE, url: href }, url: href }];
   }
   if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_CHART_PATH) {
     return [{ object: { ...SENTRY_CHART, url: href }, url: href }];
