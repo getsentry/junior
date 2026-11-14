@@ -154,7 +154,9 @@ export function createSearchConversationEventsTool(
 }
 
 function projectEvent(event: ConversationEvent) {
-  const data = boundEventData(stripReplacementHistory(event.data));
+  const data = boundEventData(
+    omitRunTiming(stripReplacementHistory(event.data)),
+  );
   return {
     seq: event.seq,
     history_version: event.historyVersion,
@@ -164,6 +166,21 @@ function projectEvent(event: ConversationEvent) {
       : undefined),
     data,
   };
+}
+
+/**
+ * Leave out the `durationMs` that Pi stamps on saved history items. It is
+ * wall-clock run timing, not Conversation content, and it differs on every
+ * run.
+ */
+function omitRunTiming(
+  data: ConversationEvent["data"] | Record<string, unknown>,
+) {
+  if (data.type !== "assistant_message" && data.type !== "tool_result") {
+    return data;
+  }
+  const { durationMs: _durationMs, ...rest } = data;
+  return rest;
 }
 
 function boundEventData(
