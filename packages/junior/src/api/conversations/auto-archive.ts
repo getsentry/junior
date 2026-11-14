@@ -61,24 +61,13 @@ import {
 import { AUTO_ARCHIVE_DEFAULT_GRACE_HOURS } from "@/db/schema/users";
 import { throwApiError } from "../http";
 import { readConversationAccessFromSql } from "./access";
+import { readUserSettings } from "../user-settings";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
 
 const HOUR_MS = 60 * 60 * 1000;
 
 /** Participant rows checked per page. A run reads pages until none remain. */
 const AUTO_ARCHIVE_PAGE_SIZE = 500;
-
-/** A user's auto-archive settings. */
-export type AutoArchiveSettings = {
-  autoArchiveDefault: boolean;
-  autoArchiveGraceHours: number;
-};
-
-/** Settings of a user who has not changed auto-archive. */
-export const DEFAULT_AUTO_ARCHIVE_SETTINGS: AutoArchiveSettings = {
-  autoArchiveDefault: false,
-  autoArchiveGraceHours: AUTO_ARCHIVE_DEFAULT_GRACE_HOURS,
-};
 
 /**
  * One archive run for one user. A scheduled run needs the user's effective
@@ -439,11 +428,10 @@ export async function runAutoArchiveSweep(args: {
 export async function archiveViewerDoneConversations(
   viewer: User,
 ): Promise<{ archived: number }> {
-  const settings = await readUserAutoArchiveSettings(viewer.id);
+  const settings = await readUserSettings(viewer.id);
   const { archived } = await archiveUserDoneConversations({
     graceHours:
-      settings?.autoArchiveGraceHours ??
-      DEFAULT_AUTO_ARCHIVE_SETTINGS.autoArchiveGraceHours,
+      settings?.autoArchiveGraceHours ?? AUTO_ARCHIVE_DEFAULT_GRACE_HOURS,
     kind: "manual",
     now: new Date(),
     userId: viewer.id,
@@ -493,35 +481,4 @@ export async function setConversationAutoArchive(
       set: { autoArchive },
     });
   return { autoArchive };
-}
-
-/** Read the user's auto-archive settings. */
-export async function readUserAutoArchiveSettings(
-  userId: string,
-): Promise<AutoArchiveSettings | undefined> {
-  const [user] = await getDb()
-    .select({
-      autoArchiveDefault: juniorUsers.autoArchiveDefault,
-      autoArchiveGraceHours: juniorUsers.autoArchiveGraceHours,
-    })
-    .from(juniorUsers)
-    .where(eq(juniorUsers.id, userId))
-    .limit(1);
-  return user;
-}
-
-/** Save changed auto-archive settings and return the saved settings. */
-export async function updateUserAutoArchiveSettings(
-  userId: string,
-  settings: Partial<AutoArchiveSettings>,
-): Promise<AutoArchiveSettings | undefined> {
-  const [user] = await getDb()
-    .update(juniorUsers)
-    .set({ ...settings, updatedAt: new Date() })
-    .where(eq(juniorUsers.id, userId))
-    .returning({
-      autoArchiveDefault: juniorUsers.autoArchiveDefault,
-      autoArchiveGraceHours: juniorUsers.autoArchiveGraceHours,
-    });
-  return user;
 }

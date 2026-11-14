@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
-import { updateUserAutoArchiveSettings } from "@/api/conversations/auto-archive";
+import { updateUserSettings } from "@/api/user-settings";
 import { createApp } from "@/app";
 import { readConversationDetail } from "@/api/conversations/detail";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
@@ -140,10 +140,10 @@ describe("conversation auto-archive API", () => {
       email: "manual@example.com",
       lastMessageAt: new Date(nowMs - 30 * hour),
     });
-    await updateUserAutoArchiveSettings(viewer.id, {
+    await updateUserSettings(viewer.id, {
       autoArchiveDefault: true,
     });
-    await updateUserAutoArchiveSettings(otherViewer.id, {
+    await updateUserSettings(otherViewer.id, {
       autoArchiveDefault: true,
       autoArchiveGraceHours: 36,
     });
@@ -514,7 +514,7 @@ describe("conversation auto-archive API", () => {
           userId: viewer.id,
         });
     }
-    await updateUserAutoArchiveSettings(viewer.id, {
+    await updateUserSettings(viewer.id, {
       autoArchiveGraceHours: 1,
     });
     await createApp({ dashboard: { disabled: true } });

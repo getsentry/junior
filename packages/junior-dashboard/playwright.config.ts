@@ -1,6 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
+import type { DashboardShell } from "./src/public-assets";
 
-export default defineConfig({
+const chrome = {
+  ...devices["Desktop Chrome"],
+  // Blacksmith's Ubuntu runner includes Chrome. Use it in CI so the e2e
+  // job does not depend on apt package mirrors during Playwright setup.
+  ...(process.env["CI"] ? { channel: "chrome" } : undefined),
+};
+
+export default defineConfig<{ ui: DashboardShell }>({
   testDir: "./e2e",
   outputDir: "../../.playwright/junior-dashboard",
   timeout: 30_000,
@@ -24,15 +32,19 @@ export default defineConfig({
     },
     trace: "retain-on-failure",
   },
+  // One project for each UI shell. A spec for one shell has the `@classic`
+  // or `@new` tag. Until the new shell renders the shared pages, untagged
+  // specs run only on the current UI.
   projects: [
     {
-      name: "chromium",
-      use: {
-        ...devices["Desktop Chrome"],
-        // Blacksmith's Ubuntu runner includes Chrome. Use it in CI so the e2e
-        // job does not depend on apt package mirrors during Playwright setup.
-        ...(process.env["CI"] ? { channel: "chrome" } : undefined),
-      },
+      grepInvert: /@new\b/,
+      name: "classic",
+      use: { ...chrome, ui: "classic" },
+    },
+    {
+      grep: /@new\b/,
+      name: "inbox",
+      use: { ...chrome, ui: "inbox" },
     },
   ],
 });
