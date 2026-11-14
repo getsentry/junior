@@ -742,6 +742,18 @@ describe("juniorNitro plugin modules", () => {
       "@acme",
       "junior-demo",
     );
+    const juniorPackageDir = path.join(
+      tempRoot,
+      "node_modules",
+      "@sentry",
+      "junior",
+    );
+    await fs.mkdir(path.join(juniorPackageDir, "skills"), { recursive: true });
+    await fs.writeFile(
+      path.join(juniorPackageDir, "package.json"),
+      JSON.stringify({ name: "@sentry/junior" }),
+      "utf8",
+    );
     await fs.mkdir(path.join(tempRoot, "app"), { recursive: true });
     await fs.writeFile(
       path.join(tempRoot, "app", "SOUL.md"),
