@@ -60,6 +60,8 @@ import {
   ReviewDeskPage,
 } from "../review-desk/ReviewDeskPage";
 import { useReviewItemCountData } from "../review-desk/queries";
+import { useInboxTabIcon } from "../review-desk/inboxTabIcon";
+import { useDocumentTitleCount } from "../documentTitle";
 import { useVersionsPoll } from "../versions";
 import type { DashboardCoreData } from "../types";
 
@@ -262,13 +264,15 @@ export function ClassicShell() {
     ? (conversationDetailTitle(conversationDetail.data) ??
       conversationDisplayTitle(mobileConversation))
     : undefined;
-  const reviewCountQuery = useReviewItemCountData(loggedIn);
+  const reviewCount = useReviewItemCountData(loggedIn).data?.needsViewer;
+  useDocumentTitleCount(reviewCount);
+  useInboxTabIcon(reviewCount);
   const primaryNavItems = buildPrimaryNavItems({
     loading,
     loggedIn,
     pathname: location.pathname,
     primaryUserPages,
-    reviewCount: reviewCountQuery.data?.needsViewer,
+    reviewCount,
   });
   const profileNavItems = loggedIn
     ? buildProfileNavItems(

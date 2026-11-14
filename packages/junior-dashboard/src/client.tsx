@@ -12,6 +12,7 @@ import { RouterProvider } from "react-router/dom";
 
 import { Toaster } from "./client/components/ui/toast";
 import { TooltipProvider } from "./client/components/ui/tooltip";
+import { DocumentTitleProvider } from "./client/documentTitle";
 import { getDashboardAgentName } from "./client/agentName";
 import { initDashboardSentry } from "./client/sentry";
 import {
@@ -144,7 +145,9 @@ export function startDashboard(Shell: ComponentType): void {
       <QueryClientProvider client={queryClient}>
         <Toaster>
           <TooltipProvider>
-            <RouterProvider router={router} />
+            <DocumentTitleProvider>
+              <RouterProvider router={router} />
+            </DocumentTitleProvider>
           </TooltipProvider>
         </Toaster>
       </QueryClientProvider>
