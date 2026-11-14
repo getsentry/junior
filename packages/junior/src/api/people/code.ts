@@ -3,7 +3,7 @@ import { readPersonCodeOverview } from "../code/overview";
 import { codePersonReportSchema } from "../schema/code";
 
 /** Read person-scoped native code activity for one People profile. */
-export async function readPeopleCode(email: string, offset?: number) {
+export async function readPeopleCode(email: string, cursor?: string) {
   const subject = await findUserByEmail(email);
   if (!subject) {
     const now = new Date();
@@ -24,5 +24,5 @@ export async function readPeopleCode(email: string, offset?: number) {
       ).toISOString(),
     });
   }
-  return await readPersonCodeOverview({ offset, userId: subject.id });
+  return await readPersonCodeOverview({ cursor, userId: subject.id });
 }

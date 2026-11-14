@@ -196,7 +196,9 @@ describe("code API", () => {
           });
         }
       }
-      for (let number = 106; number <= 120; number += 1) {
+      // More closed changes than a page too, all updated at the same time,
+      // so the id orders them.
+      for (let number = 106; number <= 215; number += 1) {
         await recordCodeChange(db, "github", {
           ...change(number, "2026-08-20T12:00:00.000Z"),
           closedAt: new Date("2026-08-22T12:00:00.000Z"),
@@ -217,7 +219,11 @@ describe("code API", () => {
           )
         ).json(),
       );
-      expect(report.changeCounts).toEqual({ closed: 15, merged: 0, open: 105 });
+      expect(report.changeCounts).toEqual({
+        closed: 110,
+        merged: 0,
+        open: 105,
+      });
       expect(report.summary.open).toBe(105);
       expect(report.summary.idle).toBe(1);
       // Without a state, the latest changes list first, as before.
@@ -250,23 +256,36 @@ describe("code API", () => {
       // Longest idle first. The next page has the freshest open changes.
       expect(person.changes[0]).toMatchObject({ number: 1, state: "open" });
       expect(person.summary.idle).toBe(1);
-      expect(person.nextOffset).toBe(100);
-      const next = codePersonReportSchema.parse(
-        await (
-          await api.request(
-            "http://localhost/api/people/alice@example.com/code?offset=100",
-          )
-        ).json(),
-      );
-      expect(next.nextOffset).toBeUndefined();
+      expect(person.nextCursor).toBeDefined();
+      const page = async (cursor: string) =>
+        codePersonReportSchema.parse(
+          await (
+            await api.request(
+              `http://localhost/api/people/alice@example.com/code?cursor=${cursor}`,
+            )
+          ).json(),
+        );
+      // The cursor crosses from open to closed changes, then pages the
+      // closed ones.
+      const next = await page(person.nextCursor!);
       expect(next.changes.map((listed) => listed.state)).toEqual([
         ...Array<string>(5).fill("open"),
-        ...Array<string>(15).fill("closed"),
+        ...Array<string>(95).fill("closed"),
       ]);
-      const personOpen = [...person.changes, ...next.changes].filter(
-        (listed) => listed.state === "open",
-      );
-      expect(new Set(personOpen.map((listed) => listed.number)).size).toBe(105);
+      const last = await page(next.nextCursor!);
+      expect(last.nextCursor).toBeUndefined();
+      expect(last.changes).toHaveLength(15);
+      const listed = [...person.changes, ...next.changes, ...last.changes];
+      expect(new Set(listed.map((change) => change.number)).size).toBe(215);
+      const personOpen = listed.filter((change) => change.state === "open");
+      expect(personOpen).toHaveLength(105);
+      expect(
+        (
+          await api.request(
+            "http://localhost/api/people/alice@example.com/code?cursor=nope",
+          )
+        ).status,
+      ).toBe(400);
     } finally {
       vi.useRealTimers();
       await fixture.close();

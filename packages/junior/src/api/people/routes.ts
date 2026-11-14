@@ -75,10 +75,10 @@ export function createPeopleRoutes(): Hono<JuniorApiEnv> {
     validateRequest("query", personCodeQuerySchema, "Invalid code query."),
     async (context) => {
       const { email } = context.req.valid("param");
-      const { offset } = context.req.valid("query");
+      const { cursor } = context.req.valid("query");
       return jsonResponse(
         codePersonReportSchema,
-        await readPeopleCode(email, offset),
+        await readPeopleCode(email, cursor),
       );
     },
   );

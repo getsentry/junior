@@ -134,8 +134,8 @@ export const codePersonReportSchema = z
     activitySixHours: z.array(codeActivityDaySchema).optional(),
     changes: z.array(codeChangeSummaryReportSchema),
     generatedAt: z.string(),
-    /** Set when `changes` is a full page: read the next one at this offset. */
-    nextOffset: z.number().int().positive().optional(),
+    /** Set when `changes` is a full page: pass it as `cursor` for the next. */
+    nextCursor: z.string().optional(),
     summary: codeChangeSummarySchema,
     windowEnd: z.string(),
     windowStart: z.string(),
@@ -145,7 +145,8 @@ export const codePersonReportSchema = z
 /** Query for one page of a person's code changes. */
 export const personCodeQuerySchema = z
   .object({
-    offset: z.coerce.number().int().min(0).optional(),
+    /** `nextCursor` from the previous page. */
+    cursor: z.string().min(1).max(500).optional(),
   })
   .strict();
 

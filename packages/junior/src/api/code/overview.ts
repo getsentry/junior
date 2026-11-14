@@ -3,12 +3,16 @@ import {
   asc,
   desc,
   eq,
+  gt,
   gte,
   inArray,
+  lt,
+  ne,
   or,
   sql,
   type SQL,
 } from "drizzle-orm";
+import * as z from "zod";
 import type { CodeChangeState } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import {
@@ -17,6 +21,7 @@ import {
   juniorConversations,
 } from "@/db/schema";
 import { conversationUsageCostExpr } from "../conversations/aggregate";
+import { decodePageCursor, encodePageCursor } from "../page-cursor";
 import {
   codeOverviewReportSchema,
   codePersonReportSchema,
@@ -30,7 +35,7 @@ const ACTIVITY_DAYS = 90;
 /**
  * Code changes on one page of a person's code overview. Open changes sort
  * first, so the first page has the open changes before completed ones, and
- * `nextOffset` reads the rest.
+ * `nextCursor` reads the rest.
  */
 const PERSON_CHANGE_LIMIT = 100;
 
@@ -418,50 +423,111 @@ export async function readCodeOverview(nowMs = Date.now()) {
 }
 
 /**
+ * Position after the last change of a page of a person's code overview.
+ * `idleSince` is set only when that change was open. Code change times are
+ * written from JavaScript dates, so milliseconds keep the order exact.
+ */
+const personCodeCursorSchema = z
+  .object({
+    id: z.string().min(1),
+    idleSince: z.iso.datetime().optional(),
+    updatedAt: z.iso.datetime(),
+  })
+  .strict();
+
+const idleSince = sql`coalesce(${juniorCodeChanges.lastActivityAt}, ${juniorCodeChanges.openedAt})`;
+
+// The changes after a cursor, in the order of `readPersonCodeOverview`.
+function afterPersonCodeCursor(
+  cursor: z.output<typeof personCodeCursorSchema>,
+): SQL {
+  const updatedAt = new Date(cursor.updatedAt);
+  const laterInGroup = or(
+    lt(juniorCodeChanges.updatedAt, updatedAt),
+    and(
+      eq(juniorCodeChanges.updatedAt, updatedAt),
+      gt(juniorCodeChanges.id, cursor.id),
+    ),
+  )!;
+  const completed = ne(juniorCodeChanges.state, "open");
+  if (cursor.idleSince === undefined) return and(completed, laterInGroup)!;
+  const since = sql`${cursor.idleSince}::timestamptz`;
+  return or(
+    completed,
+    sql`${idleSince} > ${since}`,
+    and(sql`${idleSince} = ${since}`, laterInGroup),
+  )!;
+}
+
+/**
  * Read person-scoped code activity and recent code changes linked through
  * conversation actors on Junior-owned code changes.
  */
 export async function readPersonCodeOverview(args: {
+  /** `nextCursor` of the previous page. */
+  cursor?: string | undefined;
   nowMs?: number;
-  /** Skip this many changes, to read the page after a full one. */
-  offset?: number;
   userId: string;
 }) {
   const nowMs = args.nowMs ?? Date.now();
-  const offset = args.offset ?? 0;
+  const after = args.cursor
+    ? decodePageCursor(
+        personCodeCursorSchema,
+        args.cursor,
+        "Invalid code change cursor.",
+      )
+    : undefined;
   const db = getDb();
   const [windows, changes] = await Promise.all([
     readCodeWindows({ nowMs, userId: args.userId }),
     db
-      .select(codeChangeReportColumns)
+      .select({
+        change: codeChangeReportColumns,
+        updatedAt: juniorCodeChanges.updatedAt,
+      })
       .from(juniorCodeChanges)
       .innerJoin(
         juniorCodeRepositories,
         eq(juniorCodeChanges.repositoryId, juniorCodeRepositories.id),
       )
-      .where(changeScopeFilter({ userId: args.userId }))
+      .where(
+        and(
+          changeScopeFilter({ userId: args.userId }),
+          after ? afterPersonCodeCursor(after) : undefined,
+        ),
+      )
       // Open changes first, longest idle first, then the latest completed
       // changes. The id keeps the order stable from one page to the next.
       .orderBy(
         desc(sql`${juniorCodeChanges.state} = 'open'`),
         asc(
-          sql`CASE WHEN ${juniorCodeChanges.state} = 'open' THEN coalesce(${juniorCodeChanges.lastActivityAt}, ${juniorCodeChanges.openedAt}) END`,
+          sql`CASE WHEN ${juniorCodeChanges.state} = 'open' THEN ${idleSince} END`,
         ),
         desc(juniorCodeChanges.updatedAt),
         asc(juniorCodeChanges.id),
       )
-      .limit(PERSON_CHANGE_LIMIT)
-      .offset(offset),
+      .limit(PERSON_CHANGE_LIMIT),
   ]);
+  const last = changes.at(-1);
   return codePersonReportSchema.parse({
     activityDays: windows.activityDays,
     activityHours: windows.activityHours,
     activitySixHours: windows.activitySixHours,
-    changes: changes.map(codeChangeReport),
+    changes: changes.map((row) => codeChangeReport(row.change)),
     generatedAt: windows.windowEnd.toISOString(),
-    nextOffset:
-      changes.length === PERSON_CHANGE_LIMIT
-        ? offset + PERSON_CHANGE_LIMIT
+    nextCursor:
+      last && changes.length === PERSON_CHANGE_LIMIT
+        ? encodePageCursor(personCodeCursorSchema, {
+            id: last.change.id,
+            ...(last.change.state === "open"
+              ? {
+                  idleSince: (
+                    last.change.lastActivityAt ?? last.change.openedAt
+                  ).toISOString(),
+                }
+              : undefined),
+            updatedAt: last.updatedAt.toISOString(),
+          })
         : undefined,
     summary: windows.summary,
     windowEnd: windows.windowEnd.toISOString(),
