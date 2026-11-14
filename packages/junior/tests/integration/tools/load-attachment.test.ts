@@ -1,8 +1,6 @@
-import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
@@ -10,11 +8,11 @@ import { ATTACHMENT_TOO_LARGE_MESSAGE } from "@/chat/attachments/download";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { storeAttachment } from "@/chat/attachments/store";
 import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
-import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { readSlackAttachmentSource } from "@/chat/slack/attachments";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
 import { juniorAttachments } from "@/db/schema";
+import { localWorkspace } from "../../fixtures/local-workspace";
 import { filesInfoOk } from "../../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
@@ -26,49 +24,6 @@ import {
 
 const CONVERSATION_ID = "slack:C-load-attachment:1";
 const MIB = 1024 * 1024;
-const run = promisify(execFile);
-
-/** A workspace backed by a local directory, so sandbox commands really run. */
-function localWorkspace(root: string): SandboxWorkspace & {
-  commands: string[];
-  writes: Array<{ bytes: number; path: string }>;
-} {
-  const commands: string[] = [];
-  const writes: Array<{ bytes: number; path: string }> = [];
-  return {
-    commands,
-    writes,
-    readFileToBuffer: async (input) =>
-      await fs.readFile(path.join(root, input.path)),
-    runCommand: async (input) => {
-      commands.push([input.cmd, ...(input.args ?? [])].join(" "));
-      try {
-        const { stderr, stdout } = await run(input.cmd, input.args ?? [], {
-          cwd: root,
-        });
-        return { exitCode: 0, stderr, stdout };
-      } catch (error) {
-        const failed = error as { code?: number; stderr?: string };
-        return {
-          exitCode: failed.code ?? 1,
-          stderr: failed.stderr ?? "",
-          stdout: "",
-        };
-      }
-    },
-    writeFiles: async (files) => {
-      for (const file of files) {
-        const target = path.join(root, file.path);
-        await fs.mkdir(path.dirname(target), { recursive: true });
-        await fs.writeFile(target, file.content);
-        writes.push({
-          bytes: Buffer.byteLength(file.content),
-          path: file.path,
-        });
-      }
-    },
-  };
-}
 
 /** `count` distinct one-MiB chunks. */
 function* chunks(count: number): Generator<Buffer> {
@@ -430,15 +385,18 @@ describe("loadAttachment tool", () => {
       workspace: localWorkspace(root),
     });
 
-    // A row id from another conversation, a raw Slack file id, and an
-    // unknown id all miss the conversation-scoped lookup.
-    for (const attachmentId of [elsewhere.id, "F0ELSEWHERE", "att_unknown"]) {
+    // A row id from another conversation and an unknown id miss the
+    // conversation-scoped lookup. A raw Slack file id is refused before it.
+    for (const attachmentId of [elsewhere.id, "att_unknown"]) {
       await expect(
         tool.execute?.({ attachment_id: attachmentId }, {}),
       ).rejects.toThrow(
         new ToolInputError("Attachment not found in this conversation."),
       );
     }
+    await expect(
+      tool.execute?.({ attachment_id: "F0ELSEWHERE" }, {}),
+    ).rejects.toThrow(/F0ELSEWHERE is a Slack file id/);
     expect(getCapturedSlackApiCalls("files.info")).toEqual([]);
     expect(getCapturedSlackFileDownloadCalls()).toEqual([]);
   });
@@ -516,5 +474,20 @@ describe("loadAttachment tool", () => {
       tool.execute?.({ attachment_id: stored.id }, {}),
     ).rejects.toThrow(/read 0 bytes, expected 11/);
     expect(workspace.writes).toEqual([]);
+  });
+
+  it("points a Slack file id to slackThreadRead", async () => {
+    const tool = createLoadAttachmentTool({
+      conversationId: CONVERSATION_ID,
+      db: getSqlExecutor(),
+      storage: createMemoryAttachmentStorage(),
+      workspace: localWorkspace(root),
+    });
+
+    await expect(
+      tool.execute?.({ attachment_id: "F0CGYELM0NL" }, {}),
+    ).rejects.toThrow(
+      "F0CGYELM0NL is a Slack file id, not an attachment id. Read the thread with slackThreadRead to get the file's attachment_id.",
+    );
   });
 });

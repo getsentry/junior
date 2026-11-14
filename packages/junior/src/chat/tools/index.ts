@@ -284,6 +284,7 @@ const STATIC_TOOL_BINDERS = {
     createSlackThreadReadTool(slackOf(run), {
       conversationId: run.context.conversationId,
       db: getSqlExecutor(),
+      storage: run.context.attachmentStorage,
     }),
   slackChannelJoin: (run) => createSlackChannelJoinTool(slackOf(run)),
   searchConversationMessages: (run) =>
