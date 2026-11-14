@@ -89,9 +89,10 @@ export interface ToolWaitWarmer {
    * that is still running never returns to this run, so record its wait as
    * `NO_REPLY_GAP_MS`. Without these waits, the return chance counts only
    * the tools that returned. Store an open wait, so that the first request
-   * of the next run counts its savings.
+   * of the next run counts its savings, unless an answer tool ended the
+   * Turn: then the idle period counts them.
    */
-  end(): Promise<void>;
+  end(turnEnded?: boolean): Promise<void>;
 }
 
 // The cache that tool wait warmups keep warm.
@@ -334,19 +335,21 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
       stop();
       if (waiting) returnedAtMs ??= Date.now();
     },
-    async end() {
+    async end(turnEnded = false) {
       stop();
       const open = waiting;
       const returned = returnedAtMs;
       waiting = undefined;
       returnedAtMs = undefined;
       if (!open) return;
-      const state = await connectedState();
-      await state.set(
-        storedWaitKey(conversationId),
-        storedWait(open),
-        STORED_WAIT_TTL_MS,
-      );
+      if (!turnEnded) {
+        const state = await connectedState();
+        await state.set(
+          storedWaitKey(conversationId),
+          storedWait(open),
+          STORED_WAIT_TTL_MS,
+        );
+      }
       if (returned !== undefined) {
         await recordWait(returned - open.request.startedAtMs);
         return;

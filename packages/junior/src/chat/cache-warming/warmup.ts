@@ -85,11 +85,13 @@ const CONVERSATION_GAPS_MAX = 50;
 /** The Turn count of a Conversation resets after this long with no call. */
 export const CONVERSATION_STATE_TTL_MS = 7 * 24 * 60 * MINUTE_MS;
 /** How the Turn before an idle period ended. */
-type TurnEnding = "reply" | "no_reply" | "blocked";
-// Answer tools that end the run without a final response. A child agent
-// answers its parent with `reply`. People often answer a Turn that posted
-// nothing or that ended blocked, so it warms like a reply.
-const ANSWER_TOOL_ENDINGS: Partial<Record<string, TurnEnding>> = {
+export type TurnEnding = "reply" | "no_reply" | "blocked";
+/**
+ * Answer tools that end the run without a final response. A child agent
+ * answers its parent with `reply`. People often answer a Turn that posted
+ * nothing or that ended blocked, so it warms like a reply.
+ */
+export const ANSWER_TOOL_ENDINGS: Partial<Record<string, TurnEnding>> = {
   [REPLY_TOOL_NAME]: "reply",
   [NO_REPLY_TOOL_NAME]: "no_reply",
   [REPORT_BLOCKED_TOOL_NAME]: "blocked",
@@ -604,7 +606,7 @@ export function createCacheWarmingRecorder(
     },
     stop: async () => {
       try {
-        await toolWait.end();
+        await toolWait.end(answerToolEnding !== undefined);
       } catch (error) {
         logWarn("cache_warming.tool_wait.record_failed", {
           "exception.message":

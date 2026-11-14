@@ -11,7 +11,10 @@ import {
   cacheWarmingSavingsReportSchema,
 } from "@/api/schema";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
-import { backfillCacheWarmingGaps } from "@/chat/cache-warming/backfill";
+import {
+  backfillCacheWarmingGaps,
+  scanIdlePeriods,
+} from "@/chat/cache-warming/backfill";
 import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
 import { recordWarmupCost } from "@/chat/cache-warming/savings";
 import { runSavingsRefillSlice } from "@/chat/cache-warming/savings-refill";
@@ -30,6 +33,7 @@ import { resolveViewerUser, setUserAdminFromSql } from "@/chat/plugins/viewer";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { juniorAgentInvocations } from "@/db/schema";
 import { createAgent } from "../fixtures/agent";
 import { closeConversationFixture } from "../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
@@ -325,13 +329,16 @@ describe("cache warming savings re-fill", () => {
       cacheRead: number;
       cacheWrite?: number;
       stopReason?: "stop" | "toolUse";
+      toolName?: string;
     }>,
+    kind?: "automation",
   ) {
     await getConversationStore().recordActivity({
       conversationId,
       destination: { platform: "slack", teamId: "T123", channelId: "C123" },
       activityAtMs: calls.at(-1)!.atMs,
       nowMs: calls[0]!.atMs,
+      kind,
     });
     await getConversationEventStore().append(
       conversationId,
@@ -342,6 +349,18 @@ describe("cache warming savings re-fill", () => {
           data: historyItemFromPiMessage(
             {
               ...message,
+              ...(call.toolName
+                ? {
+                    content: [
+                      {
+                        type: "toolCall" as const,
+                        id: `call-${call.atMs}`,
+                        name: call.toolName,
+                        arguments: {},
+                      },
+                    ],
+                  }
+                : undefined),
               model: MODEL_ID,
               stopReason: call.stopReason ?? "stop",
               usage: { ...message.usage, cacheWrite: call.cacheWrite ?? 0 },
@@ -522,5 +541,79 @@ describe("cache warming savings re-fill", () => {
       status: "done",
     });
     expect(await savings(nowMs + MINUTE)).toEqual(before);
+  });
+
+  it("replays answer tool endings and Automation idle periods like live recording", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // An answer tool call ends the Turn, so the next call ends an idle period.
+    await storeCalls("local:test:replay-answer-tool", [
+      {
+        atMs: DAY_1,
+        cacheRead: 60_000,
+        stopReason: "toolUse",
+        toolName: "reply",
+      },
+      { atMs: DAY_1 + 7 * MINUTE, cacheRead: 60_000 },
+    ]);
+    // An Automation run that waits on its running child agent.
+    const RUN = DAY_1 + 60 * MINUTE;
+    await storeCalls(
+      "local:test:replay-automation-child",
+      [{ atMs: RUN, cacheRead: 60_000 }],
+      "automation",
+    );
+    await getConversationStore().recordActivity({
+      conversationId: "local:test:replay-automation-child:task",
+      destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+      activityAtMs: RUN,
+      nowMs: RUN,
+    });
+    await getDb()
+      .insert(juniorAgentInvocations)
+      .values({
+        invocationId: "agent-invocation:replay-automation-child",
+        parentConversationId: "local:test:replay-automation-child",
+        childConversationId: "local:test:replay-automation-child:task",
+        input: "Check the deploy.",
+        actor: { name: "automation", platform: "system" },
+        source: { kind: "agent_invocation" },
+        destination: {
+          conversationId: "local:test:replay-automation-child",
+          platform: "local",
+        },
+        status: "running",
+        mailboxStatus: "pending",
+        createdAt: new Date(RUN - MINUTE),
+        updatedAt: new Date(RUN - MINUTE),
+        terminalAt: null,
+      });
+    // An Automation run with no child that never gets a later Turn.
+    await storeCalls(
+      "local:test:replay-automation-alone",
+      [{ atMs: RUN + 60 * MINUTE, cacheRead: 60_000 }],
+      "automation",
+    );
+
+    const nowMs = DAY_2 + 26 * 60 * MINUTE;
+    const { periods, toolWaits } = await scanIdlePeriods({
+      windowStartMs: DAY_1 - MINUTE,
+      nowMs,
+      budgetMs: 60_000,
+    });
+    expect(toolWaits).toEqual([]);
+    expect(periods).toEqual([
+      expect.objectContaining({
+        sinceMs: DAY_1,
+        turnEnding: "reply",
+        gapMs: 7 * MINUTE,
+        next: expect.objectContaining({ cacheRead: 60_000 }),
+      }),
+      expect.objectContaining({ sinceMs: DAY_1 + 7 * MINUTE }),
+      expect.objectContaining({
+        sinceMs: RUN,
+        turnEnding: "reply",
+        gapMs: nowMs - RUN,
+      }),
+    ]);
   });
 });

@@ -227,6 +227,25 @@ describe("tool wait cache warming", () => {
     });
   });
 
+  it("leaves a wait that an answer tool ended to the idle period", async () => {
+    vi.setSystemTime(new Date("2031-04-03T12:00:00.000Z"));
+    const answered = createToolWaitWarmer("local:test:tool-wait");
+    await answered.record(request(), message("toolUse"));
+    answered.toolsReturned();
+    await answered.end(true);
+    vi.advanceTimersByTime(7 * MINUTE);
+    const next = createToolWaitWarmer("local:test:tool-wait");
+    await next.record(request(), message("stop"));
+
+    const response = await createJuniorApi().request(
+      "http://localhost/api/cache-warming/savings?days=1",
+    );
+    const { totals } = cacheWarmingSavingsReportSchema.parse(
+      await response.json(),
+    );
+    expect(totals.idlePeriods).toBe(0);
+  });
+
   it("records only tool waits that can change a decision", async () => {
     const warmer = createToolWaitWarmer("local:test:tool-wait");
     await warmer.record(request(), message("toolUse"));
