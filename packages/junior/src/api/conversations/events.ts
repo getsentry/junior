@@ -6,6 +6,10 @@ import type { ConversationEvent } from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
+import {
+  BRIEF_EVENT_NAMESPACE,
+  renderBriefConversationEvent,
+} from "@/chat/briefs/events";
 import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
 import { buildSentryEventUrl } from "@/chat/sentry-links";
 import * as z from "zod";
@@ -351,7 +355,9 @@ function reportEventData(args: {
     const presentation =
       data.namespace === "junior"
         ? renderJuniorNativeConversationEvent(data)
-        : renderPluginConversationEvent(data);
+        : data.namespace === BRIEF_EVENT_NAMESPACE
+          ? renderBriefConversationEvent(data)
+          : renderPluginConversationEvent(data);
     if (!presentation) return undefined;
     return {
       type: "structured_event",

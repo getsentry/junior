@@ -175,7 +175,7 @@ async function notifyReply(context: PluginTaskContext): Promise<void> {
 }
 
 /** Core task that sends reply notifications to installed dashboard apps. */
-export const notificationsTaskRegistration: PluginRegistration = {
+const notificationsTaskRegistration: PluginRegistration = {
   manifest: {
     name: "notifications",
     displayName: "Notifications",
@@ -189,3 +189,8 @@ export const notificationsTaskRegistration: PluginRegistration = {
     },
   },
 };
+
+/** Return the reply notifications task when Web Push is configured. */
+export function notificationTaskRegistrations(): PluginRegistration[] {
+  return readWebPushConfig() ? [notificationsTaskRegistration] : [];
+}

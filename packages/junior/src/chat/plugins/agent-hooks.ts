@@ -99,7 +99,6 @@ import {
 import { createCodeChangePublisher } from "@/chat/code/publisher";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { createPluginReviewItems } from "@/chat/review-items/plugin";
-import { coreTaskRegistrations } from "@/chat/briefs/registration";
 
 export interface ToolHookInput {
   input: Record<string, unknown>;
@@ -1526,7 +1525,8 @@ function sanitizeOperationalReport(args: {
   return sanitized;
 }
 
-function failedOperationalReport(args: {
+/** Build the report card shown when one operational report fails to load. */
+export function failedOperationalReport(args: {
   nowMs: number;
   pluginName: string;
 }): PluginOperationalReport {
@@ -1549,7 +1549,7 @@ export async function getPluginOperationalReports(
   nowMs: number,
 ): Promise<PluginOperationalReport[]> {
   const reports: PluginOperationalReport[] = [];
-  for (const plugin of [...coreTaskRegistrations(), ...getPlugins()]) {
+  for (const plugin of getPlugins()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.operationalReport;
     if (!hook) {

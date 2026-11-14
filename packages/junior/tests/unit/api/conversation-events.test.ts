@@ -114,6 +114,36 @@ describe("conversation report event projection", () => {
     }
   });
 
+  it("renders stored Brief events without a plugin registration", () => {
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: true,
+        events: [
+          event(1, {
+            type: "structured_event",
+            namespace: "briefs",
+            name: "brief_updated",
+            version: 1,
+            content: {
+              version: 3,
+              modelId: "test-model",
+              costUsd: 0.0042,
+              decisions: 2,
+              openDecisions: 1,
+              links: 4,
+            },
+          }),
+        ],
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          presentation: { icon: "activity", title: "Brief updated (v3)" },
+        }),
+      }),
+    ]);
+  });
+
   it("omits registered plugin events without a presentation", async () => {
     const background = defineConversationEvent({
       name: "background_completed",

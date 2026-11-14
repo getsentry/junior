@@ -125,14 +125,40 @@ export async function readRuntimeInfoReport(): Promise<RuntimeInfoReport> {
   });
 }
 
-/** Read sanitized operational summaries contributed by plugins. */
+/** Read the Brief report and sanitized operational summaries from plugins. */
 export async function readPluginOperationalReportFeed(): Promise<PluginOperationalReportFeed> {
   const nowMs = Date.now();
-  const { getPluginOperationalReports } =
-    await import("@/chat/plugins/agent-hooks");
+  const [
+    { isBriefsEnabled },
+    { BRIEF_EVENT_NAMESPACE },
+    { buildBriefsOperationalReport },
+    { logException },
+    { failedOperationalReport, getPluginOperationalReports },
+  ] = await Promise.all([
+    import("@/chat/briefs/config"),
+    import("@/chat/briefs/events"),
+    import("@/chat/briefs/operational-report"),
+    import("@/chat/logging"),
+    import("@/chat/plugins/agent-hooks"),
+  ]);
+  const readBriefsReport = async () => {
+    try {
+      return await buildBriefsOperationalReport(nowMs);
+    } catch (error) {
+      // The System page shows a failed card and keeps the other reports.
+      logException(error, "briefs.operational_report.failed");
+      return failedOperationalReport({
+        nowMs,
+        pluginName: BRIEF_EVENT_NAMESPACE,
+      });
+    }
+  };
   return pluginOperationalReportFeedSchema.parse({
     source: "plugins",
     generatedAt: new Date(nowMs).toISOString(),
-    reports: await getPluginOperationalReports(nowMs),
+    reports: [
+      ...(isBriefsEnabled() ? [await readBriefsReport()] : []),
+      ...(await getPluginOperationalReports(nowMs)),
+    ],
   });
 }
