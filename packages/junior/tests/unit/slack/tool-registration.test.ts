@@ -284,9 +284,19 @@ describe("Slack tool registration", () => {
       } as ToolRuntimeContext);
       expect(modelView(tools)).toBe(modelView(messageTurn));
       expect(tools.createAutomation?.disabledReason).toBeDefined();
-      expect(tools.addReaction?.disabledReason).toBeDefined();
+      // Without an inbound message, the tool can still react to the thread root.
+      expect(tools.addReaction?.disabledReason).toBeUndefined();
       expect(tools.addReviewItem?.disabledReason).toBeUndefined();
     }
+    const { threadTs: _threadTs, ...channelLocation } = ctx("C12345")
+      .location as NonNullable<ToolRuntimeContext["location"]>;
+    const eventTurnWithoutThread = createTools([], {}, {
+      ...ctx("C12345"),
+      ...otherTurns[1],
+      location: channelLocation,
+      slackActionToken: undefined,
+    } as ToolRuntimeContext);
+    expect(eventTurnWithoutThread.addReaction?.disabledReason).toBeDefined();
     expect(messageTurn.createAutomation?.disabledReason).toBeUndefined();
     expect(messageTurn).toHaveProperty("loadSkill");
     expect(messageTurn).toHaveProperty("slackPublicSearch");

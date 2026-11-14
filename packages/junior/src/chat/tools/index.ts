@@ -484,9 +484,9 @@ const RUN_BUILT_TOOL_BUILDERS = {
       return undefined;
     return withDisabledReason(
       createSlackMessageAddReactionTool(run.slack, run.state),
-      run.slack.messageTs
+      run.slack.messageTs || run.slack.threadTs
         ? undefined
-        : "It needs a Slack message in this Turn to react to.",
+        : "It needs a Slack message or thread in this Turn to react to.",
     );
   },
 } satisfies Record<RunBuiltToolSlot, ToolBinder>;
