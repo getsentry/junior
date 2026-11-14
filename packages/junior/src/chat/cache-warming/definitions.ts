@@ -103,6 +103,10 @@ export async function definitionsFingerprint(
  * record of a deployment that it was first seen after, so a late Turn of an
  * old deployment during a rollout cannot switch it back. Two new deployments
  * that start at the same time can race; the last write wins.
+ *
+ * Each publish refreshes the TTL of both records that this deployment owns.
+ * Otherwise a deployment that keeps running past the TTL would get a new
+ * first-seen time, and an old one could replace the newer fingerprint.
  */
 export async function publishDefinitions(
   state: ConnectedState,
@@ -112,18 +116,23 @@ export async function publishDefinitions(
   if (!deploymentId) return undefined;
   const fingerprint = await definitionsFingerprint(key);
   const nowMs = Date.now();
-  const firstSeenMs = (await state.setIfNotExists(
-    firstSeenKey(deploymentId),
-    nowMs,
-    RECORD_TTL_MS,
-  ))
-    ? nowMs
-    : ((await state.get<number>(firstSeenKey(deploymentId))) ?? nowMs);
+  let firstSeenMs = nowMs;
+  if (
+    !(await state.setIfNotExists(
+      firstSeenKey(deploymentId),
+      nowMs,
+      RECORD_TTL_MS,
+    ))
+  ) {
+    firstSeenMs =
+      (await state.get<number>(firstSeenKey(deploymentId))) ?? nowMs;
+    await state.set(firstSeenKey(deploymentId), firstSeenMs, RECORD_TTL_MS);
+  }
   const published = await state.get<PublishedFingerprint>(fingerprintKey(key));
   if (
     !published ||
-    (published.deploymentId !== deploymentId &&
-      published.firstSeenMs < firstSeenMs)
+    published.deploymentId === deploymentId ||
+    published.firstSeenMs < firstSeenMs
   ) {
     await state.set<PublishedFingerprint>(
       fingerprintKey(key),
