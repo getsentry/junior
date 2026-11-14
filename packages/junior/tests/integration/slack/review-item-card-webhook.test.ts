@@ -491,14 +491,19 @@ describe("Slack webhook: Review item cards", () => {
       source: "internal",
     });
     const ana = await linkSlackUser("ana@example.com", "U123");
-    const { item } = await addItem(ana, {
+    const input = {
       kind: "action",
       title: "Ship release 1.2.3",
       body: "The release checks passed.",
       assignees: ["ana@example.com"],
-      conversation_ids: [child],
+      dedupe_key: "release:1.2.3",
       request: SHIP_REQUEST,
-    });
+    };
+    // The child adds the item first, so its card goes to the child.
+    await addItem(ana, input, child);
+    // The parent links the item later. The thread keeps one card, and the
+    // card moves to the parent.
+    const { item } = await addItem(ana, input);
     expect(item).toMatchObject({ conversation_ids: [child, THREAD] });
     const cards = slackApiOutbox.messages();
     expect(cards).toHaveLength(1);

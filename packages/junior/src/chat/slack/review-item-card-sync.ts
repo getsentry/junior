@@ -98,16 +98,20 @@ async function threadOwnerId(thread: CardThread): Promise<string> {
 }
 
 /**
- * Return one thread to post a card in for each Slack thread that has no
- * card yet. A child agent shares the thread of its parent, so an item
- * linked to both would post two cards in one thread. The Conversation that
- * owns the thread gets the card, because a click on the card is Slack input
- * to that Conversation.
+ * Plan one card for each linked Slack thread. A child agent shares the
+ * thread of its parent, so an item linked to both must not post two cards
+ * in one thread. The Conversation that owns the thread gets the card,
+ * because a click on the card is Slack input to that Conversation. So a card
+ * that a linked child holds moves to the owner once the owner is linked.
  */
-async function uncardedThreads(
+async function planCards(
   conversationIds: readonly string[],
-  carded: ReadonlySet<string>,
-): Promise<CardThread[]> {
+  rows: readonly CardRow[],
+): Promise<{
+  moves: Array<{ conversationId: string; row: CardRow }>;
+  posts: CardThread[];
+}> {
+  const rowOf = new Map(rows.map((row) => [row.conversationId, row]));
   const threads = await Promise.all(conversationIds.map(resolveCardThread));
   const byThread = new Map<string, CardThread[]>();
   for (const thread of threads) {
@@ -115,15 +119,40 @@ async function uncardedThreads(
     const key = `${thread.teamId}:${thread.channelId}:${thread.threadTs}`;
     byThread.set(key, [...(byThread.get(key) ?? []), thread]);
   }
-  const groups = [...byThread.values()].filter(
-    (group) => !group.some((t) => carded.has(t.conversationId)),
-  );
-  return await Promise.all(
-    groups.map(async (group) => {
+  const moves: Array<{ conversationId: string; row: CardRow }> = [];
+  const posts: CardThread[] = [];
+  await Promise.all(
+    [...byThread.values()].map(async (group) => {
       const ownerId = await threadOwnerId(group[0]!);
-      return group.find((t) => t.conversationId === ownerId) ?? group[0]!;
+      const owner = group.find((t) => t.conversationId === ownerId);
+      const row = group
+        .map((t) => rowOf.get(t.conversationId))
+        .find((found) => found !== undefined);
+      if (!row) {
+        posts.push(owner ?? group[0]!);
+      } else if (owner && !rowOf.has(owner.conversationId)) {
+        moves.push({ conversationId: owner.conversationId, row });
+      }
     }),
   );
+  return { moves, posts };
+}
+
+/** Give an existing card to the Conversation that owns its thread. */
+async function moveCard(move: {
+  conversationId: string;
+  row: CardRow;
+}): Promise<CardRow> {
+  await getDb()
+    .update(juniorReviewItemSlackCards)
+    .set({ conversationId: move.conversationId })
+    .where(
+      and(
+        eq(juniorReviewItemSlackCards.itemId, move.row.itemId),
+        eq(juniorReviewItemSlackCards.conversationId, move.row.conversationId),
+      ),
+    );
+  return { ...move.row, conversationId: move.conversationId };
 }
 
 async function postCard(
@@ -223,14 +252,20 @@ export async function syncReviewItemSlackCards(args: {
             .select()
             .from(juniorReviewItemSlackCards)
             .where(eq(juniorReviewItemSlackCards.itemId, item.id));
-          const carded = new Set(rows.map((row) => row.conversationId));
-          const missing =
+          const plan =
             item.status === "open"
-              ? await uncardedThreads(item.conversationIds, carded)
-              : [];
+              ? await planCards(item.conversationIds, rows)
+              : { moves: [], posts: [] };
+          const moved = new Set(plan.moves.map((move) => move.row));
+          const current = [
+            ...rows.filter((row) => !moved.has(row)),
+            ...(await Promise.all(plan.moves.map(moveCard))),
+          ];
           const results = await Promise.allSettled([
-            ...rows.map((row) => updateCard(item, row, getSlackAdapter)),
-            ...missing.map((thread) => postCard(item, thread, getSlackAdapter)),
+            ...current.map((row) => updateCard(item, row, getSlackAdapter)),
+            ...plan.posts.map((thread) =>
+              postCard(item, thread, getSlackAdapter),
+            ),
           ]);
           const failed = results.find((result) => result.status === "rejected");
           if (failed) throw failed.reason;
