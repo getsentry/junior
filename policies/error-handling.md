@@ -9,8 +9,7 @@ duplicate diagnostics.
 
 ## Policy
 
-- Let operations that should succeed throw to the caller. Do not catch only to
-  log a warning and continue.
+- Let operations that should succeed throw to the caller.
 - Catch errors only when the current layer can recover, translate an expected
   edge failure into a typed domain result, or add required cleanup that cannot
   be expressed with `finally`.
@@ -20,8 +19,7 @@ duplicate diagnostics.
   work across a `try` boundary can change retries or fallback behavior even
   when the successful path is unchanged.
 - Use `finally` for cleanup that must run without changing error ownership.
-- Keep best-effort observers explicit. If correctness depends on the operation,
-  it is not best-effort.
+- If correctness depends on the operation, it is not best-effort.
 
 ## Exceptions
 
