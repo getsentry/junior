@@ -1,10 +1,13 @@
 import {
+  actorSchema,
   conversationEventPresentationSchema,
   defineConversationEvent,
+  destinationSchema,
   type ConversationEventPresentation,
   type PluginConversationEventDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { credentialContextSchema } from "@/chat/credentials/context";
 
 /** Reserved namespace for Junior-owned conversation metadata events. */
 export const JUNIOR_NATIVE_EVENT_NAMESPACE = "junior" as const;
@@ -173,11 +176,48 @@ export const conversationNoteEvent = defineConversationEvent({
   },
 });
 
+/**
+ * One tool call waits on a person: the exact call, the context of the Run
+ * that made it, and its approver and review item. Written only for an
+ * `ask`, from a rule or from Guardian. `tool-approvals.ts` owns it.
+ */
+export const actionReviewRequestedSchema = z
+  .object({
+    actor: actorSchema,
+    approverUserId: z.string().min(1),
+    credentialContext: credentialContextSchema.optional(),
+    destination: destinationSchema,
+    input: z.record(z.string(), z.unknown()),
+    reviewItemId: z.string().min(1),
+    toolCallId: z.string().min(1),
+    toolName: z.string().min(1),
+  })
+  .strict();
+
+export const actionReviewRequestedEvent = defineConversationEvent({
+  name: "action_review_requested",
+  version: 1,
+  schema: actionReviewRequestedSchema,
+  renderEvent(event) {
+    return {
+      icon: "key",
+      title: `Asked for approval to run ${event.toolName}`,
+      details: [
+        {
+          title: event.toolName,
+          content: JSON.stringify(event.input, null, 2),
+        },
+      ],
+    };
+  },
+});
+
 const NATIVE_EVENT_DEFINITIONS: readonly PluginConversationEventDefinition[] = [
   authenticationLinkedEvent,
   authenticationUnlinkedEvent,
   agentsInstructionsUpdatedEvent,
   conversationNoteEvent,
+  actionReviewRequestedEvent,
 ];
 
 /** Resolve a registered Junior-native conversation event definition. */

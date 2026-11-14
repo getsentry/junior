@@ -2,7 +2,10 @@ import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import { isInheritedForkHistory } from "@/chat/agent-invocations/fork-history";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { readMessageCardRefs } from "@/chat/conversations/cards";
-import type { ConversationEvent } from "@/chat/conversations/history";
+import {
+  LEGACY_GUARDIAN_DECISION_TYPE,
+  type ConversationEvent,
+} from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
@@ -27,7 +30,8 @@ export const conversationReportSourceEventTypes = [
   "assistant_message",
   "tool_result",
   "tool_execution_started",
-  "guardian_action_reviewed",
+  "action_decided",
+  LEGACY_GUARDIAN_DECISION_TYPE,
   "turn_started",
   "turn_context",
   "structured_event",
@@ -462,15 +466,18 @@ function reportEventData(args: {
         text: data.text,
         ...(data.url ? { url: data.url } : undefined),
       };
-    case "guardian_action_reviewed":
+    case "action_decided":
       return {
-        type: "guardian_action_reviewed",
+        type: "action_decided",
         turnId: data.turnId,
         toolCallId: data.toolCallId,
         toolName: data.toolName,
+        decider: data.decider,
         decision: data.decision,
-        riskLevel: data.riskLevel,
-        userAuthorization: data.userAuthorization,
+        ...(data.riskLevel ? { riskLevel: data.riskLevel } : undefined),
+        ...(data.userAuthorization
+          ? { userAuthorization: data.userAuthorization }
+          : undefined),
       };
     case "turn_completed":
       return {

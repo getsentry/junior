@@ -196,7 +196,7 @@ describe("CostMetric", () => {
               {
                 costUsd: 0.0014,
                 events: 1,
-                name: "guardian_action_reviewed",
+                name: "action_decided",
                 namespace: "junior",
               },
             ],

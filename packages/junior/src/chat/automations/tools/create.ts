@@ -205,7 +205,7 @@ export function createAutomationTool(
   return zodTool({
     exposure: "deferred",
     source: AUTOMATIONS_TOOL_SOURCE,
-    approvalMode: "review",
+    permission: "review",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

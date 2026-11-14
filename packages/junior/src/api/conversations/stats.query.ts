@@ -1,4 +1,5 @@
-import { and, eq, gte, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
+import { ACTION_DECIDED_EVENT_TYPES } from "@/chat/conversations/history";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
@@ -611,7 +612,16 @@ async function aggregateGuardianStats(
   };
   const where = (windowStart: Date) =>
     and(
-      eq(juniorConversationEvents.type, "guardian_action_reviewed"),
+      // Literal types, not parameters: a generic plan with parameters cannot
+      // use the partial index of each type.
+      or(
+        ...ACTION_DECIDED_EVENT_TYPES.map(
+          (type) =>
+            sql`${juniorConversationEvents.type} = ${sql.raw(`'${type}'`)}`,
+        ),
+      ),
+      // Old rows have no decider; they are all Guardian's.
+      sql`COALESCE(${juniorConversationEvents.payload}->>'decider', 'guardian') = 'guardian'`,
       gte(juniorConversationEvents.createdAt, windowStart),
       lte(juniorConversationEvents.createdAt, end),
     );

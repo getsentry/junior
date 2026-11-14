@@ -207,8 +207,14 @@ function eventTailVersion(event: ConversationReportEvent | undefined): string {
       ].join(":");
     case "compaction":
       return [data.type, data.summary?.length ?? 0, event.createdAt].join(":");
-    case "guardian_action_reviewed":
-      return [data.type, data.turnId, data.toolCallId, data.decision].join(":");
+    case "action_decided":
+      return [
+        data.type,
+        data.turnId,
+        data.toolCallId,
+        data.decider,
+        data.decision,
+      ].join(":");
     case "turn_context":
       return [
         data.type,

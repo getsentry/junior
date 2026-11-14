@@ -67,6 +67,7 @@ const tabsSchema = z.object({
 
 /** Replace every match of a text in a Google Doc. */
 export const replaceGoogleDocTextTool = definePluginTool({
+  permission: "review",
   annotations: {
     destructiveHint: true,
     idempotentHint: false,

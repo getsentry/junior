@@ -72,7 +72,12 @@ export const juniorConversationEvents = pgTable(
         table.createdAt,
       )
       .where(sql`${table.type} = 'structured_event'`),
-    // Guardian review counts over a time window, across all Conversations.
+    // Guardian decision counts over a time window, across all Conversations.
+    index("junior_conversation_events_action_decided_time_idx")
+      .on(table.createdAt)
+      .where(sql`${table.type} = 'action_decided'`),
+    // The same for old Guardian rows. Remove with
+    // `LEGACY_GUARDIAN_DECISION_TYPE`.
     index("junior_conversation_events_guardian_review_time_idx")
       .on(table.createdAt)
       .where(sql`${table.type} = 'guardian_action_reviewed'`),

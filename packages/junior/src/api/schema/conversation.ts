@@ -535,15 +535,16 @@ const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
   ],
 );
 
-const conversationReportGuardianActionReviewedEventDataSchema = z
+const conversationReportActionDecidedEventDataSchema = z
   .object({
-    type: z.literal("guardian_action_reviewed"),
+    type: z.literal("action_decided"),
     turnId: z.string().min(1),
     toolCallId: z.string().min(1),
     toolName: z.string().min(1),
+    decider: z.enum(["guardian", "rule", "person"]),
     decision: z.enum(["allow", "ask", "deny"]),
-    riskLevel: z.enum(["low", "medium", "high", "critical"]),
-    userAuthorization: z.enum(["high", "medium", "low", "unknown"]),
+    riskLevel: z.enum(["low", "medium", "high", "critical"]).optional(),
+    userAuthorization: z.enum(["high", "medium", "low", "unknown"]).optional(),
   })
   .strict();
 
@@ -635,7 +636,7 @@ export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportStructuredEventDataSchema,
   conversationReportAttachmentsDeliveredEventDataSchema,
   conversationReportReplyPostedEventDataSchema,
-  conversationReportGuardianActionReviewedEventDataSchema,
+  conversationReportActionDecidedEventDataSchema,
   conversationReportCompactionEventDataSchema,
   conversationReportSubagentEventDataSchema,
 ]);

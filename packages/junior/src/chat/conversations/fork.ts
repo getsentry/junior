@@ -3,6 +3,7 @@ import { alias } from "drizzle-orm/pg-core";
 import type { User } from "@sentry/junior-plugin-api";
 import {
   KNOWN_CONVERSATION_EVENT_TYPES,
+  LEGACY_GUARDIAN_DECISION_TYPE,
   type ConversationEvent,
 } from "./history";
 import { loadTurnProjection } from "./projection";
@@ -49,15 +50,16 @@ export function notCopiedByFork(): SQL {
  * state of the source actor. A fork does not copy them.
  */
 export const UNCOPIED_EVENT_TYPES: ReadonlySet<string> = new Set<
-  ConversationEvent["data"]["type"]
+  ConversationEvent["data"]["type"] | typeof LEGACY_GUARDIAN_DECISION_TYPE
 >([
+  "action_decided",
   "authorization_completed",
   "authorization_requested",
   // A copied request would look like a pending job that never runs for the
   // fork. The fork requests its own compaction.
   "compaction_prepared",
   "compaction_requested",
-  "guardian_action_reviewed",
+  LEGACY_GUARDIAN_DECISION_TYPE,
   "mcp_provider_connected",
   "mcp_provider_connected_unowned",
   "structured_event",

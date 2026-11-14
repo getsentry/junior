@@ -400,7 +400,7 @@ function memoryToolResult<TData extends Record<string, unknown>>(
 
 /** Submit an explicit memory candidate for storage. */
 export const memoryCreateTool = definePluginTool({
-  approvalMode: "approve",
+  permission: "allow",
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -488,6 +488,7 @@ export const memoryCreateTool = definePluginTool({
 
 /** Archive a visible memory in the active context. */
 export const memoryArchiveTool = definePluginTool({
+  permission: "review",
   annotations: {
     destructiveHint: true,
     idempotentHint: true,

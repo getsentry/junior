@@ -80,6 +80,7 @@ function pipelineFor(
   options: { onToolCall?: () => void | Promise<void> } = {},
 ) {
   const actionReview = createToolActionReview({
+    requestApproval: async () => undefined,
     context: {
       actor: { platform: "local", userId: "local-user" },
       conversationId: CONVERSATION_ID,
@@ -119,7 +120,7 @@ function turnCount() {
 function postTool(posts: Array<{ channel: string; text: string }>) {
   return tool({
     annotations: REVIEWED_ANNOTATIONS,
-    approvalMode: "review",
+    permission: "review",
     description: "Post a message to a channel.",
     inputSchema: Type.Object({ channel: Type.String(), text: Type.String() }),
     execute: async (input) => {
@@ -157,7 +158,7 @@ describe("Code Mode bridge", () => {
     let started = 0;
     const lookup = tool({
       annotations: REVIEWED_ANNOTATIONS,
-      approvalMode: "review",
+      permission: "review",
       description: "Look up one customer.",
       inputSchema: Type.Object({ id: Type.String() }),
       execute: async ({ id }) => {
@@ -511,7 +512,7 @@ describe("Code Mode bridge", () => {
     ],
   ])("counts a %s script as one attempt", async (_order, source) => {
     const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
-      decision: "ask",
+      decision: "deny",
       reason: "The user did not name these channels.",
       riskLevel: "medium",
       rule: "none",
@@ -532,11 +533,13 @@ describe("Code Mode bridge", () => {
     expect(result.calls.map((call) => call.status)).toEqual(
       Array(4).fill("rejected"),
     );
-    // Each call gets the confirmation text. None reaches the limit.
+    // Each call gets the denial text. None reaches the limit.
     const errors = new Set(result.calls.map((call) => call.error));
     expect(errors.size).toBe(1);
     const [error] = errors;
-    expect(error).toContain("explicit user confirmation is required");
+    expect(error).toContain(
+      "This action was rejected due to unacceptable risk.",
+    );
     expect(error).not.toContain("rejected three consecutive");
   });
 

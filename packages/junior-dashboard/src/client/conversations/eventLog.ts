@@ -60,8 +60,13 @@ export function eventLogSummary(data: ConversationReportEventData): string {
         : `${data.state} · ${data.turnId}`;
     case "turn_context":
       return `${data.pluginName} · ${data.kind} · v${data.version}`;
-    case "guardian_action_reviewed":
-      return `${data.decision} · ${data.toolName} · ${data.riskLevel} risk`;
+    case "action_decided":
+      return [
+        data.decider,
+        data.decision,
+        data.toolName,
+        ...(data.riskLevel ? [`${data.riskLevel} risk`] : []),
+      ].join(" · ");
     case "structured_event":
       return `${data.namespace}.${data.name} · ${data.presentation.title}`;
     case "attachments_delivered":
@@ -84,12 +89,12 @@ export function eventLogTone(data: ConversationReportEventData): string {
     (data.type === "tool_calls" &&
       data.calls.some((call) => call.status === "error")) ||
     (data.type === "subagent" && data.status === "error") ||
-    (data.type === "guardian_action_reviewed" && data.decision === "deny")
+    (data.type === "action_decided" && data.decision === "deny")
   ) {
     return "text-rose-300";
   }
   if (
-    (data.type === "guardian_action_reviewed" && data.decision === "ask") ||
+    (data.type === "action_decided" && data.decision === "ask") ||
     (data.type === "turn_lifecycle" && data.state === "blocked") ||
     (data.type === "subagent" &&
       (data.status === "aborted" || data.status === "blocked"))

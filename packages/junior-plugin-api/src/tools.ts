@@ -363,17 +363,27 @@ export type PluginToolExecute<
 }["bivarianceHack"];
 
 /**
- * Tool-declared approval mode.
+ * Tool-declared permission: what core does before a call runs.
  *
- * `auto` delegates to core policy, `review` enters Guardian review, and
- * `approve` permits execution without review. Plugin tool helpers normalize
- * omission to `auto`.
+ * - `allow` runs the call without review.
+ * - `review` sends the call to Guardian, which allows, asks, or denies.
+ * - `ask` waits for the person's approval on the review desk. Core stores
+ *   the exact call and runs it after the approval.
+ * - `deny` never runs the call.
+ * - `auto` derives one of these from the tool's annotations. Plugin tool
+ *   helpers normalize omission to `auto`.
  *
- * Core resolves the effective mode immediately before execution.
+ * Core resolves the effective permission immediately before execution.
  */
-export const toolApprovalModeSchema = z.enum(["auto", "review", "approve"]);
+export const toolPermissionSchema = z.enum([
+  "auto",
+  "allow",
+  "review",
+  "ask",
+  "deny",
+]);
 
-export type ToolApprovalMode = z.output<typeof toolApprovalModeSchema>;
+export type ToolPermission = z.output<typeof toolPermissionSchema>;
 
 /**
  * Reviewer signals describing a tool's side-effect behavior.
@@ -414,8 +424,8 @@ export function missingToolAnnotationKeys(
  * Canonical approval metadata declared by core and plugin tools.
  */
 export interface ToolApprovalMetadata<TInput = unknown> {
-  /** Optional declared approval mode; the owning tool boundary selects defaults. */
-  approvalMode?: ToolApprovalMode;
+  /** Optional declared permission; the owning tool boundary selects defaults. */
+  permission?: ToolPermission;
   annotations?: ToolAnnotations;
   /**
    * Describe the reviewed semantic action for the review request.
@@ -586,7 +596,7 @@ function createZodTool<
   }
   return {
     ...tool,
-    approvalMode: tool.approvalMode ?? "auto",
+    permission: tool.permission ?? "auto",
     inputSchema: modelInputSchema,
     outputSchema: modelOutputSchema,
     prepareArguments(args) {

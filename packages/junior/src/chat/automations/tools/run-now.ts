@@ -20,7 +20,7 @@ import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
 export const runAutomationNowToolDefinition = zodToolDefinition({
   exposure: "deferred",
   source: AUTOMATIONS_TOOL_SOURCE,
-  approvalMode: "review",
+  permission: "review",
   annotations: {
     destructiveHint: false,
     idempotentHint: false,

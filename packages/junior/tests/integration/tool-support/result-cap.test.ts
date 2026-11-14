@@ -42,6 +42,7 @@ const CONVERSATION_ID = "local:test:result-cap";
 
 /** MCP calls need action review. Guardian's model is faked to allow them. */
 const allowAll = createToolActionReview({
+  requestApproval: async () => undefined,
   context: {
     actor: { platform: "local", userId: "local-user" },
     conversationId: CONVERSATION_ID,

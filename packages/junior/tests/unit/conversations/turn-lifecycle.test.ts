@@ -57,6 +57,10 @@ class MemoryConversationEventStore implements ConversationEventStore {
     return undefined;
   }
 
+  async loadStructuredEvents(): Promise<ConversationEvent[]> {
+    return [];
+  }
+
   async loadLatestInstruction(): Promise<ConversationEvent | undefined> {
     return undefined;
   }

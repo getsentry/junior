@@ -50,7 +50,16 @@ import {
   toActiveMcpCatalogSummaries,
   type ActiveMcpCatalogSummary,
 } from "@/chat/tool-support/skill/mcp-tool-summary";
-import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
+import {
+  createPiAgentTools,
+  createToolPipeline,
+} from "@/chat/tool-support/pi-tool-adapter";
+import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
+import {
+  createToolApprovalRequest,
+  runApprovedToolCalls,
+  type ToolApprovalRunContext,
+} from "@/chat/tool-approvals";
 import { planToolExposure } from "@/chat/tool-exposure";
 import { renderScriptTools } from "@/chat/codemode/tool";
 import type { SandboxRef } from "@/chat/sandbox/ref";
@@ -91,7 +100,7 @@ import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
 import { restoreToolActionRejections } from "@/chat/guardian/history";
-import { recordGuardianActionReviewed } from "@/chat/conversations/projection";
+import { recordActionDecided } from "@/chat/conversations/projection";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 
@@ -311,6 +320,11 @@ export interface ToolWiring {
   getPendingAuthPause: () => AuthorizationPauseError | undefined;
   mcpToolManager: McpToolManager;
   pluginHooks: PluginHookRunner;
+  /**
+   * Run each call that its approver approved and that this Run may run.
+   * Return one rendered result input for each call that ran.
+   */
+  runApprovedToolCalls(): Promise<string[]>;
   /** Project core-owned review state into one durable Pi tool result. */
   projectActionReviewResult<
     TResult extends { details?: unknown; isError?: boolean },
@@ -491,6 +505,15 @@ export async function wireAgentTools(
       switch: agentSandbox.switchWorkspace,
     },
   } satisfies ToolRuntimeContext;
+  const approvalRun: ToolApprovalRunContext = {
+    actor: args.currentActor,
+    conversationId: args.run.conversationId,
+    credentialContext: args.run.credentialContext,
+    destination: toolRoute.destination,
+    source: runSource,
+    turnId: args.run.turnId,
+  };
+  const showReviewItem = createSlackReviewItemShow();
   const actionReview = createToolActionReview({
     context: {
       actor: args.currentActor,
@@ -520,18 +543,21 @@ export async function wireAgentTools(
           }
         : undefined),
     },
-    onDecision: ({ toolCallId, toolName, decision }) =>
-      recordGuardianActionReviewed({
+    onDecision: async ({ decider, toolCallId, toolName, decision }) => {
+      await recordActionDecided({
         conversationId: args.run.conversationId,
         turnId: args.run.turnId,
         toolCallId,
         toolName,
+        decider,
         costUsd: decision.costUsd,
         decision: decision.decision,
         riskLevel: decision.riskLevel,
         userAuthorization: decision.userAuthorization,
-      }),
+      });
+    },
     onFatal: args.onFatalToolError,
+    requestApproval: createToolApprovalRequest(approvalRun, showReviewItem),
     priorRejections: restoreToolActionRejections(args.currentTurnMessages),
     reviewer: createGuardianActionReviewer({
       completeObject,
@@ -660,12 +686,8 @@ export async function wireAgentTools(
         await emitEvent({ type: "tool_finished", report });
       }
     : undefined;
-  const agentTools = createPiAgentTools(tools, args.skillSandbox, {
+  const pipelineOptions = {
     spanContext: args.spanContext,
-    searchToolsCost: {
-      conversationId: args.run.conversationId,
-      turnId: args.run.turnId,
-    },
     onStatus,
     sandboxTools: agentSandbox.tools,
     pluginAuthOrchestration: pluginAuth,
@@ -673,6 +695,13 @@ export async function wireAgentTools(
     agentHooks: pluginHooks,
     conversationPrivacy: args.conversationPrivacy,
     onToolResult,
+  };
+  const agentTools = createPiAgentTools(tools, args.skillSandbox, {
+    ...pipelineOptions,
+    searchToolsCost: {
+      conversationId: args.run.conversationId,
+      turnId: args.run.turnId,
+    },
     actionReview,
     codeMode: {
       countToolCall: args.resume.countToolCall,
@@ -686,9 +715,24 @@ export async function wireAgentTools(
   // through callMcpTool so provider cache/session affinity never sees a
   // mid-run native tool-list mutation.
 
+  // Approved calls skip action review: the person's approval replaced it.
+  const approvedCalls = createToolPipeline({
+    ...pipelineOptions,
+    catalogTools: {},
+    sandbox: args.skillSandbox,
+  });
+
   return {
     activeMcpCatalogs,
     agentTools,
+    async runApprovedToolCalls() {
+      return await runApprovedToolCalls({
+        pipeline: approvedCalls,
+        run: approvalRun,
+        show: showReviewItem,
+        tools: tools as Record<string, AnyToolDefinition>,
+      });
+    },
     getPendingAuthPause,
     mcpToolManager,
     pluginHooks,

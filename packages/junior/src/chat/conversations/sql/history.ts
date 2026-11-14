@@ -502,6 +502,27 @@ class SqlConversationEventStore implements ConversationEventStore {
     return row ? eventFromRow(row) : undefined;
   }
 
+  async loadStructuredEvents(
+    conversationId: string,
+    namespace: string,
+    name: string,
+  ): Promise<ConversationEvent[]> {
+    const rows = await this.executor
+      .db()
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.type, "structured_event"),
+          sql`${juniorConversationEvents.payload}->>'namespace' = ${namespace}`,
+          sql`${juniorConversationEvents.payload}->>'name' = ${name}`,
+        ),
+      )
+      .orderBy(asc(juniorConversationEvents.seq));
+    return rows.map(eventFromRow);
+  }
+
   async loadLatestInstruction(
     conversationId: string,
   ): Promise<ConversationEvent | undefined> {

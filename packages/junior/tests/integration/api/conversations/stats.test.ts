@@ -169,7 +169,8 @@ describe("conversation stats API", () => {
         {
           createdAtMs: Date.parse("2026-06-15T11:52:00.000Z"),
           data: {
-            type: "guardian_action_reviewed",
+            type: "action_decided",
+            decider: "guardian",
             turnId: "turn-recent",
             toolCallId: "tool-allow",
             toolName: "publishReport",
@@ -182,7 +183,8 @@ describe("conversation stats API", () => {
         {
           createdAtMs: Date.parse("2026-06-15T11:53:00.000Z"),
           data: {
-            type: "guardian_action_reviewed",
+            type: "action_decided",
+            decider: "guardian",
             turnId: "turn-recent",
             toolCallId: "tool-ask",
             toolName: "publishReport",
@@ -192,12 +194,25 @@ describe("conversation stats API", () => {
             userAuthorization: "low",
           },
         },
+        {
+          createdAtMs: Date.parse("2026-06-15T11:54:00.000Z"),
+          data: {
+            type: "action_decided",
+            turnId: "turn-recent",
+            toolCallId: "tool-ask",
+            toolName: "publishReport",
+            // A person's decision is not a Guardian review.
+            decider: "person",
+            decision: "allow",
+          },
+        },
       ]);
       await eventStore.append("advisor:child", [
         {
           createdAtMs: Date.parse("2026-06-15T11:56:00.000Z"),
           data: {
-            type: "guardian_action_reviewed",
+            type: "action_decided",
+            decider: "guardian",
             turnId: "turn-child",
             toolCallId: "tool-deny",
             toolName: "deleteReport",
@@ -245,7 +260,8 @@ describe("conversation stats API", () => {
           {
             createdAtMs: atMs,
             data: {
-              type: "guardian_action_reviewed",
+              type: "action_decided",
+              decider: "guardian",
               turnId,
               toolCallId: `tool-${name}`,
               toolName: "publishReport",

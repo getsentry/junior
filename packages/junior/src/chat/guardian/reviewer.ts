@@ -180,7 +180,7 @@ export function createGuardianActionReviewer(options: {
           prompt: guardianPrompt(proposal),
           maxTokens: GUARDIAN_REVIEW_MAX_TOKENS,
           operation: "guardian_action_review",
-          // `guardian_action_reviewed` stores the cost.
+          // `action_decided` stores the cost.
           cost: { owner: "caller" },
           signal,
           metadata: {

@@ -3,7 +3,8 @@ import {
   forceNextGuardianDecision,
   guardianReviews,
 } from "@junior-evals/fixture/guardian";
-import { slackMention } from "@junior-evals/fixture/inputs";
+import { slackMention, toolApprovalAnswer } from "@junior-evals/fixture/inputs";
+import { openToolApprovals } from "@junior-evals/fixture/review-desk";
 import { completedToolCalls, toolCallsOf } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
@@ -42,7 +43,7 @@ describe("Action Review", () => {
     expect(conversation.turns[0]?.status).toBe("succeeded");
   });
 
-  test("when Guardian asks to confirm a call, ask the person and do not run it", async ({
+  test("when Guardian asks to confirm a call, core asks the person and does not run it", async ({
     run,
   }) => {
     // Injected fault: Guardian asks for confirmation of the spawn.
@@ -55,13 +56,31 @@ describe("Action Review", () => {
     expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(0);
     // No child agent started, so no result Turn follows.
     expect(conversation.turns).toHaveLength(1);
-    const cards = completedToolCalls("addReviewItem", conversation);
-    expect(cards).toHaveLength(1);
-    expect(cards[0]!.input).toMatchObject({ kind: "action" });
-    const { title } = cards[0]!.input as { title: string };
-    expect(
-      conversation.replies.some((reply) => reply.text.includes(title)),
-    ).toBe(true);
+    // Core stores the call and asks the person. The agent adds no item.
+    await expect(
+      openToolApprovals(conversation.conversationId),
+    ).resolves.toEqual([{ itemStatus: "open", toolName: "spawnAgent" }]);
+    expect(completedToolCalls("addReviewItem", conversation)).toEqual([]);
+  });
+
+  test("when the person approves an asked call on the review desk, run it once as them", async ({
+    run,
+  }) => {
+    // Injected fault: Guardian asks for confirmation of the spawn.
+    forceNextGuardianDecision("ask");
+    const asked = await run(slackMention(SPAWN_REQUEST));
+    expect(completedToolCalls("spawnAgent", asked)).toHaveLength(0);
+
+    // The Slack asker approves on the dashboard. The answer reaches the
+    // thread as their web message, and that Turn runs the stored call.
+    const approved = await asked.continue(toolApprovalAnswer("Approve"));
+
+    await expect(openToolApprovals(asked.conversationId)).resolves.toEqual([]);
+    // The answer Turn, then the result Turn of the one child it started.
+    expect(approved.turns).toHaveLength(2);
+    expect(approved.turns.every((turn) => turn.status === "succeeded")).toBe(
+      true,
+    );
   });
 
   test("when Guardian denies a call, tell the person and do not run it", async ({

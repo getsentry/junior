@@ -70,7 +70,7 @@ export function createGitHubResolvePullRequestReviewThreadTool(
     // No action review: the tool checks in code that the bot authored the pull
     // request, and it changes only the thread's resolved state, which is
     // reversible.
-    approvalMode: "approve",
+    permission: "allow",
     annotations: {
       destructiveHint: true,
       idempotentHint: true,

@@ -103,7 +103,7 @@ describe("publishImage tool", () => {
       storageKey: `artifacts/${filename}`,
     });
     expect(tool.description).toContain("Anyone on the internet");
-    expect(tool.approvalMode).toBe("approve");
+    expect(tool.permission).toBe("allow");
   });
 
   it("rejects a missing file as input error", async () => {

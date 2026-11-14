@@ -32,7 +32,7 @@ import {
   uploadWebFiles,
 } from "./dashboard-requests";
 import { fixtureId } from "./ids";
-import { actOnWebReviewItem } from "./review-desk";
+import { actOnWebReviewItem, answerToolApproval } from "./review-desk";
 import { automationRequest, isAutomationInput } from "./automation-request";
 import { installWebReplay } from "./web";
 import type {
@@ -429,6 +429,13 @@ export async function createFixtureAgent(
         provider: input.provider,
         user: userId,
       });
+      return;
+    }
+    if (input.kind === "tool_approval_answer") {
+      if (!record.started) {
+        throw new Error("toolApprovalAnswer() continues a Conversation");
+      }
+      await answerToolApproval(api, input, record);
       return;
     }
     if (input.kind === "review_item_action") {
@@ -960,6 +967,9 @@ export async function createFixtureAgent(
     }
     if (first.kind === "app_home_unlink") {
       throw new Error("appHomeUnlink() continues a Slack Conversation");
+    }
+    if (first.kind === "tool_approval_answer") {
+      throw new Error("toolApprovalAnswer() continues a Conversation");
     }
     return await converse(
       newConversation(first, options.history),

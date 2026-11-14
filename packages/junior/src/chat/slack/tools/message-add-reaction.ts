@@ -22,7 +22,7 @@ export function createSlackMessageAddReactionTool(
   return zodTool({
     exposure: "deferred",
     source: SLACK_TOOL_SOURCE,
-    approvalMode: "approve",
+    permission: "allow",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import {
   toGenAiPayloadMetadata,
@@ -53,6 +54,7 @@ import {
   SEARCH_TOOLS_NAME,
 } from "@/chat/tools/search-tools";
 import {
+  mayNeedReview,
   reviewToolActions,
   ToolActionRejectedError,
   type ToolAction,
@@ -664,6 +666,54 @@ export function createToolPipeline(options: ToolPipelineOptions) {
     },
 
     /**
+     * Run a call that a person approved on its Tool approval. The approval
+     * replaces action review, so the call runs only when its hook-adjusted
+     * input is still the stored input. Other failures throw.
+     */
+    async callApproved(call: {
+      input: Record<string, unknown>;
+      signal: AbortSignal | undefined;
+      tool: AnyToolDefinition;
+      toolCallId: string;
+      toolName: string;
+    }): Promise<NormalizedToolResult> {
+      const { input, signal, tool, toolCallId, toolName } = call;
+      const traced = await traceCall(
+        {
+          description: tool.description,
+          params: input,
+          signal,
+          toolCallId,
+          toolName,
+        },
+        async (setSpanAttributes) => {
+          const prepared = await prepareCall({
+            toolCallId,
+            params: input,
+            toolDef: tool,
+            toolName,
+          });
+          if (!isDeepStrictEqual(prepared.action.input, input)) {
+            throw new Error(
+              `A plugin hook changed the approved input of ${toolName}.`,
+            );
+          }
+          const { result } = await executeReviewed({
+            prepared,
+            review: { allowed: true },
+            signal,
+            setSpanAttributes,
+          });
+          return result;
+        },
+      );
+      if (traced.kind === "rejected") {
+        throw traced.error;
+      }
+      return traced.result;
+    },
+
+    /**
      * Review the calls of one script VM drain as one batch. The gate owns
      * the batch limit.
      */
@@ -862,10 +912,9 @@ export function createPiAgentTools(
     prepareArguments: toolDef.prepareArguments,
     // A direct call is reviewed alone, so a tool that may need review runs
     // one at a time. Code Mode reviews a drain as one batch instead.
-    executionMode:
-      toolDef.approvalMode === "auto" || toolDef.approvalMode === "review"
-        ? "sequential"
-        : toolDef.executionMode,
+    executionMode: mayNeedReview(toolDef)
+      ? "sequential"
+      : toolDef.executionMode,
     execute: async (
       toolCallId: unknown,
       params: unknown,

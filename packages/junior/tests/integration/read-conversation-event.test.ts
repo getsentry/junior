@@ -60,6 +60,7 @@ async function runScript(source: string) {
     userAuthorization: "high",
   }));
   const actionReview = createToolActionReview({
+    requestApproval: async () => undefined,
     context: {
       actor: { platform: "slack", teamId: "T123", userId: "U123" },
       conversationId: CURRENT_CONVERSATION_ID,
