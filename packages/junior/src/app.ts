@@ -895,6 +895,7 @@ export async function createApp(
       conversationWorkQueue,
       dispatchForIdentity,
       events,
+      showReviewItem: createSlackReviewItemShow(getProductionSlackAdapter),
     });
   });
 

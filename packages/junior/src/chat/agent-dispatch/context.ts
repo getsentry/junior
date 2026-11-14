@@ -15,6 +15,8 @@ import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginEmbedder } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
+import type { ShowReviewItem } from "@/chat/review-items/changes";
+import { createPluginReviewItems } from "@/chat/review-items/plugin";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   buildDispatchId,
@@ -99,6 +101,8 @@ export function createHeartbeatContext(args: {
   events: EventPublisher;
   nowMs: number;
   plugin: string | PluginRegistration;
+  /** Shows a Review item that the heartbeat changed. */
+  showReviewItem?: ShowReviewItem;
 }): HeartbeatHookContext {
   const pluginName =
     typeof args.plugin === "string" ? args.plugin : args.plugin.manifest.name;
@@ -124,6 +128,14 @@ export function createHeartbeatContext(args: {
     db: getDb(),
     embedder: createPluginEmbedder(pluginName),
     events: args.events,
+    reviewItems: {
+      forConversation: (conversationId) =>
+        createPluginReviewItems({
+          conversationId,
+          plugin: pluginName,
+          show: args.showReviewItem ?? (async () => {}),
+        }),
+    },
     state: createPluginState(pluginName),
     log: createPluginLogger(pluginName),
     agent: {

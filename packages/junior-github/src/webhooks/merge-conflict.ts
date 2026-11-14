@@ -12,11 +12,14 @@
 import type {
   EventInput,
   EventPublisher,
+  PluginConversationReviewItems,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import type { GitHubDb } from "../db/database.js";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
 import { gitHubRepoDataSchema } from "../events/scope.js";
+import { applyGitHubConflictPolicy } from "../merge-conflict-checks/policy.js";
 import { pullRequestTargets } from "./event-targets.js";
 import { logFailOpenFailure } from "./fail-open-log.js";
 
@@ -31,12 +34,14 @@ const CLOSED_EVENT_TYPES = new Set([
 /** The pull request fields that tell if it has a conflict. */
 const pullRequestSchema = z.object({
   base: z.object({ ref: z.string().min(1) }),
+  draft: z.boolean().optional(),
   number: z.number().int().positive().optional(),
   head: z.object({ sha: z.string().min(1) }),
   html_url: z.string().min(1).optional(),
   mergeable: z.boolean().nullable().optional(),
   mergeable_state: z.string().optional(),
   state: z.string(),
+  title: z.string().optional(),
 });
 
 /** Values that GitHub reports for a conflicted pull request. */
@@ -123,19 +128,23 @@ function deliveredPullRequest(
  * GitHub reports a conflict. A `pull_request` webhook payload gives the
  * mergeability when GitHub knows it. Otherwise the check reads the pull
  * request, which also makes GitHub calculate its mergeability. When GitHub
- * does not know it yet, a later event reads it again.
+ * does not know it yet, a later event reads it again. The policy in
+ * `merge-conflict-checks/policy.ts` decides if a conflict publishes.
  */
 export async function loadGitHubMergeConflictEvents(args: {
+  db: GitHubDb;
   deliveryId: string;
   events: EventInput[];
   hasMatch: EventPublisher["hasMatch"];
   loadPullRequest?(ref: GitHubPullRequestRef): Promise<unknown>;
+  loadConflictHistory?(ref: GitHubPullRequestRef): Promise<unknown>;
   log?: Pick<PluginLogger, "error" | "warn">;
   /** The body of a `pull_request` webhook. */
   pullRequestPayload?: unknown;
+  reviewItems: PluginConversationReviewItems;
 }): Promise<EventInput[]> {
-  const { hasMatch, loadPullRequest } = args;
-  if (!hasMatch || !loadPullRequest) return [];
+  const { hasMatch, loadConflictHistory, loadPullRequest } = args;
+  if (!hasMatch || !loadPullRequest || !loadConflictHistory) return [];
   const conflicts: EventInput[] = [];
   for (const ref of pullRequestRefs(args.events)) {
     // Merge conflict events match only `repo` and `pullRequest`, so this
@@ -152,15 +161,24 @@ export async function loadGitHubMergeConflictEvents(args: {
       ) {
         continue;
       }
+      const conflict: GitHubMergeConflict = {
+        baseBranch: loaded.base.ref,
+        headSha: loaded.head.sha,
+        ...(loaded.html_url ? { url: loaded.html_url } : undefined),
+      };
       conflicts.push(
-        ...gitHubMergeConflictEvents({
-          ...ref,
-          conflict: {
-            baseBranch: loaded.base.ref,
-            headSha: loaded.head.sha,
-            ...(loaded.html_url ? { url: loaded.html_url } : undefined),
-          },
-        }),
+        ...(await applyGitHubConflictPolicy({
+          conflict,
+          db: args.db,
+          draft: loaded.draft === true,
+          events: gitHubMergeConflictEvents({ ...ref, conflict }),
+          loadHistory: loadConflictHistory,
+          log: args.log,
+          now: new Date(),
+          ref,
+          reviewItems: args.reviewItems,
+          ...(loaded.title ? { title: loaded.title } : undefined),
+        })),
       );
     } catch (error) {
       // The delivered events still publish without the conflict check.
