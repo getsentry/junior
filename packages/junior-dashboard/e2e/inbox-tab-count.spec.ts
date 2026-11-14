@@ -18,7 +18,7 @@ function inboxTab(page: Page) {
 
 async function closeCheckoutAsks(page: Page) {
   await rowHead(page, checkout).click();
-  await page.getByRole("button", { name: "Done", exact: true }).click();
+  await page.getByRole("button", { name: "Dismiss", exact: true }).click();
 }
 
 test("the tab title counts the Inbox, as its badge does", async ({

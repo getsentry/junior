@@ -483,7 +483,11 @@ export function InboxList(props: {
       />
     );
   };
-  const automationRow = (automation: AutomationSummary) => {
+  // In To do, an alert can be dismissed or snoozed in this browser.
+  const automationRow = (
+    automation: AutomationSummary,
+    options: { todo?: boolean } = {},
+  ) => {
     const key = `automation:${automation.id}`;
     return (
       <InboxAutomationRow
@@ -491,6 +495,19 @@ export function InboxList(props: {
         expanded={state.expandedKey === key}
         key={key}
         onToggle={() => toggle(key)}
+        putAway={
+          options.todo
+            ? {
+                menuOpen: snoozeKey === key,
+                onDismiss: () => data.alerts.dismiss(automation),
+                onMenu: (open) => setSnoozeKey(open ? key : undefined),
+                onSnooze: (choice) => {
+                  data.alerts.snooze(automation, choice);
+                  setSnoozeKey(undefined);
+                },
+              }
+            : undefined
+        }
         rowKey={key}
       />
     );
@@ -649,7 +666,8 @@ export function InboxList(props: {
             // The rows show without the server count, which may still load
             // or have failed.
             count={
-              data.todoCount || data.todoRows.length + data.automations.length
+              data.todoCount ||
+              data.todoRows.length + data.todoAutomations.length
             }
             label="To do"
             onToggle={() => setTodoCollapsed(!todoCollapsed)}
@@ -658,7 +676,9 @@ export function InboxList(props: {
               ...pinnedTodo,
               ...data.todoRows.filter((row) => !pinnedTodo.includes(row)),
             ].map((row) => bundleRow(row, { key: `todo:${row.key}` }))}
-            {data.automations.map(automationRow)}
+            {data.todoAutomations.map((automation) =>
+              automationRow(automation, { todo: true }),
+            )}
           </InboxSection>
         ) : null}
         {automationsError}
@@ -687,7 +707,7 @@ export function InboxList(props: {
           label={section.label}
           onToggle={() => toggleSection(section.label)}
         >
-          {section.automations.map(automationRow)}
+          {section.automations.map((automation) => automationRow(automation))}
         </InboxSection>
       ))
     );

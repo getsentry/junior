@@ -21,6 +21,7 @@ import {
 
 import { conversationDetailTitle } from "../format";
 import { fetchDashboardJson, post } from "../http";
+import { useAutomationAlerts } from "./automationAlerts";
 import { useSnoozedItemIds } from "./inboxSnooze";
 
 /** Prefix of every Review item read, for refreshes after a change. */
@@ -174,7 +175,13 @@ export function useLinkedConversationTitles(
  */
 export function useInboxTodoCount(enabled: boolean): number | undefined {
   const count = useReviewItemCountData(enabled).data;
-  return count ? count.needsViewer + count.automations : undefined;
+  // Alerts put away in this browser leave To do, so they leave its count.
+  const attention = useAutomationAttentionData(enabled).data;
+  const alerts = useAutomationAlerts(Date.now());
+  const putAway = attention?.automations.filter(alerts.hidden).length ?? 0;
+  return count
+    ? count.needsViewer + Math.max(0, count.automations - putAway)
+    : undefined;
 }
 
 /**

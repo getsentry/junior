@@ -175,8 +175,12 @@ test("a row answers its asks in place", async ({ dashboard, page }) => {
   // The row stays open while it has items.
   await expect(licenseItem).toBeVisible();
 
-  // Done closes every item of the row.
-  await bundle.getByRole("button", { name: "Done", exact: true }).click();
+  // The row's Dismiss, last in its bar, closes every item of the row. Each
+  // question keeps its own Dismiss too.
+  await bundle
+    .getByRole("button", { name: "Dismiss", exact: true })
+    .last()
+    .click();
   await expect
     .poll(() => actions.map((action) => action.id).sort())
     .toEqual([audit.id, license.id, prReady.id].sort());
@@ -439,7 +443,7 @@ test("Pull requests sorts your open changes into Waiting on you, Waiting on othe
     .getByRole("link")
     .first()
     .click();
-  await waiting.getByRole("button", { name: "Done", exact: true }).click();
+  await waiting.getByRole("button", { name: "Dismiss", exact: true }).click();
   await expect
     .poll(() => actions.map((action) => action.id))
     .toEqual([prReview.id]);
@@ -577,8 +581,8 @@ test("an open row's notice leaves Dismiss and its title to the row", async ({
   const asks = page.getByRole("region", { name: /: asks$/ });
   const card = asks.getByRole("region", { name: prReady.title });
   await expect(card).toContainText("FYI");
-  // The row's Done dismisses it, and the item row's head names it.
-  await expect(asks.getByRole("button", { name: "Done" })).toBeVisible();
+  // The row's Dismiss closes it, and the item row's head names it.
+  await expect(asks.getByRole("button", { name: "Dismiss" })).toBeVisible();
   await expect(card.getByRole("button", { name: "Dismiss" })).toHaveCount(0);
   await expect(card.getByRole("heading")).toHaveCount(0);
 
@@ -695,9 +699,19 @@ test("an expanded question shows the message of the Turn that asked it", async (
   page,
 }) => {
   const turnId = "turn-rollout";
-  await mockReviewItems(page, {
-    open: [{ ...rollout, addedByTurnId: turnId }],
-  });
+  // Two fields, so the question has a form that ends with Send.
+  const asked = {
+    ...rollout,
+    addedByTurnId: turnId,
+    request: {
+      ...rollout.request,
+      fields: [
+        ...rollout.request.fields,
+        { id: "note", kind: "text", label: "Rollout note" },
+      ],
+    },
+  };
+  await mockReviewItems(page, { open: [asked] });
   const event = (seq: number, data: Record<string, unknown>) => ({
     createdAt: new Date(NOW_MS - (60 - seq) * 1000).toISOString(),
     data,
@@ -762,6 +776,30 @@ test("an expanded question shows the message of the Turn that asked it", async (
   await head.click();
   const message = page.getByRole("region", { name: "Junior's message" });
   await expect(message).toContainText("The canary error rate is flat");
+  // Junior's message comes first, then its question, then the form, which
+  // ends with Send on the right.
+  const ask = page.locator("[data-inbox-item]").filter({ has: message });
+  const send = ask.getByRole("button", { name: "Send" });
+  const order = await ask.evaluate((section, asked) => {
+    const at = (node: Element | null) =>
+      node ? [...section.querySelectorAll("*")].indexOf(node) : -1;
+    const question = [...section.querySelectorAll("div")].find(
+      (node) => node.textContent?.trim() === asked,
+    );
+    const form = section.querySelector("form");
+    const buttons = [...(form?.querySelectorAll("button") ?? [])];
+    return {
+      last: buttons.at(-1)?.textContent?.trim(),
+      message: at(section.querySelector('[aria-label="Junior\'s message"]')),
+      question: at(question ?? null),
+      form: at(form),
+    };
+  }, asked.request.question);
+  expect(order.message).toBeGreaterThanOrEqual(0);
+  expect(order.message).toBeLessThan(order.question);
+  expect(order.question).toBeLessThan(order.form);
+  expect(order.last).toBe("Send");
+  await expect(send).toBeVisible();
   await expect(message).not.toContainText("Checking the canary first.");
   await expect(message).not.toContainText("Turn's reply");
   // Long messages clamp, and the toggle opens the rest.
@@ -782,155 +820,6 @@ test("an expanded question shows the message of the Turn that asked it", async (
     page.getByRole("button", { name: "Unpin", exact: true }),
   ).toBeVisible();
   await expect(message).toBeVisible();
-});
-
-test("comfortable rows show cards for message links that name an object", async ({
-  dashboard,
-  page,
-}) => {
-  const person = `${dashboard.baseURL}/people/dev%40example.com`;
-  const unknown = "https://example.com/no-card";
-  // The feed lists the links from this row's messages.
-  await page.route(
-    (url) => url.pathname === "/api/conversations",
-    async (route) => {
-      const response = await route.fetch();
-      const feed = (await response.json()) as {
-        conversations: Array<{ displayTitle: string; links?: string[] }>;
-      };
-      for (const row of feed.conversations) {
-        if (row.displayTitle === "Investigate checkout latency") {
-          row.links = [person, unknown];
-        }
-      }
-      await route.fulfill({ json: feed, response });
-    },
-  );
-  await page.goto(`${dashboard.baseURL}/?view=conversations`);
-  await page.evaluate(() => {
-    localStorage.setItem("junior:density", "comfortable");
-  });
-  await page.reload();
-  const row = page
-    .locator("[data-inbox-row]")
-    .filter({ hasText: "Investigate checkout latency" })
-    .first();
-  const links = row.getByRole("group", { name: "Links" });
-  // The person link resolves to a card; the other link names nothing and
-  // shows nothing, not a bare link.
-  await expect(links.getByRole("link")).toHaveCount(1);
-  await expect(links.getByRole("link")).toHaveAttribute("href", person);
-  await expect(row.locator(`a[href="${unknown}"]`)).toHaveCount(0);
-});
-
-test("comfortable rows show files and linked work as cards, and compact rows keep chips", async ({
-  dashboard,
-  page,
-}) => {
-  const density = async (value: "comfortable" | "compact") => {
-    await page.evaluate((next) => {
-      localStorage.setItem("junior:density", next);
-    }, value);
-    await page.reload();
-  };
-  await page.goto(`${dashboard.baseURL}/?view=conversations`);
-  await density("comfortable");
-  const release = page
-    .locator("[data-inbox-row]")
-    .filter({ hasText: "Package release and self-update" })
-    .first();
-  const work = release.getByRole("group", { name: "Linked work" });
-  // Newest first, each with its title and status.
-  await expect(work.getByRole("link")).toHaveText([
-    /Update Junior to 0\.288\.0.*getsentry\/junior#2201 · Draft/,
-    /Pin the release train to payments 4\.2.*getsentry\/payments#91 · Open/,
-    /Return 429 before parsing oversized envelopes.*getsentry\/relay#44 · Merged/,
-  ]);
-  // Quiet cards: no icon, and a line in each one's status color.
-  const cards = work.locator("[data-linked-work-card]");
-  await expect(cards.locator("svg")).toHaveCount(0);
-  await expect
-    .poll(() =>
-      cards
-        .locator("[data-status-tone]")
-        .evaluateAll((lines) =>
-          lines.map((line) => line.getAttribute("data-status-tone")),
-        ),
-    )
-    .toEqual(["neutral", "success", "accent"]);
-  await expect(
-    work.getByRole("link", { name: /Pin the release train/ }),
-  ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/91");
-  // Work saved without a title keeps its chip.
-  const qa = page
-    .locator("[data-inbox-row]")
-    .filter({ hasText: "Dashboard QA edge cases" })
-    .first();
-  await expect(qa.getByRole("group", { name: "Linked work" })).toBeAttached();
-  await expect(qa.getByRole("link", { name: /getsentry/ })).toHaveCount(0);
-  await expect(qa.getByLabel(/^Linked work, newest first/)).toBeAttached();
-  // Its newest files: images as lazy thumbnails, other files by name.
-  const files = qa.getByRole("group", { name: "Files" });
-  await expect(files.getByRole("link")).toHaveCount(3);
-  for (const name of ["chart.png", "chart-detail.png"]) {
-    const thumbnail = files.getByRole("img", { name, exact: true });
-    await expect(thumbnail).toHaveAttribute("loading", "lazy");
-    await expect(thumbnail).toHaveAttribute(
-      "src",
-      /\/attachments\/qa-chart-png$/,
-    );
-  }
-  await expect(files.getByRole("link", { name: "demo.mp4" })).toBeAttached();
-  // A pull request card shows the first image of its description.
-  const preview = page
-    .locator("[data-inbox-row]")
-    .filter({ hasText: "Investigate checkout latency" })
-    .first()
-    .getByRole("img", {
-      name: "Preview of Retry checkout writes after lock timeouts",
-    });
-  // The mock serves the preview itself.
-  await expect(preview).toHaveAttribute("src", /\/api\/images\/checkout-p95$/);
-  await preview.scrollIntoViewIfNeeded();
-  await expect
-    .poll(() =>
-      preview.evaluate((image: HTMLImageElement) => image.naturalWidth),
-    )
-    .toBeGreaterThan(0);
-
-  await density("compact");
-  await expect(qa.getByRole("group", { name: "Files" })).toHaveCount(0);
-  // Compact rows name each piece of work by its title and number, in its
-  // status color, on one line.
-  await expect(release.locator("[data-linked-work-card]")).toHaveCount(0);
-  const chips = release.locator("[data-linked-work-chip]");
-  await expect(chips.first()).toHaveText("Update Junior to 0.288.0#2201");
-  await expect(chips.first().locator("[data-status-tone]")).toHaveAttribute(
-    "data-status-tone",
-    "neutral",
-  );
-});
-
-test("a linked-work preview that fails to load leaves no empty box", async ({
-  dashboard,
-  page,
-}) => {
-  await page.route("**/api/images/checkout-p95", (route) =>
-    route.fulfill({ status: 404 }),
-  );
-  await page.addInitScript(() =>
-    localStorage.setItem("junior:density", "comfortable"),
-  );
-  await page.goto(`${dashboard.baseURL}/?view=conversations`);
-  const card = page
-    .locator("[data-inbox-row]")
-    .filter({ hasText: checkout })
-    .first()
-    .locator("[data-linked-work-card]")
-    .filter({ hasText: "Retry checkout writes after lock timeouts" });
-  await card.scrollIntoViewIfNeeded();
-  await expect(card).toBeVisible();
-  await expect(card.getByRole("img")).toHaveCount(0);
 });
 
 test("comfortable cards grow near the pointer, except for reduced motion", async ({

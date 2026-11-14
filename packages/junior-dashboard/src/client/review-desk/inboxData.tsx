@@ -11,6 +11,7 @@ import { pinnedFirst } from "../conversations/conversationSections";
 import type { Conversation } from "../types";
 import type { InboxView } from "./inboxModel";
 import { useLinkedInboxItems } from "./inboxListState";
+import { useAutomationAlerts } from "./automationAlerts";
 import { useInboxSnoozes } from "./inboxSnooze";
 import {
   useAutomationAttentionData,
@@ -112,6 +113,7 @@ function useBuildInboxData(input: {
   const automations = attention.data?.automations ?? [];
   const nowMs = Date.now();
   const snoozes = useInboxSnoozes(nowMs);
+  const alerts = useAutomationAlerts(nowMs);
   const sweeper = useInboxSweep();
 
   const conversationById = useMemo(
@@ -206,6 +208,7 @@ function useBuildInboxData(input: {
   };
 
   return {
+    alerts,
     automations,
     automationsError: Boolean(attention.error && !attention.data),
     awake,
@@ -228,6 +231,10 @@ function useBuildInboxData(input: {
     pinned,
     signedIn,
     snoozedRows,
+    /** Automation alerts for To do: those the viewer has not put away. */
+    todoAutomations: automations.filter(
+      (automation) => !alerts.hidden(automation),
+    ),
     snoozes,
     sweeper,
     titleOf,

@@ -17,6 +17,8 @@ import {
   inboxHeadGridClass,
 } from "./inboxRowStyles";
 import { automationAttentionGroup } from "./inboxModel";
+import type { SnoozeChoice } from "./inboxSnooze";
+import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 
 const LAST_RUN_LABELS = {
   blocked: "blocked",
@@ -53,7 +55,8 @@ function attentionStatus(automation: AutomationSummary): string {
  * status where the summary goes, and "Automation" with the ages. A click
  * expands it in place with why it is here, its last run, and the actions
  * that the Automation API supports. Only the labelled buttons leave the inbox. A
- * sweep never clears it; it leaves when the Automation is fixed or resumed.
+ * sweep never clears it; it leaves when the Automation is fixed or resumed,
+ * or, in To do, when the viewer dismisses or snoozes this alert.
  */
 export function InboxAutomationRow(props: {
   automation: AutomationSummary;
@@ -61,7 +64,15 @@ export function InboxAutomationRow(props: {
   /** Names the row for keys and focus. */
   rowKey: string;
   onToggle(): void;
+  /** In To do: Snooze and Dismiss, which hide the alert in this browser. */
+  putAway?: {
+    menuOpen: boolean;
+    onDismiss(): void;
+    onMenu(open: boolean): void;
+    onSnooze(choice: SnoozeChoice): void;
+  };
 }) {
+  const { putAway } = props;
   const { automation } = props;
   const [density] = useConversationDensity();
   const comfortable = density === "comfortable";
@@ -189,6 +200,16 @@ export function InboxAutomationRow(props: {
               Open editor
               <ArrowUpRight aria-hidden="true" size={14} />
             </Link>
+            {putAway ? (
+              <>
+                <RowSnoozeButton
+                  onOpenChange={putAway.onMenu}
+                  onSnooze={putAway.onSnooze}
+                  open={putAway.menuOpen}
+                />
+                <RowDismissButton onClick={putAway.onDismiss} />
+              </>
+            ) : null}
           </div>
           {resume.error ? (
             <FormNotice tone="error" title="Could not resume this automation.">

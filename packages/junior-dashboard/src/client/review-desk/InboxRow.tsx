@@ -3,8 +3,6 @@ import {
   Archive,
   ArchiveRestore,
   ArrowUpRight,
-  Check,
-  Clock3,
   Pin,
   PinOff,
 } from "lucide-react";
@@ -17,11 +15,6 @@ import type {
 
 import { Button, buttonVariants } from "../components/ui/button";
 import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "../components/ui/popover";
 import { Spinner } from "../components/ui/spinner";
 import {
   Tooltip,
@@ -36,11 +29,7 @@ import {
   ConversationCast,
   useConversationDensity,
 } from "../conversations/conversationDensity";
-import {
-  ATTENTION_TONE_CLASS,
-  FittingIcons,
-  OPEN_TONE_CLASS,
-} from "../conversations/ConversationMeta";
+import { FittingIcons } from "../conversations/ConversationMeta";
 import { usePrefetchConversation } from "../conversations/conversationPrefetch";
 import { useConversationActionToasts } from "../conversations/conversationActionToasts";
 import { conversationPath } from "../conversations/conversationRoutes";
@@ -63,7 +52,7 @@ import {
   inboxHeadGridClass,
 } from "./inboxRowStyles";
 import { useHoverExpand } from "./hoverExpand";
-import { snoozeChoices, type SnoozeChoice } from "./inboxSnooze";
+import type { SnoozeChoice } from "./inboxSnooze";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemObjects } from "./ReviewItemObjects";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
@@ -77,6 +66,7 @@ import {
 } from "./InboxLinkedWork";
 import { InboxMedia } from "./InboxMedia";
 import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
+import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
 
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
@@ -161,6 +151,8 @@ function RowItem(props: {
   /** The row's head shows the item's title. */
   headTitled: boolean;
   item: ReviewItemPayload;
+  /** The row holds no other open ask, so its Dismiss closes this one. */
+  only: boolean;
 }) {
   const { item } = props;
   const showBody = item.kind === "notice" || !item.request;
@@ -183,6 +175,8 @@ function RowItem(props: {
           </h4>
         )}
       </div>
+      {/* What Junior said comes first, then its question and the form. */}
+      {item.request ? <ReviewItemTurnMessage item={item} /> : null}
       <ReviewItemObjects conversationId={item.addedByConversationId}>
         {showBody ? (
           <ClampedDisplayText
@@ -200,10 +194,12 @@ function RowItem(props: {
           />
         ) : null}
       </ReviewItemObjects>
-      {/* A notice's only action is Dismiss, the row's Done. A question keeps
-          its own beside its answer. */}
-      <ReviewItemActions dismiss={!(props.done && showBody)} item={item} />
-      {item.request ? <ReviewItemTurnMessage item={item} /> : null}
+      {/* The row's Dismiss closes a notice, or the row's only ask. A
+          question among others keeps its own beside its answer. */}
+      <ReviewItemActions
+        dismiss={!(props.done && (showBody || props.only))}
+        item={item}
+      />
     </section>
   );
 }
@@ -792,6 +788,7 @@ function InboxRowBody(
               headTitled={Boolean(props.itemTitle)}
               item={item}
               key={item.id}
+              only={openItems.length === 1}
             />
           ))}
           {props.actionsBelow ? null : rowActions(props)}
@@ -854,47 +851,15 @@ function ExpandedActions(props: {
         </Button>
       ) : null}
       {props.onSnooze ? (
-        <Popover onOpenChange={props.onSnoozeMenu} open={props.snoozeMenuOpen}>
-          <PopoverTrigger
-            render={
-              <Button variant="ghost">
-                <Clock3
-                  aria-hidden="true"
-                  className={ATTENTION_TONE_CLASS}
-                  size={15}
-                />
-                Snooze
-              </Button>
-            }
-          />
-          <PopoverContent
-            align="start"
-            aria-label="Snooze until"
-            className="grid w-48 gap-0.5 p-1"
-          >
-            {snoozeChoices.map((choice) => (
-              <button
-                className="cursor-pointer rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left font-sans text-sm text-dashboard-text hover:bg-dashboard-fill-hover"
-                key={choice.label}
-                onClick={() => props.onSnooze?.(choice)}
-                type="button"
-              >
-                {choice.label}
-              </button>
-            ))}
-          </PopoverContent>
-        </Popover>
+        <RowSnoozeButton
+          onOpenChange={props.onSnoozeMenu}
+          onSnooze={props.onSnooze}
+          open={props.snoozeMenuOpen}
+        />
       ) : null}
       {/* The main action is the right-most one. */}
       {props.canDone && props.onDone ? (
-        <Button
-          disabled={props.donePending}
-          onClick={props.onDone}
-          variant="outline"
-        >
-          <Check aria-hidden="true" className={OPEN_TONE_CLASS} size={15} />
-          Done
-        </Button>
+        <RowDismissButton disabled={props.donePending} onClick={props.onDone} />
       ) : null}
     </div>
   );
