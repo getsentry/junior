@@ -6,7 +6,14 @@ import {
   type Ref,
   type RefObject,
 } from "react";
-import { Info, MessagesSquare, ScrollText, Search, X } from "lucide-react";
+import {
+  Info,
+  MessagesSquare,
+  PictureInPicture2,
+  ScrollText,
+  Search,
+  X,
+} from "lucide-react";
 
 import { Button } from "../components/ui/button";
 import {
@@ -31,6 +38,7 @@ import {
   type ConversationMenu,
   type ConversationMenuItem,
 } from "./conversationMenuItems";
+import { useOpenConversationPopOut } from "./ConversationPopOut";
 
 /**
  * Render the conversation `⋯` menu rows, with search and details there on
@@ -48,6 +56,7 @@ export function ConversationHeaderActions(props: {
 }) {
   const groups = useConversationMenuItems(props.menu);
   const mobile = props.placement === "mobile";
+  const openPopOut = useOpenConversationPopOut();
   // Search, details, and the app menu need the page, so the sidebar row menu
   // does not show them. Every other row comes from `useConversationMenuItems`.
   return (
@@ -73,6 +82,19 @@ export function ConversationHeaderActions(props: {
           <Info aria-hidden="true" />
           Conversation details
         </DropdownMenuItem>
+      ) : null}
+      {/* The pop-out floats over other desktop windows, so mobile omits it. */}
+      {openPopOut && !mobile ? (
+        <>
+          <DropdownMenuItem
+            disabled={props.disabled}
+            onClick={() => void openPopOut(props.menu.conversationId)}
+          >
+            <PictureInPicture2 aria-hidden="true" />
+            Pop out
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+        </>
       ) : null}
       {groups.map((items, index) => (
         <Fragment key={index}>
