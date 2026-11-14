@@ -71,6 +71,13 @@ interface BaseToolDefinition<
   promptGuidelines?: string[];
   prepareArguments?: (args: unknown) => TInput;
   /**
+   * Return a short progress label for the assistant loading state, such as
+   * "Reading config.ts". Runs after action review approves the call. The
+   * label is visible where the reply goes, so never echo raw user text,
+   * commands, or secrets. Return `undefined` to keep the current status.
+   */
+  describeProgress?(input: TInput): string | undefined;
+  /**
    * Return trusted host metadata for the exact dispatched action.
    *
    * Descriptions and annotations inform review; they do not grant authority.
@@ -134,6 +141,8 @@ export interface AnyToolDefinition extends ToolApprovalMetadata {
     options: ToolExecuteOptions,
   ): Promise<unknown> | unknown;
   prepareArguments?(args: unknown): unknown;
+  /** See `BaseToolDefinition.describeProgress`. */
+  describeProgress?(input: unknown): string | undefined;
   /**
    * Return trusted host metadata for the exact dispatched action.
    *

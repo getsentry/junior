@@ -14,6 +14,11 @@ type AssistantStatusVerb = keyof typeof DEFAULT_STATUS_CONTEXTS;
 
 export interface AssistantStatusSpec {
   text: string;
+  /**
+   * `tool` marks a label from `describeProgress`. Tool labels yield to a
+   * recent phase status from `reportProgress`, `updatePlan`, or the runtime.
+   */
+  source?: "tool";
 }
 
 interface AssistantStatusPresentation {

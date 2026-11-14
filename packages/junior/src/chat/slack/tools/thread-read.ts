@@ -169,6 +169,7 @@ export function createSlackThreadReadTool(
 ) {
   return zodTool({
     ...slackThreadReadToolDefinition,
+    describeProgress: () => "Reading a Slack thread",
     execute: async ({ url, channel_id, slack_ts, limit, max_pages }) => {
       let channelId: SlackChannelId;
       let messageTs: SlackMessageTs;

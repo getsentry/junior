@@ -1,3 +1,4 @@
+import path from "node:path";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
@@ -23,6 +24,8 @@ export const writeFileToolDefinition = zodToolDefinition({
 export function createWriteFileTool() {
   return zodTool({
     ...writeFileToolDefinition,
+    describeProgress: ({ path: filePath }) =>
+      `Writing ${path.posix.basename(filePath)}`,
     execute: async () => {
       throw new Error(
         "writeFile can only run when sandbox execution is enabled.",

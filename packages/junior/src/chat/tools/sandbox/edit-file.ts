@@ -1,3 +1,4 @@
+import path from "node:path";
 import {
   isMissingPathError,
   normalizeToLf,
@@ -125,6 +126,8 @@ export const editFileToolDefinition = zodToolDefinition({
 export function createEditFileTool() {
   return zodTool({
     ...editFileToolDefinition,
+    describeProgress: ({ path: filePath }) =>
+      `Editing ${path.posix.basename(filePath)}`,
     execute: async () => {
       throw new Error(
         "editFile can only run when sandbox execution is enabled.",

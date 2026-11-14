@@ -319,4 +319,28 @@ describe("callMcpTool", () => {
     );
     expect(manager.activateProvider).not.toHaveBeenCalled();
   });
+
+  it("names the provider of an active tool in its progress label", () => {
+    const manager = {
+      activateProvider: vi.fn(async () => true),
+      getResolvedActiveTools: vi.fn(() => [
+        {
+          name: "mcp__linear__list_issues",
+          rawName: "list_issues",
+          provider: "linear",
+          description: "List issues",
+          parameters: {},
+          execute: vi.fn(),
+        },
+      ]),
+    };
+    const callMcpTool = createCallMcpToolTool(manager);
+
+    expect(
+      callMcpTool.describeProgress!({ tool_name: "mcp__linear__list_issues" }),
+    ).toBe("Calling Linear");
+    expect(
+      callMcpTool.describeProgress!({ tool_name: "mcp__made_up__tool" }),
+    ).toBe("Calling an MCP tool");
+  });
 });

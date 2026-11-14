@@ -82,6 +82,7 @@ export const slackCanvasReadToolDefinition = zodToolDefinition({
 export function createSlackCanvasReadTool() {
   return zodTool({
     ...slackCanvasReadToolDefinition,
+    describeProgress: () => "Reading a canvas",
     execute: async ({ canvas, offset, limit }) => {
       const target = resolveCanvasTarget(canvas);
       if (!target.ok) {

@@ -184,6 +184,7 @@ export function createImageGenerateTool(
   return zodTool({
     exposure: "deferred",
     source: IMAGES_TOOL_SOURCE,
+    describeProgress: () => "Generating an image",
     annotations: {
       destructiveHint: false,
       idempotentHint: false,

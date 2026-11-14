@@ -421,6 +421,7 @@ export const slackPublicSearchToolDefinition = zodToolDefinition({
 export function createSlackPublicSearchTool(actionToken?: SlackActionToken) {
   return zodTool({
     ...slackPublicSearchToolDefinition,
+    describeProgress: () => "Searching Slack",
     execute: async ({
       query,
       content_types,

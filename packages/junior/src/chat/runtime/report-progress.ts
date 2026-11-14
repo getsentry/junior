@@ -1,5 +1,7 @@
+import { logWarn } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status-render";
+import type { AnyToolDefinition } from "@/chat/tools/definition";
 
 function isActivePlanItem(value: unknown): value is { step: string } {
   if (!value || typeof value !== "object") {
@@ -49,6 +51,26 @@ export function buildPlanStatus(
 
   const active = plan.find(isActivePlanItem);
   return active ? { text: active.step.trim() } : undefined;
+}
+
+/** Convert a tool's own `describeProgress` label into assistant status text. */
+export function buildToolProgressStatus(
+  toolName: string,
+  toolDef: AnyToolDefinition,
+  input: Record<string, unknown>,
+): AssistantStatusSpec | undefined {
+  let label: string | undefined;
+  try {
+    label = toolDef.describeProgress?.(input)?.trim();
+  } catch (error) {
+    // Progress labels are best effort and must never fail the tool call.
+    logWarn("tool.progress.describe.failed", {
+      "error.type": error instanceof Error ? error.name : typeof error,
+      "gen_ai.tool.name": toolName,
+    });
+    return undefined;
+  }
+  return label ? { text: label, source: "tool" } : undefined;
 }
 
 /** Recover the latest progress status from a resumable Pi transcript. */
