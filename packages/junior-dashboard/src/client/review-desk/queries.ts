@@ -180,7 +180,8 @@ export function useInboxTodoCount(enabled: boolean): number | undefined {
   const alerts = useAutomationAlerts(Date.now());
   const putAway = attention?.automations.filter(alerts.hidden).length ?? 0;
   return count
-    ? count.needsViewer + Math.max(0, count.automations - putAway)
+    ? // The count read always sends `include=automations`.
+      count.needsViewer + Math.max(0, (count.automations ?? 0) - putAway)
     : undefined;
 }
 
