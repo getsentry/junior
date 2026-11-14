@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLocalSource, type Identity } from "@sentry/junior-plugin-api";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { apiErrorSchema, createdPersonalTokenSchema } from "@/api/schema";
@@ -80,6 +80,7 @@ function createToken(email: string, previewOrigin: string) {
 
 describe("personal token handoff to a Preview", () => {
   afterEach(async () => {
+    vi.useRealTimers();
     await closeDb();
   });
 
@@ -97,6 +98,19 @@ describe("personal token handoff to a Preview", () => {
     expect(apiErrorSchema.parse(await other.json())).toEqual({
       error: "Junior did not make this Preview for you.",
     });
+  });
+
+  it("keeps the Preview after a day, because its Sandbox can resume with the same URL", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    await createPreviewAs("owner@example.com", "https://sb-resumed.vercel.run");
+    vi.setSystemTime(Date.now() + 25 * 60 * 60 * 1_000);
+
+    const response = await createToken(
+      "owner@example.com",
+      "https://sb-resumed.vercel.run",
+    );
+
+    expect(response.status).toBe(200);
   });
 
   it("returns the Preview when Junior cannot record it", async () => {

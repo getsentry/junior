@@ -9,8 +9,10 @@
 import * as z from "zod";
 import { getStateAdapter } from "@/chat/state/adapter";
 
-// Longer than a Sandbox runs. The URL stops working when the Sandbox stops.
-const PREVIEW_ORIGIN_TTL_MS = 24 * 60 * 60 * 1_000;
+// A Conversation resumes its named Sandbox, and the Preview URL stays the same
+// for days, so the record must outlive one Sandbox session. Each
+// `createPreview` call refreshes it.
+const PREVIEW_ORIGIN_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
 
 const previewOriginRecordSchema = z
   .object({ ownerEmailNormalized: z.string() })
