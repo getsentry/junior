@@ -10,6 +10,7 @@ import {
 } from "@/chat/agent-invocations/create";
 import {
   getAgentInvocationId,
+  getAgentInvocationMessageId,
   getAgentInvocationTurnId,
   getAgentReplyMessageId,
 } from "@/chat/agent-invocations/ids";
@@ -421,9 +422,8 @@ describe("agent invocation worker crash", () => {
         loadSubagentEvents(task.childConversationId),
       ).resolves.toContainEqual({
         type: "subagent_ended",
-        subagentInvocationId: getAgentInvocationId(
-          task.childConversationId,
-          "task-turn:call-1",
+        subagentInvocationId: getAgentInvocationMessageId(
+          getAgentInvocationId(task.childConversationId, "task-turn:call-1"),
         ),
         outcome: "error",
       });

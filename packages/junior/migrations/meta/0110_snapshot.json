@@ -1,5 +1,5 @@
 {
-  "id": "55f8509b-ad68-4914-a082-89c4f4bae8bf",
+  "id": "5b9732be-0e68-4faa-b17d-eb69fc716005",
   "prevId": "1880d763-2db8-4b02-931d-e59c0840186a",
   "version": "7",
   "dialect": "postgresql",
@@ -3005,9 +3005,9 @@
           "primaryKey": false,
           "notNull": false
         },
-        "spawn_input_digest": {
-          "name": "spawn_input_digest",
-          "type": "text",
+        "last_tasked_at": {
+          "name": "last_tasked_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },

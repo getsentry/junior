@@ -5,18 +5,19 @@
  * because a child posts nothing to its Location.
  */
 import type { StateAdapter } from "chat";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import type { ConversationMessageMeta } from "@/chat/state/conversation";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { juniorConversationEvents } from "@/db/schema";
 import { readChildConversationSender } from "./child-input";
 import { getAgentInvocationMessageId } from "./ids";
-import { getLatestAgentInvocationForConversation } from "./store";
 import type { AgentInvocation, TerminalAgentInvocation } from "./types";
 
 // The dashboard labels each child row with this kind.
 const SUBAGENT_KIND = "agent";
+const SUBAGENT_STARTED_KEY_PREFIX = "subagent_started:";
+const SUBAGENT_ENDED_KEY_PREFIX = "subagent_ended:";
 
 /**
  * Record in the parent Conversation that one agent invocation started, and
@@ -79,7 +80,7 @@ export async function recordSubagentStartedMarker(
 ): Promise<void> {
   await getConversationEventStore().append(start.parentConversationId, [
     {
-      idempotencyKey: `subagent_started:${start.invocationId}`,
+      idempotencyKey: `${SUBAGENT_STARTED_KEY_PREFIX}${start.invocationId}`,
       data: {
         type: "subagent_started",
         subagentInvocationId: start.invocationId,
@@ -150,12 +151,13 @@ export async function recordSubagentEnded(
 
 /**
  * Record in the parent Conversation how the work of a child agent with no
- * Agent invocation ended: each `subagent_started` marker of the child that
- * has not ended yet ends with `outcome`. A marker whose parent
- * message still waits in the child's mailbox stays open, because later work
- * reads it, unless `includeWaiting` is set, as for a stop that skips it.
- * Write it before the child's result reaches the parent. A child that an
- * Agent invocation names ends its markers with its rows.
+ * Agent invocation ended. Each parent message has its own
+ * `subagent_started` marker, named by the message id, and each one that the
+ * child already took ends with `outcome`. A parent message that still waits
+ * in the child's mailbox stays open, because later work reads it, unless
+ * `includeWaiting` is set, as for a stop that skips it. Write it before the
+ * child's result reaches the parent. A child that an Agent invocation names
+ * ends its markers with its rows.
  */
 export async function recordChildAgentEnded(
   childConversationId: string,
@@ -166,47 +168,60 @@ export async function recordChildAgentEnded(
     state?: StateAdapter | undefined;
   } = {},
 ): Promise<void> {
-  if (await getLatestAgentInvocationForConversation(childConversationId)) {
+  const work = await getConversationWorkState({
+    conversationId: childConversationId,
+    state: options.state,
+  });
+  const waiting = new Set(
+    options.includeWaiting
+      ? []
+      : (work?.messages.map((message) => message.inboundMessageId) ?? []),
+  );
+  const taken = (work?.execution.inboundMessageIds ?? []).filter(
+    (id) => !waiting.has(id),
+  );
+  if (taken.length === 0) {
     return;
   }
   const sender = await readChildConversationSender(childConversationId);
   if (!sender) {
     return;
   }
-  const db = getSqlExecutor().db();
-  const payload = juniorConversationEvents.payload;
-  const markerId = sql<string>`${payload}->>'subagentInvocationId'`;
-  const started = (
-    await db
-      .select({ markerId })
-      .from(juniorConversationEvents)
-      .where(
-        and(
-          eq(
-            juniorConversationEvents.conversationId,
-            sender.parentConversationId,
-          ),
-          eq(juniorConversationEvents.type, "subagent_started"),
-          sql`${payload}->>'childConversationId' = ${childConversationId}`,
+  // Only parent messages have markers. The lookup by key finds the open
+  // ones and skips the child's other input.
+  const keys = await getSqlExecutor()
+    .db()
+    .select({ idempotencyKey: juniorConversationEvents.idempotencyKey })
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(
+          juniorConversationEvents.conversationId,
+          sender.parentConversationId,
         ),
-      )
-  ).map((row) => row.markerId);
-  const waiting = new Set(
-    options.includeWaiting
-      ? []
-      : ((
-          await getConversationWorkState({
-            conversationId: childConversationId,
-            state: options.state,
-          })
-        )?.messages.map((message) => message.inboundMessageId) ?? []),
+        inArray(
+          juniorConversationEvents.idempotencyKey,
+          taken.flatMap((id) => [
+            `${SUBAGENT_STARTED_KEY_PREFIX}${id}`,
+            `${SUBAGENT_ENDED_KEY_PREFIX}${id}`,
+          ]),
+        ),
+      ),
+    );
+  const found = new Set(keys.map((row) => row.idempotencyKey));
+  const open = taken.filter(
+    (id) =>
+      found.has(`${SUBAGENT_STARTED_KEY_PREFIX}${id}`) &&
+      !found.has(`${SUBAGENT_ENDED_KEY_PREFIX}${id}`),
   );
-  await appendSubagentEnded(
-    sender.parentConversationId,
-    started.filter((id) => !waiting.has(getAgentInvocationMessageId(id))),
-    outcome,
-    options.nowMs ?? Date.now(),
-  );
+  if (open.length > 0) {
+    await appendSubagentEnded(
+      sender.parentConversationId,
+      open,
+      outcome,
+      options.nowMs ?? Date.now(),
+    );
+  }
 }
 
 // A marker that already ended keeps its outcome: its key is taken.
@@ -219,32 +234,9 @@ async function appendSubagentEnded(
   await getConversationEventStore().append(
     parentConversationId,
     invocationIds.map((id) => ({
-      idempotencyKey: `subagent_ended:${id}`,
+      idempotencyKey: `${SUBAGENT_ENDED_KEY_PREFIX}${id}`,
       data: { type: "subagent_ended", subagentInvocationId: id, outcome },
       createdAtMs,
     })),
   );
-}
-
-/**
- * List the child agents with no Agent invocation that a parent gave a task
- * or message after `afterMs`, from the parent's `subagent_started` markers.
- */
-export async function listChildAgentsStartedAfter(
-  parentConversationId: string,
-  afterMs: number,
-): Promise<string[]> {
-  const childConversationId = sql<string>`${juniorConversationEvents.payload}->>'childConversationId'`;
-  const rows = await getSqlExecutor()
-    .db()
-    .selectDistinct({ childConversationId })
-    .from(juniorConversationEvents)
-    .where(
-      and(
-        eq(juniorConversationEvents.conversationId, parentConversationId),
-        eq(juniorConversationEvents.type, "subagent_started"),
-        gt(juniorConversationEvents.createdAt, new Date(afterMs)),
-      ),
-    );
-  return rows.map((row) => row.childConversationId);
 }

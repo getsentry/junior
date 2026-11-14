@@ -1,1 +1,0 @@
-ALTER TABLE "junior_conversations" ADD COLUMN "spawn_input_digest" text;

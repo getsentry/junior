@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { StateAdapter } from "chat";
 import { eq } from "drizzle-orm";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
@@ -18,6 +18,7 @@ import { recordSubagentStartedMarker, type SubagentStart } from "./markers";
 import {
   agentConfigSchema,
   readAgentConfig,
+  type AgentConfig,
 } from "@/chat/conversations/agent-config";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import {
@@ -32,7 +33,11 @@ import {
   getSpawnedChildConversationId,
   getUnnamedAgentConversationId,
 } from "./ids";
-import { appendParentMessage, buildParentMessage } from "./parent-message";
+import {
+  appendParentMessage,
+  buildParentMessage,
+  type ParentMessageDelivery,
+} from "./parent-message";
 import {
   getAgentInvocation,
   getLatestAgentInvocationForConversation,
@@ -118,7 +123,7 @@ function sameCreateInput(
 }
 
 // The durable creation input that a replay of one idempotency key must
-// match, for an Agent invocation and for a child with no Agent invocation.
+// match.
 function createInputFields(
   input: Pick<
     AgentInvocation,
@@ -144,30 +149,6 @@ function createInputFields(
     input.credentialContext ?? null,
     input.destination,
   ];
-}
-
-/**
- * Digest the creation input and the kind of a spawn that writes no Agent
- * invocation. The child stores it, so a replay with other input fails as it
- * does on an Agent invocation.
- */
-function spawnInputDigest(
-  input: ReturnType<typeof createAgentInvocationSchema.parse>,
-): string {
-  return createHash("sha256")
-    .update(JSON.stringify([...createInputFields(input), input.kind]))
-    .digest("hex");
-}
-
-async function readSpawnInputDigest(
-  conversationId: string,
-): Promise<string | null | undefined> {
-  const [row] = await getSqlExecutor()
-    .db()
-    .select({ digest: juniorConversations.spawnInputDigest })
-    .from(juniorConversations)
-    .where(eq(juniorConversations.conversationId, conversationId));
-  return row?.digest;
 }
 
 /**
@@ -510,18 +491,22 @@ type ChildAgentWorkOptions = {
 
 /**
  * Give one task or message to a child agent with no Agent invocation. Under
- * the parent lock, `prepare` runs the checks of its caller, then the
- * parent's `subagent_started` marker and the parent message are written.
- * The message reaches the mailbox under the lock, so the next spawn counts
- * the child as active. The wake runs after the lock commits, so the child's
- * worker reads the new Conversation; a lost wake is recovered like any other
- * stranded mailbox input.
+ * the parent lock, `prepare` runs the checks of its caller. Unless it finds
+ * a spawn replay, the parent's `subagent_started` marker and the parent
+ * message are written, and the child's `lastTaskedAt` when the message is
+ * new. The message reaches the mailbox under the lock, so the next spawn
+ * counts the child as active. The wake runs after the lock commits, so the
+ * child's worker reads the new Conversation; a lost wake is recovered like
+ * any other stranded mailbox input.
  */
 async function giveChildAgentWork<T>(
   work: Parameters<typeof buildParentMessage>[0] &
     Pick<SubagentStart, "agentName" | "reasoningLevel" | "title">,
   options: ChildAgentWorkOptions,
-  prepare: (open: AgentInvocation[]) => Promise<T>,
+  prepare: (open: AgentInvocation[]) => Promise<{
+    delivery: ParentMessageDelivery | "replay";
+    value: T;
+  }>,
 ): Promise<T> {
   const message = buildParentMessage(work);
   const prepared = await getSqlExecutor().withLock(
@@ -530,40 +515,101 @@ async function giveChildAgentWork<T>(
       const prepared = await prepare(
         await listOpenAgentInvocations(work.parentConversationId),
       );
+      if (prepared.delivery === "replay") {
+        return prepared;
+      }
+      // The marker pairs by the parent message id, so the child's end finds
+      // it by key.
       await recordSubagentStartedMarker({
         agentName: work.agentName,
         childConversationId: work.childConversationId,
         createdAtMs: work.nowMs,
         input: work.text,
-        invocationId: getAgentInvocationId(
-          work.parentConversationId,
-          work.idempotencyKey,
-        ),
+        invocationId: message.inboundMessageId,
         parentConversationId: work.parentConversationId,
         parentToolCallId: work.parentToolCallId,
         reasoningLevel: work.reasoningLevel,
         title: work.title,
       });
-      await appendParentMessage(message, options);
+      if (await appendParentMessage(message, prepared.delivery, options)) {
+        await getSqlExecutor()
+          .db()
+          .update(juniorConversations)
+          .set({
+            detailVersion: nextDetailVersion,
+            lastTaskedAt: new Date(work.nowMs),
+          })
+          .where(
+            eq(juniorConversations.conversationId, work.childConversationId),
+          );
+      }
       return prepared;
     },
   );
   await ensureConversationWake({
     conversationId: work.childConversationId,
     conversationStore: options.conversationStore,
-    idempotencyKey: message.inboundMessageId,
+    // The only earlier wake of a new child came from a spawn that rolled
+    // back, and it may be spent, so a new child gets its own.
+    ...(prepared.delivery === "new_child"
+      ? {
+          idempotencyKey: `${message.inboundMessageId}:${randomUUID()}`,
+          ignoreEnqueueMarker: true,
+        }
+      : { idempotencyKey: message.inboundMessageId }),
     queue: options.queue,
     state: options.state,
   });
-  return prepared;
+  return prepared.value;
+}
+
+/** Build the agent config that a spawn with no Agent invocation stores. */
+function spawnAgentConfig(
+  input: ReturnType<typeof createAgentInvocationSchema.parse>,
+): AgentConfig {
+  return agentConfigSchema.parse({
+    ...(input.agentType ? { agentType: input.agentType } : undefined),
+    ...(input.fork ? { fork: true } : undefined),
+    ...(input.reasoningLevel
+      ? { reasoningLevel: input.reasoningLevel }
+      : undefined),
+  });
+}
+
+/**
+ * Check a spawn replay against the child that the first spawn stored: its
+ * kind, its name, and its agent config. A replay sends nothing, so the first
+ * task, Actor, and credentials stay, and other input there gains no
+ * authority.
+ */
+async function assertSameSpawn(
+  input: ReturnType<typeof createAgentInvocationSchema.parse>,
+  child: { conversationId: string; kind: string },
+): Promise<void> {
+  const [sender, config] = await Promise.all([
+    readChildConversationSender(child.conversationId),
+    readAgentConfig(child.conversationId),
+  ]);
+  const expected = spawnAgentConfig(input);
+  if (
+    child.kind !== input.kind ||
+    sender?.agentName !== input.agentName ||
+    config?.agentType !== expected.agentType ||
+    config?.fork !== expected.fork ||
+    config?.reasoningLevel !== expected.reasoningLevel
+  ) {
+    throw new Error(
+      `Spawn idempotency key was reused with different input for ${child.conversationId}`,
+    );
+  }
 }
 
 /**
  * Create or replay one child agent without an Agent invocation row: its
- * Conversation, its binding, its agent config and input digest, and its
- * task as a parent message. The spawn's idempotency key names the child
- * Conversation, so a replay finds it in SQL. A replay with the same input
- * sends the same task, which the mailbox drops as a duplicate.
+ * Conversation, its binding, its agent config, and its task as a parent
+ * message. The spawn's idempotency key names the child Conversation, so a
+ * replay finds it in SQL and sends nothing. The child exists in SQL only
+ * when its task reached its mailbox in the same transaction.
  *
  * TODO(dcramer): Make this the only spawn when #3060 step 7 drops the agent
  * invocation table.
@@ -578,7 +624,6 @@ export async function spawnChildAgent(
     input.parentConversationId,
     input.idempotencyKey,
   );
-  const digest = spawnInputDigest(input);
   await giveChildAgentWork(
     {
       ...input,
@@ -590,17 +635,12 @@ export async function spawnChildAgent(
     },
     options,
     async (open) => {
-      if (
-        await getConversationStore().get({
-          conversationId: childConversationId,
-        })
-      ) {
-        if ((await readSpawnInputDigest(childConversationId)) !== digest) {
-          throw new Error(
-            `Spawn idempotency key was reused with different input for ${childConversationId}`,
-          );
-        }
-        return;
+      const child = await getConversationStore().get({
+        conversationId: childConversationId,
+      });
+      if (child) {
+        await assertSameSpawn(input, child);
+        return { delivery: "replay", value: undefined };
       }
       await createChildAgentConversation(
         input,
@@ -612,17 +652,11 @@ export async function spawnChildAgent(
         .db()
         .update(juniorConversations)
         .set({
-          agentConfig: agentConfigSchema.parse({
-            ...(input.agentType ? { agentType: input.agentType } : undefined),
-            ...(input.fork ? { fork: true } : undefined),
-            ...(input.reasoningLevel
-              ? { reasoningLevel: input.reasoningLevel }
-              : undefined),
-          }),
+          agentConfig: spawnAgentConfig(input),
           detailVersion: nextDetailVersion,
-          spawnInputDigest: digest,
         })
         .where(eq(juniorConversations.conversationId, childConversationId));
+      return { delivery: "new_child", value: undefined };
     },
   );
   return { childConversationId };
@@ -664,11 +698,14 @@ export async function messageChildAgent(
         childConversationId: input.childConversationId,
         parentConversationId: input.parentConversationId,
       });
-      return (
-        await listOpenChildAgentsWithoutAgentInvocations(
-          input.parentConversationId,
-        )
-      ).includes(input.childConversationId);
+      return {
+        delivery: "message",
+        value: (
+          await listOpenChildAgentsWithoutAgentInvocations(
+            input.parentConversationId,
+          )
+        ).includes(input.childConversationId),
+      };
     },
   );
   return { queued };

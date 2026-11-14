@@ -12,11 +12,7 @@ import {
   stopConversationWork,
 } from "@/chat/task-execution/store";
 import { juniorAgentInvocations, juniorConversations } from "@/db/schema";
-import {
-  listChildAgentsStartedAfter,
-  recordChildAgentEnded,
-  recordSubagentEnded,
-} from "./markers";
+import { recordChildAgentEnded, recordSubagentEnded } from "./markers";
 import { isChildAgentSessionStopped } from "./list";
 import { getChildAgentLockName } from "./ids";
 import { ownAgentInvocation, readChildMessageSender } from "./child-message";
@@ -354,11 +350,7 @@ async function withChildAgentsTaskedAfter(
       ),
     );
   // A child agent that no agent invocation names was tasked when it was
-  // created, and with each parent message, which its marker records.
-  const messagedAfter = await listChildAgentsStartedAfter(
-    conversationId,
-    taskedAfterMs,
-  );
+  // created, and when its `lastTaskedAt` says.
   const withoutInvocations = await getSqlExecutor()
     .db()
     .select({
@@ -373,9 +365,7 @@ async function withChildAgentsTaskedAfter(
         or(
           ne(juniorConversations.parentConversationId, conversationId),
           gt(juniorConversations.createdAt, new Date(taskedAfterMs)),
-          messagedAfter.length > 0
-            ? inArray(juniorConversations.conversationId, messagedAfter)
-            : undefined,
+          gt(juniorConversations.lastTaskedAt, new Date(taskedAfterMs)),
         ),
       ),
     );

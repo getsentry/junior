@@ -7,7 +7,10 @@ import {
   AgentInvocationLimitError,
   AgentNameInUseError,
 } from "@/chat/agent-invocations/errors";
-import { getAgentInvocationId } from "@/chat/agent-invocations/ids";
+import {
+  getAgentInvocationId,
+  getAgentInvocationMessageId,
+} from "@/chat/agent-invocations/ids";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
@@ -21,6 +24,7 @@ import { readAgentConfig } from "@/chat/conversations/agent-config";
 import {
   getConversationStoppedAtMs,
   markConversationsStopped,
+  resumeStoppedConversationTree,
 } from "@/chat/conversations/session-stop";
 import { getSqlExecutor } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -155,9 +159,8 @@ describe("spawn and messageAgent without Agent invocations", () => {
         reasoningLevel: "high",
         title: "Deploy check",
       });
-      const markerId = getAgentInvocationId(
-        slackParentConversationId,
-        "parent-turn:call-1",
+      const markerId = getAgentInvocationMessageId(
+        getAgentInvocationId(slackParentConversationId, "parent-turn:call-1"),
       );
       await expect(
         loadSubagentEvents(slackParentConversationId),
@@ -186,7 +189,7 @@ describe("spawn and messageAgent without Agent invocations", () => {
 
   it.each([
     { change: "no name", input: { name: undefined } },
-    { change: "another task", input: { task: "Check the rollback." } },
+    { change: "another kind", input: { kind: "thread" as const } },
     { change: "another agent type", input: { agentType: "explore" as const } },
     { change: "a fork", input: { fork: true as const } },
     {
@@ -207,22 +210,35 @@ describe("spawn and messageAgent without Agent invocations", () => {
     }
   });
 
-  it("refuses a spawn replay from a Turn with other grants", async () => {
+  it("keeps the first spawn's task, Actor, and grants on a replay", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
-      await spawn(harness, "call-1");
+      const first = await spawn(harness, "call-1");
 
       await expect(
         bindSpawnAgent(
-          { ...parentRun(), credentialContext: { actor: EVENT_SYSTEM_ACTOR } },
+          {
+            ...parentRun(),
+            actor: EVENT_SYSTEM_ACTOR,
+            credentialContext: { actor: EVENT_SYSTEM_ACTOR },
+          },
           {
             conversationStore: harness.conversationStore,
             queue: harness.queue,
             state: harness.state,
           },
-        )!({ task: "Check the deploy." }, { toolCallId: "call-1" }),
-      ).rejects.toThrow("Spawn idempotency key was reused");
+        )!({ task: "Check the rollback." }, { toolCallId: "call-1" }),
+      ).resolves.toEqual({ childConversationId: first });
+      harness.onPersonRun(finishRun);
+      await harness.processUntilRun(first);
+
+      expect(harness.runs).toHaveLength(1);
+      expect(harness.runs[0]).toMatchObject({
+        actor: slackInvocationInput.actor,
+        credentialContext: parentRun().credentialContext,
+      });
+      expect(harness.runs[0]!.instruction.text).toContain("Check the deploy.");
     } finally {
       await harness.close();
     }
@@ -245,7 +261,7 @@ describe("spawn and messageAgent without Agent invocations", () => {
     }
   });
 
-  it("drops a spawn's task when the spawn's SQL rolled back", async () => {
+  it("drops a spawn's task when the spawn's SQL rolled back, and runs it on the retry", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
@@ -269,6 +285,13 @@ describe("spawn and messageAgent without Agent invocations", () => {
 
       expect(harness.runs).toEqual([]);
       await expect(mailboxTexts(harness, childId!)).resolves.toEqual([]);
+
+      // The model retries the spawn. It creates the child, so the task runs.
+      await expect(spawn(harness, "call-1")).resolves.toBe(childId);
+      harness.onPersonRun(finishRun);
+      await harness.processUntilRun(childId!);
+      expect(harness.runs).toHaveLength(1);
+      expect(harness.runs[0]!.instruction.text).toContain("Check the deploy.");
     } finally {
       await harness.close();
     }
@@ -483,6 +506,29 @@ describe("spawn and messageAgent without Agent invocations", () => {
       );
       await harness.drain(childId);
       expect(harness.runs).toEqual([]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("keeps a child running that a person resumed before the parent's late stop", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await spawn(harness, "call-1", { kind: "thread" });
+      await markConversationsStopped([slackParentConversationId, childId], {
+        cancelWatches: false,
+        state: harness.state,
+      });
+      // A person writes in the Thread, which ends its stop. The parent was
+      // not the one that gave it work after its stop.
+      vi.setSystemTime(1_800_000_001_000);
+      await resumeStoppedConversationTree(childId, Date.now());
+      await stopChildAgentsOf(slackParentConversationId, harness.state);
+
+      await expect(
+        getConversationStoppedAtMs(childId),
+      ).resolves.toBeUndefined();
     } finally {
       await harness.close();
     }

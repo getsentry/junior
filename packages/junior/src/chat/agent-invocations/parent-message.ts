@@ -22,6 +22,7 @@ import {
   appendInboundMessage,
   dropPendingMessages,
   getConversationWorkState,
+  releaseInboundMessage,
   type InboundMessage,
 } from "@/chat/task-execution/store";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
@@ -119,47 +120,56 @@ export function buildParentMessage(args: {
 }
 
 /**
- * Append one parent message to its child's mailbox without a wake. New work
- * from the parent ends the stop of the child and of the child agents below
- * it, as an Agent invocation does. The parent messages that the stop skipped
- * stay skipped: they leave the mailbox first. A message that already reached
- * the mailbox changes nothing, so a replay does not end a later stop.
+ * How a parent message reaches its child. `new_child` is the task of a
+ * spawn that created the child in the same SQL transaction. `message` is
+ * new work for a child that exists.
+ */
+export type ParentMessageDelivery = "message" | "new_child";
+
+/**
+ * Append one parent message to its child's mailbox without a wake. Returns
+ * whether the message is new.
+ *
+ * A new child gets its task even when the mailbox already saw its id: a
+ * spawn that rolled back after its mailbox write left that id, and the child
+ * dropped the task because no stored parent sent it. SQL decides: the child
+ * exists only when this transaction commits.
+ *
+ * New work for a child that exists ends the stop of the child and of the
+ * child agents below it, as an Agent invocation does. The parent messages
+ * that the stop skipped stay skipped: they leave the mailbox first. A
+ * message that already reached the mailbox changes nothing, so a replay
+ * does not end a later stop.
  */
 export async function appendParentMessage(
   message: InboundMessage,
+  delivery: ParentMessageDelivery,
   options: {
     conversationStore?: ConversationStore | undefined;
     state?: StateAdapter | undefined;
   },
-): Promise<void> {
+): Promise<boolean> {
   const conversationId = message.conversationId;
   const work = await getConversationWorkState({
     conversationId,
     state: options.state,
   });
-  if (work?.execution.inboundMessageIds.includes(message.inboundMessageId)) {
-    return;
-  }
-  const stoppedAtMs = await getConversationStoppedAtMs(conversationId);
-  if (stoppedAtMs !== undefined && message.createdAtMs > stoppedAtMs) {
-    const skipped = (work?.messages ?? []).filter(
-      (pending) =>
-        readParentMessage(pending) !== undefined &&
-        isSkippedAfterConversationStop(pending, stoppedAtMs),
-    );
-    if (skipped.length > 0) {
-      await dropPendingMessages({
-        conversationId,
-        inboundMessageIds: skipped.map((pending) => pending.inboundMessageId),
-        ...(options.state ? { state: options.state } : undefined),
-      });
-      for (const pending of skipped) {
-        logDroppedParentMessage(pending, readParentMessage(pending)!);
-      }
+  // A task that a rolled-back spawn left still waits, so this append
+  // replaces it.
+  const waiting = work?.messages.some(
+    (pending) => pending.inboundMessageId === message.inboundMessageId,
+  );
+  if (delivery === "new_child") {
+    if (!waiting) {
+      await releaseInboundMessage({ message, state: options.state });
     }
-    await resumeStoppedConversationTree(conversationId, message.createdAtMs);
+  } else {
+    if (work?.execution.inboundMessageIds.includes(message.inboundMessageId)) {
+      return false;
+    }
+    await endStopForParentMessage(message, work?.messages ?? [], options);
   }
-  await appendInboundMessage({
+  const { status } = await appendInboundMessage({
     message,
     ...(options.conversationStore
       ? { conversationStore: options.conversationStore }
@@ -167,6 +177,44 @@ export async function appendParentMessage(
     nowMs: message.receivedAtMs,
     ...(options.state ? { state: options.state } : undefined),
   });
+  if (delivery === "new_child") {
+    if (status === "duplicate" && !waiting) {
+      // A worker took the stale id between the release and this append.
+      throw new Error(
+        `Task of new child ${conversationId} was taken before it was appended`,
+      );
+    }
+    return true;
+  }
+  return status === "appended";
+}
+
+async function endStopForParentMessage(
+  message: InboundMessage,
+  pending: readonly InboundMessage[],
+  options: { state?: StateAdapter | undefined },
+): Promise<void> {
+  const conversationId = message.conversationId;
+  const stoppedAtMs = await getConversationStoppedAtMs(conversationId);
+  if (stoppedAtMs === undefined || message.createdAtMs <= stoppedAtMs) {
+    return;
+  }
+  const skipped = pending.filter(
+    (waiting) =>
+      readParentMessage(waiting) !== undefined &&
+      isSkippedAfterConversationStop(waiting, stoppedAtMs),
+  );
+  if (skipped.length > 0) {
+    await dropPendingMessages({
+      conversationId,
+      inboundMessageIds: skipped.map((waiting) => waiting.inboundMessageId),
+      ...(options.state ? { state: options.state } : undefined),
+    });
+    for (const waiting of skipped) {
+      logDroppedParentMessage(waiting, readParentMessage(waiting)!);
+    }
+  }
+  await resumeStoppedConversationTree(conversationId, message.createdAtMs);
 }
 
 /**
