@@ -2442,7 +2442,7 @@ describe("conversation work execution", () => {
     ]);
   });
 
-  it("removes unreadable conversation records from the active index and repairs the rest", async () => {
+  it("removes unreadable conversation records, repairs the rest, and reports the unreadable one", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
@@ -2471,7 +2471,7 @@ describe("conversation work execution", () => {
 
     await expect(
       recoverConversationWork({ nowMs: 62_000, queue, state }),
-    ).resolves.toEqual({ expiredLeaseCount: 0, pendingCount: 1 });
+    ).rejects.toThrow("Conversation work recovery failed");
 
     expect(queue.sentRecords()).toEqual([
       expect.objectContaining({ conversationId: CONVERSATION_ID }),

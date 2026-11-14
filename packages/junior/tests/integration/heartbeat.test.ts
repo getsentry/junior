@@ -10,6 +10,7 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { getConversationStore } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { type EmittedLogRecord, registerLogRecordSink } from "@/chat/logging";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -135,33 +136,38 @@ describe("plugin heartbeat", () => {
     expect(waitUntil.pendingCount()).toBe(0);
   });
 
-  it("runs plugin heartbeat hooks", async () => {
-    const seen: number[] = [];
-    setPlugins([
+  it("runs every plugin heartbeat hook and reports a failed one at the boundary", async () => {
+    const seen: string[] = [];
+    const records: EmittedLogRecord[] = [];
+    const unregister = registerLogRecordSink((record) => records.push(record));
+    const plugin = (name: string, fail: boolean) =>
       defineJuniorPlugin({
-        manifest: {
-          name: "scheduler",
-          displayName: "Scheduler",
-          description: "Scheduler test plugin",
-        },
+        manifest: { name, displayName: name, description: `${name} plugin` },
         hooks: {
-          heartbeat(ctx) {
-            seen.push(ctx.nowMs);
+          heartbeat() {
+            seen.push(name);
+            if (fail) throw new Error(`${name} heartbeat broke`);
           },
         },
-      }),
-    ]);
+      });
+    setPlugins([plugin("first", true), plugin("second", false)]);
     const waitUntil = createWaitUntilCollector();
-    const response = await testHeartbeat(
-      new Request("https://example.invalid/api/internal/heartbeat", {
-        headers: { authorization: "Bearer heartbeat-secret" },
-      }),
-      waitUntil.fn,
-    );
+    try {
+      await testHeartbeat(
+        new Request("https://example.invalid/api/internal/heartbeat", {
+          headers: { authorization: "Bearer heartbeat-secret" },
+        }),
+        waitUntil.fn,
+      );
+      await waitUntil.flush();
+    } finally {
+      unregister();
+    }
 
-    expect(response.status).toBe(202);
-    await waitUntil.flush();
-    expect(seen).toHaveLength(1);
+    expect(seen).toEqual(["first", "second"]);
+    expect(
+      records.filter((record) => record.eventName === "heartbeat.run.failed"),
+    ).toHaveLength(1);
   });
 
   it("reschedules stale paused turn records", async () => {

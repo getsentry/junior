@@ -54,6 +54,7 @@ export async function recoverConversationWork(args: {
     state: args.state,
   });
 
+  const errors: unknown[] = [];
   for (const conversationId of ids) {
     await withLogContext({ conversationId }, async () => {
       let work: ConversationWorkState | undefined;
@@ -63,7 +64,6 @@ export async function recoverConversationWork(args: {
           state: args.state,
         });
       } catch (error) {
-        logException(error, "conversation.work.recovery.failed");
         // An invalid record can never become runnable again; drop it from the
         // bounded oldest-first scan so it cannot starve recovery for every
         // other conversation.
@@ -73,6 +73,7 @@ export async function recoverConversationWork(args: {
             state: args.state,
           });
         }
+        errors.push(recoveryError(conversationId, error));
         return;
       }
       try {
@@ -151,10 +152,20 @@ export async function recoverConversationWork(args: {
           logInfo("conversation.work.pending.requeued");
         }
       } catch (error) {
-        logException(error, "conversation.work.recovery.failed");
+        // The conversation stays active, so the next heartbeat retries it.
+        errors.push(recoveryError(conversationId, error));
       }
     });
   }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "Conversation work recovery failed");
+  }
 
   return result;
+}
+
+function recoveryError(conversationId: string, cause: unknown): Error {
+  return new Error(`Conversation work recovery failed: ${conversationId}`, {
+    cause,
+  });
 }

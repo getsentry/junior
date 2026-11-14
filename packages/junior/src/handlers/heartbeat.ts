@@ -30,6 +30,9 @@ export async function GET(
       nowMs,
       showReviewItem: options.showReviewItem,
     }).catch((error) => {
+      // best-effort: owning boundary: this waitUntil task runs after the 202
+      // response, so no caller can receive the error. Failed work stays pending
+      // for the next heartbeat.
       logException(error, "heartbeat.run.failed", {
         "app.heartbeat.now_ms": nowMs,
       });

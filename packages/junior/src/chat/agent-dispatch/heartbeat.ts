@@ -8,7 +8,7 @@ import {
 } from "@/chat/plugins/agent-hooks";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
-import { logException, logInfo } from "@/chat/logging";
+import { logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -71,6 +71,7 @@ export async function runPluginHeartbeats(args: {
   showReviewItem?: ShowReviewItem | undefined;
 }): Promise<void> {
   let count = 0;
+  const errors: unknown[] = [];
   for (const plugin of getPlugins()) {
     const pluginName = plugin.manifest.name;
     if (count >= (args.limit ?? DEFAULT_PLUGIN_LIMIT)) {
@@ -106,10 +107,14 @@ export async function runPluginHeartbeats(args: {
         });
       }
     } catch (error) {
-      logException(error, "plugin.heartbeat.failed", {
-        "app.plugin.name": pluginName,
-      });
+      // One plugin's failure must not skip the plugins after it.
+      errors.push(
+        new Error(`Plugin heartbeat failed: ${pluginName}`, { cause: error }),
+      );
     }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "Plugin heartbeats failed");
   }
 }
 
@@ -127,6 +132,7 @@ export async function recoverPendingDispatchMailboxAppends(args: {
     0,
     DISPATCH_MAILBOX_APPEND_LIMIT,
   );
+  const errors: unknown[] = [];
   for (const id of ids) {
     try {
       const dispatch = await getDispatchRecord(id);
@@ -147,10 +153,16 @@ export async function recoverPendingDispatchMailboxAppends(args: {
         queue: args.conversationWorkQueue,
       });
     } catch (error) {
-      logException(error, "dispatch.mailbox.append_recovery.failed", {
-        "app.dispatch.id": id,
-      });
+      // The item stays pending, so the next heartbeat retries it.
+      errors.push(
+        new Error(`Dispatch mailbox append recovery failed: ${id}`, {
+          cause: error,
+        }),
+      );
     }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "Dispatch mailbox append recovery failed");
   }
 }
 
@@ -162,6 +174,7 @@ export async function recoverPendingAgentInvocationMailboxAppends(args: {
   const invocations = await listPendingAgentInvocationMailboxAppends(
     AGENT_INVOCATION_MAILBOX_APPEND_LIMIT,
   );
+  const errors: unknown[] = [];
   for (const invocation of invocations) {
     try {
       await enqueueAgentInvocation(invocation, {
@@ -169,10 +182,20 @@ export async function recoverPendingAgentInvocationMailboxAppends(args: {
         queue: args.conversationWorkQueue,
       });
     } catch (error) {
-      logException(error, "agent.invocation.mailbox.append_recovery.failed", {
-        "app.agent.invocation_id": invocation.invocationId,
-      });
+      // The item stays pending, so the next heartbeat retries it.
+      errors.push(
+        new Error(
+          `Agent invocation mailbox append recovery failed: ${invocation.invocationId}`,
+          { cause: error },
+        ),
+      );
     }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(
+      errors,
+      "Agent invocation mailbox append recovery failed",
+    );
   }
 }
 
@@ -184,6 +207,7 @@ export async function recoverPendingAgentInvocationResults(args: {
   const invocations = await listPendingAgentInvocationResults(
     AGENT_INVOCATION_MAILBOX_APPEND_LIMIT,
   );
+  const errors: unknown[] = [];
   for (const invocation of invocations) {
     try {
       await recordSubagentEnded(invocation);
@@ -192,10 +216,17 @@ export async function recoverPendingAgentInvocationResults(args: {
         queue: args.conversationWorkQueue,
       });
     } catch (error) {
-      logException(error, "agent.invocation.result.recovery.failed", {
-        "app.agent.invocation_id": invocation.invocationId,
-      });
+      // The item stays pending, so the next heartbeat retries it.
+      errors.push(
+        new Error(
+          `Agent invocation result recovery failed: ${invocation.invocationId}`,
+          { cause: error },
+        ),
+      );
     }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "Agent invocation result recovery failed");
   }
 }
 
@@ -212,30 +243,48 @@ export async function runHeartbeat(args: {
   const events =
     args.events ??
     createEventAppPublisher({ conversationWork: () => ({ queue }) });
+  const errors: unknown[] = [];
+  // Each step runs even when an earlier one fails. Failed work stays pending
+  // for the next heartbeat, and every failure reaches the heartbeat boundary.
+  const step = async (run: () => Promise<unknown>): Promise<void> => {
+    try {
+      await run();
+    } catch (error) {
+      errors.push(error);
+    }
+  };
   // Runs before result recovery, so an invocation that this ends is sent to
   // its parent in the same heartbeat.
   const endStoppedChildWork = createEndStoppedChildWork({ queue });
-  await recoverConversationWork({
-    beforeWorkStops: async (conversationId, inboundMessageIds) => {
-      await endStoppedChildWork(conversationId, inboundMessageIds);
-      await failStoppedDispatch(conversationId);
-    },
-    nowMs: args.nowMs,
-    queue,
-  });
-  await recoverPendingDispatchMailboxAppends({
-    conversationWorkQueue: queue,
-    nowMs: args.nowMs,
-  });
-  await recoverPendingAgentInvocationMailboxAppends({
-    conversationWorkQueue: queue,
-    nowMs: args.nowMs,
-  });
-  await recoverPendingAgentInvocationResults({
-    conversationWorkQueue: queue,
-    nowMs: args.nowMs,
-  });
-  try {
+  await step(() =>
+    recoverConversationWork({
+      beforeWorkStops: async (conversationId, inboundMessageIds) => {
+        await endStoppedChildWork(conversationId, inboundMessageIds);
+        await failStoppedDispatch(conversationId);
+      },
+      nowMs: args.nowMs,
+      queue,
+    }),
+  );
+  await step(() =>
+    recoverPendingDispatchMailboxAppends({
+      conversationWorkQueue: queue,
+      nowMs: args.nowMs,
+    }),
+  );
+  await step(() =>
+    recoverPendingAgentInvocationMailboxAppends({
+      conversationWorkQueue: queue,
+      nowMs: args.nowMs,
+    }),
+  );
+  await step(() =>
+    recoverPendingAgentInvocationResults({
+      conversationWorkQueue: queue,
+      nowMs: args.nowMs,
+    }),
+  );
+  await step(async () => {
     const dispatchCount = await runScheduledAutomationHeartbeat({
       conversationWorkQueue: queue,
       nowMs: args.nowMs,
@@ -245,30 +294,21 @@ export async function runHeartbeat(args: {
         "app.dispatch.count": dispatchCount,
       });
     }
-  } catch (error) {
-    logException(error, "scheduled_automations.heartbeat.failed");
-  }
-  try {
-    await runTimerWatchHeartbeat({ nowMs: args.nowMs, queue });
-  } catch (error) {
-    // Timer claims expire for retry; a failure must not block plugin heartbeats.
-    logException(error, "watches.timer.heartbeat.failed");
-  }
-  await runPluginHeartbeats({
-    conversationWorkQueue: queue,
-    events,
-    nowMs: args.nowMs,
-    showReviewItem: args.showReviewItem,
   });
-  try {
-    // Last, so a long first run does not delay the work above.
-    await backfillCacheWarmingGaps({ nowMs: args.nowMs });
-  } catch (error) {
-    logException(error, "cache_warming.backfill.failed");
-  }
-  try {
-    await runSavingsRefillSlice({ nowMs: args.nowMs });
-  } catch (error) {
-    logException(error, "cache_warming.savings_refill.failed");
+  // Timer claims expire, so a failed timer is retried.
+  await step(() => runTimerWatchHeartbeat({ nowMs: args.nowMs, queue }));
+  await step(() =>
+    runPluginHeartbeats({
+      conversationWorkQueue: queue,
+      events,
+      nowMs: args.nowMs,
+      showReviewItem: args.showReviewItem,
+    }),
+  );
+  // Last, so a long first run does not delay the work above.
+  await step(() => backfillCacheWarmingGaps({ nowMs: args.nowMs }));
+  await step(() => runSavingsRefillSlice({ nowMs: args.nowMs }));
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "Heartbeat steps failed");
   }
 }
