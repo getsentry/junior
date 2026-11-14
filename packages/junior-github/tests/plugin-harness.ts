@@ -125,6 +125,12 @@ export function createPluginHarness(fixture: GitHubFixture) {
           if (!openNotices.delete(input.dedupeKey)) return;
           recorded.closedNotices.push(input.dedupeKey);
         },
+        async closeMany(inputs) {
+          for (const input of inputs) {
+            if (!openNotices.delete(input.dedupeKey)) continue;
+            recorded.closedNotices.push(input.dedupeKey);
+          }
+        },
       };
     },
   };

@@ -1,6 +1,7 @@
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import type {
   PluginConversationReviewItems,
+  PluginReviewItemClose,
   PluginRoute,
 } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
@@ -181,21 +182,25 @@ function route(
   const isReady = (dedupeKey: string) => dedupeKey === DEDUPE_KEY;
   const reviewItems: PluginConversationReviewItems = {
     forConversation(conversationId) {
+      const close = async (input: PluginReviewItemClose) => {
+        if (!isReady(input.dedupeKey)) {
+          otherCloses.push(input.dedupeKey);
+          return;
+        }
+        if (failures.close > 0) {
+          failures.close -= 1;
+          throw new Error("review desk is down");
+        }
+        calls.push({ conversationId, input, kind: "close" });
+      };
       return {
         async upsert(notice) {
           if (!isReady(notice.dedupeKey)) return;
           calls.push({ conversationId, kind: "upsert", notice });
         },
-        async close(input) {
-          if (!isReady(input.dedupeKey)) {
-            otherCloses.push(input.dedupeKey);
-            return;
-          }
-          if (failures.close > 0) {
-            failures.close -= 1;
-            throw new Error("review desk is down");
-          }
-          calls.push({ conversationId, input, kind: "close" });
+        close,
+        async closeMany(inputs) {
+          for (const input of inputs) await close(input);
         },
       };
     },

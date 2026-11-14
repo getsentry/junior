@@ -89,7 +89,7 @@ function route(
   // The next-action item has its own tests.
   const reviewItems: PluginConversationReviewItems = {
     forConversation() {
-      return { async upsert() {}, async close() {} };
+      return { async upsert() {}, async close() {}, async closeMany() {} };
     },
   };
   const [webhook] = githubPlugin().hooks!.routes!({

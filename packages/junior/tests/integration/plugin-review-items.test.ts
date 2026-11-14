@@ -150,6 +150,51 @@ describe("plugin review items", () => {
     expect(checkedReply).toBe(false);
   });
 
+  it("closes the open items with several keys at once", async () => {
+    await conversation("slack:C1:1.000001", "public");
+    const items = createPluginReviewItems({
+      conversationId: "slack:C1:1.000001",
+      plugin: "github",
+      show,
+    });
+    await items.upsert({ ...NOTICE, assigneeIdentityIds: [] });
+    await items.upsert({
+      ...NOTICE,
+      assigneeIdentityIds: [],
+      dedupeKey: "other-key",
+    });
+    const first = await getOpenReviewItemByDedupeKey(
+      getDb(),
+      `plugin:github:${NOTICE.dedupeKey}`,
+      TENANT,
+    );
+    const second = await getOpenReviewItemByDedupeKey(
+      getDb(),
+      "plugin:github:other-key",
+      TENANT,
+    );
+    shown = [];
+
+    // A key with no open item is left out.
+    await items.closeMany([
+      { dedupeKey: NOTICE.dedupeKey, reason: "Merged.", status: "done" },
+      { dedupeKey: "missing-key", reason: "Gone.", status: "dismissed" },
+      { dedupeKey: "other-key", reason: "Gone.", status: "dismissed" },
+    ]);
+    expect(await getReviewItem(getDb(), first!.id)).toMatchObject({
+      closeReason: "Merged.",
+      status: "done",
+    });
+    expect(await getReviewItem(getDb(), second!.id)).toMatchObject({
+      closeReason: "Gone.",
+      status: "dismissed",
+    });
+    expect(shown).toEqual([first!.id, second!.id]);
+    // No input reads nothing and changes nothing.
+    await items.closeMany([]);
+    expect(shown).toEqual([first!.id, second!.id]);
+  });
+
   it("keeps one open notice per plugin key and closes it", async () => {
     await conversation("slack:C1:1.000001", "public");
     const ana = await person("ana@example.com");

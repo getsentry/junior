@@ -2,7 +2,10 @@ import type {
   PluginReviewItems,
   PluginReviewNotice,
 } from "@sentry/junior-plugin-api";
-import { readConversationAccessFromSql } from "@/api/conversations/access";
+import {
+  readConversationAccessFromSql,
+  type ConversationAccess,
+} from "@/api/conversations/access";
 import { PLUGIN_REVIEW_ITEM_KEY_PREFIX } from "@/chat/review-items/access";
 import { getDb } from "@/chat/db";
 import { readIdentityByIdFromSql } from "@/chat/plugins/viewer";
@@ -11,6 +14,7 @@ import type { ShowReviewItem } from "./changes";
 import {
   closeReviewItem,
   getOpenReviewItemByDedupeKey,
+  getOpenReviewItemsByDedupeKeys,
   insertReviewItem,
   updateReviewItemContent,
   type ReviewItemContent,
@@ -53,12 +57,24 @@ export function createPluginReviewItems(args: {
   const { conversationId, show } = args;
   const scopedKey = (dedupeKey: string) =>
     `${PLUGIN_REVIEW_ITEM_KEY_PREFIX}${args.plugin}:${dedupeKey}`;
-  const readAccess = async (db: JuniorDatabase) => {
-    const access = (
-      await readConversationAccessFromSql(db, [conversationId])
-    ).get(conversationId);
-    if (!access) throw new Error(`Conversation ${conversationId} is not found`);
-    return access;
+  // One client serves one webhook or heartbeat, so it reads the access of
+  // its Conversation once. A failed read is not kept, so the next call tries
+  // again.
+  let pendingAccess: Promise<ConversationAccess> | undefined;
+  const readAccess = (db: JuniorDatabase): Promise<ConversationAccess> => {
+    pendingAccess ??= (async () => {
+      const access = (
+        await readConversationAccessFromSql(db, [conversationId])
+      ).get(conversationId);
+      if (!access) {
+        throw new Error(`Conversation ${conversationId} is not found`);
+      }
+      return access;
+    })().catch((error: unknown) => {
+      pendingAccess = undefined;
+      throw error;
+    });
+    return pendingAccess;
   };
   return {
     async upsert(notice: PluginReviewNotice) {
@@ -136,6 +152,30 @@ export function createPluginReviewItems(args: {
       });
       if (closed) {
         await show(item.id);
+      }
+    },
+    async closeMany(inputs) {
+      if (inputs.length === 0) return;
+      const db = getDb();
+      const access = await readAccess(db);
+      const items = await getOpenReviewItemsByDedupeKeys(
+        db,
+        inputs.map((input) => scopedKey(input.dedupeKey)),
+        access.tenant,
+      );
+      const itemByKey = new Map(items.map((item) => [item.dedupeKey, item]));
+      for (const input of inputs) {
+        const item = itemByKey.get(scopedKey(input.dedupeKey));
+        if (!item) continue;
+        const closed = await closeReviewItem(db, {
+          id: item.id,
+          nowMs: Date.now(),
+          reason: input.reason,
+          status: input.status,
+        });
+        if (closed) {
+          await show(item.id);
+        }
       }
     },
   };
