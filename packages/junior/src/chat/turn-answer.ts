@@ -147,6 +147,6 @@ export function remindMissingAnswer(
       role: "user",
       content: [{ type: "text", text: MISSING_ANSWER_REMINDER }],
       timestamp: Date.now(),
-    } as PiMessage,
+    },
   ];
 }

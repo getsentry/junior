@@ -1,5 +1,4 @@
 import { performance } from "node:perf_hooks";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
   type AssistantMessageEvent,
@@ -13,6 +12,7 @@ import {
   streamSimple,
 } from "@earendil-works/pi-ai/compat";
 import * as Sentry from "@/chat/sentry";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 import {
   extractGenAiUsageAttributes,
   getLogContextAttributesForSpan,
@@ -52,7 +52,7 @@ function attributeModeForPrivacy(
 function buildChatStartAttributes(
   model: Model<Api>,
   context: Context,
-  options: Parameters<StreamFn>[2],
+  options: Parameters<AgentRequestStreamFn>[2],
   mode: GenAiAttributeMode,
   conversationPrivacy: ConversationPrivacy | undefined,
   promptName: string | undefined,
@@ -207,8 +207,8 @@ function createResponseTiming(requestStartedAtMs: number): {
 // loop could have delayed the request on Junior's side.
 function traceResponseHeaders(
   span: Sentry.Span,
-  options: Parameters<StreamFn>[2],
-): Parameters<StreamFn>[2] {
+  options: Parameters<AgentRequestStreamFn>[2],
+): Parameters<AgentRequestStreamFn>[2] {
   const eventLoopStart = performance.eventLoopUtilization();
   const onResponse = options?.onResponse;
   return {
@@ -238,8 +238,8 @@ function traceResponseHeaders(
 // result of the wrapped hook, so it never changes the payload itself.
 function traceRequestPayload(
   span: Sentry.Span,
-  options: Parameters<StreamFn>[2],
-): Parameters<StreamFn>[2] {
+  options: Parameters<AgentRequestStreamFn>[2],
+): Parameters<AgentRequestStreamFn>[2] {
   const onPayload = options?.onPayload;
   return {
     ...options,
@@ -296,16 +296,16 @@ function relayStream(
  */
 export function createTracedStreamFn(
   baseOrOptions:
-    | StreamFn
+    | AgentRequestStreamFn
     | {
         conversationPrivacy?: ConversationPrivacy | undefined;
-        base?: StreamFn;
+        base?: AgentRequestStreamFn;
         endAttributes?: (
           message: AssistantMessage,
         ) => Record<string, TraceAttributeValue> | undefined;
         promptName?: string;
       } = streamSimple,
-): StreamFn {
+): AgentRequestStreamFn {
   const base =
     typeof baseOrOptions === "function"
       ? baseOrOptions

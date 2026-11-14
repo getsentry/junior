@@ -192,7 +192,7 @@ export function userMessage(text: string): PiMessage {
     role: "user",
     content: [{ type: "text", text }],
     timestamp: Date.now(),
-  } as PiMessage;
+  };
 }
 
 function userMessageContent(message: PiMessage): unknown[] {

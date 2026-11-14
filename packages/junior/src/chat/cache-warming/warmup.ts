@@ -17,7 +17,6 @@
  * Work for an old idle period then cannot change a newer one.
  */
 import { randomUUID } from "node:crypto";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   streamSimple,
   type AssistantMessage,
@@ -25,6 +24,7 @@ import {
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { getChatConfig } from "@/chat/config";
 import { logInfo, logWarn, withSpan } from "@/chat/logging";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import type { ToolDefinitionsKey } from "@/chat/tools/registry";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
@@ -482,7 +482,7 @@ export interface CacheWarmingRecorder {
    * wrapper also sets the cache retention that warming assumes while warming
    * is on.
    */
-  wrap(base?: StreamFn): StreamFn;
+  wrap(base?: AgentRequestStreamFn): AgentRequestStreamFn;
   /** Record the finished assistant message of the last model request. */
   record(message: AssistantMessage): Promise<void>;
   /** Mark that the tools of the last request returned. */

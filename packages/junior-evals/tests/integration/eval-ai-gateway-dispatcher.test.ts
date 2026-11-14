@@ -1,4 +1,5 @@
 import http from "node:http";
+import { normalizeContext } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   streamAnthropic,
@@ -82,7 +83,7 @@ describe("eval AI Gateway dispatcher", () => {
         resolveGatewayModel(
           "openai/gpt-5.6-sol",
         ) as Model<"anthropic-messages">,
-        { messages: [userMessage] },
+        normalizeContext({ messages: [userMessage] }),
         {
           client: {
             beta: {

@@ -1,4 +1,4 @@
-import type { StreamFn } from "@earendil-works/pi-agent-core";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import type {
   AgentAttachment,
@@ -18,14 +18,17 @@ export interface AgentRunner {
 
 /** Compose the agent executor with stable host dependencies. */
 export function createAgentRunner(
-  execute: (run: AgentRun, streamFn?: StreamFn) => Promise<AgentRunOutcome>,
+  execute: (
+    run: AgentRun,
+    streamFn?: AgentRequestStreamFn,
+  ) => Promise<AgentRunOutcome>,
   options?: {
     attachmentStorage?: AttachmentStorage;
     backgroundCompactionQueue?: BackgroundCompactionQueue;
     bindMessageAgent?: AgentEnvironment["bindMessageAgent"];
     bindSpawnAgent?: AgentEnvironment["bindSpawnAgent"];
     conversationWorkQueue?: ConversationWorkQueue;
-    streamFn?: StreamFn;
+    streamFn?: AgentRequestStreamFn;
     tracePropagation?: SandboxEgressTracePropagationConfig | undefined;
   },
 ): AgentRunner {

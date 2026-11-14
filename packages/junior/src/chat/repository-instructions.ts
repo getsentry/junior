@@ -604,7 +604,7 @@ export function buildAgentsInstructionsMessage(args: {
     role: "user",
     content: [{ type: "text", text: renderAgentsInstructions(args) }],
     timestamp: args.timestamp ?? Date.now(),
-  } as PiMessage;
+  };
 }
 
 /** Read the latest effective AGENTS.md state from model-visible history. */

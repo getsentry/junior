@@ -324,7 +324,7 @@ export function buildSteeringPiMessage(
     role: "user",
     content: userContentParts,
     timestamp: message.timestampMs ?? Date.now(),
-  } as PiMessage;
+  };
 }
 
 /**

@@ -235,7 +235,7 @@ export function toCanonicalInputMessage(
     };
   }
   // AssistantMessage appearing as a prior turn in input context
-  return toCanonicalOutputMessage(message);
+  return toCanonicalOutputMessage(message as AssistantMessage);
 }
 
 /** Summarize a message list without exposing raw message content. */
