@@ -248,6 +248,6 @@ async function resolveSentryTraceLink(
 export const sentryTraceLinks: PluginObjectLinkDefinition = {
   canView: canViewSentryTraceLink,
   filters: SENTRY_TRACE_LINK_FILTERS,
-  objectType: "trace",
+  objectTypes: ["trace"],
   resolve: resolveSentryTraceLink,
 };

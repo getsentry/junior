@@ -267,36 +267,38 @@ export function createReviewItemRoutes(services: {
             : undefined),
         });
       }
-      const open = await searchReviewItems(db, reader, {
-        ...filters,
-        limit: query.limit + 1,
-        statuses: ["open"],
-        ...(filters.sort
-          ? {
-              order: { needsUserId: viewer.id },
-              ...(after
-                ? {
-                    afterWaiting: {
-                      createdAt: after.createdAt,
-                      id: after.id,
-                      needsUser: after.needsUser === true,
-                    },
-                  }
-                : undefined),
-            }
-          : { order: "oldest", ...(after ? { after } : undefined) }),
-      });
-      const page = open.slice(0, query.limit);
-      const last = page.at(-1);
-      // The archived matches come once, with the first page.
-      const archived =
+      // The archived matches come once, with the first page. They do not
+      // depend on the open page, so both reads run at once.
+      const [open, archived] = await Promise.all([
+        searchReviewItems(db, reader, {
+          ...filters,
+          limit: query.limit + 1,
+          statuses: ["open"],
+          ...(filters.sort
+            ? {
+                order: { needsUserId: viewer.id },
+                ...(after
+                  ? {
+                      afterWaiting: {
+                        createdAt: after.createdAt,
+                        id: after.id,
+                        needsUser: after.needsUser === true,
+                      },
+                    }
+                  : undefined),
+              }
+            : { order: "oldest", ...(after ? { after } : undefined) }),
+        }),
         (filters.query || query.include === "archived") && !after
-          ? await searchReviewItems(db, reader, {
+          ? searchReviewItems(db, reader, {
               ...filters,
               limit: ARCHIVED_LIMIT + 1,
               statuses: ["done", "dismissed"],
             })
-          : [];
+          : [],
+      ]);
+      const page = open.slice(0, query.limit);
+      const last = page.at(-1);
       return jsonResponse(reviewItemListSchema, {
         items: [...page, ...archived.slice(0, ARCHIVED_LIMIT)].map((item) =>
           reviewItemPayload(item, viewer),

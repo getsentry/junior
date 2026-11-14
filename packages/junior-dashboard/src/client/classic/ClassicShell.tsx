@@ -7,156 +7,156 @@ import {
   usePersonalSpendData,
   usePluginUserPagesData,
   useSystemData,
-} from "./api";
-import { ConnectionBanner } from "./components/ConnectionBanner";
-import { LoadingView } from "./components/LoadingView";
-import { VersionDriftBanner } from "./components/VersionDriftBanner";
+} from "../api";
+import { ConnectionBanner } from "../components/ConnectionBanner";
+import { LoadingView } from "../components/LoadingView";
+import { VersionDriftBanner } from "../components/VersionDriftBanner";
 import {
   PageContentSkeleton,
   type PageContentSkeletonVariant,
-} from "./components/PageContentSkeleton";
-import { ProfileMenu } from "./components/ProfileMenu";
+} from "../components/PageContentSkeleton";
+import { ProfileMenu } from "../components/ProfileMenu";
 import {
   DashboardChrome,
   DashboardChromeProvider,
-} from "./components/layout/DashboardChrome";
-import { CommandPalette } from "./components/CommandPalette";
-import { DashboardHeader } from "./components/layout/DashboardHeader";
-import { NavRail, NavRailProvider } from "./components/layout/NavRail";
-import { VisualViewportShell } from "./components/layout/VisualViewportShell";
+} from "../components/layout/DashboardChrome";
+import { CommandPalette } from "../components/CommandPalette";
+import { DashboardHeader } from "../components/layout/DashboardHeader";
+import { NavRail, NavRailProvider } from "../components/layout/NavRail";
+import { VisualViewportShell } from "../components/layout/VisualViewportShell";
 import {
   automationPath,
   buildConversations,
   conversationDetailTitle,
   conversationDisplayTitle,
-} from "./format";
-import { useDesktopTopBar } from "./navLayout";
-import { isNewConversationPath } from "./conversations/conversationRoutes";
-import { useDashboardServerVersion } from "./dashboard-version";
-import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
-import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
-import { useConversationData } from "./conversations/queries";
-import { readConversationStartPosition } from "./conversations/transcriptReadPosition";
-import { codeRepositoryTabs } from "./pages/code/codeRepositoryRoutes";
-import { SettingsPageLayout } from "./pages/settings/SettingsPageLayout";
+} from "../format";
+import { useDesktopTopBar } from "../navLayout";
+import { isNewConversationPath } from "../conversations/conversationRoutes";
+import { useDashboardServerVersion } from "../dashboard-version";
+import { ConversationWorkspace } from "../conversations/ConversationWorkspace";
+import { ConversationWorkspaceLoading } from "../conversations/ConversationWorkspaceLoading";
+import { useConversationData } from "../conversations/queries";
+import { readConversationStartPosition } from "../conversations/transcriptReadPosition";
+import { codeRepositoryTabs } from "../pages/code/codeRepositoryRoutes";
+import { SettingsPageLayout } from "../pages/settings/SettingsPageLayout";
 import {
   SystemPageLayout,
   SystemRouteLoading,
-} from "./pages/system/SystemPageLayout";
-import { hasWorkspaceDetailsFrame } from "./pages/system/SystemNavigation";
+} from "../pages/system/SystemPageLayout";
+import { hasWorkspaceDetailsFrame } from "../pages/system/SystemNavigation";
 import {
   isMemoryLibraryPath,
   MemoryRouteLoading,
-} from "./pages/memory/MemoryPageLayout";
+} from "../pages/memory/MemoryPageLayout";
 import {
   AutomationsPageLayout,
   hasAutomationDetailsFrame,
   AutomationsRouteLoading,
-} from "./pages/automations/AutomationsPageLayout";
-import { buildPrimaryNavItems, buildProfileNavItems } from "./primaryNav";
-import { TracedRoutes } from "./TracedRoutes";
+} from "../pages/automations/AutomationsPageLayout";
+import { buildPrimaryNavItems, buildProfileNavItems } from "../primaryNav";
+import { TracedRoutes } from "../TracedRoutes";
 import {
   ReviewDeskLoading,
   ReviewDeskPage,
-} from "./review-desk/ReviewDeskPage";
-import { useReviewItemCountData } from "./review-desk/queries";
-import { useVersionsPoll } from "./versions";
-import type { DashboardCoreData } from "./types";
+} from "../review-desk/ReviewDeskPage";
+import { useReviewItemCountData } from "../review-desk/queries";
+import { useVersionsPoll } from "../versions";
+import type { DashboardCoreData } from "../types";
 
 // Pages outside the conversation workspace load on first visit, so the
 // workspace's first paint skips their code and the chart library.
 const RepositoryPage = lazy(() =>
-  import("./pages/code/RepositoryPage").then((module) => ({
+  import("../pages/code/RepositoryPage").then((module) => ({
     default: module.RepositoryPage,
   })),
 );
 const CodePage = lazy(() =>
-  import("./pages/code/CodePage").then((module) => ({
+  import("../pages/code/CodePage").then((module) => ({
     default: module.CodePage,
   })),
 );
 const LocationDetailPage = lazy(() =>
-  import("./pages/locations/LocationDetailPage").then((module) => ({
+  import("../pages/locations/LocationDetailPage").then((module) => ({
     default: module.LocationDetailPage,
   })),
 );
 const LocationsPage = lazy(() =>
-  import("./pages/locations/LocationsPage").then((module) => ({
+  import("../pages/locations/LocationsPage").then((module) => ({
     default: module.LocationsPage,
   })),
 );
 const PeoplePage = lazy(() =>
-  import("./pages/people/PeoplePage").then((module) => ({
+  import("../pages/people/PeoplePage").then((module) => ({
     default: module.PeoplePage,
   })),
 );
 const PersonProfilePage = lazy(() =>
-  import("./pages/people/PersonProfilePage").then((module) => ({
+  import("../pages/people/PersonProfilePage").then((module) => ({
     default: module.PersonProfilePage,
   })),
 );
 const ConnectionsPage = lazy(() =>
-  import("./pages/settings/ConnectionsPage").then((module) => ({
+  import("../pages/settings/ConnectionsPage").then((module) => ({
     default: module.ConnectionsPage,
   })),
 );
 const McpSettingsPage = lazy(() =>
-  import("./pages/settings/McpSettingsPage").then((module) => ({
+  import("../pages/settings/McpSettingsPage").then((module) => ({
     default: module.McpSettingsPage,
   })),
 );
 const PersonalTokensPage = lazy(() =>
-  import("./pages/settings/PersonalTokensPage").then((module) => ({
+  import("../pages/settings/PersonalTokensPage").then((module) => ({
     default: module.PersonalTokensPage,
   })),
 );
 const SettingsPage = lazy(() =>
-  import("./pages/settings/SettingsPage").then((module) => ({
+  import("../pages/settings/SettingsPage").then((module) => ({
     default: module.SettingsPage,
   })),
 );
 const SystemPage = lazy(() =>
-  import("./pages/system/SystemPage").then((module) => ({
+  import("../pages/system/SystemPage").then((module) => ({
     default: module.SystemPage,
   })),
 );
 const WorkspaceFormPage = lazy(() =>
-  import("./pages/system/WorkspaceFormPage").then((module) => ({
+  import("../pages/system/WorkspaceFormPage").then((module) => ({
     default: module.WorkspaceFormPage,
   })),
 );
 const WorkspacesPage = lazy(() =>
-  import("./pages/system/WorkspacesPage").then((module) => ({
+  import("../pages/system/WorkspacesPage").then((module) => ({
     default: module.WorkspacesPage,
   })),
 );
 const AutomationPage = lazy(() =>
-  import("./pages/automations/AutomationPage").then((module) => ({
+  import("../pages/automations/AutomationPage").then((module) => ({
     default: module.AutomationPage,
   })),
 );
 const AutomationRunsPage = lazy(() =>
-  import("./pages/automations/AutomationRunsPage").then((module) => ({
+  import("../pages/automations/AutomationRunsPage").then((module) => ({
     default: module.AutomationRunsPage,
   })),
 );
 const AutomationsPage = lazy(() =>
-  import("./pages/automations/AutomationsPage").then((module) => ({
+  import("../pages/automations/AutomationsPage").then((module) => ({
     default: module.AutomationsPage,
   })),
 );
 const MemoryPermalinkRoute = lazy(() =>
-  import("./pages/user/PluginUserPage").then((module) => ({
+  import("../pages/user/PluginUserPage").then((module) => ({
     default: module.MemoryPermalinkRoute,
   })),
 );
 const PluginUserPageRoute = lazy(() =>
-  import("./pages/user/PluginUserPage").then((module) => ({
+  import("../pages/user/PluginUserPage").then((module) => ({
     default: module.PluginUserPageRoute,
   })),
 );
 const AdminPage = lazy(() =>
-  import("./pages/admin/AdminPage").then((module) => ({
+  import("../pages/admin/AdminPage").then((module) => ({
     default: module.AdminPage,
   })),
 );
@@ -216,8 +216,8 @@ const settingsRoutes: {
   },
 ];
 
-/** Render the dashboard SPA shell and route-level loading states. */
-export function DashboardShell() {
+/** Render the current dashboard UI and its route-level loading states. */
+export function ClassicShell() {
   const location = useLocation();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);

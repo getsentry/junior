@@ -17,7 +17,8 @@ export interface ObjectLinkType {
   /** Whether the viewer may see the object. Called before `resolve`. */
   canView(viewer: User, url: URL): Promise<boolean>;
   filters: readonly ObjectLinkFilter[];
-  objectType: ObjectType;
+  /** The object types that `resolve` can return. */
+  objectTypes: readonly ObjectType[];
   /** `junior` for core, or the plugin name. */
   owner: string;
   /** The tool that reads the object live, for a Turn after an attach. */
@@ -25,6 +26,11 @@ export interface ObjectLinkType {
   resolve(viewer: User, url: URL): Promise<ObjectAnnotation | undefined>;
   /** Show the web page card when `canView` returns false. */
   webPageFallback?: true;
+}
+
+/** A link type name for errors, such as `github/task/code_change`. */
+export function linkTypeName(linkType: ObjectLinkType): string {
+  return `${linkType.owner}/${linkType.objectTypes.join("/")}`;
 }
 
 function compareSpecificity(left: number[], right: number[]): number {
@@ -84,7 +90,7 @@ export function assertNoObjectLinkConflicts(
         filtersOverlap(left.filter, right.filter)
       ) {
         throw new Error(
-          `Link types "${left.linkType.owner}/${left.linkType.objectType}" and "${right.linkType.owner}/${right.linkType.objectType}" claim the same URLs with equal filters.`,
+          `Link types "${linkTypeName(left.linkType)}" and "${linkTypeName(right.linkType)}" claim the same URLs with equal filters.`,
         );
       }
     }

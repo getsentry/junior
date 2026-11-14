@@ -183,7 +183,11 @@ export interface PluginObjectLinkDefinition {
    */
   canView(ctx: ObjectLinkContext, url: URL): Promise<boolean>;
   filters: ObjectLinkFilter[];
-  objectType: ObjectType;
+  /**
+   * The object types that `resolve` can return. One URL can open more than
+   * one type, such as a GitHub issue URL that opens a pull request.
+   */
+  objectTypes: ObjectType[];
   /**
    * Read the card. Junior calls it only after `canView` returns true.
    * Return nothing for a missing object.

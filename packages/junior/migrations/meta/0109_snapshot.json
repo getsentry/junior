@@ -1,5 +1,5 @@
 {
-  "id": "87a9b091-18ae-47d4-86d0-7d6ca3cb12ff",
+  "id": "1880d763-2db8-4b02-931d-e59c0840186a",
   "prevId": "0841b571-f89e-4038-a529-b2c840c32e76",
   "version": "7",
   "dialect": "postgresql",
@@ -2473,52 +2473,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.junior_conversation_links": {
-      "name": "junior_conversation_links",
-      "schema": "",
-      "columns": {
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "position": {
-          "name": "position",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "url": {
-          "name": "url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "junior_conversation_links_pk": {
-          "name": "junior_conversation_links_pk",
-          "columns": [
-            "conversation_id",
-            "seq",
-            "position"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.junior_conversation_metrics": {
       "name": "junior_conversation_metrics",
       "schema": "",
@@ -4791,6 +4745,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": 24
+        },
+        "preferences": {
+          "name": "preferences",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
         },
         "created_at": {
           "name": "created_at",
