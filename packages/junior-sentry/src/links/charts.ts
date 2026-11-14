@@ -36,7 +36,7 @@ type ChartFacts = Extract<ObjectFacts, { type: "chart" }>;
 type Series = ChartFacts["series"][number];
 
 /** What a chart card shows, read with the viewer's own token. */
-interface SentryChart {
+export interface SentryChart {
   display: ChartFacts["display"];
   displayType: string;
   title: string;
@@ -74,7 +74,7 @@ const UNIT_NAMES: Record<string, string> = {
 };
 
 /** Name a time range the way Sentry's date picker does. */
-function rangeLabel(range: {
+export function rangeLabel(range: {
   statsPeriod?: string;
   start?: string;
   end?: string;
@@ -95,8 +95,8 @@ function text(value: string): string {
   return value.trim().slice(0, 160) || "(no value)";
 }
 
-// Average neighbor buckets down to `size` points, so the shape stays.
-function downsample(points: number[], size: number): number[] {
+/** Average neighbor buckets down to `size` points, so the shape stays. */
+export function downsample(points: number[], size: number): number[] {
   if (points.length <= size) return points;
   return Array.from({ length: size }, (_, index) => {
     const from = Math.floor((index * points.length) / size);
@@ -161,7 +161,7 @@ function groupLabel(
  * refuses it: the viewer has no Sentry account, may not see a queried
  * project, or the URL holds a query that Sentry rejects.
  */
-async function readExploreChart(
+export async function readExploreChart(
   ctx: ObjectLinkContext,
   origin: string,
   link: SentryExploreLink,
@@ -231,7 +231,8 @@ function fillGaps(values: Array<number | null>): number[] {
   });
 }
 
-function urlHash(url: URL): string {
+/** Hash a URL for a cache key or a card key. */
+export function urlHash(url: URL): string {
   return createHash("sha256").update(url.href).digest("hex");
 }
 
@@ -259,13 +260,13 @@ async function canViewSentryChartLink(
   return (await viewerChart(ctx, url)) !== null;
 }
 
-async function resolveSentryChartLink(
-  ctx: ObjectLinkContext,
+/** Draw the chart card of a chart read from `url`. */
+export function chartCard(
   url: URL,
-): Promise<ObjectAnnotation | undefined> {
-  const chart = await viewerChart(ctx, url);
-  const facts = chart && fitFacts(chart);
-  if (!chart || !facts) return undefined;
+  chart: SentryChart,
+): ObjectAnnotation | undefined {
+  const facts = fitFacts(chart);
+  if (!facts) return undefined;
   return {
     kind: "object",
     objectType: "chart",
@@ -277,6 +278,14 @@ async function resolveSentryChartLink(
     displayType: chart.displayType,
     facts,
   };
+}
+
+async function resolveSentryChartLink(
+  ctx: ObjectLinkContext,
+  url: URL,
+): Promise<ObjectAnnotation | undefined> {
+  const chart = await viewerChart(ctx, url);
+  return chart ? chartCard(url, chart) : undefined;
 }
 
 /** Sentry Explore charts, on sentry.io and customer domains. */
