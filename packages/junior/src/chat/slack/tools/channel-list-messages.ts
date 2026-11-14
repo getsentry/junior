@@ -127,6 +127,7 @@ export const slackChannelListMessagesToolDefinition = zodToolDefinition({
 export function createSlackChannelListMessagesTool(context: SlackToolContext) {
   return zodTool({
     ...slackChannelListMessagesToolDefinition,
+    describeProgress: () => "Reading channel history",
     execute: async ({
       channel_id,
       limit,

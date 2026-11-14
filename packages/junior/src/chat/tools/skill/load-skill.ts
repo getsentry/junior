@@ -99,6 +99,11 @@ export function createLoadSkillTool(
   },
 ) {
   return zodTool({
+    // Name only skills from the list, never a name the model made up.
+    describeProgress: ({ skill_name }) =>
+      availableSkills.some((skill) => skill.name === skill_name)
+        ? `Loading ${skill_name} skill`
+        : "Loading a skill",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

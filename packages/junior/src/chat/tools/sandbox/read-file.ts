@@ -1,3 +1,4 @@
+import path from "node:path";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import * as z from "zod";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
@@ -40,6 +41,8 @@ export const readFileToolDefinition = zodToolDefinition({
 export function createReadFileTool() {
   return zodTool({
     ...readFileToolDefinition,
+    describeProgress: ({ path: filePath }) =>
+      `Reading ${path.posix.basename(filePath)}`,
     execute: async () => {
       throw new Error(
         "readFile can only run when sandbox execution is enabled.",

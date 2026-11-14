@@ -130,6 +130,7 @@ export function createSpawnAgentTool(
 ) {
   return zodTool({
     ...spawnAgentToolDefinition,
+    describeProgress: () => "Starting a child agent",
     execute: async (input, options) => {
       if (!options.toolCallId) {
         throw new ToolInputError("spawnAgent requires an active tool call ID");

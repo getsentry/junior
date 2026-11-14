@@ -27,6 +27,7 @@ export function createViewImageTool(
   deps: ViewImageToolDeps = {},
 ) {
   return zodTool({
+    describeProgress: () => "Viewing an image",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

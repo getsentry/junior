@@ -55,6 +55,10 @@ export function createWebFetchTool(
   const override = hooks.toolOverrides?.webFetch;
   return zodTool({
     ...webFetchToolDefinition,
+    describeProgress: ({ url }) => {
+      const host = URL.parse(url)?.hostname;
+      return host ? `Fetching ${host}` : "Fetching a page";
+    },
     execute: async ({ url }) => {
       if (override?.execute) {
         return override.execute({ url });

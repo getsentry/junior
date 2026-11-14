@@ -2,7 +2,10 @@ import { ownedObjectAnnotationSchema } from "@sentry/junior-plugin-api";
 import { setSpanAttributes } from "@/chat/logging";
 import { McpToolError } from "@/chat/mcp/errors";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
-import { parseMcpProviderFromToolName } from "@/chat/mcp/tool-name";
+import {
+  mcpProviderLabel,
+  parseMcpProviderFromToolName,
+} from "@/chat/mcp/tool-name";
 import * as z from "zod";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -62,6 +65,14 @@ function missingToolMessage(toolName: string, provider: string | undefined) {
 export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
   return zodTool({
     approvalMode: "auto",
+    describeProgress: ({ tool_name }) => {
+      const activeTool = mcpToolManager
+        .getResolvedActiveTools()
+        .find((candidate) => candidate.name === tool_name);
+      return activeTool
+        ? `Calling ${mcpProviderLabel(activeTool.provider)}`
+        : "Calling an MCP tool";
+    },
     annotations: {
       destructiveHint: true,
       idempotentHint: false,

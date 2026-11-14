@@ -94,6 +94,7 @@ export function createWebSearchTool(
 ) {
   return zodTool({
     ...webSearchToolDefinition,
+    describeProgress: () => "Searching the web",
     execute: async ({ query, max_results }) => {
       if (override?.execute) {
         return override.execute({ query, max_results });

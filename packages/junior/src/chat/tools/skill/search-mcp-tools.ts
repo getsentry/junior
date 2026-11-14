@@ -3,6 +3,7 @@ import type {
   McpAuthorizationContext,
 } from "@/chat/mcp/tool-manager";
 import * as z from "zod";
+import { mcpProviderLabel } from "@/chat/mcp/tool-name";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { toExposedToolSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -252,6 +253,13 @@ function unknownProviderSuggestions(
  */
 export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
   return zodTool({
+    describeProgress: ({ provider }) =>
+      provider &&
+      mcpToolManager
+        .getAvailableProviderCatalog()
+        .some((candidate) => candidate.provider === provider)
+        ? `Connecting to ${mcpProviderLabel(provider)}`
+        : "Searching MCP tools",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
