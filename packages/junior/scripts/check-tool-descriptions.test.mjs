@@ -52,6 +52,22 @@ describe("check-tool-descriptions", () => {
     ]);
   });
 
+  it("checks static tool definitions like inline tools", () => {
+    const issues = collectToolDescriptionIssues({
+      "src/tool.ts": `
+        export const readToolDefinition = zodToolDefinition({
+          description: "Read a file at \`path\`.",
+          inputSchema: z.object({ path: z.string() }),
+        });
+      `,
+    });
+
+    assert.deepEqual(
+      issues.map((issue) => issue.split("\t").slice(0, 2).join(" ")),
+      ["src/tool.ts tool-description-names-param"],
+    );
+  });
+
   it("folds joined and templated descriptions before it measures them", () => {
     const long = "x".repeat(MAX_TOOL_DESCRIPTION_CHARS);
     const issues = collectToolDescriptionIssues({

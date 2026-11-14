@@ -117,6 +117,27 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     media: z.enum(["video", "image"]).optional(),
     thumbnailUrl: imagePath.optional(),
   }),
+  // Charts: up to five series over one time range, drawn the way the
+  // source page draws them. Points are oldest first and evenly spaced. A
+  // card shows the shape and the series names, not exact values.
+  z.strictObject({
+    type: z.literal("chart"),
+    summary: summary.optional(),
+    display: z.enum(["line", "bar", "area"]),
+    // What the points measure, such as `p95(span.duration)`.
+    yAxis: text,
+    // The time range, such as "Last 24 hours".
+    range: text,
+    series: z
+      .array(
+        z.strictObject({
+          label: text,
+          points: z.array(z.number().finite()).min(2).max(120),
+        }),
+      )
+      .min(1)
+      .max(5),
+  }),
   // People: only what the dashboard People pages already show.
   z.strictObject({
     type: z.literal("person"),
@@ -249,6 +270,9 @@ export function objectFactFields(
     case "web_page":
       add("siteName", "Site", facts.siteName);
       add("author", "Author", facts.author);
+      break;
+    case "chart":
+      add("range", "Range", facts.range);
       break;
     case "person":
       add("email", "Email", facts.email);

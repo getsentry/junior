@@ -1,5 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
-import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import {
+  defineJuniorPlugin,
+  definePluginTool,
+  pluginToolOutputSchema,
+} from "@sentry/junior-plugin-api";
+import * as z from "zod";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import type { CacheWarmupMessage } from "@/chat/cache-warming/queue";
@@ -19,7 +24,6 @@ import {
 import { createApp } from "@/app";
 import { defineJuniorPlugins } from "@/plugins";
 import { resolveGatewayModel } from "@/chat/pi/client";
-import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import type { PromptMode } from "@/chat/system-prompt-rules";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { mockTitleModel } from "../../fixtures/title-model";
@@ -45,16 +49,12 @@ const openWorkConversationId = "local:test:cache-warming-segments-open";
 // Only these Conversations have a timer or a child agent.
 const timerConversationId = "local:test:cache-warming-segments-timer";
 const parentConversationId = "local:test:cache-warming-segments-parent";
+const otherConversationId = "local:test:cache-warming-segments-other";
 // Only this Conversation has an Automation run's Watch.
 const automationConversationId = "local:test:cache-warming-segments-automation";
 const model = resolveGatewayModel("anthropic/claude-opus-5.5");
-const runPrompt = { platform: "local", mode: "conversation" } as const;
-// Warmups compare the stored prompt with the prompt of this deployment.
 const context: Context = {
-  systemPrompt: await buildDeploymentSystemPrompt(
-    runPrompt.platform,
-    runPrompt.mode,
-  ),
+  systemPrompt: "Answer the person.",
   messages: [{ role: "user", content: "Hi.", timestamp: 1 }],
 };
 const finalReply: AssistantMessage = {
@@ -75,15 +75,66 @@ const finalReply: AssistantMessage = {
   timestamp: 1,
 };
 
+const definitionsKey = { platform: "local", mode: "conversation" } as const;
+
+// A test plugin with one static tool, whose description a deploy can change.
+function lookupPlugin(description: string) {
+  return defineJuniorPlugin({
+    manifest: {
+      name: "lookup",
+      displayName: "Lookup",
+      description: "Cache warming fingerprint test plugin",
+    },
+    hooks: {
+      tools: () => ({
+        record: definePluginTool({
+          annotations: {
+            destructiveHint: false,
+            idempotentHint: true,
+            openWorldHint: false,
+            readOnlyHint: true,
+          },
+          description,
+          inputSchema: z.object({}),
+          outputSchema: pluginToolOutputSchema,
+          execute: async () => ({}),
+        }),
+      }),
+    },
+  });
+}
+
+// A test plugin that only configures an MCP provider.
+const trackerMcpPlugin = defineJuniorPlugin({
+  manifest: {
+    name: "tracker",
+    displayName: "Tracker",
+    description: "Issue tracking for project work",
+    mcp: { transport: "http", url: "https://mcp.tracker.example/mcp" },
+  },
+});
+
+// Start the app as one deployment with these plugins.
+async function deploy(
+  deploymentId: string,
+  plugins: ReturnType<typeof defineJuniorPlugin>[],
+) {
+  vi.stubEnv("VERCEL_DEPLOYMENT_ID", deploymentId);
+  await createApp({
+    dashboard: { disabled: true },
+    plugins: defineJuniorPlugins(plugins),
+  });
+}
+
 // Run one Turn that ends with a final response, like one agent run does.
 async function endTurn(
   userActor: boolean,
   id = conversationId,
   turnContext = context,
-  mode: PromptMode = runPrompt.mode,
+  mode: PromptMode = definitionsKey.mode,
 ) {
   const recorder = createCacheWarmingRecorder(id, userActor, {
-    ...runPrompt,
+    ...definitionsKey,
     mode,
   });
   recorder.wrap((() => undefined) as never)(model, turnContext, {});
@@ -100,7 +151,7 @@ const toolCall = (name: string): AssistantMessage => ({
 // like one agent run does.
 async function endTurnWithAnswerTool(toolName: string, mode: PromptMode) {
   const recorder = createCacheWarmingRecorder(conversationId, false, {
-    ...runPrompt,
+    ...definitionsKey,
     mode,
   });
   const stream = recorder.wrap((() => undefined) as never);
@@ -189,9 +240,17 @@ describe("cache warming gap segments", () => {
       openWorkConversationId,
       timerConversationId,
       parentConversationId,
+      otherConversationId,
       automationConversationId,
     ]) {
       await getStateAdapter().delete(`junior:cache_warming:conversation:${id}`);
+    }
+    for (const key of [
+      "defs:first_seen:dpl_old",
+      "defs:first_seen:dpl_new",
+      "defs:fingerprint:local:conversation",
+    ]) {
+      await getStateAdapter().delete(`junior:cache_warming:${key}`);
     }
   });
 
@@ -574,7 +633,12 @@ describe("cache warming gap segments", () => {
     }
   });
 
-  it("stops warming an idle period whose system prompt changed", async () => {
+  // A deploy: `dpl_old` ends a Turn, then `dpl_new`, with `newPlugins`, ends
+  // one in another Conversation. Then a late Turn of `dpl_old` starts an idle
+  // period, and its warmup runs on `dpl_old`. Nobody comes back.
+  async function warmOldIdlePeriod(
+    newPlugins: ReturnType<typeof defineJuniorPlugin>[],
+  ) {
     const state = getStateAdapter();
     for (let i = 0; i < 20; i++) {
       await state.appendToList(
@@ -582,30 +646,60 @@ describe("cache warming gap segments", () => {
         8 * MINUTE,
       );
     }
+    const oldPlugins = [lookupPlugin("Look up a record.")];
+    vi.useFakeTimers({ toFake: ["Date"] });
     mocks.sendCacheWarmup.mockClear();
     try {
       const warmupRequests: unknown[] = [];
       mockTitleModel("", {
         onRequest: (request) => warmupRequests.push(request),
       });
-      // A deploy since the Turn changed the system prompt.
-      await endTurn(true, conversationId, {
-        ...context,
-        systemPrompt: "The system prompt of an older deployment.",
-      });
+      await deploy("dpl_old", oldPlugins);
+      await endTurn(true, otherConversationId);
+      vi.advanceTimersByTime(MINUTE);
+      await deploy("dpl_new", newPlugins);
+      await endTurn(true, workConversationId);
+      vi.advanceTimersByTime(MINUTE);
+      await deploy("dpl_old", oldPlugins);
+      await endTurn(true, conversationId);
       const warmup = scheduledWarmup();
       await runCacheWarmup(warmup);
+      const snapshot = await state.get(
+        `junior:cache_warming:snapshot:${conversationId}:${warmup.generation}`,
+      );
+      return { warmupRequests, snapshot };
+    } finally {
+      vi.unstubAllEnvs();
+      await state.delete("junior:cache_warming:gaps:user:1:none");
+      await state.delete("junior:cache_warming:breaker:anthropic:outcomes");
+    }
+  }
+
+  it.each([
+    {
+      name: "a static tool definition",
+      newPlugins: [lookupPlugin("Look up a record, then cite it.")],
+    },
+    {
+      name: "the configured MCP providers",
+      newPlugins: [lookupPlugin("Look up a record."), trackerMcpPlugin],
+    },
+  ])(
+    "stops an old deployment's idle period at once when a newer deployment changed $name",
+    async ({ newPlugins }) => {
+      const { warmupRequests, snapshot } = await warmOldIdlePeriod(newPlugins);
 
       expect(warmupRequests).toEqual([]);
-      expect(
-        await state.get(
-          `junior:cache_warming:snapshot:${conversationId}:${warmup.generation}`,
-        ),
-      ).toBeNull();
-      expect(scheduledWarmup()).toBe(warmup);
-    } finally {
-      await state.delete("junior:cache_warming:gaps:user:1:none");
-    }
+      expect(snapshot).toBeNull();
+    },
+  );
+
+  it("keeps warming an old deployment's idle period when a newer deployment has the same fingerprint", async () => {
+    const { warmupRequests } = await warmOldIdlePeriod([
+      lookupPlugin("Look up a record."),
+    ]);
+
+    expect(warmupRequests).toHaveLength(1);
   });
 
   it("does not record a no-reply gap after a reply recorded the real gap", async () => {
@@ -670,7 +764,11 @@ describe("cache warming gap segments", () => {
       await endTurn(true);
       const warmup = scheduledWarmup();
       // The person replies. The warmup comes due before the model call ends.
-      const reply = createCacheWarmingRecorder(conversationId, true, runPrompt);
+      const reply = createCacheWarmingRecorder(
+        conversationId,
+        true,
+        definitionsKey,
+      );
       reply.wrap((() => undefined) as never)(model, context, {});
       await vi.waitFor(async () => {
         expect(
@@ -760,7 +858,7 @@ describe("cache warming gap segments", () => {
       const recorder = createCacheWarmingRecorder(
         conversationId,
         true,
-        runPrompt,
+        definitionsKey,
       );
       await (await recorder.wrap()(model, imageContext, {})).result();
       await recorder.record(finalReply);
@@ -833,7 +931,7 @@ describe("cache warming gap segments", () => {
       const recorder = createCacheWarmingRecorder(
         conversationId,
         true,
-        runPrompt,
+        definitionsKey,
       );
       recorder.wrap(base as never)(
         resolveGatewayModel(modelId),
