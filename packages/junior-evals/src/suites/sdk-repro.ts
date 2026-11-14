@@ -5,8 +5,9 @@
  *
  * `fixtures/sdk-repro-skills/sdk-repro/SKILL.md` is a copy of
  * `app/skills/sdk-repro/SKILL.md` in getsentry/junior-prod at
- * ed46d09a454640b493f6e849787ee2e5beb4fb5b, with Prettier formatting. Copy it
- * again when the skill changes a flow that these tests cover.
+ * ab10e2cf3a295407482410085a7ccd54542ad246 (branch `ref/sdk-repro-real-prs`),
+ * with Prettier formatting. Copy it again when the skill changes a flow that
+ * these tests cover.
  */
 import path from "node:path";
 

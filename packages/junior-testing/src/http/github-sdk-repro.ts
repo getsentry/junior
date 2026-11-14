@@ -1,8 +1,9 @@
 // Issues that a `Junior: repro` label run of the sdk-repro skill reads. The
 // host's GitHub tools and `gh` in the sandbox both read them, so each
 // process that serves GitHub serves the same issues and logs its own writes.
-// #11: no setup; a bot adds the label. #12: open PR #14 closes it. #13: a
-// progress comment from a run that started 30 minutes ago.
+// #10: no existing work. #11: no setup; a bot adds the label. #12: open PR
+// #14 closes it. #13: a progress comment from a run that started 30 minutes
+// ago.
 const repo = "getsentry/sdk-repro-test-python";
 const web = `https://github.com/${repo}`;
 const api = `/repos/${repo}`;
@@ -268,7 +269,7 @@ export async function interceptTestGitHubSdkReproHttp(
   }
 
   const read = path.match(
-    /\/issues\/(1[123])(?:\/(comments|timeline|reactions))?$/,
+    /\/issues\/(1[0-3])(?:\/(comments|timeline|reactions))?$/,
   );
   if (read) {
     const number = Number(read[1]);
