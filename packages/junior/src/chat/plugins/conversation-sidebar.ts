@@ -78,6 +78,10 @@ export async function listConversationSidebarAnnotations(
         ];
       }
     } catch (error) {
+      // best-effort: plugin isolation. Core calls every plugin's hook, and one
+      // plugin's failure must not break the others or the host. The plugin's
+      // error is reported here because no plugin code can catch it. The sidebar
+      // shows the other plugins' annotations.
       logWarn("plugin.conversation_sidebar.hook.failed", {
         "app.plugin.name": plugin.manifest.name,
         "exception.message":

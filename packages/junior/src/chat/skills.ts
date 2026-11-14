@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import type { Dirent } from "node:fs";
 import path from "node:path";
 import * as z from "zod";
 import { parse as parseYaml } from "yaml";
@@ -380,27 +381,30 @@ export async function discoverSkills(
   const seen = new Set<string>();
 
   for (const root of roots) {
+    let entries: Dirent[];
     try {
-      const entries = await fs.readdir(root, { withFileTypes: true });
-      for (const entry of entries.sort((a, b) =>
-        a.name.localeCompare(b.name),
-      )) {
-        if (!entry.isDirectory()) {
-          continue;
-        }
-
-        const skill = await readSkillDirectory(path.join(root, entry.name));
-        if (skill && !seen.has(skill.name)) {
-          seen.add(skill.name);
-          discovered.push(skill);
-        }
-      }
+      entries = await fs.readdir(root, { withFileTypes: true });
     } catch (error) {
-      logWarn("skill.root.read.failed", {
-        "file.directory": root,
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      });
+      // A configured root that does not exist has no skills.
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        continue;
+      }
+      throw error;
+    }
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      const skill = await readSkillDirectory(path.join(root, entry.name));
+      if (skill && !seen.has(skill.name)) {
+        seen.add(skill.name);
+        discovered.push(skill);
+      }
     }
   }
 

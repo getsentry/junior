@@ -126,6 +126,10 @@ export async function listConversationWork(
         }
       }
     } catch (error) {
+      // best-effort: plugin isolation. Core calls every plugin's hook, and one
+      // plugin's failure must not break the others or the host. The plugin's
+      // error is reported here because no plugin code can catch it. A broken
+      // plugin must not invent unfinished work.
       failed = true;
       // Fail open: a broken plugin must not invent assigned or unfinished work
       // and demote recent conversations out of Priority.

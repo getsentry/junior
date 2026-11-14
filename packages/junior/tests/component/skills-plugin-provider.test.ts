@@ -94,3 +94,45 @@ describe("discoverSkills plugin ownership", () => {
     }
   });
 });
+
+describe("discoverSkills roots", () => {
+  it("skips a missing root and fails on a root it cannot read", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-skill-roots-"),
+    );
+    const fileRoot = path.join(tempRoot, "not-a-directory");
+    await fs.writeFile(fileRoot, "", "utf8");
+    await writeSkill(path.join(tempRoot, "skills"), "notes", "notes");
+    delete process.env["SKILL_DIRS"];
+    vi.doMock("@/chat/discovery", () => ({
+      pluginRoots: () => [],
+      skillRoots: () => [path.join(tempRoot, "skills")],
+    }));
+    vi.doMock("@/chat/plugins/package-discovery", () => ({
+      discoverInstalledPluginPackageContent: () => ({
+        packageNames: [],
+        packages: [],
+        manifestRoots: [],
+        skillRoots: [],
+        tracingIncludes: [],
+      }),
+    }));
+
+    try {
+      const { discoverSkills, resetSkillDiscoveryCache } =
+        await import("@/chat/skills");
+      resetSkillDiscoveryCache();
+      const skills = await discoverSkills({
+        additionalRoots: [path.join(tempRoot, "missing")],
+      });
+      expect(skills.map((skill) => skill.name)).toContain("notes");
+
+      resetSkillDiscoveryCache();
+      await expect(
+        discoverSkills({ additionalRoots: [fileRoot] }),
+      ).rejects.toMatchObject({ code: "ENOTDIR" });
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+});

@@ -557,6 +557,10 @@ export function applyPluginFormatMarkdown(
         transformed = next;
       }
     } catch (error) {
+      // best-effort: plugin isolation. Core calls every plugin's hook, and one
+      // plugin's failure must not break the others or the host. The plugin's
+      // error is reported here because no plugin code can catch it. Reply
+      // delivery keeps the unformatted text.
       // Fail open: reply delivery must not depend on optional provider formatting.
       logWarn("plugin.format_markdown.hook.failed", {
         "app.plugin.name": plugin.manifest.name,
@@ -617,6 +621,10 @@ export async function getPluginSystemPromptContributions(
       totalChars += pluginContributionChars;
       contributions.push(...acceptedContributions);
     } catch (error) {
+      // best-effort: plugin isolation. Core calls every plugin's hook, and one
+      // plugin's failure must not break the others or the host. The plugin's
+      // error is reported here because no plugin code can catch it. The system
+      // prompt is built without this plugin's part.
       logWarn("plugin.system_prompt.hook.failed", {
         "app.plugin.name": pluginName,
         "exception.message": safeErrorMessage(error),
@@ -718,6 +726,10 @@ export async function getPluginUserPromptContributions(args: {
       totalContextBytes += pluginContextBytes;
       contributions.push(...validContributions);
     } catch (error) {
+      // best-effort: plugin isolation. Core calls every plugin's hook, and one
+      // plugin's failure must not break the others or the host. The plugin's
+      // error is reported here because no plugin code can catch it. The user
+      // prompt is built without this plugin's part.
       logWarn("plugin.user_prompt.hook.failed", {
         "app.plugin.name": pluginName,
         "exception.message": safeErrorMessage(error),
@@ -1636,6 +1648,10 @@ export async function getPluginOperationalReports(
         }),
       );
     } catch (error) {
+      // best-effort: plugin isolation. Core calls every plugin's hook, and one
+      // plugin's failure must not break the others or the host. The plugin's
+      // error is reported here because no plugin code can catch it. The report
+      // shows this plugin as failed.
       const log = createPluginLogger(pluginName);
       log.error("Plugin operational report failed", {
         error: error instanceof Error ? error.message : String(error),
@@ -1678,6 +1694,10 @@ export async function getPluginProfileReports(args: {
         }),
       );
     } catch (error) {
+      // best-effort: plugin isolation. Core calls every plugin's hook, and one
+      // plugin's failure must not break the others or the host. The plugin's
+      // error is reported here because no plugin code can catch it. The profile
+      // skips this plugin's card.
       const log = createPluginLogger(pluginName);
       log.error("Plugin profile report failed", {
         error: error instanceof Error ? error.message : String(error),
@@ -1767,6 +1787,10 @@ export function createPluginHookRunner(
             );
           }
         } catch (error) {
+          // best-effort: plugin isolation. Core calls every plugin's hook, and
+          // one plugin's failure must not break the others or the host. The
+          // plugin's error is reported here because no plugin code can catch
+          // it. The MCP tool already ran, so its result stays a success.
           logWarn("agent.plugin.after_mcp_tool.failed", {
             "app.plugin.name": plugin.manifest.name,
             "gen_ai.tool.name": tool.toolName,

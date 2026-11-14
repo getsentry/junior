@@ -67,6 +67,10 @@ export async function getPluginConversationTitleContext(args: {
         ]);
         return Array.isArray(lines) ? lines : [];
       } catch (error) {
+        // best-effort: plugin isolation. Core calls every plugin's hook, and
+        // one plugin's failure must not break the others or the host. The
+        // plugin's error is reported here because no plugin code can catch it.
+        // The title uses the other plugins' context.
         logWarn("plugin.conversation_title_context.hook.failed", {
           "app.plugin.name": plugin.manifest.name,
           "exception.message":

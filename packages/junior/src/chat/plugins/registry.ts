@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import { pluginRoots } from "@/chat/discovery";
-import { logInfo, logWarn, setSpanAttributes } from "@/chat/logging";
+import { logInfo, setSpanAttributes } from "@/chat/logging";
 import { parseInlinePluginManifest, parsePluginManifest } from "./manifest";
 import { createOAuthBearerBroker } from "./auth/oauth-bearer-broker";
 import { createApiHeadersBroker } from "./auth/api-headers-broker";
@@ -336,12 +336,9 @@ function buildLoadedPluginState(
     try {
       rootStat = statSync(pluginsRoot);
     } catch (error) {
-      logWarn("plugin.root.read.failed", {
-        "file.directory": pluginsRoot,
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      });
-      continue;
+      // A configured root that does not exist has no plugins.
+      if (isMissingPath(error)) continue;
+      throw error;
     }
     if (rootStat.isDirectory()) {
       const manifestPath = path.join(pluginsRoot, "plugin.yaml");
@@ -360,12 +357,8 @@ function buildLoadedPluginState(
     try {
       entries = readdirSync(pluginsRoot);
     } catch (error) {
-      logWarn("plugin.root.read.failed", {
-        "file.directory": pluginsRoot,
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      });
-      continue;
+      if (isMissingPath(error)) continue;
+      throw error;
     }
 
     for (const entry of entries.sort()) {
@@ -617,4 +610,8 @@ export function createPluginCatalogRuntime(): PluginCatalogRuntime {
       return broker;
     },
   };
+}
+
+function isMissingPath(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
 }

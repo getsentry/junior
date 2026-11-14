@@ -87,6 +87,9 @@ export async function runAfterToolExecuteHooks(args: {
   try {
     workspace = await activeWorkspace(args.sandbox);
   } catch (error) {
+    // best-effort: after commit. The tool already ran, so a throw would turn
+    // its result into a failure that the agent retries, and repeat its side
+    // effects. The checks are skipped.
     // The tool already ran. Skip the checks rather than turn its result into
     // a failure that the agent retries.
     logException(error, "agent.plugin.after_tool_execute.failed", {
@@ -134,6 +137,10 @@ export async function runAfterToolExecuteHooks(args: {
           }),
       );
     } catch (error) {
+      // best-effort: plugin isolation. Core calls every plugin's hook, and one
+      // plugin's failure must not break the others or the host. The plugin's
+      // error is reported here because no plugin code can catch it. The tool
+      // already ran, so the result stays a success.
       if (signal?.aborted) break;
       // The tool already ran. A broken check must not turn its result into a
       // failure that the agent retries.
