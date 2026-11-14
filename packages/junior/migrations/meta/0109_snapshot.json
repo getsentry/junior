@@ -1,5 +1,5 @@
 {
-  "id": "34bef5b5-6d9c-415d-a47c-e271de392851",
+  "id": "1880d763-2db8-4b02-931d-e59c0840186a",
   "prevId": "0841b571-f89e-4038-a529-b2c840c32e76",
   "version": "7",
   "dialect": "postgresql",
@@ -1572,33 +1572,6 @@
               "expression": "closed_at",
               "isExpression": false,
               "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_code_changes_repository_state_idx": {
-          "name": "junior_code_changes_repository_state_idx",
-          "columns": [
-            {
-              "expression": "repository_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "state",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "updated_at",
-              "isExpression": false,
-              "asc": false,
               "nulls": "last"
             }
           ],
@@ -4772,6 +4745,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": 24
+        },
+        "preferences": {
+          "name": "preferences",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
         },
         "created_at": {
           "name": "created_at",
