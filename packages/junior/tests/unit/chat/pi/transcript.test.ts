@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
+import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
+  getUserMessageInstructionText,
   hasRuntimeTurnContext,
   instructionTextForProjection,
   retainRuntimeTurnContext,
@@ -121,5 +123,29 @@ describe("instructionTextForProjection", () => {
     ].join("\n");
 
     expect(instructionTextForProjection(text)).toBe("lookup tickets only");
+  });
+});
+
+describe("getUserMessageInstructionText", () => {
+  it("keeps the author tag of a current instruction only when asked", () => {
+    const tagged = renderCurrentInstruction("file <the> issue", {
+      authorId: "UAUTHOR",
+    });
+    const [message] = asPiMessages([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "<task>event</task>" },
+          { type: "text", text: tagged },
+        ],
+      },
+    ]);
+
+    expect(getUserMessageInstructionText(message!)).toBe(
+      "<task>event</task>\n\nfile <the> issue",
+    );
+    expect(
+      getUserMessageInstructionText(message!, { keepInstructionTag: true }),
+    ).toBe(`<task>event</task>\n\n${tagged}`);
   });
 });

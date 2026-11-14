@@ -279,9 +279,13 @@ export function instructionTextForProjection(text: string): string {
  * input is its own content part: a `<current-instruction>` gives its body,
  * and a runtime input tag stays as it is. Other parts, such as attachments,
  * are dropped. A message with no input part keeps the projection of all its
- * text.
+ * text. `keepInstructionTag` keeps each `<current-instruction>` with its
+ * author attributes, as the model saw it.
  */
-export function getUserMessageInstructionText(message: PiMessage): string {
+export function getUserMessageInstructionText(
+  message: PiMessage,
+  options: { keepInstructionTag?: boolean } = {},
+): string {
   if (getPiMessageRole(message) !== "user") {
     return "";
   }
@@ -300,7 +304,8 @@ export function getUserMessageInstructionText(message: PiMessage): string {
       return [readParentAgentTask(withoutContext) ?? withoutContext];
     }
     const instruction = unwrapCurrentInstruction(withoutContext);
-    return instruction === undefined ? [] : [instruction.trim()];
+    if (instruction === undefined) return [];
+    return [options.keepInstructionTag ? withoutContext : instruction.trim()];
   });
   if (inputs.length > 0) {
     return inputs.filter(Boolean).join("\n\n");

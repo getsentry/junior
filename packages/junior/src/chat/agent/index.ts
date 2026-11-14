@@ -546,7 +546,11 @@ async function executeAgentRunInPrivacyContext(
         if (!isRequesterInstruction(currentTurnProvenance[index])) {
           return [];
         }
-        const text = getUserMessageInstructionText(message);
+        // A resumed Event Turn keeps the trusted author's tag, as a fresh
+        // one does in `eventTurnUserIntent`.
+        const text = getUserMessageInstructionText(message, {
+          keepInstructionTag: runSource.kind === "event",
+        });
         return text ? [text] : [];
       }) ?? [];
     if (!resumedFromSessionRecord || guardianIntentParts.length === 0) {
