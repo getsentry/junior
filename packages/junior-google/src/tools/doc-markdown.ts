@@ -48,7 +48,7 @@ interface Run {
 }
 
 const LINK = /^\[([^\]\n]+)\]\(([^)\s]+)\)/;
-const SAFE_LINK = /^(https?:\/\/|mailto:)/i;
+const SAFE_LINK_PREFIXES = ["https://", "http://", "mailto:"];
 const ESCAPABLE = /[\\`*_[\]()#+\-.!>|~]/;
 // Docs drops these characters on insert, which would shift every later
 // index, so the converter drops them first.
@@ -86,7 +86,12 @@ function parseInline(text: string, style: InlineStyle = {}): Run[] {
       }
     }
     const link = char === "[" ? LINK.exec(rest) : null;
-    if (link && SAFE_LINK.test(link[2]!)) {
+    if (
+      link &&
+      SAFE_LINK_PREFIXES.some((prefix) =>
+        link[2]!.toLowerCase().startsWith(prefix),
+      )
+    ) {
       flush();
       runs.push(...parseInline(link[1]!, { ...style, link: link[2]! }));
       i += link[0].length;

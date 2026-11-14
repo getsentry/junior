@@ -182,6 +182,38 @@ function parseToolInput<TInputSchema extends ZodTypeAny>(
   return result.data;
 }
 
+type StaticZodToolInput<
+  TInputSchema extends ZodTypeAny,
+  TOutputSchema extends ZodTypeAny | undefined,
+> = Omit<ZodToolDefinitionBase<TInputSchema>, "resolveApprovalMetadata"> & {
+  outputSchema?: TOutputSchema;
+  privateTraceResult?(
+    result: TOutputSchema extends ZodTypeAny ? z.output<TOutputSchema> : never,
+  ): unknown;
+};
+
+/**
+ * Model-facing part of a Zod tool. The tool registry reads it with no run
+ * context; a tool factory adds the run-bound `execute`.
+ */
+export type StaticZodToolDefinition<
+  TInputSchema extends ZodTypeAny = ZodTypeAny,
+  TOutputSchema extends ZodTypeAny | undefined = ZodTypeAny | undefined,
+> = StaticZodToolInput<TInputSchema, TOutputSchema> & {
+  outputSchema: TOutputSchema;
+};
+
+/** Declare the static definition of a Zod tool once, for the registry and its factory. */
+export function zodToolDefinition<
+  TInputSchema extends ZodTypeAny,
+  TOutputSchema extends ZodTypeAny | undefined = undefined,
+>(
+  definition: StaticZodToolInput<TInputSchema, TOutputSchema>,
+): StaticZodToolDefinition<TInputSchema, TOutputSchema> {
+  // A content-only tool has no output schema, so `outputSchema` is undefined.
+  return definition as StaticZodToolDefinition<TInputSchema, TOutputSchema>;
+}
+
 /**
  * Define a Junior-owned tool with Zod input parsing and JSON Schema parameters.
  */

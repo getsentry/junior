@@ -5,7 +5,7 @@ import {
 } from "@/chat/slack/tool-support/canvas/context";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
@@ -41,6 +41,35 @@ function canvasLines(content: string, offset?: number, limit?: number) {
   };
 }
 
+export const slackCanvasReadToolDefinition = zodToolDefinition({
+  exposure: "deferred",
+  source: SLACK_TOOL_SOURCE,
+  description:
+    "Read a Slack canvas as markdown. Returns the whole canvas unless you set offset or limit.",
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  inputSchema: z.object({
+    canvas: slackCanvasRefParam,
+    offset: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .describe("1-indexed line number to start reading from.")
+      .optional(),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .describe("Maximum number of lines to read. Defaults to all lines.")
+      .optional(),
+  }),
+  outputSchema: slackCanvasReadOutputSchema,
+});
+
 /**
  * Create a tool that reads a Slack canvas the bot has access to. Accepts
  * either a canvas/file ID (`F...`) or a Slack canvas/docs URL and returns the
@@ -52,33 +81,8 @@ function canvasLines(content: string, offset?: number, limit?: number) {
  */
 export function createSlackCanvasReadTool() {
   return zodTool({
-    exposure: "deferred",
-    source: SLACK_TOOL_SOURCE,
-    description:
-      "Read a Slack canvas as markdown. Returns the whole canvas unless you set offset or limit.",
+    ...slackCanvasReadToolDefinition,
     describeProgress: () => "Reading a canvas",
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    inputSchema: z.object({
-      canvas: slackCanvasRefParam,
-      offset: z.coerce
-        .number()
-        .int()
-        .min(1)
-        .describe("1-indexed line number to start reading from.")
-        .optional(),
-      limit: z.coerce
-        .number()
-        .int()
-        .min(1)
-        .describe("Maximum number of lines to read. Defaults to all lines.")
-        .optional(),
-    }),
-    outputSchema: slackCanvasReadOutputSchema,
     execute: async ({ canvas, offset, limit }) => {
       const target = resolveCanvasTarget(canvas);
       if (!target.ok) {

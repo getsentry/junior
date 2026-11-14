@@ -2,36 +2,57 @@ import { createHash } from "node:crypto";
 import {
   objectAnnotationSchema,
   ownedObjectAnnotationSchema,
+  type ObjectLinkContext,
   type OwnedObjectAnnotation,
   type PluginRegistration,
   type User,
 } from "@sentry/junior-plugin-api";
 import { getDashboardLinkFilter } from "@/chat/dashboard-link";
+import { credentialContextForActor } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
+import { webActorFromUser } from "@/chat/conversations/web-input";
+import { createPluginEgress } from "@/chat/egress/plugin";
+import { imagePath } from "@/chat/images/ids";
 import { logException } from "@/chat/logging";
+import { createViewerMcp } from "@/chat/mcp/viewer";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginCache } from "@/chat/plugins/cache";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createCache } from "@/chat/state/cache";
-import { resolveConversationLink } from "./conversation";
+import {
+  canViewConversationLink,
+  resolveConversationLink,
+} from "./conversation";
 import {
   assertNoObjectLinkConflicts,
   findObjectLinkType,
   type ObjectLinkType,
 } from "./link-types";
-import { resolvePersonLink } from "./person";
+import { resolvePersonByAccount, resolvePersonLink } from "./person";
 import {
   resolveSlackMessageLink,
   SLACK_MESSAGE_LINK_FILTER,
 } from "./slack-message";
+import { webPageLinkType } from "./web-page/resolve";
 
 /** A card is a short-lived read. A changed object shows within this time. */
 export const OBJECT_LINK_TTL_MS = 60_000;
 
+// Links resolve outside a Turn, so no person is the credential subject. This
+// system Actor gets only credentials that a plugin owns, never the viewer's.
+// Each plugin checks that the viewer may see an object before it returns it.
+const OBJECT_LINK_SYSTEM_ACTOR = {
+  platform: "system",
+  name: "object-link",
+} as const;
+
 function coreLinkTypes(): ObjectLinkType[] {
   // Slack runtime is in core until Slack is a plugin.
   const slack: ObjectLinkType = {
+    // The card read checks channel access inside the viewer's Slack
+    // workspace, so it shares one Slack installation with the check.
+    canView: async () => true,
     filters: [SLACK_MESSAGE_LINK_FILTER],
     objectType: "message",
     owner: "junior",
@@ -39,11 +60,15 @@ function coreLinkTypes(): ObjectLinkType[] {
   };
   const conversations = getDashboardLinkFilter("/conversations/*");
   const people = getDashboardLinkFilter("/people/*");
+  // Any other public page. Its filters are the least specific.
+  const webPages = webPageLinkType();
   // These links need the dashboard: each card links to a dashboard page.
-  if (!conversations || !people) return [slack];
+  if (!conversations || !people) return [slack, webPages];
   return [
     slack,
+    webPages,
     {
+      canView: canViewConversationLink,
       filters: [conversations],
       objectType: "conversation",
       owner: "junior",
@@ -52,6 +77,8 @@ function coreLinkTypes(): ObjectLinkType[] {
     {
       // Person cards read the identity cache. A link or unlink clears it.
       cacheCards: false,
+      // Every signed-in viewer sees the People pages.
+      canView: async () => true,
       filters: [people, { scheme: "mailto" }],
       objectType: "person",
       owner: "junior",
@@ -60,23 +87,44 @@ function coreLinkTypes(): ObjectLinkType[] {
   ];
 }
 
+function objectLinkContext(name: string, viewer: User): ObjectLinkContext {
+  return {
+    cache: createPluginCache(name),
+    db: getDb(),
+    egress: createPluginEgress({
+      credentialContext: credentialContextForActor(OBJECT_LINK_SYSTEM_ACTOR),
+      // A card is optional. It must never ask anyone to authorize.
+      pluginAuth: { async handleAuthRequired() {} },
+    }),
+    // The width of web page thumbnails, so every card looks the same.
+    imagePath: (ref, version) => imagePath({ ref, source: name }, 640, version),
+    findPerson: resolvePersonByAccount,
+    log: createPluginLogger(name),
+    plugin: { name },
+    viewer,
+    // The viewer's User id is the subject of their dashboard connections.
+    // Only that subject's own OAuth token is used.
+    viewerEgress: createPluginEgress({
+      credentialContext: credentialContextForActor(webActorFromUser(viewer)),
+      pluginAuth: { async handleAuthRequired() {} },
+      userOAuthOnly: true,
+    }),
+    viewerMcp: createViewerMcp(name, viewer.id),
+  };
+}
+
 function pluginLinkTypes(plugin: PluginRegistration): ObjectLinkType[] {
   const name = plugin.manifest.name;
   return (plugin.objectLinks ?? []).map((link) => ({
+    canView: (viewer, url) =>
+      link.canView(objectLinkContext(name, viewer), url),
     filters: link.filters,
     objectType: link.objectType,
     owner: name,
+    readTool: link.readTool,
     resolve: (viewer, url) =>
-      link.resolve(
-        {
-          cache: createPluginCache(name),
-          db: getDb(),
-          log: createPluginLogger(name),
-          plugin: { name },
-          viewer,
-        },
-        url,
-      ),
+      link.resolve(objectLinkContext(name, viewer), url),
+    ...(link.webPageFallback ? { webPageFallback: true } : undefined),
   }));
 }
 
@@ -92,11 +140,22 @@ export function readObjectLinkTypes(
   return linkTypes;
 }
 
+type ResolvedObjectLink = {
+  linkType: ObjectLinkType;
+  object: OwnedObjectAnnotation;
+};
+
 async function resolveWithLinkType(
   linkType: ObjectLinkType,
   viewer: User,
   url: URL,
-): Promise<OwnedObjectAnnotation | null> {
+): Promise<ResolvedObjectLink | null> {
+  if (!(await linkType.canView(viewer, url))) {
+    // The web page card reads only what anyone can read signed out.
+    return linkType.webPageFallback
+      ? await resolveWithLinkType(webPageLinkType(), viewer, url)
+      : null;
+  }
   const resolved = await linkType.resolve(viewer, url);
   if (!resolved) return null;
   const object = objectAnnotationSchema.parse(resolved);
@@ -105,10 +164,27 @@ async function resolveWithLinkType(
       `Link type "${linkType.owner}/${linkType.objectType}" returned a ${object.objectType} object.`,
     );
   }
-  return ownedObjectAnnotationSchema.parse({
-    ...object,
-    plugin: linkType.owner,
-  });
+  return {
+    linkType,
+    object: ownedObjectAnnotationSchema.parse({
+      ...object,
+      plugin: linkType.owner,
+    }),
+  };
+}
+
+/**
+ * Resolve one link for one viewer without the card cache, so a change of
+ * access counts at once. Returns nothing when no link type claims the URL
+ * or the viewer cannot see the object.
+ */
+export async function resolveObjectLinkNow(
+  viewer: User,
+  url: URL,
+): Promise<ResolvedObjectLink | undefined> {
+  const linkType = findObjectLinkType(readObjectLinkTypes(), url);
+  if (!linkType) return undefined;
+  return (await resolveWithLinkType(linkType, viewer, url)) ?? undefined;
 }
 
 /**
@@ -129,7 +205,8 @@ export async function resolveObjectLinks(
       if (!parsed || !linkType) return [];
       // Each viewer has their own entry: a card holds only what they see.
       const key = `${viewer.id}:${createHash("sha256").update(url).digest("hex")}`;
-      const resolve = () => resolveWithLinkType(linkType, viewer, parsed);
+      const resolve = async () =>
+        (await resolveWithLinkType(linkType, viewer, parsed))?.object ?? null;
       try {
         const object =
           linkType.cacheCards === false

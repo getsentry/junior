@@ -4,7 +4,7 @@ export {
 } from "../chat/attachments/media";
 export {
   MAX_INPUT_ATTACHMENTS,
-  MAX_INPUT_ATTACHMENT_BYTES,
+  MAX_ATTACHMENT_BYTES,
 } from "../chat/attachments/input";
 export type { InputFile, MessageAttachment } from "../chat/attachments/input";
 export {
@@ -36,13 +36,19 @@ export {
   conversationObjectCard,
   messageObjectCard,
   personObjectCard,
+  webPageObjectCard,
 } from "./objects/cards";
 export {
+  attachObjectLinkBodySchema,
+  attachObjectLinkResponseSchema,
   MAX_OBJECT_LINKS,
   objectLinksQuerySchema,
   objectLinksReportSchema,
 } from "./schema/object-link";
-export type { ObjectLinksReport } from "./schema/object-link";
+export type {
+  AttachObjectLinkResponse,
+  ObjectLinksReport,
+} from "./schema/object-link";
 export { dailyConversationActivitySchema } from "./activity";
 export { conversationChildAgentTotalsSchema } from "./schema/child-agent-totals";
 export type { ConversationChildAgentTotals } from "./schema/child-agent-totals";
@@ -296,6 +302,10 @@ export type {
   NotificationSchedule,
   NotificationSettings,
 } from "./schema/notification";
+export {
+  cacheWarmingBreakerListSchema,
+  closeCacheWarmingBreakerResponseSchema,
+} from "./schema/cache-warming";
 export {
   disconnectServiceAccountResponseSchema,
   serviceAccountListSchema,

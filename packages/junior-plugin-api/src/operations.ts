@@ -26,6 +26,8 @@ export interface HeartbeatHookContext extends PluginContext {
   /** Publish events, as from a plugin route. */
   events: EventPublisher;
   nowMs: number;
+  /** Review desk items, as from a plugin route. */
+  reviewItems: PluginConversationReviewItems;
   state: PluginState;
 }
 

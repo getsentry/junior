@@ -99,8 +99,7 @@ function messageText(message: PiMessage): string {
 }
 
 function toolResultText(message: PiMessage): string {
-  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-  const record = message as Record<string, unknown>;
+  const record = message as PiMessage & Record<string, unknown>;
   const parts = [
     messageText(message),
     record.output,

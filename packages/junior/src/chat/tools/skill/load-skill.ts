@@ -87,7 +87,11 @@ async function loadSkillFromHost(
   };
 }
 
-/** Create the tool that loads skill instructions for the current turn. */
+/**
+ * Create the tool that loads skill instructions for the current turn.
+ *
+ * @runBuilt loadSkill
+ */
 export function createLoadSkillTool(
   availableSkills: SkillMetadata[],
   options?: {

@@ -132,3 +132,40 @@ export function messageObjectCard(args: {
     },
   };
 }
+
+/**
+ * Build the card of one public web page from its oEmbed fields or meta
+ * tags. `thumbnailUrl` must be a Junior image path.
+ */
+export function webPageObjectCard(args: {
+  author?: string;
+  description?: string;
+  media?: "video" | "image";
+  siteName?: string;
+  thumbnailUrl?: string;
+  title: string;
+  url: string;
+}): ObjectAnnotation {
+  return {
+    kind: "object",
+    objectType: "web_page",
+    key: args.url.slice(0, 256),
+    label: truncate(args.title, MAX_LABEL_CHARS),
+    title: truncate(args.title, 512),
+    url: args.url,
+    ...(args.description
+      ? { description: truncate(args.description, MAX_SNIPPET_CHARS) }
+      : undefined),
+    facts: {
+      type: "web_page",
+      ...(args.siteName
+        ? { siteName: truncate(args.siteName, MAX_FACT_CHARS) }
+        : undefined),
+      ...(args.author
+        ? { author: truncate(args.author, MAX_FACT_CHARS) }
+        : undefined),
+      ...(args.media ? { media: args.media } : undefined),
+      ...(args.thumbnailUrl ? { thumbnailUrl: args.thumbnailUrl } : undefined),
+    },
+  };
+}

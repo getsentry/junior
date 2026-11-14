@@ -55,9 +55,13 @@ function missingToolMessage(toolName: string, provider: string | undefined) {
   return `MCP tool is not active for this turn: ${toolName}. ${retryHint}`;
 }
 
-/** Create the stable dispatcher for active MCP provider tools. */
 // TODO(dcramer): Fold MCP execution into executeTool once searchTools can
 // disclose MCP tool schemas and the execution catalog keeps them active.
+/**
+ * Create the stable dispatcher for active MCP provider tools.
+ *
+ * @runBuilt callMcpTool
+ */
 export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
   return zodTool({
     approvalMode: "auto",

@@ -15,6 +15,7 @@ import {
   readConversationEventPageAround,
 } from "./event-page";
 import { conversationEventPageReport } from "./event-list";
+import { formatConversationEventText } from "./display-markdown";
 import { attachConversationMentions } from "./mentions";
 import {
   conversationEventHistory,
@@ -38,6 +39,7 @@ import {
   conversationDetailReportSchema,
 } from "../schema/conversation";
 import type { ConversationDetailReport } from "../schema/conversation";
+import { objectPreviewImages } from "@/chat/images/objects";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
@@ -225,7 +227,12 @@ async function readConversationDetailFromSql(
       },
       readAccess,
     ),
-    listConversationAnnotations(getDb(), conversationId),
+    listConversationAnnotations(getDb(), conversationId).then((saved) =>
+      saved.map((annotation) => {
+        const previewImages = objectPreviewImages(annotation);
+        return previewImages ? { ...annotation, previewImages } : annotation;
+      }),
+    ),
     readAutomationTitlesByConversationId([record.conversation]),
     readConversationAuxiliaryCostsFromSql(getDb(), [conversationId]),
     readLatestConversationBrief(getDb(), conversationId),
@@ -263,7 +270,7 @@ async function readConversationDetailFromSql(
       startSpan({ name: "Attach conversation mentions", op: "function" }, () =>
         attachConversationMentions(executor, conversationId, {
           ...(brief ? { brief } : undefined),
-          events: page.events,
+          events: page.events.map(formatConversationEventText),
         }),
       ),
       // Only the first read of a visit asks for this page, not each poll. The

@@ -1,6 +1,6 @@
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 import { extractGenAiUsageAttributes, withSpan } from "@/chat/logging";
@@ -66,31 +66,35 @@ function parseSearchResults(
   return parsedResults;
 }
 
+export const webSearchToolDefinition = zodToolDefinition({
+  description:
+    "Search public web sources and return top snippets/URLs. Use when you need discovery or source candidates. Do not use when the user already provided a specific URL to inspect.",
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  inputSchema: z.object({
+    query: z.string().min(1).max(500).describe("Search query."),
+    max_results: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_RESULTS)
+      .describe("Max results to return.")
+      .optional(),
+  }),
+  outputSchema: juniorToolOutputSchema,
+});
+
 export function createWebSearchTool(
   modelId: string,
   override?: WebSearchToolDeps,
 ) {
   return zodTool({
-    description:
-      "Search public web sources and return top snippets/URLs. Use when you need discovery or source candidates. Do not use when the user already provided a specific URL to inspect.",
+    ...webSearchToolDefinition,
     describeProgress: () => "Searching the web",
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    inputSchema: z.object({
-      query: z.string().min(1).max(500).describe("Search query."),
-      max_results: z.coerce
-        .number()
-        .int()
-        .min(1)
-        .max(MAX_RESULTS)
-        .describe("Max results to return.")
-        .optional(),
-    }),
-    outputSchema: juniorToolOutputSchema,
     execute: async ({ query, max_results }) => {
       if (override?.execute) {
         return override.execute({ query, max_results });

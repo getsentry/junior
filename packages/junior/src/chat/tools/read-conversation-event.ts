@@ -7,7 +7,7 @@ import type { ConversationEvent } from "@/chat/conversations/history";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getConversationEventStore } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -34,6 +34,46 @@ const readConversationEventOutputSchema = juniorToolOutputSchema.extend({
   has_more: z.boolean().describe("Whether text continues after this slice."),
 });
 
+export const readConversationEventToolDefinition = zodToolDefinition({
+  description:
+    "Read the full text of one conversation event by seq. Set offset or limit to read part of it. Works for events from earlier history versions, such as cleared tool results.",
+  exposure: "deferred",
+  source: CONVERSATIONS_TOOL_SOURCE,
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: true,
+  },
+  inputSchema: z
+    .object({
+      seq: z.number().int().nonnegative().describe("Event sequence number."),
+      conversation_id: z
+        .string()
+        .trim()
+        .min(1)
+        .nullable()
+        .describe("Conversation ID. Omit or null for the current conversation.")
+        .optional(),
+      offset: z
+        .number()
+        .int()
+        .nonnegative()
+        .nullable()
+        .describe("First char to return. Default 0.")
+        .optional(),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .nullable()
+        .describe("Maximum chars. Default: all text after offset.")
+        .optional(),
+    })
+    .strict(),
+  outputSchema: readConversationEventOutputSchema,
+});
+
 /**
  * Create a deferred tool that reads one full event of a conversation log.
  * The event lives in the database, so the default returns all of its text.
@@ -42,45 +82,7 @@ const readConversationEventOutputSchema = juniorToolOutputSchema.extend({
  */
 export function createReadConversationEventTool(context: ToolRuntimeContext) {
   return zodTool({
-    description:
-      "Read the full text of one conversation event by seq. Set offset or limit to read part of it. Works for events from earlier history versions, such as cleared tool results.",
-    exposure: "deferred",
-    source: CONVERSATIONS_TOOL_SOURCE,
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-      readOnlyHint: true,
-    },
-    inputSchema: z
-      .object({
-        seq: z.number().int().nonnegative().describe("Event sequence number."),
-        conversation_id: z
-          .string()
-          .trim()
-          .min(1)
-          .nullable()
-          .describe(
-            "Conversation ID. Omit or null for the current conversation.",
-          )
-          .optional(),
-        offset: z
-          .number()
-          .int()
-          .nonnegative()
-          .nullable()
-          .describe("First char to return. Default 0.")
-          .optional(),
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .nullable()
-          .describe("Maximum chars. Default: all text after offset.")
-          .optional(),
-      })
-      .strict(),
-    outputSchema: readConversationEventOutputSchema,
+    ...readConversationEventToolDefinition,
     execute: async (input) => {
       const conversationId =
         input.conversation_id?.trim() || context.conversationId;
