@@ -179,6 +179,8 @@ export async function recordAutomationExecution(
         setWhere: inArray(juniorAutomationRuns.status, ["pending", "running"]),
       });
   } catch (error) {
+    // best-effort: retried. The heartbeat settles runs left pending or running,
+    // so a lost stat write is corrected there.
     logWarn("task.execution.stat_failed", {
       error,
       "app.task.execution.id": options.executionId,

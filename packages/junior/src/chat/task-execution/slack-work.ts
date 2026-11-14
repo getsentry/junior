@@ -529,6 +529,8 @@ export async function clearSlackPendingReactions(args: {
           }),
       });
     } catch (error) {
+      // best-effort: decision (silent side effect). A pending reaction that
+      // fails to clear stays on the message. See the PR decisions.
       // Receipts are optional UI. Adapter and installation failures must not
       // undo cancellation or prevent cleanup of the other queued messages.
       logException(error, "slack.processing.pending_reaction_cleanup.failed", {

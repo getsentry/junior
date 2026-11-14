@@ -216,6 +216,9 @@ function startLeaseCheckIn(args: {
         }
       },
       (error) => {
+        // best-effort: owning boundary. The lease check-in runs from an
+        // interval that nothing awaits; a lost lease is handled by the next
+        // check-in.
         logException(error, "conversation.work.check_in.failed");
       },
     );
@@ -260,6 +263,8 @@ function createConversationStopSignal(args: {
       });
       if (stopped) requestStop();
     } catch (error) {
+      // best-effort: owning boundary. The stop check runs from an interval that
+      // nothing awaits; the next tick checks again.
       if (!failureCaptured) {
         failureCaptured = true;
         logException(error, "conversation.work.stop_check.failed");
@@ -807,7 +812,13 @@ async function processConversationWorkInContext(
     // recovery nudge. Once durable recovery state is recorded and one nudge is
     // sent, the delivery is acknowledged; only when recording recovery state
     // itself fails is the error rethrown so plain redelivery retries it.
-    let recoveryRecorded = false;
+    const reportWorkFailure = () => {
+      if (!isProviderRetryError(error)) {
+        logException(error, "conversation.work.failed", {
+          "app.worker.elapsed_ms": now(options) - startedAtMs,
+        });
+      }
+    };
     try {
       const failure =
         attemptMessageIds.length > 0
@@ -874,7 +885,6 @@ async function processConversationWorkInContext(
             "app.worker.retry_count":
               failure?.retryCount ?? (initial.execution.retryCount ?? 0) + 1,
           });
-          recoveryRecorded = true;
           return { status: "failed" };
         }
         const sliceRequested = await requestAnotherSlice({
@@ -908,18 +918,12 @@ async function processConversationWorkInContext(
           state: options.state,
         });
       }
-      recoveryRecorded = true;
     } catch (recoveryError) {
       logException(recoveryError, "conversation.work.requeue.failed");
-    }
-    if (!isProviderRetryError(error)) {
-      logException(error, "conversation.work.failed", {
-        "app.worker.elapsed_ms": now(options) - startedAtMs,
-      });
-    }
-    if (!recoveryRecorded) {
+      reportWorkFailure();
       throw error;
     }
+    reportWorkFailure();
     return { status: "failed" };
   } finally {
     clearInterval(timer);

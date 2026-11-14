@@ -666,6 +666,8 @@ async function runDeferredMove(args: {
       await import("@/chat/ingress/slack-conversation-unfurl");
     await continueDeferredSlackClick(move, args.getSlackAdapter);
   } catch (error) {
+    // best-effort: decision (silent side effect). The deferred Continue here
+    // notice is a hint; the work itself is stored. See the PR decisions.
     logException(error, "slack.continue_here.deferred.failed", {
       "gen_ai.conversation.id": args.conversationId,
     });

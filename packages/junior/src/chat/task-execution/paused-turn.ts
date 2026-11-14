@@ -164,6 +164,8 @@ async function failTurnBestEffort(args: {
       errorMessage: args.errorMessage,
     });
   } catch (error) {
+    // best-effort: error path. The continuation already failed and is reported;
+    // this is a second failure while recording it.
     logException(
       error,
       "agent.continue.session_record.failure_persistence.failed",
@@ -242,6 +244,8 @@ async function failPausedTurnStart(args: {
   try {
     await persistFailedReplyState(args.turn, args.errorMessage);
   } catch (persistError) {
+    // best-effort: error path. The continuation already failed and is reported;
+    // this is a second failure while recording it.
     await failTurnBestEffort({
       turn: args.turn,
       errorMessage: "Paused turn failed before it could run",
@@ -402,6 +406,8 @@ async function failPausedTurn(args: {
         surface: failed.surface,
       });
     } catch (error) {
+      // best-effort: error path. The dispatch already failed and is reported;
+      // this is a second failure while summarizing it.
       logException(error, "agent.continue.dispatch_failure_summary.failed", {
         "app.ai.conversation_id": args.conversationId,
         "app.ai.session_id": args.summary.turnId,

@@ -857,6 +857,10 @@ export function createConversationTurnWorker(
                     try {
                       await processPluginTask(message);
                     } catch (error) {
+                      // best-effort: decision (secondary write). plugin
+                      // isolation. A plugin task failure must not fail the turn
+                      // that already completed, and no plugin code is left to
+                      // catch it. See the PR decisions.
                       logException(
                         error,
                         "conversation.plugin.session_completion_task.failed",
@@ -872,6 +876,10 @@ export function createConversationTurnWorker(
                 },
               );
             } catch (error) {
+              // best-effort: decision (secondary write). plugin isolation. A
+              // plugin task failure must not fail the turn that already
+              // completed, and no plugin code is left to catch it. See the PR
+              // decisions.
               logException(
                 error,
                 "conversation.plugin.session_completion_task.failed",
@@ -922,6 +930,8 @@ export function createConversationTurnWorker(
               });
             }
           } catch (turnRecordError) {
+            // best-effort: error path. The turn already failed and that error
+            // is reported; this is a second failure while recording it.
             captureConversationTurnFailure({
               conversationId: context.conversationId,
               error: turnRecordError,
@@ -943,6 +953,8 @@ export function createConversationTurnWorker(
               sandboxRef: initialSandboxRef ?? null,
             });
           } catch (persistenceError) {
+            // best-effort: error path. The turn already failed and that error
+            // is reported; this is a second failure while recording it.
             captureConversationTurnFailure({
               conversationId: context.conversationId,
               error: persistenceError,

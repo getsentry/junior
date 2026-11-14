@@ -1535,6 +1535,8 @@ export async function releaseInboundMessage(args: {
       },
     );
   } catch (error) {
+    // best-effort: decision (secondary write). A failed claim release can make
+    // a redelivery look like a duplicate. See the PR decisions.
     logException(error, "conversation.stop.release.failed");
   }
 }

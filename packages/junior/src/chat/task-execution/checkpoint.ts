@@ -269,6 +269,8 @@ async function saveRunning(
       state: "running",
     });
   } catch (error) {
+    // best-effort: typed result. undefined means no running checkpoint, and a
+    // resume that needs one fails on it.
     // Quiet only branch races and late workers on best-effort running
     // checkpoints. The span keeps the reason: a resume that must save its
     // input fails on it.
@@ -357,6 +359,8 @@ async function savePaused(
       state: "paused",
     });
   } catch (error) {
+    // best-effort: typed result. undefined means no running checkpoint, and a
+    // resume that needs one fails on it.
     if (error instanceof TurnSliceLimitExceededError) {
       throw error;
     }

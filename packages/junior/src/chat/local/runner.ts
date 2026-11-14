@@ -301,6 +301,9 @@ async function runLocalAgentTurnInContext(
             }),
       );
     } catch (error) {
+      // best-effort: after delivery. The reply already reached the user and
+      // persistWithRetry already retried; a throw would post a second, failed
+      // reply.
       logException(
         error,
         "local.assistant.message_post_delivery_persist.failed",
@@ -577,6 +580,10 @@ async function runLocalAgentTurnInContext(
             try {
               await processPluginTask(message);
             } catch (error) {
+              // best-effort: decision (secondary write). plugin isolation. A
+              // plugin task failure must not fail the turn that already
+              // completed, and no plugin code is left to catch it. See the PR
+              // decisions.
               logException(
                 error,
                 "local.plugin.session_completion_task.failed",
@@ -592,6 +599,9 @@ async function runLocalAgentTurnInContext(
         },
       );
     } catch (error) {
+      // best-effort: decision (secondary write). plugin isolation. A plugin
+      // task failure must not fail the turn that already completed, and no
+      // plugin code is left to catch it. See the PR decisions.
       logException(error, "local.plugin.session_completion_task.failed", {
         conversationId: input.conversationId,
         turnId,

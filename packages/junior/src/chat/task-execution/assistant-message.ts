@@ -72,6 +72,8 @@ export async function commitAssistantMessage(args: {
       }),
     );
   } catch (error) {
+    // best-effort: retried. The next checkpoint persists the same messages
+    // again.
     logException(error, "conversation.assistant.message_persist.failed");
   }
 }
