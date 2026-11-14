@@ -1,6 +1,9 @@
 import { getSqlExecutor } from "@/chat/db";
 import { deleteProviderIdentityForSlackUser } from "@/chat/identities/sql";
-import type { UserTokenStore } from "@/chat/credentials/user-token-store";
+import {
+  connectionAccount,
+  type UserTokenStore,
+} from "@/chat/credentials/user-token-store";
 import {
   deleteMcpAuthSessionsForUserProvider,
   deleteMcpServerSessionId,
@@ -14,18 +17,20 @@ export async function unlinkProvider(
   userTokenStore: UserTokenStore,
   slackTeamId?: string,
 ): Promise<void> {
-  const tokens = await userTokenStore.get(userId, provider);
-  if (tokens?.account && slackTeamId) {
+  const account = connectionAccount(
+    await userTokenStore.read(userId, provider),
+  );
+  if (account && slackTeamId) {
     await deleteProviderIdentityForSlackUser(
       getSqlExecutor(),
       slackTeamId,
       userId,
       provider,
-      tokens.account.id,
+      account.id,
     );
   }
   await Promise.all([
-    userTokenStore.delete(userId, provider),
+    userTokenStore.transition(userId, provider, { type: "disconnect" }),
     deleteMcpStoredOAuthCredentials(userId, provider),
     deleteMcpServerSessionId(userId, provider),
     deleteMcpAuthSessionsForUserProvider(userId, provider),

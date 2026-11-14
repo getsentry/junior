@@ -3,6 +3,7 @@ import { screenshot } from "./screenshot";
 
 const githubConnection = {
   connected: false,
+  status: "disconnected",
   description: "GitHub repository and development workflow context.",
   displayName: "GitHub",
   provider: "github",
@@ -26,6 +27,7 @@ test("connects and disconnects a plugin account from settings", async ({
                   url: "https://github.com/octocat",
                 },
                 connected: true,
+                status: "connected",
               }
             : githubConnection,
         ],

@@ -10,6 +10,7 @@ export const connectionSchema = z
       .strict()
       .optional(),
     connected: z.boolean(),
+    status: z.enum(["connected", "needs_reauth", "expired", "disconnected"]),
   })
   .strict();
 

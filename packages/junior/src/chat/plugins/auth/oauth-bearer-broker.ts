@@ -162,6 +162,17 @@ export function createOAuthBearerBroker(
   const authTokenPlaceholder = resolveAuthTokenPlaceholder(credentials);
   const pluginHeaderTransforms = () => resolveApiHeaderTransforms(manifest);
 
+  const reauthorizeError = () =>
+    new CredentialUnavailableError(
+      provider,
+      `Your ${provider} connection needs to be reauthorized.`,
+    );
+  const expiredConnectionError = () =>
+    new CredentialUnavailableError(
+      provider,
+      `Your ${provider} connection has expired. Reconnect it to continue.`,
+    );
+
   function buildLease(
     token: string,
     expiresAtMs: number,
@@ -203,94 +214,96 @@ export function createOAuthBearerBroker(
       }
 
       if (userSubjectId) {
-        const stored = await deps.userTokenStore.get(userSubjectId, provider);
+        const connection = await deps.userTokenStore.read(
+          userSubjectId,
+          provider,
+        );
+        if (connection?.status === "expired") {
+          throw expiredConnectionError();
+        }
+        const stored = connection?.tokens;
         if (stored) {
           if (!hasRequiredOAuthScope(stored.scope, oauth.scope)) {
-            throw new CredentialUnavailableError(
-              provider,
-              `Your ${provider} connection needs to be reauthorized.`,
-            );
+            throw reauthorizeError();
           }
 
           if (shouldRefreshStoredToken(stored)) {
-            try {
-              return await deps.userTokenStore.withRefresh(
-                userSubjectId,
-                provider,
-                async () => {
-                  const latest = await deps.userTokenStore.get(
-                    userSubjectId,
+            return await deps.userTokenStore.withRefresh(
+              userSubjectId,
+              provider,
+              async () => {
+                const latest = await deps.userTokenStore.get(
+                  userSubjectId,
+                  provider,
+                );
+                if (!latest) {
+                  throw new CredentialUnavailableError(
                     provider,
+                    `No ${provider} credentials available.`,
                   );
-                  if (
-                    latest &&
-                    !hasRequiredOAuthScope(latest.scope, oauth.scope)
-                  ) {
-                    throw new CredentialUnavailableError(
-                      provider,
-                      `Your ${provider} connection needs to be reauthorized.`,
-                    );
-                  }
-                  if (
-                    !shouldRefreshStoredToken(latest) &&
-                    canUseStoredToken(latest)
-                  ) {
-                    return buildLease(
-                      latest.accessToken,
-                      getLeaseExpiry(latest.expiresAt),
-                      input.reason,
-                    );
-                  }
-                  if (!latest) {
-                    throw new CredentialUnavailableError(
-                      provider,
-                      `No ${provider} credentials available.`,
-                    );
-                  }
+                }
+                if (!hasRequiredOAuthScope(latest.scope, oauth.scope)) {
+                  throw reauthorizeError();
+                }
+                if (
+                  !shouldRefreshStoredToken(latest) &&
+                  canUseStoredToken(latest)
+                ) {
+                  return buildLease(
+                    latest.accessToken,
+                    getLeaseExpiry(latest.expiresAt),
+                    input.reason,
+                  );
+                }
 
-                  const refreshed = await refreshAccessToken(
+                let refreshed;
+                try {
+                  refreshed = await refreshAccessToken(
                     provider,
                     latest.refreshToken,
                     oauth,
                     latest.scope ?? oauth.scope,
                   );
-                  if (!hasRequiredOAuthScope(refreshed.scope, oauth.scope)) {
-                    throw new CredentialUnavailableError(
-                      provider,
-                      `Your ${provider} connection needs to be reauthorized.`,
-                    );
+                } catch (error) {
+                  if (!(error instanceof OAuthRefreshRejectedError)) {
+                    throw error;
                   }
-                  const refreshedTokens = {
-                    ...(latest.refreshTokenExpiresAt
-                      ? { refreshTokenExpiresAt: latest.refreshTokenExpiresAt }
-                      : undefined),
-                    ...refreshed,
-                    ...(latest.account ? { account: latest.account } : undefined),
-                  };
-                  await deps.userTokenStore.set(
+                  await deps.userTokenStore.transition(
                     userSubjectId,
                     provider,
-                    refreshedTokens,
+                    { type: "expire", from: latest },
                   );
-                  return buildLease(
-                    refreshed.accessToken,
-                    getLeaseExpiry(refreshed.expiresAt),
-                    input.reason,
-                  );
-                },
-              );
-            } catch (error) {
-              if (error instanceof CredentialUnavailableError) {
-                throw error;
-              }
-              if (error instanceof OAuthRefreshRejectedError) {
-                throw new CredentialUnavailableError(
+                  throw expiredConnectionError();
+                }
+                if (!hasRequiredOAuthScope(refreshed.scope, oauth.scope)) {
+                  throw reauthorizeError();
+                }
+                const refreshedTokens = {
+                  ...(latest.refreshTokenExpiresAt
+                    ? { refreshTokenExpiresAt: latest.refreshTokenExpiresAt }
+                    : undefined),
+                  ...refreshed,
+                  ...(latest.account ? { account: latest.account } : undefined),
+                };
+                // A disconnect or reconnect during the refresh wins.
+                const saved = await deps.userTokenStore.transition(
+                  userSubjectId,
                   provider,
-                  `Your ${provider} connection has expired.`,
+                  { type: "update", from: latest, tokens: refreshedTokens },
                 );
-              }
-              throw error;
-            }
+                if (!saved) {
+                  throw new CredentialUnavailableError(
+                    provider,
+                    `Your ${provider} connection changed during token refresh. Try again.`,
+                  );
+                }
+                return buildLease(
+                  refreshed.accessToken,
+                  getLeaseExpiry(refreshed.expiresAt),
+                  input.reason,
+                );
+              },
+            );
           }
 
           if (canUseStoredToken(stored)) {
@@ -301,10 +314,7 @@ export function createOAuthBearerBroker(
             );
           }
 
-          throw new CredentialUnavailableError(
-            provider,
-            `Your ${provider} connection has expired.`,
-          );
+          throw expiredConnectionError();
         }
 
         throw new CredentialUnavailableError(

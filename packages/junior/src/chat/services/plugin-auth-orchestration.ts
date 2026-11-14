@@ -280,7 +280,7 @@ export function createPluginAuthOrchestration(
       // before lease issuance or an upstream 401 after credential injection. In
       // the latter case the token may be valid and the 401 caused by a
       // scope/org/permission mismatch unrelated to the stored credential.
-      // OAuth completion overwrites the stored token via userTokenStore.set(),
+      // OAuth completion replaces the stored token with a `connect` transition,
       // so proactive deletion is unnecessary and destroys a working connection.
       await startAuthorizationPause(
         authorization.provider,

@@ -23,6 +23,15 @@ function connectionPath(provider: string): string {
   return `/api/connections/${encodeURIComponent(provider)}`;
 }
 
+const reconnectReasons: Partial<Record<Connection["status"], string>> = {
+  expired: "Connection expired. Reconnect to keep using it.",
+  needs_reauth: "Needs more access. Reconnect to grant it.",
+};
+
+function connectLabel(connection: Connection): string {
+  return connection.status === "disconnected" ? "Connect" : "Reconnect";
+}
+
 /** Connect and disconnect the viewer's plugin accounts. */
 export function ConnectionsPage() {
   const queryClient = useQueryClient();
@@ -70,6 +79,7 @@ export function ConnectionsPage() {
                     displayName: item.displayName,
                     description: item.description,
                     connected: false,
+                    status: "disconnected",
                   }
                 : item,
             ),
@@ -127,7 +137,7 @@ export function ConnectionsPage() {
                       {connection.displayName}
                     </p>
                     <p className="mt-1 mb-0 line-clamp-2 break-words text-xs text-dashboard-text-muted">
-                      {connection.connected ? (
+                      {connection.status === "connected" ? (
                         connection.account ? (
                           <>
                             Connected as{" "}
@@ -146,11 +156,12 @@ export function ConnectionsPage() {
                           "Connected"
                         )
                       ) : (
-                        connection.description
+                        (reconnectReasons[connection.status] ??
+                        connection.description)
                       )}
                     </p>
                   </div>
-                  {connection.connected ? (
+                  {connection.status === "connected" ? (
                     <Button
                       aria-busy={pendingProvider === connection.provider}
                       aria-label={`Disconnect ${connection.displayName}`}
@@ -169,7 +180,7 @@ export function ConnectionsPage() {
                     <Button
                       variant="outline"
                       aria-busy={pendingProvider === connection.provider}
-                      aria-label={`Connect ${connection.displayName}`}
+                      aria-label={`${connectLabel(connection)} ${connection.displayName}`}
                       disabled={busy}
                       onClick={() => {
                         disconnectMutation.reset();
@@ -184,7 +195,7 @@ export function ConnectionsPage() {
                     >
                       {pendingProvider === connection.provider
                         ? "Connecting…"
-                        : "Connect"}
+                        : connectLabel(connection)}
                     </Button>
                   )}
                 </li>

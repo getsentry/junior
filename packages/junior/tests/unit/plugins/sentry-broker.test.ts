@@ -8,6 +8,7 @@ import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { OAuthProviderError } from "@/chat/oauth-response";
 import type {
   StoredTokens,
+  UserConnection,
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
 
@@ -43,20 +44,23 @@ const SENTRY_MANIFEST: PluginManifest = {
 function createMockTokenStore(
   tokens?: Record<string, StoredTokens>,
 ): UserTokenStore {
-  const store = new Map<string, StoredTokens>();
-  if (tokens) {
-    for (const [key, value] of Object.entries(tokens)) {
-      store.set(key, value);
-    }
+  const store = new Map<string, UserConnection>();
+  for (const [key, value] of Object.entries(tokens ?? {})) {
+    store.set(key, { status: "connected", tokens: value });
   }
   return {
-    get: async (userId: string, provider: string) =>
-      store.get(`${userId}:${provider}`),
-    set: async (userId: string, provider: string, t: StoredTokens) => {
-      store.set(`${userId}:${provider}`, t);
+    get: async (userId: string, provider: string) => {
+      const connection = store.get(`${userId}:${provider}`);
+      return connection?.status === "connected" ? connection.tokens : undefined;
     },
-    delete: async (userId: string, provider: string) => {
-      store.delete(`${userId}:${provider}`);
+    read: async (userId: string, provider: string) =>
+      store.get(`${userId}:${provider}`),
+    transition: async (userId, provider, change) => {
+      const key = `${userId}:${provider}`;
+      if (change.type === "disconnect") store.delete(key);
+      else if (change.type === "expire") store.set(key, { status: "expired" });
+      else store.set(key, { status: "connected", tokens: change.tokens });
+      return true;
     },
     withRefresh: async (_userId, _provider, callback) => callback(),
   };
@@ -292,17 +296,19 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       expiresAt: Date.now() + 60 * 60 * 1000,
       scope: SENTRY_SCOPE,
     };
+    const read = vi
+      .fn<UserTokenStore["read"]>()
+      .mockResolvedValueOnce({ status: "connected", tokens: staleToken });
     const get = vi
       .fn<UserTokenStore["get"]>()
-      .mockResolvedValueOnce(staleToken)
       .mockResolvedValueOnce(freshToken);
     const withRefresh = vi.fn(async (_userId, _provider, callback) =>
       callback(),
     );
     const tokenStore: UserTokenStore = {
       get,
-      set: vi.fn(),
-      delete: vi.fn(),
+      read,
+      transition: vi.fn(),
       withRefresh,
     };
     globalThis.fetch = vi.fn() as typeof fetch;

@@ -60,8 +60,8 @@ function createTokenStore(
 ): UserTokenStore {
   return {
     get: vi.fn(async () => undefined),
-    set: vi.fn(async () => undefined),
-    delete: vi.fn(async () => undefined),
+    read: vi.fn(async () => undefined),
+    transition: vi.fn(async () => true),
     withRefresh: vi.fn(async (_userId, _provider, callback) => callback()),
     ...overrides,
   };
@@ -260,10 +260,13 @@ describe("Slack webhook: App Home events", () => {
     });
     const waitUntil = client.waitUntil();
     const userTokenStore = createTokenStore({
-      get: vi.fn(async () => ({
-        accessToken: "github-access-token",
-        refreshToken: "github-refresh-token",
-        account: { id: "github-1" },
+      read: vi.fn(async () => ({
+        status: "connected" as const,
+        tokens: {
+          accessToken: "github-access-token",
+          refreshToken: "github-refresh-token",
+          account: { id: "github-1" },
+        },
       })),
     });
     const params = new URLSearchParams({
@@ -284,7 +287,9 @@ describe("Slack webhook: App Home events", () => {
 
     expect(response.status).toBe(200);
     await waitUntil.flush();
-    expect(userTokenStore.delete).toHaveBeenCalledWith("U123", "github");
+    expect(userTokenStore.transition).toHaveBeenCalledWith("U123", "github", {
+      type: "disconnect",
+    });
     await expect(
       getSqlExecutor()
         .db()
@@ -330,10 +335,13 @@ describe("Slack webhook: App Home events", () => {
     });
     const waitUntil = client.waitUntil();
     const userTokenStore = createTokenStore({
-      get: vi.fn(async () => ({
-        accessToken: "github-access-token",
-        refreshToken: "github-refresh-token",
-        account: { id: "github-owner" },
+      read: vi.fn(async () => ({
+        status: "connected" as const,
+        tokens: {
+          accessToken: "github-access-token",
+          refreshToken: "github-refresh-token",
+          account: { id: "github-owner" },
+        },
       })),
     });
     const params = new URLSearchParams({
@@ -354,7 +362,9 @@ describe("Slack webhook: App Home events", () => {
 
     expect(response.status).toBe(200);
     await waitUntil.flush();
-    expect(userTokenStore.delete).toHaveBeenCalledWith("U123", "github");
+    expect(userTokenStore.transition).toHaveBeenCalledWith("U123", "github", {
+      type: "disconnect",
+    });
     await expect(
       getSqlExecutor()
         .db()
@@ -381,7 +391,7 @@ describe("Slack webhook: App Home events", () => {
       workspaceTeamIds.push(getWorkspaceTeamId());
       throw new Error("token store unavailable");
     });
-    const userTokenStore = createTokenStore({ delete: deleteToken });
+    const userTokenStore = createTokenStore({ transition: deleteToken });
     const slackAdapter = createSlackAdapter();
     const params = new URLSearchParams({
       payload: JSON.stringify(interactiveDisconnectPayload()),
@@ -403,7 +413,9 @@ describe("Slack webhook: App Home events", () => {
     expect(queue.sentRecords()).toEqual([]);
     expect(waitUntil.pendingCount()).toBe(1);
     await waitUntil.flush();
-    expect(deleteToken).toHaveBeenCalledWith("U123", "notion");
+    expect(deleteToken).toHaveBeenCalledWith("U123", "notion", {
+      type: "disconnect",
+    });
     expect(workspaceTeamIds).toEqual(["T123"]);
     expect(slackApiOutbox.homeViews()).toHaveLength(1);
   });
@@ -415,8 +427,8 @@ describe("Slack webhook: App Home events", () => {
     });
     const waitUntil = client.waitUntil();
     const queue = createConversationWorkQueueTestAdapter();
-    const deleteToken = vi.fn(async () => {});
-    const userTokenStore = createTokenStore({ delete: deleteToken });
+    const deleteToken = vi.fn(async () => true);
+    const userTokenStore = createTokenStore({ transition: deleteToken });
     const slackAdapter = createSlackAdapter();
     const params = new URLSearchParams({
       payload: JSON.stringify({

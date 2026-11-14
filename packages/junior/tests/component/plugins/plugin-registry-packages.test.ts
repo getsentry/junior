@@ -661,8 +661,8 @@ describe("plugin registry package discovery", () => {
       registry.createBroker("demo", {
         userTokenStore: {
           get: async () => undefined,
-          set: async () => {},
-          delete: async () => {},
+          read: async () => undefined,
+          transition: async () => true,
           withRefresh: async (_userId, _provider, callback) => callback(),
         },
       }),

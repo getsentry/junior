@@ -1,9 +1,13 @@
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { connectionListSchema } from "@/api/schema";
-import { createUserTokenStore } from "@/chat/capabilities/factory";
+import {
+  createUserTokenStore,
+  issueProviderCredentialLease,
+} from "@/chat/capabilities/factory";
 import { legacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
 import { closeDb, getSqlExecutor } from "@/chat/db";
@@ -19,6 +23,8 @@ import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
+import { readEvalOAuthRefreshTokens } from "../../msw/handlers/eval-oauth";
+import { mswServer } from "../../msw/server";
 import { createEvalOAuthAccountApp } from "../../fixtures/eval-oauth-account";
 import {
   testWaitUntil,
@@ -93,6 +99,7 @@ describe("connections API", () => {
         description: "Eval OAuth fixture",
         displayName: "Eval OAuth",
         provider: "eval-oauth",
+        status: "disconnected",
       },
     ]);
 
@@ -175,11 +182,14 @@ describe("connections API", () => {
     const legacyUserId = legacyWebActorUserId("person@example.com");
     // Read the raw keys: the runtime store moves legacy tokens on read.
     const rawStore = new StateAdapterTokenStore(getStateAdapter());
-    await rawStore.set(legacyUserId, "eval-oauth", {
-      accessToken: "legacy-access",
-      account: { id: "eval-account-1", label: "person" },
-      refreshToken: "legacy-refresh",
-      scope: "read",
+    await rawStore.transition(legacyUserId, "eval-oauth", {
+      type: "connect",
+      tokens: {
+        accessToken: "legacy-access",
+        account: { id: "eval-account-1", label: "person" },
+        refreshToken: "legacy-refresh",
+        scope: "read",
+      },
     });
 
     expect(await listConnections(app)).toEqual([
@@ -195,10 +205,13 @@ describe("connections API", () => {
     });
 
     // An old instance in a rolling deploy can save legacy keys again.
-    await rawStore.set(legacyUserId, "eval-oauth", {
-      accessToken: "old-instance-access",
-      refreshToken: "old-instance-refresh",
-      scope: "read",
+    await rawStore.transition(legacyUserId, "eval-oauth", {
+      type: "connect",
+      tokens: {
+        accessToken: "old-instance-access",
+        refreshToken: "old-instance-refresh",
+        scope: "read",
+      },
     });
     await putMcpStoredOAuthCredentials(legacyUserId, "eval-oauth", {
       tokens: { access_token: "legacy-mcp-access", token_type: "Bearer" },
@@ -216,6 +229,125 @@ describe("connections API", () => {
     expect(
       await getMcpStoredOAuthCredentials(viewer!.id, "eval-oauth"),
     ).toBeUndefined();
+  });
+
+  it("keeps a disconnect when a token refresh finishes after it", async () => {
+    const app = authenticatedApi("person@example.com");
+    const viewer = await resolveViewerUser("person@example.com");
+    await createUserTokenStore().transition(viewer!.id, "eval-oauth", {
+      type: "connect",
+      tokens: {
+        accessToken: "stale-access",
+        expiresAt: Date.now() - 1,
+        refreshToken: "eval-oauth-refresh-token",
+        scope: "read",
+      },
+    });
+    let enterRefresh!: () => void;
+    let finishRefresh!: () => void;
+    const refreshStarted = new Promise<void>((resolve) => {
+      enterRefresh = resolve;
+    });
+    const refreshGate = new Promise<void>((resolve) => {
+      finishRefresh = resolve;
+    });
+    mswServer.use(
+      http.post(
+        "https://example.com/junior-eval-oauth/oauth/token",
+        async () => {
+          enterRefresh();
+          await refreshGate;
+          return HttpResponse.json({
+            access_token: "refreshed-access",
+            expires_in: 3600,
+            refresh_token: "rotated-refresh",
+            scope: "read",
+            token_type: "Bearer",
+          });
+        },
+        { once: true },
+      ),
+    );
+
+    const lease = issueProviderCredentialLease({
+      context: { actor: { type: "user", userId: viewer!.id } },
+      provider: "eval-oauth",
+      reason: "test:refresh-race",
+    });
+    await refreshStarted;
+    const disconnectResponse = await app.request(
+      "http://localhost/api/connections/eval-oauth",
+      { method: "DELETE" },
+    );
+    expect(disconnectResponse.status).toBe(200);
+    finishRefresh();
+
+    await expect(lease).rejects.toThrow(
+      "Your eval-oauth connection changed during token refresh. Try again.",
+    );
+    expect(
+      await createUserTokenStore().read(viewer!.id, "eval-oauth"),
+    ).toBeUndefined();
+    expect(await listConnections(app)).toEqual([
+      expect.objectContaining({ connected: false, status: "disconnected" }),
+    ]);
+  });
+
+  it("shows a connection as expired after the provider rejects its refresh", async () => {
+    const app = authenticatedApi("person@example.com");
+    const viewer = await resolveViewerUser("person@example.com");
+    await createUserTokenStore().transition(viewer!.id, "eval-oauth", {
+      type: "connect",
+      tokens: {
+        accessToken: "stale-access",
+        account: { id: "eval-account-1", label: "person" },
+        expiresAt: Date.now() - 1,
+        refreshToken: "revoked-refresh",
+        scope: "read",
+      },
+    });
+
+    await expect(
+      issueProviderCredentialLease({
+        context: { actor: { type: "user", userId: viewer!.id } },
+        provider: "eval-oauth",
+        reason: "test:refresh-rejected",
+      }),
+    ).rejects.toThrow(
+      "Your eval-oauth connection has expired. Reconnect it to continue.",
+    );
+    expect(await listConnections(app)).toEqual([
+      expect.objectContaining({
+        account: { label: "person" },
+        connected: false,
+        status: "expired",
+      }),
+    ]);
+    // The expired grant keeps no secrets, and a later use asks to reconnect
+    // without another refresh.
+    expect(await createUserTokenStore().read(viewer!.id, "eval-oauth")).toEqual(
+      {
+        account: { id: "eval-account-1", label: "person" },
+        status: "expired",
+      },
+    );
+    await expect(
+      issueProviderCredentialLease({
+        context: { actor: { type: "user", userId: viewer!.id } },
+        provider: "eval-oauth",
+        reason: "test:expired",
+      }),
+    ).rejects.toThrow("has expired");
+    expect(readEvalOAuthRefreshTokens()).toEqual(["revoked-refresh"]);
+
+    const disconnectResponse = await app.request(
+      "http://localhost/api/connections/eval-oauth",
+      { method: "DELETE" },
+    );
+    expect(disconnectResponse.status).toBe(200);
+    expect(await listConnections(app)).toEqual([
+      expect.objectContaining({ status: "disconnected" }),
+    ]);
   });
 
   it("rejects providers without user OAuth", async () => {

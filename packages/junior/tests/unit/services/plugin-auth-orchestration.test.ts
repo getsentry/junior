@@ -44,8 +44,8 @@ vi.mock("@/chat/task-execution/turn-cursor", () => ({
 function tokenStore(): UserTokenStore {
   return {
     get: vi.fn(),
-    set: vi.fn(),
-    delete: vi.fn(),
+    read: vi.fn(),
+    transition: vi.fn(),
     withRefresh: vi.fn(async (_userId, _provider, callback) => callback()),
   };
 }
