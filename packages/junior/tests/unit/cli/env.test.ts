@@ -154,7 +154,7 @@ describe("loadCliEnvFiles", () => {
     writeFile(path.join(tempRoot, "package.json"), "{}\n");
     writeFile(
       path.join(tempRoot, ".env.local"),
-      ['VERCEL="1"', 'VERCEL_ENV="development"', ""].join("\n"),
+      ['VERCEL="1"', 'VERCEL_ENV="production"', ""].join("\n"),
     );
 
     loadCliEnvFiles(tempRoot);

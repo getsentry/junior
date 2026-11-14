@@ -27,13 +27,6 @@ export function applyJuniorDevelopmentDefaults(
   if (nodeEnv !== "development") {
     return;
   }
-  // Vercel builds leave NODE_ENV unset, but `junior snapshot create` runs
-  // there and must use the configured Redis. A default `vercel env pull`
-  // writes VERCEL_ENV=development or no VERCEL_ENV, so local runs keep these
-  // defaults.
-  if (env.VERCEL_ENV === "production" || env.VERCEL_ENV === "preview") {
-    return;
-  }
 
   if (!hasValue(env.JUNIOR_SECRET)) {
     env.JUNIOR_SECRET = JUNIOR_LOCAL_DEV_INTERNAL_SECRET;
@@ -94,6 +87,13 @@ function resolveCliEnvRoots(cwd: string): string[] {
  */
 export function loadCliEnvFiles(cwd: string = process.cwd()): void {
   const nodeEnv = process.env.NODE_ENV ?? "development";
+  // Vercel builds leave NODE_ENV unset, but `junior snapshot create` runs
+  // there and must use the configured Redis. Read VERCEL_ENV before loading
+  // env files: `vercel env pull` can write VERCEL_ENV=production to
+  // .env.local, and local runs must keep the development defaults.
+  const vercelDeployment =
+    process.env.VERCEL_ENV === "production" ||
+    process.env.VERCEL_ENV === "preview";
 
   for (const root of resolveCliEnvRoots(cwd)) {
     for (const envFile of envFileNames(nodeEnv)) {
@@ -106,5 +106,7 @@ export function loadCliEnvFiles(cwd: string = process.cwd()): void {
     }
   }
 
-  applyJuniorDevelopmentDefaults(process.env);
+  if (!vercelDeployment) {
+    applyJuniorDevelopmentDefaults(process.env);
+  }
 }
