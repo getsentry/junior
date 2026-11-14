@@ -14,9 +14,11 @@ import {
   buildAgentDispatchInboundMessage,
   createAgentDispatchConversationWorker,
 } from "@/chat/agent-dispatch/work";
+import { bindScheduledAutomationCredentialSubject } from "@/chat/credentials/subject";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { recordTurnSummary } from "@/chat/task-execution/turn-cursor";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
+import { createAgentDispatchTestRecord } from "../fixtures/agent-dispatch";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -219,6 +221,49 @@ describe("agent dispatch worker contract", () => {
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       resultMessageTs: "1700000000.000012",
       status: "completed",
+    });
+  });
+
+  it("keeps the provider to connect when a retry projects a blocked turn", async () => {
+    const dispatch = await createAgentDispatchTestRecord(
+      "blocked-summary-retry",
+      bindScheduledAutomationCredentialSubject({
+        plugin: "scheduler",
+        subject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "scheduled-automation",
+          taskId: "sched_blocked_retry",
+        },
+      }),
+    );
+    // The first attempt stored the blocked Turn, then lost the dispatch write.
+    await recordTurnSummary({
+      authorizationProvider: "github",
+      conversationId: getDispatchConversationId(dispatch),
+      dispatchId: dispatch.id,
+      dispatchOutcome: "blocked",
+      turnId: getDispatchTurnId(dispatch.id),
+      sliceId: 1,
+      state: "failed",
+      surface: "api",
+    });
+    const runTurn = vi.fn();
+    const worker = createAgentDispatchConversationWorker({
+      resumeTurn: vi.fn(),
+      runTurn,
+    });
+    const { context } = createContext(dispatch);
+
+    await expect(worker(context, dispatch.id)).resolves.toEqual({
+      status: "completed",
+    });
+
+    expect(runTurn).not.toHaveBeenCalled();
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      authorizationProvider: "github",
+      errorMessage: "This run needs a connected github account.",
+      status: "blocked",
     });
   });
 
