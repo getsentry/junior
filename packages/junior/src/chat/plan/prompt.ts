@@ -12,6 +12,7 @@ import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 import { escapeXml, escapeXmlText } from "@/chat/xml";
 import {
   isOpenPlanItemStatus,
+  SELF_PLAN_ASSIGNEE,
   type PlanItem,
   type PlanItemAssignee,
 } from "./types";
@@ -31,7 +32,7 @@ const VERSION_PATTERN = new RegExp(
 export function renderPlanAssignee(assignee: PlanItemAssignee): string {
   switch (assignee.kind) {
     case "self":
-      return "self";
+      return SELF_PLAN_ASSIGNEE;
     case "agent":
       return assignee.name ?? assignee.conversationId;
     case "user":

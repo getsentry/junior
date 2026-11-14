@@ -1,5 +1,6 @@
 import * as z from "zod";
 import type { PiMessage } from "@/chat/pi/messages";
+import { SELF_PLAN_ASSIGNEE } from "@/chat/plan/types";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status-render";
 
 // Reads only what the status needs, so other result fields can change.
@@ -13,7 +14,7 @@ const planOutputSchema = z.object({
 function ownPlanItems(output: unknown) {
   const parsed = planOutputSchema.safeParse(output);
   return parsed.success
-    ? parsed.data.items.filter((item) => item.assignee === "self")
+    ? parsed.data.items.filter((item) => item.assignee === SELF_PLAN_ASSIGNEE)
     : [];
 }
 

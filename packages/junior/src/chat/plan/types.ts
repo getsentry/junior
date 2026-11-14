@@ -15,6 +15,9 @@ export function isOpenPlanItemStatus(status: PlanItemStatus): boolean {
   return status !== "done" && status !== "cancelled";
 }
 
+/** Assignee text for the plan's own agent, in tool results and blocks. */
+export const SELF_PLAN_ASSIGNEE = "self";
+
 /** Who works on a Plan item. */
 export type PlanItemAssignee =
   | { kind: "self" }

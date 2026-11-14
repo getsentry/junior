@@ -11,6 +11,7 @@ import {
 import {
   isOpenPlanItemStatus,
   PLAN_ITEM_STATUSES,
+  SELF_PLAN_ASSIGNEE,
   type PlanItem,
 } from "@/chat/plan/types";
 import {
@@ -21,9 +22,6 @@ import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-
-/** Text that assigns an item to the plan's own agent. */
-const SELF_ASSIGNEE = "self";
 
 const MAX_ITEMS_PER_CALL = 50;
 
@@ -119,9 +117,6 @@ const updatePlanOutputSchema = juniorToolOutputSchema.extend({
   removed_ids: z.array(z.number().int()).optional(),
 });
 
-/** One Plan item as `updatePlan` returns it. */
-export type UpdatePlanOutputItem = z.output<typeof planItemOutputSchema>;
-
 export const updatePlanToolDefinition = zodToolDefinition({
   annotations: {
     destructiveHint: false,
@@ -130,12 +125,12 @@ export const updatePlanToolDefinition = zodToolDefinition({
     readOnlyHint: false,
   },
   description:
-    "Change the plan: the durable list of work that this conversation has not finished. It survives context compaction and sandbox resets. Each assignee can have one item in progress. Returns the items that changed, or every open item when the call changes nothing.",
+    "Change the plan: the durable list of work that this conversation has not finished. It survives context compaction and sandbox resets. Give work for a child agent that child as assignee, with the brief in notes if you send it later. Each assignee can have one item in progress; your own item in progress shows as your loading status. Returns the items that changed, or every open item when the call changes nothing.",
   inputSchema: updatePlanInputSchema,
   outputSchema: updatePlanOutputSchema,
 });
 
-function outputItem(item: PlanItem): UpdatePlanOutputItem {
+function outputItem(item: PlanItem): z.output<typeof planItemOutputSchema> {
   return {
     id: item.id,
     title: item.title,
@@ -156,7 +151,10 @@ async function resolvePlanAssignee(
   findMentionedUserId: FindMentionedUserId,
 ): Promise<StoredPlanAssignee> {
   const text = value.trim();
-  if (text.toLowerCase() === SELF_ASSIGNEE || text === context.conversationId) {
+  if (
+    text.toLowerCase() === SELF_PLAN_ASSIGNEE ||
+    text === context.conversationId
+  ) {
     return { conversationId: context.conversationId };
   }
   const childConversationId = await findChildAgentConversationId({
@@ -175,7 +173,7 @@ async function resolvePlanAssignee(
     if ("userId" in person) return { userId: person.userId };
   }
   throw new ToolInputError(
-    `Unknown assignee ${JSON.stringify(text)}. Use ${SELF_ASSIGNEE}, the name or conversation_id of a child agent from listAgents, or the email or mention of one person.`,
+    `Unknown assignee ${JSON.stringify(text)}. Use ${SELF_PLAN_ASSIGNEE}, the name or conversation_id of a child agent from listAgents, or the email or mention of one person.`,
   );
 }
 
@@ -210,7 +208,7 @@ export function createUpdatePlanTool(
               title: item.title,
               ...(item.notes ? { notes: item.notes } : undefined),
               status: item.status ?? "pending",
-              assignee: await assignee(item.assignee ?? SELF_ASSIGNEE),
+              assignee: await assignee(item.assignee ?? SELF_PLAN_ASSIGNEE),
             })),
           ),
           update: await Promise.all(
