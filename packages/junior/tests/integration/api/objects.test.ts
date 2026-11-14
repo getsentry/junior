@@ -414,12 +414,14 @@ describe("object links API", () => {
         status: "draft",
         url: `${repo}/pull/34`,
       });
-      // A pull request is not an issue, so its issue URL keeps the web page
-      // card.
+      // GitHub opens a pull request at its issue URL too, so the card is the
+      // pull request card.
       expect(member.objects.get(`${repo}/issues/34`)).toMatchObject({
-        objectType: "web_page",
-        plugin: "junior",
-        title: "Public pull request",
+        label: "getsentry/junior#34",
+        objectType: "code_change",
+        plugin: "github",
+        status: "draft",
+        url: `${repo}/pull/34`,
       });
       expect(member.objects.has(`${repo}/issues/99`)).toBe(false);
       // A transferred issue shows only when the viewer can see its new
