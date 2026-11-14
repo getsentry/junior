@@ -194,6 +194,6 @@ async function resolveSentryReleaseLink(
 export const sentryReleaseLinks: PluginObjectLinkDefinition = {
   canView: canViewSentryReleaseLink,
   filters: SENTRY_RELEASE_LINK_FILTERS,
-  objectType: "release",
+  objectTypes: ["release"],
   resolve: resolveSentryReleaseLink,
 };
