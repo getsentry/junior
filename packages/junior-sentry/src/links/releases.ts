@@ -34,10 +34,12 @@ interface SentryRelease {
   shortVersion: string;
   projects: string[];
   newIssues: number;
-  crashFreeSessions?: number;
+  crashFreeSessions?: number | undefined;
   deployCount: number;
-  lastDeploy?: { environment: string; finishedAt?: string };
-  releasedAt?: string;
+  lastDeploy?:
+    | { environment: string; finishedAt?: string | undefined }
+    | undefined;
+  releasedAt?: string | undefined;
 }
 
 const releaseSchema = z.object({

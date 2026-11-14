@@ -47,7 +47,7 @@ function fakeSentry(access: Record<string, number[]>, version = VERSION) {
   const queries: string[] = [];
   mswServer.use(
     http.get("https://sentry.io/api/0/organizations/:org/", ({ params }) =>
-      HttpResponse.json({ slug: params.org, links: { regionUrl: REGION } }),
+      HttpResponse.json({ slug: params["org"], links: { regionUrl: REGION } }),
     ),
     http.get(
       `${REGION}/api/0/organizations/sentry/releases/:version/`,
@@ -62,7 +62,7 @@ function fakeSentry(access: Record<string, number[]>, version = VERSION) {
           ? PROJECTS.filter(({ id }) => String(id) === project)
           : PROJECTS;
         if (
-          params.version !== version ||
+          params["version"] !== version ||
           !PROJECTS.some(({ id }) => visible.includes(id)) ||
           (project && !visible.includes(Number(project)))
         ) {
