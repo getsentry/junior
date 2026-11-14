@@ -281,7 +281,11 @@ async function updateEvent(
   return { ...current, task: saved };
 }
 
-/** Create the tool that edits, pauses, resumes, or moves one Automation. */
+/**
+ * Create the tool that edits, pauses, resumes, or moves one Automation.
+ *
+ * @runBuilt updateAutomation
+ */
 export function createUpdateAutomationTool(
   context: AutomationToolContext,
   catalog: EventCatalog,
@@ -335,7 +339,7 @@ export function createUpdateAutomationTool(
         .enum(["system", "creator"])
         .nullable()
         .describe(
-          "Set creator to make the automation creator's credentials available, or system to disable them. Creator always means the automation's createdBy actor, never the current requester. Only that creator may enable creator mode. Omit or use null to leave unchanged.",
+          "Set creator to make the automation creator's credentials available, or system to disable them. Creator always means the automation's createdBy actor, never the current requester. Only that creator may enable creator mode. Omit or null leaves it unchanged.",
         )
         .optional(),
       status: z
@@ -365,7 +369,7 @@ export function createUpdateAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Update the title, instruction or skill and its context, trigger, outcomes, credential use, or status of a scheduled or event automation. Anyone in the workspace can update anything on an automation in a public channel, including its outcomes and destination. Automations in private channels and DMs can be updated from there or by their creator, and only their creator can move them. Only the creator can enable creator credentials. A non-creator who changes the instruction, skill, context, trigger, outcomes, or destination switches it to system credentials. The trigger type cannot change. Set destination to move a scheduled automation to this conversation or to a public channel.",
+      "Update the title, instruction or skill and its context, trigger, outcomes, credential use, or status of a scheduled or event automation. Anyone in the workspace can update anything on an automation in a public channel, including its outcomes and destination. Automations in private channels and DMs can be updated from there or by their creator; only their creator can move them. A non-creator who changes the instruction, skill, context, trigger, outcomes, or destination switches it to system credentials.",
     inputSchema,
     prepareArguments(args) {
       // Null means omitted, except a null context, which removes it.

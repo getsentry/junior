@@ -58,20 +58,22 @@ const inputSchema = z
     comment_kind: z
       .enum(["conversation", "review", "review_body"])
       .describe(
-        'Comment kind: "conversation" for a pull request conversation comment, "review" for an inline review comment, "review_body" for the body of a submitted review.',
+        'Comment kind: "conversation" for a pull request conversation comment, "review" for an inline review comment, "review_body" for the body of a submitted review. Use the exact value from the event.',
       ),
     comment_id: z
       .number()
       .int()
       .positive()
       .describe(
-        "GitHub comment id (conversation comment id, inline review comment id, or review id).",
+        "GitHub comment id (conversation comment id, inline review comment id, or review id). Use the exact value from the event.",
       ),
     pull_request: z
       .number()
       .int()
       .positive()
-      .describe("Pull request number that the comment is on."),
+      .describe(
+        "Pull request number that the comment is on. Use the exact value from the event.",
+      ),
     status: z
       .enum(["addressed", "declined"])
       .describe(
@@ -368,7 +370,6 @@ function failed(response: GitHubApiResponse): boolean {
  * Replace only state reactions Junior previously added to the same comment.
  */
 export function createGitHubUpdatePullRequestFeedbackTool(
-  ctx: { egress: PluginEgress },
   botEmail: string | undefined,
 ) {
   return definePluginTool({
@@ -382,11 +383,15 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       readOnlyHint: false,
     },
     description:
-      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Use the pull_request, comment_id, and comment_kind from the event after acting on the feedback. Replaces only your prior status reaction on that comment. Only works on pull requests the bot authored.",
+      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Call it after acting on the feedback. Replaces only your prior status reaction on that comment. Only works on pull requests the bot authored.",
     exposure: "direct",
     inputSchema,
     outputSchema,
-    async execute(input): Promise<Result> {
+    async execute(
+      input,
+      _options,
+      ctx: { egress: PluginEgress },
+    ): Promise<Result> {
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {
         throw new PluginToolInputError(

@@ -1,4 +1,5 @@
 import { githubObjectAnnotation } from "../annotations.js";
+import { readDraftReadiness } from "../draft-readiness.js";
 import { githubObjectFacts } from "../object-facts.js";
 import {
   type PluginEgress,
@@ -56,7 +57,19 @@ const checksSchema = z.object({
 type Checks = z.output<typeof checksSchema>;
 const pullRequestSchema = z.object({
   base: z.string(),
+  agents_md: z
+    .string()
+    .optional()
+    .describe(
+      "Draft only: the root AGENTS.md of the base branch, when it has one.",
+    ),
   checks: checksSchema,
+  code_owners: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Draft only: the CODEOWNERS owners of the changed files. GitHub asks them to review when the pull request is marked ready for review.",
+    ),
   draft: z.boolean(),
   head: z.string(),
   head_sha: commitShaSchema,
@@ -193,89 +206,101 @@ async function readPullRequestChecks(
 }
 
 /** Read one PR and expose its stable subscription identity when webhooks are enabled. */
-export function createGitHubGetPullRequestTool(ctx: {
-  egress: PluginEgress;
-  events: { canSubscribe: boolean };
-}) {
-  return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
+export const gitHubGetPullRequestTool = definePluginTool({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Get a GitHub pull request with its required checks and merge state, and for a draft, what to check before marking it ready. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
+  inputSchema,
+  outputSchema,
+  async execute(
+    input,
+    _options,
+    ctx: {
+      egress: PluginEgress;
+      events: { canSubscribe: boolean };
     },
-    description:
-      "Get a GitHub pull request with its required checks and merge state. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
-    inputSchema,
-    outputSchema,
-    async execute(input): Promise<Result> {
-      const repo = parseRepo(input.repo);
-      const response = await githubApi(ctx.egress, {
-        operation: "github.pull.get",
-        path: `${repoPath(repo)}/pulls/${input.number}`,
-      });
-      if (!response.ok) {
-        const message = `GitHub pull request lookup failed with HTTP ${response.status}`;
-        // Missing PR/repo is model-repairable. Auth, rate limit, and 5xx stay system errors.
-        if (response.status === 404) {
-          throw new PluginToolInputError(message);
-        }
-        throw new Error(message);
+  ): Promise<Result> {
+    const repo = parseRepo(input.repo);
+    const response = await githubApi(ctx.egress, {
+      operation: "github.pull.get",
+      path: `${repoPath(repo)}/pulls/${input.number}`,
+    });
+    if (!response.ok) {
+      const message = `GitHub pull request lookup failed with HTTP ${response.status}`;
+      // Missing PR/repo is model-repairable. Auth, rate limit, and 5xx stay system errors.
+      if (response.status === 404) {
+        throw new PluginToolInputError(message);
       }
-      const providerResult = z
-        .object({
-          base: z.object({ ref: z.string() }),
-          draft: z.boolean(),
-          head: z.object({ ref: z.string(), sha: commitShaSchema }),
-          html_url: z.string(),
-          merged: z.boolean().optional().default(false),
-          number: z.number(),
-          state: z.string(),
-          title: z.string(),
-        })
-        .parse(response.body);
-      const checks = await readPullRequestChecks(
-        ctx.egress,
-        repo,
-        providerResult.number,
-      );
-      const subscribable = gitHubPullRequestSubscribable({
-        canSubscribe: ctx.events.canSubscribe,
-        number: providerResult.number,
-        repo: repo.ref,
-      });
-      const data: PullRequest = {
-        base: providerResult.base.ref,
-        checks,
-        draft: providerResult.draft,
-        head: providerResult.head.ref,
-        head_sha: providerResult.head.sha.toLowerCase(),
-        merged: providerResult.merged,
-        number: providerResult.number,
-        state: providerResult.state,
-        ...(subscribable ? { subscribable } : undefined),
-        title: providerResult.title,
-        url: providerResult.html_url,
-      };
-      return {
-        objectAnnotations: [
-          githubObjectAnnotation({
-            repo: repo.ref,
-            number: data.number,
-            title: data.title,
-            url: data.url,
-            objectType: "code_change",
-            status: data.merged
-              ? "merged"
-              : data.state === "open" && data.draft
-                ? "draft"
-                : data.state,
-            ...githubObjectFacts("code_change", response.body),
-          }),
-        ],
-        target: "getPullRequest",
-        ...data,
-      };
-    },
-  });
-}
+      throw new Error(message);
+    }
+    const providerResult = z
+      .object({
+        base: z.object({ ref: z.string() }),
+        draft: z.boolean(),
+        head: z.object({ ref: z.string(), sha: commitShaSchema }),
+        html_url: z.string(),
+        merged: z.boolean().optional().default(false),
+        number: z.number(),
+        state: z.string(),
+        title: z.string(),
+      })
+      .parse(response.body);
+    const checks = await readPullRequestChecks(
+      ctx.egress,
+      repo,
+      providerResult.number,
+    );
+    // Only a draft can still ask its code owners by being marked ready.
+    const readiness =
+      providerResult.draft && providerResult.state === "open"
+        ? await readDraftReadiness(ctx.egress, repo, {
+            base: providerResult.base.ref,
+            number: providerResult.number,
+          })
+        : undefined;
+    const subscribable = gitHubPullRequestSubscribable({
+      canSubscribe: ctx.events.canSubscribe,
+      number: providerResult.number,
+      repo: repo.ref,
+    });
+    const data: PullRequest = {
+      base: providerResult.base.ref,
+      ...(readiness?.agentsMd ? { agents_md: readiness.agentsMd } : undefined),
+      checks,
+      ...(readiness ? { code_owners: readiness.codeOwners } : undefined),
+      draft: providerResult.draft,
+      head: providerResult.head.ref,
+      head_sha: providerResult.head.sha.toLowerCase(),
+      merged: providerResult.merged,
+      number: providerResult.number,
+      state: providerResult.state,
+      ...(subscribable ? { subscribable } : undefined),
+      title: providerResult.title,
+      url: providerResult.html_url,
+    };
+    return {
+      objectAnnotations: [
+        githubObjectAnnotation({
+          repo: repo.ref,
+          number: data.number,
+          title: data.title,
+          url: data.url,
+          objectType: "code_change",
+          status: data.merged
+            ? "merged"
+            : data.state === "open" && data.draft
+              ? "draft"
+              : data.state,
+          ...githubObjectFacts("code_change", response.body),
+        }),
+      ],
+      target: "getPullRequest",
+      ...data,
+    };
+  },
+});

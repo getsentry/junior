@@ -5,6 +5,7 @@ import {
   type User,
   type Actor,
   type PluginLogger,
+  type PluginDecider,
   type PluginEgress,
   type Source,
   definePluginTool,
@@ -34,6 +35,7 @@ import {
   parseRepo,
   repoPath,
 } from "../tool-support/github-api.js";
+import { checkPullRequestDescription } from "../tool-support/pull-request-description.js";
 
 const inputSchema = z
   .object({
@@ -144,20 +146,10 @@ async function setPullRequestDraft(input: {
 }
 
 /** Update mutable PR metadata while preserving runtime-owned body attribution. */
-export function createGitHubUpdatePullRequestTool(ctx: {
-  actor?: Actor;
-  automationLink?: { url: string };
-  conversationId?: string;
-  db: unknown;
-  egress: PluginEgress;
-  log: PluginLogger;
-  events: { canSubscribe: boolean };
-  conversationLink?: { url: string };
-  source?: Source;
-  users: {
-    resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
-  };
-}) {
+export function createGitHubUpdatePullRequestTool(
+  /** Set when the description check experiment is on. */
+  descriptionChecks = false,
+) {
   return definePluginTool({
     annotations: {
       destructiveHint: true,
@@ -169,7 +161,27 @@ export function createGitHubUpdatePullRequestTool(ctx: {
       "Update an existing GitHub pull request's title, body, base branch, open/closed state, or draft state. Use this instead of raw GitHub API calls when changing PR metadata or marking a PR ready for review.",
     inputSchema,
     outputSchema,
-    async execute(input): Promise<Result> {
+    async execute(
+      input,
+      _options,
+      ctx: {
+        actor?: Actor;
+        automationLink?: { url: string };
+        conversationId?: string;
+        db: unknown;
+        decider: PluginDecider;
+        egress: PluginEgress;
+        log: PluginLogger;
+        events: { canSubscribe: boolean };
+        conversationLink?: { url: string };
+        source?: Source;
+        users: {
+          resolveActor(): Promise<
+            { identity?: Identity; user?: User } | undefined
+          >;
+        };
+      },
+    ): Promise<Result> {
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {
         throw new PluginToolInputError(
@@ -178,6 +190,9 @@ export function createGitHubUpdatePullRequestTool(ctx: {
         );
       }
       const update = parsedInput.data;
+      if (descriptionChecks && update.body !== undefined) {
+        await checkPullRequestDescription(ctx.decider, update.body);
+      }
       const repo = parseRepo(update.repo);
       const requester = await resolveGitHubRequester(ctx);
       const currentBody =
@@ -214,9 +229,13 @@ export function createGitHubUpdatePullRequestTool(ctx: {
       });
       const parsed = response.body;
       if (!response.ok) {
-        throw new Error(
-          `GitHub pull request update failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`,
-        );
+        const message = `GitHub pull request update failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`;
+        // 404 and 422 mean the model named a missing pull request or GitHub
+        // rejected the requested change, such as a base change in a stack.
+        if (response.status === 404 || response.status === 422) {
+          throw new PluginToolInputError(message);
+        }
+        throw new Error(message);
       }
       const providerResult = z
         .object({

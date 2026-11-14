@@ -1,11 +1,15 @@
 import type { ObjectType } from "@sentry/junior-plugin-api";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import type {
   ConversationDetailReport,
   ConversationWatch,
 } from "@sentry/junior/api/schema";
 
 import { ObjectIcon } from "../components/ObjectIcon";
+import {
+  MessageObjectsProvider,
+  useResolvedObject,
+} from "../display-text/DisplayText";
 import { Collapsible } from "../components/ui/collapsible";
 import {
   Tooltip,
@@ -13,6 +17,7 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { WatchDetails, WatchDetailsRow } from "./ConversationWatches";
+import { objectSource } from "./objectSource";
 import { DetailsList, DetailsRow, DetailsRowLine } from "./DetailsList";
 
 type ConversationAnnotation = NonNullable<
@@ -25,6 +30,11 @@ export type ConversationLink = {
   facts?: { type: string };
   key: string;
   label: string;
+  /**
+   * The Annotation saves only the link, with no title. The row asks for the
+   * live card, so a viewer who can open the object sees its title.
+   */
+  linkOnly?: boolean;
   objectType: ObjectType;
   plugin: string;
   /** The plugin's compact row label, such as the repository name. */
@@ -81,6 +91,11 @@ export function conversationLinks(
             : undefined),
           key: `${annotation.plugin}:${annotation.key}`,
           label: annotation.label,
+          // An attached link uses its own URL as the label.
+          ...(annotation.kind === "resource_link" &&
+          annotation.url.startsWith(annotation.label)
+            ? { linkOnly: true }
+            : undefined),
           objectType,
           plugin: annotation.plugin,
           ...(sidebar ? { shortLabel: sidebar.label } : undefined),
@@ -104,27 +119,42 @@ export function ConversationLinkedWork(props: {
   watchesByUrl: ReadonlyMap<string, ConversationWatch[]>;
 }) {
   return (
-    <DetailsList
-      itemKey={(link) => link.key}
-      items={props.links}
-      renderItem={(link) => {
-        const row = <LinkRow link={link} />;
-        const watches = props.watchesByUrl.get(link.url);
-        if (!watches) {
-          return props.watchesByUrl.size > 0 ? (
-            <ChevronSpace>{row}</ChevronSpace>
+    <MessageObjectsProvider>
+      <DetailsList
+        itemKey={(link) => link.key}
+        items={props.links}
+        renderItem={(link) => {
+          const row = link.linkOnly ? (
+            <LiveLinkRow link={link} />
           ) : (
-            row
+            <LinkRow link={link} />
           );
-        }
-        return (
-          <Collapsible className="min-w-0">
-            <WatchDetailsRow label={link.label}>{row}</WatchDetailsRow>
-            <WatchDetails watches={watches} />
-          </Collapsible>
-        );
-      }}
-    />
+          const watches = props.watchesByUrl.get(link.url);
+          if (!watches) {
+            return props.watchesByUrl.size > 0 ? (
+              <ChevronSpace>{row}</ChevronSpace>
+            ) : (
+              row
+            );
+          }
+          return (
+            <Collapsible className="min-w-0">
+              <WatchDetailsRow label={link.label}>{row}</WatchDetailsRow>
+              <WatchDetails watches={watches} />
+            </Collapsible>
+          );
+        }}
+      />
+    </MessageObjectsProvider>
+  );
+}
+
+// Ask for the card at once: the row has no other way to start the request.
+function LiveLinkRow(props: { link: ConversationLink }) {
+  const { card, request } = useResolvedObject(props.link.url);
+  useEffect(() => request(), [request]);
+  return (
+    <LinkRow link={card ? { ...props.link, label: card.title } : props.link} />
   );
 }
 
@@ -171,7 +201,7 @@ function LinkRow(props: { link: ConversationLink }) {
         )
       }
       title={link.label}
-      tooltip={[link.label, link.plugin, status, link.description]
+      tooltip={[link.label, objectSource(link.plugin), status, link.description]
         .filter(Boolean)
         .join(" · ")}
     >

@@ -5,19 +5,23 @@
  * does not deliver a close, or its handler fails, the row stays open. Once a
  * day for each repository, the heartbeat reads the stored open rows from
  * GitHub with GraphQL. Each close goes through the webhook write path, with
- * its merged or closed_unmerged event. The write is guarded by `updatedAt`,
- * so a replay cannot move a newer row back.
+ * its merged or closed_unmerged event. A changed draft state of an open pull
+ * request goes through the same path, without an event. A pull request that
+ * is still open also gets its current title in the code index. The writes are
+ * guarded by `updatedAt`, so a replay cannot move a newer row back.
  */
 import type {
   CodeChangePublisher,
   EventPublisher,
   PluginConversationAnnotations,
+  PluginConversationReviewItems,
   PluginLogger,
   PluginState,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import { gitHubPullRequestTerminalEvents } from "../webhooks/events.js";
+import { closeGitHubConflictNotice } from "../merge-conflict-checks/policy.js";
 import { GitHubRepositoryUnreachableError } from "../webhooks/installation-requests.js";
 import {
   loadGitHubPullRequestPeople,
@@ -26,7 +30,7 @@ import {
   type GitHubPullRequestTarget,
 } from "../webhooks/pull-request-people.js";
 import { normalizeGitHubPullRequestOutcome } from "../webhooks/pull-request-outcome.js";
-import { applyGitHubPullRequestOutcome } from "./apply.js";
+import { applyGitHubPullRequestOutcome, githubCodeChange } from "./apply.js";
 import { listGitHubStaleOpenPullRequests } from "./store.js";
 
 /**
@@ -98,18 +102,20 @@ interface ReconcileArgs {
   }): Promise<unknown>;
   log: Pick<PluginLogger, "error" | "warn">;
   nowMs: number;
+  reviewItems: PluginConversationReviewItems;
   state: PluginState;
 }
 
-/** Write a GraphQL lifecycle as the `closed` webhook body. */
-function closedWebhookBody(
+/** Write a GraphQL lifecycle as the body of a webhook with `action`. */
+function webhookBody(
+  action: "closed" | "converted_to_draft" | "ready_for_review",
   repository: { databaseId: number; nameWithOwner: string },
   pullRequest: z.output<typeof lifecycleSchema>,
 ) {
   // GitHub shows a deleted account as `ghost`.
   const login = pullRequest.author?.login ?? "ghost";
   return {
-    action: "closed",
+    action,
     pull_request: {
       assignees: pullRequest.assignees.nodes.flatMap((assignee) =>
         assignee ? [{ login: assignee.login }] : [],
@@ -136,11 +142,37 @@ function closedWebhookBody(
   };
 }
 
+/** Write a changed draft state of an open pull request. */
+async function reconcileDraft(
+  args: ReconcileArgs,
+  repository: { databaseId: number; nameWithOwner: string },
+  pullRequest: z.output<typeof lifecycleSchema>,
+): Promise<void> {
+  const outcome = normalizeGitHubPullRequestOutcome({
+    body: webhookBody(
+      pullRequest.isDraft ? "converted_to_draft" : "ready_for_review",
+      repository,
+      pullRequest,
+    ),
+    botEmail: args.botEmail,
+  });
+  if (!outcome) return;
+  await applyGitHubPullRequestOutcome({
+    annotations: args.annotations,
+    codeChanges: args.codeChanges,
+    db: args.db,
+    log: args.log,
+    outcome,
+  });
+}
+
 async function reconcileRepository(
   args: ReconcileArgs,
   repositoryId: number,
-  numbers: number[],
+  /** The stored draft state of each pull request number. */
+  drafts: Map<number, boolean>,
 ): Promise<void> {
+  const numbers = [...drafts.keys()];
   for (
     let start = 0;
     start < numbers.length;
@@ -154,8 +186,41 @@ async function reconcileRepository(
         }),
       ).data.repository;
     for (const pullRequest of Object.values(pullRequests)) {
-      if (!pullRequest || pullRequest.state === "OPEN") continue;
-      const body = closedWebhookBody(
+      if (!pullRequest) continue;
+      if (pullRequest.state === "OPEN") {
+        if (pullRequest.isDraft !== drafts.get(pullRequest.number)) {
+          // The draft write also records the current title.
+          await reconcileDraft(
+            args,
+            { databaseId, nameWithOwner },
+            pullRequest,
+          );
+          continue;
+        }
+        // Rows from before the code index stored titles have none, and no
+        // lifecycle webhook arrives for a title edit. Write the title from
+        // this read. No conversation ids keeps the linked ones.
+        await args.codeChanges.record(
+          githubCodeChange(
+            {
+              candidateOwned: false,
+              draft: pullRequest.isDraft,
+              number: pullRequest.number,
+              openedAt: new Date(pullRequest.createdAt),
+              pullRequestId: String(pullRequest.databaseId),
+              repositoryFullName: nameWithOwner,
+              repositoryId: String(databaseId),
+              state: "open",
+              title: pullRequest.title,
+              updatedAt: new Date(pullRequest.updatedAt),
+            },
+            [],
+          ),
+        );
+        continue;
+      }
+      const body = webhookBody(
+        "closed",
         { databaseId, nameWithOwner },
         pullRequest,
       );
@@ -183,6 +248,19 @@ async function reconcileRepository(
       for (const event of events) {
         await args.events.publish({ ...event, objectType: "code_change" });
       }
+      // No webhook closed the merge conflict notice either. Like the
+      // publish, a failed close keeps the row open for the next reconcile.
+      await closeGitHubConflictNotice({
+        db: args.db,
+        ref: { number: pullRequest.number, repositoryFullName: nameWithOwner },
+        reviewItems: args.reviewItems,
+        ...(pullRequest.merged
+          ? { reason: "The pull request merged.", status: "done" }
+          : {
+              reason: "The pull request closed without merging.",
+              status: "dismissed",
+            }),
+      });
       await applyGitHubPullRequestOutcome({
         annotations: args.annotations,
         codeChanges: args.codeChanges,
@@ -203,22 +281,25 @@ export async function reconcileGitHubPullRequests(
 ): Promise<void> {
   // Group by the repository id. A rename changes the name, not the id, so
   // rows with an old name stay in one group.
-  const repositories = new Map<string, { name: string; numbers: number[] }>();
+  const repositories = new Map<
+    string,
+    { drafts: Map<number, boolean>; name: string }
+  >();
   for (const row of await listGitHubStaleOpenPullRequests(
     args.db,
     new Date(args.nowMs - RECONCILE_MS),
   )) {
     const repository = repositories.get(row.repositoryId) ?? {
+      drafts: new Map(),
       name: row.repositoryFullName,
-      numbers: [],
     };
-    repository.numbers.push(row.number);
+    repository.drafts.set(row.number, row.draft);
     repositories.set(row.repositoryId, repository);
   }
   let reconciled = 0;
   for (const [
     repositoryId,
-    { name: repositoryFullName, numbers },
+    { drafts, name: repositoryFullName },
   ] of repositories) {
     if (reconciled >= REPOSITORY_LIMIT) break;
     // Claim before the GitHub reads. A failed reconcile, such as one that
@@ -231,7 +312,7 @@ export async function reconcileGitHubPullRequests(
     if (!claimed) continue;
     reconciled += 1;
     try {
-      await reconcileRepository(args, Number(repositoryId), numbers);
+      await reconcileRepository(args, Number(repositoryId), drafts);
     } catch (error) {
       if (error instanceof GitHubRepositoryUnreachableError) {
         // The repository is gone, or the installation lost it. The rows

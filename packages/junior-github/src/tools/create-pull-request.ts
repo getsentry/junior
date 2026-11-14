@@ -40,6 +40,7 @@ import {
   type GitHubPullRequestStack,
   type GitHubStackTarget,
 } from "./stack-pull-request.js";
+import { checkPullRequestDescription } from "../tool-support/pull-request-description.js";
 import {
   githubApi,
   githubErrorMessage,
@@ -228,13 +229,14 @@ function isEgressAuthRequired(error: unknown): boolean {
   );
 }
 
-function isDefinitiveGitHubPullRequestCreateRejection(
-  error: unknown,
-): error is GitHubPullRequestCreateRejectedError {
+function isDefinitiveGitHubPullRequestCreateRejection(error: unknown): boolean {
+  if (error instanceof PluginToolInputError) {
+    return true;
+  }
   if (!(error instanceof GitHubPullRequestCreateRejectedError)) {
     return false;
   }
-  return [400, 401, 404, 410, 422].includes(error.status);
+  return [400, 401, 410].includes(error.status);
 }
 
 /** Build the GitHub REST create-PR request after the runtime owns body/footer shaping. */
@@ -274,12 +276,15 @@ async function createGitHubPullRequest(
   });
   const parsed = response.body;
   if (!response.ok) {
-    throw new GitHubPullRequestCreateRejectedError(
-      `GitHub pull request creation failed with HTTP ${response.status}: ${githubErrorMessage(
-        parsed,
-      )}`,
-      response.status,
-    );
+    const message = `GitHub pull request creation failed with HTTP ${response.status}: ${githubErrorMessage(
+      parsed,
+    )}`;
+    // 404 and 422 mean the model named a missing repo or branch, or GitHub
+    // rejected the requested change. The model can fix the input and retry.
+    if (response.status === 404 || response.status === 422) {
+      throw new PluginToolInputError(message);
+    }
+    throw new GitHubPullRequestCreateRejectedError(message, response.status);
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(
@@ -532,8 +537,9 @@ async function gitHubPullRequestStructuredResult(
 
 /** Own PR creation so provider writes use host egress and the footer stays deterministic. */
 export function createGitHubPullRequestTool(
-  ctx: ToolRegistrationHookContext,
   subscriptionConfig?: GitHubPullRequestSubscriptionConfig,
+  /** Set when the description check experiment is on. */
+  descriptionChecks = false,
 ) {
   return definePluginTool({
     annotations: {
@@ -550,6 +556,7 @@ export function createGitHubPullRequestTool(
     async execute(
       input: CreateGitHubPullRequestInput,
       options: PluginToolExecuteOptions,
+      ctx: ToolRegistrationHookContext,
     ) {
       const parsedInput = parseCreatePullRequestInput(input);
       // Reject a bad login before GitHub opens the pull request.
@@ -595,6 +602,12 @@ export function createGitHubPullRequestTool(
           if (state?.status === "pending") {
             throw new Error(
               "GitHub pull request creation for this tool call has an uncertain pending result; refusing to create a duplicate pull request.",
+            );
+          }
+          if (descriptionChecks) {
+            await checkPullRequestDescription(
+              ctx.decider,
+              parsedInput.body ?? "",
             );
           }
           const requester = await resolveGitHubRequester(ctx);

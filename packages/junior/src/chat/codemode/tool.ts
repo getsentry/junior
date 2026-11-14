@@ -17,10 +17,10 @@ import {
   runCodeModeScript,
   type CodeModeScriptRun,
 } from "@/chat/codemode/bridge";
-import type {
-  CodeModeCall,
-  CodeModeCallStatus,
-  CodeModeResult,
+import {
+  CODE_MODE_CALL_STATUS_TEXT,
+  type CodeModeCall,
+  type CodeModeResult,
 } from "@/chat/codemode/result";
 import { MAX_TOOL_ACTION_BATCH } from "@/chat/guardian/gate";
 import { effectiveToolExposure } from "@/chat/tool-exposure";
@@ -100,14 +100,17 @@ function renderDeclaration(name: string, tool: AnyToolDefinition): string {
 }
 
 /**
- * Tell the script which tools it may call. Direct tools are only named: the
- * model already has their input schemas. The other tools are declared within
- * the token budget, cheapest first, so that the most tools fit. The others
- * stay callable. The model finds their input with `searchTools`. Script-only
- * tools come first, because `searchTools` does not find them. The same tools
- * give the same text, so the description does not change between Turns.
+ * Tell the script which tools it may call, for the `<script-tools>` Turn
+ * context section. Direct tools are only named: the model already has their
+ * input schemas. The other tools are declared within the token budget,
+ * cheapest first, so that the most tools fit. The others stay callable. The
+ * model finds their input with `searchTools`. Script-only tools come first,
+ * because `searchTools` does not find them. The same tools give the same
+ * text, so the section is not sent again while the tools stay the same.
  */
-function renderScriptTools(tools: Record<string, AnyToolDefinition>): string {
+export function renderScriptTools(
+  tools: Record<string, AnyToolDefinition>,
+): string {
   const directNames = Object.entries(tools)
     .filter(([, tool]) => effectiveToolExposure(tool) === "direct")
     .map(([name]) => name)
@@ -164,33 +167,25 @@ function renderScriptTools(tools: Record<string, AnyToolDefinition>): string {
   ].join("\n");
 }
 
-function renderDescription(tools: Record<string, AnyToolDefinition>): string {
-  return [
-    "Run a JavaScript script that calls other tools, and get back only what the script returns or prints. When a task needs several tool calls, such as the same lookup for many items or a search and then a read of each result, use one script instead of separate calls. For one call, or when you must read a result before you decide the next step, call the tools directly.",
-    "",
-    "The code is the body of an async function: top-level `await` and `return` work. It runs in a QuickJS VM with no Node, file system, network, or timers.",
-    "- `await tools.<name>(args)` runs one tool through the normal tool path, including action review. It resolves to the tool result, and rejects with an Error when the call fails or action review rejects it.",
-    "- Arguments and results must be JSON-serializable.",
-    "- Run calls at the same time (`Promise.all`) only when they do not depend on each other. Await a call before a call that needs its result. Run calls that change the same thing one after another.",
-    "- Only the return value and the output of `text(value)` and `console.log(...)` come back to you. Return or print what you need.",
-    `- The script has ${CODE_MODE_SCRIPT_TIMEOUT_MS / 1000} seconds, including its tool calls.`,
-    `- Start at most ${MAX_TOOL_ACTION_BATCH} calls before the script awaits. A larger batch fails, and none of its calls run.`,
-    "- The result lists each tool call and its status. When action review rejects a call, do what its instructions say, such as ask the user, before you try it again.",
-    "",
-    renderScriptTools(tools),
-  ].join("\n");
-}
-
-const STATUS_TEXT: Record<CodeModeCallStatus, string> = {
-  ok: "ok",
-  error: "failed",
-  rejected: "rejected by action review",
-  interrupted: "interrupted, outcome unknown",
-  not_started: "not started",
-};
+// The tool list is in the `<script-tools>` Turn context section, so this text
+// stays the same when the tools change. A changed tool definition would
+// invalidate the provider prompt cache. When to pick a script over direct
+// calls is a `<tool-policy>` rule in `system-prompt-rules.ts`.
+const DESCRIPTION = [
+  "Run a JavaScript script that calls other tools, and get back only what the script returns or prints.",
+  "",
+  "- `await tools.<name>(args)` runs one tool through the normal tool path, including action review. It resolves to the tool result, and rejects with an Error when the call fails or action review rejects it.",
+  "- Arguments and results must be JSON-serializable.",
+  "- Run calls at the same time (`Promise.all`) only when they do not depend on each other. Await a call before a call that needs its result. Run calls that change the same thing one after another.",
+  "- Only the return value and the output of `text(value)` and `console.log(...)` come back to you. Return or print what you need.",
+  `- The script has ${CODE_MODE_SCRIPT_TIMEOUT_MS / 1000} seconds, including its tool calls.`,
+  `- Start at most ${MAX_TOOL_ACTION_BATCH} calls before the script awaits. A larger batch fails, and none of its calls run.`,
+  "- The result lists each tool call and its status. When action review rejects a call, do what its instructions say, such as ask the user, before you try it again.",
+  "- `<script-tools>` in the runtime context lists the tools that a script can call. Only the latest `<script-tools>` is current.",
+].join("\n");
 
 function renderCall(call: CodeModeCall, index: number): string {
-  const line = `${index + 1}. ${call.toolName}: ${STATUS_TEXT[call.status]}`;
+  const line = `${index + 1}. ${call.toolName}: ${CODE_MODE_CALL_STATUS_TEXT[call.status]}`;
   const notes = [
     ...(call.error ? [call.error] : []),
     ...(call.nudges ?? []).map(renderToolResultNudge),
@@ -235,7 +230,11 @@ function renderResult(result: CodeModeResult): string {
   ].join("\n");
 }
 
-/** Create the `codemode` tool for one Run's script tools and pipeline. */
+/**
+ * Create the `codemode` tool for one Run's script tools and pipeline.
+ *
+ * @runBuilt codemode
+ */
 export function createCodeModeTool(options: CodeModeToolOptions) {
   const { countToolCall, modelOnlyTools, pipeline, scriptTools } = options;
   return zodTool({
@@ -245,7 +244,7 @@ export function createCodeModeTool(options: CodeModeToolOptions) {
       openWorldHint: true,
       readOnlyHint: false,
     },
-    description: renderDescription(scriptTools),
+    description: DESCRIPTION,
     // One script at a time. Its nested calls run at the same time.
     executionMode: "sequential",
     exposure: "modelOnly",
@@ -255,7 +254,7 @@ export function createCodeModeTool(options: CodeModeToolOptions) {
           .string()
           .min(1)
           .describe(
-            "JavaScript source: the body of an async function. Raw code, not JSON and not in a code fence.",
+            "JavaScript source: the body of an async function, so top-level `await` and `return` work. Raw code, not JSON and not in a code fence. It runs in a QuickJS VM with no Node, file system, network, or timers.",
           ),
       })
       .strict(),

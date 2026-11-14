@@ -16,13 +16,15 @@ import {
   recordGitHubPullRequestOutcome,
 } from "./store.js";
 
-function githubCodeChange(
+/** Write a pull request outcome as a code change in Junior's code index. */
+export function githubCodeChange(
   outcome: GitHubPullRequestOutcomeInput,
   conversationIds: string[],
 ): CodeChangeInput {
   return {
     closedAt: outcome.closedAt,
     conversationIds,
+    draft: outcome.draft,
     mergedAt: outcome.mergedAt,
     number: outcome.number,
     openedAt: outcome.openedAt,

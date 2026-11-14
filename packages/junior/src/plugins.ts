@@ -52,7 +52,9 @@ function cloneInlineManifests(
                   }
                 : undefined),
             },
-            ...(plugin.packageName ? { packageName: plugin.packageName } : undefined),
+            ...(plugin.packageName
+              ? { packageName: plugin.packageName }
+              : undefined),
           },
         ]
       : [],
@@ -186,7 +188,12 @@ export function pluginRuntimeRegistrationsFromPluginSet(
 ): PluginRegistration[] {
   return (
     pluginSet?.registrations.filter(
-      (plugin) => plugin.hooks || plugin.tasks || plugin.userPages?.length,
+      (plugin) =>
+        plugin.hooks ||
+        plugin.images ||
+        plugin.tasks ||
+        plugin.userPages?.length ||
+        plugin.objectLinks?.length,
     ) ?? []
   );
 }

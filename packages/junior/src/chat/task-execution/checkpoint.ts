@@ -17,6 +17,7 @@ import {
   logException,
   logWarn,
   withSpan,
+  type SetSpanAttributes,
 } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { CredentialSubject } from "@/chat/credentials/context";
@@ -35,22 +36,31 @@ import {
   abandonTurnRecord,
   failTurnRecord,
   getTurnRecord,
+  getStoredTurnFields,
   getTurnRecordForResume,
   listTurnSummaries,
   recordTurnSummary,
   TurnAlreadyFinishedError,
   upsertTurnRecord,
   type AgentDispatchOutcome,
+  type StoredTurnFields,
   type TurnPauseReason,
   type TurnRecord,
   type TurnSummary,
   type AgentTurnSurface,
 } from "./turn-cursor";
 
-export type { AgentDispatchOutcome, TurnRecord, TurnSummary, AgentTurnSurface };
+export type {
+  AgentDispatchOutcome,
+  StoredTurnFields,
+  TurnRecord,
+  TurnSummary,
+  AgentTurnSurface,
+};
 export {
   abandonTurnRecord,
   failTurnRecord,
+  getStoredTurnFields,
   getTurnRecord,
   listTurnSummaries,
   recordTurnSummary,
@@ -190,12 +200,12 @@ export async function saveTurnCheckpoint(
     "turn.checkpoint.save",
     "turn.checkpoint.save",
     {},
-    async () => {
+    async (setSpanAttributes) => {
       if (args.mode === "running") {
-        return await saveRunning(args, traceContext);
+        return await saveRunning(args, traceContext, setSpanAttributes);
       }
       if (args.mode === "paused") {
-        return await savePaused(args, traceContext);
+        return await savePaused(args, traceContext, setSpanAttributes);
       }
       await saveDone(args, traceContext);
       return undefined;
@@ -238,6 +248,7 @@ function sharedWrite(
 async function saveRunning(
   args: Extract<SaveTurnCheckpointArgs, { mode: "running" }>,
   traceContext: TraceContext,
+  setSpanAttributes: SetSpanAttributes,
 ): Promise<TurnRecord | undefined> {
   if (args.messages.length === 0 || !isContinuablePiBoundary(args.messages)) {
     return undefined;
@@ -259,11 +270,16 @@ async function saveRunning(
     });
   } catch (error) {
     // Quiet only branch races and late workers on best-effort running
-    // checkpoints.
-    if (
-      !(error instanceof AgentHistoryBranchError) &&
-      !(error instanceof TurnAlreadyFinishedError)
-    ) {
+    // checkpoints. The span keeps the reason: a resume that must save its
+    // input fails on it.
+    if (error instanceof TurnAlreadyFinishedError) {
+      setSpanAttributes({
+        "app.turn.checkpoint.rejected": error.name,
+        "app.turn.previous_state": error.state,
+      });
+    } else if (error instanceof AgentHistoryBranchError) {
+      setSpanAttributes({ "app.turn.checkpoint.rejected": error.name });
+    } else {
       logException(error, "agent.turn.checkpoint.running.failed", {
         "app.ai.resume_conversation_id": args.conversationId,
         "app.ai.resume_session_id": args.turnId,
@@ -277,6 +293,7 @@ async function saveRunning(
 async function savePaused(
   args: Extract<SaveTurnCheckpointArgs, { mode: "paused" }>,
   traceContext: TraceContext,
+  setSpanAttributes: SetSpanAttributes,
 ): Promise<TurnRecord | undefined> {
   // Yield keeps the current slice; auth/timeout/retry advance it.
   const keepSlice = args.reason === "yield";
@@ -345,6 +362,10 @@ async function savePaused(
     }
     // A late worker cannot pause a finished Turn. Callers see an unsaved pause.
     if (error instanceof TurnAlreadyFinishedError) {
+      setSpanAttributes({
+        "app.turn.checkpoint.rejected": error.name,
+        "app.turn.previous_state": error.state,
+      });
       return undefined;
     }
     logException(error, "agent.turn.checkpoint.paused.failed", {

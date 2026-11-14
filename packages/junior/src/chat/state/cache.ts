@@ -10,6 +10,11 @@ interface StoredEntry<T> {
   value: T;
 }
 
+/** The prefix of every state key of one cache namespace. */
+export function cacheKeyPrefix(namespace: string): string {
+  return `junior:cache:${namespace}:`;
+}
+
 /**
  * Create a cache in the state adapter under `junior:cache:{namespace}:`.
  * Entries are wrapped, so `null` and `false` values are cache hits.
@@ -28,7 +33,7 @@ export function createCache(
       if (key.length > MAX_CACHE_KEY_LENGTH) {
         throw new Error("Cache key exceeds the maximum length");
       }
-      const cacheKey = `junior:cache:${namespace}:${key}`;
+      const cacheKey = `${cacheKeyPrefix(namespace)}${key}`;
       const cached = async () =>
         options?.refresh
           ? undefined

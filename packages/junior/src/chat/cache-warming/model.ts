@@ -295,17 +295,25 @@ export function parentGapSegment(input: GapSegmentInput): string | undefined {
 /**
  * What else an idle period waits for when it starts. `child`: a child agent
  * still runs, and its result starts a Turn. `review`: the Turn asked a
- * Review item.
+ * Review item. `watch`: an Automation run has an active Watch, such as a
+ * timer or a pull request Watch, and no child agent.
  */
-export type WaitingOn = "child" | "review";
+export type WaitingOn = "child" | "review" | "watch";
+
+// Only an Automation run waits on a Watch, so its child is named for it.
+const WAITING_SEGMENT_SUFFIXES: Record<WaitingOn, string> = {
+  child: "child",
+  review: "review",
+  watch: "automation",
+};
 
 /**
- * Child of a segment for an idle period that waits on a child agent or a
- * Review item. Its parent is the segment, so a thin child leans on the
- * segment, and a thin segment on its own parent.
+ * Child of a segment for an idle period that waits on a child agent, a
+ * Review item, or a Watch (`:automation`). Its parent is the segment, so a
+ * thin child leans on the segment, and a thin segment on its own parent.
  */
 export function waitingGapSegment(segment: string, waitingOn: WaitingOn) {
-  return `${segment}:${waitingOn}`;
+  return `${segment}:${WAITING_SEGMENT_SUFFIXES[waitingOn]}`;
 }
 
 /** Whether a segment has too few gaps to stand without its parent. */

@@ -82,6 +82,28 @@ function redirectTarget(response: Response, from: string): string | undefined {
   return target.origin === GITHUB_API_BASE ? target.href : undefined;
 }
 
+/**
+ * Return where a `github.com` attachment URL redirects, through host
+ * egress. GitHub signs that address for a short time, so it needs no
+ * credential. Egress does not follow the redirect, so the credential never
+ * reaches the image host.
+ */
+export async function githubAttachmentLocation(
+  egress: PluginEgress,
+  url: string,
+): Promise<string | undefined> {
+  const response = await egress.fetch({
+    provider: "github",
+    operation: "github.attachment.get",
+    request: new Request(url, { redirect: "manual" }),
+  });
+  await response.body?.cancel();
+  const location = REDIRECT_STATUSES.has(response.status)
+    ? response.headers.get("location")
+    : null;
+  return location ? new URL(location, url).href : undefined;
+}
+
 async function readBody(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text) return undefined;

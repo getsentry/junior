@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { createGitHubGetPullRequestTool } from "../src/tools/get-pull-request";
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { gitHubGetPullRequestTool } from "../src/tools/get-pull-request";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
 const HEAD_SHA = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
 
@@ -92,10 +93,14 @@ function toolContext(
     egress: adapter.egress,
     events: { canSubscribe },
   };
-  return { adapter, tool: createGitHubGetPullRequestTool(ctx) };
+  return { adapter, tool: bindPluginTool(gitHubGetPullRequestTool, ctx) };
 }
 
 describe("getPullRequest", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("returns a subscribable hint for an existing pull request", async () => {
     const { adapter, tool } = toolContext();
 
@@ -141,6 +146,98 @@ describe("getPullRequest", () => {
         provider: "github",
       }),
     ]);
+  });
+
+  it("saves the artifact and GitHub attachment images as previews", async () => {
+    vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
+    const artifact =
+      "https://junior.example.com/public/artifacts/0123456789abcdef.png";
+    const after =
+      "https://junior.example.com/public/artifacts/fedcba9876543210.png";
+    const attachment =
+      "https://github.com/user-attachments/assets/0f8c2d6e-5a4b-4c3d-9e8f-7a6b5c4d3e2f";
+    const withBody = (body: string) => {
+      const response = pullRequestResponse();
+      return { body: { ...response.body, body } };
+    };
+    const checks = checksResponse({ contexts: [] });
+    const { tool } = toolContext(true, [
+      withBody(
+        [
+          "![Unknown](https://github.com/user-attachments/assets/1)",
+          // A signed attachment URL expires in minutes.
+          "![Signed](https://private-user-images.githubusercontent.com/1/2.png?jwt=signed)",
+          `![Attachment](${attachment})`,
+          "![Other](https://example.com/public/artifacts/0123456789abcdef.png)",
+          "```md",
+          "![Example](https://junior.example.com/public/artifacts/code.png)",
+          "```",
+          // A `src=` inside another attribute value is not the image.
+          `| Before | After |\n| --- | --- |\n| ![Before][before] | <img alt=" src=https://junior.example.com/public/artifacts/alt.png" src="${after}"> |`,
+          `![Again](${artifact})`,
+          "",
+          `[before]: ${artifact}`,
+        ].join("\n"),
+      ),
+      checks,
+      withBody("![Private](https://github.com/user-attachments/assets/1)"),
+      checks,
+      withBody("No image."),
+      checks,
+    ]);
+    const preview = async () => {
+      const result = (await tool.execute?.(
+        { repo: "getsentry/junior", number: 691 },
+        { toolCallId: "get-pr" },
+      )) as { objectAnnotations: Array<{ facts: Record<string, unknown> }> };
+      return result.objectAnnotations[0]?.facts.previewImageUrls;
+    };
+
+    expect(await preview()).toEqual([attachment, artifact, after]);
+    expect(await preview()).toBeUndefined();
+    expect(await preview()).toBeUndefined();
+  });
+
+  it("saves as many preview images as fit in the facts limit", async () => {
+    vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
+    const images = Array.from(
+      { length: 80 },
+      (_, index) =>
+        `https://junior.example.com/public/artifacts/${String(index).padStart(16, "0")}.png`,
+    );
+    const response = pullRequestResponse();
+    const { tool } = toolContext(true, [
+      {
+        body: {
+          ...response.body,
+          body: images.map((url) => `![Step](${url})`).join("\n"),
+          // 180 extra UTF-8 bytes, more than one image entry, so counting
+          // characters instead of bytes would save one image too many.
+          user: { login: "ü".repeat(60) },
+          head: { ...response.body.head, ref: "ü".repeat(60) },
+          base: { ...response.body.base, ref: "ü".repeat(60) },
+        },
+      },
+      checksResponse({ contexts: [] }),
+    ]);
+
+    const result = (await tool.execute?.(
+      { repo: "getsentry/junior", number: 691 },
+      { toolCallId: "get-pr" },
+    )) as { objectAnnotations: Array<{ facts: Record<string, unknown> }> };
+    const facts = result.objectAnnotations[0]!.facts;
+    const saved = facts.previewImageUrls as string[];
+
+    const bytes = (value: unknown) =>
+      new TextEncoder().encode(JSON.stringify(value)).length;
+
+    // More than the old fixed 4, in body order, and the next one would not fit.
+    expect(saved.length).toBeGreaterThan(4);
+    expect(saved).toEqual(images.slice(0, saved.length));
+    expect(bytes(facts)).toBeLessThanOrEqual(4096);
+    expect(
+      bytes({ ...facts, previewImageUrls: images.slice(0, saved.length + 1) }),
+    ).toBeGreaterThan(4096);
   });
 
   it("returns the required checks and the merge state", async () => {
@@ -190,6 +287,114 @@ describe("getPullRequest", () => {
       operationName: "PullRequestChecks",
       variables: { name: "junior", number: 691, owner: "getsentry" },
     });
+  });
+
+  it("returns the code owners that marking a draft ready asks", async () => {
+    const draft = pullRequestResponse();
+    const codeOwners = (
+      files: string[],
+      hasNextPage: boolean,
+      root: string | null = null,
+    ) => ({
+      body: {
+        data: {
+          repository: {
+            github: null,
+            root: root === null ? null : { text: root },
+            docs: null,
+            agents:
+              root === null ? null : { text: "Always open PRs as draft." },
+            pullRequest: {
+              files: {
+                nodes: files.map((path) => ({ path })),
+                pageInfo: {
+                  endCursor: hasNextPage ? "page-2" : null,
+                  hasNextPage,
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const { adapter, tool } = toolContext(true, [
+      { body: { ...draft.body, draft: true } },
+      checksResponse({ contexts: [] }),
+      codeOwners(
+        ["docs/guide.txt", "docs/generated/api.txt"],
+        true,
+        [
+          "# Everything else",
+          "*  @getsentry/owners",
+          "/docs/ @getsentry/docs",
+          "/docs/generated/",
+          "*.md @alice # changelog owner",
+        ].join("\n"),
+      ),
+      codeOwners(["CHANGELOG.md"], false),
+    ]);
+
+    const result = await tool.execute?.(
+      { repo: "getsentry/junior", number: 691 },
+      { toolCallId: "get-draft-code-owners" },
+    );
+
+    // The last matching rule wins, and a rule with no owners clears them.
+    expect(result).toMatchObject({
+      agents_md: "Always open PRs as draft.",
+      code_owners: ["@alice", "@getsentry/docs"],
+      draft: true,
+    });
+    const pages = await Promise.all(
+      adapter
+        .requests()
+        .slice(2)
+        .map((request) => request.request.clone().json()),
+    );
+    expect(pages).toMatchObject([
+      {
+        operationName: "PullRequestDraftReadiness",
+        variables: {
+          after: null,
+          agentsExpression: "main:AGENTS.md",
+          githubExpression: "main:.github/CODEOWNERS",
+          number: 691,
+        },
+      },
+      { variables: { after: "page-2" } },
+    ]);
+  });
+
+  it("fails when GitHub does not list the changed files of a draft with code owners", async () => {
+    const draft = pullRequestResponse();
+    const { tool } = toolContext(true, [
+      { body: { ...draft.body, draft: true } },
+      checksResponse({ contexts: [] }),
+      {
+        body: {
+          data: {
+            repository: {
+              github: { text: "* @getsentry/owners" },
+              root: null,
+              docs: null,
+              agents: null,
+              pullRequest: { files: null },
+            },
+          },
+        },
+      },
+    ]);
+
+    // No files must not read as no code owners, or the draft would be
+    // marked ready and ask them.
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", number: 691 },
+        { toolCallId: "get-draft-without-files" },
+      ),
+    ).rejects.toThrow(
+      "GitHub did not list the changed files of the pull request",
+    );
   });
 
   it.each([

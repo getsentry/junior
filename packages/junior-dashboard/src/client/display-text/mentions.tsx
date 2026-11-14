@@ -7,6 +7,7 @@ import { peoplePath } from "../format";
 import { cn } from "../styles";
 import { replaceSlackEmoji } from "./emoji";
 import { ANCHOR_CLASS } from "./links";
+import { PersonMention } from "./people";
 
 type Mention = {
   end: number;
@@ -128,8 +129,8 @@ function MentionView(props: { mention: Mention }) {
   const { id, sigil } = props.mention;
   const person = sigil === "@" ? people.get(id) : undefined;
   const text = <HighlightText text={mentionLabel(props.mention, people)} />;
-  if (links && person?.email) {
-    return (
+  const name =
+    links && person?.email ? (
       <Link
         // Previews sit in cards that disable pointer events on their text.
         className={cn("pointer-events-auto", ANCHOR_CLASS)}
@@ -138,11 +139,15 @@ function MentionView(props: { mention: Mention }) {
       >
         {text}
       </Link>
+    ) : (
+      <span className="font-medium text-dashboard-accent-text" title={id}>
+        {text}
+      </span>
     );
-  }
+  if (!person) return name;
   return (
-    <span className="font-medium text-dashboard-accent-text" title={id}>
-      {text}
-    </span>
+    <PersonMention avatarUrl={person.avatarUrl} email={person.email}>
+      {name}
+    </PersonMention>
   );
 }

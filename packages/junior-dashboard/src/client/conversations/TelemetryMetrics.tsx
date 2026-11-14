@@ -328,9 +328,11 @@ export function auxiliaryOperationLabel(
   operation: ConversationAuxiliaryCosts["operations"][number],
 ): string {
   const knownLabels: Readonly<Record<string, string>> = {
+    "junior/conversation_embedding": "Conversation embedding",
     "junior/cache_warmup": "Cache warmup",
     "junior/compaction": "Compaction",
     "junior/conversation_catch_up": "Catch-up",
+    "junior/conversation_search_embedding": "Conversation search",
     "junior/conversation_title": "Conversation title",
     "junior/guardian_action_reviewed": "Guardian",
     "junior/image_prompt_enrichment": "Image prompt",
@@ -338,6 +340,7 @@ export function auxiliaryOperationLabel(
     "junior/review_item_reply_match": "Review reply matching",
     "junior/run_title": "Run title",
     "junior/task_title": "Task title",
+    "junior/tool_search_rerank": "Tool search",
     "junior/turn_routed": "Thinking routing",
     "junior/vision_summary": "Image summary",
     "memory/memories_captured": "Memory extraction",

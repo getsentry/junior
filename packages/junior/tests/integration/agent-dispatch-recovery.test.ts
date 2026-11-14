@@ -8,9 +8,11 @@ import {
 import { recoverPendingDispatchMailboxAppends } from "@/chat/agent-dispatch/heartbeat";
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { CONVERSATION_WORK_MAX_RETRIES } from "@/chat/task-execution/store";
 import {
   createConversationWorkHarness,
   createConversationWorkQueueTestAdapter,
+  runHeartbeatAfterLeasesExpire,
 } from "../fixtures/conversation-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
@@ -37,6 +39,7 @@ describe("agent dispatch recovery", () => {
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
     await disconnectStateAdapter();
     vi.restoreAllMocks();
   });
@@ -94,7 +97,7 @@ describe("agent dispatch recovery", () => {
     });
   });
 
-  it("resumes paused dispatch work through production routing", async () => {
+  it("ends dispatch work at its reply when a yield is due", async () => {
     const dispatch = await createDispatch(
       "resume",
       {
@@ -127,8 +130,8 @@ describe("agent dispatch recovery", () => {
           name: "reply",
           arguments: { text: "Resumed scheduled digest" },
         },
-        // The reply is final. The resumed slice must not call the model
-        // again and replace it.
+        // The reply is final. The model must not be called again to replace
+        // it.
         {
           type: "toolCall",
           name: "reply",
@@ -150,7 +153,8 @@ describe("agent dispatch recovery", () => {
       await processConversationQueueMessage(queue.takeMessage(), {
         queue,
         run,
-        // Pause the first slice after the `reply` result is saved.
+        // A yield is due after the `reply` result. No step follows it, so the
+        // Turn ends instead.
         softYieldAfterMs: deliveries === 1 ? 0 : undefined,
         state,
       });
@@ -172,9 +176,10 @@ describe("agent dispatch recovery", () => {
       resultMessageTs: expect.any(String),
       status: "completed",
     });
-    expect(runAgent).toHaveBeenCalledTimes(2);
-    const resumedRun = runAgent.mock.calls[1]?.[0];
-    expect(resumedRun).toMatchObject({
+    expect(deliveries).toBe(1);
+    expect(runAgent).toHaveBeenCalledTimes(1);
+    const dispatchRun = runAgent.mock.calls[0]?.[0];
+    expect(dispatchRun).toMatchObject({
       actor: dispatch.actor,
       credentialContext: {
         actor: dispatch.actor,
@@ -189,9 +194,33 @@ describe("agent dispatch recovery", () => {
       source: { kind: "scheduled_automation" },
       surface: "api",
     });
-    expect(resumedRun).not.toHaveProperty("delivery");
-    expect(resumedRun?.instruction.text).toBe(dispatch.input);
-    expect(resumedRun?.instruction.context).toBeUndefined();
+    expect(dispatchRun?.instruction.text).toBe(dispatch.input);
+    expect(dispatchRun?.instruction.context).toBeUndefined();
+  });
+
+  it("fails the dispatch when every try of its worker is killed", async () => {
+    vi.useFakeTimers({
+      now: 1_800_000_000_000,
+      toFake: ["Date", "setInterval", "clearInterval"],
+    });
+    const dispatch = await createDispatch("killed-worker");
+    const { killWorker, queue, state } = await createConversationWorkHarness(
+      neverRunAgentRunner(),
+    );
+
+    await enqueueAgentDispatch(dispatch, { queue, state });
+    for (let tries = 1; tries <= CONVERSATION_WORK_MAX_RETRIES; tries++) {
+      // Injected fault: the worker of this try is killed mid-run.
+      await killWorker(
+        queue.takeMessageFor(getDispatchConversationId(dispatch)),
+      );
+      await runHeartbeatAfterLeasesExpire(queue);
+    }
+
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      errorMessage: "Dispatch work stopped after repeated failed attempts.",
+      status: "failed",
+    });
   });
 
   it("repairs a pending mailbox append without owning execution recovery", async () => {

@@ -3,10 +3,10 @@ export {
   INPUT_IMAGE_TYPES,
 } from "../chat/attachments/media";
 export {
-  MAX_INPUT_IMAGES,
-  MAX_INPUT_IMAGE_BYTES,
+  MAX_INPUT_ATTACHMENTS,
+  MAX_ATTACHMENT_BYTES,
 } from "../chat/attachments/input";
-export type { InputImage, MessageAttachment } from "../chat/attachments/input";
+export type { InputFile, MessageAttachment } from "../chat/attachments/input";
 export {
   AGENT_REPLY_EVENT_TYPE,
   isAgentInvocationResultEventType,
@@ -27,10 +27,28 @@ export type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 export type { AutomationCard } from "../chat/automations/card";
 export type { AutomationTask } from "../chat/automations/task";
 export {
+  annotationCard,
   messageCardText,
   resolveMessageCards,
 } from "../chat/conversations/cards";
 export type { MessageCard } from "../chat/conversations/cards";
+export {
+  conversationObjectCard,
+  messageObjectCard,
+  personObjectCard,
+  webPageObjectCard,
+} from "./objects/cards";
+export {
+  attachObjectLinkBodySchema,
+  attachObjectLinkResponseSchema,
+  MAX_OBJECT_LINKS,
+  objectLinksQuerySchema,
+  objectLinksReportSchema,
+} from "./schema/object-link";
+export type {
+  AttachObjectLinkResponse,
+  ObjectLinksReport,
+} from "./schema/object-link";
 export { dailyConversationActivitySchema } from "./activity";
 export { conversationChildAgentTotalsSchema } from "./schema/child-agent-totals";
 export type { ConversationChildAgentTotals } from "./schema/child-agent-totals";
@@ -76,6 +94,14 @@ export {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export {
+  attachmentUploadSchema,
+  createAttachmentUploadBodySchema,
+} from "./schema/conversation-attachment-upload";
+export type {
+  AttachmentUpload,
+  CreateAttachmentUploadBody,
+} from "./schema/conversation-attachment-upload";
 export {
   cancelConversationPendingMessagesBodySchema,
   cancelConversationPendingMessagesResponseSchema,
@@ -276,6 +302,10 @@ export type {
   NotificationSchedule,
   NotificationSettings,
 } from "./schema/notification";
+export {
+  cacheWarmingBreakerListSchema,
+  closeCacheWarmingBreakerResponseSchema,
+} from "./schema/cache-warming";
 export {
   disconnectServiceAccountResponseSchema,
   serviceAccountListSchema,

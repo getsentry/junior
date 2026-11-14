@@ -79,29 +79,27 @@ describe("codemode tool", () => {
     const agentTools = createPiAgentTools(
       { ...registry, post } as Record<string, AnyToolDefinition>,
       new SkillSandbox([], []),
-      {},
-      undefined,
-      undefined,
-      undefined,
-      (_id, toolName) => {
-        started.push(toolName);
-      },
-      undefined,
-      "private",
-      undefined,
-      createToolActionReview({
-        context: {
-          actor: { platform: "local", userId: "local-user" },
-          conversationId: CONVERSATION_ID,
-          destination: DESTINATION,
-          source: SOURCE,
-          userIntent: () => "What time is it, and what am I watching?",
+      {
+        spanContext: {},
+        searchToolsCost: { owner: "none" },
+        onToolCall: (_id, toolName) => {
+          started.push(toolName);
         },
-        onDecision: async () => undefined,
-        onFatal: () => undefined,
-        reviewer: { review: denyPosts },
-      }),
-      { countToolCall: resume.countToolCall },
+        conversationPrivacy: "private",
+        actionReview: createToolActionReview({
+          context: {
+            actor: { platform: "local", userId: "local-user" },
+            conversationId: CONVERSATION_ID,
+            destination: DESTINATION,
+            source: SOURCE,
+            userIntent: () => "What time is it, and what am I watching?",
+          },
+          onDecision: async () => undefined,
+          onFatal: () => undefined,
+          reviewer: { review: denyPosts },
+        }),
+        codeMode: { countToolCall: resume.countToolCall },
+      },
     );
     const codemode = agentTools.find(
       (candidate) => candidate.name === CODEMODE_TOOL_NAME,
@@ -109,6 +107,20 @@ describe("codemode tool", () => {
     if (!codemode) {
       throw new Error("codemode was not registered");
     }
+    // `<script-tools>` lists the tools, so another tool set keeps the same
+    // tool definition and the provider prompt cache.
+    expect(
+      createPiAgentTools(
+        registry as Record<string, AnyToolDefinition>,
+        new SkillSandbox([], []),
+        {
+          spanContext: {},
+          searchToolsCost: { owner: "none" },
+          conversationPrivacy: "private",
+          codeMode: { countToolCall: resume.countToolCall },
+        },
+      ).find((candidate) => candidate.name === CODEMODE_TOOL_NAME)?.description,
+    ).toBe(codemode.description);
 
     const result = (await codemode.execute(CODEMODE_CALL_ID, {
       code: `
