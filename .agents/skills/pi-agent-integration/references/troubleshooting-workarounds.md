@@ -8,7 +8,7 @@ Open this when Pi integration behavior is wrong.
 | `prompt()` says the agent is already processing            | A run is active                                                                 | Queue with `steer()` or `followUp()`, or await `waitForIdle()`                         |
 | `continue()` says the agent is already processing          | Continuation started during a run                                               | Await the run or queue input                                                           |
 | `reset()` says the agent is already processing             | Reset started during a run                                                      | Abort if needed, await `waitForIdle()`, then reset                                     |
-| `continue()` says there are no messages                    | The transcript is empty                                                         | Restore or append prior messages                                                       |
+| `continue()` says there are no messages                    | The transcript is empty or has only system messages                             | Restore or append prior messages                                                       |
 | `continue()` rejects an `assistant` tail                   | Both input queues are empty                                                     | Queue a message, trim to a safe `user` or `toolResult` boundary, or start a new prompt |
 | Low-level continuation reaches a provider role error       | Conversion leaves an invalid final role                                         | Make `convertToLlm` leave a final `user` or `toolResult`                               |
 | Visible text is missing or thinking/tool text leaks        | The listener forwards the wrong assistant delta                                 | Forward only `message_update` plus `text_delta`                                        |
@@ -19,12 +19,16 @@ Open this when Pi integration behavior is wrong.
 | Transform, conversion, auth, or loop hooks break lifecycle | An expected failure escapes                                                     | Return original or filtered messages, `undefined`, or another safe value               |
 | Tool results appear in an unexpected order                 | Default tool mode is parallel                                                   | Expect completion-order end events or use sequential mode                              |
 | One sequential tool serializes every call                  | Any per-tool sequential override affects the full batch                         | Isolate the call or accept sequential batch execution                                  |
-| Tool failure appears successful                            | The tool returned failure text as normal content                                | Throw from `execute()`                                                                 |
+| Tool failure appears successful                            | The tool returned failure text as normal content                                | Throw from `execute()` or return `isError: true`                                       |
 | A blocked tool does not terminate                          | The block result omitted `terminate`, or another batch result did not terminate | Set `terminate` on every finalized result that must join early termination             |
 | `afterToolCall` loses nested fields                        | `content`, `details`, and `usage` are full replacements                         | Return the complete replacement value                                                  |
+| `structuredContent` disappears after `afterToolCall`       | Replacing `content` without `structuredContent` drops it                        | Return `structuredContent` with `content` to keep it                                   |
 | Progress arrives after tool completion                     | The tool calls `onUpdate` after its promise settles                             | Stop updates before settlement; Pi ignores late callbacks                              |
-| Added tools are not available from the result point        | `addedToolNames` is missing from `AgentToolResult`                              | Return the introduced tool names and keep the definitions available                    |
+| The model does not see a tool change                       | The tools were not assigned through `agent.state.tools`                         | Assign `agent.state.tools`; Pi announces the difference before the next request        |
+| Setting `agent.state.systemPrompt` fails                   | `systemPrompt` is read-only and replays the transcript                          | Append a system message with `content` or `sections`                                   |
+| Every tool call in a message fails without running         | The assistant message stopped with `length`, so arguments can be cut off        | Raise the output token limit or ask for fewer calls per message                        |
 | `prepareNextTurn` lacks completed-turn context             | The signal-only `Agent` compatibility hook is in use                            | Use `Agent.prepareNextTurnWithContext`                                                 |
+| `prepareNextTurn` does not run after the final turn        | It runs only when another turn starts                                           | Put end-of-run work in `finishTurn` or `agent_end` handling                            |
 
 ## Debugging checklist
 
@@ -35,5 +39,5 @@ Open this when Pi integration behavior is wrong.
 5. Inspect the transcript tail and queued input before continuation.
 6. Filter visible streaming to text deltas.
 7. Keep expected provider, conversion, transform, auth, and queue failures no-throw.
-8. Confirm tool execution mode, hook replacement semantics, usage, added tools, and termination.
+8. Confirm tool execution mode, hook replacement semantics, usage, `agent.state.tools` changes, and termination.
 9. Account for awaited `Agent` listeners during settlement.

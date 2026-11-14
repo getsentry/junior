@@ -30,12 +30,12 @@ Load each reference that the task needs. Keep guidance Pi-specific unless the us
 
 ## Step 3: Implement with minimal surface
 
-1. Prefer Pi options over wrapper state machines: `streamFn`, `getApiKey`, `sessionId`, `thinkingBudgets`, `transport`, `maxRetryDelayMs`, `identity`, `onPayload`, `onResponse`, `beforeToolCall`, `afterToolCall`, `finishTurn`, `prepareRequest`, `prepareNextTurnWithContext`, `toolExecution`, `steeringMode`, and `followUpMode`.
-2. Mutate `Agent` through `agent.state` and public runtime options. Call `reset()` only when idle.
+1. Prefer Pi options over wrapper state machines: `streamFn`, `getApiKey`, `sessionId`, `thinkingBudgets`, `transport`, `maxRetryDelayMs`, `identity`, `onPayload`, `onResponse`, `onProviderStreamEvent`, `beforeToolCall`, `afterToolCall`, `finishTurn`, `prepareRequest`, `prepareNextTurnWithContext`, `toolExecution`, `steeringMode`, and `followUpMode`.
+2. Mutate `Agent` through `agent.state` and public runtime options. `agent.state.systemPrompt` is read-only: append a system message to change the prompt. Call `reset()` only when idle.
 3. Use `transformContext` for message-level pruning or injection. Use `convertToLlm` for provider-compatible role conversion and filtering.
 4. Set queue modes to `"one-at-a-time"` or `"all"` when ordering or batching matters.
 5. Use `streamFn` with `streamProxy`-style behavior for server-proxied model access.
-6. Use `toolExecution`, per-tool `executionMode`, `beforeToolCall`, `afterToolCall`, thrown tool errors, and `terminate` before adding a custom tool runner.
+6. Use `toolExecution`, per-tool `executionMode`, `beforeToolCall`, `afterToolCall`, thrown errors or `isError: true` results, and `terminate` before adding a custom tool runner.
 7. Keep timeout and abort paths observable. Make sure streams and iterables settle.
 
 ## Step 4: Verify behavior
@@ -45,7 +45,7 @@ Load each reference that the task needs. Keep guidance Pi-specific unless the us
 3. Verify `continue()` with empty history and with `user`, `toolResult`, and `assistant` tails.
 4. Verify custom messages remain in agent state while `convertToLlm` emits only provider-compatible messages.
 5. Verify `streamFn` encodes expected provider failures instead of throwing or rejecting.
-6. Verify parallel and sequential tool ordering, hook blocking and patches, progress updates, usage, added tools, and termination.
+6. Verify parallel and sequential tool ordering, hook blocking and patches, progress updates, usage, `agent.state.tools` changes, and termination.
 7. Verify `Agent.subscribe()` listener settlement and `waitForIdle()` with async listeners.
 
 ## Step 5: Keep version discipline

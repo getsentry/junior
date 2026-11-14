@@ -8,6 +8,8 @@ Pass a `streamFn` explicitly. A bound `Models.streamSimple` is the default direc
 
 Keep model, tools, prompt, thinking level, and transcript in `initialState`. Keep request policy in `AgentOptions` or the matching public runtime properties.
 
+To change the prompt later, append a system message. `agent.state.systemPrompt` is read-only.
+
 ## Stream assistant text
 
 Use `agent.subscribe()` and forward only:
@@ -33,7 +35,7 @@ Use `getApiKey(provider)` for each provider call. Return `undefined` for an expe
 
 ## Keep custom messages
 
-Extend `CustomAgentMessages` and retain useful custom entries in `agent.state.messages`. Use `convertToLlm` to filter UI-only messages or map custom messages to `user`, `assistant`, or `toolResult`.
+Extend `CustomAgentMessages` and retain useful custom entries in `agent.state.messages`. Use `convertToLlm` to filter UI-only messages or map custom messages to `system`, `user`, `assistant`, or `toolResult`.
 
 ## Prune or augment context
 
@@ -67,16 +69,16 @@ Call `reset()` only after `waitForIdle()`. It rejects while a run is active.
 
 - Use `toolExecution` and per-tool `executionMode` for ordering.
 - Use `beforeToolCall` to block a validated call. Set `terminate` on a blocked result when it should join batch termination.
-- Use `afterToolCall` to replace content, details, error state, usage, or termination.
-- Throw from `execute()` on failure.
+- Use `afterToolCall` to replace content, details, structured content, error state, usage, or termination.
+- Throw from `execute()` or return `isError: true` on failure.
 - Use `onUpdate` for progress. Late updates after settlement are ignored.
-- Use `addedToolNames` when a result introduces tools from that transcript point onward.
+- Assign `agent.state.tools` to change the executable tools. Pi announces the change to the model before the next request.
 
 ## Stop or prepare the next turn
 
 Use `finishTurn` on `Agent` or `AgentLoopConfig` and return `{ action: "end" }` to stop after a complete turn. It leaves the queues untouched.
 
-Use `Agent.prepareNextTurnWithContext` when the next provider request needs a replacement context, model, or thinking level. Use low-level `prepareNextTurn` for the same turn-context contract in `AgentLoopConfig`.
+Use `Agent.prepareNextTurnWithContext` when the next provider request needs a replacement context, model, or thinking level. Use low-level `prepareNextTurn` for the same turn-context contract in `AgentLoopConfig`. Both run only when another turn starts. Put end-of-run work in `finishTurn` or `agent_end` handling.
 
 ## Add durable sessions
 
