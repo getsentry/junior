@@ -147,8 +147,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/junior-vercel
       hono:
-        specifier: ^4.13.11
-        version: 4.13.11
+        specifier: ^4.13.16
+        version: 4.13.16
     devDependencies:
       '@types/node':
         specifier: ^25.9.1
@@ -215,7 +215,7 @@ importers:
         version: 1.4.0
       '@hono/zod-validator':
         specifier: ^0.9.0
-        version: 0.9.0(hono@4.13.11)(zod@4.6.7)
+        version: 0.9.0(hono@4.13.16)(zod@4.6.7)
       '@logtape/logtape':
         specifier: ^2.1.1
         version: 2.1.1
@@ -286,8 +286,8 @@ importers:
         specifier: ^16.14.0
         version: 16.14.0
       hono:
-        specifier: ^4.13.11
-        version: 4.13.11
+        specifier: ^4.13.16
+        version: 4.13.16
       jiti:
         specifier: ^2.7.0
         version: 2.7.0
@@ -333,7 +333,7 @@ importers:
         version: 1.10.0
       '@hono/node-server':
         specifier: 2.1.3
-        version: 2.1.3(hono@4.13.11)
+        version: 2.1.3(hono@4.13.16)
       '@oxlint/plugins':
         specifier: 1.79.0
         version: 1.79.0
@@ -443,8 +443,8 @@ importers:
         specifier: ^0.5.0
         version: 0.5.0
       hono:
-        specifier: ^4.13.11
-        version: 4.13.11
+        specifier: ^4.13.16
+        version: 4.13.16
       lucide-react:
         specifier: ^1.17.0
         version: 1.17.0(react@19.2.6)
@@ -596,8 +596,8 @@ importers:
         specifier: 4.29.0
         version: 4.29.0(ai@7.0.153(zod@4.6.7))(zod@4.6.7)
       hono:
-        specifier: ^4.13.11
-        version: 4.13.11
+        specifier: ^4.13.16
+        version: 4.13.16
       msw:
         specifier: ^2.14.6
         version: 2.14.6(typescript@7.0.2)
@@ -7334,8 +7334,8 @@ packages:
   highlight.js@10.7.3:
     resolution: {integrity: sha512-tzcUFauisWKNHaRkN4Wjl/ZA07gENAjFl3J/c480dprkGTg5EQstgaNFqBfUqCq54kZRIEcreTsAgF/m2quD7A==}
 
-  hono@4.13.11:
-    resolution: {integrity: sha512-/SMX/RQNJn7oNmFwH6DtwDqcrzZU2otm1FD6OJe2cWF6cfy/F8hq0XVBv7xW3FTJshRQwuBnXHDq2kNsdZnshg==}
+  hono@4.13.16:
+    resolution: {integrity: sha512-AOLOEhvrV+iH92xXCnFr/5+3KjPKcI3xP63XJtX5spAnkznPdHijlIsUTpi7/9EhWqrTCekw5c5zh1K+YsVw7A==}
     engines: {node: '>=16.9.0'}
 
   hookable@6.1.1:
@@ -12470,13 +12470,13 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@hono/node-server@2.1.3(hono@4.13.11)':
+  '@hono/node-server@2.1.3(hono@4.13.16)':
     dependencies:
-      hono: 4.13.11
+      hono: 4.13.16
 
-  '@hono/zod-validator@0.9.0(hono@4.13.11)(zod@4.6.7)':
+  '@hono/zod-validator@0.9.0(hono@4.13.16)(zod@4.6.7)':
     dependencies:
-      hono: 4.13.11
+      hono: 4.13.16
       zod: 4.6.7
 
   '@humanfs/core@0.19.2':
@@ -12855,7 +12855,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.32.0(zod@4.6.7)':
     dependencies:
-      '@hono/node-server': 2.1.3(hono@4.13.11)
+      '@hono/node-server': 2.1.3(hono@4.13.16)
       ajv: 8.20.0
       ajv-formats: 3.0.1
       content-type: 1.0.5
@@ -12865,7 +12865,7 @@ snapshots:
       eventsource-parser: 3.0.8
       express: 5.2.1
       express-rate-limit: 8.5.2(express@5.2.1)
-      hono: 4.13.11
+      hono: 4.13.16
       jose: 6.2.4
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -13848,7 +13848,7 @@ snapshots:
       class-variance-authority: 0.7.1
       cmdk: 1.1.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       cn: 0.5.0
-      hono: 4.13.11
+      hono: 4.13.16
       lucide-react: 1.17.0(react@19.2.6)
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
@@ -14247,7 +14247,7 @@ snapshots:
       '@earendil-works/pi-agent-core': 0.99.2(@modelcontextprotocol/sdk@1.32.0(zod@4.6.7))(undici@7.30.1)(zod@4.6.7)
       '@earendil-works/pi-ai': 0.99.2(@modelcontextprotocol/sdk@1.32.0(zod@4.6.7))(undici@7.30.1)(zod@4.6.7)
       '@earendil-works/pi-codemode': 1.4.0
-      '@hono/zod-validator': 0.9.0(hono@4.13.11)(zod@4.6.7)
+      '@hono/zod-validator': 0.9.0(hono@4.13.16)(zod@4.6.7)
       '@logtape/logtape': 2.1.1
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.6.7)
       '@neondatabase/serverless': 1.1.0
@@ -14271,7 +14271,7 @@ snapshots:
       diff: 8.0.4
       drizzle-orm: 0.45.4(@neondatabase/serverless@1.1.0)(pg@8.21.0)
       graphql: 16.14.0
-      hono: 4.13.11
+      hono: 4.13.16
       jiti: 2.7.0
       jose: 6.2.3
       just-bash: 3.0.1
@@ -14356,7 +14356,7 @@ snapshots:
       '@earendil-works/pi-agent-core': 0.99.2(@modelcontextprotocol/sdk@1.32.0(zod@4.6.7))(undici@7.30.1)(zod@4.6.7)
       '@earendil-works/pi-ai': 0.99.2(@modelcontextprotocol/sdk@1.32.0(zod@4.6.7))(undici@7.30.1)(zod@4.6.7)
       '@earendil-works/pi-codemode': 1.4.0
-      '@hono/zod-validator': 0.9.0(hono@4.13.11)(zod@4.6.7)
+      '@hono/zod-validator': 0.9.0(hono@4.13.16)(zod@4.6.7)
       '@logtape/logtape': 2.1.1
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.6.7)
       '@neondatabase/serverless': 1.1.0
@@ -14380,7 +14380,7 @@ snapshots:
       diff: 8.0.4
       drizzle-orm: 0.45.4(@neondatabase/serverless@1.1.0)(pg@8.21.0)
       graphql: 16.14.0
-      hono: 4.13.11
+      hono: 4.13.16
       jiti: 2.7.0
       jose: 6.2.3
       just-bash: 3.0.1
@@ -14465,7 +14465,7 @@ snapshots:
       '@earendil-works/pi-agent-core': 0.99.2(@modelcontextprotocol/sdk@1.32.0(zod@4.6.7))(undici@7.30.1)(zod@4.6.7)
       '@earendil-works/pi-ai': 0.99.2(@modelcontextprotocol/sdk@1.32.0(zod@4.6.7))(undici@7.30.1)(zod@4.6.7)
       '@earendil-works/pi-codemode': 1.4.0
-      '@hono/zod-validator': 0.9.0(hono@4.13.11)(zod@4.6.7)
+      '@hono/zod-validator': 0.9.0(hono@4.13.16)(zod@4.6.7)
       '@logtape/logtape': 2.1.1
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.6.7)
       '@neondatabase/serverless': 1.1.0
@@ -14489,7 +14489,7 @@ snapshots:
       diff: 8.0.4
       drizzle-orm: 0.45.4(@neondatabase/serverless@1.1.0)(pg@8.21.0)
       graphql: 16.14.0
-      hono: 4.13.11
+      hono: 4.13.16
       jiti: 2.7.0
       jose: 6.2.3
       just-bash: 3.0.1
@@ -17842,7 +17842,7 @@ snapshots:
 
   highlight.js@10.7.3: {}
 
-  hono@4.13.11: {}
+  hono@4.13.16: {}
 
   hookable@6.1.1: {}
 
