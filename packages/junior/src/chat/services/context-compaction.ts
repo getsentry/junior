@@ -8,7 +8,7 @@
  * messages, the summary, then the new instruction. Checkpoints can append
  * fresh runtime context; the next replacement removes it again.
  */
-import { estimateContextTokens } from "@earendil-works/pi-agent-core";
+import { calculateContextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { ContextSummary } from "@/chat/agent/context-summary";
@@ -616,6 +616,29 @@ function measuredInputTokens(message: PiMessage): number | undefined {
   return tokens > 0 ? tokens : undefined;
 }
 
+// Pi 1.0 removed `estimateContextTokens` from agent-core. pi-ai's version also
+// drops the usage of an assistant message that is stamped before any earlier
+// message, such as after clock skew, and then estimates all history by size.
+// Junior checks only the case that matters, a newer summary, below.
+function lastAssistantUsage(
+  messages: PiMessage[],
+): { tokens: number; index: number } | undefined {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]!;
+    if (
+      message.role !== "assistant" ||
+      message.stopReason === "aborted" ||
+      message.stopReason === "error" ||
+      !message.usage
+    ) {
+      continue;
+    }
+    const tokens = calculateContextTokens(message.usage);
+    if (tokens > 0) return { tokens, index };
+  }
+  return undefined;
+}
+
 /**
  * Measure provider-visible history without counting host-only message fields.
  *
@@ -629,24 +652,18 @@ export function estimateHistoryTokens(
   modelId: string,
   requestOverheadTokens = 0,
 ): number {
-  const estimate = estimateContextTokens(messages);
+  const usage = lastAssistantUsage(messages);
   const summaryAt = latestSummaryTimestamp(messages);
-  const usageAt =
-    estimate.lastUsageIndex === null
-      ? undefined
-      : timestampOf(messages[estimate.lastUsageIndex]!);
+  const usageAt = usage ? timestampOf(messages[usage.index]!) : undefined;
   if (
-    estimate.lastUsageIndex !== null &&
+    usage &&
     usageAt !== undefined &&
     (summaryAt === undefined || usageAt > summaryAt)
   ) {
     // The usage counts the request up to that call. Estimate the rest by size.
     return (
-      estimate.usageTokens +
-      estimateMessagesTokens(
-        messages.slice(estimate.lastUsageIndex + 1),
-        modelId,
-      )
+      usage.tokens +
+      estimateMessagesTokens(messages.slice(usage.index + 1), modelId)
     );
   }
   return estimateReplacementTokens(messages, modelId, requestOverheadTokens);

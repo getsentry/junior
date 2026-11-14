@@ -20,6 +20,7 @@ import {
 const VOLATILE_KEYS = new Set([
   "authorIdentityId",
   "cacheWrite1h",
+  "durationMs",
   "id",
   "idempotencyKey",
   "inputMessageIds",

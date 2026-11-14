@@ -8,14 +8,18 @@
  * `tool_choice`, thinking, or effort change, so the request keeps the tools
  * and the instruction forbids tool calls instead.
  */
-import type { Agent } from "@earendil-works/pi-agent-core";
-import type {
-  Api,
-  AssistantMessage,
-  Context,
-  Message,
-  Model,
-  SimpleStreamOptions,
+import {
+  type Agent,
+  DEFAULT_AGENT_IDENTITY,
+} from "@earendil-works/pi-agent-core";
+import {
+  type Api,
+  type AssistantMessage,
+  type Context,
+  type Message,
+  type Model,
+  type SimpleStreamOptions,
+  mergeClientIdentity,
 } from "@earendil-works/pi-ai";
 import { extractGenAiUsageSummary, logWarn } from "@/chat/logging";
 import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
@@ -131,6 +135,7 @@ export async function buildAgentModelRequest(
       thinkingBudgets: agent.thinkingBudgets,
       maxRetryDelayMs: agent.maxRetryDelayMs,
       apiKey: (await agent.getApiKey?.(model.provider)) || undefined,
+      identity: mergeClientIdentity(DEFAULT_AGENT_IDENTITY, agent.identity),
       signal,
     },
   };
