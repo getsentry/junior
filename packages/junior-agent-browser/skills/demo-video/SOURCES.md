@@ -2,7 +2,7 @@
 
 ## Source Inventory
 
-Reviewed 2026-09-29; updated 2026-10-15. Official docs and repository contracts are authoritative for syntax and ownership. The completed workflow is evidence of one working setup, not a performance guarantee.
+Reviewed 2026-09-29; updated 2026-11-14. Official docs and repository contracts are authoritative for syntax and ownership. The completed workflow is evidence of one working setup, not a performance guarantee.
 
 | Source                                                                            | Confidence                 | Contribution and limits                                                                                                                                                                                                                                                                                                                               |
 | --------------------------------------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -27,6 +27,7 @@ Documentation is linked and summarized, not copied as a bundled upstream manual.
 - **Adopted:** general Junior ownership in the existing browser plugin. Browser capture is the entry point. The workflow is not specific to one app or deployment.
 - **Adopted:** workflow-process class and reference-backed shape. The main checklist is short; exact rendering commands are a separate lookup. Inline-only guidance would mix story decisions with optional CLI detail.
 - **Adopted:** product-led narration, requested collaborator credit, and supported capability claims. User corrections rejected voice-focused introductions and take numbers.
+- **Adopted:** an outro that says what the subject is and links to it. A video for a public audience ended on "tag me in Slack"; the user preferred a short description and a website link.
 - **Adopted:** reuse unchanged speech and captures. Measure new clips and update later scene starts. This reduced paid generation during small edits.
 - **Adopted:** inspect output after timeouts; check actual attachment bytes. One render completed despite a tool timeout. A large master needed a smaller delivery copy.
 - **Adopted:** standard-library WAV measurement fallback. FFmpeg was available while FFprobe was not. No extra audio package was needed.
