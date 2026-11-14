@@ -1,1 +1,0 @@
-ALTER TABLE "junior_users" ADD COLUMN "experimental_ui" boolean DEFAULT false NOT NULL;
