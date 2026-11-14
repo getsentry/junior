@@ -56,6 +56,15 @@ Rules:
 const SUMMARY_NUDGE =
   "Do not call tools. Keep the summary short. Return only the summary inside <summary></summary> tags.";
 
+/**
+ * Return whether text is a request for a summary that compaction appends to
+ * the agent history. Such a request is a branch of the cached prefix, not
+ * the next agent request.
+ */
+export function isContextSummaryRequestText(text: string): boolean {
+  return text === SUMMARY_INSTRUCTION || text === SUMMARY_NUDGE;
+}
+
 /** Arguments of one agent model request, in `AgentRequestStreamFn` order. */
 export interface AgentModelRequest {
   model: Model<Api>;
