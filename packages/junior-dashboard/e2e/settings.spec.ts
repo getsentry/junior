@@ -383,3 +383,22 @@ test("links to a settings section", async ({ page, dashboard }) => {
     page.getByRole("heading", { exact: true, name: "Conversations" }),
   ).toBeInViewport();
 });
+
+test("opens an old Settings page as its section and keeps the query", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(`${dashboard.baseURL}/settings/api-tokens?name=Review`);
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/settings?name=Review#api-tokens`,
+  );
+  await expect(
+    page.getByRole("heading", { exact: true, name: "API Tokens" }),
+  ).toBeInViewport();
+
+  await page.goto(`${dashboard.baseURL}/settings/connections`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/settings#identities`);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Identities" }),
+  ).toBeInViewport();
+});

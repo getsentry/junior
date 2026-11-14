@@ -1,4 +1,4 @@
-import { lazy, useEffect, useMemo, useState, type ReactNode } from "react";
+import { lazy, useEffect, useMemo, useState } from "react";
 import { Navigate, Route, useLocation, useParams } from "react-router";
 
 import {
@@ -11,10 +11,7 @@ import {
 import { ConnectionBanner } from "./components/ConnectionBanner";
 import { LoadingView } from "./components/LoadingView";
 import { VersionDriftBanner } from "./components/VersionDriftBanner";
-import {
-  PageContentSkeleton,
-  type PageContentSkeletonVariant,
-} from "./components/PageContentSkeleton";
+import { PageContentSkeleton } from "./components/PageContentSkeleton";
 import { ProfileMenu } from "./components/ProfileMenu";
 import {
   DashboardChrome,
@@ -95,21 +92,6 @@ const PersonProfilePage = lazy(() =>
     default: module.PersonProfilePage,
   })),
 );
-const ConnectionsPage = lazy(() =>
-  import("./pages/settings/ConnectionsPage").then((module) => ({
-    default: module.ConnectionsPage,
-  })),
-);
-const McpSettingsPage = lazy(() =>
-  import("./pages/settings/McpSettingsPage").then((module) => ({
-    default: module.McpSettingsPage,
-  })),
-);
-const PersonalTokensPage = lazy(() =>
-  import("./pages/settings/PersonalTokensPage").then((module) => ({
-    default: module.PersonalTokensPage,
-  })),
-);
 const SettingsPage = lazy(() =>
   import("./pages/settings/SettingsPage").then((module) => ({
     default: module.SettingsPage,
@@ -166,55 +148,18 @@ const dashboardNoise = {
     "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitchTiles'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.7'/%3E%3C/svg%3E\")",
 };
 
-const settingsRoutes: {
-  loading: {
-    description: string;
-    label: string;
-    title: string;
-    variant?: PageContentSkeletonVariant;
-  };
-  path: string;
-  render(data: DashboardCoreData): ReactNode;
-}[] = [
-  {
-    loading: {
-      description: "Manage your profile and preferences.",
-      label: "Loading settings",
-      title: "General",
-    },
-    path: "/settings",
-    render: (data) => <SettingsPage identity={data.me} />,
-  },
-  {
-    loading: {
-      description: "Create and revoke personal API tokens.",
-      label: "Loading API tokens",
-      title: "API Tokens",
-      variant: "list",
-    },
-    path: "/settings/api-tokens",
-    render: () => <PersonalTokensPage />,
-  },
-  {
-    loading: {
-      description: "Connect and disconnect your accounts.",
-      label: "Loading identities",
-      title: "Identities",
-      variant: "list",
-    },
-    path: "/settings/connections",
-    render: () => <ConnectionsPage />,
-  },
-  {
-    loading: {
-      description: "Connect an MCP client to your conversations.",
-      label: "Loading MCP",
-      title: "MCP",
-    },
-    path: "/settings/mcp",
-    render: () => <McpSettingsPage />,
-  },
-];
+// The Settings sections used to be pages. Their old links open the section.
+// They keep their query, such as the token name that `?name=` prefills.
+function LegacySettingsRedirect(props: { anchor: string }) {
+  const { search } = useLocation();
+  return <Navigate replace to={`/settings${search}#${props.anchor}`} />;
+}
+
+const legacySettingsPaths = [
+  ["/settings/api-tokens", "api-tokens"],
+  ["/settings/connections", "identities"],
+  ["/settings/mcp", "mcp"],
+] as const;
 
 /** Render the dashboard SPA shell and route-level loading states. */
 export function DashboardShell() {
@@ -689,27 +634,25 @@ export function DashboardShell() {
               }
               path="/system/*"
             />
-            {settingsRoutes.map((route) => (
+            <Route
+              element={
+                loading ? (
+                  <SettingsPageLayout>
+                    <PageContentSkeleton label="Loading settings" />
+                  </SettingsPageLayout>
+                ) : loggedIn ? (
+                  <SettingsPage identity={data!.me} />
+                ) : (
+                  <Navigate replace to="/" />
+                )
+              }
+              path="/settings"
+            />
+            {legacySettingsPaths.map(([path, anchor]) => (
               <Route
-                element={
-                  loading ? (
-                    <SettingsPageLayout
-                      description={route.loading.description}
-                      title={route.loading.title}
-                    >
-                      <PageContentSkeleton
-                        label={route.loading.label}
-                        variant={route.loading.variant}
-                      />
-                    </SettingsPageLayout>
-                  ) : loggedIn ? (
-                    route.render(data!)
-                  ) : (
-                    <Navigate replace to="/" />
-                  )
-                }
-                key={route.path}
-                path={route.path}
+                element={<LegacySettingsRedirect anchor={anchor} />}
+                key={path}
+                path={path}
               />
             ))}
             <Route
