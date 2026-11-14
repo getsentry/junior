@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { parse as parseYaml } from "yaml";
 import { runCheck } from "@/cli/check";
 import { runInit } from "@/cli/init";
 
@@ -175,14 +176,28 @@ describe("init cli", () => {
     expect(pkg.scripts["preview"]).toBe("nitro preview");
     expect(pkg.scripts["typecheck"]).toBe("tsc --noEmit");
 
-    const pnpmWorkspace = fs.readFileSync(
-      path.join(target, "pnpm-workspace.yaml"),
-      "utf8",
-    );
-    expect(pnpmWorkspace).toBe(`minimumReleaseAge: 1440
-minimumReleaseAgeExclude:
-  - "@sentry/*"
-`);
+    interface PnpmWorkspace {
+      allowBuilds: Record<string, boolean>;
+      minimumReleaseAge: number;
+      minimumReleaseAgeExclude: string[];
+    }
+    const pnpmWorkspace = parseYaml(
+      fs.readFileSync(path.join(target, "pnpm-workspace.yaml"), "utf8"),
+    ) as PnpmWorkspace;
+    expect(pnpmWorkspace.minimumReleaseAge).toBe(1440);
+    expect(pnpmWorkspace.minimumReleaseAgeExclude).toEqual(["@sentry/*"]);
+    // Build script decisions match the ones this repo made.
+    const repoWorkspace = parseYaml(
+      fs.readFileSync(path.join(repoRoot, "pnpm-workspace.yaml"), "utf8"),
+    ) as PnpmWorkspace;
+    expect(
+      Object.fromEntries(
+        Object.keys(pnpmWorkspace.allowBuilds).map((name) => [
+          name,
+          repoWorkspace.allowBuilds[name],
+        ]),
+      ),
+    ).toEqual(pnpmWorkspace.allowBuilds);
 
     const envExample = fs.readFileSync(
       path.join(target, ".env.example"),
