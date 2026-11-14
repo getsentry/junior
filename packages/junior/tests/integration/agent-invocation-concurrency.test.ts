@@ -673,7 +673,9 @@ describe("agent invocation identity and concurrency", () => {
         expect(requests[0]).toMatchObject({
           actor,
           conversationId: child.childConversationId,
-          disabledFeatures: ["interactive-auth"],
+          // As on its agent invocation, the child cannot spawn with the
+          // default maxAgentDepth.
+          disabledFeatures: ["interactive-auth", "subagents"],
           parentConversationId,
         });
         expect(requests[0]!.authorization).toBeUndefined();
