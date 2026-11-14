@@ -18,8 +18,6 @@ compile-time contracts must not drift.
   durable records may keep local schemas in the feature module.
 - Edge parsers accept `unknown` and return parsed output types. Later runtime
   code should receive parsed types. It should not re-check ad hoc object shapes.
-- Do not assert a type (`as T`) in place of a parse or a narrow.
-  `pnpm type-assertions:check` fails when production source gains one.
 - Schemas are strict by default. Unknown fields are rejected unless the field is
   explicitly documented as an opaque extension payload.
 - Required actor, destination, credential-subject, and routing fields must not
