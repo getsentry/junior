@@ -298,6 +298,6 @@ async function resolveSentryChartLink(
 export const sentryChartLinks: PluginObjectLinkDefinition = {
   canView: canViewSentryChartLink,
   filters: SENTRY_EXPLORE_LINK_FILTERS,
-  objectType: "chart",
+  objectTypes: ["chart"],
   resolve: resolveSentryChartLink,
 };

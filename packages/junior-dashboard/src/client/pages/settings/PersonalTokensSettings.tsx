@@ -14,7 +14,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { InlineError } from "../../components/InlineError";
 import { Card } from "../../components/layout/Card";
-import { SettingsPageLayout } from "./SettingsPageLayout";
+import { SettingsSection } from "./SettingsPageLayout";
 import { parsePreviewOrigin, PreviewTokenHandoff } from "./PreviewTokenHandoff";
 
 const personalTokensQueryKey = ["dashboard", "personal-tokens"] as const;
@@ -34,7 +34,7 @@ function defaultTokenName(now = new Date()): string {
  * the token name, for example from a link that asks for a token. `?preview=`
  * offers to send a new token to that Preview.
  */
-export function PersonalTokensPage() {
+export function PersonalTokensSettings() {
   const queryClient = useQueryClient();
   const createTokenStarted = useRef(false);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -132,7 +132,8 @@ export function PersonalTokensPage() {
       : undefined);
 
   return (
-    <SettingsPageLayout
+    <SettingsSection
+      anchor="api-tokens"
       description={
         <>
           Use a token to read {getDashboardAgentName()} APIs from a local agent
@@ -240,6 +241,6 @@ export function PersonalTokensPage() {
           </ul>
         )}
       </Card>
-    </SettingsPageLayout>
+    </SettingsSection>
   );
 }
