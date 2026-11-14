@@ -8,15 +8,21 @@ export function renderMcpPage(page: {
   /** HTML that follows the message. Callers escape every value in it. */
   bodyHtml?: string;
   /**
-   * Extra origin that a form on the page may reach. The consent form
-   * redirects to the client, and `form-action` also applies to that redirect.
+   * Client origin that the consent form redirects to. Chrome checks
+   * `form-action` on every redirect after a form POST, and a client callback
+   * can redirect again to another origin that Junior cannot know. The page
+   * then also allows every `https:` target. The only form is Junior's own, and
+   * every value on the page is escaped.
    */
   formOrigin?: string;
   message: string;
   status: number;
   title: string;
 }): Response {
-  const formAction = ["'self'", ...(page.formOrigin ? [page.formOrigin] : [])];
+  const formAction = [
+    "'self'",
+    ...(page.formOrigin ? [page.formOrigin, "https:"] : []),
+  ];
   const message = `    <p>${escapeHtml(page.message)}</p>`;
   return renderHtmlPage({
     bodyHtml: page.bodyHtml ? `${message}\n${page.bodyHtml}` : message,
