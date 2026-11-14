@@ -94,6 +94,8 @@ export async function handleSlackForm(args: {
               }),
           }),
         ).catch((error) => {
+          // best-effort: owning boundary. Slack already has its ack, and this
+          // waitUntil task has no caller that can receive the error.
           logException(error, "slack.interactive.payload.failed");
         }),
     ),

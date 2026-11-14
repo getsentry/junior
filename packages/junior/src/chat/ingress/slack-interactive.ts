@@ -3,7 +3,7 @@ import type { Message, StateAdapter } from "chat";
 import { parseActorUserId } from "@/chat/actor";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
-import { logException, withSpan } from "@/chat/logging";
+import { withSpan } from "@/chat/logging";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
@@ -51,22 +51,14 @@ async function handleAppHomeDisconnect(args: {
           args.userTokenStore,
           getWorkspaceTeamId(),
         );
-      } catch (error) {
-        logException(error, "app_home.disconnect_unlink.failed", {
-          "app.credential.provider": args.provider,
-        });
-      }
-
-      try {
+      } finally {
+        // Refresh App Home even when the unlink fails, so it shows the real
+        // connection state. The unlink error still reaches the boundary.
         await publishAppHomeView(
           getSlackClient(),
           args.userId,
           args.userTokenStore,
         );
-      } catch (error) {
-        logException(error, "app_home.disconnect_publish.failed", {
-          "app.credential.provider": args.provider,
-        });
       }
     },
   );

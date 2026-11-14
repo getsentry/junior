@@ -1285,16 +1285,12 @@ export function createSlackTurnRuntime<
           channelId: event.channelId,
         }),
         async () => {
-          try {
-            await deps.initializeAssistantThread({
-              threadId: event.threadId,
-              channelId: event.channelId,
-              threadTs: event.threadTs,
-              sourceChannelId: event.context?.channelId,
-            });
-          } catch (error) {
-            logException(error, "assistant.thread.initialization.failed");
-          }
+          await deps.initializeAssistantThread({
+            threadId: event.threadId,
+            channelId: event.channelId,
+            threadTs: event.threadTs,
+            sourceChannelId: event.context?.channelId,
+          });
         },
       );
     },
@@ -1307,16 +1303,12 @@ export function createSlackTurnRuntime<
           channelId: event.channelId,
         }),
         async () => {
-          try {
-            await deps.refreshAssistantThreadContext({
-              threadId: event.threadId,
-              channelId: event.channelId,
-              threadTs: event.threadTs,
-              sourceChannelId: event.context?.channelId,
-            });
-          } catch (error) {
-            logException(error, "assistant.context.refresh.failed");
-          }
+          await deps.refreshAssistantThreadContext({
+            threadId: event.threadId,
+            channelId: event.channelId,
+            threadTs: event.threadTs,
+            sourceChannelId: event.context?.channelId,
+          });
         },
       );
     },

@@ -125,7 +125,7 @@
   "packages/junior/src/chat/guardian/history.ts": 1,
   "packages/junior/src/chat/guardian/policy.ts": 1,
   "packages/junior/src/chat/identities/slack-mention-text.ts": 2,
-  "packages/junior/src/chat/ingress/junior-chat.ts": 7,
+  "packages/junior/src/chat/ingress/junior-chat.ts": 6,
   "packages/junior/src/chat/ingress/message-router.ts": 1,
   "packages/junior/src/chat/local/oauth-callback-server.ts": 1,
   "packages/junior/src/chat/log-context.ts": 1,

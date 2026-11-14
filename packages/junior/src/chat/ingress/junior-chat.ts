@@ -15,6 +15,7 @@ import {
   withNormalizedThreadId,
 } from "@/chat/ingress/message-router";
 import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
+import { logException } from "@/chat/logging";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 type ChatInternals = {
   logger?: {
@@ -81,8 +82,6 @@ export class JuniorChat<
     options?: WebhookOptions,
   ): Promise<void> {
     if (typeof messageOrFactory === "function") {
-      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-      const runtime = this as ChatInternals;
       return enqueueBackgroundTask(
         options,
         runWithTurnRequestDeadline(async (): Promise<void> => {
@@ -90,9 +89,10 @@ export class JuniorChat<
           try {
             message = await messageOrFactory();
           } catch (error) {
-            runtime.logger?.error?.("Message factory resolution error", {
-              error,
-              threadId,
+            // best-effort: owning boundary. This Chat SDK task runs in waitUntil
+            // after the webhook ack, so no caller can receive the error.
+            logException(error, "chat.message_factory.failed", {
+              "messaging.message.conversation_id": threadId,
             });
             return;
           }
@@ -138,10 +138,10 @@ export class JuniorChat<
         try {
           await runtime.handleReactionEvent(event);
         } catch (error) {
-          runtime.logger?.error?.("Reaction processing error", {
-            error,
-            emoji: event.emoji,
-            messageId: event.messageId,
+          // best-effort: owning boundary. This Chat SDK task runs in waitUntil
+          // after the webhook ack, so no caller can receive the error.
+          logException(error, "chat.reaction.failed", {
+            "messaging.message.id": event.messageId,
           });
         }
       })(),
@@ -161,10 +161,10 @@ export class JuniorChat<
       try {
         await runtime.handleActionEvent(event, options);
       } catch (error) {
-        runtime.logger?.error?.("Action processing error", {
-          error,
-          actionId: event.actionId,
-          messageId: event.messageId,
+        // best-effort: owning boundary. This Chat SDK task runs in waitUntil
+        // after the webhook ack, so no caller can receive the error.
+        logException(error, "chat.action.failed", {
+          "messaging.message.id": event.messageId,
         });
       }
     })();
@@ -207,10 +207,9 @@ export class JuniorChat<
             }
           }
         } catch (error) {
-          runtime.logger?.error?.("Modal close handler error", {
-            error,
-            callbackId: event.callbackId,
-          });
+          // best-effort: owning boundary. This Chat SDK task runs in waitUntil
+          // after the webhook ack, so no caller can receive the error.
+          logException(error, "chat.modal_close.failed");
         }
       })(),
     );
@@ -231,9 +230,10 @@ export class JuniorChat<
             await handler(event);
           }
         } catch (error) {
-          runtime.logger?.error?.("Assistant thread started handler error", {
-            error,
-            threadId: event.threadId,
+          // best-effort: owning boundary. This Chat SDK task runs in waitUntil
+          // after the webhook ack, so no caller can receive the error.
+          logException(error, "chat.assistant_thread_started.failed", {
+            "messaging.message.conversation_id": event.threadId,
           });
         }
       })(),
@@ -255,9 +255,10 @@ export class JuniorChat<
             await handler(event);
           }
         } catch (error) {
-          runtime.logger?.error?.("Assistant context changed handler error", {
-            error,
-            threadId: event.threadId,
+          // best-effort: owning boundary. This Chat SDK task runs in waitUntil
+          // after the webhook ack, so no caller can receive the error.
+          logException(error, "chat.assistant_context_changed.failed", {
+            "messaging.message.conversation_id": event.threadId,
           });
         }
       })(),
@@ -279,10 +280,9 @@ export class JuniorChat<
             await handler(event);
           }
         } catch (error) {
-          runtime.logger?.error?.("App home opened handler error", {
-            error,
-            userId: event.userId,
-          });
+          // best-effort: owning boundary. This Chat SDK task runs in waitUntil
+          // after the webhook ack, so no caller can receive the error.
+          logException(error, "chat.app_home_opened.failed");
         }
       })(),
     );

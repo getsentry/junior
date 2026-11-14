@@ -587,17 +587,13 @@ async function handleSlackEvent(args: {
   const channelScope = slackChannelScope(args.body);
   const receivedAtMs = Date.now();
 
-  async function publishAppHomeViewBestEffort(userId: string): Promise<void> {
+  async function publishAppHome(userId: string): Promise<void> {
     await withLogContext({ platform: "slack", userId }, async () => {
-      try {
-        await publishAppHomeView(
-          getSlackClient(),
-          userId,
-          getUserTokenStore(args.services),
-        );
-      } catch (error) {
-        logException(error, "slack.app_home.publish.failed");
-      }
+      await publishAppHomeView(
+        getSlackClient(),
+        userId,
+        getUserTokenStore(args.services),
+      );
     });
   }
 
@@ -661,7 +657,7 @@ async function handleSlackEvent(args: {
         }
 
         if (event.type === "app_home_opened" && event.user) {
-          await publishAppHomeViewBestEffort(event.user);
+          await publishAppHome(event.user);
           return;
         }
 
@@ -874,6 +870,8 @@ export async function handleSlackWebhook(args: {
             installation: installationFromEnvelope(channelCreated.data),
             state: args.services.state ?? getStateAdapter(),
           }).catch((error) => {
+            // best-effort: owning boundary. Slack already has its ack, and this
+            // waitUntil task has no caller that can receive the error.
             logException(error, "slack.channel.auto_join.failed");
           }),
         ),
@@ -938,6 +936,9 @@ export async function handleSlackWebhook(args: {
             body: parsed,
             services: args.services,
           }).catch((error) => {
+            // best-effort: owning boundary. Events that must not be lost
+            // persist before the ack above. This waitUntil task runs after the
+            // ack and has no caller.
             logException(error, "slack.event.enqueue.failed");
           }),
         ),

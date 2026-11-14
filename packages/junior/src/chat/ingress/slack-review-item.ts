@@ -179,6 +179,9 @@ async function act(args: {
       { reviewItemChange: reviewItemChangeRecord(item, change) },
     );
   } catch (error) {
+    // best-effort: recovery. The item is already closed, so the fallback below
+    // delivers the change to the thread directly. Its idempotency key keeps it
+    // to one message.
     // The item is already closed, so the thread must still learn about it.
     // Each message has an idempotency key, so only this thread gets one.
     logException(error, "review_item.slack_input.persist.failed", {

@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
@@ -7,6 +15,7 @@ import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getSqlExecutor } from "@/chat/db";
+import { type EmittedLogRecord, registerLogRecordSink } from "@/chat/logging";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { juniorIdentities } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -387,6 +396,9 @@ describe("Slack webhook: App Home events", () => {
       payload: JSON.stringify(interactiveDisconnectPayload()),
     });
 
+    const records: EmittedLogRecord[] = [];
+    onTestFinished(registerLogRecordSink((record) => records.push(record)));
+
     const response = await handleSlackWebhook({
       request: client.form(params),
       waitUntil: waitUntil.fn,
@@ -406,6 +418,11 @@ describe("Slack webhook: App Home events", () => {
     expect(deleteToken).toHaveBeenCalledWith("U123", "notion");
     expect(workspaceTeamIds).toEqual(["T123"]);
     expect(slackApiOutbox.homeViews()).toHaveLength(1);
+    expect(
+      records.filter(
+        (record) => record.eventName === "slack.interactive.payload.failed",
+      ),
+    ).toHaveLength(1);
   });
 
   it("does not unlink App Home credentials for synthetic unknown users", async () => {
