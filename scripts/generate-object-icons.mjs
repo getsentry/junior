@@ -20,6 +20,7 @@ const names = [
   "comment",
   "globe",
   "graph",
+  "pulse",
   "rows",
   "package",
 ];

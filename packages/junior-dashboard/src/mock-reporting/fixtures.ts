@@ -1419,6 +1419,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "Morgan asked to hold the deploy: https://acme.slack.com/archives/CQA456/p1770021700000100",
         "The checkout error is back after the deploy: https://acme.sentry.io/issues/JUNIOR-3ZK/",
         "Checkout spans slowed down with it: https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
+        "First event after the deploy: https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
         "One slow checkout: https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
         "The demo is at https://www.youtube.com/watch?v=MockLaunchDemo",
         "",
@@ -1429,7 +1430,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "https://blog.example.com/posts/release-4-2",
         "",
         // Alone on their lines: the video shows only its thumbnail, the
-        // Slack message, the chart, and the trace show a card, and the repeated pull
+        // Slack message, the chart, the trace, and the event show a card, and the repeated pull
         // request shows no second card.
         "https://www.youtube.com/watch?v=MockLaunchDemo",
         "",
@@ -1438,6 +1439,8 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
         "",
         "https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
+        "",
+        "https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
         "",
         "https://github.com/getsentry/payments/pull/91",
       ].join("\n"),
