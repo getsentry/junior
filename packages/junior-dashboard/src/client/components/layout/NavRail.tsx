@@ -175,6 +175,7 @@ export function NavRail(props: {
   navItems: DashboardHeaderNavItem[];
   onSearch(): void;
   profile?: ReactNode;
+  usage?: ReactNode;
   workspaceActive: boolean;
 }) {
   return (
@@ -224,9 +225,10 @@ export function NavRail(props: {
           </nav>
         </SidebarGroup>
       </SidebarContent>
-      {props.profile ? (
+      {props.usage || props.profile ? (
         <SidebarFooter className="px-3 pb-3 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-2">
-          <SidebarMenu className="group-data-[collapsible=icon]:items-center">
+          <SidebarMenu className="gap-1 group-data-[collapsible=icon]:items-center">
+            {props.usage}
             {props.profile}
           </SidebarMenu>
         </SidebarFooter>

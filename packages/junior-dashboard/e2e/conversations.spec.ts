@@ -557,23 +557,9 @@ test("scrolls long conversation and transcript panes independently", async ({
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
 });
 
-test("shows personal spend and groups profile and session actions", async ({
-  page,
-  dashboard,
-}) => {
-  await page.setViewportSize({ width: 1440, height: 1150 });
-  await page.goto(dashboard.baseURL);
-
-  const topBarTrigger = page.getByRole("button", {
-    name: "Open profile menu for Dashboard User. Personal model spend: 7 days $0.46, 30 days $0.46.",
-  });
-  await expect(topBarTrigger).toBeVisible();
-  await expect(topBarTrigger).toHaveAttribute("aria-expanded", "false");
-  await expect(topBarTrigger).toContainText(/7d\s*\$0\.46\s*30d\s*\$0\.46/, {
-    useInnerText: true,
-  });
-
+test("groups profile and session actions", async ({ page, dashboard }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(dashboard.baseURL);
   const rail = page.locator('[data-slot="sidebar"]').filter({
     has: page.getByRole("navigation", { name: "Primary" }),
   });
@@ -587,8 +573,6 @@ test("shows personal spend and groups profile and session actions", async ({
 
   const popover = page.locator("#profile-popover");
   await expect(popover.getByText("dev@example.com")).toBeVisible();
-  await expect(popover).toContainText("7d $0.46");
-  await expect(popover).toContainText("30d $0.46");
   await expect(
     popover.getByRole("menuitem", { name: "My profile" }),
   ).toHaveAttribute("href", "/people/dev%40example.com");

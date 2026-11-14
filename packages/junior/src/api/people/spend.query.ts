@@ -15,6 +15,11 @@ import {
 
 const SEVEN_DAY_OFFSET = 6;
 const THIRTY_DAY_OFFSET = 29;
+// Defaults until caps are configurable. The dashboard only shows them.
+const PERSONAL_SPEND_SOFT_CAPS = {
+  monthlySoftCapUsd: 2000,
+  weeklySoftCapUsd: 500,
+} as const;
 
 function addUsd(current: number, next: number): number {
   return Math.round((current + next) * 1e12) / 1e12;
@@ -118,6 +123,7 @@ export async function readPersonalSpendFromSql(
 
   return {
     generatedAt: new Date(nowMs).toISOString(),
+    ...PERSONAL_SPEND_SOFT_CAPS,
     sevenDaysUsd,
     source: "conversation_index",
     thirtyDaysUsd,
