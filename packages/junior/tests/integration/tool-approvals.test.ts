@@ -388,6 +388,18 @@ describe("tool approvals", () => {
     expect(executions).toEqual([]);
   });
 
+  it("denies an ask whose input is too long to show the person in full", async () => {
+    const run = wireRun(runContext());
+
+    const result = await run.call("call-1", { id: "r".repeat(3_000) });
+
+    expect(result.allowed ? undefined : result.error.message).toContain(
+      "too long to show a person in full",
+    );
+    expect(await listToolApprovals(rootId)).toEqual([]);
+    expect(executions).toEqual([]);
+  });
+
   it("files a child agent's ask on the root's review desk and runs it in the child", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();

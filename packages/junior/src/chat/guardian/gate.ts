@@ -549,6 +549,20 @@ export type RequestToolApproval = (
 const ASK_PERMISSION_REASON =
   "This tool runs only after the person approves each call.";
 const DENY_PERMISSION_REASON = "This tool never runs.";
+/**
+ * Longest input text that an approval item shows in full. A person approves
+ * only what they can read, so the gate denies a longer input.
+ */
+const MAX_APPROVAL_INPUT_CHARS = 2_500;
+
+/** Render a call's input as the approval item shows it, in a JSON block. */
+export function approvalInputText(input: unknown): string {
+  return JSON.stringify(input, null, 2).replaceAll("```", "`\u200b``");
+}
+
+const INPUT_TOO_LONG_REASON =
+  "Its input is too long to show a person in full, so nobody can approve it. Use smaller calls, or ask the person to do it themselves.";
+
 const NO_APPROVER_REASON =
   "No person can approve this action in this run: an automation has no person, and a person without a Junior account (made when they sign in to the Junior dashboard) cannot answer. Do not ask for approval in text.";
 
@@ -609,6 +623,14 @@ export function createToolActionReview(options: {
     proposal: ToolActionProposal,
     reason: string,
   ): Promise<{ decision: ActionRejection; reviewItemId?: string }> => {
+    if (approvalInputText(proposal.input).length > MAX_APPROVAL_INPUT_CHARS) {
+      return {
+        decision: {
+          decision: "deny",
+          reason: `${reason} ${INPUT_TOO_LONG_REASON}`,
+        },
+      };
+    }
     const reviewItemId = await options.requestApproval(
       action,
       proposal,

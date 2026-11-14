@@ -27,7 +27,11 @@ import {
 } from "@/chat/conversations/structured-events";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { getConversationEventStore, getDb } from "@/chat/db";
-import { canonicalJson, type ToolAction } from "@/chat/guardian/gate";
+import {
+  approvalInputText,
+  canonicalJson,
+  type ToolAction,
+} from "@/chat/guardian/gate";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 import { escapeTagText, renderTag } from "@/chat/input-tags";
 import { readActorIdentityFromSql } from "@/chat/plugins/viewer";
@@ -60,7 +64,6 @@ const FIELD_ID = "decision";
 const APPROVE = "Approve";
 /** How long a person can approve a stored call, as for an authorization. */
 const TTL_MS = 24 * 60 * 60 * 1_000;
-const MAX_INPUT_CHARS = 2_500;
 const EXPIRED_REASON = "The approval expired before the person approved it.";
 
 /** One stored `ask` call and its decision, if it has one. */
@@ -161,20 +164,17 @@ function askingConversationId(dedupeKey: string): string | undefined {
   return conversationId ? decodeURIComponent(conversationId) : undefined;
 }
 
+// The gate denies an input too long to show in full. The input comes first,
+// so a card that cuts a long body still shows all of it.
 function approvalBody(proposal: ToolActionProposal, reason: string): string {
-  const json = JSON.stringify(proposal.input, null, 2);
-  const input =
-    json.length > MAX_INPUT_CHARS
-      ? `${json.slice(0, MAX_INPUT_CHARS)}\n… (cut)`
-      : json;
   return [
-    proposal.tool.proposalDescription ?? proposal.tool.description,
+    "```json",
+    approvalInputText(proposal.input),
+    "```",
     "",
     `Why it needs approval: ${reason}`,
     "",
-    "```json",
-    input.replaceAll("```", "`\u200b``"),
-    "```",
+    proposal.tool.proposalDescription ?? proposal.tool.description,
   ].join("\n");
 }
 
