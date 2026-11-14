@@ -10,6 +10,7 @@ import { resolveConversationRouting } from "@/chat/services/turn-session-routing
 import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
 import {
   deleteSlackMessage,
+  // ast-grep-ignore: no-raw-slack-turn-post -- review item card that changes in place, not reply text
   postSlackMessage,
   updateSlackMessage,
 } from "@/chat/slack/outbound";
@@ -94,6 +95,7 @@ async function postCard(
   getSlackAdapter: (() => SlackAdapter) | undefined,
 ): Promise<void> {
   await inWorkspace(thread.teamId, getSlackAdapter, async () => {
+    // ast-grep-ignore: no-raw-slack-turn-post -- review item card that changes in place, not reply text
     const posted = await postSlackMessage({
       ...buildSlackReviewItemCard(item),
       channelId: thread.channelId,

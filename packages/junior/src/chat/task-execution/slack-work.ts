@@ -514,6 +514,7 @@ export async function clearSlackPendingReactions(args: {
       const metadata = parseSlackMetadata(record.input.metadata);
       if (!metadata || metadata.route !== "mention") continue;
       const timestamp = getMessageTs(Message.fromJSON(metadata.message));
+      // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
       const target = parseSlackThreadId(metadata.thread.id);
       if (!timestamp || !target) continue;
       await runWithSlackInstallation({
