@@ -82,6 +82,7 @@ function throwReviewError(status: number, body: unknown): never {
 
 /** Submit a comment or change-request review through GitHub's REST API. */
 export const gitHubSubmitPullRequestReviewTool = definePluginTool({
+  permission: "review",
   annotations: {
     destructiveHint: true,
     idempotentHint: false,

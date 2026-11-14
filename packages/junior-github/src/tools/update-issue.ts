@@ -106,6 +106,7 @@ function nonEmptyString(value: string | undefined, name: string): string {
 
 /** Update mutable issue metadata while preserving runtime-owned body attribution. */
 export const gitHubUpdateIssueTool = definePluginTool({
+  permission: "review",
   annotations: {
     destructiveHint: true,
     idempotentHint: true,

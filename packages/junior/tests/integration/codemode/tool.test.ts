@@ -44,7 +44,7 @@ const post = tool({
     openWorldHint: true,
     readOnlyHint: false,
   },
-  approvalMode: "review",
+  permission: "review",
   description: "Post a message to a channel.",
   inputSchema: Type.Object({ channel: Type.String(), text: Type.String() }),
   execute: async () => ({ posted: true }),
@@ -87,6 +87,7 @@ describe("codemode tool", () => {
         },
         conversationPrivacy: "private",
         actionReview: createToolActionReview({
+          requestApproval: async () => undefined,
           context: {
             actor: { platform: "local", userId: "local-user" },
             conversationId: CONVERSATION_ID,

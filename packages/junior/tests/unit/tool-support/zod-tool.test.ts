@@ -7,7 +7,7 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 describe("zodTool", () => {
   it("preserves approval metadata", () => {
     const tool = zodTool({
-      approvalMode: "approve",
+      permission: "allow",
       annotations: { destructiveHint: true, readOnlyHint: false },
       describeProposal: ({ recordId }) => `Delete record ${recordId}.`,
       description: "Delete a record.",
@@ -16,7 +16,7 @@ describe("zodTool", () => {
       execute: async () => ({ record_id: "42" }),
     });
 
-    expect(tool.approvalMode).toBe("approve");
+    expect(tool.permission).toBe("allow");
     expect(tool.annotations).toEqual({
       destructiveHint: true,
       readOnlyHint: false,
@@ -41,7 +41,7 @@ describe("zodTool", () => {
       },
     });
 
-    expect(tool.approvalMode).toBeUndefined();
+    expect(tool.permission).toBeUndefined();
     expect(tool.inputSchema).toMatchObject({
       properties: {
         count: { type: "integer" },

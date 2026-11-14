@@ -47,6 +47,7 @@ export function createGitHubUpdateIssueCommentTool(
   botEmail: string | undefined,
 ) {
   return definePluginTool({
+    permission: "review",
     annotations: {
       destructiveHint: true,
       idempotentHint: true,

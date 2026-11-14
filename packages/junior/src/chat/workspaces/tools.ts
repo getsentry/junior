@@ -234,7 +234,7 @@ function workspaceWriteToolDefinitions(providers: [string, ...string[]]) {
     createWorkspace: zodToolDefinition({
       exposure: "deferred",
       source: WORKSPACES_TOOL_SOURCE,
-      approvalMode: "review",
+      permission: "review",
       describeProposal: (input) => describeWorkspaceWrite("Create", input),
       executionMode: "sequential",
       annotations: {
@@ -253,7 +253,7 @@ function workspaceWriteToolDefinitions(providers: [string, ...string[]]) {
     updateWorkspace: zodToolDefinition({
       exposure: "deferred",
       source: WORKSPACES_TOOL_SOURCE,
-      approvalMode: "review",
+      permission: "review",
       describeProposal: ({ id: _id, ...input }) =>
         describeWorkspaceWrite("Replace", input),
       executionMode: "sequential",
@@ -283,7 +283,7 @@ function workspaceWriteToolDefinitions(providers: [string, ...string[]]) {
     deleteWorkspace: zodToolDefinition({
       exposure: "deferred",
       source: WORKSPACES_TOOL_SOURCE,
-      approvalMode: "review",
+      permission: "ask",
       describeProposal: ({ id }) => `Delete Workspace ${id}.`,
       executionMode: "sequential",
       annotations: {

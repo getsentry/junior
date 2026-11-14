@@ -66,11 +66,11 @@ const demoToolResultSchema = pluginToolOutputSchema.extend({
 
 function demoPluginTool(
   description = "Demo tool",
-  approvalMode?: "auto" | "review" | "approve",
+  permission?: "auto" | "allow" | "review" | "ask" | "deny",
   exposure?: ToolExposure,
 ) {
   return definePluginTool({
-    approvalMode,
+    permission,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -673,7 +673,7 @@ describe("agent plugin hooks", () => {
         id: "agent-demo",
         description: "Agent demo",
       });
-      expect(tools.agentDemo_demoTool?.approvalMode).toBe("review");
+      expect(tools.agentDemo_demoTool?.permission).toBe("review");
       expect(tools.agentDemo_demoTool?.describeProposal?.({})).toBe(
         "Demo tool proposal",
       );
@@ -830,7 +830,7 @@ describe("agent plugin hooks", () => {
 
       expect(tools.agentDemo_prototypeTool?.description).toBe("Prototype tool");
       expect(tools.prototypeTool).toBeUndefined();
-      expect(tools.agentDemo_prototypeTool?.approvalMode).toBe("auto");
+      expect(tools.agentDemo_prototypeTool?.permission).toBe("auto");
       expect(tools.agentDemo_prototypeTool?.identity).toEqual({
         id: "agent-demo.prototypeTool",
         name: "prototypeTool",

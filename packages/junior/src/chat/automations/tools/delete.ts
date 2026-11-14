@@ -17,7 +17,7 @@ import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
 export const deleteAutomationToolDefinition = zodToolDefinition({
   exposure: "deferred",
   source: AUTOMATIONS_TOOL_SOURCE,
-  approvalMode: "review",
+  permission: "ask",
   annotations: {
     destructiveHint: true,
     idempotentHint: true,

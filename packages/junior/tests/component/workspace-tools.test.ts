@@ -151,15 +151,15 @@ describe("Workspace tools", () => {
         ],
       });
 
-      expect(createTool.approvalMode).toBe("review");
+      expect(createTool.permission).toBe("review");
       expect(createTool.describeProposal?.(createInput)).toBe(
         "Create Workspace relay (1 repository; includes a setup script; 8 vCPUs).",
       );
-      expect(updateTool.approvalMode).toBe("review");
+      expect(updateTool.permission).toBe("review");
       expect(updateTool.describeProposal?.(updateInput)).toBe(
         "Replace Workspace sentry-web (1 repository; includes a setup script).",
       );
-      expect(deleteTool.approvalMode).toBe("review");
+      expect(deleteTool.permission).toBe("ask");
       expect(deleteTool.describeProposal?.({ id: workspace.id })).toBe(
         `Delete Workspace ${workspace.id}.`,
       );

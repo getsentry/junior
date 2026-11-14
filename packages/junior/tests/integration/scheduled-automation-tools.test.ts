@@ -302,12 +302,12 @@ describe("Scheduled automation tools", () => {
       required?: string[];
     };
 
-    expect(createTool.approvalMode).toBe("review");
-    expect(updateTool.approvalMode).toBe("review");
-    expect(deleteTool.approvalMode).toBe("review");
-    expect(runNowTool.approvalMode).toBe("review");
+    expect(createTool.permission).toBe("review");
+    expect(updateTool.permission).toBe("review");
+    expect(deleteTool.permission).toBe("ask");
+    expect(runNowTool.permission).toBe("review");
     // Read-only listing stays outside Guardian; mutating schedule tools do not.
-    expect(listTool.approvalMode).toBeUndefined();
+    expect(listTool.permission).toBeUndefined();
     expect(schema.required).toContain("trigger");
     expect(schema.properties).not.toHaveProperty("nextRunAt");
     expect(schema.properties).not.toHaveProperty("schedule_kind");

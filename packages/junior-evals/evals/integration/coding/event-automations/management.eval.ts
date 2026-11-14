@@ -6,7 +6,11 @@ import {
   slackChannel,
 } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
-import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
+import {
+  completedToolCalls,
+  toolCallsOf,
+  toolOutput,
+} from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 const issueTrigger = {
@@ -101,7 +105,7 @@ describe("Event automation management", () => {
     expect(names).not.toContain("watchEvents");
   });
 
-  test("when managing an existing event automation, list update and delete it", async ({
+  test("when managing an existing event automation, list and update it, and ask the person before a delete", async ({
     run,
   }) => {
     const channel = slackChannel();
@@ -152,9 +156,12 @@ describe("Event automation management", () => {
       RubricJudge,
       rubric({
         pass: [
-          "The reply confirms that the same event automation was deleted and no longer exists.",
+          "The reply says that the event automation is not deleted yet, because the delete needs the person's approval.",
         ],
-        fail: ["Do not create a replacement event automation."],
+        fail: [
+          "Do not say that the event automation was deleted.",
+          "Do not create a replacement event automation.",
+        ],
       }),
     );
 
@@ -193,11 +200,16 @@ describe("Event automation management", () => {
         },
       },
     });
+    // `deleteAutomation` asks the person. Core stores the call, and it does
+    // not run before the person approves it.
     expect(
-      completedToolCalls("deleteAutomation", listing, update, removal).map(
+      toolCallsOf("deleteAutomation", listing, update, removal).map(
         (call) => call.input,
       ),
-    ).toEqual([{ automation_id: id }]);
+    ).toContainEqual({ automation_id: id });
+    expect(
+      completedToolCalls("deleteAutomation", listing, update, removal),
+    ).toEqual([]);
     expect(
       completedToolCalls("createAutomation", listing, update, removal),
     ).toEqual([]);

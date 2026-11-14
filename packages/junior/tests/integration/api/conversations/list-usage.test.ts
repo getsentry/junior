@@ -103,7 +103,7 @@ describe("conversation list API usage rollup", () => {
           {
             costUsd: 0.0003,
             events: 1,
-            name: "guardian_action_reviewed",
+            name: "action_decided",
             namespace: "junior",
           },
           {
@@ -165,7 +165,7 @@ describe("conversation list API usage rollup", () => {
           {
             costUsd: 0.0007,
             events: 2,
-            name: "guardian_action_reviewed",
+            name: "action_decided",
             namespace: "junior",
           },
           {
@@ -214,7 +214,7 @@ describe("conversation list API usage rollup", () => {
           {
             costUsd: 0.0007,
             events: 2,
-            name: "guardian_action_reviewed",
+            name: "action_decided",
             namespace: "junior",
           },
           {

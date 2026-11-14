@@ -146,6 +146,7 @@ async function inspectAlias(
 /** Vercel deployment and alias operations. */
 export const vercelActionTools = {
   deploymentCreate: definePluginTool({
+    permission: "review",
     annotations: {
       destructiveHint: true,
       idempotentHint: false,
@@ -254,6 +255,7 @@ export const vercelActionTools = {
     },
   }),
   aliasAssign: definePluginTool({
+    permission: "review",
     annotations: {
       destructiveHint: true,
       idempotentHint: true,

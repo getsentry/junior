@@ -27,7 +27,7 @@ export const messageAgentToolDefinition = zodToolDefinition({
   description: `Send a message to your parent agent or to a child agent that this conversation started. Use it to give an existing child agent more work, an answer, or a correction, and to send your parent agent a finding or a question while you keep working. A message to a child continues its history. If the child is still working, it reads the message at its next step or after its current work. A child replies when it has something to report. Its reply arrives later as a new task in this conversation; do not wait or poll for it. Make sure people know what is going on, but post only updates that matter to them. A message to your parent does not end your task. A top-level agent (its conversation is not a child agent, such as a Slack thread) can also message another top-level agent. Both conversations must be public, or both must be private conversations in the same place, such as one private channel or DM. The target runs the message as its own task and sends no result. Use spawnAgent only to start a new child agent.`,
   exposure: "modelOnly",
   // Action review judges the actions that the message names.
-  approvalMode: "auto",
+  permission: "auto",
   annotations: {
     destructiveHint: false,
     idempotentHint: true,

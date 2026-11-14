@@ -363,7 +363,7 @@ export function myProviderPlugin() {
       tools() {
         return {
           ping: zodTool({
-            approvalMode: "auto",
+            permission: "auto",
             annotations: {
               readOnlyHint: true,
               openWorldHint: true,
@@ -393,21 +393,32 @@ it in generic `ok`, `status`, or `data` fields. Throw `PluginToolInputError` for
 model-repairable failures; Junior projects successful values and thrown errors
 onto the agent runtime's separate result channels.
 
-`approvalMode` sets whether Guardian reviews a call before the tool runs:
+`permission` sets what Junior does with a call before the tool runs:
 
-- `auto` is the default. Junior sets it when you omit the field. A tool with
-  `readOnlyHint: true` and no `destructiveHint: true` runs without review.
-  Guardian reviews each call of every other tool in this mode. Set
+- `auto` is the default. Junior sets it when you omit the field. A call whose
+  annotations set `destructiveHint: true` waits for the person's approval, as
+  with `ask`. A tool with `readOnlyHint: true` and no `destructiveHint: true`
+  runs without review. Guardian reviews each other call. Set
   `readOnlyHint: true` only when the tool never writes.
 - `review` makes Guardian review each call.
-- `approve` skips review. The tool runs without a Guardian decision, also in a
+- `ask` makes each call wait for the person's approval. Junior saves the exact
+  call and adds a review item for the person who asked. When they approve it,
+  Junior runs that call once and gives the agent its result. When they decline
+  or dismiss it, the call does not run. In a scheduled or event automation, no
+  person can answer, so the call does not run.
+- `allow` skips review. The tool runs without a Guardian decision, also in a
   child agent.
+- `deny` never runs the tool.
 
-Use `approve` only when the tool code proves that each effect is safe, and no
+Use `ask` for an effect that you cannot undo, such as a delete. Set `review` on
+a destructive tool whose effect you can undo, such as an archive or an edit, so
+that routine work does not wait for a person.
+
+Use `allow` only when the tool code proves that each effect is safe, and no
 model judgment is necessary. For example, the GitHub tools that mark feedback
 and resolve review threads read the pull request from GitHub first. They refuse
 unless the bot authored it. Their only effect is the bot's own reaction or the
-resolved state of a thread, and you can undo both. Do not use `approve` when
+resolved state of a thread, and you can undo both. Do not use `allow` when
 the tool writes text that can make claims, or when the tool does not check its
 target itself.
 

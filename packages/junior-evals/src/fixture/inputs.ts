@@ -100,6 +100,15 @@ export interface ReviewItemActionInput {
   values?: Record<string, string[]>;
 }
 
+/**
+ * The asker's answer on the review desk to the one open Tool approval of the
+ * Conversation, through `POST /api/review-items/:id/actions`.
+ */
+export interface ToolApprovalAnswerInput {
+  kind: "tool_approval_answer";
+  decision: "Approve" | "Decline";
+}
+
 /** An open item that a `ReviewItemActionInput` acts on. */
 export interface ReviewDeskItem {
   body: string;
@@ -154,6 +163,7 @@ export type AutomationInput = HeartbeatInput | GitHubWebhookInput;
 export type Input =
   | MessageInput
   | ReviewItemActionInput
+  | ToolApprovalAnswerInput
   | AutomationInput
   | CompleteAuthInput
   | AppHomeUnlinkInput;
@@ -247,6 +257,13 @@ export function reviewItemAnswer(
 /** Dismiss a review desk item from the dashboard. */
 export function reviewItemDismiss(item: ReviewDeskItem): ReviewItemActionInput {
   return { kind: "review_item_action", action: "dismiss", item };
+}
+
+/** Answer the open Tool approval of the Conversation as its asker. */
+export function toolApprovalAnswer(
+  decision: ToolApprovalAnswerInput["decision"],
+): ToolApprovalAnswerInput {
+  return { kind: "tool_approval_answer", decision };
 }
 
 /** A file for `files`. A string is the text of the file. */

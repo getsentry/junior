@@ -57,6 +57,8 @@ plugins, skills, and telemetry. Egress and credential code:
 - Follow `context-bound-systems.md` and `tool-design.md`. Missing context
   fails with a structured error. Never fall back to a private destination,
   another actor, or a bot-owned artifact.
+- Junior never runs an action as another person. A person can approve only
+  an action that runs as them.
 
 ### Provider credentials
 

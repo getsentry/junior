@@ -61,7 +61,7 @@ function missingToolMessage(toolName: string, provider: string | undefined) {
  */
 export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
   return zodTool({
-    approvalMode: "auto",
+    permission: "auto",
     annotations: {
       destructiveHint: true,
       idempotentHint: false,

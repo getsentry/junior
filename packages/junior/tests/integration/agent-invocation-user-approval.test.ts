@@ -156,6 +156,7 @@ describe("user approval for child agents", () => {
                 bindMessageAgent(parent, { queue, state })!,
               );
         const review = createToolActionReview({
+          requestApproval: async () => undefined,
           context: {
             actor: user,
             conversationId: slackParentConversationId,

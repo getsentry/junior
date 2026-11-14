@@ -481,7 +481,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         {
           costUsd: 0.0012,
           events: 3,
-          name: "guardian_action_reviewed",
+          name: "action_decided",
           namespace: "junior",
         },
         {

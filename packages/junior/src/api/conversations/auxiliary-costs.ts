@@ -15,15 +15,17 @@ import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationEvents } from "@/db/schema";
 import type { ConversationAuxiliaryCosts } from "../schema/conversation";
 import { notCopiedByFork } from "@/chat/conversations/fork";
+import { ACTION_DECIDED_EVENT_TYPES } from "@/chat/conversations/history";
 
 // Core event types with a top-level `costUsd`. `turn_routed` rows come from
 // the retired Turn router. They still carry the router cost of old Turns.
 // `compaction` and `compaction_prepared` carry the cost of the summary
 // requests. A swap of a prepared summary has no cost, so it does not count.
+// Only Guardian's `action_decided` rows carry a cost.
 const CORE_COST_EVENT_TYPES = [
   "compaction",
   "compaction_prepared",
-  "guardian_action_reviewed",
+  ...ACTION_DECIDED_EVENT_TYPES,
   "turn_routed",
 ] as const;
 
@@ -79,7 +81,7 @@ const AUXILIARY_COST_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // Change the version when the set of counted events changes. An entry that an
 // older reader wrote can cover events that it did not count.
 function auxiliaryCostCacheKey(conversationId: string): string {
-  return `conversation-auxiliary-costs:v2:${conversationId}`;
+  return `conversation-auxiliary-costs:v3:${conversationId}`;
 }
 
 function operationKey(operation: OperationSums): string {
@@ -123,6 +125,9 @@ async function sumOperationCosts(
       THEN ${juniorConversationEvents.payload}->>'name'
     WHEN ${juniorConversationEvents.type} = 'compaction_prepared'
       THEN 'compaction'
+    -- Old Guardian rows count as action_decided.
+    WHEN ${juniorConversationEvents.type} = 'guardian_action_reviewed'
+      THEN 'action_decided'
     ELSE ${juniorConversationEvents.type}
   END`;
   const cost = eventCost();

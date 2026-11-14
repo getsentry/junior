@@ -15,7 +15,7 @@ import * as gateway from "@/chat/pi/client";
 import { agentTurnCostUsd } from "@/chat/usage";
 
 // These operations store `costUsd` on their own event: `brief_updated`,
-// `guardian_action_reviewed`, and `passive_reply_routed`.
+// `action_decided` (Guardian), and `passive_reply_routed`.
 type CallerRecordedOperation =
   | "brief_update"
   | "guardian_action_review"

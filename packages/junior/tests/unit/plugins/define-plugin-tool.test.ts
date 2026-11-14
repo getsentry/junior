@@ -4,7 +4,7 @@ import {
   missingToolAnnotationKeys,
   PluginToolInputError,
   pluginToolOutputSchema,
-  toolApprovalModeSchema,
+  toolPermissionSchema,
   zodTool,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
@@ -16,7 +16,7 @@ const countResultSchema = pluginToolOutputSchema.extend({
 describe("definePluginTool", () => {
   it("preserves approval metadata", () => {
     const tool = definePluginTool({
-      approvalMode: "review",
+      permission: "review",
       annotations: {
         destructiveHint: false,
         idempotentHint: true,
@@ -30,7 +30,7 @@ describe("definePluginTool", () => {
       execute: async () => ({ count: 1 }),
     });
 
-    expect(tool.approvalMode).toBe("review");
+    expect(tool.permission).toBe("review");
     expect(tool.annotations).toEqual({
       destructiveHint: false,
       idempotentHint: true,
@@ -39,7 +39,7 @@ describe("definePluginTool", () => {
     });
     const input = tool.prepareArguments?.({ query: "errors" });
     expect(tool.describeProposal?.(input!)).toBe("Search for errors.");
-    expect(toolApprovalModeSchema.safeParse("unexpected").success).toBe(false);
+    expect(toolPermissionSchema.safeParse("unexpected").success).toBe(false);
   });
 
   it("reports missing behavioral annotations", () => {
@@ -64,7 +64,7 @@ describe("definePluginTool", () => {
       execute,
     });
 
-    expect(tool.approvalMode).toBe("auto");
+    expect(tool.permission).toBe("auto");
     expect(tool.inputSchema).toMatchObject({
       properties: {
         count: { type: "integer" },

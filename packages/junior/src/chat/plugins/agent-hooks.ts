@@ -745,7 +745,7 @@ function pluginToolDefinitions(
             execute: execute.bind(definition) as AnyToolDefinition["execute"],
           }
         : undefined),
-      approvalMode: definition.approvalMode ?? "auto",
+      permission: definition.permission ?? "auto",
       identity: {
         id: `${pluginName}.${localName}`,
         name: localName,
