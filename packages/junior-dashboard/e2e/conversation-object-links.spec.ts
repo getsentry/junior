@@ -357,6 +357,57 @@ test("a Sentry Explore link resolves to a titled link, a chart card, and a hover
   });
 });
 
+test("a Sentry trace link resolves to a titled link, a waterfall card, and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  const url =
+    "https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/";
+  const link = linksParagraph(page).getByRole("link", {
+    name: "POST /api/checkout (a8c0e1b2)",
+  });
+  await expect(link).toHaveAttribute("href", url);
+  // The reply also links to it on its own line, which shows the card.
+  const card = page.getByRole("region", {
+    name: "Sentry trace: POST /api/checkout",
+  });
+  await expect(card).toHaveCount(1);
+  for (const text of [
+    "2.43 s",
+    "186",
+    "2 errors, 1 performance issue",
+    "storefront, checkout-api, payments",
+  ]) {
+    await expect(card).toContainText(text);
+  }
+  const waterfall = card.getByRole("figure", { name: "Top-level spans" });
+  await expect(waterfall.getByRole("listitem")).toHaveCount(8);
+  await expect(waterfall).toContainText(
+    "http.client POST https://payments.internal/charge",
+  );
+  await card.scrollIntoViewIfNeeded();
+  await screenshot(page, "conversation-sentry-trace-card", {
+    lightTheme: true,
+    target: card,
+    view: "desktop",
+  });
+
+  await waitForResolvedLinks(page);
+  await link.hover();
+  await expect(card).toHaveCount(2);
+  await expect(
+    card.nth(1).getByRole("figure", { name: "Top-level spans" }),
+  ).toBeVisible();
+  await screenshot(page, "conversation-sentry-trace-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
 test("a participant attaches a Google Doc from its hover card", async ({
   page,
   dashboard,
@@ -584,6 +635,7 @@ test("a public web page link resolves to a link, a card, and a hover card", asyn
   await expect(post).toContainText("Example Blog · Morgan Lee");
   await expect(post).not.toContainText("Web page ·");
   await expect(post.locator("img")).toHaveJSProperty("complete", true);
+  await post.scrollIntoViewIfNeeded();
   await screenshot(page, "conversation-web-page-card", {
     lightTheme: true,
     target: post,

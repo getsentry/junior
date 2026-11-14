@@ -20,6 +20,7 @@ const names = [
   "comment",
   "globe",
   "graph",
+  "rows",
   "package",
 ];
 const paths = Object.fromEntries(
