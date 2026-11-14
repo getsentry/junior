@@ -263,7 +263,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
-      - run: pnpm --filter "@sentry/junior..." run build
+      # The example build tests load every plugin that the example app uses.
+      - run: pnpm --filter "@sentry/junior-example^..." run build
       - run: pnpm --filter @sentry/junior exec vitest run --maxWorkers=${{ matrix.max_workers }} --testTimeout=${{ matrix.test_timeout }} --coverage ${{ matrix.path }}
       - name: Upload coverage
         if: ${{ !cancelled() }}
