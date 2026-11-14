@@ -19,8 +19,10 @@ import {
   putMcpStoredOAuthCredentials,
   type McpAuthSessionState,
 } from "./auth-store";
+import type { McpLoginOwner } from "./token-refresh";
 
-function createClientMetadata(callbackUrl: string): OAuthClientMetadata {
+/** The client metadata that Junior registers for one MCP OAuth callback. */
+export function createClientMetadata(callbackUrl: string): OAuthClientMetadata {
   return {
     client_name: "Junior MCP Client",
     redirect_uris: [callbackUrl],
@@ -48,6 +50,33 @@ function requireEnv(name: string): string {
     throw new Error(`MCP OAuth client env var ${name} is unset`);
   }
   return value;
+}
+
+/**
+ * Return the OAuth client of one person's MCP login: the pre-registered
+ * client, or the client that Junior registered for this callback.
+ */
+export async function readMcpClientInformation(input: {
+  callbackUrl: string;
+  oauthClient: PluginMcpOAuthClientConfig | undefined;
+  provider: string;
+  userId: string;
+}): Promise<OAuthClientInformationMixed | undefined> {
+  if (input.oauthClient) {
+    return {
+      client_id: requireEnv(input.oauthClient.clientIdEnv),
+      client_secret: requireEnv(input.oauthClient.clientSecretEnv),
+    };
+  }
+  const credentials = await getMcpStoredOAuthCredentials(
+    input.userId,
+    input.provider,
+  );
+  const clientInformation = credentials?.clientInformation;
+  return clientInformation &&
+    clientAllowsRedirectUri(clientInformation, input.callbackUrl)
+    ? clientInformation
+    : undefined;
 }
 
 export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
@@ -104,25 +133,13 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async clientInformation(): Promise<OAuthClientInformationMixed | undefined> {
-    if (this.oauthClient) {
-      return {
-        client_id: requireEnv(this.oauthClient.clientIdEnv),
-        client_secret: requireEnv(this.oauthClient.clientSecretEnv),
-      };
-    }
     const session = await this.getCredentialContext();
-    const credentials = await getMcpStoredOAuthCredentials(
-      session.userId,
-      session.provider,
-    );
-    const clientInformation = credentials?.clientInformation;
-    if (!clientInformation) {
-      return undefined;
-    }
-    if (clientAllowsRedirectUri(clientInformation, this.callbackUrl)) {
-      return clientInformation;
-    }
-    return undefined;
+    return await readMcpClientInformation({
+      callbackUrl: this.callbackUrl,
+      oauthClient: this.oauthClient,
+      provider: session.provider,
+      userId: session.userId,
+    });
   }
 
   async saveClientInformation(
@@ -278,6 +295,12 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
             : {}),
       });
     });
+  }
+
+  /** Name the stored login, so its refreshes share one lock with others. */
+  async mcpLoginOwner(): Promise<McpLoginOwner> {
+    const session = await this.getCredentialContext();
+    return { provider: session.provider, userId: session.userId };
   }
 
   async getMcpServerSessionId(): Promise<string | undefined> {

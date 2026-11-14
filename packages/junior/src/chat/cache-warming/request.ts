@@ -28,12 +28,16 @@ export const CACHE_RETENTION: CacheRetention = "short";
 const REFRESHED_READ_FRACTION = 0.9;
 // A miss ends only its own warming. When many recent warmups of one provider
 // miss, its warmup request or cache is likely broken, so warming of that
-// provider stops for every Conversation for a day. Only a miss reads the outcomes. Every other warmup
-// reads only the open key.
+// provider stops for every Conversation for a while. Only a miss reads the
+// outcomes. Every other warmup reads only the open key.
 const BREAKER_OUTCOMES_MAX = 20;
 const BREAKER_MAX_MISSES = 10;
 const BREAKER_OUTCOMES_TTL_MS = 6 * 60 * MINUTE_MS;
-const BREAKER_OPEN_TTL_MS = 24 * 60 * MINUTE_MS;
+// Providers sometimes drop cached prefixes for a few minutes, which trips the
+// breaker without a broken request. A short pause keeps such a burst from
+// stopping warming for long. Opening clears the outcomes, so a provider that
+// stays broken must miss again to reopen it.
+const BREAKER_OPEN_TTL_MS = 30 * MINUTE_MS;
 
 // The breaker is per provider, so a provider whose cache behaves differently
 // than its TTL says cannot stop warming for the others.
@@ -162,14 +166,53 @@ export async function breakerOpen(
   );
 }
 
+/**
+ * Report whether the breaker is open for each warmed provider of these
+ * models. Providers that no model uses are left out.
+ */
+export async function breakerStates(
+  state: ConnectedState,
+  modelIds: readonly string[],
+): Promise<Array<{ provider: string; open: boolean }>> {
+  const providers = new Set(
+    modelIds
+      .map(providerOf)
+      .filter((provider) => Object.hasOwn(CACHE_TTL_MS, provider)),
+  );
+  return Promise.all(
+    [...providers].map(async (provider) => ({
+      provider,
+      open: (await state.get<boolean>(breakerOpenKey(provider))) === true,
+    })),
+  );
+}
+
+/**
+ * Close a provider's breaker so warming starts again, and forget its recent
+ * outcomes so old misses cannot reopen it. Returns false for a provider that
+ * is not warmed.
+ */
+export async function closeBreaker(
+  state: ConnectedState,
+  provider: string,
+): Promise<boolean> {
+  if (!Object.hasOwn(CACHE_TTL_MS, provider)) return false;
+  await state.delete(breakerOutcomesKey(provider));
+  await state.delete(breakerOpenKey(provider));
+  return true;
+}
+
 // Count one warmup outcome. Open the breaker when too many recent warmups
-// missed. Only the call that opens it reports to Sentry.
+// missed. Only the call that opens it reports to Sentry. Warmups that started
+// before it opened are not counted, so their misses cannot reopen it right
+// after the pause.
 async function countOutcome(
   state: ConnectedState,
   modelId: string,
   miss: boolean,
 ): Promise<void> {
   const provider = providerOf(modelId);
+  if (await breakerOpen(state, modelId)) return;
   await state.appendToList(breakerOutcomesKey(provider), miss ? 1 : 0, {
     maxLength: BREAKER_OUTCOMES_MAX,
     ttlMs: BREAKER_OUTCOMES_TTL_MS,
@@ -185,6 +228,7 @@ async function countOutcome(
       BREAKER_OPEN_TTL_MS,
     ))
   ) {
+    await state.delete(breakerOutcomesKey(provider));
     captureMessage("Cache warming stopped: too many warmups missed the cache", {
       level: "error",
       fingerprint: ["cache_warming.breaker.opened", provider],

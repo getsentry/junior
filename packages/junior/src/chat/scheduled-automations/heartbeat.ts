@@ -4,6 +4,8 @@ import {
   dispatchScheduledAutomation,
   getScheduledAutomationDispatch,
 } from "@/chat/agent-dispatch/context";
+import { isTerminalDispatchStatus } from "@/chat/agent-dispatch/store";
+import { AGENT_DISPATCH_MAX_AGE_MS } from "@/chat/agent-dispatch/work";
 import { renderTaskInput } from "@/chat/task-input";
 import { automationTaskText } from "@/chat/automations/task";
 import {
@@ -299,6 +301,23 @@ export async function runScheduledAutomationHeartbeat(args: {
       })
     ) {
       processedCount += 1;
+      continue;
+    }
+    // Dispatch work does not run past this age. A dispatch that is still
+    // open now lost its work, and its run would block every later run.
+    if (
+      !isTerminalDispatchStatus(dispatch.status) &&
+      args.nowMs - (run.startedAtMs ?? run.claimedAtMs) >
+        AGENT_DISPATCH_MAX_AGE_MS
+    ) {
+      await finishClaimedRun({
+        db,
+        errorMessage:
+          "Scheduled automation run did not finish within 24 hours.",
+        nowMs: args.nowMs,
+        run,
+        status: "failed",
+      });
     }
   }
 

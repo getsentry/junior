@@ -103,7 +103,9 @@ function render(node: Node): string {
       const text = renderChildren(node);
       const href = node.getAttribute("href") ?? "";
       // People links point into the dashboard. Keep only their label.
-      return /^https?:/i.test(href) && text.trim() !== href
+      const scheme = href.slice(0, 6).toLowerCase();
+      return (scheme.startsWith("https:") || scheme.startsWith("http:")) &&
+        text.trim() !== href
         ? `[${text}](${href})`
         : text;
     }

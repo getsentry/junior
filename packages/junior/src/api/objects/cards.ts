@@ -86,3 +86,86 @@ export function personObjectCard(args: {
     },
   };
 }
+
+// Long enough to know the message, short enough to never copy a whole one.
+const MAX_SNIPPET_CHARS = 280;
+const MAX_TITLE_CHARS = 100;
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+}
+
+/**
+ * Build the card of one chat message. Give `text` only when the viewer may
+ * read the message: the card shows a short snippet of it, never all of it.
+ */
+export function messageObjectCard(args: {
+  author?: string;
+  /** Where the message is, such as `#general` or `Direct message`. */
+  channel: string;
+  key: string;
+  sentAt?: string;
+  text?: string;
+  url: string;
+}): ObjectAnnotation {
+  const snippet = args.text?.replace(/\s+/g, " ").trim();
+  const title = snippet
+    ? truncate(snippet, MAX_TITLE_CHARS)
+    : `Message in ${args.channel}`;
+  return {
+    kind: "object",
+    objectType: "message",
+    key: args.key.slice(0, 256),
+    label: args.channel.slice(0, MAX_LABEL_CHARS),
+    title,
+    url: args.url,
+    ...(snippet && snippet.length > title.length
+      ? { description: truncate(snippet, MAX_SNIPPET_CHARS) }
+      : undefined),
+    facts: {
+      type: "message",
+      channel: args.channel.slice(0, MAX_FACT_CHARS),
+      ...(args.author
+        ? { author: args.author.slice(0, MAX_FACT_CHARS) }
+        : undefined),
+      ...(args.sentAt ? { sentAt: args.sentAt } : undefined),
+    },
+  };
+}
+
+/**
+ * Build the card of one public web page from its oEmbed fields or meta
+ * tags. `thumbnailUrl` must be a Junior image path.
+ */
+export function webPageObjectCard(args: {
+  author?: string;
+  description?: string;
+  media?: "video" | "image";
+  siteName?: string;
+  thumbnailUrl?: string;
+  title: string;
+  url: string;
+}): ObjectAnnotation {
+  return {
+    kind: "object",
+    objectType: "web_page",
+    key: args.url.slice(0, 256),
+    label: truncate(args.title, MAX_LABEL_CHARS),
+    title: truncate(args.title, 512),
+    url: args.url,
+    ...(args.description
+      ? { description: truncate(args.description, MAX_SNIPPET_CHARS) }
+      : undefined),
+    facts: {
+      type: "web_page",
+      ...(args.siteName
+        ? { siteName: truncate(args.siteName, MAX_FACT_CHARS) }
+        : undefined),
+      ...(args.author
+        ? { author: truncate(args.author, MAX_FACT_CHARS) }
+        : undefined),
+      ...(args.media ? { media: args.media } : undefined),
+      ...(args.thumbnailUrl ? { thumbnailUrl: args.thumbnailUrl } : undefined),
+    },
+  };
+}

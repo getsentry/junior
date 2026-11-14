@@ -169,11 +169,11 @@ export function renderScriptTools(
 
 // The tool list is in the `<script-tools>` Turn context section, so this text
 // stays the same when the tools change. A changed tool definition would
-// invalidate the provider prompt cache.
+// invalidate the provider prompt cache. When to pick a script over direct
+// calls is a `<tool-policy>` rule in `system-prompt-rules.ts`.
 const DESCRIPTION = [
-  "Run a JavaScript script that calls other tools, and get back only what the script returns or prints. When a task needs several tool calls, such as the same lookup for many items or a search and then a read of each result, use one script instead of separate calls. For one call, or when you must read a result before you decide the next step, call the tools directly.",
+  "Run a JavaScript script that calls other tools, and get back only what the script returns or prints.",
   "",
-  "The code is the body of an async function: top-level `await` and `return` work. It runs in a QuickJS VM with no Node, file system, network, or timers.",
   "- `await tools.<name>(args)` runs one tool through the normal tool path, including action review. It resolves to the tool result, and rejects with an Error when the call fails or action review rejects it.",
   "- Arguments and results must be JSON-serializable.",
   "- Run calls at the same time (`Promise.all`) only when they do not depend on each other. Await a call before a call that needs its result. Run calls that change the same thing one after another.",
@@ -230,7 +230,11 @@ function renderResult(result: CodeModeResult): string {
   ].join("\n");
 }
 
-/** Create the `codemode` tool for one Run's script tools and pipeline. */
+/**
+ * Create the `codemode` tool for one Run's script tools and pipeline.
+ *
+ * @runBuilt codemode
+ */
 export function createCodeModeTool(options: CodeModeToolOptions) {
   const { countToolCall, modelOnlyTools, pipeline, scriptTools } = options;
   return zodTool({
@@ -250,7 +254,7 @@ export function createCodeModeTool(options: CodeModeToolOptions) {
           .string()
           .min(1)
           .describe(
-            "JavaScript source: the body of an async function. Raw code, not JSON and not in a code fence.",
+            "JavaScript source: the body of an async function, so top-level `await` and `return` work. Raw code, not JSON and not in a code fence. It runs in a QuickJS VM with no Node, file system, network, or timers.",
           ),
       })
       .strict(),

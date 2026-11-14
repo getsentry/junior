@@ -3,6 +3,7 @@ import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import {
   getAgentInvocationIdForResult,
   getAgentInvocationResultMessageId,
+  getAgentInvocationTurnId,
 } from "@/chat/agent-invocations/ids";
 import {
   completeAgentInvocation,
@@ -19,7 +20,7 @@ import {
   appendInboundMessage,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
-import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import {
   prepareSlackParentConversation,
@@ -27,8 +28,8 @@ import {
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
 
-async function searchAgents(conversationId: string) {
-  return (await createSearchAgentsTool({ conversationId }).execute!({}, {}))
+async function listAgents(conversationId: string) {
+  return (await createListAgentsTool({ conversationId }).execute!({}, {}))
     .agents;
 }
 
@@ -116,7 +117,7 @@ describe("nested agent invocations", () => {
       ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
       await enqueueAgentInvocationResult(grandResult, { queue, state });
 
-      // searchAgents shows the state of open work. A `replaced` child still
+      // listAgents shows the state of open work. A `replaced` child still
       // has work.
       const listedChild = (childConversationId: string) => ({
         conversation_id: childConversationId,
@@ -126,13 +127,13 @@ describe("nested agent invocations", () => {
         task: slackInvocationInput.input,
         updated_at: expect.any(String),
       });
-      await expect(searchAgents(slackParentConversationId)).resolves.toEqual([
+      await expect(listAgents(slackParentConversationId)).resolves.toEqual([
         {
           ...listedChild(child.childConversationId),
           error: "Started a helper.",
         },
       ]);
-      await expect(searchAgents(child.childConversationId)).resolves.toEqual([
+      await expect(listAgents(child.childConversationId)).resolves.toEqual([
         {
           ...listedChild(helper.childConversationId),
           error: "Started a helper.",
@@ -161,7 +162,7 @@ describe("nested agent invocations", () => {
         }),
       ]);
       // An agent invocation that receives a result is not a new task.
-      await expect(searchAgents(child.childConversationId)).resolves.toEqual([
+      await expect(listAgents(child.childConversationId)).resolves.toEqual([
         { ...listedChild(helper.childConversationId), status: "running" },
       ]);
 
@@ -246,6 +247,7 @@ describe("nested agent invocations", () => {
         messageKey: "call-reply",
         queue,
         sender: busyReplied!,
+        turnId: getAgentInvocationTurnId(busyReplied!.invocationId),
         state,
       });
       for (const [invocation, result] of [

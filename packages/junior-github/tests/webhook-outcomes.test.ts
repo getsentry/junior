@@ -1,3 +1,4 @@
+import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import {
   conversationAnnotationInputSchema,
@@ -1346,6 +1347,7 @@ describe("GitHub webhook events", () => {
     ).toEqual({
       checkSuiteId: 89021857045,
       headSha: "8105236768dd1da43379152ee11900be8983ae03",
+      loadCheckSuites: false,
       loadFailingChecks: true,
       loadPullRequestFacts: false,
       owner: "getsentry",
@@ -1377,6 +1379,7 @@ describe("GitHub webhook events", () => {
     ).toEqual({
       checkSuiteId: 7,
       headSha: "abcdef1234567890",
+      loadCheckSuites: false,
       loadFailingChecks: false,
       loadPullRequestFacts: true,
       owner: "getsentry",
@@ -1397,7 +1400,10 @@ describe("GitHub webhook events", () => {
     ).toEqual({
       // Core uses the repo to skip broad triggers for other repositories.
       data: { repo: "getsentry/junior" },
-      eventTypes: ["pull_request.checks.recovered"],
+      eventTypes: [
+        "pull_request.checks.recovered",
+        "pull_request.checks.passed",
+      ],
       identifiers: ["getsentry/junior", "getsentry/junior#10"],
     });
   });
@@ -2968,7 +2974,7 @@ describe("GitHub-owned pull request outcomes", () => {
         { status: 201 },
       );
     const state = new Map<string, unknown>();
-    const tools = plugin.hooks!.tools!({
+    const toolCtx = {
       ...pluginCtx,
       actor: { platform: "slack", teamId: "T1", userId: "U1" },
       conversationId: "slack:C123:1712345.0001",
@@ -2999,6 +3005,7 @@ describe("GitHub-owned pull request outcomes", () => {
       },
       events: { canSubscribe: false },
       users: {
+        replaceSlackMentions: async (value: unknown) => value,
         async resolveActor() {
           return identityOf(person);
         },
@@ -3017,7 +3024,8 @@ describe("GitHub-owned pull request outcomes", () => {
           return await run();
         },
       },
-    } as any);
+    } as any;
+    const tools = bindPluginTools(plugin.hooks!.tools!(), toolCtx);
     const createInput = {
       base: "main",
       head: "fix/requester-role",
@@ -3471,6 +3479,142 @@ describe("GitHub-owned pull request outcomes", () => {
       const [row] = await fixture.db().select().from(juniorGitHubPullRequests);
       expect(row?.commitComposition).toBe("mixed");
     } finally {
+      await fixture.close();
+    }
+  });
+
+  it("sets and clears the preview image when the body is edited", async () => {
+    vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com/");
+    const fixture = await createGitHubFixture();
+    const key = "getsentry/junior#946";
+    const conversationId = "slack:C123:1712345.0001";
+    let chip: ConversationAnnotationInput = {
+      facts: { sourceBranch: "feat/preview", type: "code_change" },
+      key,
+      kind: "object",
+      label: key,
+      objectType: "code_change",
+      sourceUpdatedAt: "2026-07-01T12:00:00Z",
+      status: "open",
+      title: "Add previews",
+      url: "https://github.com/getsentry/junior/pull/946",
+    };
+    try {
+      const route = createGitHubWebhookRoute({
+        annotations: {
+          forConversation(id) {
+            return {
+              async upsert(annotation) {
+                if (id === conversationId) {
+                  chip = conversationAnnotationInputSchema.parse(annotation);
+                }
+              },
+              async remove() {},
+              async list() {
+                return id === conversationId
+                  ? [
+                      {
+                        ...chip,
+                        createdAt: "2026-07-01T12:00:00.000Z",
+                        plugin: "github",
+                        updatedAt: "2026-07-01T12:00:00.000Z",
+                      },
+                    ]
+                  : [];
+              },
+            };
+          },
+        },
+        appIdEnv: "GITHUB_APP_ID",
+        botEmail: () => "264270552+sentry-junior[bot]@users.noreply.github.com",
+        codeChanges: {
+          async associateConversations() {},
+          async recordActivity() {},
+          async record() {},
+        },
+        db: fixture.db(),
+        installationId: () => "456",
+        installationIdEnv: "GITHUB_INSTALLATION_ID",
+        markFeedbackReviewing: async () => {},
+        privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
+        events: { async publish() {} },
+        webhookSecret: () => "test-secret",
+      });
+      const footer =
+        "<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC123%3A1712345.0001 -->\n<!-- junior-session-footer:end -->";
+      const edited = (body: string, updatedAt: string) =>
+        pullRequestPayload({
+          action: "edited",
+          changes: { body: { from: "" } },
+          pull_request: {
+            ...(pullRequestPayload().pull_request as Record<string, unknown>),
+            body: `${body}\n\n${footer}`,
+            updated_at: updatedAt,
+          },
+          sender: { login: "BYK" },
+        });
+      const artifact =
+        "https://junior.example.com/public/artifacts/0123456789abcdef.png";
+      expect(
+        (await route.handler(signedRequest(pullRequestPayload()))).status,
+      ).toBe(202);
+
+      await route.handler(
+        signedRequest(
+          edited(
+            `![Private](https://github.com/user-attachments/assets/1)\n\n<img alt="Inbox" src="${artifact}">`,
+            "2026-07-02T12:00:00.000Z",
+          ),
+        ),
+      );
+      expect(chip.kind === "object" && chip.facts).toEqual({
+        previewImageUrls: [artifact],
+        sourceBranch: "feat/preview",
+        type: "code_change",
+      });
+
+      // A late delivery of an older body changes nothing.
+      await route.handler(
+        signedRequest(edited("No image.", "2026-07-01T18:00:00.000Z")),
+      );
+      expect(
+        chip.kind === "object" && chip.facts?.type === "code_change"
+          ? chip.facts.previewImageUrls
+          : undefined,
+      ).toEqual([artifact]);
+
+      // A newer body with the same image moves the check time forward, so a
+      // late body from between the two changes nothing.
+      await route.handler(
+        signedRequest(
+          edited(`![Inbox](${artifact})`, "2026-07-02T18:00:00.000Z"),
+        ),
+      );
+      await route.handler(
+        signedRequest(edited("No image.", "2026-07-02T15:00:00.000Z")),
+      );
+      expect(chip).toMatchObject({
+        facts: { previewImageUrls: [artifact] },
+        sourceUpdatedAt: "2026-07-02T18:00:00.000Z",
+      });
+
+      await route.handler(
+        signedRequest(
+          edited(
+            "![Private](https://private-user-images.githubusercontent.com/1/2.png)",
+            "2026-07-03T12:00:00.000Z",
+          ),
+        ),
+      );
+      expect(chip).toMatchObject({
+        facts: { sourceBranch: "feat/preview", type: "code_change" },
+        sourceUpdatedAt: "2026-07-03T12:00:00.000Z",
+      });
+      expect(chip.kind === "object" && chip.facts).not.toHaveProperty(
+        "previewImageUrls",
+      );
+    } finally {
+      vi.unstubAllEnvs();
       await fixture.close();
     }
   });

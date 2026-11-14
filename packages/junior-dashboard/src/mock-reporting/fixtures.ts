@@ -58,7 +58,7 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
     activityDays,
     changes: [
       {
-        draft: false,
+        draft: true,
         id: "00000000-0000-4000-8000-000000000001",
         number: 42,
         openedAt: new Date(nowMs - 2 * 86_400_000).toISOString(),
@@ -155,6 +155,12 @@ const mockPinPositions = new Map<string, number>();
 /** Process-local renames so rename can be exercised in visual QA. */
 const mockTitles = new Map<string, string>();
 
+/** Process-local attached links, newest first, like the attach API. */
+const mockAttachedAnnotations = new Map<
+  string,
+  NonNullable<ConversationDetailReport["annotations"]>
+>();
+
 /** Process-local auto-archive choices for mock visual QA. */
 const mockAutoArchiveByConversationId = new Map<string, boolean>();
 
@@ -186,6 +192,7 @@ export function resetMockConversationViewerState(): void {
   mockPinnedConversationIds.clear();
   mockPinPositions.clear();
   mockTitles.clear();
+  mockAttachedAnnotations.clear();
   mockAutoArchiveByConversationId.clear();
   mockUnsubscribedConversationIds.clear();
   mockDeliveryPausedConversationIds.clear();
@@ -684,6 +691,16 @@ function activeConversation(nowMs: number): ConversationDetailReport {
             },
           },
         ],
+        // The running step shows its reasoning while the activity is closed.
+        assistant: {
+          parts: [
+            {
+              type: "reasoning",
+              text: "Read the payments-v42 pull request first, so the span comparison focuses on the serializer path it changed.",
+            },
+            { type: "tool_call", toolCallId: "active-span-compare" },
+          ],
+        },
       }),
       reportEvent(10, iso(Date.parse(startedAt), 46_000), {
         type: "turn_context",
@@ -811,6 +828,21 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
             filename: "input-chart.png",
             contentType: "image/png",
             bytes: 6400,
+          },
+          // Large Slack files that Junior never stores.
+          {
+            id: "qa-recording-pending",
+            filename: "standup-recording.mp4",
+            contentType: "video/mp4",
+            bytes: 214_000_000,
+            pending: true,
+          },
+          {
+            id: "qa-deleted-pending",
+            filename: "deleted-recording.mov",
+            contentType: "video/quicktime",
+            bytes: 98_000_000,
+            pending: true,
           },
         ],
         role: "user",
@@ -1372,7 +1404,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
       type: "message",
       messageId: "release-assistant",
       role: "assistant",
-      // Links to the Annotations below show as a chip, a hover card, and a
+      // Links to the Annotations below show as a link, a hover card, and a
       // full card.
       text: [
         "Released the package.",
@@ -1382,6 +1414,26 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "",
         // No Annotations: the API resolves these dashboard links.
         `Deployment is ready. Next, ${MOCK_DASHBOARD_ORIGIN}/people/dev%40example.com picks up ${MOCK_DASHBOARD_ORIGIN}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}.`,
+        "Track it in https://docs.google.com/document/d/1MockReleaseChecklist_0123456789/edit before https://www.google.com/calendar/event?eid=cmVsNDJnb25vZ28ganVuaW9yQGV4YW1wbGUuY29t",
+        "Metrics are in https://drive.google.com/file/d/1MockReleaseMetricsPdf_0123456789/view, and the assets are in https://drive.google.com/drive/folders/1MockReleaseAssets_0123456789",
+        "Morgan asked to hold the deploy: https://acme.slack.com/archives/CQA456/p1770021700000100",
+        "The checkout error is back after the deploy: https://acme.sentry.io/issues/JUNIOR-3ZK/",
+        "The demo is at https://www.youtube.com/watch?v=MockLaunchDemo",
+        "",
+        "Launch steps are in https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
+        "",
+        "https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
+        "",
+        "https://blog.example.com/posts/release-4-2",
+        "",
+        // Alone on their lines: the video shows only its thumbnail, the
+        // Slack message shows a card, and the repeated pull request shows
+        // no second card.
+        "https://www.youtube.com/watch?v=MockLaunchDemo",
+        "",
+        "https://acme.slack.com/archives/CQA456/p1770021700000100",
+        "",
+        "https://github.com/getsentry/payments/pull/91",
       ].join("\n"),
     }),
   );
@@ -1400,7 +1452,8 @@ function longConversation(nowMs: number): ConversationDetailReport {
     isPriority: true,
     sidebarAnnotations: [
       {
-        icon: "circle-dashed",
+        objectType: "code_change",
+        status: "draft",
         key: "getsentry/junior#2201",
         label: "junior",
       },
@@ -1437,6 +1490,13 @@ function longConversation(nowMs: number): ConversationDetailReport {
         plugin: "github",
         status: "open",
         url: "https://github.com/getsentry/payments/pull/91",
+        // The API names description images by Junior image paths.
+        previewImages: ["payments-91-before", "payments-91-after"].map(
+          (id) => ({
+            src: `/api/images/${id}?w=320`,
+            srcSet: `/api/images/${id}?w=320 1x, /api/images/${id}?w=640 2x`,
+          }),
+        ),
         createdAt: startedAt,
         updatedAt: iso(Date.parse(startedAt), 75_000),
       },
@@ -2516,6 +2576,17 @@ export function setMockConversationTitle(
   return { title };
 }
 
+/** Save one attached link on a mock Conversation, like the attach API. */
+export function addMockAnnotation(
+  conversationId: string,
+  annotation: NonNullable<ConversationDetailReport["annotations"]>[number],
+): void {
+  mockAttachedAnnotations.set(conversationId, [
+    annotation,
+    ...(mockAttachedAnnotations.get(conversationId) ?? []),
+  ]);
+}
+
 /** Save the mock Pinned order, like the pin-order API. */
 export function setMockPinOrder(conversationIds: string[]): {
   conversationIds: string[];
@@ -2879,8 +2950,10 @@ export function readMockConversationDetail(
   if (!conversation) return undefined;
   const agentTree = mockAgentTree(conversation);
   // Match the API: only readable root Conversations can be forked.
+  const attached = mockAttachedAnnotations.get(conversationId) ?? [];
   const detail = {
     ...conversation,
+    annotations: [...attached, ...(conversation.annotations ?? [])],
     ...(agentTree ? { agentTree } : undefined),
     canFork:
       !conversation.parentConversationId &&

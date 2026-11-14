@@ -1,25 +1,15 @@
-import { ChevronRight } from "lucide-react";
+import { Bot } from "lucide-react";
 
 import { statusDotToneClass } from "../components/StatusDot";
 import { Button } from "../components/ui/button";
-import { formatElapsedDuration } from "../format";
 import { cn } from "../styles";
 import type { TranscriptViewSubagentPart } from "../types";
 import { subagentStatusTone } from "./ConversationChildAgents";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
-import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
-import { useTranscriptRowOpen } from "./TranscriptRows";
+import { HighlightText } from "./transcriptSearch";
 
 type TaskStatus = TranscriptViewSubagentPart["status"];
 type RenderedTaskEntry = Extract<RenderedTranscriptEntry, { kind: "subagent" }>;
-
-// Line order: work that is still going, then work that needs a person.
-const attentionLabels: [TaskStatus, string][] = [
-  ["running", "running"],
-  ["blocked", "blocked"],
-  ["error", "failed"],
-  ["aborted", "stopped"],
-];
 
 const statusLabels: Record<TaskStatus, string> = {
   aborted: "stopped",
@@ -33,183 +23,78 @@ function taskLabel(part: TranscriptViewSubagentPart): string {
   return part.title ?? part.agentName ?? part.task ?? part.subagentKind;
 }
 
-/** First start to last end of a finished run: wall time, not the sum. */
-function runDuration(
-  entries: readonly RenderedTaskEntry[],
-): string | undefined {
-  if (entries.some((entry) => entry.part.status === "running")) {
-    return undefined;
-  }
-  const starts = entries.flatMap((entry) =>
-    typeof entry.timestamp === "number" ? [entry.timestamp] : [],
-  );
-  const ends = entries.flatMap((entry) =>
-    typeof entry.part.finishedTimestamp === "number"
-      ? [entry.part.finishedTimestamp]
-      : [],
-  );
-  if (starts.length === 0 || ends.length === 0) return undefined;
-  return formatElapsedDuration(Math.min(...starts), Math.max(...ends));
-}
-
-/** Say what a run of Tasks is doing: what needs attention, else done. */
-function runSummary(entries: readonly RenderedTaskEntry[]): string {
-  if (entries.length === 1) return statusLabels[entries[0]!.part.status];
-  const attention = attentionLabels.flatMap(([status, label]) => {
-    const count = entries.filter(
-      (entry) => entry.part.status === status,
-    ).length;
-    return count > 0 ? [`${count} ${label}`] : [];
-  });
-  return attention.length > 0 ? attention.join(" · ") : "completed";
-}
-
-function StatusPip(props: { status: TaskStatus }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "size-2 shrink-0 rounded-xs",
-        statusDotToneClass[subagentStatusTone(props.status)],
-        props.status === "running" &&
-          "animate-pulse motion-reduce:animate-none",
-      )}
-    />
-  );
-}
-
-const lineClass =
-  "group/tasks flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md bg-transparent px-1.5 py-0.5 -mx-1.5 text-left font-sans text-sm leading-6 text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus";
+/** The look of a small chip under a reply. */
+export const chipClass =
+  "inline-flex h-6 min-w-0 max-w-64 items-center gap-1.5 rounded-md border border-dashboard-border bg-transparent px-2 font-sans text-xs text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus";
 
 /**
- * Collapse a run of Tasks to one line: what it is, what needs attention,
- * and wall time. One Task opens its transcript drawer. More Tasks expand to
- * one row each, and a row opens that Task's drawer.
+ * Show the Tasks of one Turn as small chips under its reply. A click opens
+ * the Task transcript drawer.
  */
 export function TranscriptTasksLine(props: {
   entries: RenderedTaskEntry[];
   onOpenTranscript?: (part: TranscriptViewSubagentPart) => void;
-  openKey: string;
 }) {
-  const { active: searchActive } = useTranscriptSearch();
-  const [storedOpen, setOpen] = useTranscriptRowOpen(props.openKey);
-  const single = props.entries.length === 1 ? props.entries[0] : undefined;
-  // Search already dropped rows that do not match, so show every match.
-  const open = !single && (storedOpen || searchActive);
-  const summary = runSummary(props.entries);
-  const duration = runDuration(props.entries);
-  const text = (
-    <>
-      {single ? (
-        <span className="min-w-0 truncate">
-          Task · <HighlightText text={taskLabel(single.part)} />
-        </span>
-      ) : (
-        <span className="shrink-0">{props.entries.length} Tasks</span>
-      )}
-      <span aria-hidden="true">·</span>
-      <span className="shrink-0">{summary}</span>
-      {duration ? (
-        <span className="shrink-0 tabular-nums text-dashboard-text-faint">
-          {duration}
-        </span>
-      ) : null}
-      <ChevronRight
-        aria-hidden="true"
-        className={cn(
-          "size-4 shrink-0 text-dashboard-text-faint transition-transform group-hover/tasks:text-dashboard-text",
-          open && "rotate-90",
-        )}
-      />
-    </>
-  );
-
-  if (single) {
-    if (!props.onOpenTranscript) {
-      return <div className={cn(lineClass, "cursor-default")}>{text}</div>;
-    }
-    return (
-      <Button
-        aria-label={`Open ${taskLabel(single.part)} transcript`}
-        className={lineClass}
-        onClick={() => props.onOpenTranscript?.(single.part)}
-        size="bare"
-        variant="ghost"
-      >
-        {text}
-      </Button>
-    );
-  }
-
   return (
-    <div className="min-w-0">
-      <Button
-        aria-expanded={open}
-        className={lineClass}
-        onClick={() => setOpen(!open)}
-        size="bare"
-        variant="ghost"
-      >
-        {text}
-      </Button>
-      {open ? (
-        <ul className="m-0 mt-1 grid max-w-[37.5rem] list-none gap-0.5 p-0">
-          {props.entries.map((entry) => (
-            <li key={entry.key}>
-              <TaskRow
-                entry={entry}
-                onOpenTranscript={props.onOpenTranscript}
-              />
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
+    <ul
+      aria-label="Tasks"
+      className="m-0 flex min-w-0 list-none flex-wrap gap-1.5 p-0"
+    >
+      {props.entries.map((entry) => (
+        <li className="min-w-0" key={entry.key}>
+          <TaskChip entry={entry} onOpenTranscript={props.onOpenTranscript} />
+        </li>
+      ))}
+    </ul>
   );
 }
 
-function TaskRow(props: {
+function TaskChip(props: {
   entry: RenderedTaskEntry;
   onOpenTranscript?: (part: TranscriptViewSubagentPart) => void;
 }) {
   const { part } = props.entry;
   const label = taskLabel(part);
-  const duration = formatElapsedDuration(
-    props.entry.timestamp,
-    part.finishedTimestamp,
-  );
   const content = (
     <>
-      <StatusPip status={part.status} />
-      <span className="min-w-0 flex-1 truncate text-dashboard-text">
+      <Bot
+        aria-hidden="true"
+        className="size-3.5 shrink-0 text-dashboard-text-faint"
+        strokeWidth={2}
+      />
+      <span className="min-w-0 truncate">
         <HighlightText text={label} />
       </span>
-      <span className="shrink-0 text-dashboard-text-muted">
-        {statusLabels[part.status]}
-      </span>
-      {duration ? (
-        <span className="shrink-0 tabular-nums text-dashboard-text-faint">
-          {duration}
-        </span>
-      ) : null}
+      {/* Color only: the running step is the one thing that moves. */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "size-1.5 shrink-0 rounded-full",
+          statusDotToneClass[subagentStatusTone(part.status)],
+        )}
+      />
     </>
   );
-  const rowClass =
-    "flex w-full min-w-0 items-center gap-2.5 rounded-md bg-transparent px-2 py-1 text-left font-sans text-sm leading-5 text-inherit";
   if (!props.onOpenTranscript) {
-    return <div className={rowClass}>{content}</div>;
+    return (
+      <span
+        aria-label={`${label} (${statusLabels[part.status]})`}
+        className={cn(chipClass, "cursor-default")}
+        role="img"
+      >
+        {content}
+      </span>
+    );
   }
   return (
-    <button
-      aria-label={`Open ${label} transcript`}
-      className={cn(
-        rowClass,
-        "cursor-pointer transition-colors hover:bg-dashboard-surface-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus",
-      )}
+    <Button
+      aria-label={`Open ${label} transcript (${statusLabels[part.status]})`}
+      className={chipClass}
       onClick={() => props.onOpenTranscript?.(part)}
-      type="button"
+      size="bare"
+      variant="ghost"
     >
       {content}
-    </button>
+    </Button>
   );
 }

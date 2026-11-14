@@ -1,7 +1,3 @@
-import type {
-  AgentContext,
-  AgentLoopTurnUpdate,
-} from "@earendil-works/pi-agent-core";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import type { UserContentPart } from "@/chat/agent/prompt";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -76,12 +72,13 @@ export function createRepositoryInstructionsContext(
         options.restoredProvenance,
       );
   return {
-    /** Re-read AGENTS.md and append a context message when it changed. */
-    async applyUpdate(
-      currentContext: AgentContext,
-    ): Promise<AgentLoopTurnUpdate | undefined> {
+    /**
+     * Re-read AGENTS.md and append a context message to `messages` when it
+     * changed. Returns whether it set new messages.
+     */
+    async applyUpdate(messages: PiMessage[]): Promise<boolean> {
       if (!options.hasSandbox()) {
-        return undefined;
+        return false;
       }
       return await withSpan(
         "agent.repository_instructions.refresh",
@@ -92,9 +89,10 @@ export function createRepositoryInstructionsContext(
           const outcome = refreshOutcome(instructions);
           setSpanAttributes({ "app.repository_instructions.outcome": outcome });
           if (outcome === "unchanged" || outcome === "none") {
-            return undefined;
+            return false;
           }
-          return await appendUpdate(instructions, currentContext);
+          await appendUpdate(instructions, messages);
+          return true;
         },
       );
     },
@@ -117,8 +115,8 @@ export function createRepositoryInstructionsContext(
 
   async function appendUpdate(
     instructions: RepositoryInstructions | undefined,
-    currentContext: AgentContext,
-  ): Promise<AgentLoopTurnUpdate> {
+    currentMessages: PiMessage[],
+  ): Promise<void> {
     const message = instructions
       ? buildAgentsInstructionsMessage({
           directory: instructions.directory,
@@ -128,7 +126,7 @@ export function createRepositoryInstructionsContext(
               : instructions.text,
         })
       : buildAgentsInstructionsMessage({ text: AGENTS_REMOVAL_NOTICE });
-    const messages = [...(currentContext.messages as PiMessage[]), message];
+    const messages = [...currentMessages, message];
     options.setMessages(messages);
     // A final response is committed directly after the current history, so
     // this message must be committed first.
@@ -141,6 +139,5 @@ export function createRepositoryInstructionsContext(
         }
       : { active: false };
     await options.onTransition?.(instructions);
-    return { context: { ...currentContext, messages } };
   }
 }

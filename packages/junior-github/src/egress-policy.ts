@@ -196,7 +196,15 @@ async function githubForbiddenPermissionDeniedMessage(
 ): Promise<string | undefined> {
   const sso = ctx.response.headers.get("x-github-sso");
   if (sso?.startsWith("required")) {
-    const url = sso.match(/\burl=(https:\/\/github\.com\/\S+)/)?.[1];
+    // The header looks like `required; url=https://github.com/orgs/...`.
+    const url = sso
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith("url="))
+      ?.slice("url=".length);
+    if (url && URL.parse(url)?.origin !== "https://github.com") {
+      return "GitHub requires SAML SSO authorization for this credential.";
+    }
     return `GitHub requires SAML SSO authorization for this credential.${url ? ` Authorize it at ${url}` : ""}`;
   }
   const message = githubErrorMessage(

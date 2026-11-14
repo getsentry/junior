@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-github",
-  "version": "0.298.0",
+  "version": "0.301.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -41,12 +41,18 @@
     "@sentry/junior-plugin-api": "workspace:*",
     "@sinclair/typebox": "^0.34.49",
     "drizzle-orm": "catalog:",
+    "ignore": "^7.0.5",
     "marked": "^18.1.2",
+    "mdast-util-from-markdown": "^2.0.3",
+    "mdast-util-gfm": "^3.1.0",
+    "micromark-extension-gfm": "^3.0.0",
+    "parse5": "^7.3.0",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.79.0",
     "@sentry/junior-testing": "workspace:*",
+    "@types/mdast": "^4.0.4",
     "@types/node": "^25.9.1",
     "@types/pg": "^8.15.6",
     "drizzle-kit": "catalog:",

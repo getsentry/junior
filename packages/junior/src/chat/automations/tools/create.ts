@@ -190,7 +190,11 @@ async function readReplayedAutomation(
     : undefined;
 }
 
-/** Create the tool that stores a scheduled or event Automation. */
+/**
+ * Create the tool that stores a scheduled or event Automation.
+ *
+ * @runBuilt createAutomation
+ */
 export function createAutomationTool(
   context: AutomationToolContext,
   catalog: EventCatalog,
@@ -210,7 +214,7 @@ export function createAutomationTool(
     },
     executionMode: "sequential",
     description:
-      'Create a durable automation. It belongs to the channel or DM of this conversation, never a thread. Its outcomes set where its messages go. Use trigger type "schedule" for one-time or recurring work. Use trigger type "event" only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X work; it runs for every matching event. Set instruction for written work, or skill to run an installed skill, with context only when the skill needs more. When an installed skill does the work, set skill; do not write an instruction that names the skill. Ordinary watch, notify, or tell-me-when requests use watchEvents instead. Store the requested future work; do not perform it or check its service access now unless the user also asks for that. When the trigger is known, create it without redundant confirmation.',
+      "Create a durable automation. It belongs to the channel or DM of this conversation, never a thread. When an installed skill does the work, have the automation run that skill; do not write an instruction that names the skill. Ordinary watch, notify, or tell-me-when requests use watchEvents instead. Store the requested future work; do not perform it or check its service access now unless the user also asks for that. When the trigger is known, create it without redundant confirmation.",
     inputSchema: z
       .object({
         instruction: automationInstructionToolSchema.nullable().optional(),
@@ -226,12 +230,14 @@ export function createAutomationTool(
             "Optional short display title. Omit or use null to generate one from the instruction or skill.",
           )
           .optional(),
-        trigger,
+        trigger: trigger.describe(
+          'Use type "schedule" for one-time or recurring work. Use type "event" only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X work; it runs for every matching event.',
+        ),
         outcomes: z
           .array(taskOutcomeInputSchema)
           .max(5)
           .describe(
-            "Successful work is silent by default. Omit this field or use an empty list when the Automation should act through tools without a status message. Add send_message only when the user asks for a reminder, notification, post, digest, summary, or other visible result.",
+            "Successful work is silent by default: omit this or use an empty list when the Automation acts through tools without a status message. Add send_message only when the user asks for a reminder, notification, post, digest, summary, or other visible result.",
           )
           .optional(),
         credential_mode: z

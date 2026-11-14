@@ -1,10 +1,14 @@
 import { juniorArtifacts } from "./schema/artifacts";
-import { juniorAttachments } from "./schema/attachments";
+import {
+  juniorAttachmentUploads,
+  juniorAttachments,
+} from "./schema/attachments";
 import { juniorCodeChanges, juniorCodeRepositories } from "./schema/code";
 import { juniorConversationAnnotations } from "./schema/conversation-annotations";
 import { juniorApiTokens } from "./schema/api-tokens";
 import { juniorConversationEvents } from "./schema/conversation-events";
 import { juniorConversationMetrics } from "./schema/conversation-metrics";
+import { juniorConversationEmbeddings } from "./schema/conversation-embeddings";
 import { juniorConversationBriefs } from "./schema/conversation-briefs";
 import { juniorConversationBindings } from "./schema/conversation-bindings";
 import { juniorConversationParticipants } from "./schema/conversation-participants";
@@ -34,6 +38,7 @@ import { juniorWorkspaceRepos, juniorWorkspaces } from "./schema/workspaces";
 
 export {
   juniorArtifacts,
+  juniorAttachmentUploads,
   juniorAttachments,
   juniorCodeChanges,
   juniorCodeRepositories,
@@ -43,6 +48,7 @@ export {
   juniorAgentInvocations,
   juniorConversationEvents,
   juniorConversationMetrics,
+  juniorConversationEmbeddings,
   juniorConversationBriefs,
   juniorConversationBindings,
   juniorConversationParticipants,
@@ -68,6 +74,7 @@ export {
 
 export const juniorSqlSchema = {
   juniorArtifacts,
+  juniorAttachmentUploads,
   juniorAttachments,
   juniorCodeChanges,
   juniorCodeRepositories,
@@ -77,6 +84,7 @@ export const juniorSqlSchema = {
   juniorAgentInvocations,
   juniorConversationEvents,
   juniorConversationMetrics,
+  juniorConversationEmbeddings,
   juniorConversationBriefs,
   juniorConversationBindings,
   juniorConversationParticipants,

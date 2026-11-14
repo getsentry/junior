@@ -1,6 +1,7 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { describe, expect, it, vi } from "vitest";
-import { createGitHubCloneRepositoryTool } from "../src/tools/clone-repository.js";
+import { gitHubCloneRepositoryTool } from "../src/tools/clone-repository.js";
 
 function context(
   run: ReturnType<typeof vi.fn>,
@@ -22,7 +23,7 @@ function context(
 
 describe("cloneRepository", () => {
   it("declares clone as a non-destructive open-world read", () => {
-    const tool = createGitHubCloneRepositoryTool(context(vi.fn()));
+    const tool = bindPluginTool(gitHubCloneRepositoryTool, context(vi.fn()));
 
     expect(tool.annotations).toEqual({
       destructiveHint: false,
@@ -56,7 +57,8 @@ describe("cloneRepository", () => {
       .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "" })
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
     const findByRepository = vi.fn().mockResolvedValue([]);
-    const tool = createGitHubCloneRepositoryTool(
+    const tool = bindPluginTool(
+      gitHubCloneRepositoryTool,
       context(run, findByRepository),
     );
 
@@ -97,7 +99,8 @@ describe("cloneRepository", () => {
   it("rejects matching Workspaces as a tool input error before cloning", async () => {
     const run = vi.fn();
     const findByRepository = vi.fn().mockResolvedValue(["junior", "sentry"]);
-    const tool = createGitHubCloneRepositoryTool(
+    const tool = bindPluginTool(
+      gitHubCloneRepositoryTool,
       context(run, findByRepository),
     );
 
@@ -121,7 +124,8 @@ describe("cloneRepository", () => {
   it("rejects a single matching Workspace as a tool input error", async () => {
     const run = vi.fn();
     const findByRepository = vi.fn().mockResolvedValue(["junior"]);
-    const tool = createGitHubCloneRepositoryTool(
+    const tool = bindPluginTool(
+      gitHubCloneRepositoryTool,
       context(run, findByRepository),
     );
 
@@ -142,7 +146,8 @@ describe("cloneRepository", () => {
       .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "" })
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
     const findByRepository = vi.fn().mockResolvedValue(["junior", "sentry"]);
-    const tool = createGitHubCloneRepositoryTool(
+    const tool = bindPluginTool(
+      gitHubCloneRepositoryTool,
       context(run, findByRepository),
     );
 
@@ -170,7 +175,8 @@ describe("cloneRepository", () => {
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
     const findByRepository = vi.fn().mockResolvedValue(["sentry", "monorepo"]);
     const active = vi.fn().mockResolvedValue({ name: "monorepo" });
-    const tool = createGitHubCloneRepositoryTool(
+    const tool = bindPluginTool(
+      gitHubCloneRepositoryTool,
       context(run, findByRepository, active),
     );
 
@@ -194,7 +200,8 @@ describe("cloneRepository", () => {
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
       .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "" })
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
-    const tool = createGitHubCloneRepositoryTool(
+    const tool = bindPluginTool(
+      gitHubCloneRepositoryTool,
       context(
         run,
         vi.fn().mockResolvedValue(["sentry"]),
@@ -217,7 +224,7 @@ describe("cloneRepository", () => {
       .fn()
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
       .mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
-    const tool = createGitHubCloneRepositoryTool(context(run));
+    const tool = bindPluginTool(gitHubCloneRepositoryTool, context(run));
 
     await expect(
       tool.execute!({ repo: "getsentry/junior" }, {} as never),
@@ -226,7 +233,7 @@ describe("cloneRepository", () => {
   });
 
   it("rejects a parent destination", () => {
-    const tool = createGitHubCloneRepositoryTool(context(vi.fn()));
+    const tool = bindPluginTool(gitHubCloneRepositoryTool, context(vi.fn()));
 
     expect(() =>
       tool.prepareArguments!({ repo: "getsentry/junior", directory: ".." }),
@@ -239,7 +246,7 @@ describe("cloneRepository", () => {
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
       .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "" })
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
-    const tool = createGitHubCloneRepositoryTool(context(run));
+    const tool = bindPluginTool(gitHubCloneRepositoryTool, context(run));
 
     const result = await tool.execute!(
       { repo: "getsentry/skills" },
@@ -256,7 +263,7 @@ describe("cloneRepository", () => {
   });
 
   it("rejects reserved root destination directories", async () => {
-    const tool = createGitHubCloneRepositoryTool(context(vi.fn()));
+    const tool = bindPluginTool(gitHubCloneRepositoryTool, context(vi.fn()));
 
     await expect(
       tool.execute!(
@@ -274,7 +281,7 @@ describe("cloneRepository", () => {
       .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "" })
       .mockRejectedValueOnce(pause)
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
-    const tool = createGitHubCloneRepositoryTool(context(run));
+    const tool = bindPluginTool(gitHubCloneRepositoryTool, context(run));
 
     await expect(
       tool.execute!({ repo: "getsentry/junior" }, {} as never),
@@ -296,7 +303,7 @@ describe("cloneRepository", () => {
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
     const findByRepository = vi.fn().mockRejectedValue(lookup);
     const ctx = context(run, findByRepository);
-    const tool = createGitHubCloneRepositoryTool(ctx);
+    const tool = bindPluginTool(gitHubCloneRepositoryTool, ctx);
 
     const result = await tool.execute!(
       { repo: "getsentry/junior" },

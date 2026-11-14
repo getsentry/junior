@@ -19,6 +19,7 @@ import {
   toMcpProviderError,
 } from "./errors";
 import { resolvePluginHeaderEnvRefs } from "@/chat/plugins/auth/api-headers-broker";
+import { type McpLoginOwner, serializeMcpTokenRefresh } from "./token-refresh";
 
 type ListedTool = Awaited<ReturnType<Client["listTools"]>>["tools"][number];
 type ToolCallResult = Awaited<ReturnType<Client["callTool"]>>;
@@ -75,6 +76,8 @@ export interface PluginMcpClientOptions {
 
 type HostManagedSessionProvider = OAuthClientProvider & {
   getMcpServerSessionId?: () => Promise<string | undefined>;
+  /** The stored person login, so its refreshes share one lock. */
+  mcpLoginOwner?: () => Promise<McpLoginOwner>;
   saveMcpServerSessionId?: (sessionId: string | undefined) => Promise<void>;
   /** Only a provider that can send the person a link implements this. */
   forNewSignIn?: () => OAuthClientProvider;
@@ -120,7 +123,14 @@ export class PluginMcpClient {
     this.options = options;
     const url = plugin.manifest.mcp?.url;
     this.resourceHost = url ? new URL(url).hostname : undefined;
-    this.fetch = fetchWithBoundedOAuthErrorBodies(options.fetch, (response) => {
+    const loginProvider = options.authProvider as
+      | HostManagedSessionProvider
+      | undefined;
+    const mcpLoginOwner = loginProvider?.mcpLoginOwner?.bind(loginProvider);
+    const providerFetch = mcpLoginOwner
+      ? serializeMcpTokenRefresh(mcpLoginOwner, options.fetch)
+      : options.fetch;
+    this.fetch = fetchWithBoundedOAuthErrorBodies(providerFetch, (response) => {
       const store = this.providerStatusStore.getStore();
       if (store) {
         store.status = response.status;
