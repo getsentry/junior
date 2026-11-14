@@ -113,6 +113,36 @@ const SENTRY_ISSUE: Omit<OwnedObjectAnnotation, "url"> = {
 };
 const SENTRY_ISSUE_PATH = "/issues/JUNIOR-3ZK/";
 
+// The mock release thread links to one Sentry Explore chart: p95 span
+// duration of the top span operations, in five-minute buckets.
+function wave(base: number, spike: number): number[] {
+  return Array.from({ length: 48 }, (_, index) => {
+    const ramp = index > 30 ? spike * Math.min(1, (index - 30) / 4) : 0;
+    return Math.round(base + 6 * Math.sin(index / 3) + ramp);
+  });
+}
+const SENTRY_CHART: Omit<OwnedObjectAnnotation, "url"> = {
+  kind: "object",
+  objectType: "chart",
+  key: "chart:5f0c2a9e41d7b3c8a6e2f1d09b7c4a35",
+  label: "Explore traces",
+  title: "p95(span.duration) by span.op",
+  displayType: "Explore traces",
+  facts: {
+    type: "chart",
+    display: "line",
+    yAxis: "p95(span.duration)",
+    range: "Last 24 hours",
+    series: [
+      { label: "http.client", points: wave(180, 240) },
+      { label: "db", points: wave(90, 40) },
+      { label: "cache.get", points: wave(30, 5) },
+    ],
+  },
+  plugin: "sentry",
+};
+const SENTRY_CHART_PATH = "/explore/traces/";
+
 // The mock release thread links to one Notion page, inline and alone on
 // its line.
 const NOTION_PAGE_ID = "4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3";
@@ -186,6 +216,9 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   }
   if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_ISSUE_PATH) {
     return [{ object: { ...SENTRY_ISSUE, url: href }, url: href }];
+  }
+  if (url.hostname === "acme.sentry.io" && url.pathname === SENTRY_CHART_PATH) {
+    return [{ object: { ...SENTRY_CHART, url: href }, url: href }];
   }
   if (url.hostname.endsWith(".slack.com")) {
     if (url.pathname !== SLACK_MESSAGE_PATH) return [];
