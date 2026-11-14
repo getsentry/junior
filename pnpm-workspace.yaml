@@ -5,8 +5,8 @@ injectWorkspacePackages: true
 autoInstallPeers: false
 dedupePeerDependents: false
 catalog:
-  "@earendil-works/pi-agent-core": 0.85.1
-  "@earendil-works/pi-ai": 0.85.1
+  "@earendil-works/pi-agent-core": 0.99.2
+  "@earendil-works/pi-ai": 0.99.2
   "@sentry/browser": 11.10.0
   "@sentry/nitro": 11.10.0
   "@sentry/node": 11.10.0

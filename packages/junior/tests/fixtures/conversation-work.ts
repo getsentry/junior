@@ -2,7 +2,6 @@ import { slackEventsApiEnvelope } from "./slack/factories/events";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Lock, StateAdapter } from "chat";
 import { vi } from "vitest";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { JsonValue } from "@earendil-works/pi-ai";
 import {
   createFauxCore,
@@ -37,6 +36,8 @@ import { slackApiOutbox } from "./slack-api-outbox";
 import { createSlackWebhookTestClient } from "./slack/webhook-client";
 import { createWaitUntilCollector } from "./wait-until";
 import { readProxyProperty } from "./proxy-property";
+import { fauxRequestStream } from "./model-stream";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 export const CONVERSATION_ID = "slack:C123:1712345.0001";
 export const SLACK_DESTINATION = {
@@ -412,21 +413,23 @@ function buildStreamResponses(steps: ModelStreamStep[]) {
 }
 
 /** Model stream that returns one completed assistant reply per call. */
-export function streamReplies(...texts: string[]): StreamFn {
+export function streamReplies(...texts: string[]): AgentRequestStreamFn {
   const faux = createFauxCore({ api: "test", provider: "test" });
   const built = buildStreamResponses(texts);
   if (built.length === 0) {
     throw new Error("streamReplies requires at least one reply");
   }
   faux.setResponses(built);
-  return faux.stream;
+  return fauxRequestStream(faux.stream);
 }
 
 /**
  * Queue model steps and repeat the last reply for resume / follow-up model
  * calls in the same agent run. Fake only generation; tools still run for real.
  */
-export function streamScript(...steps: ModelStreamStep[]): StreamFn {
+export function streamScript(
+  ...steps: ModelStreamStep[]
+): AgentRequestStreamFn {
   const faux = createFauxCore({ api: "test", provider: "test" });
   const built = buildStreamResponses(steps);
   const last = built.at(-1);
@@ -434,7 +437,7 @@ export function streamScript(...steps: ModelStreamStep[]): StreamFn {
     throw new Error("streamScript requires at least one step");
   }
   faux.setResponses([...built, ...Array.from({ length: 12 }, () => last)]);
-  return faux.stream;
+  return fauxRequestStream(faux.stream);
 }
 
 export type ConversationWorkSlackHarness = {
@@ -579,7 +582,7 @@ export async function runHeartbeatAfterLeasesExpire(
 export async function createConversationWorkSlackHarness(
   options: {
     agentRunner?: AgentRunner;
-    modelStream?: StreamFn;
+    modelStream?: AgentRequestStreamFn;
   } = {},
 ): Promise<ConversationWorkSlackHarness> {
   const modelStream = options.modelStream ?? streamReplies("Deploy checked.");

@@ -1,4 +1,4 @@
-import { Agent, type StreamFn } from "@earendil-works/pi-agent-core";
+import { Agent } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
   type AssistantMessage,
@@ -11,6 +11,7 @@ import {
   readAgentHistory,
   withAgentRequest,
   writeAgentHistory,
+  type AgentRequestStreamFn,
 } from "@/chat/pi/agent-history";
 import type { PiMessage } from "@/chat/pi/messages";
 
@@ -89,7 +90,7 @@ describe("agent history", () => {
       },
     ];
     const contexts: Context[] = [];
-    const base: StreamFn = (_model, context) => {
+    const base: AgentRequestStreamFn = (_model, context) => {
       contexts.push(context);
       const message = assistant("Done.");
       const stream = createAssistantMessageEventStream();

@@ -1,6 +1,5 @@
 import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { AgentRun } from "@/chat/agent/types";
 import {
   createAgentInvocation,
@@ -49,6 +48,7 @@ import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 const parentConversationId = "local:test:agent-invocation-concurrency";
 const destination = {
@@ -70,7 +70,7 @@ async function listAgents() {
 const NO_ANSWER = "Do not answer.";
 
 /** Reply with the input, or answer with plain text twice for `NO_ANSWER`. */
-function taskModel(request: AgentRun): StreamFn {
+function taskModel(request: AgentRun): AgentRequestStreamFn {
   return createModelStream(
     request.instruction.text.includes(NO_ANSWER)
       ? [
@@ -87,7 +87,9 @@ function taskModel(request: AgentRun): StreamFn {
   );
 }
 
-async function createHarness(streamForRun: (request: AgentRun) => StreamFn) {
+async function createHarness(
+  streamForRun: (request: AgentRun) => AgentRequestStreamFn,
+) {
   const fixture = createConfiguredJuniorSqlFixture();
   await migrateSchema(fixture.sql);
   const conversationStore = createSqlStore(fixture.sql);
