@@ -79,6 +79,9 @@ function adaptSession(
         return session.domain(port);
       });
     },
+    previewUrls() {
+      return session.routes.map((route) => session.domain(route.port));
+    },
     extendTimeout(duration) {
       return run(async () => await session.extendTimeout(duration));
     },
