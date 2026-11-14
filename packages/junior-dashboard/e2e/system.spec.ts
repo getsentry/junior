@@ -320,7 +320,12 @@ test("shows what cache warming saved in the range", async ({
     panel.getByText(/Excludes 8 days without warmup cost/),
   ).toBeVisible();
   await expect(
-    panel.getByLabel("Cache warming net savings per day"),
+    panel.getByLabel("Cache warming net savings and effectiveness per day"),
+  ).toBeVisible();
+  await expect(
+    panel
+      .getByLabel("Cache warming chart legend")
+      .getByText("Daily effectiveness", { exact: true }),
   ).toBeVisible();
   // Only admins can re-fill history.
   await expect(

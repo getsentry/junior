@@ -1,5 +1,13 @@
 import type { CacheWarmingSavingsReport } from "@sentry/junior/api/schema";
-import { Bar, BarChart, CartesianGrid, Cell, ReferenceLine } from "recharts";
+import {
+  Bar,
+  CartesianGrid,
+  Cell,
+  ComposedChart,
+  Line,
+  ReferenceLine,
+  YAxis,
+} from "recharts";
 
 import { useCacheWarmingSavings } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
@@ -9,6 +17,7 @@ import {
   ActivityChartXAxis,
   ActivityChartYAxis,
 } from "../../components/charts/ActivityChart";
+import { ChartLegend } from "../../components/charts/ChartLegend";
 import { Card } from "../../components/layout/Card";
 import { CacheWarmingRefill } from "./CacheWarmingRefill";
 import { SectionTitle } from "../../components/layout/SectionTitle";
@@ -26,10 +35,20 @@ type Day = CacheWarmingSavingsReport["days"][number];
 const GAIN_COLOR = "var(--color-emerald-400)";
 const LOSS_COLOR = "var(--color-rose-400)";
 const HISTORY_COLOR = "var(--color-dashboard-text-faint)";
+const EFFECTIVENESS_COLOR = "var(--color-sky-400)";
 const chartConfig = {
   netSavingsUsd: { color: GAIN_COLOR, label: "Net savings" },
   historySavedUsd: { color: HISTORY_COLOR, label: "Saved writes" },
+  effectiveness: { color: EFFECTIVENESS_COLOR, label: "Effectiveness" },
 };
+const legend = [
+  { color: GAIN_COLOR, key: "netSavingsUsd", label: "Daily net savings" },
+  {
+    color: EFFECTIVENESS_COLOR,
+    key: "effectiveness",
+    label: "Daily effectiveness",
+  },
+];
 
 const usd = (value: number) => formatCostBreakdown({ total: value });
 const percent = (value: number) => `${Math.round(value * 100)}%`;
@@ -116,11 +135,18 @@ function Totals(props: { totals: CacheWarmingSavingsReport["totals"] }) {
 }
 
 function SavingsChart(props: { days: Day[] }) {
-  // A day from history has no net savings, so it shows its saved writes.
+  // A day from history has no net savings, so it shows its saved writes and
+  // no effectiveness.
   const data = props.days.map((day) => ({
     ...day,
     historySavedUsd: day.netSavingsUsd === null ? day.savedUsd : null,
+    effectiveness: dayEffectiveness(day),
   }));
+  const shares = data.flatMap((day) =>
+    day.effectiveness === null ? [] : [day.effectiveness],
+  );
+  const shareMaximum = Math.max(1, ...shares);
+  const shareMinimum = Math.min(0, ...shares);
   const values = data.map((day) => day.netSavingsUsd ?? day.savedUsd);
   const maximum = Math.max(0.01, ...values);
   const minimum = Math.min(0, ...values);
@@ -130,9 +156,16 @@ function SavingsChart(props: { days: Day[] }) {
   );
   return (
     <div className="relative px-2 py-3 sm:px-4 sm:py-4">
+      <div className="px-2 pb-2">
+        <ChartLegend
+          ariaLabel="Cache warming chart legend"
+          inline
+          items={legend}
+        />
+      </div>
       <ChartContainer className="aspect-auto h-50 w-full" config={chartConfig}>
-        <BarChart
-          aria-label="Cache warming net savings per day"
+        <ComposedChart
+          aria-label="Cache warming net savings and effectiveness per day"
           data={data}
           margin={activityChartMargin}
           role="img"
@@ -143,20 +176,32 @@ function SavingsChart(props: { days: Day[] }) {
             maximum={maximum}
             minimum={minimum}
           />
+          <YAxis
+            axisLine={false}
+            domain={[shareMinimum, shareMaximum]}
+            interval={0}
+            orientation="right"
+            tickFormatter={percent}
+            tickLine={false}
+            tickMargin={8}
+            ticks={[shareMinimum, shareMinimum < 0 ? 0 : 0.5, shareMaximum]}
+            width="auto"
+            yAxisId="effectiveness"
+          />
           <ActivityChartXAxis keys={data.map((day) => day.date)} />
           <ChartTooltip
             content={
               <ActivityChartTooltipContent
-                rows={(day: Day) => [
+                rows={(day: Day & { effectiveness: number | null }) => [
                   [
                     "net savings",
                     day.netSavingsUsd === null ? "—" : usd(day.netSavingsUsd),
                   ],
                   [
                     "effectiveness",
-                    day.netSavingsUsd !== null && day.oracleSavingsUsd > 0
-                      ? percent(day.netSavingsUsd / day.oracleSavingsUsd)
-                      : "—",
+                    day.effectiveness === null
+                      ? "—"
+                      : percent(day.effectiveness),
                   ],
                   ["saved writes", usd(day.savedUsd)],
                   [
@@ -203,7 +248,19 @@ function SavingsChart(props: { days: Day[] }) {
             radius={2}
             stackId="day"
           />
-        </BarChart>
+          <Line
+            connectNulls={false}
+            dataKey="effectiveness"
+            dot={{ fill: EFFECTIVENESS_COLOR, r: 2, strokeWidth: 0 }}
+            isAnimationActive={false}
+            stroke={EFFECTIVENESS_COLOR}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            type="linear"
+            yAxisId="effectiveness"
+          />
+        </ComposedChart>
       </ChartContainer>
       {empty ? (
         <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-sans text-xs text-dashboard-text-muted">
@@ -212,4 +269,10 @@ function SavingsChart(props: { days: Day[] }) {
       ) : null}
     </div>
   );
+}
+
+/** Net savings as a share of the oracle, or null without known cost. */
+function dayEffectiveness(day: Day): number | null {
+  if (day.netSavingsUsd === null || day.oracleSavingsUsd <= 0) return null;
+  return day.netSavingsUsd / day.oracleSavingsUsd;
 }

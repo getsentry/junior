@@ -74,7 +74,15 @@ export function CacheWarmingRefill() {
         : undefined;
   const failed = start.isError || refill?.status === "failed";
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-3">
+    <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
+      {message ? (
+        <p
+          className={`m-0 text-right font-sans text-xs leading-relaxed ${failed ? "text-rose-200" : "text-dashboard-text-muted"}`}
+          role="status"
+        >
+          {message}
+        </p>
+      ) : null}
       <Button
         aria-busy={start.isPending || isActive(refill)}
         disabled={!refill || start.isPending || isActive(refill)}
@@ -83,14 +91,6 @@ export function CacheWarmingRefill() {
       >
         Re-fill history
       </Button>
-      {message ? (
-        <p
-          className={`m-0 font-sans text-xs leading-relaxed ${failed ? "text-rose-200" : "text-dashboard-text-muted"}`}
-          role="status"
-        >
-          {message}
-        </p>
-      ) : null}
     </div>
   );
 }
