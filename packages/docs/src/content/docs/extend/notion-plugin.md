@@ -33,12 +33,13 @@ pnpm add @sentry/junior @sentry/junior-notion
 
 ## Runtime setup
 
-Add the package name to the plugin set exported from `plugins.ts`:
+Add the plugin to the plugin set exported from `plugins.ts`:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
+import { notionPlugin } from "@sentry/junior-notion";
 
-export const plugins = defineJuniorPlugins(["@sentry/junior-notion"]);
+export const plugins = defineJuniorPlugins([notionPlugin()]);
 ```
 
 ## Config
@@ -92,7 +93,7 @@ never sends a Notion connect link. Junior hides the Notion tools that the
 service account does not list, so moving pages is not available:
 
 ```ts title="plugins.ts"
-export const plugins = defineJuniorPlugins(["@sentry/junior-notion"], {
+export const plugins = defineJuniorPlugins([notionPlugin()], {
   manifests: {
     notion: { accounts: { userOAuth: false } },
   },
@@ -102,6 +103,16 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-notion"], {
 Until an admin connects the account, Junior tells people that Notion is not
 available yet. If Notion revokes the grant, Notion stays unavailable until an
 admin connects the account again.
+
+## Link cards
+
+A Notion page or database link in a dashboard conversation shows as a card
+with its title, emoji, first paragraph, last edit time, and cover. Junior
+reads the page with the viewer's own Notion connection, so only a viewer who
+can open the page in Notion sees the card. Other viewers see what Notion
+shows to anyone who is signed out: the public card of a published
+`notion.site` page, or the plain link. A card read never asks the viewer to
+connect, and it never uses the service account.
 
 ## What users can do
 

@@ -5,6 +5,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { cn } from "@dashboard/lib/utils";
 import { ActorAvatar } from "../components/ActorAvatar";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { AutomationCard } from "../components/AutomationCard";
@@ -16,13 +17,13 @@ import {
   CollapsibleTrigger,
 } from "../components/ui/collapsible";
 import { MessageCard, MessageCardHeader } from "../components/MessageCard";
-import { cn } from "@dashboard/lib/utils";
 import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
 import { displayPlainText } from "../display-text/plainText";
+import { formatRelativeTime, formatTime } from "../format";
 import { ObjectAttachAction } from "./ObjectAttach";
-import { useObjectPreviewImages } from "./objectPreviewImages";
 import { objectSource } from "./objectSource";
+import { useSavedObject } from "./savedObjects";
 
 // A thumbnail that fails to load does not render.
 function Thumbnail({ src }: { src: string }) {
@@ -92,18 +93,25 @@ function webPageSite(card: OwnedObjectAnnotation): string | undefined {
 /**
  * Show the latest saved annotation, or a `live` card that the API resolved
  * for a link. Opening a source is always explicit. A live card can attach
- * its object to the Conversation.
+ * its object to the Conversation. A saved card tells when Junior fetched its
+ * facts. With `fill`, the card fills the height of its container and its body
+ * scrolls.
  */
 export function ObjectCard({
   card,
   className,
+  fill,
   live,
 }: {
   card: OwnedObjectAnnotation;
   className?: string;
+  fill?: boolean;
   live?: boolean;
 }) {
-  const images = useObjectPreviewImages(card);
+  const saved = useSavedObject(card);
+  const images = saved.previewImages;
+  const fetchedAt = live ? undefined : saved.updatedAt;
+  const attachable = live && card.objectType !== "person";
   if (card.plugin === "junior" && card.objectType === "automation") {
     return (
       <AutomationCard
@@ -130,7 +138,7 @@ export function ObjectCard({
   return (
     <MessageCard
       aria-label={`${type}: ${card.title}`}
-      className={cn("my-1", className)}
+      className={cn("my-1", fill && "my-0 flex h-full flex-col", className)}
     >
       <MessageCardHeader
         icon={
@@ -160,7 +168,12 @@ export function ObjectCard({
           )
         }
       />
-      <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
+      <div
+        className={cn(
+          "grid min-w-0 gap-4 px-4 pb-4 md:px-5",
+          fill && "min-h-0 flex-1 content-start overflow-y-auto",
+        )}
+      >
         {(card.facts?.type === "document" || card.facts?.type === "web_page") &&
           card.facts.thumbnailUrl && (
             <Thumbnail src={card.facts.thumbnailUrl} />
@@ -241,22 +254,28 @@ export function ObjectCard({
           </p>
         )}
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-3 text-xs md:px-5">
-        {card.url && (
-          <OutboundLink
-            href={card.url}
-            className="font-medium text-dashboard-text hover:underline focus-visible:outline-dashboard-focus"
-          >
-            Open {type.toLowerCase()}
-          </OutboundLink>
-        )}
-        {!live && (
-          <span className="text-dashboard-text-muted">Latest saved state</span>
-        )}
-        {live && card.objectType !== "person" && (
-          <ObjectAttachAction card={card} />
-        )}
-      </div>
+      {(card.url || fetchedAt || attachable) && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-3 text-xs md:px-5">
+          {card.url && (
+            <OutboundLink
+              href={card.url}
+              className="font-medium text-dashboard-text hover:underline focus-visible:outline-dashboard-focus"
+            >
+              Open {type.toLowerCase()}
+            </OutboundLink>
+          )}
+          {fetchedAt && (
+            <time
+              className="text-dashboard-text-muted"
+              dateTime={fetchedAt}
+              title={formatTime(fetchedAt)}
+            >
+              Last fetched {formatRelativeTime(fetchedAt)}
+            </time>
+          )}
+          {attachable && <ObjectAttachAction card={card} />}
+        </div>
+      )}
     </MessageCard>
   );
 }
