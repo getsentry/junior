@@ -6,20 +6,23 @@ import { Link } from "react-router";
 import type { AutomationCard as AutomationCardValue } from "@sentry/junior/api/schema";
 import { DisplayText } from "../display-text/DisplayText";
 import { Item, ItemContent, ItemMedia } from "./ui/item";
+import { cn } from "@dashboard/lib/utils";
 import { MessageCard } from "./MessageCard";
 import { automationPath } from "../format";
 
 /** Show a saved automation inside a reply, with a preview and a detail link. */
 export function AutomationCard({
   card,
+  className,
 }: {
   card: Pick<
     AutomationCardValue,
     "id" | "title" | "instruction" | "trigger" | "warning"
   > & { status?: string };
+  className?: string;
 }) {
   return (
-    <MessageCard aria-label={card.title} className="my-1">
+    <MessageCard aria-label={card.title} className={cn("my-1", className)}>
       <Item className="items-center" size="card">
         <ItemMedia className="text-dashboard-accent-text" variant="icon">
           <ObjectIcon objectType="automation" status={card.status} size={18} />
