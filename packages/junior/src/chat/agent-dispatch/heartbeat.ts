@@ -28,7 +28,7 @@ import {
   getDispatchRecord,
   isTerminalDispatchStatus,
   listPendingDispatchMailboxAppends,
-  markDispatchFailed,
+  transitionDispatch,
 } from "./store";
 import {
   AGENT_DISPATCH_MAX_AGE_MS,
@@ -134,10 +134,11 @@ export async function recoverPendingDispatchMailboxAppends(args: {
         continue;
       }
       if (args.nowMs - dispatch.createdAtMs > AGENT_DISPATCH_MAX_AGE_MS) {
-        await markDispatchFailed(
-          id,
-          "Dispatch expired before its conversation mailbox append completed",
-        );
+        await transitionDispatch(id, {
+          errorMessage:
+            "Dispatch expired before its conversation mailbox append completed",
+          status: "failed",
+        });
         await confirmDispatchMailboxAppend(id);
         continue;
       }
