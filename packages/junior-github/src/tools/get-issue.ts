@@ -1,5 +1,3 @@
-import { githubObjectAnnotation } from "../annotations.js";
-import { githubObjectFacts } from "../object-facts.js";
 import {
   type Actor,
   type Identity,
@@ -134,17 +132,6 @@ export const gitHubGetIssueTool = definePluginTool({
       repo: repoRef,
     });
     return {
-      objectAnnotations: [
-        githubObjectAnnotation({
-          ...githubObjectFacts("task", response.body),
-          repo: repoRef,
-          number: issue.number,
-          title: issue.title,
-          url: issue.html_url,
-          objectType: "task",
-          status: issue.state,
-        }),
-      ],
       target: "getIssue",
       assignees: issue.assignees,
       ...(issue.user ? { author: issue.user.login } : undefined),

@@ -178,8 +178,6 @@ export interface CallEvents {
   /** Times Junior replaced agent history with a summary. */
   compactions: number;
   lastSeq: number;
-  /** Quiet messages: stored, but not delivered, so people did not see them. */
-  quietReplies: Reply[];
   replies: Reply[];
   toolCalls: ToolCall[];
   turns: Turn[];
@@ -310,7 +308,6 @@ export function readCallEvents(args: {
   conversationId: string;
   detail: ConversationDetail;
 }): CallEvents {
-  const quietReplies: Reply[] = [];
   const replies: Reply[] = [];
   const visibleMessages: VisibleMessage[] = [];
   const turns = new Map<string, Turn>();
@@ -348,10 +345,6 @@ export function readCallEvents(args: {
           messageId: data.messageId,
           text: data.text,
         };
-        if (data.quiet) {
-          quietReplies.push(reply);
-          continue;
-        }
         replies.push(reply);
         currentTurn?.replies.push(reply);
         visibleMessages.push({ content: data.text, role: "assistant" });
@@ -397,7 +390,6 @@ export function readCallEvents(args: {
   return {
     compactions,
     lastSeq,
-    quietReplies,
     replies,
     toolCalls: [...toolCalls.values()],
     turns: [...turns.values()],

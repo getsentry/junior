@@ -331,6 +331,35 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.outcome).toBe("execution_failure");
   });
 
+  it("posts nothing after a noReply call, even when text follows it", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "toolResult",
+          toolName: "noReply",
+          isError: false,
+          content: [{ type: "text", text: "{}" }],
+          details: { note: "Checks still pending." },
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Checks are still pending." }],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "check suite passed",
+      toolCalls: ["noReply"],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      modelId: "test-model",
+      reasoningLevel: "medium",
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.noReply).toEqual({ note: "Checks still pending." });
+    expect(reply.diagnostics.outcome).toBe("success");
+  });
+
   it("keeps a legacy marker reply silent when side-effect tools also ran", () => {
     const reply = buildTurnResult({
       newMessages: [

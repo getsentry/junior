@@ -22,6 +22,7 @@ import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
 import { displayPlainText } from "../display-text/plainText";
 import { formatRelativeTime, formatTime } from "../format";
+import { DashboardPreview } from "./DashboardPreview";
 import { ObjectAttachAction } from "./ObjectAttach";
 import { objectSource } from "./objectSource";
 import { useSavedObject } from "./savedObjects";
@@ -224,6 +225,9 @@ export function ObjectCard({
             series={card.facts.series}
             tall
           />
+        )}
+        {card.facts?.type === "dashboard" && (
+          <DashboardPreview facts={card.facts} />
         )}
         {card.facts?.type === "trace" && card.facts.spans.length > 0 && (
           <TraceWaterfall

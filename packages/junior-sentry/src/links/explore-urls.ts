@@ -94,23 +94,34 @@ function utcMs(value: string | null): number {
   return Date.parse(/(Z|[+-]\d\d:?\d\d)$/i.test(value) ? value : `${value}Z`);
 }
 
-type TimeRange = { statsPeriod: string } | { start: string; end: string };
+/** A relative or an absolute time range, as Sentry's page filters keep it. */
+export type TimeRange =
+  | { statsPeriod: string }
+  | { start: string; end: string };
 
-// Sentry's page filters treat a valid `statsPeriod` as a live window, even
-// when the URL keeps stale `start` and `end` beside it. The bounds count
-// only as a pair.
-function timeRange(params: URLSearchParams): TimeRange {
+/**
+ * Read the time range that a Sentry page's URL sets, or nothing when it sets
+ * no valid one. Sentry's page filters treat a valid `statsPeriod` as a live
+ * window, even when the URL keeps stale `start` and `end` beside it. The
+ * bounds count only as a pair.
+ */
+export function urlTimeRange(params: URLSearchParams): TimeRange | undefined {
   const period = params.get("statsPeriod") ?? "";
   if (periodMs(period) !== undefined) return { statsPeriod: period };
   const start = utcMs(params.get("start"));
   const end = utcMs(params.get("end"));
   if (Number.isNaN(start) || Number.isNaN(end) || end <= start) {
-    return { statsPeriod: DEFAULT_PERIOD };
+    return undefined;
   }
   return {
     start: new Date(start).toISOString(),
     end: new Date(end).toISOString(),
   };
+}
+
+/** Read the time range of a Sentry page's URL, with Sentry's default window. */
+export function timeRange(params: URLSearchParams): TimeRange {
+  return urlTimeRange(params) ?? { statsPeriod: DEFAULT_PERIOD };
 }
 
 function rangeMs(range: TimeRange): number {
@@ -119,14 +130,16 @@ function rangeMs(range: TimeRange): number {
     : Date.parse(range.end) - Date.parse(range.start);
 }
 
-// A stale URL can ask for an interval finer than its range allows, and
-// `events-timeseries` refuses that many buckets. Use the smallest allowed.
-function chartInterval(params: URLSearchParams, range: TimeRange): string {
+/**
+ * Return the `requested` interval, or the smallest one that the range
+ * allows when it is finer. A stale URL or widget can ask for more buckets
+ * than `events-timeseries` returns.
+ */
+export function chartInterval(requested: string, range: TimeRange): string {
   const rangeLength = rangeMs(range);
   const minimum = INTERVAL_LADDER.find(
     ([threshold]) => rangeLength >= threshold,
   )![1];
-  const requested = params.get("interval") ?? "";
   const requestedMs = periodMs(requested);
   return requestedMs !== undefined && requestedMs >= periodMs(minimum)!
     ? requested
@@ -305,6 +318,6 @@ export function parseSentryExploreLink(
     project: params.getAll("project"),
     environment: params.getAll("environment"),
     ...range,
-    interval: chartInterval(params, range),
+    interval: chartInterval(params.get("interval") ?? "", range),
   };
 }

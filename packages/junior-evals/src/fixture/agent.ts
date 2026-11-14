@@ -131,8 +131,6 @@ export interface Conversation extends HarnessRun {
   conversationId: string;
   /** Assistant messages that people saw. */
   replies: Reply[];
-  /** Quiet messages: stored, but not delivered to the Slack thread. */
-  quietReplies: Reply[];
   /** Tool calls of the agent, with their results. */
   toolCalls: ToolCall[];
   /** Slack reactions that Junior added. */
@@ -769,7 +767,6 @@ export async function createFixtureAgent(
         : undefined),
       compactions: events.compactions,
       files,
-      quietReplies: events.quietReplies,
       reactions,
       replies,
       statuses,
@@ -890,7 +887,6 @@ export async function createFixtureAgent(
       }),
       compactions: 0,
       files: [],
-      quietReplies: [],
       reactions: [],
       replies: [],
       statuses: [],
