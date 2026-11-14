@@ -96,8 +96,8 @@ export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
    */
   setSpanAttributes(attributes: Record<string, number>): void;
   /** Location associated with this Conversation. */
-  locationId?: string;
-  actor?: Actor;
+  locationId?: string | undefined;
+  actor?: Actor | undefined;
   source: Source;
   state: PluginState;
   text: string;

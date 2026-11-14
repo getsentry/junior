@@ -22,7 +22,7 @@ function finite(value: number | undefined): number | undefined {
 /** Convert one Run summary to metric rows. */
 export function conversationMetricValues(args: {
   durationMs: number;
-  usage?: AgentTurnUsage;
+  usage?: AgentTurnUsage | undefined;
 }): Partial<Record<ConversationMetric, number>> {
   const usage = args.usage;
   return {
@@ -92,7 +92,7 @@ export async function replaceConversationMetrics(
   executor: JuniorSqlDatabase,
   args: {
     /** Identity of the Turn Actor. People spend reads it. */
-    actorIdentityId?: string;
+    actorIdentityId?: string | undefined;
     conversationId: string;
     runId: string;
     occurredAtMs: number;

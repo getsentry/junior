@@ -33,7 +33,7 @@ const DASHBOARD = "https://junior.example.com";
 const SHARED_TS = "1712345.0001";
 
 function unfurlsOf(call: { params: Record<string, unknown> } | undefined) {
-  const unfurls = call?.params.unfurls;
+  const unfurls = call?.params["unfurls"];
   return (typeof unfurls === "string" ? JSON.parse(unfurls) : unfurls) as
     | Record<
         string,
@@ -236,7 +236,7 @@ describe("Slack webhook: dashboard conversation links", () => {
     // A click on the old button says where the conversation went.
     await slack.click("U123", value!);
     expect(
-      slackApiOutbox.calls("chat.postEphemeral").at(-1)?.params.text,
+      slackApiOutbox.calls("chat.postEphemeral").at(-1)?.params["text"],
     ).toMatch(/^This conversation already continues in .+: https:\/\//);
 
     // A new share of a moved conversation has no button.
@@ -350,9 +350,9 @@ describe("Slack webhook: dashboard conversation links", () => {
       )?.location,
     ).toBeUndefined();
     expect(slackApiOutbox.messages()).toHaveLength(1);
-    expect(slackApiOutbox.calls("chat.postEphemeral").at(-1)?.params.text).toBe(
-      "This thread already has a Junior conversation.",
-    );
+    expect(
+      slackApiOutbox.calls("chat.postEphemeral").at(-1)?.params["text"],
+    ).toBe("This thread already has a Junior conversation.");
   });
 
   it("moves only one of two conversations that race for the same thread", async () => {
@@ -394,7 +394,7 @@ describe("Slack webhook: dashboard conversation links", () => {
         slackApiOutbox.calls("chat.delete").length,
     ).toBe(1);
     expect(slackApiOutbox.calls("chat.postEphemeral")).toHaveLength(1);
-    expect(slackApiOutbox.calls("chat.postEphemeral")[0]?.params.text).toBe(
+    expect(slackApiOutbox.calls("chat.postEphemeral")[0]?.params["text"]).toBe(
       "This thread already has a Junior conversation.",
     );
   });
@@ -430,7 +430,7 @@ describe("Slack webhook: dashboard conversation links", () => {
         url,
       }),
     );
-    expect(slackApiOutbox.calls("chat.postEphemeral")[0]?.params.text).toBe(
+    expect(slackApiOutbox.calls("chat.postEphemeral")[0]?.params["text"]).toBe(
       "Only public conversations can move here.",
     );
     expect(slackApiOutbox.messages()).toHaveLength(0);

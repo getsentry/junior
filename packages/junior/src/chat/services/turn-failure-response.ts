@@ -29,7 +29,7 @@ export function requireTurnFailureEventId(
 function getExecutionFailureReason(reply: {
   diagnostics: {
     assistantMessageCount: number;
-    errorMessage?: string;
+    errorMessage?: string | undefined;
     toolErrorCount: number;
   };
 }): string {

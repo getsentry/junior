@@ -48,7 +48,7 @@ export function serializeMcpTokenRefresh(
   // The access token of this client's last MCP request: the one that the
   // provider rejected when a refresh follows.
   let sentAccessToken: string | undefined;
-  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
     const sentRefreshToken = refreshTokenOf(init?.body);
     if (!sentRefreshToken) {
       // Discovery requests carry no token.
@@ -87,7 +87,7 @@ export function serializeMcpTokenRefresh(
           string,
           unknown
         >;
-        if (typeof tokens.access_token !== "string") return response;
+        if (typeof tokens["access_token"] !== "string") return response;
         // Save before the lock opens, so the next caller sees the new
         // refresh token. A provider that does not rotate keeps the old one.
         await fenceLock(state, lock, REFRESH_LOCK_TTL_MS);
@@ -97,10 +97,10 @@ export function serializeMcpTokenRefresh(
             ...current,
             ...tokens,
             refresh_token:
-              typeof tokens.refresh_token === "string"
-                ? tokens.refresh_token
+              typeof tokens["refresh_token"] === "string"
+                ? tokens["refresh_token"]
                 : sentRefreshToken,
-          } as typeof current,
+          },
         });
         return response;
       },
@@ -114,5 +114,5 @@ export function serializeMcpTokenRefresh(
       );
     }
     return attempt.value;
-  }) as typeof fetch;
+  };
 }

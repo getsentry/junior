@@ -100,7 +100,7 @@ export function createHeartbeatContext(args: {
   nowMs: number;
   plugin: string | PluginRegistration;
   /** Shows a Review item that the heartbeat changed. */
-  showReviewItem?: ShowReviewItem;
+  showReviewItem?: ShowReviewItem | undefined;
 }): HeartbeatHookContext {
   const pluginName =
     typeof args.plugin === "string" ? args.plugin : args.plugin.manifest.name;

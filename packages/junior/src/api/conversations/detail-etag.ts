@@ -247,7 +247,7 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
  * that other Conversations own (forks).
  */
 export type ConversationDetailState = {
-  access?: ConversationAccess;
+  access?: ConversationAccess | undefined;
   autoArchive?: boolean;
   forks: Awaited<ReturnType<typeof readConversationForks>>;
   readPosition?: ConversationReadPosition;
@@ -373,7 +373,7 @@ export async function readConversationDetailState(
 export async function readConversationDetailEtag(
   conversationId: string,
   options: {
-    limit?: number;
+    limit?: number | undefined;
     readAccess: ConversationAccessReader;
     viewer?: User;
   },

@@ -215,11 +215,11 @@ const STATIC_TOOL_BINDERS = {
       createRunAutomationNowTool(run.automation, run.catalog),
       run.automationDisabledReason,
     ),
-  createWorkspace: (run) => run.workspaceTools().createWorkspace,
-  updateWorkspace: (run) => run.workspaceTools().updateWorkspace,
-  deleteWorkspace: (run) => run.workspaceTools().deleteWorkspace,
-  listWorkspaces: (run) => run.workspaceTools().listWorkspaces,
-  switchWorkspace: (run) => run.workspaceTools().switchWorkspace,
+  createWorkspace: (run) => run.workspaceTools()["createWorkspace"],
+  updateWorkspace: (run) => run.workspaceTools()["updateWorkspace"],
+  deleteWorkspace: (run) => run.workspaceTools()["deleteWorkspace"],
+  listWorkspaces: (run) => run.workspaceTools()["listWorkspaces"],
+  switchWorkspace: (run) => run.workspaceTools()["switchWorkspace"],
   runOperatorSql: (run) =>
     isPublic(run) ? undefined : createRunOperatorSqlTool(),
   updateUserCustomization: (run) =>

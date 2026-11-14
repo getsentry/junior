@@ -252,7 +252,7 @@ describe("review item actions API", () => {
       {},
     );
     const ids = async (viewer: User, path: string) =>
-      ((await (await api(fixture, viewer).get(path)).json()) as any).items.map(
+      (await (await api(fixture, viewer).get(path)).json()).items.map(
         (listed: any) => listed.id,
       );
 

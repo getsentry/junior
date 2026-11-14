@@ -92,13 +92,16 @@ export function slackChannelMessageEvents(): EventRegistrationInput {
  */
 export function slackChannelMessageTrigger<
   T extends {
-    identifier?: string | null;
-    match?: EventAutomation["trigger"]["match"];
+    identifier?: string | null | undefined;
+    match?: EventAutomation["trigger"]["match"] | undefined;
     namespace: string;
   },
 >(trigger: T, channelId: string): T {
   if (trigger.namespace !== SLACK_EVENT_NAMESPACE) return trigger;
-  if (trigger.identifier != null || trigger.match?.channelId !== undefined) {
+  if (
+    trigger.identifier != null ||
+    trigger.match?.["channelId"] !== undefined
+  ) {
     return trigger;
   }
   return { ...trigger, match: { ...trigger.match, channelId } };
@@ -125,7 +128,7 @@ export function requireSlackChannelMessageScope(
   const { identifier, match } = automation.trigger;
   const named =
     identifier === undefined
-      ? match?.channelId
+      ? match?.["channelId"]
       : identifier === SLACK_CURRENT_CHANNEL_IDENTIFIER
         ? channelId
         : identifier;
@@ -161,11 +164,11 @@ export type SlackChannelMessageAuthor =
  */
 export function slackChannelMessageEvent(input: {
   author: SlackChannelMessageAuthor;
-  botId?: string;
+  botId?: string | undefined;
   channelId: string;
-  subtype?: string;
-  text?: string;
-  threadTs?: string;
+  subtype?: string | undefined;
+  text?: string | undefined;
+  threadTs?: string | undefined;
   ts: string;
 }): EventInput | undefined {
   const { author } = input;
@@ -211,15 +214,16 @@ export function slackChannelMessageRunsAutomation(
   automation: EventAutomation,
 ): boolean {
   if (event.namespace !== SLACK_EVENT_NAMESPACE) return true;
-  if (event.data?.channelId !== automation.destination.channelId) return false;
+  if (event.data?.["channelId"] !== automation.destination.channelId)
+    return false;
   if (
-    event.data?.location === THREAD_LOCATION &&
-    ![automation.trigger.match?.location].flat().includes(THREAD_LOCATION)
+    event.data?.["location"] === THREAD_LOCATION &&
+    ![automation.trigger.match?.["location"]].flat().includes(THREAD_LOCATION)
   ) {
     return false;
   }
-  if (event.data?.postedByBot !== true) return true;
-  return automation.trigger.match?.userId !== undefined;
+  if (event.data?.["postedByBot"] !== true) return true;
+  return automation.trigger.match?.["userId"] !== undefined;
 }
 
 /** Return the source message thread for a channel-message run. */
@@ -227,6 +231,6 @@ export function slackChannelMessageReplyThreadTs(
   event: Event,
 ): string | undefined {
   if (event.namespace !== SLACK_EVENT_NAMESPACE) return undefined;
-  const messageTs = event.data?.threadTs ?? event.data?.messageTs;
+  const messageTs = event.data?.["threadTs"] ?? event.data?.["messageTs"];
   return typeof messageTs === "string" ? messageTs : undefined;
 }

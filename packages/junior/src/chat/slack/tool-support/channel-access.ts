@@ -106,7 +106,7 @@ export async function checkSlackChannelReadAccess(args: {
  * Callers should try the read first, then use this helper on `not_in_channel`.
  */
 export async function joinPublicChannelForRead(args: {
-  channelName?: string;
+  channelName?: string | undefined;
   targetChannelId: SlackChannelId;
 }): Promise<
   | { ok: true; channelName?: string }

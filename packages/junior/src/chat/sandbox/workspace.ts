@@ -26,7 +26,7 @@ export interface SandboxCommandInput {
   cmd: string;
   cwd?: string;
   env?: Record<string, string>;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   sudo?: boolean;
   timeoutMs?: number;
 }
@@ -111,7 +111,9 @@ export interface SandboxSession extends SandboxWorkspace {
   readonly fs: SandboxFileSystem;
   extendTimeout(duration: number): Promise<void>;
   mkDir(path: string): Promise<void>;
-  snapshot(options?: { signal?: AbortSignal }): Promise<{ snapshotId: string }>;
+  snapshot(options?: {
+    signal?: AbortSignal | undefined;
+  }): Promise<{ snapshotId: string }>;
   stop(): Promise<unknown>;
   update(params: { networkPolicy?: SandboxNetworkPolicy }): Promise<void>;
 }
@@ -121,7 +123,7 @@ export interface SandboxSessionOptions {
   /** Called when a session operation finds that the VM session is gone. */
   onUnavailable?: (sessionId: string) => void;
   /** Abort every provider request made through the returned session. */
-  scopeSignal?: AbortSignal;
+  scopeSignal?: AbortSignal | undefined;
 }
 
 /** Input for one new Sandbox. */
@@ -136,7 +138,7 @@ export interface CreateSandboxSessionInput extends SandboxSessionOptions {
   networkPolicy?: SandboxNetworkPolicy;
   resources?: { vcpus: number };
   /** Abort only the create request. */
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }
 
 /** Best-effort stop; ignore secondary stop failures during cleanup. */

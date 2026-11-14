@@ -142,14 +142,14 @@ export function conversationDetailQueryOptions(
   options?: {
     awaitingMessage?: boolean;
     /** Poll fast until this time so a new send reaches history quickly. */
-    fastPollUntilMs?: number;
+    fastPollUntilMs?: number | undefined;
     /** Also read the page around the read position. */
     unreadPage?: boolean;
     /**
      * The versions poll refreshes this Conversation while it is idle, so
      * the detail does not poll then.
      */
-    versionsPoll?: boolean;
+    versionsPoll?: boolean | undefined;
   },
 ) {
   // `unreadPage` adds a page to one fetch. The detail in the cache is the
@@ -227,7 +227,7 @@ export function useCreateConversation() {
     mutationFn: (args: {
       idempotencyKey: string;
       message: string;
-      files?: File[];
+      files?: File[] | undefined;
       visibility?: "private" | "public";
     }) => postWebMessage("/api/conversations", args),
     onSuccess: (accepted, args) => {
@@ -317,7 +317,7 @@ export function useAppendConversationMessage(conversationId: string) {
       /** Show the send in the transcript instead of the queue. */
       inline?: boolean;
       message: string;
-      files?: File[];
+      files?: File[] | undefined;
     }) =>
       postWebMessage(
         `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
@@ -834,7 +834,7 @@ export async function readConversationData(
   options?: {
     /** Also read the mailbox, before history, in the same request. */
     mailbox?: boolean;
-    unreadPage?: boolean;
+    unreadPage?: boolean | undefined;
   },
 ): Promise<ConversationSnapshot> {
   const query = new URLSearchParams();
@@ -919,7 +919,10 @@ function withCachedEvents(
 function withDetailEtag<T extends ConversationDetailReport>(
   report: T,
   response: Response,
-): T & { conversationVersion?: string; detailEtag?: string } {
+): T & {
+  conversationVersion?: string | undefined;
+  detailEtag?: string | undefined;
+} {
   return {
     ...report,
     conversationVersion:

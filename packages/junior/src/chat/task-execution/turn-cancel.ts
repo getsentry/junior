@@ -27,7 +27,7 @@ export async function completeCancelledConversationTurn(args: {
   acknowledge(): Promise<void>;
   conversation: ThreadConversationState;
   conversationId: string;
-  sandboxRef?: SandboxRef;
+  sandboxRef?: SandboxRef | undefined;
   turnId: string;
   userMessageId: string | undefined;
 }): Promise<void> {

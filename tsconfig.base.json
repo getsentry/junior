@@ -3,12 +3,15 @@
   "compilerOptions": {
     /* Interop Constraints */
     "isolatedModules": true,
+    "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
     "forceConsistentCasingInFileNames": true,
 
     /* Type Checking */
     "strict": true,
+    "exactOptionalPropertyTypes": true,
     "noUncheckedIndexedAccess": true,
+    "noPropertyAccessFromIndexSignature": true,
     "noImplicitOverride": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
@@ -19,6 +22,6 @@
     "allowUnusedLabels": false,
 
     /* Completeness */
-    "skipLibCheck": true
+    "skipLibCheck": false
   }
 }

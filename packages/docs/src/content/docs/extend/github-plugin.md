@@ -337,6 +337,9 @@ Once configured, Junior can:
   repository, or when it came from GitHub or went to GitHub
 - Show a GitHub profile link in the dashboard as the person card of the known
   person who linked that login, or else as a GitHub account card
+- Show a GitHub issue or pull request link in the dashboard as its issue or
+  pull request card, to a viewer whose linked GitHub account can see the
+  repository. Other viewers get the public web page card
 - Rewrite Slack mentions in text that tools send to GitHub. A person becomes
   their linked GitHub `@login`, or their name
 

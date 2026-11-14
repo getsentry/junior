@@ -250,7 +250,7 @@ describe("bot image hydration", () => {
     const { loadConversationVisionCache } =
       await import("@/chat/slack/vision-cache");
     expect(
-      (await loadConversationVisionCache(threadId)).byFileId.F_EXPIRED,
+      (await loadConversationVisionCache(threadId)).byFileId["F_EXPIRED"],
     ).toEqual(
       expect.objectContaining({ summary: "Rebuilt screenshot summary" }),
     );
@@ -466,7 +466,7 @@ describe("bot image hydration", () => {
     const { loadConversationVisionCache } =
       await import("@/chat/slack/vision-cache");
     const visionCache = await loadConversationVisionCache(secondThread.id);
-    expect(visionCache.byFileId.F_OLD?.summary).toBe(
+    expect(visionCache.byFileId["F_OLD"]?.summary).toBe(
       "Recovered screenshot context",
     );
     expect(visionCache.backfillCompletedAtMs).toBeTypeOf("number");

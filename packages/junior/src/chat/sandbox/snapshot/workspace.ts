@@ -40,7 +40,7 @@ export interface CreateWorkspaceSnapshotBuilderInput {
   runtime: string;
   timeoutMs: number;
   resources?: { vcpus: number };
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }
 
 /** Detached setup command in a Workspace snapshot builder Sandbox. */
@@ -48,8 +48,8 @@ export interface WorkspaceSnapshotCommand {
   /** Wait until the command exits. `signal` stops only this wait. */
   wait(options: { signal: AbortSignal }): Promise<{
     exitCode: number;
-    stdout(options?: { signal?: AbortSignal }): Promise<string>;
-    stderr(options?: { signal?: AbortSignal }): Promise<string>;
+    stdout(options?: { signal?: AbortSignal | undefined }): Promise<string>;
+    stderr(options?: { signal?: AbortSignal | undefined }): Promise<string>;
   }>;
 }
 
@@ -62,10 +62,10 @@ export interface WorkspaceSnapshotBuilder {
   /** Load a detached command that an earlier job started. */
   getCommand(
     commandId: string,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal | undefined },
   ): Promise<WorkspaceSnapshotCommand>;
   snapshot(options?: {
-    signal?: AbortSignal;
+    signal?: AbortSignal | undefined;
   }): Promise<{ snapshotId: string; sizeBytes?: number }>;
 }
 
@@ -330,7 +330,7 @@ async function startBuild(params: {
   workspace: Workspace;
   value: profile.Profile;
   runtime: string;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   beforeWrite: () => Promise<void>;
 }): Promise<void> {
   const { workspace, value, signal } = params;
@@ -416,7 +416,7 @@ async function startBuild(params: {
 async function continueBuild(params: {
   workspace: Workspace;
   value: profile.Profile;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   applyNetworkPolicy(sandbox: SandboxSession): Promise<unknown>;
   prepareRepositories?(
     sandbox: SandboxSession,
@@ -540,7 +540,7 @@ async function advanceWorkspaceSnapshot(params: {
   workspace: Workspace;
   runtime: string;
   staleSnapshotId?: string;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   applyNetworkPolicy(sandbox: SandboxSession): Promise<unknown>;
   prepareRepositories?(
     sandbox: SandboxSession,
@@ -672,7 +672,7 @@ export async function resolveWorkspaceSnapshot(params: {
   workspace: Workspace;
   runtime: string;
   staleSnapshotId?: string;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   shouldStop?: () => boolean;
   applyNetworkPolicy(sandbox: SandboxSession): Promise<unknown>;
   prepareRepositories?(

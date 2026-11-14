@@ -55,13 +55,13 @@ export function injectContinuationToolName(
   details: unknown,
   toolName: string,
 ): unknown {
-  if (!isRecord(details) || !isRecord(details.continuation)) {
+  if (!isRecord(details) || !isRecord(details["continuation"])) {
     return details;
   }
   return {
     ...details,
     continuation: juniorToolBoundContinuationSchema.parse({
-      ...details.continuation,
+      ...details["continuation"],
       tool_name: toolName,
     }),
   };

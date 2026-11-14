@@ -13,7 +13,7 @@ import { DisplayText } from "../display-text/DisplayText";
 /** Render a structural context change from the privacy-safe event API. */
 export function TranscriptContextEventView(props: {
   part: TranscriptViewContextEventPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 }) {
   const event = props.part.event;
   const compactionDetail = event.details

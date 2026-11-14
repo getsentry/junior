@@ -52,7 +52,7 @@ const {
   deliverPrivateMessageMock: vi.fn(),
   directMcpProviderFailure: { value: false },
   guardianDecision: {
-    value: "allow" as "allow" | "deny" | "unavailable",
+    value: "allow",
   },
   guardianProposals: [] as unknown[],
   listToolsMock: vi.fn(),
@@ -148,21 +148,23 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       }>;
     };
     private aborted = false;
-    private readonly afterToolCall?: (
-      event: {
-        isError: boolean;
-        result: { content: unknown[]; details: Record<string, unknown> };
-        toolCall: { arguments: unknown; id: string; name: string };
-      },
-      signal?: AbortSignal,
-    ) => Promise<
-      | {
-          content?: unknown[];
-          details?: Record<string, unknown>;
-          isError?: boolean;
-        }
-      | undefined
-    >;
+    private readonly afterToolCall?:
+      | ((
+          event: {
+            isError: boolean;
+            result: { content: unknown[]; details: Record<string, unknown> };
+            toolCall: { arguments: unknown; id: string; name: string };
+          },
+          signal?: AbortSignal,
+        ) => Promise<
+          | {
+              content?: unknown[];
+              details?: Record<string, unknown>;
+              isError?: boolean;
+            }
+          | undefined
+        >)
+      | undefined;
 
     constructor(input: {
       afterToolCall?: MockAgent["afterToolCall"];
@@ -797,8 +799,8 @@ describe("executeAgentRun progressive MCP loading", () => {
     resumeTurnContextCounts.length = 0;
     turnContextInputs.length = 0;
 
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
+    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
 
     deliverPrivateMessageMock.mockResolvedValue({
       channel: "D123",
@@ -839,8 +841,8 @@ describe("executeAgentRun progressive MCP loading", () => {
 
   afterEach(async () => {
     await disconnectStateAdapter();
-    delete process.env.JUNIOR_STATE_ADAPTER;
-    delete process.env.JUNIOR_BASE_URL;
+    delete process.env["JUNIOR_STATE_ADAPTER"];
+    delete process.env["JUNIOR_BASE_URL"];
     vi.restoreAllMocks();
   });
 

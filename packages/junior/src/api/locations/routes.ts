@@ -20,11 +20,7 @@ export function createLocationRoutes(): Hono<JuniorApiEnv> {
 
   app.get(
     "/:locationId",
-    validateRequest(
-      "param",
-      locationParamsSchema,
-      "Invalid route parameters.",
-    ),
+    validateRequest("param", locationParamsSchema, "Invalid route parameters."),
     async (context) => {
       const { locationId } = context.req.valid("param");
       const viewer = context.get("viewer");

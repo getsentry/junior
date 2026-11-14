@@ -91,30 +91,32 @@ export interface SandboxAccess {
 }
 
 export interface SandboxOptions {
-  sandboxRef?: SandboxRef;
-  workspace?: Workspace;
+  sandboxRef?: SandboxRef | undefined;
+  workspace?: Workspace | undefined;
   skills: SkillMetadata[];
   referenceFiles: string[];
-  timeoutMs?: number;
-  traceContext?: LogContext;
-  tracePropagation?: SandboxEgressTracePropagationConfig;
+  timeoutMs?: number | undefined;
+  traceContext?: LogContext | undefined;
+  tracePropagation?: SandboxEgressTracePropagationConfig | undefined;
   /** Conversation that sandbox egress records for its credentialed requests. */
-  conversationId?: string;
-  credentialEgress?: CredentialContext;
+  conversationId?: string | undefined;
+  credentialEgress?: CredentialContext | undefined;
   /** Run Source that sandbox egress records for its credentialed writes. */
-  credentialAuditSource?: CredentialAuditSource;
-  egressSignals?: SandboxEgressSignalTransport;
-  prepare?: (workspace: SandboxWorkspace) => void | Promise<void>;
-  prepareWorkspace?: (
-    workspace: SandboxWorkspace,
-    recipe: Workspace,
-    signal?: AbortSignal,
-  ) => Promise<() => Promise<void>>;
+  credentialAuditSource?: CredentialAuditSource | undefined;
+  egressSignals?: SandboxEgressSignalTransport | undefined;
+  prepare?: ((workspace: SandboxWorkspace) => void | Promise<void>) | undefined;
+  prepareWorkspace?:
+    | ((
+        workspace: SandboxWorkspace,
+        recipe: Workspace,
+        signal?: AbortSignal,
+      ) => Promise<() => Promise<void>>)
+    | undefined;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }
 
 interface SandboxToolCallContext {
-  readonly signal?: AbortSignal;
+  readonly signal?: AbortSignal | undefined;
   fileSystem(): Promise<SandboxFileSystem>;
 }
 
@@ -333,12 +335,12 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     command: string,
     context: SandboxToolCallContext,
   ): Promise<T> => {
-    const env = parseEnv(rawInput.env);
+    const env = parseEnv(rawInput["env"]);
     const cwd =
-      typeof rawInput.cwd === "string"
-        ? resolveWorkspacePath(rawInput.cwd)
+      typeof rawInput["cwd"] === "string"
+        ? resolveWorkspacePath(rawInput["cwd"])
         : SANDBOX_WORKSPACE_ROOT;
-    const timeoutMs = positiveInteger(rawInput.timeoutMs);
+    const timeoutMs = positiveInteger(rawInput["timeoutMs"]);
     logSandboxBootRequest("tool.bash", {
       "app.sandbox.command_length": command.length,
     });
@@ -452,12 +454,12 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     rawInput: Record<string, unknown>,
     context: SandboxToolCallContext,
   ): Promise<T> => {
-    const filePath = String(rawInput.path ?? "").trim();
+    const filePath = String(rawInput["path"] ?? "").trim();
     if (!filePath) {
       throw new ToolInputError("path is required");
     }
-    const offset = positiveInteger(rawInput.offset);
-    const limit = positiveInteger(rawInput.limit);
+    const offset = positiveInteger(rawInput["offset"]);
+    const limit = positiveInteger(rawInput["limit"]);
 
     if (!runtime.sandboxRef()) {
       const hostPath =
@@ -539,13 +541,13 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     rawInput: Record<string, unknown>,
     context: SandboxToolCallContext,
   ): Promise<T> => {
-    const filePath = String(rawInput.path ?? "").trim();
+    const filePath = String(rawInput["path"] ?? "").trim();
     if (!filePath) {
       throw new ToolInputError("path is required");
     }
 
     const workspacePath = resolveWorkspacePath(filePath);
-    const content = String(rawInput.content ?? "");
+    const content = String(rawInput["content"] ?? "");
     logSandboxBootRequest("tool.writeFile", {
       "file.path": filePath,
     });
@@ -583,11 +585,11 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     rawInput: Record<string, unknown>,
     context: SandboxToolCallContext,
   ): Promise<T> => {
-    const filePath = String(rawInput.path ?? "").trim();
+    const filePath = String(rawInput["path"] ?? "").trim();
     if (!filePath) {
       throw new ToolInputError("path is required");
     }
-    if (!Array.isArray(rawInput.edits)) {
+    if (!Array.isArray(rawInput["edits"])) {
       throw new ToolInputError("edits is required");
     }
 
@@ -600,13 +602,13 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       "sandbox.fs.edit",
       {
         "app.sandbox.path.length": filePath.length,
-        "app.sandbox.edit.count": rawInput.edits.length,
+        "app.sandbox.edit.count": rawInput["edits"].length,
       },
       async () => {
         const response = await editFile({
           fs: fileSystem,
           path: filePath,
-          edits: rawInput.edits as TextReplacement[],
+          edits: rawInput["edits"] as TextReplacement[],
         });
         setSpanStatus("ok");
         return response;
@@ -621,7 +623,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     const context = createToolCallContext(params.signal);
     const bashCommand =
       params.toolName === "bash"
-        ? String(rawInput.command ?? "").trim()
+        ? String(rawInput["command"] ?? "").trim()
         : undefined;
 
     if (params.toolName === "bash") {

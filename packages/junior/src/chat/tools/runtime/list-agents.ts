@@ -176,7 +176,7 @@ export const listAgentsToolDefinition = zodToolDefinition({
  */
 export function createListAgentsTool(context: {
   conversationId: string;
-  parentConversationId?: string;
+  parentConversationId?: string | undefined;
 }) {
   return zodTool({
     ...listAgentsToolDefinition,

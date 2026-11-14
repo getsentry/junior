@@ -282,7 +282,7 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     window.addEventListener(
       "keydown",
       (event) => {
-        document.body.dataset.findPrevented = String(event.defaultPrevented);
+        document.body.dataset["findPrevented"] = String(event.defaultPrevented);
       },
       { once: true },
     );
@@ -574,10 +574,10 @@ test.describe("on a touch screen", () => {
     // scroll needs none.
     await transcript.evaluate((element) => {
       const scrollTo = element.scrollTo.bind(element);
-      element.dataset.scrollCorrections = "0";
+      element.dataset["scrollCorrections"] = "0";
       element.scrollTo = (...args: Parameters<typeof scrollTo>) => {
-        element.dataset.scrollCorrections = String(
-          Number(element.dataset.scrollCorrections) + 1,
+        element.dataset["scrollCorrections"] = String(
+          Number(element.dataset["scrollCorrections"]) + 1,
         );
         scrollTo(...args);
       };

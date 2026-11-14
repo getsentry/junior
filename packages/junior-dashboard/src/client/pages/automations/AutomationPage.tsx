@@ -218,7 +218,7 @@ function AutomationPageContent(props: {
       onClose={() => setDeleting(false)}
       onDeleted={() => {
         deleteSource.current = null;
-        navigate(props.listPath);
+        void navigate(props.listPath);
       }}
       returnFocus={() =>
         deleteSource.current?.isConnected ? deleteSource.current : false

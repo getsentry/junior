@@ -68,7 +68,7 @@ export async function runPluginHeartbeats(args: {
   events: AppEventPublisher;
   limit?: number;
   nowMs: number;
-  showReviewItem?: ShowReviewItem;
+  showReviewItem?: ShowReviewItem | undefined;
 }): Promise<void> {
   let count = 0;
   for (const plugin of getPlugins()) {
@@ -201,12 +201,12 @@ export async function recoverPendingAgentInvocationResults(args: {
 
 /** Run the core heartbeat phases. */
 export async function runHeartbeat(args: {
-  conversationWorkQueue?: ConversationWorkQueue;
+  conversationWorkQueue?: ConversationWorkQueue | undefined;
   /** The app's event publisher. */
-  events?: AppEventPublisher;
+  events?: AppEventPublisher | undefined;
   nowMs: number;
   /** Shows a Review item that a plugin heartbeat changed. */
-  showReviewItem?: ShowReviewItem;
+  showReviewItem?: ShowReviewItem | undefined;
 }): Promise<void> {
   const queue = args.conversationWorkQueue ?? getVercelConversationWorkQueue();
   const events =

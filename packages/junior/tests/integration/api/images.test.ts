@@ -520,7 +520,7 @@ describe("image API", () => {
       http.get(
         "https://api.github.com/repos/getsentry/secret/collaborators/:login/permission",
         ({ params }) => {
-          if (params.login !== "member") {
+          if (params["login"] !== "member") {
             return HttpResponse.json({ permission: "none" });
           }
           // The first read of the member's access fails for a short time.

@@ -14,11 +14,7 @@ const {
   selectedThinkingLevels,
 } = vi.hoisted(() => ({
   agentMode: {
-    value: "plain" as
-      | "plain"
-      | "loadSkill"
-      | "bashThenError"
-      | "agentsAfterBash",
+    value: "plain",
   },
   createSandboxCallCount: {
     value: 0,
@@ -62,7 +58,9 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         execute: (toolCallId: unknown, params: unknown) => Promise<unknown>;
       }>;
     };
-    private prepareNextTurn?: (context: unknown) => Promise<unknown> | unknown;
+    private prepareNextTurn?:
+      | ((context: unknown) => Promise<unknown> | unknown)
+      | undefined;
     private listeners: Array<(event: unknown) => unknown> = [];
 
     constructor(input: {

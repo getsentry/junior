@@ -192,7 +192,7 @@ export async function exchangeAuthorizationCode(args: {
   code: string;
   codeVerifier: string;
   redirectUri: string;
-  resource?: string;
+  resource?: string | undefined;
   state: McpState;
 }): Promise<McpTokenResult> {
   const key = codeKey(args.code);
@@ -233,8 +233,8 @@ export async function exchangeAuthorizationCode(args: {
 export async function refreshGrant(args: {
   clientId: string;
   refreshToken: string;
-  resource?: string;
-  scope?: string;
+  resource?: string | undefined;
+  scope?: string | undefined;
   state: McpState;
 }): Promise<McpTokenResult> {
   if (!args.refreshToken.startsWith(REFRESH_TOKEN_PREFIX)) {

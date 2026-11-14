@@ -49,7 +49,7 @@ function parseKey(entry: string, index: number): EncryptionKey {
 export function readEncryptionKeyring(
   env: NodeJS.ProcessEnv,
 ): EncryptionKeyring {
-  const entries = (env.JUNIOR_ENCRYPTION_KEYS ?? "")
+  const entries = (env["JUNIOR_ENCRYPTION_KEYS"] ?? "")
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
@@ -67,7 +67,7 @@ export function readEncryptionKeyring(
     throw new Error("JUNIOR_ENCRYPTION_KEYS must not repeat a key id");
   }
   const activeId =
-    env.JUNIOR_ENCRYPTION_KEY_ID?.trim() ||
+    env["JUNIOR_ENCRYPTION_KEY_ID"]?.trim() ||
     (keys.length === 1 ? keys[0]?.id : undefined);
   if (!activeId) {
     throw new Error(

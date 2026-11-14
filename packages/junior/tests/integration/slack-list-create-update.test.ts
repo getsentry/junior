@@ -98,7 +98,7 @@ describe("slack list create/update tools", () => {
     expect(updateCalls[0]?.params).toMatchObject({
       list_id: "LIST_ABC",
     });
-    expect(updateCalls[0]?.params.cells).toEqual([
+    expect(updateCalls[0]?.params["cells"]).toEqual([
       {
         row_id: "ROW_77",
         column_id: "COL_DONE",

@@ -67,7 +67,7 @@ export { jsonResponse };
 /** Options that `createApp()` passes through the dashboard. */
 export interface JuniorApiOptions {
   /** Queue for accepted web input. Defaults to Vercel Queues. */
-  conversationWorkQueue?: ConversationWorkQueue;
+  conversationWorkQueue?: ConversationWorkQueue | undefined;
 }
 
 /** Create Junior's production REST API for authenticated dashboard consumers. */

@@ -87,7 +87,7 @@ async function archiveAgent(
 ) {
   const tool = createArchiveAgentTool(conversationId);
   return await tool.execute!(
-    tool.prepareArguments!({
+    tool.prepareArguments({
       conversation_id: childConversationId,
       ...options,
     }),
@@ -131,7 +131,7 @@ describe("Thread spawn and archive", () => {
         { owner: "none" },
       );
       const thread = await tool.execute!(
-        tool.prepareArguments!({
+        tool.prepareArguments({
           kind: "thread",
           task: "Own the rollout plan.",
           title: "Rollout plan",
@@ -139,7 +139,7 @@ describe("Thread spawn and archive", () => {
         { toolCallId: "call-thread" },
       );
       const task = await tool.execute!(
-        tool.prepareArguments!({
+        tool.prepareArguments({
           kind: null,
           task: "Check the failing test.",
           title: "Failing test",
@@ -164,7 +164,7 @@ describe("Thread spawn and archive", () => {
 
       // A Thread without a title gets a generated one.
       const untitled = await tool.execute!(
-        tool.prepareArguments!({
+        tool.prepareArguments({
           kind: "thread",
           task: "Own the rollout follow-ups.",
         }),

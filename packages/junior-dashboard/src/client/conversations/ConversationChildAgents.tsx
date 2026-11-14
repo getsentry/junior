@@ -231,7 +231,7 @@ function ChildAgentRow(props: {
   agent: ConversationChildAgent;
   onOpen?(): void;
   /** The Conversation's own title, when known. It wins over the report title. */
-  title?: string;
+  title?: string | undefined;
   to?: string;
 }) {
   const { agent } = props;

@@ -51,7 +51,7 @@ export function TranscriptTasksLine(props: {
 
 function TaskChip(props: {
   entry: RenderedTaskEntry;
-  onOpenTranscript?: (part: TranscriptViewSubagentPart) => void;
+  onOpenTranscript?: ((part: TranscriptViewSubagentPart) => void) | undefined;
 }) {
   const { part } = props.entry;
   const label = taskLabel(part);

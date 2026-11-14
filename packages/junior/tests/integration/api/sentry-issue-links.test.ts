@@ -61,11 +61,11 @@ function fakeSentry(allowed: string[]) {
   const issueRead: Parameters<typeof http.get>[1] = ({ params, request }) => {
     const host = new URL(request.url).host;
     const token = request.headers.get("authorization") ?? "none";
-    issueHosts.push(`${host} ${params.org}`);
-    reads.push(`${token} ${params.org}/${params.issueId}`);
+    issueHosts.push(`${host} ${params["org"]}`);
+    reads.push(`${token} ${params["org"]}/${params["issueId"]}`);
     const known =
-      REGION_URLS[String(params.org)] === `https://${host}` &&
-      [ISSUE.id, ISSUE.shortId].includes(String(params.issueId));
+      REGION_URLS[String(params["org"])] === `https://${host}` &&
+      [ISSUE.id, ISSUE.shortId].includes(String(params["issueId"]));
     if (!known) return new HttpResponse(null, { status: 404 });
     const canRead =
       token === `Bearer ${ORG_READ_TOKEN}` ||
@@ -76,7 +76,7 @@ function fakeSentry(allowed: string[]) {
   };
   mswServer.use(
     http.get("https://sentry.io/api/0/organizations/:org/", ({ params }) => {
-      const org = String(params.org);
+      const org = String(params["org"]);
       orgReads.push(org);
       const regionUrl = REGION_URLS[org];
       return regionUrl
