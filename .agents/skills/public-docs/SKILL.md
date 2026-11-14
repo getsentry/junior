@@ -9,11 +9,11 @@ Use this workflow to produce docs that are crisp, task-oriented, and trustworthy
 
 Load only the references needed for the request:
 
-| Task | Read |
-|------|------|
-| Understand docs app layout and constraints | `references/api-surface.md` |
-| Draft or revise common docs pages | `references/common-use-cases.md` |
-| Diagnose docs quality/build failures | `references/troubleshooting-workarounds.md` |
+| Task                                       | Read                                        |
+| ------------------------------------------ | ------------------------------------------- |
+| Understand docs app layout and constraints | `references/api-surface.md`                 |
+| Draft or revise common docs pages          | `references/common-use-cases.md`            |
+| Diagnose docs quality/build failures       | `references/troubleshooting-workarounds.md` |
 
 ## Core invariants
 

@@ -778,7 +778,9 @@ describe("agent run continuation", () => {
       inputTokens: 4,
       outputTokens: 4,
     });
-    const history = await (await import("@/chat/db"))
+    const history = await (
+      await import("@/chat/db")
+    )
       .getConversationEventStore()
       .loadHistory("conversation-active-compaction");
     expect(history.some((event) => event.data.type === "compaction")).toBe(

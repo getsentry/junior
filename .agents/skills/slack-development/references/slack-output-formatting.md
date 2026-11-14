@@ -10,10 +10,12 @@ How to format outbound Slack bot messages correctly using Slack-documented `mrkd
 2. Escape only `&`, `<`, and `>` for dynamic text.
 3. Use explicit `\n` for line breaks.
 4. Use Slack entity syntax when behavior must be deterministic:
+
 - User mention: `<@U123ABC456>`
 - Channel link: `<#C123ABC456>`
 - Link with label: `<https://example.com|example>`
 - Date token: `<!date^unix_ts^{date_short} {time}|fallback>`
+
 5. For structured block messages, ensure top-level `text` remains meaningful for notifications/accessibility.
 
 ## Avoid

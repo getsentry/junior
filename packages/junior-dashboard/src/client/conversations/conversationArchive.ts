@@ -328,12 +328,8 @@ export function archiveConversationMutationOptions(
           }),
         );
       });
-      queryClient.setQueryData<ConversationSnapshot>(
-        detailQueryKey,
-        (detail) =>
-          detail
-            ? { ...detail, ...viewerMarks, detailEtag: undefined }
-            : detail,
+      queryClient.setQueryData<ConversationSnapshot>(detailQueryKey, (detail) =>
+        detail ? { ...detail, ...viewerMarks, detailEtag: undefined } : detail,
       );
       if (archivedSnapshot) {
         queryClient.setQueryData(archivedQueryKey, archivedSnapshot);

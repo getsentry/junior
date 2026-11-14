@@ -162,7 +162,7 @@ const segmentGaps = (segment: string) =>
 async function runIdleWarmups(sinceMs: number): Promise<number[]> {
   const refreshedAtIdleMs: number[] = [];
   let horizonRan = false;
-  for (let warmup = scheduledWarmup(); ; ) {
+  for (let warmup = scheduledWarmup(); ;) {
     vi.setSystemTime(warmup.cacheExpiresAtMs - WARMUP_MARGIN_MS);
     if (!horizonRan && Date.now() - sinceMs >= IDLE_HORIZON_MS) {
       await runCacheWarmup(scheduledHorizon());

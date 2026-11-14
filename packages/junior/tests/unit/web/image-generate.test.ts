@@ -47,8 +47,8 @@ function imageResponse(images = [PNG_BYTES]) {
 /** Fake AI Gateway that answers each image request in order. */
 function gatewayFetch(responses: Response[]) {
   const queue = [...responses];
-  return vi.fn(
-    async (_url: string | URL | Request, _init?: RequestInit) => queue.shift()!,
+  return vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+    queue.shift()!,
   );
 }
 

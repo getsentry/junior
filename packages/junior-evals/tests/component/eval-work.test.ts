@@ -24,13 +24,9 @@ describeEval(
     },
   },
   (it) => {
-    it.fails(
-      "joins work after the outer Vitest timeout",
-      async ({ run }) => {
-        await run(undefined);
-      },
-      50,
-    );
+    it.fails("joins work after the outer Vitest timeout", async ({ run }) => {
+      await run(undefined);
+    }, 50);
 
     it("starts the next case only after cleanup", () => {
       expect(cleaned).toBe(true);

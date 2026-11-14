@@ -6,7 +6,7 @@ Source: https://vercel.com/docs/queues/quickstart (Last updated January 30, 2026
 
 1. Install SDK: `pnpm i @vercel/queue`
 2. Link project and pull env for local auth:
-`vc link` then `vc env pull`
+   `vc link` then `vc env pull`
 3. Producer: call `send(topic, payload)` from server-side code.
 4. Consumer: export `POST = handleCallback(async (message, metadata) => { ... })`.
 5. Configure trigger in `vercel.json`:

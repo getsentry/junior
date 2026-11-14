@@ -173,7 +173,7 @@ export function transcriptListRows(input: {
     return true;
   };
 
-  for (let index = 0; index < entries.length; ) {
+  for (let index = 0; index < entries.length;) {
     const entry = entries[index]!;
     if (moveOut(entry)) {
       index += 1;

@@ -376,14 +376,12 @@ function createAgentMessageSteeringDrain(
             ?.piMessages ?? [];
         const messages = withoutSavedSteeringMessages(
           saved,
-          joining.map(
-            (candidate): AgentSteeringMessage => ({
-              kind: "runtime",
-              provenance: agentInvocationProvenance(candidate),
-              text: agentInvocationInputText(candidate),
-              timestampMs: candidate.createdAtMs,
-            }),
-          ),
+          joining.map((candidate): AgentSteeringMessage => ({
+            kind: "runtime",
+            provenance: agentInvocationProvenance(candidate),
+            text: agentInvocationInputText(candidate),
+            timestampMs: candidate.createdAtMs,
+          })),
           buildSteeringPiMessage,
         );
         // The Turn saves the messages before they are marked.

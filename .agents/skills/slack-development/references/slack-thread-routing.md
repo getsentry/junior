@@ -9,8 +9,10 @@ Deterministic routing pattern for subscribed-thread bots so mentions are handled
 1. Ignore messages from the bot itself.
 2. Normalize user text (strip only leading bot mention token/name forms).
 3. Use Chat SDK mention signal first:
+
 - in `onNewMention`, treat the event as explicit mention
 - in `onSubscribedMessage`, use `message.isMention === true` for explicit mention
+
 4. If explicit mention is true, reply immediately (skip passive classifier).
 5. If explicit mention is false, run passive reply classifier.
 6. If classifier errors, fail closed (`no reply`) and log a concrete reason.

@@ -431,14 +431,12 @@ export async function runCodeModeScript(
       return;
     }
 
-    const rawActions = accepted.map(
-      ({ call, tool }): ToolAction => ({
-        toolCallId: call.id,
-        toolName: call.toolName,
-        tool,
-        input: (call.input ?? {}) as Record<string, unknown>,
-      }),
-    );
+    const rawActions = accepted.map(({ call, tool }): ToolAction => ({
+      toolCallId: call.id,
+      toolName: call.toolName,
+      tool,
+      input: (call.input ?? {}) as Record<string, unknown>,
+    }));
     if (accepted.length > MAX_TOOL_ACTION_BATCH) {
       // The gate fails an oversized batch before any review. Refuse the
       // whole drain before hooks run, with the gate's error.

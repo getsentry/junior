@@ -204,9 +204,7 @@ function parseSni(record: Buffer): string | undefined {
 }
 
 /** Read until the first TLS record or HTTP request head is complete. */
-function peek(
-  socket: net.Socket,
-): Promise<{
+function peek(socket: net.Socket): Promise<{
   data: Buffer;
   host?: string | undefined;
   scheme: "http" | "https";

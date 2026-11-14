@@ -9,14 +9,14 @@ Implement queue producers and consumers using Vercel Queues docs and SDK contrac
 
 Choose one path before writing code:
 
-| Request type | Primary reference |
-| --- | --- |
-| First-time setup, minimal producer + consumer | `references/quickstart.md` |
-| SDK usage, options, retries, transport behavior | `references/sdk.md` |
-| API-level integration (custom clients, non-SDK consumers) | `references/api.md` |
-| Delivery semantics and architecture decisions | `references/concepts.md` |
-| Polling workers and mixed push/poll design | `references/poll-mode.md` |
-| Local setup and debugging | `references/local-dev.md` |
+| Request type                                              | Primary reference          |
+| --------------------------------------------------------- | -------------------------- |
+| First-time setup, minimal producer + consumer             | `references/quickstart.md` |
+| SDK usage, options, retries, transport behavior           | `references/sdk.md`        |
+| API-level integration (custom clients, non-SDK consumers) | `references/api.md`        |
+| Delivery semantics and architecture decisions             | `references/concepts.md`   |
+| Polling workers and mixed push/poll design                | `references/poll-mode.md`  |
+| Local setup and debugging                                 | `references/local-dev.md`  |
 
 If the task spans multiple categories, read only the relevant files above.
 

@@ -198,9 +198,8 @@ export function githubObjectFacts(
               .filter(Boolean),
             labels: data.labels
               ?.slice(0, 5)
-              .map(
-                (label) =>
-                  short(typeof label === "string" ? label : label.name)!,
+              .map((label) =>
+                short(typeof label === "string" ? label : label.name)!,
               )
               .filter(Boolean),
           },

@@ -67,7 +67,9 @@ export function createJwtBearerMcpClientProvider(
     codeVerifier: nonInteractive,
     prepareTokenRequest: async () => {
       if (!discovery) {
-        throw new Error("jwt-bearer token request requires discovered server metadata");
+        throw new Error(
+          "jwt-bearer token request requires discovered server metadata",
+        );
       }
       const privateKeyPem = process.env[auth.privateKeyEnv];
       if (!privateKeyPem) {

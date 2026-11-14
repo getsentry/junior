@@ -499,7 +499,7 @@ export function slackCallReplies(args: {
   };
   const extra: VisibleMessage[] = [];
   const replies: Reply[] = [];
-  for (let start = 0; start < args.posts.length; ) {
+  for (let start = 0; start < args.posts.length;) {
     let count = 0;
     const index = unmatched.findIndex((reply) => {
       count = postCount(start, reply);
@@ -529,16 +529,14 @@ function toTranscriptEvents(
   toolCalls: ToolCall[],
 ): TranscriptEvent[] {
   return [
-    ...messages.map(
-      (message): TranscriptEvent => ({
-        type: "message",
-        role: message.role,
-        content: message.content,
-        ...(message.author
-          ? { metadata: { author_name: message.author } }
-          : undefined),
-      }),
-    ),
+    ...messages.map((message): TranscriptEvent => ({
+      type: "message",
+      role: message.role,
+      content: message.content,
+      ...(message.author
+        ? { metadata: { author_name: message.author } }
+        : undefined),
+    })),
     ...toolCalls.flatMap((toolCall): TranscriptEvent[] => {
       const input = toJsonValue(toolCall.input);
       const output = toJsonValue(toolCall.output) ?? null;
