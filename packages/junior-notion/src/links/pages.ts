@@ -275,7 +275,7 @@ export const notionPageLinks: PluginObjectLinkDefinition = {
     { host: "*.notion.site" },
   ],
   canView: canViewNotionLink,
-  objectType: "document",
+  objectTypes: ["document"],
   resolve: resolveNotionLink,
   webPageFallback: true,
 };
