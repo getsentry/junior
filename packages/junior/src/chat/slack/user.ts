@@ -11,16 +11,16 @@ import {
 } from "@/chat/state/adapter";
 
 interface SlackUserLookupResult {
-  userName?: string;
-  fullName?: string;
-  email?: string;
+  userName?: string | undefined;
+  fullName?: string | undefined;
+  email?: string | undefined;
   /**
    * The photo that the person set. Slack's default photo is not included.
    * Do not copy it onto the Actor.
    */
   avatarUrl?: string;
   /** Slack profile timezone. Do not copy it onto the Actor. */
-  timezone?: string;
+  timezone?: string | undefined;
   /**
    * Whether the person is a Slack guest, who sees only the channels they
    * are in. Unset when Slack did not say.
@@ -170,8 +170,8 @@ export async function lookupSlackActor(
 
 /** Names that the dashboard shows for a mentioned Slack user. */
 export interface SlackUserNames {
-  fullName?: string;
-  userName?: string;
+  fullName?: string | undefined;
+  userName?: string | undefined;
 }
 
 // Most dashboard reads run on an instance that has never seen the user, so

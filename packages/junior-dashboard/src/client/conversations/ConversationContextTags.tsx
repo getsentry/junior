@@ -43,10 +43,10 @@ function singleGitHubRepository(annotations: Conversation["annotations"]) {
 
 /** A compact header tag: an icon and a label, optionally an outbound link. */
 export function ContextTag(props: {
-  className?: string;
+  className?: string | undefined;
   /** Text after the label that names the object, such as a pull request title. */
-  detail?: string;
-  href?: string;
+  detail?: string | undefined;
+  href?: string | undefined;
   icon: ReactNode;
   label: string;
   title?: string;

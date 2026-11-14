@@ -13,13 +13,13 @@ import {
 } from "@/chat/slack/timestamp";
 
 export interface SlackToolContext {
-  actor?: SlackActor;
+  actor?: SlackActor | undefined;
   destinationChannelId: SlackChannelId;
   locationChannelId: SlackChannelId;
-  messageChannelId?: SlackChannelId;
-  messageTs?: SlackMessageTs;
+  messageChannelId?: SlackChannelId | undefined;
+  messageTs?: SlackMessageTs | undefined;
   teamId: SlackTeamId;
-  threadTs?: SlackMessageTs;
+  threadTs?: SlackMessageTs | undefined;
 }
 
 /** Resolve Slack tool context from the Conversation Location. */

@@ -30,9 +30,9 @@ function slackSessionSource(threadTs: string) {
 
 const ORIGINAL_ENV = vi.hoisted(() => {
   const original = {
-    JUNIOR_STATE_ADAPTER: process.env.JUNIOR_STATE_ADAPTER,
+    JUNIOR_STATE_ADAPTER: process.env["JUNIOR_STATE_ADAPTER"],
   };
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
   return original;
 });
 
@@ -48,7 +48,7 @@ const agentRunnerShouldNotRun = neverRunAgentRunner();
 
 describe("paused turn scheduling", () => {
   beforeEach(async () => {
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
     await disconnectStateAdapter();
   });
 

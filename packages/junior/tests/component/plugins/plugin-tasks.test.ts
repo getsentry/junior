@@ -21,7 +21,7 @@ const destination = {
 function testPiMessages(messages: Array<Record<string, unknown>>): PiMessage[] {
   return messages.map((message, index) => {
     const timestamp = index + 1;
-    if (message.role === "assistant") {
+    if (message["role"] === "assistant") {
       return {
         api: "openai-responses",
         provider: "openai",
@@ -31,20 +31,20 @@ function testPiMessages(messages: Array<Record<string, unknown>>): PiMessage[] {
         timestamp,
         ...message,
         content:
-          typeof message.content === "string"
-            ? [{ type: "text", text: message.content }]
-            : message.content,
+          typeof message["content"] === "string"
+            ? [{ type: "text", text: message["content"] }]
+            : message["content"],
       } as PiMessage;
     }
-    if (message.role === "toolResult") {
+    if (message["role"] === "toolResult") {
       return {
         toolCallId: `test-call-${index}`,
         timestamp,
         ...message,
         content:
-          typeof message.content === "string"
-            ? [{ type: "text", text: message.content }]
-            : (message.content ?? []),
+          typeof message["content"] === "string"
+            ? [{ type: "text", text: message["content"] }]
+            : (message["content"] ?? []),
       } as PiMessage;
     }
     return { timestamp, ...message } as PiMessage;

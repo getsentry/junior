@@ -64,12 +64,12 @@ export async function handleSlackStop(args: {
   adapter: SlackAdapter;
   canonicalThreadId: string;
   conversationId: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   queue: ConversationWorkQueue;
   /** The message or button press that asked for the stop. */
-  request?: StopRequest;
+  request?: StopRequest | undefined;
   /** The Slack thread whose status the stop clears. */
-  slackThread?: { channelId: string; threadTs: string };
+  slackThread?: { channelId: string; threadTs: string } | undefined;
   state: StateAdapter;
   /** The `stop` keyword message. Omit it for the native stop button. */
   stopMessage?: { message: Message; stopReason: string };

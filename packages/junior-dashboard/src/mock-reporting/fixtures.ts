@@ -209,7 +209,7 @@ export function resetMockConversationViewerState(): void {
 function withMockViewerState<
   T extends { conversationId: string; displayTitle: string; status: string },
 >(
-  report: T & { archivedAt?: string | null },
+  report: T & { archivedAt?: string | null | undefined },
   pinConversationId = report.conversationId,
 ): T & {
   archivedAt: string | undefined;
@@ -3457,7 +3457,7 @@ function sumMockHoursIntoSixHours<T extends { date: string }>(
     bucket.setUTCHours(Math.floor(bucket.getUTCHours() / 6) * 6, 0, 0, 0);
     const key = bucket.toISOString().slice(0, 13);
     const current = bySix.get(key) ?? empty(key);
-    const next = { ...current, date: key } as T;
+    const next = { ...current, date: key };
     for (const [field, value] of Object.entries(hour)) {
       if (field === "date") continue;
       if (typeof value === "number") {
@@ -4029,7 +4029,7 @@ function mockRecentRuns(
   everyMs: number,
 ): AutomationSummary["recentRuns"] {
   const status = { b: "blocked", c: "completed", f: "failed" } as const;
-  return [...results].map((letter, index) => ({
+  return Array.from(results).map((letter, index) => ({
     durationMs: 30_000 + ((index * 37) % 50) * 1_000,
     executedAt: new Date(
       lastAtMs - (results.length - 1 - index) * everyMs,

@@ -141,7 +141,7 @@ export function filterEventLogRows(
 export function adjacentEventLogSeqs(
   rows: readonly EventLogRow[],
   seq: number | undefined,
-): { previous?: number; next?: number } {
+): { previous?: number | undefined; next?: number | undefined } {
   const index = rows.findIndex((row) => row.event.seq === seq);
   if (index === -1) return {};
   return {

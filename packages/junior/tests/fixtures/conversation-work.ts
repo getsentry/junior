@@ -230,7 +230,7 @@ export function observeConversationMutationLock(args: {
         const value = readProxyProperty(target, prop);
         return typeof value === "function" ? value.bind(target) : value;
       },
-    }) as StateAdapter,
+    }),
   };
 }
 
@@ -296,7 +296,7 @@ export function delayIndexLockOnce(state: StateAdapter): StateAdapter {
       const value = readProxyProperty(target, prop);
       return typeof value === "function" ? value.bind(target) : value;
     },
-  }) as StateAdapter;
+  });
 }
 
 /** Delay one conversation's mutation lock until the fake clock reaches a point. */
@@ -319,7 +319,7 @@ export function delayMutationLockUntil(args: {
       const value = readProxyProperty(target, prop);
       return typeof value === "function" ? value.bind(target) : value;
     },
-  }) as StateAdapter;
+  });
 }
 
 /** Build a signed Slack JSON webhook request for Slack ingress tests. */
@@ -334,7 +334,7 @@ export function slackEnvelope(input: {
   channel?: string;
   eventType?: "app_mention" | "message";
   text?: string;
-  threadTs?: string;
+  threadTs?: string | undefined;
   ts?: string;
   user?: string;
 }) {
@@ -619,7 +619,7 @@ export async function createConversationWorkSlackHarness(
     replies: () =>
       slackApiOutbox
         .messages()
-        .map((call) => call.params.text)
+        .map((call) => call.params["text"])
         .filter((text): text is string => typeof text === "string"),
     next: async (requestStartedAtMs?: number) => {
       const process = async () => await work.process(wakes.takeMessage());

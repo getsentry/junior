@@ -32,15 +32,15 @@ export interface PausedTurnRequest {
   conversationId: string;
   destination: Destination;
   expectedVersion: number;
-  traceContext?: TraceContext;
+  traceContext?: TraceContext | undefined;
   turnId: string;
 }
 
 interface TurnWakeOptions {
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
-  queue?: ConversationWorkQueue;
-  state?: StateAdapter;
+  queue?: ConversationWorkQueue | undefined;
+  state?: StateAdapter | undefined;
 }
 
 /** Look up and wake paused Turns without exposing queue or storage details. */
@@ -55,7 +55,7 @@ export interface PausedTurns {
 /** Build the worker input for a paused turn. */
 export async function getPausedTurnRequest(args: {
   conversationId: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   turnId: string;
 }): Promise<PausedTurnRequest | undefined> {
   const checkpoint = await loadTurnCheckpoint({

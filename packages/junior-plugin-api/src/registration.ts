@@ -32,7 +32,7 @@ export type PluginRegistrationInput = {
   model?: PluginModelConfig;
   /** URLs that this plugin shows as object cards. */
   objectLinks?: PluginObjectLinkDefinition[];
-  packageName?: string;
+  packageName?: string | undefined;
   events?: PluginEvents;
   tasks?: PluginTasks;
   userPages?: PluginUserPageDefinition[];

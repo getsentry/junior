@@ -55,11 +55,11 @@ function parseTimestamp(
 }
 
 async function resolveSearchFilters(input: {
-  after?: string | null;
-  annotation?: string | null;
-  before?: string | null;
-  channel_id?: string | null;
-  query?: string | null;
+  after?: string | null | undefined;
+  annotation?: string | null | undefined;
+  before?: string | null | undefined;
+  channel_id?: string | null | undefined;
+  query?: string | null | undefined;
   teamId: SlackTeamId;
 }): Promise<ConversationMessageSearchFilters> {
   const query = input.query?.trim() || undefined;

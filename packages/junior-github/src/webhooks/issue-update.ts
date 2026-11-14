@@ -46,7 +46,7 @@ type IssueUpdateWebhook = z.output<typeof issueUpdateWebhookSchema>;
  */
 function describeIssueUpdate(delivery: IssueUpdateWebhook): {
   change: string;
-  untrustedText?: string;
+  untrustedText?: string | undefined;
 } {
   const assignee = nonBlank(delivery.assignee?.login);
   switch (delivery.action) {

@@ -13,7 +13,11 @@ import {
 import { cn } from "../styles";
 
 /** Align recorded token counts with their costs without adding overlapping counters. */
-export function EventUsage({ usage }: { usage?: ConversationUsage }) {
+export function EventUsage({
+  usage,
+}: {
+  usage?: ConversationUsage | undefined;
+}) {
   const cost = summarizeCost(usage);
   const rows = [
     { label: "Input", tokens: usage?.inputTokens, cost: usage?.cost?.input },
@@ -97,9 +101,9 @@ export function EventUsage({ usage }: { usage?: ConversationUsage }) {
 }
 
 function UsageRow(props: {
-  cost?: number;
+  cost?: number | undefined;
   label: string;
-  tokens?: number;
+  tokens?: number | undefined;
   total?: boolean;
 }) {
   return (

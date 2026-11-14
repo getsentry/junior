@@ -14,22 +14,22 @@ function sanitizeEntry(value: unknown): ConfigEntry | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
-  const key = toOptionalString(value.key);
+  const key = toOptionalString(value["key"]);
   if (!key || validateConfigKey(key)) {
     return undefined;
   }
-  const updatedAt = toOptionalString(value.updatedAt);
+  const updatedAt = toOptionalString(value["updatedAt"]);
   if (!updatedAt) {
     return undefined;
   }
   if (
-    value.scope !== "channel" &&
-    value.scope !== "conversation" &&
-    value.scope !== "location"
+    value["scope"] !== "channel" &&
+    value["scope"] !== "conversation" &&
+    value["scope"] !== "location"
   ) {
     return undefined;
   }
-  const parsedValue = configValueSchema.safeParse(value.value);
+  const parsedValue = configValueSchema.safeParse(value["value"]);
   if (!parsedValue.success) {
     return undefined;
   }
@@ -38,18 +38,17 @@ function sanitizeEntry(value: unknown): ConfigEntry | undefined {
     value: parsedValue.data,
     scope: "location",
     updatedAt,
-    updatedBy: toOptionalString(value.updatedBy),
-    source: toOptionalString(value.source),
-    expiresAt: toOptionalString(value.expiresAt),
+    updatedBy: toOptionalString(value["updatedBy"]),
+    source: toOptionalString(value["source"]),
+    expiresAt: toOptionalString(value["expiresAt"]),
   };
 }
 
 /** Coerce legacy persisted configuration into current Location entries. */
 export function coerceLegacyLocationConfig(raw: unknown): ConfigEntry[] {
-  const rawConfig = isRecord(raw) && isRecord(raw.configuration)
-    ? raw.configuration
-    : {};
-  const rawEntries = isRecord(rawConfig.entries) ? rawConfig.entries : {};
+  const rawConfig =
+    isRecord(raw) && isRecord(raw["configuration"]) ? raw["configuration"] : {};
+  const rawEntries = isRecord(rawConfig["entries"]) ? rawConfig["entries"] : {};
   return Object.values(rawEntries).flatMap((value) => {
     const entry = sanitizeEntry(value);
     return entry ? [entry] : [];
@@ -106,7 +105,9 @@ export function createLocationConfigurationService(
     options: { keys?: string[]; prefix?: string } = {},
   ): ReturnType<LocationConfigurationService["resolveValues"]> => {
     const keys = options.keys?.map((key) => key.trim()).filter(Boolean);
-    const entries = await list(options.prefix ? { prefix: options.prefix } : {});
+    const entries = await list(
+      options.prefix ? { prefix: options.prefix } : {},
+    );
     return Object.fromEntries(
       entries
         .filter((entry) => !keys || keys.includes(entry.key))

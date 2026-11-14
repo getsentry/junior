@@ -7,23 +7,23 @@
 
 /** Read the server secret that signs internal tokens and payloads. */
 export function readJuniorSecret(): string | undefined {
-  return process.env.JUNIOR_SECRET?.trim() || undefined;
+  return process.env["JUNIOR_SECRET"]?.trim() || undefined;
 }
 
 /** Read the raw dashboard session secret, with `JUNIOR_SECRET` as fallback. */
 export function readSignInSecret(): string | undefined {
-  return process.env.BETTER_AUTH_SECRET ?? process.env.JUNIOR_SECRET;
+  return process.env["BETTER_AUTH_SECRET"] ?? process.env["JUNIOR_SECRET"];
 }
 
 /** Read the bearer secret that internal cron requests must send. */
 export function readSchedulerSecret(): string | undefined {
   return (
-    process.env.JUNIOR_SCHEDULER_SECRET?.trim() ||
-    process.env.CRON_SECRET?.trim()
+    process.env["JUNIOR_SCHEDULER_SECRET"]?.trim() ||
+    process.env["CRON_SECRET"]?.trim()
   );
 }
 
 /** Read the VAPID private key that signs web push messages. */
 export function readWebPushPrivateKey(): string | undefined {
-  return process.env.JUNIOR_WEB_PUSH_PRIVATE_KEY?.trim();
+  return process.env["JUNIOR_WEB_PUSH_PRIVATE_KEY"]?.trim();
 }

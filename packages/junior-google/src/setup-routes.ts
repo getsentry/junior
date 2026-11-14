@@ -71,7 +71,7 @@ function htmlPage(
 /** Public URL of this plugin's OAuth callback. */
 export function googleCallbackUrl(request: Request): string {
   const base =
-    process.env.JUNIOR_BASE_URL?.trim() || new URL(request.url).origin;
+    process.env["JUNIOR_BASE_URL"]?.trim() || new URL(request.url).origin;
   return new URL(
     `${GOOGLE_PLUGIN_ROUTE_PREFIX}/oauth/callback`,
     base.endsWith("/") ? base : `${base}/`,
@@ -84,7 +84,7 @@ function adminEmail(
 ): string | undefined {
   const user = context?.auth.user;
   const email = user?.email?.trim().toLowerCase();
-  if (!email || user?.emailVerified !== true || user.isAdmin !== true) {
+  if (!email || user?.emailVerified !== true || !user.isAdmin) {
     return undefined;
   }
   return email;

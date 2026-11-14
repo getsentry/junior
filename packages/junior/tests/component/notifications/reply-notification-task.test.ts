@@ -163,9 +163,9 @@ describe("reply notification task", () => {
   beforeEach(async () => {
     for (const name of ENV_NAMES) savedEnv.set(name, process.env[name]);
     const keys = webPush.generateVAPIDKeys();
-    process.env.JUNIOR_WEB_PUSH_PUBLIC_KEY = keys.publicKey;
-    process.env.JUNIOR_WEB_PUSH_PRIVATE_KEY = keys.privateKey;
-    process.env.JUNIOR_WEB_PUSH_SUBJECT = "mailto:junior@example.com";
+    process.env["JUNIOR_WEB_PUSH_PUBLIC_KEY"] = keys.publicKey;
+    process.env["JUNIOR_WEB_PUSH_PRIVATE_KEY"] = keys.privateKey;
+    process.env["JUNIOR_WEB_PUSH_SUBJECT"] = "mailto:junior@example.com";
     previousLinks = setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
     });

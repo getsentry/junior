@@ -147,28 +147,28 @@ export interface TurnRecord {
    * TODO(dcramer): Make this field required after no deployed Turn cursor can
    * omit Actor.
    */
-  actor?: Actor;
+  actor?: Actor | undefined;
   /** Identity id of `actor`, the Actor that started this Turn. */
-  actorIdentityId?: string;
-  channelName?: string;
+  actorIdentityId?: string | undefined;
+  channelName?: string | undefined;
   /** Delegated subject the Turn started with. Resume must verify it again. */
-  credentialSubject?: CredentialSubject;
+  credentialSubject?: CredentialSubject | undefined;
   schemaVersion: 2;
   version: number;
   conversationId: string;
   cumulativeDurationMs: number;
   /** Tool calls charged to this turn; survives history replacement. */
-  cumulativeToolCallCount?: number;
-  cumulativeUsage?: AgentTurnUsage;
+  cumulativeToolCallCount?: number | undefined;
+  cumulativeUsage?: AgentTurnUsage | undefined;
   /** The turn limit already blocked one step; survives history replacement. */
-  turnLimitWrappedUp?: boolean;
+  turnLimitWrappedUp?: boolean | undefined;
   /** Times recovery resumed this turn after its worker stopped checking in. */
-  lostWorkerResumeCount?: number;
-  dispatchId?: string;
-  dispatchOutcome?: AgentDispatchOutcome;
+  lostWorkerResumeCount?: number | undefined;
+  dispatchId?: string | undefined;
+  dispatchOutcome?: AgentDispatchOutcome | undefined;
   /** Provider-owned identifier returned after visible delivery is accepted. */
-  resultMessageId?: string;
-  errorMessage?: string;
+  resultMessageId?: string | undefined;
+  errorMessage?: string | undefined;
   lastProgressAtMs: number;
   piMessages: PiMessage[];
   /** Per-message provenance aligned one-to-one with `piMessages`. */
@@ -186,33 +186,33 @@ export interface TurnRecord {
    * replaces the singular execution actor, which is rebuilt at resume.
    */
   actors: Actor[];
-  resumeReason?: TurnPauseReason;
+  resumeReason?: TurnPauseReason | undefined;
   /** Input that started this Turn; absent only on stored legacy cursors. */
-  source?: Source;
-  resumedFromSliceId?: number;
+  source?: Source | undefined;
+  resumedFromSliceId?: number | undefined;
   turnId: string;
   sliceId: number;
   startedAtMs: number;
   state: TurnStatus;
-  surface?: AgentTurnSurface;
+  surface?: AgentTurnSurface | undefined;
   /** Trace of the first saved slice. Resumed slices continue it. */
-  traceContext?: TraceContext;
-  turnStartMessageIndex?: number;
+  traceContext?: TraceContext | undefined;
+  turnStartMessageIndex?: number | undefined;
   updatedAtMs: number;
 }
 
 export interface TurnSummary {
   schemaVersion: 2;
   conversationId: string;
-  dispatchId?: string;
-  dispatchOutcome?: AgentDispatchOutcome;
+  dispatchId?: string | undefined;
+  dispatchOutcome?: AgentDispatchOutcome | undefined;
   /** Provider-owned identifier returned after visible delivery is accepted. */
-  resultMessageId?: string;
-  resumeReason?: TurnPauseReason;
+  resultMessageId?: string | undefined;
+  resumeReason?: TurnPauseReason | undefined;
   turnId: string;
   sliceId: number;
   state: TurnStatus;
-  surface?: AgentTurnSurface;
+  surface?: AgentTurnSurface | undefined;
   updatedAtMs: number;
   version: number;
 }
@@ -228,25 +228,25 @@ interface StoredTurnRecord extends Omit<
   | "turnStartMessageIndex"
 > {
   /** Redis field kept for deployed workers that still read publishExternally. */
-  publishExternally?: boolean;
+  publishExternally?: boolean | undefined;
   /**
    * `seq` of the last event in `junior_conversation_events` whose projection reproduces
    * this record's committed Pi messages; -1 when nothing was committed.
    */
   committedSeq: number;
   /** History version that owns `committedSeq`. */
-  historyVersion?: number;
+  historyVersion?: number | undefined;
   /**
    * `seq` boundary where this turn's fresh prompt starts: the seq of the last
    * projected message before the prompt, or -1 when the turn starts the epoch.
    */
-  turnStartSeq?: number;
+  turnStartSeq?: number | undefined;
   /**
    * Old cursors can contain model context that SQL did not retain. Parse the
    * field so those cursors remain readable, but do not add it back during
    * resume. Adding it would rewrite the committed history prefix.
    */
-  runtimeContext?: PiMessage[];
+  runtimeContext?: PiMessage[] | undefined;
 }
 
 const turnStatusSchema = z.enum([
@@ -397,13 +397,13 @@ async function appendTurnSummary(
 /** Store run summary metadata in the configured conversation store. */
 async function recordConversationActivityMetadata(args: {
   /** Live execution actor for SQL dual-write only; never stored in Redis. */
-  actor?: Actor;
+  actor?: Actor | undefined;
   /** Identity of the Turn Actor, for the Turn's metric rows. */
-  actorIdentityId?: string;
-  conversationStore?: ConversationStore;
-  destination?: Destination;
+  actorIdentityId?: string | undefined;
+  conversationStore?: ConversationStore | undefined;
+  destination?: Destination | undefined;
   /** Confirmed destination visibility; omit when unavailable. */
-  destinationVisibility?: ConversationPrivacy;
+  destinationVisibility?: ConversationPrivacy | undefined;
   nowMs: number;
   /**
    * Structured inbound Source for SQL conversation metadata.
@@ -411,11 +411,11 @@ async function recordConversationActivityMetadata(args: {
    * conversation store's `sessionSource` field below because that store also
    * has a separate coarse `source` enum (slack/api/scheduler/...).
    */
-  source?: Source;
+  source?: Source | undefined;
   summary: TurnSummary & {
-    channelName?: string;
+    channelName?: string | undefined;
     cumulativeDurationMs: number;
-    cumulativeUsage?: AgentTurnUsage;
+    cumulativeUsage?: AgentTurnUsage | undefined;
     startedAtMs: number;
   };
 }): Promise<void> {
@@ -481,9 +481,9 @@ async function recordConversationActivityMetadata(args: {
 
 /** SQL-backed conversation metrics attached when materializing a turn cursor. */
 interface ConversationRuntimeMetrics {
-  channelName?: string;
-  cumulativeDurationMs?: number;
-  cumulativeUsage?: AgentTurnUsage;
+  channelName?: string | undefined;
+  cumulativeDurationMs?: number | undefined;
+  cumulativeUsage?: AgentTurnUsage | undefined;
 }
 
 function materializeTurnRecord(
@@ -644,32 +644,32 @@ export async function getTurnRecordForResume(
 
 /** Build the storage record that advances optimistic resume versioning. */
 function buildStoredRecord(args: {
-  actor?: Actor;
-  actorIdentityId?: string;
+  actor?: Actor | undefined;
+  actorIdentityId?: string | undefined;
   conversationId: string;
-  credentialSubject?: CredentialSubject;
-  dispatchId?: string;
-  dispatchOutcome?: AgentDispatchOutcome;
-  resultMessageId?: string;
+  credentialSubject?: CredentialSubject | undefined;
+  dispatchId?: string | undefined;
+  dispatchOutcome?: AgentDispatchOutcome | undefined;
+  resultMessageId?: string | undefined;
   committedSeq: number;
-  historyVersion?: number;
+  historyVersion?: number | undefined;
   lastProgressAtMs?: number;
-  previousVersion?: number;
+  previousVersion?: number | undefined;
   turnId: string;
   sliceId: number;
-  startedAtMs?: number;
+  startedAtMs?: number | undefined;
   state: TurnStatus;
-  surface?: AgentTurnSurface;
-  resumeReason?: TurnPauseReason;
-  publishExternally?: boolean;
-  source?: Source;
-  errorMessage?: string;
-  resumedFromSliceId?: number;
-  traceContext?: TraceContext;
-  cumulativeToolCallCount?: number;
-  turnLimitWrappedUp?: boolean;
-  lostWorkerResumeCount?: number;
-  turnStartSeq?: number;
+  surface?: AgentTurnSurface | undefined;
+  resumeReason?: TurnPauseReason | undefined;
+  publishExternally?: boolean | undefined;
+  source?: Source | undefined;
+  errorMessage?: string | undefined;
+  resumedFromSliceId?: number | undefined;
+  traceContext?: TraceContext | undefined;
+  cumulativeToolCallCount?: number | undefined;
+  turnLimitWrappedUp?: boolean | undefined;
+  lostWorkerResumeCount?: number | undefined;
+  turnStartSeq?: number | undefined;
 }): StoredTurnRecord {
   const nowMs = Date.now();
   return {
@@ -707,26 +707,26 @@ function buildStoredRecord(args: {
 }
 
 async function setStoredRecord(args: {
-  actor?: Actor;
-  conversationStore?: ConversationStore;
-  destination?: Destination;
+  actor?: Actor | undefined;
+  conversationStore?: ConversationStore | undefined;
+  destination?: Destination | undefined;
   /** Confirmed destination visibility; omit when unavailable. */
-  destinationVisibility?: ConversationPrivacy;
+  destinationVisibility?: ConversationPrivacy | undefined;
   piMessages: PiMessage[];
   piMessageProvenance: ConversationMessageProvenance[];
   record: StoredTurnRecord;
   /** Channel + execution metrics written beside the Redis resume cursor. */
   runtimeMetrics: {
-    channelName?: string;
+    channelName?: string | undefined;
     cumulativeDurationMs: number;
-    cumulativeUsage?: AgentTurnUsage;
+    cumulativeUsage?: AgentTurnUsage | undefined;
   };
-  source?: Source;
+  source?: Source | undefined;
   /** Per-record TTL (state-split). */
   ttlMs: number;
   /** Recovery index TTL override; defaults to the resume window. */
   indexTtlMs?: number;
-  turnStartMessageIndex?: number;
+  turnStartMessageIndex?: number | undefined;
   fence: () => Promise<void>;
 }): Promise<TurnRecord> {
   const stateAdapter = getStateAdapter();
@@ -778,9 +778,9 @@ async function setStoredRecord(args: {
  */
 async function updateTurnState(args: {
   existing: TurnRecord;
-  errorMessage?: string;
+  errorMessage?: string | undefined;
   fence: () => Promise<void>;
-  resultMessageId?: string;
+  resultMessageId?: string | undefined;
   state: "abandoned" | "completed" | "failed";
 }): Promise<TurnRecord | undefined> {
   // A finished Turn cannot resume. The parent span shows which path
@@ -870,39 +870,39 @@ async function writeTurnState(
  * `TurnAlreadyFinishedError`.
  */
 export async function upsertTurnRecord(args: {
-  channelName?: string;
+  channelName?: string | undefined;
   conversationId: string;
-  credentialSubject?: CredentialSubject;
-  cumulativeDurationMs?: number;
-  cumulativeToolCallCount?: number;
-  cumulativeUsage?: AgentTurnUsage;
-  turnLimitWrappedUp?: boolean;
-  lostWorkerResumeCount?: number;
-  destination?: Destination;
-  dispatchId?: string;
-  dispatchOutcome?: AgentDispatchOutcome;
-  resultMessageId?: string;
+  credentialSubject?: CredentialSubject | undefined;
+  cumulativeDurationMs?: number | undefined;
+  cumulativeToolCallCount?: number | undefined;
+  cumulativeUsage?: AgentTurnUsage | undefined;
+  turnLimitWrappedUp?: boolean | undefined;
+  lostWorkerResumeCount?: number | undefined;
+  destination?: Destination | undefined;
+  dispatchId?: string | undefined;
+  dispatchOutcome?: AgentDispatchOutcome | undefined;
+  resultMessageId?: string | undefined;
   /** Confirmed destination visibility; omit when unavailable. */
-  destinationVisibility?: ConversationPrivacy;
-  source?: Source;
+  destinationVisibility?: ConversationPrivacy | undefined;
+  source?: Source | undefined;
   lastProgressAtMs?: number;
   conversationStore?: ConversationStore;
   turnId: string;
   sliceId: number;
   state: TurnStatus;
-  surface?: AgentTurnSurface;
+  surface?: AgentTurnSurface | undefined;
   piMessages: PiMessage[];
   /** Projection from the record read before this write; see `TurnRecord`. */
-  storedProjection?: StoredProjection;
+  storedProjection?: StoredProjection | undefined;
   /** Provenance for trailing newly committed messages, such as steering. */
-  trailingMessageProvenance?: ConversationMessageProvenance[];
-  actor?: Actor;
+  trailingMessageProvenance?: ConversationMessageProvenance[] | undefined;
+  actor?: Actor | undefined;
   resumeReason?: TurnPauseReason;
-  errorMessage?: string;
-  resumedFromSliceId?: number;
-  traceContext?: TraceContext;
-  turnContexts?: PluginTurnContext[];
-  turnStartMessageIndex?: number;
+  errorMessage?: string | undefined;
+  resumedFromSliceId?: number | undefined;
+  traceContext?: TraceContext | undefined;
+  turnContexts?: PluginTurnContext[] | undefined;
+  turnStartMessageIndex?: number | undefined;
   ttlMs?: number;
 }): Promise<TurnRecord> {
   return await withTurnCursorMutation(
@@ -1080,26 +1080,26 @@ async function upsertTurnRecordLocked(
 }
 
 type TurnSummaryWrite = {
-  channelName?: string;
+  channelName?: string | undefined;
   conversationId: string;
-  cumulativeDurationMs?: number;
-  cumulativeUsage?: AgentTurnUsage;
-  destination?: Destination;
-  dispatchId?: string;
+  cumulativeDurationMs?: number | undefined;
+  cumulativeUsage?: AgentTurnUsage | undefined;
+  destination?: Destination | undefined;
+  dispatchId?: string | undefined;
   dispatchOutcome?: AgentDispatchOutcome;
   resultMessageId?: string;
-  destinationVisibility?: ConversationPrivacy;
-  source?: Source;
+  destinationVisibility?: ConversationPrivacy | undefined;
+  source?: Source | undefined;
   lastProgressAtMs?: number;
   conversationStore?: ConversationStore;
-  actor?: Actor;
+  actor?: Actor | undefined;
   resumeReason?: TurnPauseReason;
   turnId: string;
   sliceId: number;
   startedAtMs?: number;
   state: TurnStatus;
-  surface?: AgentTurnSurface;
-  traceId?: string;
+  surface?: AgentTurnSurface | undefined;
+  traceId?: string | undefined;
   ttlMs?: number;
 };
 
@@ -1272,7 +1272,7 @@ export async function abandonTurnRecord(args: {
 export async function completeTurnRecord(args: {
   conversationId: string;
   expectedVersion: number;
-  resultMessageId?: string;
+  resultMessageId?: string | undefined;
   turnId: string;
 }): Promise<TurnRecord | undefined> {
   return await withTurnCursorMutation(

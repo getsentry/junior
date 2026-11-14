@@ -62,7 +62,7 @@ export function shouldKeepProcessingReactionForToolInvocation(
 ): boolean {
   return (
     input.toolName === "addReaction" &&
-    isProcessingReactionEmoji(input.params.emoji)
+    isProcessingReactionEmoji(input.params["emoji"])
   );
 }
 
@@ -93,7 +93,7 @@ export async function startProcessingReaction(args: {
 export async function startProcessingReactionForMessage(args: {
   channelId: string;
   timestamp: SlackMessageTs;
-  timeoutMs?: number;
+  timeoutMs?: number | undefined;
 }): Promise<ProcessingReaction> {
   try {
     await addReactionToMessage({

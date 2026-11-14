@@ -28,9 +28,9 @@ export type UsageCardSplit = {
 
 export type UsageCardProps = {
   /** Muted detail after the title, such as a compaction count. */
-  note?: string;
+  note?: string | undefined;
   sections: UsageCardSection[];
-  split?: UsageCardSplit;
+  split?: UsageCardSplit | undefined;
   title: string;
   total: string;
 };

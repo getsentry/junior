@@ -32,8 +32,10 @@ export async function requestGitHubReviewersWhenReady(args: {
   deliveryId: string;
   env: GitHubInstallationEnv;
   eventName: string;
-  loadGitHubLogin?(identityId: string): Promise<string | undefined>;
-  log?: Pick<PluginLogger, "warn">;
+  loadGitHubLogin?:
+    | ((identityId: string) => Promise<string | undefined>)
+    | undefined;
+  log?: Pick<PluginLogger, "warn"> | undefined;
   state: PluginState;
 }): Promise<void> {
   if (args.eventName !== "pull_request") return;

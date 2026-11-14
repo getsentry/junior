@@ -33,27 +33,27 @@ export type OAuthStatePayload = {
   userId: string;
   provider: string;
   actor?: Actor;
-  channelId?: string;
+  channelId?: string | undefined;
   destination?: Destination;
   source?: Source;
-  threadTs?: string;
-  resumeConversationId?: string;
-  resumeSessionId?: string;
-  scope?: string;
+  threadTs?: string | undefined;
+  resumeConversationId?: string | undefined;
+  resumeSessionId?: string | undefined;
+  scope?: string | undefined;
 };
 
 type OAuthFlowInput = {
   actorId: string;
   actor?: Actor;
-  channelId?: string;
-  destination?: Destination;
-  source?: Source;
-  threadTs?: string;
+  channelId?: string | undefined;
+  destination?: Destination | undefined;
+  source?: Source | undefined;
+  threadTs?: string | undefined;
   activeSkillName?: string;
-  resumeConversationId?: string;
-  resumeSessionId?: string;
+  resumeConversationId?: string | undefined;
+  resumeSessionId?: string | undefined;
   scope?: string;
-  authorization?: OAuthAuthorization;
+  authorization?: OAuthAuthorization | undefined;
 };
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -69,45 +69,50 @@ export function parseOAuthStatePayload(
   if (!isRecord(value)) {
     return undefined;
   }
-  if (typeof value.userId !== "string" || typeof value.provider !== "string") {
+  if (
+    typeof value["userId"] !== "string" ||
+    typeof value["provider"] !== "string"
+  ) {
     return undefined;
   }
   const actor =
-    value.actor === undefined ? undefined : actorSchema.safeParse(value.actor);
-  if (value.actor !== undefined && (!actor || !actor.success)) {
+    value["actor"] === undefined
+      ? undefined
+      : actorSchema.safeParse(value["actor"]);
+  if (value["actor"] !== undefined && (!actor || !actor.success)) {
     return undefined;
   }
-  const destination = parseDestination(value.destination);
-  if (value.destination !== undefined && !destination) {
+  const destination = parseDestination(value["destination"]);
+  if (value["destination"] !== undefined && !destination) {
     return undefined;
   }
   const source =
-    value.source === undefined
+    value["source"] === undefined
       ? undefined
-      : sourceSchema.safeParse(value.source);
-  if (value.source !== undefined && (!source || !source.success)) {
+      : sourceSchema.safeParse(value["source"]);
+  if (value["source"] !== undefined && (!source || !source.success)) {
     return undefined;
   }
   return {
-    userId: value.userId,
-    provider: value.provider,
+    userId: value["userId"],
+    provider: value["provider"],
     ...(actor?.success ? { actor: actor.data } : undefined),
-    ...(optionalString(value.channelId)
-      ? { channelId: optionalString(value.channelId) }
+    ...(optionalString(value["channelId"])
+      ? { channelId: optionalString(value["channelId"]) }
       : undefined),
     ...(destination ? { destination } : undefined),
     ...(source?.success ? { source: source.data } : undefined),
-    ...(optionalString(value.threadTs)
-      ? { threadTs: optionalString(value.threadTs) }
+    ...(optionalString(value["threadTs"])
+      ? { threadTs: optionalString(value["threadTs"]) }
       : undefined),
-    ...(optionalString(value.resumeConversationId)
-      ? { resumeConversationId: optionalString(value.resumeConversationId) }
+    ...(optionalString(value["resumeConversationId"])
+      ? { resumeConversationId: optionalString(value["resumeConversationId"]) }
       : undefined),
-    ...(optionalString(value.resumeSessionId)
-      ? { resumeSessionId: optionalString(value.resumeSessionId) }
+    ...(optionalString(value["resumeSessionId"])
+      ? { resumeSessionId: optionalString(value["resumeSessionId"]) }
       : undefined),
-    ...(optionalString(value.scope)
-      ? { scope: optionalString(value.scope) }
+    ...(optionalString(value["scope"])
+      ? { scope: optionalString(value["scope"]) }
       : undefined),
   };
 }
@@ -123,11 +128,11 @@ export function formatProviderLabel(provider: string): string {
 
 /** Resolve the public base URL from environment variables (JUNIOR_BASE_URL or Vercel). */
 export function resolveBaseUrl(): string | undefined {
-  const explicit = process.env.JUNIOR_BASE_URL?.trim();
+  const explicit = process.env["JUNIOR_BASE_URL"]?.trim();
   if (explicit) return explicit;
-  const vercelProd = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  const vercelProd = process.env["VERCEL_PROJECT_PRODUCTION_URL"]?.trim();
   if (vercelProd) return `https://${vercelProd}`;
-  const vercelUrl = process.env.VERCEL_URL?.trim();
+  const vercelUrl = process.env["VERCEL_URL"]?.trim();
   if (vercelUrl) return `https://${vercelUrl}`;
   return undefined;
 }
@@ -137,8 +142,8 @@ export function resolveBaseUrl(): string | undefined {
  * Try in-context private delivery first, then fall back to a DM.
  */
 export async function deliverPrivateMessage(input: {
-  channelId?: string;
-  threadTs?: string;
+  channelId?: string | undefined;
+  threadTs?: string | undefined;
   userId: string;
   text: string;
   blocks?: KnownBlock[];
@@ -215,9 +220,9 @@ export async function deliverPrivateMessage(input: {
 export async function deliverOAuthAuthorization(
   request: OAuthAuthorizationRequest,
   input: {
-    authorization?: OAuthAuthorization;
-    channelId?: string;
-    threadTs?: string;
+    authorization?: OAuthAuthorization | undefined;
+    channelId?: string | undefined;
+    threadTs?: string | undefined;
     userId: string;
   },
 ): Promise<PrivateDeliveryResult> {

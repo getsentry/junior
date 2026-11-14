@@ -12,7 +12,7 @@ export interface StartConversationTurnInput {
   inputMessageIds: string[];
   surface: "slack" | "api" | "scheduler" | "internal";
   /** Highest Message seq known when the Turn built its thread context. */
-  threadContextThroughSeq?: number;
+  threadContextThroughSeq?: number | undefined;
   turnId: string;
 }
 

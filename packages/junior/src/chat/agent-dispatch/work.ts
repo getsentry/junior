@@ -370,6 +370,8 @@ async function projectDispatchTurnResult(
     case "completed":
       await markDispatchCompleted(dispatchId, result.resultMessageTs);
       break;
+    case undefined:
+      break;
   }
 }
 

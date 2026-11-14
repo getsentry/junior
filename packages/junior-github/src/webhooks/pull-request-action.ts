@@ -223,7 +223,9 @@ async function syncOne(
   args: {
     db: GitHubDb;
     env: GitHubInstallationEnv;
-    loadGitHubLogin?(identityId: string): Promise<string | undefined>;
+    loadGitHubLogin?:
+      | ((identityId: string) => Promise<string | undefined>)
+      | undefined;
     reviewItems: PluginConversationReviewItems;
   },
   target: GitHubPullRequestTarget,
@@ -317,8 +319,10 @@ export async function syncGitHubPullRequestActions(args: {
   db: GitHubDb;
   deliveryId: string;
   env: GitHubInstallationEnv;
-  loadGitHubLogin?(identityId: string): Promise<string | undefined>;
-  log?: Pick<PluginLogger, "error" | "warn">;
+  loadGitHubLogin?:
+    | ((identityId: string) => Promise<string | undefined>)
+    | undefined;
+  log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   reviewItems: PluginConversationReviewItems;
   targets: GitHubPullRequestTarget[];
 }): Promise<void> {

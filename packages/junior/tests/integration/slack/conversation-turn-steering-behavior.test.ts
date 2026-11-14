@@ -56,7 +56,7 @@ function failFirstStopRequest(state: StateAdapter): StateAdapter {
       const value = readProxyProperty(target, prop);
       return typeof value === "function" ? value.bind(target) : value;
     },
-  }) as StateAdapter;
+  });
 }
 
 /**
@@ -96,7 +96,7 @@ function failNextConversationRecord(state: StateAdapter) {
         const value = readProxyProperty(target, prop);
         return typeof value === "function" ? value.bind(target) : value;
       },
-    }) as StateAdapter,
+    }),
   };
 }
 
@@ -123,7 +123,7 @@ function failNextExecutionWrite(store: ConversationStore) {
         const value = readProxyProperty(target, prop);
         return typeof value === "function" ? value.bind(target) : value;
       },
-    }) as ConversationStore,
+    }),
   };
 }
 
@@ -182,16 +182,16 @@ function statusClears() {
     .calls("assistant.threads.setStatus")
     .filter(
       (call) =>
-        call.params.channel_id === CHANNEL_ID &&
-        call.params.thread_ts === THREAD_TS &&
-        call.params.status === "",
+        call.params["channel_id"] === CHANNEL_ID &&
+        call.params["thread_ts"] === THREAD_TS &&
+        call.params["status"] === "",
     );
 }
 
 function stopAcks() {
   return slackApiOutbox
     .messages()
-    .filter((call) => call.params.text === SLACK_STOP_ACK);
+    .filter((call) => call.params["text"] === SLACK_STOP_ACK);
 }
 
 /** Start a queued mention Turn with a running child agent in the thread. */

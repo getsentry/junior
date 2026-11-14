@@ -283,9 +283,7 @@ function ScheduleForm({ settings }: { settings: NotificationSettings }) {
         <Checkbox
           checked={followSlack}
           id="notification-follow-slack"
-          onCheckedChange={(checked) =>
-            update({ followSlack: checked === true })
-          }
+          onCheckedChange={(checked) => update({ followSlack: checked })}
         />
         <FieldLabel className="font-normal" htmlFor="notification-follow-slack">
           Follow my Slack notification schedule
@@ -302,9 +300,7 @@ function ScheduleForm({ settings }: { settings: NotificationSettings }) {
         <Checkbox
           checked={draft.workingHoursOnly}
           id="notification-working-hours-only"
-          onCheckedChange={(checked) =>
-            update({ workingHoursOnly: checked === true })
-          }
+          onCheckedChange={(checked) => update({ workingHoursOnly: checked })}
         />
         <FieldLabel
           className="font-normal"

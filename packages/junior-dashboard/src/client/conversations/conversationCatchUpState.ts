@@ -19,7 +19,7 @@ const CATCH_UP_MIN_TURNS = 2;
 
 /** The catch-up offer for the unread range of one Conversation visit. */
 export type ConversationCatchUpState = {
-  data?: ConversationCatchUp;
+  data?: ConversationCatchUp | undefined;
   error: boolean;
   pending: boolean;
   request(): void;
@@ -88,10 +88,10 @@ function hasEnoughUnread(
 /** Offer a catch-up only when enough is unread. */
 export function useConversationCatchUp(input: {
   conversationId: string;
-  events?: ConversationDetailReport["events"];
+  events?: ConversationDetailReport["events"] | undefined;
   hasNewerPage: boolean;
   hasPreviousPage: boolean;
-  unread?: TranscriptUnreadRange;
+  unread?: TranscriptUnreadRange | undefined;
 }): ConversationCatchUpState | undefined {
   const { unread } = input;
   const mutation = useMutation({

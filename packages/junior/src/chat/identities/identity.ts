@@ -23,10 +23,10 @@ export interface IdentityUpsert {
    * clears it, for example when the person removes their photo.
    */
   avatarUrl?: string | null;
-  displayName?: string;
+  displayName?: string | undefined;
   email?: string;
   emailVerified?: boolean;
-  handle?: string;
+  handle?: string | undefined;
   kind: IdentityKind;
   metadata?: Record<string, unknown>;
   provider: string;

@@ -38,7 +38,7 @@ export function resolveCatalogToolCall(
     );
   }
 
-  const toolName = input.tool_name;
+  const toolName = input["tool_name"];
   if (typeof toolName !== "string" || toolName.length === 0) {
     throw new ToolInputError("executeTool requires a catalog tool_name.");
   }
@@ -51,7 +51,7 @@ export function resolveCatalogToolCall(
     );
   }
 
-  const args = input.arguments;
+  const args = input["arguments"];
   if (args === undefined) {
     return { arguments: {}, definition, toolName };
   }

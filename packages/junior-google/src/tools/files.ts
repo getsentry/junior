@@ -183,8 +183,8 @@ export async function readGoogleFileMetadata(
 
 /** Optional output fields shared by the tools that read one file. */
 export function fileOutputFields(file: {
-  modifiedTime?: string;
-  webViewLink?: string;
+  modifiedTime?: string | undefined;
+  webViewLink?: string | undefined;
 }) {
   return {
     ...(file.modifiedTime ? { modified_at: file.modifiedTime } : undefined),

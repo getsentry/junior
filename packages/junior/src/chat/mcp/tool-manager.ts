@@ -66,8 +66,8 @@ function summarizeStructuredContent(value: unknown): string | undefined {
 function summarizeResourcePart(part: {
   type: "resource";
   resource:
-    | { uri: string; text: string; mimeType?: string }
-    | { uri: string; blob: string; mimeType?: string };
+    | { uri: string; text: string; mimeType?: string | undefined }
+    | { uri: string; blob: string; mimeType?: string | undefined };
 }): string {
   if ("text" in part.resource) {
     return part.resource.text;
@@ -677,7 +677,7 @@ export class McpToolManager {
     return {
       name: normalizeMcpToolName(plugin.manifest.name, tool.name),
       description: describeMcpTool(plugin.manifest.name, tool),
-      parameters: tool.inputSchema as Record<string, unknown>,
+      parameters: tool.inputSchema,
       provider: plugin.manifest.name,
       rawName: tool.name,
       ...(tool.title?.trim() ? { title: tool.title.trim() } : undefined),

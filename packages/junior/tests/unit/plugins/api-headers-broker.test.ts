@@ -29,7 +29,7 @@ afterEach(() => {
 
 describe("API headers broker", () => {
   it("resolves env-backed header values into header transforms", async () => {
-    process.env.EXAMPLE_AUTH_HEADER = "Basic abc123";
+    process.env["EXAMPLE_AUTH_HEADER"] = "Basic abc123";
 
     const broker = createApiHeadersBroker(MANIFEST);
     const lease = await broker.issue({
@@ -60,7 +60,7 @@ describe("API headers broker", () => {
       path.dirname(manifestPath),
     );
     const broker = createApiHeadersBroker(manifest);
-    process.env.AI_GATEWAY_API_KEY = "test-tts-key";
+    process.env["AI_GATEWAY_API_KEY"] = "test-tts-key";
     const lease = await broker.issue({
       context: SYSTEM_CREDENTIAL_CONTEXT,
       reason: "test:tts",
@@ -73,7 +73,7 @@ describe("API headers broker", () => {
         headers: { Authorization: "Bearer test-tts-key" },
       },
     ]);
-    delete process.env.AI_GATEWAY_API_KEY;
+    delete process.env["AI_GATEWAY_API_KEY"];
     await expect(
       broker.issue({
         context: SYSTEM_CREDENTIAL_CONTEXT,
@@ -85,7 +85,7 @@ describe("API headers broker", () => {
   });
 
   it("includes plugin command env in issued leases", async () => {
-    process.env.EXAMPLE_AUTH_HEADER = "Basic abc123";
+    process.env["EXAMPLE_AUTH_HEADER"] = "Basic abc123";
 
     const broker = createApiHeadersBroker({
       ...MANIFEST,
@@ -104,7 +104,7 @@ describe("API headers broker", () => {
   });
 
   it("throws when an env-backed header references a missing env var", async () => {
-    delete process.env.EXAMPLE_AUTH_HEADER;
+    delete process.env["EXAMPLE_AUTH_HEADER"];
 
     const broker = createApiHeadersBroker(MANIFEST);
 

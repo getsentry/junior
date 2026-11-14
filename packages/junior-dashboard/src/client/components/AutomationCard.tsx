@@ -18,8 +18,8 @@ export function AutomationCard({
   card: Pick<
     AutomationCardValue,
     "id" | "title" | "instruction" | "trigger" | "warning"
-  > & { status?: string };
-  className?: string;
+  > & { status?: string | undefined };
+  className?: string | undefined;
 }) {
   return (
     <MessageCard aria-label={card.title} className={cn("my-1", className)}>

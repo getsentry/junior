@@ -140,12 +140,12 @@ function statusFromConversation(
 }
 
 function titleFromConversation(args: {
-  automationTitle?: string;
+  automationTitle?: string | undefined;
   canViewPrivateContent: boolean;
   conversation: ConversationProjectionSource;
-  firstHumanMessageText?: string;
+  firstHumanMessageText?: string | undefined;
   surface: ConversationSurface;
-  visibility?: SlackConversationVisibility;
+  visibility?: SlackConversationVisibility | undefined;
 }): string {
   const slackThread = parseSlackThreadId(args.conversation.conversationId);
   const effectiveChannelName = args.conversation.channelName;
@@ -228,20 +228,20 @@ export function conversationEventHistory(args: {
 
 /** Project one durable conversation and its SQL metrics into the REST summary. */
 export function conversationSummaryFromStoredConversation(args: {
-  access?: ConversationAccess;
+  access?: ConversationAccess | undefined;
   /** Name of the Automation that started this conversation, when known. */
-  automationTitle?: string;
-  auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
+  automationTitle?: string | undefined;
+  auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"] | undefined;
   childAgentTotals?: ConversationSummaryReport["childAgentTotals"];
   conversation: ConversationProjectionSource;
   durationMs: number;
   /** First human message text, used as the title until one is stored. */
-  firstHumanMessageText?: string;
+  firstHumanMessageText?: string | undefined;
   locationId?: string;
-  pinnedAtMs?: number;
+  pinnedAtMs?: number | undefined;
   pinPosition?: number;
   teamDomainByTeamId?: ReadonlyMap<string, string>;
-  usage?: ConversationUsage;
+  usage?: ConversationUsage | undefined;
 }): ConversationSummaryReport {
   const { conversation, durationMs, usage } = args;
   const canViewPrivateContent = args.access?.canViewPrivateContent ?? false;

@@ -93,7 +93,7 @@ export type GeneratedBrief = {
 export type GenerateBriefArgs = {
   completeObject: BriefCompleteObject;
   input: BriefInput;
-  previous?: ConversationBrief;
+  previous?: ConversationBrief | undefined;
   prompt: string;
   throughIndex: number;
 };
@@ -287,7 +287,7 @@ function promptInput(args: {
   caps: BriefSizeCaps;
   entries: BriefEntry[];
   input: BriefInput;
-  previous?: ConversationBrief;
+  previous?: ConversationBrief | undefined;
   record: ConversationBrief["record"];
   sizeClass: BriefSizeClass;
 }): string {
@@ -429,7 +429,7 @@ function buildEvidenceLinks(args: {
   entries: BriefEntry[];
   input: BriefInput;
   model: ModelBrief;
-  previous?: ConversationBrief;
+  previous?: ConversationBrief | undefined;
 }): {
   droppedUrls: BriefEvidenceCheck["droppedUrls"];
   keptUrlCount: number;

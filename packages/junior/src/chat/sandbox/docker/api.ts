@@ -25,12 +25,12 @@ export interface DockerRequest {
   query?: Record<string, string | number | boolean | undefined>;
   /** JSON body, or raw bytes such as a tar archive. */
   body?: unknown;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }
 
 /** Return the unix socket path of the Docker daemon from `DOCKER_HOST`. */
 function dockerSocketPath(): string {
-  const host = process.env.DOCKER_HOST?.trim();
+  const host = process.env["DOCKER_HOST"]?.trim();
   if (!host) return DEFAULT_SOCKET_PATH;
   if (!host.startsWith("unix://")) {
     throw new Error(
@@ -82,6 +82,8 @@ export function dockerStream(
 export async function readStream(stream: Readable): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const chunk of stream) {
+    // Node types stream chunks as `any`; Docker streams yield Buffers or strings.
+    // oxlint-disable-next-line typescript/no-unsafe-argument
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   return Buffer.concat(chunks);

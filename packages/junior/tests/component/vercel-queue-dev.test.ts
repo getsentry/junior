@@ -83,31 +83,31 @@ type ConversationQueueCall =
     ]
   | undefined;
 
-const originalNodeEnv = process.env.NODE_ENV;
-const originalQueueTopic = process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
+const originalNodeEnv = process.env["NODE_ENV"];
+const originalQueueTopic = process.env["JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC"];
 const originalConversationWorkEnabled =
-  process.env.JUNIOR_CONVERSATION_WORK_ENABLED;
-const originalJuniorSecret = process.env.JUNIOR_SECRET;
+  process.env["JUNIOR_CONVERSATION_WORK_ENABLED"];
+const originalJuniorSecret = process.env["JUNIOR_SECRET"];
 
 afterEach(async () => {
   const { disconnectStateAdapter } = await import("@/chat/state/adapter");
   await disconnectStateAdapter();
-  process.env.NODE_ENV = originalNodeEnv;
+  process.env["NODE_ENV"] = originalNodeEnv;
   if (originalQueueTopic === undefined) {
-    delete process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
+    delete process.env["JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC"];
   } else {
-    process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC = originalQueueTopic;
+    process.env["JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC"] = originalQueueTopic;
   }
   if (originalConversationWorkEnabled === undefined) {
-    delete process.env.JUNIOR_CONVERSATION_WORK_ENABLED;
+    delete process.env["JUNIOR_CONVERSATION_WORK_ENABLED"];
   } else {
-    process.env.JUNIOR_CONVERSATION_WORK_ENABLED =
+    process.env["JUNIOR_CONVERSATION_WORK_ENABLED"] =
       originalConversationWorkEnabled;
   }
   if (originalJuniorSecret === undefined) {
-    delete process.env.JUNIOR_SECRET;
+    delete process.env["JUNIOR_SECRET"];
   } else {
-    process.env.JUNIOR_SECRET = originalJuniorSecret;
+    process.env["JUNIOR_SECRET"] = originalJuniorSecret;
   }
   vi.doUnmock("@vercel/queue");
   vi.doUnmock("@/chat/plugins/task-runner");
@@ -178,7 +178,7 @@ describe("Workspace snapshot Vercel queue integration", () => {
     await expect(handler(message, metadata)).resolves.toBeUndefined();
     expect(processWorkspaceSnapshotJob).not.toHaveBeenCalled();
 
-    process.env.JUNIOR_SECRET = "workspace-snapshot-secret";
+    process.env["JUNIOR_SECRET"] = "workspace-snapshot-secret";
     await sendWorkspaceSnapshotJob(message);
     const sendCall = send.mock.calls[0];
     const signedMessage = sendCall?.[1];
@@ -203,7 +203,7 @@ describe("Workspace snapshot Vercel queue integration", () => {
       retry(new Error("build failed"), { ...metadata, deliveryCount: 5 }),
     ).toBeUndefined();
 
-    process.env.NODE_ENV = "development";
+    process.env["NODE_ENV"] = "development";
     expect(registerVercelWorkspaceSnapshotJobDevConsumer()).toBe(unregister);
     const registered = registerDevConsumer.mock.calls[0]?.[0];
     expect(registered).toMatchObject({
@@ -279,7 +279,7 @@ describe("plugin task Vercel queue integration", () => {
     await expect(handler(message, metadata)).resolves.toBeUndefined();
     expect(processPluginTask).not.toHaveBeenCalled();
 
-    process.env.JUNIOR_SECRET = "plugin-task-secret";
+    process.env["JUNIOR_SECRET"] = "plugin-task-secret";
     const signedMessage = signPluginTaskQueueMessage(message);
     await expect(handler(signedMessage, metadata)).resolves.toBeUndefined();
     expect(processPluginTask).toHaveBeenCalledWith(message);
@@ -311,7 +311,7 @@ describe("plugin task Vercel queue integration", () => {
       registerDevConsumer: vi.fn(),
     }));
 
-    process.env.JUNIOR_SECRET = "plugin-task-secret";
+    process.env["JUNIOR_SECRET"] = "plugin-task-secret";
 
     const { PLUGIN_TASK_QUEUE_TOPIC, pluginTaskId, sendVercelPluginTask } =
       await import("@/chat/plugins/task-queue");
@@ -357,8 +357,8 @@ describe("registerVercelConversationWorkDevConsumer", () => {
       registerDevConsumer,
     }));
 
-    process.env.NODE_ENV = "development";
-    process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC = "local_work";
+    process.env["NODE_ENV"] = "development";
+    process.env["JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC"] = "local_work";
 
     const {
       CONVERSATION_WORK_DEV_CONSUMER_GROUP,
@@ -448,7 +448,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
         import("@/chat/task-execution/store"),
         import("@/chat/task-execution/queue-signing"),
       ]);
-    process.env.JUNIOR_SECRET = "conversation-work-secret";
+    process.env["JUNIOR_SECRET"] = "conversation-work-secret";
     await appendInboundMessage({
       message: {
         conversationId: "slack:C123:1712345.0001",
@@ -489,7 +489,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
       }),
     );
 
-    delete process.env.JUNIOR_SECRET;
+    delete process.env["JUNIOR_SECRET"];
     let missingSecretError: unknown;
     await handler(
       {
@@ -520,8 +520,8 @@ describe("registerVercelConversationWorkDevConsumer", () => {
       registerDevConsumer: vi.fn(),
     }));
 
-    process.env.JUNIOR_CONVERSATION_WORK_ENABLED = "false";
-    delete process.env.JUNIOR_SECRET;
+    process.env["JUNIOR_CONVERSATION_WORK_ENABLED"] = "false";
+    delete process.env["JUNIOR_SECRET"];
 
     const { createVercelConversationWorkCallback } =
       await import("@/chat/task-execution/vercel-callback");
@@ -585,7 +585,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
       registerDevConsumer,
     }));
 
-    process.env.NODE_ENV = "test";
+    process.env["NODE_ENV"] = "test";
 
     const { registerVercelConversationWorkDevConsumer } =
       await import("@/chat/task-execution/vercel-callback");

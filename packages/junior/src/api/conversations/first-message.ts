@@ -10,7 +10,7 @@ export async function readFirstHumanMessageTexts(
   db: JuniorDatabase,
   conversations: ReadonlyArray<{
     conversationId: string;
-    title?: string | null;
+    title?: string | null | undefined;
   }>,
 ): Promise<Map<string, string>> {
   const untitledIds = conversations.flatMap((conversation) =>

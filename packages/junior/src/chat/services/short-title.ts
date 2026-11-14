@@ -65,11 +65,11 @@ export function fallbackShortTitle(
  */
 export async function generateShortTitle(args: {
   completeText: typeof completeText;
-  context?: string[];
+  context?: string[] | undefined;
   cost: ConversationModelCost;
   kind: ShortTitleKind;
   sourceText: string;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }): Promise<string | undefined> {
   args.signal?.throwIfAborted();
   const sourceText = args.sourceText.trim();
@@ -128,8 +128,8 @@ export async function resolveTaskTitle(args: {
   completeText: typeof completeText;
   cost: ConversationModelCost;
   instruction: string;
-  title?: string | null;
-  signal?: AbortSignal;
+  title?: string | null | undefined;
+  signal?: AbortSignal | undefined;
 }): Promise<string | undefined> {
   const explicit = normalizeShortTitle(args.title ?? "");
   if (explicit) return explicit;

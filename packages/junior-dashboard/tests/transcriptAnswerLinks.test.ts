@@ -6,6 +6,8 @@ import {
 } from "../src/client/conversations/transcriptListRows";
 import type { RenderedTranscriptEntry } from "../src/client/conversations/transcriptRenderModel";
 
+// Each case passes only the entry fields it reads.
+// oxlint-disable-next-line anti-slop/no-object-parameters
 function row(key: string, entry: object): TranscriptListRow {
   return {
     entry: { key, ...entry } as RenderedTranscriptEntry,

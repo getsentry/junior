@@ -59,8 +59,8 @@ describe("Slack contract: outbound normalization", () => {
   beforeEach(() => {
     spans.length = 0;
     events.length = 0;
-    process.env.SLACK_BOT_TOKEN =
-      process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
+    process.env["SLACK_BOT_TOKEN"] =
+      process.env["SLACK_BOT_TOKEN"] ?? "xoxb-test-token";
     setPlugins([]);
     resetSlackApiMockState();
   });

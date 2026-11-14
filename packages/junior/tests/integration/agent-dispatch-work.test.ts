@@ -58,7 +58,7 @@ import {
 } from "../fixtures/conversation-work";
 
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 });
 
 /** Model output that ends an Automation run with a `reply` call. */
@@ -322,8 +322,10 @@ describe("agent dispatch conversation work", () => {
     const threadPosts = () =>
       slackApiOutbox
         .messages()
-        .filter((message) => message.params.thread_ts === "1700000000.000200")
-        .map((message) => message.params.text);
+        .filter(
+          (message) => message.params["thread_ts"] === "1700000000.000200",
+        )
+        .map((message) => message.params["text"]);
     const watchEvent = async (eventKey: string, eventType: string) => {
       await appendAndEnqueueInboundMessage({
         message: createEventInboundMessage({
@@ -478,7 +480,7 @@ describe("agent dispatch conversation work", () => {
     });
 
     expect(
-      slackApiOutbox.messages().map((message) => message.params.channel),
+      slackApiOutbox.messages().map((message) => message.params["channel"]),
     ).toEqual(["D123", "C456"]);
     // The run stores its reply, and the thread stays with the person's
     // Conversation.

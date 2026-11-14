@@ -20,7 +20,7 @@ export type TranscriptTurnFooter = {
   /** The memories that the Turn captured. */
   captures: CaptureEntry[];
   /** The message that started the Turn. Its recalled memories show here. */
-  prompt?: MessageEntry;
+  prompt?: MessageEntry | undefined;
   tasks: SubagentEntry[];
 };
 
@@ -31,7 +31,7 @@ export type TranscriptListRow =
       kind: "entry";
       entry: RenderedTranscriptEntry;
       key: string;
-      seq?: number;
+      seq?: number | undefined;
       /** What goes under the reply that ends a Turn. */
       footer?: TranscriptTurnFooter;
     }
@@ -40,14 +40,14 @@ export type TranscriptListRow =
       entries: RenderedTranscriptEntry[];
       key: string;
       /** Last event sequence in the group. */
-      seq?: number;
+      seq?: number | undefined;
     }
   | {
       kind: "tasks";
       entries: SubagentEntry[];
       key: string;
       /** Last event sequence in the group. */
-      seq?: number;
+      seq?: number | undefined;
     };
 
 /** The key of the "New" marker row. */
@@ -69,8 +69,8 @@ export function transcriptListRows(input: {
   keyPrefix: string;
   knownActivityKeys: Map<string, string>;
   /** The normalized search query, when search is active. */
-  search?: string;
-  unread?: TranscriptUnreadRange;
+  search?: string | undefined;
+  unread?: TranscriptUnreadRange | undefined;
 }): TranscriptListRow[] {
   const { entries, search } = input;
   const quietKeys = quietTurnEntryKeys(entries);
@@ -173,7 +173,7 @@ export function transcriptListRows(input: {
     return true;
   };
 
-  for (let index = 0; index < entries.length; ) {
+  for (let index = 0; index < entries.length;) {
     const entry = entries[index]!;
     if (moveOut(entry)) {
       index += 1;

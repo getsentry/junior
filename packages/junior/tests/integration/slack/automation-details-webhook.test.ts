@@ -113,7 +113,7 @@ async function saveReminder(): Promise<ScheduledAutomation> {
 
 describe("Slack Work Object details", () => {
   beforeEach(() => {
-    process.env.SLACK_BOT_TOKEN = "xoxb-test-token";
+    process.env["SLACK_BOT_TOKEN"] = "xoxb-test-token";
     setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
     });

@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 80,
+  "sortPackageJson": false,
+  "ignorePatterns": [
+    "pnpm-lock.yaml",
+    "packages/junior-evals/src/fixture/database-docs/",
+    "packages/junior-evals/fixtures/",
+    "**/migrations/meta/",
+    "**/*.md",
+    "**/*.mdx"
+  ]
+}

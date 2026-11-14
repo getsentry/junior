@@ -689,7 +689,7 @@ function normalizePullRequestEvent(
     isDraft?: false;
     occurredAtMs: number;
     trustedSummary: string;
-    untrustedText?: string;
+    untrustedText?: string | undefined;
   }): EventInput[] =>
     pullRequestTargets(
       {
@@ -872,7 +872,7 @@ function normalizeReleaseEvent(
  */
 export function normalizeGitHubEvents(args: {
   body: unknown;
-  botEmail?: string;
+  botEmail?: string | undefined;
   checkSuiteFacts?: GitHubCheckSuiteFacts;
   deliveryId: string;
   eventName: string;

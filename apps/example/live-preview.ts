@@ -57,7 +57,7 @@ function escapeHtml(value: string): string {
 }
 
 function errorResponse(error: string, headers?: HeadersInit): Response {
-  return Response.json({ error }, { headers, status: 403 });
+  return Response.json({ error }, { headers: headers ?? {}, status: 403 });
 }
 
 /** Build the Set-Cookie value that keeps the token, or clears it. */
@@ -337,7 +337,7 @@ export function withLivePreview<Rest extends unknown[]>(
 export function withExampleLivePreview<Rest extends unknown[]>(
   app: FetchApp<Rest>,
 ): FetchApp<Rest> {
-  const liveOrigin = process.env.JUNIOR_DASHBOARD_LIVE_ORIGIN?.trim();
+  const liveOrigin = process.env["JUNIOR_DASHBOARD_LIVE_ORIGIN"]?.trim();
   if (!liveOrigin) return app;
   if (exampleDashboardAuthRequired()) {
     throw new Error(

@@ -58,12 +58,12 @@ describe("slack list tools", () => {
     expect(listCalls[0]?.params).toMatchObject({
       list_id: "LIST_123",
     });
-    expect(String(listCalls[0]?.params.limit)).toBe("2");
+    expect(String(listCalls[0]?.params["limit"])).toBe("2");
     expect(listCalls[1]?.params).toMatchObject({
       list_id: "LIST_123",
       cursor: "next-list-cursor",
     });
-    expect(String(listCalls[1]?.params.limit)).toBe("2");
+    expect(String(listCalls[1]?.params["limit"])).toBe("2");
   });
 
   it("propagates missing_scope when Slack list reads fail", async () => {

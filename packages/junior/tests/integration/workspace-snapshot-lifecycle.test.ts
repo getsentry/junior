@@ -17,11 +17,11 @@ const MARKER_PATH = `${SANDBOX_WORKSPACE_ROOT}/marker/setup.txt`;
 const LIVE_TEST_TIMEOUT_MS = 10 * 60 * 1000;
 
 function sandboxCredentialsReady(): boolean {
-  if (process.env.VERCEL_OIDC_TOKEN?.trim()) return true;
+  if (process.env["VERCEL_OIDC_TOKEN"]?.trim()) return true;
   return Boolean(
-    process.env.VERCEL_TOKEN?.trim() &&
-    process.env.VERCEL_TEAM_ID?.trim() &&
-    process.env.VERCEL_PROJECT_ID?.trim(),
+    process.env["VERCEL_TOKEN"]?.trim() &&
+    process.env["VERCEL_TEAM_ID"]?.trim() &&
+    process.env["VERCEL_PROJECT_ID"]?.trim(),
   );
 }
 

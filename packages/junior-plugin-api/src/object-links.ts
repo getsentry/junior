@@ -52,9 +52,9 @@ export const objectLinkFilterSchema = z
 export type ObjectLinkFilter = z.output<typeof objectLinkFilterSchema>;
 
 function hasPathFilter(filter: {
-  path?: string;
-  pathPattern?: string;
-  pathPrefix?: string;
+  path?: string | undefined;
+  pathPattern?: string | undefined;
+  pathPrefix?: string | undefined;
 }): boolean {
   return (
     filter.path !== undefined ||

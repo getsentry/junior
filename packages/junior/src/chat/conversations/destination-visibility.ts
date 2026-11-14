@@ -5,7 +5,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 /** Read confirmed visibility from the current signal or persisted destination. */
 export async function resolveDestinationVisibility(args: {
   destination: Destination;
-  visibility?: ConversationPrivacy;
+  visibility?: ConversationPrivacy | undefined;
 }): Promise<ConversationPrivacy | undefined> {
   if (args.visibility) {
     return args.visibility;

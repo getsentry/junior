@@ -37,7 +37,7 @@ export async function sendParentMessage(args: {
   parentConversationId: string;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
-  text?: string;
+  text?: string | undefined;
 }): Promise<string> {
   const from = args.from ?? args.parentConversationId;
   const inboundMessageId = getAgentInvocationMessageId(

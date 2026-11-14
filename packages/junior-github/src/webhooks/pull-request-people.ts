@@ -102,7 +102,7 @@ async function forEachCommit(
 
 /** The GitHub login in a noreply email such as `1+octocat@users.noreply.github.com`. */
 function noreplyLogin(email: string): string | undefined {
-  return GITHUB_NOREPLY_EMAIL.exec(email)?.groups?.login;
+  return GITHUB_NOREPLY_EMAIL.exec(email)?.groups?.["login"];
 }
 
 /**
@@ -173,7 +173,7 @@ export async function withGitHubPullRequestPeople(args: {
   events: EventInput[];
   hasMatch: EventPublisher["hasMatch"];
   load?(target: GitHubPullRequestPeopleTarget): Promise<EventPerson[]>;
-  log?: Pick<PluginLogger, "error">;
+  log?: Pick<PluginLogger, "error"> | undefined;
 }): Promise<EventInput[]> {
   const { hasMatch } = args;
   const peopleEvents = args.events.filter((event) =>

@@ -85,9 +85,9 @@ async function denial(gitPush: PluginGitPush | undefined) {
 describe("GitHub Git push policy", () => {
   beforeAll(() => {
     process.env = { ...ORIGINAL_ENV };
-    process.env.GITHUB_APP_ID = "123";
-    process.env.GITHUB_INSTALLATION_ID = "456";
-    process.env.GITHUB_APP_PRIVATE_KEY = generateKeyPairSync("rsa", {
+    process.env["GITHUB_APP_ID"] = "123";
+    process.env["GITHUB_INSTALLATION_ID"] = "456";
+    process.env["GITHUB_APP_PRIVATE_KEY"] = generateKeyPairSync("rsa", {
       modulusLength: 2048,
     })
       .privateKey.export({ type: "pkcs8", format: "pem" })

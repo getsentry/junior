@@ -1,15 +1,15 @@
 function getSchemaProperties(
   schema: Record<string, unknown>,
 ): Record<string, unknown> {
-  return schema.properties && typeof schema.properties === "object"
-    ? (schema.properties as Record<string, unknown>)
+  return schema["properties"] && typeof schema["properties"] === "object"
+    ? (schema["properties"] as Record<string, unknown>)
     : {};
 }
 
 function getRequiredFields(schema: Record<string, unknown>): Set<string> {
-  return Array.isArray(schema.required)
+  return Array.isArray(schema["required"])
     ? new Set(
-        schema.required.filter(
+        schema["required"].filter(
           (value): value is string => typeof value === "string",
         ),
       )

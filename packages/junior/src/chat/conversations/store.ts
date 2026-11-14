@@ -39,11 +39,11 @@ export interface ConversationRunMetrics {
 }
 
 export interface ConversationExecution {
-  lastCheckpointAtMs?: number;
-  lastEnqueuedAtMs?: number;
-  runId?: string;
+  lastCheckpointAtMs?: number | undefined;
+  lastEnqueuedAtMs?: number | undefined;
+  runId?: string | undefined;
   status: ConversationStatus;
-  updatedAtMs?: number;
+  updatedAtMs?: number | undefined;
 }
 
 /**
@@ -61,12 +61,12 @@ export interface ConversationExecution {
 export interface Conversation {
   // TODO(dcramer): Move this provider label into Location after stored
   // Conversation reads no longer need the legacy destination projection.
-  channelName?: string;
+  channelName?: string | undefined;
   conversationId: string;
   createdAtMs: number;
   // TODO(dcramer): Remove this legacy Conversation routing field after core
   // reads use Location and provider output uses Delivery.
-  destination?: Destination;
+  destination?: Destination | undefined;
   execution: ConversationExecution;
   /** Metrics of the latest Run that wrote metrics. */
   executionMetrics?: ConversationRunMetrics & { runId?: string };
@@ -84,13 +84,13 @@ export interface Conversation {
   location?: Location;
   // TODO(dcramer): Replace this creation-time Actor projection with the
   // stored creator Identity after creator identity writes are complete.
-  actor?: StoredSlackActor;
+  actor?: StoredSlackActor | undefined;
   // TODO(dcramer): Keep schemaVersion inside the SQL decoder after callers
   // stop constructing stored Conversation values directly.
   schemaVersion: 1;
   // TODO(dcramer): Rename this creation Source after SQL origin fields become
   // the only stored authority. It is not the Source for the current Turn.
-  source?: ConversationSource;
+  source?: ConversationSource | undefined;
   /**
    * Structured inbound Source locator for this conversation session.
    * Session-stable (threaded Slack keeps threadTs; channel-level turns omit
@@ -99,18 +99,18 @@ export interface Conversation {
   // TODO(dcramer): Remove sessionSource after resume reads the saved Turn Source
   // and all Conversation place readers use Location.
   sessionSource?: SessionSource;
-  title?: string;
+  title?: string | undefined;
   updatedAtMs: number;
   /**
    * When retention purged this conversation's content. Set means messages and
    * events were deleted wholesale; reporting presents the transcript as expired
    * rather than privacy-redacted (`../../../../../policies/data-redaction.md`).
    */
-  transcriptPurgedAtMs?: number;
+  transcriptPurgedAtMs?: number | undefined;
   /** When a person stopped this Conversation. Unset when it is not stopped. */
-  stoppedAtMs?: number;
+  stoppedAtMs?: number | undefined;
   /** Set while a root's Event Turn replies stay out of its Location. */
-  deliveryPausedAtMs?: number;
+  deliveryPausedAtMs?: number | undefined;
   /** Confirmed Conversation visibility. Undefined means no confirmation exists. */
   visibility?: ConversationPrivacy;
 }
@@ -191,12 +191,12 @@ export interface ConversationStore {
   }): Promise<{ channelId: string; channelName?: string } | undefined>;
   recordActivity(args: {
     activityAtMs?: number;
-    channelName?: string;
+    channelName?: string | undefined;
     conversationId: string;
-    destination?: Destination;
+    destination?: Destination | undefined;
     nowMs?: number;
-    actor?: StoredSlackActor;
-    source?: ConversationSource;
+    actor?: StoredSlackActor | undefined;
+    source?: ConversationSource | undefined;
     /** Source normalized to a stable session locator; set-once when absent. */
     sessionSource?: Source;
     title?: string;
@@ -210,7 +210,7 @@ export interface ConversationStore {
      * replaces the visibility of the shared Destination row. Omit it for saved
      * values, such as visibility captured when an Automation was created.
      */
-    visibility?: ConversationPrivacy;
+    visibility?: ConversationPrivacy | undefined;
   }): Promise<void>;
   /**
    * Store execution state and one Run's metrics.
@@ -218,25 +218,25 @@ export interface ConversationStore {
    */
   recordExecution(args: {
     /** Identity of the Turn Actor. Its metric rows record it. */
-    actorIdentityId?: string;
-    channelName?: string;
+    actorIdentityId?: string | undefined;
+    channelName?: string | undefined;
     conversationId: string;
     /** When this Run started. */
     createdAtMs: number;
-    destination?: Destination;
+    destination?: Destination | undefined;
     execution: ConversationExecution;
     lastActivityAtMs: number;
     metrics: ConversationRunMetrics | null;
-    actor?: StoredSlackActor;
-    source?: ConversationSource;
-    title?: string;
+    actor?: StoredSlackActor | undefined;
+    source?: ConversationSource | undefined;
+    title?: string | undefined;
     updatedAtMs: number;
     /**
      * Current visibility from its owner, such as a Slack event channel type. It
      * replaces the visibility of the shared Destination row. Omit it for saved
      * values, such as visibility captured when an Automation was created.
      */
-    visibility?: ConversationPrivacy;
+    visibility?: ConversationPrivacy | undefined;
   }): Promise<void>;
   listByActivity(args?: {
     limit?: number;

@@ -95,10 +95,10 @@ export function automationSkillToolSchema(skills: readonly SkillMetadata[]) {
 
 /** Flat task fields of the Automation tools. */
 type TaskToolFields = {
-  instruction?: string;
-  skill?: string;
+  instruction?: string | undefined;
+  skill?: string | undefined;
   /** Null clears the context. Only an update can send it. */
-  context?: string | null;
+  context?: string | null | undefined;
 };
 
 /** Map the task fields of a new Automation to its task. */

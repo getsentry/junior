@@ -40,8 +40,8 @@ export type SandboxEgressHttpInterceptor = CredentialedEgressHttpInterceptor;
 /** Runtime dependencies for running one verified sandbox egress request. */
 export interface SandboxEgressProxyDeps {
   fetch?: typeof fetch;
-  interceptHttp?: SandboxEgressHttpInterceptor;
-  tracePropagation?: SandboxEgressTracePropagationConfig;
+  interceptHttp?: SandboxEgressHttpInterceptor | undefined;
+  tracePropagation?: SandboxEgressTracePropagationConfig | undefined;
 }
 
 /** One sandbox egress request that its sandbox provider has authenticated. */
@@ -53,7 +53,7 @@ export interface SandboxEgressRequest {
   /** The original upstream URL that the sandbox requested. */
   upstreamUrl: URL;
   /** The signed credential token from the sandbox network policy. */
-  credentialToken?: string;
+  credentialToken?: string | undefined;
 }
 
 function jsonError(message: string, status: number): Response {

@@ -463,20 +463,20 @@ export function formatActivityChartAverage(value: number | undefined): string {
 }
 
 export type TokenUsageSummary = {
-  cachedInputTokens?: number;
-  cacheCreationTokens?: number;
-  inputTokens?: number;
-  outputTokens?: number;
+  cachedInputTokens?: number | undefined;
+  cacheCreationTokens?: number | undefined;
+  inputTokens?: number | undefined;
+  outputTokens?: number | undefined;
   providerTotalTokens?: number;
-  reasoningTokens?: number;
+  reasoningTokens?: number | undefined;
   totalTokens: number;
 };
 
 export type CostUsageSummary = {
-  cacheRead?: number;
-  cacheWrite?: number;
-  input?: number;
-  output?: number;
+  cacheRead?: number | undefined;
+  cacheWrite?: number | undefined;
+  input?: number | undefined;
+  output?: number | undefined;
   total: number;
 };
 

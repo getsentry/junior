@@ -14,7 +14,7 @@ type SidebarThread = { conversation: Conversation; depth: number };
  */
 export function sidebarThreads(
   threads: readonly Conversation[] | undefined,
-  options: { expanded: boolean; selectedId?: string },
+  options: { expanded: boolean; selectedId?: string | undefined },
 ): { collapsible: boolean; hiddenCount: number; threads: SidebarThread[] } {
   const direct = threads ?? [];
   const all = flattenThreads(direct, 0);

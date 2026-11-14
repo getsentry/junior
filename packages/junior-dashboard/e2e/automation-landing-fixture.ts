@@ -25,7 +25,7 @@ const STATUS = { b: "blocked", c: "completed", f: "failed" } as const;
 
 function executions(id: string, title: string, plan: RunPlan) {
   const count = plan.results.length;
-  return [...plan.results].map((letter, index): AutomationExecution => {
+  return Array.from(plan.results).map((letter, index): AutomationExecution => {
     const status = STATUS[letter as keyof typeof STATUS];
     const executedAt = new Date(
       NOW_MS - (plan.lastAgo + (count - 1 - index) * plan.every) * HOUR,

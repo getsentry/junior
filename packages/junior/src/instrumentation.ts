@@ -44,23 +44,23 @@ function getBoolean(value: string | undefined, fallback: boolean): boolean {
 
 function getEnvironment(): string | undefined {
   return (
-    process.env.SENTRY_ENVIRONMENT ??
-    process.env.VERCEL_ENV ??
-    process.env.NODE_ENV
+    process.env["SENTRY_ENVIRONMENT"] ??
+    process.env["VERCEL_ENV"] ??
+    process.env["NODE_ENV"]
   );
 }
 
 function getTracesSampleRate(): number {
-  return getSampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 1);
+  return getSampleRate(process.env["SENTRY_TRACES_SAMPLE_RATE"], 1);
 }
 
 /** Browser SDK settings and the current request's trace, for an HTML page. */
 export interface BrowserSentryConfig {
-  baggage?: string;
+  baggage?: string | undefined;
   dsn: string;
-  environment?: string;
-  release?: string;
-  sentryTrace?: string;
+  environment?: string | undefined;
+  release?: string | undefined;
+  sentryTrace?: string | undefined;
   tracesSampleRate: number;
 }
 
@@ -69,7 +69,7 @@ export interface BrowserSentryConfig {
  * project, continuing the trace of the request that rendered it.
  */
 export function getBrowserSentryConfig(): BrowserSentryConfig | undefined {
-  const dsn = process.env.SENTRY_DSN?.trim();
+  const dsn = process.env["SENTRY_DSN"]?.trim();
   if (!dsn) return undefined;
   const trace = Sentry.getTraceData();
   return {
@@ -88,8 +88,11 @@ export function initSentry(): void {
     return;
   }
 
-  const dsn = process.env.SENTRY_DSN;
-  const enableLogs = getBoolean(process.env.SENTRY_ENABLE_LOGS, Boolean(dsn));
+  const dsn = process.env["SENTRY_DSN"];
+  const enableLogs = getBoolean(
+    process.env["SENTRY_ENABLE_LOGS"],
+    Boolean(dsn),
+  );
   const serviceVersion = getDeploymentServiceVersion();
   const deploymentSpanAttributes = getDeploymentTelemetryAttributes();
 

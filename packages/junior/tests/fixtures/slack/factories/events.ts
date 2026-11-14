@@ -198,7 +198,7 @@ export function slackEventsApiEnvelope(
     channel?: string;
     ts?: string;
     eventTs?: string;
-    threadTs?: string;
+    threadTs?: string | undefined;
   } = {},
 ): SlackEventsApiEnvelope {
   const ts = input.ts ?? TEST_THREAD_TS;

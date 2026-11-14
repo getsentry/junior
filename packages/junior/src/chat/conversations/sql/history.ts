@@ -49,7 +49,7 @@ type ConversationEventRow = typeof juniorConversationEvents.$inferSelect;
 type ConversationEventInsert = typeof juniorConversationEvents.$inferInsert;
 type PersistedConversationEvent = {
   data: ConversationEventData;
-  idempotencyKey?: string;
+  idempotencyKey?: string | undefined;
   createdAtMs: number;
 };
 
@@ -69,7 +69,7 @@ const HUMAN_INSTRUCTION_PLATFORMS = new Set(["slack", "local", "web"]);
  * mentions and DMs, always address Junior.
  */
 function eventAddressesJunior(data: ConversationEventData): boolean {
-  return data.type === "message" && data.meta?.explicitMention !== false;
+  return data.type === "message" && data.meta?.["explicitMention"] !== false;
 }
 
 /**
@@ -93,10 +93,10 @@ function eventUnarchivesConversation(data: ConversationEventData): boolean {
   if (data.role !== "user") return false;
   const meta = data.meta;
   if (!meta) return true;
-  if (typeof meta.eventType === "string" && meta.eventType.length > 0) {
+  if (typeof meta["eventType"] === "string" && meta["eventType"].length > 0) {
     return false;
   }
-  const author = meta.author;
+  const author = meta["author"];
   if (
     author &&
     typeof author === "object" &&

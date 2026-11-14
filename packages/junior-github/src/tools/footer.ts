@@ -19,8 +19,8 @@ function escapeRegExp(value: string): string {
 export function sentryConversationUrl(
   conversationId: string,
 ): string | undefined {
-  const dsn = process.env.SENTRY_DSN?.trim();
-  const orgSlug = process.env.SENTRY_ORG_SLUG?.trim();
+  const dsn = process.env["SENTRY_DSN"]?.trim();
+  const orgSlug = process.env["SENTRY_ORG_SLUG"]?.trim();
   if (!dsn || !orgSlug) {
     return undefined;
   }

@@ -50,8 +50,8 @@ export function linkifySentryShortIds(
   text: string,
   config: Record<string, string>,
 ): string {
-  const org = config.org?.trim().toLowerCase() ?? "";
-  const project = config.project?.trim() ?? "";
+  const org = config["org"]?.trim().toLowerCase() ?? "";
+  const project = config["project"]?.trim() ?? "";
   if (!ORG_SLUG_PATTERN.test(org) || !SLUG_PATTERN.test(project)) return text;
   // Only the Location's configured `sentry.project` counts as a prefix, so a
   // Jira or Linear key with the same shape stays plain text. Matching any

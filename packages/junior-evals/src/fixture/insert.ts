@@ -405,6 +405,8 @@ export async function insertMemory(args: {
   const { channelId } = slackChannel();
   const messageTs = FIXTURE_MESSAGE_TS;
   const store = createMemoryStore(
+    // Junior and the plugin type the same Drizzle client with separate schemas.
+    // oxlint-disable-next-line anti-slop/no-chained-type-assertions
     getDb() as unknown as MemoryDb,
     {
       actor: {

@@ -9,7 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
  * the copy runs and after it ends.
  */
 export function useCopyText(props: {
-  getText?: () => Promise<string> | string;
+  getText?: (() => Promise<string> | string) | undefined;
   label: string;
   copyingLabel?: string;
 }) {
@@ -54,7 +54,7 @@ export function useCopyText(props: {
 
 /** Copy available text and show whether the clipboard write succeeded. */
 export function CopyButton(props: {
-  getText?: () => Promise<string> | string;
+  getText?: (() => Promise<string> | string) | undefined;
   label: string;
   copyingLabel?: string;
 }) {

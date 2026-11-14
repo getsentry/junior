@@ -56,13 +56,13 @@ export type SandboxEgressCredentialErrorKind = "auth_required" | "unavailable";
  * request authorization without exposing provider-specific lease internals.
  */
 export class SandboxEgressCredentialError extends Error {
-  readonly authorization?: PluginAuthorization;
+  readonly authorization?: PluginAuthorization | undefined;
   readonly grant: PluginGrant;
   readonly kind: SandboxEgressCredentialErrorKind;
   readonly provider: string;
 
   constructor(input: {
-    authorization?: PluginAuthorization;
+    authorization?: PluginAuthorization | undefined;
     grant: PluginGrant;
     kind: SandboxEgressCredentialErrorKind;
     message: string;
@@ -144,7 +144,7 @@ function assertLeaseTransformsOwnedByProvider(
  * use that default for one request.
  */
 export async function selectSandboxEgressGrant(input: {
-  bodyText?: string;
+  bodyText?: string | undefined;
   gitPush?: PluginGitPush;
   graphql?: PluginGraphqlRequest;
   method: string;

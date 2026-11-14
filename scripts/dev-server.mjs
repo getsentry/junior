@@ -420,12 +420,13 @@ function watchForRestarts() {
 runRequiredChild("docker", ["compose", "up", "-d", "--wait"], {
   cwd: workspaceRoot,
 });
-runRequiredChild("pnpm", ["build"], {
-  cwd: juniorPackageDir,
-});
-runRequiredChild("pnpm", ["build"], {
-  cwd: dashboardPackageDir,
-});
+// Build every workspace package that the example app loads, in dependency
+// order. A fresh install has no `dist` output.
+runRequiredChild(
+  "pnpm",
+  ["--filter", "@sentry/junior-example^...", "run", "build"],
+  { cwd: workspaceRoot },
+);
 syncInjectedPackageDist("@sentry/junior", juniorPackageDir, { strict: true });
 syncInjectedPackageDist("@sentry/junior-dashboard", dashboardPackageDir, {
   strict: true,

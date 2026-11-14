@@ -136,11 +136,11 @@ export function createReadConversationEventTool(context: ToolRuntimeContext) {
 function toolResultFields(data: ConversationEvent["data"]) {
   if (data.type !== "tool_result") return undefined;
   return {
-    ...(typeof data.toolName === "string" && data.toolName
-      ? { tool_name: data.toolName }
+    ...(typeof data["toolName"] === "string" && data["toolName"]
+      ? { tool_name: data["toolName"] }
       : undefined),
-    ...(typeof data.isError === "boolean"
-      ? { is_error: data.isError }
+    ...(typeof data["isError"] === "boolean"
+      ? { is_error: data["isError"] }
       : undefined),
   };
 }
@@ -155,7 +155,7 @@ function eventText(data: ConversationEvent["data"]): string {
     case "user_message":
     case "assistant_message":
     case "tool_result":
-      return contentText(data.content);
+      return contentText(data["content"]);
     case "message":
     case "message_updated":
       return data.text;
@@ -173,13 +173,13 @@ function contentText(content: unknown): string {
 function contentPartText(part: unknown): string {
   if (!part || typeof part !== "object") return "";
   const value = part as Record<string, unknown>;
-  switch (value.type) {
+  switch (value["type"]) {
     case "text":
-      return typeof value.text === "string" ? value.text : "";
+      return typeof value["text"] === "string" ? value["text"] : "";
     case "image":
-      return `[image: ${typeof value.mimeType === "string" ? value.mimeType : "unknown type"}]`;
+      return `[image: ${typeof value["mimeType"] === "string" ? value["mimeType"] : "unknown type"}]`;
     case "toolCall":
-      return `[tool call: ${String(value.name)} ${JSON.stringify(value.arguments ?? {})}]`;
+      return `[tool call: ${String(value["name"])} ${JSON.stringify(value["arguments"] ?? {})}]`;
     default:
       // Thinking blocks and unknown parts are not returned.
       return "";

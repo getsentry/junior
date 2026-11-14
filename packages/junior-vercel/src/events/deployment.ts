@@ -58,9 +58,9 @@ export const VERCEL_DEPLOYMENT_MATCH_FIELDS = eventMatchFieldsSchema.parse({
 
 /** Build the stable deployment identity shared by tools and webhooks. */
 export function vercelDeploymentResource(input: {
-  commitSha?: string;
+  commitSha?: string | undefined;
   projectId: string;
-  target?: VercelDeploymentTarget;
+  target?: VercelDeploymentTarget | undefined;
 }): Pick<SubscribableResource, "label" | "namespace" | "identifier"> {
   const commitSha = input.commitSha?.toLowerCase();
   const target = input.target;
@@ -91,9 +91,9 @@ export function vercelDeploymentResource(input: {
 export function vercelDeploymentSubscribable(input: {
   /** `ctx.events.canSubscribe` from the tool context. */
   canSubscribe: boolean;
-  commitSha?: string;
+  commitSha?: string | undefined;
   projectId: string;
-  target?: VercelDeploymentTarget;
+  target?: VercelDeploymentTarget | undefined;
 }): SubscribableResource | undefined {
   if (!input.canSubscribe) return undefined;
   // Commit-scoped watches require a target so the identity stays unambiguous.

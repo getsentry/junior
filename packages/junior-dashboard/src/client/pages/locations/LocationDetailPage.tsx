@@ -21,7 +21,7 @@ import { SectionTitle } from "../../components/layout/SectionTitle";
 /** Render operational activity for one persisted public location. */
 export function LocationDetailPage() {
   const params = useParams();
-  const query = useLocationDetailData(params.locationId);
+  const query = useLocationDetailData(params["locationId"]);
   return <LocationDetailPageContent data={query.data} error={query.error} />;
 }
 

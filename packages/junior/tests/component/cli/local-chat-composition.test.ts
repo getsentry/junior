@@ -13,8 +13,8 @@ vi.mock("@/chat/agent", () => ({
 }));
 
 const ORIGINAL_CWD = process.cwd();
-const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
-const ORIGINAL_REDIS_URL = process.env.REDIS_URL;
+const ORIGINAL_STATE_ADAPTER = process.env["JUNIOR_STATE_ADAPTER"];
+const ORIGINAL_REDIS_URL = process.env["REDIS_URL"];
 
 function restoreEnv(name: string, value: string | undefined): void {
   if (value === undefined) {
@@ -62,8 +62,8 @@ describe("local chat CLI composition", () => {
   });
 
   it("loads app plugins and applies the local memory default before runtime config", async () => {
-    delete process.env.JUNIOR_STATE_ADAPTER;
-    process.env.REDIS_URL = "redis://localhost:6379";
+    delete process.env["JUNIOR_STATE_ADAPTER"];
+    process.env["REDIS_URL"] = "redis://localhost:6379";
     const tempDir = mkdtempSync(path.join(tmpdir(), "junior-local-chat-"));
     writeFileSync(
       path.join(tempDir, "plugins.ts"),

@@ -13,8 +13,8 @@ export async function ingestEvent(
     nowMs?: number;
     queue: ConversationWorkQueue;
     /** Slack workspace whose users Event people resolve to. */
-    slackTeamId?: string;
-    state?: StateAdapter;
+    slackTeamId?: string | undefined;
+    state?: StateAdapter | undefined;
   },
 ): Promise<{ enqueued: number }> {
   const event = eventSchema.parse(input);

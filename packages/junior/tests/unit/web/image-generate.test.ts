@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/chat/pi/client", () => ({
   completeText: vi.fn(),
   getGatewayApiKey: vi.fn(
-    async () => process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN,
+    async () =>
+      process.env["AI_GATEWAY_API_KEY"] ?? process.env["VERCEL_OIDC_TOKEN"],
   ),
   resolveGatewayModel: vi.fn((modelId: string) => modelId),
 }));
@@ -46,8 +47,8 @@ function imageResponse(images = [PNG_BYTES]) {
 /** Fake AI Gateway that answers each image request in order. */
 function gatewayFetch(responses: Response[]) {
   const queue = [...responses];
-  return vi.fn(
-    async (_url: string | URL | Request, _init?: RequestInit) => queue.shift()!,
+  return vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+    queue.shift()!,
   );
 }
 
@@ -68,13 +69,13 @@ function writeGeneratedArtifacts(files: FileUpload[]) {
 
 describe("createImageGenerateTool", () => {
   afterEach(() => {
-    delete process.env.AI_GATEWAY_API_KEY;
-    delete process.env.VERCEL_OIDC_TOKEN;
+    delete process.env["AI_GATEWAY_API_KEY"];
+    delete process.env["VERCEL_OIDC_TOKEN"];
     vi.clearAllMocks();
   });
 
   it("uses the configured image generation model", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-key";
+    process.env["AI_GATEWAY_API_KEY"] = "test-key";
     mockCompleteText.mockResolvedValueOnce({ text: "enriched prompt" } as any);
     const fetchMock = gatewayFetch([imageResponse()]);
     vi.spyOn(Date, "now").mockReturnValue(1_737_000_000_000);
@@ -91,7 +92,7 @@ describe("createImageGenerateTool", () => {
       { fetch: fetchMock },
     );
 
-    const result = await tool.execute!({ prompt: "test prompt" }, {} as any);
+    const result = await tool.execute!({ prompt: "test prompt" }, {});
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(requestBody(fetchMock)).toMatchObject({
@@ -119,7 +120,7 @@ describe("createImageGenerateTool", () => {
   });
 
   it("recommends sendFiles when active file-send support is available", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-key";
+    process.env["AI_GATEWAY_API_KEY"] = "test-key";
     mockCompleteText.mockResolvedValueOnce({ text: "enriched prompt" } as any);
 
     const tool = createImageGenerateTool(
@@ -127,7 +128,7 @@ describe("createImageGenerateTool", () => {
       { ...defaultImageOptions, canSendFilesToActiveConversation: true },
       { fetch: gatewayFetch([imageResponse()]) },
     );
-    const result = await tool.execute!({ prompt: "test prompt" }, {} as any);
+    const result = await tool.execute!({ prompt: "test prompt" }, {});
 
     expect(result).toMatchObject({
       image_count: 1,
@@ -138,7 +139,7 @@ describe("createImageGenerateTool", () => {
   });
 
   it("returns an actionable error when model is not image-capable", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-key";
+    process.env["AI_GATEWAY_API_KEY"] = "test-key";
     mockCompleteText.mockResolvedValueOnce({ text: "enriched prompt" } as any);
     const fetchMock = gatewayFetch([
       Response.json(
@@ -170,7 +171,7 @@ describe("createImageGenerateTool", () => {
   });
 
   it("forwards enriched prompt to image API when enrichment succeeds", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-key";
+    process.env["AI_GATEWAY_API_KEY"] = "test-key";
     mockCompleteText.mockResolvedValueOnce({
       text: "a dark, high-contrast dog with glowing eyes",
     } as any);
@@ -181,7 +182,7 @@ describe("createImageGenerateTool", () => {
       defaultImageOptions,
       { fetch: fetchMock },
     );
-    const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
+    const result = await tool.execute!({ prompt: "draw a dog" }, {});
 
     expect(requestBody(fetchMock).prompt).toBe(
       "a dark, high-contrast dog with glowing eyes",
@@ -193,7 +194,7 @@ describe("createImageGenerateTool", () => {
   });
 
   it("falls back to raw prompt when enrichment returns empty text", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-key";
+    process.env["AI_GATEWAY_API_KEY"] = "test-key";
     mockCompleteText.mockResolvedValueOnce({ text: "   " } as any);
     const fetchMock = gatewayFetch([imageResponse()]);
 
@@ -202,14 +203,14 @@ describe("createImageGenerateTool", () => {
       defaultImageOptions,
       { fetch: fetchMock },
     );
-    const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
+    const result = await tool.execute!({ prompt: "draw a dog" }, {});
 
     expect(requestBody(fetchMock).prompt).toBe("draw a dog");
     expect(result).toMatchObject({ enriched_prompt: "draw a dog" });
   });
 
   it("falls back to raw prompt when enrichment fails", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-key";
+    process.env["AI_GATEWAY_API_KEY"] = "test-key";
     mockCompleteText.mockRejectedValueOnce(new Error("LLM unavailable"));
     const fetchMock = gatewayFetch([imageResponse()]);
 
@@ -218,14 +219,14 @@ describe("createImageGenerateTool", () => {
       defaultImageOptions,
       { fetch: fetchMock },
     );
-    const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
+    const result = await tool.execute!({ prompt: "draw a dog" }, {});
 
     expect(requestBody(fetchMock).prompt).toBe("draw a dog");
     expect(result).toMatchObject({ enriched_prompt: "draw a dog" });
   });
 
   it("sends input images with the unchanged prompt", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-key";
+    process.env["AI_GATEWAY_API_KEY"] = "test-key";
     const fetchMock = gatewayFetch([imageResponse()]);
 
     const tool = createImageGenerateTool(
@@ -238,7 +239,7 @@ describe("createImageGenerateTool", () => {
     );
     const result = await tool.execute!(
       { prompt: "change the sign text", images: ["photo.png"] },
-      {} as any,
+      {},
     );
 
     expect(mockCompleteText).not.toHaveBeenCalled();
@@ -254,7 +255,7 @@ describe("createImageGenerateTool", () => {
   });
 
   it("returns no images when the model generates none", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-key";
+    process.env["AI_GATEWAY_API_KEY"] = "test-key";
     mockCompleteText.mockResolvedValueOnce({ text: "enriched prompt" } as any);
 
     const tool = createImageGenerateTool(
@@ -266,7 +267,7 @@ describe("createImageGenerateTool", () => {
         ]),
       },
     );
-    const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
+    const result = await tool.execute!({ prompt: "draw a dog" }, {});
 
     expect(result).toMatchObject({
       image_count: 0,
@@ -276,7 +277,7 @@ describe("createImageGenerateTool", () => {
   });
 
   it("resizes input images over the request size limit", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-key";
+    process.env["AI_GATEWAY_API_KEY"] = "test-key";
     const fetchMock = gatewayFetch([imageResponse()]);
     // Random pixels do not compress, so this PNG is about 9 MB.
     const largePng = await sharp({
@@ -310,7 +311,7 @@ describe("createImageGenerateTool", () => {
         prompt: "change the sign",
         images: ["photo.png", "logo.png", "icon.png", "badge.png"],
       },
-      {} as any,
+      {},
     );
 
     const [sentPhoto, sentLogo] = requestBody(fetchMock).files;
@@ -336,7 +337,7 @@ describe("createImageGenerateTool", () => {
   });
 
   it("rejects input images too large to read before calling the gateway", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-key";
+    process.env["AI_GATEWAY_API_KEY"] = "test-key";
     const fetchMock = gatewayFetch([]);
 
     const tool = createImageGenerateTool(

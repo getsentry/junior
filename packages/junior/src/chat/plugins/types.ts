@@ -148,7 +148,7 @@ export interface PluginManifestConfig {
 
 /** Install-level plugin package list and manifest override catalog. */
 export interface PluginCatalogConfig {
-  inlineManifests?: InlinePluginManifestDefinition[];
+  inlineManifests?: InlinePluginManifestDefinition[] | undefined;
   packages?: string[];
   manifests?: Record<string, PluginManifestConfig>;
 }

@@ -157,9 +157,17 @@ function stripComments(contents) {
   return contents.replace(/\/\*[\s\S]*?\*\/|(?<![:"'`\w])\/\/.*$/gm, "");
 }
 
+/** Rewrite `a["b"]` and `a?.["b"]` as `a.b` and `a?.b`, so both forms match. */
+function normalizeBracketAccess(contents) {
+  return contents.replace(
+    /(\?\.)?\[(["'])([A-Za-z_$][\w$]*)\2\]/g,
+    (_match, optional, _quote, name) => `${optional ? "?." : "."}${name}`,
+  );
+}
+
 /** Count kind, parent-edge, and person-Source branches in one file. */
 function countKindBranches(file) {
-  const code = stripComments(file.contents);
+  const code = normalizeBracketAccess(stripComments(file.contents));
   let count = 0;
   for (const pattern of KIND_BRANCH_PATTERNS) {
     count += countMatches(code, pattern);

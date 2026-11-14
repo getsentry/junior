@@ -95,8 +95,9 @@ function parseAnswer(
           return { blocked: { missing: parsed.data.reason } };
       }
     }
+    default:
+      return undefined;
   }
-  return undefined;
 }
 
 /**
@@ -146,6 +147,6 @@ export function remindMissingAnswer(
       role: "user",
       content: [{ type: "text", text: MISSING_ANSWER_REMINDER }],
       timestamp: Date.now(),
-    } as PiMessage,
+    },
   ];
 }

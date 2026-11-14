@@ -55,9 +55,7 @@ export function historyItemFromPiMessage(
   message: PiMessage,
   provenance: ConversationMessageProvenance,
 ): AgentHistoryItem {
-  const parsed = piMessageSchema.parse(message) as PiMessage & {
-    role: string;
-  };
+  const parsed = piMessageSchema.parse(message);
   const { role, ...fields } = parsed;
   if (role === "user") {
     return agentHistoryItemSchema.parse({

@@ -169,7 +169,6 @@ export async function reorderPinnedConversations(
     ids.map((id, index) => sql`when ${id} then ${index}::integer`),
     sql` `,
   );
-  // oxlint-disable-next-line junior/touch-conversation-detail -- viewer marks are read on each request.
   const updated = await getDb()
     .update(participants)
     .set({

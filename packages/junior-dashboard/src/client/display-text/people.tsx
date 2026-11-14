@@ -9,9 +9,9 @@ import { cn } from "../styles";
  * subtle highlight and `data-self-mention`.
  */
 export function PersonMention(props: {
-  avatarUrl?: string;
+  avatarUrl?: string | undefined;
   children: ReactNode;
-  email?: string;
+  email?: string | undefined;
 }) {
   const viewer = useDashboardCoreData().data?.me.user.email;
   const self = Boolean(

@@ -14,7 +14,10 @@ import { useReviewItemAction } from "./queries";
 import { answerRows } from "./reviewItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 
-function personLabel(person: { displayName?: string; email: string }) {
+function personLabel(person: {
+  displayName?: string | undefined;
+  email: string;
+}) {
   return person.displayName ?? person.email;
 }
 

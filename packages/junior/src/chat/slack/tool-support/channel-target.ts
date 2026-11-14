@@ -74,7 +74,7 @@ export async function resolveSlackChannelRef(input: {
  */
 export async function resolveOptionalSlackChannelRef(input: {
   field?: string;
-  value?: string;
+  value?: string | undefined;
   defaultChannelId?: SlackChannelId;
   teamId: SlackTeamId;
 }): Promise<ResolvedSlackChannelTarget> {

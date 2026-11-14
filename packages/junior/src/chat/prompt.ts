@@ -345,8 +345,8 @@ function buildWorldSection(): string | null {
 }
 
 function buildRuntimeSection(params: {
-  conversationId?: string;
-  slackConversation?: SlackConversationContext;
+  conversationId?: string | undefined;
+  slackConversation?: SlackConversationContext | undefined;
 }): string | null {
   const lines = [
     `- sandbox.workspace_root: ${escapeXml(SANDBOX_WORKSPACE_ROOT)}`,
@@ -498,16 +498,18 @@ function buildDispatchSection(
 }
 
 function buildContextSection(params: {
-  actor?: { userName?: string; fullName?: string; userId?: string };
-  configuration?: Record<string, unknown>;
-  dispatch?: {
-    actor?: SystemActor;
-    declaresResult?: boolean;
-    destination: Destination;
-    metadata?: Record<string, string>;
-    plugin?: string;
-    source: Source;
-  };
+  actor?: { userName?: string; fullName?: string; userId?: string } | undefined;
+  configuration?: Record<string, unknown> | undefined;
+  dispatch?:
+    | {
+        actor?: SystemActor;
+        declaresResult?: boolean;
+        destination: Destination;
+        metadata?: Record<string, string>;
+        plugin?: string;
+        source: Source;
+      }
+    | undefined;
 }): string | null {
   const blocks: string[][] = [];
 
@@ -736,8 +738,8 @@ type TurnContextPromptInput = {
   userCustomization?: string;
   workspaces?: PromptWorkspace[];
   runtime?: {
-    conversationId?: string;
-    slackConversation?: SlackConversationContext;
+    conversationId?: string | undefined;
+    slackConversation?: SlackConversationContext | undefined;
   };
   dispatch?: {
     actor?: SystemActor;

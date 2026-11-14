@@ -431,7 +431,7 @@ async function recordEventAutomationExecution(
 ): Promise<void> {
   if (!next || next.status !== status || previous?.status === status) return;
   if (next.plugin !== "junior") return;
-  const eventAutomationId = next.metadata?.eventAutomationId;
+  const eventAutomationId = next.metadata?.["eventAutomationId"];
   if (!eventAutomationId) return;
   await recordAutomationExecution(eventAutomationId, {
     conversationId: getDispatchConversationId(next),
@@ -454,7 +454,7 @@ export async function markDispatchBlocked(
   resultMessageTs?: string,
 ): Promise<DispatchRecord | undefined> {
   const previous = await getDispatchRecord(id);
-  const eventAutomationId = previous?.metadata?.eventAutomationId;
+  const eventAutomationId = previous?.metadata?.["eventAutomationId"];
   if (
     previous?.plugin === "junior" &&
     eventAutomationId &&

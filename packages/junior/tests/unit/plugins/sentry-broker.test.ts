@@ -108,7 +108,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
   });
 
   it("falls back to a static env token when no per-user token exists", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "static-env-token";
+    process.env["SENTRY_AUTH_TOKEN"] = "static-env-token";
     const broker = createBroker();
     const lease = await broker.issue({
       context: SYSTEM_CREDENTIAL_CONTEXT,
@@ -130,8 +130,8 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
   });
 
   it("merges plugin-level API headers with token-backed credential headers", async () => {
-    process.env.SENTRY_AUTH_TOKEN = "static-env-token";
-    process.env.SENTRY_EXTRA_AUTH = "ExtraHeader value";
+    process.env["SENTRY_AUTH_TOKEN"] = "static-env-token";
+    process.env["SENTRY_EXTRA_AUTH"] = "ExtraHeader value";
     const manifest: PluginManifest = {
       ...SENTRY_MANIFEST,
       domains: ["uploads.sentry.io", "us.sentry.io"],
@@ -174,7 +174,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
   });
 
   it("throws CredentialUnavailableError when no credentials are available", async () => {
-    delete process.env.SENTRY_AUTH_TOKEN;
+    delete process.env["SENTRY_AUTH_TOKEN"];
     const broker = createBroker();
 
     await expect(
@@ -186,8 +186,8 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
   });
 
   it("retains the refresh token when refreshing near expiry without rotation", async () => {
-    process.env.SENTRY_CLIENT_ID = "client-id";
-    process.env.SENTRY_CLIENT_SECRET = "client-secret";
+    process.env["SENTRY_CLIENT_ID"] = "client-id";
+    process.env["SENTRY_CLIENT_SECRET"] = "client-secret";
     const refreshTokenExpiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
 
     const tokenStore = createMockTokenStore({
@@ -242,8 +242,8 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     const now = new Date("2026-06-01T12:00:00Z");
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(now);
-    process.env.SENTRY_CLIENT_ID = "client-id";
-    process.env.SENTRY_CLIENT_SECRET = "client-secret";
+    process.env["SENTRY_CLIENT_ID"] = "client-id";
+    process.env["SENTRY_CLIENT_SECRET"] = "client-secret";
     const oldRefreshTokenExpiresAt = now.getTime() + 30 * 24 * 60 * 60 * 1000;
 
     const tokenStore = createMockTokenStore({
@@ -278,8 +278,8 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
   });
 
   it("uses tokens refreshed by another request before refreshing a stale token", async () => {
-    process.env.SENTRY_CLIENT_ID = "client-id";
-    process.env.SENTRY_CLIENT_SECRET = "client-secret";
+    process.env["SENTRY_CLIENT_ID"] = "client-id";
+    process.env["SENTRY_CLIENT_SECRET"] = "client-secret";
     const staleToken: StoredTokens = {
       accessToken: "old-access-token",
       refreshToken: "old-refresh-token",
@@ -328,8 +328,8 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
   });
 
   it("does not issue a stale lease when token refresh is rejected", async () => {
-    process.env.SENTRY_CLIENT_ID = "client-id";
-    process.env.SENTRY_CLIENT_SECRET = "client-secret";
+    process.env["SENTRY_CLIENT_ID"] = "client-id";
+    process.env["SENTRY_CLIENT_SECRET"] = "client-secret";
 
     const tokenStore = createMockTokenStore({
       "U123:sentry": {
@@ -357,8 +357,8 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
   });
 
   it("surfaces operational token refresh failures", async () => {
-    process.env.SENTRY_CLIENT_ID = "client-id";
-    process.env.SENTRY_CLIENT_SECRET = "client-secret";
+    process.env["SENTRY_CLIENT_ID"] = "client-id";
+    process.env["SENTRY_CLIENT_SECRET"] = "client-secret";
 
     const tokenStore = createMockTokenStore({
       "U123:sentry": {
@@ -398,8 +398,8 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
   });
 
   it("bounds oversized token refresh error bodies", async () => {
-    process.env.SENTRY_CLIENT_ID = "client-id";
-    process.env.SENTRY_CLIENT_SECRET = "client-secret";
+    process.env["SENTRY_CLIENT_ID"] = "client-id";
+    process.env["SENTRY_CLIENT_SECRET"] = "client-secret";
 
     const tokenStore = createMockTokenStore({
       "U123:sentry": {
@@ -436,8 +436,8 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
   });
 
   it("sanitizes provider failures while reading refresh error bodies", async () => {
-    process.env.SENTRY_CLIENT_ID = "client-id";
-    process.env.SENTRY_CLIENT_SECRET = "client-secret";
+    process.env["SENTRY_CLIENT_ID"] = "client-id";
+    process.env["SENTRY_CLIENT_SECRET"] = "client-secret";
 
     const tokenStore = createMockTokenStore({
       "U123:sentry": {

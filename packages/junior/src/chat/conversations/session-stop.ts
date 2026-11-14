@@ -37,7 +37,11 @@ const STOPPED_CONVERSATION_SKIP_REASON = "stopped conversation";
  */
 export async function markConversationsStopped(
   conversationIds: readonly string[],
-  options: { cancelWatches: boolean; nowMs?: number; state?: StateAdapter },
+  options: {
+    cancelWatches: boolean;
+    nowMs?: number;
+    state?: StateAdapter | undefined;
+  },
 ): Promise<void> {
   if (conversationIds.length === 0) {
     return;

@@ -123,7 +123,7 @@ export type PluginAuthorization = z.output<typeof pluginAuthorizationSchema>;
 
 /** Interrupt sandbox egress so Junior can start provider authorization. */
 export class EgressAuthRequired extends Error {
-  authorization?: PluginAuthorization;
+  authorization?: PluginAuthorization | undefined;
 
   constructor(
     message: string,

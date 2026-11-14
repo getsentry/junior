@@ -15,12 +15,12 @@ import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
  */
 export function createSlackSystemTurnDelivery(args: {
   getSlackAdapter: () => SlackAdapter;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): DeliverMessage {
   return async ({ conversationId, location, text, cards }) => {
     if (location.provider !== "slack") {
       throw new Error(
-        `Slack system Turn cannot deliver to ${location.provider} Location`,
+        `Slack system Turn cannot deliver to ${String(location.provider)} Location`,
       );
     }
     let messageIds: string[];

@@ -16,7 +16,7 @@ const AUTH_LINK_REUSE_WINDOW_MS = 10 * 60 * 1000;
 export function canReusePendingAuthLink(args: {
   kind: AuthorizationPauseKind;
   nowMs?: number;
-  pendingAuth?: ConversationPendingAuthState;
+  pendingAuth?: ConversationPendingAuthState | undefined;
   provider: string;
   actorId: string;
   scope?: string;

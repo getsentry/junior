@@ -45,7 +45,7 @@ export interface WebFetchToolDeps {
 export interface WebSearchToolDeps {
   execute?: (input: {
     query: string;
-    max_results?: number;
+    max_results?: number | undefined;
   }) => Promise<JuniorToolOutput> | JuniorToolOutput;
 }
 
@@ -63,18 +63,20 @@ export interface ToolHooks {
     files: FileUpload[],
   ) => GeneratedArtifactFileRef[] | Promise<GeneratedArtifactFileRef[]>;
   onSkillLoaded?: (skill: Skill) => void | Promise<void>;
-  toolOverrides?: {
-    imageGenerate?: ImageGenerateToolDeps;
-    viewImage?: ViewImageToolDeps;
-    webFetch?: WebFetchToolDeps;
-    webSearch?: WebSearchToolDeps;
-  };
+  toolOverrides?:
+    | {
+        imageGenerate?: ImageGenerateToolDeps;
+        viewImage?: ViewImageToolDeps;
+        webFetch?: WebFetchToolDeps;
+        webSearch?: WebSearchToolDeps;
+      }
+    | undefined;
 }
 
 interface BaseToolRuntimeContext {
-  attachmentStorage?: AttachmentStorage;
+  attachmentStorage?: AttachmentStorage | undefined;
   /** Queue of the app. Without it, Review item tools use the Vercel queue. */
-  conversationWorkQueue?: ConversationWorkQueue;
+  conversationWorkQueue?: ConversationWorkQueue | undefined;
   messageAgent?: MessageAgent;
   spawnAgent?: SpawnAgent;
   /**
@@ -97,15 +99,15 @@ interface BaseToolRuntimeContext {
   /** Legacy Location identity used by memory and plugin contexts. */
   locationId?: string;
   /** Stored Conversation visibility used by tools. */
-  conversationPrivacy?: ConversationPrivacy;
+  conversationPrivacy?: ConversationPrivacy | undefined;
 
   /** Runtime-owned default outbound destination for this invocation. */
   destination: Destination;
 
-  actor?: Actor;
-  resolveActorIdentity?: () => Promise<
-    { identity: Identity; user?: User } | undefined
-  >;
+  actor?: Actor | undefined;
+  resolveActorIdentity?:
+    | (() => Promise<{ identity: Identity; user?: User } | undefined>)
+    | undefined;
   /** Runtime-owned source where this invocation came from. */
   source: Source;
   /** Runtime surface that owns final delivery semantics for this turn. */
@@ -125,23 +127,23 @@ interface BaseToolRuntimeContext {
 
 interface SlackToolRuntimeContext extends BaseToolRuntimeContext {
   destination: SlackDestination;
-  actor?: SlackActor;
+  actor?: SlackActor | undefined;
   source: SlackSource;
-  slackActionToken?: SlackActionToken;
+  slackActionToken?: SlackActionToken | undefined;
 }
 
 interface LocalToolRuntimeContext extends BaseToolRuntimeContext {
   destination: LocalDestination;
-  actor?: LocalActor;
+  actor?: LocalActor | undefined;
   source: LocalSource;
-  slackActionToken?: never;
+  slackActionToken?: never | undefined;
 }
 
 interface WebToolRuntimeContext extends BaseToolRuntimeContext {
   destination: Destination;
-  actor?: WebActor;
+  actor?: WebActor | undefined;
   source: WebSource;
-  slackActionToken?: never;
+  slackActionToken?: never | undefined;
 }
 
 export type ToolRuntimeContext =
@@ -150,14 +152,14 @@ export type ToolRuntimeContext =
   | WebToolRuntimeContext
   | (BaseToolRuntimeContext & {
       destination: Destination;
-      actor?: Actor;
+      actor?: Actor | undefined;
       source:
         | AgentInvocationSource
         | EventAutomationSource
         | PluginDispatchSource
         | EventSource
         | ScheduledAutomationSource;
-      slackActionToken?: never;
+      slackActionToken?: never | undefined;
     });
 
 export interface ToolState {

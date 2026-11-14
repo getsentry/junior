@@ -65,7 +65,7 @@ import type { Lock } from "chat";
 const PLUGIN_TASK_LOCK_TTL_MS = 5 * 60 * 1000;
 
 export interface ScheduleSessionCompletedPluginTasksOptions {
-  send?: (message: PluginTaskQueueMessage) => Promise<void>;
+  send?: ((message: PluginTaskQueueMessage) => Promise<void>) | undefined;
 }
 
 interface ProcessPluginTaskOptions {
@@ -79,10 +79,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function textPart(value: unknown): string | undefined {
   if (
     isRecord(value) &&
-    value.type === "text" &&
-    typeof value.text === "string"
+    value["type"] === "text" &&
+    typeof value["text"] === "string"
   ) {
-    return value.text;
+    return value["text"];
   }
   return undefined;
 }
@@ -103,10 +103,10 @@ function toolResultText(message: PiMessage): string {
   const parts = [
     messageText(message),
     record.output,
-    record.result,
-    record.stdout,
-    record.stderr,
-    record.toolResult,
+    record["result"],
+    record["stdout"],
+    record["stderr"],
+    record["toolResult"],
   ].filter(
     (value): value is string => typeof value === "string" && value.length > 0,
   );

@@ -615,7 +615,7 @@ describe("memory plugin storage", () => {
       kind: "preference",
       content: "Uses qa-structured-output in CLI QA.",
     });
-    expect(strictProviderSchemaProblems(calls[0]!.schema)).toEqual([]);
+    expect(strictProviderSchemaProblems(calls[0].schema)).toEqual([]);
   });
 
   it("registers explicit model id as memory plugin model configuration", () => {
@@ -629,8 +629,8 @@ describe("memory plugin storage", () => {
   });
 
   it("defaults memory extraction to the host default model", () => {
-    const previousMemoryModel = process.env.AI_MEMORY_MODEL;
-    delete process.env.AI_MEMORY_MODEL;
+    const previousMemoryModel = process.env["AI_MEMORY_MODEL"];
+    delete process.env["AI_MEMORY_MODEL"];
 
     try {
       const plugin = memoryPlugin();
@@ -639,9 +639,9 @@ describe("memory plugin storage", () => {
       });
     } finally {
       if (previousMemoryModel === undefined) {
-        delete process.env.AI_MEMORY_MODEL;
+        delete process.env["AI_MEMORY_MODEL"];
       } else {
-        process.env.AI_MEMORY_MODEL = previousMemoryModel;
+        process.env["AI_MEMORY_MODEL"] = previousMemoryModel;
       }
     }
   });
@@ -649,22 +649,22 @@ describe("memory plugin storage", () => {
   it("configures automatic recall and passive extraction independently", () => {
     const defaults = memoryPlugin();
     expect(defaults.hooks?.userPrompt).toBeTypeOf("function");
-    expect(defaults.tasks?.processSession).toBeDefined();
+    expect(defaults.tasks?.["processSession"]).toBeDefined();
 
     const withoutRecall = memoryPlugin({ disableRecall: true });
     expect(withoutRecall.hooks?.userPrompt).toBeUndefined();
-    expect(withoutRecall.tasks?.processSession).toBeDefined();
+    expect(withoutRecall.tasks?.["processSession"]).toBeDefined();
 
     const withoutExtraction = memoryPlugin({ disableExtraction: true });
     expect(withoutExtraction.hooks?.userPrompt).toBeTypeOf("function");
-    expect(withoutExtraction.tasks?.processSession).toBeUndefined();
+    expect(withoutExtraction.tasks?.["processSession"]).toBeUndefined();
 
     const withoutEither = memoryPlugin({
       disableExtraction: true,
       disableRecall: true,
     });
     expect(withoutEither.hooks?.userPrompt).toBeUndefined();
-    expect(withoutEither.tasks?.processSession).toBeUndefined();
+    expect(withoutEither.tasks?.["processSession"]).toBeUndefined();
   });
 
   it("disables memory write tools outside a public main Conversation", () => {
@@ -855,8 +855,8 @@ describe("memory plugin storage", () => {
   });
 
   it("uses AI_MEMORY_MODEL as the memory plugin model default", async () => {
-    const previousModel = process.env.AI_MEMORY_MODEL;
-    process.env.AI_MEMORY_MODEL = "anthropic/claude-sonnet-4.6";
+    const previousModel = process.env["AI_MEMORY_MODEL"];
+    process.env["AI_MEMORY_MODEL"] = "anthropic/claude-sonnet-4.6";
 
     try {
       const plugin = memoryPlugin();
@@ -865,9 +865,9 @@ describe("memory plugin storage", () => {
       });
     } finally {
       if (previousModel === undefined) {
-        delete process.env.AI_MEMORY_MODEL;
+        delete process.env["AI_MEMORY_MODEL"];
       } else {
-        process.env.AI_MEMORY_MODEL = previousModel;
+        process.env["AI_MEMORY_MODEL"] = previousModel;
       }
     }
   });
@@ -1129,9 +1129,9 @@ describe("memory plugin storage", () => {
       );
 
       expect(supersessionCalls).toHaveLength(1);
-      expect(
-        strictProviderSchemaProblems(supersessionCalls[0]!.schema),
-      ).toEqual([]);
+      expect(strictProviderSchemaProblems(supersessionCalls[0].schema)).toEqual(
+        [],
+      );
 
       const rows = await memoryDb(fixture)
         .select()
@@ -1345,7 +1345,7 @@ describe("memory plugin storage", () => {
       );
 
       expect(calls).toHaveLength(1);
-      expect(strictProviderSchemaProblems(calls[0]!.schema)).toEqual([]);
+      expect(strictProviderSchemaProblems(calls[0].schema)).toEqual([]);
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
       ).resolves.toEqual([
@@ -1595,7 +1595,7 @@ describe("memory plugin storage", () => {
               object: {
                 decision: "supersedes_old",
                 duplicateId: null,
-                supersededIds: [existing[0]!.id],
+                supersededIds: [existing[0].id],
               },
             };
           }
@@ -4187,7 +4187,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
       if (!contribution || !("context" in contribution)) {
         throw new Error("Memory recall did not return structured context");
       }
-      const admittedIds = contribution.context.content.memories.map(
+      const admittedIds = contribution.context.content["memories"].map(
         (memory) => memory.id,
       );
       expect(admittedIds).toHaveLength(6);

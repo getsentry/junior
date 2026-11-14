@@ -57,8 +57,8 @@ export function PluginReports(props: {
 }
 
 function PluginReportView(props: {
-  fallbackTitle?: string;
-  range?: TimeRangeDays;
+  fallbackTitle?: string | undefined;
+  range?: TimeRangeDays | undefined;
   report: PluginOperationalReport;
 }) {
   const reportTitle =

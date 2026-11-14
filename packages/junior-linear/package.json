@@ -22,9 +22,7 @@
     "skills"
   ],
   "scripts": {
-    "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
-    "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tests tsup.config.ts vitest.config.ts",
-    "prepare": "pnpm run build",
+    "build": "tsdown",
     "prepack": "pnpm run build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
@@ -34,12 +32,10 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@oxlint/plugins": "1.79.0",
     "@sentry/junior-testing": "workspace:*",
-    "@types/node": "^25.9.1",
-    "oxlint": "^1.79.0",
-    "tsup": "^8.5.1",
-    "typescript": "^7.0.2",
-    "vitest": "^4.1.12"
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

@@ -21,15 +21,15 @@ interface SlackAdapterInternals {
 
 interface SlackTokenContext {
   botUserId?: string;
-  enterpriseId?: string;
-  isEnterpriseInstall?: boolean;
+  enterpriseId?: string | undefined;
+  isEnterpriseInstall?: boolean | undefined;
   token: string;
 }
 
 export interface SlackInstallationContext {
-  enterpriseId?: string;
-  isEnterpriseInstall?: boolean;
-  teamId?: string;
+  enterpriseId?: string | undefined;
+  isEnterpriseInstall?: boolean | undefined;
+  teamId?: string | undefined;
 }
 
 const initializedAdapters = new WeakSet<SlackAdapter>();
@@ -45,7 +45,7 @@ async function getConnectedState(
 /** Initialize the Slack adapter against the repository state adapter. */
 export async function ensureSlackAdapterInitialized(args: {
   adapter: SlackAdapter;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<void> {
   if (initializedAdapters.has(args.adapter)) {
     return;
@@ -90,7 +90,7 @@ export function verifySlackSignature(args: {
 export async function runWithSlackInstallation<T>(args: {
   adapter: SlackAdapter;
   installation: SlackInstallationContext;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
   task: () => T | Promise<T>;
 }): Promise<T> {
   await ensureSlackAdapterInitialized({

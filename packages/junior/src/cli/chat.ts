@@ -123,10 +123,10 @@ function writeStream(
 
 /** Keep local chat ephemeral by default; Redis is opt-in via an explicit adapter. */
 function defaultStateAdapterForLocalChat(): void {
-  if (process.env.JUNIOR_STATE_ADAPTER) {
+  if (process.env["JUNIOR_STATE_ADAPTER"]) {
     return;
   }
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 }
 
 /** Load the app plugin module so source-mode local chat matches server wiring. */
@@ -226,7 +226,7 @@ function newRunConversationId(): string {
 }
 
 function localDevServerUrl(): string {
-  return `http://127.0.0.1:${process.env.PORT?.trim() || "3000"}`;
+  return `http://127.0.0.1:${process.env["PORT"]?.trim() || "3000"}`;
 }
 
 /** Wire the shared local-turn setup so prompt and interactive runs stay identical. */
@@ -398,7 +398,7 @@ async function runInteractive(
 export async function runChat(
   argv: string[],
   io: ChatIo = DEFAULT_IO,
-  deps: { pluginSet?: JuniorPluginSet | null } = {},
+  deps: { pluginSet?: JuniorPluginSet | null | undefined } = {},
 ): Promise<number> {
   const options = parseChatArgs(argv);
   if (!options) {

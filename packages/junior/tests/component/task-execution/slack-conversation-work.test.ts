@@ -464,7 +464,7 @@ describe("Slack conversation work execution", () => {
       message: Message;
       skipped: Message[];
       thread: Thread;
-      telemetry?: TurnInputTelemetry;
+      telemetry?: TurnInputTelemetry | undefined;
     }> = [];
 
     await handleSlackWebhookAndFlush({
@@ -1644,7 +1644,7 @@ describe("Slack conversation work execution", () => {
     const observed: boolean[] = [];
     const runtime: SlackWorkerOptions["runtime"] = {
       handleNewMention: async (_thread, _message, hooks) => {
-        observed.push(hooks.isFinalAttempt === true);
+        observed.push(hooks.isFinalAttempt);
         throw new Error("runtime failed before ack");
       },
       handleSubscribedMessage: async () => {

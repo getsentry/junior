@@ -10,23 +10,23 @@ import type { SlackBotId, SlackUserId } from "@/chat/slack/ids";
 /** Normalized Slack user profile with custom fields from the Slack workspace. */
 export interface SlackUserProfile {
   id: string;
-  team_id?: string;
-  name?: string;
-  real_name?: string;
-  display_name?: string;
-  title?: string;
-  email?: string;
-  status_text?: string;
-  status_emoji?: string;
-  avatar_url?: string;
+  team_id?: string | undefined;
+  name?: string | undefined;
+  real_name?: string | undefined;
+  display_name?: string | undefined;
+  title?: string | undefined;
+  email?: string | undefined;
+  status_text?: string | undefined;
+  status_emoji?: string | undefined;
+  avatar_url?: string | undefined;
   is_bot: boolean;
   is_deleted: boolean;
-  timezone?: string;
+  timezone?: string | undefined;
   profile_fields?: Array<{
     id: string;
-    label?: string;
-    value?: string;
-    alt?: string;
+    label?: string | undefined;
+    value?: string | undefined;
+    alt?: string | undefined;
   }>;
 }
 

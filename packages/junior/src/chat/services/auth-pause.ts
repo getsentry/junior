@@ -10,7 +10,7 @@ export class AuthorizationPauseError extends Error {
   readonly kind: AuthorizationPauseKind;
   readonly provider: string;
   readonly providerDisplayName: string;
-  readonly requestText?: string;
+  readonly requestText?: string | undefined;
 
   constructor(
     kind: AuthorizationPauseKind,

@@ -267,7 +267,7 @@ export interface JuniorAppOptions extends BotModelConfig {
      * Entries may be exact domains or leading wildcard domains such as
      * `*.sentry.io`; wildcard entries match subdomains, not the apex domain.
      */
-    egressTracePropagationDomains?: string[];
+    egressTracePropagationDomains?: string[] | undefined;
   };
   waitUntil?: WaitUntilFn;
 }
@@ -277,12 +277,12 @@ function resolvePublicBaseURL(
   dashboard: JuniorDashboardOptions | undefined,
 ): string | undefined {
   const configured =
-    dashboard?.baseURL?.trim() || process.env.JUNIOR_BASE_URL?.trim();
+    dashboard?.baseURL?.trim() || process.env["JUNIOR_BASE_URL"]?.trim();
   if (configured) return configured;
 
   const vercelURL =
-    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
-    process.env.VERCEL_URL?.trim();
+    process.env["VERCEL_PROJECT_PRODUCTION_URL"]?.trim() ||
+    process.env["VERCEL_URL"]?.trim();
   if (!vercelURL) return undefined;
   return vercelURL.startsWith("https://") || vercelURL.startsWith("http://")
     ? vercelURL
@@ -292,11 +292,11 @@ function resolvePublicBaseURL(
 type JuniorVirtualDashboardOptions = JuniorDashboardOptions;
 
 interface JuniorVirtualConfig {
-  functionMaxDurationSeconds?: number;
-  createDashboardApp?: CreateDashboardApp;
-  dashboard?: JuniorVirtualDashboardOptions;
-  pluginSet?: JuniorPluginSet;
-  plugins?: PluginCatalogConfig;
+  functionMaxDurationSeconds?: number | undefined;
+  createDashboardApp?: CreateDashboardApp | undefined;
+  dashboard?: JuniorVirtualDashboardOptions | undefined;
+  pluginSet?: JuniorPluginSet | undefined;
+  plugins?: PluginCatalogConfig | undefined;
   pluginRuntimeRegistrations: string[];
 }
 
@@ -323,10 +323,10 @@ async function resolveVirtualConfig(): Promise<
 > {
   try {
     const mod: {
-      createDashboardApp?: CreateDashboardApp;
+      createDashboardApp?: CreateDashboardApp | undefined;
       functionMaxDurationSeconds?: number;
-      dashboard?: JuniorVirtualDashboardOptions;
-      pluginSet?: JuniorPluginSet;
+      dashboard?: JuniorVirtualDashboardOptions | undefined;
+      pluginSet?: JuniorPluginSet | undefined;
       plugins?: PluginCatalogConfig;
       pluginRuntimeRegistrations?: string[];
     } = await import("#junior/config");
@@ -835,7 +835,7 @@ export async function createApp(
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
-  if (process.env.NODE_ENV === "development") {
+  if (process.env["NODE_ENV"] === "development") {
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();
     registerVercelWorkspaceSnapshotJobDevConsumer();

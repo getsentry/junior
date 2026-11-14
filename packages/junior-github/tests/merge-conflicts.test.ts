@@ -426,7 +426,7 @@ describe("merge conflict check on webhook events", () => {
       ...new Set(
         conflicts()
           .filter((event) => event.identifier === "getsentry/junior#946")
-          .map((event) => String(event.data?.headSha).slice(0, 1)),
+          .map((event) => String(event.data?.["headSha"]).slice(0, 1)),
       ),
     ];
 

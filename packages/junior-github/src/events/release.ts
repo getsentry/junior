@@ -45,7 +45,7 @@ export const GITHUB_RELEASE_SOURCE_IDENTIFIER = {
 /** Build the stable release-source identity shared by tools and webhooks. */
 export function gitHubReleaseSourceResource(input: {
   repo: string;
-  tag?: string;
+  tag?: string | undefined;
 }): Pick<SubscribableResource, "label" | "namespace" | "identifier"> {
   const repo = input.repo.toLowerCase();
   const tag = input.tag?.trim();
@@ -66,7 +66,7 @@ export function gitHubReleaseSourceSubscribable(input: {
   /** `ctx.events.canSubscribe` from the tool context. */
   canSubscribe: boolean;
   repo: string;
-  tag?: string;
+  tag?: string | undefined;
 }): SubscribableResource | undefined {
   if (!input.canSubscribe) return undefined;
   const tag = input.tag?.trim();

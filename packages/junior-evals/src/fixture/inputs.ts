@@ -171,7 +171,7 @@ export interface HistoryReply {
   kind: "reply";
   text: string;
   /** Completed tool calls before this reply. People did not see them. */
-  toolHistory?: HistoryToolCall[];
+  toolHistory?: HistoryToolCall[] | undefined;
 }
 
 /**

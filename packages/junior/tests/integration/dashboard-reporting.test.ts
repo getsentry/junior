@@ -24,7 +24,7 @@ import {
 } from "../fixtures/dashboard-reporting";
 
 const ORIGINAL_ENV = { ...process.env };
-const TEST_DATABASE_URL = ORIGINAL_ENV.DATABASE_URL;
+const TEST_DATABASE_URL = ORIGINAL_ENV["DATABASE_URL"];
 
 if (!TEST_DATABASE_URL) {
   throw new Error(

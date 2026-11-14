@@ -54,7 +54,7 @@ type NewAgentInvocation = Pick<
   | "parentToolCallId"
   | "reasoningLevel"
   | "title"
-> & { source?: AgentInvocation["source"] };
+> & { source?: AgentInvocation["source"] | undefined };
 
 /**
  * Insert one pending agent invocation and read it back. An existing row with

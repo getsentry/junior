@@ -107,7 +107,7 @@ async function logRunOutcome(args: {
   db: JuniorDatabase;
   /** Prefer a fresh task load after terminal status transitions. */
   task?: ScheduledAutomation;
-  extras?: Record<string, unknown>;
+  extras?: Record<string, unknown> | undefined;
 }): Promise<void> {
   const task =
     args.task ?? (await readScheduledAutomation(args.db, args.run.taskId));

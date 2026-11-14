@@ -141,20 +141,26 @@ export interface ToolPipelineOptions {
   catalogTools: Record<string, AnyToolDefinition>;
   sandbox: SkillSandbox;
   spanContext: LogContext;
-  onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
-  sandboxTools?: SandboxTools;
-  pluginAuthOrchestration?: PluginAuthOrchestration;
-  onToolCall?: (
-    toolCallId: string,
-    toolName: string,
-    params: Record<string, unknown>,
-  ) => void | Promise<void>;
-  agentHooks?: PluginHookRunner;
-  conversationPrivacy?: ConversationPrivacy;
-  onToolResult?: (report: ToolExecutionReport) => void | Promise<void>;
-  actionReview?: ToolActionReview;
+  onStatus?:
+    | ((status: AssistantStatusSpec) => void | Promise<void>)
+    | undefined;
+  sandboxTools?: SandboxTools | undefined;
+  pluginAuthOrchestration?: PluginAuthOrchestration | undefined;
+  onToolCall?:
+    | ((
+        toolCallId: string,
+        toolName: string,
+        params: Record<string, unknown>,
+      ) => void | Promise<void>)
+    | undefined;
+  agentHooks?: PluginHookRunner | undefined;
+  conversationPrivacy?: ConversationPrivacy | undefined;
+  onToolResult?:
+    | ((report: ToolExecutionReport) => void | Promise<void>)
+    | undefined;
+  actionReview?: ToolActionReview | undefined;
   /** Keeps the full text of a model-facing result that was cut. */
-  workspace?: Pick<SandboxWorkspace, "writeFiles">;
+  workspace?: Pick<SandboxWorkspace, "writeFiles"> | undefined;
 }
 
 /** One tool call that a Code Mode script made. */
@@ -184,7 +190,7 @@ export type ScriptToolCallOutcome =
   | {
       status: "rejected";
       error: ToolActionRejectedError;
-      marker?: ToolActionRejectionMarker;
+      marker?: ToolActionRejectionMarker | undefined;
     }
   | { status: "error"; error: Error };
 
@@ -297,10 +303,10 @@ export function createToolPipeline(options: ToolPipelineOptions) {
       ...(Object.keys(beforeTool.env).length > 0
         ? {
             env: {
-              ...(toolInput.env &&
-              typeof toolInput.env === "object" &&
-              !Array.isArray(toolInput.env)
-                ? toolInput.env
+              ...(toolInput["env"] &&
+              typeof toolInput["env"] === "object" &&
+              !Array.isArray(toolInput["env"])
+                ? toolInput["env"]
                 : undefined),
               ...beforeTool.env,
             },
@@ -769,7 +775,9 @@ export interface PiAgentToolsOptions {
    * pass `{ owner: "none" }`.
    */
   searchToolsCost: ConversationModelCost;
-  onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
+  onStatus?:
+    | ((status: AssistantStatusSpec) => void | Promise<void>)
+    | undefined;
   sandboxTools?: SandboxTools;
   pluginAuthOrchestration?: PluginAuthOrchestration;
   onToolCall?: (
@@ -778,8 +786,10 @@ export interface PiAgentToolsOptions {
     params: Record<string, unknown>,
   ) => void | Promise<void>;
   agentHooks?: PluginHookRunner;
-  conversationPrivacy?: ConversationPrivacy;
-  onToolResult?: (report: ToolExecutionReport) => void | Promise<void>;
+  conversationPrivacy?: ConversationPrivacy | undefined;
+  onToolResult?:
+    | ((report: ToolExecutionReport) => void | Promise<void>)
+    | undefined;
   actionReview?: ToolActionReview;
   codeMode?: Pick<CodeModeToolOptions, "countToolCall"> & {
     /** Keeps the full text of a model-facing result that was cut. */

@@ -71,7 +71,7 @@ import {
 export interface AssistantLifecycleEvent {
   channelId: string;
   context?: {
-    channelId?: string;
+    channelId?: string | undefined;
   };
   threadId: string;
   threadTs: string;
@@ -97,7 +97,7 @@ export interface ReplyHooks {
   isFinalAttempt?: boolean;
   shouldYield?: () => boolean;
   checkIn?: () => Promise<boolean>;
-  stopSignal?: AbortSignal;
+  stopSignal?: AbortSignal | undefined;
 }
 
 interface SteeringDrainContext {
@@ -126,13 +126,13 @@ function shouldRethrowTurnControlError(error: unknown): boolean {
 
 type RuntimeLogContext = Record<string, unknown> & {
   assistantUserName: string;
-  conversationId?: string;
-  destinationName?: string;
-  messageConversationId?: string;
+  conversationId?: string | undefined;
+  destinationName?: string | undefined;
+  messageConversationId?: string | undefined;
   modelId: string;
-  runId?: string;
-  userId?: string;
-  userName?: string;
+  runId?: string | undefined;
+  userId?: string | undefined;
+  userName?: string | undefined;
 };
 
 export interface SlackTurnRuntimeDependencies<TPreparedState> {
@@ -144,13 +144,13 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
   ) => string | undefined;
   initializeAssistantThread: (event: {
     channelId: string;
-    sourceChannelId?: string;
+    sourceChannelId?: string | undefined;
     threadId: string;
     threadTs: string;
   }) => Promise<void>;
   refreshAssistantThreadContext: (event: {
     channelId: string;
-    sourceChannelId?: string;
+    sourceChannelId?: string | undefined;
     threadId: string;
     threadTs: string;
   }) => Promise<void>;
@@ -185,23 +185,25 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
     thread: Thread,
     message: Message,
     options: {
-      beforeFirstResponsePost?: () => Promise<void>;
+      beforeFirstResponsePost?: (() => Promise<void>) | undefined;
       conversationId?: string;
       destination: Destination;
       explicitMention?: boolean;
       ack?: () => Promise<void>;
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
       onTurnCompleted?: () => Promise<void>;
-      onTurnStatePersisted?: () => Promise<void>;
+      onTurnStatePersisted?: (() => Promise<void>) | undefined;
       preparedState?: TPreparedState;
       queuedMessages?: QueuedTurnMessage[];
-      drainSteeringMessages?: (
-        accept: (messages: QueuedTurnMessage[]) => Promise<void>,
-        context?: SteeringDrainContext,
-      ) => Promise<QueuedTurnMessage[]>;
-      shouldYield?: () => boolean;
-      checkIn?: () => Promise<boolean>;
-      stopSignal?: AbortSignal;
+      drainSteeringMessages?:
+        | ((
+            accept: (messages: QueuedTurnMessage[]) => Promise<void>,
+            context?: SteeringDrainContext,
+          ) => Promise<QueuedTurnMessage[]>)
+        | undefined;
+      shouldYield?: (() => boolean) | undefined;
+      checkIn?: (() => Promise<boolean>) | undefined;
+      stopSignal?: AbortSignal | undefined;
     },
   ) => Promise<void>;
   decideSubscribedReply: SubscribedReplyPolicy;
@@ -214,7 +216,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
 function getQueuedMessages(
   context: MessageContext | undefined,
   options: {
-    botUserId?: string;
+    botUserId?: string | undefined;
     explicitMention: boolean;
   },
 ): QueuedTurnMessage[] {
@@ -240,7 +242,7 @@ function getQueuedMessages(
 function getQueuedMessagesFromSlackMessages(
   messages: Message[],
   options: {
-    botUserId?: string;
+    botUserId?: string | undefined;
     explicitMention: boolean;
   },
 ): QueuedTurnMessage[] {
@@ -270,7 +272,7 @@ interface SteeringMessageSelection {
 function createAcceptedSteeringDrain(
   hooks: ReplyHooks,
   options: {
-    botUserId?: string;
+    botUserId?: string | undefined;
     explicitMention: boolean;
     onAcceptedForProcessing?: (messages: Message[]) => Promise<void>;
     onSkipped?: (messages: SteeringMessageDecision[]) => Promise<void>;
@@ -337,11 +339,11 @@ function buildLogContext(
     "assistantUserName" | "modelId"
   >,
   args: {
-    channelId?: string;
-    actorId?: string;
-    actorUserName?: string;
-    threadId?: string;
-    runId?: string;
+    channelId?: string | undefined;
+    actorId?: string | undefined;
+    actorUserName?: string | undefined;
+    threadId?: string | undefined;
+    runId?: string | undefined;
   },
 ): RuntimeLogContext {
   return {
@@ -369,16 +371,16 @@ export function createSlackTurnRuntime<
 ): SlackTurnRuntime<TPreparedState, TAssistantEvent> {
   const turnLifecycle = getTurnLifecycle();
   const logContext = (args: {
-    channelId?: string;
-    actorId?: string;
-    actorUserName?: string;
-    threadId?: string;
-    runId?: string;
+    channelId?: string | undefined;
+    actorId?: string | undefined;
+    actorUserName?: string | undefined;
+    threadId?: string | undefined;
+    runId?: string | undefined;
   }): RuntimeLogContext => buildLogContext(deps, args);
 
   /** Unsubscribe the thread and cancel resource watches for a stop decision. */
   const maybeHandleThreadOptOutDecision = async (args: {
-    beforeFirstResponsePost?: () => Promise<void>;
+    beforeFirstResponsePost?: (() => Promise<void>) | undefined;
     decision?: { shouldUnsubscribe?: boolean };
     thread: Thread;
   }): Promise<boolean> => {
@@ -571,7 +573,7 @@ export function createSlackTurnRuntime<
     message: Message;
     decision: SubscribedReplyDecision;
     context: TurnContext;
-    ack?: () => Promise<void>;
+    ack?: (() => Promise<void>) | undefined;
     preparedState?: TPreparedState;
     text: TurnMessageText;
   }): Promise<void> => {
@@ -649,7 +651,7 @@ export function createSlackTurnRuntime<
 
   /** Persist skipped steering before mailbox commit, without reactions or injection. */
   const handleSkippedSteeringMessages = async (args: {
-    beforeFirstResponsePost?: () => Promise<void>;
+    beforeFirstResponsePost?: (() => Promise<void>) | undefined;
     conversationId: string;
     pending: SteeringMessageDecision[];
     skipped: SteeringMessageDecision[];

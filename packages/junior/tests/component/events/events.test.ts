@@ -260,9 +260,9 @@ describe("event delivery", () => {
   });
 
   it("accepts plugin-owned GitHub webhooks through the core delivery bridge", async () => {
-    const previousInstallationId = process.env.GITHUB_INSTALLATION_ID;
-    const previousSecret = process.env.GITHUB_WEBHOOK_SECRET;
-    const previousSlackBotToken = process.env.SLACK_BOT_TOKEN;
+    const previousInstallationId = process.env["GITHUB_INSTALLATION_ID"];
+    const previousSecret = process.env["GITHUB_WEBHOOK_SECRET"];
+    const previousSlackBotToken = process.env["SLACK_BOT_TOKEN"];
     const previousPlugins = getPlugins();
     const previousConfigDefaults = getConfigDefaults();
     const previousPluginCatalogConfig =
@@ -274,9 +274,9 @@ describe("event delivery", () => {
     let eventAutomationId: string | undefined;
 
     try {
-      process.env.GITHUB_INSTALLATION_ID = "456";
-      process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
-      process.env.SLACK_BOT_TOKEN = "xoxb-event-test";
+      process.env["GITHUB_INSTALLATION_ID"] = "456";
+      process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
+      process.env["SLACK_BOT_TOKEN"] = "xoxb-event-test";
       const state = createMemoryState();
       const queue = createConversationWorkQueueTestAdapter();
       const nowMs = Date.now();
@@ -426,19 +426,19 @@ describe("event delivery", () => {
       setConfigDefaults(previousConfigDefaults);
       setDashboardConversationLinkOptions(previousDashboardOptions);
       if (previousSecret === undefined) {
-        delete process.env.GITHUB_WEBHOOK_SECRET;
+        delete process.env["GITHUB_WEBHOOK_SECRET"];
       } else {
-        process.env.GITHUB_WEBHOOK_SECRET = previousSecret;
+        process.env["GITHUB_WEBHOOK_SECRET"] = previousSecret;
       }
       if (previousInstallationId === undefined) {
-        delete process.env.GITHUB_INSTALLATION_ID;
+        delete process.env["GITHUB_INSTALLATION_ID"];
       } else {
-        process.env.GITHUB_INSTALLATION_ID = previousInstallationId;
+        process.env["GITHUB_INSTALLATION_ID"] = previousInstallationId;
       }
       if (previousSlackBotToken === undefined) {
-        delete process.env.SLACK_BOT_TOKEN;
+        delete process.env["SLACK_BOT_TOKEN"];
       } else {
-        process.env.SLACK_BOT_TOKEN = previousSlackBotToken;
+        process.env["SLACK_BOT_TOKEN"] = previousSlackBotToken;
       }
     }
   });
@@ -830,7 +830,7 @@ describe("event delivery", () => {
         const value = readProxyProperty(target, property);
         return typeof value === "function" ? value.bind(target) : value;
       },
-    }) as StateAdapter;
+    });
     const subscription = await createGithubPrSubscription({
       events: ["pull_request.checks.failed"],
       state,

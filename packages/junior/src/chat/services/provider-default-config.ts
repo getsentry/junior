@@ -8,8 +8,8 @@ const GITHUB_REPO_RE = new RegExp(
 
 /** Apply explicit provider-default config requests that do not need agent reasoning. */
 export async function maybeApplyProviderDefaultConfigRequest(args: {
-  locationConfiguration?: LocationConfigurationService;
-  actorId?: string;
+  locationConfiguration?: LocationConfigurationService | undefined;
+  actorId?: string | undefined;
   text: string;
 }): Promise<{ text: string } | null> {
   const match = GITHUB_REPO_RE.exec(args.text);

@@ -24,8 +24,8 @@ export type { AssistantStatusSession } from "@/chat/slack/assistant-thread/statu
  * `loading_messages`.
  */
 export function createSlackAdapterAssistantStatusSession(args: {
-  channelId?: string;
-  threadTs?: string;
+  channelId?: string | undefined;
+  threadTs?: string | undefined;
   getSlackAdapter: () => Pick<SlackAdapter, "setAssistantStatus">;
   loadingMessages?: string[];
   now?: () => number;
@@ -53,7 +53,7 @@ export function createSlackAdapterAssistantStatusSession(args: {
  */
 export function createSlackWebApiAssistantStatusSession(args: {
   channelId?: string;
-  threadTs?: string;
+  threadTs?: string | undefined;
   getSlackClient?: typeof getSlackClient;
   loadingMessages?: string[];
   now?: () => number;

@@ -11,7 +11,7 @@ import type { ActorIdentity } from "./schema/conversation";
  * Junior identities resolve.
  */
 export type MentionSource = {
-  tenantId?: string;
+  tenantId?: string | undefined;
   texts: readonly (string | undefined)[];
 };
 

@@ -12,8 +12,8 @@ export function conversationEventModel(
 ): EventModel {
   if (data.type === "turn_started") return undefined;
   if (data.type === "assistant_message") {
-    const model = text(data.model);
-    const provider = text(data.provider);
+    const model = text(data["model"]);
+    const provider = text(data["provider"]);
     if (model) {
       const modelId =
         model.includes("/") || !provider ? model : `${provider}/${model}`;
@@ -33,9 +33,9 @@ export function conversationEventModelCall(
 ): ConversationReportEvent["modelCall"] {
   if (data.type !== "assistant_message") return undefined;
   const usage = extractGenAiUsageSummary(data);
-  const provider = text(data.provider);
-  const api = text(data.api);
-  const stopReason = text(data.stopReason);
+  const provider = text(data["provider"]);
+  const api = text(data["api"]);
+  const stopReason = text(data["stopReason"]);
   return {
     ...(provider ? { provider } : undefined),
     ...(api ? { api } : undefined),

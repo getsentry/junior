@@ -30,7 +30,7 @@ import { Transcript } from "./TranscriptView";
 export type PendingNewConversation = {
   createdAt: string;
   idempotencyKey: string;
-  files?: File[];
+  files?: File[] | undefined;
   message: string;
   visibility: "private" | "public";
 };

@@ -132,7 +132,7 @@ async function unauthenticatedProxyReply(port: number): Promise<string> {
  * It needs a Docker daemon and network access, and its first run builds the
  * runtime image. Set `JUNIOR_DOCKER_SANDBOX_TEST=1` to run it.
  */
-describe.skipIf(!process.env.JUNIOR_DOCKER_SANDBOX_TEST)(
+describe.skipIf(!process.env["JUNIOR_DOCKER_SANDBOX_TEST"])(
   "Docker sandbox provider",
   () => {
     beforeAll(async () => {
@@ -217,10 +217,12 @@ describe.skipIf(!process.env.JUNIOR_DOCKER_SANDBOX_TEST)(
             session,
             `https://${CREDENTIAL_DOMAIN}/anything`,
           );
-          expect(credentialed.authorization).toBe("Bearer docker-egress-test");
+          expect(credentialed["authorization"]).toBe(
+            "Bearer docker-egress-test",
+          );
           const traced = await curlJson(session, `https://${TRACE_DOMAIN}/get`);
           expect(traced).toMatchObject(TRACE_HEADERS);
-          expect(traced.authorization).toBeUndefined();
+          expect(traced["authorization"]).toBeUndefined();
 
           // Credentials never go upstream over plain HTTP.
           const plain = await session.runCommand({

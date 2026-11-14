@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
-const ORIGINAL_CI = process.env.CI;
-const ORIGINAL_LOG_FORMAT = process.env.JUNIOR_LOG_FORMAT;
+const ORIGINAL_NODE_ENV = process.env["NODE_ENV"];
+const ORIGINAL_CI = process.env["CI"];
+const ORIGINAL_LOG_FORMAT = process.env["JUNIOR_LOG_FORMAT"];
 const ORIGINAL_STDOUT_IS_TTY = process.stdout.isTTY;
 const ANSI_ESCAPE_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 
@@ -38,25 +38,25 @@ afterEach(() => {
   vi.useRealTimers();
   vi.resetModules();
   vi.doUnmock("@/chat/sentry");
-  process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+  process.env["NODE_ENV"] = ORIGINAL_NODE_ENV;
   if (ORIGINAL_CI === undefined) {
-    delete process.env.CI;
+    delete process.env["CI"];
   } else {
-    process.env.CI = ORIGINAL_CI;
+    process.env["CI"] = ORIGINAL_CI;
   }
   if (ORIGINAL_LOG_FORMAT === undefined) {
-    delete process.env.JUNIOR_LOG_FORMAT;
+    delete process.env["JUNIOR_LOG_FORMAT"];
   } else {
-    process.env.JUNIOR_LOG_FORMAT = ORIGINAL_LOG_FORMAT;
+    process.env["JUNIOR_LOG_FORMAT"] = ORIGINAL_LOG_FORMAT;
   }
   setStdoutIsTTY(ORIGINAL_STDOUT_IS_TTY);
 });
 
 describe("console log formatting", () => {
   it("uses a compact summary in development worker runtimes", async () => {
-    process.env.NODE_ENV = "development";
-    delete process.env.CI;
-    delete process.env.JUNIOR_LOG_FORMAT;
+    process.env["NODE_ENV"] = "development";
+    delete process.env["CI"];
+    delete process.env["JUNIOR_LOG_FORMAT"];
     setStdoutIsTTY(false);
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-14T16:29:00.133Z"));
@@ -88,9 +88,9 @@ describe("console log formatting", () => {
   });
 
   it("labels plugin heartbeat summary fields", async () => {
-    process.env.NODE_ENV = "development";
-    delete process.env.CI;
-    delete process.env.JUNIOR_LOG_FORMAT;
+    process.env["NODE_ENV"] = "development";
+    delete process.env["CI"];
+    delete process.env["JUNIOR_LOG_FORMAT"];
     setStdoutIsTTY(false);
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-14T16:29:00.133Z"));
@@ -117,9 +117,9 @@ describe("console log formatting", () => {
   });
 
   it("keeps the structured formatter in production", async () => {
-    process.env.NODE_ENV = "production";
-    delete process.env.CI;
-    delete process.env.JUNIOR_LOG_FORMAT;
+    process.env["NODE_ENV"] = "production";
+    delete process.env["CI"];
+    delete process.env["JUNIOR_LOG_FORMAT"];
     setStdoutIsTTY(false);
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-14T16:29:00.133Z"));

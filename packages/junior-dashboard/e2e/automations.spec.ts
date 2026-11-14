@@ -360,10 +360,10 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
     automations: [
       ...automationReport.automations,
       ...Array.from({ length: 30 }, (_, index) => ({
-        ...automationReport.automations[0]!,
+        ...automationReport.automations[0],
         // Enough Destinations that the filter needs its search box.
         destination: {
-          ...automationReport.automations[0]!.destination,
+          ...automationReport.automations[0].destination,
           channelId: `C-extra-${index}`,
           label: `#team-${String(index).padStart(2, "0")}`,
         },
@@ -717,7 +717,7 @@ test("opens one automation's runs, filters by result, and redirects old history 
   // Up and Down move the selection while details are open. Stepping between
   // runs with a Conversation keeps the open drawer instead of a new one.
   await details.evaluate((element) => {
-    element.dataset.stepped = "";
+    element.dataset["stepped"] = "";
   });
   await page.keyboard.press("ArrowUp");
   await expect(page).toHaveURL(/run=scheduled-1-run-1$/);

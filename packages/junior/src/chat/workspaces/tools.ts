@@ -36,7 +36,7 @@ const WORKSPACES_TOOL_SOURCE = {
 
 /** Record optional reporting without changing the switchWorkspace outcome. */
 async function tryRecordWorkspaceSwitchStat(workspace: Workspace) {
-  if (!process.env.DATABASE_URL) return;
+  if (!process.env["DATABASE_URL"]) return;
   try {
     await incrementStat({
       namespace: "junior",
@@ -100,7 +100,7 @@ function view(workspace: Workspace) {
 /** Return building status and any already-created snapshot subscription. */
 function buildingWorkspaceResult(input: {
   workspace: z.infer<typeof workspaceSchema>;
-  subscription?: Pick<WatchResult, "id" | "events"> | null;
+  subscription?: Pick<WatchResult, "id" | "events"> | null | undefined;
 }) {
   return {
     workspace: input.workspace,

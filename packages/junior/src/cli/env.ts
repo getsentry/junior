@@ -23,23 +23,26 @@ export function applyJuniorDevelopmentDefaults(
   env: NodeJS.ProcessEnv,
   options: { baseUrl?: string } = {},
 ): void {
-  const nodeEnv = env.NODE_ENV ?? "development";
+  const nodeEnv = env["NODE_ENV"] ?? "development";
   if (nodeEnv !== "development") {
     return;
   }
 
-  if (!hasValue(env.JUNIOR_SECRET)) {
-    env.JUNIOR_SECRET = JUNIOR_LOCAL_DEV_INTERNAL_SECRET;
+  if (!hasValue(env["JUNIOR_SECRET"])) {
+    env["JUNIOR_SECRET"] = JUNIOR_LOCAL_DEV_INTERNAL_SECRET;
   }
-  if (!hasValue(env.JUNIOR_STATE_ADAPTER)) {
-    env.JUNIOR_STATE_ADAPTER = "memory";
+  if (!hasValue(env["JUNIOR_STATE_ADAPTER"])) {
+    env["JUNIOR_STATE_ADAPTER"] = "memory";
   }
-  if (!hasValue(env.JUNIOR_SCHEDULER_SECRET) && !hasValue(env.CRON_SECRET)) {
-    env.JUNIOR_SCHEDULER_SECRET = JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET;
+  if (
+    !hasValue(env["JUNIOR_SCHEDULER_SECRET"]) &&
+    !hasValue(env["CRON_SECRET"])
+  ) {
+    env["JUNIOR_SCHEDULER_SECRET"] = JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET;
   }
   const baseUrl = options.baseUrl;
-  if (!hasValue(env.JUNIOR_BASE_URL) && hasValue(baseUrl)) {
-    env.JUNIOR_BASE_URL = baseUrl.trim();
+  if (!hasValue(env["JUNIOR_BASE_URL"]) && hasValue(baseUrl)) {
+    env["JUNIOR_BASE_URL"] = baseUrl.trim();
   }
 }
 
@@ -86,7 +89,7 @@ function resolveCliEnvRoots(cwd: string): string[] {
  * `pnpm exec junior ...` sees the same credentials as local repo scripts.
  */
 export function loadCliEnvFiles(cwd: string = process.cwd()): void {
-  const nodeEnv = process.env.NODE_ENV ?? "development";
+  const nodeEnv = process.env["NODE_ENV"] ?? "development";
 
   for (const root of resolveCliEnvRoots(cwd)) {
     for (const envFile of envFileNames(nodeEnv)) {

@@ -173,7 +173,7 @@ export async function presentSlackAutomationDetails(
 ): Promise<void> {
   const parsed = detailsEventSchema.safeParse(event);
   const client = getSlackClient();
-  const triggerId = event.trigger_id;
+  const triggerId = event["trigger_id"];
   if (typeof triggerId !== "string" || !triggerId) return;
 
   if (!parsed.success || !teamId) {

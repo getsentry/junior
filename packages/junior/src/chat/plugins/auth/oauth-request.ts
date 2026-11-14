@@ -7,8 +7,8 @@ type OAuthTokenRequestInput = {
   clientId: string;
   clientSecret: string;
   payload: Record<string, string>;
-  tokenAuthMethod?: "body" | "basic";
-  tokenExtraHeaders?: Record<string, string>;
+  tokenAuthMethod?: "body" | "basic" | undefined;
+  tokenExtraHeaders?: Record<string, string> | undefined;
 };
 
 function requireNonEmptyTokenField(
@@ -76,8 +76,8 @@ export function buildOAuthTokenRequest(input: OAuthTokenRequestInput): {
       `Basic ${Buffer.from(`${input.clientId}:${input.clientSecret}`).toString("base64")}`,
     );
   } else {
-    payload.client_id = input.clientId;
-    payload.client_secret = input.clientSecret;
+    payload["client_id"] = input.clientId;
+    payload["client_secret"] = input.clientSecret;
   }
 
   const contentType = headers.get("Content-Type") ?? DEFAULT_TOKEN_CONTENT_TYPE;
@@ -96,22 +96,22 @@ export function parseOAuthTokenResponse(
   data: unknown,
   requestedScope?: string,
   options?: {
-    treatEmptyScopeAsUnreported?: boolean;
+    treatEmptyScopeAsUnreported?: boolean | undefined;
     refreshToken?: string;
   },
 ): OAuthTokenResponse {
   const response = requireTokenResponseObject(data);
   const accessToken = requireNonEmptyTokenField(response, "access_token");
   const resolvedRefreshToken =
-    response.refresh_token === undefined
+    response["refresh_token"] === undefined
       ? options?.refreshToken
       : requireNonEmptyTokenField(response, "refresh_token");
   if (!resolvedRefreshToken) {
     throw new Error("OAuth token response missing refresh_token");
   }
-  const expiresIn = response.expires_in;
-  const refreshTokenExpiresIn = response.refresh_token_expires_in;
-  const responseScope = response.scope;
+  const expiresIn = response["expires_in"];
+  const refreshTokenExpiresIn = response["refresh_token_expires_in"];
+  const responseScope = response["scope"];
   let scope: string | undefined;
 
   if (responseScope !== undefined) {

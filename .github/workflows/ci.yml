@@ -96,6 +96,10 @@ jobs:
               - tsconfig*.json
               - packages/*/package.json
               - apps/*/package.json
+              - .oxlintrc.json
+              - .oxfmtrc.json
+              - scripts/**
+              - tools/**
             release:
               - .craft.yml
               - .github/workflows/ci.yml
@@ -143,7 +147,19 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
+      # Type-aware lint reads the declarations that workspace packages build.
+      - run: pnpm build
       - run: pnpm lint
+
+  format:
+    name: check / format
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm format:check
 
   typecheck:
     name: check / types
@@ -155,6 +171,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
+      # Packages check against the declarations that their dependencies build.
+      - run: pnpm build
       - run: pnpm typecheck
 
   eval-report-tests:
@@ -245,7 +263,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
-      - run: pnpm --filter @sentry/junior build
+      # The example build tests load every plugin that the example app uses.
+      - run: pnpm --filter "@sentry/junior-example^..." run build
       - run: pnpm --filter @sentry/junior exec vitest run --maxWorkers=${{ matrix.max_workers }} --testTimeout=${{ matrix.test_timeout }} --coverage ${{ matrix.path }}
       - name: Upload coverage
         if: ${{ !cancelled() }}
@@ -287,6 +306,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm --filter "@sentry/junior-evals^..." run build
       - run: pnpm --filter @sentry/junior-evals test
 
   workspace-snapshot-lifecycle:
@@ -331,7 +351,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
-      - run: pnpm --filter @sentry/junior build
+      - run: pnpm --filter "@sentry/junior..." run build
       - run: pnpm --filter @sentry/junior exec vitest run tests/integration/workspace-snapshot-lifecycle.test.ts tests/integration/sandbox-egress-trace-headers.test.ts
 
   plugin-tests:
@@ -360,17 +380,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
-      - run: pnpm --filter @sentry/junior-memory build
-      - run: pnpm --filter @sentry/junior-github build
-      - run: pnpm --filter @sentry/junior-google build
-      - run: pnpm --filter @sentry/junior-sentry build
-      - run: pnpm --filter @sentry/junior-vercel build
-      - run: pnpm --filter @sentry/junior-memory test
-      - run: pnpm --filter @sentry/junior-tts test
-      - run: pnpm --filter @sentry/junior-github test
-      - run: pnpm --filter @sentry/junior-google test
-      - run: pnpm --filter @sentry/junior-sentry test
-      - run: pnpm --filter @sentry/junior-vercel test
+      # Every plugin package with a test script runs, so a new one cannot be
+      # left out.
+      - run: pnpm --filter "./packages/junior-*" --filter "!@sentry/junior-dashboard" --filter "!@sentry/junior-evals" run build
+      - run: pnpm -r --workspace-concurrency=1 --filter "./packages/junior-*" --filter "!@sentry/junior-dashboard" --filter "!@sentry/junior-evals" run test
 
   dashboard-tests:
     name: test / dashboard
@@ -387,7 +400,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
-      - run: pnpm --filter @sentry/junior-dashboard build
+      - run: pnpm --filter "@sentry/junior-dashboard..." run build
       - run: pnpm --filter @sentry/junior-dashboard test:coverage
       - name: Upload coverage and test results
         if: ${{ !cancelled() }}
@@ -536,6 +549,7 @@ jobs:
       - release-check
       - skills-check
       - lint
+      - format
       - typecheck
       - junior-tests
       - eval-harness-tests
@@ -615,6 +629,7 @@ jobs:
       - release-check
       - skills-check
       - lint
+      - format
       - typecheck
       - junior-tests
       - eval-harness-tests

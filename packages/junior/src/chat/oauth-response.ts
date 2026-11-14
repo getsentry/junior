@@ -44,7 +44,7 @@ export class OAuthProviderError extends Error {
   readonly phase: OAuthProviderErrorPhase;
   readonly provider: string;
   readonly resourceHost: string;
-  readonly status?: number;
+  readonly status?: number | undefined;
 
   constructor(details: OAuthProviderErrorDetails) {
     super(`OAuth provider ${details.phase.replace("_", " ")} failed`);
@@ -121,7 +121,7 @@ export function fetchWithBoundedOAuthErrorBodies(
   fetchFn: typeof fetch = globalThis.fetch,
   onErrorResponseStatus?: (status: number) => void,
 ): typeof fetch {
-  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
     const response = await fetchFn(input, init);
     if (response.ok) {
       return response;
@@ -144,5 +144,5 @@ export function fetchWithBoundedOAuthErrorBodies(
       status: response.status,
       statusText: response.statusText,
     });
-  }) as typeof fetch;
+  };
 }

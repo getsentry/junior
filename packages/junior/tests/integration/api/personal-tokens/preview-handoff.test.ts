@@ -35,25 +35,29 @@ async function createPreviewAs(
     user: await viewer(email),
   }),
 ) {
-  const tools = createTools([], {}, {
-    conversationId: CONVERSATION_ID,
-    destination: { platform: "local", conversationId: CONVERSATION_ID },
-    egress: {
-      async fetch() {
-        return new Response("ok");
+  const tools = createTools(
+    [],
+    {},
+    {
+      conversationId: CONVERSATION_ID,
+      destination: { platform: "local", conversationId: CONVERSATION_ID },
+      egress: {
+        async fetch() {
+          return new Response("ok");
+        },
+      },
+      resolveActorIdentity,
+      source: createLocalSource(CONVERSATION_ID),
+      turnTools: turnBehavior({ kind: "root", personInput: true }).tools,
+      workspace: {
+        createPreview: async () => url,
+        readFileToBuffer: unused,
+        runCommand: unused,
+        writeFiles: unused,
       },
     },
-    resolveActorIdentity,
-    source: createLocalSource(CONVERSATION_ID),
-    turnTools: turnBehavior({ kind: "root", personInput: true }).tools,
-    workspace: {
-      createPreview: async () => url,
-      readFileToBuffer: unused,
-      runCommand: unused,
-      writeFiles: unused,
-    },
-  } as ToolRuntimeContext);
-  const tool = tools.createPreview;
+  );
+  const tool = tools["createPreview"];
   if (!tool?.execute || !tool.prepareArguments) {
     throw new Error("createPreview is missing");
   }

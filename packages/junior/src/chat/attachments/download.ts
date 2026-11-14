@@ -36,7 +36,7 @@ export interface AttachmentContent {
  */
 export async function readAttachmentContent(args: {
   attachment: AttachmentRecord;
-  readAttachmentSource?: ReadAttachmentSource;
+  readAttachmentSource?: ReadAttachmentSource | undefined;
   storage: AttachmentStorage;
 }): Promise<AttachmentContent> {
   const { attachment, storage } = args;

@@ -78,12 +78,12 @@ function fakeSentry(
     const token = request.headers.get("authorization") ?? "none";
     const viewer = token.replace(/^Bearer (.+)-token$/, "$1");
     return trace.filter((node) =>
-      projects[viewer]?.includes(String(node.project_slug)),
+      projects[viewer]?.includes(String(node["project_slug"])),
     );
   };
   mswServer.use(
     http.get("https://sentry.io/api/0/organizations/:org/", ({ params }) =>
-      HttpResponse.json({ slug: params.org, links: { regionUrl: REGION } }),
+      HttpResponse.json({ slug: params["org"], links: { regionUrl: REGION } }),
     ),
     http.get(
       `${REGION}/api/0/organizations/sentry/trace-meta/:traceId/`,

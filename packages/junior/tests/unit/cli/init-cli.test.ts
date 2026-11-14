@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { parse as parseYaml } from "yaml";
 import { runCheck } from "@/cli/check";
 import { runInit } from "@/cli/init";
 
@@ -109,12 +110,12 @@ describe("init cli", () => {
     const vercelConfig = readJsonFile<Record<string, unknown>>(
       path.join(target, "vercel.json"),
     );
-    expect(vercelConfig.framework).toBe("nitro");
-    expect(vercelConfig.buildCommand).toBe(
+    expect(vercelConfig["framework"]).toBe("nitro");
+    expect(vercelConfig["buildCommand"]).toBe(
       "pnpm exec junior upgrade && pnpm build",
     );
-    expect(vercelConfig.crons).toBeUndefined();
-    expect(vercelConfig.functions).toBeUndefined();
+    expect(vercelConfig["crons"]).toBeUndefined();
+    expect(vercelConfig["functions"]).toBeUndefined();
 
     const serverEntry = fs.readFileSync(path.join(target, "server.ts"), "utf8");
     expect(serverEntry).toContain(
@@ -141,7 +142,7 @@ describe("init cli", () => {
     const tsConfig = readJsonFile<Record<string, unknown>>(
       path.join(target, "tsconfig.json"),
     );
-    expect(tsConfig.extends).toBe("nitro/tsconfig");
+    expect(tsConfig["extends"]).toBe("nitro/tsconfig");
 
     const pluginsFile = fs.readFileSync(
       path.join(target, "plugins.ts"),
@@ -166,23 +167,37 @@ describe("init cli", () => {
     expect(pkg.dependencies["@sentry/junior-memory"]).toBe("latest");
     expect(pkg.dependencies["@sentry/junior-maintenance"]).toBe("latest");
     expect(pkg.dependencies["@sentry/nitro"]).toBeUndefined();
-    expect(pkg.devDependencies.nitro).toBeDefined();
-    expect(pkg.devDependencies.vite).toBeUndefined();
-    expect(pkg.devDependencies.vercel).toBeUndefined();
-    expect(pkg.scripts.dev).toBe("nitro dev");
-    expect(pkg.scripts.check).toBe("junior check");
-    expect(pkg.scripts.build).toBe("junior snapshot create && nitro build");
-    expect(pkg.scripts.preview).toBe("nitro preview");
-    expect(pkg.scripts.typecheck).toBe("tsc --noEmit");
+    expect(pkg.devDependencies["nitro"]).toBeDefined();
+    expect(pkg.devDependencies["vite"]).toBeUndefined();
+    expect(pkg.devDependencies["vercel"]).toBeUndefined();
+    expect(pkg.scripts["dev"]).toBe("nitro dev");
+    expect(pkg.scripts["check"]).toBe("junior check");
+    expect(pkg.scripts["build"]).toBe("junior snapshot create && nitro build");
+    expect(pkg.scripts["preview"]).toBe("nitro preview");
+    expect(pkg.scripts["typecheck"]).toBe("tsc --noEmit");
 
-    const pnpmWorkspace = fs.readFileSync(
-      path.join(target, "pnpm-workspace.yaml"),
-      "utf8",
-    );
-    expect(pnpmWorkspace).toBe(`minimumReleaseAge: 1440
-minimumReleaseAgeExclude:
-  - "@sentry/*"
-`);
+    interface PnpmWorkspace {
+      allowBuilds: Record<string, boolean>;
+      minimumReleaseAge: number;
+      minimumReleaseAgeExclude: string[];
+    }
+    const pnpmWorkspace = parseYaml(
+      fs.readFileSync(path.join(target, "pnpm-workspace.yaml"), "utf8"),
+    ) as PnpmWorkspace;
+    expect(pnpmWorkspace.minimumReleaseAge).toBe(1440);
+    expect(pnpmWorkspace.minimumReleaseAgeExclude).toEqual(["@sentry/*"]);
+    // Build script decisions match the ones this repo made.
+    const repoWorkspace = parseYaml(
+      fs.readFileSync(path.join(repoRoot, "pnpm-workspace.yaml"), "utf8"),
+    ) as PnpmWorkspace;
+    expect(
+      Object.fromEntries(
+        Object.keys(pnpmWorkspace.allowBuilds).map((name) => [
+          name,
+          repoWorkspace.allowBuilds[name],
+        ]),
+      ),
+    ).toEqual(pnpmWorkspace.allowBuilds);
 
     const envExample = fs.readFileSync(
       path.join(target, ".env.example"),
@@ -216,11 +231,14 @@ minimumReleaseAgeExclude:
     const scaffoldPackage = readJsonFile<{
       dependencies: Record<string, string>;
       devDependencies: Record<string, string>;
+      engines: Record<string, string>;
+      packageManager: string;
       scripts: Record<string, string>;
     }>(path.join(target, "package.json"));
     const examplePackage = readJsonFile<{
       dependencies: Record<string, string>;
       devDependencies: Record<string, string>;
+      engines: Record<string, string>;
       scripts: Record<string, string>;
     }>(examplePackageJsonPath);
 
@@ -263,6 +281,14 @@ minimumReleaseAgeExclude:
     expect(scaffoldNonPluginDeps).toEqual(exampleNonPluginDeps);
     expect(scaffoldPackage.devDependencies).toEqual(
       examplePackage.devDependencies,
+    );
+    expect(scaffoldPackage.engines).toEqual(examplePackage.engines);
+    // The scaffold pins the pnpm release that this repo uses.
+    const rootPackage = readJsonFile<{ packageManager: string }>(
+      path.join(repoRoot, "package.json"),
+    );
+    expect(scaffoldPackage.packageManager).toBe(
+      rootPackage.packageManager.split("+")[0],
     );
 
     const scaffoldVercelConfig = readJsonFile<Record<string, unknown>>(

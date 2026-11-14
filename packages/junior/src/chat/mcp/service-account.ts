@@ -63,28 +63,29 @@ function parseCredentials(
       typeof value === "string" ? JSON.parse(value) : value;
     if (
       !isRecord(parsed) ||
-      !isRecord(parsed.clientInformation) ||
-      !isRecord(parsed.tokens) ||
-      typeof parsed.connectedAtMs !== "number" ||
-      typeof parsed.redirectUrl !== "string"
+      !isRecord(parsed["clientInformation"]) ||
+      !isRecord(parsed["tokens"]) ||
+      typeof parsed["connectedAtMs"] !== "number" ||
+      typeof parsed["redirectUrl"] !== "string"
     ) {
       return undefined;
     }
     return {
-      clientInformation:
-        parsed.clientInformation as OAuthClientInformationMixed,
-      connectedAtMs: parsed.connectedAtMs,
-      ...(typeof parsed.connectedBy === "string"
-        ? { connectedBy: parsed.connectedBy }
+      clientInformation: parsed[
+        "clientInformation"
+      ] as OAuthClientInformationMixed,
+      connectedAtMs: parsed["connectedAtMs"],
+      ...(typeof parsed["connectedBy"] === "string"
+        ? { connectedBy: parsed["connectedBy"] }
         : undefined),
-      ...(isRecord(parsed.discoveryState)
+      ...(isRecord(parsed["discoveryState"])
         ? {
             // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
             discoveryState: parsed.discoveryState as OAuthDiscoveryState,
           }
         : undefined),
-      redirectUrl: parsed.redirectUrl,
-      tokens: parsed.tokens as OAuthTokens,
+      redirectUrl: parsed["redirectUrl"],
+      tokens: parsed["tokens"] as OAuthTokens,
     };
   } catch {
     return undefined;
@@ -309,26 +310,28 @@ function signInKey(state: string): string {
 function parseSignIn(value: unknown): McpServiceAccountSignIn | undefined {
   if (
     !isRecord(value) ||
-    !isRecord(value.clientInformation) ||
-    typeof value.codeVerifier !== "string" ||
-    typeof value.provider !== "string" ||
-    typeof value.redirectUrl !== "string"
+    !isRecord(value["clientInformation"]) ||
+    typeof value["codeVerifier"] !== "string" ||
+    typeof value["provider"] !== "string" ||
+    typeof value["redirectUrl"] !== "string"
   ) {
     return undefined;
   }
   return {
-    clientInformation: value.clientInformation as OAuthClientInformationMixed,
-    codeVerifier: value.codeVerifier,
-    ...(isRecord(value.discoveryState)
+    clientInformation: value[
+      "clientInformation"
+    ] as OAuthClientInformationMixed,
+    codeVerifier: value["codeVerifier"],
+    ...(isRecord(value["discoveryState"])
       ? {
           // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
           discoveryState: value.discoveryState as OAuthDiscoveryState,
         }
       : undefined),
-    provider: value.provider,
-    redirectUrl: value.redirectUrl,
-    ...(typeof value.startedBy === "string"
-      ? { startedBy: value.startedBy }
+    provider: value["provider"],
+    redirectUrl: value["redirectUrl"],
+    ...(typeof value["startedBy"] === "string"
+      ? { startedBy: value["startedBy"] }
       : undefined),
   };
 }
@@ -346,9 +349,9 @@ function signInProvider(input: {
 }) {
   const captured: {
     authorizationUrl?: URL;
-    clientInformation?: OAuthClientInformationMixed;
-    codeVerifier?: string;
-    discoveryState?: OAuthDiscoveryState;
+    clientInformation?: OAuthClientInformationMixed | undefined;
+    codeVerifier?: string | undefined;
+    discoveryState?: OAuthDiscoveryState | undefined;
     tokens?: OAuthTokens;
   } = {
     clientInformation: input.pending?.clientInformation,

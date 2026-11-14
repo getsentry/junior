@@ -9,7 +9,7 @@ import { CONVERSATION_ID } from "../fixtures/conversation-work";
  */
 describe("conversation queue transport", () => {
   it("sends a signed wake with delay and idempotency", async () => {
-    process.env.JUNIOR_SECRET = "conversation-work-secret";
+    process.env["JUNIOR_SECRET"] = "conversation-work-secret";
     const send = vi.fn(async () => ({ messageId: "msg_123" }));
     const queue = createVercelConversationWorkQueue({
       topic: "junior_test_work",

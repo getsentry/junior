@@ -34,8 +34,8 @@ export type TranscriptViewToolCallPart = {
   input?: unknown;
   name: string;
   output?: unknown;
-  resultTimestamp?: number;
-  startedTimestamp?: number;
+  resultTimestamp?: number | undefined;
+  startedTimestamp?: number | undefined;
   status: "completed" | "error" | "running";
   type: "tool_call";
 };
@@ -66,7 +66,7 @@ export type TranscriptViewContextEventPart = {
     details?: {
       reason: "capacity";
       estimatedInputTokens: number;
-      replacementInputTokens?: number;
+      replacementInputTokens?: number | undefined;
       triggerTokens: number;
       inputLimitTokens: number;
       inputMessageCount: number;
@@ -125,7 +125,7 @@ export type TranscriptViewMessage = {
   eventType?: string;
   /** Namespace of the first Event, such as `github`. */
   eventNamespace?: string;
-  eventObjectType?: ObjectType;
+  eventObjectType?: ObjectType | undefined;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
   /** Every Event when several arrived together in one message. */
@@ -165,46 +165,48 @@ export type TranscriptViewMessage = {
 export type ConversationTranscript = ConversationDetailReport;
 
 export type Conversation = {
-  activityPreview?: ConversationSummaryReport["activityPreview"];
+  activityPreview?: ConversationSummaryReport["activityPreview"] | undefined;
   /** The latest Brief's status, summary, and intent, when visible. */
-  brief?: ConversationFeedItem["brief"];
-  annotations?: ConversationSummaryReport["annotations"];
-  sidebarAnnotations?: ConversationSummaryReport["sidebarAnnotations"];
-  archivedAt?: string | null;
-  pinnedAt?: string | null;
-  pinPosition?: number;
-  auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
-  channel?: string;
-  channelName?: string;
-  channelNameRedacted?: boolean;
-  childAgentTotals?: ConversationSummaryReport["childAgentTotals"];
+  brief?: ConversationFeedItem["brief"] | undefined;
+  annotations?: ConversationSummaryReport["annotations"] | undefined;
+  sidebarAnnotations?:
+    | ConversationSummaryReport["sidebarAnnotations"]
+    | undefined;
+  archivedAt?: string | null | undefined;
+  pinnedAt?: string | null | undefined;
+  pinPosition?: number | undefined;
+  auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"] | undefined;
+  channel?: string | undefined;
+  channelName?: string | undefined;
+  channelNameRedacted?: boolean | undefined;
+  childAgentTotals?: ConversationSummaryReport["childAgentTotals"] | undefined;
   cumulativeDurationMs: number;
-  cumulativeUsage?: ConversationSummaryReport["cumulativeUsage"];
+  cumulativeUsage?: ConversationSummaryReport["cumulativeUsage"] | undefined;
   displayTitle: string;
   id: string;
   /** The viewer takes part, so they can pin, archive, rename, and mark it. */
   isParticipant: boolean;
   /** Newest true user Message or shown Junior reply. Feed rows only. */
-  lastMessageAt?: string;
+  lastMessageAt?: string | undefined;
   lastProgressAt: string;
   lastSeenAt: string;
-  locationId?: string;
-  locationUrl?: string;
-  actorIdentity?: ConversationSummaryReport["actorIdentity"];
-  participants?: ConversationSummaryReport["participants"];
-  sentryTraceUrl?: string;
+  locationId?: string | undefined;
+  locationUrl?: string | undefined;
+  actorIdentity?: ConversationSummaryReport["actorIdentity"] | undefined;
+  participants?: ConversationSummaryReport["participants"] | undefined;
+  sentryTraceUrl?: string | undefined;
   startedAt: string;
   status: ConversationSummaryReport["status"];
   surface: ConversationSummaryReport["surface"];
-  traceId?: string;
-  isPriority?: boolean;
+  traceId?: string | undefined;
+  isPriority?: boolean | undefined;
   kind: ConversationSummaryReport["kind"];
-  parentConversationId?: string;
+  parentConversationId?: string | undefined;
   /** Visible Threads under this row, newest first. */
-  threads?: Conversation[];
+  threads?: Conversation[] | undefined;
   /** A Turn waits on a person to finish an authorization. Server-owned. */
-  awaitingAuthorization?: boolean;
-  visibility?: ConversationSummaryReport["visibility"];
+  awaitingAuthorization?: boolean | undefined;
+  visibility?: ConversationSummaryReport["visibility"] | undefined;
 };
 
 export type Identity = DashboardIdentity;

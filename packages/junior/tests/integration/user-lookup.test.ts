@@ -812,7 +812,7 @@ describe("userLookup", () => {
         },
       });
       expect(
-        Object.keys(tool.inputSchema.properties as Record<string, unknown>),
+        Object.keys(tool.inputSchema["properties"] as Record<string, unknown>),
       ).toEqual(["provider", "query"]);
     });
 
@@ -853,7 +853,7 @@ describe("userLookup", () => {
       );
 
       expect(tools).toHaveProperty("userLookup");
-      expect(tools.userLookup?.description).toContain("provider");
+      expect(tools["userLookup"]?.description).toContain("provider");
     });
   });
 });

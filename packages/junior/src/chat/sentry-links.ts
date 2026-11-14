@@ -1,7 +1,7 @@
 import * as Sentry from "@/chat/sentry";
 
 function getSentryOrgSlug(): string | undefined {
-  const slug = process.env.SENTRY_ORG_SLUG?.trim();
+  const slug = process.env["SENTRY_ORG_SLUG"]?.trim();
   return slug || undefined;
 }
 

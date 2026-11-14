@@ -18,7 +18,7 @@ type EmptyOutputContinuation =
  */
 export function nextEmptyOutputContinuation(args: {
   attempt: number;
-  lastAssistant?: AssistantMessage;
+  lastAssistant?: AssistantMessage | undefined;
   messages: PiMessage[];
 }): EmptyOutputContinuation {
   if (!hasCompactedConversationContext(args.messages)) {

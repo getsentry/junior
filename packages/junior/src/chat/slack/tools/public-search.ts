@@ -166,24 +166,20 @@ const slackSearchMessageWireSchema = z
     is_author_bot: optionalWireBoolean,
     permalink: z.string().url(),
   })
-  .transform(
-    (value): SearchMessage => ({
-      channel_id: value.channel_id,
-      message_ts: value.message_ts,
-      content: value.content,
-      permalink: value.permalink,
-      ...(value.author_name ? { author_name: value.author_name } : undefined),
-      ...(value.author_user_id
-        ? { author_user_id: value.author_user_id }
-        : undefined),
-      ...(value.channel_name
-        ? { channel_name: value.channel_name }
-        : undefined),
-      ...(value.is_author_bot !== undefined
-        ? { is_author_bot: value.is_author_bot }
-        : undefined),
-    }),
-  );
+  .transform((value): SearchMessage => ({
+    channel_id: value.channel_id,
+    message_ts: value.message_ts,
+    content: value.content,
+    permalink: value.permalink,
+    ...(value.author_name ? { author_name: value.author_name } : undefined),
+    ...(value.author_user_id
+      ? { author_user_id: value.author_user_id }
+      : undefined),
+    ...(value.channel_name ? { channel_name: value.channel_name } : undefined),
+    ...(value.is_author_bot !== undefined
+      ? { is_author_bot: value.is_author_bot }
+      : undefined),
+  }));
 
 /** Slack wire shape for one search file. */
 const slackSearchFileWireSchema = z

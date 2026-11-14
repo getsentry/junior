@@ -86,7 +86,7 @@ export function createTestMessage(args: {
   text?: string;
   id?: string;
   threadId?: string;
-  author?: Partial<Author>;
+  author?: Partial<Author> | undefined;
   isMention?: boolean;
   attachments?: Message["attachments"];
   dateSent?: Date;
@@ -242,7 +242,7 @@ export class FakeSlackAdapter extends SlackAdapter {
     channelId: string;
     threadTs: string;
     text: string;
-    loadingMessages?: string[];
+    loadingMessages?: string[] | undefined;
   }> = [];
   readonly promptCalls: Array<{
     channelId: string;
@@ -363,12 +363,13 @@ export async function createTestThread(args: {
     for (const call of getCapturedSlackApiCalls("chat.postMessage")) {
       if (
         recordedApiCalls.has(call) ||
-        call.params.channel !== parseChannelFromAdapterChannelId(channelId) ||
-        call.params.thread_ts !== id.split(":")[2]
+        call.params["channel"] !==
+          parseChannelFromAdapterChannelId(channelId) ||
+        call.params["thread_ts"] !== id.split(":")[2]
       )
         continue;
       recordedApiCalls.add(call);
-      posts.push({ markdown: call.params.text });
+      posts.push({ markdown: call.params["text"] });
       postKinds.push("value");
       postIds.push(Symbol("api-post"));
     }

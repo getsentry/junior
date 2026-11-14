@@ -158,7 +158,8 @@ async function groupParticipants(
   for (const row of rows) {
     const participant = participantIdentity(row, userAvatarUrls);
     if (!participant) continue;
-    const group = groups.get(row.conversationId) ?? new Map();
+    const group =
+      groups.get(row.conversationId) ?? new Map<string, ActorIdentity>();
     const key = participantKey(row);
     if (!group.has(key)) group.set(key, participant);
     groups.set(row.conversationId, group);

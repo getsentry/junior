@@ -40,7 +40,7 @@ type UserLookupResult = {
   query: string;
   count: number;
   mention?: string;
-  user?: UserLookupMatch;
+  user?: UserLookupMatch | undefined;
   users?: UserLookupMatch[];
 } & Partial<UserLookupSearchMeta>;
 
@@ -70,7 +70,7 @@ function lookupResult(args: {
   provider: string;
   query: string;
   users: UserLookupProfile[];
-  search?: UserLookupSearchMeta;
+  search?: UserLookupSearchMeta | undefined;
 }): UserLookupResult {
   const users = args.users.map(asMatch);
   if (users.length === 1) {

@@ -71,7 +71,7 @@ interface DestinationUpsert {
   metadata?: Record<string, unknown>;
   provider: string;
   providerDestinationId: string;
-  providerTenantId?: string;
+  providerTenantId?: string | undefined;
   refreshVisibility: boolean;
   visibility: JuniorDestinationVisibility;
 }
@@ -142,7 +142,7 @@ function localWorkspaceFromConversationId(
 }
 
 function destinationUpsertFromDestination(args: {
-  channelName?: string;
+  channelName?: string | undefined;
   conversationId?: string;
   destination: Destination | undefined;
   /** Confirmed destination visibility; omit when unavailable. */
@@ -310,10 +310,10 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
 
 function emptyConversation(args: {
   conversationId: string;
-  destination?: Destination;
-  kind?: "root" | "automation";
+  destination?: Destination | undefined;
+  kind?: "root" | "automation" | undefined;
   nowMs: number;
-  source?: ConversationSource;
+  source?: ConversationSource | undefined;
   sessionSource?: SessionSource;
 }): Conversation {
   return {
@@ -458,7 +458,7 @@ export class SqlStore implements ConversationStore {
     activityAtMs?: number;
     channelName?: string;
     conversationId: string;
-    destination?: Destination;
+    destination?: Destination | undefined;
     nowMs?: number;
     actor?: StoredSlackActor;
     source?: ConversationSource;
@@ -519,11 +519,11 @@ export class SqlStore implements ConversationStore {
     });
   }
   async recordExecution(args: {
-    actorIdentityId?: string;
+    actorIdentityId?: string | undefined;
     channelName?: string;
     conversationId: string;
     createdAtMs: number;
-    destination?: Destination;
+    destination?: Destination | undefined;
     execution: ConversationExecution;
     lastActivityAtMs: number;
     metrics: ConversationRunMetrics | null;
@@ -787,7 +787,7 @@ export class SqlStore implements ConversationStore {
   private async upsertConversation(args: {
     conversation: Conversation;
     /** A new child's Destination row, copied from its parent. */
-    destinationId?: string;
+    destinationId?: string | undefined;
   }): Promise<void> {
     const { conversation } = args;
     if (

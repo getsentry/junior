@@ -20,8 +20,8 @@ export type ConversationWork = {
 
 export type ConversationDoneInput = {
   assignedWork?: boolean;
-  finishedWorkAt?: string;
-  lastUserMessageAt?: string;
+  finishedWorkAt?: string | undefined;
+  lastUserMessageAt?: string | undefined;
   unfinishedWork?: boolean;
 };
 

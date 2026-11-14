@@ -64,7 +64,7 @@ async function recordRootMessage(
   conversationId: string,
   message: {
     author?: { isBot?: boolean; userId: string };
-    authorIdentityId?: string;
+    authorIdentityId?: string | undefined;
     eventType?: string;
     messageId?: string;
     /** Store no author Identity, like a row that ingress could not resolve. */
@@ -160,7 +160,7 @@ describe("user approval for child agents", () => {
             actor: user,
             conversationId: slackParentConversationId,
             destination: slackDestination,
-            source: parent.source!,
+            source: parent.source,
             userIntent: () => "Clean up the images.",
             rootConversation: async () =>
               await readRootConversation({

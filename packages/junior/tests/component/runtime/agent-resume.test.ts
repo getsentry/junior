@@ -13,7 +13,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { TurnInputCommitLostError } from "@/chat/runtime/turn";
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 
-const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
+const originalStateAdapter = process.env["JUNIOR_STATE_ADAPTER"];
 
 function message(text: string): PiMessage {
   return {
@@ -43,16 +43,16 @@ async function resumeState(conversationId: string, turnId: string) {
 
 describe("agent resume", () => {
   beforeEach(async () => {
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
     await disconnectStateAdapter();
   });
 
   afterEach(async () => {
     await disconnectStateAdapter();
     if (originalStateAdapter === undefined) {
-      delete process.env.JUNIOR_STATE_ADAPTER;
+      delete process.env["JUNIOR_STATE_ADAPTER"];
     } else {
-      process.env.JUNIOR_STATE_ADAPTER = originalStateAdapter;
+      process.env["JUNIOR_STATE_ADAPTER"] = originalStateAdapter;
     }
   });
 

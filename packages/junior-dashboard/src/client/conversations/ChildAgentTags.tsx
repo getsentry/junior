@@ -8,7 +8,9 @@ import { ContextTag } from "./ConversationContextTags";
  * it started with its parent's history, which its transcript leaves out. A
  * fresh child without a type shows nothing.
  */
-export function ChildAgentTags(props: { node?: ConversationAgentTreeNode }) {
+export function ChildAgentTags(props: {
+  node?: ConversationAgentTreeNode | undefined;
+}) {
   const agentType = props.node?.agentType;
   return (
     <>

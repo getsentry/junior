@@ -23,7 +23,7 @@ import { HighlightText } from "./transcriptSearch";
  */
 export function TranscriptThreadCard(props: {
   part: TranscriptViewSubagentPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 }) {
   const id = props.part.childConversationId;
   const thread = useContext(FeedThreads).get(id);

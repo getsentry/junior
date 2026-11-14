@@ -42,7 +42,10 @@ function findThreadPlacement(
  */
 export async function readFeedThreads(
   db: JuniorDatabase,
-  roots: ReadonlyArray<{ access?: ConversationAccess; conversationId: string }>,
+  roots: ReadonlyArray<{
+    access?: ConversationAccess | undefined;
+    conversationId: string;
+  }>,
 ): Promise<Map<string, ConversationFeedItem[]>> {
   if (roots.length === 0) return new Map();
   const rootIdList = roots.map((root) => root.conversationId);

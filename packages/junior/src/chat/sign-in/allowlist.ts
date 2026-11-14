@@ -48,7 +48,7 @@ export function assertNoLegacyAllowedDomains(
       "dashboard.allowedGoogleDomains was removed; set createApp({ allowedDomains }) instead",
     );
   }
-  if (process.env.JUNIOR_DASHBOARD_GOOGLE_DOMAINS?.trim()) {
+  if (process.env["JUNIOR_DASHBOARD_GOOGLE_DOMAINS"]?.trim()) {
     throw new Error(
       "JUNIOR_DASHBOARD_GOOGLE_DOMAINS was removed; set JUNIOR_ALLOWED_DOMAINS instead",
     );

@@ -11,4 +11,5 @@ export default defineConfig({
   }),
   sourcemap: true,
   target: "node24",
+  tsconfig: "tsconfig.build.json",
 });

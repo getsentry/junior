@@ -84,7 +84,7 @@ export type SlackApiMethod = (typeof SUPPORTED_SLACK_API_METHODS)[number];
 
 export interface SlackMockHttpResponse {
   status?: number;
-  headers?: Record<string, string>;
+  headers?: Record<string, string> | undefined;
   /** A stream body lets a file download arrive in chunks. */
   body?: Record<string, unknown> | string | ReadableStream<Uint8Array>;
   /** Optional artificial latency before the HTTP response is returned. */
@@ -292,13 +292,14 @@ function defaultSlackApiResponse(
     case "bots.info":
       return {
         body: botsInfoOk({
-          botId: typeof params.bot === "string" ? params.bot : undefined,
+          botId: typeof params["bot"] === "string" ? params["bot"] : undefined,
         }),
       };
     case "users.info":
       return {
         body: usersInfoOk({
-          userId: typeof params.user === "string" ? params.user : undefined,
+          userId:
+            typeof params["user"] === "string" ? params["user"] : undefined,
         }),
       };
     case "users.list":
@@ -353,12 +354,12 @@ function toHttpResponse(response: SlackMockHttpResponse): Response {
 function getSlackConversationParam(
   params: Record<string, unknown>,
 ): { key: "channel" | "channel_id"; value: string } | undefined {
-  const channel = params.channel;
+  const channel = params["channel"];
   if (typeof channel === "string") {
     return { key: "channel", value: channel };
   }
 
-  const channelId = params.channel_id;
+  const channelId = params["channel_id"];
   if (typeof channelId === "string") {
     return { key: "channel_id", value: channelId };
   }
@@ -468,7 +469,7 @@ export function resetSlackApiMockState(): void {
 
 export const slackApiHandlers = [
   http.post("https://slack.com/api/:method", async ({ params, request }) => {
-    const rawMethod = params.method;
+    const rawMethod = params["method"];
     if (typeof rawMethod !== "string" || !isSlackApiMethod(rawMethod)) {
       throw new Error(
         `[MSW] Unsupported Slack API method: ${String(rawMethod ?? "unknown")}`,

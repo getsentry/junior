@@ -101,7 +101,7 @@ export function TranscriptRow(props: {
   children: ReactNode;
   indent?: boolean;
   /** Last event sequence in the row. Read positions use it. */
-  seq?: number;
+  seq?: number | undefined;
 }) {
   return (
     <div

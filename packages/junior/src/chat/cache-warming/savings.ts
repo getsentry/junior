@@ -127,7 +127,7 @@ async function addSavingsStats(
   modelId: string,
   counts: SavingsCounts,
 ): Promise<void> {
-  if (!process.env.DATABASE_URL) return;
+  if (!process.env["DATABASE_URL"]) return;
   try {
     await addStats(savingsStats(modelId, counts));
   } catch (error) {

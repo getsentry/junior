@@ -5,19 +5,19 @@ import type {
 } from "@/chat/sandbox/workspace";
 
 interface NonInteractiveShellOptions {
-  env?: Record<string, string>;
+  env?: Record<string, string> | undefined;
   /** Full PATH value to export, for example `$PATH:/extra/bin`. */
-  path?: string;
+  path?: string | undefined;
 }
 
 interface NonInteractiveCommandInput extends NonInteractiveShellOptions {
-  args?: string[];
+  args?: string[] | undefined;
   cmd: string;
   cwd?: string;
   login?: boolean;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   sudo?: boolean;
-  timeoutMs?: number;
+  timeoutMs?: number | undefined;
 }
 
 const NON_INTERACTIVE_ENV: Readonly<Record<string, string>> = {
@@ -53,7 +53,7 @@ const RUNTIME_GIT_CONFIG: ReadonlyArray<readonly [string, string]> = [
  * always wins.
  */
 function gitConfigEnv(env: Record<string, string>): Record<string, string> {
-  const count = Number.parseInt(env.GIT_CONFIG_COUNT ?? "0", 10) || 0;
+  const count = Number.parseInt(env["GIT_CONFIG_COUNT"] ?? "0", 10) || 0;
   const entries: Array<readonly [string, string]> = [];
   for (let index = 0; index < count; index++) {
     const key = env[`GIT_CONFIG_KEY_${index}`];

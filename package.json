@@ -1,7 +1,7 @@
 {
   "name": "junior-monorepo",
   "private": true,
-  "packageManager": "pnpm@11.8.0+sha512.c1f5e7c4cb241c8f174b743851d82f42b802324afc8b0f116b96adb15aa06664948dde36960a3ba1079ba5b4b29dd0140135b94b5b5f5263592249d68e555f26",
+  "packageManager": "pnpm@12.18.0+sha512.9d7882d5dc82147ecfc4e062aa34834e0ad0296710a1837a1115ae012127d36b7109e321ac1598a1dd0a65597681b1e99917e12ed0d749eae91187943363beb3",
   "scripts": {
     "acp:local": "node scripts/acp-local.mjs",
     "dev": "node scripts/dev-server.mjs",
@@ -13,8 +13,10 @@
     "worktree:setup": "node scripts/worktree.mjs setup",
     "cloudflare:token": "node scripts/refresh-cloudflare-tunnel-token.mjs",
     "prepare": "simple-git-hooks",
-    "lint": "pnpm file-length:check && pnpm oxlint-rules:check && pnpm migration-metadata:check && pnpm migration-locks:check && pnpm test-architecture:check && pnpm dashboard-style:check && pnpm --filter @sentry/junior tool-annotations:check && pnpm --filter @sentry/junior tool-key-casing:check && pnpm --filter @sentry/junior tool-descriptions:check && pnpm --filter @sentry/junior tool-error-classification:check && pnpm --filter @sentry/junior lint && pnpm --filter @sentry/junior-plugin-api lint && pnpm --filter @sentry/junior-memory lint && pnpm --filter @sentry/junior-github lint && pnpm --filter @sentry/junior-google lint && pnpm --filter @sentry/junior-linear lint && pnpm --filter @sentry/junior-notion lint && pnpm --filter @sentry/junior-sentry lint && pnpm --filter @sentry/junior-vercel lint && pnpm --filter @sentry/junior-dashboard lint && pnpm ast-grep:lint && pnpm package:lint",
-    "lint:fix": "pnpm --filter @sentry/junior lint:fix",
+    "lint": "pnpm file-length:check && pnpm typecheck-coverage:check && pnpm oxlint-rules:check && pnpm migration-metadata:check && pnpm migration-locks:check && pnpm test-architecture:check && pnpm dashboard-style:check && pnpm --filter @sentry/junior tool-annotations:check && pnpm --filter @sentry/junior tool-key-casing:check && pnpm --filter @sentry/junior tool-descriptions:check && pnpm --filter @sentry/junior tool-error-classification:check && oxlint && pnpm --filter @sentry/junior deps:check && pnpm ast-grep:lint && pnpm package:lint",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
     "file-length:check": "node --test scripts/check-file-length.test.mjs && node scripts/check-file-length.mjs",
     "migration-metadata:check": "node --test scripts/check-drizzle-migrations.test.mjs && node scripts/check-drizzle-migrations.mjs",
     "migration-locks:check": "node --test scripts/check-migration-locks.test.mjs && node scripts/check-migration-locks.mjs && squawk --reporter gcc 'packages/*/migrations/*.sql'",
@@ -23,57 +25,62 @@
     "dashboard-style:check": "node --test scripts/check-dashboard-styles.test.mjs && node scripts/check-dashboard-styles.mjs",
     "ast-grep:lint": "ast-grep test --test-dir ast-grep/tests --skip-snapshot-tests && ast-grep scan",
     "lint-staged": "lint-staged",
-    "build": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-github build && pnpm --filter @sentry/junior-google build && pnpm --filter @sentry/junior-linear build && pnpm --filter @sentry/junior-notion build && pnpm --filter @sentry/junior-sentry build && pnpm --filter @sentry/junior-vercel build && pnpm --filter @sentry/junior-dashboard build",
+    "build": "pnpm -r --filter \"./packages/*\" --filter \"!@sentry/junior-docs\" run build",
     "build:example": "pnpm --filter @sentry/junior-example build",
     "docs:dev": "pnpm --filter @sentry/junior-docs dev",
     "docs:build": "pnpm --filter @sentry/junior-docs build",
     "docs:check": "pnpm --filter @sentry/junior-docs check",
     "package:lint": "for pkg in packages/junior packages/junior-plugin-api packages/junior-memory packages/junior-dashboard packages/junior-github packages/junior-google packages/junior-agent-browser packages/junior-amplitude packages/junior-cloudflare packages/junior-datadog packages/junior-figma packages/junior-tts packages/junior-hex packages/junior-linear packages/junior-maintenance packages/junior-notion packages/junior-octolens packages/junior-pagerduty packages/junior-restream packages/junior-sentry packages/junior-vercel packages/junior-xdotcom; do pnpm exec publint \"$pkg\" || exit $?; done",
-    "package-types:check": "sh scripts/check-package-types.sh",
+    "package-types:check": "node scripts/check-package-types.mjs",
     "release:check": "node scripts/check-release-config.mjs",
     "start": "pnpm --filter @sentry/junior-example dev",
-    "test": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-github build && pnpm --filter @sentry/junior-google build && pnpm --filter @sentry/junior-linear build && pnpm --filter @sentry/junior-notion build && pnpm --filter @sentry/junior-sentry build && pnpm --filter @sentry/junior-vercel build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test && pnpm --filter @sentry/junior-memory test && pnpm --filter @sentry/junior-tts test && pnpm --filter @sentry/junior-github test && pnpm --filter @sentry/junior-google test && pnpm --filter @sentry/junior-sentry test && pnpm --filter @sentry/junior-vercel test && pnpm --filter @sentry/junior-dashboard test",
-    "test:e2e:dashboard": "pnpm --filter @sentry/junior-dashboard build && playwright test -c packages/junior-dashboard/playwright.config.ts",
+    "test": "pnpm build && pnpm -r --workspace-concurrency=1 --filter \"./packages/*\" --filter \"!@sentry/junior-docs\" --filter \"!@sentry/junior-evals\" run test",
+    "test:e2e:dashboard": "pnpm --filter \"@sentry/junior-dashboard...\" run build && playwright test -c packages/junior-dashboard/playwright.config.ts",
     "test:watch": "pnpm --filter @sentry/junior test:watch",
     "evals": "pnpm --filter @sentry/junior-evals evals",
     "evals:behavioral": "pnpm --filter @sentry/junior-evals evals:behavioral",
     "evals:integration": "pnpm --filter @sentry/junior-evals evals:integration",
     "evals:guardian": "pnpm --filter @sentry/junior-evals evals:guardian",
     "evals:record": "pnpm --filter @sentry/junior-evals evals:record",
-    "typecheck": "pnpm -r run typecheck",
-    "skills:check": "pnpm --filter @sentry/junior skills:check",
-    "test:ci": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-github build && pnpm --filter @sentry/junior-google build && pnpm --filter @sentry/junior-linear build && pnpm --filter @sentry/junior-notion build && pnpm --filter @sentry/junior-sentry build && pnpm --filter @sentry/junior-vercel build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test:coverage && pnpm --filter @sentry/junior-memory test && pnpm --filter @sentry/junior-tts test && pnpm --filter @sentry/junior-github test && pnpm --filter @sentry/junior-google test && pnpm --filter @sentry/junior-sentry test && pnpm --filter @sentry/junior-vercel test && pnpm --filter @sentry/junior-dashboard test:coverage"
+    "typecheck-coverage:check": "node scripts/check-typecheck-coverage.mjs",
+    "typecheck": "pnpm -r run typecheck && tsc --noEmit -p tools/oxlint && tsc --noEmit -p tools/configs",
+    "skills:check": "pnpm --filter @sentry/junior skills:check"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm lint-staged",
     "pre-push": "pnpm lint"
   },
   "lint-staged": {
-    "packages/junior-dashboard/src/**/*.{ts,tsx}": "pnpm --filter @sentry/junior-dashboard lint",
-    "packages/junior/**/*.{js,jsx,ts,tsx,mjs,cjs}": "pnpm --filter @sentry/junior exec oxlint --config .oxlintrc.json --deny-warnings --fix",
-    "*.{js,jsx,ts,tsx,mjs,cjs,json,md,mdx,yml,yaml}": [
+    "*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}": "oxlint --fix",
+    "*.{js,jsx,ts,tsx,mjs,cjs,json,yml,yaml}": [
       "pnpm file-length:check",
       "pnpm test-architecture:check",
       "pnpm dashboard-style:check",
-      "pnpm exec prettier --write --ignore-unknown"
+      "oxfmt --no-error-on-unmatched-pattern"
     ]
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
     "@ast-grep/cli": "^0.43.0",
     "@octokit/graphql-schema": "^15.26.1",
-    "@oxlint/plugins": "1.79.0",
+    "@oxlint/plugins": "1.93.0",
     "@playwright/test": "^1.60.0",
     "@primer/octicons": "19.21.1",
+    "@types/node": "catalog:",
     "agent-browser": "^0.27.0",
     "libpg-query": "18.2.2",
     "lint-staged": "^17.0.5",
-    "oxlint": "1.79.0",
-    "prettier": "^3.8.3",
+    "oxfmt": "0.78.0",
+    "oxlint": "1.93.0",
+    "oxlint-tsgolint": "7.0.2007",
     "publint": "^0.3.21",
     "sentry": "0.47.0",
     "simple-git-hooks": "^2.13.1",
     "squawk-cli": "2.72.0",
-    "tsx": "^4.22.3"
+    "tsx": "^4.22.3",
+    "typescript": "catalog:"
+  },
+  "engines": {
+    "node": "24.x"
   }
 }

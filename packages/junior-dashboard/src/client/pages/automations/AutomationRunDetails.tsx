@@ -99,7 +99,9 @@ export function useAutomationRunSelection(runIds: readonly string[]) {
 }
 
 /** Open a run's Conversation from its row without opening run details. */
-export function RunConversationLink(props: { conversationId?: string }) {
+export function RunConversationLink(props: {
+  conversationId?: string | undefined;
+}) {
   if (!props.conversationId) return <span aria-hidden="true" />;
   return (
     <Tooltip>

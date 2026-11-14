@@ -62,13 +62,13 @@ import {
 } from "@/chat/task-execution/state";
 
 interface MetadataOptions {
-  conversationStore?: ConversationStore;
-  state?: StateAdapter;
+  conversationStore?: ConversationStore | undefined;
+  state?: StateAdapter | undefined;
 }
 
 export type EnsureConversationWakeResult =
   | {
-      queueMessageId?: string;
+      queueMessageId?: string | undefined;
       status: "enqueued";
     }
   | {
@@ -103,8 +103,8 @@ function now(): number {
 
 async function recordExecutionMetadata(args: {
   conversationId: string;
-  conversationStore?: ConversationStore;
-  state?: StateAdapter;
+  conversationStore?: ConversationStore | undefined;
+  state?: StateAdapter | undefined;
 }): Promise<void> {
   const conversation = await workState.getConversation({
     conversationId: args.conversationId,
@@ -145,7 +145,7 @@ export async function getConversation(args: {
 /** Return a persisted conversation work record, if one exists. */
 export async function getConversationWorkState(args: {
   conversationId: string;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }) {
   return await workState.getConversationWorkState(args);
 }
@@ -159,12 +159,12 @@ export async function getConversationWorkStates(
 
 /** Count one failed conversation execution and persist its terminal retry state. */
 export async function recordConversationRetry(args: {
-  beforeWorkStops?: workState.BeforeWorkStops;
+  beforeWorkStops?: workState.BeforeWorkStops | undefined;
   conversationId: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   leaseToken: string;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }) {
   const result = await workState.recordConversationRetry(args);
   await recordExecutionMetadata(args);
@@ -180,14 +180,14 @@ export async function recordConversationRetry(args: {
  */
 export async function ensureConversationWake(args: {
   conversationId: string;
-  conversationStore?: ConversationStore;
-  delayMs?: number;
+  conversationStore?: ConversationStore | undefined;
+  delayMs?: number | undefined;
   idempotencyKey: string;
-  ignoreEnqueueMarker?: true;
+  ignoreEnqueueMarker?: true | undefined;
   nowMs?: number;
   queue: ConversationWorkQueue;
-  replaceExistingWake?: true;
-  state?: StateAdapter;
+  replaceExistingWake?: true | undefined;
+  state?: StateAdapter | undefined;
 }): Promise<EnsureConversationWakeResult> {
   const nowMs = args.nowMs ?? now();
   const conversation = await workState.getConversation({
@@ -254,9 +254,9 @@ export async function appendInboundMessage(args: {
  */
 export async function claimInboundMessage(args: {
   message: workState.InboundMessageClaim;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }) {
   const result = await workState.claimInboundMessage(args);
   if (result.status === "claimed") {
@@ -280,12 +280,12 @@ export async function claimInboundMessage(args: {
 async function enqueueAfterAppend(args: {
   appendResult: AppendExclusiveInboundMessageResult;
   message: InboundMessage;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
   queue: ConversationWorkQueue;
   queueDelayMs?: number;
   replaceExistingWake?: true;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<AppendAndEnqueueExclusiveInboundMessageResult> {
   const nowMs = args.nowMs ?? now();
   const appendResult = args.appendResult;
@@ -351,14 +351,14 @@ async function enqueueAfterAppend(args: {
 /** Persist inbound work and ensure a worker wake-up. */
 export async function appendAndEnqueueInboundMessage(args: {
   message: InboundMessage;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
   queue: ConversationWorkQueue;
   queueDelayMs?: number;
   /** Render the message text under the mailbox lock. */
   renderText?: workState.RenderInboundText;
   replaceExistingWake?: true;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): Promise<AppendAndEnqueueInboundMessageResult> {
   const nowMs = args.nowMs ?? now();
   const result = await enqueueAfterAppend({
@@ -401,13 +401,13 @@ export async function appendAndEnqueueExclusiveInboundMessage(args: {
 /** Persist a stop request for the current Conversation run. */
 export async function stopConversationWork(args: {
   conversationId: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
   /** Runs once the stop request is saved, before its metadata write. */
   onStopSaved?: () => void;
   /** Stop only person input sent at or before this time. */
-  sentAtOrBeforeMs?: number;
-  state?: StateAdapter;
+  sentAtOrBeforeMs?: number | undefined;
+  state?: StateAdapter | undefined;
 }) {
   const result = await workState.stopConversationWork(args);
   if (result.status === "requested") {
@@ -420,11 +420,11 @@ export async function stopConversationWork(args: {
 /** Finish an observed stop request under the current worker lease. */
 export async function completeConversationStop(args: {
   conversationId: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   leaseToken: string;
   nowMs?: number;
   runId: string;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }) {
   const result = await workState.completeConversationStop(args);
   if (result.status === "cleared") {
@@ -436,9 +436,9 @@ export async function completeConversationStop(args: {
 /** Clear an accepted wake marker after its delivery finds no runnable work. */
 export async function clearConsumedConversationWake(args: {
   conversationId: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }) {
   const result = await workState.clearConsumedConversationWake(args);
   if (result) {
@@ -453,7 +453,7 @@ export async function requestConversationWork(args: {
   destination: InboundMessage["destination"];
   conversationStore?: ConversationStore;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }) {
   const result = await workState.requestConversationWork(args);
   await recordExecutionMetadata({
@@ -482,9 +482,9 @@ export async function recordConversationActivity(
 /** Record that a wake-up nudge was accepted for the conversation. */
 async function markConversationWorkEnqueued(args: {
   conversationId: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }) {
   await workState.markConversationWorkEnqueued(args);
   await recordExecutionMetadata(args);
@@ -493,9 +493,9 @@ async function markConversationWorkEnqueued(args: {
 /** Try to acquire the durable execution lease for one conversation. */
 export async function startConversationWork(args: {
   conversationId: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }) {
   const result = await workState.startConversationWork(args);
   await recordExecutionMetadata(args);
@@ -506,9 +506,9 @@ export async function startConversationWork(args: {
 export async function checkInConversationWork(args: {
   conversationId: string;
   leaseToken: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }) {
   const result = await workState.checkInConversationWork(args);
   if (result) {
@@ -520,8 +520,8 @@ export async function checkInConversationWork(args: {
 /** Drain pending mailbox entries after the caller accepts responsibility. */
 export async function drainConversationMailbox(
   args: Parameters<typeof workState.drainConversationMailbox>[0] & {
-    conversationStore?: ConversationStore;
-    state?: StateAdapter;
+    conversationStore?: ConversationStore | undefined;
+    state?: StateAdapter | undefined;
   },
 ) {
   const result = await workState.drainConversationMailbox(args);
@@ -536,9 +536,9 @@ export async function ackMessages(args: {
   conversationId: string;
   inboundMessageIds: string[];
   leaseToken: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }) {
   const result = await workState.ackMessages(args);
   await recordExecutionMetadata(args);
@@ -567,7 +567,7 @@ export async function dropPendingMessages(args: {
   inboundMessageIds: readonly string[];
   conversationStore?: ConversationStore;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }) {
   const dropped = await workState.dropPendingMessages(args);
   if (dropped.length > 0) {
@@ -593,9 +593,9 @@ export async function requestAnotherSlice(args: {
   conversationId: string;
   destination: InboundMessage["destination"];
   leaseToken: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }) {
   const result = await workState.requestAnotherSlice(args);
   await recordExecutionMetadata(args);
@@ -606,9 +606,9 @@ export async function requestAnotherSlice(args: {
 export async function beginConversationResume(args: {
   conversationId: string;
   leaseToken: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }) {
   const result = await workState.beginConversationResume(args);
   if (result) {
@@ -621,9 +621,9 @@ export async function beginConversationResume(args: {
 export async function releaseConversationWork(args: {
   conversationId: string;
   leaseToken: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }) {
   const result = await workState.releaseConversationWork(args);
   await recordExecutionMetadata(args);
@@ -635,13 +635,13 @@ export async function completeConversationWork(args: {
   conversationId: string;
   leaseToken: string;
   madeProgress?: boolean;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   /** Slack installation lookup for a move that waited for this Run. */
-  getSlackAdapter?: () => SlackAdapter;
+  getSlackAdapter?: (() => SlackAdapter) | undefined;
   nowMs?: number;
   /** Keep a raced stop runnable after a stop-aware adapter returns. */
   resumeIfStopped?: boolean;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }) {
   const result = await workState.completeConversationWork(args);
   await recordExecutionMetadata(args);
@@ -655,8 +655,8 @@ export async function completeConversationWork(args: {
  */
 async function runDeferredMove(args: {
   conversationId: string;
-  getSlackAdapter?: () => SlackAdapter;
-  state?: StateAdapter;
+  getSlackAdapter?: (() => SlackAdapter) | undefined;
+  state?: StateAdapter | undefined;
 }): Promise<void> {
   const move = await workState.takeDeferredConversationMove(args);
   if (move === undefined) return;
@@ -677,9 +677,9 @@ export async function recordAttemptFailure(args: {
   conversationId: string;
   inboundMessageIds: string[];
   leaseToken: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }) {
   const result = await workState.recordAttemptFailure(args);
   if (result.status === "recorded") {
@@ -692,9 +692,9 @@ export async function recordAttemptFailure(args: {
 export async function deadLetterAttempt(args: {
   conversationId: string;
   leaseToken: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }) {
   const result = await workState.deadLetterAttempt(args);
   await recordExecutionMetadata(args);
@@ -703,11 +703,11 @@ export async function deadLetterAttempt(args: {
 
 /** Recover an expired lease and persist the resulting retry state. */
 export async function clearExpiredConversationLease(args: {
-  beforeWorkStops?: workState.BeforeWorkStops;
+  beforeWorkStops?: workState.BeforeWorkStops | undefined;
   conversationId: string;
   conversationStore?: ConversationStore;
   nowMs?: number;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }) {
   const result = await workState.clearExpiredConversationLease(args);
   await recordExecutionMetadata(args);
@@ -719,7 +719,7 @@ export async function listActiveConversationIds(
   args: {
     limit?: number;
     staleBeforeMs?: number;
-    state?: StateAdapter;
+    state?: StateAdapter | undefined;
   } = {},
 ) {
   return await workState.listActiveConversationIds(args);

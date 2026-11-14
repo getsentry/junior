@@ -42,7 +42,7 @@ export function WorkspacesPage() {
           `[data-workspace-id="${CSS.escape(workspaceId)}"] button`,
         )
       : undefined;
-    navigate(listPath);
+    void navigate(listPath);
     (trigger ?? listRef.current)?.focus();
   };
 
@@ -124,7 +124,7 @@ export function WorkspacesPage() {
         <WorkspaceDeleteDialog
           onClose={() => setDeleteTarget(undefined)}
           onDeleted={() => {
-            if (workspaceId === deleteTarget.id) navigate(listPath);
+            if (workspaceId === deleteTarget.id) void navigate(listPath);
           }}
           returnFocus={() =>
             deleteSource.current?.isConnected

@@ -310,8 +310,10 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
           30: row.conversations30,
           90: row.conversations90,
         },
-        dayBuckets: dayBucketsByEmail.get(row.email) ?? new Map(),
-        hourBuckets: hourBucketsByEmail.get(row.email) ?? new Map(),
+        dayBuckets:
+          dayBucketsByEmail.get(row.email) ?? new Map<string, MetricBucket>(),
+        hourBuckets:
+          hourBucketsByEmail.get(row.email) ?? new Map<string, MetricBucket>(),
         nowMs,
       }),
       ...(row.tokens !== null ? { tokens: row.tokens } : undefined),

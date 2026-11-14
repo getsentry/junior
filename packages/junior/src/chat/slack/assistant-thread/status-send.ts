@@ -24,8 +24,8 @@ type AssistantStatusSender = (
  * Slack's loading surface and keeps the raw Slack `status` field fixed.
  */
 export function createSlackAdapterStatusSender(args: {
-  channelId?: string;
-  threadTs?: string;
+  channelId?: string | undefined;
+  threadTs?: string | undefined;
   getSlackAdapter: () => Pick<SlackAdapter, "setAssistantStatus">;
 }): AssistantStatusSender {
   const adapter = args.getSlackAdapter() as Pick<
@@ -83,9 +83,9 @@ export function createSlackAdapterStatusSender(args: {
  * `loading_messages` while `status` stays fixed and generic.
  */
 export function createSlackWebApiStatusSender(args: {
-  channelId?: string;
-  threadTs?: string;
-  getSlackClient?: typeof getSlackClient;
+  channelId?: string | undefined;
+  threadTs?: string | undefined;
+  getSlackClient?: typeof getSlackClient | undefined;
 }): AssistantStatusSender {
   const getClient = args.getSlackClient ?? getSlackClient;
 

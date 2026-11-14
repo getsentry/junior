@@ -27,7 +27,8 @@ function body(text: string): ArrayBuffer {
 }
 
 function binaryBody(text: string): ArrayBuffer {
-  return new Uint8Array([...text].map((char) => char.charCodeAt(0))).buffer;
+  return new Uint8Array(Array.from(text).map((char) => char.charCodeAt(0)))
+    .buffer;
 }
 
 describe("readGitPush", () => {

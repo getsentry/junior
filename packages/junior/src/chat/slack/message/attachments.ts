@@ -17,15 +17,15 @@ function toNum(value: unknown): number | undefined {
 function toFileRef(raw: unknown): SlackFileRef | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const obj = raw as Record<string, unknown>;
-  const id = toStr(obj.id);
+  const id = toStr(obj["id"]);
   if (!id) return undefined;
   return {
     id,
-    name: toStr(obj.name),
-    mimetype: toStr(obj.mimetype),
-    size: toNum(obj.size),
-    url_private: toStr(obj.url_private),
-    url_private_download: toStr(obj.url_private_download),
+    name: toStr(obj["name"]),
+    mimetype: toStr(obj["mimetype"]),
+    size: toNum(obj["size"]),
+    url_private: toStr(obj["url_private"]),
+    url_private_download: toStr(obj["url_private_download"]),
   };
 }
 
@@ -42,7 +42,7 @@ export function extractAttachmentFiles(input: unknown): SlackFileRef[] {
 
   for (const attachment of getAttachmentPayload(input)) {
     if (!attachment || typeof attachment !== "object") continue;
-    const rawFiles = (attachment as Record<string, unknown>).files;
+    const rawFiles = (attachment as Record<string, unknown>)["files"];
     if (!Array.isArray(rawFiles)) continue;
     for (const rawFile of rawFiles) {
       const fileRef = toFileRef(rawFile);
@@ -58,15 +58,15 @@ export function extractAttachmentFiles(input: unknown): SlackFileRef[] {
 function getAttachmentPayload(input: unknown): unknown[] {
   if (Array.isArray(input)) return input;
   if (!input || typeof input !== "object") return [];
-  const attachments = (input as Record<string, unknown>).attachments;
+  const attachments = (input as Record<string, unknown>)["attachments"];
   return Array.isArray(attachments) ? attachments : [];
 }
 
 function renderField(raw: unknown): string | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const obj = raw as Record<string, unknown>;
-  const title = toStr(obj.title);
-  const value = toStr(obj.value)?.slice(0, MAX_FIELD_CHARS);
+  const title = toStr(obj["title"]);
+  const value = toStr(obj["value"])?.slice(0, MAX_FIELD_CHARS);
   if (title && value) return `${title}: ${value}`;
   return title || value;
 }
@@ -90,15 +90,15 @@ function renderAttachment(raw: unknown): string {
   const parts: string[] = [];
   const seen = new Set<string>();
 
-  const fallback = toStr(obj.fallback);
-  const pretext = toStr(obj.pretext);
-  const authorName = toStr(obj.author_name);
-  const title = toStr(obj.title);
-  const titleLink = toStr(obj.title_link);
-  const text = toStr(obj.text);
-  const footer = toStr(obj.footer);
-  const fields = Array.isArray(obj.fields) ? obj.fields : [];
-  const blockText = renderBlockText(obj.blocks);
+  const fallback = toStr(obj["fallback"]);
+  const pretext = toStr(obj["pretext"]);
+  const authorName = toStr(obj["author_name"]);
+  const title = toStr(obj["title"]);
+  const titleLink = toStr(obj["title_link"]);
+  const text = toStr(obj["text"]);
+  const footer = toStr(obj["footer"]);
+  const fields = Array.isArray(obj["fields"]) ? obj["fields"] : [];
+  const blockText = renderBlockText(obj["blocks"]);
 
   const add = (value: string | undefined) => {
     if (!value) return;

@@ -113,8 +113,8 @@ function providerTime(value: string | undefined): number | undefined {
  * they stay untrusted text.
  */
 function issueText(issue: {
-  culprit?: string;
-  title?: string;
+  culprit?: string | undefined;
+  title?: string | undefined;
 }): string | undefined {
   const parts = [
     issue.title ? `Title: ${issue.title}` : undefined,
@@ -198,7 +198,7 @@ function metricAlertData(
 interface WebhookInput {
   body: unknown;
   hookResource: string;
-  hookTimestamp?: string;
+  hookTimestamp?: string | undefined;
 }
 
 function normalizeIssueEvents(input: WebhookInput): EventInput[] {

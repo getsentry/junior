@@ -103,7 +103,10 @@ function useJwtBearerMcpServer(trustedKey: KeyObject) {
           subject: PROVIDER,
           typ: "oauth-id-jag+jwt",
         });
-        if (payload.client_id !== CLIENT_ID || payload.resource !== MCP_URL) {
+        if (
+          payload["client_id"] !== CLIENT_ID ||
+          payload["resource"] !== MCP_URL
+        ) {
           throw new Error("assertion does not match client and resource");
         }
       } catch {

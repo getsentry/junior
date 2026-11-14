@@ -48,7 +48,7 @@ export function ConversationList(props: {
 
 function ConversationTableRow(props: {
   conversation: Conversation;
-  search?: string;
+  search?: string | undefined;
   selected?: boolean;
 }) {
   const visualStatus = visualStatusForConversation(props.conversation);
@@ -57,7 +57,7 @@ function ConversationTableRow(props: {
     pathname: conversationPath(props.conversation.id),
     search: props.search ?? "",
   };
-  const openConversation = () => navigate(href);
+  const openConversation = () => void navigate(href);
   return (
     <div
       className={conversationRecordClass(visualStatus, props.selected)}

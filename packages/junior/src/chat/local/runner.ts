@@ -134,7 +134,7 @@ function captureLocalBoundaryFailure(args: {
   conversationId: string;
   error: unknown;
   failureCode: ConversationTurnFailureCode;
-  runId?: string;
+  runId?: string | undefined;
 }): string | undefined {
   setTags({
     conversationId: args.conversationId,

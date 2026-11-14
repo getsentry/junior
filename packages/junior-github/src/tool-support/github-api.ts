@@ -56,7 +56,7 @@ export async function githubApi(
       request: new Request(url, {
         method,
         headers,
-        signal: input.signal,
+        signal: input.signal ?? null,
         ...(input.body !== undefined
           ? { body: JSON.stringify(input.body) }
           : undefined),
@@ -141,8 +141,10 @@ export function parseRepo(value: string): {
 export function githubErrorMessage(body: unknown): string {
   if (typeof body === "string" && body.trim()) return body.trim();
   if (!isRecord(body)) return "GitHub request failed";
-  const errors = Array.isArray(body.errors) ? body.errors.filter(isRecord) : [];
-  if (typeof body.message === "string" && body.message.trim()) {
+  const errors = Array.isArray(body["errors"])
+    ? body["errors"].filter(isRecord)
+    : [];
+  if (typeof body["message"] === "string" && body["message"].trim()) {
     const details = errors
       .map((error) =>
         ["resource", "field", "code", "message"]
@@ -157,11 +159,11 @@ export function githubErrorMessage(body: unknown): string {
       )
       .filter(Boolean)
       .join("; ");
-    const message = body.message.trim();
+    const message = body["message"].trim();
     return details ? `${message}: ${details}` : message;
   }
   const graphqlMessages = errors
-    .map((error) => error.message)
+    .map((error) => error["message"])
     .filter((message) => typeof message === "string" && message.trim());
   return graphqlMessages.length
     ? graphqlMessages.join("; ")

@@ -5,20 +5,20 @@ import {
   buildSlackReplyFooter,
 } from "@/chat/slack/footer";
 
-const originalJuniorBaseUrl = process.env.JUNIOR_BASE_URL;
-const originalBetterAuthUrl = process.env.BETTER_AUTH_URL;
+const originalJuniorBaseUrl = process.env["JUNIOR_BASE_URL"];
+const originalBetterAuthUrl = process.env["BETTER_AUTH_URL"];
 
 afterEach(() => {
   setDashboardConversationLinkOptions(undefined);
   if (originalJuniorBaseUrl === undefined) {
-    delete process.env.JUNIOR_BASE_URL;
+    delete process.env["JUNIOR_BASE_URL"];
   } else {
-    process.env.JUNIOR_BASE_URL = originalJuniorBaseUrl;
+    process.env["JUNIOR_BASE_URL"] = originalJuniorBaseUrl;
   }
   if (originalBetterAuthUrl === undefined) {
-    delete process.env.BETTER_AUTH_URL;
+    delete process.env["BETTER_AUTH_URL"];
   } else {
-    process.env.BETTER_AUTH_URL = originalBetterAuthUrl;
+    process.env["BETTER_AUTH_URL"] = originalBetterAuthUrl;
   }
 });
 
@@ -97,8 +97,8 @@ describe("buildSlackReplyFooter", () => {
   });
 
   it("uses JUNIOR_BASE_URL for core dashboard footer links", () => {
-    process.env.BETTER_AUTH_URL = "https://legacy-auth.example.com";
-    process.env.JUNIOR_BASE_URL = "https://junior-env.example.com";
+    process.env["BETTER_AUTH_URL"] = "https://legacy-auth.example.com";
+    process.env["JUNIOR_BASE_URL"] = "https://junior-env.example.com";
     setDashboardConversationLinkOptions({
       basePath: "/ops",
     });

@@ -23,7 +23,7 @@ const TEST_ENV_KEYS = [
   "JUNIOR_STATE_ADAPTER",
 ];
 
-const originalNodeEnv = process.env.NODE_ENV;
+const originalNodeEnv = process.env["NODE_ENV"];
 const mutableEnv = process.env as Record<string, string | undefined>;
 const originalEnv = new Map(
   TEST_ENV_KEYS.map((key) => [key, process.env[key]] as const),
@@ -55,16 +55,16 @@ describe("loadCliEnvFiles", () => {
   afterEach(() => {
     restoreTestEnv();
     if (originalNodeEnv === undefined) {
-      delete mutableEnv.NODE_ENV;
+      delete mutableEnv["NODE_ENV"];
       return;
     }
 
-    mutableEnv.NODE_ENV = originalNodeEnv;
+    mutableEnv["NODE_ENV"] = originalNodeEnv;
   });
 
   it("loads app and workspace env files for monorepo CLI execution", () => {
     clearTestEnv();
-    delete mutableEnv.NODE_ENV;
+    delete mutableEnv["NODE_ENV"];
 
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-cli-env-"));
     const workspaceRoot = path.join(tempRoot, "repo");
@@ -93,19 +93,19 @@ describe("loadCliEnvFiles", () => {
       ),
     );
 
-    process.env.CLI_ENV_EXISTING = "shell";
+    process.env["CLI_ENV_EXISTING"] = "shell";
 
     loadCliEnvFiles(nestedCwd);
 
-    expect(process.env.CLI_ENV_APP_ONLY).toBe("app-local");
-    expect(process.env.CLI_ENV_WORKSPACE_ONLY).toBe("workspace-local");
-    expect(process.env.CLI_ENV_PRIORITY).toBe("app-local");
-    expect(process.env.CLI_ENV_EXISTING).toBe("shell");
+    expect(process.env["CLI_ENV_APP_ONLY"]).toBe("app-local");
+    expect(process.env["CLI_ENV_WORKSPACE_ONLY"]).toBe("workspace-local");
+    expect(process.env["CLI_ENV_PRIORITY"]).toBe("app-local");
+    expect(process.env["CLI_ENV_EXISTING"]).toBe("shell");
   });
 
   it("prefers test env files over .env.local in test mode", () => {
     clearTestEnv();
-    mutableEnv.NODE_ENV = "test";
+    mutableEnv["NODE_ENV"] = "test";
 
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-cli-env-"));
     writeFile(path.join(tempRoot, "package.json"), "{}\n");
@@ -120,12 +120,12 @@ describe("loadCliEnvFiles", () => {
 
     loadCliEnvFiles(tempRoot);
 
-    expect(process.env.CLI_ENV_MODE).toBe("test-local");
+    expect(process.env["CLI_ENV_MODE"]).toBe("test-local");
   });
 
   it("loads example env files as last-resort defaults", () => {
     clearTestEnv();
-    delete mutableEnv.NODE_ENV;
+    delete mutableEnv["NODE_ENV"];
 
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-cli-env-"));
     writeFile(path.join(tempRoot, "package.json"), "{}\n");
@@ -140,29 +140,29 @@ describe("loadCliEnvFiles", () => {
 
     loadCliEnvFiles(tempRoot);
 
-    expect(process.env.CLI_ENV_DEFAULT).toBe("example");
-    expect(process.env.CLI_ENV_PRIORITY).toBe("local");
+    expect(process.env["CLI_ENV_DEFAULT"]).toBe("example");
+    expect(process.env["CLI_ENV_PRIORITY"]).toBe("local");
   });
 
   it("applies development defaults after loading env files", () => {
     clearTestEnv();
-    delete mutableEnv.NODE_ENV;
+    delete mutableEnv["NODE_ENV"];
 
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-cli-env-"));
     writeFile(path.join(tempRoot, "package.json"), "{}\n");
 
     loadCliEnvFiles(tempRoot);
 
-    expect(process.env.JUNIOR_SECRET).toBe(JUNIOR_LOCAL_DEV_INTERNAL_SECRET);
-    expect(process.env.JUNIOR_STATE_ADAPTER).toBe("memory");
-    expect(process.env.JUNIOR_SCHEDULER_SECRET).toBe(
+    expect(process.env["JUNIOR_SECRET"]).toBe(JUNIOR_LOCAL_DEV_INTERNAL_SECRET);
+    expect(process.env["JUNIOR_STATE_ADAPTER"]).toBe("memory");
+    expect(process.env["JUNIOR_SCHEDULER_SECRET"]).toBe(
       JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET,
     );
   });
 
   it("preserves explicit config values when applying defaults", () => {
     clearTestEnv();
-    delete mutableEnv.NODE_ENV;
+    delete mutableEnv["NODE_ENV"];
 
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-cli-env-"));
     writeFile(path.join(tempRoot, "package.json"), "{}\n");
@@ -178,10 +178,10 @@ describe("loadCliEnvFiles", () => {
 
     loadCliEnvFiles(tempRoot);
 
-    expect(process.env.JUNIOR_SECRET).toBe("explicit-secret");
-    expect(process.env.JUNIOR_STATE_ADAPTER).toBe("redis");
-    expect(process.env.CRON_SECRET).toBe("cron-secret");
-    expect(process.env.JUNIOR_SCHEDULER_SECRET).toBeUndefined();
+    expect(process.env["JUNIOR_SECRET"]).toBe("explicit-secret");
+    expect(process.env["JUNIOR_STATE_ADAPTER"]).toBe("redis");
+    expect(process.env["CRON_SECRET"]).toBe("cron-secret");
+    expect(process.env["JUNIOR_SCHEDULER_SECRET"]).toBeUndefined();
   });
 });
 
@@ -189,11 +189,11 @@ describe("applyJuniorDevelopmentDefaults", () => {
   afterEach(() => {
     restoreTestEnv();
     if (originalNodeEnv === undefined) {
-      delete mutableEnv.NODE_ENV;
+      delete mutableEnv["NODE_ENV"];
       return;
     }
 
-    mutableEnv.NODE_ENV = originalNodeEnv;
+    mutableEnv["NODE_ENV"] = originalNodeEnv;
   });
 
   it("does not apply development defaults outside development", () => {
@@ -205,10 +205,10 @@ describe("applyJuniorDevelopmentDefaults", () => {
       baseUrl: "http://localhost:3000",
     });
 
-    expect(env.JUNIOR_SECRET).toBeUndefined();
-    expect(env.JUNIOR_STATE_ADAPTER).toBeUndefined();
-    expect(env.JUNIOR_SCHEDULER_SECRET).toBeUndefined();
-    expect(env.JUNIOR_BASE_URL).toBeUndefined();
+    expect(env["JUNIOR_SECRET"]).toBeUndefined();
+    expect(env["JUNIOR_STATE_ADAPTER"]).toBeUndefined();
+    expect(env["JUNIOR_SCHEDULER_SECRET"]).toBeUndefined();
+    expect(env["JUNIOR_BASE_URL"]).toBeUndefined();
   });
 
   it("applies a base URL only when the caller provides one", () => {
@@ -218,12 +218,12 @@ describe("applyJuniorDevelopmentDefaults", () => {
 
     applyJuniorDevelopmentDefaults(env);
 
-    expect(env.JUNIOR_BASE_URL).toBeUndefined();
+    expect(env["JUNIOR_BASE_URL"]).toBeUndefined();
 
     applyJuniorDevelopmentDefaults(env, {
       baseUrl: "http://localhost:3000",
     });
 
-    expect(env.JUNIOR_BASE_URL).toBe("http://localhost:3000");
+    expect(env["JUNIOR_BASE_URL"]).toBe("http://localhost:3000");
   });
 });

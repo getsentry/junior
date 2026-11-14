@@ -35,8 +35,8 @@ export type AutomationDraft = {
   task: AutomationTaskDraft;
   credentialMode: AutomationEdit["credentialMode"];
   outcomes: NonNullable<AutomationUpdate["outcomes"]>;
-  schedule?: AutomationScheduleDraft;
-  trigger?: Extract<AutomationEdit, { kind: "event" }>["trigger"];
+  schedule?: AutomationScheduleDraft | undefined;
+  trigger?: Extract<AutomationEdit, { kind: "event" }>["trigger"] | undefined;
 };
 
 /** Keep stored values intact until a user edits that field. */

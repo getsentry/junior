@@ -1,6 +1,16 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // Exception to the strict base: the .d.ts files of drizzle-orm, unstorage, srvx, nitro, just-bash, and other dependencies
+    // fail type checks (for example, drizzle-orm imports optional drivers
+    // such as `gel` that are not installed). Remove this line when
+    // `tsc --noEmit -p . --skipLibCheck false` passes.
+    "skipLibCheck": true,
+    // Temporary exception: 164 errors remain under exactOptionalPropertyTypes
+    // (122 in packages/junior, 42 in packages/junior-dashboard). Count them
+    // with `tsc --noEmit -p . --exactOptionalPropertyTypes`. Remove this line
+    // when that command passes.
+    "exactOptionalPropertyTypes": false,
     "target": "ES2022",
     "lib": ["ES2022", "DOM"],
     "module": "ESNext",
@@ -16,10 +26,5 @@
     "incremental": true
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": [
-    "dist",
-    "node_modules",
-    "tests/unit/workflow/**/*.test.ts",
-    "tests/integration/workflow/**/*.test.ts"
-  ]
+  "exclude": ["dist", "node_modules"]
 }

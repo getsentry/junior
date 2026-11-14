@@ -88,6 +88,8 @@ export function useConversationActionToasts() {
       function restoreFailed() {
         let kept = false;
         update(ARCHIVED_TOAST_ID, (toast) => {
+          // Base UI types toast data as `any`.
+          // oxlint-disable-next-line typescript/no-unsafe-member-access
           if (toast.data?.conversationId !== conversation.id) return {};
           kept = true;
           return {

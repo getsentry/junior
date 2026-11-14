@@ -270,7 +270,7 @@ export async function enqueueAgentInvocationResult(
   options: {
     nowMs?: number;
     queue: ConversationWorkQueue;
-    state?: StateAdapter;
+    state?: StateAdapter | undefined;
   },
 ): Promise<void> {
   if (invocation.parentMailboxStatus !== "pending") {
@@ -386,7 +386,7 @@ export async function enqueueAgentMessageToParent(args: {
   nowMs?: number;
   queue: ConversationWorkQueue;
   sender: ChildAgentSender;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
   text: string;
 }): Promise<void> {
   const nowMs = args.nowMs ?? Date.now();
@@ -443,7 +443,7 @@ export async function enqueueChildResultToParent(args: {
   nowMs?: number;
   queue: ConversationWorkQueue;
   sender: ChildAgentSender;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
   /** The child Turn that sent the result. */
   turnId: string;
 }): Promise<void> {
@@ -518,7 +518,7 @@ export async function enqueueChildResultToParent(args: {
  */
 export function createDeliverToParent(options: {
   queue: ConversationWorkQueue;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }): DeliverToParent {
   return async ({ actor, result, conversationId, turnId }) => {
     const sender =
@@ -631,7 +631,7 @@ export function createEndStoppedChildWork(options: {
  */
 async function startAgentInvocationsForChildInput(
   context: ConversationWorkerContext,
-  options: { queue: ConversationWorkQueue; state?: StateAdapter },
+  options: { queue: ConversationWorkQueue; state?: StateAdapter | undefined },
 ): Promise<ConversationWorkerResult | undefined> {
   const messages = context.attempt.messages;
   const latest = await getLatestAgentInvocationForConversation(
@@ -773,7 +773,7 @@ export function createChildConversationWorker(
       context: ConversationWorkerContext,
       work: MailboxTurnWork,
     ) => Promise<ConversationWorkerResult>;
-    state?: StateAdapter;
+    state?: StateAdapter | undefined;
   },
 ) {
   const invocationWorker = createAgentInvocationWorker(agentRunner, {
@@ -841,7 +841,7 @@ export function createChildConversationWorker(
  */
 async function reportParentWithoutOpenWork(
   conversationId: string,
-  options: { queue: ConversationWorkQueue; state?: StateAdapter },
+  options: { queue: ConversationWorkQueue; state?: StateAdapter | undefined },
 ): Promise<void> {
   if (await getLatestAgentInvocationForConversation(conversationId)) {
     return;

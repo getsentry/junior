@@ -143,7 +143,7 @@ describe("child agents that no Agent invocation names", () => {
             conversationId: slackParentConversationId,
           })
         )?.messages ?? [];
-      expect(reply?.input.metadata?.sender).toEqual({
+      expect(reply?.input.metadata?.["sender"]).toEqual({
         conversationId: childId,
         turnId: "turn_child",
       });
@@ -687,9 +687,9 @@ describe("child agents that no Agent invocation names", () => {
             mode: "paused",
             reason: "yield",
             sliceId: 1,
-            source: run.source!,
+            source: run.source,
             surface: "api",
-            turnId: run.turnId!,
+            turnId: run.turnId,
           });
         }
         throw new Error("stop after reading the run");

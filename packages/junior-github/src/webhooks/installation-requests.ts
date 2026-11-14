@@ -156,7 +156,11 @@ export async function loadPullRequestLifecycles(
  */
 export async function searchOpenPullRequestMergeability(
   env: GitHubInstallationEnv,
-  input: { after?: string; author: string; repositoryFullName: string },
+  input: {
+    after?: string | undefined;
+    author: string;
+    repositoryFullName: string;
+  },
 ): Promise<unknown> {
   const { name } = splitRepository(
     input.repositoryFullName,

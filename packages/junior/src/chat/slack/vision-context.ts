@@ -35,10 +35,10 @@ import {
 } from "@/chat/services/conversation-memory";
 
 export interface UserInputAttachment {
-  attachmentId?: string;
+  attachmentId?: string | undefined;
   data?: Buffer;
   mediaType: string;
-  filename?: string;
+  filename?: string | undefined;
   promptText?: string;
 }
 
@@ -150,8 +150,8 @@ class ImageAttachmentProcessingError extends Error {
 }
 
 function buildImageAttachmentPromptText(args: {
-  attachmentId?: string;
-  filename?: string;
+  attachmentId?: string | undefined;
+  filename?: string | undefined;
   mediaType: string;
   summary: string;
 }): string {
@@ -173,8 +173,8 @@ function buildImageAttachmentPromptText(args: {
 }
 
 function buildImageAttachmentFailurePromptText(args: {
-  attachmentId?: string;
-  filename?: string;
+  attachmentId?: string | undefined;
+  filename?: string | undefined;
   mediaType: string;
   message: string;
 }): string {
@@ -196,7 +196,7 @@ function buildImageAttachmentFailurePromptText(args: {
 }
 
 function buildAttachmentResolutionFailurePromptText(args: {
-  filename?: string;
+  filename?: string | undefined;
   mediaType: string;
   problem: string;
 }): string {
@@ -214,8 +214,8 @@ function buildAttachmentResolutionFailurePromptText(args: {
 
 /** Point the model at a stored file, or say that the file could not be stored. */
 function buildFileReferencePromptText(args: {
-  attachmentId?: string;
-  filename?: string;
+  attachmentId?: string | undefined;
+  filename?: string | undefined;
   mediaType: string;
 }): string {
   return args.attachmentId
@@ -287,8 +287,8 @@ function truncateVisionSummary(summary: string): string {
 }
 
 function getCachedImageSummaries(args: {
-  conversation?: ThreadConversationState;
-  messageTs?: string;
+  conversation?: ThreadConversationState | undefined;
+  messageTs?: string | undefined;
 }): Array<string | undefined> {
   if (!args.conversation || !args.messageTs) {
     return [];
@@ -307,7 +307,7 @@ function getCachedImageSummaries(args: {
 }
 
 function createImageAttachmentProcessingError(attachment: {
-  filename?: string;
+  filename?: string | undefined;
 }): ImageAttachmentProcessingError {
   const label = attachment.filename ? `"${attachment.filename}"` : "this image";
   return new ImageAttachmentProcessingError(

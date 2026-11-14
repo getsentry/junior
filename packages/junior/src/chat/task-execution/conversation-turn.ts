@@ -134,7 +134,7 @@ function captureConversationTurnFailure(args: {
   conversationId: string;
   error: unknown;
   failureCode: ConversationTurnFailureCode;
-  runId?: string;
+  runId?: string | undefined;
   turnId: string;
 }): string | undefined {
   const eventId = logException(

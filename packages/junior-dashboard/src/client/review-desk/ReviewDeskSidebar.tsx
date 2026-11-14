@@ -33,7 +33,7 @@ const rowClass =
 function InboxRow(props: {
   dot: Dot;
   meta: ReactNode;
-  selected?: "always" | "wide";
+  selected?: "always" | "wide" | undefined;
   title: string;
   to: string;
 }) {

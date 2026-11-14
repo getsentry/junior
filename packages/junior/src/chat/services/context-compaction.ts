@@ -84,10 +84,12 @@ export interface ActiveContextCompactionArgs {
   conversationId: string;
   modelId: string;
   onCompactionStart?: () => void | Promise<void>;
-  pendingMessages?: Array<{
-    message: PiMessage;
-    provenance: ConversationMessageProvenance;
-  }>;
+  pendingMessages?:
+    | Array<{
+        message: PiMessage;
+        provenance: ConversationMessageProvenance;
+      }>
+    | undefined;
   piMessages: PiMessage[];
   /**
    * `blocking` runs before the first model request of a Turn. With a new
@@ -102,9 +104,9 @@ export interface ActiveContextCompactionArgs {
    */
   requestOverheadTokens?: number;
   runtimeContextMessages?: PiMessage[];
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   /** Index in the runtime context messages where the current Turn starts. */
-  turnStartMessageIndex?: number;
+  turnStartMessageIndex?: number | undefined;
 }
 
 /** Raised when Junior cannot compact history below the active model's hard ceiling. */
@@ -190,7 +192,7 @@ export function userMessage(text: string): PiMessage {
     role: "user",
     content: [{ type: "text", text }],
     timestamp: Date.now(),
-  } as PiMessage;
+  };
 }
 
 function userMessageContent(message: PiMessage): unknown[] {

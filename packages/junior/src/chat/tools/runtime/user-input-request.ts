@@ -148,7 +148,7 @@ export type UserInputRequest = z.output<typeof userInputRequestSchema>;
  * person can always add.
  */
 export interface UserInputAnswer {
-  other?: string;
+  other?: string | undefined;
   requestId: string;
   values: Record<string, string[]>;
 }

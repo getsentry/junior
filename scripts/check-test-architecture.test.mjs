@@ -345,6 +345,8 @@ test("counts each form of a kind branch", () => {
     "if (invocation.parentToolCallId !== undefined) {}",
     "const messages = spawnAgent || run.agentInvocationId;",
     'if (message.source === "web") {}',
+    'if (data.meta?.["source"] === "web") {}',
+    'const id = typeof meta?.["agentInvocationId"] === "string";',
     "switch (run.source.kind) {}",
     'if ("automation" === kind) {}',
     "const result = run.dispatch?.declaresResult === true;",

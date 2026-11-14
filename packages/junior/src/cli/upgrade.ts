@@ -43,7 +43,7 @@ export async function resolveUpgradePluginSet(): Promise<
 > {
   try {
     const mod: {
-      pluginSet?: JuniorPluginSet;
+      pluginSet?: JuniorPluginSet | undefined;
     } = await import("#junior/config");
     return mod.pluginSet;
   } catch (error) {
@@ -102,7 +102,7 @@ async function runDatabaseMigrations(
 /** Apply Junior and enabled-plugin database migrations. */
 export async function runUpgrade(
   io: UpgradeIo = DEFAULT_IO,
-  options: { pluginSet?: JuniorPluginSet | null } = {},
+  options: { pluginSet?: JuniorPluginSet | null | undefined } = {},
 ): Promise<void> {
   const { sql } = getChatConfig();
   const sqlExecutor: JuniorSqlExecutor = createJuniorSqlExecutor({

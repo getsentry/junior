@@ -156,7 +156,7 @@ function egressAttributes(input: {
   egressId?: string;
   grantAccess?: "read" | "write";
   grantName?: string;
-  grantReason?: string;
+  grantReason?: string | undefined;
   host?: string;
   method?: string;
   path?: string;

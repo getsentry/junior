@@ -1,5 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "extends": ["../../tools/oxlint/type-aware.json"],
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "react"],
   "jsPlugins": [
     "@tanstack/eslint-plugin-query",
@@ -142,6 +143,52 @@
       "files": ["src/client/conversations/ConversationSectionList.tsx"],
       "rules": {
         "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": [
+        "tests/**",
+        "e2e/**",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "oxlint/**/*.test.ts"
+      ],
+      "rules": {
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-return": "off",
+        "typescript/no-explicit-any": "off",
+        "typescript/no-misused-promises": [
+          "error",
+          {
+            "checksVoidReturn": false
+          }
+        ],
+        "typescript/no-unnecessary-type-assertion": "off",
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["e2e/**"],
+      "rules": {
+        "react/rules-of-hooks": "off",
+        "eslint/no-empty-pattern": "off"
+      }
+    },
+    {
+      "files": [
+        "tests/dashboard-plugin-routes.test.ts",
+        "tests/dashboard-shell-routes.test.ts",
+        "tests/dashboard-host-routes.test.ts",
+        "tests/dashboard-routes.test.ts",
+        "tests/route-name-telemetry.test.ts",
+        "tests/telemetry-components.test.tsx",
+        "tests/telemetry-metrics.test.tsx"
+      ],
+      "rules": {
+        "anti-slop/no-module-mocking": "off"
       }
     }
   ]

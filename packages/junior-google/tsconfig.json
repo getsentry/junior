@@ -1,6 +1,11 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // Exception to the strict base: the .d.ts files of drizzle-orm
+    // fail type checks (for example, drizzle-orm imports optional drivers
+    // such as `gel` that are not installed). Remove this line when
+    // `tsc --noEmit -p . --skipLibCheck false` passes.
+    "skipLibCheck": true,
     "target": "ES2022",
     "lib": ["ES2022"],
     "module": "ESNext",

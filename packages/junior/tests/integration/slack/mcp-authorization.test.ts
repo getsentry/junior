@@ -32,16 +32,16 @@ let pluginApp: PluginAppFixture | undefined;
 let previousBaseUrl: string | undefined;
 
 beforeEach(async () => {
-  previousBaseUrl = process.env.JUNIOR_BASE_URL;
-  process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+  previousBaseUrl = process.env["JUNIOR_BASE_URL"];
+  process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
   pluginApp = await createPluginAppFixture([EVAL_AUTH_PLUGIN_ROOT]);
 });
 
 afterEach(async () => {
   await disconnectStateAdapter();
   await pluginApp?.cleanup();
-  if (previousBaseUrl === undefined) delete process.env.JUNIOR_BASE_URL;
-  else process.env.JUNIOR_BASE_URL = previousBaseUrl;
+  if (previousBaseUrl === undefined) delete process.env["JUNIOR_BASE_URL"];
+  else process.env["JUNIOR_BASE_URL"] = previousBaseUrl;
 });
 
 /** The person asks in a thread. Each agent run connects Eval Auth, then answers. */

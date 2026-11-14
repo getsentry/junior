@@ -60,7 +60,7 @@ const MAX_PROMPT_TEXT_LENGTH = 32_000;
 
 /** Dependencies for the serverless-safe remote ACP HTTP handler. */
 type AcpHttpHandlerOptions = {
-  browserAuth?: { baseURL?: string };
+  browserAuth?: { baseURL?: string | undefined };
   conversations: AcpConversations;
   onError?: ReportAcpError;
   state: AcpState;
@@ -78,8 +78,8 @@ function authenticatedAcpUser(connection: AcpConnection): User | undefined {
 function supportsUrlElicitation(params: unknown): boolean {
   const parsed = initializeParamsSchema.safeParse(params);
   if (!parsed.success) return false;
-  const elicitation = parsed.data.clientCapabilities?.elicitation;
-  return isRecord(elicitation) && isRecord(elicitation.url);
+  const elicitation = parsed.data.clientCapabilities?.["elicitation"];
+  return isRecord(elicitation) && isRecord(elicitation["url"]);
 }
 
 function parseParams<T>(schema: z.ZodType<T>, params: unknown): T {
@@ -250,9 +250,14 @@ function jsonResponse(
   status: number,
   headers?: HeadersInit,
 ): Response {
+  // Spreading HeadersInit drops entries from a Headers instance or an array.
+  const responseHeaders = new Headers(headers);
+  if (!responseHeaders.has("Content-Type")) {
+    responseHeaders.set("Content-Type", ACP_JSON_MIME_TYPE);
+  }
   return new Response(JSON.stringify(value), {
     status,
-    headers: { "Content-Type": ACP_JSON_MIME_TYPE, ...headers },
+    headers: responseHeaders,
   });
 }
 
@@ -469,7 +474,7 @@ async function handleInitialize(args: {
 }
 
 async function handleConnectedPost(args: {
-  authenticated?: User;
+  authenticated?: User | undefined;
   call: AcpCall;
   connection: AcpConnection;
   connectionId: string;
@@ -590,7 +595,7 @@ async function handleConnectedResponse(args: {
 }): Promise<Response> {
   await handleAcpAuthorizationResponse({
     connectionId: args.connectionId,
-    response: args.response as acp.AnyResponse,
+    response: args.response,
     state: args.state,
   });
   return emptyResponse(202);

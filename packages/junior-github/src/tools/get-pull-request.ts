@@ -108,7 +108,7 @@ const pullRequestSchema = z.object({
 type PullRequest = z.output<typeof pullRequestSchema>;
 interface Result extends PluginToolOutput, PullRequest {
   target: "getPullRequest";
-  subscribable?: SubscribableResource;
+  subscribable?: SubscribableResource | undefined;
 }
 const outputSchema = pluginToolOutputSchema.merge(
   pullRequestSchema.extend({

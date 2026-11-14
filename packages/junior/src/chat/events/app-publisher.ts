@@ -36,7 +36,7 @@ export type EventAppPublisher = {
 export function createEventAppPublisher(args: {
   conversationWork: () => {
     queue?: ConversationWorkQueue;
-    state?: StateAdapter;
+    state?: StateAdapter | undefined;
   };
 }): EventAppPublisher {
   // Event automations still key by destination team until that store is conversation-owned.

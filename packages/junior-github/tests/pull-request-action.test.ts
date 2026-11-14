@@ -241,7 +241,7 @@ function route(
           : undefined,
     },
   });
-  return webhook!;
+  return webhook;
 }
 
 async function seedJuniorPullRequest(

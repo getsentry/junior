@@ -28,7 +28,7 @@ import { relative } from "node:path";
 import { beforeEach } from "vitest";
 import { EVAL_START_MS, installEvalClock } from "./eval-clock";
 
-process.env.TZ = "UTC";
+process.env["TZ"] = "UTC";
 
 const evalClock = installEvalClock();
 

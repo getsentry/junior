@@ -102,7 +102,7 @@ export function ConversationWorkspace(props: {
   const params = useParams();
   const navigate = useNavigate();
   const navigationType = useNavigationType();
-  const selectedId = params.conversationId;
+  const selectedId = params["conversationId"];
   const home = !selectedId;
   const feed = useConversationsData(search);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
@@ -130,7 +130,7 @@ export function ConversationWorkspace(props: {
     if (selectedId) {
       // The reader asked to type, so home takes focus even on a touch screen.
       createRequested.current = true;
-      navigate(NEW_CONVERSATION_PATH);
+      void navigate(NEW_CONVERSATION_PATH);
     } else createComposer.current?.focus();
   };
 
@@ -443,7 +443,7 @@ function NewConversationView(props: {
   composerRef: Ref<ConversationComposerHandle>;
   /** Docked at the bottom of the narrow home, where the list is above it. */
   docked: boolean;
-  error?: string;
+  error?: string | undefined;
   onSubmit(
     message: string,
     idempotencyKey: string,

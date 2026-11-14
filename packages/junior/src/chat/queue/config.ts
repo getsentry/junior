@@ -28,12 +28,12 @@ function readWorkerConcurrency(value: string | undefined): number {
 
 /** Read queue settings from environment variables. */
 export function readQueueConfig(env: NodeJS.ProcessEnv): QueueConfig {
-  const provider = toOptionalTrimmed(env.JUNIOR_QUEUE_PROVIDER) ?? "vercel";
+  const provider = toOptionalTrimmed(env["JUNIOR_QUEUE_PROVIDER"]) ?? "vercel";
   switch (provider) {
     case "vercel":
       return { provider };
     case "bullmq": {
-      const redisUrl = toOptionalTrimmed(env.JUNIOR_QUEUE_REDIS_URL);
+      const redisUrl = toOptionalTrimmed(env["JUNIOR_QUEUE_REDIS_URL"]);
       if (!redisUrl) {
         throw new Error(
           "JUNIOR_QUEUE_REDIS_URL is required when JUNIOR_QUEUE_PROVIDER is bullmq",
@@ -43,7 +43,7 @@ export function readQueueConfig(env: NodeJS.ProcessEnv): QueueConfig {
         provider,
         redisUrl,
         workerConcurrency: readWorkerConcurrency(
-          env.JUNIOR_QUEUE_WORKER_CONCURRENCY,
+          env["JUNIOR_QUEUE_WORKER_CONCURRENCY"],
         ),
       };
     }

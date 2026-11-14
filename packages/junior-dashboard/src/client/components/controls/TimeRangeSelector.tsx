@@ -109,7 +109,7 @@ function sumHoursIntoSixHours<T extends { date: string }>(args: {
     bucket.setUTCHours(Math.floor(bucket.getUTCHours() / 6) * 6, 0, 0, 0);
     const key = bucket.toISOString().slice(0, 13);
     const current = bySix.get(key) ?? args.empty(key);
-    const next = { ...current, date: key } as T;
+    const next = { ...current, date: key };
     for (const [field, value] of Object.entries(hour)) {
       if (field === "date") continue;
       if (typeof value === "number") {

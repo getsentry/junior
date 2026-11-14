@@ -17,6 +17,6 @@ describe("makeStructuredToolOutput", () => {
       },
     });
 
-    expect(JSON.parse(result.content[0]!.text)).toEqual(result.details);
+    expect(JSON.parse(result.content[0].text)).toEqual(result.details);
   });
 });

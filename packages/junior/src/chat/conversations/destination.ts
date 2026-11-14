@@ -24,7 +24,7 @@ function requireLocalDestination(conversationId: string): LocalDestination {
  */
 export function resolveConversationDestination(args: {
   conversationId: string;
-  existing?: Destination;
+  existing?: Destination | undefined;
 }): Destination {
   return args.existing ?? requireLocalDestination(args.conversationId);
 }

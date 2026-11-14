@@ -268,8 +268,8 @@ function toResolveOutcome(
 }
 
 function getRebuildReason(params: {
-  forceRebuild?: boolean;
-  staleSnapshotId?: string;
+  forceRebuild?: boolean | undefined;
+  staleSnapshotId?: string | undefined;
   cached?: CachedSnapshot | null;
   shouldRebuildCached: boolean;
 }): RebuildReason | undefined {
@@ -292,9 +292,9 @@ export async function resolve(params: {
   forceRebuild?: boolean;
   staleSnapshotId?: string;
   onProgress?: (phase: ProgressPhase) => void | Promise<void>;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   workspace?: Workspace;
-  prepareWorkspace?: (sandbox: SandboxSession) => Promise<void>;
+  prepareWorkspace?: ((sandbox: SandboxSession) => Promise<void>) | undefined;
 }): Promise<Snapshot> {
   return await trace(
     "sandbox.snapshot.resolve",

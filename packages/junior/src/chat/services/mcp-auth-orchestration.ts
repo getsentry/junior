@@ -58,21 +58,23 @@ export interface McpAuthOrchestrationInput {
   abortAgent: () => void;
   conversationId?: string;
   sessionId?: string;
-  actorId?: string;
-  channelId?: string;
+  actorId?: string | undefined;
+  channelId?: string | undefined;
   destination?: Destination;
   source?: Source;
-  threadTs?: string;
-  toolChannelId?: string;
+  threadTs?: string | undefined;
+  toolChannelId?: string | undefined;
   userMessage: string;
-  pendingAuth?: ConversationPendingAuthState;
+  pendingAuth?: ConversationPendingAuthState | undefined;
   getConfiguration: () => Record<string, unknown>;
-  recordPendingAuth?: (
-    pendingAuth: ConversationPendingAuthState | undefined,
-  ) => void | Promise<void>;
+  recordPendingAuth?:
+    | ((
+        pendingAuth: ConversationPendingAuthState | undefined,
+      ) => void | Promise<void>)
+    | undefined;
   /** When false, required auth hard-fails instead of pausing for an OAuth link. */
   interactiveAuthEnabled?: boolean;
-  authorization?: OAuthAuthorization;
+  authorization?: OAuthAuthorization | undefined;
 }
 
 export interface McpAuthOrchestration {

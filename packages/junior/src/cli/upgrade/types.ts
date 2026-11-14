@@ -8,7 +8,7 @@ export interface UpgradeIo {
 
 export interface UpgradeContext {
   pluginCatalogConfig?: PluginCatalogConfig;
-  pluginSet?: JuniorPluginSet;
+  pluginSet?: JuniorPluginSet | undefined;
   sqlExecutor: JuniorSqlExecutor;
 }
 

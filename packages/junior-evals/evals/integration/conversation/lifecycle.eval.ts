@@ -278,7 +278,7 @@ describe("Lifecycle and Resilience", () => {
     const { run } = await agent({
       plugins: defineJuniorPlugins([evalOperation]),
       limits: {
-        turnTimeoutMs: process.env.ROACH_MODE === "replay" ? 10_000 : 30_000,
+        turnTimeoutMs: process.env["ROACH_MODE"] === "replay" ? 10_000 : 30_000,
       },
     });
     let sentWhilePaused = false;
@@ -345,7 +345,7 @@ describe("Lifecycle and Resilience", () => {
     const { run } = await agent({
       plugins: defineJuniorPlugins([evalOperation]),
       limits: {
-        turnTimeoutMs: process.env.ROACH_MODE === "replay" ? 10_000 : 30_000,
+        turnTimeoutMs: process.env["ROACH_MODE"] === "replay" ? 10_000 : 30_000,
       },
     });
     let paused = false;

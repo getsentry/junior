@@ -122,16 +122,16 @@ function githubGraphqlPermissionDeniedMessage(
   } catch {
     return undefined;
   }
-  if (!isRecord(parsed) || !Array.isArray(parsed.errors)) {
+  if (!isRecord(parsed) || !Array.isArray(parsed["errors"])) {
     return undefined;
   }
-  for (const error of parsed.errors) {
-    if (!isRecord(error) || typeof error.message !== "string") {
+  for (const error of parsed["errors"]) {
+    if (!isRecord(error) || typeof error["message"] !== "string") {
       continue;
     }
-    const message = error.message;
+    const message = error["message"];
     if (
-      error.type === "NOT_FOUND" &&
+      error["type"] === "NOT_FOUND" &&
       /\bCould not resolve to a Repository with the name\b/.test(message)
     ) {
       return `GitHub GraphQL could not access the repository: ${message}`;
@@ -183,8 +183,8 @@ function githubErrorMessage(bodyText: string | undefined): string | undefined {
   }
   try {
     const parsed: unknown = JSON.parse(bodyText);
-    return isRecord(parsed) && typeof parsed.message === "string"
-      ? parsed.message.trim()
+    return isRecord(parsed) && typeof parsed["message"] === "string"
+      ? parsed["message"].trim()
       : undefined;
   } catch {
     return undefined;

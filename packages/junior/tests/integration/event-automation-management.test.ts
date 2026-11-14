@@ -25,8 +25,8 @@ import {
 } from "../fixtures/sql";
 
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
-  process.env.JUNIOR_SECRET = "event-automation-test-secret";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
+  process.env["JUNIOR_SECRET"] = "event-automation-test-secret";
 });
 
 let fixture: LocalJuniorSqlFixture;

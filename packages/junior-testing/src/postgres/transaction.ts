@@ -12,7 +12,6 @@ const { Pool } = pg;
 declare global {
   // Vitest can re-evaluate setup modules inside a worker. Cache the worker
   // database promise on globalThis so one worker owns one cloned database.
-  // eslint-disable-next-line no-var
   var __juniorPostgresWorkerDatabases:
     | Map<string, Promise<PostgresWorkerDatabase>>
     | undefined;
@@ -37,7 +36,7 @@ interface PostgresWorkerDatabase {
 }
 
 function workerId(): string {
-  return (process.env.VITEST_POOL_ID ?? "0").replace(/[^a-zA-Z0-9_]/g, "_");
+  return (process.env["VITEST_POOL_ID"] ?? "0").replace(/[^a-zA-Z0-9_]/g, "_");
 }
 
 function randomName(prefix: string, label: string): string {

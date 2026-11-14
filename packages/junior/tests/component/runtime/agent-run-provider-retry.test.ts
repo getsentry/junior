@@ -11,18 +11,7 @@ const OVERSIZED_CONTEXT_TEXT = "x".repeat(1_600_000);
 const { agentMode, compactionState, counters, sessionLogState } = vi.hoisted(
   () => ({
     agentMode: {
-      value: "providerRetry" as
-        | "providerRetry"
-        | "activeCompaction"
-        | "preflightCompaction"
-        | "pendingProviderCall"
-        | "cooperativeYield"
-        | "silentResume"
-        | "terminalDelivery"
-        | "steering"
-        | "steeringDelivery"
-        | "steeringSteerThrows"
-        | "toolActivity",
+      value: "providerRetry",
     },
     compactionState: {
       checkpointTurnStartMessageIndex: undefined as number | undefined,
@@ -99,7 +88,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
     await importOriginal<typeof import("@earendil-works/pi-agent-core")>();
   function durableTestMessage(message: unknown) {
     const data = message as Record<string, unknown>;
-    if (data.role === "assistant") {
+    if (data["role"] === "assistant") {
       return {
         api: "openai-responses",
         provider: "openai",
@@ -110,14 +99,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         ...data,
       };
     }
-    if (data.role === "toolResult") {
+    if (data["role"] === "toolResult") {
       return {
         toolCallId: "test-tool-call",
         timestamp: Date.now(),
         ...data,
       };
     }
-    if (data.role === "user") {
+    if (data["role"] === "user") {
       return { timestamp: Date.now(), ...data };
     }
     return message;
@@ -130,7 +119,9 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       systemPrompt: string;
       tools: unknown[];
     };
-    private prepareNextTurn?: (context?: unknown) => Promise<unknown> | unknown;
+    private prepareNextTurn?:
+      | ((context?: unknown) => Promise<unknown> | unknown)
+      | undefined;
     private finishPendingRun?: () => void;
     private steeringMessages: unknown[] = [];
     private subscribers: Array<(event: unknown) => unknown> = [];
@@ -729,7 +720,7 @@ describe("agent run continuation", () => {
     repositoryState.available = false;
     sessionLogState.failToolExecutionAppend = false;
     sessionLogState.toolExecutionAppendCalls = 0;
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
     await disconnectStateAdapter();
     vi.useFakeTimers();
   });
@@ -737,7 +728,7 @@ describe("agent run continuation", () => {
   afterEach(async () => {
     vi.useRealTimers();
     await disconnectStateAdapter();
-    delete process.env.JUNIOR_STATE_ADAPTER;
+    delete process.env["JUNIOR_STATE_ADAPTER"];
   });
 
   it("continues the user's request when active compaction writes a wrong summary", async () => {
@@ -787,7 +778,9 @@ describe("agent run continuation", () => {
       inputTokens: 4,
       outputTokens: 4,
     });
-    const history = await (await import("@/chat/db"))
+    const history = await (
+      await import("@/chat/db")
+    )
       .getConversationEventStore()
       .loadHistory("conversation-active-compaction");
     expect(history.some((event) => event.data.type === "compaction")).toBe(

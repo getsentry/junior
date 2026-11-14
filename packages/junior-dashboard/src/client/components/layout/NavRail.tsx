@@ -62,7 +62,7 @@ export function NavRailProvider(props: { children: ReactNode }) {
 
 function RailItem(props: {
   active: boolean;
-  count?: number;
+  count?: number | undefined;
   icon: LucideIcon;
   label: string;
   to: string;

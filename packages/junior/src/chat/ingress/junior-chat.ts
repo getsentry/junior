@@ -132,7 +132,7 @@ export class JuniorChat<
     // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
     const runtime = this as ChatInternals;
 
-    enqueueBackgroundTask(
+    void enqueueBackgroundTask(
       options,
       (async (): Promise<void> => {
         try {
@@ -168,7 +168,7 @@ export class JuniorChat<
         });
       }
     })();
-    enqueueBackgroundTask(options, task);
+    void enqueueBackgroundTask(options, task);
     return task;
   }
 
@@ -183,7 +183,7 @@ export class JuniorChat<
     // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
     const runtime = this as ChatInternals;
 
-    enqueueBackgroundTask(
+    void enqueueBackgroundTask(
       options,
       (async (): Promise<void> => {
         try {
@@ -223,7 +223,7 @@ export class JuniorChat<
     // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
     const runtime = this as ChatInternals;
 
-    enqueueBackgroundTask(
+    void enqueueBackgroundTask(
       options,
       (async (): Promise<void> => {
         try {
@@ -247,7 +247,7 @@ export class JuniorChat<
     // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
     const runtime = this as ChatInternals;
 
-    enqueueBackgroundTask(
+    void enqueueBackgroundTask(
       options,
       (async (): Promise<void> => {
         try {
@@ -271,7 +271,7 @@ export class JuniorChat<
     // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
     const runtime = this as ChatInternals;
 
-    enqueueBackgroundTask(
+    void enqueueBackgroundTask(
       options,
       (async (): Promise<void> => {
         try {

@@ -34,9 +34,9 @@ import { HighlightText } from "./transcriptSearch";
 
 /** What one turn context view shows: who spoke, when, and the context. */
 export type TurnContext = {
-  actor?: ActorIdentity;
+  actor?: ActorIdentity | undefined;
   contexts: TranscriptViewTurnContext[];
-  timestamp?: number;
+  timestamp?: number | undefined;
 };
 
 /** The turn context that a page panel shows, keyed by its message. */
@@ -44,7 +44,7 @@ export type TurnContextSelection = TurnContext & { id: string };
 
 /** Let the page that owns a panel show turn context there. */
 export type TurnContextPanel = {
-  openId?: string;
+  openId?: string | undefined;
   onToggle(selection: TurnContextSelection): void;
 };
 
@@ -59,7 +59,7 @@ const TurnContextPanelContext = createContext<TurnContextPanel | undefined>(
  */
 export function TurnContextPanelProvider(props: {
   children: ReactNode;
-  panel?: TurnContextPanel;
+  panel?: TurnContextPanel | undefined;
 }) {
   return (
     <TurnContextPanelContext value={props.panel}>
@@ -74,7 +74,7 @@ export function TurnContextPanelProvider(props: {
  * remounted one, shows the same open state.
  */
 export function TranscriptTurnContextView(
-  props: TurnContext & { messageId?: string },
+  props: TurnContext & { messageId?: string | undefined },
 ) {
   const panel = useContext(TurnContextPanelContext);
   const [open, setOpen] = useState(false);
@@ -192,7 +192,10 @@ function TurnContextBody(props: TurnContext) {
   );
 }
 
-function TurnContextActor(props: { actor: ActorIdentity; timestamp?: number }) {
+function TurnContextActor(props: {
+  actor: ActorIdentity;
+  timestamp?: number | undefined;
+}) {
   const name = participantName(props.actor);
   const email = props.actor.email?.trim();
   const handle = props.actor.slackUserName?.trim();

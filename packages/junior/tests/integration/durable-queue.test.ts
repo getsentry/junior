@@ -123,7 +123,7 @@ async function slack(options: { modelStream?: AgentRequestStreamFn } = {}) {
     replies: () =>
       slackApiOutbox
         .messages()
-        .map((call) => call.params.text)
+        .map((call) => call.params["text"])
         .filter((text): text is string => typeof text === "string"),
     next: async (requestStartedAtMs?: number) => {
       // Use production worker shouldYield (lease + host request deadline).
@@ -460,7 +460,7 @@ describe("durable queue contract", () => {
         text: expect.stringContaining("I ran into an internal error"),
         thread_ts: "1712345.0042",
       });
-      expect(JSON.stringify(failurePosts[3]?.params.blocks)).toContain(
+      expect(JSON.stringify(failurePosts[3]?.params["blocks"])).toContain(
         watchConversationId,
       );
     }, 30_000);

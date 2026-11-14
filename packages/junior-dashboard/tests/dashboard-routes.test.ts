@@ -215,8 +215,8 @@ describe("dashboard routes", () => {
   });
 
   it("starts OAuth on the JUNIOR_BASE_URL origin", async () => {
-    process.env.BETTER_AUTH_URL = "https://legacy-auth.example.com";
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+    process.env["BETTER_AUTH_URL"] = "https://legacy-auth.example.com";
+    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
     let callbackURL: string | undefined;
     let errorCallbackURL: string | undefined;
     const app = createDashboardApp({
@@ -640,8 +640,8 @@ describe("dashboard routes", () => {
   });
 
   it("returns safe dashboard config signals", async () => {
-    process.env.SENTRY_DSN = "https://public@example.ingest.sentry.io/1";
-    process.env.SENTRY_ORG_SLUG = "sentry";
+    process.env["SENTRY_DSN"] = "https://public@example.ingest.sentry.io/1";
+    process.env["SENTRY_ORG_SLUG"] = "sentry";
     const app = dashboard({
       user: {
         email: "person@sentry.io",
@@ -697,7 +697,7 @@ describe("dashboard routes", () => {
   });
 
   it("reports the allowed domains from core", async () => {
-    process.env.JUNIOR_DASHBOARD_MOCK_CONVERSATIONS = "true";
+    process.env["JUNIOR_DASHBOARD_MOCK_CONVERSATIONS"] = "true";
 
     const app = createDashboardApp({
       allowedDomains: ["sentry.io", "example.com"],

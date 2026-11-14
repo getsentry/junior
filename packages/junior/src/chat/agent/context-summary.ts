@@ -116,6 +116,8 @@ export async function buildAgentModelRequest(
     ? await agent.transformContext(messages, signal)
     : messages;
   return {
+    // pi-agent-core types `Agent.state.model` as `Model<any>`.
+    // oxlint-disable-next-line typescript/no-unsafe-assignment
     model,
     context: {
       systemPrompt,

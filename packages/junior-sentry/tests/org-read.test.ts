@@ -24,7 +24,7 @@ function grantFor(method: string, url: string) {
 
 describe("sentry org read access", () => {
   beforeEach(() => {
-    process.env.SENTRY_READ_TOKEN = "org-read-token";
+    process.env["SENTRY_READ_TOKEN"] = "org-read-token";
   });
 
   afterEach(() => {
@@ -96,7 +96,7 @@ describe("sentry org read access", () => {
   });
 
   it("keeps every request on user OAuth without a configured token", () => {
-    delete process.env.SENTRY_READ_TOKEN;
+    delete process.env["SENTRY_READ_TOKEN"];
 
     expect(
       grantFor("GET", "https://sentry.io/api/0/organizations/sentry/issues/"),

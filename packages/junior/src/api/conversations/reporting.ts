@@ -55,8 +55,8 @@ export function surfaceLabel(surface: ConversationSurface): string {
 
 /** Return the dashboard-safe Slack location label for a conversation. */
 export function slackLocationLabel(args: {
-  channel?: string;
-  channelName?: string;
+  channel?: string | undefined;
+  channelName?: string | undefined;
   channelNameRedacted?: boolean;
 }): string | undefined {
   const channelId = args.channel;
@@ -92,13 +92,15 @@ function actorFromRow(
 export function summaryFromRow(
   row: ReportingConversationRow,
   options: {
-    access?: ConversationAccess;
-    automationTitle?: string;
-    firstHumanMessageText?: string;
-    metrics?: {
-      durationMs: number;
-      usage?: NonNullable<ReportingConversationRow["usage"]>;
-    };
+    access?: ConversationAccess | undefined;
+    automationTitle?: string | undefined;
+    firstHumanMessageText?: string | undefined;
+    metrics?:
+      | {
+          durationMs: number;
+          usage?: NonNullable<ReportingConversationRow["usage"]>;
+        }
+      | undefined;
   } = {},
 ): ConversationSummaryReport {
   const actor = actorFromRow(row);

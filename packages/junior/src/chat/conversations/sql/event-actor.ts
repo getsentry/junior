@@ -22,23 +22,25 @@ function readAuthor(meta: unknown): {
   userId?: string;
   userName?: string;
 } {
-  if (!isRecord(meta) || !isRecord(meta.author)) {
+  if (!isRecord(meta) || !isRecord(meta["author"])) {
     return {};
   }
-  const author = meta.author;
+  const author = meta["author"];
   return {
-    ...(typeof author.email === "string" ? { email: author.email } : undefined),
-    ...(typeof author.fullName === "string"
-      ? { fullName: author.fullName }
+    ...(typeof author["email"] === "string"
+      ? { email: author["email"] }
       : undefined),
-    ...(typeof author.isBot === "boolean"
-      ? { isBot: author.isBot }
+    ...(typeof author["fullName"] === "string"
+      ? { fullName: author["fullName"] }
       : undefined),
-    ...(typeof author.userId === "string"
-      ? { userId: author.userId }
+    ...(typeof author["isBot"] === "boolean"
+      ? { isBot: author["isBot"] }
       : undefined),
-    ...(typeof author.userName === "string"
-      ? { userName: author.userName }
+    ...(typeof author["userId"] === "string"
+      ? { userId: author["userId"] }
+      : undefined),
+    ...(typeof author["userName"] === "string"
+      ? { userName: author["userName"] }
       : undefined),
   };
 }

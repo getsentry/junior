@@ -196,7 +196,9 @@ function taskDedupeFingerprint(task: ScheduledAutomation): string {
             month: task.schedule.recurrence.month ?? null,
             startDate: task.schedule.recurrence.startDate,
             time: task.schedule.recurrence.time,
-            weekdays: [...(task.schedule.recurrence.weekdays ?? [])].sort(),
+            weekdays: [...(task.schedule.recurrence.weekdays ?? [])].sort(
+              (left, right) => left - right,
+            ),
           }
         : null,
       timezone: task.schedule.timezone,
@@ -466,7 +468,7 @@ export async function markScheduledRunCompleted(
   db: JuniorDatabase,
   args: {
     completedAtMs: number;
-    resultMessageTs?: string;
+    resultMessageTs?: string | undefined;
     runId: string;
     startedAtMs: number;
   },
@@ -489,7 +491,7 @@ export async function markScheduledRunFailed(
   args: {
     completedAtMs: number;
     errorMessage: string;
-    startedAtMs?: number;
+    startedAtMs?: number | undefined;
     runId: string;
   },
 ): Promise<ScheduledRun | undefined> {
@@ -553,7 +555,7 @@ export async function markScheduledRunSkipped(
 export async function advanceScheduledAutomationAfterRun(
   db: JuniorDatabase,
   args: {
-    errorMessage?: string;
+    errorMessage?: string | undefined;
     nowMs: number;
     run: ScheduledRun;
     status: "blocked" | "completed" | "failed";

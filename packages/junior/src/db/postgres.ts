@@ -169,7 +169,7 @@ class PostgresExecutor implements JuniorSqlExecutor {
 export function createPostgresJuniorSqlExecutor(args: {
   applicationName?: string;
   connectionString: string;
-  onInfo?: (message: string) => void;
+  onInfo?: ((message: string) => void) | undefined;
   statementTimeoutMs?: number | false;
 }): JuniorSqlExecutor {
   const pool = new Pool({

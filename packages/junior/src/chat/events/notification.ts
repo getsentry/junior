@@ -111,7 +111,7 @@ export type EventMailboxMetadata = {
     identifier: string;
     /** Watch that matched the Event. Core Events without a Watch omit it. */
     subscriptionId?: string;
-    objectType?: ObjectType;
+    objectType?: ObjectType | undefined;
     /** Omitted on mailbox input created before summaries were stored separately. */
     trustedSummary?: string;
   };
@@ -132,25 +132,25 @@ export function isEventMailboxMetadata(
     return false;
   }
   const record = value as Record<string, unknown>;
-  if (record.kind !== "event") {
+  if (record["kind"] !== "event") {
     return false;
   }
-  const event = record.event;
+  const event = record["event"];
   if (!event || typeof event !== "object" || Array.isArray(event)) {
     return false;
   }
   const fields = event as Record<string, unknown>;
   return (
-    typeof fields.eventKey === "string" &&
-    typeof fields.eventType === "string" &&
-    typeof fields.namespace === "string" &&
-    typeof fields.identifier === "string" &&
-    (fields.subscriptionId === undefined ||
-      typeof fields.subscriptionId === "string") &&
-    (fields.objectType === undefined ||
-      objectTypeSchema.safeParse(fields.objectType).success) &&
-    (fields.trustedSummary === undefined ||
-      typeof fields.trustedSummary === "string")
+    typeof fields["eventKey"] === "string" &&
+    typeof fields["eventType"] === "string" &&
+    typeof fields["namespace"] === "string" &&
+    typeof fields["identifier"] === "string" &&
+    (fields["subscriptionId"] === undefined ||
+      typeof fields["subscriptionId"] === "string") &&
+    (fields["objectType"] === undefined ||
+      objectTypeSchema.safeParse(fields["objectType"]).success) &&
+    (fields["trustedSummary"] === undefined ||
+      typeof fields["trustedSummary"] === "string")
   );
 }
 
@@ -388,10 +388,10 @@ export function createEventInboundMessage(input: {
  */
 export async function enqueueEventNotification(args: {
   /** Resolved person who did what the Event describes. */
-  doneBy?: EventDoneBy;
+  doneBy?: EventDoneBy | undefined;
   event: EventNotification;
   /** Mentions resolved from the Event people. */
-  people?: readonly string[];
+  people?: readonly string[] | undefined;
   queue: ConversationWorkQueue;
   subscription: Watch;
   state?: Parameters<typeof appendAndEnqueueInboundMessage>[0]["state"];
