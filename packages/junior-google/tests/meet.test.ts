@@ -32,7 +32,7 @@ function meetTools(...responses: Response[]) {
     },
   } as never);
   const run = (name: string, input: Record<string, unknown>) =>
-    tools[name]!.execute!(tools[name]!.prepareArguments!(input), {
+    tools[name].execute(tools[name].prepareArguments!(input), {
       toolCallId: "call-1",
     });
   return { fetch, run, sandbox };

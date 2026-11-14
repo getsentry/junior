@@ -41,13 +41,13 @@ import {
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 
 interface ResumeStateArgs {
-  channelName?: string;
+  channelName?: string | undefined;
   credentialSubject?: CredentialSubject;
   destination: Destination;
   dispatchId?: string;
   durability: AgentDurability;
   recordActiveMcpProviders: () => Promise<void>;
-  actor?: Actor;
+  actor?: Actor | undefined;
   runSource: Source;
   conversationId: string;
   turnId: string;
@@ -311,7 +311,7 @@ export function createResumeState(args: ResumeStateArgs) {
       }
     },
     async translateSuspension(ending: {
-      currentUsage?: AgentTurnUsage;
+      currentUsage?: AgentTurnUsage | undefined;
       error: unknown;
     }): Promise<AgentRunOutcome | undefined> {
       const { error } = ending;

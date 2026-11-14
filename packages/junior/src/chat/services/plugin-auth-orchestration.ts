@@ -55,21 +55,21 @@ export interface PluginAuthOrchestrationInput {
   abortAgent: () => void;
   conversationId?: string;
   sessionId?: string;
-  actorId?: string;
-  actor?: Actor;
-  channelId?: string;
+  actorId?: string | undefined;
+  actor?: Actor | undefined;
+  channelId?: string | undefined;
   destination?: Destination;
   source?: Source;
-  threadTs?: string;
+  threadTs?: string | undefined;
   userMessage?: string;
-  pendingAuth?: ConversationPendingAuthState;
-  recordPendingAuth?: (
-    pendingAuth: ConversationPendingAuthState,
-  ) => void | Promise<void>;
+  pendingAuth?: ConversationPendingAuthState | undefined;
+  recordPendingAuth?:
+    | ((pendingAuth: ConversationPendingAuthState) => void | Promise<void>)
+    | undefined;
   /** When false, required auth hard-fails instead of pausing for an OAuth link. */
   interactiveAuthEnabled?: boolean;
   userTokenStore?: UserTokenStore;
-  authorization?: OAuthAuthorization;
+  authorization?: OAuthAuthorization | undefined;
 }
 
 export interface PluginAuthOrchestration {
@@ -88,13 +88,13 @@ function pluginAuthRequiredSignal(details: unknown):
   | {
       authorization?: {
         provider: string;
-        scope?: string;
+        scope?: string | undefined;
         type: "oauth";
       };
       grant: {
         access: "read" | "write";
         name: string;
-        reason?: string;
+        reason?: string | undefined;
       };
       kind: "auth_required" | "unavailable";
       message?: string;

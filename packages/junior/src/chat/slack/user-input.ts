@@ -34,7 +34,7 @@ const SUGGESTED_SUFFIX = " (suggested)";
 // recommended option says so in words. Buttons use the primary style.
 // `maxChars` shortens the label, so the suffix stays visible.
 function optionLabel(
-  option: { label: string; recommended?: boolean },
+  option: { label: string; recommended?: boolean | undefined },
   maxChars = Number.POSITIVE_INFINITY,
 ) {
   return option.recommended

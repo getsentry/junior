@@ -77,7 +77,7 @@ describe("task plan", () => {
         { step: "Second", status: "in_progress" },
       ],
     });
-    await expect(tool.execute?.(input, {} as never)).resolves.toEqual({
+    await expect(tool.execute?.(input, {})).resolves.toEqual({
       content: [{ type: "text", text: "Plan updated" }],
     });
   });

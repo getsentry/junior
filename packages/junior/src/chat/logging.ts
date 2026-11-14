@@ -151,7 +151,7 @@ function normalizeGenAiFinishReasons(value: unknown): unknown {
   if (!Array.isArray(value)) {
     return value;
   }
-  return value.map((reason) =>
+  return value.map((reason: unknown) =>
     typeof reason === "string" ? normalizeGenAiFinishReason(reason) : reason,
   );
 }
@@ -210,9 +210,9 @@ const SENTRY_TAG_ATTRIBUTE_KEYS = new Set([
 
 function getSentryEnvironment(): string {
   return (
-    process.env.SENTRY_ENVIRONMENT ??
-    process.env.VERCEL_ENV ??
-    process.env.NODE_ENV ??
+    process.env["SENTRY_ENVIRONMENT"] ??
+    process.env["VERCEL_ENV"] ??
+    process.env["NODE_ENV"] ??
     ""
   )
     .trim()
@@ -234,7 +234,7 @@ function shouldSuppressInfoLog(
 }
 
 function shouldEmitConsole(level: LogLevel): boolean {
-  if (process.env.NODE_ENV === "test") {
+  if (process.env["NODE_ENV"] === "test") {
     return level === "error";
   }
 
@@ -242,10 +242,10 @@ function shouldEmitConsole(level: LogLevel): boolean {
 }
 
 function isDevelopmentLoggingMode(): boolean {
-  if (process.env.NODE_ENV !== "development") {
+  if (process.env["NODE_ENV"] !== "development") {
     return false;
   }
-  if (process.env.CI) {
+  if (process.env["CI"]) {
     return false;
   }
   return true;
@@ -255,7 +255,9 @@ function shouldUseDevelopmentConsoleFormat(): boolean {
   if (!isDevelopmentLoggingMode()) {
     return false;
   }
-  return process.env.JUNIOR_LOG_FORMAT?.trim().toLowerCase() !== "structured";
+  return (
+    process.env["JUNIOR_LOG_FORMAT"]?.trim().toLowerCase() !== "structured"
+  );
 }
 
 function shouldUsePrettyConsole(level: LogLevel): boolean {
@@ -269,11 +271,11 @@ function shouldUseConsoleColor(): boolean {
   if (!shouldUseDevelopmentConsoleFormat()) {
     return false;
   }
-  if (process.env.NO_COLOR) {
+  if (process.env["NO_COLOR"]) {
     return false;
   }
   return (
-    process.env.FORCE_COLOR?.trim() === "1" ||
+    process.env["FORCE_COLOR"]?.trim() === "1" ||
     Boolean(process.stdout?.isTTY) ||
     Boolean(process.stderr?.isTTY)
   );
@@ -391,7 +393,7 @@ function normalizeEventName(value: string): string {
         ? `app.${segments[0]}`
         : segments.join(".");
   if (
-    process.env.NODE_ENV !== "production" &&
+    process.env["NODE_ENV"] !== "production" &&
     (!EVENT_NAME_PATTERN.test(value) || value !== normalized)
   ) {
     throw new Error(
@@ -479,8 +481,8 @@ function getTraceCorrelationAttributes(): LogAttributes {
     if (!span) return {};
     const json = spanToJSON(span);
     const attrs: LogAttributes = {};
-    if (json.trace_id) attrs.trace_id = json.trace_id;
-    if (json.span_id) attrs.span_id = json.span_id;
+    if (json.trace_id) attrs["trace_id"] = json.trace_id;
+    if (json.span_id) attrs["span_id"] = json.span_id;
     return attrs;
   } catch {
     return {};
@@ -643,7 +645,7 @@ function getLogTapeLogger(category: readonly string[] = []): LogTapeLogger {
     throw new Error("LogTape backend is unavailable");
   }
 
-  let logger = rootLogger as LogTapeLogger;
+  let logger = rootLogger;
   for (const part of category) {
     logger = logger.getChild(part);
   }
@@ -1692,7 +1694,7 @@ export function getTracePropagationHeaders(): TracePropagationHeaders {
 
 /** Return the active trace as a durable trace context, if there is one. */
 export function getActiveTraceContext():
-  | { baggage?: string; sentryTrace: string }
+  | { baggage?: string | undefined; sentryTrace: string }
   | undefined {
   const { "sentry-trace": sentryTrace, baggage } = getTracePropagationHeaders();
   return sentryTrace ? { baggage, sentryTrace } : undefined;
@@ -1913,7 +1915,7 @@ function readPiUsage(source: unknown): AgentTurnUsage {
     return {};
   }
   // Accept either a pi-ai AssistantMessage (has `.usage`) or a bare Usage record.
-  const usage = asRecord(record.usage) ?? record;
+  const usage = asRecord(record["usage"]) ?? record;
   const summary: AgentTurnUsage = {};
   for (const [piKey, ourKey] of PI_USAGE_FIELDS) {
     const value =
@@ -1922,7 +1924,7 @@ function readPiUsage(source: unknown): AgentTurnUsage {
       summary[ourKey] = value;
     }
   }
-  const piCost = asRecord(usage.cost);
+  const piCost = asRecord(usage["cost"]);
   if (piCost) {
     const cost: AgentTurnCost = {};
     for (const field of PI_COST_FIELDS) {

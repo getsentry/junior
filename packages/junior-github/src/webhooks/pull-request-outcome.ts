@@ -148,7 +148,7 @@ function timestamp(value: string | null | undefined): Date | undefined {
 /** Normalize only the fields required for the Junior-owned PR projection. */
 export function normalizeGitHubPullRequestOutcome(args: {
   body: unknown;
-  botEmail?: string;
+  botEmail?: string | undefined;
 }): GitHubPullRequestOutcomeInput | undefined {
   const lifecycle = pullRequestLifecycleActionSchema.safeParse(args.body);
   if (
@@ -210,7 +210,7 @@ export function normalizeGitHubPullRequestOutcome(args: {
 /** Normalize native conversation ids written to a Junior-owned PR by its bot. */
 export function normalizeGitHubPullRequestConversations(args: {
   body: unknown;
-  botEmail?: string;
+  botEmail?: string | undefined;
 }): GitHubPullRequestConversationsInput | undefined {
   const parsed = pullRequestConversationSchema.safeParse(args.body);
   if (!parsed.success) return undefined;
@@ -232,7 +232,7 @@ export function normalizeGitHubPullRequestConversations(args: {
 /** Normalize linked issues written into a Junior-owned PR body by its bot. */
 export function normalizeGitHubPullRequestLinkedIssues(args: {
   body: unknown;
-  botEmail?: string;
+  botEmail?: string | undefined;
 }): GitHubPullRequestLinkedIssuesInput | undefined {
   const parsed = pullRequestConversationSchema.safeParse(args.body);
   if (!parsed.success) return undefined;

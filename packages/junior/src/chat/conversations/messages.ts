@@ -30,10 +30,10 @@ export function toStoredConversationMessage(
   message: ConversationMessage,
 ): NewConversationMessage {
   const meta: Record<string, unknown> = {};
-  if (message.author) meta.author = message.author;
+  if (message.author) meta["author"] = message.author;
   const { replied, ...restMeta } = message.meta ?? {};
   Object.assign(meta, restMeta);
-  if (replied === false) meta.replied = false;
+  if (replied === false) meta["replied"] = false;
   return {
     messageId: message.id,
     role: message.role,

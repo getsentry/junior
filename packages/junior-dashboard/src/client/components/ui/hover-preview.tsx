@@ -42,7 +42,7 @@ export function HoverPreviewGate(props: {
  */
 export function HoverPreview(props: {
   children: ReactNode;
-  className?: string;
+  className?: string | undefined;
   content: ReactNode;
   trigger: ReactElement;
 }) {
@@ -53,7 +53,7 @@ export function HoverPreview(props: {
   // and the card would close.
   const [lockedSide, setLockedSide] = useState<VerticalSide>();
   const lockSide = (popup: HTMLElement) => {
-    const side = popup.dataset.side;
+    const side = popup.dataset["side"];
     if (side === "top" || side === "bottom") setLockedSide(side);
   };
   return (

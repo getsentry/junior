@@ -67,7 +67,7 @@ export function useConversationDensity(): [
 export function useDensityRoot(): void {
   const [density] = useConversationDensity();
   useEffect(() => {
-    document.documentElement.dataset.density = density;
+    document.documentElement.dataset["density"] = density;
   }, [density]);
 }
 

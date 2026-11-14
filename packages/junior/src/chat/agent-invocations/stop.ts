@@ -123,7 +123,11 @@ export async function stopChildAgentsOf(
  */
 export async function stopChildAgentsBelow(
   conversationId: string,
-  options: { nowMs: number; stoppedAtMs: number; state?: StateAdapter },
+  options: {
+    nowMs: number;
+    stoppedAtMs: number;
+    state?: StateAdapter | undefined;
+  },
 ): Promise<void> {
   const { nowMs, stoppedAtMs, state } = options;
   const tree = await stopAgentInvocationTree(conversationId, nowMs, {

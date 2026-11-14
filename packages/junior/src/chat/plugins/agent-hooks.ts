@@ -393,7 +393,7 @@ function normalizePromptContext(value: unknown): Record<string, unknown> {
   ) {
     throw new TypeError("Plugin prompt context exceeded its serialized budget");
   }
-  const parsed = JSON.parse(serialized);
+  const parsed: unknown = JSON.parse(serialized);
   if (!isRecord(parsed)) {
     throw new TypeError("Plugin prompt context must be a JSON object");
   }
@@ -414,15 +414,21 @@ function toUserPromptContributionContext(args: {
       pluginName: args.pluginName,
     });
   }
-  if (!isRecord(args.value) || typeof args.value.renderPrompt !== "function") {
+  if (
+    !isRecord(args.value) ||
+    typeof args.value["renderPrompt"] !== "function"
+  ) {
     return undefined;
   }
-  const context = promptContextSchema.safeParse(args.value.context);
+  const context = promptContextSchema.safeParse(args.value["context"]);
   if (!context.success) {
     return undefined;
   }
+  const renderPrompt = args.value["renderPrompt"] as () => unknown;
+  // Call it on its object: plugins may write renderPrompt as a method that
+  // reads `this`.
   const text = promptMessageSchema.safeParse({
-    text: args.value.renderPrompt(),
+    text: renderPrompt.call(args.value),
   });
   if (!text.success) {
     return undefined;
@@ -507,9 +513,9 @@ export function getPlugins(): PluginRegistration[] {
 /** Conversation facts that plugin Markdown rewrites may use. */
 export interface PluginMarkdownFormat {
   /** Config values by full key. Install defaults fill keys it does not set. */
-  configuration?: Record<string, unknown>;
+  configuration?: Record<string, unknown> | undefined;
   /** Slack mentions of known people, by lowercase `provider:handle`. */
-  mentions?: ReadonlyMap<string, string>;
+  mentions?: ReadonlyMap<string, string> | undefined;
   /** Where the text shows. Defaults to Slack. */
   platform?: "slack" | "web";
   /** The provider that wrote the text or that it went to. */
@@ -763,7 +769,11 @@ export function getStaticPluginToolDefinitions(): Record<
   string,
   AnyToolDefinition
 > {
-  return Object.assign({}, ...getPlugins().map(pluginToolDefinitions));
+  const definitions: Record<string, AnyToolDefinition> = {};
+  for (const plugin of getPlugins()) {
+    Object.assign(definitions, pluginToolDefinitions(plugin));
+  }
+  return definitions;
 }
 
 /** Collect turn-scoped tools exposed by plugins. */
@@ -1693,9 +1703,9 @@ function normalizeEnv(value: unknown): Record<string, string> {
 /** Create one runner over runtime hook plugins registered by the app. */
 export function createPluginHookRunner(
   input: {
-    actor?: Actor;
+    actor?: Actor | undefined;
     /** Live getter for the run's committed instruction actors; see `multi-actor-runs.md`. */
-    actors?: () => Actor[];
+    actors?: (() => Actor[]) | undefined;
     /** The Run's Turn and sandbox. Without it, `afterToolExecute` hooks do not run. */
     toolRun?: ToolHookTurn & { sandbox: () => ToolHookSandbox };
   } = {},
@@ -1881,7 +1891,7 @@ export function createPluginHookRunner(
               juniorRoot: SANDBOX_JUNIOR_ROOT,
               env: {
                 get(key) {
-                  return env[key] ?? normalizeEnv(nextInput.env)[key];
+                  return env[key] ?? normalizeEnv(nextInput["env"])[key];
                 },
                 set(key, value) {
                   env[key] = value;

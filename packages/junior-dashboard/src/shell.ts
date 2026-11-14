@@ -184,7 +184,10 @@ export function renderDashboard(
   {
     bootstrap,
     sentry,
-  }: { bootstrap?: DashboardBootstrap; sentry?: BrowserSentryConfig } = {},
+  }: {
+    bootstrap?: DashboardBootstrap | undefined;
+    sentry?: BrowserSentryConfig | undefined;
+  } = {},
 ): Response {
   const encodedAgentName = scriptJson(agentName);
   const bootstrapScript = bootstrap

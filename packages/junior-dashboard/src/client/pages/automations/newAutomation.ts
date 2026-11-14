@@ -34,7 +34,7 @@ export function useNewAutomationAction(): PaneNewAction {
           ? draft
           : `${NEW_AUTOMATION_PROMPT}${draft}`,
       );
-      navigate(NEW_CONVERSATION_PATH, { state: FOCUS_REPLY_STATE });
+      void navigate(NEW_CONVERSATION_PATH, { state: FOCUS_REPLY_STATE });
     },
   };
 }

@@ -33,7 +33,7 @@ export interface ConversationDrawerTarget {
   agentName?: string;
   conversationId: string;
   /** Task title or agent name, shown before the child loads. */
-  label?: string;
+  label?: string | undefined;
   /** When the opener's work started, such as a run. Defaults to the
    * Conversation start, which can be much earlier. */
   startedAt?: string;

@@ -142,7 +142,7 @@ describe("pull_request.checks.passed on check suite webhooks", () => {
         },
       },
     });
-    const response = await route!.handler(
+    const response = await route.handler(
       suiteCompleted(deliveryId, suiteId, conclusion),
     );
     expect(response.status).toBe(202);
@@ -287,7 +287,7 @@ describe("pull_request.checks.passed on check suite webhooks", () => {
   });
 
   it("publishes only checks.recovered while another suite is pending", async () => {
-    suites[1] = { ...suites[1]!, conclusion: null, status: "in_progress" };
+    suites[1] = { ...suites[1], conclusion: null, status: "in_progress" };
 
     await deliver("delivery-pending", 1);
 
@@ -324,7 +324,7 @@ describe("pull_request.checks.passed on check suite webhooks", () => {
   });
 
   it("does not publish checks.passed when another suite failed", async () => {
-    suites[2] = { ...suites[2]!, conclusion: "failure" };
+    suites[2] = { ...suites[2], conclusion: "failure" };
 
     await deliver("delivery-failed", 1);
 

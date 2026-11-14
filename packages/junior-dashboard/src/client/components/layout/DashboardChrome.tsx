@@ -17,7 +17,11 @@ import { createPortal } from "react-dom";
  * a Conversation that has no route yet. `title` names it when the route
  * cannot. Without `onClick`, back shows but waits.
  */
-type MobileHeaderBack = { label: string; onClick?(): void; title?: string };
+type MobileHeaderBack = {
+  label: string;
+  onClick?(): void;
+  title?: string | undefined;
+};
 
 type DashboardChromeContextValue = {
   mobileHeaderBack: MobileHeaderBack | null;

@@ -43,7 +43,7 @@ export const DisplayText = memo(function DisplayText(props: {
    */
   links?: boolean;
   /** People that the API resolved for this text. */
-  mentions?: readonly ActorIdentity[];
+  mentions?: readonly ActorIdentity[] | undefined;
   text: string;
 }) {
   return (
@@ -70,8 +70,8 @@ export const DisplayText = memo(function DisplayText(props: {
 });
 
 function DisplayTextBlocks(props: {
-  chat?: boolean;
-  compact?: boolean;
+  chat?: boolean | undefined;
+  compact?: boolean | undefined;
   text: string;
 }) {
   // A URL repeated in one message shows one card, in its first block.

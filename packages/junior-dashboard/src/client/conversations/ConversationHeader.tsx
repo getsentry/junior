@@ -43,12 +43,12 @@ const NO_ANCHOR = { current: null };
  */
 export function ConversationHeader(props: {
   /** Agent tree of a child Conversation. Root Conversations omit it. */
-  agentTree?: readonly ConversationAgentTreeNode[];
+  agentTree?: readonly ConversationAgentTreeNode[] | undefined;
   /** The current Brief. Its outcome and intent show under the title. */
-  brief?: ConversationBriefReport;
+  brief?: ConversationBriefReport | undefined;
   contextTags?: ReactNode;
   /** Estimated cost. Desktop only; mobile shows it in Conversation details. */
-  cost?: ReactNode;
+  cost?: ReactNode | undefined;
   detailsOpen: boolean;
   /** Messages of failed menu actions, shown below the title bar. */
   errors: readonly string[];
@@ -68,7 +68,7 @@ export function ConversationHeader(props: {
   privacy: ReactNode;
   search: string;
   searchMatch: TranscriptSearchMatch;
-  sidebarToggle?: ReactNode;
+  sidebarToggle?: ReactNode | undefined;
   /** Status pill of a child Conversation, after its title. */
   status?: ReactNode;
   title: string;

@@ -29,14 +29,14 @@ export function useDetailsPanel(): boolean {
 
 /** Show details beside their source, or in a bottom sheet when space is limited. */
 export function DetailsPanel(props: {
-  actions?: ReactNode;
+  actions?: ReactNode | undefined;
   children: ReactNode;
   onClose(): void;
   label: string;
   title: ReactNode;
-  sheetTitle?: string;
+  sheetTitle?: string | undefined;
   /** Nested details stay modal inside an existing drawer. */
-  overlay?: boolean;
+  overlay?: boolean | undefined;
 }) {
   const { onClose, overlay } = props;
   const closeLabel = `Close ${props.label.toLowerCase()}`;

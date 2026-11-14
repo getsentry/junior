@@ -134,7 +134,10 @@ export async function resolveHandleMentions(
  * guesses a mention.
  */
 export async function resolveEventMentions(
-  event: { doneBy?: EventPerson; people?: readonly EventPerson[] },
+  event: {
+    doneBy?: EventPerson | undefined;
+    people?: readonly EventPerson[] | undefined;
+  },
   slackTeamId: string,
 ): Promise<EventMentions> {
   const people = event.people ?? [];

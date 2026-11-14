@@ -107,12 +107,12 @@ function hasValidMdastBase(
   const allowed = new Set(["data", "position", "type", ...fields]);
   return (
     Object.keys(node).every((key) => allowed.has(key)) &&
-    (node.data === undefined ||
-      (typeof node.data === "object" &&
-        node.data !== null &&
-        !Array.isArray(node.data))) &&
-    (node.position === undefined ||
-      mdastPositionSchema.safeParse(node.position).success)
+    (node["data"] === undefined ||
+      (typeof node["data"] === "object" &&
+        node["data"] !== null &&
+        !Array.isArray(node["data"]))) &&
+    (node["position"] === undefined ||
+      mdastPositionSchema.safeParse(node["position"]).success)
   );
 }
 
@@ -151,8 +151,8 @@ function hasMdastChildren(
   allowedTypes?: ReadonlySet<string>,
 ): boolean {
   return (
-    Array.isArray(node.children) &&
-    node.children.every(
+    Array.isArray(node["children"]) &&
+    node["children"].every(
       (child) =>
         isFormattedContentNode(child) &&
         (!allowedTypes ||
@@ -170,7 +170,7 @@ function isFormattedContentNode(value: unknown): boolean {
     return false;
   }
   const node = value as Record<string, unknown>;
-  switch (node.type) {
+  switch (node["type"]) {
     case "break":
     case "thematicBreak":
       return hasValidMdastBase(node, []);
@@ -179,14 +179,14 @@ function isFormattedContentNode(value: unknown): boolean {
     case "text":
     case "yaml":
       return (
-        hasValidMdastBase(node, ["value"]) && typeof node.value === "string"
+        hasValidMdastBase(node, ["value"]) && typeof node["value"] === "string"
       );
     case "code":
       return (
         hasValidMdastBase(node, ["lang", "meta", "value"]) &&
-        typeof node.value === "string" &&
-        isOptionalNullableString(node.lang) &&
-        isOptionalNullableString(node.meta)
+        typeof node["value"] === "string" &&
+        isOptionalNullableString(node["lang"]) &&
+        isOptionalNullableString(node["meta"])
       );
     case "delete":
     case "emphasis":
@@ -211,35 +211,35 @@ function isFormattedContentNode(value: unknown): boolean {
       return (
         hasValidMdastBase(node, ["children", "depth"]) &&
         hasMdastChildren(node, mdastPhrasingTypes) &&
-        Number.isInteger(node.depth) &&
-        Number(node.depth) >= 1 &&
-        Number(node.depth) <= 6
+        Number.isInteger(node["depth"]) &&
+        Number(node["depth"]) >= 1 &&
+        Number(node["depth"]) <= 6
       );
     case "list":
       return (
         hasValidMdastBase(node, ["children", "ordered", "spread", "start"]) &&
         hasMdastChildren(node, mdastListItemTypes) &&
-        isOptionalNullableBoolean(node.ordered) &&
-        isOptionalNullableBoolean(node.spread) &&
-        (node.start === undefined ||
-          node.start === null ||
-          (typeof node.start === "number" && Number.isFinite(node.start)))
+        isOptionalNullableBoolean(node["ordered"]) &&
+        isOptionalNullableBoolean(node["spread"]) &&
+        (node["start"] === undefined ||
+          node["start"] === null ||
+          (typeof node["start"] === "number" && Number.isFinite(node["start"])))
       );
     case "listItem":
       return (
         hasValidMdastBase(node, ["checked", "children", "spread"]) &&
         hasMdastChildren(node, mdastBlockOrDefinitionTypes) &&
-        isOptionalNullableBoolean(node.checked) &&
-        isOptionalNullableBoolean(node.spread)
+        isOptionalNullableBoolean(node["checked"]) &&
+        isOptionalNullableBoolean(node["spread"])
       );
     case "table":
       return (
         hasValidMdastBase(node, ["align", "children"]) &&
         hasMdastChildren(node, mdastTableRowTypes) &&
-        (node.align === undefined ||
-          node.align === null ||
-          (Array.isArray(node.align) &&
-            node.align.every(
+        (node["align"] === undefined ||
+          node["align"] === null ||
+          (Array.isArray(node["align"]) &&
+            node["align"].every(
               (align) =>
                 align === null ||
                 align === "center" ||
@@ -250,30 +250,30 @@ function isFormattedContentNode(value: unknown): boolean {
     case "definition":
       return (
         hasValidMdastBase(node, ["identifier", "label", "title", "url"]) &&
-        typeof node.identifier === "string" &&
-        typeof node.url === "string" &&
-        isOptionalNullableString(node.label) &&
-        isOptionalNullableString(node.title)
+        typeof node["identifier"] === "string" &&
+        typeof node["url"] === "string" &&
+        isOptionalNullableString(node["label"]) &&
+        isOptionalNullableString(node["title"])
       );
     case "footnoteDefinition":
       return (
         hasValidMdastBase(node, ["children", "identifier", "label"]) &&
         hasMdastChildren(node, mdastBlockOrDefinitionTypes) &&
-        typeof node.identifier === "string" &&
-        isOptionalNullableString(node.label)
+        typeof node["identifier"] === "string" &&
+        isOptionalNullableString(node["label"])
       );
     case "footnoteReference":
       return (
         hasValidMdastBase(node, ["identifier", "label"]) &&
-        typeof node.identifier === "string" &&
-        isOptionalNullableString(node.label)
+        typeof node["identifier"] === "string" &&
+        isOptionalNullableString(node["label"])
       );
     case "image":
       return (
         hasValidMdastBase(node, ["alt", "title", "url"]) &&
-        typeof node.url === "string" &&
-        isOptionalNullableString(node.alt) &&
-        isOptionalNullableString(node.title)
+        typeof node["url"] === "string" &&
+        isOptionalNullableString(node["alt"]) &&
+        isOptionalNullableString(node["title"])
       );
     case "imageReference":
       return (
@@ -283,19 +283,19 @@ function isFormattedContentNode(value: unknown): boolean {
           "label",
           "referenceType",
         ]) &&
-        typeof node.identifier === "string" &&
-        isOptionalNullableString(node.alt) &&
-        isOptionalNullableString(node.label) &&
-        (node.referenceType === "collapsed" ||
-          node.referenceType === "full" ||
-          node.referenceType === "shortcut")
+        typeof node["identifier"] === "string" &&
+        isOptionalNullableString(node["alt"]) &&
+        isOptionalNullableString(node["label"]) &&
+        (node["referenceType"] === "collapsed" ||
+          node["referenceType"] === "full" ||
+          node["referenceType"] === "shortcut")
       );
     case "link":
       return (
         hasValidMdastBase(node, ["children", "title", "url"]) &&
         hasMdastChildren(node, mdastPhrasingTypes) &&
-        typeof node.url === "string" &&
-        isOptionalNullableString(node.title)
+        typeof node["url"] === "string" &&
+        isOptionalNullableString(node["title"])
       );
     case "linkReference":
       return (
@@ -306,11 +306,11 @@ function isFormattedContentNode(value: unknown): boolean {
           "referenceType",
         ]) &&
         hasMdastChildren(node, mdastPhrasingTypes) &&
-        typeof node.identifier === "string" &&
-        isOptionalNullableString(node.label) &&
-        (node.referenceType === "collapsed" ||
-          node.referenceType === "full" ||
-          node.referenceType === "shortcut")
+        typeof node["identifier"] === "string" &&
+        isOptionalNullableString(node["label"]) &&
+        (node["referenceType"] === "collapsed" ||
+          node["referenceType"] === "full" ||
+          node["referenceType"] === "shortcut")
       );
     default:
       return false;
@@ -324,7 +324,7 @@ const formattedContentSchema = z.custom<SerializedMessage["formatted"]>(
     }
     const root = value as Record<string, unknown>;
     return (
-      root.type === "root" &&
+      root["type"] === "root" &&
       hasValidMdastBase(root, ["children"]) &&
       hasMdastChildren(root)
     );
@@ -461,10 +461,12 @@ interface SlackInboxTurnRuntime {
 
 export interface CreateSlackConversationWorkerOptions {
   getSlackAdapter: () => SlackAdapter;
-  lookupSlackUser?: (
-    teamId: string,
-    userId: string,
-  ) => Promise<SlackActorProfile | null | undefined>;
+  lookupSlackUser?:
+    | ((
+        teamId: string,
+        userId: string,
+      ) => Promise<SlackActorProfile | null | undefined>)
+    | undefined;
   runNextPausedTurn: (
     conversationId: string,
     options: {
@@ -473,11 +475,11 @@ export interface CreateSlackConversationWorkerOptions {
         turn: TurnRecord,
       ) => NonNullable<AgentDurability["drainSteeringMessages"]>;
       shouldYield: () => boolean;
-      stopSignal?: AbortSignal;
+      stopSignal?: AbortSignal | undefined;
     },
   ) => Promise<boolean>;
   runtime: SlackInboxTurnRuntime;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
 }
 
 function requireSlackAuthorId(message: Message): string {
@@ -883,7 +885,7 @@ export function createSlackConversationWorker(
 /** Return the mailbox id of one Slack message or event in a Conversation. */
 export function slackInboundMessageId(args: {
   conversationId: string;
-  installation?: SlackInstallationContext;
+  installation?: SlackInstallationContext | undefined;
   slackId: string;
 }): string {
   return [
@@ -900,7 +902,7 @@ export function buildSlackInboundMessage(args: {
   installation?: SlackInstallationContext;
   message: Message;
   receivedAtMs: number;
-  reviewItemChange?: ReviewItemChangeRecord;
+  reviewItemChange?: ReviewItemChangeRecord | undefined;
   route: SlackConversationRoute;
   thread: ThreadImpl;
 }): InboundMessage {

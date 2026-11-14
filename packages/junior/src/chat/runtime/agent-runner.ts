@@ -29,7 +29,7 @@ export function createAgentRunner(
     bindSpawnAgent?: AgentEnvironment["bindSpawnAgent"];
     conversationWorkQueue?: ConversationWorkQueue;
     streamFn?: AgentRequestStreamFn;
-    tracePropagation?: SandboxEgressTracePropagationConfig;
+    tracePropagation?: SandboxEgressTracePropagationConfig | undefined;
   },
 ): AgentRunner {
   const attachmentStorage = options?.attachmentStorage;

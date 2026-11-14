@@ -92,7 +92,7 @@ export const gitHubGetIssueTool = definePluginTool({
     input,
     _options,
     ctx: {
-      actor?: Actor;
+      actor?: Actor | undefined;
       egress: PluginEgress;
       events: { canSubscribe: boolean };
       log: PluginLogger;

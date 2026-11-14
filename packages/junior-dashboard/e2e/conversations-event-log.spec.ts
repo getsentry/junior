@@ -288,7 +288,6 @@ test("keeps the selected event in a mobile sheet and searches full event data", 
 }) => {
   const report = await openConversation(page, dashboard.baseURL);
   const { entry, log } = await openEventDetails(page);
-  const entries = log.getByRole("button", { name: /^Event \d+:/ });
   // A resize keeps the selected event in a dismissable mobile sheet.
   await page.setViewportSize({ width: 390, height: 844 });
   // The sheet title names the event, so find the sheet by its label.

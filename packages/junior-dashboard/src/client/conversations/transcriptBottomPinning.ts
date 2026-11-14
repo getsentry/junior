@@ -255,7 +255,7 @@ export function terminalReplyPinState(input: {
  */
 export function shouldShowJumpToLatest(input: {
   enabled: boolean;
-  endsAtLatest?: boolean;
+  endsAtLatest?: boolean | undefined;
   following: boolean;
   hasPendingUpdate: boolean;
   openedAtUnread?: boolean;
@@ -308,7 +308,7 @@ export function programmaticSettleScrollAction(input: {
 
 /** Keep live transcript updates visually pinned only while the reader intends to follow them. */
 export function usePinnedTranscriptBottom(input: {
-  conversationId?: string;
+  conversationId?: string | undefined;
   enabled: boolean;
   /**
    * False while newer pages are not loaded. The end of the transcript is
@@ -318,11 +318,11 @@ export function usePinnedTranscriptBottom(input: {
   endsAtLatest?: boolean;
   historyVersion: string;
   juniorMessageVersion: string;
-  pinRequestVersion?: number;
+  pinRequestVersion?: number | undefined;
   /** Open where a link shows its row, not at the latest message. */
-  startAtLink?: boolean;
+  startAtLink?: boolean | undefined;
   /** Open at the "New" marker when the transcript has one. */
-  startAtUnread?: boolean;
+  startAtUnread?: boolean | undefined;
   view: TranscriptViewMode;
   versions: Record<TranscriptViewMode, string>;
 }): BottomPinResult {

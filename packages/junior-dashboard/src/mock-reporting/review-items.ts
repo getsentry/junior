@@ -371,7 +371,11 @@ function payload(seed: MockItemSeed): ReviewItemPayload {
  */
 export function readMockReviewItems(
   nowMs: number,
-  filters: { closed?: boolean; conversationId?: string; q?: string },
+  filters: {
+    closed?: boolean | undefined;
+    conversationId?: string | undefined;
+    q?: string | undefined;
+  },
 ): ReviewItemPayload[] {
   const q = filters.q?.toLowerCase();
   const items = seeds(nowMs)

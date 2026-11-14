@@ -9,7 +9,6 @@ import {
   prMerge,
   prReady,
   prReview,
-  rollout,
 } from "./inbox-fixture";
 import { expect, test } from "./test";
 

@@ -167,8 +167,8 @@ export function ObjectLinkPreview(props: {
   children: ReactNode;
   className: string;
   href: string;
-  live?: boolean;
-  reserveHeight?: boolean;
+  live?: boolean | undefined;
+  reserveHeight?: boolean | undefined;
 }) {
   return (
     <HoverPreview

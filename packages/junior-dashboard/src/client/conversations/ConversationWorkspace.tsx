@@ -77,7 +77,7 @@ export function ConversationWorkspace(props: {
   const params = useParams();
   const navigate = useNavigate();
   const navigationType = useNavigationType();
-  const selectedId = params.conversationId;
+  const selectedId = params["conversationId"];
   const home = !selectedId;
   const { conversations, feed, pendingArchiveUpdates } =
     useInboxConversations();
@@ -93,7 +93,7 @@ export function ConversationWorkspace(props: {
   const openCreate = () => {
     createConversation.reset();
     if (!composing)
-      navigate(NEW_CONVERSATION_PATH, { state: FOCUS_REPLY_STATE });
+      void navigate(NEW_CONVERSATION_PATH, { state: FOCUS_REPLY_STATE });
     else createComposer.current?.focus();
   };
 
@@ -130,7 +130,7 @@ export function ConversationWorkspace(props: {
     const returned =
       (!first || navigationType === NavigationType.Push) && !typeRequested;
     if (typeRequested)
-      navigate(`${location.pathname}${location.search}`, {
+      void navigate(`${location.pathname}${location.search}`, {
         replace: true,
         state: null,
       });
@@ -380,7 +380,7 @@ function PhoneNewButton(props: { onClick(): void }) {
 
 function NewConversationView(props: {
   composerRef: Ref<ConversationComposerHandle>;
-  error?: string;
+  error?: string | undefined;
   onSubmit(
     message: string,
     idempotencyKey: string,

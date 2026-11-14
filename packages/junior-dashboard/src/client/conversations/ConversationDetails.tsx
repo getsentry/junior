@@ -44,10 +44,10 @@ type Brief = NonNullable<ConversationDetailReport["brief"]>;
  */
 export function ConversationDetails(props: {
   /** Parent chain of a child Conversation, root first, this one last. */
-  agentTree?: readonly ConversationAgentTreeNode[];
+  agentTree?: readonly ConversationAgentTreeNode[] | undefined;
   /** Viewer's auto-archive control. Null for non-participants. */
   autoArchive: ReactNode;
-  brief?: Brief;
+  brief?: Brief | undefined;
   conversationId: string;
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;

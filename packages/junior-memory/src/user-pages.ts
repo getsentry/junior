@@ -21,7 +21,7 @@ function originLabel(origin: MemoryView["origin"]): string {
   return "Other";
 }
 
-function pageEmptyText(input: { query?: string }): string {
+function pageEmptyText(input: { query?: string | undefined }): string {
   if (input.query) return "No memories matched your search.";
   return "No memories yet.";
 }

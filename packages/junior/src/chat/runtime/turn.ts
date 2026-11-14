@@ -9,7 +9,7 @@ export { buildDeterministicTurnId } from "@/chat/state/turn-id";
 
 /** Classified Slack turn failure carrying the owning Sentry capture outward. */
 export class ConversationTurnBoundaryError extends Error {
-  readonly eventId?: string;
+  readonly eventId?: string | undefined;
   readonly failureCode: ConversationTurnFailureCode;
 
   constructor(args: {
@@ -146,7 +146,7 @@ export function markTurnFailed(args: {
   conversation: ThreadConversationState;
   nowMs: number;
   sessionId?: string;
-  userMessageId?: string;
+  userMessageId?: string | undefined;
   markConversationMessage: (
     conversation: ThreadConversationState,
     messageId: string | undefined,

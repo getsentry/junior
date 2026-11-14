@@ -117,13 +117,12 @@ export function reviewItemLinkedTo(conversationId: string): SQL {
 }
 
 function publicIn(tenants: readonly ProviderTenant[]): SQL[] {
-  return tenants.map(
-    (tenant) =>
-      and(
-        eq(juniorReviewItems.visibility, "public"),
-        eq(juniorReviewItems.provider, tenant.provider),
-        eq(juniorReviewItems.providerTenantId, tenant.providerTenantId),
-      )!,
+  return tenants.map((tenant) =>
+    and(
+      eq(juniorReviewItems.visibility, "public"),
+      eq(juniorReviewItems.provider, tenant.provider),
+      eq(juniorReviewItems.providerTenantId, tenant.providerTenantId),
+    )!,
   );
 }
 

@@ -28,8 +28,8 @@ export function projectTimedOutToolResult(
   }
   const record = details as Record<string, unknown>;
   const target =
-    typeof record.target === "string" && record.target.length > 0
-      ? record.target
+    typeof record["target"] === "string" && record["target"].length > 0
+      ? record["target"]
       : undefined;
   const envelope = makeStructuredToolOutput({
     ...(target ? { target } : undefined),

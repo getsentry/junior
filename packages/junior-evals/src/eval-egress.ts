@@ -185,15 +185,18 @@ function createEvalEgressServer(options: EvalEgressOptions): {
         const request = new Request(
           new URL(incoming.url ?? "/", `http://${incoming.headers.host}`).href,
           {
-            method: incoming.method,
+            method: incoming.method ?? "GET",
             headers: requestHeadersFromNode(incoming.headers),
             ...(incoming.method === "GET" || incoming.method === "HEAD"
-              ? {}
+              ? undefined
               : {
+                  // Node fetch streams a Readable body with `duplex: "half"`;
+                  // the DOM BodyInit type does not include it.
+                  // oxlint-disable-next-line anti-slop/no-chained-type-assertions
                   body: incoming as unknown as BodyInit,
                   duplex: "half",
                 }),
-          } as RequestInit,
+          },
         );
         // Delay the product handler import until Postgres setup replaces DATABASE_URL.
         const handleProxyRequest = await loadProxyRequest();
@@ -202,8 +205,10 @@ function createEvalEgressServer(options: EvalEgressOptions): {
           await handleProxyRequest(request, {
             ...(options.interceptHttp
               ? { interceptHttp: options.interceptHttp }
-              : {}),
-            ...(options.verifyOidc ? { verifyOidc: options.verifyOidc } : {}),
+              : undefined),
+            ...(options.verifyOidc
+              ? { verifyOidc: options.verifyOidc }
+              : undefined),
           }),
         );
       } catch (error) {

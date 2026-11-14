@@ -14,8 +14,10 @@ type FunctionWithReturnType =
   | ESTree.TSMethodSignature;
 
 function referencedAliasName(type: ESTree.TSType): string | null {
-  if (type.type === "TSParenthesizedType") return referencedAliasName(type.typeAnnotation);
-  if (type.type !== "TSTypeReference" || type.typeName.type !== "Identifier") return null;
+  if (type.type === "TSParenthesizedType")
+    return referencedAliasName(type.typeAnnotation);
+  if (type.type !== "TSTypeReference" || type.typeName.type !== "Identifier")
+    return null;
   return type.typeArguments === null ||
     type.typeArguments === undefined ||
     type.typeArguments.params.length === 0
@@ -56,13 +58,18 @@ export const noUnknownReturnsRule = defineRule({
       if (
         type.type === "TSTypeReference" &&
         type.typeName.type === "Identifier" &&
-        (type.typeName.name === "Promise" || type.typeName.name === "PromiseLike")
+        (type.typeName.name === "Promise" ||
+          type.typeName.name === "PromiseLike")
       ) {
         const value = type.typeArguments?.params[0];
-        return value !== undefined && resolvesToUnknown(value, shadowedAliases, visited);
+        return (
+          value !== undefined &&
+          resolvesToUnknown(value, shadowedAliases, visited)
+        );
       }
       const name = referencedAliasName(type);
-      if (name === null || visited.has(name) || shadowedAliases.has(name)) return false;
+      if (name === null || visited.has(name) || shadowedAliases.has(name))
+        return false;
       const alias = aliases.get(name);
       if (
         alias === undefined ||
@@ -72,7 +79,11 @@ export const noUnknownReturnsRule = defineRule({
       }
       const nextVisited = new Set(visited);
       nextVisited.add(name);
-      return resolvesToUnknown(alias.typeAnnotation, shadowedAliases, nextVisited);
+      return resolvesToUnknown(
+        alias.typeAnnotation,
+        shadowedAliases,
+        nextVisited,
+      );
     };
 
     const checkReturnType = (node: FunctionWithReturnType) => {
@@ -86,7 +97,10 @@ export const noUnknownReturnsRule = defineRule({
       ) {
         return;
       }
-      context.report({ node: annotation.typeAnnotation, messageId: "unknownReturn" });
+      context.report({
+        node: annotation.typeAnnotation,
+        messageId: "unknownReturn",
+      });
     };
 
     return {
@@ -94,7 +108,9 @@ export const noUnknownReturnsRule = defineRule({
         aliases.clear();
         for (const statement of node.body) {
           const declaration =
-            statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
+            statement.type === "ExportNamedDeclaration"
+              ? statement.declaration
+              : statement;
           if (declaration?.type === "TSTypeAliasDeclaration") {
             aliases.set(declaration.id.name, declaration);
           }

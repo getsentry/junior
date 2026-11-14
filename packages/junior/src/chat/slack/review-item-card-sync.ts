@@ -158,7 +158,7 @@ export function createSlackReviewItemShow(
  * each card uses the token of its workspace.
  */
 export async function syncReviewItemSlackCards(args: {
-  getSlackAdapter?: () => SlackAdapter;
+  getSlackAdapter?: (() => SlackAdapter) | undefined;
   itemId: string;
 }): Promise<void> {
   const { getSlackAdapter, itemId } = args;

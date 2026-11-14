@@ -111,10 +111,10 @@ export function useLeaveRow(
   return (key: string, work: () => Promise<void> | void) => {
     const area = scroller.current;
     const rows = area ? listRows(area) : [];
-    const at = rows.findIndex((row) => row.dataset.inboxRow === key);
+    const at = rows.findIndex((row) => row.dataset["inboxRow"] === key);
     const card = rows[at];
     if (!card) return void work();
-    const next = (rows[at + 1] ?? rows[at - 1])?.dataset.inboxRow;
+    const next = (rows[at + 1] ?? rows[at - 1])?.dataset["inboxRow"];
     const wasOpen = expandedKey === key;
     void (async () => {
       await leaveCard(card);

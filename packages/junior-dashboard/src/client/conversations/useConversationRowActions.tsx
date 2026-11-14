@@ -91,11 +91,12 @@ export function useConversationRowActions(
               // The page keeps its view in state, not in history. An open
               // page replaces its entry, so Back does not land on the same
               // page in the event log.
-              eventLog: () =>
-                navigate(conversationPath(conversation.id), {
+              eventLog: () => {
+                void navigate(conversationPath(conversation.id), {
                   replace: options.selected,
                   state: OPEN_EVENT_LOG_STATE,
-                }),
+                });
+              },
               pin: setPinned,
               rename: () => setRenaming(true),
               subscription: (subscribed) => subscription.mutate(subscribed),

@@ -396,7 +396,7 @@ function runNewAction(
 ) {
   if (action.onClick) action.onClick();
   // The reader asked to type, so the composer takes focus on phones too.
-  else navigate(action.to, { state: FOCUS_REPLY_STATE });
+  else void navigate(action.to, { state: FOCUS_REPLY_STATE });
 }
 
 /** New where a page names nothing else, such as the Inbox and areas. */

@@ -18,8 +18,8 @@ describe("catalog tool calls", () => {
       ),
       prepareArguments: (args) => {
         const input = args as Record<string, unknown>;
-        return typeof input.customer_id === "string"
-          ? { customerId: input.customer_id }
+        return typeof input["customer_id"] === "string"
+          ? { customerId: input["customer_id"] }
           : (input as { customerId: string });
       },
     });

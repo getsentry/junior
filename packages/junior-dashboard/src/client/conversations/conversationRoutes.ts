@@ -7,7 +7,11 @@ import type { ConversationReportEvent } from "@sentry/junior/api/schema";
  */
 export function conversationPath(
   conversationId: string,
-  options?: { askItemId?: string; reviewItems?: boolean; turnId?: string },
+  options?: {
+    askItemId?: string | undefined;
+    reviewItems?: boolean;
+    turnId?: string | undefined;
+  },
 ): string {
   const path = `/conversations/${encodeURIComponent(conversationId)}`;
   const params = new URLSearchParams();
@@ -27,7 +31,10 @@ export function conversationPath(
  * `draftFrom` names the draft of a composer the reader typed in before the
  * page opened. The reply box takes its text.
  */
-export type ReplyFocusState = { draftFrom?: string; focusReply: true };
+export type ReplyFocusState = {
+  draftFrom?: string | undefined;
+  focusReply: true;
+};
 
 /** Ask the opened Conversation to focus its reply box. */
 export const FOCUS_REPLY_STATE = { focusReply: true } as const;

@@ -67,7 +67,7 @@ function scriptOutputSchema(
     additionalProperties?: unknown;
   };
   if (!properties) {
-    return schema as CodemodeJsonSchema | undefined;
+    return schema;
   }
   const own = Object.entries(properties).filter(
     ([field]) => !ENVELOPE_FIELDS.has(field),
@@ -82,7 +82,7 @@ function scriptOutputSchema(
     ...(required
       ? { required: required.filter((field) => !ENVELOPE_FIELDS.has(field)) }
       : undefined),
-  } as CodemodeJsonSchema;
+  };
 }
 
 /** One member of `declare const tools`, with its description as a doc comment. */
@@ -93,7 +93,7 @@ function renderDeclaration(name: string, tool: AnyToolDefinition): string {
   const outputSchema = scriptOutputSchema(tool.outputSchema);
   const signature = renderToolSignature({
     name,
-    inputSchema: tool.inputSchema as CodemodeJsonSchema,
+    inputSchema: tool.inputSchema,
     ...(outputSchema ? { outputSchema } : undefined),
   }).trim();
   return `  /** ${description} */\n  ${signature.replace(/\n/g, "\n  ")}`;

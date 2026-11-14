@@ -2,9 +2,9 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 
-const originalAiModel = process.env.AI_MODEL;
+const originalAiModel = process.env["AI_MODEL"];
 
-process.env.AI_MODEL = "openai/gpt-5.4";
+process.env["AI_MODEL"] = "openai/gpt-5.4";
 
 vi.mock("@/chat/skills", () => ({
   discoverSkills: vi.fn(async () => {
@@ -24,9 +24,9 @@ const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
 describe("executeAgentRun error path", () => {
   afterAll(() => {
     if (originalAiModel === undefined) {
-      delete process.env.AI_MODEL;
+      delete process.env["AI_MODEL"];
     } else {
-      process.env.AI_MODEL = originalAiModel;
+      process.env["AI_MODEL"] = originalAiModel;
     }
   });
 

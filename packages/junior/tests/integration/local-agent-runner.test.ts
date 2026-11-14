@@ -210,8 +210,8 @@ describe("local agent runner", () => {
       cwd: "/tmp/local-agent-runner-oauth-resume",
     });
     expect(conversationId).toBeDefined();
-    const previousBaseUrl = process.env.JUNIOR_BASE_URL;
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+    const previousBaseUrl = process.env["JUNIOR_BASE_URL"];
+    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
     const pluginApp = await createPluginAppFixture([EVAL_MCP_PLUGIN_ROOT]);
     let oauthCallback:
       | Awaited<ReturnType<typeof startLocalOAuthCallbackServer>>
@@ -334,9 +334,9 @@ describe("local agent runner", () => {
       await oauthCallback?.close();
       await pluginApp.cleanup();
       if (previousBaseUrl === undefined) {
-        delete process.env.JUNIOR_BASE_URL;
+        delete process.env["JUNIOR_BASE_URL"];
       } else {
-        process.env.JUNIOR_BASE_URL = previousBaseUrl;
+        process.env["JUNIOR_BASE_URL"] = previousBaseUrl;
       }
     }
   });
@@ -386,8 +386,10 @@ describe("local agent runner", () => {
       alias: "model-failure",
       cwd: "/tmp/local-agent-runner-model-failure",
     });
+    // Pi retries most transient failures with real backoff. Pi does not retry
+    // this text, and Junior still gives it transient-failure copy.
     const rawError =
-      "upstream request failed: raw-error-sentinel https://provider.invalid/private?token=secret";
+      "bad gateway: raw-error-sentinel https://provider.invalid/private?token=secret";
     const delivered: LocalAgentReply[] = [];
 
     await runLocalAgentTurn(
@@ -656,8 +658,8 @@ describe("local agent runner", () => {
     expect(agentRuns[1]?.instruction.context).toBeUndefined();
 
     const state = await getPersistedThreadState(conversationId!);
-    expect(state.conversation).not.toHaveProperty("stats");
-    expect(state.conversation).not.toHaveProperty("backfill");
+    expect(state["conversation"]).not.toHaveProperty("stats");
+    expect(state["conversation"]).not.toHaveProperty("backfill");
     const conversation = coerceThreadConversationState(state);
     await hydrateConversationMessages({
       conversation,

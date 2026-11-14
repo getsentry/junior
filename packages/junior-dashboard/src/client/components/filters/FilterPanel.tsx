@@ -192,7 +192,7 @@ export function FilterOptions(props: {
 
 function FilterOptionButton(props: {
   label: string;
-  matches?: number[];
+  matches?: number[] | undefined;
   onClick(): void;
   selected: boolean;
   subtle: boolean;

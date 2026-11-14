@@ -58,7 +58,7 @@ function lastAssistantIndex(messages: readonly unknown[]): number {
 // equals the previous request's full hash when the history was only appended.
 function messagesHashes(messages: readonly unknown[]): {
   full: string;
-  beforeLastReply?: string;
+  beforeLastReply?: string | undefined;
 } {
   const lastReply = lastAssistantIndex(messages);
   const hash = createHash("sha256");

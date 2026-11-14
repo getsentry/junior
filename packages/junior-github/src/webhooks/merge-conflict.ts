@@ -136,9 +136,13 @@ export async function loadGitHubMergeConflictEvents(args: {
   deliveryId: string;
   events: EventInput[];
   hasMatch: EventPublisher["hasMatch"];
-  loadPullRequest?(ref: GitHubPullRequestRef): Promise<unknown>;
-  loadConflictHistory?(ref: GitHubPullRequestRef): Promise<unknown>;
-  log?: Pick<PluginLogger, "error" | "warn">;
+  loadPullRequest?:
+    | ((ref: GitHubPullRequestRef) => Promise<unknown>)
+    | undefined;
+  loadConflictHistory?:
+    | ((ref: GitHubPullRequestRef) => Promise<unknown>)
+    | undefined;
+  log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   /** The body of a `pull_request` webhook. */
   pullRequestPayload?: unknown;
   reviewItems: PluginConversationReviewItems;

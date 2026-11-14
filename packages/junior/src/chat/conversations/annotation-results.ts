@@ -30,21 +30,21 @@ export async function annotateToolResult(
   plugin: string,
   result: unknown,
 ): Promise<unknown> {
-  if (!isRecord(result) || result.isError === true) return result;
-  const details = isRecord(result.details) ? result.details : result;
+  if (!isRecord(result) || result["isError"] === true) return result;
+  const details = isRecord(result["details"]) ? result["details"] : result;
   if (
-    details.timed_out === true ||
-    details.isError === true ||
-    !Array.isArray(details.objectAnnotations)
+    details["timed_out"] === true ||
+    details["isError"] === true ||
+    !Array.isArray(details["objectAnnotations"])
   )
     return result;
   const cards = await saveObjectAnnotations(
     conversationId,
     plugin,
-    details.objectAnnotations,
+    details["objectAnnotations"],
   );
   const { objectAnnotations: _annotations, ...rest } = details;
   const annotated = { ...rest, objectCards: cards };
-  if (isRecord(result.details)) return { ...result, details: annotated };
+  if (isRecord(result["details"])) return { ...result, details: annotated };
   return annotated;
 }

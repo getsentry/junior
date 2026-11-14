@@ -108,7 +108,7 @@ test("moving between pages never flashes the bare agent name in the tab", async 
   await expect(page).toHaveTitle("(1) Inbox - Junior");
 
   const all = await page.evaluate(
-    () => (window as unknown as { __titles: string[] }).__titles,
+    () => (window as Window & { __titles: string[] }).__titles,
   );
   // From the first counted title on: the count loads after the page title.
   const titles = all.slice(all.indexOf("(1) Inbox - Junior"));

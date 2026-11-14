@@ -883,7 +883,7 @@ test("Open conversation shows the row's ask, far back in the transcript", async 
     .poll(() =>
       page.evaluate(
         () =>
-          (window as unknown as { askMarks: { count: number } }).askMarks.count,
+          (window as Window & { askMarks: { count: number } }).askMarks.count,
       ),
     )
     .toBeGreaterThan(0);

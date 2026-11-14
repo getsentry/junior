@@ -20,7 +20,7 @@ import { MOBILE_LAYOUT_QUERY } from "../../layoutMedia";
 
 export type DashboardHeaderNavItem = {
   /** Shown beside the label when it is above zero. */
-  count?: number;
+  count?: number | undefined;
   key: string;
   label: string;
   to: string;
@@ -39,13 +39,13 @@ export function DashboardHeader(props: {
   /** Names where `mobileBackTo` goes. Defaults to the conversations. */
   mobileBackLabel?: string;
   mobileNavigationOpen: boolean;
-  mobileTitle?: string;
+  mobileTitle?: string | undefined;
   /** Quiet signed-in strip pinned above the sheet version footer. */
-  mobileIdentity?: ReactNode;
+  mobileIdentity?: ReactNode | undefined;
   /** Plain account destinations inside the mobile navigation sheet. */
-  mobileProfile?: ReactNode;
+  mobileProfile?: ReactNode | undefined;
   /** Vertical spend callout pinned above every mobile sheet destination. */
-  mobileSpend?: ReactNode;
+  mobileSpend?: ReactNode | undefined;
   navItems: DashboardHeaderNavItem[];
   onMobileNavigationOpenChange(open: boolean): void;
   /** Open the command palette. */

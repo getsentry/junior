@@ -295,7 +295,7 @@ function getOptionalRedisStateAdapter(): RedisStateAdapter | undefined {
 }
 
 export async function getConnectedStateContext(): Promise<{
-  redisStateAdapter?: RedisStateAdapter;
+  redisStateAdapter?: RedisStateAdapter | undefined;
   stateAdapter: StateAdapter;
 }> {
   const adapter = getStateAdapter();

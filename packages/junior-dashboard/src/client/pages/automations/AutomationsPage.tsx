@@ -239,7 +239,7 @@ const AutomationGroups = memo(function AutomationGroups(props: {
     <div>
       {/* To do is the Inbox's section, so its cards open in place. */}
       <InboxSection
-        collapsed={Boolean(collapsed.todo)}
+        collapsed={Boolean(collapsed["todo"])}
         count={props.todo.length}
         label="To do"
         onToggle={() => toggle("todo")}

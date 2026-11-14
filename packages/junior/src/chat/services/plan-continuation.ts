@@ -57,7 +57,8 @@ function retainedOpenItems(message: PiMessage): OpenPlanItem[] | undefined {
   }
   const payload = continuation.slice(openIndex + open.length, closeIndex);
   try {
-    return openItems({ plan: JSON.parse(payload) });
+    const plan: unknown = JSON.parse(payload);
+    return openItems({ plan });
   } catch {
     return undefined;
   }

@@ -54,18 +54,16 @@ export function pullRequestSections(
 ): PullRequestSection[] {
   const rows = changes
     .filter((change) => change.state === "open")
-    .map(
-      (change): PullRequestChangeRow => ({
-        change,
-        items: change.url
-          ? itemRows.filter(
-              (row) =>
-                row.newest.subject?.url &&
-                sameUrl(row.newest.subject.url) === sameUrl(change.url!),
-            )
-          : [],
-      }),
-    );
+    .map((change): PullRequestChangeRow => ({
+      change,
+      items: change.url
+        ? itemRows.filter(
+            (row) =>
+              row.newest.subject?.url &&
+              sameUrl(row.newest.subject.url) === sameUrl(change.url!),
+          )
+        : [],
+    }));
   const attached = new Set(rows.flatMap((row) => row.items));
   const loose = itemRows.filter((row) => !attached.has(row));
   const drafts = rows.filter((row) => row.change.draft).sort(byActivity);

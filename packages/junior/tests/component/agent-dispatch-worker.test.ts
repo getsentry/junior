@@ -19,7 +19,7 @@ import { recordTurnSummary } from "@/chat/task-execution/turn-cursor";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 });
 
 const destination = {

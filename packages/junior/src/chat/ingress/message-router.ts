@@ -42,8 +42,9 @@ export function normalizeIncomingSlackThreadId(
     return threadId;
   }
 
-  const channelId = nonEmptyString(raw.channel);
-  const threadTs = nonEmptyString(raw.thread_ts) ?? nonEmptyString(raw.ts);
+  const channelId = nonEmptyString(raw["channel"]);
+  const threadTs =
+    nonEmptyString(raw["thread_ts"]) ?? nonEmptyString(raw["ts"]);
   if (!channelId || !threadTs) {
     return threadId;
   }

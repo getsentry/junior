@@ -72,7 +72,7 @@ function subscribeTheme(onChange: () => void) {
 }
 
 function readTheme() {
-  return document.documentElement.dataset.theme;
+  return document.documentElement.dataset["theme"];
 }
 
 async function drawBadgedIcon(src: string, label: string): Promise<string> {

@@ -147,13 +147,13 @@ interface BaseInvocationContext {
    */
   conversationId?: string;
   /** Location associated with this Conversation. */
-  locationId?: string;
+  locationId?: string | undefined;
 }
 
 export interface SlackInvocationContext extends BaseInvocationContext {
   /** Runtime-owned default outbound destination for this invocation. */
   destination: SlackDestination;
-  actor?: SlackActor;
+  actor?: SlackActor | undefined;
   /** Runtime-owned source where the invocation came from. */
   source: SlackSource;
 }
@@ -161,7 +161,7 @@ export interface SlackInvocationContext extends BaseInvocationContext {
 export interface LocalInvocationContext extends BaseInvocationContext {
   /** Runtime-owned default outbound destination for this invocation. */
   destination: LocalDestination;
-  actor?: LocalActor;
+  actor?: LocalActor | undefined;
   /** Runtime-owned source where the invocation came from. */
   source: LocalSource;
 }
@@ -169,7 +169,7 @@ export interface LocalInvocationContext extends BaseInvocationContext {
 export interface WebInvocationContext extends BaseInvocationContext {
   /** Existing conversation destination used for location and tool context. */
   destination: Destination;
-  actor?: WebActor;
+  actor?: WebActor | undefined;
   /** Runtime-owned dashboard/web source for this invocation. */
   source: WebSource;
 }
@@ -188,7 +188,7 @@ export type InvocationContext =
   | WebInvocationContext
   | (BaseInvocationContext & {
       destination: Destination;
-      actor?: Actor;
+      actor?: Actor | undefined;
       source:
         | AgentInvocationSource
         | EventAutomationSource
@@ -200,9 +200,9 @@ export type InvocationContext =
 /** Build a normalized Slack source from runtime-owned Slack coordinates. */
 export function createSlackSource(input: {
   channelId: string;
-  messageTs?: string;
+  messageTs?: string | undefined;
   teamId: string;
-  threadTs?: string;
+  threadTs?: string | undefined;
   /** Runtime-normalized source visibility. */
   visibility: SourceVisibility;
 }): SlackSource {

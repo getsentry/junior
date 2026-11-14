@@ -1,7 +1,6 @@
 import { afterAll, afterEach, expect, vi } from "vitest";
 
 function isIntegrationTest(): boolean {
-  // oxlint-disable-next-line vitest/no-standalone-expect -- Vitest exposes the current file through assertion state.
   return expect.getState().testPath?.includes("/tests/integration/") ?? false;
 }
 

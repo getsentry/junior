@@ -584,7 +584,7 @@ describe("conversation detail API", () => {
       ],
     });
     expect(
-      getCapturedSlackApiCalls("users.info").map((call) => call.params.user),
+      getCapturedSlackApiCalls("users.info").map((call) => call.params["user"]),
     ).toEqual(["UNEW1234"]);
     // Other instances can now skip Slack for UNEW1234.
     expect(

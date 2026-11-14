@@ -53,7 +53,7 @@ const STILL_MS = 300;
 
 /** A card of a dock list, and the key it takes focus under. */
 function cardKey(card: HTMLElement): string | undefined {
-  return card.dataset.inboxRow ?? card.dataset.dockKey;
+  return card.dataset["inboxRow"] ?? card.dataset["dockKey"];
 }
 
 function dockCardOf(target: EventTarget | null): HTMLElement | undefined {
@@ -221,7 +221,7 @@ export function useInboxFocus(
     for (const card of scaled.current) if (!cards.includes(card)) unscale(card);
     for (const [index, card] of cards.entries()) {
       const grow =
-        grows && card.dataset.expanded === undefined
+        grows && card.dataset["expanded"] === undefined
           ? dockFalloff(Math.abs(index - at), RADIUS_CARDS)
           : 0;
       if (grow === 0) {

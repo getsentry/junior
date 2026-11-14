@@ -344,18 +344,18 @@ export function InboxList(props: {
       );
       if (!row) return;
       row.scrollIntoView({ block: "center" });
-      navigate(listPath, { replace: true });
+      void navigate(listPath, { replace: true });
       return;
     }
     if (snoozedKey) {
-      navigate(inboxViewPath("snoozed", { itemId: linkedId }), {
+      void navigate(inboxViewPath("snoozed", { itemId: linkedId }), {
         replace: true,
       });
       return;
     }
     if (!linkedLoaded) return;
     if (linked.error) {
-      navigate(listPath, { replace: true });
+      void navigate(listPath, { replace: true });
       return;
     }
     if (!linked.data) return;
@@ -363,12 +363,14 @@ export function InboxList(props: {
       // Past the loaded page, it joins the list, and its row expands on the
       // next render. Snoozed or swept, it has no row to expand.
       if (includedId !== linkedId) includeItem(linkedId);
-      else navigate(listPath, { replace: true });
+      else void navigate(listPath, { replace: true });
     } else if (view === "done") {
       const closedId = linked.data.id;
       setLinkedItems((current) => ({ ...current, closed: closedId }));
     } else {
-      navigate(inboxViewPath("done", { itemId: linkedId }), { replace: true });
+      void navigate(inboxViewPath("done", { itemId: linkedId }), {
+        replace: true,
+      });
     }
   }, [
     expandedKey,

@@ -33,7 +33,7 @@ export function renderBriefMarkdown(args: {
   generation: GeneratedBrief;
   input: BriefInput;
   model: string;
-  totalCostUsd?: number;
+  totalCostUsd?: number | undefined;
   versionCount: number;
 }): string {
   const { brief, evidence } = args.generation;

@@ -14,7 +14,7 @@ export function createTestChatRuntime(
   args: {
     conversationStore?: ConversationStore;
     now?: CreateSlackRuntimeOptions["now"];
-    queue?: ConversationWorkQueue;
+    queue?: ConversationWorkQueue | undefined;
     sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
     services?: JuniorRuntimeServiceOverrides;
     slackAdapter?: FakeSlackAdapter;

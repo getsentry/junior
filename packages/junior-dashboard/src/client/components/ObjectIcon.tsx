@@ -19,8 +19,8 @@ export const objectToneClass = {
 /** Keep object identity visible at card, link, and compact badge sizes. */
 export function ObjectIcon(props: {
   objectType: ObjectType;
-  status?: string;
-  facts?: { type: string };
+  status?: string | undefined;
+  facts?: { type: string } | undefined;
   size?: number;
   decorative?: boolean;
   className?: string;

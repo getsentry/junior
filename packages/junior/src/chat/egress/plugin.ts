@@ -16,8 +16,8 @@ interface PluginEgressAuth {
     grant: {
       access: "read" | "write";
       name: string;
-      reason?: string;
-      requirements?: string[];
+      reason?: string | undefined;
+      requirements?: string[] | undefined;
     };
     kind: "auth_required" | "unavailable";
     message: string;
@@ -27,7 +27,7 @@ interface PluginEgressAuth {
 
 interface PluginEgressDeps {
   credentialAuditSource?: CredentialAuditSource;
-  credentialContext?: CredentialContext;
+  credentialContext?: CredentialContext | undefined;
   fetch?: typeof fetch;
   pluginAuth: PluginEgressAuth;
   /**

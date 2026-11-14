@@ -36,11 +36,13 @@ function jsonSchemaProblems(node: unknown, path: string): string[] {
   const problems = STRICT_UNSUPPORTED_KEYWORDS.filter(
     (keyword) => keyword in schema,
   ).map((keyword) => `${path} uses unsupported keyword ${keyword}`);
-  if (schema.type === "object") {
+  if (schema["type"] === "object") {
     const properties = Object.keys(
-      (schema.properties as Record<string, unknown> | undefined) ?? {},
+      (schema["properties"] as Record<string, unknown> | undefined) ?? {},
     );
-    const required = Array.isArray(schema.required) ? schema.required : [];
+    const required = Array.isArray(schema["required"])
+      ? schema["required"]
+      : [];
     for (const property of properties) {
       if (!required.includes(property)) {
         problems.push(`${path}.${property} is optional`);
@@ -48,11 +50,11 @@ function jsonSchemaProblems(node: unknown, path: string): string[] {
     }
   }
   if (
-    schema.type === "string" &&
-    typeof schema.format === "string" &&
-    !STRICT_STRING_FORMATS.has(schema.format)
+    schema["type"] === "string" &&
+    typeof schema["format"] === "string" &&
+    !STRICT_STRING_FORMATS.has(schema["format"])
   ) {
-    problems.push(`${path} uses unsupported format ${schema.format}`);
+    problems.push(`${path} uses unsupported format ${schema["format"]}`);
   }
   for (const [key, value] of Object.entries(schema)) {
     if (key === "enum" || key === "required") continue;

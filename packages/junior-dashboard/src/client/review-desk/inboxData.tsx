@@ -171,23 +171,19 @@ function useBuildInboxData(input: {
   // activity. A Conversation outside the loaded feed joins when it has
   // open items.
   const conversationRows = withRowsByTime(
-    pinnedFirst(conversations).map(
-      (conversation): ConversationRow => ({
-        bundle: bundleByConversation.get(conversation.id),
-        conversation,
-        conversationId: conversation.id,
-        time: activityAt(conversation),
-      }),
-    ),
+    pinnedFirst(conversations).map((conversation): ConversationRow => ({
+      bundle: bundleByConversation.get(conversation.id),
+      conversation,
+      conversationId: conversation.id,
+      time: activityAt(conversation),
+    })),
     bundles
       .filter((bundle) => !conversationById.has(bundle.conversationId))
-      .map(
-        (bundle): ConversationRow => ({
-          bundle,
-          conversationId: bundle.conversationId,
-          time: bundle.newest.createdAt,
-        }),
-      ),
+      .map((bundle): ConversationRow => ({
+        bundle,
+        conversationId: bundle.conversationId,
+        time: bundle.newest.createdAt,
+      })),
   );
 
   // In flight: every pin, each one click away, and running Conversations in

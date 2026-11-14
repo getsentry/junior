@@ -39,7 +39,7 @@ export interface McpAuthSessionState {
   userMessage: string;
   channelId?: string;
   threadTs?: string;
-  toolChannelId?: string;
+  toolChannelId?: string | undefined;
   configuration?: Record<string, unknown>;
   authorizationUrl?: string;
   codeVerifier?: string;
@@ -101,63 +101,63 @@ function parseMcpAuthSession(value: unknown): McpAuthSessionState | undefined {
     const parsed = value;
 
     if (
-      parsed.schemaVersion !== 2 ||
-      typeof parsed.authSessionId !== "string" ||
-      typeof parsed.provider !== "string" ||
-      typeof parsed.userId !== "string" ||
-      typeof parsed.conversationId !== "string" ||
-      typeof parsed.sessionId !== "string" ||
-      typeof parsed.userMessage !== "string" ||
-      typeof parsed.createdAtMs !== "number" ||
-      typeof parsed.updatedAtMs !== "number"
+      parsed["schemaVersion"] !== 2 ||
+      typeof parsed["authSessionId"] !== "string" ||
+      typeof parsed["provider"] !== "string" ||
+      typeof parsed["userId"] !== "string" ||
+      typeof parsed["conversationId"] !== "string" ||
+      typeof parsed["sessionId"] !== "string" ||
+      typeof parsed["userMessage"] !== "string" ||
+      typeof parsed["createdAtMs"] !== "number" ||
+      typeof parsed["updatedAtMs"] !== "number"
     ) {
       return undefined;
     }
 
     const destination =
-      parsed.destination === undefined
+      parsed["destination"] === undefined
         ? undefined
-        : parseDestination(parsed.destination);
-    if (parsed.destination !== undefined && !destination) {
+        : parseDestination(parsed["destination"]);
+    if (parsed["destination"] !== undefined && !destination) {
       return undefined;
     }
     const source =
-      parsed.source === undefined
+      parsed["source"] === undefined
         ? undefined
-        : sourceSchema.safeParse(parsed.source);
-    if (parsed.source !== undefined && (!source || !source.success)) {
+        : sourceSchema.safeParse(parsed["source"]);
+    if (parsed["source"] !== undefined && (!source || !source.success)) {
       return undefined;
     }
 
     return {
       schemaVersion: 2,
-      authSessionId: parsed.authSessionId,
-      provider: parsed.provider,
-      userId: parsed.userId,
-      conversationId: parsed.conversationId,
+      authSessionId: parsed["authSessionId"],
+      provider: parsed["provider"],
+      userId: parsed["userId"],
+      conversationId: parsed["conversationId"],
       ...(destination ? { destination } : undefined),
       ...(source?.success ? { source: source.data } : undefined),
-      sessionId: parsed.sessionId,
-      userMessage: parsed.userMessage,
-      createdAtMs: parsed.createdAtMs,
-      updatedAtMs: parsed.updatedAtMs,
-      ...(typeof parsed.channelId === "string"
-        ? { channelId: parsed.channelId }
+      sessionId: parsed["sessionId"],
+      userMessage: parsed["userMessage"],
+      createdAtMs: parsed["createdAtMs"],
+      updatedAtMs: parsed["updatedAtMs"],
+      ...(typeof parsed["channelId"] === "string"
+        ? { channelId: parsed["channelId"] }
         : undefined),
-      ...(typeof parsed.threadTs === "string"
-        ? { threadTs: parsed.threadTs }
+      ...(typeof parsed["threadTs"] === "string"
+        ? { threadTs: parsed["threadTs"] }
         : undefined),
-      ...(typeof parsed.toolChannelId === "string"
-        ? { toolChannelId: parsed.toolChannelId }
+      ...(typeof parsed["toolChannelId"] === "string"
+        ? { toolChannelId: parsed["toolChannelId"] }
         : undefined),
-      ...(isRecord(parsed.configuration)
-        ? { configuration: parsed.configuration }
+      ...(isRecord(parsed["configuration"])
+        ? { configuration: parsed["configuration"] }
         : undefined),
-      ...(typeof parsed.authorizationUrl === "string"
-        ? { authorizationUrl: parsed.authorizationUrl }
+      ...(typeof parsed["authorizationUrl"] === "string"
+        ? { authorizationUrl: parsed["authorizationUrl"] }
         : undefined),
-      ...(typeof parsed.codeVerifier === "string"
-        ? { codeVerifier: parsed.codeVerifier }
+      ...(typeof parsed["codeVerifier"] === "string"
+        ? { codeVerifier: parsed["codeVerifier"] }
         : undefined),
     };
   } catch {
@@ -174,15 +174,15 @@ function parseServerSession(value: unknown): McpServerSessionState | undefined {
     const parsed = JSON.parse(value) as Record<string, unknown>;
     if (
       !isRecord(parsed) ||
-      typeof parsed.sessionId !== "string" ||
-      typeof parsed.updatedAtMs !== "number"
+      typeof parsed["sessionId"] !== "string" ||
+      typeof parsed["updatedAtMs"] !== "number"
     ) {
       return undefined;
     }
 
     return {
-      sessionId: parsed.sessionId,
-      updatedAtMs: parsed.updatedAtMs,
+      sessionId: parsed["sessionId"],
+      updatedAtMs: parsed["updatedAtMs"],
     };
   } catch {
     return undefined;
@@ -201,20 +201,21 @@ function parseStoredCredentials(
     }
 
     return {
-      ...(isRecord(parsed.clientInformation)
+      ...(isRecord(parsed["clientInformation"])
         ? {
-            clientInformation:
-              parsed.clientInformation as OAuthClientInformationMixed,
+            clientInformation: parsed[
+              "clientInformation"
+            ] as OAuthClientInformationMixed,
           }
         : undefined),
-      ...(isRecord(parsed.discoveryState)
+      ...(isRecord(parsed["discoveryState"])
         ? {
             // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
             discoveryState: parsed.discoveryState as OAuthDiscoveryState,
           }
         : undefined),
-      ...(isRecord(parsed.tokens)
-        ? { tokens: parsed.tokens as OAuthTokens }
+      ...(isRecord(parsed["tokens"])
+        ? { tokens: parsed["tokens"] as OAuthTokens }
         : undefined),
     };
   } catch {

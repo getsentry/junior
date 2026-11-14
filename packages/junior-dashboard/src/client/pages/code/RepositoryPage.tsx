@@ -47,7 +47,7 @@ const inlineLinkClass = cn("font-semibold", dashboardInlineLinkClass);
 /** Render one repository tab under the shared header and tab bar. */
 export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
   const params = useParams();
-  const repositoryId = params.repositoryId;
+  const repositoryId = params["repositoryId"];
   const [range, setRange] = useState<TimeRangeDays>(30);
   const query = useCodeRepositoryData(repositoryId);
   if (!query.data && !query.error) {

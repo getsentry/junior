@@ -62,10 +62,14 @@ function messageAuthor(
   root: Conversation,
   data: MessageData,
 ): Actor | undefined {
-  const author = isRecord(data.meta?.author) ? data.meta.author : undefined;
+  const author = isRecord(data.meta?.["author"])
+    ? data.meta["author"]
+    : undefined;
   const userId =
-    typeof author?.userId === "string" ? author.userId.trim() : undefined;
-  if (!userId || author?.isBot === true) {
+    typeof author?.["userId"] === "string"
+      ? author["userId"].trim()
+      : undefined;
+  if (!userId || author?.["isBot"] === true) {
     return undefined;
   }
   const session = root.sessionSource;
@@ -136,10 +140,10 @@ function messageLabel(
     return "user";
   }
   // An Event Turn input, such as a child agent result, is not a person.
-  if (data.meta?.eventType !== undefined) {
+  if (data.meta?.["eventType"] !== undefined) {
     return "event";
   }
-  const invocationId = data.meta?.agentInvocationId;
+  const invocationId = data.meta?.["agentInvocationId"];
   if (typeof invocationId === "string" && parentTaskIds?.has(invocationId)) {
     return "user";
   }

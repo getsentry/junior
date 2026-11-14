@@ -35,7 +35,7 @@ export async function presentSlackAnnotationDetails(
   event: Record<string, unknown>,
   teamId: string | undefined,
 ): Promise<void> {
-  const triggerId = event.trigger_id;
+  const triggerId = event["trigger_id"];
   if (typeof triggerId !== "string" || !triggerId) return;
   const client = getSlackClient();
   const missing = () =>

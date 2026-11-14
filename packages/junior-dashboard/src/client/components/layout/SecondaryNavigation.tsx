@@ -23,7 +23,7 @@ export type SecondaryNavigationItem = SegmentedNavItem;
  */
 export function SecondaryNavigation(props: {
   ariaLabel: string;
-  className?: string;
+  className?: string | undefined;
   children: ReactNode;
   items: SecondaryNavigationItem[];
   /**

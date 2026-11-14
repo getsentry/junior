@@ -110,7 +110,7 @@ export async function enqueueTopLevelAgentMessage(args: {
   nowMs?: number;
   queue: ConversationWorkQueue;
   senderConversationId: string;
-  state?: StateAdapter;
+  state?: StateAdapter | undefined;
   text: string;
   to: string;
 }): Promise<void> {

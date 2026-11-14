@@ -47,7 +47,7 @@ describe("addReaction tool", () => {
   it("always bypasses action review", () => {
     const tool = createSlackMessageAddReactionTool(
       TEST_SLACK_CONTEXT,
-      createState() as any,
+      createState(),
     );
 
     expect(tool.approvalMode).toBe("approve");
@@ -57,7 +57,7 @@ describe("addReaction tool", () => {
     addReactionToMessage.mockReset();
     const tool = createSlackMessageAddReactionTool(
       TEST_SLACK_CONTEXT,
-      createState() as any,
+      createState(),
     );
     if (!tool.execute) {
       throw new Error("Expected executable tool");
@@ -74,13 +74,13 @@ describe("addReaction tool", () => {
     addReactionToMessage.mockResolvedValue({ ok: true });
     const tool = createSlackMessageAddReactionTool(
       TEST_SLACK_CONTEXT,
-      createState() as any,
+      createState(),
     );
     if (!tool.execute) {
       throw new Error("Expected executable tool");
     }
 
-    const result = await tool.execute({ emoji: ":Thumbs_Up:" }, {} as any);
+    const result = await tool.execute({ emoji: ":Thumbs_Up:" }, {});
     expect(result).toEqual(
       expect.objectContaining({
         emoji: "thumbs_up",
@@ -98,16 +98,13 @@ describe("addReaction tool", () => {
     addReactionToMessage.mockResolvedValue({ ok: true });
     const tool = createSlackMessageAddReactionTool(
       TEST_SLACK_CONTEXT,
-      createState() as any,
+      createState(),
     );
     if (!tool.execute) {
       throw new Error("Expected executable tool");
     }
 
-    const result = await tool.execute(
-      { emoji: ":thumbsup::skin-tone-6:" },
-      {} as any,
-    );
+    const result = await tool.execute({ emoji: ":thumbsup::skin-tone-6:" }, {});
     expect(result).toEqual(
       expect.objectContaining({
         emoji: "thumbsup::skin-tone-6",

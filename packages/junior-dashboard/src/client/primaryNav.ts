@@ -36,7 +36,7 @@ export function buildPrimaryNavItems(input: {
   pathname: string;
   primaryUserPages: PluginUserPageLink[];
   /** What waits on the viewer: To do in the Inbox. */
-  inboxCount?: number;
+  inboxCount?: number | undefined;
 }): DashboardHeaderNavItem[] {
   // Auth-only routes already imply the signed-in primary nav. Hold the
   // Automations slot while core data catches up so the header does not jump.

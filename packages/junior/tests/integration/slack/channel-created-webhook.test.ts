@@ -72,7 +72,7 @@ describe("Slack webhook: channel_created", () => {
     expect(response.status).toBe(200);
     expect(
       getCapturedSlackApiCalls("conversations.join").map(
-        (call) => call.params.channel,
+        (call) => call.params["channel"],
       ),
     ).toEqual(["C0NEW"]);
   });

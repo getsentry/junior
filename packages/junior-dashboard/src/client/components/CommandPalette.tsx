@@ -112,7 +112,7 @@ export function CommandPalette(props: {
   /** The group of the page that shows, from `paletteGroupForPath`. */
   activeGroup?: string;
   /** Left out of the rows: the viewer is already there. */
-  currentConversationId?: string;
+  currentConversationId?: string | undefined;
   navItems: DashboardHeaderNavItem[];
   open: boolean;
   onOpenChange(open: boolean): void;
@@ -298,7 +298,7 @@ function CommandPaletteBody(props: {
                   onSelect={() => {
                     props.onClose();
                     if (item.run) item.run();
-                    else navigate(item.to, { state: item.state });
+                    else void navigate(item.to, { state: item.state });
                   }}
                   value={item.id}
                 >

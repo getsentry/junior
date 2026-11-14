@@ -19,9 +19,9 @@ describe("getVercelSandboxCredentials", () => {
   });
 
   it("returns explicit sandbox credentials when the full token triple is set", () => {
-    process.env.VERCEL_TOKEN = "sandbox-token";
-    process.env.VERCEL_TEAM_ID = "team_123";
-    process.env.VERCEL_PROJECT_ID = "prj_123";
+    process.env["VERCEL_TOKEN"] = "sandbox-token";
+    process.env["VERCEL_TEAM_ID"] = "team_123";
+    process.env["VERCEL_PROJECT_ID"] = "prj_123";
 
     expect(getVercelSandboxCredentials()).toEqual({
       token: "sandbox-token",
@@ -31,8 +31,8 @@ describe("getVercelSandboxCredentials", () => {
   });
 
   it("ignores incomplete explicit credentials and lets the SDK resolve auth", () => {
-    process.env.VERCEL_TEAM_ID = "team_123";
-    process.env.VERCEL_PROJECT_ID = "prj_123";
+    process.env["VERCEL_TEAM_ID"] = "team_123";
+    process.env["VERCEL_PROJECT_ID"] = "prj_123";
 
     expect(getVercelSandboxCredentials()).toBeUndefined();
   });

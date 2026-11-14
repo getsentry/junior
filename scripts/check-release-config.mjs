@@ -72,13 +72,6 @@ function collectBumpPackages() {
     .sort();
 }
 
-function collectCiPackages() {
-  return collectMatches(
-    readFile(".github/workflows/ci.yml"),
-    /pnpm --filter (@sentry\/[^\s]+) pack --pack-destination artifacts/g,
-  );
-}
-
 function collectPackageLintPackages() {
   const packageJson = JSON.parse(readFile("package.json"));
   const packageLintScript = packageJson.scripts?.["package:lint"];
@@ -130,10 +123,6 @@ const sources = [
   {
     label: "scripts/bump-release-versions.mjs",
     packages: collectBumpPackages(),
-  },
-  {
-    label: ".github/workflows/ci.yml",
-    packages: collectCiPackages(),
   },
   {
     label: "package.json package:lint",

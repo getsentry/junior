@@ -41,10 +41,10 @@ export const CONVERSATION_FEED_LINK_LIMIT = 3;
 
 /** A feed row, with its visible Threads nested under their parents. */
 export type ConversationFeedItem = ConversationSummaryReport & {
-  brief?: ConversationFeedBrief;
-  media?: ConversationFeedMedia[];
-  links?: string[];
-  threads?: ConversationFeedItem[];
+  brief?: ConversationFeedBrief | undefined;
+  media?: ConversationFeedMedia[] | undefined;
+  links?: string[] | undefined;
+  threads?: ConversationFeedItem[] | undefined;
 };
 
 /**

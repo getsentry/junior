@@ -165,7 +165,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
         },
       },
     });
-    const response = await route!.handler(request);
+    const response = await route.handler(request);
     expect(response.status).toBe(202);
   }
 
