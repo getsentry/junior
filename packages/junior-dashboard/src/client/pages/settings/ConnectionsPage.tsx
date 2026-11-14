@@ -8,7 +8,6 @@ import {
   type connectionSchema,
 } from "@sentry/junior/api/schema";
 import { del, fetchDashboardJson, post } from "../../http";
-import { getDashboardAgentName } from "../../agentName";
 import { Button } from "../../components/ui/button";
 import { InlineError } from "../../components/InlineError";
 import { Card } from "../../components/layout/Card";
@@ -94,18 +93,10 @@ export function ConnectionsPage() {
         : undefined;
 
   return (
-    <SettingsPageLayout
-      description={
-        <>
-          Connect an account so {getDashboardAgentName()} can act as you in
-          conversations you start here.
-        </>
-      }
-      title="Identities"
-    >
+    <SettingsPageLayout section="identities">
       {displayedError ? <InlineError>{displayedError}</InlineError> : null}
       {listFailed ? null : (
-        <Card className="mb-0" variant="raised">
+        <Card variant="raised">
           {connectionsQuery.isPending ? (
             <p className="m-0 p-5 text-sm text-dashboard-text-muted">
               Loading identities…

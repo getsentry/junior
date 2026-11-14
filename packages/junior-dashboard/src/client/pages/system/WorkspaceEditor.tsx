@@ -52,7 +52,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
   }
 
   return (
-    <Card className="mb-0" padding="md" variant="section">
+    <Card padding="md" variant="section">
       <form className="grid gap-6" onSubmit={submit}>
         <Field>
           <FieldLabel htmlFor="workspace-name">Name</FieldLabel>

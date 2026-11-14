@@ -179,7 +179,7 @@ export function Profile(props: {
         </aside>
 
         <div className="grid min-w-0 gap-5 lg:order-1">
-          <Card as="section" className="mb-0" variant="section">
+          <Card as="section" variant="section">
             <SectionHeader
               actions={
                 <div className="font-sans font-medium text-xs text-dashboard-text-muted">
@@ -204,7 +204,7 @@ function LeaderboardSection(props: {
 }) {
   if (props.items.length <= 1) return null;
   return (
-    <Card as="section" className="mb-0" variant="section">
+    <Card as="section" variant="section">
       <SectionHeader>
         <SectionTitle>{props.title}</SectionTitle>
       </SectionHeader>

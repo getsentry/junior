@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams } from "react-router";
 import { Plus } from "lucide-react";
 import type { WorkspaceReport } from "@sentry/junior/api/schema";
 
-import { getDashboardAgentName } from "../../agentName";
 import { buttonVariants } from "../../components/ui/button";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
@@ -19,6 +18,7 @@ import { WorkspaceDeleteDialog } from "./WorkspaceDeleteDialog";
 import { WorkspaceDetails } from "./WorkspaceDetails";
 import { WorkspaceList } from "./WorkspaceList";
 import { useWorkspacesData } from "./workspaceQueries";
+import { workspacesHeader } from "./systemPageHeaders";
 
 const listPath = "/system/workspaces";
 
@@ -72,8 +72,7 @@ export function WorkspacesPage() {
                   New Workspace
                 </Link>
               }
-              description={`Named repository recipes ${getDashboardAgentName()} can switch into without cloning each turn.`}
-              title="Workspaces"
+              {...workspacesHeader()}
             />
             {workspacesQuery.error ? (
               <Card padding="sm">

@@ -8,7 +8,6 @@ import {
   type PersonalTokenMetadata,
 } from "@sentry/junior/api/schema";
 import { deleteDashboardResource, fetchDashboardJson, post } from "../../http";
-import { getDashboardAgentName } from "../../agentName";
 import { CopyButton } from "../../components/CopyButton";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -132,15 +131,7 @@ export function PersonalTokensPage() {
       : undefined);
 
   return (
-    <SettingsPageLayout
-      description={
-        <>
-          Use a token to read {getDashboardAgentName()} APIs from a local agent
-          or script. Tokens expire after 90 days.
-        </>
-      }
-      title="API Tokens"
-    >
+    <SettingsPageLayout section="api-tokens">
       {previewOrigin ? (
         <PreviewTokenHandoff
           onCancel={() => setSearchParams({}, { replace: true })}
@@ -197,7 +188,7 @@ export function PersonalTokensPage() {
 
       {displayedError ? <InlineError>{displayedError}</InlineError> : null}
 
-      <Card className="mb-0" variant="raised">
+      <Card variant="raised">
         {loading ? (
           <p className="m-0 p-5 text-sm text-dashboard-text-muted">
             Loading API tokens…

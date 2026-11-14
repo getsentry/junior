@@ -4,7 +4,7 @@ import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { dashboardContainerClass } from "../../styles";
+import { PageLayout } from "../../components/layout/PageLayout";
 import { pluginUserPagePath } from "../user/pluginUserPageRoutes";
 import { CacheWarmingSection } from "./CacheWarmingSection";
 import {
@@ -26,8 +26,8 @@ export function AdminPage(props: { pages: PluginUserPageLink[] }) {
     adminPages.length === 0 &&
     serviceAccounts.data?.serviceAccounts.length === 0;
   return (
-    <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
-      <section className="mx-auto grid w-full max-w-3xl gap-6">
+    <PageLayout>
+      <section className="grid w-full max-w-3xl min-w-0 gap-6">
         <PageHeader
           description={
             <>
@@ -84,6 +84,6 @@ export function AdminPage(props: { pages: PluginUserPageLink[] }) {
           </div>
         )}
       </section>
-    </div>
+    </PageLayout>
   );
 }

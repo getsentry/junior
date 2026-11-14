@@ -47,16 +47,7 @@ export function McpSettingsPage() {
   );
 
   return (
-    <SettingsPageLayout
-      description={
-        <>
-          Connect Claude Code or another MCP client to list your{" "}
-          {getDashboardAgentName()} conversations. The client signs in through
-          this dashboard. Personal API tokens do not work here.
-        </>
-      }
-      title="MCP"
-    >
+    <SettingsPageLayout section="mcp">
       <div className="grid gap-5">
         <ConfigBlock anchor="server-url" label="Server URL" value={url} />
         <ConfigBlock
