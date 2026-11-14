@@ -292,7 +292,7 @@ function buildCommunicationSection(
 
 /** Block 6 `<output>` lines for Slack formatting. */
 const SLACK_MARKDOWN_RULES = [
-  "- Use Slack-flavored Markdown: **bold**, `code`, [text](url) links, bullet lists, and fenced code blocks. No hash-prefixed headings and no tables.",
+  "- Use Slack-flavored Markdown: **bold**, `code`, [text](url) links, bullet lists, and fenced code blocks. No hash-prefixed headings. Use a Markdown table only for a small comparison with few columns and short cells.",
   "- Write a Slack channel as `<#C…>` when you already know its ID, so Slack renders a channel link. Do not look up an ID only for formatting. When the ID is unknown, write plain `#name` and never invent an ID.",
 ];
 
