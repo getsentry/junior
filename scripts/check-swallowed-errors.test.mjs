@@ -55,7 +55,7 @@ test("finds catches that log and continue with the parser", () => {
       'try { run(); } catch (e) { logWarn("m.failed"); return { ok: false, error: e }; }',
       'try { run(); } catch (e) { logWarn("n.failed"); return false; }',
       "try { run(); } catch (e) { logError(e); throwApiError(e); }",
-      "try { run(); } catch (e) { return failedResponse(logException(e, \"p.failed\")); }",
+      'try { run(); } catch (e) { return failedResponse(logException(e, "p.failed")); }',
       "try { run(); } catch (e) { logError(e); reject(e); }",
       "try { run(); } catch (e) { console.error(e); process.exit(1); }",
       // Not found: no reporting call.
