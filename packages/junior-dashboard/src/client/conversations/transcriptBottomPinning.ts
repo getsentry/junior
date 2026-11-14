@@ -22,6 +22,8 @@ import {
 
 const BOTTOM_PROXIMITY_PX = 96;
 const HISTORY_PAGE_PROXIMITY_PX = 600;
+/** Viewports of content below the reader before the jump control shows. */
+const FAR_FROM_BOTTOM_VIEWPORTS = 2;
 const USER_SCROLL_DELTA_PX = 2;
 // Leave a little earlier context above the "New" marker.
 const UNREAD_START_OFFSET_PX = 48;
@@ -249,13 +251,15 @@ export function terminalReplyPinState(input: {
 
 /**
  * Show the jump control only when the reader left the bottom and a newer tail
- * arrived, when the transcript opened at unread rows, or when it does not end
- * at the latest event. Staying pinned, or intentionally following, must not
- * flash it.
+ * arrived, when the transcript opened at unread rows, when it does not end
+ * at the latest event, or when the reader scrolled far up a long transcript.
+ * Staying pinned, or intentionally following, must not flash it.
  */
 export function shouldShowJumpToLatest(input: {
   enabled: boolean;
   endsAtLatest?: boolean;
+  /** More than a few viewports of content are below the reader. */
+  farFromBottom?: boolean;
   following: boolean;
   hasPendingUpdate: boolean;
   openedAtUnread?: boolean;
@@ -264,8 +268,16 @@ export function shouldShowJumpToLatest(input: {
     !input.following &&
     (input.endsAtLatest === false ||
       Boolean(input.openedAtUnread) ||
+      Boolean(input.farFromBottom) ||
       (input.enabled && input.hasPendingUpdate))
   );
+}
+
+/** True when more than `FAR_FROM_BOTTOM_VIEWPORTS` of content sit below the viewport. */
+export function isFarFromScrollBottom(snapshot: ScrollSnapshot): boolean {
+  const remaining =
+    snapshot.scrollHeight - snapshot.scrollTop - snapshot.clientHeight;
+  return remaining > snapshot.clientHeight * FAR_FROM_BOTTOM_VIEWPORTS;
 }
 
 /** Resolve scroll intent with user upward movement taking precedence over bottom slack. */
@@ -350,6 +362,7 @@ export function usePinnedTranscriptBottom(input: {
   const versionsRef = useRef(input.versions);
   const programmaticScrollGenerationRef = useRef(0);
   const [following, setFollowing] = useState(false);
+  const [farFromBottom, setFarFromBottom] = useState(false);
   const [hasPendingUpdate, setHasPendingUpdate] = useState(false);
   const [openedAtUnread, setOpenedAtUnread] = useState(false);
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(
@@ -423,6 +436,7 @@ export function usePinnedTranscriptBottom(input: {
       const snapshot = scrollSnapshot(root);
       const previousScrollTop = previousScrollTopRef.current;
       previousScrollTopRef.current = snapshot.scrollTop;
+      setFarFromBottom(isFarFromScrollBottom(snapshot));
 
       if (source === "scroll") {
         const restored = restoredScrollTopRef.current;
@@ -818,6 +832,7 @@ export function usePinnedTranscriptBottom(input: {
       showJumpToLatest: shouldShowJumpToLatest({
         enabled: input.enabled,
         endsAtLatest: input.endsAtLatest,
+        farFromBottom,
         following,
         hasPendingUpdate,
         openedAtUnread,
@@ -826,6 +841,7 @@ export function usePinnedTranscriptBottom(input: {
     [
       contentElement,
       contentRef,
+      farFromBottom,
       following,
       hasPendingUpdate,
       input.enabled,

@@ -163,6 +163,41 @@ export function formatMessageTimestamp(
       });
 }
 
+/**
+ * Format a transcript message time for its author row. Messages from today
+ * show the time; older ones add the date, and the year when it differs, so
+ * the rows of an old Conversation do not all read "3 months ago".
+ */
+export function formatTranscriptMessageTime(
+  value: number | undefined,
+  now = Date.now(),
+): string {
+  if (typeof value !== "number" || !Number.isFinite(value))
+    return "no timestamp";
+  const timeZone = getDashboardTimeZone();
+  const date = new Date(value);
+  const today = new Date(now);
+  // Compare calendar days and years in the dashboard time zone.
+  const calendar = (time: Date, options?: Intl.DateTimeFormatOptions) =>
+    time.toLocaleDateString("en-CA", { timeZone, ...options });
+  const time = date.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+  });
+  if (calendar(date) === calendar(today)) return time;
+  const yearOption = { year: "numeric" } as const;
+  const sameYear = calendar(date, yearOption) === calendar(today, yearOption);
+  const dayOptions: Intl.DateTimeFormatOptions = {
+    day: "numeric",
+    month: "short",
+    timeZone,
+  };
+  if (!sameYear) dayOptions.year = "numeric";
+  const day = date.toLocaleDateString(undefined, dayOptions);
+  return `${day}, ${time}`;
+}
+
 /** Format a transcript timestamp relative to the current time. */
 export function formatRelativeMessageTimestamp(
   value: number | undefined,

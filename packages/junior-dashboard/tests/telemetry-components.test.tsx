@@ -920,7 +920,7 @@ describe("dashboard canonical-event components", () => {
         },
       ),
     );
-    expect(html.match(/&lt;redacted&gt;/g)).toHaveLength(2);
+    expect(html.match(/>Hidden</g)).toHaveLength(2);
     expect(html).toContain("pull_request.merged");
   });
 

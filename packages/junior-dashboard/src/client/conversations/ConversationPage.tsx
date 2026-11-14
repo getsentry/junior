@@ -47,7 +47,10 @@ import {
 } from "./conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
 import { ContinueInSlackDialog } from "./ContinueInSlackDialog";
-import { ConversationPageDock } from "./ConversationPageDock";
+import {
+  ConversationPageDock,
+  ConversationReadOnlyDock,
+} from "./ConversationPageDock";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
 import {
   saveDetailsOpen,
@@ -896,6 +899,10 @@ export function ConversationPage(props: {
                   ref={replyRef}
                 />
               </div>
+            ) : view === "rich" &&
+              detail.data &&
+              detail.data.kind !== "task" ? (
+              <ConversationReadOnlyDock />
             ) : undefined
           }
         />
