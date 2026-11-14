@@ -175,6 +175,19 @@ export function instructionForInputs(
   };
 }
 
+/**
+ * Return the user intent that action review judges an Event Turn against.
+ * The Turn runs as the system Actor, so a trusted author's text keeps the
+ * escaped `<current-instruction>` tag that the model sees. Other Turns use
+ * the joined input text.
+ */
+export function eventTurnUserIntent(instruction: AgentInstruction): string {
+  if (!instruction.inputs?.some((input) => input.kind === "person")) {
+    return instruction.text.trim();
+  }
+  return renderInputParts(instruction).filter(Boolean).join("\n\n");
+}
+
 // Render one prompt text part per input, in order. Inputs are never joined.
 // A batch has one Actor, so every person part has the same attributes.
 function renderInputParts(instruction: AgentInstruction): string[] {

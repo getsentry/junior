@@ -2,15 +2,15 @@
  * Guardian snapshots for pull request comments in a PR-maintenance Watch.
  *
  * The Turn is an Event Turn, so its user intent is the Turn input text: the
- * Watch task, then the own text of a Trusted author as their message, the
- * same way a Slack message joins a Turn. A Trusted author is a linked
+ * Watch task, then the own text of a Trusted author as their message, in the
+ * `<current-instruction>` tag that the model sees. A Trusted author is a linked
  * account that core verified, or a login that the plugin lists. An Event
  * from an Untrusted author still runs, and its text stays external text
  * that names the author as untrusted. Quoted text, the pull request body,
  * and the external text of system Events stay external text.
  */
 import { describeEval } from "vitest-evals";
-import { instructionForInputs } from "@/chat/agent/prompt";
+import { eventTurnUserIntent, instructionForInputs } from "@/chat/agent/prompt";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 import { renderTaskInput } from "@/chat/task-input";
 import { guardianEvals } from "../../src/guardian-harness";
@@ -74,13 +74,17 @@ async function eventTurn(args: {
       ? { untrustedAuthor: args.untrustedAuthor }
       : undefined),
   });
-  // Action review reads the joined text of the Turn inputs.
-  const { text: userIntent } = instructionForInputs([
-    { kind: "runtime", text: task },
-    ...(args.authorText
-      ? [{ kind: "person" as const, text: args.authorText }]
-      : []),
-  ]);
+  // Action review reads the Turn inputs, with the trusted author's text in
+  // the tag that the model sees.
+  const userIntent = eventTurnUserIntent({
+    ...instructionForInputs([
+      { kind: "runtime", text: task },
+      ...(args.authorText
+        ? [{ kind: "person" as const, text: args.authorText }]
+        : []),
+    ]),
+    ...(args.authorText ? { actor: { authorId: "UAUTHOR" } } : undefined),
+  });
   return await proposal({
     context: slackContext(userIntent, {
       actor: eventActor,

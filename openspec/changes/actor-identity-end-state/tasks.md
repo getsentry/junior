@@ -211,8 +211,10 @@ Finish #2482.
   - an untrusted author's Event runs as system context. Their text is
     external text whose lead and `author_trust="untrusted"` name them. A
     trusted author with no text still writes the Message, so it is not a
-    system Event. Guardian reads the joined Turn input text, the same as for
-    a Slack Turn, and has no author sections.
+    system Event. Guardian's user intent for an Event Turn keeps a trusted
+    author's text in its escaped `<current-instruction>` tag, and one
+    reviewer rule says that block is that author's request. Guardian has no
+    author sections.
   - the Bugbot and Sentry logins are `cursor[bot]` (id 206951365) and
     `sentry[bot]` (id 39604003).
   - still open: real Message author Identities for web, mock, and bot

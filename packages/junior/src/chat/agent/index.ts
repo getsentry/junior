@@ -151,6 +151,7 @@ import {
   assemblePrompt,
   buildPromptInput,
   buildSteeringPiMessage,
+  eventTurnUserIntent,
   loadPromptTurnContext,
 } from "@/chat/agent/prompt";
 import {
@@ -555,7 +556,9 @@ async function executeAgentRunInPrivacyContext(
       // An input that is not an instruction, such as a nested result, is
       // evidence only.
       const text = isRequesterInstruction(turnStartProvenance)
-        ? userInput.trim()
+        ? runSource.kind === "event"
+          ? eventTurnUserIntent(run.instruction)
+          : userInput.trim()
         : "";
       guardianIntentParts.push(
         readParentAgentTask(text) ?? (text || "[empty]"),
