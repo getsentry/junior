@@ -79,6 +79,12 @@ import {
 } from "../schema/conversation-continue-in-slack";
 import { conversationChildAgentsReportSchema } from "../schema/child-agent";
 import { conversationWatchesReportSchema } from "../schema/watch";
+import {
+  conversationPlanItemSchema,
+  conversationPlanReportSchema,
+  planItemParamsSchema,
+  planItemStatusBodySchema,
+} from "../schema/plan";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { createConversationAccessReader } from "./access";
@@ -117,6 +123,7 @@ import { requireConversationPendingMessages } from "./pending-messages";
 import { readConversationStats } from "./stats";
 import { stopConversationTurnForViewer } from "./stop";
 import { requireConversationWatches } from "./watches";
+import { requireConversationPlan, setConversationPlanItemStatus } from "./plan";
 
 /** Create the HTTP routes owned by the conversations API. */
 export function createConversationRoutes(
@@ -650,6 +657,42 @@ export function createConversationRoutes(
       return jsonResponse(
         conversationWatchesReportSchema,
         await requireConversationWatches(conversationId, { viewer }),
+      );
+    },
+  );
+
+  app.get(
+    "/:conversationId/plan",
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const { conversationId } = context.req.valid("param");
+      const viewer = context.get("viewer");
+      return jsonResponse(
+        conversationPlanReportSchema,
+        await requireConversationPlan(conversationId, { viewer }),
+      );
+    },
+  );
+
+  app.patch(
+    "/:conversationId/plan/:itemId",
+    requireViewer,
+    validateRequest("param", planItemParamsSchema, "Invalid route parameters."),
+    validateRequest("json", planItemStatusBodySchema, "Invalid request body."),
+    async (context) => {
+      const { conversationId, itemId } = context.req.valid("param");
+      return jsonResponse(
+        conversationPlanItemSchema,
+        await setConversationPlanItemStatus(
+          context.get("viewer"),
+          conversationId,
+          itemId,
+          context.req.valid("json"),
+        ),
       );
     },
   );
