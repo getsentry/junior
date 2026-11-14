@@ -141,8 +141,9 @@ export function useConversationsData(search = "") {
 }
 
 /** Fetch repository and code change analytics. */
-export function useCodeOverviewData() {
+export function useCodeOverviewData(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["dashboard", "code"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(codeOverviewReportSchema, "/api/code", signal),
@@ -275,8 +276,9 @@ export function useAutomationVersionsData(
 }
 
 /** Fetch the actor directory used by the People dashboard route. */
-export function useActorDirectoryData() {
+export function useActorDirectoryData(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["dashboard", "people"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(actorDirectoryReportSchema, "/api/people", signal),
@@ -349,8 +351,9 @@ export function usePersonalSpendData(enabled: boolean) {
 }
 
 /** Fetch the public location directory and private activity aggregate. */
-export function useLocationDirectoryData() {
+export function useLocationDirectoryData(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["dashboard", "locations"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
