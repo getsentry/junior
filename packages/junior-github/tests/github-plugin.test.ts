@@ -1059,13 +1059,15 @@ describe("github plugin", () => {
     }
 
     function repositoryTool(ctx: ReturnType<typeof githubToolsContext>) {
-      return githubPlugin({ repositoryProfiles: profiles }).hooks?.tools?.(
+      return bindPluginTool(
+        githubPlugin({ repositoryProfiles: profiles }).hooks?.tools?.()
+          ?.createRepository,
         ctx as any,
-      )?.createRepository;
+      );
     }
 
     it("is not offered without repository profiles", () => {
-      const tools = githubPlugin().hooks?.tools?.(repositoryContext() as any);
+      const tools = githubPlugin().hooks?.tools?.();
       expect(tools).not.toHaveProperty("createRepository");
     });
 

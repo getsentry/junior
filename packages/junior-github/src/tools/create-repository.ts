@@ -269,7 +269,6 @@ async function sendCreate(
  * owning team gets access at creation, and no person is added.
  */
 export function createGitHubCreateRepositoryTool(
-  ctx: ToolRegistrationHookContext,
   profiles: GitHubRepositoryProfiles,
 ) {
   const inputSchema = createInputSchema(profiles);
@@ -291,7 +290,11 @@ export function createGitHubCreateRepositoryTool(
     exposure: "direct",
     inputSchema,
     outputSchema,
-    async execute(input, options: PluginToolExecuteOptions) {
+    async execute(
+      input,
+      options: PluginToolExecuteOptions,
+      ctx: ToolRegistrationHookContext,
+    ) {
       const conversationId = ctx.conversationId;
       const toolCallId = options.toolCallId;
       if (!conversationId || !toolCallId) {

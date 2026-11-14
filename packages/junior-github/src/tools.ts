@@ -55,10 +55,8 @@ export function createGitHubTools(
     // Without operator profiles, Junior cannot create repositories.
     ...(repositoryProfiles
       ? {
-          createRepository: createGitHubCreateRepositoryTool(
-            ctx,
-            repositoryProfiles,
-          ),
+          createRepository:
+            createGitHubCreateRepositoryTool(repositoryProfiles),
         }
       : undefined),
     getDeployment: gitHubGetDeploymentTool,
