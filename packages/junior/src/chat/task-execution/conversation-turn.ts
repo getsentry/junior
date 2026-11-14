@@ -103,14 +103,17 @@ import {
   webTurnInputs,
 } from "@/chat/task-execution/mailbox-input";
 import { instructionActorFor, instructionForInputs } from "@/chat/agent/prompt";
-import type { AgentInstructionInput } from "@/chat/agent/types";
+import type {
+  AgentInstructionActor,
+  AgentInstructionInput,
+} from "@/chat/agent/types";
 import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
   eventBatchMessageMeta,
   isEventMailboxMetadata,
   renderEventBatchInputs,
-  savedEventBatchMeta,
+  eventBatchAuthor,
   timerWatchCredentialSubject,
 } from "@/chat/events/notification";
 import { isEventConversationMessage } from "@/chat/events/actor";
@@ -225,6 +228,9 @@ export function createConversationTurnWorker(
     let eventMeta: ReturnType<typeof eventBatchMessageMeta> = {};
     let authorIdentityId: string | undefined;
     let webInputMessages: ConversationMessage[] = [];
+    // A trusted Event author writes the person input of an Event batch. The
+    // Turn still runs as the system Actor.
+    let eventAuthor: AgentInstructionActor | undefined;
 
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
@@ -254,8 +260,9 @@ export function createConversationTurnWorker(
         inputs = renderEventBatchInputs(
           messages,
           await eventReviewItemInputs(messages),
-        ).map((text) => ({ kind: "runtime", text }));
+        );
         eventMeta = eventBatchMessageMeta(messages);
+        eventAuthor = eventBatchAuthor(messages);
       } else {
         inputs = await webTurnInputs(messages.map((message) => message.input));
         webInputMessages = resolved.batch.map((entry) =>
@@ -297,7 +304,6 @@ export function createConversationTurnWorker(
       }
       savedMessageIsEvent = isEventConversationMessage(userMessage);
       savedParentMessage = isParentMessageMeta(userMessage.meta);
-      eventMeta = savedEventBatchMeta(userMessage);
       // Resume has no new input. Restore Source and Actor from the Turn.
       // TODO(dcramer): Remove the saved Message fallback after no deployed Turn
       // cursor can omit Source or Actor.
@@ -340,7 +346,7 @@ export function createConversationTurnWorker(
     const { actor, author } = turnInputFacts;
     const instructionInputs = instructionForInputs(inputs);
     const { text } = instructionInputs;
-    const instructionActor = instructionActorFor(actor);
+    const instructionActor = instructionActorFor(actor) ?? eventAuthor;
     // A timer Turn stays system-acted but may use its creator's grants. So
     // does the result of a child agent that a timer Turn spawned.
     let credentialSubject: CredentialSubject | undefined;
@@ -665,7 +671,6 @@ export function createConversationTurnWorker(
                 actor,
                 credentialSubject,
               ),
-              authorTrusts: eventMeta.authorTrusts,
               // TODO(dcramer): Remove AgentRun.destination after agent and tool
               // code reads AgentRun.location and no Run consumer needs it.
               destination,

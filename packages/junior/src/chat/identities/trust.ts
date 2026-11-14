@@ -8,19 +8,14 @@
  * domains and the Slack bot users that `createApp` lists, and the Slack
  * workspace of the bot.
  *
- * For an Event, core saves the decision as an `AuthorTrust`. Task input and
- * action review render only that saved value. Nothing downstream decides
- * again.
+ * An Event author resolves like a Slack author: a trusted person becomes
+ * the author of the Event's Message, and nothing downstream decides again.
  */
 import type { StateAdapter } from "chat";
-import {
-  slackActorSchema,
-  type Event,
-  type SlackActor,
-} from "@sentry/junior-plugin-api";
-import * as z from "zod";
+import type { Event, SlackActor } from "@sentry/junior-plugin-api";
 import { getSqlExecutor } from "@/chat/db";
 import { resolveBotSlackTeamId } from "@/chat/events/workspace";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { isNativeIdentityProvider } from "@/chat/identities/identity";
 import {
   findLinkedSlackUser,
@@ -57,30 +52,24 @@ export function setTrustConfig(next: TrustConfig): TrustConfig {
   return previous;
 }
 
-/** Return whether a verified domain may use Junior. An empty list allows all. */
-export function isAllowedDomain(
-  domain: string | undefined,
-  allowedDomains: readonly string[],
-): boolean {
-  if (allowedDomains.length === 0) return true;
-  return Boolean(domain && allowedDomains.includes(domain.toLowerCase()));
-}
-
 /**
- * Return whether a verified sign-in email is on an allowed domain. Sign-in
- * needs a configured list, so an empty list allows no email.
+ * Return whether an email, or a bare domain such as Google's `hd` claim, is
+ * on the allowed domains. `ifNoDomains` says what an empty list means: Slack
+ * authors allow every domain, and sign-ins allow none.
  */
-export function isAllowedSignInEmail(
-  email: string,
-  allowedDomains: readonly string[],
+export function isAllowedEmail(
+  emailOrDomain: string | undefined,
+  options: {
+    allowedDomains: readonly string[];
+    ifNoDomains: "allow" | "deny";
+  },
 ): boolean {
-  const normalized = email.trim().toLowerCase();
-  const separator = normalized.lastIndexOf("@");
-  return (
-    allowedDomains.length > 0 &&
-    separator > 0 &&
-    isAllowedDomain(normalized.slice(separator + 1), allowedDomains)
-  );
+  if (options.allowedDomains.length === 0) {
+    return options.ifNoDomains === "allow";
+  }
+  const normalized = emailOrDomain?.trim().toLowerCase() ?? "";
+  const domain = normalized.slice(normalized.lastIndexOf("@") + 1);
+  return Boolean(domain) && options.allowedDomains.includes(domain);
 }
 
 /** Why core does not trust an author. */
@@ -106,12 +95,12 @@ function isCoreIdentityProvider(provider: string): boolean {
 }
 
 function isSlackProfileDomainAllowed(profile: SlackUserProfile): boolean {
-  const { allowedDomains } = trustConfig;
-  if (allowedDomains.length === 0) return true;
-  const email = profile.email?.toLowerCase();
-  const separator = email?.lastIndexOf("@") ?? -1;
-  const domain = separator > 0 ? email?.slice(separator + 1) : undefined;
-  const allowed = isAllowedDomain(domain, allowedDomains);
+  const email = profile.email?.trim();
+  // A bare domain is not an email, so it never passes here.
+  const allowed = isAllowedEmail(email?.includes("@") ? email : undefined, {
+    allowedDomains: trustConfig.allowedDomains,
+    ifNoDomains: "allow",
+  });
   if (!allowed) {
     // A Slack app without `users:read.email` sees no email and blocks all.
     logWarn("slack.allowed_domain.rejected", {
@@ -254,86 +243,72 @@ export async function findTrustedUser(
     : { status: "untrusted", reason: "no_single_link" };
 }
 
-const eventAuthorFields = {
-  bot: z.literal(true).optional(),
-  handle: z.string().min(1),
+/** Facts about an Event author that core shows, from the plugin report. */
+interface EventAuthorFacts {
+  bot?: true;
+  handle: string;
   /** Provider namespace of the Event. */
-  provider: z.string().min(1),
+  provider: string;
   /** The author's own text, without what they quote. */
-  text: z.string().min(1).optional(),
-};
+  text?: string;
+}
 
 /**
- * Core's trust decision for the author of one Event, saved with the Event.
- * A `system` Event has no author. A `trusted` author's text counts as their
- * message. An `untrusted` author's text is context, and core says so.
+ * Core's decision for the author of one Event. A `system` Event has no
+ * author. A `trusted` author's own text is their message: a linked person
+ * has the Slack Actor and Identity that write it, and a listed bot has
+ * neither. An `untrusted` author's text is context.
  */
-export const authorTrustSchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("system") }).strict(),
-  z
-    .object({
-      status: z.literal("trusted"),
-      /** The Slack member behind the author, when core linked one. */
-      actor: slackActorSchema.optional(),
-      ...eventAuthorFields,
+export type AuthorTrust =
+  | { status: "system" }
+  | (EventAuthorFacts & {
+      status: "trusted";
+      actor?: SlackActor;
+      identityId?: string;
     })
-    .strict(),
-  z
-    .object({
-      status: z.literal("untrusted"),
-      /** Why core does not trust the author, as an ID. */
-      reason: z.string().min(1),
-      ...eventAuthorFields,
-    })
-    .strict(),
-]);
+  | (EventAuthorFacts & { status: "untrusted"; reason: UntrustedReason });
 
-export type AuthorTrust = z.output<typeof authorTrustSchema>;
-
-async function decideEventAuthorTrust(event: Event): Promise<AuthorTrust> {
+/**
+ * Resolve the author of an Event, the same way Slack ingress resolves a
+ * Slack author. It never throws: a failed check gives an untrusted author,
+ * so the Event still runs and the author's text stays context.
+ */
+export async function resolveEventAuthor(event: Event): Promise<AuthorTrust> {
   const author = event.author;
   if (!author) return { status: "system" };
-  const facts = {
+  const facts: EventAuthorFacts = {
     ...(author.bot ? { bot: true as const } : undefined),
     handle: author.handle,
     provider: event.namespace,
     ...(author.text?.trim() ? { text: author.text.trim() } : undefined),
   };
-  let decision: Decision;
   try {
-    decision = await accountDecision({
+    const decision = await accountDecision({
       listed: author.trusted === true,
       // An Event names an author only on the provider that published it.
       provider: event.namespace,
       ...(author.subjectId ? { subjectId: author.subjectId } : undefined),
     });
+    if (!decision.trusted) {
+      return { status: "untrusted", reason: decision.reason, ...facts };
+    }
+    if (!decision.actor) return { status: "trusted", ...facts };
+    return {
+      status: "trusted",
+      actor: decision.actor,
+      identityId: await resolveActorIdentityId(
+        getSqlExecutor(),
+        decision.actor,
+      ),
+      ...facts,
+    };
   } catch (error) {
-    // A failed check gives an Untrusted author: the Event still runs, and
-    // the author's text stays context.
     logException(error, "event.author.trust_check_failed", {
       "app.event.event_type": event.eventType,
       "app.event.namespace": event.namespace,
     });
-    decision = { trusted: false, reason: "check_failed" };
+    return { status: "untrusted", reason: "check_failed", ...facts };
   }
-  if (!decision.trusted) {
-    return { status: "untrusted", reason: decision.reason, ...facts };
-  }
-  return {
-    status: "trusted",
-    ...(decision.actor ? { actor: decision.actor } : undefined),
-    ...facts,
-  };
-}
-
-/**
- * Return a function that decides the author trust of an Event at most once,
- * when a matching Watch or Event automation first needs it. Events that
- * match nothing need no lookup. It never throws.
- */
-export function eventAuthorTrustOnce(event: Event): () => Promise<AuthorTrust> {
-  let pending: Promise<AuthorTrust> | undefined;
-  return () => (pending ??= decideEventAuthorTrust(event));
 }
 
 // Handles come from a plugin. Keep a label to one line of ID characters, so
@@ -343,33 +318,14 @@ function safeId(value: string): string {
 }
 
 /**
- * The one label for an Event author, in task input and in action review: a
- * Slack mention for a linked person, else the handle and provider.
+ * The one label for an Event author: a Slack mention for a linked person,
+ * else the handle and provider.
  */
 export function authorLabel(
-  trust: Exclude<AuthorTrust, { status: "system" }>,
+  author: Exclude<AuthorTrust, { status: "system" }>,
 ): string {
-  if (trust.status === "trusted" && trust.actor) {
-    return slackMention(trust.actor.userId);
+  if (author.status === "trusted" && author.actor) {
+    return slackMention(author.actor.userId);
   }
-  return `${safeId(trust.handle)} on ${safeId(trust.provider)}${trust.bot ? " (a bot)" : ""}`;
-}
-
-/** The untrusted reason as a one-line ID, for a tag attribute. */
-export function untrustedReasonId(
-  trust: Extract<AuthorTrust, { status: "untrusted" }>,
-): string {
-  return safeId(trust.reason);
-}
-
-/**
- * Read the author trust that core saved for the Events of a Turn. Invalid
- * entries are dropped, so a resume never gains authority.
- */
-export function parseAuthorTrusts(value: unknown): AuthorTrust[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((entry) => {
-    const parsed = authorTrustSchema.safeParse(entry);
-    return parsed.success ? [parsed.data] : [];
-  });
+  return `${safeId(author.handle)} on ${safeId(author.provider)}${author.bot ? " (a bot)" : ""}`;
 }

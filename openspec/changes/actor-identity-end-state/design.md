@@ -208,18 +208,20 @@ with the Watch or Automation grant.
 - Text from a trusted author counts exactly like a chat message from that
   author.
 - An event from an untrusted or unknown author runs, but only as context.
-  The task input and Guardian say that the author is untrusted, and their
-  text is never an instruction. David changed this from the first decision,
+  The task input says that the author is untrusted, and their text is never
+  an instruction. David changed this from the first decision,
   "does not start a run", when the trust layer was built (#2217, #2260).
 - Only the author's own text counts. Lines that the author only quotes do
   not.
 - Core gets only a provider-neutral trusted result. Core does not read
   provider logins.
-- Junior decides trust once for each event and stores the result with the
-  mailbox entry. An untrusted entry is batched like any other entry. A failed
-  trust check gives an untrusted author, not a dropped event.
-- Batch Message author: current proposal, to confirm in step 4. The shared
-  author when every entry has the same one, else the system Identity.
+- Junior resolves the author once at ingest, like a Slack author. A linked
+  trusted author writes the event's Message, and their own text is a person
+  input of the Turn. An untrusted author's entry is system context, batched
+  like any other system entry. A failed trust check gives an untrusted
+  author, not a dropped event.
+- Batch Message author: one author per Message. Entries with different
+  authors never share a Turn, so the batch has its one author.
 - A system event can carry untrusted external text, such as check output.
   The current handling covers it, and this plan adds no rule. The event's
   `untrustedText` becomes external text in the task input, which says to use

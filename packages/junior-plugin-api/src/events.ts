@@ -681,7 +681,7 @@ export const eventInputSchema = z
     people: z.array(eventPersonSchema).max(20).optional(),
     /**
      * The account that wrote the content. Core decides whether to trust it.
-     * Only a trusted author's `text` counts as their instruction.
+     * Only a trusted author's `text` counts as their message.
      */
     author: eventAuthorSchema.optional(),
   })

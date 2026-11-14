@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { isAllowedSignInEmail } from "@/chat/identities/trust";
+import { isAllowedEmail } from "@/chat/identities/trust";
 import { handleMcpAuthorize } from "./oauth/authorization";
 import { authenticateMcpAccessToken } from "./oauth/grants";
 import {
@@ -104,7 +104,11 @@ export function createMcpHttpHandler(
         })
       : undefined;
     const user =
-      grant && isAllowedSignInEmail(grant.email, options.allowedDomains)
+      grant &&
+      isAllowedEmail(grant.email, {
+        allowedDomains: options.allowedDomains,
+        ifNoDomains: "deny",
+      })
         ? await resolveViewerUser(grant.email)
         : undefined;
     if (!grant || !user) return unauthorized(requestUrls, token !== undefined);

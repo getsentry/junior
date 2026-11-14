@@ -7,7 +7,6 @@
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { Actor } from "@/chat/actor";
 import type { CredentialContext } from "@/chat/credentials/context";
-import { authorLabel, type AuthorTrust } from "@/chat/identities/trust";
 import type {
   AnyToolDefinition,
   ToolApprovalResolution,
@@ -39,11 +38,6 @@ export interface ToolActionReviewContext {
   conversationId: string;
   credentialContext?: CredentialContext;
   destination: Destination;
-  /**
-   * Core's saved trust decisions for the Event authors of this Turn. Action
-   * review reads them only for an Event Source.
-   */
-  authorTrusts?: readonly AuthorTrust[];
   source: Source;
   userIntent?: () => string;
   evidence?: () => ToolActionEvidence;
@@ -302,18 +296,6 @@ function buildProposal(
   script: ToolAction["script"],
 ): ToolActionProposal {
   const credential = actionCredential(context.credentialContext);
-  // Only an Event Turn has author instructions. Other Sources have the
-  // person's own messages as user intent.
-  const authorTrusts =
-    context.source.kind === "event" ? (context.authorTrusts ?? []) : [];
-  const authorInstructions = authorTrusts.flatMap((trust) =>
-    trust.status === "trusted" && trust.text
-      ? [{ author: authorLabel(trust), text: trust.text }]
-      : [],
-  );
-  const untrustedAuthors = authorTrusts.flatMap((trust) =>
-    trust.status === "untrusted" ? [{ author: authorLabel(trust) }] : [],
-  );
   return {
     context: {
       actor: actionActor(context.actor),
@@ -332,8 +314,6 @@ function buildProposal(
           })),
         }
       : undefined),
-    ...(authorInstructions.length > 0 ? { authorInstructions } : undefined),
-    ...(untrustedAuthors.length > 0 ? { untrustedAuthors } : undefined),
     ...(rootConversation ? { rootConversation } : undefined),
     ...(script ? { script: boundedScript(script) } : undefined),
     tool: proposalTool(toolName, tool, input, resolved),

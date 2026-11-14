@@ -124,11 +124,6 @@ describe("Watch Event people", () => {
           ],
         },
         {
-          authorTrust: async () => ({
-            status: "trusted",
-            handle: "REQUESTER",
-            provider: "demo",
-          }),
           queue,
           slackTeamId: "T123",
         },

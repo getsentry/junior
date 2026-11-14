@@ -570,7 +570,8 @@ or a webhook route. Name the person with one of these:
   Never use an address that only appears in content.
 
 Junior starts work only when the person is a current member of the Slack
-workspace on the allowed domains. `input` becomes their first message in a new
+workspace, with a Slack email on the allowed domains. When their Slack account
+is deactivated, they lose this trust. `input` becomes their first message in a new
 public conversation in the dashboard, as if they sent it there. The conversation
 is not in Slack. For any other person, Junior returns
 `{ status: "not_linked" }` and calls no model.
@@ -596,10 +597,12 @@ Your plugin reports facts, and Junior decides trust:
   shows each part once.
 
 Junior trusts the author with the same check as `dispatchForIdentity`, or when
-`trusted` is set. Only a trusted author's `text` counts as their instruction.
-An Event from any other author still reaches watches and event automations,
-but Junior marks the author as untrusted, so their text is only context.
-Leave `author` out when no person wrote the Event, such as a check result.
+`trusted` is set. In a watch, a trusted author's `text` is a message from them
+in the Turn, like a Slack message, and a linked person is the author of the
+Event's message. An Event from any other author still reaches watches and
+event automations, but Junior marks the author as untrusted, so their text is
+only context. In event automations, an author's text is always context. Leave
+`author` out when no person wrote the Event, such as a check result.
 
 ## Validate
 
