@@ -21,6 +21,8 @@ const TEST_ENV_KEYS = [
   "JUNIOR_SCHEDULER_SECRET",
   "JUNIOR_SECRET",
   "JUNIOR_STATE_ADAPTER",
+  "VERCEL",
+  "VERCEL_ENV",
 ];
 
 const originalNodeEnv = process.env.NODE_ENV;
@@ -144,12 +146,16 @@ describe("loadCliEnvFiles", () => {
     expect(process.env.CLI_ENV_PRIORITY).toBe("local");
   });
 
-  it("applies development defaults after loading env files", () => {
+  it("applies development defaults after loading a pulled Vercel env", () => {
     clearTestEnv();
     delete mutableEnv.NODE_ENV;
 
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-cli-env-"));
     writeFile(path.join(tempRoot, "package.json"), "{}\n");
+    writeFile(
+      path.join(tempRoot, ".env.local"),
+      ['VERCEL="1"', 'VERCEL_ENV="development"', ""].join("\n"),
+    );
 
     loadCliEnvFiles(tempRoot);
 

@@ -27,6 +27,13 @@ export function applyJuniorDevelopmentDefaults(
   if (nodeEnv !== "development") {
     return;
   }
+  // Vercel builds leave NODE_ENV unset, but `junior snapshot create` runs
+  // there and must use the configured Redis. A default `vercel env pull`
+  // writes VERCEL_ENV=development or no VERCEL_ENV, so local runs keep these
+  // defaults.
+  if (env.VERCEL_ENV === "production" || env.VERCEL_ENV === "preview") {
+    return;
+  }
 
   if (!hasValue(env.JUNIOR_SECRET)) {
     env.JUNIOR_SECRET = JUNIOR_LOCAL_DEV_INTERNAL_SECRET;

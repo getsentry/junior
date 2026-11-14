@@ -135,6 +135,7 @@ describe("snapshot create cli", () => {
     expect(summary).toContain("resolve_outcome=cache_hit");
     expect(summary).toContain("cache_hit=true");
     expect(summary).toContain("dependency_count=3");
+    expect(summary).toContain("state=memory");
     expect(summary).toContain("profile_hash=abc");
     expect(summary).toContain("snapshot_id=snap_123");
   });
