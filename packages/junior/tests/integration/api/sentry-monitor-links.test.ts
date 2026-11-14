@@ -179,7 +179,12 @@ function fakeSentry(projects: Record<string, string[]>) {
             timeSeries: [
               {
                 yAxis: "p95(span.duration)",
-                values: [{ value: 180 }, { value: null }, { value: 920 }],
+                values: [
+                  { value: null },
+                  { value: 180 },
+                  { value: null },
+                  { value: 920 },
+                ],
               },
             ],
           })
@@ -259,7 +264,7 @@ describe("Sentry monitor link cards", () => {
             detail: "p95(span.duration) per 5 min",
             trend: {
               label: "p95(span.duration), last 4 h",
-              points: [180, 0, 920],
+              points: [180, 180, 920],
             },
           },
         },
@@ -307,7 +312,7 @@ describe("Sentry monitor link cards", () => {
       lastCheckedAt: "2026-11-14T03:00:12.000Z",
       trend: {
         label: "Run time (ms), last 3 check-ins",
-        points: [3900, 0, 4200],
+        points: [3900, 3900, 4200],
       },
     };
     expect(

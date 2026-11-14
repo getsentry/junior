@@ -141,11 +141,19 @@ function isoTime(value: string | null | undefined): string | undefined {
   return Number.isNaN(time) ? undefined : new Date(time).toISOString();
 }
 
+// A window or check-in with no reading is a gap, not a zero: a latency
+// alert must not look like it dropped to zero. The line holds the last
+// reading across a gap and starts at the first reading.
 function trendOf(
   label: string,
   points: (number | null)[],
 ): MonitorFacts["trend"] {
-  const values = points.map((value) => Math.max(0, value ?? 0));
+  const values: number[] = [];
+  for (const value of points) {
+    const last = values.at(-1);
+    if (value !== null) values.push(Math.max(0, value));
+    else if (last !== undefined) values.push(last);
+  }
   return values.length >= 2
     ? { label: label.slice(0, 160), points: values.slice(-TREND_POINTS) }
     : undefined;
