@@ -200,6 +200,16 @@ export function opensChildChannel(args: {
   return args.parentKind === "root" && canOwnChannel(args.childKind);
 }
 
+/**
+ * Return the Turn tools of one Prompt mode. A person's Turn in a Thread also
+ * uses the `conversation` mode with no agent tools, so this is the widest set.
+ */
+export function promptModeTurnTools(mode: PromptMode): TurnBehavior["tools"] {
+  if (mode === "automation") return AUTOMATION_RUN.tools;
+  if (mode === "child_agent") return AGENT_IN_TASK.tools;
+  return ROOT.tools;
+}
+
 /** Return whether a Conversation of this kind has no parent. */
 export function isTopLevelKind(kind: ConversationKind): boolean {
   return kind === "root" || kind === "automation";

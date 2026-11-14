@@ -312,6 +312,51 @@ test("a Sentry issue link resolves to a titled link and a hover card", async ({
   });
 });
 
+test("a Sentry Explore link resolves to a titled link, a chart card, and a hover card", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  const url =
+    "https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h";
+  const link = linksParagraph(page).getByRole("link", {
+    name: "p95(span.duration) by span.op (Explore traces)",
+  });
+  await expect(link).toHaveAttribute("href", url);
+  // The reply also links to it on its own line, which shows the card.
+  const card = page.getByRole("region", {
+    name: "Explore traces: p95(span.duration) by span.op",
+  });
+  await expect(card).toHaveCount(1);
+  const chart = card.getByRole("figure", { name: "Last 24 hours" });
+  await expect(chart).toBeVisible();
+  // Each series is named in the legend. The range is the chart caption.
+  for (const series of ["http.client", "db", "cache.get"]) {
+    await expect(chart).toContainText(series);
+  }
+  await expect(card).not.toContainText("Range");
+  await card.scrollIntoViewIfNeeded();
+  await screenshot(page, "conversation-sentry-chart-card", {
+    lightTheme: true,
+    target: card,
+    view: "desktop",
+  });
+
+  await waitForResolvedLinks(page);
+  await link.hover();
+  await expect(card).toHaveCount(2);
+  await expect(
+    card.nth(1).getByRole("figure", { name: "Last 24 hours" }),
+  ).toBeVisible();
+  await screenshot(page, "conversation-sentry-chart-link", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
 test("a participant attaches a Google Doc from its hover card", async ({
   page,
   dashboard,
@@ -535,7 +580,9 @@ test("a public web page link resolves to a link, a card, and a hover card", asyn
   const post = page.getByRole("region", {
     name: "Web page: What's new in Release 4.2",
   });
-  await expect(post).toContainText("Example Blog");
+  // The card names the site and author, not its type and core plugin.
+  await expect(post).toContainText("Example Blog · Morgan Lee");
+  await expect(post).not.toContainText("Web page ·");
   await expect(post.locator("img")).toHaveJSProperty("complete", true);
   await screenshot(page, "conversation-web-page-card", {
     lightTheme: true,
@@ -562,7 +609,8 @@ test("a public web page link resolves to a link, a card, and a hover card", asyn
   const card = page.getByRole("region", {
     name: "Web page: Junior 4.2 launch demo",
   });
-  await expect(card).toContainText("YouTube");
+  await expect(card).toContainText("YouTube · Sentry");
+  await expect(card).not.toContainText("junior");
   await expect(card.locator("img")).toHaveAttribute("src", /^\/api\/images\//);
   await screenshot(page, "conversation-web-page-link", {
     lightTheme: true,

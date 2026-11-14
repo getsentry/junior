@@ -312,7 +312,7 @@ describe("display text object links", () => {
         }),
       ]);
       expect(html).not.toContain("· Open");
-      expect(html).not.toContain("Latest saved state");
+      expect(html).not.toContain("Last fetched");
     }
   });
 
@@ -414,20 +414,59 @@ describe("display text object links", () => {
     for (const text of [`Done.\n\n${PR}/\n\nThanks.`, `<${PR}>`]) {
       const html = render(text);
       expect(cardCount(html, "Pull request: Retry checkout writes")).toBe(1);
-      expect(html).toContain("Latest saved state");
+      expect(html).toContain("Last fetched");
     }
   });
 
+  // The muted line above the card title.
+  function cardMeta(html: string) {
+    return html.match(/<p class="m-0 mb-1 [^"]*">([^<]*)<\/p>/)?.[1];
+  }
+
   it("shows a card for a URL of any type alone on its line", () => {
-    for (const [url, name] of [
-      [PERSON, "Person: Morgan Lee"],
-      [CONVERSATION, "Conversation: Investigate checkout latency"],
-      [DOC, "Google Doc: Release checklist"],
-      [MESSAGE, "Message: Hold the deploy until the pin lands."],
-      [PAGE, "Web page: Release notes"],
+    // Core owns `junior` objects, so no card names that plugin. A web page
+    // without a site name names its host.
+    for (const [url, name, meta] of [
+      [PERSON, "Person: Morgan Lee", "Person"],
+      [
+        CONVERSATION,
+        "Conversation: Investigate checkout latency",
+        "Conversation",
+      ],
+      [DOC, "Google Doc: Release checklist", "Google Doc · google"],
+      [
+        MESSAGE,
+        "Message: Hold the deploy until the pin lands.",
+        "Message · #proj-release",
+      ],
+      [PAGE, "Web page: Release notes", "blog.example.com"],
     ] as const) {
-      expect(cardCount(render(`Done.\n\n${url}`), name)).toBe(1);
+      const html = render(`Done.\n\n${url}`);
+      expect(cardCount(html, name)).toBe(1);
+      expect(cardMeta(html)).toBe(meta);
     }
+  });
+
+  it("names the site and author of a web page card", () => {
+    const html = markup(
+      <KnownObjectsProvider
+        annotations={[
+          {
+            ...annotations.find((annotation) => annotation.key === PAGE)!,
+            facts: {
+              type: "web_page" as const,
+              author: "Morgan Lee",
+              siteName: "Example Blog",
+            },
+          },
+        ]}
+      >
+        <DisplayText text={`Done.\n\n${PAGE}`} />
+      </KnownObjectsProvider>,
+    );
+    expect(cardMeta(html)).toBe("Example Blog · Morgan Lee");
+    // The header names them, so the facts do not repeat them.
+    expect(html.split("Morgan Lee").length - 1).toBe(1);
   });
 
   it("shows only the thumbnail of a video alone on its line", () => {
@@ -455,7 +494,7 @@ describe("display text object links", () => {
       /<a [^>]*href="https:\/\/github.com\/acme\/app\/pull\/7"[^>]*>the fix/,
     );
     expect(html).not.toContain("acme/app#7");
-    expect(html).not.toContain("Latest saved state");
+    expect(html).not.toContain("Last fetched");
   });
 
   it("leaves links to unknown objects and other pages plain", () => {

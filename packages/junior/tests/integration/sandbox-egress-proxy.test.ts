@@ -841,7 +841,7 @@ describe("sandbox egress proxy integration", () => {
     await registerManagedEgressPlugin({
       grantForEgress,
       issueCredential,
-      tools(ctx) {
+      tools() {
         return {
           managedEgressRead: definePluginTool({
             approvalMode: "approve",
@@ -854,7 +854,7 @@ describe("sandbox egress proxy integration", () => {
             description: "Read managed provider data through host egress",
             inputSchema: z.object({}),
             outputSchema: managedEgressReadResultSchema,
-            async execute() {
+            async execute(_input, _options, ctx) {
               const response = await ctx.egress.fetch({
                 provider: "managed-egress",
                 operation: "managed.issues.read",

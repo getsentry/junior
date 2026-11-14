@@ -24,6 +24,10 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
 import {
+  conversationSimilarity,
+  type ConversationEmbedder,
+} from "@/chat/conversations/embedding";
+import {
   parseStoredBrief,
   type BriefLink,
   type BriefOutcomeStatus,
@@ -37,12 +41,19 @@ import type {
   ConversationStatus,
 } from "@/chat/conversations/store";
 import {
+  juniorConversationEmbeddings,
   juniorConversationBriefs,
   juniorConversations,
   juniorDestinations,
 } from "@/db/schema";
 
 const MAX_LINKS = 5;
+// Lowest cosine similarity that admits a Conversation with no word match.
+// Not tuned yet. Memory recall admits short memories at 0.55 with the same
+// default model (`openai/text-embedding-3-small`). A Brief is a longer
+// document, so a short query scores lower against it. Retune it when the
+// embedding model changes.
+const MIN_VECTOR_SIMILARITY = 0.4;
 
 /** One Conversation that the requester may find. */
 export interface ConversationSearchResult {
@@ -76,6 +87,11 @@ export interface ConversationSearch {
   afterMs?: number;
   /** Annotation key, such as a pull request key. Nested keys continue with `#`. */
   annotation?: string;
+  /**
+   * Match `annotation` only on the Conversation itself. Without it, a root
+   * also matches when one of its child agents has the key.
+   */
+  annotationOnSelf?: boolean;
   /** Only Conversations with activity before this time. */
   beforeMs?: number;
   /** Provider Destination id of the root, such as a Slack channel id. */
@@ -86,30 +102,44 @@ export interface ConversationSearch {
   limit: number;
   /** Outcome status of the latest Brief. */
   outcomeStatus?: BriefOutcomeStatus;
-  /** Words to match in the latest Brief or the title. */
+  /** Words or meaning to match in the latest Brief, or words in the title. */
   query?: string;
   /** Return only root Conversations, not their child agents. */
   rootsOnly: boolean;
+  /** Only Conversations whose agent has one of these statuses. */
+  statuses?: readonly ConversationStatus[];
 }
 
 /**
  * Search the Conversations, outside the requester's own tree, that the
  * requester may find. Newest activity first, or best match for a query.
+ * With an embedder, a query also matches by the meaning of the latest
+ * Brief, and a match by meaning alone needs `MIN_VECTOR_SIMILARITY`.
  */
 export async function searchConversations(
   db: JuniorDatabase,
   args: {
+    embedder?: ConversationEmbedder;
     requesterConversationId: string;
     search: ConversationSearch;
   },
 ): Promise<ConversationSearchResult[]> {
-  const { requesterConversationId, search } = args;
+  const { embedder, requesterConversationId, search } = args;
   const conversations = juniorConversations;
   const briefs = juniorConversationBriefs;
   const newer = alias(juniorConversationBriefs, "newer_briefs");
   const roots = alias(juniorConversations, "target_roots");
   const requesterRoot = alias(juniorConversations, "requester_roots");
+  const embeddings = juniorConversationEmbeddings;
   const query = search.query?.trim() || undefined;
+  const queryVector =
+    query && embedder
+      ? await embedder({ inputType: "query", text: query })
+      : undefined;
+  // SQL null for a stale vector or a vector of another model.
+  const similarity = queryVector
+    ? conversationSimilarity(queryVector)
+    : undefined;
   const tsquery = sql`websearch_to_tsquery('english', ${query ?? ""})`;
   const searchVector = sql`to_tsvector('english', ${briefs.searchText})`;
   const outcomeStatus = sql<string>`${briefs.content}->'outcome'->>'status'`;
@@ -144,9 +174,17 @@ export async function searchConversations(
     search.annotation
       ? or(
           // A root matches when any Conversation in its tree has the key.
-          treeHasAnnotationKey(conversations.conversationId, search.annotation),
+          search.annotationOnSelf
+            ? undefined
+            : treeHasAnnotationKey(
+                conversations.conversationId,
+                search.annotation,
+              ),
           hasAnnotationKey(conversations.conversationId, search.annotation),
         )
+      : undefined,
+    search.statuses
+      ? inArray(conversations.executionStatus, [...search.statuses])
       : undefined,
     search.conversationIds
       ? inArray(conversations.conversationId, [...search.conversationIds])
@@ -171,14 +209,22 @@ export async function searchConversations(
       ? or(
           sql`${searchVector} @@ ${tsquery}`,
           ilike(conversations.title, `%${escapeLike(query)}%`),
+          similarity
+            ? sql`${similarity} >= ${MIN_VECTOR_SIMILARITY}`
+            : undefined,
         )
       : undefined,
   ];
 
   const newestFirst = desc(conversations.lastActivityAt);
+  // Normalization 32 maps the word rank to [0, 1), next to the similarity,
+  // so a Conversation that matches both ways ranks first.
+  const wordRank = sql`coalesce(ts_rank_cd(${searchVector}, ${tsquery}, 32), 0)`;
   const order = query
     ? [
-        desc(sql`coalesce(ts_rank_cd(${searchVector}, ${tsquery}), 0)`),
+        desc(
+          similarity ? sql`${wordRank} + coalesce(${similarity}, 0)` : wordRank,
+        ),
         newestFirst,
       ]
     : [newestFirst];
@@ -227,6 +273,14 @@ export async function searchConversations(
               ),
             ),
         ),
+      ),
+    )
+    // Only the vector of the latest Brief counts.
+    .leftJoin(
+      embeddings,
+      and(
+        eq(embeddings.conversationId, briefs.conversationId),
+        eq(embeddings.briefVersion, briefs.version),
       ),
     )
     .where(and(...conditions))

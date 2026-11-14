@@ -1,6 +1,6 @@
 import * as z from "zod";
 import type { PluginContext, User } from "./context";
-import type { PluginEgress } from "./tools";
+import type { PluginEgress, PluginViewerMcp } from "./tools";
 
 /** How Junior fetches one image. */
 export interface ImageFetch {
@@ -30,6 +30,8 @@ export interface ImageSourceContext extends PluginContext {
   egress: PluginEgress;
   /** The signed-in person who sees the image. */
   viewer: User;
+  /** This plugin's hosted MCP provider as the viewer. See `ObjectLinkContext`. */
+  viewerMcp: PluginViewerMcp;
 }
 
 /**

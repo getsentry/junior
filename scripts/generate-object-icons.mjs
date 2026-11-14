@@ -19,6 +19,7 @@ const names = [
   "file",
   "comment",
   "globe",
+  "graph",
   "package",
 ];
 const paths = Object.fromEntries(

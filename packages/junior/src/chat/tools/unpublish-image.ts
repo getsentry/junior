@@ -10,7 +10,11 @@ const outputSchema = juniorToolOutputSchema.extend({
   unpublished: z.literal(true),
 });
 
-/** Create a tool that stops serving one previously published public image. */
+/**
+ * Create a tool that stops serving one previously published public image.
+ *
+ * @runBuilt unpublishImage
+ */
 export function createUnpublishImageTool(args: {
   conversationId: string;
   db: JuniorSqlDatabase;

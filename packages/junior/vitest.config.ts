@@ -30,6 +30,10 @@ export default defineConfig({
         __dirname,
         "../junior-memory/src/index.ts",
       ),
+      "@sentry/junior-notion": path.resolve(
+        __dirname,
+        "../junior-notion/src/index.ts",
+      ),
       "@sentry/junior-sentry": path.resolve(
         __dirname,
         "../junior-sentry/src/index.ts",

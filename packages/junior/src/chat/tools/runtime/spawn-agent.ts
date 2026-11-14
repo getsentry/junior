@@ -22,7 +22,7 @@ import {
   SHORT_TITLE_MAX_LENGTH,
 } from "@/chat/services/short-title";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -70,12 +70,12 @@ function kindDescription(codeChannels: boolean): string {
   ].join(" ");
 }
 
-/** Create the asynchronous child-agent tool for one parent run. */
-export function createSpawnAgentTool(
-  spawnAgent: NonNullable<ToolRuntimeContext["spawnAgent"]>,
-  titleCost: ConversationModelCost,
-) {
-  return zodTool({
+/**
+ * Return the spawnAgent definition. `codeChannels` is whether the
+ * `code-channels` flag can create code channels.
+ */
+export const spawnAgentToolDefinition = (codeChannels: boolean) =>
+  zodToolDefinition({
     description: [
       "Start a new asynchronous child agent. A child agent has its own sandbox and tool budget, runs at the same time as you, and replies when it has something to report. Its kind is a Thread for one discrete work item that people will own and talk to, or a Task for work that you delegate. Use Tasks to run independent work in parallel and to keep long investigations out of your context.",
       "Delegate a Task when: the request splits into independent tracks that each need real investigation, such as several repos, services, sources, or items (start every track in the same message); an answer needs reading across many files, logs, or sources and you need the conclusion, not the raw output; a side task does not block your main answer; or you want a second opinion that is not anchored on your analysis (give it the evidence, not your conclusion).",
@@ -128,9 +128,7 @@ export function createSpawnAgentTool(
           .enum(CHILD_AGENT_KINDS)
           .nullable()
           .optional()
-          .describe(
-            kindDescription(isExperimentalFeatureEnabled("code-channels")),
-          ),
+          .describe(kindDescription(codeChannels)),
         agent_type: z
           .enum(AGENT_TYPES)
           .nullable()
@@ -153,6 +151,15 @@ export function createSpawnAgentTool(
       })
       .strict(),
     outputSchema: spawnAgentOutputSchema,
+  });
+
+/** Create the asynchronous child-agent tool for one parent run. */
+export function createSpawnAgentTool(
+  spawnAgent: NonNullable<ToolRuntimeContext["spawnAgent"]>,
+  titleCost: ConversationModelCost,
+) {
+  return zodTool({
+    ...spawnAgentToolDefinition(isExperimentalFeatureEnabled("code-channels")),
     execute: async (input, options) => {
       if (!options.toolCallId) {
         throw new ToolInputError("spawnAgent requires an active tool call ID");

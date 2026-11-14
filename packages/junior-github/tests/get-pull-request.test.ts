@@ -1,5 +1,7 @@
+import type { PluginConversationMatch } from "@sentry/junior-plugin-api";
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createGitHubGetPullRequestTool } from "../src/tools/get-pull-request";
+import { gitHubGetPullRequestTool } from "../src/tools/get-pull-request";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
 const HEAD_SHA = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
 
@@ -92,7 +94,7 @@ function toolContext(
     egress: adapter.egress,
     events: { canSubscribe },
   };
-  return { adapter, tool: createGitHubGetPullRequestTool(ctx) };
+  return { adapter, tool: bindPluginTool(gitHubGetPullRequestTool, ctx) };
 }
 
 describe("getPullRequest", () => {
@@ -145,6 +147,70 @@ describe("getPullRequest", () => {
         provider: "github",
       }),
     ]);
+  });
+
+  it("lists other conversations on the pull request", async () => {
+    const searches: unknown[] = [];
+    let matches: PluginConversationMatch[] = [
+      {
+        conversationId: "agent:child",
+        rootConversationId: "slack:C1:1700000000.100000",
+        status: "running",
+        summary: "x".repeat(400),
+        title: "Fix the flaky test",
+        updatedAt: "2026-09-01T12:00:00.000Z",
+      },
+      {
+        conversationId: "slack:C2:1700000000.100000",
+        status: "idle",
+        updatedAt: "2026-09-25T12:00:00.000Z",
+      },
+    ];
+    const adapter = createGitHubApiTestAdapter([
+      pullRequestResponse(),
+      checksResponse({ contexts: [] }),
+      pullRequestResponse(),
+      checksResponse({ contexts: [] }),
+    ]);
+    const tool = bindPluginTool(gitHubGetPullRequestTool, {
+      conversations: {
+        async search(input) {
+          searches.push(input);
+          return matches;
+        },
+      },
+      egress: adapter.egress,
+      events: { canSubscribe: false },
+    });
+    const execute = async () =>
+      (await tool.execute?.(
+        { repo: "GetSentry/Junior", number: 691 },
+        { toolCallId: "get-pr" },
+      )) as { related_conversations?: unknown[] };
+
+    const result = await execute();
+
+    expect(searches).toEqual([
+      { annotation: "getsentry/junior#691", limit: 10 },
+    ]);
+    expect(result.related_conversations).toEqual([
+      {
+        conversation_id: "agent:child",
+        root_conversation_id: "slack:C1:1700000000.100000",
+        status: "running",
+        summary: `${"x".repeat(300)}…`,
+        title: "Fix the flaky test",
+        updated_at: "2026-09-01T12:00:00.000Z",
+      },
+      {
+        conversation_id: "slack:C2:1700000000.100000",
+        status: "idle",
+        updated_at: "2026-09-25T12:00:00.000Z",
+      },
+    ]);
+
+    matches = [];
+    expect(await execute()).not.toHaveProperty("related_conversations");
   });
 
   it("saves the artifact and GitHub attachment images as previews", async () => {
