@@ -38,7 +38,7 @@ import {
 
 // Line the first level up with the root title, then step in per level. Deep
 // trees stop stepping in, so titles keep their width.
-const DEPTH_INDENT = ["pl-[2.125rem]", "pl-[3.125rem]", "pl-[4.125rem]"];
+const DEPTH_INDENT = ["pl-[2.25rem]", "pl-[3.25rem]", "pl-[4.25rem]"];
 
 /**
  * Render one Thread under its parent in the sidebar. The row shows a status
@@ -56,7 +56,7 @@ export const ConversationSidebarThreadRow = memo(
     onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
     onArchived(conversation: Conversation): void;
     /** Runs before the archive, so its result shows. */
-    onRowAction(): void;
+    onRowAction?(): void;
     selected: boolean;
     /** True when an open review item in this Thread waits on the viewer. */
     waiting: boolean;
@@ -100,7 +100,7 @@ export const ConversationSidebarThreadRow = memo(
           {...prefetch}
           aria-current={props.selected ? "page" : undefined}
           className={cn(
-            "grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg py-1 pr-3 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+            "grid min-w-0 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-x-3 rounded-lg py-1 pr-2 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
             DEPTH_INDENT[Math.min(props.depth, DEPTH_INDENT.length - 1)],
             participant && `max-sm:pr-10 ${ROW_ACTIONS_FADE_CLASS}`,
           )}
@@ -165,7 +165,7 @@ export const ConversationSidebarThreadRow = memo(
             onClose={() => setConfirmArchive(undefined)}
             onConfirm={() => {
               setConfirmArchive(undefined);
-              props.onRowAction();
+              props.onRowAction?.();
               archive.mutate({
                 archived: true,
                 lastSeenAt: props.conversation.lastSeenAt,
@@ -188,7 +188,7 @@ export function ConversationSidebarThreadToggle(props: {
     <button
       aria-expanded={props.expanded}
       className={cn(
-        "group grid min-w-0 cursor-pointer grid-cols-[0.875rem_minmax(0,1fr)] items-center gap-x-2 rounded-lg py-1 pr-3 text-left font-sans text-xs text-dashboard-text-faint transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+        "group grid min-w-0 cursor-pointer grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-3 rounded-lg py-1 pr-2 text-left font-sans text-xs text-dashboard-text-faint transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
         DEPTH_INDENT[0],
       )}
       onClick={props.onToggle}

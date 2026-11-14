@@ -1,4 +1,5 @@
 import { viewAsParticipant } from "./conversationMenu";
+import { openRow } from "./inbox-fixture";
 import { expect, test } from "./test";
 
 // Only participants can archive or restore.
@@ -34,10 +35,12 @@ test("finds an old archived conversation by title and restores it", async ({
   expect((await restoreRequest).postDataJSON()).toMatchObject({
     archived: false,
   });
+  // The list shows the row again.
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
   await expect(sidebarLink).toBeVisible();
 });
 
-test("archives and restores a conversation from the sidebar", async ({
+test("archives and restores a conversation from its row", async ({
   page,
   dashboard,
 }) => {
@@ -72,15 +75,7 @@ test("archives and restores a conversation from the sidebar", async ({
       json: { archivedAt: archived ? "2026-08-21T16:45:00.000Z" : null },
     });
   });
-  await page.goto(dashboard.baseURL);
-  const selectedConversation = page.getByRole("link", {
-    name: /Investigate checkout latency/,
-  });
-  await selectedConversation.click();
-  await expect(
-    page.getByRole("heading", { name: "Investigate checkout latency" }),
-  ).toBeVisible();
-
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
   const conversationLink = page.getByRole("link", {
     name: /Dashboard QA edge cases/,
   });
@@ -149,13 +144,13 @@ for (const outcome of ["success", "error"] as const) {
       );
     });
     await page.goto(dashboard.baseURL);
-    await page.getByRole("link", { name: /Dashboard QA edge cases/ }).click();
+    await openRow(page.getByRole("link", { name: /Dashboard QA edge cases/ }));
     await expect(
       page.getByRole("heading", { name: "Dashboard QA edge cases" }),
     ).toBeVisible();
 
     // Home must report the result even with the list hidden.
-    await page.getByRole("button", { name: "Hide conversation list" }).click();
+    await page.getByRole("button", { name: "Hide sidebar" }).click();
     await page.getByRole("button", { name: "Conversation menu" }).click();
     await page.getByRole("menuitem", { name: "Archive", exact: true }).click();
 
@@ -178,7 +173,7 @@ for (const outcome of ["success", "error"] as const) {
       hasText: "Could not archive",
     });
     await expect(archiveError).toContainText("Dashboard QA edge cases");
-    await page.getByRole("button", { name: "Show conversation list" }).click();
+    await page.getByRole("button", { name: "Show sidebar" }).click();
     await expect(conversationLink).toBeVisible();
   });
 }

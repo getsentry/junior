@@ -1,10 +1,11 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import type { ActorIdentity } from "@sentry/junior/api/schema";
 
 import { HighlightedCode } from "../code";
+import { ClampedPreview } from "../components/ClampedPreview";
 import { CopyButton } from "../components/CopyButton";
 import { parseMarkdownBlocks } from "./codeBlocks";
-import { standaloneUrlKeys } from "./knownObjects";
+import { splitStandaloneUrls, standaloneUrlKeys } from "./knownObjects";
 import { MarkdownText } from "./markdown";
 import { MentionPeopleProvider } from "./mentions";
 import { MessageObjectsProvider } from "./resolvedObjects";
@@ -26,6 +27,11 @@ const NO_MENTIONS: readonly ActorIdentity[] = [];
 export const DisplayText = memo(function DisplayText(props: {
   /** Use the larger chat type of user and assistant messages. */
   chat?: boolean;
+  /**
+   * Inline mode: show links as messages do. A bare URL shows its object
+   * title, and a person shows as a chip. Only outside a link or a button.
+   */
+  chips?: boolean;
   /** Keep body line height compact in narrow panels. */
   compact?: boolean;
   /** Read a Markdown file, not a chat message. */
@@ -47,7 +53,7 @@ export const DisplayText = memo(function DisplayText(props: {
         mentions={props.mentions ?? NO_MENTIONS}
       >
         {props.inline ? (
-          <MarkdownText inline text={props.text} />
+          <MarkdownText chips={props.chips} inline text={props.text} />
         ) : props.document ? (
           // One tree, so reference links and footnotes resolve across fences.
           <MarkdownText document text={props.text} />
@@ -105,5 +111,40 @@ function DisplayTextBlocks(props: {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * Display text clamped to `lines` lines, such as an ask's text in an Inbox
+ * row. Only the prose clamps: each bare URL alone in a paragraph shows after
+ * it, in order and in full, as its object card. Inline links stay in the
+ * prose.
+ */
+export function ClampedDisplayText(props: {
+  className?: string;
+  /** What the clamp toggle expands, for its accessible name. */
+  label: string;
+  lines: number;
+  text: string;
+}) {
+  const { prose, urls } = useMemo(
+    () => splitStandaloneUrls(props.text),
+    [props.text],
+  );
+  return (
+    <>
+      {prose ? (
+        <ClampedPreview
+          className={props.className}
+          label={props.label}
+          lines={props.lines}
+        >
+          <DisplayText text={prose} />
+        </ClampedPreview>
+      ) : null}
+      {urls.map((url, index) => (
+        <DisplayText key={`${index}:${url}`} text={url} />
+      ))}
+    </>
   );
 }

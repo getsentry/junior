@@ -142,8 +142,30 @@ export const automationReport: Pick<AutomationList, "automations"> = {
   ],
 };
 
+/**
+ * Count the viewer's Automations that need attention, as the Inbox count
+ * endpoint does, so the tab badge matches the mocked list.
+ */
+export function attentionCount(
+  report: Pick<AutomationList, "automations"> = automationReport,
+): number {
+  return mockAutomationCollection(
+    report,
+    new URLSearchParams({ owner: "me", scope: "attention" }),
+  ).total;
+}
+
 /** Serve the Automation collection and direct details from the same fixture. */
 export async function mockAutomationApis(page: Page) {
+  await page.route("**/api/review-items/count", async (route) => {
+    // A navigation can cancel the count read before the fetch here ends.
+    const response = await route.fetch().catch(() => undefined);
+    if (!response) return route.abort().catch(() => {});
+    await route.fulfill({
+      response,
+      json: { ...(await response.json()), automations: attentionCount() },
+    });
+  });
   await page.route(/\/api\/automations(?:\?.*)?$/, async (route) => {
     await route.fulfill({
       json: mockAutomationCollection(

@@ -33,6 +33,9 @@ import type {
   AutomationList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
+import { IDLE_CHANGE_DAYS } from "@sentry/junior/api/schema";
+import { mockFeedLinks } from "./feed-links";
+import { mockFeedMedia } from "./feed-media";
 import { mockQuestionConversations } from "./review-items";
 import { isUnlistedMockConversation, withMockSends } from "./sends";
 
@@ -40,6 +43,21 @@ import { isUnlistedMockConversation, withMockSends } from "./sends";
 export const NOW = "2026-08-07T12:00:00.000Z";
 /** Milliseconds for {@link NOW}. */
 export const NOW_MS = Date.parse(NOW);
+
+/** Count open changes idle past {@link IDLE_CHANGE_DAYS}, as the API does. */
+export function mockIdleCount(
+  changes: readonly CodeOverviewReport["changes"][number][],
+  nowMs = NOW_MS,
+): number {
+  return changes.filter(
+    (change) =>
+      change.state === "open" &&
+      Math.floor(
+        (nowMs - Date.parse(change.lastActivityAt ?? change.openedAt)) /
+          86_400_000,
+      ) > IDLE_CHANGE_DAYS,
+  ).length;
+}
 
 /** Build code activity for local dashboard development and QA. */
 export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
@@ -112,6 +130,8 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
       closed: 1,
       costUsd: 18.4,
       created: 8,
+      // The listed open change is two days old.
+      idle: 0,
       medianCostUsd: 3.5,
       medianMergeTimeMs: 2 * 86_400_000,
       merged: 6,
@@ -126,6 +146,35 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 // Mock text links to dashboard pages on this origin.
 const MOCK_DASHBOARD_ORIGIN = "https://junior.example.com";
+/**
+ * A PR preview image. The mock serves it under /api/images; the feed takes
+ * only absolute URLs, so the fixtures name it on the placeholder origin.
+ */
+export const CHECKOUT_PREVIEW_IMAGE_URL = `${MOCK_DASHBOARD_ORIGIN}/api/images/checkout-p95`;
+
+/**
+ * Point the feed's preview images at the server that answers, which serves
+ * them. Fixtures name them on a placeholder origin that does not exist.
+ */
+export function withMockImageOrigin(
+  feed: ConversationFeed,
+  origin: string,
+): ConversationFeed {
+  return {
+    ...feed,
+    conversations: feed.conversations.map((conversation) => ({
+      ...conversation,
+      sidebarAnnotations: conversation.sidebarAnnotations?.map((annotation) =>
+        annotation.imageUrl?.startsWith(`${MOCK_DASHBOARD_ORIGIN}/`)
+          ? {
+              ...annotation,
+              imageUrl: `${origin}${annotation.imageUrl.slice(MOCK_DASHBOARD_ORIGIN.length)}`,
+            }
+          : annotation,
+      ),
+    })),
+  };
+}
 const INCIDENT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 const PRIVATE_CONVERSATION_ID = "slack:DQA123:1770007200.000300";
 const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
@@ -438,8 +487,13 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     sidebarAnnotations: [
       {
         icon: "git-pull-request",
+        objectType: "code_change",
+        status: "open",
         key: "getsentry/payments#42",
         label: "payments",
+        title: "Retry checkout writes after lock timeouts",
+        url: "https://github.com/getsentry/payments/pull/42",
+        imageUrl: CHECKOUT_PREVIEW_IMAGE_URL,
       },
     ],
     annotations: [
@@ -448,7 +502,20 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         key: "getsentry/payments#42",
         label: "getsentry/payments#42",
         title: "Retry checkout writes after lock timeouts",
+        description:
+          "Retry the checkout write once when Postgres reports a lock timeout, and add a p95 alert on `checkout.complete`.",
         displayType: "Pull request",
+        facts: {
+          type: "code_change",
+          additions: 86,
+          author: "junior",
+          changedFiles: 4,
+          deletions: 12,
+          reviewers: ["avery"],
+          sourceBranch: "fix/checkout-lock-retry",
+          targetBranch: "main",
+          previewImageUrls: [CHECKOUT_PREVIEW_IMAGE_URL],
+        },
         objectType: "code_change",
         plugin: "github",
         status: "open",
@@ -726,6 +793,11 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
     lastSeenAt: iso(nowMs, -4 * 60 * 60_000),
     lastProgressAt: iso(nowMs, -4 * 60 * 60_000),
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+    // Comfortable rows show the other human; the child agents count below.
+    participants: [
+      actor("dev@example.com", "Morgan Lee", "morgan"),
+      actor("avery@sentry.io", "Avery Chen", "avery"),
+    ],
     assignedWork: true,
     unfinishedWork: true,
     isPriority: true,
@@ -1465,23 +1537,46 @@ function longConversation(nowMs: number): ConversationDetailReport {
         status: "draft",
         key: "getsentry/junior#2201",
         label: "junior",
+        title: "Update Junior to 0.288.0",
+        url: "https://github.com/getsentry/junior/pull/2201",
       },
       {
         icon: "git-pull-request",
+        objectType: "code_change",
+        status: "open",
         key: "getsentry/payments#91",
         label: "payments",
+        title: "Pin the release train to payments 4.2",
+        url: "https://github.com/getsentry/payments/pull/91",
       },
       {
         icon: "git-merge",
+        objectType: "code_change",
+        status: "merged",
         key: "getsentry/relay#44",
         label: "relay",
+        title: "Return 429 before parsing oversized envelopes",
+        url: "https://github.com/getsentry/relay/pull/44",
       },
     ],
     annotations: [
       {
-        kind: "resource_link",
+        kind: "object",
         key: "getsentry/junior#2201",
         label: "getsentry/junior#2201",
+        title: "Update Junior to 0.288.0",
+        description:
+          "Bump `@sentry/junior` and its plugins to 0.288.0. The safety checks pass.",
+        displayType: "Pull request",
+        facts: {
+          type: "code_change",
+          additions: 14,
+          author: "junior",
+          changedFiles: 3,
+          deletions: 14,
+          sourceBranch: "chore/self-update-0.288.0",
+          targetBranch: "main",
+        },
         objectType: "code_change",
         plugin: "github",
         status: "draft",
@@ -1495,6 +1590,12 @@ function longConversation(nowMs: number): ConversationDetailReport {
         label: "getsentry/payments#91",
         title: "Pin the release train to payments 4.2",
         displayType: "Pull request",
+        facts: {
+          type: "code_change",
+          author: "junior",
+          sourceBranch: "release/pin-payments-4.2",
+          targetBranch: "main",
+        },
         objectType: "code_change",
         plugin: "github",
         status: "open",
@@ -1762,6 +1863,11 @@ function manyTurnsConversation(nowMs: number): ConversationDetailReport {
     channel: "CQA456",
     startedAt,
     actorIdentity: actor("jordan@example.com", "Jordan Blake", "jordan"),
+    participants: [
+      actor("jordan@example.com", "Jordan Blake", "jordan"),
+      actor("dev@example.com", "Morgan Lee", "morgan"),
+      actor("riley@sentry.io", "Riley Park", "riley"),
+    ],
     events: Array.from({ length: 24 }, (_, turn) => [
       reportEvent(turn * 2, iso(Date.parse(startedAt), turn * 60_000), {
         type: "message" as const,
@@ -2162,6 +2268,27 @@ function mockThreadPlacement(
 }
 
 /** Group shown mock Threads by where they nest. */
+/** A feed row: the summary plus the short form of its latest Brief. */
+function feedItemFromConversation(
+  conversation: MockConversation,
+): ConversationFeedItem {
+  const summary = {
+    ...summaryFromConversation(conversation),
+    media: mockFeedMedia(conversation),
+    links: mockFeedLinks(conversation),
+  };
+  const brief = conversation.brief?.content;
+  if (!brief) return summary;
+  return {
+    ...summary,
+    brief: {
+      intent: brief.intent,
+      status: brief.outcome.status,
+      summary: brief.summary,
+    },
+  };
+}
+
 function mockThreadsByPlacement(
   conversations: readonly MockConversation[],
 ): Map<string, ConversationFeedItem[]> {
@@ -2178,7 +2305,7 @@ function mockThreadsByPlacement(
     if (!placement) continue;
     threadsByPlacement.set(placement, [
       ...(threadsByPlacement.get(placement) ?? []),
-      summaryFromConversation(thread),
+      feedItemFromConversation(thread),
     ]);
   }
   return threadsByPlacement;
@@ -2205,8 +2332,8 @@ function mockConversationFeed(nowMs: number): ConversationFeed {
           !isUnlistedMockConversation(conversation.conversationId),
       )
       .map((root) => {
-        const summary = summaryFromConversation(root);
-        return summary.archivedAt ? summary : nest(summary);
+        const item = feedItemFromConversation(root);
+        return item.archivedAt ? item : nest(item);
       }),
   };
 }
@@ -3828,7 +3955,11 @@ export function readMockPeopleCode(
       ),
     ],
     generatedAt: overview.generatedAt,
-    summary: { ...overview.summary, open: openChanges.length },
+    summary: {
+      ...overview.summary,
+      idle: mockIdleCount(openChanges),
+      open: openChanges.length,
+    },
     windowEnd: overview.windowEnd,
     windowStart: overview.windowStart,
   };
@@ -4082,6 +4213,72 @@ function mockTasks(): AutomationSummary[] {
       totalRuns: 48,
     },
     {
+      createdAt: "2026-07-20T16:00:00.000Z",
+      createdBy: "Morgan",
+      createdByEmail: "dev@example.com",
+      destination: {
+        channelId: "C789",
+        label: "#ops",
+        teamId: "T123",
+        visibility: "public",
+      },
+      id: "scheduled-2",
+      task: {
+        kind: "instruction",
+        instruction:
+          "Post the daily operations digest: open incidents, noisy alerts, and failed deploys.",
+      },
+      kind: "scheduled",
+      lastConversationId: "scheduler:daily-ops-digest",
+      lastRunAt: "2026-08-07T15:00:00.000Z",
+      // A failed last run needs the owner.
+      lastRunStatus: "failed",
+      nextRunAt: "2026-08-08T15:00:00.000Z",
+      credentialMode: "creator",
+      ownedByViewer: true,
+      costUsd: { 1: 0.06, 7: 0.41, 30: 1.77, 90: 5.2 },
+      runs: { 1: 1, 7: 7, 30: 30, 90: 90 },
+      timezone: "America/Los_Angeles",
+      schedule: "Every day at 8:00 AM",
+      status: "active",
+      outcomes: [],
+      recentRuns: [],
+      title: "Daily operations digest",
+      totalCostUsd: 5.2,
+      totalRuns: 90,
+    },
+    {
+      createdAt: "2026-07-10T16:00:00.000Z",
+      createdBy: "Morgan",
+      createdByEmail: "dev@example.com",
+      destination: {
+        channelId: "C456",
+        label: "#releases",
+        teamId: "T123",
+        visibility: "public",
+      },
+      id: "scheduled-3",
+      task: {
+        kind: "instruction",
+        instruction: "Cut a release if anything is pending since the last one.",
+      },
+      kind: "scheduled",
+      lastConversationId: "slack:CQA456:1770021600.000600",
+      lastRunAt: "2026-08-03T16:00:00.000Z",
+      credentialMode: "creator",
+      ownedByViewer: true,
+      costUsd: { 1: 0, 7: 0.22, 30: 0.9, 90: 2.4 },
+      runs: { 1: 0, 7: 1, 30: 4, 90: 12 },
+      timezone: "America/Los_Angeles",
+      schedule: "Every Monday at 9:00 AM",
+      status: "paused",
+      outcomes: [],
+      recentRuns: [],
+      title: "Release train",
+      totalCostUsd: 2.4,
+      totalRuns: 12,
+    },
+    {
       createdAt: "2026-07-29T16:00:00.000Z",
       createdBy: "Morgan",
       createdByEmail: "dev@example.com",
@@ -4116,7 +4313,9 @@ function mockTasks(): AutomationSummary[] {
         filters: ["labels includes bug", "repository is api or web"],
         problems: [],
       },
-      status: "active",
+      // A blocked Automation needs the owner.
+      status: "blocked",
+      statusReason: "GitHub access expired. Reconnect GitHub to resume.",
     },
     {
       createdAt: "2026-07-30T16:00:00.000Z",

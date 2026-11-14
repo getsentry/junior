@@ -1,5 +1,11 @@
 import { PreviewCard } from "@base-ui/react/preview-card";
-import { useState, type ReactElement, type ReactNode } from "react";
+import {
+  createContext,
+  type ReactElement,
+  type ReactNode,
+  useContext,
+  useState,
+} from "react";
 import { cn } from "@dashboard/lib/utils";
 
 // A pointer that only passes over a trigger does not open its card.
@@ -16,6 +22,20 @@ const KEEP_SIDE = { side: "none", fallbackAxisSide: "none" } as const;
 
 type VerticalSide = "top" | "bottom";
 
+const PreviewsOpen = createContext(true);
+
+/**
+ * Hold the hover previews inside it while `open` is false. A preview that
+ * was due shows once it turns true, if the pointer or focus is still on
+ * its trigger.
+ */
+export function HoverPreviewGate(props: {
+  children: ReactNode;
+  open: boolean;
+}) {
+  return <PreviewsOpen value={props.open}>{props.children}</PreviewsOpen>;
+}
+
 /**
  * Show a card beside a link or button when the reader hovers or focuses it.
  * `trigger` is the element without children: `children` fill it.
@@ -26,6 +46,8 @@ export function HoverPreview(props: {
   content: ReactNode;
   trigger: ReactElement;
 }) {
+  const allowed = useContext(PreviewsOpen);
+  const [open, setOpen] = useState(false);
   // When the reader moves into the card, it keeps its side. Opening "More
   // details" grows the card; a flip would move it away from the pointer,
   // and the card would close.
@@ -36,9 +58,11 @@ export function HoverPreview(props: {
   };
   return (
     <PreviewCard.Root
-      onOpenChange={(open) => {
-        if (!open) setLockedSide(undefined);
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setLockedSide(undefined);
       }}
+      open={allowed && open}
     >
       <PreviewCard.Trigger delay={PREVIEW_DELAY_MS} render={props.trigger}>
         {props.children}

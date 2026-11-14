@@ -19,9 +19,31 @@ export const conversationFeedBriefSchema = z
 
 export type ConversationFeedBrief = z.infer<typeof conversationFeedBriefSchema>;
 
+/** The most media a feed row lists. */
+export const CONVERSATION_FEED_MEDIA_LIMIT = 3;
+
+/**
+ * One stored file of a Conversation that a feed row previews, newest first.
+ * Read it through the Conversation's attachment route.
+ */
+export const conversationFeedMediaSchema = z
+  .object({
+    contentType: z.string(),
+    filename: z.string(),
+    id: z.string().min(1),
+  })
+  .strict();
+
+export type ConversationFeedMedia = z.infer<typeof conversationFeedMediaSchema>;
+
+/** The most links a feed row lists. */
+export const CONVERSATION_FEED_LINK_LIMIT = 3;
+
 /** A feed row, with its visible Threads nested under their parents. */
 export type ConversationFeedItem = ConversationSummaryReport & {
   brief?: ConversationFeedBrief;
+  media?: ConversationFeedMedia[];
+  links?: string[];
   threads?: ConversationFeedItem[];
 };
 
@@ -32,6 +54,15 @@ export type ConversationFeedItem = ConversationSummaryReport & {
 const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
   conversationSummaryReportSchema.extend({
     brief: conversationFeedBriefSchema.optional(),
+    media: z
+      .array(conversationFeedMediaSchema)
+      .max(CONVERSATION_FEED_MEDIA_LIMIT)
+      .optional(),
+    /**
+     * Web links from the Conversation's recent messages, newest first, for
+     * the row to resolve into cards. URLs only: never message text.
+     */
+    links: z.array(z.url()).max(CONVERSATION_FEED_LINK_LIMIT).optional(),
     threads: z.lazy(() => z.array(conversationFeedItemSchema)).optional(),
   });
 

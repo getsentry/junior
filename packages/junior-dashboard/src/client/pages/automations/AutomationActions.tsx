@@ -1,11 +1,9 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Popover,
   PopoverTrigger,
   PopoverContent,
   PopoverDescription,
 } from "../../components/ui/popover";
-import { useToastManager } from "../../components/ui/toast";
 import {
   Tooltip,
   TooltipContent,
@@ -13,13 +11,11 @@ import {
 } from "../../components/ui/tooltip";
 import { Link } from "react-router";
 import { CircleHelp, Pencil, Trash2 } from "lucide-react";
-import {
-  automationEditSchema,
-  type AutomationSummary,
-} from "@sentry/junior/api/schema";
+import type { AutomationSummary } from "@sentry/junior/api/schema";
 import { Button, buttonVariants } from "../../components/ui/button";
 import { FormNotice } from "../../components/FormNotice";
-import { DashboardApiError, fetchDashboardJson, post } from "../../http";
+import { DashboardApiError } from "../../http";
+import { useAutomationLifecycle } from "./useAutomationLifecycle";
 
 /**
  * Header actions for one Automation: Edit, Pause or Resume, and Delete.
@@ -37,52 +33,12 @@ export function AutomationActions({
   editVariant: "default" | "outline";
   onDelete(source: HTMLButtonElement): void;
 }) {
-  const toast = useToastManager();
-  const queryClient = useQueryClient();
   const completed = automation.status === "completed";
   const paused = automation.status === "paused";
   const blocked = automation.status === "blocked";
   const canPause = !completed;
   const action = paused || blocked ? "resume" : "pause";
-  const mutation = useMutation({
-    mutationFn: async () => {
-      const path = `/api/automations/${encodeURIComponent(automation.id)}`;
-      const current = await fetchDashboardJson(
-        automationEditSchema,
-        `${path}/edit`,
-      );
-      // Do not apply the opposite action if another surface changed lifecycle.
-      if (current.status !== automation.status) {
-        throw new Error(
-          "The Automation changed. Reload the page before trying again.",
-        );
-      }
-      return post(automationEditSchema, `${path}/lifecycle`, {
-        action,
-        revision: current.revision,
-      });
-    },
-    onSuccess: async (updated) => {
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard", "automations"],
-      });
-      toast.add({
-        title:
-          updated.status === "blocked"
-            ? "Automation is still blocked"
-            : action === "pause"
-              ? "Automation paused"
-              : "Automation resumed",
-        description:
-          updated.status === "blocked"
-            ? "Fix the reported requirement before resuming again."
-            : action === "pause"
-              ? "Work already queued or running may finish."
-              : "Future triggers are enabled.",
-        type: updated.status === "blocked" ? "warning" : "success",
-      });
-    },
-  });
+  const mutation = useAutomationLifecycle(automation, action);
   return (
     <div className="grid min-w-0 justify-items-stretch gap-3 md:justify-items-end">
       <div

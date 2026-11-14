@@ -23,7 +23,8 @@ import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { automationPath } from "../../format";
-import { pathWithSearch, useDebouncedSearchParam } from "../../searchParams";
+import { COMMAND_PALETTE_SHORTCUT } from "../../components/CommandPalette";
+import { pathWithSearch } from "../../searchParams";
 import { cn } from "../../styles";
 import { AutomationRow } from "./AutomationRow";
 import { automationNeedsAttention } from "./AutomationStatus";
@@ -35,14 +36,9 @@ const EMPTY: AutomationSummary[] = [];
 const LANDING_PAGE_SIZE = "100";
 
 // Groups set the order and show every Automation, so the page reads only
-// the filters it shows. Old scope, sort, and page links fall back to all.
-const LANDING_FILTERS = [
-  "q",
-  "type",
-  "state",
-  "creator",
-  "destination",
-] as const;
+// the filters it shows. Old search, scope, sort, and page links fall back
+// to all; the command palette finds an Automation by name.
+const LANDING_FILTERS = ["type", "state", "creator", "destination"] as const;
 
 type AutomationGroup = {
   automations: AutomationSummary[];
@@ -59,7 +55,6 @@ type AutomationGroup = {
 export function AutomationsPage(props: { enabled: boolean }) {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [searchText, setSearchText] = useDebouncedSearchParam("q");
   // Ignore only invalid URL values. One bad field must not reset other filters.
   const filters = automationListQuerySchema.parse(
     Object.fromEntries(
@@ -90,7 +85,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
   };
   const clearFilters = () => {
     const next = new URLSearchParams(window.location.search);
-    for (const key of LANDING_FILTERS) if (key !== "q") next.delete(key);
+    for (const key of LANDING_FILTERS) next.delete(key);
     setSearchParams(next, { replace: true });
   };
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -108,12 +103,6 @@ export function AutomationsPage(props: { enabled: boolean }) {
               onRemove: (key) => setFilter(key, ""),
               onToggle: () => setFiltersOpen((open) => !open),
               open: filtersOpen,
-            }}
-            search={{
-              label: "Search automations",
-              onChange: setSearchText,
-              placeholder: "Search automations",
-              value: searchText,
             }}
           />
         }
@@ -157,8 +146,8 @@ export function AutomationsPage(props: { enabled: boolean }) {
         <AutomationGroups automations={automations} search={location.search} />
         {query.data && query.data.total > automations.length ? (
           <p className="m-0 text-xs text-dashboard-text-muted">
-            Showing {automations.length} of {query.data.total}. Search or filter
-            to find the rest.
+            Showing {automations.length} of {query.data.total}. Filter, or
+            search with {COMMAND_PALETTE_SHORTCUT}, to find the rest.
           </p>
         ) : null}
       </FilteredList>
@@ -167,8 +156,9 @@ export function AutomationsPage(props: { enabled: boolean }) {
 }
 
 /**
- * Each search keystroke re-renders the page, and a row has up to 20 run
- * tooltips. Rows re-render only when the results or the URL change.
+ * A row has up to 20 run tooltips, so a page re-render, such as opening the
+ * filter panel, must not re-render them. Rows re-render only when the
+ * results or the URL change.
  */
 const AutomationGroups = memo(function AutomationGroups(props: {
   automations: AutomationSummary[];

@@ -12,7 +12,7 @@ const DETAILS_OPEN_KEY = "junior:conversation:details-open";
 const WIDTH_KEY = "junior:conversation:sidebar-width-rem";
 const DETAILS_WIDTH_KEY = "junior:conversation:details-width-rem";
 
-/** Rem limits for the conversation list beside a selected conversation. */
+/** Rem limits for the desktop pane, shared by every page. */
 export const SIDEBAR_WIDTH = { default: 20, max: 30, min: 15 } as const;
 
 /** Rem limits for the details panel beside the transcript. */
@@ -46,12 +46,12 @@ export function saveDetailsOpen(open: boolean) {
   if (hasPanelSpace()) writeStorage(DETAILS_OPEN_KEY, String(open));
 }
 
-/** Read the conversation list width saved in this browser. */
-export function readSidebarWidth(): RemSize {
-  return readWidth(WIDTH_KEY, SIDEBAR_WIDTH);
+/** Read the desktop pane width saved in this browser, in rem. */
+export function readSidebarWidth(): number {
+  return parseFloat(readWidth(WIDTH_KEY, SIDEBAR_WIDTH));
 }
 
-/** Save the conversation list width in px without a React render per drag step. */
+/** Save the desktop pane width, given in px, once a resize ends. */
 export function saveSidebarWidth(px: number) {
   writeWidth(WIDTH_KEY, px);
 }

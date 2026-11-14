@@ -25,7 +25,7 @@ function imageAssetPlugin(): Rolldown.Plugin {
   return {
     name: "junior-dashboard-image-assets",
     load(id) {
-      if (!id.endsWith(".webp")) return null;
+      if (!/\.(?:png|webp)$/.test(id)) return null;
       const referenceId = this.emitFile({
         type: "asset",
         name: path.basename(id),

@@ -1,5 +1,4 @@
 import {
-  ChevronDown,
   ChevronsUpDown,
   LogOut,
   Settings,
@@ -12,11 +11,13 @@ import type { PersonalSpendReport } from "@sentry/junior/api/schema";
 
 import { formatCostSummary, peoplePath } from "../format";
 import { cn, dashboardInteractiveTextClass } from "../styles";
+import { SIDEBAR_ROW_GRID_CLASS } from "./layout/sidebarGrid";
 import type { Identity } from "../types";
 import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
 import { navItemIcon } from "./layout/navIcons";
-import { NavLayoutSwitcher } from "./NavLayoutSwitcher";
 import { ThemeSwitcher } from "./ThemeSwitcher";
+import { DensitySwitcher } from "../conversations/conversationDensity";
+import { HoverExpandSwitcher } from "../review-desk/hoverExpand";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import {
   DropdownMenu,
@@ -26,7 +27,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { SidebarMenuButton, SidebarMenuItem } from "./ui/sidebar";
 
 type ProfileMenuProps = {
   identity: Identity;
@@ -35,19 +35,12 @@ type ProfileMenuProps = {
   /** Pages that live in this menu instead of the primary nav. */
   pages: DashboardHeaderNavItem[];
   /**
-   * `popover` is the profile row at the bottom of the desktop nav sidebar.
-   * It shows only the avatar while the sidebar is collapsed.
-   * `top-bar` is the spend and avatar control in the desktop top bar.
+   * `popover` is the profile row at the bottom of the desktop pane.
    * `sheet-spend` is the vertical spend callout at the top of the mobile sheet.
    * `sheet-links` is plain account destinations for the mobile nav sheet.
    * `sheet-identity` is the quiet signed-in strip at the bottom of that sheet.
    */
-  variant?:
-    | "popover"
-    | "top-bar"
-    | "sheet-spend"
-    | "sheet-links"
-    | "sheet-identity";
+  variant?: "popover" | "sheet-spend" | "sheet-links" | "sheet-identity";
 };
 
 const HOVER_OPEN_DELAY_MS = 80;
@@ -68,15 +61,18 @@ function initials(name: string | null | undefined, email: string): string {
 /** Show the viewer's photo, with initials while it loads or when there is none. */
 function ProfileAvatar({
   className,
+  size,
   user,
 }: {
   className?: string;
+  size?: "sm";
   user: Identity["user"];
 }) {
   return (
     <Avatar
       aria-hidden="true"
       className={cn("border-0 shadow-black/40", className)}
+      size={size}
     >
       <AvatarImage alt="User avatar" src={user.avatarUrl} />
       <AvatarFallback className="font-bold tracking-wide">
@@ -142,6 +138,49 @@ function SpendAmount({ value }: { value?: number }) {
   );
 }
 
+/** Name the 7-day and 30-day spend totals for assistive tech. */
+function personalSpendLabel(spend?: PersonalSpendReport): string {
+  const total = (value?: number) =>
+    value === undefined ? "—" : formatCostSummary({ total: value });
+  return `Personal model spend: 7 days ${total(spend?.sevenDaysUsd)}, 30 days ${total(spend?.thirtyDaysUsd)}`;
+}
+
+/**
+ * Keep the running 7-day and 30-day spend totals in view, in one compact row.
+ * `labelled` names the row as a group; leave it off inside a control that
+ * already says the spend in its own label.
+ */
+export function SpendSummary(props: {
+  labelled?: boolean;
+  spend?: PersonalSpendReport;
+}) {
+  return (
+    <span
+      aria-label={props.labelled ? personalSpendLabel(props.spend) : undefined}
+      className="flex items-center gap-2 whitespace-nowrap font-sans text-xs tabular-nums"
+      role={props.labelled ? "group" : undefined}
+    >
+      <span className="flex items-baseline gap-1">
+        <span className="font-medium tracking-[0.08em] text-dashboard-text-muted">
+          7d
+        </span>
+        <span className="font-semibold text-dashboard-text">
+          <SpendAmount value={props.spend?.sevenDaysUsd} />
+        </span>
+      </span>
+      <span aria-hidden="true" className="h-3 w-px bg-dashboard-fill-strong" />
+      <span className="flex items-baseline gap-1">
+        <span className="font-medium tracking-[0.08em] text-dashboard-text-muted">
+          30d
+        </span>
+        <span className="font-semibold text-dashboard-text">
+          <SpendAmount value={props.spend?.thirtyDaysUsd} />
+        </span>
+      </span>
+    </span>
+  );
+}
+
 /** Group the signed-in identity, personal profile, and session actions. */
 export function ProfileMenu({
   identity,
@@ -153,12 +192,6 @@ export function ProfileMenu({
   const [open, setOpen] = useState(false);
   const email = identity.user.email!;
   const name = identity.user.name?.trim() || email;
-  const sevenDaySpend = spend
-    ? formatCostSummary({ total: spend.sevenDaysUsd })
-    : "—";
-  const thirtyDaySpend = spend
-    ? formatCostSummary({ total: spend.thirtyDaysUsd })
-    : "—";
 
   // Plain content, not a group label: it names no menu items.
   const identityBlock = (
@@ -203,10 +236,6 @@ export function ProfileMenu({
         <UserRound aria-hidden="true" />
         My profile
       </DropdownMenuLinkItem>
-      <DropdownMenuLinkItem render={<Link to="/settings" />}>
-        <Settings aria-hidden="true" />
-        Settings
-      </DropdownMenuLinkItem>
       {pages.map((page) => {
         const Icon = navItemIcon(page.key);
         return (
@@ -222,6 +251,10 @@ export function ProfileMenu({
           Admin
         </DropdownMenuLinkItem>
       ) : null}
+      <DropdownMenuLinkItem render={<Link to="/settings" />}>
+        <Settings aria-hidden="true" />
+        Settings
+      </DropdownMenuLinkItem>
       <DropdownMenuItem onClick={() => void onSignOut()}>
         <LogOut aria-hidden="true" />
         Log out
@@ -233,7 +266,7 @@ export function ProfileMenu({
     // Vertical mobile callout pinned above every sheet destination.
     return (
       <div
-        aria-label={`Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}`}
+        aria-label={personalSpendLabel(spend)}
         className="grid gap-1.5 rounded-lg border border-dashboard-border bg-dashboard-fill-soft px-3 py-2.5 font-sans text-xs tabular-nums text-dashboard-text-muted"
       >
         <span className="text-xs font-medium">Spend</span>
@@ -264,9 +297,6 @@ export function ProfileMenu({
         <Link className={sheetItemClass} to={peoplePath(email)}>
           My profile
         </Link>
-        <Link className={sheetItemClass} to="/settings">
-          Settings
-        </Link>
         {pages.map((page) => (
           <Link className={sheetItemClass} key={page.key} to={page.to}>
             {page.label}
@@ -277,6 +307,9 @@ export function ProfileMenu({
             Admin
           </Link>
         ) : null}
+        <Link className={sheetItemClass} to="/settings">
+          Settings
+        </Link>
         <button
           className={cn(sheetItemClass, "w-full cursor-pointer")}
           data-mobile-nav-dismiss
@@ -288,6 +321,8 @@ export function ProfileMenu({
           Log out
         </button>
         <ThemeSwitcher className="px-3 py-2" />
+        <DensitySwitcher className="px-3 py-2" />
+        <HoverExpandSwitcher className="px-3 py-2" />
       </nav>
     );
   }
@@ -313,8 +348,6 @@ export function ProfileMenu({
     );
   }
 
-  const topBar = variant === "top-bar";
-  const menuLabel = `${open ? "Close" : "Open"} profile menu for ${name}`;
   const hoverTrigger = {
     closeDelay: HOVER_CLOSE_DELAY_MS,
     delay: HOVER_OPEN_DELAY_MS,
@@ -336,74 +369,36 @@ export function ProfileMenu({
       }}
       open={open}
     >
-      {topBar ? (
-        <DropdownMenuTrigger
-          aria-label={`${menuLabel}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`}
-          className={cn(
-            "group flex h-10 cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-1.5 text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
-            open && "bg-dashboard-fill-hover text-dashboard-text",
-          )}
-          {...hoverTrigger}
-        >
-          <span className="flex items-center gap-2">
-            <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
-              <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
-                7d
-              </span>
-              <span className="text-xs font-semibold text-dashboard-text">
-                <SpendAmount value={spend?.sevenDaysUsd} />
-              </span>
-            </span>
-            <span
-              aria-hidden="true"
-              className="h-3 w-px bg-dashboard-fill-strong"
-            />
-            <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
-              <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
-                30d
-              </span>
-              <span className="text-xs font-semibold text-dashboard-text">
-                <SpendAmount value={spend?.thirtyDaysUsd} />
-              </span>
-            </span>
-          </span>
-          <ProfileAvatar user={identity.user} />
-          <ChevronDown
-            aria-hidden="true"
-            className={cn(
-              "text-dashboard-text-muted transition-[color,transform] group-hover:text-dashboard-text",
-              open && "rotate-180 text-dashboard-text",
-            )}
-            size={14}
-            strokeWidth={2}
-          />
-        </DropdownMenuTrigger>
-      ) : (
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            aria-label={menuLabel}
-            className={cn(
-              // The collapsed nav sidebar shows only the avatar.
-              "h-10 gap-2.5 rounded-lg px-1.5 group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! [&_svg]:size-3.5",
-              open && "bg-sidebar-accent",
-            )}
-            render={<DropdownMenuTrigger {...hoverTrigger} />}
-          >
-            <ProfileAvatar user={identity.user} />
-            <span className="min-w-0 flex-1 truncate font-medium group-data-[collapsible=icon]:hidden">
-              {name}
-            </span>
-            <ChevronsUpDown
-              aria-hidden="true"
-              className="text-dashboard-text-muted group-data-[collapsible=icon]:hidden"
-              strokeWidth={2}
-            />
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      )}
+      <DropdownMenuTrigger
+        aria-label={`${open ? "Close" : "Open"} profile menu for ${name}. ${personalSpendLabel(spend)}.`}
+        className={cn(
+          // The sidebar row grid: the avatar on the icon axis, the name on
+          // the label edge, the chevron on the right content edge.
+          SIDEBAR_ROW_GRID_CLASS,
+          "h-12 w-full min-w-0 cursor-pointer items-center rounded-lg border-0 bg-transparent text-left font-sans text-sm text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+          open && "bg-dashboard-fill-hover",
+        )}
+        {...hoverTrigger}
+      >
+        <ProfileAvatar
+          className="justify-self-center"
+          size="sm"
+          user={identity.user}
+        />
+        <span className="grid min-w-0 gap-0.5">
+          <span className="truncate font-medium leading-tight">{name}</span>
+          <SpendSummary spend={spend} />
+        </span>
+        <ChevronsUpDown
+          aria-hidden="true"
+          className="shrink-0 text-dashboard-text-muted"
+          size={14}
+          strokeWidth={2}
+        />
+      </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        side={topBar ? "bottom" : "right"}
+        side="right"
         sideOffset={8}
         className="w-64"
         id="profile-popover"
@@ -412,7 +407,8 @@ export function ProfileMenu({
         <DropdownMenuSeparator />
         <div className="grid gap-1 px-2 py-1.5">
           <ThemeSwitcher menu />
-          <NavLayoutSwitcher menu />
+          <DensitySwitcher menu />
+          <HoverExpandSwitcher menu />
         </div>
         <DropdownMenuSeparator />
         {menuLinks}

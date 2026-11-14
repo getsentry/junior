@@ -14,7 +14,9 @@ test("updates the signed-in user's display name", async ({
   await page.goto(dashboard.baseURL);
   await page.getByRole("button", { name: /Open profile menu/ }).click();
   await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(
+    page.getByRole("main").getByRole("heading", { name: "Settings" }),
+  ).toBeVisible();
   await expect(page.locator("#profile-popover")).toHaveCount(0);
   await expect(page.getByLabel("Display name")).toHaveValue("Dashboard User");
   await screenshot(page, "settings", { view: "desktop" });
@@ -139,7 +141,7 @@ test("turns on push notifications from a one-time tip", async ({
     });
   });
   async function startConversation(message: string) {
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations/new`);
     await page.getByPlaceholder("Message Junior…").fill(message);
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/conversations\/internal%3Adashboard-qa$/);
@@ -309,7 +311,7 @@ test("turns on composer autocorrect for this browser", async ({
   page,
   dashboard,
 }) => {
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations/new`);
   const composer = page.getByPlaceholder("Message Junior…");
   await expect(composer).toHaveAttribute("autocorrect", "off");
   await expect(composer).toHaveAttribute("autocapitalize", "off");
@@ -320,7 +322,7 @@ test("turns on composer autocorrect for this browser", async ({
   await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
   await page.getByText("Autocorrect", { exact: true }).click();
 
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations/new`);
   await expect(composer).toHaveAttribute("autocorrect", "on");
   await expect(composer).toHaveAttribute("autocapitalize", "sentences");
   await expect(composer).toHaveAttribute("spellcheck", "true");
@@ -380,4 +382,64 @@ test("links to a settings section", async ({ page, dashboard }) => {
   await expect(
     page.getByRole("heading", { exact: true, name: "Conversations" }),
   ).toBeInViewport();
+});
+
+test("marks the section in view in the pane on pages of sections", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${dashboard.baseURL}/settings`);
+  const sections = page.getByRole("navigation", { name: "Settings" });
+  const section = (name: string) =>
+    sections.getByRole("link", { exact: true, name });
+
+  await expect(section("General")).toHaveAttribute("aria-current", "location");
+
+  await section("Identities").click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/settings#identities`);
+  await expect(section("Identities")).toHaveAttribute(
+    "aria-current",
+    "location",
+  );
+  await expect(section("General")).not.toHaveAttribute("aria-current");
+
+  // Scrolling back up moves the mark to the section in view.
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(section("General")).toHaveAttribute("aria-current", "location");
+  await expect(section("Identities")).not.toHaveAttribute("aria-current");
+  await page
+    .getByRole("heading", { exact: true, name: "API Tokens" })
+    .evaluate((heading) => heading.scrollIntoView());
+  await expect(section("API Tokens")).toHaveAttribute(
+    "aria-current",
+    "location",
+  );
+  // The Memories Overview lists its sections under its own row.
+  await page.goto(`${dashboard.baseURL}/memories`);
+  const memories = page.getByRole("navigation", {
+    exact: true,
+    name: "Memories",
+  });
+  const memorySection = (name: string) =>
+    memories.getByRole("link", { exact: true, name });
+  await expect(memorySection("Overview")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(memorySection("Activity")).toHaveAttribute(
+    "aria-current",
+    "location",
+  );
+  await memorySection("How they got here").click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/memories#memory-sources`);
+  await expect(memorySection("How they got here")).toHaveAttribute(
+    "aria-current",
+    "location",
+  );
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(memorySection("Activity")).toHaveAttribute(
+    "aria-current",
+    "location",
+  );
 });

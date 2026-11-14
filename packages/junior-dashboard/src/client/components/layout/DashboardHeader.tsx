@@ -1,16 +1,12 @@
 import { ArrowLeft, Menu, Search, X } from "lucide-react";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
-import { Link, NavLink } from "react-router";
+import { Link } from "react-router";
+
+import { PaneTabs } from "./PaneNav";
 
 import { getDashboardAgentName } from "../../agentName";
-import {
-  COMMAND_PALETTE_LABEL,
-  COMMAND_PALETTE_SHORTCUT,
-} from "../CommandPalette";
-import { JuniorLogo } from "../JuniorLogo";
+import { COMMAND_PALETTE_LABEL } from "../CommandPalette";
 import { Button } from "../ui/button";
-import { Badge } from "../ui/badge";
-import { Kbd } from "../ui/kbd";
 import { Sheet, SheetClose, SheetContent } from "../ui/sheet";
 import { useSheet } from "../ui/useSheet";
 import {
@@ -34,25 +30,15 @@ export type DashboardHeaderNavItem = {
 const mobileBackClass =
   "grid size-10 place-items-center rounded-lg text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70";
 
-function NavCount(props: { count?: number }) {
-  if (!props.count) return null;
-  return (
-    <Badge className="ml-1.5 py-0.5" variant="highlight">
-      {props.count.toLocaleString("en-US")}
-    </Badge>
-  );
-}
-
 /**
- * Render the shell header: the mobile bar and navigation sheet, and the
- * desktop top bar when `desktopTopBar` is set. Otherwise desktop uses
- * `NavRail`.
+ * Render the mobile shell header and navigation sheet. Desktop navigation
+ * lives in the pane (`ListPane`).
  */
 export function DashboardHeader(props: {
-  /** Show the desktop top bar instead of the nav sidebar. */
-  desktopTopBar: boolean;
   /** Back target used on mobile conversation detail. */
   mobileBackTo?: string;
+  /** Names where `mobileBackTo` goes. Defaults to the conversations. */
+  mobileBackLabel?: string;
   mobileNavigationOpen: boolean;
   mobileTitle?: string;
   /** Quiet signed-in strip pinned above the sheet version footer. */
@@ -65,8 +51,6 @@ export function DashboardHeader(props: {
   onMobileNavigationOpenChange(open: boolean): void;
   /** Open the command palette. */
   onSearch(): void;
-  /** Spend and account control at the right of the desktop top bar. */
-  profile?: ReactNode;
   version?: string;
   workspaceActive: boolean;
 }) {
@@ -85,13 +69,6 @@ export function DashboardHeader(props: {
     onOpenChangeRef.current(true);
   });
 
-  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-    cn(
-      "shrink-0 whitespace-nowrap rounded-lg px-3 py-2 font-sans text-sm font-medium tracking-normal no-underline transition-colors",
-      isActive
-        ? "bg-dashboard-accent/[0.1] text-dashboard-accent-text"
-        : cn("hover:bg-dashboard-fill-soft", dashboardInteractiveTextClass),
-    );
   const sheetLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
       "rounded-lg px-3 py-3 font-sans text-sm font-medium no-underline transition-colors",
@@ -114,68 +91,7 @@ export function DashboardHeader(props: {
   }, [props.mobileNavigationOpen]);
 
   return (
-    <header
-      className={cn(
-        "relative bg-dashboard-bg",
-        !props.desktopTopBar && "md:hidden",
-      )}
-    >
-      {/* Equal side tracks center the command palette trigger in the window,
-          like an editor's title bar. When the nav needs more room, the
-          trigger shrinks instead of covering it. Below lg the nav can be
-          wider than the window, so it scrolls and the trigger is an icon.
-          Unmount, not hide, so a switch to the sidebar also closes the top
-          bar's popovers. */}
-      {props.desktopTopBar ? (
-        <div className="hidden w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-5 px-7 py-3 md:grid lg:grid-cols-[minmax(auto,1fr)_minmax(0,36rem)_minmax(auto,1fr)]">
-          <div className="flex items-center gap-5 max-lg:min-w-0">
-            <Link
-              aria-label={`${getDashboardAgentName()} home`}
-              className="flex items-center text-inherit no-underline"
-              to="/"
-            >
-              <JuniorLogo />
-            </Link>
-            <nav
-              aria-label="Primary"
-              className="flex items-center gap-1 [scrollbar-width:none] max-lg:min-w-0 max-lg:overflow-x-auto [&::-webkit-scrollbar]:hidden"
-            >
-              <Link
-                aria-current={props.workspaceActive ? "page" : undefined}
-                className={navLinkClass({ isActive: props.workspaceActive })}
-                to="/"
-              >
-                Conversations
-              </Link>
-              {props.navItems.map((item) => (
-                <NavLink className={navLinkClass} key={item.key} to={item.to}>
-                  {item.label}
-                  <NavCount count={item.count} />
-                </NavLink>
-              ))}
-            </nav>
-          </div>
-          <Button
-            variant="outline"
-            aria-keyshortcuts="Meta+K Control+K"
-            className="w-full font-normal text-dashboard-text-faint hover:text-dashboard-text-muted"
-            onClick={props.onSearch}
-          >
-            <span className="flex min-w-0 flex-1 items-center justify-center gap-2">
-              <Search aria-hidden="true" className="size-4 shrink-0" />
-              <span className="truncate max-lg:sr-only">
-                {COMMAND_PALETTE_LABEL}…
-              </span>
-            </span>
-            <Kbd className="text-xs max-xl:hidden" variant="plain">
-              {COMMAND_PALETTE_SHORTCUT}
-            </Kbd>
-          </Button>
-          <div className="flex items-center gap-3 justify-self-end">
-            {props.profile}
-          </div>
-        </div>
-      ) : null}
+    <header className="relative bg-dashboard-bg md:hidden">
       <div className="grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:hidden">
         {conversationMode && mobileBack ? (
           <button
@@ -192,7 +108,7 @@ export function DashboardHeader(props: {
           </button>
         ) : conversationMode && props.mobileBackTo ? (
           <Link
-            aria-label="Back to conversations"
+            aria-label={props.mobileBackLabel ?? "Back to conversations"}
             className={mobileBackClass}
             to={props.mobileBackTo}
           >
@@ -273,26 +189,9 @@ export function DashboardHeader(props: {
                   <Search aria-hidden="true" className="size-4" />
                   {COMMAND_PALETTE_LABEL}
                 </Button>
-                <Link
-                  aria-current={props.workspaceActive ? "page" : undefined}
-                  className={sheetLinkClass({
-                    isActive: props.workspaceActive,
-                  })}
-                  to="/"
-                >
-                  Conversations
-                </Link>
-                {props.navItems.map((item) => (
-                  <NavLink
-                    className={sheetLinkClass}
-                    key={item.key}
-                    to={item.to}
-                  >
-                    {item.label}
-                    <NavCount count={item.count} />
-                  </NavLink>
-                ))}
               </nav>
+              {/* The same tabs as the desktop pane. */}
+              <PaneTabs className="mt-2" />
               <MobileSecondaryNavigationSlot />
               {props.mobileProfile ? (
                 <div className="mt-4 border-t border-dashboard-border-subtle pt-3">

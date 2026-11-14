@@ -2,7 +2,6 @@ import { Duration } from "../../components/Duration";
 import { Hash } from "lucide-react";
 import type { LocationSummaryReport } from "@sentry/junior/api/schema";
 
-import { SearchInput } from "../../components/SearchInput";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
 import {
@@ -22,29 +21,23 @@ import {
 
 export type LocationSort = "conversations" | "recent" | "runtime" | "tokens";
 
-/** Render searchable public locations with compact activity metrics. */
+/**
+ * Render public locations with compact activity metrics. The command
+ * palette finds a location.
+ */
 export function LocationDirectory(props: {
   locations: LocationSummaryReport[];
-  query: string;
   sort: LocationSort;
-  totalLocations: number;
   loading?: boolean;
-  onQueryChange(value: string): void;
   onSortChange(value: LocationSort): void;
 }) {
   return (
     <Card>
       <CardHeader
-        description={`${props.locations.length} of ${props.totalLocations} public locations`}
+        description={`${props.locations.length} public locations`}
         title="Public directory"
       />
-      <DirectoryToolbar columnsClassName="md:grid-cols-[minmax(14rem,1fr)_minmax(11rem,15rem)]">
-        <SearchInput
-          label="Search locations"
-          placeholder="Search channel name..."
-          value={props.query}
-          onChange={props.onQueryChange}
-        />
+      <DirectoryToolbar columnsClassName="md:grid-cols-[minmax(11rem,15rem)] md:justify-end">
         <DirectorySortSelect
           ariaLabel="Sort locations"
           onChange={(value) => props.onSortChange(value as LocationSort)}
@@ -61,9 +54,7 @@ export function LocationDirectory(props: {
         ariaLabel="Public location directory results"
         empty={
           props.locations.length === 0 ? (
-            <EmptyTelemetry>
-              No public locations match this search.
-            </EmptyTelemetry>
+            <EmptyTelemetry>No public locations yet.</EmptyTelemetry>
           ) : undefined
         }
         headers={["Location", "Conversations", "Tokens", "Runtime"]}

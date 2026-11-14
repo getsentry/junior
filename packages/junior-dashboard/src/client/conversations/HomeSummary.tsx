@@ -1,6 +1,7 @@
-import type {
-  CodeActivityDay,
-  CodeChangeSummaryReport,
+import {
+  IDLE_CHANGE_DAYS,
+  type CodeActivityDay,
+  type CodeChangeSummaryReport,
 } from "@sentry/junior/api/schema";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -11,16 +12,11 @@ import { Card } from "../components/layout/Card";
 import { Skeleton } from "../components/ui/skeleton";
 import { useReviewItemCountData } from "../review-desk/queries";
 import { cn } from "../styles";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
 import { SidebarAnnotationIcon } from "./ConversationMeta";
+import { IdleText, lastActivity } from "./codeChangeIdle";
 import { HomeDayStrip } from "./HomeDayStrip";
 import { HomeMergeDelta } from "./HomeMergeDelta";
 
-const DAY_MS = 86_400_000;
 const WEEK_DAYS = 7;
 /** Open code changes shown before the reader expands the list. */
 const OPEN_LIMIT = 3;
@@ -58,13 +54,14 @@ export function HomeSummary() {
   const open = code.data.changes
     .filter((change) => change.state === "open")
     .sort((a, b) => lastActivity(a).localeCompare(lastActivity(b)));
-  const idleCount = open.filter(
-    (change) => idleDays(nowMs, change) > IDLE_RED_DAYS,
-  ).length;
+  // The listed changes stop at the report's limit. The summary counts every
+  // open change.
+  const openCount = code.data.summary.open;
+  const idleCount = code.data.summary.idle;
   const needsViewer = reviewCount.data?.needsViewer ?? 0;
   if (
     merges.last7Days + merges.previous7Days === 0 &&
-    open.length === 0 &&
+    openCount === 0 &&
     needsViewer === 0
   ) {
     return null;
@@ -93,21 +90,19 @@ export function HomeSummary() {
         />
         <SummaryCard
           detail={
-            open.length === 0 ? null : idleCount > 0 ? (
+            openCount === 0 ? null : idleCount > 0 ? (
               <StatusText tone="bg-rose-300">
                 <span className="font-medium text-dashboard-text">
                   {idleCount}
                 </span>{" "}
-                idle {IDLE_RED_DAYS}d+
+                idle {IDLE_CHANGE_DAYS}d+
               </StatusText>
             ) : (
               <StatusText tone="bg-emerald-300">all moving</StatusText>
             )
           }
           label="Open"
-          // The report lists a limited number of changes. The summary counts
-          // every open one.
-          value={code.data.summary.open}
+          value={openCount}
         />
         <SummaryCard
           detail={
@@ -115,16 +110,16 @@ export function HomeSummary() {
               <StatusText tone="bg-amber-300">
                 <Link
                   className="text-inherit underline-offset-2 hover:text-dashboard-text hover:underline"
-                  to="/review"
+                  to="/"
                 >
-                  on your Review desk
+                  in your Inbox
                 </Link>
               </StatusText>
             ) : (
               <StatusText tone="bg-emerald-300">all clear</StatusText>
             )
           }
-          label="Needs you"
+          label="To do"
           value={needsViewer}
         />
       </div>
@@ -275,60 +270,6 @@ function OpenChangeRow(props: {
       </div>
     </li>
   );
-}
-
-/** Idle days past this turn red. 4 days up to this turn amber. */
-const IDLE_RED_DAYS = 7;
-
-// Until a code plugin records activity, opening is the last known activity.
-function lastActivity(change: CodeChangeSummaryReport): string {
-  return change.lastActivityAt ?? change.openedAt;
-}
-
-function idleDays(nowMs: number, change: CodeChangeSummaryReport): number {
-  return Math.floor((nowMs - Date.parse(lastActivity(change))) / DAY_MS);
-}
-
-/** Time since the last push, review, or comment, colored by idle days. */
-function IdleText(props: { change: CodeChangeSummaryReport; nowMs: number }) {
-  const days = idleDays(props.nowMs, props.change);
-  const idle = formatSince(props.nowMs, lastActivity(props.change));
-  const opened = formatSince(props.nowMs, props.change.openedAt);
-  const touched =
-    props.change.lastActivityAt !== undefined &&
-    props.change.lastActivityAt > props.change.openedAt;
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            className={cn(
-              days > IDLE_RED_DAYS && "font-medium text-rose-300",
-              days >= 4 &&
-                days <= IDLE_RED_DAYS &&
-                "font-medium text-amber-300",
-            )}
-          />
-        }
-      >
-        {idle}
-      </TooltipTrigger>
-      <TooltipContent size="compact">
-        {/* PRs opened before tracking started can have untracked activity. */}
-        {touched
-          ? `Last activity ${idle} ago · opened ${opened} ago`
-          : `Opened ${opened} ago`}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-function formatSince(nowMs: number, at: string): string {
-  const minutes = Math.max(1, Math.floor((nowMs - Date.parse(at)) / 60_000));
-  if (minutes < 60) return `${minutes}m`;
-  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}h`;
-  const days = Math.floor(minutes / (24 * 60));
-  return days < 365 ? `${days}d` : `${Math.floor(days / 365)}y`;
 }
 
 /** Same frame and row heights as the loaded summary with three open rows. */

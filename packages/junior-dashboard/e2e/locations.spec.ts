@@ -6,10 +6,6 @@ test("explores location activity", async ({ page, dashboard }) => {
   await page.goto(`${dashboard.baseURL}/locations?q=proj`);
 
   await expect(page).toHaveURL(`${dashboard.baseURL}/system/locations?q=proj`);
-  await expect(
-    page.getByRole("searchbox", { name: "Search locations" }),
-  ).toHaveValue("proj");
-  await page.getByRole("searchbox", { name: "Search locations" }).fill("");
 
   await expect(
     page.getByRole("heading", { name: "Locations", exact: true }),
@@ -31,7 +27,7 @@ test("explores location activity", async ({ page, dashboard }) => {
   ).toHaveValue("conversations");
   await expect(
     page
-      .getByLabel("System navigation")
+      .getByRole("navigation", { exact: true, name: "System" })
       .getByRole("link", { name: "Locations" }),
   ).toHaveAttribute("aria-current", "page");
   await screenshot(page, "locations");
@@ -50,7 +46,7 @@ test("opens one public location", async ({ page, dashboard }) => {
   ).toBeVisible();
   await expect(
     page
-      .getByLabel("System navigation")
+      .getByRole("navigation", { exact: true, name: "System" })
       .getByRole("link", { name: "Locations" }),
   ).toHaveAttribute("aria-current", "page");
   await screenshot(page, "location-detail");

@@ -142,13 +142,14 @@ async function unavailableEventAutomationIds(
   });
 }
 
-/** Read an SQL page and complete, access-scoped counts and filter options. */
-export async function readAutomationCollection(
-  viewer: AutomationViewer,
-  input: AutomationListQuery,
+/**
+ * Build the filters for Automations whose trigger cannot work and for those
+ * that need attention: blocked, an unavailable trigger, or a last run that
+ * failed or blocked. Paused and completed Automations never need attention.
+ */
+async function attentionFilters(
+  collection: ReturnType<typeof viewerAutomationCollection>,
 ) {
-  const db = getDb();
-  const collection = viewerAutomationCollection(viewer);
   const unavailableIds = await unavailableEventAutomationIds(collection);
   const unavailable =
     unavailableIds.length > 0
@@ -162,6 +163,33 @@ export async function readAutomationCollection(
       eq(collection.lastRunNeedsAttention, true),
     ),
   );
+  return { attention, unavailable };
+}
+
+/**
+ * Count the viewer's own Automations that need attention, the rows that the
+ * Inbox lists from `scope=attention&owner=me`.
+ */
+export async function countOwnedAutomationsNeedingAttention(
+  viewer: AutomationViewer,
+): Promise<number> {
+  const collection = viewerAutomationCollection(viewer);
+  const { attention } = await attentionFilters(collection);
+  const [row] = await getDb()
+    .select({ total: count() })
+    .from(collection)
+    .where(and(eq(collection.owned, true), attention));
+  return row!.total;
+}
+
+/** Read an SQL page and complete, access-scoped counts and filter options. */
+export async function readAutomationCollection(
+  viewer: AutomationViewer,
+  input: AutomationListQuery,
+) {
+  const db = getDb();
+  const collection = viewerAutomationCollection(viewer);
+  const { attention, unavailable } = await attentionFilters(collection);
   const where = and(
     input.scope === "mine"
       ? eq(collection.owned, true)
@@ -177,6 +205,7 @@ export async function readAutomationCollection(
         ? unavailable
         : eq(collection.state, input.state),
     input.creator ? eq(collection.creator, input.creator) : undefined,
+    input.owner === "me" ? eq(collection.owned, true) : undefined,
     input.destination
       ? eq(collection.destination, input.destination)
       : undefined,

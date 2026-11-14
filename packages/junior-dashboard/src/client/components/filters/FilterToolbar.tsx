@@ -2,7 +2,6 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { SlidersHorizontal, X } from "lucide-react";
 
 import { useDetailsPanel } from "../DetailsPanel";
-import { SearchInput } from "../SearchInput";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
@@ -14,8 +13,9 @@ export type ActiveFilter = {
 };
 
 /**
- * The search bar of a filtered page: search, the icon button that opens its
- * `FilterPanel`, and one removable chip per set filter. Beside an open panel
+ * The filter bar of a filtered page: the icon button that opens its
+ * `FilterPanel`, and one removable chip per set filter. The command
+ * palette is the search. Beside an open panel
  * the chips repeat it, so they hide. `children` adds controls after the
  * button, such as a sort. Render it as the `toolbar` of a `FilteredList`.
  */
@@ -26,12 +26,6 @@ export function FilterToolbar(props: {
     onRemove(key: string): void;
     onToggle(): void;
     open: boolean;
-  };
-  search: {
-    label: string;
-    onChange(value: string): void;
-    placeholder: string;
-    value: string;
   };
 }) {
   const { filters } = props;
@@ -53,14 +47,7 @@ export function FilterToolbar(props: {
       : [];
   return (
     <div className="grid gap-3">
-      <div className="flex items-center gap-2">
-        <SearchInput
-          className="flex-1"
-          label={props.search.label}
-          onChange={props.search.onChange}
-          placeholder={props.search.placeholder}
-          value={props.search.value}
-        />
+      <div className="flex items-center justify-end gap-2">
         {/* Beside the list, the open panel has its own close button. */}
         {filters && !(filters.open && beside) ? (
           <Tooltip>

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { ConversationTranscript } from "../types";
+import { INBOX_VIEW_LABELS, inboxViewOfPath } from "../review-desk/inboxModel";
+import { useInboxReturnPath } from "../review-desk/inboxListState";
 import {
   ChatLayout,
   TranscriptColumn,
@@ -129,12 +131,13 @@ export function NewConversationPending(props: {
   // the page.
   const showDetails = useDetailsStartOpen();
   const searchMatch = useTranscriptSearchMatch("");
-  // Home has no Conversation chrome. Show the page's, so mobile does not
-  // flash the home header before the route changes. Back waits, like the
-  // header actions: home's composer holds the sent text until the create is
-  // accepted.
+  // The composer page has no Conversation chrome. Show the page's, so
+  // mobile does not flash the composer header before the route changes.
+  // Back waits, like the header actions: the composer holds the sent text
+  // until the create is accepted.
+  const returnView = inboxViewOfPath(useInboxReturnPath());
   useRegisterMobileHeaderBack(
-    "Back to conversations",
+    `Back to ${INBOX_VIEW_LABELS[returnView]}`,
     undefined,
     PENDING_TITLE,
   );

@@ -1,7 +1,25 @@
 import juniorAvatarUrl from "../../assets/junior-avatar.webp";
+import { cn } from "../styles";
+import { toolbarControlBoxClass } from "./ui/button";
 
-/** Render Junior's official avatar treatment used by the dashboard shell. */
-export function JuniorLogo() {
+/**
+ * Render Junior's official avatar treatment used by the dashboard shell.
+ * `sm` fills one toolbar control box, so it lines up with the buttons
+ * beside it, such as in the pane's top row.
+ */
+export function JuniorLogo(props: { size?: "sm" }) {
+  if (props.size === "sm")
+    return (
+      <img
+        alt=""
+        className={cn(
+          toolbarControlBoxClass,
+          "shrink-0 select-none object-cover opacity-90",
+        )}
+        draggable={false}
+        src={juniorAvatarUrl}
+      />
+    );
   return (
     <div className="relative grid size-10 shrink-0 select-none place-items-center overflow-visible">
       <img

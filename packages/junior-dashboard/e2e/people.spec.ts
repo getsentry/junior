@@ -24,7 +24,9 @@ test("explores people activity", async ({ page, dashboard }) => {
     page.getByText("Biggest increase", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByLabel("System navigation").getByRole("link", { name: "People" }),
+    page
+      .getByRole("navigation", { exact: true, name: "System" })
+      .getByRole("link", { name: "People" }),
   ).toHaveAttribute("aria-current", "page");
   await screenshot(page, "people");
   await page.getByRole("button", { name: "24h" }).click();

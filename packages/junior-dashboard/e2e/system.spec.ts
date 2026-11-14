@@ -47,7 +47,9 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await page.goto(`${dashboard.baseURL}/system`);
 
   await expect(
-    page.getByRole("heading", { name: "System", exact: true }),
+    page
+      .getByRole("main")
+      .getByRole("heading", { name: "System", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("Conversation activity")).toBeVisible();
   await expect(page.getByLabel("Conversations per day")).toBeVisible();
@@ -100,8 +102,12 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await expect(page.getByText(/Missing data in 1 of 24/)).toHaveCount(0);
   await expect(page.getByRole("combobox")).toHaveCount(0);
 
-  const systemNavigation = page.getByLabel("System navigation");
+  const systemNavigation = page.getByRole("navigation", {
+    exact: true,
+    name: "System",
+  });
   await expect(systemNavigation.getByRole("link")).toHaveText([
+    "Inbox",
     "Overview",
     "People",
     "Locations",
@@ -256,10 +262,12 @@ test("opens Workspace details beside the list and edits on a full page", async (
   );
   await expect(page.getByLabel("Name")).toHaveValue("sentry");
   await expect(
-    page.getByLabel("System navigation").getByRole("link", {
-      name: "Workspaces",
-      exact: true,
-    }),
+    page
+      .getByRole("navigation", { exact: true, name: "System" })
+      .getByRole("link", {
+        name: "Workspaces",
+        exact: true,
+      }),
   ).toHaveAttribute("href", "/system/workspaces");
 
   await page.getByRole("link", { name: "Cancel" }).click();
@@ -279,27 +287,28 @@ test("keeps System navigation usable on mobile", async ({
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
-  // Page tabs stay on the page, so moving between System pages does not need
-  // the navigation menu.
+  // Phones open System on its list of pages, then each page with a way back.
   const systemNavigation = page.getByRole("navigation", {
-    name: "System navigation",
+    exact: true,
+    name: "System",
   });
   await expect(systemNavigation.getByRole("link")).toHaveText([
+    // The way back to the last tab leads the list.
+    "Inbox",
     "Overview",
     "People",
     "Locations",
     "Workspaces",
     "Plugins",
   ]);
-  const pluginsLink = systemNavigation.getByRole("link", { name: "Plugins" });
-  await pluginsLink.click();
+  await systemNavigation.getByRole("link", { name: "Plugins" }).click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/system/plugins`);
   await expect(
     page.getByRole("heading", { name: "Plugins", exact: true }),
   ).toBeVisible();
-  // The current page tab scrolls into view when the row is wider than the screen.
-  await expect(pluginsLink).toHaveAttribute("aria-current", "page");
-  await expect(pluginsLink).toBeInViewport({ ratio: 1 });
+  await page.getByRole("link", { name: "Back to System" }).click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/system`);
+  await expect(systemNavigation).toBeVisible();
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
@@ -331,7 +340,12 @@ test("shows what cache warming saved in the range", async ({
   await expect(
     panel.getByRole("button", { name: "Re-fill history" }),
   ).toHaveCount(0);
-  await screenshot(page, "system-cache-warming", { target: panel });
+  // A phone shows the System entries at /system, so shoot the panel on
+  // desktop.
+  await screenshot(page, "system-cache-warming", {
+    target: panel,
+    view: "desktop",
+  });
 
   const week = page.waitForResponse("**/api/cache-warming/savings?days=7");
   await page.getByRole("button", { name: "7d", exact: true }).click();
@@ -383,13 +397,17 @@ test("lets an admin re-fill cache warming savings from history", async ({
   const button = panel.getByRole("button", { name: "Re-fill history" });
   await expect(button).toBeEnabled();
   await expect(panel.getByText(/Last re-fill finished/)).toBeVisible();
-  await screenshot(page, "system-cache-warming-refill", { target: panel });
+  await screenshot(page, "system-cache-warming-refill", {
+    target: panel,
+    view: "desktop",
+  });
 
   await button.click();
   await expect(panel.getByText(/Re-filling history: 420 of/)).toBeVisible();
   await expect(button).toBeDisabled();
   await screenshot(page, "system-cache-warming-refill-running", {
     target: panel,
+    view: "desktop",
   });
   expect(starts).toEqual(["POST"]);
 });

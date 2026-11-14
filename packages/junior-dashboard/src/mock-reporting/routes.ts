@@ -47,6 +47,7 @@ import {
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryParamsSchema,
+  codeRepositoryQuerySchema,
   codeRepositoryReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
@@ -91,6 +92,7 @@ import {
   actOnMockReviewItem,
   answerMockReviewItemByReply,
   readMockReviewItem,
+  readMockReviewItemCounts,
   readMockReviewItems,
   readMockWaitingConversations,
 } from "./review-items";
@@ -131,6 +133,7 @@ import {
   setMockConversationTitle,
   setMockConversationAutoArchive,
   archiveMockDoneConversations,
+  withMockImageOrigin,
 } from "./fixtures";
 import {
   createMockConversation,
@@ -206,7 +209,14 @@ export function createMockReportingApi(): Hono<{
     if (!params.success) {
       return errorResponse("Invalid route parameters.", 400);
     }
-    const report = readMockCodeRepository(params.data.repositoryId);
+    const query = codeRepositoryQuerySchema.safeParse(c.req.query());
+    if (!query.success) {
+      return errorResponse("Invalid query parameters.", 400);
+    }
+    const report = readMockCodeRepository(
+      params.data.repositoryId,
+      query.data.state,
+    );
     return report
       ? jsonResponse(codeRepositoryReportSchema, report)
       : errorResponse("Repository not found.", 404);
@@ -331,7 +341,10 @@ export function createMockReportingApi(): Hono<{
           !query.data.q && !repositoryId && query.data.status === "active",
       });
       return page
-        ? jsonResponse(conversationFeedSchema, page)
+        ? jsonResponse(
+            conversationFeedSchema,
+            withMockImageOrigin(page, new URL(c.req.url).origin),
+          )
         : errorResponse("Invalid conversation feed cursor.", 400);
     };
     if (!query.data.q) return respond(report);
@@ -825,14 +838,25 @@ export function createMockReportingApi(): Hono<{
   // Answer Review item reads and actions from the mock items, so the
   // dashboard does not query a database that has no review item tables.
   app.get("/review-items", (c) => {
-    const { conversationId, q } = c.req.query();
+    const { conversationId, q, status } = c.req.query();
     return jsonResponse(reviewItemListSchema, {
-      items: readMockReviewItems(NOW_MS, { conversationId, q: q || undefined }),
+      items: readMockReviewItems(NOW_MS, {
+        closed: Boolean(status && status !== "open"),
+        conversationId,
+        q: q || undefined,
+      }),
     });
   });
-  app.get("/review-items/count", () =>
+  app.get("/review-items/count", (c) =>
     jsonResponse(reviewItemCountSchema, {
-      needsViewer: readMockWaitingConversations(NOW_MS).needsViewer,
+      automations: mockAutomationCollection(
+        readMockAutomationList(),
+        new URLSearchParams({ owner: "me", scope: "attention" }),
+      ).total,
+      ...readMockReviewItemCounts(
+        NOW_MS,
+        (c.req.query("snoozed") ?? "").split(",").filter(Boolean),
+      ),
     }),
   );
   app.get("/review-items/waiting-conversations", () =>

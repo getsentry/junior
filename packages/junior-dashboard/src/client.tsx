@@ -6,8 +6,10 @@ import { createBrowserRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
 
 import { Toaster } from "./client/components/ui/toast";
+import { InboxSweepProvider } from "./client/review-desk/useInboxSweep";
 import { TooltipProvider } from "./client/components/ui/tooltip";
 import { DashboardShell } from "./client/App";
+import { EventLogShownProvider } from "./client/components/paletteEventLog";
 import { getDashboardAgentName } from "./client/agentName";
 import { initDashboardSentry } from "./client/sentry";
 import {
@@ -128,7 +130,16 @@ const queryClient = new QueryClient({
 });
 
 const router = createBrowserRouter(
-  [{ path: "*", element: <DashboardShell /> }],
+  [
+    {
+      path: "*",
+      element: (
+        <EventLogShownProvider>
+          <DashboardShell />
+        </EventLogShownProvider>
+      ),
+    },
+  ],
   { basename: window.__JUNIOR_DASHBOARD_BASE_PATH__ ?? "/" },
 );
 
@@ -136,9 +147,11 @@ createRoot(root).render(
   <DashboardErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <Toaster>
-        <TooltipProvider>
-          <RouterProvider router={router} />
-        </TooltipProvider>
+        <InboxSweepProvider>
+          <TooltipProvider>
+            <RouterProvider router={router} />
+          </TooltipProvider>
+        </InboxSweepProvider>
       </Toaster>
     </QueryClientProvider>
   </DashboardErrorBoundary>,

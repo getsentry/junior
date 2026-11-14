@@ -67,9 +67,15 @@ function ClosedSummary(props: { item: ReviewItemPayload }) {
 
 /**
  * Show the actions that the viewer can take on one Review item, or how it
- * closed. The review desk and the side panel use it.
+ * closed. The Inbox and the side panel use it. An Inbox row with its own
+ * Dismiss turns this one off.
  */
-export function ReviewItemActions(props: { item: ReviewItemPayload }) {
+export function ReviewItemActions(props: {
+  dismiss?: boolean;
+  item: ReviewItemPayload;
+  /** The take button's label, or false to leave it out. */
+  take?: string | false;
+}) {
   const { item } = props;
   const action = useReviewItemAction();
   const [error, setError] = useState<string>();
@@ -95,25 +101,29 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
     }
   }
 
+  const dismiss = props.dismiss ?? true;
+  const take = item.canTake ? (props.take ?? "Take") : false;
   // Take and Dismiss are quiet, so the answer stays the main action.
   const secondaryActions = (
     <>
-      {item.canTake ? (
+      {take ? (
         <Button
           disabled={action.isPending}
           onClick={() => void run({ action: "take" }).catch(() => {})}
           variant="ghost"
         >
-          Take
+          {take}
         </Button>
       ) : null}
-      <Button
-        disabled={action.isPending}
-        onClick={() => void run({ action: "dismiss" }).catch(() => {})}
-        variant="ghost"
-      >
-        Dismiss
-      </Button>
+      {dismiss ? (
+        <Button
+          disabled={action.isPending}
+          onClick={() => void run({ action: "dismiss" }).catch(() => {})}
+          variant="ghost"
+        >
+          Dismiss
+        </Button>
+      ) : null}
     </>
   );
 
@@ -140,13 +150,13 @@ export function ReviewItemActions(props: { item: ReviewItemPayload }) {
             secondaryActions={secondaryActions}
           />
         </div>
-      ) : (
+      ) : take || dismiss ? (
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex flex-wrap gap-1 sm:ml-auto">
             {secondaryActions}
           </div>
         </div>
-      )}
+      ) : null}
       {error ? <InlineError>{error}</InlineError> : null}
     </div>
   );

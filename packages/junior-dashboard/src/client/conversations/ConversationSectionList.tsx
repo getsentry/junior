@@ -1,10 +1,6 @@
 import { useCallback, useMemo, type ReactNode } from "react";
 import { ArrowUp } from "lucide-react";
 
-import {
-  useWaitingConversationsSettled,
-  type WaitingConversation,
-} from "../review-desk/queries";
 import type { Conversation } from "../types";
 import {
   buildConversationSections,
@@ -32,7 +28,6 @@ export function ConversationSectionList(props: {
   /** Leave unset when the list shows only some pins. */
   onReorderPins?: ReorderPins;
   timeZone: string;
-  waitingConversations: ReadonlyMap<string, WaitingConversation>;
 }) {
   // Rebuild sections only when their inputs change. Avoid fresh Date.now()
   // arrays on unrelated parent renders while the reader is scrolling.
@@ -41,14 +36,10 @@ export function ConversationSectionList(props: {
       buildConversationSections(props.conversations, {
         nowMs: Date.now(),
         timeZone: props.timeZone,
-        waiting: props.waitingConversations,
       }),
-    [props.conversations, props.timeZone, props.waitingConversations],
+    [props.conversations, props.timeZone],
   );
-  const waitingSettled = useWaitingConversationsSettled();
-  const held = useHeldListOrder(latestSections, {
-    settled: !props.loading && waitingSettled,
-  });
+  const held = useHeldListOrder(latestSections, { settled: !props.loading });
   const { releaseHold } = held;
   const { onReorderPins } = props;
   const reorderPins = useCallback<ReorderPins>(

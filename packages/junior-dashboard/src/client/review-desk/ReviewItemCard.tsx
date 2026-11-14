@@ -15,7 +15,7 @@ import {
 
 /**
  * Show one Review item as a card: its title, status, description, and the
- * viewer's actions, with a link to the review desk. The card uses the same
+ * viewer's actions, with a link to its row in the Inbox. The card uses the same
  * frame as transcript object cards, so it reads as one record, not as prose.
  */
 export function ReviewItemCard(props: { item: ReviewItemPayload }) {
@@ -69,7 +69,7 @@ export function ReviewItemCard(props: { item: ReviewItemPayload }) {
           className="inline-flex items-center gap-2 font-medium text-dashboard-text no-underline hover:underline focus-visible:outline-dashboard-focus"
           to={reviewItemPath(item.id)}
         >
-          Open on the review desk
+          Open in the Inbox
           <ArrowRight aria-hidden="true" size={14} />
         </Link>
         <span className="min-w-0 truncate text-dashboard-text-muted">

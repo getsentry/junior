@@ -11,6 +11,7 @@ import {
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { sendReviewItemMessages } from "@/chat/review-items/messages";
 import {
+  closeReviewItem,
   getReviewItem,
   insertReviewItem,
   takeReviewItem,
@@ -19,6 +20,7 @@ import { juniorConversationParticipants } from "@/db/schema";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
 import { createAddReviewItemTool } from "@/chat/tools/review-items";
+import type { UserInputRequest } from "@/chat/tools/runtime/user-input-request";
 import {
   closeConversationFixture,
   createConversationFixture,
@@ -28,7 +30,7 @@ import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conver
 
 const CLI_CONVERSATION_ID = "local:cli:review-items";
 
-const REQUEST = {
+const REQUEST: UserInputRequest = {
   question: "Approve or reject this entry?",
   fields: [
     {
@@ -296,7 +298,13 @@ describe("review item actions API", () => {
     });
 
     const anaCount = await (await api(fixture, ana).get("/count")).json();
-    expect(anaCount).toEqual({ needsViewer: 1 });
+    expect(anaCount).toEqual({
+      automations: 0,
+      decisions: 1,
+      needsViewer: 1,
+      prs: 0,
+      snoozed: 0,
+    });
     // The Conversations of the action item wait on Ana, but not on Cal.
     expect(
       await (await api(fixture, ana).get("/waiting-conversations")).json(),
@@ -378,7 +386,11 @@ describe("review item actions API", () => {
       (await api(fixture, ben).act(id, { action: "dismiss" })).status,
     ).toBe(409);
     expect(await (await api(fixture, ben).get("/count")).json()).toEqual({
+      automations: 0,
+      decisions: 0,
       needsViewer: 0,
+      prs: 0,
+      snoozed: 0,
     });
     expect(
       await (await api(fixture, ben).get("/waiting-conversations")).json(),
@@ -396,6 +408,209 @@ describe("review item actions API", () => {
       { kind: "notice" },
       { id, status: "done" },
     ]);
+
+    // The Done list pages the closed items, newest closed first, with the
+    // same visibility as open items.
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    const notice = calList.items.find((item: any) => item.kind === "notice");
+    expect(
+      (await api(fixture, ana).act(notice.id, { action: "dismiss" })).status,
+    ).toBe(200);
+    const closedPage = await (
+      await api(fixture, ana).get("?status=done,dismissed&limit=1")
+    ).json();
+    expect(closedPage.items).toMatchObject([
+      { id: notice.id, status: "dismissed" },
+    ]);
+    const closedCursor = encodeURIComponent(closedPage.nextCursor);
+    const nextClosed = await (
+      await api(fixture, ana).get(
+        `?status=done,dismissed&limit=1&cursor=${closedCursor}`,
+      )
+    ).json();
+    expect(nextClosed.items).toMatchObject([{ id, status: "done" }]);
+    expect(nextClosed.nextCursor).toBeUndefined();
+    // A cursor pages only its own list.
+    expect(
+      (await api(fixture, ana).get(`?limit=1&cursor=${closedCursor}`)).status,
+    ).toBe(400);
+    expect(
+      (await (await api(fixture, ana).get("?status=dismissed")).json()).items,
+    ).toMatchObject([{ id: notice.id }]);
+    expect(
+      (
+        await (
+          await api(fixture, outsider).get("?status=done,dismissed")
+        ).json()
+      ).items,
+    ).toEqual([]);
+    expect((await api(fixture, ana).get("?status=open,done")).status).toBe(400);
+    // Closed items never count.
+    expect(await (await api(fixture, ana).get("/count")).json()).toEqual({
+      automations: 0,
+      decisions: 0,
+      needsViewer: 0,
+      prs: 0,
+      snoozed: 0,
+    });
+  });
+
+  it("pages what waits on the viewer first with the waiting sort", async () => {
+    const fixture = await createConversationFixture();
+    await slackConversation("slack:CPUB:1.000001");
+    const ana = await user("ana@example.com");
+    const base = Date.parse("2026-10-01T12:00:00.000Z");
+    const item = async (
+      index: number,
+      kind: "action" | "notice",
+      nowMs: number,
+    ) => {
+      const created = await insertReviewItem(getDb(), {
+        addedByConversationId: "slack:CPUB:1.000001",
+        assignedToEveryone: false,
+        assigneeUserIds: [ana.id],
+        body: `Item ${index}.`,
+        conversationIds: ["slack:CPUB:1.000001"],
+        dedupeKey: `waiting-sort:${index}`,
+        ...(kind === "action"
+          ? {
+              kind,
+              request: {
+                fields: [
+                  {
+                    id: "decision",
+                    kind: "choice" as const,
+                    label: "Decision",
+                    options: [{ label: "Approve" }, { label: "Reject" }],
+                  },
+                ],
+                question: "Approve or reject this entry?",
+              },
+            }
+          : { kind }),
+        nowMs,
+        title: `Item ${index}`,
+        visibility: "private",
+      });
+      if (!created) throw new Error(`item ${index} was not added`);
+      return created.id;
+    };
+    // 30 old notices, two at each time so the id breaks the tie, then one
+    // new ask. Oldest first, the ask would be on the second page.
+    const notices: string[] = [];
+    for (let index = 0; index < 30; index += 1) {
+      notices.push(
+        await item(index, "notice", base + Math.floor(index / 2) * 1_000),
+      );
+    }
+    const ask = await item(30, "action", base + 60_000);
+
+    const first = await (
+      await api(fixture, ana).get("?for=viewer&sort=waiting&limit=25")
+    ).json();
+    expect(first.items[0]).toMatchObject({ id: ask, kind: "action" });
+    expect(first.items).toHaveLength(25);
+    const cursor = encodeURIComponent(first.nextCursor);
+    const second = await (
+      await api(fixture, ana).get(
+        `?for=viewer&sort=waiting&limit=25&cursor=${cursor}`,
+      )
+    ).json();
+    expect(second.nextCursor).toBeUndefined();
+    // The rest page newest first, with no item twice and none skipped.
+    const rest = [...first.items, ...second.items].slice(1) as {
+      createdAt: string;
+      id: string;
+    }[];
+    expect(rest.map((notice) => notice.id).sort()).toEqual([...notices].sort());
+    const times = rest.map((notice) => Date.parse(notice.createdAt));
+    expect(times).toEqual([...times].sort((x, y) => y - x));
+    // A cursor pages only the order it came from.
+    expect(
+      (await api(fixture, ana).get(`?for=viewer&limit=25&cursor=${cursor}`))
+        .status,
+    ).toBe(400);
+  });
+
+  it("counts each Inbox bundle across every page", async () => {
+    const fixture = await createConversationFixture();
+    await slackConversation("slack:CPUB:1.000001");
+    const ana = await user("ana@example.com");
+    const ben = await user("ben@example.com");
+    const base = Date.parse("2026-10-01T12:00:00.000Z");
+    const item = async (
+      index: number,
+      input: {
+        assignee?: User;
+        kind: "decision" | "notice" | "pr";
+      },
+    ) => {
+      const pr = {
+        id: `https://github.com/getsentry/junior/pull/${index}`,
+        url: `https://github.com/getsentry/junior/pull/${index}`,
+      };
+      const created = await insertReviewItem(getDb(), {
+        addedByConversationId: "slack:CPUB:1.000001",
+        assignedToEveryone: false,
+        assigneeUserIds: [(input.assignee ?? ana).id],
+        body: `Item ${index}.`,
+        conversationIds: ["slack:CPUB:1.000001"],
+        ...(input.kind === "decision"
+          ? { dedupeKey: `bundles:${index}`, kind: "action", request: REQUEST }
+          : input.kind === "pr"
+            ? {
+                dedupeKey: `plugin:github:${index}`,
+                kind: "action",
+                subject: pr,
+              }
+            : { dedupeKey: `bundles:${index}`, kind: "notice", subject: pr }),
+        nowMs: base + index * 1_000,
+        title: `Item ${index}`,
+        visibility: "private",
+      });
+      if (!created) throw new Error(`item ${index} was not added`);
+      return created.id;
+    };
+    // 27 decisions and 2 pull requests wait on Ana: more than one page.
+    for (let index = 0; index < 27; index += 1) {
+      await item(index, { kind: "decision" });
+    }
+    await item(27, { kind: "pr" });
+    await item(28, { kind: "pr" });
+    // A notice and Ben's pull request do not wait on Ana.
+    const notice = await item(29, { kind: "notice" });
+    const bens = await item(30, { assignee: ben, kind: "pr" });
+    const closed = await item(31, { kind: "decision" });
+    await closeReviewItem(getDb(), {
+      id: closed,
+      nowMs: base + 40_000,
+      status: "done",
+    });
+    const first = await (
+      await api(fixture, ana).get("?for=viewer&sort=waiting&limit=25")
+    ).json();
+    expect(first.items).toHaveLength(25);
+    expect(first.nextCursor).toBeDefined();
+
+    // The counts cover every page. Of the snoozed rows, only open items
+    // that Ana's Inbox lists count.
+    const snoozed = [notice, bens, closed, "missing"].join(",");
+    expect(
+      await (await api(fixture, ana).get(`/count?snoozed=${snoozed}`)).json(),
+    ).toEqual({
+      automations: 0,
+      decisions: 27,
+      needsViewer: 29,
+      prs: 2,
+      snoozed: 1,
+    });
+    expect(await (await api(fixture, ben).get("/count")).json()).toEqual({
+      automations: 0,
+      decisions: 0,
+      needsViewer: 1,
+      prs: 1,
+      snoozed: 0,
+    });
   });
 
   it("lets anyone take an item assigned to Everyone", async () => {
@@ -415,7 +630,11 @@ describe("review item actions API", () => {
     expect(list.items).toMatchObject([{ id, canAct: true, canTake: true }]);
     // An item for Everyone needs no one until a person takes it.
     expect(await (await api(fixture, cal).get("/count")).json()).toEqual({
+      automations: 0,
+      decisions: 0,
       needsViewer: 0,
+      prs: 0,
+      snoozed: 0,
     });
     expect(
       await (await api(fixture, cal).get("/waiting-conversations")).json(),
@@ -466,7 +685,11 @@ describe("review item actions API", () => {
       status: "open",
     });
     expect(await (await api(fixture, cal).get("/count")).json()).toEqual({
+      automations: 0,
+      decisions: 1,
       needsViewer: 1,
+      prs: 0,
+      snoozed: 0,
     });
     expect(
       await (await api(fixture, cal).get("/waiting-conversations")).json(),

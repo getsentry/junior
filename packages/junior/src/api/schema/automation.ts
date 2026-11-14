@@ -143,6 +143,8 @@ export const automationListQuerySchema = z
       .enum(["all", "active", "blocked", "paused", "completed", "unavailable"])
       .default("all"),
     creator: z.string().max(300).optional(),
+    /** Only the viewer's own Automations, inside any scope. */
+    owner: z.literal("me").optional(),
     destination: z.string().max(300).optional(),
     /** Only Automations that run this skill. */
     skill: automationSkillNameSchema.optional(),

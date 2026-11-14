@@ -209,11 +209,24 @@ describe("conversation pin API", () => {
       visibility: "private",
     });
     await addParticipant(newest, viewer.id);
+    // More pins than one page, idle for longer than every unpinned row:
+    // the first page still has them all.
+    const idlePins = ["local:test:pin-idle-a", "local:test:pin-idle-b"];
+    for (const [index, conversationId] of idlePins.entries()) {
+      await storeConversation({
+        conversationId,
+        nowMs: 100 + index,
+        visibility: "private",
+      });
+      await addParticipant(conversationId, viewer.id);
+      expect((await setPin(app, conversationId, true)).status).toBe(200);
+    }
     const firstPage = await readConversationFeedFromSql({ limit: 1, viewer });
-    expect(firstPage.conversations.map((row) => row.conversationId)).toEqual([
-      older,
-      newest,
-    ]);
+    const firstIds = firstPage.conversations.map((row) => row.conversationId);
+    expect(firstIds).toHaveLength(4);
+    expect(firstIds).toEqual(
+      expect.arrayContaining([older, ...idlePins, newest]),
+    );
     const secondPage = await readConversationFeedFromSql({
       cursor: firstPage.nextCursor,
       limit: 1,

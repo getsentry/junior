@@ -44,8 +44,8 @@ export function ConversationReviewItems(props: {
       {/* A count of loaded pages only would understate, so hide it. */}
       <DetailsCard
         count={query.hasNextPage ? undefined : items.length}
-        label="Needs you"
-        title="Needs you"
+        label="To do"
+        title="To do"
       >
         <DetailsList
           itemKey={(item) => item.id}

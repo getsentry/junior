@@ -20,6 +20,7 @@ import { conversationUsageCostExpr } from "../conversations/aggregate";
 import {
   codeOverviewReportSchema,
   codePersonReportSchema,
+  IDLE_CHANGE_DAYS,
 } from "../schema/code";
 import { sumUtcHoursIntoSixHours } from "../reporting-window";
 
@@ -27,8 +28,9 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 const WINDOW_DAYS = 30;
 const ACTIVITY_DAYS = 90;
 /**
- * Code changes listed on one People profile. Open changes sort first so a
- * stale open change is not cut off by newer completed changes.
+ * Code changes on one page of a person's code overview. Open changes sort
+ * first, so the first page has the open changes before completed ones, and
+ * `nextOffset` reads the rest.
  */
 const PERSON_CHANGE_LIMIT = 100;
 
@@ -191,6 +193,7 @@ export async function readCodeWindows(args: {
     .select({
       closedAt: changes.closedAt,
       conversationIds: changes.conversationIds,
+      lastActivityAt: changes.lastActivityAt,
       mergedAt: changes.mergedAt,
       openedAt: changes.openedAt,
       state: changes.state,
@@ -226,6 +229,16 @@ export async function readCodeWindows(args: {
     closed: closed.length,
     costUsd: treeCost(createdConversationIds),
     created: created.length,
+    // Same rule as the dashboard's idle marker: whole days since the last
+    // activity, or since opening when no activity is recorded.
+    idle: rows.filter(
+      (row) =>
+        row.state === "open" &&
+        Math.floor(
+          (args.nowMs - (row.lastActivityAt ?? row.openedAt).getTime()) /
+            DAY_MS,
+        ) > IDLE_CHANGE_DAYS,
+    ).length,
     medianCostUsd: median(changeCosts.filter((cost) => cost > 0)),
     medianMergeTimeMs: median(
       merged.flatMap((row) =>
@@ -405,9 +418,12 @@ export async function readCodeOverview(nowMs = Date.now()) {
  */
 export async function readPersonCodeOverview(args: {
   nowMs?: number;
+  /** Skip this many changes, to read the page after a full one. */
+  offset?: number;
   userId: string;
 }) {
   const nowMs = args.nowMs ?? Date.now();
+  const offset = args.offset ?? 0;
   const db = getDb();
   const [windows, changes] = await Promise.all([
     readCodeWindows({ nowMs, userId: args.userId }),
@@ -419,17 +435,18 @@ export async function readPersonCodeOverview(args: {
         eq(juniorCodeChanges.repositoryId, juniorCodeRepositories.id),
       )
       .where(changeScopeFilter({ userId: args.userId }))
-      // Open changes first, longest idle first, so the limit drops the
-      // freshest open changes and the idle count stays right. Then the
-      // latest completed changes.
+      // Open changes first, longest idle first, then the latest completed
+      // changes. The id keeps the order stable from one page to the next.
       .orderBy(
         desc(sql`${juniorCodeChanges.state} = 'open'`),
         asc(
           sql`CASE WHEN ${juniorCodeChanges.state} = 'open' THEN coalesce(${juniorCodeChanges.lastActivityAt}, ${juniorCodeChanges.openedAt}) END`,
         ),
         desc(juniorCodeChanges.updatedAt),
+        asc(juniorCodeChanges.id),
       )
-      .limit(PERSON_CHANGE_LIMIT),
+      .limit(PERSON_CHANGE_LIMIT)
+      .offset(offset),
   ]);
   return codePersonReportSchema.parse({
     activityDays: windows.activityDays,
@@ -437,6 +454,10 @@ export async function readPersonCodeOverview(args: {
     activitySixHours: windows.activitySixHours,
     changes: changes.map(codeChangeReport),
     generatedAt: windows.windowEnd.toISOString(),
+    nextOffset:
+      changes.length === PERSON_CHANGE_LIMIT
+        ? offset + PERSON_CHANGE_LIMIT
+        : undefined,
     summary: windows.summary,
     windowEnd: windows.windowEnd.toISOString(),
     windowStart: windows.windowStart.toISOString(),

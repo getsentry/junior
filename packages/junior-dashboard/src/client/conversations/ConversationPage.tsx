@@ -36,6 +36,7 @@ import {
 } from "./conversationCatchUpState";
 import { buildConversationMarkdown } from "../markdownExport";
 import {
+  CONVERSATION_ASK_PARAM,
   CONVERSATION_EVENT_PARAM,
   CONVERSATION_REVIEW_OPEN,
   CONVERSATION_REVIEW_PARAM,
@@ -53,6 +54,8 @@ import {
   saveDetailsOpen,
   useDetailsStartOpen,
 } from "./conversationSidebarLayout";
+import { useZenMode } from "../components/layout/PaneNav";
+import { useReportEventLogShown } from "../components/paletteEventLog";
 import {
   ConversationMemoryContext,
   memoryAnchorKey,
@@ -83,7 +86,10 @@ import {
   ChildConversationStatusPill,
   childConversationStatus,
 } from "./ChildConversationStatus";
-import { useWaitingConversations } from "../review-desk/queries";
+import {
+  useReviewItemData,
+  useWaitingConversations,
+} from "../review-desk/queries";
 import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import { conversationContextTags } from "./ConversationContextTags";
 import { conversationLinks } from "./ConversationLinkedWork";
@@ -151,6 +157,8 @@ export function ConversationPage(props: {
    * not wait for the dashboard core reads, and each visit fetches it once.
    */
   detail: ConversationData;
+  /** The list this page opened from. An archive goes back to it. */
+  listPath?: string;
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
   sidebarToggle?: ReactNode;
 }) {
@@ -177,7 +185,7 @@ export function ConversationPage(props: {
     eventOpen ? false : undefined,
   );
   // A sidebar review chip links here with the review param. It opens
-  // details at Needs you, even below the width where details open alone.
+  // details at To do, even below the width where details open alone.
   const reviewOpen =
     searchParams.get(CONVERSATION_REVIEW_PARAM) === CONVERSATION_REVIEW_OPEN;
   useEffect(() => {
@@ -228,6 +236,10 @@ export function ConversationPage(props: {
     Boolean(quickQuestion.thread) && !eventOpen && !turnContext;
   const showDetails =
     detailsOpen && !eventOpen && !turnContext && !quickQuestion.thread;
+  // Zen mode hides details without changing the choice, so leaving it
+  // brings them back.
+  const zen = useZenMode();
+  const detailsShown = showDetails && !zen.active;
   useLayoutEffect(() => {
     if (!showDetails || !focusDetailsOnOpen.current) return;
     focusDetailsOnOpen.current = false;
@@ -249,6 +261,7 @@ export function ConversationPage(props: {
     setView("raw");
   }
   const view = eventOpen ? "raw" : viewState;
+  useReportEventLogShown(view === "raw");
   const [search, setSearch] = useState("");
   const searchMatch = useTranscriptSearchMatch(search);
   const [continueInSlackOpen, setContinueInSlackOpen] = useState(false);
@@ -305,10 +318,10 @@ export function ConversationPage(props: {
       archived,
       lastSeenAt: conversation!.lastSeenAt,
     });
-    // Archiving hides this conversation, so go home at once. The mutation
-    // keeps running after this page unmounts.
+    // Archiving hides this conversation, so go back to its list at once.
+    // The mutation keeps running after this page unmounts.
     if (archived) {
-      navigate("/", {
+      navigate(props.listPath ?? "/", {
         state: {
           archivedConversation: conversation!,
         } satisfies ArchivedFromConversationState,
@@ -523,6 +536,23 @@ export function ConversationPage(props: {
       openAskTurn(askReveal.itemId, askReveal.turnId);
     }
   }, [askReveal]);
+  // An Inbox link names the ask it opens for. Its record shows like a
+  // question the reader moves to, once, and the link drops the param.
+  const askLinkId = searchParams.get(CONVERSATION_ASK_PARAM) ?? undefined;
+  const askLink = useReviewItemData(askLinkId).data;
+  const showAskLink = useEffectEvent((item: ReviewItemPayload) => {
+    showQuestion(item, false);
+    setSearchParams(
+      (params) => {
+        params.delete(CONVERSATION_ASK_PARAM);
+        return params;
+      },
+      { replace: true },
+    );
+  });
+  useEffect(() => {
+    if (askLink && askLink.id === askLinkId) showAskLink(askLink);
+  }, [askLink, askLinkId]);
   useEffect(() => {
     if (linkedTurnId !== undefined) openLink({ turn: linkedTurnId });
     else if (selectedEventSeq !== undefined) {
@@ -619,7 +649,7 @@ export function ConversationPage(props: {
 
   const sidePanel = (
     <>
-      {showDetails ? (
+      {detailsShown ? (
         <ConversationDetailsPanel
           conversation={conversation}
           conversationId={conversationId}
@@ -686,7 +716,7 @@ export function ConversationPage(props: {
     >
       <ConversationSidePanelLayout
         side={
-          showDetails || showEvent || turnContext || showQuickQuestion
+          detailsShown || showEvent || turnContext || showQuickQuestion
             ? sidePanel
             : undefined
         }
@@ -695,6 +725,7 @@ export function ConversationPage(props: {
           header={
             <ConversationHeader
               agentTree={conversationDetail?.agentTree}
+              brief={conversationDetail?.brief}
               contextTags={conversationContextTags(conversation)}
               cost={conversationCost(conversation, conversationDetail, "below")}
               detailsOpen={showDetails}
@@ -860,7 +891,6 @@ export function ConversationPage(props: {
                         }
                         onOpenSubagentTranscript={onOpenSubagentTranscript}
                         search={search}
-                        onSearchChange={setSearch}
                         searchMatch={searchMatch.index}
                         onSearchMatches={searchMatch.setMatches}
                         selectedEventSeq={selectedEventSeq}

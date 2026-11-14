@@ -26,25 +26,58 @@ async function mockWaiting(page: Page, conversationId: string) {
   );
 }
 
+/** The Conversations bundle, which nests each Thread under its parent. */
+function conversationsList(page: Page) {
+  return page.getByRole("region", { exact: true, name: "Conversations" });
+}
+
+/** Open the Conversations bundle from the Inbox entries, in the app. */
+async function openConversations(page: Page) {
+  await page
+    .getByRole("navigation", { name: "Inbox" })
+    .getByRole("link", { exact: true, name: "Conversations" })
+    .click();
+}
+
 test("shows Threads under their parent and in details", async ({
   page,
   dashboard,
 }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(ROOT_ID)}`,
-  );
-
-  const sidebar = page.getByRole("navigation", { name: "Your conversations" });
-  // An archived Thread drops out of the sidebar.
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
+  const list = conversationsList(page);
+  // An archived Thread drops out of the list.
   await expect(
-    sidebar.getByRole("link", { name: /Compare sidebar badges/ }),
+    list.getByRole("link", { name: /Compare sidebar badges/ }),
   ).toHaveCount(0);
 
+  // A Thread under a Thread follows its parent row. The indent is left to
+  // visual QA.
+  const threadRow = list.getByRole("link", {
+    name: /Check pinned row order/,
+  });
+  await expect(threadRow).toBeVisible();
+  const rowNames = await list.getByRole("link").allTextContents();
+  const parentIndex = rowNames.findIndex((name) =>
+    name.includes("Check pinned row order"),
+  );
+  expect(parentIndex).toBeGreaterThan(-1);
+  expect(rowNames[parentIndex + 1]).toContain("Recheck pin order in Safari");
+
+  // A Thread opens its own page, and details link its parent.
+  await threadRow.click();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`,
+  );
   const details = page.getByRole("complementary", {
     name: "Conversation details",
     exact: true,
   });
+  await details.getByRole("link", { name: "Dashboard QA edge cases" }).click();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(ROOT_ID)}`,
+  );
+
   const threads = details.getByRole("region", { name: "Threads" });
   await expect(threads.getByRole("listitem")).toHaveCount(1);
   await threads.getByRole("button", { name: "Show archived (1)" }).click();
@@ -53,29 +86,55 @@ test("shows Threads under their parent and in details", async ({
   ).toBeVisible();
   await threads.getByRole("button", { name: "Hide archived" }).click();
   await expect(threads.getByRole("listitem")).toHaveCount(1);
+});
 
-  // A Thread under a Thread follows its parent row. The indent is left to
-  // visual QA.
-  const threadRow = sidebar.getByRole("link", {
-    name: /Check pinned row order/,
-  });
-  const rowNames = await sidebar.getByRole("link").allTextContents();
-  const parentIndex = rowNames.findIndex((name) =>
-    name.includes("Check pinned row order"),
+test("an open row's actions follow its Threads", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
+  const row = conversationsList(page)
+    .locator("[data-inbox-row]")
+    .filter({
+      has: page.getByRole("link", { name: /^Dashboard QA edge cases/ }),
+    })
+    .first();
+  await row
+    .getByRole("link", { name: /^Dashboard QA edge cases/ })
+    .first()
+    .click();
+  await expect(
+    row.getByRole("link", { exact: true, name: "Open conversation" }).last(),
+  ).toBeVisible();
+  // Reading order: every Thread row, then the bar, which ends the card.
+  const names = await row
+    .locator("a, button")
+    .evaluateAll((elements) =>
+      elements.map(
+        (element) =>
+          element.getAttribute("aria-label") ?? element.textContent ?? "",
+      ),
+    );
+  const lastThread = names.findLastIndex((name) =>
+    /Check pinned row order|Recheck pin order in Safari/.test(name),
   );
-  expect(parentIndex).toBeGreaterThan(-1);
-  expect(rowNames[parentIndex + 1]).toContain("Recheck pin order in Safari");
-
-  // A Thread opens its own page, and its sidebar row is the current page.
-  await threadRow.click();
-  await expect(page).toHaveURL(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`,
-  );
-  await expect(threadRow).toHaveAttribute("aria-current", "page");
-  await details.getByRole("link", { name: "Dashboard QA edge cases" }).click();
-  await expect(page).toHaveURL(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(ROOT_ID)}`,
-  );
+  const bar = names.lastIndexOf("Open conversation");
+  expect(lastThread).toBeGreaterThan(-1);
+  expect(bar).toBeGreaterThan(lastThread);
+  // What the head controls is on the page, and its last part holds the bar.
+  const controls = await row
+    .getByRole("link", { name: /^Dashboard QA edge cases/ })
+    .first()
+    .getAttribute("aria-controls");
+  const ids = controls?.split(" ") ?? [];
+  expect(ids.length).toBeGreaterThan(0);
+  for (const id of ids)
+    await expect(page.locator(`[id="${id}"]`)).toHaveCount(1);
+  await expect(
+    page
+      .locator(`[id="${ids.at(-1)}"]`)
+      .getByRole("link", { exact: true, name: "Open conversation" }),
+  ).toBeVisible();
 });
 
 test("sends a message from a Thread page", async ({ page, dashboard }) => {
@@ -142,15 +201,15 @@ test("archives a Thread from its page", async ({ page, dashboard }) => {
     await holdArchives(page);
   const threadUrl = `${dashboard.baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`;
   const threadArchiveUrl = `${dashboard.baseURL}/api/conversations/${encodeURIComponent(THREAD_ID)}/archive`;
-  await page.goto(threadUrl);
-  const sidebar = page.getByRole("navigation", { name: "Your conversations" });
-  const threadRow = sidebar.getByRole("link", {
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
+  const list = conversationsList(page);
+  const threadRow = list.getByRole("link", {
     name: /Check pinned row order/,
   });
-  const nestedRow = sidebar.getByRole("link", {
+  const nestedRow = list.getByRole("link", {
     name: /Recheck pin order in Safari/,
   });
-  const rootRow = sidebar.getByRole("link", {
+  const rootRow = list.getByRole("link", {
     name: /Dashboard QA edge cases/,
   });
   const openMenu = page.getByRole("button", {
@@ -162,9 +221,11 @@ test("archives a Thread from its page", async ({ page, dashboard }) => {
   });
   await expect(threadRow).toBeVisible();
   await expect(nestedRow).toBeVisible();
+  await threadRow.click();
+  await expect(page).toHaveURL(threadUrl);
 
   // A Thread archive is for everyone and takes its nested Thread with it, so
-  // it asks first. The page goes home like any archive.
+  // it asks first. The page goes back to its list like any archive.
   await openMenu.click();
   await page.getByRole("menuitem", { name: "Archive", exact: true }).click();
   await expect(openMenus).toHaveCount(0);
@@ -172,7 +233,7 @@ test("archives a Thread from its page", async ({ page, dashboard }) => {
     .getByRole("alertdialog", { name: "Also archive its child conversations?" })
     .getByRole("button", { name: "Archive" })
     .click();
-  await expect(page).toHaveURL(new URL("/", dashboard.baseURL).href);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
   await expect
     .poll(() => archiveCalls)
     .toEqual([
@@ -209,9 +270,12 @@ test("archives a Thread from its page", async ({ page, dashboard }) => {
   await page.goto(threadUrl);
   await openMenu.click();
   await page.getByRole("menuitem", { name: "Restore", exact: true }).click();
+  await expect(openMenus).toHaveCount(0);
+  // The reload starts a new visit, so Back goes to the Inbox.
+  await page.getByRole("link", { name: "Back to Inbox" }).click();
+  await openConversations(page);
   await expect(threadRow).toBeVisible();
   await expect(nestedRow).toBeVisible();
-  await expect(openMenus).toHaveCount(0);
   await expect
     .poll(() => archiveCalls)
     .toEqual([
@@ -225,17 +289,18 @@ test("archives a nested Thread without its parent", async ({
   dashboard,
 }) => {
   const archive = await holdArchives(page);
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(NESTED_THREAD_ID)}`,
-  );
-  const sidebar = page.getByRole("navigation", { name: "Your conversations" });
-  const threadRow = sidebar.getByRole("link", {
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
+  const list = conversationsList(page);
+  const threadRow = list.getByRole("link", {
     name: /Check pinned row order/,
   });
-  const nestedRow = sidebar.getByRole("link", {
+  const nestedRow = list.getByRole("link", {
     name: /Recheck pin order in Safari/,
   });
-  await expect(nestedRow).toHaveAttribute("aria-current", "page");
+  await nestedRow.click();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(NESTED_THREAD_ID)}`,
+  );
 
   await page
     .getByRole("button", { name: "Conversation menu", exact: true })
@@ -246,6 +311,7 @@ test("archives a nested Thread without its parent", async ({
     .getByRole("button", { name: "Archive" })
     .click();
   await expect.poll(() => archive.calls.length).toBe(1);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
   // The nested row hides at once. Its parent Thread stays.
   await expect(nestedRow).toHaveCount(0);
   await expect(threadRow).toBeVisible();
@@ -259,7 +325,7 @@ test("archives a nested Thread without its parent", async ({
     .click();
   await expect.poll(() => restore.calls.length).toBe(1);
   await expect(nestedRow).toBeVisible();
-  const rowNames = await sidebar.getByRole("link").allTextContents();
+  const rowNames = await list.getByRole("link").allTextContents();
   const parentIndex = rowNames.findIndex((name) =>
     name.includes("Check pinned row order"),
   );
@@ -267,23 +333,21 @@ test("archives a nested Thread without its parent", async ({
   restore.release();
 });
 
-test("archives a Thread from its sidebar row", async ({ page, dashboard }) => {
+test("archives a Thread from its list row", async ({ page, dashboard }) => {
   const archive = await holdArchives(page);
   await page.setViewportSize({ height: 900, width: 1440 });
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(ROOT_ID)}`,
-  );
-  const sidebar = page.getByRole("navigation", { name: "Your conversations" });
-  const threadRow = sidebar.getByRole("link", {
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
+  const list = conversationsList(page);
+  const threadRow = list.getByRole("link", {
     name: /Check pinned row order/,
   });
-  const nestedRow = sidebar.getByRole("link", {
+  const nestedRow = list.getByRole("link", {
     name: /Recheck pin order in Safari/,
   });
 
   // The row action shows on hover. It asks first, like the Thread page.
   await threadRow.hover();
-  await sidebar
+  await list
     .getByRole("button", { name: "Archive Check pinned row order" })
     .click();
   await page
@@ -301,10 +365,8 @@ test("archives a Thread from its sidebar row", async ({ page, dashboard }) => {
     ]);
   await expect(threadRow).toHaveCount(0);
   await expect(nestedRow).toHaveCount(0);
-  // The root page stays open.
-  await expect(page).toHaveURL(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(ROOT_ID)}`,
-  );
+  // The list stays open.
+  await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
   archive.release();
 });
 

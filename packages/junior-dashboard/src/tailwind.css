@@ -31,6 +31,13 @@
    * text-2xs is reserved for compact badges and chart annotations.
    * Use text-xs or larger for body copy, controls, subtext, and standalone metadata.
    */
+  /*
+   * Header row height (`h-header`) for every column: the pane's logo row, page
+   * links, the conversation title and Brief, and side panels. Each column
+   * draws a 1px rule under the row, so the rules meet on one line.
+   */
+  --spacing-header: 3.5rem;
+
   --text-2xs: 0.75rem; /* 12px — compact badges and chart annotations */
   --text-2xs--line-height: 1.15;
   --text-xs: 0.8125rem; /* 13px — labels, badges, meta, table headers */
@@ -242,14 +249,6 @@
     --chart-3: var(--color-emerald-400);
     --chart-4: var(--color-amber-400);
     --chart-5: var(--color-rose-400);
-    --sidebar: var(--color-dashboard-surface-panel);
-    --sidebar-foreground: var(--color-dashboard-text);
-    --sidebar-primary: var(--primary);
-    --sidebar-primary-foreground: var(--color-dashboard-text-inverse);
-    --sidebar-accent: var(--color-dashboard-surface-hover);
-    --sidebar-accent-foreground: var(--color-dashboard-text);
-    --sidebar-border: var(--color-dashboard-border);
-    --sidebar-ring: var(--color-dashboard-focus);
   }
 }
 
@@ -277,14 +276,6 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
 }
 
 /* The dashboard defaults to dark and selects light with data-theme. */
@@ -292,6 +283,9 @@
 
 /* Style one-off values that the token and palette mirror cannot cover. */
 @custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+/* Comfortable density: roomier rows, bundles, and transcript spacing. The
+   root carries `data-density` from the viewer's profile menu choice. */
+@custom-variant comfortable (&:where([data-density="comfortable"] *));
 
 /* Desktop windows tall enough for roomier conversation chrome. Shorter
    windows, such as most laptops, keep it compact so the transcript gets the

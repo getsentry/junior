@@ -1,7 +1,8 @@
-import { desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { listWorkspacesByRepository } from "@/chat/workspaces/store";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
+import type { CodeChangeState } from "@sentry/junior-plugin-api";
 import {
   codeRepositoryReportSchema,
   type CodeRepositoryReport,
@@ -12,17 +13,23 @@ import {
   readCodeWindows,
 } from "./overview";
 
-/** Most recent code changes listed on one repository page. */
+/**
+ * Code changes listed on one repository page. Open changes sort first so a
+ * stale open change is not cut off by newer completed changes.
+ */
 const REPOSITORY_CHANGE_LIMIT = 100;
 
 /**
  * Read code activity for one repository: windowed summary, activity buckets,
- * recent code changes, and the Workspaces that include it.
+ * recent code changes with every change counted by state, and the
+ * Workspaces that include it. `state` limits the listed changes, so each
+ * state tab lists its own rows past the limit; the counts stay whole.
  */
 export async function readCodeRepository(
   repositoryId: string,
-  nowMs = Date.now(),
+  options: { nowMs?: number; state?: CodeChangeState } = {},
 ): Promise<CodeRepositoryReport | undefined> {
+  const nowMs = options.nowMs ?? Date.now();
   const db = getDb();
   const [repository] = await db
     .select({
@@ -35,7 +42,7 @@ export async function readCodeRepository(
     .where(eq(juniorCodeRepositories.id, repositoryId))
     .limit(1);
   if (!repository) return undefined;
-  const [windows, changes, workspaces] = await Promise.all([
+  const [windows, changes, stateCounts, workspaces] = await Promise.all([
     readCodeWindows({ nowMs, repositoryId }),
     db
       .select(codeChangeReportColumns)
@@ -44,18 +51,40 @@ export async function readCodeRepository(
         juniorCodeRepositories,
         eq(juniorCodeChanges.repositoryId, juniorCodeRepositories.id),
       )
-      .where(eq(juniorCodeChanges.repositoryId, repositoryId))
-      .orderBy(desc(juniorCodeChanges.updatedAt))
+      .where(
+        and(
+          eq(juniorCodeChanges.repositoryId, repositoryId),
+          options.state
+            ? eq(juniorCodeChanges.state, options.state)
+            : undefined,
+        ),
+      )
+      .orderBy(
+        desc(sql`${juniorCodeChanges.state} = 'open'`),
+        desc(juniorCodeChanges.updatedAt),
+      )
       .limit(REPOSITORY_CHANGE_LIMIT),
+    db
+      .select({ count: count(), state: juniorCodeChanges.state })
+      .from(juniorCodeChanges)
+      .where(eq(juniorCodeChanges.repositoryId, repositoryId))
+      .groupBy(juniorCodeChanges.state),
     listWorkspacesByRepository(db, {
       provider: repository.provider,
       repo: repository.name,
     }),
   ]);
+  const countOf = (state: string) =>
+    stateCounts.find((row) => row.state === state)?.count ?? 0;
   return codeRepositoryReportSchema.parse({
     activityDays: windows.activityDays,
     activityHours: windows.activityHours,
     activitySixHours: windows.activitySixHours,
+    changeCounts: {
+      closed: countOf("closed"),
+      merged: countOf("merged"),
+      open: countOf("open"),
+    },
     changes: changes.map(codeChangeReport),
     generatedAt: windows.windowEnd.toISOString(),
     repository: {

@@ -60,8 +60,10 @@ export {
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryParamsSchema,
+  codeRepositoryQuerySchema,
   codeRepositoryReportSchema,
   codeRepositorySummarySchema,
+  IDLE_CHANGE_DAYS,
 } from "./schema/code";
 export type {
   CodeActivityDay,
@@ -114,10 +116,15 @@ export {
   conversationDetailWithMailboxReportSchema,
   conversationUnchangedDetailWithMailboxSchema,
 } from "./schema/conversation-pending-messages";
-export { conversationFeedSchema } from "./schema/conversation-feed";
+export {
+  CONVERSATION_FEED_LINK_LIMIT,
+  CONVERSATION_FEED_MEDIA_LIMIT,
+  conversationFeedSchema,
+} from "./schema/conversation-feed";
 export type {
   ConversationFeed,
   ConversationFeedItem,
+  ConversationFeedMedia,
 } from "./schema/conversation-feed";
 export {
   archiveConversationBodySchema,

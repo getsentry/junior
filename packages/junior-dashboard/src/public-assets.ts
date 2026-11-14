@@ -13,7 +13,7 @@ export const DASHBOARD_ASSETS_PATH = "/_junior/dashboard/assets";
 
 /** Path under the assets prefix of a content-hashed browser file. */
 export const DASHBOARD_PUBLIC_ASSET_NAME =
-  /^(?:chunks\/)?[A-Za-z0-9_-]+-[A-Za-z0-9]{8}\.(?:css|js|webp|woff2)$/;
+  /^(?:chunks\/)?[A-Za-z0-9_-]+-[A-Za-z0-9]{8}\.(?:css|js|png|webp|woff2)$/;
 
 /** File name of the content-hashed dashboard stylesheet. */
 export const DASHBOARD_STYLESHEET_NAME = /^styles-[A-Z0-9]{8}\.css$/;
@@ -24,13 +24,14 @@ export const DASHBOARD_CLIENT_ENTRY_NAME = /^client-[A-Za-z0-9]{8}\.js$/;
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
+  ".png": "image/png",
   ".webp": "image/webp",
   ".woff2": "font/woff2",
 };
 
 /** Return true when a public asset is binary, so builds embed it as base64. */
 export function isBinaryPublicAsset(file: string): boolean {
-  return file.endsWith(".webp") || file.endsWith(".woff2");
+  return /\.(?:png|webp|woff2)$/.test(file);
 }
 
 // Builds embed these files. Without them (tests and local development from

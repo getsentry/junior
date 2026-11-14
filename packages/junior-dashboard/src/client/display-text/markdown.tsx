@@ -53,10 +53,13 @@ import {
  * with the object title, or a chip for a person. The first bare URL alone in
  * a top-level paragraph shows the full card, or only the thumbnail of a
  * video or image page. `shownCardUrls` lists the `objectUrlKey` of cards that
- * earlier text of the same message already shows.
+ * earlier text of the same message already shows. Inline mode shows links
+ * only with `chips`, outside a link or a button.
  */
 export function MarkdownText(props: {
   chat?: boolean;
+  /** Inline mode: show links, with object titles and person chips. */
+  chips?: boolean;
   compact?: boolean;
   document?: boolean;
   inline?: boolean;
@@ -71,8 +74,10 @@ export function MarkdownText(props: {
   if (props.inline) {
     return (
       <Markdown
-        components={INLINE_COMPONENTS}
-        remarkPlugins={[remarkGfm]}
+        components={props.chips ? INLINE_CHIP_COMPONENTS : INLINE_COMPONENTS}
+        remarkPlugins={
+          props.chips ? [remarkGfm, remarkBareUrlStops] : [remarkGfm]
+        }
         urlTransform={safeHref}
       >
         {source}
@@ -401,6 +406,11 @@ const INLINE_COMPONENTS: Components = {
   thead: InlineContainer,
   tr: InlineBlock,
   ul: InlineContainer,
+};
+
+const INLINE_CHIP_COMPONENTS: Components = {
+  ...INLINE_COMPONENTS,
+  a: COMPONENTS.a,
 };
 
 function alignClass(align: unknown): string | undefined {

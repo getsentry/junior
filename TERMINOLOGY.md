@@ -132,6 +132,8 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation, open / open or done.
 - **Review item**: work for a person, shown on the **Review desk**. Not an
   Item. **Assignee**: a User or Everyone (anyone who can see it).
+- **Done** (Inbox): the view of done and dismissed Review items. Not
+  Conversation archive.
 
 ## Naming
 

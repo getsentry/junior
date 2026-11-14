@@ -1,3 +1,4 @@
+import { openRow } from "./inbox-fixture";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 
@@ -8,42 +9,49 @@ test("opens conversation details beside the chat", async ({
 }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
 
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
 
   await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
-  await expect(page).toHaveTitle("Junior");
-  const sidebar = page.getByRole("navigation", {
-    name: "Your conversations",
+  await expect(page).toHaveTitle(/^\(\d+\) Conversations - Junior$/);
+  const list = page.getByRole("region", {
+    exact: true,
+    name: "Conversations",
   });
-  const privateConversation = sidebar.getByRole("link", {
-    name: /Direct Message/,
-  });
+  // The lock and the status sit in the row's meta, outside its title link.
+  const rowOf = (name: RegExp) =>
+    list
+      .getByRole("listitem")
+      .filter({ has: page.getByRole("link", { name }) });
   await expect(
-    privateConversation.getByLabel("Private conversation"),
+    rowOf(/Direct Message/).getByLabel("Private conversation"),
   ).toBeVisible();
-  const publicConversation = sidebar.getByRole("link", {
+  const publicConversation = list.getByRole("link", {
     name: /Checkout latency triage/,
   });
+  const publicRow = rowOf(/Checkout latency triage/);
+  await expect(publicRow.getByLabel("Private conversation")).toHaveCount(0);
   await expect(
-    publicConversation.getByLabel("Private conversation"),
-  ).toHaveCount(0);
-  const runningConversation = sidebar.getByRole("link", {
-    name: /Investigate checkout latency/,
-  });
-  await expect(
-    runningConversation.getByRole("status", { name: "Running" }),
+    list
+      .getByRole("listitem")
+      .filter({
+        has: page.getByRole("link", {
+          exact: true,
+          name: "Investigate checkout latency",
+        }),
+      })
+      .getByRole("status", { name: "Running" }),
   ).toBeVisible();
-  await expect(
-    publicConversation.getByRole("status", { name: "Running" }),
-  ).toHaveCount(0);
-  await publicConversation.click();
+  await expect(publicRow.getByRole("status", { name: "Running" })).toHaveCount(
+    0,
+  );
+  await openRow(publicConversation);
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
   );
   await expect(
     page.getByRole("heading", { name: "Checkout latency triage" }),
   ).toBeVisible();
-  await expect(page).toHaveTitle("Checkout latency triage - Junior");
+  await expect(page).toHaveTitle(/^\(\d+\) Checkout latency triage - Junior$/);
   await expect(page.getByRole("note")).toHaveCount(0);
 
   const detailsButton = page.getByRole("button", {
@@ -93,9 +101,10 @@ test("opens conversation details beside the chat", async ({
   await expect(details).toBeVisible();
   await expect(detailsButton).toBeHidden();
   await expect(closeDetails).toBeFocused();
-  await page.getByRole("button", { name: "Search transcript" }).click();
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await page.getByRole("menuitem", { name: "Search transcript" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
-  await page.getByRole("button", { name: "Hide search" }).click();
+  await page.getByRole("button", { name: "Close search" }).click();
   await screenshot(page, "conversation-share-details");
   // Clipboard denial must show a failure and allow another attempt.
   await page.evaluate(() => {
@@ -189,16 +198,16 @@ test("opens conversation details beside the chat", async ({
   ).toBeVisible();
 
   await expect(
-    page.getByRole("link", { name: "Conversations" }),
+    page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: /^Inbox/ }),
   ).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
 
   await detailsButton.click();
   await expect(details).toBeVisible();
-  await page
-    .getByRole("navigation", { name: "Your conversations" })
-    .getByRole("link", { name: /Direct Message/ })
-    .click();
+  await page.getByRole("link", { name: "Back to Conversations" }).click();
+  await openRow(list.getByRole("link", { name: /Direct Message/ }));
   // Each conversation opens with details beside the chat.
   await expect(details).toBeVisible();
   await expect(page.getByRole("note")).toContainText("Private conversation");
@@ -265,7 +274,8 @@ test("shows recalled and captured memories in popovers", async ({
 
   // A memory in details opens its Turn's popover in the transcript, even
   // when a search hides that row.
-  await page.getByRole("button", { name: "Search transcript" }).click();
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await page.getByRole("menuitem", { name: "Search transcript" }).click();
   await page.getByPlaceholder("Search transcript…").fill("no such text");
   await expect(captured).toBeHidden();
   const details = page.getByRole("complementary", {

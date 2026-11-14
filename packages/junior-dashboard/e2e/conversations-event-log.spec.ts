@@ -75,7 +75,8 @@ test("reveals a closed tool result in transcript search", async ({
   await expect(toolRow).toHaveAttribute("aria-expanded", "false");
 
   // Search must still reveal a result that the reader has closed.
-  await page.getByRole("button", { name: "Search transcript" }).click();
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await page.getByRole("menuitem", { name: "Search transcript" }).click();
   await page
     .getByPlaceholder("Search transcript…")
     .fill("payments-v42 deploy notes");
@@ -141,31 +142,22 @@ test("inspects all reporting events and steps through event details", async ({
     name: "Event 1: turn_lifecycle",
     exact: true,
   });
-  // Keyboard selection follows the filtered rows and keeps details open.
-  const eventSearch = log.getByRole("searchbox", { name: "Search events" });
-  await eventSearch.fill("turn_lifecycle");
+  // Keyboard selection moves through the rows and keeps details open.
   await otherEntry.focus();
   await otherEntry.press("ArrowDown");
   const laterEntry = log.getByRole("button", {
-    name: "Event 8: turn_lifecycle",
+    name: "Event 2: turn_context",
     exact: true,
   });
   await expect(laterEntry).toBeFocused();
   await expect(laterEntry).toHaveAttribute("aria-expanded", "true");
   await expect(otherEntry).toHaveAttribute("aria-expanded", "false");
-  await expect(page).toHaveURL(/[?&]event=8(&|$)/);
-  await laterEntry.press("ArrowDown");
-  await expect(laterEntry).toBeFocused();
-  await expect(page).toHaveURL(/[?&]event=8(&|$)/);
-  // The step buttons follow the same filtered rows.
-  await expect(
-    panel.getByRole("button", { name: "Next event" }),
-  ).toBeDisabled();
+  await expect(page).toHaveURL(/[?&]event=2(&|$)/);
+  // The step buttons follow the same rows.
   await panel.getByRole("button", { name: "Previous event" }).click();
   await expect(page).toHaveURL(/[?&]event=1(&|$)/);
   await laterEntry.press("ArrowUp");
   await expect(otherEntry).toBeFocused();
-  await eventSearch.fill("");
   await expect(
     panel.getByRole("heading", { name: "turn_lifecycle", exact: true }),
   ).toBeVisible();
@@ -326,14 +318,23 @@ test("keeps the selected event in a mobile sheet and searches full event data", 
   await page.setViewportSize({ width: 1600, height: 900 });
   await expect(page).not.toHaveURL(/[?&]event=/);
 
-  const search = page.getByPlaceholder("Search events…");
-  await search.fill("memory-checkout-runbook");
-  await expect(entries).toHaveCount(1);
-  await expect(entries).toHaveAttribute("aria-label", "Event 2: turn_context");
-  await search.fill("no-such-event-data");
-  await expect(log.getByText("No events match your search.")).toBeVisible();
-  await search.fill("");
-  await expect(entries).toHaveCount(report.events.length);
+  // While the log shows, ⌘K finds events by their full data, first.
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Go to conversation" });
+  await palette.getByRole("combobox").fill("memory-checkout-runbook");
+  const events = palette.getByRole("group").first();
+  await expect(events).toHaveAccessibleName("Events");
+  await expect(events.getByRole("option")).toHaveCount(1);
+  await events.getByRole("option").click();
+  await expect(page).toHaveURL(/[?&]event=2(&|$)/);
+  await expect(
+    log.getByRole("button", { name: "Event 2: turn_context", exact: true }),
+  ).toHaveAttribute("aria-expanded", "true");
+  await page
+    .getByRole("complementary", { name: "Event details", exact: true })
+    .getByRole("button", { name: "Close event details" })
+    .click();
+  await expect(page).not.toHaveURL(/[?&]event=/);
   // The title in the Event log breadcrumb leads back to the Conversation.
   await page.getByTitle("Back to conversation").click();
   await expect(log).toBeHidden();
@@ -521,10 +522,8 @@ test("loads earlier events without merging tool starts and results", async ({
   await expect(linkedEntry).toBeFocused();
   await linkedEntry.click();
   await expect(linked).toBeVisible();
-  await page
-    .getByRole("navigation", { name: "Your conversations" })
-    .getByRole("link", { name: /Investigate checkout latency/ })
-    .click();
+  // Leaving the page closes it.
+  await page.getByRole("link", { name: /^Back to/ }).click();
   await expect(linked).toBeHidden();
   await expect(page).not.toHaveURL(/[?&]event=/);
 });
@@ -584,11 +583,14 @@ test("mounts only the event log rows near the viewport", async ({
 
   // Arrow keys move past the end of the mounted range and mount the rows
   // they reach. The row that holds the reader's place can stay mounted
-  // further down, so find the first gap from the top.
+  // further down, so the target is the first gap from the top. When that
+  // row is already near the top, the mounted rows have no gap, and the
+  // target is the row after the last one.
   const seqs = await mounted.evaluateAll((rows) =>
     rows.map((row) => Number(row.getAttribute("data-event-seq"))),
   );
-  const target = seqs.findIndex((seq, index) => seq !== index + 1) + 1;
+  const gap = seqs.findIndex((seq, index) => seq !== index + 1);
+  const target = gap === -1 ? Math.max(...seqs) + 1 : gap + 1;
   expect(target).toBeGreaterThan(1);
   await expect(entry(target)).not.toBeAttached();
   await entry(1).focus();
@@ -615,11 +617,17 @@ test("mounts only the event log rows near the viewport", async ({
   await entry(1000).hover();
   await screenshot(page, "conversation-event-log-virtual");
 
-  // Search reads every loaded event, not only the mounted rows.
+  // ⌘K reads every loaded event, not only the mounted rows.
   await expect(entry(1234)).not.toBeAttached();
-  await log.getByRole("searchbox", { name: "Search events" }).fill("row 1234.");
-  await expect(log.getByRole("status")).toHaveText("1 of 2000 loaded events");
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Go to conversation" });
+  await palette.getByRole("combobox").fill("row 1234.");
+  await palette
+    .getByRole("group", { name: "Events" })
+    .getByRole("option")
+    .click();
   await expect(entry(1234)).toBeInViewport();
+  await expect(entry(1234)).toHaveAttribute("aria-expanded", "true");
 });
 
 for (const width of [1440, 390]) {
@@ -877,30 +885,23 @@ for (const view of [desktop, mobile]) {
   });
 }
 
-test("opens the event log from the sidebar row menu", async ({
-  page,
-  dashboard,
-}) => {
-  await page.goto(dashboard.baseURL);
+test("opens the event log from the row menu", async ({ page, dashboard }) => {
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
   const row = page
-    .getByRole("navigation", { name: "Your conversations" })
+    .getByRole("region", { exact: true, name: "Conversations" })
     .getByRole("link", { name: /Closed issue summary/ });
   const log = page.getByRole("region", { name: "Conversation event log" });
   await row.click({ button: "right" });
   // The viewer is not a participant, so the menu disables changes.
   await expect(page.getByRole("menuitem", { name: "Archive" })).toBeDisabled();
   await page.getByRole("menuitem", { name: "Open event log" }).click();
-  await expect(row).toHaveAttribute("aria-current", "page");
   await expect(log).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Closed issue summary" }),
+  ).toBeVisible();
 
-  // The page is open already, so the row menu switches its view.
-  await page.getByTitle("Back to conversation").click();
-  await expect(log).toBeHidden();
-  await row.click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Open event log" }).click();
-  await expect(log).toBeVisible();
-  // That switch adds no history entry, so Back leaves the conversation.
+  // Browser Back returns to the list it came from.
   await page.goBack();
-  await expect(row).not.toHaveAttribute("aria-current", "page");
   await expect(log).toBeHidden();
+  await expect(row).toBeVisible();
 });

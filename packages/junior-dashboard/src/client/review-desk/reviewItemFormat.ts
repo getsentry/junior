@@ -1,13 +1,16 @@
 import * as z from "zod";
 import {
   normalizeUserInputAnswer,
-  type ConversationReportEvent,
   type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
-/** Return the review desk route that selects one item. */
+/**
+ * Return the Inbox route that expands one item's row. A closed item opens
+ * in Done. The route names the Inbox entry, because phones show the
+ * entries at `/`.
+ */
 export function reviewItemPath(id: string): string {
-  return `/review?item=${encodeURIComponent(id)}`;
+  return `/?view=inbox&item=${encodeURIComponent(id)}`;
 }
 
 /**
@@ -79,22 +82,6 @@ export function reviewItemIdFromToolCall(call: {
   return addedItemId(call.output);
 }
 
-/**
- * Return a message for another item's excerpt, without the Review item
- * changes that it records: those show on their own items. Returns undefined
- * when nothing else remains.
- */
-export function excerptMessage(
-  event: ConversationReportEvent,
-): ConversationReportEvent | undefined {
-  const { data } = event;
-  if (data.type !== "message" || !data.reviewItemChanges) return event;
-  // A message with changes lists its own Events. With none, it only
-  // records changes.
-  if (!data.events) return undefined;
-  return { ...event, data: { ...data, reviewItemChanges: undefined } };
-}
-
 /** True when an open item asks a question that the viewer can answer. */
 export function reviewItemWaitsForAnswer(item: ReviewItemPayload): boolean {
   return (
@@ -137,10 +124,25 @@ export function answerLine(
     .join(" · ");
 }
 
-/** The open Review items of the inbox, in the groups and order it shows. */
-export type InboxGroups = {
-  fyi: ReviewItemPayload[];
-  needsYou: ReviewItemPayload[];
+/**
+ * The Review items of one Conversation, triaged as one unit. `needsYou` sorts
+ * the bundle into the queue; other bundles are FYI and sort after it.
+ */
+export type InboxBundle = {
+  /**
+   * Names the row: the Conversation id for a Conversation bundle, or the
+   * item id for a row that shows one item.
+   */
+  key: string;
+  /** The Conversation that added the items. */
+  conversationId: string;
+  /** Items in inbox order: questions first, then the oldest. */
+  items: ReviewItemPayload[];
+  /** The item added last, which the collapsed bundle shows. */
+  newest: ReviewItemPayload;
+  needsYou: boolean;
+  /** When the first item that needs the viewer arrived, or the first item. */
+  waitingSince: string;
 };
 
 /** Inbox order: action items first, then the oldest, then the item id. */
@@ -152,26 +154,69 @@ function inboxOrder(a: ReviewItemPayload, b: ReviewItemPayload): number {
 }
 
 /**
- * Split open items into inbox groups, oldest first, so the item that waited
- * longest is at the top. Archived items are in no group.
+ * True when an item waits on the viewer, as the server's waiting rule says:
+ * an open action item assigned to them, not to Everyone. A plugin ask, such
+ * as `Ready to merge · #42`, is an action item with no `request`.
  */
-export function inboxGroups(items: readonly ReviewItemPayload[]): InboxGroups {
-  const open = items.filter((item) => item.status === "open");
-  return {
-    fyi: open.filter((item) => item.kind === "notice").sort(inboxOrder),
-    needsYou: open.filter((item) => item.kind === "action").sort(inboxOrder),
-  };
+export function itemNeedsViewer(item: ReviewItemPayload): boolean {
+  return (
+    item.status === "open" &&
+    item.kind === "action" &&
+    item.canAct &&
+    !item.assignedToEveryone
+  );
 }
 
 /**
- * The open item that follows `current` in inbox order. `current` can be an
- * item that closed and left the open groups.
+ * True when an open ask is for Everyone, so anyone can answer or take it.
+ * It waits on no one, so it is up for grabs instead of in To do.
  */
-export function nextInboxItem(
-  groups: InboxGroups,
-  current: ReviewItemPayload,
-): ReviewItemPayload | undefined {
-  return [...groups.needsYou, ...groups.fyi].find(
-    (item) => inboxOrder(current, item) < 0,
+export function itemUpForGrabs(item: ReviewItemPayload): boolean {
+  return (
+    item.status === "open" &&
+    item.kind === "action" &&
+    item.canAct &&
+    item.assignedToEveryone
+  );
+}
+
+/**
+ * Group items into one bundle per Conversation. Bundles that need the viewer
+ * come first, the one that waited longest at the top, so the order does not
+ * change while the reader works. FYI bundles follow, oldest first.
+ */
+export function inboxBundles(
+  items: readonly ReviewItemPayload[],
+): InboxBundle[] {
+  const byConversation = new Map<string, ReviewItemPayload[]>();
+  for (const item of items) {
+    const key = item.addedByConversationId;
+    byConversation.set(key, [...(byConversation.get(key) ?? []), item]);
+  }
+  const bundles = [...byConversation].map(([conversationId, group]) => {
+    const sorted = [...group].sort(inboxOrder);
+    const waiting = sorted.filter(itemNeedsViewer);
+    const newest = sorted.reduce((latest, item) =>
+      Date.parse(item.createdAt) > Date.parse(latest.createdAt) ? item : latest,
+    );
+    const since = Math.min(
+      ...(waiting.length > 0 ? waiting : sorted).map((item) =>
+        Date.parse(item.createdAt),
+      ),
+    );
+    return {
+      conversationId,
+      items: sorted,
+      key: conversationId,
+      newest,
+      needsYou: waiting.length > 0,
+      waitingSince: new Date(since).toISOString(),
+    };
+  });
+  return bundles.sort(
+    (a, b) =>
+      Number(b.needsYou) - Number(a.needsYou) ||
+      Date.parse(a.waitingSince) - Date.parse(b.waitingSince) ||
+      a.conversationId.localeCompare(b.conversationId),
   );
 }

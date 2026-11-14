@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildConversationSections,
-  pinnedAndWaitingFirst,
+  pinnedFirst,
 } from "../src/client/conversations/conversationSections";
 import type { Conversation } from "../src/client/types";
 
@@ -26,13 +26,6 @@ const NOW = {
   timeZone: "America/Los_Angeles",
 };
 
-/** Mark conversations as waiting, all since the same time. */
-function waitingSince(ids: string[]) {
-  return new Map(
-    ids.map((id) => [id, { waitingSince: "2026-08-01T09:00:00-07:00" }]),
-  );
-}
-
 function sectionIds(sections: ReturnType<typeof buildConversationSections>) {
   return sections.map((section) => ({
     conversations: section.conversations.map((item) => item.id),
@@ -55,7 +48,7 @@ describe("conversation activity sections", () => {
         conversation("today-early", "2026-08-03T00:10:00-07:00"),
         conversation("today-late", "2026-08-03T11:45:00-07:00"),
       ],
-      { ...NOW, waiting: new Map() },
+      NOW,
     );
 
     expect(sectionIds(sections)).toEqual([
@@ -69,44 +62,28 @@ describe("conversation activity sections", () => {
     ]);
   });
 
-  it("puts only conversations that wait on the viewer or a sign-in in Needs you", () => {
-    const conversations = [
-      conversation("today", "2026-08-03T11:00:00-07:00"),
-      conversation("today-earlier", "2026-08-03T09:00:00-07:00"),
-      conversation("yesterday", "2026-08-02T12:00:00-07:00"),
-      conversation("waiting-old", "2026-07-31T12:00:00-07:00"),
-      // Newer activity, but its wait began later.
-      conversation("waiting-new", "2026-08-03T11:30:00-07:00"),
-      conversation("saturday", "2026-08-01T12:00:00-07:00"),
-      // A Turn parked for authorization leaves the conversation idle.
-      {
-        ...conversation("connecting", "2026-08-02T10:00:00-07:00"),
-        awaitingAuthorization: true,
-      },
-    ];
-    const waiting = new Map([
-      ["waiting-old", { waitingSince: "2026-08-01T09:00:00-07:00" }],
-      ["waiting-new", { waitingSince: "2026-08-02T09:00:00-07:00" }],
-    ]);
-    const sections = buildConversationSections(conversations, {
-      ...NOW,
-      waiting,
-    });
+  it("keeps conversations that wait on the viewer in their time section", () => {
+    const sections = buildConversationSections(
+      [
+        conversation("today", "2026-08-03T11:00:00-07:00"),
+        // A Turn parked for authorization leaves the conversation idle.
+        {
+          ...conversation("connecting", "2026-08-02T10:00:00-07:00"),
+          awaitingAuthorization: true,
+        },
+        conversation("saturday", "2026-08-01T12:00:00-07:00"),
+      ],
+      NOW,
+    );
 
-    // The longest wait goes first, so new activity does not move the queue.
-    // Rows with no wait start follow, newest first.
     expect(sectionIds(sections)).toEqual([
-      {
-        conversations: ["waiting-old", "waiting-new", "connecting"],
-        label: "Needs you",
-      },
-      { conversations: ["today", "today-earlier"], label: "Today" },
-      { conversations: ["yesterday"], label: "Yesterday" },
+      { conversations: ["today"], label: "Today" },
+      { conversations: ["connecting"], label: "Yesterday" },
       { conversations: ["saturday"], label: "Previous 7 days" },
     ]);
   });
 
-  it("puts pinned conversations only in Pinned, before Needs you", () => {
+  it("puts pinned conversations only in Pinned, first", () => {
     const pinned = (
       id: string,
       lastSeenAt: string,
@@ -139,9 +116,9 @@ describe("conversation activity sections", () => {
           "2026-08-02T08:00:00-07:00",
           0,
         ),
-        conversation("waiting", "2026-08-03T09:00:00-07:00"),
+        conversation("earlier", "2026-08-03T09:00:00-07:00"),
       ],
-      { ...NOW, waiting: waitingSince(["pinned-earlier", "waiting"]) },
+      NOW,
     );
 
     // Pins without a place go first, newest pin first, then the viewer's
@@ -156,8 +133,7 @@ describe("conversation activity sections", () => {
         ],
         label: "Pinned",
       },
-      { conversations: ["waiting"], label: "Needs you" },
-      { conversations: ["today"], label: "Today" },
+      { conversations: ["today", "earlier"], label: "Today" },
     ]);
   });
 
@@ -181,7 +157,7 @@ describe("conversation activity sections", () => {
         // No Message yet: it uses its last activity.
         conversation("no-message", "2026-08-03T10:00:00-07:00"),
       ],
-      { ...NOW, waiting: new Map() },
+      NOW,
     );
 
     expect(sectionIds(sections)).toEqual([
@@ -193,36 +169,25 @@ describe("conversation activity sections", () => {
     ]);
   });
 
-  it("moves pinned, then waiting conversations before paging", () => {
-    const feed = ["a", "b", "c", "d", "e"].map((id) =>
-      conversation(id, "2026-08-03T12:00:00-07:00"),
-    );
-    feed[4] = { ...feed[4]!, pinnedAt: "2026-08-03T08:00:00-07:00" };
-
-    expect(
-      pinnedAndWaitingFirst(feed, waitingSince(["d", "b"])).map(
-        (item) => item.id,
-      ),
-    ).toEqual(["e", "b", "d", "a", "c"]);
-  });
-
-  it("pages waiting conversations in wait order, the rest by last Message", () => {
+  it("moves pinned conversations before paging, the rest by last Message", () => {
     const feed = [
       conversation("recent", "2026-08-03T11:00:00-07:00"),
       {
         ...conversation("tool-only", "2026-08-03T11:30:00-07:00"),
         lastMessageAt: "2026-08-01T11:00:00-07:00",
       },
-      conversation("waits-short", "2026-08-03T10:00:00-07:00"),
-      conversation("waits-long", "2026-08-02T10:00:00-07:00"),
+      {
+        ...conversation("pinned", "2026-08-01T10:00:00-07:00"),
+        pinnedAt: "2026-08-03T08:00:00-07:00",
+      },
+      conversation("older", "2026-08-02T10:00:00-07:00"),
     ];
-    const waiting = new Map([
-      ["waits-short", { waitingSince: "2026-08-03T09:00:00-07:00" }],
-      ["waits-long", { waitingSince: "2026-08-01T09:00:00-07:00" }],
-    ]);
 
-    expect(pinnedAndWaitingFirst(feed, waiting).map((item) => item.id)).toEqual(
-      ["waits-long", "waits-short", "recent", "tool-only"],
-    );
+    expect(pinnedFirst(feed).map((item) => item.id)).toEqual([
+      "pinned",
+      "recent",
+      "older",
+      "tool-only",
+    ]);
   });
 });

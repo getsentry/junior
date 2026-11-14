@@ -4,17 +4,11 @@ import { createPortal } from "react-dom";
 import { Skeleton } from "../components/ui/skeleton";
 import { Toggle } from "../components/ui/toggle";
 import { useEventTime } from "./eventTime";
-import { SearchInput } from "../components/SearchInput";
 import { cn } from "../styles";
 import type { ConversationTranscript } from "../types";
-import {
-  adjacentEventLogSeqs,
-  eventLogRows,
-  eventLogTone,
-  filterEventLogRows,
-} from "./eventLog";
+import { adjacentEventLogSeqs, eventLogRows, eventLogTone } from "./eventLog";
 import { ConversationEventDetails } from "./ConversationEventDetails";
-import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
+import { HighlightText } from "./transcriptSearch";
 import { useVirtualRows } from "./virtualRows";
 
 const rowClass =
@@ -27,7 +21,6 @@ const rowClass =
  */
 export const ConversationEventLog = memo(function ConversationEventLog(props: {
   conversation: ConversationTranscript;
-  onSearchChange(value: string): void;
   onSelectedSeqChange?(seq: number | undefined): void;
   /** The row that holds the reader's place, from the scroll owner. */
   scrollAnchorKey?: () => string | undefined;
@@ -35,7 +28,6 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
 }) {
   const { conversation } = props;
   const time = useEventTime();
-  const search = useTranscriptSearch();
   const [localSelectedSeq, setLocalSelectedSeq] = useState<number>();
   const selectedSeq = props.onSelectedSeqChange
     ? props.selectedSeq
@@ -46,35 +38,30 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
   const revealedSeqRef = useRef<number>(undefined);
   const events = conversation.events;
   const rows = useMemo(() => eventLogRows(events), [events]);
-  // Large payloads are serialized only for an active search or the open entry.
-  const visibleRows = useMemo(
-    () => filterEventLogRows(rows, search.normalizedQuery),
-    [rows, search.normalizedQuery],
-  );
   // Resolve the selection from current data so polling cannot leave stale details.
   const selected = events.find((event) => event.seq === selectedSeq);
   // An arrow key can select a row that mounts only on the next render.
   const focusSeqRef = useRef<number>(undefined);
   const focusedSeqRef = useRef<number>(undefined);
   const indexBySeq = useMemo(
-    () => new Map(visibleRows.map((row, index) => [row.event.seq, index])),
-    [visibleRows],
+    () => new Map(rows.map((row, index) => [row.event.seq, index])),
+    [rows],
   );
   const indexOf = (seq: number | undefined) =>
     seq === undefined ? undefined : indexBySeq.get(seq);
   // The open entry, the focused row, and the row that holds the reader's
   // place stay mounted.
   const virtualizer = useVirtualRows({
-    count: visibleRows.length,
+    count: rows.length,
     defaultSize: (sizeClass) => (sizeClass === "metadata" ? 56 : 40),
-    getItemKey: (index) => visibleRows[index]?.event.seq ?? index,
+    getItemKey: (index) => rows[index]?.event.seq ?? index,
     keptIndexes: [
       indexOf(selectedSeq),
       indexOf(focusedSeqRef.current),
       indexOf(anchorSeq(props.scrollAnchorKey?.())),
     ],
     listRef,
-    sizeClass: (index) => (visibleRows[index]?.metadata ? "metadata" : "plain"),
+    sizeClass: (index) => (rows[index]?.metadata ? "metadata" : "plain"),
   });
   const virtualRows = virtualizer.getVirtualItems();
   useEffect(() => {
@@ -106,20 +93,8 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
     <section aria-label="Conversation event log" className="@container min-w-0">
       <div className="sticky top-0 z-10 bg-dashboard-bg">
         <div className="flex flex-wrap items-center gap-2 border-b border-dashboard-border px-4 py-2">
-          <SearchInput
-            className="min-w-32 flex-1 @max-[28rem]:basis-full"
-            label="Search events"
-            onChange={props.onSearchChange}
-            placeholder="Search events…"
-            size="compact"
-            value={search.query}
-          />
           <div className="ml-auto flex items-center gap-3 whitespace-nowrap text-xs text-dashboard-text-muted @max-[28rem]:w-full @max-[28rem]:justify-between">
-            <span role="status">
-              {search.active
-                ? `${visibleRows.length} of ${events.length} loaded events`
-                : `${events.length} loaded events`}
-            </span>
+            <span role="status">{`${events.length} loaded events`}</span>
             <Toggle
               aria-label="Use local time"
               onPressedChange={time.toggle}
@@ -142,7 +117,7 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
           style={{ height: virtualizer.getTotalSize() }}
         >
           {virtualRows.map((virtualRow) => {
-            const { event, summary, metadata } = visibleRows[virtualRow.index]!;
+            const { event, summary, metadata } = rows[virtualRow.index]!;
             const index = virtualRow.index;
             return (
               <li
@@ -192,9 +167,7 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
                       return;
                     keyEvent.preventDefault();
                     const next =
-                      visibleRows[
-                        index + (keyEvent.key === "ArrowDown" ? 1 : -1)
-                      ];
+                      rows[index + (keyEvent.key === "ArrowDown" ? 1 : -1)];
                     if (!next) return;
                     setSelectedSeq(next.event.seq);
                     // Focus a mounted row now, so the next key press reaches
@@ -240,11 +213,9 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
             );
           })}
         </ol>
-        {visibleRows.length === 0 ? (
+        {rows.length === 0 ? (
           <p className="m-0 px-3 py-6 text-sm text-dashboard-text-muted">
-            {search.active
-              ? "No events match your search."
-              : "No events available."}
+            No events available.
           </p>
         ) : null}
       </div>
@@ -256,7 +227,7 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
               event={selected}
               onClose={() => setSelectedSeq(undefined)}
               onSelect={setSelectedSeq}
-              {...adjacentEventLogSeqs(visibleRows, selected.seq)}
+              {...adjacentEventLogSeqs(rows, selected.seq)}
             />,
             document.body,
           )

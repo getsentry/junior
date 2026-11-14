@@ -67,7 +67,7 @@ test("links to saved objects show as a titled link, a hover card, and a card", a
   );
   // A bare URL in a sentence is a plain link with the title, and no status.
   const link = page.getByRole("link", {
-    name: "getsentry/junior#2201",
+    name: "Update Junior to 0.288.0 (#2201)",
     exact: true,
   });
   await expect(link).toHaveAttribute(
@@ -275,12 +275,13 @@ test("a Sentry issue link resolves to a titled link and a hover card", async ({
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
   );
-  // A bare issue URL in a sentence is a link titled with the issue and its
-  // short id. The state shows only in the hover card.
-  const link = page.getByRole("link", {
+  // A bare issue URL in a sentence is a plain link with the issue title and
+  // short id. Its state shows in the hover card.
+  const issue = page.getByRole("link", {
+    exact: true,
     name: "TypeError: cart.total is undefined (JUNIOR-3ZK)",
   });
-  await expect(link).toHaveAttribute(
+  await expect(issue).toHaveAttribute(
     "href",
     "https://acme.sentry.io/issues/JUNIOR-3ZK/",
   );
@@ -289,12 +290,11 @@ test("a Sentry issue link resolves to a titled link and a hover card", async ({
   ).toHaveCount(0);
 
   await waitForResolvedLinks(page);
-  await link.hover();
+  await issue.hover();
   const card = page.getByRole("region", {
     name: "Sentry issue: TypeError: cart.total is undefined",
   });
   for (const text of [
-    "unresolved",
     "app/checkout.ts in submitOrder",
     "Morgan Lee",
     "High",

@@ -664,6 +664,23 @@ describe("Automations API", () => {
       expect(
         attention.automations.find((task) => task.id === "sched_tasks_api"),
       ).toMatchObject({ status: "active", lastRunStatus: "failed" });
+      // The Inbox lists only the viewer's own Automations that need attention.
+      expect(
+        (await list("scope=attention&owner=me")).automations.map(
+          (task) => task.id,
+        ),
+      ).toEqual(["event_automations_api", "sched_tasks_api"]);
+      // The Inbox badge counts the same two, so it matches To do.
+      const count = await authenticatedApi("viewer@example.com").request(
+        "http://localhost/api/review-items/count",
+      );
+      expect(await count.json()).toEqual({
+        automations: 2,
+        decisions: 0,
+        needsViewer: 0,
+        prs: 0,
+        snoozed: 0,
+      });
       expect((await list("state=unavailable")).total).toBe(2);
       const lastPage = await list("page=21");
       expect(lastPage.automations.map((task) => task.id)).toEqual([

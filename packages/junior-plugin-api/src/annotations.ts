@@ -12,6 +12,12 @@ function usesHttpProtocol(value: string): boolean {
   }
 }
 
+const httpUrlSchema = z
+  .string()
+  .url()
+  .max(2_048)
+  .refine(usesHttpProtocol, "URL must use HTTP or HTTPS.");
+
 /**
  * Link an object to a Conversation when the owner has no typed object preview.
  * Keep a stable key, compact label, source URL, and optional short context or
@@ -24,11 +30,7 @@ export const resourceLinkAnnotationSchema = z
     objectType: objectTypeSchema.optional(),
     key: z.string().trim().min(1).max(256),
     label: z.string().trim().min(1).max(256),
-    url: z
-      .string()
-      .url()
-      .max(2_048)
-      .refine(usesHttpProtocol, "URL must use HTTP or HTTPS."),
+    url: httpUrlSchema,
     description: z.string().trim().min(1).max(512).optional(),
     status: z.enum(["open", "draft", "closed", "merged", "warning"]).optional(),
   })
@@ -65,6 +67,13 @@ export const conversationSidebarIconSchema = z.enum([
   "triangle-alert",
 ]);
 
+/**
+ * One linked object on a Conversation row. `label` is the short chip text.
+ * `title` and `url` are the saved object's own, for rows with room for a
+ * card; leave them out when the plugin has not saved them. `imageUrl` is a
+ * public image that previews the object, such as the first screenshot of a
+ * code change.
+ */
 export const conversationSidebarAnnotationSchema = z
   .object({
     icon: conversationSidebarIconSchema.optional(),
@@ -72,6 +81,9 @@ export const conversationSidebarAnnotationSchema = z
     status: z.string().trim().min(1).max(100).optional(),
     key: z.string().trim().min(1).max(256),
     label: z.string().trim().min(1).max(256),
+    title: z.string().trim().min(1).max(512).optional(),
+    url: httpUrlSchema.optional(),
+    imageUrl: httpUrlSchema.optional(),
   })
   .strict();
 export type ConversationSidebarAnnotation = z.output<

@@ -10,6 +10,24 @@ const MEMORY_BASE_PATH = "/memories";
 const MEMORY_LIBRARY_PATH = `${MEMORY_BASE_PATH}/library`;
 const RESERVED_MEMORY_SEGMENTS = new Set(["library"]);
 
+/** The Memories pages, for the in-page links and the pane list. */
+export const memoryNavigationItems = [
+  { end: true, label: "Overview", to: MEMORY_BASE_PATH },
+  {
+    isActive: isMemoryLibraryPath,
+    label: "Memories",
+    to: MEMORY_LIBRARY_PATH,
+  },
+];
+
+/** The Overview's sections, which the pane lists under it as anchors. */
+export const memoryOverviewSections = [
+  { anchor: "activity", label: "Activity" },
+  { anchor: "cost", label: "Cost" },
+  { anchor: "memory-types", label: "What Junior remembers" },
+  { anchor: "memory-sources", label: "How they got here" },
+];
+
 /** Identify library and memory routes that keep the list beside its details. */
 export function isMemoryLibraryPath(pathname: string): boolean {
   if (
@@ -36,14 +54,9 @@ export function MemoryPageLayout(props: { children: ReactNode }) {
           ? "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)]"
           : undefined
       }
-      items={[
-        { end: true, label: "Overview", to: MEMORY_BASE_PATH },
-        {
-          isActive: isMemoryLibraryPath,
-          label: "Memories",
-          to: MEMORY_LIBRARY_PATH,
-        },
-      ]}
+      items={memoryNavigationItems}
+      listedInPane
+      opensOnPhone
     >
       {library ? (
         <div className="min-h-0">{props.children}</div>

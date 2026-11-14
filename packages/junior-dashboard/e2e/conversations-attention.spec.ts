@@ -2,244 +2,95 @@ import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 import { viewAsParticipant } from "./conversationMenu";
+import { openRow } from "./inbox-fixture";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
-const WAITING_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 
-const READY_TITLE = "Ready to merge · #42";
-
-const reviewItem = {
-  assignedToEveryone: false,
-  assignees: [
-    {
-      displayName: "Dashboard User",
-      email: "dev@example.com",
-      userId: "u-dev",
-    },
-  ],
-  body: "The checkout fix is ready.",
-  canAct: true,
-  canTake: false,
-  createdAt: "2026-08-07T08:00:00.000Z",
-  id: "item-checkout-fix",
-  kind: "action" as const,
-  request: {
-    question: "Merge the checkout fix?",
-    fields: [
-      {
-        id: "go",
-        kind: "choice",
-        label: "Merge",
-        options: [{ label: "Merge" }, { label: "Hold" }],
-      },
-    ],
-  },
-  status: "open" as const,
-  title: "Approve the checkout fix",
-  updatedAt: "2026-08-07T08:30:00.000Z",
-  visibility: "public" as const,
-};
-
-/**
- * Make one conversation wait on the viewer with two open Review items: a
- * GitHub ask, then the agent's question.
- */
-async function mockWaitingConversation(
-  page: Page,
-  waitingId = WAITING_CONVERSATION_ID,
-) {
-  await page.route("**/api/review-items**", async (route) => {
-    const url = new URL(route.request().url());
-    const path = url.pathname.replace(/^.*\/api\/review-items/, "");
-    if (path === "/waiting-conversations") {
-      return route.fulfill({
-        json: {
-          conversations: [
-            {
-              conversationId: waitingId,
-              items: [
-                { plugin: "github", title: READY_TITLE },
-                { title: reviewItem.title },
-              ],
-              waitingSince: reviewItem.createdAt,
-            },
-          ],
-        },
-      });
-    }
-    if (path === "/count") return route.fulfill({ json: { needsViewer: 2 } });
-    if (path === "" || path === "/") {
-      const conversationId = url.searchParams.get("conversationId");
-      return route.fulfill({
-        json: {
-          items:
-            !conversationId || conversationId === waitingId
-              ? [
-                  {
-                    ...reviewItem,
-                    addedByConversationId: waitingId,
-                    conversationIds: [waitingId],
-                  },
-                ]
-              : [],
-        },
-      });
-    }
-    return route.fulfill({ json: { error: "Not found" }, status: 404 });
-  });
+/** The Conversations bundle, which lists every Conversation with its menu. */
+function conversationsList(page: Page): Locator {
+  return page.getByRole("region", { name: "Conversations", exact: true });
 }
 
-/** Label of the sidebar section that lists the first row matching `title`. */
-async function sidebarSectionOf(
-  sidebar: Locator,
-  title: RegExp,
+// A row's own link. Other rows' summaries can link the same Conversation
+// by its title.
+function rowLink(scope: Page | Locator, title: string): Locator {
+  const page = "page" in scope ? scope.page() : scope;
+  return scope
+    .getByRole("link", { exact: true, name: title })
+    .and(page.locator('a[aria-controls^="inbox-row-"]'));
+}
+
+/** Label of the list section that holds the first row matching `title`. */
+async function sectionOf(
+  list: Locator,
+  title: string,
 ): Promise<string | undefined> {
-  const items = await sidebar
-    .locator("button[aria-expanded], a")
-    .evaluateAll((elements) =>
-      elements.map((element) => ({
-        heading: element.tagName === "BUTTON",
-        text: element.textContent?.trim() ?? "",
-      })),
-    );
-  let section: string | undefined;
-  for (const item of items) {
-    if (item.heading) section = item.text;
-    else if (title.test(item.text)) return section;
-  }
-  return undefined;
+  return list
+    .locator("section[aria-label]")
+    .filter({
+      has: rowLink(list.page(), title),
+    })
+    .first()
+    .getAttribute("aria-label");
 }
 
-/**
- * Serve versions and waiting conversations that a test can change, so the
- * feed poll picks up who waits.
- */
-async function mockChangingWaiting(page: Page) {
-  let waiting = false;
-  const versions = {
-    conversations: "feed-1",
-    reviewItems: "review-1",
-    spend: "spend-1",
-  };
-  await page.route("**/api/versions*", (route) =>
-    route.fulfill({ json: versions }),
-  );
-  await page.route("**/api/review-items/waiting-conversations", (route) =>
-    route.fulfill({
-      json: {
-        conversations: waiting
-          ? [
-              {
-                conversationId: WAITING_CONVERSATION_ID,
-                items: [{ title: reviewItem.title }],
-                waitingSince: reviewItem.createdAt,
-              },
-            ]
-          : [],
-      },
-    }),
-  );
-  /** Change who waits, and move the token the poll reads. */
-  return (next: boolean) => {
-    waiting = next;
-    versions.reviewItems = `review-${next ? 2 : 3}`;
-  };
-}
-
-test.describe("conversation sections", () => {
-  test("puts waiting conversations in Needs you first", async ({
+test.describe("conversation rows", () => {
+  test("pinning moves a conversation to Pinned and In flight", async ({
     page,
     dashboard,
   }) => {
-    await mockWaitingConversation(page);
-    await page.goto(dashboard.baseURL);
+    await viewAsParticipant(page);
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const list = conversationsList(page);
+    const row = rowLink(list, "Investigate checkout latency");
+    await expect(row).toBeVisible();
+    await expect
+      .poll(() => sectionOf(list, "Investigate checkout latency"))
+      .not.toBe("Pinned");
 
-    const sidebar = page.getByRole("navigation", {
-      name: "Your conversations",
-    });
-    const attention = sidebar.getByRole("button", { name: "Needs you" });
-    const waitingRow = sidebar.getByRole("link", {
-      name: /Checkout latency triage/,
-    });
-    await expect(sidebar.getByRole("button").first()).toHaveText(/^Needs you/);
-    await expect(sidebar.getByRole("link").first()).toHaveAccessibleName(
-      /Checkout latency triage/,
-    );
-    await expect(
-      waitingRow.getByRole("img", { name: "Waiting on you" }),
-    ).toBeVisible();
-    await screenshot(page, "conversations-needs-you");
-
-    await attention.click();
-    await expect(attention).toHaveAttribute("aria-expanded", "false");
-    await expect(waitingRow).toHaveCount(0);
-    await screenshot(page, "conversations-sections-collapsed");
-
-    await page.reload();
-    await expect(attention).toHaveAttribute("aria-expanded", "false");
-    await expect(waitingRow).toHaveCount(0);
-
-    await attention.click();
-    await expect(waitingRow).toBeVisible();
-  });
-
-  test("pinning moves a conversation to Pinned only", async ({
-    page,
-    dashboard,
-  }) => {
-    await mockWaitingConversation(page, ACTIVE_CONVERSATION_ID);
-    await page.goto(
-      `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
-    );
-    const sidebar = page.getByRole("navigation", {
-      name: "Your conversations",
-    });
-    const activeRows = sidebar.getByRole("link", {
-      name: /Investigate checkout latency/,
-    });
-    await expect(sidebar.getByRole("button").first()).toHaveText(/^Needs you/);
-
-    // Pin from the row's hover action in the sidebar.
+    // Pin from the row's hover action.
     const pinRequest = page.waitForRequest(
       (request) =>
         request.method() === "PATCH" && request.url().endsWith("/pin"),
     );
-    await activeRows.hover();
-    await sidebar
+    await row.hover();
+    await list
       .getByRole("button", { name: "Pin Investigate checkout latency" })
       .click();
     expect((await pinRequest).postDataJSON()).toEqual({ pinned: true });
 
-    await expect(sidebar.getByRole("button").first()).toHaveText(/^Pinned/);
-    // Pinned wins over Needs you, so the row shows only in Pinned.
-    await expect(activeRows).toHaveCount(1);
+    // The row shows only in Pinned, and In flight lists it.
+    await expect(row).toHaveCount(1);
     await expect
-      .poll(() => sidebarSectionOf(sidebar, /Investigate checkout latency/))
-      .toMatch(/^Pinned/);
+      .poll(() => sectionOf(list, "Investigate checkout latency"))
+      .toBe("Pinned");
     await expect(
-      activeRows.getByRole("img", { name: "Waiting on you" }),
+      page
+        .getByRole("list", { name: "In flight" })
+        .getByRole("link", { name: /Investigate checkout latency/ }),
     ).toBeVisible();
-    await activeRows.hover();
+    await row.hover();
     await expect(
-      sidebar.getByRole("button", {
-        name: "Unpin Investigate checkout latency",
-      }),
+      list.getByRole("button", { name: "Unpin Investigate checkout latency" }),
     ).toHaveAttribute("aria-pressed", "true");
     await screenshot(page, "conversations-pinned", {
       lightTheme: true,
       view: "desktop",
     });
 
-    await page.reload();
-    await expect(sidebar.getByRole("button").first()).toHaveText(/^Pinned/);
-
     // Unpin from the conversation `⋯` menu.
+    await openRow(row);
     await page.getByRole("button", { name: "Conversation menu" }).click();
     await page.getByRole("menuitem", { name: "Unpin", exact: true }).click();
     await expect(
       page.getByRole("menuitem", { name: "Pin", exact: true }),
     ).toBeVisible();
-    await expect(sidebar.getByRole("button").first()).toHaveText(/^Needs you/);
+    await page.keyboard.press("Escape");
+    await page.getByRole("link", { name: "Back to Conversations" }).click();
+    await expect(row).toBeVisible();
+    await expect
+      .poll(() => sectionOf(list, "Investigate checkout latency"))
+      .not.toBe("Pinned");
   });
 
   test("lists the rows of the conversation menu in the row menu", async ({
@@ -247,12 +98,9 @@ test.describe("conversation sections", () => {
     dashboard,
   }) => {
     await viewAsParticipant(page);
-    await page.goto(dashboard.baseURL);
-
-    const sidebar = page.getByRole("navigation", {
-      name: "Your conversations",
-    });
-    const finishedRow = sidebar.getByRole("link", {
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const list = conversationsList(page);
+    const finishedRow = list.getByRole("link", {
       name: /Closed issue summary/,
     });
     await finishedRow.click({ button: "right" });
@@ -266,7 +114,7 @@ test.describe("conversation sections", () => {
       "Subscribe",
       "Archive",
     ]);
-    await screenshot(page, "conversation-sidebar-context-menu", {
+    await screenshot(page, "conversation-row-context-menu", {
       lightTheme: true,
       view: "desktop",
     });
@@ -277,15 +125,13 @@ test.describe("conversation sections", () => {
     dashboard,
   }) => {
     await viewAsParticipant(page);
-    await page.goto(dashboard.baseURL);
-    const sidebar = page.getByRole("navigation", {
-      name: "Your conversations",
-    });
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const list = conversationsList(page);
     const renameRequest = page.waitForRequest(
       (request) =>
         request.method() === "PATCH" && request.url().endsWith("/title"),
     );
-    await sidebar
+    await list
       .getByRole("link", { name: /Closed issue summary/ })
       .click({ button: "right" });
     await page.getByRole("menuitem", { name: "Rename" }).click();
@@ -298,7 +144,7 @@ test.describe("conversation sections", () => {
       title: "Closed issue follow-up",
     });
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    const renamedRow = sidebar.getByRole("link", {
+    const renamedRow = list.getByRole("link", {
       name: /Closed issue follow-up/,
     });
     await expect(renamedRow).toBeVisible();
@@ -315,237 +161,5 @@ test.describe("conversation sections", () => {
     await expect(page.getByRole("textbox", { name: "Title" })).toHaveValue(
       "Investigate checkout latency",
     );
-  });
-
-  test("the sidebar review chip opens details at Needs you", async ({
-    page,
-    dashboard,
-  }) => {
-    // The mock waiting conversation has an expired transcript, so use one
-    // with live history.
-    await mockWaitingConversation(page, ACTIVE_CONVERSATION_ID);
-    await page.goto(
-      `${dashboard.baseURL}/conversations/${encodeURIComponent(WAITING_CONVERSATION_ID)}`,
-    );
-    const sidebar = page.getByRole("navigation", {
-      name: "Your conversations",
-    });
-    const waitingRow = sidebar.getByRole("link", {
-      name: /Investigate checkout latency/,
-    });
-    const chip = sidebar.getByRole("link", { name: /Ready to merge · #42/ });
-    await expect(sidebar.getByRole("button").first()).toHaveText(/^Needs you/);
-    await expect(
-      waitingRow.getByRole("img", { name: "Waiting on you" }),
-    ).toBeVisible();
-    await expect(chip).toContainText("+1 more");
-    // The newest item comes from GitHub, so the chip shows its mark.
-    await expect(chip.getByRole("img", { name: "GitHub" })).toBeVisible();
-    await expect(chip).not.toHaveAttribute("title");
-    await screenshot(page, "conversation-sidebar-review-chip", {
-      lightTheme: true,
-      view: "desktop",
-    });
-    // The tooltip lists every waiting item in full.
-    await chip.hover();
-    const tooltip = page.getByRole("tooltip");
-    await expect(tooltip.getByRole("listitem")).toHaveText([
-      READY_TITLE,
-      reviewItem.title,
-    ]);
-    await screenshot(page, "conversation-sidebar-review-chip-tooltip", {
-      view: "desktop",
-    });
-
-    await chip.click();
-    await expect(page).toHaveURL(
-      (url) =>
-        decodeURIComponent(url.pathname).endsWith(ACTIVE_CONVERSATION_ID) &&
-        url.searchParams.get("review") === "open",
-    );
-    const details = page.getByRole("complementary", {
-      name: "Conversation details",
-      exact: true,
-    });
-    await expect(
-      details
-        .getByRole("region", { name: "Needs you" })
-        .getByText("Merge the checkout fix?"),
-    ).toBeVisible();
-
-    await details
-      .getByRole("button", { name: "Close conversation details" })
-      .click();
-    await expect(details).toHaveCount(0);
-    await expect(page).not.toHaveURL(/review=/);
-
-    // With details already open, the chip still expands the question.
-    await page
-      .getByRole("button", { name: "Conversation details", exact: true })
-      .click();
-    const question = details
-      .getByRole("region", { name: "Needs you" })
-      .getByText("Merge the checkout fix?");
-    await expect(question).toBeHidden();
-    await chip.click();
-    await expect(question).toBeVisible();
-    await details
-      .getByRole("button", { name: "Close conversation details" })
-      .click();
-
-    const attention = sidebar.getByRole("button", { name: "Needs you" });
-    await attention.click();
-    await expect(attention).toHaveAttribute("aria-expanded", "false");
-    await expect(waitingRow).toHaveCount(0);
-  });
-});
-
-test.describe("stable conversation list", () => {
-  test("holds the order under the pointer and offers the new one", async ({
-    page,
-    dashboard,
-  }) => {
-    // Real versions poll interval.
-    test.setTimeout(60_000);
-    const setWaiting = await mockChangingWaiting(page);
-    await page.goto(dashboard.baseURL);
-    const sidebar = page.getByRole("navigation", {
-      name: "Your conversations",
-    });
-    const waitingRow = sidebar.getByRole("link", {
-      name: /Checkout latency triage/,
-    });
-    // An open menu hides the sidebar from the accessibility tree.
-    const rowSection = () =>
-      sidebarSectionOf(
-        page.locator('[role="navigation"][aria-label="Your conversations"]'),
-        /Checkout latency triage/,
-      );
-    const pill = page.getByRole("button", { name: "1 updated" });
-    await expect(waitingRow).toBeVisible();
-    await expect.poll(rowSection).toMatch(/^(?!Needs you)/);
-
-    // While the pointer is on the list, the row keeps its place. Its marker
-    // still updates, and the pill offers the new order.
-    await waitingRow.hover();
-    setWaiting(true);
-    await expect(pill).toBeVisible({ timeout: 15_000 });
-    await expect(
-      waitingRow.getByRole("img", { name: "Waiting on you" }),
-    ).toBeVisible();
-    expect(await rowSection()).not.toMatch(/^Needs you/);
-    await screenshot(page, "conversations-list-held", {
-      lightTheme: true,
-      view: "desktop",
-    });
-
-    // A row menu opens outside the list, and it still holds the order.
-    await waitingRow.click({ button: "right" });
-    await page.getByRole("menu").hover();
-    await expect(pill).toBeVisible();
-    expect(await rowSection()).not.toMatch(/^Needs you/);
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("menu")).toHaveCount(0);
-
-    // A pill applied from the keyboard lets go of focus, so the next update
-    // applies with no pointer on the list.
-    await page.mouse.move(1_200, 500);
-    await pill.focus();
-    await page.keyboard.press("Enter");
-    await expect.poll(rowSection).toMatch(/^Needs you/);
-    setWaiting(false);
-    await expect
-      .poll(rowSection, { timeout: 15_000 })
-      .toMatch(/^(?!Needs you)/);
-    await expect(pill).toHaveCount(0);
-
-    // Hold again, then apply with a click.
-    await waitingRow.hover();
-    setWaiting(true);
-    await expect(pill).toBeVisible({ timeout: 15_000 });
-    await pill.click();
-    await expect.poll(rowSection).toMatch(/^Needs you/);
-    await expect(pill).toHaveCount(0);
-
-    // Leaving the list, pointer and focus both, applies the new order.
-    setWaiting(false);
-    await expect(pill).toBeVisible({ timeout: 15_000 });
-    expect(await rowSection()).toMatch(/^Needs you/);
-    await page.mouse.move(1_200, 500);
-    await page.evaluate(() => (document.activeElement as HTMLElement).blur());
-    await expect.poll(rowSection).toMatch(/^(?!Needs you)/);
-    await expect(pill).toHaveCount(0);
-  });
-
-  test("holds the order for a pointer on the list edge through the first load", async ({
-    page,
-    dashboard,
-  }) => {
-    // Real versions poll interval.
-    test.setTimeout(60_000);
-    const setWaiting = await mockChangingWaiting(page);
-    let releaseFeed!: () => void;
-    const feedGate = new Promise<void>((resolve) => (releaseFeed = resolve));
-    await page.route(
-      (url) => url.pathname === "/api/conversations",
-      async (route) => {
-        await feedGate;
-        await route.fallback();
-      },
-    );
-    await page.goto(dashboard.baseURL);
-    const sidebar = page.getByRole("navigation", {
-      name: "Your conversations",
-    });
-    // The pointer comes to rest on the list's side padding while its rows
-    // load.
-    await page
-      .locator('[data-slot="scroll-area"]')
-      .first()
-      .hover({ position: { x: 4, y: 120 } });
-    releaseFeed();
-    await expect(
-      sidebar.getByRole("link", { name: /Checkout latency triage/ }),
-    ).toBeVisible();
-
-    setWaiting(true);
-    await expect(page.getByRole("button", { name: "1 updated" })).toBeVisible({
-      timeout: 15_000,
-    });
-    expect(
-      await sidebarSectionOf(
-        page.locator('[role="navigation"][aria-label="Your conversations"]'),
-        /Checkout latency triage/,
-      ),
-    ).not.toMatch(/^Needs you/);
-  });
-
-  test("holds the home list order under the pointer", async ({
-    page,
-    dashboard,
-  }) => {
-    // Real versions poll interval.
-    test.setTimeout(60_000);
-    const setWaiting = await mockChangingWaiting(page);
-    // A narrow window with a mouse shows the home list, not the sidebar.
-    await page.setViewportSize({ width: 700, height: 900 });
-    await page.goto(dashboard.baseURL);
-    const card = page.getByRole("link", {
-      name: "Open Checkout latency triage",
-    });
-    const inNeedsYou = page
-      .locator("section:has(#conversation-section-needs-you)")
-      .getByRole("link", { name: "Open Checkout latency triage" });
-    const pill = page.getByRole("button", { name: "1 updated" });
-    await expect(card).toBeVisible();
-    await expect(inNeedsYou).toHaveCount(0);
-
-    await card.hover();
-    setWaiting(true);
-    await expect(pill).toBeVisible({ timeout: 15_000 });
-    await expect(inNeedsYou).toHaveCount(0);
-    await pill.click();
-    await expect(inNeedsYou).toBeVisible();
-    await expect(pill).toHaveCount(0);
   });
 });

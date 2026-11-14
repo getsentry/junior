@@ -244,7 +244,7 @@ function SidebarAnnotationIconFacepile(props: {
  * do not fit wrap onto lines that the row clips, so the count follows the
  * real width.
  */
-function FittingIcons(props: {
+export function FittingIcons(props: {
   className: string;
   icons: ReactNode[];
   overflow(count: number): ReactNode;
@@ -315,12 +315,12 @@ function SidebarAnnotationGroupChip(props: {
           annotation.objectType ? (
             <ObjectIcon
               {...annotation}
+              // Rem, like the row: a fixed 14px icon is clipped in the row at
+              // a smaller browser font size.
+              className="size-3.5"
               objectType={annotation.objectType}
               key={annotation.key}
-              // Match the h-3.5 row in rem. A px icon is cut at a small root font size.
-              className="size-3.5"
               decorative
-              size={14}
             />
           ) : annotation.icon ? (
             <SidebarAnnotationIcon
@@ -441,9 +441,14 @@ type SidebarAnnotationIconName = NonNullable<
   NonNullable<ConversationDetailReport["sidebarAnnotations"]>[number]["icon"]
 >;
 
+/** The open and success green, as GitHub shows an open pull request. */
+export const OPEN_TONE_CLASS = "text-[#3fb950] light:text-[#1a7f37]";
+/** The attention amber. It reads on both themes, so use it for icons only. */
+export const ATTENTION_TONE_CLASS = "text-[#d29922] light:text-[#9a6700]";
+
 const SIDEBAR_ICON_PRESENTATION = {
   "circle-dot": {
-    className: "text-[#3fb950] light:text-[#1a7f37]",
+    className: OPEN_TONE_CLASS,
     Icon: CircleDot,
     label: "Open",
   },
@@ -463,12 +468,12 @@ const SIDEBAR_ICON_PRESENTATION = {
     label: "Merged",
   },
   "git-pull-request": {
-    className: "text-[#3fb950] light:text-[#1a7f37]",
+    className: OPEN_TONE_CLASS,
     Icon: GitPullRequest,
     label: "Open pull request",
   },
   "triangle-alert": {
-    className: "text-[#d29922] light:text-[#9a6700]",
+    className: ATTENTION_TONE_CLASS,
     Icon: TriangleAlert,
     label: "Needs attention",
   },
