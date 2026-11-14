@@ -203,9 +203,29 @@ async function readExploreChart(
       .sort((a, b) => (a.meta?.order ?? 0) - (b.meta?.order ?? 0))
       .map((series) => ({
         label: groupLabel(series, grouped),
-        points: series.values.map(({ value }) => value ?? 0),
+        points: fillGaps(series.values.map(({ value }) => value)),
       })),
   };
+}
+
+// A bucket with no samples has no value, and that is not zero for an
+// average or a percentile. Draw across it from its neighbors instead. A
+// series with no values has no points.
+function fillGaps(values: Array<number | null>): number[] {
+  const known = values.flatMap((value, index) =>
+    value === null ? [] : [index],
+  );
+  if (known.length === 0) return [];
+  return values.map((value, index) => {
+    if (value !== null) return value;
+    const after = known.find((item) => item > index);
+    const before = [...known].reverse().find((item) => item < index);
+    if (before === undefined) return values[after!]!;
+    if (after === undefined) return values[before]!;
+    const from = values[before]!;
+    const to = values[after]!;
+    return from + ((to - from) * (index - before)) / (after - before);
+  });
 }
 
 function urlHash(url: URL): string {

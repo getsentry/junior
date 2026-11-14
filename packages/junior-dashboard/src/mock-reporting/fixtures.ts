@@ -1422,6 +1422,10 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "One slow checkout: https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
         "The demo is at https://www.youtube.com/watch?v=MockLaunchDemo",
         "",
+        "Launch steps are in https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
+        "",
+        "https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
+        "",
         "https://blog.example.com/posts/release-4-2",
         "",
         // Alone on their lines: the video shows only its thumbnail, the

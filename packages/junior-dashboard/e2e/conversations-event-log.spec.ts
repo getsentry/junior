@@ -476,9 +476,15 @@ test("loads earlier events without merging tool starts and results", async ({
   ).toBeVisible();
   await expect(page.getByText("Released the package.")).toBeVisible();
 
+  // The rich transcript loads earlier events as the reader nears its top.
+  // Its link cards are taller than the viewport, so scroll up to load them
+  // and back down to the latest reply.
+  await page.getByText("Released the package.").hover();
+  await page.mouse.wheel(0, -20_000);
   await expect(
     page.getByRole("button", { name: "Load earlier events" }),
   ).toHaveCount(0);
+  await page.mouse.wheel(0, 20_000);
   await chooseTranscriptView(page, "Event log");
   const log = page.getByRole("region", { name: "Conversation event log" });
   await expect(

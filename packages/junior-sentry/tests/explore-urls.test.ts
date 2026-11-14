@@ -147,7 +147,46 @@ describe("Sentry Explore URLs", () => {
         interval: "2h",
         start: "2026-11-13T00:00:00",
       }),
-    ).toMatchObject({ interval: "2h", statsPeriod: undefined });
+    ).toMatchObject({ interval: "2h" });
+  });
+
+  it("reads the time range the way Sentry's page filters do", () => {
+    const range = (query: Record<string, string>) => {
+      const link = parse("https://acme.sentry.io/explore/traces/", query);
+      return {
+        statsPeriod: link?.statsPeriod,
+        start: link?.start,
+        end: link?.end,
+      };
+    };
+    // Sentry writes the bounds in UTC without a zone.
+    expect(
+      range({ start: "2026-11-13T00:00:00", end: "2026-11-13T12:00:00" }),
+    ).toEqual({
+      statsPeriod: undefined,
+      start: "2026-11-13T00:00:00.000Z",
+      end: "2026-11-13T12:00:00.000Z",
+    });
+    // A live period wins over stale bounds.
+    expect(
+      range({
+        start: "2026-01-01T00:00:00",
+        end: "2026-01-02T00:00:00",
+        statsPeriod: "24h",
+      }),
+    ).toEqual({ statsPeriod: "24h", start: undefined, end: undefined });
+    // Bounds count only as a valid pair.
+    for (const query of [
+      { start: "2026-11-13T00:00:00" },
+      { start: "2026-11-13T12:00:00", end: "2026-11-13T00:00:00" },
+      { start: "soon", end: "later" },
+    ]) {
+      expect(range(query)).toEqual({
+        statsPeriod: "14d",
+        start: undefined,
+        end: undefined,
+      });
+    }
   });
 
   it("shows no chart for a heat map, a bad chart type, or another page", () => {

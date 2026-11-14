@@ -2,31 +2,35 @@ import { listItems } from "@/chat/slack/tool-support/list/api";
 import { slackListIdParam } from "@/chat/slack/tool-support/list/params";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
+export const slackListGetItemsToolDefinition = zodToolDefinition({
+  exposure: "deferred",
+  source: SLACK_TOOL_SOURCE,
+  description: "Read items from a Slack list.",
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  inputSchema: z.object({
+    list_id: slackListIdParam,
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(200)
+      .describe("Maximum number of list items to return.")
+      .optional(),
+  }),
+  outputSchema: juniorToolOutputSchema,
+});
+
 /** Create a tool that reads items from an explicit Slack list. */
 export function createSlackListGetItemsTool() {
   return zodTool({
-    exposure: "deferred",
-    source: SLACK_TOOL_SOURCE,
-    description: "Read items from a Slack list.",
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    inputSchema: z.object({
-      list_id: slackListIdParam,
-      limit: z.coerce
-        .number()
-        .int()
-        .min(1)
-        .max(200)
-        .describe("Maximum number of list items to return.")
-        .optional(),
-    }),
-    outputSchema: juniorToolOutputSchema,
+    ...slackListGetItemsToolDefinition,
     execute: async ({ list_id, limit }) => {
       const resolvedLimit = limit ?? 100;
       const items = await listItems(list_id, resolvedLimit);
