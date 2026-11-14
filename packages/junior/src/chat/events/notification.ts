@@ -413,7 +413,7 @@ export function eventBatchMessageMeta(
 }
 
 // A linked trusted author writes the Event Message, like a Slack author. A
-// listed bot has no Identity, so it gets its own author id. Batching splits
+// listed bot has no Identity, so it gets only its own author id. Batching splits
 // Messages whose authors differ. Other Events are written by the system.
 function eventMessageAuthor(
   author: AuthorTrust | undefined,
@@ -424,9 +424,10 @@ function eventMessageAuthor(
   if (author.identityId) {
     return { authorId: EVENT_AUTHOR_ID, authorIdentityId: author.identityId };
   }
+  // No system Identity either: with it, the bot's Message could join a
+  // paused system Event Turn, whose owner has only that Identity.
   return {
     authorId: `${EVENT_AUTHOR_ID}:${author.provider}:${author.handle.toLowerCase()}`,
-    authorIdentityId: SYSTEM_IDENTITY_ID,
   };
 }
 

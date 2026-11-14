@@ -20,7 +20,11 @@ import { getPluginTools } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
-import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
+import { EVENT_AUTHOR_ID, EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import {
+  canJoinTurn,
+  canShareTurn,
+} from "@/chat/task-execution/attempt-selection";
 import {
   eventBatchAuthor,
   renderEventBatchInputs,
@@ -239,12 +243,17 @@ describe("Event author trust", () => {
       expect(task!.text).toContain(QUOTE);
       expect(eventBatchAuthor([message!])).toEqual({ authorId: userId });
     }
-    // A listed bot has no Identity. It gets its own author id, so batching
-    // keeps it apart from other authors.
-    expect(byBot!.input).toMatchObject({
-      authorId: `${EVENT_AUTHOR_ID}:demo:cursor[bot]`,
-      authorIdentityId: SYSTEM_IDENTITY_ID,
-    });
+    // A listed bot has no Identity. It gets only its own author id, so it
+    // neither batches with other authors nor joins a paused system Turn.
+    expect(byBot!.input.authorId).toBe(`${EVENT_AUTHOR_ID}:demo:cursor[bot]`);
+    expect(byBot!.input.authorIdentityId).toBeUndefined();
+    const systemTurn = {
+      actor: EVENT_SYSTEM_ACTOR,
+      actorIdentityId: SYSTEM_IDENTITY_ID,
+    };
+    expect(canJoinTurn(systemTurn, byBot!)).toBe(false);
+    expect(canJoinTurn(systemTurn, system!)).toBe(true);
+    expect(canShareTurn(byBot!, system!)).toBe(false);
     expect(inputs(byBot)[1]).toEqual({
       kind: "person",
       text: "Possible race in the retry loop.",
