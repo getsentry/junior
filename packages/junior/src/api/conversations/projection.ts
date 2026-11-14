@@ -58,6 +58,7 @@ function privateConversationLabel(
 function surfaceFromConversationId(
   conversationId: string,
 ): ConversationSurface {
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
   if (parseSlackThreadId(conversationId)) return "slack";
   if (conversationId.startsWith("scheduler:")) return "scheduler";
   if (conversationId.startsWith("api:")) return "api";
@@ -147,6 +148,7 @@ function titleFromConversation(args: {
   surface: ConversationSurface;
   visibility?: SlackConversationVisibility | undefined;
 }): string {
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
   const slackThread = parseSlackThreadId(args.conversation.conversationId);
   const effectiveChannelName = args.conversation.channelName;
   const slackConversation = resolveSlackConversationContextFromThreadId({
@@ -183,6 +185,7 @@ function channelNameFromConversation(
   visibility?: SlackConversationVisibility,
 ): string | undefined {
   const effectiveChannelName = conversation.channelName;
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
   const slackThread = parseSlackThreadId(conversation.conversationId);
   if (!effectiveChannelName && !slackThread) {
     return undefined;
@@ -203,6 +206,7 @@ function channelNameRedactedFromConversation(
   canViewPrivateContent: boolean,
 ): boolean {
   const effectiveChannelName = conversation.channelName;
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
   const slackThread = parseSlackThreadId(conversation.conversationId);
   if (!effectiveChannelName && !slackThread) {
     return false;
@@ -262,6 +266,7 @@ export function conversationSummaryFromStoredConversation(args: {
       ? { teamDomainByTeamId: args.teamDomainByTeamId }
       : undefined),
   });
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
   const slackThread = parseSlackThreadId(conversation.conversationId);
   const channelName = channelNameFromConversation(
     conversation,
