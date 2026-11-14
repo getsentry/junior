@@ -1,4 +1,4 @@
-import { isAllowedSignInEmail } from "@sentry/junior/api";
+import { isAllowedEmail } from "@sentry/junior/api";
 import { dashboardSessionSchema } from "./api/schema";
 import type { DashboardSession } from "./api/schema";
 
@@ -41,7 +41,10 @@ export function dashboardSessionIsAuthorized(
 ): boolean {
   return (
     session.user.emailVerified === true &&
-    isAllowedSignInEmail(session.user.email, allowedDomains)
+    isAllowedEmail(session.user.email, {
+      allowedDomains,
+      ifNoDomains: "deny",
+    })
   );
 }
 

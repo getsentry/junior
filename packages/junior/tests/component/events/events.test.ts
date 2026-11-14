@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { renderEventBatchInputs } from "@/chat/events/notification";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { githubPlugin } from "@sentry/junior-github";
 import type { StateAdapter } from "chat";
@@ -406,8 +407,10 @@ describe("event delivery", () => {
         conversationId: CONVERSATION_ID,
         state,
       });
-      expect(work?.messages[0]?.input.text).toContain(
-        "please add regression coverage",
+      // `trustedAuthors` lists the commenter, so their text is a message
+      // from them after the task.
+      expect(renderEventBatchInputs(work!.messages.slice(0, 1))).toContainEqual(
+        { kind: "person", text: "please add regression coverage" },
       );
       expect(work?.messages[0]?.input.text).toContain('"comment_id":404');
       expect(work?.messages[0]?.input.text).toContain(

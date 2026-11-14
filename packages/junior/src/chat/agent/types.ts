@@ -12,7 +12,6 @@ import type { Location } from "@/chat/conversations/location";
 import type { ConversationKind } from "@/chat/conversations/store";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 import type { CredentialContext } from "@/chat/credentials/context";
-import type { AuthorTrust } from "@/chat/identities/trust";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { Actor } from "@/chat/actor";
 import type { SandboxRef } from "@/chat/sandbox/ref";
@@ -322,11 +321,6 @@ export type AgentRun = {
   actor?: Actor;
   /** Credential authority projected from actor (plus optional subject). */
   credentialContext?: CredentialContext;
-  /**
-   * Core's saved trust decisions for the Event authors of this Turn. Action
-   * review treats a Trusted author's text as their instruction.
-   */
-  authorTrusts?: readonly AuthorTrust[];
   source: Source;
   /** Conversation Location available to this Run. */
   location?: Location;

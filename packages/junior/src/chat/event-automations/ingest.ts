@@ -43,7 +43,8 @@ import { captureMessage } from "@/chat/sentry";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
-  eventAuthorTrustOnce,
+  authorLabel,
+  resolveEventAuthor,
   type AuthorTrust,
 } from "@/chat/identities/trust";
 import { eventGuidance, type EventCatalog } from "@/chat/events/catalog";
@@ -82,13 +83,14 @@ function eventInput(
     trustedSummary: event.trustedSummary,
     trustedSummaryMaxLength: EVENT_SUMMARY_MAX_LENGTH,
     verifiedDetails: event.data,
-    // An Automation run carries no author instruction to action review yet,
-    // so a Trusted author's text stays external text here. An Untrusted
-    // author is marked, with their text, like in a Watch Turn.
-    ...(author.status === "untrusted" ? { author } : undefined),
+    // The automation's creator gives the job, so an author's text is context
+    // here, even from a trusted author. An untrusted author is still named.
+    ...(author.status === "untrusted"
+      ? { untrustedAuthor: authorLabel(author) }
+      : undefined),
     externalText:
       [
-        author.status === "trusted" ? author.text : undefined,
+        author.status === "system" ? undefined : author.text,
         event.untrustedText,
       ]
         .filter(Boolean)
@@ -108,11 +110,6 @@ function eventInput(
 export async function ingestEventAutomations(
   input: unknown,
   options: {
-    /**
-     * The author trust decision that Watches share (`eventAuthorTrustOnce`).
-     * Without it, ingest decides it.
-     */
-    authorTrust?: () => Promise<AuthorTrust>;
     nowMs?: number;
     queue: ConversationWorkQueue;
     teamId: string;
@@ -132,7 +129,7 @@ export async function ingestEventAutomations(
     slackChannelMessageRunsAutomation(event, task),
   );
   if (tasks.length === 0) return { dispatched: 0 };
-  const author = await (options.authorTrust ?? eventAuthorTrustOnce(event))();
+  const author = await resolveEventAuthor(event);
   let dispatched = 0;
   const errors: unknown[] = [];
   for (const task of tasks) {

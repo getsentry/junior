@@ -189,31 +189,36 @@ Finish #2482.
 - **Trust part, built with #2217 and #2260:**
   - one owner, `chat/identities/trust.ts`, for every trust decision: Slack
     ingress (`isTrustedSlackAuthor`), Identity dispatch (`findTrustedUser`),
-    sign-in domains, and Event authors (`eventAuthorTrustOnce`). It reads its
-    own config, keeps the Slack member cache, and owns the saved
-    `AuthorTrust` schema and the author label.
+    allowed emails (`isAllowedEmail`, with `ifNoDomains` for what an empty
+    list means), and Event authors (`resolveEventAuthor`). It reads its own
+    config, keeps the Slack member cache, and owns the author label.
   - a plugin reports one `author` on an Event: `handle`, `subjectId`, `bot`,
     `trusted`, and `text`. Its provider is always the Event namespace. The
     GitHub plugin derives it in `gitHubEventAuthor` and splits own text from
     the rest with one parser, `splitCommentText`. Own text goes only to
     `author.text`; `untrustedText` keeps the rest, so core shows it once.
-  - Junior decides trust once per published Event, in the app publisher.
-    Watch delivery and Event automations still deliver an Event from an
-    untrusted author. Each Event saves one `AuthorTrust` (`system`,
-    `trusted`, or `untrusted`) in its task facts, and the Turn carries them as
-    `authorTrusts`. The task input renders `<untrusted-author reason>` around
-    the author's text, and Guardian gets an untrusted authors section outside
-    the proposal JSON. A trusted author with no text is still `trusted`.
-  - trusted text reaches the model in `<author-instruction>` and Guardian in
-    `author_instructions`. A linked author's label is their Slack mention.
-    Another author's label is the handle, the provider, and "(a bot)" for a
-    bot.
+  - Watch ingest and Event automation ingest each resolve the author once,
+    after they find a match, the same way Slack ingress resolves a Slack
+    author. Nothing downstream decides again, and no trust value rides on
+    the Turn, Guardian, or tools.
+  - a linked trusted author writes the Event's Message: its author Identity
+    is theirs, so batching keeps Messages with different authors apart. A
+    listed bot has no Identity, so it gets its own author id. Their own text
+    is a person input after the Event task, with their Slack id or bot label
+    on `<current-instruction>`, like a Slack message. The Turn Actor and
+    credentials stay the system Actor, and the author does not join the
+    Conversation.
+  - an untrusted author's Event runs as system context. Their text is
+    external text whose lead and `author_trust="untrusted"` name them. A
+    trusted author with no text still writes the Message, so it is not a
+    system Event. Guardian reads the joined Turn input text, the same as for
+    a Slack Turn, and has no author sections.
   - the Bugbot and Sentry logins are `cursor[bot]` (id 206951365) and
     `sentry[bot]` (id 39604003).
-  - still open: real Message author Identities (web, mock, bot, event), the
-    batch Message author, and author text as an instruction in Event
-    automation runs. Those runs mark untrusted authors, and keep the text of
-    trusted authors as external text.
+  - still open: real Message author Identities for web, mock, and bot
+    Messages, and author text as an instruction in Event automation runs.
+    Those runs keep an author's text as external text, and name an
+    untrusted author.
 
 ## 5. Dry Run
 

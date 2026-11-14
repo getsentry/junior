@@ -14,7 +14,6 @@ import {
 } from "@/chat/events/store";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { resolveBotSlackTeamId } from "@/chat/events/workspace";
-import { eventAuthorTrustOnce } from "@/chat/identities/trust";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
@@ -99,11 +98,8 @@ export function createEventAppPublisher(args: {
       const work = args.conversationWork();
       const queue = work.queue ?? getVercelConversationWorkQueue();
       const eventAutomationTeamId = await resolveBotSlackTeamId();
-      // Watches and Event automations share one trust decision.
-      const authorTrust = eventAuthorTrustOnce(event);
       await Promise.all([
         ingestEvent(event, {
-          authorTrust,
           queue,
           // Junior runs one Slack bot, so every Watch is in this workspace.
           slackTeamId: eventAutomationTeamId,
@@ -111,7 +107,6 @@ export function createEventAppPublisher(args: {
         }),
         eventAutomationTeamId
           ? ingestEventAutomations(event, {
-              authorTrust,
               queue,
               teamId: eventAutomationTeamId,
             })

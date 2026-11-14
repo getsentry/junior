@@ -28,7 +28,6 @@ import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
 import {
   closeConversationFixture,
   createConversationFixture,
-  eventAuthorTrust,
   requireConversationTurn,
 } from "../fixtures/conversation";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
@@ -488,11 +487,6 @@ describe("Conversation mailbox Turn work", () => {
         trustedSummary: "Code change checks failed",
       },
       receivedAtMs: 2,
-      task: {
-        author: eventAuthorTrust,
-        instructions: "Fix failed checks.",
-        trustedSummary: "Code change checks failed",
-      },
       subscription: {
         conversationId,
         credentialSubject,
@@ -580,7 +574,6 @@ describe("Conversation mailbox Turn work", () => {
           },
           destination,
           disabledFeatures: ["interactive-auth"],
-          authorTrusts: [eventAuthorTrust],
           source,
           turnId,
         }),

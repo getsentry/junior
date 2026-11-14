@@ -2,7 +2,6 @@ import type { ObjectType } from "@sentry/junior-plugin-api";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import type { MessageCard, MessageCardRef } from "@/chat/conversations/cards";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
-import type { AuthorTrust } from "@/chat/identities/trust";
 import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 
 type ConversationRole = "assistant" | "system" | "user";
@@ -46,11 +45,6 @@ export interface ConversationMessageMeta {
   explicitMention?: boolean;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
-  /**
-   * Core's trust decisions for the Event authors, saved on the Message that
-   * started an Event Turn so a resumed Run can use them.
-   */
-  authorTrusts?: AuthorTrust[];
   imageAttachmentCount?: number;
   imageFileIds?: string[];
   imagesHydrated?: boolean;
