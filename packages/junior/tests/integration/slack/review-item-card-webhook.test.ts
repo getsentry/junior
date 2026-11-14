@@ -499,10 +499,9 @@ describe("Slack webhook: Review item cards", () => {
       dedupe_key: "release:1.2.3",
       request: SHIP_REQUEST,
     };
-    // The child adds the item first, so its card goes to the child.
+    // The child adds the item first, and the parent links it later. The
+    // thread keeps one card.
     await addItem(ana, input, child);
-    // The parent links the item later. The thread keeps one card, and the
-    // card moves to the parent.
     const { item } = await addItem(ana, input);
     expect(item).toMatchObject({ conversation_ids: [child, THREAD] });
     const cards = slackApiOutbox.messages();
@@ -516,7 +515,8 @@ describe("Slack webhook: Review item cards", () => {
       value: buttonValue(cards[0], "junior_review_item:choice:0"),
     });
 
-    // The card belongs to the parent, so the parent gets the answer once.
+    // A click acts for the parent, which owns the thread, so the parent gets
+    // the answer once.
     const work = await getConversationWorkState({
       conversationId: THREAD,
       state,
