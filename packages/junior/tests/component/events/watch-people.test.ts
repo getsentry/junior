@@ -47,7 +47,10 @@ describe("Watch Event people", () => {
             },
           },
           hooks: {
-            tools(ctx) {
+            tools() {
+              return {};
+            },
+            disabledTools(ctx) {
               events = ctx.events;
               return {};
             },

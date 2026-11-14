@@ -462,9 +462,8 @@ export function githubPlugin(
           }),
         ];
       },
-      tools(ctx) {
+      tools() {
         return createGitHubTools(
-          ctx,
           readEnv(botEmailEnv),
           gitHubPullRequestSubscription(
             options.pullRequestEvents?.subscribeAfterCreate,

@@ -1,3 +1,4 @@
+import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import {
   conversationAnnotationInputSchema,
@@ -3056,7 +3057,7 @@ describe("GitHub-owned pull request outcomes", () => {
         { status: 201 },
       );
     const state = new Map<string, unknown>();
-    const tools = plugin.hooks!.tools!({
+    const toolCtx = {
       ...pluginCtx,
       actor: { platform: "slack", teamId: "T1", userId: "U1" },
       conversationId: "slack:C123:1712345.0001",
@@ -3106,7 +3107,8 @@ describe("GitHub-owned pull request outcomes", () => {
           return await run();
         },
       },
-    } as any);
+    } as any;
+    const tools = bindPluginTools(plugin.hooks!.tools!(), toolCtx);
     const createInput = {
       base: "main",
       head: "fix/requester-role",

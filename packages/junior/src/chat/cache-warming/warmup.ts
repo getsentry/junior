@@ -22,20 +22,15 @@ import {
   streamSimple,
   type AssistantMessage,
 } from "@earendil-works/pi-ai/compat";
-import type { Platform } from "@sentry/junior-plugin-api";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { getChatConfig } from "@/chat/config";
 import { logInfo, logWarn, withSpan } from "@/chat/logging";
 import { resolveGatewayModel } from "@/chat/pi/client";
+import type { ToolDefinitionsKey } from "@/chat/tools/registry";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { metrics } from "@/chat/sentry";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import type { ThinkingLevel } from "@/chat/pi/sdk";
-import {
-  buildDeploymentSystemPrompt,
-  systemPromptHash,
-} from "@/chat/system-prompt";
-import type { PromptMode } from "@/chat/system-prompt-rules";
 import {
   decideWarmup,
   gapSegment,
@@ -52,6 +47,11 @@ import {
   type WaitingOn,
   type WorkState,
 } from "./model";
+import {
+  definitionsChanged,
+  publishDefinitions,
+  type IdleDefinitions,
+} from "./definitions";
 import { sendCacheWarmup, type CacheWarmupMessage } from "./queue";
 import {
   breakerOpen,
@@ -106,10 +106,11 @@ interface WarmState {
   /** Idle time at which a timer is due, for the timer floor. */
   timerDueIdleMs?: number;
   /**
-   * The system prompt of the snapshot. Unset in snapshots from before it was
-   * stored; those warm without the check.
+   * The definitions fingerprint of the snapshot's deployment. Unset outside
+   * Vercel and in idle periods from before it was stored; those warm without
+   * the check.
    */
-  systemPrompt?: SystemPromptKey & { hash: string };
+  definitions?: IdleDefinitions;
   workState: WorkState;
   archived: boolean;
   modelId: string;
@@ -245,10 +246,10 @@ async function startIdlePeriod(
   request: ModelRequest,
   message: AssistantMessage,
   turn: Pick<GapSegmentInput, "userActor" | "endedTurns">,
-  systemPrompt: SystemPromptKey,
+  definitionsKey: ToolDefinitionsKey,
   turnEnding: TurnEnding,
 ): Promise<IdlePeriod | undefined> {
-  const automation = systemPrompt.mode === "automation";
+  const automation = definitionsKey.mode === "automation";
   // Read once here, not on each model call.
   const { watches, waitingOn } = await readPendingWork(
     conversationId,
@@ -263,6 +264,9 @@ async function startIdlePeriod(
     generation: randomUUID(),
     sinceMs: request.startedAtMs,
   };
+  // Every idle start publishes, also one that Junior cannot warm, so a new
+  // deployment stops old idle periods soon.
+  const definitions = await publishDefinitions(state, definitionsKey);
   const prefixTokens = cachedPrefixTokens(message);
   const ttlMs = cacheTtlMs(request);
   if (ttlMs === undefined || prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
@@ -326,14 +330,7 @@ async function startIdlePeriod(
       ...(parentSegment ? { parentSegment } : undefined),
       ...(waitingOn ? { waitingOn } : undefined),
       ...(timerDueIdleMs !== undefined ? { timerDueIdleMs } : undefined),
-      ...(request.context.systemPrompt !== undefined
-        ? {
-            systemPrompt: {
-              ...systemPrompt,
-              hash: systemPromptHash(request.context.systemPrompt),
-            },
-          }
-        : undefined),
+      ...(definitions ? { definitions } : undefined),
       ...segmentState,
       modelId: request.model.id,
       prefixTokens,
@@ -347,7 +344,7 @@ async function startIdlePeriod(
 async function recordModelCall(
   conversationId: string,
   userActor: boolean,
-  systemPrompt: SystemPromptKey,
+  definitionsKey: ToolDefinitionsKey,
   request: ModelRequest,
   message: AssistantMessage,
   turnEnding: TurnEnding | undefined,
@@ -388,7 +385,7 @@ async function recordModelCall(
         request,
         message,
         { userActor, endedTurns },
-        systemPrompt,
+        definitionsKey,
         turnEnding,
       )
     : undefined;
@@ -462,15 +459,6 @@ export interface CacheWarmingRecorder {
 }
 
 /**
- * Platform and Prompt mode of a run's system prompt. With the deployment,
- * they set the system prompt text.
- */
-export interface SystemPromptKey {
-  platform: Platform;
-  mode: PromptMode;
-}
-
-/**
  * Create a recorder for one agent run. `userActor` is true when a person
  * started the Turn. A failure to record only loses cache warming, so it is
  * logged and does not stop the run.
@@ -478,7 +466,7 @@ export interface SystemPromptKey {
 export function createCacheWarmingRecorder(
   conversationId: string,
   userActor: boolean,
-  systemPrompt: SystemPromptKey,
+  definitionsKey: ToolDefinitionsKey,
 ): CacheWarmingRecorder {
   let lastRequest: ModelRequest | undefined;
   // The last finished call, for an idle period that an answer tool starts.
@@ -547,7 +535,7 @@ export function createCacheWarmingRecorder(
         await recordModelCall(
           conversationId,
           userActor,
-          systemPrompt,
+          definitionsKey,
           request,
           message,
           message.stopReason === "stop" ? "reply" : undefined,
@@ -579,7 +567,7 @@ export function createCacheWarmingRecorder(
         await recordModelCall(
           conversationId,
           userActor,
-          systemPrompt,
+          definitionsKey,
           lastCall.request,
           lastCall.message,
           answerToolEnding,
@@ -606,8 +594,9 @@ export function createCacheWarmingRecorder(
  *   `cache_warming.warmup.failed` and reports to Sentry.
  * - `failed`: the warmup call threw.
  * - `skipped`: `skip_reason` is `cache_expired`, `breaker_open`,
- *   `prompt_changed` (a deploy changed the system prompt, so the idle period
- *   stops), `stopped` (warming stopped or the tools returned first; no log),
+ *   `prompt_changed` (a newer deployment published another definitions
+ *   fingerprint, so the idle period stops), `stopped` (warming stopped or
+ *   the tools returned first; no log),
  *   `image_missing` (an image key of the snapshot expired, so the idle period
  *   stops), or a `decideWarmup` reason.
  *
@@ -709,20 +698,16 @@ export async function runCacheWarmup(
         await skip("breaker_open");
         return;
       }
-      // A deploy can change the system prompt. The next Turn then writes a
-      // new prefix, so warming the old one buys nothing. Tool definitions can
-      // change too, but the tool set differs per Conversation, so this does
-      // not check them. Tool wait warming needs no check: it runs in the
-      // process of the run, which sends the next request with this prompt.
+      // A deploy can change the system prompt or the tool definitions. The
+      // next Turn then writes a new prefix, so warming the old one buys
+      // nothing. The queue pins this warmup to the deployment that sent it,
+      // which builds the old definitions. So only the fingerprint that a
+      // newer deployment published can show the change (`definitions.ts`).
+      // Tool wait warming needs no check: it runs in the process of the run,
+      // which sends the next request with these definitions.
       if (
-        warm.systemPrompt &&
-        warm.systemPrompt.hash !==
-          systemPromptHash(
-            await buildDeploymentSystemPrompt(
-              warm.systemPrompt.platform,
-              warm.systemPrompt.mode,
-            ),
-          )
+        warm.definitions &&
+        (await definitionsChanged(state, warm.definitions))
       ) {
         await skip("prompt_changed");
         return;

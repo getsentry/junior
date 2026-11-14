@@ -58,7 +58,10 @@ describe("Event author trust", () => {
               publisher = ctx.events;
               return [];
             },
-            tools(ctx) {
+            tools() {
+              return {};
+            },
+            disabledTools(ctx) {
               watches = ctx.events;
               return {};
             },

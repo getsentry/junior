@@ -9,7 +9,7 @@ import * as z from "zod";
 import type { PluginContext, User } from "./context";
 import type { ObjectAnnotation } from "./object-annotations";
 import type { ObjectType } from "./object-presentation";
-import type { PluginEgress } from "./tools";
+import type { PluginEgress, PluginViewerMcp } from "./tools";
 
 const hostSchema = z
   .string()
@@ -160,6 +160,12 @@ export interface ObjectLinkContext extends PluginContext {
    * object, and read the card data with `egress`.
    */
   viewerEgress: PluginEgress;
+  /**
+   * This plugin's hosted MCP provider as the viewer, with only the viewer's
+   * own stored login. Use it when the provider decides access only through
+   * MCP.
+   */
+  viewerMcp: PluginViewerMcp;
 }
 
 /**
@@ -184,6 +190,13 @@ export interface PluginObjectLinkDefinition {
     ctx: ObjectLinkContext,
     url: URL,
   ): Promise<ObjectAnnotation | undefined>;
+  /**
+   * When `canView` returns false, show the public web page card of the
+   * link, as for a link that no link type claims. Use it for a provider
+   * whose public pages have useful web page metadata. That card reads only
+   * what anyone can read without signing in.
+   */
+  webPageFallback?: true;
   /**
    * Name the plugin tool that reads the resolved object live, such as
    * `readGoogleFile`. When a person attaches the link to a Conversation, its

@@ -230,7 +230,11 @@ function renderResult(result: CodeModeResult): string {
   ].join("\n");
 }
 
-/** Create the `codemode` tool for one Run's script tools and pipeline. */
+/**
+ * Create the `codemode` tool for one Run's script tools and pipeline.
+ *
+ * @runBuilt codemode
+ */
 export function createCodeModeTool(options: CodeModeToolOptions) {
   const { countToolCall, modelOnlyTools, pipeline, scriptTools } = options;
   return zodTool({
