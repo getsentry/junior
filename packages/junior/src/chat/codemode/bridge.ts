@@ -82,7 +82,7 @@ export interface CodeModeScriptRun {
   /** Charge one call to the Turn's durable tool-call total; return the total. */
   countToolCall(): number;
   /** The Run's abort signal. It stops the VM and every pending nested call. */
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }
 
 function deferred<T>() {
@@ -431,14 +431,12 @@ export async function runCodeModeScript(
       return;
     }
 
-    const rawActions = accepted.map(
-      ({ call, tool }): ToolAction => ({
-        toolCallId: call.id,
-        toolName: call.toolName,
-        tool,
-        input: (call.input ?? {}) as Record<string, unknown>,
-      }),
-    );
+    const rawActions = accepted.map(({ call, tool }): ToolAction => ({
+      toolCallId: call.id,
+      toolName: call.toolName,
+      tool,
+      input: (call.input ?? {}) as Record<string, unknown>,
+    }));
     if (accepted.length > MAX_TOOL_ACTION_BATCH) {
       // The gate fails an oversized batch before any review. Refuse the
       // whole drain before hooks run, with the gate's error.

@@ -43,7 +43,7 @@ const agentsInstructionsUpdatedContentSchema = z
 
 function providerTitle(content: {
   provider: string;
-  providerLabel?: string;
+  providerLabel?: string | undefined;
 }): string {
   return content.providerLabel?.trim() || content.provider;
 }
@@ -68,7 +68,7 @@ function formatBytes(bytes: number): string {
 
 function agentsInstructionsPreview(content: {
   sources: Array<{ content: string; path: string }>;
-  textBytes?: number;
+  textBytes?: number | undefined;
 }): string | undefined {
   const source = content.sources[0];
   if (!source) return undefined;

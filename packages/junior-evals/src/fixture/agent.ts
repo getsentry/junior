@@ -114,10 +114,12 @@ export type TurnProgress =
 export interface CallOptions {
   /** Earlier turns as items, or a recorded conversation. */
   history?: HistoryItem[] | RecordedConversation;
-  onProgress?: (
-    progress: TurnProgress,
-    actions: { send(input: Input): Promise<void> },
-  ) => void | Promise<void>;
+  onProgress?:
+    | ((
+        progress: TurnProgress,
+        actions: { send(input: Input): Promise<void> },
+      ) => void | Promise<void>)
+    | undefined;
 }
 
 /**
@@ -449,7 +451,9 @@ export async function createFixtureAgent(
         : record.idempotencyKey;
       const uploadIds = input.files?.length
         ? await uploadWebFiles(api, {
-            ...(started ? { conversationId: record.conversationId } : {}),
+            ...(started
+              ? { conversationId: record.conversationId }
+              : undefined),
             files: input.files,
             idempotencyKey,
             viewerEmail: record.viewerEmail,

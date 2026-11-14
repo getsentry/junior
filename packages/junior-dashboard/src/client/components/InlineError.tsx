@@ -6,7 +6,7 @@ import { Alert } from "./ui/alert";
 /** Render a compact error message with consistent alert semantics. */
 export function InlineError(props: {
   children: ReactNode;
-  className?: string;
+  className?: string | undefined;
 }) {
   return (
     <Alert

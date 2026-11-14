@@ -4,11 +4,11 @@ import { cn } from "../styles";
 
 /** Render text with the shadcn `shimmer` utility when `active` is true. */
 export function ShimmerText(props: {
-  active?: boolean;
+  active?: boolean | undefined;
   as?: "span" | "strong";
   children: ReactNode;
   className?: string;
-  "aria-label"?: string;
+  "aria-label"?: string | undefined;
 }) {
   // Keep inactive text unwrapped so metric triggers stay the text host for
   // focus/hover tooling and e2e locators.

@@ -213,7 +213,7 @@ describe("callMcpTool", () => {
         {
           tool_name: "mcp__demo__ping",
           query: "hello",
-        } as never,
+        },
         {},
       ),
     ).rejects.toThrow(
@@ -246,7 +246,7 @@ describe("callMcpTool", () => {
           tool_name: "mcp__demo__ping",
           query: "ignored",
           arguments: { query: "hello" },
-        } as never,
+        },
         {},
       ),
     ).rejects.toThrow(
@@ -276,7 +276,7 @@ describe("callMcpTool", () => {
         {
           tool_name: "mcp__demo__ping",
           arguments: "hello",
-        } as never,
+        },
         {},
       ),
     ).rejects.toThrow("callMcpTool arguments must be an object");

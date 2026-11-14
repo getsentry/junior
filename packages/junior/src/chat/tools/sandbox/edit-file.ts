@@ -26,7 +26,7 @@ interface EditFileResult {
   content: [{ type: "text"; text: string }];
   details: {
     diff: string;
-    first_changed_line?: number;
+    first_changed_line?: number | undefined;
     path: string;
     replacements: number;
     target: string;

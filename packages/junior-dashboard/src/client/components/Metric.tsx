@@ -65,12 +65,12 @@ function TooltipLines(props: { lines: MetricTooltipLine[] }) {
 
 /** Render compact metadata text with an optional styled hover/focus tooltip. */
 export function MetricValue(props: {
-  align?: "left" | "right";
+  align?: "left" | "right" | undefined;
   children: ReactNode;
   className?: string;
-  tooltip?: MetricTooltipLine[];
+  tooltip?: MetricTooltipLine[] | undefined;
   /** Custom tooltip content, such as a usage summary, instead of lines. */
-  tooltipCard?: ReactNode;
+  tooltipCard?: ReactNode | undefined;
   tooltipPlacement?: "above" | "below";
 }) {
   const tooltip = props.tooltip?.filter((line) => line.value.trim());

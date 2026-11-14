@@ -114,7 +114,7 @@ export interface AnyToolDefinition extends ToolApprovalMetadata {
   description: string;
   exposure?: ToolExposure;
   inputSchema: ToolInputSchema;
-  outputSchema?: ToolInputSchema;
+  outputSchema?: ToolInputSchema | undefined;
   privateTraceResult?(result: unknown): unknown;
   /**
    * @deprecated Put tool-selection and usage guidance directly in `description`

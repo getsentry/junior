@@ -40,7 +40,7 @@ function pluginMigrationRoots(): { dir: string; pluginName: string }[] {
 export default async function setup(
   project: EvalTestProject,
 ): Promise<() => Promise<void>> {
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl = process.env["DATABASE_URL"];
   if (!databaseUrl) {
     return async () => undefined;
   }

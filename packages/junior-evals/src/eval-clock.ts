@@ -54,6 +54,8 @@ function replaceDate(): EvalClock {
     construct: (target, args, newTarget) =>
       Reflect.construct(target, args.length === 0 ? [now()] : args, newTarget),
     get: (target, key, receiver) =>
+      // A Proxy trap forwards other keys with Reflect.
+      // oxlint-disable-next-line anti-slop/no-reflect-get
       key === "now" ? now : Reflect.get(target, key, receiver),
   });
   return {

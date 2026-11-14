@@ -12,7 +12,7 @@ import { PersonMention } from "./people";
 type Mention = {
   end: number;
   id: string;
-  label?: string;
+  label?: string | undefined;
   sigil: "@" | "#";
   start: number;
 };

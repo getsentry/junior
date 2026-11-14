@@ -23,7 +23,7 @@ import {
 import { mockTitleModel } from "../../fixtures/title-model";
 
 const emptyThreadReplies = async () => [];
-const ORIGINAL_AI_GATEWAY_API_KEY = process.env.AI_GATEWAY_API_KEY;
+const ORIGINAL_AI_GATEWAY_API_KEY = process.env["AI_GATEWAY_API_KEY"];
 
 function createRuntime(
   args: {
@@ -105,7 +105,7 @@ function turnPiMessages(text: string) {
 
 describe("bot handlers (integration)", () => {
   beforeEach(async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
+    process.env["AI_GATEWAY_API_KEY"] = "test-gateway-key";
     mockTitleModel("Test conversation");
     resetConversationTitleStateForTests();
     resetAssistantTitleProjectionForTests();
@@ -114,9 +114,9 @@ describe("bot handlers (integration)", () => {
 
   afterEach(async () => {
     if (ORIGINAL_AI_GATEWAY_API_KEY === undefined) {
-      delete process.env.AI_GATEWAY_API_KEY;
+      delete process.env["AI_GATEWAY_API_KEY"];
     } else {
-      process.env.AI_GATEWAY_API_KEY = ORIGINAL_AI_GATEWAY_API_KEY;
+      process.env["AI_GATEWAY_API_KEY"] = ORIGINAL_AI_GATEWAY_API_KEY;
     }
     resetSlackApiMockState();
     resetConversationTitleStateForTests();

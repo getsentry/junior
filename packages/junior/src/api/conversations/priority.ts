@@ -7,7 +7,7 @@ export type ConversationPriorityInput = {
   assignedWork?: boolean;
   finishedWorkAt?: string;
   lastSeenAt: string;
-  lastUserMessageAt?: string;
+  lastUserMessageAt?: string | undefined;
   unfinishedWork?: boolean;
 };
 

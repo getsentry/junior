@@ -27,30 +27,40 @@ function isExportWrapper(node: ESTree.Node): boolean {
   );
 }
 
-function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion): boolean {
+function hasSafetyComment(
+  sourceCode: SourceCode,
+  node: TypeAssertion,
+): boolean {
   let current: ESTree.Node = node;
   while (true) {
     if (
       sourceCode
         .getCommentsBefore(current)
-        .some((comment) => comment.end <= node.start && /\bSAFETY\s*:/u.test(comment.value))
+        .some(
+          (comment) =>
+            comment.end <= node.start && /\bSAFETY\s*:/u.test(comment.value),
+        )
     ) {
       return true;
+    }
+    const parent: ESTree.Node | null = current.parent;
+    if (parent === null) {
+      return false;
     }
     // Leading comments on `export const` / `export let` attach to the export
     // wrapper, not the inner VariableDeclaration (the export token blocks them).
     // Hop once to that wrapper, then stop — do not accept a distant ancestor.
     if (commentOwnerKinds.has(current.type)) {
-      if (isExportWrapper(current.parent)) {
-        current = current.parent;
+      if (isExportWrapper(parent)) {
+        current = parent;
         continue;
       }
       return false;
     }
-    if (isExportWrapper(current) || current.parent.type === "Program") {
+    if (isExportWrapper(current) || parent.type === "Program") {
       return false;
     }
-    current = current.parent;
+    current = parent;
   }
 }
 
@@ -69,7 +79,8 @@ export const requireSafetyCommentForTypeAssertionRule = defineRule({
   },
   createOnce(context) {
     const checkAssertion = (node: TypeAssertion) => {
-      if (isConstAssertion(node) || hasSafetyComment(context.sourceCode, node)) return;
+      if (isConstAssertion(node) || hasSafetyComment(context.sourceCode, node))
+        return;
       context.report({ node, messageId: "missingSafetyComment" });
     };
 

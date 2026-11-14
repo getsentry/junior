@@ -9,13 +9,13 @@ const { appRoot, originalEnv } = await vi.hoisted(async () => {
   const os = await import("node:os");
   const path = await import("node:path");
   const originalEnv = { ...process.env };
-  delete process.env.NODE_ENV;
-  delete process.env.JUNIOR_STATE_ADAPTER;
-  process.env.VERCEL = "1";
-  process.env.VERCEL_ENV = "production";
-  process.env.REDIS_URL =
-    process.env.REDIS_URL?.trim() || "redis://localhost:6382";
-  process.env.JUNIOR_STATE_KEY_PREFIX = `junior_test_${crypto.randomUUID()}`;
+  delete process.env["NODE_ENV"];
+  delete process.env["JUNIOR_STATE_ADAPTER"];
+  process.env["VERCEL"] = "1";
+  process.env["VERCEL_ENV"] = "production";
+  process.env["REDIS_URL"] =
+    process.env["REDIS_URL"]?.trim() || "redis://localhost:6382";
+  process.env["JUNIOR_STATE_KEY_PREFIX"] = `junior_test_${crypto.randomUUID()}`;
 
   const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-build-"));
   fs.writeFileSync(path.join(appRoot, "package.json"), "{}\n");

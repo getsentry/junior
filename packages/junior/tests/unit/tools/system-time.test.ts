@@ -5,7 +5,7 @@ describe("systemTime", () => {
   it("projects only its stable time fields into private traces", async () => {
     const systemTime = createSystemTimeTool();
     const result = await systemTime.execute!(
-      systemTime.prepareArguments!({}),
+      systemTime.prepareArguments({}),
       {},
     );
 
@@ -22,7 +22,7 @@ describe("systemTime", () => {
   it("returns local wall time for a valid IANA timezone", async () => {
     const systemTime = createSystemTimeTool();
     const result = await systemTime.execute!(
-      systemTime.prepareArguments!({ timezone: "America/Los_Angeles" }),
+      systemTime.prepareArguments({ timezone: "America/Los_Angeles" }),
       {},
     );
 
@@ -43,7 +43,7 @@ describe("systemTime", () => {
     const systemTime = createSystemTimeTool();
     await expect(
       systemTime.execute!(
-        systemTime.prepareArguments!({ timezone: "not/a-zone" }),
+        systemTime.prepareArguments({ timezone: "not/a-zone" }),
         {},
       ),
     ).rejects.toMatchObject({

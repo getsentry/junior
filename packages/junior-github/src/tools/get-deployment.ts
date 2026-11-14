@@ -64,7 +64,7 @@ const deploymentSourceSchema = z
   .strict();
 type DeploymentSource = z.output<typeof deploymentSourceSchema>;
 interface Result extends PluginToolOutput, DeploymentSource {
-  subscribable?: SubscribableResource;
+  subscribable?: SubscribableResource | undefined;
   target: "getDeployment";
 }
 const outputSchema = pluginToolOutputSchema.merge(

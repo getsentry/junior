@@ -83,7 +83,7 @@ function fakeSentry(
   };
   mswServer.use(
     http.get("https://sentry.io/api/0/organizations/:org/", ({ params }) =>
-      HttpResponse.json({ slug: params.org, links: { regionUrl: REGION } }),
+      HttpResponse.json({ slug: params["org"], links: { regionUrl: REGION } }),
     ),
     http.get(
       `${REGION}/api/0/organizations/sentry/events-timeseries/`,

@@ -179,12 +179,10 @@ function searchMcpCatalog(
   }
 
   return tools
-    .map(
-      (toolDef): RankedTool => ({
-        tool: toolDef,
-        score: scoreTool(toolDef, query),
-      }),
-    )
+    .map((toolDef): RankedTool => ({
+      tool: toolDef,
+      score: scoreTool(toolDef, query),
+    }))
     .filter((ranked) => ranked.score > 0)
     .sort((left, right) => {
       if (right.score !== left.score) {
@@ -207,12 +205,10 @@ function searchProviderCatalog(
   }
 
   return sorted
-    .map(
-      (provider): RankedProvider => ({
-        provider,
-        score: scoreProvider(provider, query),
-      }),
-    )
+    .map((provider): RankedProvider => ({
+      provider,
+      score: scoreProvider(provider, query),
+    }))
     .filter((ranked) => ranked.score > 0)
     .sort((left, right) => {
       if (right.score !== left.score) {

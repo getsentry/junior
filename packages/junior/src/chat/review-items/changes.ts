@@ -27,7 +27,7 @@ export interface ReviewItemDelivery {
 export async function deliverReviewItemChange(args: {
   change?: ReviewItemChange;
   delivery: ReviewItemDelivery;
-  exceptConversationId?: string;
+  exceptConversationId?: string | undefined;
   item: ReviewItem;
   nowMs: number;
 }): Promise<void> {

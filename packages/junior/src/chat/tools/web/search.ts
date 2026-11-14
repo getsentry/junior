@@ -35,8 +35,8 @@ function parseSearchResults(
 
   for (const toolResult of typedResults) {
     if (
-      toolResult.type !== "tool-result" ||
-      toolResult.toolName !== SEARCH_TOOL_NAME
+      toolResult["type"] !== "tool-result" ||
+      toolResult["toolName"] !== SEARCH_TOOL_NAME
     ) {
       continue;
     }
@@ -49,12 +49,13 @@ function parseSearchResults(
       : [];
 
     for (const result of results) {
-      const url = asString(result.url);
+      const url = asString(result["url"]);
       if (!url) continue;
       parsedResults.push({
-        title: asString(result.title) ?? url,
+        title: asString(result["title"]) ?? url,
         url,
-        snippet: asString(result.excerpt) ?? asString(result.snippet) ?? "",
+        snippet:
+          asString(result["excerpt"]) ?? asString(result["snippet"]) ?? "",
       });
 
       if (parsedResults.length >= maxResults) {

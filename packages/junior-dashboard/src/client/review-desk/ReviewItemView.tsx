@@ -28,10 +28,10 @@ export function ReviewItemView(props: {
   backTo: string;
   detailsOpen: boolean;
   item: ReviewItemPayload;
-  next?: { title: string; to: string };
+  next?: { title: string; to: string } | undefined;
   onDetailsClick(): void;
   /** The title of the Conversation that added the item, when it is known. */
-  sourceTitle?: string;
+  sourceTitle?: string | undefined;
 }) {
   const { item } = props;
   const open = item.status === "open";

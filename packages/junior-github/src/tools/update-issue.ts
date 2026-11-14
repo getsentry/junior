@@ -120,14 +120,14 @@ export const gitHubUpdateIssueTool = definePluginTool({
     input,
     _options,
     ctx: {
-      actor?: Actor;
+      actor?: Actor | undefined;
       automationLink?: { url: string };
-      conversationId?: string;
+      conversationId?: string | undefined;
       egress: PluginEgress;
       log: PluginLogger;
       events: { canSubscribe: boolean };
       conversationLink?: { url: string };
-      source?: Source;
+      source?: Source | undefined;
       users: {
         resolveActor(): Promise<
           { identity?: Identity; user?: User } | undefined

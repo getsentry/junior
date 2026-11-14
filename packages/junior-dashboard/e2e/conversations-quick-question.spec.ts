@@ -20,7 +20,7 @@ async function selectReplyText(
     const replies = document.querySelectorAll(
       "[data-quick-question-message-id]",
     );
-    const reply = replies[replies.length - 1]!;
+    const reply = replies[replies.length - 1];
     const walker = document.createTreeWalker(reply, NodeFilter.SHOW_TEXT);
     let node = walker.nextNode();
     while (node && (node.textContent ?? "").trim().length < 12) {
@@ -50,7 +50,7 @@ async function selectWholeReply(page: Page) {
     const replies = document.querySelectorAll(
       "[data-quick-question-message-id]",
     );
-    const reply = replies[replies.length - 1]!;
+    const reply = replies[replies.length - 1];
     reply.scrollIntoView({ block: "start" });
     // A scroll hides the button. Select after the scroll settles.
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -86,7 +86,7 @@ async function serveQuickQuestionFork(
       const detail = await response.json();
       const reply = detail.events.findIndex(
         (event: { data: { messageId?: string } }) =>
-          event.data.messageId === forks[0]!.messageId,
+          event.data.messageId === forks[0].messageId,
       );
       detail.events = detail.events.slice(0, reply + 1);
       const last = detail.events.at(-1);
@@ -202,8 +202,8 @@ test("asks a quick question about selected reply text", async ({
   // The retry finds the same fork. Follow-ups go to that fork.
   expect(forks).toEqual([
     {
-      idempotencyKey: forks[0]!.idempotencyKey,
-      messageId: forks[0]!.messageId,
+      idempotencyKey: forks[0].idempotencyKey,
+      messageId: forks[0].messageId,
       quickQuestion: { quote },
     },
     forks[0],

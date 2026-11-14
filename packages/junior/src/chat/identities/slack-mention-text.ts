@@ -170,7 +170,9 @@ export async function replaceSlackMentions<T>(
   });
   const matches = [...tokens.values()].flat();
   if (matches.length === 0) return value;
-  const userIds = new Set(matches.flatMap((match) => match.groups?.user ?? []));
+  const userIds = new Set(
+    matches.flatMap((match) => match.groups?.["user"] ?? []),
+  );
   const people = await readSlackPeople([...userIds], provider);
   return mapStrings(value, (text) => {
     let result = "";

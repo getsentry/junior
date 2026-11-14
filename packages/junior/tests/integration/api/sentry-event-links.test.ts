@@ -50,7 +50,7 @@ function fakeSentry(projects: Record<string, string[]>) {
   const queries: string[] = [];
   mswServer.use(
     http.get("https://sentry.io/api/0/organizations/:org/", ({ params }) =>
-      HttpResponse.json({ slug: params.org, links: { regionUrl: REGION } }),
+      HttpResponse.json({ slug: params["org"], links: { regionUrl: REGION } }),
     ),
     http.get(
       `${REGION}/api/0/projects/sentry/:project/events/:eventId/`,
@@ -59,8 +59,8 @@ function fakeSentry(projects: Record<string, string[]>) {
         const url = new URL(request.url);
         queries.push(`${token} ${url.host}${url.pathname}`);
         const viewer = token.replace(/^Bearer (.+)-token$/, "$1");
-        return projects[viewer]?.includes(String(params.project)) &&
-          params.eventId === EVENT_ID
+        return projects[viewer]?.includes(String(params["project"])) &&
+          params["eventId"] === EVENT_ID
           ? HttpResponse.json(CHECKOUT_EVENT)
           : HttpResponse.json({ detail: "Not found" }, { status: 404 });
       },

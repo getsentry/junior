@@ -43,17 +43,17 @@ interface SentryTrace {
 }
 
 interface TraceNode {
-  event_type?: string;
-  op?: string | null;
-  description?: string | null;
-  name?: string | null;
-  transaction?: string | null;
-  project_slug?: string | null;
+  event_type?: string | undefined;
+  op?: string | null | undefined;
+  description?: string | null | undefined;
+  name?: string | null | undefined;
+  transaction?: string | null | undefined;
+  project_slug?: string | null | undefined;
   start_timestamp: number;
-  end_timestamp?: number | null;
-  children?: TraceNode[];
-  errors?: unknown[];
-  occurrences?: unknown[];
+  end_timestamp?: number | null | undefined;
+  children?: TraceNode[] | undefined;
+  errors?: unknown[] | undefined;
+  occurrences?: unknown[] | undefined;
 }
 
 // Trace items are spans, errors, and other events. Each item keeps only

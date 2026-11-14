@@ -7,11 +7,11 @@ import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 type ConversationRole = "assistant" | "system" | "user";
 
 export interface ConversationAuthor {
-  email?: string;
+  email?: string | undefined;
   fullName?: string;
-  isBot?: boolean;
+  isBot?: boolean | undefined;
   userId?: string;
-  userName?: string;
+  userName?: string | undefined;
 }
 
 /** One Event listed on a conversation message. */
@@ -35,17 +35,17 @@ export interface ConversationMessageMeta {
   eventType?: string;
   /** Namespace of the first Event, such as `github`. */
   eventNamespace?: string;
-  eventObjectType?: ObjectType;
+  eventObjectType?: ObjectType | undefined;
   /**
    * The Watch Events when several arrived together. A Message that also
    * records Review item changes lists its own Event here even when it has
    * one. Omitted otherwise.
    */
   events?: ConversationMessageEvent[];
-  explicitMention?: boolean;
+  explicitMention?: boolean | undefined;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
-  imageAttachmentCount?: number;
+  imageAttachmentCount?: number | undefined;
   imageFileIds?: string[];
   imagesHydrated?: boolean;
   /** Quiet message: stored, but not delivered to the Location. */
@@ -54,7 +54,7 @@ export interface ConversationMessageMeta {
   /** Person changes to Review items that this Message records. */
   reviewItemChanges?: ReviewItemChangeRecord[];
   slackTs?: string;
-  skippedReason?: string;
+  skippedReason?: string | undefined;
 }
 
 export interface ConversationMessage {
@@ -71,9 +71,9 @@ export interface ConversationMessage {
 }
 
 export interface ConversationProcessingState {
-  activeTurnId?: string;
-  lastCompletedAtMs?: number;
-  pendingAuth?: ConversationPendingAuthState;
+  activeTurnId?: string | undefined;
+  lastCompletedAtMs?: number | undefined;
+  pendingAuth?: ConversationPendingAuthState | undefined;
 }
 
 interface ConversationPendingAuthBase {
@@ -99,13 +99,13 @@ export interface ConversationVisionSummary {
 }
 
 export interface ConversationVisionState {
-  backfillCompletedAtMs?: number;
+  backfillCompletedAtMs?: number | undefined;
   byFileId: Record<string, ConversationVisionSummary>;
 }
 
 export interface ThreadConversationState {
   /** Seq where the loaded Message window starts, after older Messages were trimmed. */
-  historyFromSeq?: number;
+  historyFromSeq?: number | undefined;
   messages: ConversationMessage[];
   processing: ConversationProcessingState;
   schemaVersion: 1;
@@ -130,13 +130,13 @@ function coercePendingAuthState(
     return undefined;
   }
 
-  const kind = value.kind;
-  const provider = toOptionalString(value.provider);
-  const actorId = toOptionalString(value.actorId);
-  const authSessionId = toOptionalString(value.authSessionId);
-  const scope = toOptionalString(value.scope);
-  const sessionId = toOptionalString(value.sessionId);
-  const linkSentAtMs = toOptionalNumber(value.linkSentAtMs);
+  const kind = value["kind"];
+  const provider = toOptionalString(value["provider"]);
+  const actorId = toOptionalString(value["actorId"]);
+  const authSessionId = toOptionalString(value["authSessionId"]);
+  const scope = toOptionalString(value["scope"]);
+  const sessionId = toOptionalString(value["sessionId"]);
+  const linkSentAtMs = toOptionalNumber(value["linkSentAtMs"]);
   if (
     (kind !== "mcp" && kind !== "plugin") ||
     !provider ||
@@ -176,27 +176,27 @@ export function coerceThreadConversationState(
   // thread-state history; live code starts empty and hydrates canonical events.
   const messages: ConversationMessage[] = [];
 
-  const rawProcessing = isRecord(rawConversation.processing)
-    ? rawConversation.processing
+  const rawProcessing = isRecord(rawConversation["processing"])
+    ? rawConversation["processing"]
     : {};
   const processing: ConversationProcessingState = {
-    activeTurnId: toOptionalString(rawProcessing.activeTurnId),
-    lastCompletedAtMs: toOptionalNumber(rawProcessing.lastCompletedAtMs),
-    pendingAuth: coercePendingAuthState(rawProcessing.pendingAuth),
+    activeTurnId: toOptionalString(rawProcessing["activeTurnId"]),
+    lastCompletedAtMs: toOptionalNumber(rawProcessing["lastCompletedAtMs"]),
+    pendingAuth: coercePendingAuthState(rawProcessing["pendingAuth"]),
   };
 
-  const rawVision = isRecord(rawConversation.vision)
-    ? rawConversation.vision
+  const rawVision = isRecord(rawConversation["vision"])
+    ? rawConversation["vision"]
     : {};
-  const rawVisionByFileId = isRecord(rawVision.byFileId)
-    ? rawVision.byFileId
+  const rawVisionByFileId = isRecord(rawVision["byFileId"])
+    ? rawVision["byFileId"]
     : {};
   const byFileId: Record<string, ConversationVisionSummary> = {};
   for (const [fileId, value] of Object.entries(rawVisionByFileId)) {
     if (typeof fileId !== "string" || fileId.trim().length === 0) continue;
     if (!isRecord(value)) continue;
-    const summary = toOptionalString(value.summary);
-    const analyzedAtMs = toOptionalNumber(value.analyzedAtMs);
+    const summary = toOptionalString(value["summary"]);
+    const analyzedAtMs = toOptionalNumber(value["analyzedAtMs"]);
     if (!summary || !analyzedAtMs) continue;
     byFileId[fileId] = {
       summary,
@@ -209,7 +209,9 @@ export function coerceThreadConversationState(
     messages,
     processing,
     vision: {
-      backfillCompletedAtMs: toOptionalNumber(rawVision.backfillCompletedAtMs),
+      backfillCompletedAtMs: toOptionalNumber(
+        rawVision["backfillCompletedAtMs"],
+      ),
       byFileId,
     },
   };

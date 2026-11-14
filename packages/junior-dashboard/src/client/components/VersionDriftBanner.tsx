@@ -4,7 +4,9 @@ import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
 
 /** Prompt the viewer to load the dashboard bundle that matches the server. */
-export function VersionDriftBanner(props: { serverVersion?: string }) {
+export function VersionDriftBanner(props: {
+  serverVersion?: string | undefined;
+}) {
   if (!dashboardVersionDrift(props.serverVersion)) return null;
 
   return (

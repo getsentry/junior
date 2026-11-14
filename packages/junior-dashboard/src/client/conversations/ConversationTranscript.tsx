@@ -169,20 +169,22 @@ function renderTaskEntries(
 /** Render one conversation transcript segment as actor messages and tool events. */
 export const ConversationTranscriptView = memo(
   function ConversationTranscriptView(props: {
-    onOpenSubagentTranscript?: (args: {
-      part: TranscriptViewSubagentPart;
-      conversation: ConversationTranscript;
-    }) => void;
+    onOpenSubagentTranscript?:
+      | ((args: {
+          part: TranscriptViewSubagentPart;
+          conversation: ConversationTranscript;
+        }) => void)
+      | undefined;
     conversation: ConversationTranscript;
     /** Sends that history does not have yet. History wins on message id. */
-    pendingMessages?: readonly ConversationMailboxMessage[];
+    pendingMessages?: readonly ConversationMailboxMessage[] | undefined;
     responding?: boolean;
     /** Keep the rows around this event seq mounted, to show it. */
-    revealSeq?: number;
+    revealSeq?: number | undefined;
     /** The row that holds the reader's place, from the scroll owner. */
     scrollAnchorKey?: () => string | undefined;
     /** Show the "New" marker before the first row in this range. */
-    unread?: TranscriptUnreadRange;
+    unread?: TranscriptUnreadRange | undefined;
   }) {
     // Cards can change while their Message events stay unchanged.
     const { events, annotations } = props.conversation;
@@ -225,14 +227,16 @@ export const ConversationTranscriptView = memo(
 
 function SegmentEvents(
   props: TranscriptListPlacement & {
-    onOpenSubagentTranscript?: (args: {
-      part: TranscriptViewSubagentPart;
-      conversation: ConversationTranscript;
-    }) => void;
+    onOpenSubagentTranscript?:
+      | ((args: {
+          part: TranscriptViewSubagentPart;
+          conversation: ConversationTranscript;
+        }) => void)
+      | undefined;
     conversation: ConversationTranscript;
     messages: TranscriptViewMessage[];
-    responding?: boolean;
-    unread?: TranscriptUnreadRange;
+    responding?: boolean | undefined;
+    unread?: TranscriptUnreadRange | undefined;
   },
 ) {
   const placement = {
@@ -333,14 +337,16 @@ function ExpiredTranscriptView(props: {
 
 const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
   props: TranscriptListPlacement & {
-    onOpenSubagentTranscript?: (args: {
-      part: TranscriptViewSubagentPart;
-      conversation: ConversationTranscript;
-    }) => void;
-    responding?: boolean;
+    onOpenSubagentTranscript?:
+      | ((args: {
+          part: TranscriptViewSubagentPart;
+          conversation: ConversationTranscript;
+        }) => void)
+      | undefined;
+    responding?: boolean | undefined;
     transcript: TranscriptViewMessage[];
     conversation: ConversationTranscript;
-    unread?: TranscriptUnreadRange;
+    unread?: TranscriptUnreadRange | undefined;
   },
 ) {
   const entries = useMemo(
@@ -503,8 +509,8 @@ function TranscriptEntryList(
       /** The history is redacted, so memories show only their titles. */
       redacted?: boolean;
       /** A Turn is running, so the list ends with its progress. */
-      responding?: boolean;
-      unread?: TranscriptUnreadRange;
+      responding?: boolean | undefined;
+      unread?: TranscriptUnreadRange | undefined;
     },
 ) {
   const search = useTranscriptSearch();
@@ -787,9 +793,9 @@ function footerRowIndex(
 /** Where the list keeps rows mounted outside the viewport. */
 type TranscriptListPlacement = {
   /** Keep the rows around this event seq mounted, to show it. */
-  revealSeq?: number;
+  revealSeq?: number | undefined;
   /** The row that holds the reader's place, from the scroll owner. */
-  scrollAnchorKey?: () => string | undefined;
+  scrollAnchorKey?: (() => string | undefined) | undefined;
 };
 
 /**
@@ -849,13 +855,15 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
 
 function RedactedTranscriptView(
   props: TranscriptListPlacement & {
-    onOpenSubagentTranscript?: (args: {
-      part: TranscriptViewSubagentPart;
-      conversation: ConversationTranscript;
-    }) => void;
+    onOpenSubagentTranscript?:
+      | ((args: {
+          part: TranscriptViewSubagentPart;
+          conversation: ConversationTranscript;
+        }) => void)
+      | undefined;
     conversation: ConversationTranscript;
     messages: TranscriptViewMessage[];
-    responding?: boolean;
+    responding?: boolean | undefined;
   },
 ) {
   return (

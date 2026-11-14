@@ -85,7 +85,7 @@ export type EventAutomation = z.output<typeof eventAutomationSchema> & {
    * Short display title generated from the task instruction.
    * SQL-backed column; never stored inside the JSON task payload.
    */
-  title?: string;
+  title?: string | undefined;
 };
 
 /** The part of an event automation that has no SQL column of its own. */

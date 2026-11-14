@@ -7,7 +7,7 @@ export const ANCHOR_CLASS =
  */
 export function safeHref(href: string): string | undefined {
   const trimmed = href.trim();
-  const hasControlCharacter = [...trimmed].some((character) => {
+  const hasControlCharacter = Array.from(trimmed).some((character) => {
     const code = character.charCodeAt(0);
     return code < 32 || code === 127;
   });

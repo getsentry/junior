@@ -21,7 +21,7 @@ import { splitSlackReplyText } from "@/chat/slack/output";
 /** Slack channel and optional thread where a Turn posts. */
 export interface SlackReplyTarget {
   channelId: string;
-  threadTs?: string;
+  threadTs?: string | undefined;
 }
 
 /**
@@ -35,8 +35,8 @@ export interface SlackReplyTarget {
  */
 export function resolveSlackReplyTarget(args: {
   destination: SlackReplyTarget;
-  location?: Location;
-  source?: Source;
+  location?: Location | undefined;
+  source?: Source | undefined;
 }): SlackReplyTarget {
   const { channelId } = args.destination;
   const sourceThreadTs =
@@ -77,17 +77,17 @@ async function resolveReplyMentions(
  * defaults, such as a default repository, and mention known people.
  */
 export async function sendSlackReply(args: {
-  cards?: MessageCard[];
+  cards?: MessageCard[] | undefined;
   channelId: string;
   formatting?: {
-    configuration?: Record<string, unknown>;
+    configuration?: Record<string, unknown> | undefined;
     /** Slack workspace whose people `@handle` words can mention. */
     teamId: string;
   };
   conversationId: string;
-  replyAttribution?: ReplyAttribution;
+  replyAttribution?: ReplyAttribution | undefined;
   text: string;
-  threadTs?: string;
+  threadTs?: string | undefined;
 }): Promise<string[]> {
   const format = args.formatting && {
     configuration: args.formatting.configuration,

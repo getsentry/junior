@@ -14,7 +14,7 @@ import {
 export function TranscriptMessageShell(props: {
   actor: string;
   /** Junior API path of the author photo. Initials show without it. */
-  avatarUrl?: string;
+  avatarUrl?: string | undefined;
   children: ReactNode;
   /** The parent agent wrote this input, so it shows an agent, not a person. */
   fromAgent?: boolean;

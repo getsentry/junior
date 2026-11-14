@@ -69,9 +69,9 @@ export function githubObjectAnnotation(input: {
   url: string;
   objectType: "task" | "code_change";
   status: string;
-  facts?: ObjectAnnotation["facts"];
-  sourceUpdatedAt?: string;
-  description?: string;
+  facts?: ObjectAnnotation["facts"] | undefined;
+  sourceUpdatedAt?: string | undefined;
+  description?: string | undefined;
 }): ObjectAnnotation {
   return {
     kind: "object",
@@ -138,7 +138,7 @@ async function updateGitHubAnnotation(
 export async function updateGitHubAnnotations(args: {
   annotations: PluginConversationAnnotations;
   conversationIds: string[];
-  log?: Pick<PluginLogger, "error">;
+  log?: Pick<PluginLogger, "error"> | undefined;
   update: Parameters<typeof updateGitHubAnnotation>[1];
 }): Promise<void> {
   const results = await Promise.allSettled(

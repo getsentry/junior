@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ORIGINAL_ENV = { ...process.env };
-const TEST_DATABASE_URL = ORIGINAL_ENV.DATABASE_URL;
+const TEST_DATABASE_URL = ORIGINAL_ENV["DATABASE_URL"];
 
 if (!TEST_DATABASE_URL) {
   throw new Error("DATABASE_URL is required for reporting integration tests");
@@ -120,7 +120,9 @@ describe("reporting support", () => {
       nowMs: Date.now(),
       source: "slack",
       title: testCase.title,
-      ...(testCase.visibility ? { visibility: testCase.visibility } : undefined),
+      ...(testCase.visibility
+        ? { visibility: testCase.visibility }
+        : undefined),
     });
 
     const summaries = (await readConversationFeed()).conversations;
