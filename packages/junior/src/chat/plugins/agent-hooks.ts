@@ -1007,6 +1007,7 @@ export function getPluginTools(
                     result: await execute(input, options, pluginContext),
                     toolCallId: options.toolCallId,
                   }),
+                  definition.annotations?.readOnlyHint === true,
                 ),
             }
           : undefined),

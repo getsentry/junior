@@ -13,6 +13,7 @@ const SNAKE_CASE_KEY = /^[a-z0-9_]+$/;
 const ALLOWED_KEYS = new Set([
   "objectAnnotations",
   "objectCards",
+  "objectCardsReadOnly",
   "removedCards",
 ]);
 
