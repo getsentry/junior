@@ -1,5 +1,5 @@
 import * as z from "zod";
-import { throwApiError } from "../http";
+import { decodePageCursor, encodePageCursor } from "../page-cursor";
 
 /**
  * Position after the last row of one feed page. `at` keeps the microseconds
@@ -21,21 +21,16 @@ export type ConversationFeedCursor = z.infer<
 export function encodeConversationFeedCursor(
   cursor: ConversationFeedCursor,
 ): string {
-  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+  return encodePageCursor(conversationFeedCursorSchema, cursor);
 }
 
-/**
- * Decode a `cursor` query value. The cursor only moves the position inside a
- * feed that membership already scopes, so it carries no signature.
- */
+/** Decode a feed `cursor` query value. */
 export function decodeConversationFeedCursor(
   value: string,
 ): ConversationFeedCursor {
-  try {
-    return conversationFeedCursorSchema.parse(
-      JSON.parse(Buffer.from(value, "base64url").toString("utf8")),
-    );
-  } catch (error) {
-    throwApiError(400, "Invalid conversation feed cursor.", error);
-  }
+  return decodePageCursor(
+    conversationFeedCursorSchema,
+    value,
+    "Invalid conversation feed cursor.",
+  );
 }
