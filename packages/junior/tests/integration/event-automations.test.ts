@@ -26,7 +26,7 @@ import { asc, eq } from "drizzle-orm";
 import {
   getDispatchRecord,
   getDispatchStorageKey,
-  markDispatchCompleted,
+  transitionDispatch,
 } from "@/chat/agent-dispatch/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { automationRevision } from "@/chat/automations/revision";
@@ -393,7 +393,7 @@ describe("event automations", () => {
     // A finished dispatch settles its run. The heartbeat fails a run whose
     // dispatch record is gone.
     const [completedId, lostId, runningId] = runIds;
-    await markDispatchCompleted(completedId!);
+    await transitionDispatch(completedId!, { status: "completed" });
     const state = getStateAdapter();
     await state.connect();
     await state.delete(getDispatchStorageKey(lostId!));

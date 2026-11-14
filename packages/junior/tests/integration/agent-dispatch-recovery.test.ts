@@ -7,7 +7,8 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { recoverPendingDispatchMailboxAppends } from "@/chat/agent-dispatch/heartbeat";
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { CONVERSATION_WORK_MAX_RETRIES } from "@/chat/task-execution/store";
 import {
   createConversationWorkHarness,
@@ -248,5 +249,21 @@ describe("agent dispatch recovery", () => {
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       status: "pending",
     });
+
+    // A full index rejects a new dispatch instead of dropping a reminder.
+    const pending = Array.from(
+      { length: 10_000 },
+      (_, index) => `dispatch_pending_${index}`,
+    );
+    const state = getStateAdapter();
+    await state.set(
+      "junior:agent_dispatch:incomplete",
+      pending,
+      JUNIOR_THREAD_STATE_TTL_MS,
+    );
+    await expect(createDispatch("mailbox-append-full")).rejects.toThrow(
+      "Dispatch mailbox append index is full",
+    );
+    await expect(listPendingDispatchMailboxAppends()).resolves.toEqual(pending);
   });
 });

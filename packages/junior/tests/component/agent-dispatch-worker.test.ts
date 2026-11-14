@@ -4,11 +4,7 @@ import {
   getDispatchConversationId,
   getDispatchRecord,
   getDispatchTurnId,
-  markDispatchAwaitingResume,
-  markDispatchBlocked,
-  markDispatchCompleted,
-  markDispatchFailed,
-  markDispatchRunning,
+  transitionDispatch,
 } from "@/chat/agent-dispatch/store";
 import {
   buildAgentDispatchInboundMessage,
@@ -135,9 +131,9 @@ describe("agent dispatch worker contract", () => {
       const conversationId = getDispatchConversationId(dispatch);
       const turnId = getDispatchTurnId(dispatch.id);
       if (sessionState === "awaiting_resume") {
-        await markDispatchAwaitingResume(dispatch.id);
+        await transitionDispatch(dispatch.id, { status: "awaiting_resume" });
       } else {
-        await markDispatchRunning(dispatch.id);
+        await transitionDispatch(dispatch.id, { status: "running" });
       }
       await recordTurnSummary({
         actor: dispatch.actor,
@@ -186,60 +182,86 @@ describe("agent dispatch worker contract", () => {
     },
   );
 
-  it("uses a delivery receipt without starting or resuming a turn", async () => {
-    const dispatch = await createDispatch("delivery-receipt-fence");
-    await recordTurnSummary({
-      actor: dispatch.actor,
-      conversationId: getDispatchConversationId(dispatch),
-      destination: dispatch.destination,
-      destinationVisibility: dispatch.destinationVisibility,
-      dispatchId: dispatch.id,
-      resultMessageId: "1700000000.000012",
-      turnId: getDispatchTurnId(dispatch.id),
-      sliceId: 1,
-      source: dispatch.source,
-      state: "running",
-      surface: "api",
-    });
-    const runTurn = vi.fn();
-    const resumeTurn = vi.fn();
-    const worker = createAgentDispatchConversationWorker({
-      resumeTurn,
-      runTurn,
-    });
-    const { ack, context } = createContext(dispatch);
+  it.each([
+    // A receipt saved before receipts stored their outcome.
+    { dispatchOutcome: undefined, status: "completed" },
+    { dispatchOutcome: "failed", status: "failed" },
+  ] as const)(
+    "uses a $status delivery receipt without starting or resuming a turn",
+    async ({ dispatchOutcome, status }) => {
+      const dispatch = await createDispatch(`delivery-receipt-${status}`);
+      await recordTurnSummary({
+        actor: dispatch.actor,
+        conversationId: getDispatchConversationId(dispatch),
+        destination: dispatch.destination,
+        destinationVisibility: dispatch.destinationVisibility,
+        dispatchId: dispatch.id,
+        ...(dispatchOutcome ? { dispatchOutcome } : undefined),
+        resultMessageId: "1700000000.000012",
+        turnId: getDispatchTurnId(dispatch.id),
+        sliceId: 1,
+        source: dispatch.source,
+        state: "running",
+        surface: "api",
+      });
+      const runTurn = vi.fn();
+      const resumeTurn = vi.fn();
+      const worker = createAgentDispatchConversationWorker({
+        resumeTurn,
+        runTurn,
+      });
+      const { ack, context } = createContext(dispatch);
 
-    await expect(worker(context, dispatch.id)).resolves.toEqual({
-      status: "completed",
-    });
+      await expect(worker(context, dispatch.id)).resolves.toEqual({
+        status: "completed",
+      });
 
-    expect(runTurn).not.toHaveBeenCalled();
-    expect(resumeTurn).not.toHaveBeenCalled();
-    expect(ack).toHaveBeenCalledOnce();
-    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
-      resultMessageTs: "1700000000.000012",
-      status: "completed",
-    });
-  });
+      expect(runTurn).not.toHaveBeenCalled();
+      expect(resumeTurn).not.toHaveBeenCalled();
+      expect(ack).toHaveBeenCalledOnce();
+      await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+        resultMessageTs: "1700000000.000012",
+        status,
+      });
+    },
+  );
 
   it.each(["blocked", "completed", "failed"] as const)(
     "preserves a terminal %s projection against stale transitions",
     async (terminalStatus) => {
       const dispatch = await createDispatch(`terminal-${terminalStatus}`);
       if (terminalStatus === "blocked") {
-        await markDispatchBlocked(dispatch.id, "Authorization required");
+        await transitionDispatch(dispatch.id, {
+          errorMessage: "Authorization required",
+          status: "blocked",
+        });
       } else if (terminalStatus === "completed") {
-        await markDispatchCompleted(dispatch.id, "1700000000.000010");
+        await transitionDispatch(dispatch.id, {
+          resultMessageTs: "1700000000.000010",
+          status: "completed",
+        });
       } else {
-        await markDispatchFailed(dispatch.id, "Provider failed");
+        await transitionDispatch(dispatch.id, {
+          errorMessage: "Provider failed",
+          status: "failed",
+        });
       }
       const terminalRecord = await getDispatchRecord(dispatch.id);
 
-      await markDispatchRunning(dispatch.id);
-      await markDispatchAwaitingResume(dispatch.id);
-      await markDispatchBlocked(dispatch.id, "Stale blocked projection");
-      await markDispatchCompleted(dispatch.id, "1700000000.000011");
-      await markDispatchFailed(dispatch.id, "Stale failed projection");
+      await transitionDispatch(dispatch.id, { status: "running" });
+      await transitionDispatch(dispatch.id, { status: "awaiting_resume" });
+      await transitionDispatch(dispatch.id, {
+        errorMessage: "Stale blocked projection",
+        status: "blocked",
+      });
+      await transitionDispatch(dispatch.id, {
+        resultMessageTs: "1700000000.000011",
+        status: "completed",
+      });
+      await transitionDispatch(dispatch.id, {
+        errorMessage: "Stale failed projection",
+        status: "failed",
+      });
 
       await expect(getDispatchRecord(dispatch.id)).resolves.toEqual(
         terminalRecord,

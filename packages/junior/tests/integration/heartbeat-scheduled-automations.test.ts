@@ -14,8 +14,7 @@ import {
   getDispatchConversationId,
   getDispatchRecord,
   getDispatchStorageKey,
-  markDispatchBlocked,
-  markDispatchCompleted,
+  transitionDispatch,
 } from "@/chat/agent-dispatch/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { GET as heartbeat } from "@/handlers/heartbeat";
@@ -237,7 +236,10 @@ describe("scheduled automation heartbeat", () => {
       label: "Automation",
     });
 
-    await markDispatchCompleted(running!.dispatchId!, "1700000000.000001");
+    await transitionDispatch(running!.dispatchId!, {
+      resultMessageTs: "1700000000.000001",
+      status: "completed",
+    });
 
     await runAuthorizedHeartbeat();
 
@@ -341,7 +343,10 @@ describe("scheduled automation heartbeat", () => {
         db,
         `sched_plugin_1:${TEST_RUN_AT_MS}`,
       );
-      await markDispatchBlocked(run!.dispatchId!, "Channel archived.");
+      await transitionDispatch(run!.dispatchId!, {
+        errorMessage: "Channel archived.",
+        status: "blocked",
+      });
       if (change) {
         const current = await readScheduledAutomation(db, "sched_plugin_1");
         await saveScheduledAutomation(db, { ...current!, ...change });
@@ -369,7 +374,7 @@ describe("scheduled automation heartbeat", () => {
       status: "deleted",
     });
 
-    await markDispatchCompleted(running!.dispatchId!);
+    await transitionDispatch(running!.dispatchId!, { status: "completed" });
     await runAuthorizedHeartbeat();
 
     await expect(readScheduledRun(db, running!.id)).resolves.toMatchObject({
