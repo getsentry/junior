@@ -151,8 +151,6 @@ function RowItem(props: {
   /** The row's head shows the item's title. */
   headTitled: boolean;
   item: ReviewItemPayload;
-  /** The row holds no other open ask, so its Dismiss closes this one. */
-  only: boolean;
 }) {
   const { item } = props;
   const showBody = item.kind === "notice" || !item.request;
@@ -194,12 +192,9 @@ function RowItem(props: {
           />
         ) : null}
       </ReviewItemObjects>
-      {/* The row's Dismiss closes a notice, or the row's only ask. A
-          question among others keeps its own beside its answer. */}
-      <ReviewItemActions
-        dismiss={!(props.done && (showBody || props.only))}
-        item={item}
-      />
+      {/* The row's bar holds Dismiss. A card on its own, as in a
+          Conversation, keeps its own. */}
+      <ReviewItemActions dismiss={!props.done} item={item} />
     </section>
   );
 }
@@ -788,7 +783,6 @@ function InboxRowBody(
               headTitled={Boolean(props.itemTitle)}
               item={item}
               key={item.id}
-              only={openItems.length === 1}
             />
           ))}
           {props.actionsBelow ? null : rowActions(props)}

@@ -175,12 +175,8 @@ test("a row answers its asks in place", async ({ dashboard, page }) => {
   // The row stays open while it has items.
   await expect(licenseItem).toBeVisible();
 
-  // The row's Dismiss, last in its bar, closes every item of the row. Each
-  // question keeps its own Dismiss too.
-  await bundle
-    .getByRole("button", { name: "Dismiss", exact: true })
-    .last()
-    .click();
+  // The row's Dismiss closes every item of the row.
+  await bundle.getByRole("button", { name: "Dismiss", exact: true }).click();
   await expect
     .poll(() => actions.map((action) => action.id).sort())
     .toEqual([audit.id, license.id, prReady.id].sort());
@@ -572,11 +568,11 @@ test("To do lists every Automation that the count counts", async ({
   ).toHaveCount(105);
 });
 
-test("an open row's notice leaves Dismiss and its title to the row", async ({
+test("an open row's notice and questions leave Dismiss and its title to the row", async ({
   dashboard,
   page,
 }) => {
-  await mockReviewItems(page, { open: [prReady] });
+  await mockReviewItems(page, { open: [prReady, license, audit] });
   await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReady.id}`);
   const asks = page.getByRole("region", { name: /: asks$/ });
   const card = asks.getByRole("region", { name: prReady.title });
@@ -594,6 +590,17 @@ test("an open row's notice leaves Dismiss and its title to the row", async ({
       .getByRole("region", { name: /: asks$/ })
       .getByRole("heading", { name: prReady.title }),
   ).toBeVisible();
+
+  // Its questions leave Dismiss to the row's bar too, beside their Send.
+  const row = page.getByRole("region", { name: /: asks$/ });
+  for (const question of [license, audit]) {
+    const card = row.getByRole("region", { name: question.title });
+    await expect(card.getByRole("button", { name: "Send" })).toBeVisible();
+    await expect(card.getByRole("button", { name: "Dismiss" })).toHaveCount(0);
+  }
+  await expect(
+    row.getByRole("button", { name: "Dismiss", exact: true }),
+  ).toHaveCount(1);
 });
 
 test("a snoozed row wakes at its time without a reload", async ({
