@@ -9,6 +9,7 @@ import { ActorAvatar } from "../components/ActorAvatar";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { AutomationCard } from "../components/AutomationCard";
 import { Sparkline } from "../components/charts/Sparkline";
+import { TraceWaterfall } from "../components/charts/TraceWaterfall";
 import { StatusChip } from "../components/StatusChip";
 import {
   Collapsible,
@@ -189,6 +190,13 @@ export function ObjectCard({
             label={card.facts.range}
             series={card.facts.series}
             tall
+          />
+        )}
+        {card.facts?.type === "trace" && card.facts.spans.length > 0 && (
+          <TraceWaterfall
+            durationMs={card.facts.durationMs}
+            label="Top-level spans"
+            spans={card.facts.spans}
           />
         )}
         {(card.status || fields.length > 0) && (
