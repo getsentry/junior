@@ -1,5 +1,83 @@
 # Changelog
 
+## 0.302.0
+
+People get richer views and more dependable workflows, while private content access is stricter and plugin authors must adopt the new hook contract.
+
+### New Features ✨
+
+Dashboard, GitHub, Sentry, search, and Notion gain richer views; private Notion cards require a usable viewer login or show no card.
+
+#### Dashboard
+
+- Show cache warming savings on the System page by @BYK with @sentry-junior in [#3401](https://github.com/getsentry/junior/pull/3401)
+- Show the question in a hover card on Review item records by @BYK with @sentry-junior in [#3407](https://github.com/getsentry/junior/pull/3407)
+- Show Draft on the Code page by @BYK with @sentry-junior in [#3405](https://github.com/getsentry/junior/pull/3405)
+- Render people like GitHub mentions by @BYK with @sentry-junior in [#3400](https://github.com/getsentry/junior/pull/3400)
+- Render links as links, and cards only for standalone links by @BYK with @sentry-junior in [#3381](https://github.com/getsentry/junior/pull/3381)
+
+#### Github
+
+- Show other conversations on a pull request in getPullRequest by @dcramer with @sentry-junior in [#3411](https://github.com/getsentry/junior/pull/3411)
+- Add a checks.passed Event when every check suite on a PR head passes by @BYK with @sentry-junior in [#3385](https://github.com/getsentry/junior/pull/3385)
+- Keep drafts that would ping code owners or break AGENTS.md by @BYK with @sentry-junior in [#3380](https://github.com/getsentry/junior/pull/3380)
+
+#### Sentry
+
+- Show Sentry event cards with the viewer's own read by @BYK with @sentry-junior in [#3420](https://github.com/getsentry/junior/pull/3420)
+- Show Sentry trace cards with the viewer's own read by @BYK with @sentry-junior in [#3418](https://github.com/getsentry/junior/pull/3418)
+- Show Explore chart cards with the viewer's own query by @BYK with @sentry-junior in [#3408](https://github.com/getsentry/junior/pull/3408)
+- Link the configured project's issue short ids in replies by @BYK with @sentry-junior in [#3402](https://github.com/getsentry/junior/pull/3402)
+- Show Sentry issue links as cards for viewers who can open them by @BYK with @sentry-junior in [#3367](https://github.com/getsentry/junior/pull/3367)
+
+#### Other
+
+- (conversations) Rank Conversation search by Conversation embeddings by @dcramer with @sentry-junior in [#3334](https://github.com/getsentry/junior/pull/3334)
+- (google) Preview Google Drive files and folders by @BYK with @sentry-junior in [#3372](https://github.com/getsentry/junior/pull/3372)
+- (hex) Allow read-only Hex project tools by @abennett87 with @sentry-junior in [#3384](https://github.com/getsentry/junior/pull/3384)
+- (notion) Show Notion page links as cards through the viewer's Notion MCP login by @BYK with @sentry-junior in [#3409](https://github.com/getsentry/junior/pull/3409)
+- (objects) Draw a trend sparkline on Ticket cards, starting with Sentry issues by @BYK with @sentry-junior in [#3373](https://github.com/getsentry/junior/pull/3373)
+
+### Bug Fixes 🐛
+
+Cache warming, dashboards, GitHub workflows, run termination, Slack cards, charts, and Pi receive targeted correctness and usability fixes.
+
+#### Cache Warming
+
+- Refresh definition records on each publish by @sentry-junior in [#3416](https://github.com/getsentry/junior/pull/3416)
+- Stop warming definitions that another deployment changed by @BYK with @sentry-junior in [#3210](https://github.com/getsentry/junior/pull/3210)
+
+#### Dashboard
+
+- Keep hover cards in place and inside the window by @BYK with @sentry-junior in [#3415](https://github.com/getsentry/junior/pull/3415)
+- Keep hover card height stable across refetches and prefer object fetch time by @sentry-junior in [#3414](https://github.com/getsentry/junior/pull/3414)
+- Show when an object card was fetched and keep hover card height stable by @BYK with @sentry-junior in [#3413](https://github.com/getsentry/junior/pull/3413)
+- Name the site on web page cards, not 'Web page · junior' by @BYK with @sentry-junior in [#3406](https://github.com/getsentry/junior/pull/3406)
+- Keep Review item rows one height while scrolling by @BYK with @sentry-junior in [#3399](https://github.com/getsentry/junior/pull/3399)
+- Show cache warming only for providers Junior runs by @BYK with @sentry-junior in [#3394](https://github.com/getsentry/junior/pull/3394)
+
+#### Github
+
+- Fix merge conflicts only on pull requests people work on by @BYK and @dcramer with @sentry-junior in [#3383](https://github.com/getsentry/junior/pull/3383)
+- Keep commit attribution when a command overrides core.hooksPath by @dcramer with @sentry-junior in [#3396](https://github.com/getsentry/junior/pull/3396)
+
+#### Other
+
+- (agent) Do not yield after a step that ends the run by @BYK with @sentry-junior in [#3398](https://github.com/getsentry/junior/pull/3398)
+- (deps) Pin Pi to 0.99.2 by @thomasjiangcy with @sentry-junior in [#3377](https://github.com/getsentry/junior/pull/3377)
+- (review-items) Post one Slack card per thread by @dcramer with @sentry-junior in [#3412](https://github.com/getsentry/junior/pull/3412)
+- (sentry) Name the aggregate of each group in a multi-axis chart by @sentry-junior in [#3419](https://github.com/getsentry/junior/pull/3419)
+
+### Documentation 📚
+
+- (demo-video) End videos on what the subject is by @dcramer with @sentry-junior in [#3421](https://github.com/getsentry/junior/pull/3421)
+
+### Internal Changes 🔧
+
+- (dashboard) Expect a titled Sentry issue link after links are links by @BYK with @sentry-junior in [#3397](https://github.com/getsentry/junior/pull/3397)
+- (github) Derive one next action per pull request by @BYK with @sentry-junior in [#3395](https://github.com/getsentry/junior/pull/3395)
+- (tools) Add a static tool definitions registry by @BYK with @sentry-junior in [#3219](https://github.com/getsentry/junior/pull/3219)
+
 ## 0.301.0
 
 Users gain memory-aware replies, safer previews, faster recovery, accessible transcripts, broader embeds, and more capable plugin testing.
