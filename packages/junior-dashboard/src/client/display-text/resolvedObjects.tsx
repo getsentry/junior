@@ -108,9 +108,9 @@ export function resolvableUrl(href: string | undefined): string | undefined {
  * Return the object card that the API resolves for a link, for this viewer.
  * The request starts only after `request()`, such as when the link scrolls
  * into view or the reader hovers it. Until then, and on failure, there is
- * no card. `settled` is true once an answer covers the link, or a request
- * failed. A later request, such as a refetch or one for new links, keeps it
- * true.
+ * no card. `settled` turns true once an answer covers the link, or a request
+ * fails, and stays true for later requests, such as a refetch or one for new
+ * links.
  */
 export function useResolvedObject(href: string | undefined): {
   card: OwnedObjectAnnotation | undefined;
@@ -133,11 +133,13 @@ export function useResolvedObject(href: string | undefined): {
     staleTime: 60_000,
     retry: false,
   });
-  return {
-    card: url ? data?.get(url) : undefined,
-    request,
-    settled: isError || (url !== undefined && data?.has(url) === true),
-  };
+  // A new query key starts without an error or data, so keep the first
+  // answer for this link.
+  const [settled, setSettled] = useState(false);
+  if (!settled && (isError || (url !== undefined && data?.has(url)))) {
+    setSettled(true);
+  }
+  return { card: url ? data?.get(url) : undefined, request, settled };
 }
 
 /** Return a ref that calls `onVisible` once, when its element first shows. */
