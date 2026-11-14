@@ -16,7 +16,11 @@ const viewImageInputSchema = z
   })
   .strict();
 
-/** Create a tool that loads a sandbox image into the active model context. */
+/**
+ * Create a tool that loads a sandbox image into the active model context.
+ *
+ * @runBuilt viewImage
+ */
 export function createViewImageTool(
   sandbox: SandboxWorkspace,
   supportsImageInput: () => boolean,

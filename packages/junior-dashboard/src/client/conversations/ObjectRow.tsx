@@ -12,7 +12,7 @@ import { StatusChip } from "../components/StatusChip";
 import { ObjectAttachAction } from "./ObjectAttach";
 import { ObjectCard, webPageMeta } from "./ObjectCard";
 import { ObjectImage } from "./ObjectImage";
-import { useObjectPreviewImages } from "./objectPreviewImages";
+import { useSavedObject } from "./savedObjects";
 
 /**
  * Show an object inside a reply as one row, like a Thread card: icon, title,
@@ -25,7 +25,7 @@ export function ObjectRow(props: {
   live?: boolean;
 }) {
   const { card } = props;
-  const previews = useObjectPreviewImages(card);
+  const previews = useSavedObject(card).previewImages;
   // An automation has its own card with its prompt and schedule.
   if (card.plugin === "junior" && card.objectType === "automation") {
     return <ObjectCard card={card} live={props.live} />;

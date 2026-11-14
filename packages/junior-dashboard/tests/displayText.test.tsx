@@ -312,7 +312,7 @@ describe("display text object links", () => {
         }),
       ]);
       expect(html).not.toContain("· Open");
-      expect(html).not.toContain("Latest saved state");
+      expect(html).not.toContain("Last fetched");
     }
   });
 
@@ -497,6 +497,7 @@ describe("display text object links", () => {
     );
     expect(html).not.toContain("acme/app#7");
     expect(html).not.toContain('aria-label="Pull request: ');
+    expect(html).not.toContain("Last fetched");
   });
 
   it("leaves links to unknown objects and other pages plain", () => {

@@ -11,7 +11,7 @@ import {
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getConversationEventStore } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -56,65 +56,67 @@ const searchConversationEventsOutputSchema = juniorToolOutputSchema.extend({
   has_newer: z.boolean().describe("Whether matching newer events exist."),
 });
 
+export const searchConversationEventsToolDefinition = zodToolDefinition({
+  description:
+    "Search the durable event log for one conversation, including messages, agent history, tool results, and compactions. Defaults to the current conversation. Outside the current conversation tree, only retained public conversations are accessible.",
+  exposure: "deferred",
+  source: CONVERSATIONS_TOOL_SOURCE,
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: true,
+  },
+  inputSchema: z
+    .object({
+      conversation_id: z
+        .string()
+        .trim()
+        .min(1)
+        .nullable()
+        .describe(
+          "Conversation ID to search. Omit or null for the current conversation.",
+        )
+        .optional(),
+      after_seq: z
+        .number()
+        .int()
+        .nonnegative()
+        .nullable()
+        .describe("Exclusive event sequence lower bound; returns ascending.")
+        .optional(),
+      before_seq: z
+        .number()
+        .int()
+        .nonnegative()
+        .nullable()
+        .describe("Exclusive event sequence upper bound.")
+        .optional(),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(MAX_LIMIT)
+        .nullable()
+        .describe(`Maximum events. Default ${DEFAULT_LIMIT}; max ${MAX_LIMIT}.`)
+        .optional(),
+      types: z
+        .array(knownEventTypeSchema)
+        .min(1)
+        .nullable()
+        .describe("Event types to include; omit for all types.")
+        .optional(),
+    })
+    .strict(),
+  outputSchema: searchConversationEventsOutputSchema,
+});
+
 /** Create a deferred tool that searches one conversation's durable event log. */
 export function createSearchConversationEventsTool(
   context: ToolRuntimeContext,
 ) {
   return zodTool({
-    description:
-      "Search the durable event log for one conversation, including messages, agent history, tool results, and compactions. Defaults to the current conversation. Outside the current conversation tree, only retained public conversations are accessible.",
-    exposure: "deferred",
-    source: CONVERSATIONS_TOOL_SOURCE,
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-      readOnlyHint: true,
-    },
-    inputSchema: z
-      .object({
-        conversation_id: z
-          .string()
-          .trim()
-          .min(1)
-          .nullable()
-          .describe(
-            "Conversation ID to search. Omit or null for the current conversation.",
-          )
-          .optional(),
-        after_seq: z
-          .number()
-          .int()
-          .nonnegative()
-          .nullable()
-          .describe("Exclusive event sequence lower bound; returns ascending.")
-          .optional(),
-        before_seq: z
-          .number()
-          .int()
-          .nonnegative()
-          .nullable()
-          .describe("Exclusive event sequence upper bound.")
-          .optional(),
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .max(MAX_LIMIT)
-          .nullable()
-          .describe(
-            `Maximum events. Default ${DEFAULT_LIMIT}; max ${MAX_LIMIT}.`,
-          )
-          .optional(),
-        types: z
-          .array(knownEventTypeSchema)
-          .min(1)
-          .nullable()
-          .describe("Event types to include; omit for all types.")
-          .optional(),
-      })
-      .strict(),
-    outputSchema: searchConversationEventsOutputSchema,
+    ...searchConversationEventsToolDefinition,
     execute: async (input) => {
       const currentConversationId = context.conversationId;
       const conversationId =
