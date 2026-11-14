@@ -21,6 +21,7 @@ import {
 export type JsonRecord = Record<string, unknown>;
 export type GitHubGrantName =
   | "installation-read"
+  | "installation-repository-create"
   | "installation-write"
   | "user-read"
   | "user-write";
@@ -30,6 +31,7 @@ export type GitHubGrantReason =
   | "github.git-read"
   | "github.graphql-read"
   | "github.installation-write"
+  | "github.repository-create"
   | "github.user-read"
   | "github.user-write";
 export type GitHubGrant = PluginGrant & {
@@ -908,6 +910,13 @@ export async function issueGitHubCredential(
       return await issueInstallationCredential({
         ...installation,
         ...options.readPermissions,
+      });
+    }
+    if (ctx.grant.name === "installation-repository-create") {
+      // Only repository creation, not the wider administration permission.
+      return await issueInstallationCredential({
+        ...installation,
+        permissions: { repository_creation: "write" },
       });
     }
     if (ctx.grant.name === "installation-write") {

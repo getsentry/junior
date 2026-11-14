@@ -17,6 +17,10 @@ import {
   readGrantPermissions,
 } from "./permissions.js";
 import { createGitHubTools, type GitHubPluginExperiments } from "./tools.js";
+import {
+  parseGitHubRepositoryProfiles,
+  type GitHubRepositoryProfile,
+} from "./tools/create-repository.js";
 import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { botLoginFromEmail } from "./webhooks/ownership.js";
@@ -154,6 +158,13 @@ export interface GitHubPluginOptions {
   privateKeyEnv?: string;
   /** App-configured pull request event behavior. */
   pullRequestEvents?: GitHubPullRequestEventOptions;
+
+  /**
+   * Kinds of repositories that Junior may create, keyed by profile name.
+   * Each profile fixes the organization and the repository settings. Omit
+   * it, and Junior offers no repository create tool.
+   */
+  repositoryProfiles?: Record<string, GitHubRepositoryProfile>;
 }
 
 /** Register GitHub runtime hooks for repository workflows. */
@@ -175,6 +186,9 @@ export function githubPlugin(
   const loadReadPermissions = createPermissionCache();
   const userScopes = normalizeScopeList(options.additionalUserScopes);
   const userScope = userScopes.length ? userScopes.join(" ") : undefined;
+  const repositoryProfiles = options.repositoryProfiles
+    ? parseGitHubRepositoryProfiles(options.repositoryProfiles)
+    : undefined;
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
@@ -459,6 +473,7 @@ export function githubPlugin(
             options.pullRequestEvents?.subscribeAfterCreate,
           ),
           options.experimental,
+          repositoryProfiles,
         );
       },
       workspacePrepare: prepareWorkspace,
