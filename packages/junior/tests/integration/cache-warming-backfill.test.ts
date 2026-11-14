@@ -330,6 +330,8 @@ describe("cache warming savings re-fill", () => {
       cacheWrite?: number;
       stopReason?: "stop" | "toolUse";
       toolName?: string;
+      /** The stored result of the tool call. */
+      toolFailed?: boolean;
     }>,
     kind?: "automation",
   ) {
@@ -342,9 +344,27 @@ describe("cache warming savings re-fill", () => {
     });
     await getConversationEventStore().append(
       conversationId,
-      calls.map((call) => {
+      calls.flatMap((call) => {
         const message = reply(call.cacheRead, call.atMs);
-        return {
+        const result = call.toolName
+          ? [
+              {
+                createdAtMs: call.atMs + 2_000,
+                data: historyItemFromPiMessage(
+                  {
+                    role: "toolResult" as const,
+                    toolCallId: `call-${call.atMs}`,
+                    toolName: call.toolName,
+                    content: [{ type: "text" as const, text: "{}" }],
+                    isError: call.toolFailed ?? false,
+                    timestamp: call.atMs + 2_000,
+                  },
+                  contextProvenance,
+                ),
+              },
+            ]
+          : [];
+        const assistant = {
           createdAtMs: call.atMs + 1_000,
           data: historyItemFromPiMessage(
             {
@@ -368,6 +388,7 @@ describe("cache warming savings re-fill", () => {
             contextProvenance,
           ),
         };
+        return [assistant, ...result];
       }),
     );
   }
@@ -555,6 +576,24 @@ describe("cache warming savings re-fill", () => {
       },
       { atMs: DAY_1 + 7 * MINUTE, cacheRead: 60_000 },
     ]);
+    // A failed answer tool call does not end the Turn: the retry ends a tool
+    // wait.
+    const RETRY = DAY_1 + 30 * MINUTE;
+    await storeCalls("local:test:replay-failed-answer-tool", [
+      {
+        atMs: RETRY,
+        cacheRead: 60_000,
+        stopReason: "toolUse",
+        toolName: "reply",
+        toolFailed: true,
+      },
+      {
+        atMs: RETRY + MINUTE,
+        cacheRead: 60_000,
+        stopReason: "toolUse",
+        toolName: "reply",
+      },
+    ]);
     // An Automation run that waits on its running child agent.
     const RUN = DAY_1 + 60 * MINUTE;
     await storeCalls(
@@ -600,7 +639,9 @@ describe("cache warming savings re-fill", () => {
       nowMs,
       budgetMs: 60_000,
     });
-    expect(toolWaits).toEqual([]);
+    expect(toolWaits).toEqual([
+      expect.objectContaining({ sinceMs: RETRY, gapMs: MINUTE }),
+    ]);
     expect(periods).toEqual([
       expect.objectContaining({
         sinceMs: DAY_1,
@@ -609,6 +650,7 @@ describe("cache warming savings re-fill", () => {
         next: expect.objectContaining({ cacheRead: 60_000 }),
       }),
       expect.objectContaining({ sinceMs: DAY_1 + 7 * MINUTE }),
+      expect.objectContaining({ sinceMs: RETRY + MINUTE, turnEnding: "reply" }),
       expect.objectContaining({
         sinceMs: RUN,
         turnEnding: "reply",

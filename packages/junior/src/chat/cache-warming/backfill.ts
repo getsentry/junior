@@ -120,12 +120,13 @@ interface ConversationRow {
 
 interface EventRow {
   conversationId: string;
-  type: "assistant_message" | "user_message";
+  /** `tool_result`: only a successful answer tool result. */
+  type: "assistant_message" | "tool_result" | "user_message";
   /** User message instruction: its Actor is a person. */
   personInstruction: boolean | null;
   stopReason: string | null;
-  /** Names of the tool calls of a `toolUse` assistant message. */
-  toolNames: string[] | null;
+  /** Tool result: the answer tool that returned it. */
+  toolName: string | null;
   /** Assistant message: Pi sets it when the model request starts. */
   startedAtMs: string | null;
   modelId: string | null;
@@ -227,8 +228,9 @@ export async function countHistoryConversations(
 async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
   const events = juniorConversationEvents;
   const isUserMessage = sql`${events.type} = 'user_message'`;
+  const isToolResult = sql`${events.type} = 'tool_result'`;
   const message = sql`CASE
-    WHEN ${events.type} <> 'assistant_message' THEN NULL
+    WHEN ${events.type} NOT IN ('assistant_message', 'tool_result') THEN NULL
     WHEN ${events.schemaVersion} >= 2 THEN (${events.payload}->>'message')::jsonb
     ELSE ${events.payload}
   END`;
@@ -240,15 +242,7 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
         boolean | null
       >`CASE WHEN ${isUserMessage} THEN (${events.payload}->'provenance'->'actor'->>'userId') IS NOT NULL END`,
       stopReason: sql<string | null>`(${message})->>'stopReason'`,
-      toolNames: sql<string[] | null>`CASE
-        WHEN (${message})->>'stopReason' = 'toolUse'
-          AND jsonb_typeof((${message})->'content') = 'array'
-        THEN (
-          SELECT jsonb_agg(block->>'name')
-          FROM jsonb_array_elements((${message})->'content') AS block
-          WHERE block->>'type' = 'toolCall'
-        )
-      END`,
+      toolName: sql<string | null>`(${message})->>'toolName'`,
       startedAtMs: sql<string | null>`(${message})->>'timestamp'`,
       modelId: sql<string | null>`(${message})->>'model'`,
       cacheRead: sql<string | null>`${events.payload}->'usage'->>'cacheRead'`,
@@ -264,6 +258,15 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
         inArray(events.conversationId, conversationIds),
         or(
           eq(events.type, "assistant_message"),
+          // Live recording ends the Turn only after an answer tool succeeds.
+          and(
+            isToolResult,
+            inArray(
+              sql`(${message})->>'toolName'`,
+              Object.keys(ANSWER_TOOL_ENDINGS),
+            ),
+            sql`(${message})->>'isError' IS DISTINCT FROM 'true'`,
+          ),
           and(
             isUserMessage,
             sql`(${events.payload}->'provenance'->>'authority') = 'instruction'`,
@@ -303,8 +306,8 @@ async function loadChildAgents(
  * Replay the model calls of one Conversation the way the recorders in
  * `warmup.ts` and `tool-wait.ts` see them, and return each idle period and
  * tool wait. An idle period starts at a call that ends the Turn: a `stop`
- * call or an answer tool call. A tool wait starts at any other `toolUse`
- * call, so no pair of calls is in both.
+ * call or an answer tool call that succeeded. A tool wait starts at any
+ * other `toolUse` call, so no pair of calls is in both.
  *
  * Live recording measures from the start of the request that ended a Turn to
  * the start of the next recorded request. Here both times are the
@@ -353,7 +356,22 @@ function replayConversation(
   // hours long, and `idlePeriodSavings` skips a gap that warming never pays
   // for.
   let waiting: { sinceMs: number; prefixTokens: number } | undefined;
+  // The ending of each answer tool call that succeeded. Its result follows
+  // the call.
+  const answerEndings = new Map<EventRow, TurnEnding>();
+  let toolUse: EventRow | undefined;
   for (const event of events) {
+    if (event.type === "assistant_message") {
+      toolUse = event.stopReason === "toolUse" ? event : undefined;
+    }
+    const ending =
+      event.type === "tool_result" && event.toolName
+        ? ANSWER_TOOL_ENDINGS[event.toolName]
+        : undefined;
+    if (toolUse && ending) answerEndings.set(toolUse, ending);
+  }
+  for (const event of events) {
+    if (event.type === "tool_result") continue;
     if (event.type === "user_message") {
       if (!inTurn) {
         // `agent/index.ts` counts a Task as not started by a person.
@@ -363,12 +381,7 @@ function replayConversation(
       continue;
     }
     // An answer tool call ends the Turn like a final response.
-    const answerEnding =
-      event.stopReason === "toolUse"
-        ? event.toolNames
-            ?.map((name) => ANSWER_TOOL_ENDINGS[name])
-            .find((ending) => ending !== undefined)
-        : undefined;
+    const answerEnding = answerEndings.get(event);
     const turnEnding = event.stopReason === "stop" ? "reply" : answerEnding;
     // Pi continues the Turn only after a tool call.
     if (event.stopReason !== "toolUse" || answerEnding) inTurn = false;
