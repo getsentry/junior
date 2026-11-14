@@ -38,9 +38,28 @@ test("a row opens its Conversation, and Back or Esc restores the list", async ({
   // The open row pushes this one below the fold, so the reader scrolls.
   const triage = list.getByRole("link", { name: /^Checkout latency triage/ });
   await triage.scrollIntoViewIfNeeded();
+  // A pointer that rests on a compact row expands it in place, and the
+  // click may scroll to reach it. Back restores the place the reader left
+  // from, so read it once the row has settled.
+  await triage.hover();
+  const row = triage.locator("xpath=ancestor::*[@data-inbox-row][1]");
+  await expect(row).toHaveAttribute("data-grown", "true");
+  let last = "";
+  await expect
+    .poll(async () => {
+      const now = await scroller.evaluate(
+        (node, target) =>
+          `${node.scrollTop}:${(target as HTMLElement).offsetHeight}`,
+        await row.elementHandle(),
+      );
+      const settled = now === last;
+      last = now;
+      return settled;
+    })
+    .toBe(true);
   const top = await scroller.evaluate((node) => node.scrollTop);
   expect(top).toBeGreaterThan(0);
-  await openRow(triage);
+  await row.getByRole("link", { name: "Open conversation" }).first().click();
   await expect(page).toHaveURL(/\/conversations\/slack%3ACQA123/);
   const back = page.getByRole("link", { name: "Back to Conversations" });
   await expect(back).toBeVisible();
