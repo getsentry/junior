@@ -145,14 +145,17 @@ export function readObjectLinkTypes(
 /**
  * Return the object type of the link type that claims a URL, such as
  * `code_change` for a pull request link from the GitHub plugin. The plugin
- * that owns the link type decides; core only reads its filters.
+ * that owns the link type decides; core only reads its filters. A link type
+ * that can open more than one type, such as a GitHub issue URL that can open
+ * a pull request, names no type from the URL alone.
  */
 export function readLinkObjectType(
   url: string,
   linkTypes: readonly ObjectLinkType[] = readObjectLinkTypes(),
 ): ObjectType | undefined {
   if (!URL.canParse(url)) return undefined;
-  return findObjectLinkType(linkTypes, new URL(url))?.objectType;
+  const objectTypes = findObjectLinkType(linkTypes, new URL(url))?.objectTypes;
+  return objectTypes?.length === 1 ? objectTypes[0] : undefined;
 }
 
 type ResolvedObjectLink = {
