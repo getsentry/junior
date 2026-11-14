@@ -35,7 +35,7 @@ function readOptionalStringField(
 }
 
 interface StripLeadingBotMentionOptions {
-  botUserId?: string;
+  botUserId?: string | undefined;
   stripLeadingSlackMentionToken?: boolean;
 }
 
@@ -100,6 +100,7 @@ export function getChannelId(
 }
 
 export function getThreadTs(threadId: string | undefined): string | undefined {
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
   return parseSlackThreadId(threadId)?.threadTs;
 }
 
@@ -126,6 +127,7 @@ export function getAssistantThreadContext(
     }
   }
 
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
   const parsedThreadId = parseSlackThreadId(
     readOptionalStringField(message, "threadId"),
   );

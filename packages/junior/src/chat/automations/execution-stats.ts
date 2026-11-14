@@ -146,7 +146,7 @@ export async function recordAutomationExecution(
   automationId: string,
   options: {
     conversationId?: string;
-    errorMessage?: string;
+    errorMessage?: string | undefined;
     executionId: string;
     nowMs?: number;
     status?: AutomationExecutionStatus;
@@ -382,7 +382,7 @@ export async function readAutomationExecutionByConversationId(args: {
 export async function readAutomationTitlesByConversationId(
   conversations: ReadonlyArray<{
     conversationId: string;
-    title?: string | null;
+    title?: string | null | undefined;
   }>,
 ): Promise<Map<string, string>> {
   const titles = new Map<string, string>();

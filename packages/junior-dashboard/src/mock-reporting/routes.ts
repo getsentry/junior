@@ -830,11 +830,16 @@ export function createMockReportingApi(): Hono<{
       items: readMockReviewItems(NOW_MS, { conversationId, q: q || undefined }),
     });
   });
-  app.get("/review-items/count", () =>
-    jsonResponse(reviewItemCountSchema, {
-      needsViewer: readMockWaitingConversations(NOW_MS).needsViewer,
-    }),
-  );
+  app.get("/review-items/count", () => {
+    const open = readMockReviewItems(NOW_MS, {});
+    return jsonResponse(reviewItemCountSchema, {
+      // Mock items have no subjects, so none is a code change.
+      codeChanges: 0,
+      decisions: open.filter((item) => item.request).length,
+      needsViewer: open.length,
+      snoozed: 0,
+    });
+  });
   app.get("/review-items/waiting-conversations", () =>
     jsonResponse(reviewItemWaitingConversationsSchema, {
       conversations: readMockWaitingConversations(NOW_MS).conversations,

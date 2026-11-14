@@ -18,7 +18,7 @@ const EDGE_CHARS = 500;
 /** One replacement-history message and the event it was copied from. */
 export interface TrimmableEntry {
   message: PiMessage;
-  sourceEventSeq?: number;
+  sourceEventSeq?: number | undefined;
 }
 
 /** Counts of what trimming removed, for telemetry. */

@@ -93,7 +93,7 @@ export function githubImageKind(
   ) {
     return "attachment";
   }
-  const baseUrl = process.env.JUNIOR_BASE_URL?.trim().replace(/\/+$/, "");
+  const baseUrl = process.env["JUNIOR_BASE_URL"]?.trim().replace(/\/+$/, "");
   if (!baseUrl || !URL.canParse(`${baseUrl}/public/artifacts/`)) {
     return undefined;
   }
@@ -121,7 +121,9 @@ export function githubPreviewImageUrls(
   body: string | null | undefined,
 ): string[] {
   const sources: string[] = [];
-  walkTokens(lexer(visibleBody(body), { gfm: true }), (token) => {
+  void walkTokens(lexer(visibleBody(body), { gfm: true }), (token) => {
+    // marked's generic token types `href` as `any`.
+    // oxlint-disable-next-line typescript/no-unsafe-argument
     if (token.type === "image") sources.push(token.href);
     if (token.type === "html") sources.push(...htmlImageSources(token.raw));
   });
@@ -196,9 +198,8 @@ export function githubObjectFacts(
               .filter(Boolean),
             labels: data.labels
               ?.slice(0, 5)
-              .map(
-                (label) =>
-                  short(typeof label === "string" ? label : label.name)!,
+              .map((label) =>
+                short(typeof label === "string" ? label : label.name)!,
               )
               .filter(Boolean),
           },

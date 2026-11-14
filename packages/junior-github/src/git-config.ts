@@ -110,7 +110,7 @@ export function additionalActorCoauthorTrailers(args: {
   actors?: Actor[];
   botEmail: string;
   /** Linked user for the current run actor, when already resolved. */
-  currentUser?: User;
+  currentUser?: User | undefined;
 }): string[] {
   if (!args.actors || args.actors.length === 0) {
     return [];

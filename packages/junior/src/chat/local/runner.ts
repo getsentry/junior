@@ -134,7 +134,7 @@ function captureLocalBoundaryFailure(args: {
   conversationId: string;
   error: unknown;
   failureCode: ConversationTurnFailureCode;
-  runId?: string;
+  runId?: string | undefined;
 }): string | undefined {
   setTags({
     conversationId: args.conversationId,
@@ -491,6 +491,7 @@ async function runLocalAgentTurnInContext(
       throw new AggregateError(
         [error, persistenceError],
         "Local turn failure state could not be persisted",
+        { cause: persistenceError },
       );
     }
     await lifecycle.fail({

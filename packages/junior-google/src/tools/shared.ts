@@ -131,7 +131,7 @@ export async function googleApiRequest(
         "Content-Type": "application/json",
         ...input.headers,
       },
-      body: input.body === undefined ? undefined : JSON.stringify(input.body),
+      body: input.body === undefined ? null : JSON.stringify(input.body),
     }),
   });
   const body: unknown = response.headers.get("content-type")?.includes("json")

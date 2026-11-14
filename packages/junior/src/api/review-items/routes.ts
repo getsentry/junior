@@ -6,6 +6,7 @@ import type { JuniorApiEnv } from "@/api/route";
 import { apiErrorSchema } from "@/api/schema/common";
 import {
   reviewItemActionSchema,
+  reviewItemCountQuerySchema,
   reviewItemCountSchema,
   reviewItemListQuerySchema,
   reviewItemListSchema,
@@ -20,6 +21,7 @@ import { getDb } from "@/chat/db";
 import {
   canActOnReviewItem,
   isOnlyAssignee,
+  itemNeedsUser,
   reviewItemReaderForUser,
   reviewItemReaderForUserInConversation,
 } from "@/chat/review-items/access";
@@ -29,7 +31,8 @@ import {
   ReviewItemActionError,
 } from "@/chat/review-items/actions";
 import {
-  countReviewItemsNeedingUser,
+  countOpenReviewItemsForUser,
+  countReviewItemsNeedingUserBySubject,
   listWaitingConversations,
   searchReviewItems,
   type ReviewItem,
@@ -37,38 +40,63 @@ import {
   type ReviewItemPosition,
 } from "@/chat/review-items/store";
 import type { ReviewItemDelivery } from "@/chat/review-items/changes";
+import { countOwnedAutomationsNeedingAttention } from "@/chat/automations/collection";
+import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
 
-// A list shows at most this many archived matches, with the first page.
-// Only open items page, oldest first. Creation time never changes, and an
-// item that closes while a person reads only leaves the open order, so a
-// cursor never skips or repeats an item.
+// A list of open items shows at most this many archived matches, with the
+// first page. Open items page oldest first. Creation time never changes, and
+// an item that closes while a person reads only leaves the open order, so a
+// cursor never skips or repeats an item. A `status` list of closed items
+// pages newest closed first: an item closes once, so its place never moves.
+// The `waiting` sort pages what waits on the viewer first, newest first, so
+// the first page holds what needs them now. An item that starts or stops
+// waiting on the viewer while they read can move between the two groups;
+// the next read of the first page shows it.
 const ARCHIVED_LIMIT = 50;
 
-/** The list that a cursor belongs to. */
+/**
+ * The list that a cursor belongs to. `status` names the closed statuses of
+ * a closed list, such as `done,dismissed`; an open list has none. `sort`
+ * names the waiting-first order of an open list.
+ */
 type ListFilters = Pick<
   ReviewItemFilters,
   "conversationId" | "forUserId" | "query"
->;
+> & { sort?: "waiting"; status?: string };
 
 const cursorSchema = z
   .object({
+    closedAtMs: z.number().int().optional(),
     conversationId: z.string().min(1).optional(),
     createdAtMs: z.number().int(),
     forUserId: z.string().min(1).optional(),
     id: z.string().min(1),
+    needsUser: z.boolean().optional(),
     query: z.string().min(1).optional(),
+    sort: z.literal("waiting").optional(),
+    status: z.string().min(1).optional(),
     version: z.literal(2),
   })
   .strict();
 
 /**
- * Encode the last open item of a page as the cursor of the next page. The
+ * Encode the last item of a page as the cursor of the next page. The
  * cursor names its list, so it cannot page through a different list.
  */
-function encodeCursor(item: ReviewItem, filters: ListFilters): string {
+function encodeCursor(
+  item: ReviewItem,
+  filters: ListFilters,
+  viewer: User,
+): string {
   return Buffer.from(
     JSON.stringify({
       ...filters,
+      ...(filters.status && item.closedAt
+        ? { closedAtMs: item.closedAt.getTime() }
+        : undefined),
+      ...(filters.sort
+        ? { needsUser: itemNeedsUser(item, viewer.id) }
+        : undefined),
       createdAtMs: item.createdAt.getTime(),
       id: item.id,
       version: 2,
@@ -81,7 +109,12 @@ function encodeCursor(item: ReviewItem, filters: ListFilters): string {
 function decodeCursor(
   cursor: string,
   filters: ListFilters,
-): ReviewItemPosition | undefined {
+):
+  | (ReviewItemPosition & {
+      closedAt?: Date;
+      needsUser?: boolean;
+    })
+  | undefined {
   try {
     const parsed = cursorSchema.parse(
       JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")),
@@ -89,11 +122,24 @@ function decodeCursor(
     if (
       parsed.conversationId !== filters.conversationId ||
       parsed.forUserId !== filters.forUserId ||
-      parsed.query !== filters.query
+      parsed.query !== filters.query ||
+      parsed.sort !== filters.sort ||
+      parsed.status !== filters.status ||
+      (filters.status !== undefined && parsed.closedAtMs === undefined) ||
+      (filters.sort !== undefined && parsed.needsUser === undefined)
     ) {
       return undefined;
     }
-    return { createdAt: new Date(parsed.createdAtMs), id: parsed.id };
+    return {
+      ...(parsed.closedAtMs !== undefined
+        ? { closedAt: new Date(parsed.closedAtMs) }
+        : undefined),
+      createdAt: new Date(parsed.createdAtMs),
+      id: parsed.id,
+      ...(parsed.needsUser !== undefined
+        ? { needsUser: parsed.needsUser }
+        : undefined),
+    };
   } catch {
     return undefined;
   }
@@ -105,6 +151,15 @@ const ERROR_STATUS = {
   invalid: 400,
   not_found: 404,
 } as const;
+
+// The plugin that owns a link type recognizes the subject, such as a pull
+// request from the GitHub plugin, so core keeps no provider URL rules.
+function subjectPayload(
+  subject: NonNullable<ReviewItem["subject"]>,
+): NonNullable<ReviewItemPayload["subject"]> {
+  const objectType = subject.url && readLinkObjectType(subject.url);
+  return { ...subject, ...(objectType ? { objectType } : undefined) };
+}
 
 /** Build the API payload of one Review item for its viewer. */
 function reviewItemPayload(item: ReviewItem, viewer: User): ReviewItemPayload {
@@ -131,7 +186,7 @@ function reviewItemPayload(item: ReviewItem, viewer: User): ReviewItemPayload {
     ...(item.closedAt ? { closedAt: item.closedAt.toISOString() } : undefined),
     ...(item.closedBy ? { closedBy: item.closedBy } : undefined),
     ...(item.request ? { request: item.request } : undefined),
-    ...(item.subject ? { subject: item.subject } : undefined),
+    ...(item.subject ? { subject: subjectPayload(item.subject) } : undefined),
   };
 }
 
@@ -168,6 +223,11 @@ export function createReviewItemRoutes(services: {
           : undefined),
         ...(query.for === "viewer" ? { forUserId: viewer.id } : undefined),
         ...(query.q ? { query: query.q } : undefined),
+        ...(query.status[0] === "open"
+          ? query.sort
+            ? { sort: query.sort }
+            : undefined
+          : { status: [...query.status].sort().join(",") }),
       };
       const after = query.cursor
         ? decodeCursor(query.cursor, filters)
@@ -188,29 +248,64 @@ export function createReviewItemRoutes(services: {
           )
         : reviewItemReaderForUser(viewer);
       // Read one more item than a page to learn whether more follow.
-      const open = await searchReviewItems(db, reader, {
-        ...filters,
-        // The viewer's Inbox hides the rows they snoozed until they wake. A
-        // Conversation's own list and a search still show them.
-        ...(query.for === "viewer" && !filters.conversationId && !filters.query
-          ? { awakeForUserId: viewer.id }
-          : undefined),
-        limit: query.limit + 1,
-        order: "oldest",
-        statuses: ["open"],
-        ...(after ? { after } : undefined),
-      });
-      const page = open.slice(0, query.limit);
-      const last = page.at(-1);
-      // The archived matches come once, with the first page.
-      const archived =
+      if (filters.status) {
+        const closed = await searchReviewItems(db, reader, {
+          ...filters,
+          limit: query.limit + 1,
+          order: "closed",
+          statuses: query.status,
+          ...(after?.closedAt
+            ? { closedBefore: { closedAt: after.closedAt, id: after.id } }
+            : undefined),
+        });
+        const page = closed.slice(0, query.limit);
+        const last = page.at(-1);
+        return jsonResponse(reviewItemListSchema, {
+          items: page.map((item) => reviewItemPayload(item, viewer)),
+          ...(closed.length > query.limit && last
+            ? { nextCursor: encodeCursor(last, filters, viewer) }
+            : undefined),
+        });
+      }
+      // The archived matches come once, with the first page. They do not
+      // depend on the open page, so both reads run at once.
+      const [open, archived] = await Promise.all([
+        searchReviewItems(db, reader, {
+          ...filters,
+          // The viewer's Inbox hides the rows they snoozed until they wake. A
+          // Conversation's own list and a search still show them.
+          ...(query.for === "viewer" &&
+          !filters.conversationId &&
+          !filters.query
+            ? { awakeForUserId: viewer.id }
+            : undefined),
+          limit: query.limit + 1,
+          statuses: ["open"],
+          ...(filters.sort
+            ? {
+                order: { needsUserId: viewer.id },
+                ...(after
+                  ? {
+                      afterWaiting: {
+                        createdAt: after.createdAt,
+                        id: after.id,
+                        needsUser: after.needsUser === true,
+                      },
+                    }
+                  : undefined),
+              }
+            : { order: "oldest", ...(after ? { after } : undefined) }),
+        }),
         (filters.query || query.include === "archived") && !after
-          ? await searchReviewItems(db, reader, {
+          ? searchReviewItems(db, reader, {
               ...filters,
               limit: ARCHIVED_LIMIT + 1,
               statuses: ["done", "dismissed"],
             })
-          : [];
+          : [],
+      ]);
+      const page = open.slice(0, query.limit);
+      const last = page.at(-1);
       return jsonResponse(reviewItemListSchema, {
         items: [...page, ...archived.slice(0, ARCHIVED_LIMIT)].map((item) =>
           reviewItemPayload(item, viewer),
@@ -219,17 +314,60 @@ export function createReviewItemRoutes(services: {
           ? { moreArchived: true }
           : undefined),
         ...(open.length > query.limit && last
-          ? { nextCursor: encodeCursor(last, filters) }
+          ? { nextCursor: encodeCursor(last, filters, viewer) }
           : undefined),
       });
     },
   );
-  app.get("/count", requireViewer, async (context) => {
-    const viewer = context.get("viewer");
-    return jsonResponse(reviewItemCountSchema, {
-      needsViewer: await countReviewItemsNeedingUser(getDb(), viewer.id),
-    });
-  });
+  app.get(
+    "/count",
+    requireViewer,
+    validateRequest(
+      "query",
+      reviewItemCountQuerySchema,
+      "Invalid review item count query.",
+    ),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const query = context.req.valid("query");
+      const db = getDb();
+      // One query counts the badge and both bundles. The snoozed and
+      // Automation counts run only when the request asks for them, so the
+      // current dashboard pays for one query.
+      const [subjects, snoozed, automations] = await Promise.all([
+        countReviewItemsNeedingUserBySubject(db, viewer.id),
+        countOpenReviewItemsForUser(
+          db,
+          { ...reviewItemReaderForUser(viewer), userId: viewer.id },
+          query.snoozed,
+        ),
+        query.include === "automations"
+          ? countOwnedAutomationsNeedingAttention(viewer)
+          : undefined,
+      ]);
+      const linkTypes = readObjectLinkTypes();
+      let codeChanges = 0;
+      let decisions = 0;
+      let needsViewer = 0;
+      for (const subject of subjects) {
+        needsViewer += subject.total;
+        decisions += subject.decisions;
+        if (
+          subject.subjectUrl &&
+          readLinkObjectType(subject.subjectUrl, linkTypes) === "code_change"
+        ) {
+          codeChanges += subject.total;
+        }
+      }
+      return jsonResponse(reviewItemCountSchema, {
+        ...(automations === undefined ? undefined : { automations }),
+        codeChanges,
+        decisions,
+        needsViewer,
+        snoozed,
+      });
+    },
+  );
   app.get("/waiting-conversations", requireViewer, async (context) => {
     const viewer = context.get("viewer");
     return jsonResponse(reviewItemWaitingConversationsSchema, {

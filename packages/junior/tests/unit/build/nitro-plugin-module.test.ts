@@ -369,7 +369,7 @@ describe("juniorNitro plugin modules", () => {
     const vercel = getVercelOptions(nitro);
     const template = virtual["#junior/config"];
 
-    expect(vercel.functions?.maxDuration).toBe(800);
+    expect(vercel.functions?.["maxDuration"]).toBe(800);
     expect(
       vercel.functionRules?.[JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE]
         ?.maxDuration,
@@ -741,6 +741,18 @@ describe("juniorNitro plugin modules", () => {
       "node_modules",
       "@acme",
       "junior-demo",
+    );
+    const juniorPackageDir = path.join(
+      tempRoot,
+      "node_modules",
+      "@sentry",
+      "junior",
+    );
+    await fs.mkdir(path.join(juniorPackageDir, "skills"), { recursive: true });
+    await fs.writeFile(
+      path.join(juniorPackageDir, "package.json"),
+      JSON.stringify({ name: "@sentry/junior" }),
+      "utf8",
     );
     await fs.mkdir(path.join(tempRoot, "app"), { recursive: true });
     await fs.writeFile(

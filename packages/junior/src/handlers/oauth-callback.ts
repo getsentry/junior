@@ -15,6 +15,7 @@ import {
   resolveBaseUrl,
 } from "@/chat/oauth-flow";
 
+// ast-grep-ignore: no-raw-slack-turn-post -- "Account connected" notice when no Turn resumes
 import { postSlackMessage } from "@/chat/slack/outbound";
 
 import { logWarn, runBestEffort } from "@/chat/logging";
@@ -525,6 +526,7 @@ export async function GET(
   } else if (stored.channelId && stored.threadTs) {
     const { channelId, threadTs } = stored;
     waitUntil(() =>
+      // ast-grep-ignore: no-raw-slack-turn-post -- "Account connected" notice when no Turn resumes
       postSlackMessage({
         channelId,
         threadTs,

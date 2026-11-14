@@ -28,15 +28,18 @@ function takeEarlyResponse(path: string): Promise<Response> | undefined {
 /** An authenticated dashboard request rejected by the product API. */
 export class DashboardApiError extends Error {
   readonly status: number;
-  readonly fields?: Record<string, string[]>;
-  readonly code?: string;
+  readonly fields?: Record<string, string[]> | undefined;
+  readonly code?: string | undefined;
   readonly apiError?: string;
 
   constructor(
     path: string,
     status: number,
     apiError?: string,
-    detail?: { fields?: Record<string, string[]>; code?: string },
+    detail?: {
+      fields?: Record<string, string[]> | undefined;
+      code?: string | undefined;
+    },
   ) {
     super(`${path} returned ${status}`);
     this.status = status;

@@ -1,4 +1,4 @@
-import { Agent, type StreamFn } from "@earendil-works/pi-agent-core";
+import { Agent } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
   type AssistantMessage,
@@ -12,6 +12,11 @@ import {
   buildAgentModelRequest,
   requestContextSummary,
 } from "@/chat/agent/context-summary";
+import {
+  readAgentHistory,
+  withAgentRequest,
+  type AgentRequestStreamFn,
+} from "@/chat/pi/agent-history";
 
 const model = {
   id: "anthropic/claude-test",
@@ -60,7 +65,6 @@ const LOOP_CONFIG_KEYS = new Set([
   "getSteeringMessages",
   "model",
   "prepareNextTurn",
-  "shouldStopAfterTurn",
   "signal",
   "toolExecution",
   "transformContext",
@@ -69,10 +73,10 @@ const LOOP_CONFIG_KEYS = new Set([
 /** A stream function that answers each call with the next message. */
 function replies(messages: AssistantMessage[]): {
   calls: Call[];
-  streamFn: StreamFn;
+  streamFn: AgentRequestStreamFn;
 } {
   const calls: Call[] = [];
-  const streamFn: StreamFn = (_model, context, options) => {
+  const streamFn: AgentRequestStreamFn = (_model, context, options) => {
     const message = messages[calls.length]!;
     calls.push({
       context: { ...context, messages: [...context.messages] },
@@ -92,26 +96,24 @@ function replies(messages: AssistantMessage[]): {
   return { calls, streamFn };
 }
 
-function createAgent(streamFn: StreamFn): Agent {
+/** An agent wired like Junior's: its stream gets Junior's own request. */
+function createAgent(streamFn: AgentRequestStreamFn): Agent {
+  const systemPrompt = "You are a helper.";
+  const tools = [
+    {
+      name: "lookup",
+      label: "Lookup",
+      description: "Look up a record.",
+      parameters: Type.Object({ id: Type.String() }),
+      execute: async () => ({ content: [], details: undefined }),
+    },
+  ];
   return new Agent({
     getApiKey: () => "gateway-key",
     sessionId: "conversation-1",
-    streamFn,
+    streamFn: withAgentRequest(streamFn, { systemPrompt, tools }),
     thinkingBudgets: { low: 1_024 },
-    initialState: {
-      model,
-      systemPrompt: "You are a helper.",
-      thinkingLevel: "low",
-      tools: [
-        {
-          name: "lookup",
-          label: "Lookup",
-          description: "Look up a record.",
-          parameters: Type.Object({ id: Type.String() }),
-          execute: async () => ({ content: [], details: undefined }),
-        },
-      ],
-    },
+    initialState: { model, systemPrompt, thinkingLevel: "low", tools },
   });
 }
 
@@ -125,7 +127,7 @@ describe("context summary", () => {
 
     const request = await buildAgentModelRequest(
       agent,
-      agent.state.messages.slice(0, -1),
+      readAgentHistory(agent.state.messages).slice(0, -1),
     );
 
     expect(request.model).toBe(model);

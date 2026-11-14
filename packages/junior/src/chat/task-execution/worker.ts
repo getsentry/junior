@@ -56,7 +56,7 @@ export interface ConversationWorkerContext {
   attempt: InboxAttempt;
   checkIn(): Promise<boolean>;
   conversationId: string;
-  destination?: Destination;
+  destination?: Destination | undefined;
   /** True when the current execution slice must stop at its next safe boundary. */
   shouldYield(): boolean;
   /** Return an AbortSignal backed by the durable Conversation stop request. */
@@ -71,7 +71,7 @@ export interface ConversationWorkerContext {
 export interface InboxAttempt {
   ack(): Promise<void>;
   conversationId: string;
-  destination?: Destination;
+  destination?: Destination | undefined;
   /**
    * Give pending mailbox messages to the active Turn. By default only
    * `interrupt` messages for this attempt are offered. With `deferred`, every
@@ -109,16 +109,16 @@ export interface ConversationWorkProcessResult {
 }
 
 export interface ProcessConversationWorkOptions {
-  beforeWorkStops?: BeforeWorkStops;
-  checkInIntervalMs?: number;
-  conversationStore?: ConversationStore;
+  beforeWorkStops?: BeforeWorkStops | undefined;
+  checkInIntervalMs?: number | undefined;
+  conversationStore?: ConversationStore | undefined;
   /** Slack installation lookup for work that runs after the Run ends. */
-  getSlackAdapter?: () => SlackAdapter;
-  nowMs?: () => number;
+  getSlackAdapter?: (() => SlackAdapter) | undefined;
+  nowMs?: (() => number) | undefined;
   queue: ConversationWorkQueue;
   run(context: ConversationWorkerContext): Promise<ConversationWorkerResult>;
-  softYieldAfterMs?: number;
-  state?: StateAdapter;
+  softYieldAfterMs?: number | undefined;
+  state?: StateAdapter | undefined;
 }
 
 function now(options: ProcessConversationWorkOptions): number {

@@ -286,10 +286,10 @@ function parameterText(schema: unknown): string[] {
   }
   const record = schema as Record<string, unknown>;
   const text: string[] = [];
-  if (typeof record.description === "string") {
-    text.push(record.description);
+  if (typeof record["description"] === "string") {
+    text.push(record["description"]);
   }
-  const properties = record.properties;
+  const properties = record["properties"];
   if (properties && typeof properties === "object") {
     for (const [name, property] of Object.entries(properties)) {
       text.push(name, ...parameterText(property));

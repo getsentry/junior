@@ -15,8 +15,8 @@ import {
 // With no Slack bot token, Event publishing resolves no Slack team. The
 // config reads the token when it loads, so remove it before any import.
 vi.hoisted(() => {
-  delete process.env.SLACK_BOT_TOKEN;
-  delete process.env.SLACK_BOT_USER_TOKEN;
+  delete process.env["SLACK_BOT_TOKEN"];
+  delete process.env["SLACK_BOT_USER_TOKEN"];
 });
 
 describe("snoozes without a Slack team", () => {

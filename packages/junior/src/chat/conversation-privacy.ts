@@ -24,7 +24,7 @@ const conversationPrivacyStorage = new AsyncLocalStorage<ConversationPrivacy>();
  */
 export function resolveConversationPrivacy(input: {
   /** Stored Conversation visibility, when known. */
-  visibility?: ConversationPrivacy | "direct" | "unknown";
+  visibility?: ConversationPrivacy | "direct" | "unknown" | undefined;
 }): ConversationPrivacy {
   if (input.visibility === undefined) {
     logWarn("conversation.visibility.defaulted");
@@ -35,7 +35,7 @@ export function resolveConversationPrivacy(input: {
 /** Return whether a public Conversation may expose transcript and tool data. */
 export function canExposeConversationPayload(input: {
   /** Conversation visibility, when known. */
-  visibility?: ConversationPrivacy | "direct" | "unknown";
+  visibility?: ConversationPrivacy | "direct" | "unknown" | undefined;
 }): boolean {
   return resolveConversationPrivacy(input) === "public";
 }
@@ -63,10 +63,7 @@ function payloadKeys(payload: unknown): string[] | undefined {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return undefined;
   }
-  const keys = Object.keys(payload as Record<string, unknown>).slice(
-    0,
-    SAFE_METADATA_KEY_LIMIT,
-  );
+  const keys = Object.keys(payload).slice(0, SAFE_METADATA_KEY_LIMIT);
   return keys.length > 0 ? keys : undefined;
 }
 
@@ -136,15 +133,15 @@ function summarizeContent(content: unknown): {
     }
     const record = part as Record<string, unknown>;
     const type = canonicalContentPartType(
-      typeof record.type === "string" ? record.type : "unknown",
+      typeof record["type"] === "string" ? record["type"] : "unknown",
     );
     partTypes.add(type);
-    if (typeof record.text === "string") {
-      chars += record.text.length;
-    } else if (typeof record.thinking === "string") {
-      chars += record.thinking.length;
-    } else if (typeof record.data === "string") {
-      chars += record.data.length;
+    if (typeof record["text"] === "string") {
+      chars += record["text"].length;
+    } else if (typeof record["thinking"] === "string") {
+      chars += record["thinking"].length;
+    } else if (typeof record["data"] === "string") {
+      chars += record["data"].length;
     } else {
       chars += serializedLength(part);
     }
@@ -255,10 +252,10 @@ export function toGenAiMessagesTraceAttributes(
       continue;
     }
     const record = message as Record<string, unknown>;
-    if (typeof record.role === "string") {
-      roles.add(record.role);
+    if (typeof record["role"] === "string") {
+      roles.add(record["role"]);
     }
-    const summary = summarizeContent(record.content);
+    const summary = summarizeContent(record["content"]);
     contentChars += summary.chars;
     for (const partType of summary.partTypes) {
       partTypes.add(partType);

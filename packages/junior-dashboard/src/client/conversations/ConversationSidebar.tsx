@@ -92,11 +92,11 @@ const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 /** Render the compact personal conversation picker beside the workspace. */
 export function ConversationSidebar(props: {
   conversations: Conversation[];
-  error?: string;
+  error?: string | undefined;
   loading: boolean;
   /** Older feed pages, loaded as the reader scrolls to the end. */
   morePages: ConversationFeedMorePages;
-  selectedId?: string;
+  selectedId?: string | undefined;
   timeZone: string;
   waitingConversations: ReadonlyMap<string, WaitingConversation>;
   onNewConversation(): void;
@@ -245,7 +245,7 @@ function ConversationSidebarEntries(props: {
   loading: boolean;
   renderItem(entry: ConversationSidebarEntry): ReactNode;
   sections: ConversationSection[];
-  selectedId?: string;
+  selectedId?: string | undefined;
 }) {
   const { collapsedKeys, expandedThreadRoots, sections, selectedId } = props;
   const entries = useMemo(
@@ -308,7 +308,10 @@ export function ConversationRowSkeletons() {
 function conversationSidebarEntries(
   sections: ConversationSection[],
   collapsedKeys: ReadonlySet<string>,
-  threads: { expandedThreadRoots: ReadonlySet<string>; selectedId?: string },
+  threads: {
+    expandedThreadRoots: ReadonlySet<string>;
+    selectedId?: string | undefined;
+  },
 ): ConversationSidebarEntry[] {
   return sections.flatMap((section, index) => {
     const collapsed = collapsedKeys.has(section.key);
@@ -368,7 +371,7 @@ function threadEntries(
 type ConversationSidebarRowProps = {
   conversation: Conversation;
   /** Set on pinned rows, which drag to reorder. */
-  drag?: PinnedRowDrag;
+  drag?: PinnedRowDrag | undefined;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
   onPinError(conversation: Conversation, wasPinning: boolean): void;
@@ -377,7 +380,7 @@ type ConversationSidebarRowProps = {
   /** Runs before a row action that can move rows, so its result shows. */
   onRowAction(): void;
   selected: boolean;
-  waiting?: WaitingConversation;
+  waiting?: WaitingConversation | undefined;
 };
 
 /** Render one sidebar row. Only pinned rows join the drag order. */
@@ -581,7 +584,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
             // page replaces its entry, so Back does not land on the same
             // page in the event log.
             eventLog: () =>
-              navigate(conversationPath(props.conversation.id), {
+              void navigate(conversationPath(props.conversation.id), {
                 replace: props.selected,
                 state: OPEN_EVENT_LOG_STATE,
               }),

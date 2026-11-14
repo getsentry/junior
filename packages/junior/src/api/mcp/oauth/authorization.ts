@@ -66,7 +66,8 @@ export async function readMcpAuthorization(
   state: McpState,
   authorizationId: string,
 ): Promise<
-  { authorization: McpAuthorization; consent?: McpConsent } | undefined
+  | { authorization: McpAuthorization; consent?: McpConsent | undefined }
+  | undefined
 > {
   if (!AUTHORIZATION_ID_PATTERN.test(authorizationId)) return undefined;
   const authorization = await readRecord(
@@ -141,7 +142,7 @@ export function authorizationRedirect(args: {
   issuer: string;
   params: Record<string, string>;
   redirectUri: string;
-  state?: string;
+  state?: string | undefined;
 }): Response {
   const url = new URL(args.redirectUri);
   for (const [name, value] of Object.entries(args.params)) {

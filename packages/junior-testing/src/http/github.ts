@@ -48,23 +48,27 @@ function base64Url(input: string): string {
     .replace(/\//g, "_");
 }
 
+// Spreading HeadersInit drops entries from a Headers instance or an array.
+function headersWithContentType(
+  init: ResponseInit | undefined,
+  contentType: string,
+): Headers {
+  const headers = new Headers(init?.headers);
+  if (!headers.has("content-type")) headers.set("content-type", contentType);
+  return headers;
+}
+
 function json(value: unknown, init?: ResponseInit): Response {
   return Response.json(value, {
     ...init,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      ...(init?.headers ?? {}),
-    },
+    headers: headersWithContentType(init, "application/json; charset=utf-8"),
   });
 }
 
 function text(value: string, init?: ResponseInit): Response {
   return new Response(value, {
     ...init,
-    headers: {
-      "content-type": "text/plain; charset=utf-8",
-      ...(init?.headers ?? {}),
-    },
+    headers: headersWithContentType(init, "text/plain; charset=utf-8"),
   });
 }
 
@@ -246,26 +250,27 @@ function contentPayload(pathname: string): Response | undefined {
 
 async function graphqlResponse(request: Request): Promise<Response> {
   const body = await requestJson(request);
-  const query = String(body.query ?? "");
+  const query = String(body["query"] ?? "");
   const variables =
-    body.variables && typeof body.variables === "object"
-      ? (body.variables as Record<string, unknown>)
+    body["variables"] && typeof body["variables"] === "object"
+      ? (body["variables"] as Record<string, unknown>)
       : {};
   const repo =
-    typeof variables.owner === "string" && typeof variables.name === "string"
-      ? `${variables.owner}/${variables.name}`
+    typeof variables["owner"] === "string" &&
+    typeof variables["name"] === "string"
+      ? `${variables["owner"]}/${variables["name"]}`
       : "getsentry/junior";
 
   if (/createIssue/i.test(query)) {
     const input =
-      variables.input && typeof variables.input === "object"
-        ? (variables.input as Record<string, unknown>)
+      variables["input"] && typeof variables["input"] === "object"
+        ? (variables["input"] as Record<string, unknown>)
         : {};
     const number = nextIssueNumber++;
     const issue = {
       ...defaultIssue(repo, number),
-      title: String(input.title ?? "Eval issue"),
-      body: String(input.body ?? ""),
+      title: String(input["title"] ?? "Eval issue"),
+      body: String(input["body"] ?? ""),
     };
     issues.set(issueKey(repo, number), issue);
     return json({
@@ -351,8 +356,8 @@ async function githubResponse(
       const number = nextIssueNumber++;
       const issue = {
         ...defaultIssue(repo, number),
-        title: String(body.title ?? "Eval issue"),
-        body: String(body.body ?? ""),
+        title: String(body["title"] ?? "Eval issue"),
+        body: String(body["body"] ?? ""),
       };
       issues.set(issueKey(repo, number), issue);
       return json(issuePayload(repo, issue), { status: 201 });
@@ -372,11 +377,15 @@ async function githubResponse(
       const body = await requestJson(request);
       const updated: EvalIssue = {
         ...issue,
-        ...(typeof body.title === "string" ? { title: body.title } : {}),
-        ...(typeof body.body === "string" ? { body: body.body } : {}),
-        ...(body.state === "closed" || body.state === "open"
-          ? { state: body.state }
-          : {}),
+        ...(typeof body["title"] === "string"
+          ? { title: body["title"] }
+          : undefined),
+        ...(typeof body["body"] === "string"
+          ? { body: body["body"] }
+          : undefined),
+        ...(body["state"] === "closed" || body["state"] === "open"
+          ? { state: body["state"] }
+          : undefined),
         updated_at: timestamp,
       };
       issues.set(key, updated);
@@ -400,7 +409,7 @@ async function githubResponse(
         user: userPayload("junior-eval"),
         created_at: "2026-05-27T00:01:00Z",
         updated_at: "2026-05-27T00:01:00Z",
-        body: String((await requestJson(request)).body ?? ""),
+        body: String((await requestJson(request))["body"] ?? ""),
       },
       { status: 201 },
     );

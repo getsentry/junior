@@ -377,7 +377,7 @@ test("a question open on load does not mark its record while later pages load", 
   releasePage();
   await expect(record).toBeInViewport();
   const marks = await page.evaluate(
-    () => (window as unknown as { askMarks: { count: number } }).askMarks.count,
+    () => (window as Window & { askMarks: { count: number } }).askMarks.count,
   );
   expect(marks).toBe(0);
 });
@@ -449,8 +449,7 @@ for (const failingPage of ["first", "second"] as const) {
       }),
     ).toBeInViewport();
     const marks = await page.evaluate(
-      () =>
-        (window as unknown as { askMarks: { count: number } }).askMarks.count,
+      () => (window as Window & { askMarks: { count: number } }).askMarks.count,
     );
     expect(marks).toBe(0);
   });
@@ -497,7 +496,7 @@ test("Respond quotes into the message box under a question", async ({
     const replies = document.querySelectorAll(
       "[data-quick-question-message-id]",
     );
-    const reply = replies[replies.length - 1]!;
+    const reply = replies[replies.length - 1];
     const walker = document.createTreeWalker(reply, NodeFilter.SHOW_TEXT);
     let node = walker.nextNode();
     while (node && (node.textContent ?? "").trim().length < 12) {

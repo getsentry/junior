@@ -6,11 +6,11 @@ const FORWARD_URL =
 
 describe("toVercelNetworkPolicy", () => {
   beforeEach(() => {
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
   });
 
   afterEach(() => {
-    delete process.env.JUNIOR_BASE_URL;
+    delete process.env["JUNIOR_BASE_URL"];
   });
 
   it("forwards credentialed domains and transforms trace domains", () => {
@@ -43,9 +43,9 @@ describe("toVercelNetworkPolicy", () => {
   });
 
   it("fails without a public callback URL for credentialed domains", () => {
-    delete process.env.JUNIOR_BASE_URL;
-    delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
-    delete process.env.VERCEL_URL;
+    delete process.env["JUNIOR_BASE_URL"];
+    delete process.env["VERCEL_PROJECT_PRODUCTION_URL"];
+    delete process.env["VERCEL_URL"];
 
     expect(() =>
       toVercelNetworkPolicy({

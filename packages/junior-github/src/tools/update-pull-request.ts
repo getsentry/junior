@@ -99,7 +99,7 @@ const pullRequestSchema = z.object({
 type PullRequest = z.output<typeof pullRequestSchema>;
 interface Result extends PluginToolOutput, PullRequest {
   target: "updatePullRequest";
-  subscribable?: SubscribableResource;
+  subscribable?: SubscribableResource | undefined;
 }
 const outputSchema = pluginToolOutputSchema.merge(
   pullRequestSchema.extend({
@@ -165,16 +165,16 @@ export function createGitHubUpdatePullRequestTool(
       input,
       _options,
       ctx: {
-        actor?: Actor;
+        actor?: Actor | undefined;
         automationLink?: { url: string };
-        conversationId?: string;
+        conversationId?: string | undefined;
         db: unknown;
         decider: PluginDecider;
         egress: PluginEgress;
         log: PluginLogger;
         events: { canSubscribe: boolean };
         conversationLink?: { url: string };
-        source?: Source;
+        source?: Source | undefined;
         users: {
           resolveActor(): Promise<
             { identity?: Identity; user?: User } | undefined

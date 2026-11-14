@@ -251,7 +251,7 @@ function cancelledMessage(
 
 /** Start browser authorization for one ACP authenticate request. */
 export async function beginAcpAuthorization(args: {
-  baseURL?: string;
+  baseURL?: string | undefined;
   connectionId: string;
   credentialHash: string;
   request: Request;

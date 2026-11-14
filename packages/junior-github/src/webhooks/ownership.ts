@@ -13,8 +13,8 @@ function parseGitHubBotIdentity(
   value: string | undefined,
 ): GitHubBotIdentity | undefined {
   const match = GITHUB_BOT_NOREPLY_EMAIL.exec(value?.trim() ?? "");
-  const login = match?.groups?.login;
-  const userId = match?.groups?.userId;
+  const login = match?.groups?.["login"];
+  const userId = match?.groups?.["userId"];
   if (!login || !userId) return undefined;
   return {
     login,
@@ -71,6 +71,8 @@ function ownTokenText(tokens: readonly Token[], separator = ""): string {
           .join(" ");
       }
       if ("tokens" in token && token.tokens) return ownTokenText(token.tokens);
+      // marked's generic token types `text` as `any`.
+      // oxlint-disable-next-line typescript/no-unsafe-return
       return "text" in token ? token.text : token.raw;
     })
     .join(separator);

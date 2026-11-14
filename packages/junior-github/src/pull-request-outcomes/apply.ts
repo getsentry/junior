@@ -50,7 +50,7 @@ export async function applyGitHubPullRequestOutcome(args: {
   annotations: PluginConversationAnnotations;
   codeChanges: CodeChangePublisher;
   db: GitHubDb;
-  log?: Pick<PluginLogger, "error">;
+  log?: Pick<PluginLogger, "error"> | undefined;
   outcome: GitHubPullRequestOutcomeInput;
 }): Promise<Awaited<ReturnType<typeof recordGitHubPullRequestOutcome>>> {
   const { outcome } = args;

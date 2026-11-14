@@ -110,9 +110,9 @@ const createIssueStateSchema = Type.Union([
 type CreateIssueState = Static<typeof createIssueStateSchema>;
 
 interface GitHubIssueResult {
-  facts?: ObjectAnnotation["facts"];
-  description?: string;
-  sourceUpdatedAt?: string;
+  facts?: ObjectAnnotation["facts"] | undefined;
+  description?: string | undefined;
+  sourceUpdatedAt?: string | undefined;
   number: number;
   url: string;
 }
@@ -289,7 +289,7 @@ export const gitHubIssueTool = definePluginTool({
   inputSchema: createIssueToolInputSchema,
   outputSchema: gitHubIssueOutputSchema,
   async execute(
-    input: CreateGitHubIssueInput,
+    input: z.output<typeof createIssueToolInputSchema>,
     options: PluginToolExecuteOptions,
     ctx: ToolRegistrationHookContext,
   ) {

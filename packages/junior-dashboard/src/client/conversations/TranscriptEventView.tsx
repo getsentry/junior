@@ -26,7 +26,9 @@ function EventTypeChip(props: { eventType: string }) {
 }
 
 /** Heading for several Events that arrived in one message. */
-function batchSummary(events: readonly { label?: string }[]): string {
+function batchSummary(
+  events: readonly { label?: string | undefined }[],
+): string {
   // Name the resource only when every Event is about it.
   const label = events[0]?.label;
   const shared = label && events.every((event) => event.label === label);

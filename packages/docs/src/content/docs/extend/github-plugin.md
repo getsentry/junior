@@ -329,14 +329,20 @@ Once configured, Junior can:
 - Check githubstatus.com for open or recent incidents when GitHub requests or
   checks fail
 - Watch or automate matching events when webhooks are enabled
-- Link issue, pull request, and commit references and URLs in Slack replies
-  and in the dashboard, as GitHub does. Bare `#123` uses the one repository
-  that the reply names, or else the channel's `github.repo`
+- Link issue, pull request, and commit references and URLs in Slack replies,
+  and in replies and messages in the dashboard, as GitHub does. Bare `#123`
+  uses the one repository that the text names, or else the channel's
+  `github.repo`
 - Turn `@login` into a Slack mention in Slack when the login links to a known
   person. Other logins become GitHub profile links when the text names a
   repository, or when it came from GitHub or went to GitHub
 - Show a GitHub profile link in the dashboard as the person card of the known
   person who linked that login, or else as a GitHub account card
+- Show a GitHub issue or pull request link in the dashboard as its issue or
+  pull request card, to a viewer whose linked GitHub account can see the
+  repository. A pull request at its issue URL, such as a linked
+  `owner/repo#12`, shows the pull request card. Other viewers get the public
+  web page card
 - Rewrite Slack mentions in text that tools send to GitHub. A person becomes
   their linked GitHub `@login`, or their name
 

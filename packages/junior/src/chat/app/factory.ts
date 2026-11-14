@@ -40,12 +40,14 @@ import {
 
 export interface CreateSlackRuntimeOptions {
   getSlackAdapter: () => SlackAdapter;
-  now?: () => number;
+  now?: (() => number) | undefined;
   pausedTurns?: PausedTurns;
-  sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
-  services?: JuniorRuntimeServiceOverrides;
+  sendPluginTask?:
+    | ScheduleSessionCompletedPluginTasksOptions["send"]
+    | undefined;
+  services?: JuniorRuntimeServiceOverrides | undefined;
   /** Keeps background work started by a turn alive. */
-  waitUntil?: (task: Promise<unknown>) => void;
+  waitUntil?: ((task: Promise<unknown>) => void) | undefined;
 }
 
 function clearSkippedTurnIfActive(

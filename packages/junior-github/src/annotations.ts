@@ -61,6 +61,11 @@ export function githubSidebarAnnotations(
     .map(({ annotation }) => annotation);
 }
 
+/** Return the Annotation key of a GitHub issue or pull request. */
+export function githubObjectKey(repo: string, number: number): string {
+  return `${repo.toLowerCase()}#${number}`;
+}
+
 /** Build the annotation returned by GitHub create and update tools. */
 export function githubObjectAnnotation(input: {
   repo: string;
@@ -69,13 +74,13 @@ export function githubObjectAnnotation(input: {
   url: string;
   objectType: "task" | "code_change";
   status: string;
-  facts?: ObjectAnnotation["facts"];
-  sourceUpdatedAt?: string;
-  description?: string;
+  facts?: ObjectAnnotation["facts"] | undefined;
+  sourceUpdatedAt?: string | undefined;
+  description?: string | undefined;
 }): ObjectAnnotation {
   return {
     kind: "object",
-    key: `${input.repo.toLowerCase()}#${input.number}`,
+    key: githubObjectKey(input.repo, input.number),
     label: `${input.repo}#${input.number}`,
     title: input.title.slice(0, 512),
     url: input.url,
@@ -138,7 +143,7 @@ async function updateGitHubAnnotation(
 export async function updateGitHubAnnotations(args: {
   annotations: PluginConversationAnnotations;
   conversationIds: string[];
-  log?: Pick<PluginLogger, "error">;
+  log?: Pick<PluginLogger, "error"> | undefined;
   update: Parameters<typeof updateGitHubAnnotation>[1];
 }): Promise<void> {
   const results = await Promise.allSettled(

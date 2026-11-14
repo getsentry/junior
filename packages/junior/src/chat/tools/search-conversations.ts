@@ -164,7 +164,7 @@ function searchConversationsInputSchema(
         .nullable()
         .optional()
         .describe(
-          "Linked resource key, such as owner/repo#123 for a pull request. Matches that key, or nested children that continue with #. Matches a conversation when it or one of its child agents created, changed, or read the resource.",
+          "Linked resource key, such as owner/repo#123 for a pull request. Matches that key, or nested children that continue with #. Matches a conversation when it or one of its child agents created or changed the resource.",
         ),
       conversation_ids: z
         .array(z.string().trim().min(1))

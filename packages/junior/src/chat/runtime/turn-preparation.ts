@@ -56,8 +56,8 @@ export interface PreparedTurnState {
   locationConfiguration?: LocationConfigurationService;
   conversation: ThreadConversationState;
   /** Latest thread Messages for reply decisions. A Turn prompt builds its own. */
-  conversationContext?: string;
-  sandboxRef?: SandboxRef;
+  conversationContext?: string | undefined;
+  sandboxRef?: SandboxRef | undefined;
   userMessageAlreadyReplied?: boolean;
   userMessageId?: string;
 }
@@ -65,7 +65,7 @@ export interface PreparedTurnState {
 export interface PrepareTurnStateDeps {
   hydrateConversationVisionContext: (
     conversation: ThreadConversationState,
-    context: TurnContext & { threadTs?: string },
+    context: TurnContext & { threadTs?: string | undefined },
   ) => Promise<void>;
   resolveBackfillMessageActors: (
     messages: Message[],

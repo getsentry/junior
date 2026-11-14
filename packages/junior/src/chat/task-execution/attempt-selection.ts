@@ -4,9 +4,9 @@ import type { ConversationWorkState, InboundMessage } from "./store";
 
 /** Source and Actor that own Turn input. */
 interface TurnOwner {
-  authorId?: string;
-  identityId?: string;
-  source?: string;
+  authorId?: string | undefined;
+  identityId?: string | undefined;
+  source?: string | undefined;
 }
 
 function inputOwner(message: InboundMessage): TurnOwner {

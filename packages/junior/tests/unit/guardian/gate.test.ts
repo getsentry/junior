@@ -555,12 +555,12 @@ describe("tool action review", () => {
     // The first action finishes last, so completion order differs from
     // batch order.
     const review = vi.fn<ToolActionReviewer["review"]>(async (proposal) => {
-      if (proposal.input.slow) {
+      if (proposal.input["slow"]) {
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
       return {
         decision: "deny",
-        reason: `Rejected ${String(proposal.input.target)}.`,
+        reason: `Rejected ${String(proposal.input["target"])}.`,
         riskLevel: "high",
         userAuthorization: "low",
       };
@@ -625,7 +625,7 @@ describe("tool action review", () => {
   it("counts each attempt once toward the rejection limit", async () => {
     const actionReview = reviewContext({
       review: vi.fn<ToolActionReviewer["review"]>(async (proposal) => ({
-        decision: proposal.input.deny ? "deny" : "allow",
+        decision: proposal.input["deny"] ? "deny" : "allow",
         reason: "Decided by the test.",
         riskLevel: "high",
         userAuthorization: "low",

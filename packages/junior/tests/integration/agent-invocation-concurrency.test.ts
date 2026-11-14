@@ -1,6 +1,5 @@
 import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { AgentRun } from "@/chat/agent/types";
 import {
   createAgentInvocation,
@@ -49,6 +48,7 @@ import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 const parentConversationId = "local:test:agent-invocation-concurrency";
 const destination = {
@@ -70,7 +70,7 @@ async function listAgents() {
 const NO_ANSWER = "Do not answer.";
 
 /** Reply with the input, or answer with plain text twice for `NO_ANSWER`. */
-function taskModel(request: AgentRun): StreamFn {
+function taskModel(request: AgentRun): AgentRequestStreamFn {
   return createModelStream(
     request.instruction.text.includes(NO_ANSWER)
       ? [
@@ -87,7 +87,9 @@ function taskModel(request: AgentRun): StreamFn {
   );
 }
 
-async function createHarness(streamForRun: (request: AgentRun) => StreamFn) {
+async function createHarness(
+  streamForRun: (request: AgentRun) => AgentRequestStreamFn,
+) {
   const fixture = createConfiguredJuniorSqlFixture();
   await migrateSchema(fixture.sql);
   const conversationStore = createSqlStore(fixture.sql);
@@ -453,7 +455,7 @@ describe("agent invocation identity and concurrency", () => {
         getEventCatalog(),
       );
       const timer = (await execute(
-        childTools.watchTimer!,
+        childTools["watchTimer"]!,
         { after_ms: 60_000, intent: "Check the deploy again." },
         "child-timer",
       )) as { id: string };
@@ -532,12 +534,12 @@ describe("agent invocation identity and concurrency", () => {
       // a timer event that already reached it is saved to its transcript
       // with no Turn, and a later timer never fires.
       await execute(
-        childTools.watchTimer!,
+        childTools["watchTimer"]!,
         { after_ms: 60_000, intent: "Check once more." },
         "child-timer-2",
       );
       await execute(
-        childTools.watchTimer!,
+        childTools["watchTimer"]!,
         { after_ms: 600_000, intent: "Check much later." },
         "child-timer-3",
       );
@@ -547,7 +549,7 @@ describe("agent invocation identity and concurrency", () => {
       await expect(
         stopAgent.execute!({ conversation_id: child.childConversationId }, {}),
       ).resolves.toMatchObject({ stopped: true });
-      await expect(execute(childTools.listWatches!, {})).resolves.toEqual({
+      await expect(execute(childTools["listWatches"]!, {})).resolves.toEqual({
         subscriptions: [],
       });
       clock.mockReturnValue(clock() + 600_000);
@@ -578,7 +580,7 @@ describe("agent invocation identity and concurrency", () => {
         agents: [{ status: "idle" }],
       });
       await execute(
-        childTools.watchTimer!,
+        childTools["watchTimer"]!,
         { after_ms: 60_000, intent: "Check after the restart." },
         "child-timer-4",
       );
@@ -800,7 +802,7 @@ describe("agent invocation identity and concurrency", () => {
         })
       ).events.flatMap(({ data }) =>
         data.type === "structured_event" && data.name === "conversation_note"
-          ? [data.content.text]
+          ? [data.content["text"]]
           : [],
       );
     const stoppedNote = (id: string) =>
@@ -838,7 +840,7 @@ describe("agent invocation identity and concurrency", () => {
       ) => {
         clock.mockReturnValue(clock() + 1_000);
         const timer = (await execute(
-          tools.watchTimer!,
+          tools["watchTimer"]!,
           { after_ms: 600_000, intent },
           intent,
         )) as { id: string };
@@ -846,7 +848,7 @@ describe("agent invocation identity and concurrency", () => {
       };
       const owners = async (tools: ReturnType<typeof toolsFor>) =>
         (
-          (await execute(tools.listWatches!, {})) as {
+          (await execute(tools["listWatches"]!, {})) as {
             subscriptions: { child_agent?: unknown; id: string }[];
           }
         ).subscriptions.map(({ child_agent, id }) => ({ child_agent, id }));
@@ -889,7 +891,7 @@ describe("agent invocation identity and concurrency", () => {
       ]);
       for (const id of [parentWatch, siblingWatch]) {
         await expect(
-          execute(watcherTools.stopWatchingResources!, { id }),
+          execute(watcherTools["stopWatchingResources"]!, { id }),
         ).rejects.toThrow(
           "Watch was not found in the current conversation or its child agents.",
         );
@@ -898,7 +900,7 @@ describe("agent invocation identity and concurrency", () => {
       const requestsBeforeStops = modelInputs.length;
       // The parent stops a watch of its child agent by id.
       await expect(
-        execute(parentTools.stopWatchingResources!, { id: watcherWatch }),
+        execute(parentTools["stopWatchingResources"]!, { id: watcherWatch }),
       ).resolves.toEqual({
         stopped_ids: [watcherWatch],
         watching_status: "stopped",
@@ -910,7 +912,7 @@ describe("agent invocation identity and concurrency", () => {
       // A stop of every watch includes the watches of the child agents below,
       // and nothing above or beside them.
       await expect(
-        execute(watcherTools.stopWatchingResources!, {}),
+        execute(watcherTools["stopWatchingResources"]!, {}),
       ).resolves.toEqual({
         stopped_ids: [helperWatch],
         watching_status: "stopped",
@@ -920,7 +922,7 @@ describe("agent invocation identity and concurrency", () => {
         { child_agent: siblingAgent, id: siblingWatch },
       ]);
       await expect(
-        execute(parentTools.stopWatchingResources!, {}),
+        execute(parentTools["stopWatchingResources"]!, {}),
       ).resolves.toEqual({
         stopped_ids: [parentWatch, siblingWatch],
         watching_status: "stopped",
@@ -947,7 +949,7 @@ describe("agent invocation identity and concurrency", () => {
       // Turn runs waits for the Turn after it. Each note is shown once.
       const lateWatch = await watchTimer(watcherTools, "Check again.");
       duringNextRequest = () =>
-        execute(parentTools.stopWatchingResources!, { id: lateWatch });
+        execute(parentTools["stopWatchingResources"]!, { id: lateWatch });
       await harness.message({
         childConversationId: watcher.childConversationId,
         idempotencyKey: "owned-message-1",

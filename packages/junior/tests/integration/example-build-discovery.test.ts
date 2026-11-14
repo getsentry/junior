@@ -67,7 +67,7 @@ function buildJuniorPackage(): void {
     CI: "true",
     JUNIOR_SKIP_SNAPSHOT: "1",
   };
-  delete env.SKILL_DIRS;
+  delete env["SKILL_DIRS"];
 
   execFileSync("pnpm", ["--filter", "@sentry/junior", "build"], {
     cwd: repoRoot,
@@ -117,7 +117,7 @@ describe.sequential("example build discovery integration", () => {
   }, 60_000);
 
   beforeEach(() => {
-    process.env.DATABASE_URL ??= exampleDatabaseUrl;
+    process.env["DATABASE_URL"] ??= exampleDatabaseUrl;
   });
 
   afterEach(() => {
@@ -175,7 +175,7 @@ describe.sequential("example build discovery integration", () => {
     expect(config.exampleDashboardAuthRequired()).toBe(true);
 
     process.env = { ...originalEnv };
-    delete process.env.NODE_ENV;
+    delete process.env["NODE_ENV"];
     clearVercelEnv();
     expect(config.exampleDashboardAuthRequired()).toBe(true);
   });
@@ -191,20 +191,18 @@ describe.sequential("example build discovery integration", () => {
       scripts?: Record<string, string>;
     };
 
-    expect(packageJson.scripts?.prebuild).toContain(
-      "pnpm --filter @sentry/junior build",
+    // Builds every workspace package that the app depends on.
+    expect(packageJson.scripts?.["prebuild"]).toBe(
+      'pnpm --filter "@sentry/junior-example^..." run build',
     );
-    expect(packageJson.scripts?.prebuild).toContain(
-      "pnpm --filter @sentry/junior-dashboard build",
-    );
-    expect(packageJson.scripts?.postbuild).toBe(
+    expect(packageJson.scripts?.["postbuild"]).toBe(
       "node scripts/check-vercel-output.mjs",
     );
   });
 
   it("serves built health and recognizes the sentry oauth callback route", async () => {
     process.chdir(exampleRoot);
-    process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(
+    process.env["JUNIOR_PLUGIN_PACKAGES"] = JSON.stringify(
       await getExamplePluginPackages(),
     );
 
@@ -226,7 +224,7 @@ describe.sequential("example build discovery integration", () => {
 
   it("routes the queue consumer endpoint through the app", async () => {
     process.chdir(exampleRoot);
-    process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(
+    process.env["JUNIOR_PLUGIN_PACKAGES"] = JSON.stringify(
       await getExamplePluginPackages(),
     );
 
@@ -248,7 +246,7 @@ describe.sequential("example build discovery integration", () => {
   it("does not expose discovery state from the public example app", async () => {
     const packageNames = await getExamplePluginPackages();
     process.chdir(exampleRoot);
-    process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(packageNames);
+    process.env["JUNIOR_PLUGIN_PACKAGES"] = JSON.stringify(packageNames);
 
     const app = await importExampleApp();
     const response = await app.fetch(new Request("http://localhost/api/info"));

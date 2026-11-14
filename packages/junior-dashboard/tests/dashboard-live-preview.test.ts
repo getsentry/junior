@@ -13,7 +13,10 @@ const TOKEN = "jr_live_token";
 // personal token on a real deployment.
 let live: Server;
 let liveOrigin: string;
-const liveRequests: { headers: IncomingHttpHeaders; url?: string }[] = [];
+const liveRequests: {
+  headers: IncomingHttpHeaders;
+  url?: string | undefined;
+}[] = [];
 
 beforeAll(async () => {
   live = createServer((request, response) => {

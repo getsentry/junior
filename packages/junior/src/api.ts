@@ -51,11 +51,11 @@ import {
 export { authenticatePersonalToken } from "./personal-tokens/store";
 export { isAllowedSignInEmail } from "./chat/sign-in/allowlist";
 export {
-  DEFAULT_AUTO_ARCHIVE_SETTINGS,
-  readUserAutoArchiveSettings,
-  updateUserAutoArchiveSettings,
-  type AutoArchiveSettings,
-} from "./api/conversations/auto-archive";
+  DEFAULT_USER_SETTINGS,
+  readUserSettings,
+  updateUserSettings,
+  type UserSettings,
+} from "./api/user-settings";
 export {
   readViewerAvatarUrl,
   resolveViewerUser,
@@ -67,7 +67,7 @@ export { jsonResponse };
 /** Options that `createApp()` passes through the dashboard. */
 export interface JuniorApiOptions {
   /** Queue for accepted web input. Defaults to Vercel Queues. */
-  conversationWorkQueue?: ConversationWorkQueue;
+  conversationWorkQueue?: ConversationWorkQueue | undefined;
 }
 
 /** Create Junior's production REST API for authenticated dashboard consumers. */

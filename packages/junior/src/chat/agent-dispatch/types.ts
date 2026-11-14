@@ -50,7 +50,7 @@ export interface DispatchRecord {
   credentialSubject?: CredentialSubject;
   destination: SlackDestination;
   destinationVisibility: DestinationVisibility;
-  errorMessage?: string;
+  errorMessage?: string | undefined;
   id: string;
   idempotencyKey: string;
   input: string;

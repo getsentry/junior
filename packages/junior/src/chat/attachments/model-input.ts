@@ -16,7 +16,7 @@ export const MAX_MODEL_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 /** Tell the model how to read a stored file that the prompt does not carry. */
 export function buildStoredAttachmentPromptText(args: {
   attachmentId: string;
-  filename?: string;
+  filename?: string | undefined;
   mediaType: string;
 }): string {
   return [

@@ -39,12 +39,18 @@ const textSchema = z
   .optional();
 
 interface PageElement {
-  elementGroup?: { children?: PageElement[] };
-  objectId?: string;
-  shape?: { text?: z.infer<typeof textSchema> };
-  table?: {
-    tableRows?: { tableCells?: { text?: z.infer<typeof textSchema> }[] }[];
-  };
+  elementGroup?: { children?: PageElement[] | undefined } | undefined;
+  objectId?: string | undefined;
+  shape?: { text?: z.infer<typeof textSchema> | undefined } | undefined;
+  table?:
+    | {
+        tableRows?:
+          | {
+              tableCells?: { text?: z.infer<typeof textSchema> }[] | undefined;
+            }[]
+          | undefined;
+      }
+    | undefined;
 }
 
 const pageElementSchema: z.ZodType<PageElement> = z.lazy(() =>

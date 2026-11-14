@@ -15,6 +15,8 @@ export const objectTypeSchema = z.enum([
   "chart",
   "event",
   "trace",
+  "release",
+  "dashboard",
   "item",
 ]);
 export type ObjectType = z.output<typeof objectTypeSchema>;
@@ -33,6 +35,8 @@ const objectTypeLabels = {
   chart: "Chart",
   event: "Event",
   trace: "Trace",
+  release: "Release",
+  dashboard: "Dashboard",
   item: "Item",
 } satisfies Record<ObjectType, string>;
 
@@ -54,7 +58,9 @@ const objectIconNames = [
   "graph",
   "pulse",
   "rows",
+  "tag",
   "package",
+  "apps",
 ] as const;
 export type ObjectIconName = (typeof objectIconNames)[number];
 export type ObjectTone =
@@ -68,8 +74,8 @@ export type ObjectTone =
 /** Resolve identity and state without replacing the type icon with a warning. */
 export function objectPresentation(object: {
   objectType: ObjectType;
-  status?: string;
-  facts?: { type: string };
+  status?: string | undefined;
+  facts?: { type: string } | undefined;
 }): { icon: ObjectIconName; tone: ObjectTone; label: string } {
   // Saved deployment cards used Item before Deployment became a native type.
   const type =
@@ -92,6 +98,8 @@ export function objectPresentation(object: {
       chart: "graph",
       event: "pulse",
       trace: "rows",
+      release: "tag",
+      dashboard: "apps",
       item: "package",
     } satisfies Record<ObjectType, ObjectIconName>
   )[type];

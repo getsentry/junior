@@ -63,10 +63,10 @@ export function turnInputFactsFromConversationMessage(
   message: ConversationMessage,
   args: {
     conversationId: string;
-    location?: Location;
-    savedActor?: Actor;
-    savedSource?: Source;
-    visibility?: ConversationPrivacy;
+    location?: Location | undefined;
+    savedActor?: Actor | undefined;
+    savedSource?: Source | undefined;
+    visibility?: ConversationPrivacy | undefined;
   },
 ): TurnInputFacts | undefined {
   if (isEventConversationMessage(message)) {
@@ -111,7 +111,7 @@ export function turnInputFactsFromConversationMessage(
 export function sourceFromTurnInput(args: {
   conversationId: string;
   source: Source;
-  visibility?: ConversationPrivacy;
+  visibility?: ConversationPrivacy | undefined;
 }): Source {
   if (args.source.kind === "web") {
     return createWebSource(

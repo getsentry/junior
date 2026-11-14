@@ -56,7 +56,7 @@ export function pluginChartScale(widget: Widget, range?: TimeRangeDays) {
 
 /** Render a validated plugin-owned categorical bar chart. */
 export function PluginBarChart(props: {
-  range?: TimeRangeDays;
+  range?: TimeRangeDays | undefined;
   widget: Widget;
 }) {
   const { widget } = props;

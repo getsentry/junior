@@ -22,7 +22,9 @@ const names = [
   "graph",
   "pulse",
   "rows",
+  "tag",
   "package",
+  "apps",
 ];
 const paths = Object.fromEntries(
   names.map((name) => [

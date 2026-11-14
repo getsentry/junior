@@ -48,9 +48,9 @@ export interface SentryExploreLink {
   pageTitle: string;
   yAxes: string[];
   groupBy: string[];
-  query?: string;
-  sort?: string;
-  topEvents?: number;
+  query?: string | undefined;
+  sort?: string | undefined;
+  topEvents?: number | undefined;
   project: string[];
   environment: string[];
   statsPeriod?: string;
@@ -94,23 +94,34 @@ function utcMs(value: string | null): number {
   return Date.parse(/(Z|[+-]\d\d:?\d\d)$/i.test(value) ? value : `${value}Z`);
 }
 
-type TimeRange = { statsPeriod: string } | { start: string; end: string };
+/** A relative or an absolute time range, as Sentry's page filters keep it. */
+export type TimeRange =
+  | { statsPeriod: string }
+  | { start: string; end: string };
 
-// Sentry's page filters treat a valid `statsPeriod` as a live window, even
-// when the URL keeps stale `start` and `end` beside it. The bounds count
-// only as a pair.
-function timeRange(params: URLSearchParams): TimeRange {
+/**
+ * Read the time range that a Sentry page's URL sets, or nothing when it sets
+ * no valid one. Sentry's page filters treat a valid `statsPeriod` as a live
+ * window, even when the URL keeps stale `start` and `end` beside it. The
+ * bounds count only as a pair.
+ */
+export function urlTimeRange(params: URLSearchParams): TimeRange | undefined {
   const period = params.get("statsPeriod") ?? "";
   if (periodMs(period) !== undefined) return { statsPeriod: period };
   const start = utcMs(params.get("start"));
   const end = utcMs(params.get("end"));
   if (Number.isNaN(start) || Number.isNaN(end) || end <= start) {
-    return { statsPeriod: DEFAULT_PERIOD };
+    return undefined;
   }
   return {
     start: new Date(start).toISOString(),
     end: new Date(end).toISOString(),
   };
+}
+
+/** Read the time range of a Sentry page's URL, with Sentry's default window. */
+export function timeRange(params: URLSearchParams): TimeRange {
+  return urlTimeRange(params) ?? { statsPeriod: DEFAULT_PERIOD };
 }
 
 function rangeMs(range: TimeRange): number {
@@ -119,14 +130,16 @@ function rangeMs(range: TimeRange): number {
     : Date.parse(range.end) - Date.parse(range.start);
 }
 
-// A stale URL can ask for an interval finer than its range allows, and
-// `events-timeseries` refuses that many buckets. Use the smallest allowed.
-function chartInterval(params: URLSearchParams, range: TimeRange): string {
+/**
+ * Return the `requested` interval, or the smallest one that the range
+ * allows when it is finer. A stale URL or widget can ask for more buckets
+ * than `events-timeseries` returns.
+ */
+export function chartInterval(requested: string, range: TimeRange): string {
   const rangeLength = rangeMs(range);
   const minimum = INTERVAL_LADDER.find(
     ([threshold]) => rangeLength >= threshold,
   )![1];
-  const requested = params.get("interval") ?? "";
   const requestedMs = periodMs(requested);
   return requestedMs !== undefined && requestedMs >= periodMs(minimum)!
     ? requested
@@ -157,7 +170,7 @@ interface Visualization {
   yAxes: string[];
   groupBy: string[];
   chartType?: number;
-  query?: string;
+  query?: string | undefined;
   sort: string[];
 }
 
@@ -166,14 +179,14 @@ interface Visualization {
 function aggregateFields(entries: Array<Record<string, unknown>>) {
   const visualization: Visualization = { yAxes: [], groupBy: [], sort: [] };
   for (const entry of entries) {
-    if (typeof entry.groupBy === "string" && entry.groupBy) {
-      visualization.groupBy.push(entry.groupBy);
+    if (typeof entry["groupBy"] === "string" && entry["groupBy"]) {
+      visualization.groupBy.push(entry["groupBy"]);
     }
-    const yAxes = strings(entry.yAxes);
+    const yAxes = strings(entry["yAxes"]);
     if (visualization.yAxes.length === 0 && yAxes.length > 0) {
       visualization.yAxes = yAxes;
-      if (Number.isInteger(entry.chartType)) {
-        visualization.chartType = entry.chartType as number;
+      if (Number.isInteger(entry["chartType"])) {
+        visualization.chartType = entry["chartType"] as number;
       }
     }
   }
@@ -192,46 +205,48 @@ function metricVisualization(
     .find((parsed) => parsed && metricIsVisible(parsed));
   if (!metric) return undefined;
   const visualization: Visualization = { yAxes: [], groupBy: [], sort: [] };
-  const fields = Array.isArray(metric.aggregateFields)
-    ? metric.aggregateFields
+  const fields = Array.isArray(metric["aggregateFields"])
+    ? metric["aggregateFields"]
     : [];
   for (const field of fields.map(record)) {
     if (!field) continue;
-    if (typeof field.groupBy === "string" && field.groupBy) {
-      visualization.groupBy.push(field.groupBy);
+    if (typeof field["groupBy"] === "string" && field["groupBy"]) {
+      visualization.groupBy.push(field["groupBy"]);
     }
-    const yAxes = strings(field.yAxes);
+    const yAxes = strings(field["yAxes"]);
     visualization.yAxes.push(...yAxes);
     if (
       yAxes.length > 0 &&
       visualization.chartType === undefined &&
-      Number.isInteger(field.chartType)
+      Number.isInteger(field["chartType"])
     ) {
-      visualization.chartType = field.chartType as number;
+      visualization.chartType = field["chartType"] as number;
     }
   }
-  const sorts = Array.isArray(metric.aggregateSortBys)
-    ? metric.aggregateSortBys
+  const sorts = Array.isArray(metric["aggregateSortBys"])
+    ? metric["aggregateSortBys"]
     : [];
   for (const sort of sorts.map(record)) {
-    if (typeof sort?.field === "string" && sort.field) {
+    if (typeof sort?.["field"] === "string" && sort["field"]) {
       visualization.sort.push(
-        sort.kind === "asc" ? sort.field : `-${sort.field}`,
+        sort["kind"] === "asc" ? sort["field"] : `-${sort["field"]}`,
       );
     }
   }
-  if (typeof metric.query === "string" && metric.query) {
-    visualization.query = metric.query;
+  if (typeof metric["query"] === "string" && metric["query"]) {
+    visualization.query = metric["query"];
   }
   return visualization;
 }
 
 function metricIsVisible(metric: Record<string, unknown>): boolean {
-  const fields = Array.isArray(metric.aggregateFields)
-    ? metric.aggregateFields
+  const fields = Array.isArray(metric["aggregateFields"])
+    ? metric["aggregateFields"]
     : [];
-  const chart = fields.map(record).find((field) => Array.isArray(field?.yAxes));
-  return chart?.visible !== false;
+  const chart = fields
+    .map(record)
+    .find((field) => Array.isArray(field?.["yAxes"]));
+  return chart?.["visible"] !== false;
 }
 
 function visualization(
@@ -303,6 +318,6 @@ export function parseSentryExploreLink(
     project: params.getAll("project"),
     environment: params.getAll("environment"),
     ...range,
-    interval: chartInterval(params, range),
+    interval: chartInterval(params.get("interval") ?? "", range),
   };
 }

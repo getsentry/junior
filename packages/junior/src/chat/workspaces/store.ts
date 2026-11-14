@@ -226,8 +226,8 @@ export async function getWorkspace(
 /** Create one install-wide Workspace recipe. */
 export async function createWorkspace(input: {
   name: string;
-  setupScript?: string;
-  vcpus?: number | null;
+  setupScript?: string | undefined;
+  vcpus?: number | null | undefined;
   repos: Array<{
     provider: string;
     repo: string;
@@ -268,8 +268,8 @@ export async function updateWorkspace(
   id: string,
   input: {
     name: string;
-    setupScript?: string;
-    vcpus?: number | null;
+    setupScript?: string | undefined;
+    vcpus?: number | null | undefined;
     repos: Array<{
       provider: string;
       repo: string;

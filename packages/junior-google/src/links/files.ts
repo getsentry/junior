@@ -375,7 +375,7 @@ export const googleFileLinks: PluginObjectLinkDefinition = {
     { host: "drive.google.com", path: "/open" },
   ],
   canView: canViewGoogleFileLink,
-  objectType: "document",
+  objectTypes: ["document"],
   // One tool reads Docs, Sheets, and Slides. No tool reads other files.
   readTool: (object) =>
     object.displayType && GOOGLE_FILE_DISPLAY_TYPES.has(object.displayType)

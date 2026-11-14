@@ -209,7 +209,7 @@ export function resetMockConversationViewerState(): void {
 function withMockViewerState<
   T extends { conversationId: string; displayTitle: string; status: string },
 >(
-  report: T & { archivedAt?: string | null },
+  report: T & { archivedAt?: string | null | undefined },
   pinConversationId = report.conversationId,
 ): T & {
   archivedAt: string | undefined;
@@ -1421,6 +1421,8 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "Checkout spans slowed down with it: https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
         "First event after the deploy: https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
         "One slow checkout: https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
+        "It shipped in https://acme.sentry.io/releases/junior%404.2.0/",
+        "The team watches it on https://acme.sentry.io/dashboard/42/",
         "The demo is at https://www.youtube.com/watch?v=MockLaunchDemo",
         "",
         "Launch steps are in https://www.notion.so/acme/Release-4-2-launch-plan-4f2a9c1e7b3d4e5fa6b7c8d9e0f1a2b3",
@@ -1430,8 +1432,9 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "https://blog.example.com/posts/release-4-2",
         "",
         // Alone on their lines: the video shows only its thumbnail, the
-        // Slack message, the chart, the trace, and the event show a card, and the repeated pull
-        // request shows no second card.
+        // Slack message, the chart, the trace, the event, the release, and
+        // the dashboard show a card, and the repeated pull request shows no
+        // second card.
         "https://www.youtube.com/watch?v=MockLaunchDemo",
         "",
         "https://acme.slack.com/archives/CQA456/p1770021700000100",
@@ -1441,6 +1444,10 @@ function longConversation(nowMs: number): ConversationDetailReport {
         "https://acme.sentry.io/explore/traces/trace/a8c0e1b2d3f4a5b6c7d8e9f0a1b2c3d4/",
         "",
         "https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
+        "",
+        "https://acme.sentry.io/releases/junior%404.2.0/",
+        "",
+        "https://acme.sentry.io/dashboard/42/",
         "",
         "https://github.com/getsentry/payments/pull/91",
       ].join("\n"),
@@ -3457,7 +3464,7 @@ function sumMockHoursIntoSixHours<T extends { date: string }>(
     bucket.setUTCHours(Math.floor(bucket.getUTCHours() / 6) * 6, 0, 0, 0);
     const key = bucket.toISOString().slice(0, 13);
     const current = bySix.get(key) ?? empty(key);
-    const next = { ...current, date: key } as T;
+    const next = { ...current, date: key };
     for (const [field, value] of Object.entries(hour)) {
       if (field === "date") continue;
       if (typeof value === "number") {
@@ -4029,7 +4036,7 @@ function mockRecentRuns(
   everyMs: number,
 ): AutomationSummary["recentRuns"] {
   const status = { b: "blocked", c: "completed", f: "failed" } as const;
-  return [...results].map((letter, index) => ({
+  return Array.from(results).map((letter, index) => ({
     durationMs: 30_000 + ((index * 37) % 50) * 1_000,
     executedAt: new Date(
       lastAtMs - (results.length - 1 - index) * everyMs,

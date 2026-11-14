@@ -19,7 +19,7 @@ export interface ConversationAccess {
   destinationId?: string;
   isParticipant: boolean;
   /** Root of the Conversation tree. Missing when the stored tree is invalid. */
-  rootConversationId?: string;
+  rootConversationId?: string | undefined;
   /** Provider tenant of the root Location, such as a Slack workspace. */
   tenant?: ProviderTenant;
   visibility: JuniorDestinationVisibility | null;

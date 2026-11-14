@@ -31,7 +31,7 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
   onSelectedSeqChange?(seq: number | undefined): void;
   /** The row that holds the reader's place, from the scroll owner. */
   scrollAnchorKey?: () => string | undefined;
-  selectedSeq?: number;
+  selectedSeq?: number | undefined;
 }) {
   const { conversation } = props;
   const time = useEventTime();

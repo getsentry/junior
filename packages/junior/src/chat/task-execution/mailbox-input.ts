@@ -18,7 +18,7 @@ import type { InboundMessage } from "@/chat/task-execution/store";
  */
 export async function webTurnInputs(
   messages: readonly {
-    reviewItemChange?: ReviewItemChangeRecord;
+    reviewItemChange?: ReviewItemChangeRecord | undefined;
     text: string;
   }[],
 ): Promise<AgentInstructionInput[]> {

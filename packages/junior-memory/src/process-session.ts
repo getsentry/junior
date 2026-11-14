@@ -87,7 +87,7 @@ function isRunActorInstruction(entry: PluginRunTranscriptEntry): boolean {
 /** A cited entry is valid public conversation evidence for shared knowledge. */
 function isConversationEvidence(entry: PluginRunTranscriptEntry): boolean {
   if (entry.type === "toolResult") {
-    return entry.isError === false && Boolean(entry.text?.trim());
+    return !entry.isError && Boolean(entry.text?.trim());
   }
   if (
     entry.type === "message" &&

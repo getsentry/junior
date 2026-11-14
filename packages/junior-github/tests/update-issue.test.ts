@@ -30,10 +30,7 @@ function assignedIssue(assignees: string[]): Response {
   );
 }
 
-function toolContext(
-  response?: Response,
-  user: typeof linkedUser | undefined = undefined,
-) {
+function toolContext(response?: Response, user?: typeof linkedUser) {
   const fetch = vi.fn(async (input: { operation: string }) => {
     // Updates read the body that is on GitHub before they write.
     if (input.operation === "github.issue.get") {

@@ -9,6 +9,7 @@ import {
   ilike,
   inArray,
   isNull,
+  lt,
   not,
   notLike,
   or,
@@ -105,7 +106,7 @@ export interface ReviewItemContent {
   conversationIds: string[];
   kind: ReviewItemKind;
   request?: UserInputRequest;
-  subject?: ReviewItemSubject;
+  subject?: ReviewItemSubject | undefined;
   title: string;
   visibility: ReviewItemVisibility;
 }
@@ -520,6 +521,23 @@ export interface ReviewItemPosition {
   id: string;
 }
 
+/**
+ * A position in the waiting-first order: the last item of a page, and
+ * whether it needs the User. Search returns the items after it.
+ */
+export interface ReviewItemWaitingPosition extends ReviewItemPosition {
+  needsUser: boolean;
+}
+
+/**
+ * A position in the newest-closed-first order: the last closed item of a
+ * page. Search returns the items closed before it.
+ */
+export interface ReviewItemClosedPosition {
+  closedAt: Date;
+  id: string;
+}
+
 /** Filters for Review item search. Every filter is optional. */
 export interface ReviewItemFilters {
   /**
@@ -528,9 +546,19 @@ export interface ReviewItemFilters {
    * first.
    */
   after?: ReviewItemPosition;
+  /**
+   * Return only the items after this position. Use it with
+   * `order: { needsUserId }` and only open items.
+   */
+  afterWaiting?: ReviewItemWaitingPosition;
   /** One assigned User, or Everyone. */
   assignee?: { everyone: true } | { userId: string };
   automationId?: string;
+  /**
+   * Return only the items closed before this position. Use it with
+   * `order: "closed"` and closed statuses.
+   */
+  closedBefore?: ReviewItemClosedPosition;
   conversationId?: string;
   /**
    * Drop the items that are assigned only to other people
@@ -543,10 +571,12 @@ export interface ReviewItemFilters {
   /** Words to find in the title or body. */
   query?: string;
   /**
-   * `oldest` sorts by creation, oldest first. By default the newest change
-   * comes first.
+   * `oldest` sorts by creation, oldest first. `closed` sorts closed items by
+   * when they closed, newest first. `{ needsUserId }` puts the items that
+   * need that User first (`reviewItemNeedsUser`), then the rest, each group
+   * newest created first. By default the newest change comes first.
    */
-  order?: "oldest";
+  order?: "closed" | "oldest" | { needsUserId: string };
   statuses: readonly ReviewItemStatus[];
   subjectId?: string;
 }
@@ -566,6 +596,34 @@ function searchConditions(
         and(
           eq(juniorReviewItems.createdAt, filters.after.createdAt),
           gt(juniorReviewItems.id, filters.after.id),
+        ),
+      )!,
+    );
+  }
+  if (filters.afterWaiting) {
+    if (typeof filters.order !== "object") {
+      throw new Error("afterWaiting needs the waiting-first order");
+    }
+    const needs = reviewItemNeedsUser(filters.order.needsUserId);
+    const { createdAt, id, needsUser } = filters.afterWaiting;
+    const older = or(
+      lt(juniorReviewItems.createdAt, createdAt),
+      and(
+        eq(juniorReviewItems.createdAt, createdAt),
+        lt(juniorReviewItems.id, id),
+      ),
+    )!;
+    conditions.push(
+      needsUser ? or(not(needs), and(needs, older))! : and(not(needs), older)!,
+    );
+  }
+  if (filters.closedBefore) {
+    conditions.push(
+      or(
+        lt(juniorReviewItems.closedAt, filters.closedBefore.closedAt),
+        and(
+          eq(juniorReviewItems.closedAt, filters.closedBefore.closedAt),
+          lt(juniorReviewItems.id, filters.closedBefore.id),
         ),
       )!,
     );
@@ -618,18 +676,51 @@ function reviewItemNeedsUserNow(userId: string, nowMs: number): SQL {
 }
 
 /**
- * Count the open Review items that need a User now
- * (`reviewItemNeedsUser`). A snoozed row does not count until it wakes.
+ * Count the open Review items that need a User (`reviewItemNeedsUser`), one
+ * row per subject URL, with the ones that ask with a form as `decisions`.
+ * The nav count and the Inbox bundle counts all read this one query. A
+ * snoozed row does not count until it wakes.
  */
-export async function countReviewItemsNeedingUser(
+export async function countReviewItemsNeedingUserBySubject(
   db: JuniorDatabase,
   userId: string,
   nowMs = Date.now(),
+): Promise<
+  Array<{ decisions: number; subjectUrl: string | null; total: number }>
+> {
+  return await db
+    .select({
+      decisions: count(juniorReviewItems.request),
+      subjectUrl: juniorReviewItems.subjectUrl,
+      total: count(),
+    })
+    .from(juniorReviewItems)
+    .where(reviewItemNeedsUserNow(userId, nowMs))
+    .groupBy(juniorReviewItems.subjectUrl);
+}
+
+/**
+ * Count the items in `ids` that are still open and that the reader's Inbox
+ * lists (`reviewItemForUser`). Snoozes live in the browser, so the
+ * dashboard names the newest item of each snoozed row.
+ */
+export async function countOpenReviewItemsForUser(
+  db: JuniorDatabase,
+  reader: ReviewItemReader & { userId: string },
+  ids: readonly string[],
 ): Promise<number> {
+  if (ids.length === 0) return 0;
   const rows = await db
     .select({ count: count() })
     .from(juniorReviewItems)
-    .where(reviewItemNeedsUserNow(userId, nowMs));
+    .where(
+      and(
+        inArray(juniorReviewItems.id, [...ids]),
+        eq(juniorReviewItems.status, "open"),
+        reviewItemVisibleTo(reader),
+        reviewItemForUser(reader.userId),
+      ),
+    );
   return rows[0]?.count ?? 0;
 }
 
@@ -656,7 +747,11 @@ export function reviewItemsNeedingUserVersionQuery(
  * the limit never drops an open item for a closed one. Then the newest
  * change comes first: `updated_at`, then `id`, both descending. With
  * `order: "oldest"`, the oldest item comes first: `created_at`, then `id`,
- * both ascending. `after` pages through that order.
+ * both ascending. `after` pages through that order. With `order: "closed"`,
+ * the item closed last comes first: `closed_at`, then `id`, both
+ * descending. `closedBefore` pages through that order. With
+ * `order: { needsUserId }`, the items that need the User come first, then
+ * `created_at` and `id`, both descending. `afterWaiting` pages through it.
  */
 export async function searchReviewItems(
   db: JuniorDatabase,
@@ -669,9 +764,17 @@ export async function searchReviewItems(
     .where(and(...searchConditions(reader, filters)))
     .orderBy(
       desc(eq(juniorReviewItems.status, "open")),
-      ...(filters.order === "oldest"
-        ? [asc(juniorReviewItems.createdAt), asc(juniorReviewItems.id)]
-        : [desc(juniorReviewItems.updatedAt), desc(juniorReviewItems.id)]),
+      ...(typeof filters.order === "object"
+        ? [
+            desc(reviewItemNeedsUser(filters.order.needsUserId)),
+            desc(juniorReviewItems.createdAt),
+            desc(juniorReviewItems.id),
+          ]
+        : filters.order === "oldest"
+          ? [asc(juniorReviewItems.createdAt), asc(juniorReviewItems.id)]
+          : filters.order === "closed"
+            ? [desc(juniorReviewItems.closedAt), desc(juniorReviewItems.id)]
+            : [desc(juniorReviewItems.updatedAt), desc(juniorReviewItems.id)]),
     )
     .limit(filters.limit);
   return await hydrate(db, rows);

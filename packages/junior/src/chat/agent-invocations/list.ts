@@ -40,7 +40,6 @@ import {
   sendsResultToParent,
 } from "./store";
 import { routeChildInput } from "./child-input";
-import { readParentMessage } from "./parent-message";
 import {
   CHILD_AGENT_KINDS,
   CHILD_AGENT_RESULTS,
@@ -237,7 +236,7 @@ async function listChildAgentsFromInvocations(
           limit(async () =>
             (await runsOnConversationLoop(
               conversationKindFromRow(row),
-              byChild.get(row.conversationId)![0]!,
+              byChild.get(row.conversationId)![0],
               row.stoppedAt?.getTime(),
               workStates.get(row.conversationId)?.execution.pendingMessages ??
                 [],
@@ -289,26 +288,6 @@ export async function listOpenChildAgentsWithoutAgentInvocations(
       ),
     )
     .map((child) => child.childConversationId);
-}
-
-/**
- * Count the open parent messages of one child that no Agent invocation
- * names: each one that waits in its mailbox, and each open Turn, which runs
- * one. This is the queue that `MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD` caps.
- */
-export async function countOpenParentMessages(
-  childConversationId: string,
-): Promise<number> {
-  const [turns, work] = await Promise.all([
-    listActiveMailboxTurns(childConversationId),
-    getConversationWorkState({ conversationId: childConversationId }),
-  ]);
-  return (
-    turns.length +
-    (work?.messages ?? []).filter(
-      (message) => readParentMessage(message) !== undefined,
-    ).length
-  );
 }
 
 /**
@@ -630,7 +609,7 @@ export type ParentAgent = {
  */
 export async function listAgentRelatives(input: {
   conversationId: string;
-  parentConversationId?: string;
+  parentConversationId?: string | undefined;
 }): Promise<{
   children: ChildAgent[];
   parent?: ParentAgent;

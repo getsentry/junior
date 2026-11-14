@@ -30,7 +30,7 @@ export async function refreshGitHubPullRequestPreview(args: {
   annotations: PluginConversationAnnotations;
   body: unknown;
   db: GitHubDb;
-  log?: Pick<PluginLogger, "error">;
+  log?: Pick<PluginLogger, "error"> | undefined;
 }): Promise<void> {
   const parsed = previewWebhookSchema.safeParse(args.body);
   if (!parsed.success) return;

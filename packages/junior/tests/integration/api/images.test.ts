@@ -438,7 +438,7 @@ describe("image API", () => {
           objectLinks: [
             {
               filters: [{ host: "files.example.com", pathPrefix: "/f/" }],
-              objectType: "document",
+              objectTypes: ["document"],
               canView: async (ctx) => allowed(ctx.viewer.email),
               resolve: async (ctx, url) => ({
                 kind: "object",
@@ -520,7 +520,7 @@ describe("image API", () => {
       http.get(
         "https://api.github.com/repos/getsentry/secret/collaborators/:login/permission",
         ({ params }) => {
-          if (params.login !== "member") {
+          if (params["login"] !== "member") {
             return HttpResponse.json({ permission: "none" });
           }
           // The first read of the member's access fails for a short time.
