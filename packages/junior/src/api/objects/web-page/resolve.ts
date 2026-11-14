@@ -164,7 +164,7 @@ export function webPageLinkType(): ObjectLinkType {
     canView: async () => true,
     // Junior fetches only `https`, so a plain `http` link stays a link.
     filters: [{ scheme: "https" }],
-    objectType: "web_page",
+    objectTypes: ["web_page"],
     owner: "junior",
     resolve: (_viewer, url) => resolveWebPageLink(url),
   };

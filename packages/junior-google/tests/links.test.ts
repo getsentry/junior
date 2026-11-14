@@ -121,8 +121,8 @@ function fakeGoogle(input: {
 }
 
 function linkType(objectType: string): PluginObjectLinkDefinition {
-  return googlePlugin().objectLinks!.find(
-    (link) => link.objectType === objectType,
+  return googlePlugin().objectLinks!.find((link) =>
+    link.objectTypes.includes(objectType),
   )!;
 }
 

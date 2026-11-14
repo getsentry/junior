@@ -215,7 +215,7 @@ describe("web page cards", () => {
           objectLinks: [
             {
               filters: [{ host: "tickets.example.com" }],
-              objectType: "task",
+              objectTypes: ["task"],
               canView: async () => true,
               resolve: async (_ctx, url) => ({
                 kind: "object",

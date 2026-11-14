@@ -146,6 +146,6 @@ async function resolveSentryEventLink(
 export const sentryEventLinks: PluginObjectLinkDefinition = {
   canView: canViewSentryEventLink,
   filters: SENTRY_EVENT_LINK_FILTERS,
-  objectType: "event",
+  objectTypes: ["event"],
   resolve: resolveSentryEventLink,
 };

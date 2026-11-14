@@ -48,9 +48,6 @@ interface GitHubObjectLink {
   owner: string;
 }
 
-/** A card, a pull request at an issue URL, or a missing object. */
-type ObjectRead = ObjectAnnotation | "pull_request" | null;
-
 function parseLink(url: URL): GitHubObjectLink | undefined {
   const [owner = "", name = "", path, number = ""] = url.pathname
     .split("/")
@@ -82,20 +79,23 @@ function repoRef(htmlUrl: string, link: GitHubObjectLink): string {
   return `${owner}/${name}`;
 }
 
-function objectCard(link: GitHubObjectLink, body: unknown): ObjectRead {
-  if (link.kind === "issue") {
-    const issue = issueSchema.parse(body);
-    if (issue.pull_request !== undefined) return "pull_request";
-    return githubObjectAnnotation({
-      ...githubObjectFacts("task", body),
-      repo: repoRef(issue.html_url, link),
-      number: issue.number,
-      title: issue.title,
-      url: issue.html_url,
-      objectType: "task",
-      status: issue.state,
-    });
-  }
+function issueCard(link: GitHubObjectLink, body: unknown): ObjectAnnotation {
+  const issue = issueSchema.parse(body);
+  return githubObjectAnnotation({
+    ...githubObjectFacts("task", body),
+    repo: repoRef(issue.html_url, link),
+    number: issue.number,
+    title: issue.title,
+    url: issue.html_url,
+    objectType: "task",
+    status: issue.state,
+  });
+}
+
+function pullRequestCard(
+  link: GitHubObjectLink,
+  body: unknown,
+): ObjectAnnotation {
   const pull = pullRequestSchema.parse(body);
   return githubObjectAnnotation({
     ...githubObjectFacts("code_change", body),
@@ -116,7 +116,7 @@ function objectCard(link: GitHubObjectLink, body: unknown): ObjectRead {
 async function readObject(
   ctx: ObjectLinkContext,
   link: GitHubObjectLink,
-): Promise<ObjectRead> {
+): Promise<ObjectAnnotation | null> {
   const collection = link.kind === "issue" ? "issues" : "pulls";
   return await ctx.cache.getOrLoad(
     `${collection}:${link.owner}/${link.name}#${link.number}`.toLowerCase(),
@@ -136,10 +136,19 @@ async function readObject(
           `GitHub ${link.kind} lookup failed with HTTP ${response.status}`,
         );
       }
-      return {
-        value: objectCard(link, response.body),
-        ttlMs: OBJECT_CACHE_TTL_MS,
-      };
+      if (link.kind === "pull_request") {
+        return {
+          value: pullRequestCard(link, response.body),
+          ttlMs: OBJECT_CACHE_TTL_MS,
+        };
+      }
+      // GitHub opens a pull request at its issue URL too, such as a linked
+      // `owner/repo#12`. Only the pulls API has its draft and merge state.
+      const value =
+        issueSchema.parse(response.body).pull_request === undefined
+          ? issueCard(link, response.body)
+          : await readObject(ctx, { ...link, kind: "pull_request" });
+      return { value, ttlMs: OBJECT_CACHE_TTL_MS };
     },
   );
 }
@@ -148,9 +157,6 @@ async function canViewLink(ctx: ObjectLinkContext, url: URL): Promise<boolean> {
   const link = parseLink(url);
   if (!link || !(await viewerCanSeeRepository(ctx, link))) return false;
   const card = await readObject(ctx, link);
-  // GitHub opens a pull request at its issue URL too, such as a linked
-  // `owner/repo#12`. It is not an issue, so it keeps the web page card.
-  if (card === "pull_request") return false;
   if (!card) return true;
   // A transferred issue or a renamed repository redirects, so the card can
   // come from another repository. The viewer must see that one too.
@@ -163,16 +169,21 @@ async function resolveLink(
   url: URL,
 ): Promise<ObjectAnnotation | undefined> {
   const link = parseLink(url);
-  const card = link ? await readObject(ctx, link) : null;
-  return card && card !== "pull_request" ? card : undefined;
+  return (link && (await readObject(ctx, link))) ?? undefined;
 }
 
-/** GitHub issue links, such as `https://github.com/owner/repo/issues/12`. */
+/**
+ * GitHub issue links, such as `https://github.com/owner/repo/issues/12`.
+ * A pull request at its issue URL shows the pull request card.
+ */
 export const githubIssueLinks: PluginObjectLinkDefinition = {
   canView: canViewLink,
   filters: [{ host: "github.com", pathPattern: "/*/*/issues/*" }],
-  objectType: "task",
-  readTool: () => "github_getIssue",
+  objectTypes: ["task", "code_change"],
+  readTool: (object) =>
+    object.objectType === "code_change"
+      ? "github_getPullRequest"
+      : "github_getIssue",
   resolve: resolveLink,
   webPageFallback: true,
 };
@@ -181,7 +192,7 @@ export const githubIssueLinks: PluginObjectLinkDefinition = {
 export const githubPullRequestLinks: PluginObjectLinkDefinition = {
   canView: canViewLink,
   filters: [{ host: "github.com", pathPattern: "/*/*/pull/*" }],
-  objectType: "code_change",
+  objectTypes: ["code_change"],
   readTool: () => "github_getPullRequest",
   resolve: resolveLink,
   webPageFallback: true,
