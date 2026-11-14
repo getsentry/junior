@@ -384,6 +384,36 @@ test("links to a settings section", async ({ page, dashboard }) => {
   ).toBeInViewport();
 });
 
+test("keeps a linked section in view while the sections above load", async ({
+  page,
+  dashboard,
+}) => {
+  let release!: () => void;
+  const loaded = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/personal-tokens", async (route) => {
+    await loaded;
+    await route.fulfill({
+      json: {
+        tokens: Array.from({ length: 12 }, (_, index) => ({
+          createdAt: "2026-08-01T00:00:00.000Z",
+          expiresAt: "2026-10-30T00:00:00.000Z",
+          id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+          lastUsedAt: null,
+          name: `Token ${index + 1}`,
+          tokenSuffix: "abcd",
+        })),
+      },
+    });
+  });
+  await page.goto(`${dashboard.baseURL}/settings/mcp`);
+  const heading = page.getByRole("heading", { exact: true, name: "MCP" });
+  await expect(heading).toBeInViewport();
+
+  release();
+  await expect(page.getByText("Token 12", { exact: true })).toBeAttached();
+  await expect(heading).toBeInViewport();
+});
+
 test("opens an old Settings page as its section and keeps the query", async ({
   page,
   dashboard,

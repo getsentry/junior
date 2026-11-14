@@ -8,6 +8,9 @@ import { cn } from "../../styles";
 // padding above a card heading, which is in rem, so this is in rem too.
 const SCROLL_GAP = "2.5rem";
 
+// Input that means the reader moves the page themselves.
+const READER_INPUT = ["keydown", "pointerdown", "touchstart", "wheel"] as const;
+
 /** Id of the title text, for `aria-labelledby` on the section. */
 export function anchorTitleId(anchor: string): string {
   return `${anchor}-title`;
@@ -29,12 +32,27 @@ export function AnchorHeading(props: {
     if (hash !== `#${props.anchor}`) return;
     const heading = document.getElementById(props.anchor);
     if (!heading) return;
-    // The sticky chrome covers the top of the page. Its height changes with
-    // the header, page links, and banner, so measure it.
-    const chrome = document.querySelector("[data-dashboard-chrome]");
-    const chromeHeight = chrome?.getBoundingClientRect().height ?? 0;
-    heading.style.scrollMarginTop = `calc(${chromeHeight}px + ${SCROLL_GAP})`;
-    heading.scrollIntoView();
+    const scroll = () => {
+      // The sticky chrome covers the top of the page. Its height changes with
+      // the header, page links, and banner, so measure it.
+      const chrome = document.querySelector("[data-dashboard-chrome]");
+      const chromeHeight = chrome?.getBoundingClientRect().height ?? 0;
+      heading.style.scrollMarginTop = `calc(${chromeHeight}px + ${SCROLL_GAP})`;
+      heading.scrollIntoView();
+    };
+    scroll();
+    // Sections above can still load and grow, which pushes the heading down.
+    // Keep it in view until the reader takes over.
+    const observer = new ResizeObserver(scroll);
+    observer.observe(document.body);
+    const stop = () => observer.disconnect();
+    for (const type of READER_INPUT) {
+      window.addEventListener(type, stop, { passive: true });
+    }
+    return () => {
+      stop();
+      for (const type of READER_INPUT) window.removeEventListener(type, stop);
+    };
     // `key` changes when someone follows the same anchor again.
   }, [hash, key, props.anchor]);
 
