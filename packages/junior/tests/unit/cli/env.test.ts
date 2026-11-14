@@ -21,6 +21,7 @@ const TEST_ENV_KEYS = [
   "JUNIOR_SCHEDULER_SECRET",
   "JUNIOR_SECRET",
   "JUNIOR_STATE_ADAPTER",
+  "REDIS_URL",
   "VERCEL",
   "VERCEL_ENV",
 ];
@@ -170,6 +171,7 @@ describe("loadCliEnvFiles", () => {
     clearTestEnv();
     delete mutableEnv.NODE_ENV;
     process.env.VERCEL_ENV = "production";
+    process.env.REDIS_URL = "redis://localhost:6379";
 
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-cli-env-"));
     writeFile(path.join(tempRoot, "package.json"), "{}\n");
@@ -181,6 +183,19 @@ describe("loadCliEnvFiles", () => {
     expect(process.env.JUNIOR_SCHEDULER_SECRET).toBe(
       JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET,
     );
+  });
+
+  it("keeps memory state in a Vercel build without REDIS_URL", () => {
+    clearTestEnv();
+    delete mutableEnv.NODE_ENV;
+    process.env.VERCEL_ENV = "preview";
+
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-cli-env-"));
+    writeFile(path.join(tempRoot, "package.json"), "{}\n");
+
+    loadCliEnvFiles(tempRoot);
+
+    expect(process.env.JUNIOR_STATE_ADAPTER).toBe("memory");
   });
 
   it("preserves explicit config values when applying defaults", () => {

@@ -89,11 +89,13 @@ function resolveCliEnvRoots(cwd: string): string[] {
  */
 export function loadCliEnvFiles(cwd: string = process.cwd()): void {
   const nodeEnv = process.env.NODE_ENV ?? "development";
-  // Read VERCEL_ENV before loading env files: `vercel env pull` can write
-  // VERCEL_ENV=production to .env.local, and local runs keep memory state.
+  // Read VERCEL_ENV and REDIS_URL before loading env files: `vercel env pull`
+  // can write both to .env.local, and local runs keep memory state. A Vercel
+  // build without REDIS_URL keeps memory state so it can still succeed.
   const vercelDeployment =
-    process.env.VERCEL_ENV === "production" ||
-    process.env.VERCEL_ENV === "preview";
+    (process.env.VERCEL_ENV === "production" ||
+      process.env.VERCEL_ENV === "preview") &&
+    hasValue(process.env.REDIS_URL);
 
   for (const root of resolveCliEnvRoots(cwd)) {
     for (const envFile of envFileNames(nodeEnv)) {
